@@ -1,0 +1,20 @@
+{
+  "name": "ressim",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build:wasm && vite",
+    "build": "bun run build:wasm && vite build",
+    "preview": "vite preview",
+    "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "svelte": "^5.39.6",
+    "vite": "^7.1.7"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  }
+}
