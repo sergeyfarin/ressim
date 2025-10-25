@@ -35,10 +35,13 @@
 
     // Visualization
     let canvasContainer;
+    let legendCanvas;
     let renderer, scene, camera, controls;
     let instancedMesh = null;
     let animationId = null;
     let showProperty = 'pressure';
+    let legendMin = 0;
+    let legendMax = 1;
 
     onMount(async () => {
         await init();
@@ -54,9 +57,9 @@
                 renderer.dispose();
                 renderer.forceContextLoss();
             }
-            window.removeEventListener('resize', onWindowResize, { passive: true });
+            // remove listener without options to satisfy TypeScript overloads
+            window.removeEventListener('resize', onWindowResize);
         }
-
     });
 
     function initSimulator() {
@@ -184,31 +187,21 @@
         const height = canvasContainer?.clientHeight || 600;
 
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x222222);
+        // use a light neutral background so colors and boxes are clearly visible
+        scene.background = new THREE.Color(0xf6f6f6);
 
         camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
         camera.position.set(0, -Math.max(nx, ny) * 2.2, Math.max(nx, ny) * 2.2);
         camera.up.set(0, 0, 1);
         camera.lookAt(0, 0, Math.max(nx, ny) * 0.5);
 
-        // stronger lighting mix
-        const hemi = new THREE.HemisphereLight(0xaaaaee, 0x222222, 0.6);
-        scene.add(hemi);
-        const dir = new THREE.DirectionalLight(0xffffff, 1.2);
-        dir.position.set(1, 1, 2);
-        dir.castShadow = false;
-        scene.add(dir);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-
+        // minimal renderer (no tone mapping / lighting-specific settings required)
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(width, height, false);
-        renderer.setClearColor(0x222222);
-        // color space handling
+        // match the scene background with a light clear color
+        renderer.setClearColor(0xf6f6f6);
         renderer.outputEncoding = THREE.sRGBEncoding;
-        renderer.physicallyCorrectLights = true;
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
 
         if (canvasContainer) {
             canvasContainer.innerHTML = '';
@@ -248,12 +241,13 @@
 
         const boxSize = 1.0;
         const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-        // standard material responds well to lights and sRGB encoding
-        const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.0 });
+        // use non-lit material so colors are shown uniformly regardless of lights
+        const material = new THREE.MeshBasicMaterial({
+            vertexColors: true
+        });
 
         instancedMesh = new THREE.InstancedMesh(geometry, material, total);
 
-        // instanceColor attribute (dynamic)
         const colorArray = new Float32Array(total * 3);
         const attr = new THREE.InstancedBufferAttribute(colorArray, 3, false);
         attr.setUsage(THREE.DynamicDrawUsage);
@@ -270,7 +264,7 @@
                 for (let i = 0; i < nx; i++) {
                     tmpMat.makeTranslation((i - xOff) * (boxSize + 0.12), (j - yOff) * (boxSize + 0.12), (k - zOff) * (boxSize + 0.12));
                     instancedMesh.setMatrixAt(idx, tmpMat);
-                    // default mid-gray (convert to linear below when updating)
+                    // default mid-gray (sRGB)
                     instancedMesh.instanceColor.setXYZ(idx, 0.53, 0.53, 0.53);
                     idx++;
                 }
@@ -311,6 +305,10 @@
         if (!isFinite(max)) max = min + 1;
         if (Math.abs(max - min) < 1e-12) max = min + 1e-6;
 
+        legendMin = min;
+        legendMax = max;
+        drawLegend(min, max);
+
         const color = new THREE.Color();
         // write colors in sRGB then convert to linear for correct rendering with sRGBEncoding
         for (let i = 0; i < values.length && i < instancedMesh.count; i++) {
@@ -330,13 +328,52 @@
         if (controls) controls.update();
         if (renderer && scene && camera) renderer.render(scene, camera);
     }
+
+    /* Legend drawing - use same HSL mapping as the instances */
+    function drawLegend(min, max) {
+        if (!legendCanvas) return;
+        const w = legendCanvas.width;
+        const h = legendCanvas.height;
+        const ctx = legendCanvas.getContext('2d');
+        if (!ctx) return;
+
+        const grad = ctx.createLinearGradient(0, 0, w, 0);
+        const tmpCol = new THREE.Color();
+        const steps = 64;
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            tmpCol.setHSL((1 - t) * 0.6, 1.0, 0.5);
+            // canvas expects sRGB strings
+            grad.addColorStop(t, tmpCol.getStyle());
+        }
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+
+        // draw border
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+
+        // labels (dark text on light legend)
+        ctx.font = '11px sans-serif';
+        ctx.fillStyle = '#111';
+        ctx.textBaseline = 'top';
+        ctx.fillText(min.toFixed(3), 2, h + 2);
+        const maxText = max.toFixed(3);
+        const tw = ctx.measureText(maxText).width;
+        ctx.fillText(maxText, w - tw - 2, h + 2);
+    }
 </script>
 <style>
     .controls { display: grid; gap: 0.5rem; grid-template-columns: repeat(2, 1fr); max-width: 1000px; }
     .row { display:flex; gap:0.5rem; align-items:center; }
     pre { background:#f6f8fa; padding:0.75rem; overflow:auto; max-height:240px; }
     button { padding:0.4rem 0.7rem; }
-    .viz { border: 1px solid #ddd; width: 800px; height: 600px; }
+    .viz { border: 1px solid #ddd; width: 800px; height: 600px; position: relative; background: #fff; }
+    .legend { margin-top: 8px; color: #222; display:flex; align-items:center; gap:8px; }
+    .legend canvas { border: 1px solid #ccc; background: #fff; }
+    .legend-labels { font-size: 12px; color: #222; margin-top: 2px; display:flex; justify-content:space-between; width:200px; }
 </style>
 <main>
 <h3 class="text-4xl font-bold mb-6">Reservoir Simulator (with Replay + 3D)</h3>
@@ -385,7 +422,16 @@
 </div>
 
 <div class="row">
-    <div class="viz" bind:this={canvasContainer}></div>
+    <div style="display:flex; flex-direction:column;">
+        <div class="viz" bind:this={canvasContainer}></div>
+        <div class="legend" style="margin-left:4px;">
+            <canvas bind:this={legendCanvas} width="200" height="18" style="width:200px;height:14px"></canvas>
+            <div style="display:flex; flex-direction:column; margin-left:8px;">
+                <div style="color:#222; font-size:12px">{showProperty === 'pressure' ? 'Pressure' : 'Saturation'}</div>
+                <div style="color:#444; font-size:11px">min {legendMin.toFixed(3)} — max {legendMax.toFixed(3)}</div>
+            </div>
+        </div>
+    </div>
 
     <div style="margin-left:1rem; width:340px;">
         <h4>Grid State (current)</h4>

@@ -1,0 +1,15 @@
+{
+  "name": "simulator",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "simulator_bg.wasm",
+    "simulator.js",
+    "simulator.d.ts"
+  ],
+  "main": "simulator.js",
+  "types": "simulator.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

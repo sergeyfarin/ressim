@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "bun run build:wasm && vite",
-    "build": "bun run build:wasm && vite build",
+    "build": "vite build",
     "preview": "vite preview",
-    "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg"
+    "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
