@@ -36,7 +36,9 @@
     // Visualization
     let canvasContainer;
     let legendCanvas;
-    let renderer, scene, camera, controls;
+    let renderer, scene, controls;
+    /** @type {any} */
+    let camera;
     let instancedMesh = null;
     let animationId = null;
     let showProperty = 'pressure';
@@ -199,9 +201,8 @@
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(width, height, false);
-        // match the scene background with a light clear color
-        renderer.setClearColor(0xf6f6f6);
-        renderer.outputEncoding = THREE.sRGBEncoding;
+    // match the scene background with a light clear color
+    renderer.setClearColor(0xf6f6f6);
 
         if (canvasContainer) {
             canvasContainer.innerHTML = '';
@@ -373,7 +374,7 @@
     .viz { border: 1px solid #ddd; width: 800px; height: 600px; position: relative; background: #fff; }
     .legend { margin-top: 8px; color: #222; display:flex; align-items:center; gap:8px; }
     .legend canvas { border: 1px solid #ccc; background: #fff; }
-    .legend-labels { font-size: 12px; color: #222; margin-top: 2px; display:flex; justify-content:space-between; width:200px; }
+    
 </style>
 <main>
 <h3 class="text-4xl font-bold mb-6">Reservoir Simulator (with Replay + 3D)</h3>
