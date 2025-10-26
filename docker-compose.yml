@@ -1,0 +1,52 @@
+# Docker Compose configuration for Ressim development environment
+# Fully isolated container - no volume mounts
+# Data exchange: VS Code Remote Containers OR Git commits
+# 
+# Container is self-contained with all dependencies built-in
+# No host filesystem access for maximum security and isolation
+
+version: '3.8'
+
+services:
+  ressim-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ressim-dev
+    ports:
+      # Vite dev server - access from host
+      - "5173:5173"
+      # Alternative port for multiple instances
+      - "5174:5174"
+      # Debugging ports (if needed)
+      - "9229:9229"
+    # NO VOLUMES - Container is fully isolated and self-contained
+    # Data exchange only via:
+    # 1. VS Code Remote Containers extension (recommended)
+    # 2. Git commits/pulls
+    # 3. API endpoints
+    environment:
+      - NODE_ENV=development
+      - RUST_BACKTRACE=1
+      - RUST_LOG=debug
+    working_dir: /app
+    command: npm run dev -- --host
+    
+    # Keep container running
+    stdin_open: true
+    tty: true
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+    
+    # Container restart policy
+    restart: unless-stopped
+
+volumes: {}
