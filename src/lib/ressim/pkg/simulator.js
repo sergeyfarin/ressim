@@ -158,14 +158,14 @@ function getDataViewMemory0() {
     return cachedDataViewMemory0;
 }
 
-export function set_panic_hook() {
-    wasm.set_panic_hook();
-}
-
 function takeFromExternrefTable0(idx) {
     const value = wasm.__wbindgen_export_2.get(idx);
     wasm.__externref_table_dealloc(idx);
     return value;
+}
+
+export function set_panic_hook() {
+    wasm.set_panic_hook();
 }
 
 const ReservoirSimulatorFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -186,6 +186,27 @@ export class ReservoirSimulator {
         wasm.__wbg_reservoirsimulator_free(ptr, 0);
     }
     /**
+     * @returns {any}
+     */
+    getDimensions() {
+        const ret = wasm.reservoirsimulator_getDimensions(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {any}
+     */
+    getGridState() {
+        const ret = wasm.reservoirsimulator_getGridState(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {any}
+     */
+    getWellState() {
+        const ret = wasm.reservoirsimulator_getWellState(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Create a new reservoir simulator with oil-field units
      * Grid dimensions: nx, ny, nz (number of cells in each direction)
      * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -198,6 +219,12 @@ export class ReservoirSimulator {
         this.__wbg_ptr = ret >>> 0;
         ReservoirSimulatorFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @param {number} delta_t_days
+     */
+    step(delta_t_days) {
+        wasm.reservoirsimulator_step(this.__wbg_ptr, delta_t_days);
     }
     /**
      * Add a well to the simulator
@@ -227,37 +254,10 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * @param {number} delta_t_days
-     */
-    step(delta_t_days) {
-        wasm.reservoirsimulator_step(this.__wbg_ptr, delta_t_days);
-    }
-    /**
      * @returns {number}
      */
     get_time() {
         const ret = wasm.reservoirsimulator_get_time(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {any}
-     */
-    getGridState() {
-        const ret = wasm.reservoirsimulator_getGridState(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {any}
-     */
-    getWellState() {
-        const ret = wasm.reservoirsimulator_getWellState(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {any}
-     */
-    getDimensions() {
-        const ret = wasm.reservoirsimulator_getDimensions(this.__wbg_ptr);
         return ret;
     }
 }

@@ -164,7 +164,10 @@ pub struct RockFluidProps {
 
 impl RockFluidProps {
     fn default_scal() -> Self {
-        Self { s_wc: 0.2, s_or: 0.2, n_w: 2.0, n_o: 2.0 }
+        // Reduced saturation thresholds to allow better water flow at initial conditions
+        // s_wc: connate water saturation (irreducible water that doesn't flow)
+        // s_or: residual oil saturation (oil left after water breakthrough)
+        Self { s_wc: 0.1, s_or: 0.1, n_w: 2.0, n_o: 2.0 }
     }
 
     /// Water relative permeability [dimensionless] using Corey-Brooks correlation
@@ -254,9 +257,9 @@ impl ReservoirSimulator {
         let grid_cells = vec![GridCell::default_cell(); n];
         ReservoirSimulator {
             nx, ny, nz,
-            dx: 100.0,   // meters (x-direction cell size)
-            dy: 100.0,   // meters (y-direction cell size)
-            dz: 20.0,    // meters (z-direction cell size)
+            dx: 10.0,   // meters (x-direction cell size)
+            dy: 10.0,   // meters (y-direction cell size)
+            dz: 1.0,    // meters (z-direction cell size)
             grid_cells,
             wells: Vec::new(),
             time_days: 0.0,  // simulation time in days
@@ -395,12 +398,12 @@ impl ReservoirSimulator {
 
                     // well implicit coupling: add PI to diagonal and PI*BHP to RHS
                     // Well rate [m³/day] = PI [m³/day/bar] * (p_cell - BHP) [bar]
+                    // For producer (injector=false): positive PI, well produces when p_cell > BHP
+                    // For injector (injector=true): well injects 100% water when p_cell < BHP
                     for w in &self.wells {
                         if w.i == i && w.j == j && w.k == k {
                             // Defensive checks: well should be validated on add_well, but check at runtime too
                             if w.productivity_index.is_finite() && w.bhp.is_finite() {
-                                // For producer: positive PI, well produces when p_cell > BHP
-                                // For injector: set injector=true to control injection
                                 diag += w.productivity_index;
                                 b_rhs[id] += w.productivity_index * w.bhp;
                             }
@@ -493,11 +496,19 @@ impl ReservoirSimulator {
                 
                 // Check result is finite
                 if q_m3_day.is_finite() {
-                    // Water fractional flow at block condition
-                    let fw = self.frac_flow_water(&self.grid_cells[id]);
+                    // Determine water composition of well fluid
+                    let fw = if w.injector {
+                        // Injectors inject 100% water
+                        1.0
+                    } else {
+                        // Producers produce at reservoir fluid composition (fractional flow)
+                        self.frac_flow_water(&self.grid_cells[id])
+                    };
+                    
                     let water_q_m3_day = q_m3_day * fw;
                     
                     // Volume change [m³]. Production (q>0) removes fluid from block.
+                    // For injector: q<0 (inflow), so -q_water*dt adds water to the block
                     delta_water_m3[id] -= water_q_m3_day * dt_days;
                 }
             }

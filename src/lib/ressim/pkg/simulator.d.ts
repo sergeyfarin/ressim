@@ -4,12 +4,16 @@ export function set_panic_hook(): void;
 export class ReservoirSimulator {
   free(): void;
   [Symbol.dispose](): void;
+  getDimensions(): any;
+  getGridState(): any;
+  getWellState(): any;
   /**
    * Create a new reservoir simulator with oil-field units
    * Grid dimensions: nx, ny, nz (number of cells in each direction)
    * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
    */
   constructor(nx: number, ny: number, nz: number);
+  step(delta_t_days: number): void;
   /**
    * Add a well to the simulator
    * Parameters in oil-field units:
@@ -26,26 +30,22 @@ export class ReservoirSimulator {
    * - BHP outside reasonable range
    */
   add_well(i: number, j: number, k: number, bhp: number, pi: number, injector: boolean): void;
-  step(delta_t_days: number): void;
   get_time(): number;
-  getGridState(): any;
-  getWellState(): any;
-  getDimensions(): any;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
-  readonly set_panic_hook: () => void;
   readonly __wbg_reservoirsimulator_free: (a: number, b: number) => void;
-  readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
   readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
-  readonly reservoirsimulator_step: (a: number, b: number) => void;
-  readonly reservoirsimulator_get_time: (a: number) => number;
+  readonly reservoirsimulator_getDimensions: (a: number) => any;
   readonly reservoirsimulator_getGridState: (a: number) => any;
   readonly reservoirsimulator_getWellState: (a: number) => any;
-  readonly reservoirsimulator_getDimensions: (a: number) => any;
+  readonly reservoirsimulator_get_time: (a: number) => number;
+  readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
+  readonly reservoirsimulator_step: (a: number, b: number) => void;
+  readonly set_panic_hook: () => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export_2: WebAssembly.Table;

@@ -10,15 +10,15 @@
     let nx = 20;
     let ny = 10;
     let nz = 10;
-    let delta_t_days = 1.0;
-    let steps = 1;
+    let delta_t_days = 10.0;
+    let steps = 100;
 
     // Well inputs
-    let well_i = 0;
-    let well_j = 0;
-    let well_k = 0;
-    let well_rate = 100.0;
-    let is_injector = false;
+    // let well_i = 0;
+    // let well_j = 0;
+    // let well_k = 0;
+    // let well_rate = 100.0;
+    // let is_injector = false;
 
     // Display data
     let gridStateRaw = null;
@@ -33,11 +33,20 @@
     let playTimer = null;
 
     // Visualization
-    let showProperty: 'pressure' | 'saturation' = 'pressure';
+    let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' = 'pressure';
 
     onMount(async () => {
         await init();
         wasmReady = true;
+        initSimulator();
+        for (let i = 0; i < nz; i++) {
+            simulator.add_well(Number(nx-1), Number(0), Number(i), Number(100), Number(200), Boolean(false));
+        }
+        for (let i = 0; i < nz; i++) {
+            simulator.add_well(Number(0), Number(0), Number(i), Number(400), Number(200), Boolean(true));
+        }
+        runSteps();
+
     });
 
     onDestroy(() => {
@@ -59,15 +68,15 @@
         // updateVisualization();
     }
 
-    function addWell() {
-        if (!simulator) return;
-        try {
-            simulator.add_well(Number(well_i), Number(well_j), Number(well_k), Number(well_rate), Boolean(is_injector));
-            refreshViews();
-        } catch (e) {
-            console.warn('add_well call failed (check wasm signature):', e);
-        }
-    }
+    // function addWell() {
+    //     if (!simulator) return;
+    //     try {
+    //         simulator.add_well(Number(well_i), Number(well_j), Number(well_k), Number(well_rate), Boolean(is_injector));
+    //         refreshViews();
+    //     } catch (e) {
+    //         console.warn('add_well call failed (check wasm signature):', e);
+    //     }
+    // }
 
     function recordCurrentState() {
         if (!simulator) return;
@@ -178,7 +187,8 @@
 <h3 class="text-4xl font-bold mb-6">Reservoir Simulator (with Replay + 3D)</h3>
 
 <div class="controls">
-    <div>
+    <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
+    <!-- <div>
         <label>nx <input type="number" min="1" bind:value={nx} /></label>
         <label>ny <input type="number" min="1" bind:value={ny} /></label>
         <label>nz <input type="number" min="1" bind:value={nz} /></label>
@@ -186,7 +196,7 @@
             <button on:click={initSimulator}>Init Simulator</button>
             <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
         </div>
-    </div>
+    </div> -->
 
     <div>
         <label>delta_t_days <input type="number" step="0.1" bind:value={delta_t_days} /></label>
@@ -205,15 +215,21 @@
             <button on:click={next} disabled={history.length===0}>Next</button>
             <label>Speed <input type="number" min="0.1" step="0.1" bind:value={playSpeed} /></label>
         </div>
-        <input type="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} />
-        <div>Step: {currentIndex} / {history.length - 1}</div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <input type="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
+            <span style="min-width:80px;">Step: {currentIndex} / {history.length - 1}</span>
+        </div>
+        {#if history.length > 0 && currentIndex >= 0 && currentIndex < history.length}
+            <div style="color:#666; font-size:12px;">Time: {history[currentIndex].time.toFixed(2)} days</div>
+        {/if}
     </div>
 
     <div>
         <h4>Visualization</h4>
         <label><select bind:value={showProperty}>
             <option value="pressure">Pressure</option>
-            <option value="saturation">Saturation (water)</option>
+            <option value="saturation_water">Water Saturation</option>
+            <option value="saturation_oil">Oil Saturation</option>
         </select></label>
         <div>time: {simTime}</div>
         <div>recorded steps: {history.length}</div>
@@ -230,6 +246,7 @@
             showProperty={showProperty}
             history={history}
             currentIndex={currentIndex}
+            wellState={wellStateRaw}
         />
     </div>
 
