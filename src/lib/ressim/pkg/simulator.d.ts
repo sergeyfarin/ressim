@@ -4,7 +4,27 @@ export function set_panic_hook(): void;
 export class ReservoirSimulator {
   free(): void;
   [Symbol.dispose](): void;
+  /**
+   * Create a new reservoir simulator with oil-field units
+   * Grid dimensions: nx, ny, nz (number of cells in each direction)
+   * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
+   */
   constructor(nx: number, ny: number, nz: number);
+  /**
+   * Add a well to the simulator
+   * Parameters in oil-field units:
+   * - i, j, k: grid cell indices (must be within grid bounds)
+   * - bhp: bottom-hole pressure [bar] (must be finite, typical: -100 to 2000 bar)
+   * - pi: productivity index [m³/day/bar] (must be non-negative and finite)
+   * - injector: true for injector (injects fluid), false for producer (extracts fluid)
+   * 
+   * Returns Ok(()) on success, or Err(message) if parameters are invalid.
+   * Invalid parameters include:
+   * - Out-of-bounds grid indices
+   * - NaN or Inf values in bhp or pi
+   * - Negative productivity index
+   * - BHP outside reasonable range
+   */
   add_well(i: number, j: number, k: number, bhp: number, pi: number, injector: boolean): void;
   step(delta_t_days: number): void;
   get_time(): number;
@@ -20,7 +40,7 @@ export interface InitOutput {
   readonly set_panic_hook: () => void;
   readonly __wbg_reservoirsimulator_free: (a: number, b: number) => void;
   readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
-  readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
   readonly reservoirsimulator_step: (a: number, b: number) => void;
   readonly reservoirsimulator_get_time: (a: number) => number;
   readonly reservoirsimulator_getGridState: (a: number) => any;
@@ -29,6 +49,7 @@ export interface InitOutput {
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export_2: WebAssembly.Table;
+  readonly __externref_table_dealloc: (a: number) => void;
   readonly __wbindgen_start: () => void;
 }
 

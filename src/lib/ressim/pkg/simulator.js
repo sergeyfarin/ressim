@@ -162,6 +162,12 @@ export function set_panic_hook() {
     wasm.set_panic_hook();
 }
 
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_export_2.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+
 const ReservoirSimulatorFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_reservoirsimulator_free(ptr >>> 0, 1));
@@ -180,6 +186,9 @@ export class ReservoirSimulator {
         wasm.__wbg_reservoirsimulator_free(ptr, 0);
     }
     /**
+     * Create a new reservoir simulator with oil-field units
+     * Grid dimensions: nx, ny, nz (number of cells in each direction)
+     * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
      * @param {number} nx
      * @param {number} ny
      * @param {number} nz
@@ -191,6 +200,19 @@ export class ReservoirSimulator {
         return this;
     }
     /**
+     * Add a well to the simulator
+     * Parameters in oil-field units:
+     * - i, j, k: grid cell indices (must be within grid bounds)
+     * - bhp: bottom-hole pressure [bar] (must be finite, typical: -100 to 2000 bar)
+     * - pi: productivity index [m³/day/bar] (must be non-negative and finite)
+     * - injector: true for injector (injects fluid), false for producer (extracts fluid)
+     *
+     * Returns Ok(()) on success, or Err(message) if parameters are invalid.
+     * Invalid parameters include:
+     * - Out-of-bounds grid indices
+     * - NaN or Inf values in bhp or pi
+     * - Negative productivity index
+     * - BHP outside reasonable range
      * @param {number} i
      * @param {number} j
      * @param {number} k
@@ -199,7 +221,10 @@ export class ReservoirSimulator {
      * @param {boolean} injector
      */
     add_well(i, j, k, bhp, pi, injector) {
-        wasm.reservoirsimulator_add_well(this.__wbg_ptr, i, j, k, bhp, pi, injector);
+        const ret = wasm.reservoirsimulator_add_well(this.__wbg_ptr, i, j, k, bhp, pi, injector);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * @param {number} delta_t_days

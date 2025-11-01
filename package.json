@@ -11,11 +11,11 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
-    "@types/three": "^0.180.0",
+    "@types/three": "0.181.0",
     "svelte": "^5.39.6",
     "vite": "^7.1.7"
   },
   "dependencies": {
-    "three": "^0.180.0"
+    "three": "0.181.0"
   }
 }
