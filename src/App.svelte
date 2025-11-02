@@ -185,7 +185,25 @@
 </style>
 <main>
 <h1 class="text-4xl font-bold mb-6">A Simplified Reservoir Simulation Model</h1>
+<div class="grid grid-cols-3 gap-4">
+  <div class="...">01</div>
+  <div class="...">02</div>
+  <div class="...">03</div>
+  <div class="col-span-2 ...">04</div>
+  <div class="...">05</div>
+  <div class="...">06</div>
+  <div class="col-span-2 ...">07</div>
+</div>
 
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+  <div style="background: lightblue;">Column 1</div>
+  <div style="background: lightgreen;">Column 2</div>
+  <div style="background: lightcoral;">Column 3</div>
+  <div style="background: lightgoldenrodyellow;">Column 4</div>
+  <div style="background: lightpink; grid-column: span 2;">Colspan (spans 2 columns)</div>
+  <div style="background: lightgray;">Column 3</div>
+  <div style="background: lightcyan;">Column 4</div>
+</div>
 <div class="controls">
     <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
     <!-- <div>
