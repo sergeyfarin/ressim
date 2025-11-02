@@ -17,4 +17,8 @@ export default defineConfig({
     // }
   ],
   base: '/ressim/',
+  build: {
+    outDir: 'dist/ressim',
+    emptyOutDir: true,
+  },
 })
