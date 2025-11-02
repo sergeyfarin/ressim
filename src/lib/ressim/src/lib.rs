@@ -305,6 +305,13 @@ impl ReservoirSimulator {
         krw / self.pvt.mu_w + kro / self.pvt.mu_o
     }
 
+    /// Phase mobilities [1/cP] for water and oil
+    fn phase_mobilities(&self, cell: &GridCell) -> (f64, f64) {
+        let krw = self.scal.k_rw(cell.sat_water);
+        let kro = self.scal.k_ro(cell.sat_water);
+        (krw / self.pvt.mu_w, kro / self.pvt.mu_o)
+    }
+
     /// Get capillary pressure [bar] at given water saturation
     fn get_capillary_pressure(&self, s_w: f64) -> f64 {
         self.pc.capillary_pressure(s_w, &self.scal)
@@ -452,27 +459,37 @@ impl ReservoirSimulator {
                         let p_j = p_new[nid];
                         // Transmissibility [m³/day/bar]
                         let t = self.transmissibility(&self.grid_cells[id], &self.grid_cells[nid], dim);
-                        
-                        // Calculate capillary pressure [bar] at each cell
-                        // P_c = P_oil - P_water (capillary pressure difference)
-                        let pc_i = self.get_capillary_pressure(self.grid_cells[id].sat_water);
-                        let pc_j = self.get_capillary_pressure(self.grid_cells[nid].sat_water);
-                        
-                        // Pressure gradient including capillary pressure effects
-                        // Effective pressure difference = pressure difference + capillary pressure gradient
-                        let dp_total = (p_i - p_j) + (pc_i - pc_j);
-                        
-                        // Volumetric flux [m³/day]: positive = from id -> nid
-                        let flux_m3_per_day = t * dp_total;
-                        
+                        let (lam_w_i, lam_o_i) = self.phase_mobilities(&self.grid_cells[id]);
+                        let (lam_w_j, lam_o_j) = self.phase_mobilities(&self.grid_cells[nid]);
+                        let lam_t_i = lam_w_i + lam_o_i;
+                        let lam_t_j = lam_w_j + lam_o_j;
+                        let lam_t_avg = 0.5 * (lam_t_i + lam_t_j);
+                        if lam_t_avg <= f64::EPSILON { continue; }
+
+                        // Total volumetric flux [m³/day]: positive = from id -> nid
+                        let total_flux = t * (p_i - p_j);
+
                         // Upwind fractional flow for water
-                        let f_w = if flux_m3_per_day >= 0.0 {
+                        let f_w = if total_flux >= 0.0 {
                             self.frac_flow_water(&self.grid_cells[id])
                         } else {
                             self.frac_flow_water(&self.grid_cells[nid])
                         };
+
+                        // Capillary-driven diffusion term using harmonic transmissibility geometry
+                        let pc_i = self.get_capillary_pressure(self.grid_cells[id].sat_water);
+                        let pc_j = self.get_capillary_pressure(self.grid_cells[nid].sat_water);
+                        let geom_t = t / lam_t_avg;
+                        let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
+                        let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
+                        let capillary_flux = if lam_t_avg <= f64::EPSILON {
+                            0.0
+                        } else {
+                            -geom_t * (lam_w_avg * lam_o_avg / lam_t_avg) * (pc_i - pc_j)
+                        };
+
                         // Water flux [m³/day]
-                        let water_flux_m3_day = flux_m3_per_day * f_w;
+                        let water_flux_m3_day = total_flux * f_w + capillary_flux;
                         // Volume change over dt_days [m³]
                         let dv_water = water_flux_m3_day * dt_days;
                         
@@ -521,8 +538,11 @@ impl ReservoirSimulator {
             if vp_m3 <= 0.0 { continue; }
 
             // Change in water saturation [dimensionless] = ΔV_water [m³] / V_pore [m³]
+            let sw_old = self.grid_cells[idx].sat_water;
+            let sw_min = self.scal.s_wc;
+            let sw_max = 1.0 - self.scal.s_or;
             let delta_sw = delta_water_m3[idx] / vp_m3;
-            let sw_new = (self.grid_cells[idx].sat_water + delta_sw).clamp(0.0, 1.0);
+            let sw_new = (sw_old + delta_sw).clamp(sw_min, sw_max);
             
             // Ensure material balance: s_w + s_o = 1.0 (two-phase system, no gas phase)
             let so_new = (1.0 - sw_new).clamp(0.0, 1.0);

@@ -10,7 +10,7 @@
     let nx = 20;
     let ny = 10;
     let nz = 10;
-    let delta_t_days = 10.0;
+    let delta_t_days = 1.0;
     let steps = 100;
 
     // Well inputs
@@ -184,7 +184,7 @@
  
 </style>
 <main>
-<h3 class="text-4xl font-bold mb-6">Reservoir Simulator (with Replay + 3D)</h3>
+<h1 class="text-4xl font-bold mb-6">A Simplified Reservoir Simulation Model</h1>
 
 <div class="controls">
     <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
