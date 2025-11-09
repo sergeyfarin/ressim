@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.16",
+    "chart.js": "^4.5.1",
     "daisyui": "^5.4.2",
     "tailwindcss": "^4.1.16",
     "three": "0.181.0"

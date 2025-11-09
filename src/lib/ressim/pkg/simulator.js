@@ -30,6 +30,30 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(ptr, len);
 }
 
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_export_2.set(idx, obj);
+    return idx;
+}
+
+function handleError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_exn_store(idx);
+    }
+}
+
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
 function debugString(val) {
     // primitive types
     const type = typeof val;
@@ -158,6 +182,22 @@ function getDataViewMemory0() {
     return cachedDataViewMemory0;
 }
 
+let cachedFloat64ArrayMemory0 = null;
+
+function getFloat64ArrayMemory0() {
+    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
+        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+    }
+    return cachedFloat64ArrayMemory0;
+}
+
+function passArrayF64ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 8, 8) >>> 0;
+    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 function takeFromExternrefTable0(idx) {
     const value = wasm.__wbindgen_export_2.get(idx);
     wasm.__externref_table_dealloc(idx);
@@ -207,6 +247,70 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
+     * @returns {any}
+     */
+    getRateHistory() {
+        const ret = wasm.reservoirsimulator_getRateHistory(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Set relative permeability properties
+     * @param {number} s_wc
+     * @param {number} s_or
+     * @param {number} n_w
+     * @param {number} n_o
+     */
+    setRelPermProps(s_wc, s_or, n_w, n_o) {
+        wasm.reservoirsimulator_setRelPermProps(this.__wbg_ptr, s_wc, s_or, n_w, n_o);
+    }
+    /**
+     * Set initial pressure for all grid cells
+     * @param {number} pressure
+     */
+    setInitialPressure(pressure) {
+        wasm.reservoirsimulator_setInitialPressure(this.__wbg_ptr, pressure);
+    }
+    /**
+     * Set stability parameters for the simulation
+     * @param {number} max_sat_change_per_step
+     */
+    setStabilityParams(max_sat_change_per_step) {
+        wasm.reservoirsimulator_setStabilityParams(this.__wbg_ptr, max_sat_change_per_step);
+    }
+    /**
+     * Set initial water saturation for all grid cells
+     * @param {number} sat_water
+     */
+    setInitialSaturation(sat_water) {
+        wasm.reservoirsimulator_setInitialSaturation(this.__wbg_ptr, sat_water);
+    }
+    /**
+     * Set permeability with random distribution
+     * @param {number} min_perm
+     * @param {number} max_perm
+     */
+    setPermeabilityRandom(min_perm, max_perm) {
+        wasm.reservoirsimulator_setPermeabilityRandom(this.__wbg_ptr, min_perm, max_perm);
+    }
+    /**
+     * Set permeability per layer
+     * @param {Float64Array} perms_x
+     * @param {Float64Array} perms_y
+     * @param {Float64Array} perms_z
+     */
+    setPermeabilityPerLayer(perms_x, perms_y, perms_z) {
+        const ptr0 = passArrayF64ToWasm0(perms_x, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(perms_y, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(perms_z, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setPermeabilityPerLayer(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Create a new reservoir simulator with oil-field units
      * Grid dimensions: nx, ny, nz (number of cells in each direction)
      * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -221,17 +325,18 @@ export class ReservoirSimulator {
         return this;
     }
     /**
-     * @param {number} delta_t_days
+     * @param {number} target_dt_days
      */
-    step(delta_t_days) {
-        wasm.reservoirsimulator_step(this.__wbg_ptr, delta_t_days);
+    step(target_dt_days) {
+        wasm.reservoirsimulator_step(this.__wbg_ptr, target_dt_days);
     }
     /**
      * Add a well to the simulator
      * Parameters in oil-field units:
      * - i, j, k: grid cell indices (must be within grid bounds)
      * - bhp: bottom-hole pressure [bar] (must be finite, typical: -100 to 2000 bar)
-     * - pi: productivity index [m³/day/bar] (must be non-negative and finite)
+     * - well_radius: wellbore radius [m]
+     * - skin: skin factor [dimensionless]
      * - injector: true for injector (injects fluid), false for producer (extracts fluid)
      *
      * Returns Ok(()) on success, or Err(message) if parameters are invalid.
@@ -244,11 +349,12 @@ export class ReservoirSimulator {
      * @param {number} j
      * @param {number} k
      * @param {number} bhp
-     * @param {number} pi
+     * @param {number} well_radius
+     * @param {number} skin
      * @param {boolean} injector
      */
-    add_well(i, j, k, bhp, pi, injector) {
-        const ret = wasm.reservoirsimulator_add_well(this.__wbg_ptr, i, j, k, bhp, pi, injector);
+    add_well(i, j, k, bhp, well_radius, skin, injector) {
+        const ret = wasm.reservoirsimulator_add_well(this.__wbg_ptr, i, j, k, bhp, well_radius, skin, injector);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -305,6 +411,29 @@ function __wbg_get_imports() {
         const ret = Error(getStringFromWasm0(arg0, arg1));
         return ret;
     };
+    imports.wbg.__wbg_call_13410aac570ffff7 = function() { return handleError(function (arg0, arg1) {
+        const ret = arg0.call(arg1);
+        return ret;
+    }, arguments) };
+    imports.wbg.__wbg_call_a5400b25a865cfd8 = function() { return handleError(function (arg0, arg1, arg2) {
+        const ret = arg0.call(arg1, arg2);
+        return ret;
+    }, arguments) };
+    imports.wbg.__wbg_crypto_574e78ad8b13b65f = function(arg0) {
+        const ret = arg0.crypto;
+        return ret;
+    };
+    imports.wbg.__wbg_getRandomValues_b8f5dbd5f3995a9e = function() { return handleError(function (arg0, arg1) {
+        arg0.getRandomValues(arg1);
+    }, arguments) };
+    imports.wbg.__wbg_length_6bb7e81f9d7713e4 = function(arg0) {
+        const ret = arg0.length;
+        return ret;
+    };
+    imports.wbg.__wbg_msCrypto_a61aeb35a24c1329 = function(arg0) {
+        const ret = arg0.msCrypto;
+        return ret;
+    };
     imports.wbg.__wbg_new_19c25a3f2fa63a02 = function() {
         const ret = new Object();
         return ret;
@@ -313,11 +442,61 @@ function __wbg_get_imports() {
         const ret = new Array();
         return ret;
     };
+    imports.wbg.__wbg_newnoargs_254190557c45b4ec = function(arg0, arg1) {
+        const ret = new Function(getStringFromWasm0(arg0, arg1));
+        return ret;
+    };
+    imports.wbg.__wbg_newwithlength_a167dcc7aaa3ba77 = function(arg0) {
+        const ret = new Uint8Array(arg0 >>> 0);
+        return ret;
+    };
+    imports.wbg.__wbg_node_905d3e251edff8a2 = function(arg0) {
+        const ret = arg0.node;
+        return ret;
+    };
+    imports.wbg.__wbg_process_dc0fbacc7c1c06f7 = function(arg0) {
+        const ret = arg0.process;
+        return ret;
+    };
+    imports.wbg.__wbg_prototypesetcall_3d4a26c1ed734349 = function(arg0, arg1, arg2) {
+        Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+    };
+    imports.wbg.__wbg_randomFillSync_ac0988aba3254290 = function() { return handleError(function (arg0, arg1) {
+        arg0.randomFillSync(arg1);
+    }, arguments) };
+    imports.wbg.__wbg_require_60cc747a6bc5215a = function() { return handleError(function () {
+        const ret = module.require;
+        return ret;
+    }, arguments) };
     imports.wbg.__wbg_set_3f1d0b984ed272ed = function(arg0, arg1, arg2) {
         arg0[arg1] = arg2;
     };
     imports.wbg.__wbg_set_90f6c0f7bd8c0415 = function(arg0, arg1, arg2) {
         arg0[arg1 >>> 0] = arg2;
+    };
+    imports.wbg.__wbg_static_accessor_GLOBAL_8921f820c2ce3f12 = function() {
+        const ret = typeof global === 'undefined' ? null : global;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+    };
+    imports.wbg.__wbg_static_accessor_GLOBAL_THIS_f0a4409105898184 = function() {
+        const ret = typeof globalThis === 'undefined' ? null : globalThis;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+    };
+    imports.wbg.__wbg_static_accessor_SELF_995b214ae681ff99 = function() {
+        const ret = typeof self === 'undefined' ? null : self;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+    };
+    imports.wbg.__wbg_static_accessor_WINDOW_cde3890479c675ea = function() {
+        const ret = typeof window === 'undefined' ? null : window;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+    };
+    imports.wbg.__wbg_subarray_70fd07feefe14294 = function(arg0, arg1, arg2) {
+        const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
+        return ret;
+    };
+    imports.wbg.__wbg_versions_c01dfd4722a88165 = function(arg0) {
+        const ret = arg0.versions;
+        return ret;
     };
     imports.wbg.__wbg_wbindgendebugstring_99ef257a3ddda34d = function(arg0, arg1) {
         const ret = debugString(arg1);
@@ -325,6 +504,23 @@ function __wbg_get_imports() {
         const len1 = WASM_VECTOR_LEN;
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    };
+    imports.wbg.__wbg_wbindgenisfunction_8cee7dce3725ae74 = function(arg0) {
+        const ret = typeof(arg0) === 'function';
+        return ret;
+    };
+    imports.wbg.__wbg_wbindgenisobject_307a53c6bd97fbf8 = function(arg0) {
+        const val = arg0;
+        const ret = typeof(val) === 'object' && val !== null;
+        return ret;
+    };
+    imports.wbg.__wbg_wbindgenisstring_d4fa939789f003b0 = function(arg0) {
+        const ret = typeof(arg0) === 'string';
+        return ret;
+    };
+    imports.wbg.__wbg_wbindgenisundefined_c4b71d073b92f3c5 = function(arg0) {
+        const ret = arg0 === undefined;
+        return ret;
     };
     imports.wbg.__wbg_wbindgenthrow_451ec1a8469d7eb6 = function(arg0, arg1) {
         throw new Error(getStringFromWasm0(arg0, arg1));
@@ -337,6 +533,11 @@ function __wbg_get_imports() {
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
         // Cast intrinsic for `U64 -> Externref`.
         const ret = BigInt.asUintN(64, arg0);
+        return ret;
+    };
+    imports.wbg.__wbindgen_cast_cb9088102bce6b30 = function(arg0, arg1) {
+        // Cast intrinsic for `Ref(Slice(U8)) -> NamedExternref("Uint8Array")`.
+        const ret = getArrayU8FromWasm0(arg0, arg1);
         return ret;
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
@@ -366,6 +567,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
     cachedDataViewMemory0 = null;
+    cachedFloat64ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 
 

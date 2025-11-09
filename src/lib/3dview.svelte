@@ -17,7 +17,7 @@
         wells: unknown;
     };
 
-    type PropertyKey = 'pressure' | 'saturation_water' | 'saturation_oil';
+    type PropertyKey = 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity';
 
     export let nx = 20;
     export let ny = 10;
@@ -43,18 +43,6 @@
     let legendMax = 1;
     let lastDimsKey = '';
     
-    // Fixed ranges for constant color mapping across timesteps
-    let fixedRanges: Record<string, { min: number; max: number }> = {
-        'pressure': { min: 0, max: 500 },
-        'saturation_water': { min: 0.2, max: 0.8 },
-        'saturation_oil': { min: 0.2, max: 0.8 }
-    };
-
-    let activeGrid: GridCell[] | null = null;
-
-    const tmpColor = new THREE.Color();
-    const tmpMatrix = new THREE.Matrix4();
-    
     // Tooltip state
     let tooltipVisible = false;
     let tooltipX = 0;
@@ -62,6 +50,21 @@
     let tooltipContent = '';
     let raycaster = new THREE.Raycaster();
     let mouse = new THREE.Vector2();
+
+    // Helpers used in instancing and color mapping
+    const tmpMatrix = new THREE.Matrix4();
+    const tmpColor = new THREE.Color();
+
+    // Fixed color ranges per property to keep legend stable
+    const fixedRanges: Record<PropertyKey, { min: number; max: number }> = {
+        pressure: { min: 0, max: 1000 },
+        saturation_water: { min: 0, max: 1 },
+        saturation_oil: { min: 0, max: 1 },
+        permeability_x: { min: 0, max: 1000 },
+        permeability_y: { min: 0, max: 1000 },
+        permeability_z: { min: 0, max: 1000 },
+        porosity: { min: 0, max: 0.4 },
+    };
 
     onMount(() => {
         try {
@@ -72,6 +75,8 @@
         }
         initThree();
         buildInstancedGrid();
+        // Initial resize after a short delay to allow layout to settle
+        setTimeout(resize, 50);
     });
 
     onDestroy(() => {
@@ -184,26 +189,31 @@
             }
         }
 
-    controls = new OrbitControls(newCamera, renderer.domElement);
-        controls.target.set(0, 0, 0);
+        controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.update();
 
-        window.addEventListener('resize', onWindowResize, { passive: true });
+        window.addEventListener('resize', onWindowResize);
+
         renderer.domElement.addEventListener('mousemove', onCanvasMouseMove, { passive: true });
 
         animate();
     }
 
-    function onWindowResize(): void {
+    function resize(): void {
         if (!canvasContainer || !renderer || !camera) return;
-        const w = canvasContainer.clientWidth || 800;
-        const h = canvasContainer.clientHeight || 600;
+        const w = canvasContainer.clientWidth;
+        const h = canvasContainer.clientHeight;
+
+        if (w === 0 || h === 0) return; // Avoid resizing to zero
         
         const perspectiveCamera = camera as THREE.PerspectiveCamera;
         perspectiveCamera.aspect = w / h;
         perspectiveCamera.updateProjectionMatrix();
         renderer.setSize(w, h, false);
+    }
+
+    function onWindowResize(): void {
+        resize();
     }
 
     function onCanvasMouseMove(event: MouseEvent): void {
@@ -310,9 +320,9 @@
         const boxSize = 1.0;
         const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
         
-        // MeshStandardMaterial with vertexColors works well with instance colors
+        // Use per-instance colors
         const material = new THREE.MeshStandardMaterial({ 
-            vertexColors: true,
+            color: 0xffffff,
             roughness: 0.8,
             metalness: 0.0,
             wireframe: false
@@ -321,13 +331,8 @@
         const mesh = new THREE.InstancedMesh(geometry, material, total) as ThreeInstancedMesh;
         instancedMesh = mesh;
 
-        const colorArray = new Float32Array(total * 3);
-        const attr = new THREE.InstancedBufferAttribute(colorArray, 3, false);
-        attr.setUsage(THREE.DynamicDrawUsage);
-        // Set instanceColor which Three.js uses for InstancedMesh
-        mesh.instanceColor = attr;
-        // Also add it as a geometry attribute so the material can access it
-        geometry.setAttribute('color', attr);
+        // Assign a default per-instance color (medium gray)
+        const defaultColor = new THREE.Color(0x888888);
 
         let idx = 0;
         const xOff = (nx - 1) * 0.5;
@@ -339,17 +344,15 @@
                 for (let i = 0; i < nx; i++) {
                     tmpMatrix.makeTranslation((i - xOff) * boxSize, (j - yOff) * boxSize, (k - zOff) * boxSize);
                     mesh.setMatrixAt(idx, tmpMatrix);
-                    // Default gray - will be updated when actual data arrives
-                    attr.setXYZ(idx, 0.53, 0.53, 0.53);
+                    // Default color; will be overwritten by updateVisualization
+                    mesh.setColorAt(idx, defaultColor);
                     idx++;
                 }
             }
         }
 
         mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) {
-            mesh.instanceColor.needsUpdate = true;
-        }
+        mesh.instanceColor && (mesh.instanceColor.needsUpdate = true);
         scene.add(mesh);
 
         // Create wireframe edges for each cell using LineSegments (only edges, no diagonals)
@@ -397,10 +400,8 @@
     function applyGridToInstances(gridArray: GridCell[], property: PropertyKey): void {
         if (!instancedMesh) return;
 
-        const instAttr = instancedMesh.instanceColor;
-        if (!instAttr) return;
-
-        const values: number[] = [];
+    if (!instancedMesh.instanceColor) return;
+    const values: number[] = [];
 
         for (let i = 0; i < gridArray.length; i++) {
             const cell = gridArray[i];
@@ -422,6 +423,14 @@
                     (cell as Record<string, unknown>).so ?? 
                     NaN
                 );
+            } else if (property === 'permeability_x') {
+                rawValue = Number((cell as Record<string, unknown>).perm_x ?? NaN);
+            } else if (property === 'permeability_y') {
+                rawValue = Number((cell as Record<string, unknown>).perm_y ?? NaN);
+            } else if (property === 'permeability_z') {
+                rawValue = Number((cell as Record<string, unknown>).perm_z ?? NaN);
+            } else if (property === 'porosity') {
+                rawValue = Number((cell as Record<string, unknown>).porosity ?? NaN);
             } else {
                 rawValue = NaN;
             }
@@ -441,25 +450,18 @@
         for (let i = 0; i < values.length && i < instancedMesh.count; i++) {
             const value = values[i];
             if (!Number.isFinite(value)) {
-                instAttr.setXYZ(i, 0.7, 0.7, 0.7);
+                tmpColor.set(0xB3B3B3); // fallback gray
+                instancedMesh.setColorAt(i, tmpColor);
                 continue;
             }
             let t = (value - min) / (max - min);
             if (!Number.isFinite(t)) t = 0;
             t = Math.max(0, Math.min(1, t));
-
-            const hue = (1 - t) * 0.66;
-            const saturation = 0.85;
-            const lightness = 0.55;
-            tmpColor.setHSL(hue, saturation, lightness);
-            instAttr.setXYZ(i, tmpColor.r, tmpColor.g, tmpColor.b);
+            const hue = (1 - t) * 0.66; // blue (high) to red (low)
+            tmpColor.setHSL(hue, 0.85, 0.55);
+            instancedMesh.setColorAt(i, tmpColor);
         }
-
-        instAttr.needsUpdate = true;
-        if (instancedMesh.geometry) {
-            const colorAttr = instancedMesh.geometry.getAttribute('color');
-            if (colorAttr) (colorAttr as THREE.BufferAttribute).needsUpdate = true;
-        }
+        instancedMesh.instanceColor.needsUpdate = true;
     }
 
     function updateWellVisualization(wells: unknown[]): void {
@@ -612,6 +614,10 @@
                 let propLabel = 'Pressure';
                 if (showProperty === 'saturation_water') propLabel = 'Water Sat.';
                 else if (showProperty === 'saturation_oil') propLabel = 'Oil Sat.';
+                else if (showProperty === 'permeability_x') propLabel = 'Perm X';
+                else if (showProperty === 'permeability_y') propLabel = 'Perm Y';
+                else if (showProperty === 'permeability_z') propLabel = 'Perm Z';
+                else if (showProperty === 'porosity') propLabel = 'Porosity';
                 ctx2.fillText(propLabel, w2 / 2, 10);
             }
         }
@@ -640,7 +646,8 @@
     </div>
 </div>
 <style>
-    .viz { border: 1px solid #ddd; width: 800px; height: 600px; position: relative; background: #fff; }
+    /* Revert to non-absolute sizing so parent controls height explicitly */
+    .viz { border: 1px solid #ddd; width: 100%; height: 600px; position: relative; background: #fff; }
     .legend { margin-top: 8px; color: #222; display:flex; align-items:center; gap:8px; }
     .legend canvas { border: 1px solid #ccc; background: #fff; }
 </style>

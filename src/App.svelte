@@ -1,7 +1,9 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount, onDestroy, tick } from 'svelte';
     import init, { ReservoirSimulator } from './lib/ressim/pkg/simulator.js';
     import ThreeDView from './lib/3dview.svelte';
+    import RateChart from './lib/RateChart.svelte';
+    import FractionalFlow from './lib/FractionalFlow.svelte';
 
     let wasmReady = false;
     let simulator = null;
@@ -11,19 +13,41 @@
     let ny = 10;
     let nz = 10;
     let delta_t_days = 1.0;
-    let steps = 100;
+    let steps = 400;
+
+    // --- NEW STATE VARIABLES ---
+
+    // Initial Conditions
+    let initialPressure = 300.0;
+    let initialSaturation = 0.3;
+
+    // Relative Permeability
+    let s_wc = 0.1;
+    let s_or = 0.1;
+    let n_w = 2.0;
+    let n_o = 2.0;
+
+    // Permeability
+    let permMode = 'default'; // 'default', 'random', 'perLayer'
+    let minPerm = 50.0;
+    let maxPerm = 200.0;
+    let layerPermsXStr = "100, 150, 50, 200, 120, 80, 90, 110, 130, 70";
+    let layerPermsYStr = "100, 150, 50, 200, 120, 80, 90, 110, 130, 70";
+    let layerPermsZStr = "10, 15, 5, 20, 12, 8, 9, 11, 13, 7";
 
     // Well inputs
-    // let well_i = 0;
-    // let well_j = 0;
-    // let well_k = 0;
-    // let well_rate = 100.0;
-    // let is_injector = false;
+    let well_radius = 0.1;
+    let well_skin = 0.0;
+
+    // Stability
+    let max_sat_change_per_step = 0.1;
 
     // Display data
     let gridStateRaw = null;
     let wellStateRaw = null;
     let simTime = 0;
+    let rateHistory = [];
+    let analyticalProductionData = [];
 
     // History / replay
     let history = [];
@@ -33,19 +57,13 @@
     let playTimer = null;
 
     // Visualization
-    let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' = 'pressure';
+    let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
 
     onMount(async () => {
         await init();
         wasmReady = true;
         initSimulator();
-        for (let i = 0; i < nz; i++) {
-            simulator.add_well(Number(nx-1), Number(0), Number(i), Number(100), Number(200), Boolean(false));
-        }
-        for (let i = 0; i < nz; i++) {
-            simulator.add_well(Number(0), Number(0), Number(i), Number(400), Number(200), Boolean(true));
-        }
-        runSteps();
+        
 
     });
 
@@ -61,11 +79,39 @@
             return;
         }
         simulator = new ReservoirSimulator(Number(nx), Number(ny), Number(nz));
+
+        // Set properties from UI
+        simulator.setInitialPressure(Number(initialPressure));
+        simulator.setInitialSaturation(Number(initialSaturation));
+        simulator.setRelPermProps(Number(s_wc), Number(s_or), Number(n_w), Number(n_o));
+        simulator.setStabilityParams(Number(max_sat_change_per_step));
+
+        if (permMode === 'random') {
+            simulator.setPermeabilityRandom(Number(minPerm), Number(maxPerm));
+        } else if (permMode === 'perLayer') {
+            try {
+                const permsX = layerPermsXStr.split(',').map(Number);
+                const permsY = layerPermsYStr.split(',').map(Number);
+                const permsZ = layerPermsZStr.split(',').map(Number);
+                simulator.setPermeabilityPerLayer(permsX, permsY, permsZ);
+            } catch (e) {
+                console.error("Failed to set layer permeability:", e);
+                alert("Invalid format for layer permeability. Please use comma-separated numbers.");
+            }
+        }
+        // If permMode is 'default', we just use the default permeability from the simulator's constructor.
+
         history = [];
-        // currentIndex = -1;
-        // refreshViews();
-        // buildInstancedGrid();
-        // updateVisualization();
+        currentIndex = -1;
+        
+        refreshViews();
+        for (let i = 0; i < nz; i++) {
+            simulator.add_well(Number(nx-1), Number(0), Number(i), Number(100), Number(well_radius), Number(well_skin), Boolean(false));
+        }
+        for (let i = 0; i < nz; i++) {
+            simulator.add_well(Number(0), Number(0), Number(i), Number(400), Number(well_radius), Number(well_skin), Boolean(true));
+        }
+        runSteps();
     }
 
     // function addWell() {
@@ -86,6 +132,9 @@
             const t = simulator.get_time();
             history.push({ time: t, grid, wells });
             currentIndex = history.length - 1;
+            rateHistory = simulator.getRateHistory();
+            // Reassign to trigger Svelte reactivity for arrays
+            history = [...history];
         } catch (err) {
             try {
                 const grid = JSON.parse(JSON.stringify(simulator.getGridState()));
@@ -93,6 +142,9 @@
                 const t = simulator.get_time();
                 history.push({ time: t, grid, wells });
                 currentIndex = history.length - 1;
+                rateHistory = simulator.getRateHistory();
+                // Reassign to trigger Svelte reactivity for arrays
+                history = [...history];
             } catch (e) {
                 console.error('Failed to record state:', e);
             }
@@ -106,13 +158,20 @@
         recordCurrentState();
     }
 
-    function runSteps() {
+    async function runSteps() {
         if (!simulator) return;
-        for (let i = 0; i < Number(steps); i++) {
+        const total = Number(steps);
+        for (let i = 0; i < total; i++) {
             simulator.step(Number(delta_t_days));
             refreshViews();
             recordCurrentState();
+            // Yield occasionally so UI (slider, 3D) can update during long runs
+            if (i % 10 === 0) {
+                await tick();
+            }
         }
+        // Ensure the latest snapshot is applied to the view
+        applyHistoryIndex(history.length - 1);
     }
 
 
@@ -160,15 +219,29 @@
         gridStateRaw = structuredClone(entry.grid);
         wellStateRaw = structuredClone(entry.wells);
         simTime = entry.time;
+        // We don't update rateHistory here, as it's cumulative
     }
 
     /* Three.js setup - improved lighting, color encoding and resize handling */
     function refreshViews() {
         if (!simulator) return;
         try {
-            gridStateRaw = simulator.getGridState();
-            wellStateRaw = simulator.getWellState();
+            // Always clone so ThreeDView sees a new reference and re-renders colors
+            // (wasm may mutate the same underlying array/object in place)
+            const g = simulator.getGridState();
+            const w = simulator.getWellState();
+            try {
+                gridStateRaw = structuredClone(g);
+            } catch (_) {
+                gridStateRaw = JSON.parse(JSON.stringify(g));
+            }
+            try {
+                wellStateRaw = structuredClone(w);
+            } catch (_) {
+                wellStateRaw = JSON.parse(JSON.stringify(w));
+            }
             simTime = simulator.get_time();
+            rateHistory = simulator.getRateHistory();
         } catch (err) {
             console.error('Failed to read simulator state', err);
         }
@@ -181,81 +254,122 @@
     .row { display:flex; gap:0.5rem; align-items:center; }
     pre { background:#f6f8fa; padding:0.75rem; overflow:auto; max-height:240px; }
     button { padding:0.4rem 0.7rem; }
- 
+    .viz-wrapper { margin-top: 1rem; border:1px solid #ddd; padding:4px; background:#fff; }
+    .grid-well-wrapper { display:flex; gap:1rem; margin-top:1rem; }
+    .grid-well-wrapper > div { flex:1; min-width:0; }
 </style>
 <main>
+<FractionalFlow
+    rockProps={{ s_wc, s_or, n_w, n_o }}
+    fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
+    timeHistory={history.map(h => h.time)}
+    injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
+    reservoir={{ length: nx * 10, area: ny * 10 * nz * 1, porosity: 0.2 }}
+    on:analyticalData={(e) => analyticalProductionData = e.detail.production}
+/>
 <h1 class="text-4xl font-bold mb-6">A Simplified Reservoir Simulation Model</h1>
-<div class="grid grid-cols-3 gap-4">
-  <div class="...">01</div>
-  <div class="...">02</div>
-  <div class="...">03</div>
-  <div class="col-span-2 ...">04</div>
-  <div class="...">05</div>
-  <div class="...">06</div>
-  <div class="col-span-2 ...">07</div>
-</div>
 
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
-  <div style="background: lightblue;">Column 1</div>
-  <div style="background: lightgreen;">Column 2</div>
-  <div style="background: lightcoral;">Column 3</div>
-  <div style="background: lightgoldenrodyellow;">Column 4</div>
-  <div style="background: lightpink; grid-column: span 2;">Colspan (spans 2 columns)</div>
-  <div style="background: lightgray;">Column 3</div>
-  <div style="background: lightcyan;">Column 4</div>
-</div>
-<div class="controls">
-    <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
-    <!-- <div>
-        <label>nx <input type="number" min="1" bind:value={nx} /></label>
-        <label>ny <input type="number" min="1" bind:value={ny} /></label>
-        <label>nz <input type="number" min="1" bind:value={nz} /></label>
-        <div class="row">
-            <button on:click={initSimulator}>Init Simulator</button>
+    <div>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+            <div>
+                <h4>Initial Conditions</h4>
+                <label>Pressure <input type="number" bind:value={initialPressure} /></label>
+                <label>Water Saturation <input type="number" step="0.05" bind:value={initialSaturation} /></label>
+            </div>
+            <div>
+                <h4>Rel. Permeability</h4>
+                <label>S_wc <input type="number" step="0.05" bind:value={s_wc} /></label>
+                <label>S_or <input type="number" step="0.05" bind:value={s_or} /></label>
+                <label>n_w <input type="number" step="0.1" bind:value={n_w} /></label>
+                <label>n_o <input type="number" step="0.1" bind:value={n_o} /></label>
+            </div>
+            <div class="col-span-2">
+                <h4>Permeability</h4>
+                <select bind:value={permMode}>
+                    <option value="default">Default</option>
+                    <option value="random">Random</option>
+                    <option value="perLayer">Per Layer</option>
+                </select>
+                {#if permMode === 'random'}
+                    <div>
+                        <label>Min Perm <input type="number" bind:value={minPerm} /></label>
+                        <label>Max Perm <input type="number" bind:value={maxPerm} /></label>
+                    </div>
+                {:else if permMode === 'perLayer'}
+                    <div>
+                        <label>Perm X (by layer, csv) <input type="text" bind:value={layerPermsXStr} /></label>
+                        <label>Perm Y (by layer, csv) <input type="text" bind:value={layerPermsYStr} /></label>
+                        <label>Perm Z (by layer, csv) <input type="text" bind:value={layerPermsZStr} /></label>
+                    </div>
+                {/if}
+            </div>
+            <div>
+                <h4>Well Properties</h4>
+                <label>Well Radius (m) <input type="number" step="0.01" bind:value={well_radius} /></label>
+                <label>Skin <input type="number" step="0.1" bind:value={well_skin} /></label>
+            </div>
+            <div>
+                <h4>Stability</h4>
+                <label>Max Saturation Change <input type="number" step="0.01" bind:value={max_sat_change_per_step} /></label>
+            </div>
+        </div>
+        <div class="controls">
             <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
-        </div>
-    </div> -->
+            <div>
+                <label>nx <input type="number" min="1" bind:value={nx} /></label>
+                <label>ny <input type="number" min="1" bind:value={ny} /></label>
+                <label>nz <input type="number" min="1" bind:value={nz} /></label>
+                <div class="row">
+                    <button on:click={initSimulator}>Init Simulator</button>
+                </div>
+            </div>
 
-    <div>
-        <label>delta_t_days <input type="number" step="0.1" bind:value={delta_t_days} /></label>
-        <label>steps <input type="number" min="1" bind:value={steps} /></label>
-        <div class="row">
-            <button on:click={stepOnce} disabled={!simulator}>Step & Record</button>
-            <button on:click={runSteps} disabled={!simulator}>Run {steps} & Record</button>
+            <div>
+                <label>delta_t_days <input type="number" step="0.1" bind:value={delta_t_days} /></label>
+                <label>steps <input type="number" min="1" bind:value={steps} /></label>
+                <div class="row">
+                    <button on:click={stepOnce} disabled={!simulator}>Step & Record</button>
+                    <button on:click={runSteps} disabled={!simulator}>Run {steps} & Record</button>
+                </div>
+            </div>
+
+            <div>
+                <h4>Replay</h4>
+                <div class="row">
+                    <button on:click={prev} disabled={history.length===0}>Prev</button>
+                    <button on:click={togglePlay} disabled={history.length===0}>{playing ? 'Stop' : 'Play'}</button>
+                    <button on:click={next} disabled={history.length===0}>Next</button>
+                    <label>Speed <input type="number" min="0.1" step="0.1" bind:value={playSpeed} /></label>
+                </div>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <input type="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
+                    <span style="min-width:80px;">Step: {currentIndex} / {history.length - 1}</span>
+                </div>
+                {#if history.length > 0 && currentIndex >= 0 && currentIndex < history.length}
+                    <div style="color:#666; font-size:12px;">Time: {history[currentIndex].time.toFixed(2)} days</div>
+                {/if}
+            </div>
+
+            <div>
+                <h4>Visualization</h4>
+                <label><select bind:value={showProperty}>
+                    <option value="pressure">Pressure</option>
+                    <option value="saturation_water">Water Saturation</option>
+                    <option value="saturation_oil">Oil Saturation</option>
+                    <option value="permeability_x">Permeability X</option>
+                    <option value="permeability_y">Permeability Y</option>
+                    <option value="permeability_z">Permeability Z</option>
+                    <option value="porosity">Porosity</option>
+                </select></label>
+                <div>time: {simTime}</div>
+                <div>recorded steps: {history.length}</div>
+            </div>
+        </div>
+        <div class="row" style="margin-top: 1rem;">
+            <RateChart {rateHistory} {analyticalProductionData} />
         </div>
     </div>
-
-    <div>
-        <h4>Replay</h4>
-        <div class="row">
-            <button on:click={prev} disabled={history.length===0}>Prev</button>
-            <button on:click={togglePlay} disabled={history.length===0}>{playing ? 'Stop' : 'Play'}</button>
-            <button on:click={next} disabled={history.length===0}>Next</button>
-            <label>Speed <input type="number" min="0.1" step="0.1" bind:value={playSpeed} /></label>
-        </div>
-        <div style="display:flex; gap:0.5rem; align-items:center;">
-            <input type="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
-            <span style="min-width:80px;">Step: {currentIndex} / {history.length - 1}</span>
-        </div>
-        {#if history.length > 0 && currentIndex >= 0 && currentIndex < history.length}
-            <div style="color:#666; font-size:12px;">Time: {history[currentIndex].time.toFixed(2)} days</div>
-        {/if}
-    </div>
-
-    <div>
-        <h4>Visualization</h4>
-        <label><select bind:value={showProperty}>
-            <option value="pressure">Pressure</option>
-            <option value="saturation_water">Water Saturation</option>
-            <option value="saturation_oil">Oil Saturation</option>
-        </select></label>
-        <div>time: {simTime}</div>
-        <div>recorded steps: {history.length}</div>
-    </div>
-</div>
-
-<div class="row">
-    <div>
+    <div class="viz-wrapper">
         <ThreeDView
             nx={nx}
             ny={ny}
@@ -267,13 +381,14 @@
             wellState={wellStateRaw}
         />
     </div>
-
-    <div style="margin-left:1rem; width:340px;">
-        <h4>Grid State (current)</h4>
-        <pre>{JSON.stringify(gridStateRaw, null, 2)}</pre>
-
-        <h4>Well State (current)</h4>
-        <pre>{JSON.stringify(wellStateRaw, null, 2)}</pre>
+    <div class="grid-well-wrapper">
+        <div>
+            <h4>Grid State (current)</h4>
+            <pre>{JSON.stringify(gridStateRaw, null, 2)}</pre>
+        </div>
+        <div>
+            <h4>Well State (current)</h4>
+            <pre>{JSON.stringify(wellStateRaw, null, 2)}</pre>
+        </div>
     </div>
-</div>
 </main>
