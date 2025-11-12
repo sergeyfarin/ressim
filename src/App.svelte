@@ -3,16 +3,17 @@
     import init, { ReservoirSimulator } from './lib/ressim/pkg/simulator.js';
     import ThreeDView from './lib/3dview.svelte';
     import RateChart from './lib/RateChart.svelte';
-    import FractionalFlow from './lib/FractionalFlow.svelte';
+    // import FractionalFlow from './lib/FractionalFlow.svelte';
 
     let wasmReady = false;
     let simulator = null;
+    let runCompleted = false;
 
     // UI inputs
-    let nx = 20;
+    let nx = 15;
     let ny = 10;
     let nz = 10;
-    let delta_t_days = 1.0;
+    let delta_t_days = 0.25;
     let steps = 400;
 
     // --- NEW STATE VARIABLES ---
@@ -249,100 +250,164 @@
 
         
 </script>
-<style>
-    .controls { display: grid; gap: 0.5rem; grid-template-columns: repeat(2, 1fr); max-width: 1000px; }
-    .row { display:flex; gap:0.5rem; align-items:center; }
-    pre { background:#f6f8fa; padding:0.75rem; overflow:auto; max-height:240px; }
-    button { padding:0.4rem 0.7rem; }
-    .viz-wrapper { margin-top: 1rem; border:1px solid #ddd; padding:4px; background:#fff; }
-    .grid-well-wrapper { display:flex; gap:1rem; margin-top:1rem; }
-    .grid-well-wrapper > div { flex:1; min-width:0; }
-</style>
-<main>
-<FractionalFlow
+<main class="min-h-screen bg-base-200">
+<!-- <FractionalFlow
     rockProps={{ s_wc, s_or, n_w, n_o }}
     fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
     timeHistory={history.map(h => h.time)}
     injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
     reservoir={{ length: nx * 10, area: ny * 10 * nz * 1, porosity: 0.2 }}
     on:analyticalData={(e) => analyticalProductionData = e.detail.production}
-/>
+/> -->
 <h1 class="text-4xl font-bold mb-6">A Simplified Reservoir Simulation Model</h1>
 
-    <div>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-            <div>
-                <h4>Initial Conditions</h4>
-                <label>Pressure <input type="number" bind:value={initialPressure} /></label>
-                <label>Water Saturation <input type="number" step="0.05" bind:value={initialSaturation} /></label>
+    <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-blue-200">
+                <h3>Reservoir Properties</h3>
+                
+                <div>
+                    
+                    <!-- <label class="form-control w-full"> -->
+                        <div class="label-text">Pressure</div>
+                        <div class=""> (psi) </div>
+                        <input type="number" step="10" class="input input-bordered w-1/3" bind:value={initialPressure} />
+                    <!-- </label> -->
+                </div>
+                <div>
+                    <br />
+                    <label class="form-control">
+                        <span class="label-text w-1/2">Water Saturation</span>
+                        <input type="number" step="0.05" class="input input-bordered w-1/2" bind:value={initialSaturation} />
+                    </label>
+                </div>
+
             </div>
+            
             <div>
                 <h4>Rel. Permeability</h4>
-                <label>S_wc <input type="number" step="0.05" bind:value={s_wc} /></label>
-                <label>S_or <input type="number" step="0.05" bind:value={s_or} /></label>
-                <label>n_w <input type="number" step="0.1" bind:value={n_w} /></label>
-                <label>n_o <input type="number" step="0.1" bind:value={n_o} /></label>
+                <label class="form-control w-full">
+                    <span class="label-text">S_wc</span>
+                    <input type="number" step="0.05" class="input input-bordered" bind:value={s_wc} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">S_or</span>
+                    <input type="number" step="0.05" class="input input-bordered" bind:value={s_or} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">n_w</span>
+                    <input type="number" step="0.1" class="input input-bordered" bind:value={n_w} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">n_o</span>
+                    <input type="number" step="0.1" class="input input-bordered" bind:value={n_o} />
+                </label>
             </div>
             <div class="col-span-2">
                 <h4>Permeability</h4>
-                <select bind:value={permMode}>
-                    <option value="default">Default</option>
-                    <option value="random">Random</option>
-                    <option value="perLayer">Per Layer</option>
-                </select>
+                <label class="form-control w-full">
+                    <span class="label-text">Mode</span>
+                    <select class="select select-bordered" bind:value={permMode}>
+                        <option value="default">Default</option>
+                        <option value="random">Random</option>
+                        <option value="perLayer">Per Layer</option>
+                    </select>
+                </label>
                 {#if permMode === 'random'}
                     <div>
-                        <label>Min Perm <input type="number" bind:value={minPerm} /></label>
-                        <label>Max Perm <input type="number" bind:value={maxPerm} /></label>
+                        <label class="form-control w-full">
+                            <span class="label-text">Min Perm</span>
+                            <input type="number" class="input input-bordered" bind:value={minPerm} />
+                        </label>
+                        <label class="form-control w-full">
+                            <span class="label-text">Max Perm</span>
+                            <input type="number" class="input input-bordered" bind:value={maxPerm} />
+                        </label>
                     </div>
                 {:else if permMode === 'perLayer'}
                     <div>
-                        <label>Perm X (by layer, csv) <input type="text" bind:value={layerPermsXStr} /></label>
-                        <label>Perm Y (by layer, csv) <input type="text" bind:value={layerPermsYStr} /></label>
-                        <label>Perm Z (by layer, csv) <input type="text" bind:value={layerPermsZStr} /></label>
+                        <label class="form-control w-full">
+                            <span class="label-text">Perm X (by layer, csv)</span>
+                            <input type="text" class="input input-bordered" bind:value={layerPermsXStr} />
+                        </label>
+                        <label class="form-control w-full">
+                            <span class="label-text">Perm Y (by layer, csv)</span>
+                            <input type="text" class="input input-bordered" bind:value={layerPermsYStr} />
+                        </label>
+                        <label class="form-control w-full">
+                            <span class="label-text">Perm Z (by layer, csv)</span>
+                            <input type="text" class="input input-bordered" bind:value={layerPermsZStr} />
+                        </label>
                     </div>
                 {/if}
             </div>
             <div>
                 <h4>Well Properties</h4>
-                <label>Well Radius (m) <input type="number" step="0.01" bind:value={well_radius} /></label>
-                <label>Skin <input type="number" step="0.1" bind:value={well_skin} /></label>
+                <label class="form-control w-full">
+                    <span class="label-text">Well Radius (m)</span>
+                    <input type="number" step="0.01" class="input input-bordered" bind:value={well_radius} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">Skin</span>
+                    <input type="number" step="0.1" class="input input-bordered" bind:value={well_skin} />
+                </label>
             </div>
             <div>
                 <h4>Stability</h4>
-                <label>Max Saturation Change <input type="number" step="0.01" bind:value={max_sat_change_per_step} /></label>
+                <label class="form-control w-full">
+                    <span class="label-text">Max Saturation Change</span>
+                    <input type="number" step="0.01" class="input input-bordered" bind:value={max_sat_change_per_step} />
+                </label>
             </div>
         </div>
         <div class="controls">
             <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
             <div>
-                <label>nx <input type="number" min="1" bind:value={nx} /></label>
-                <label>ny <input type="number" min="1" bind:value={ny} /></label>
-                <label>nz <input type="number" min="1" bind:value={nz} /></label>
+                <label class="form-control w-full">
+                    <span class="label-text">nx</span>
+                    <input type="number" min="1" class="input input-bordered" bind:value={nx} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">ny</span>
+                    <input type="number" min="1" class="input input-bordered" bind:value={ny} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">nz</span>
+                    <input type="number" min="1" class="input input-bordered" bind:value={nz} />
+                </label>
                 <div class="row">
-                    <button on:click={initSimulator}>Init Simulator</button>
+                    <button class="btn btn-primary" on:click={initSimulator}>Init Simulator</button>
                 </div>
             </div>
 
             <div>
-                <label>delta_t_days <input type="number" step="0.1" bind:value={delta_t_days} /></label>
-                <label>steps <input type="number" min="1" bind:value={steps} /></label>
+                <label class="form-control w-full">
+                    <span class="label-text">delta_t_days</span>
+                    <input type="number" step="0.1" class="input input-bordered" bind:value={delta_t_days} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">steps</span>
+                    <input type="number" min="1" class="input input-bordered" bind:value={steps} />
+                </label>
                 <div class="row">
-                    <button on:click={stepOnce} disabled={!simulator}>Step & Record</button>
-                    <button on:click={runSteps} disabled={!simulator}>Run {steps} & Record</button>
+                    <button class="btn btn-secondary" on:click={stepOnce} disabled={!simulator}>Step & Record</button>
+                    <button class="btn btn-secondary" on:click={runSteps} disabled={!simulator}>Run {steps} & Record</button>
                 </div>
             </div>
 
             <div>
                 <h4>Replay</h4>
                 <div class="row">
-                    <button on:click={prev} disabled={history.length===0}>Prev</button>
-                    <button on:click={togglePlay} disabled={history.length===0}>{playing ? 'Stop' : 'Play'}</button>
-                    <button on:click={next} disabled={history.length===0}>Next</button>
-                    <label>Speed <input type="number" min="0.1" step="0.1" bind:value={playSpeed} /></label>
+                    <button class="btn btn-outline" on:click={prev} disabled={history.length===0}>Prev</button>
+                    <button class="btn btn-outline" on:click={togglePlay} disabled={history.length===0}>{playing ? 'Stop' : 'Play'}</button>
+                    <button class="btn btn-outline" on:click={next} disabled={history.length===0}>Next</button>
+                    <label class="form-control">
+                        <span class="label-text">Speed</span>
+                        <input type="number" min="0.1" step="0.1" class="input input-bordered" bind:value={playSpeed} />
+                    </label>
                 </div>
                 <div style="display:flex; gap:0.5rem; align-items:center;">
-                    <input type="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
+                    <input type="range" class="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
                     <span style="min-width:80px;">Step: {currentIndex} / {history.length - 1}</span>
                 </div>
                 {#if history.length > 0 && currentIndex >= 0 && currentIndex < history.length}
@@ -352,15 +417,18 @@
 
             <div>
                 <h4>Visualization</h4>
-                <label><select bind:value={showProperty}>
-                    <option value="pressure">Pressure</option>
-                    <option value="saturation_water">Water Saturation</option>
-                    <option value="saturation_oil">Oil Saturation</option>
-                    <option value="permeability_x">Permeability X</option>
-                    <option value="permeability_y">Permeability Y</option>
-                    <option value="permeability_z">Permeability Z</option>
-                    <option value="porosity">Porosity</option>
-                </select></label>
+                <label class="form-control w-full">
+                    <span class="label-text">Property</span>
+                    <select class="select select-bordered" bind:value={showProperty}>
+                        <option value="pressure">Pressure</option>
+                        <option value="saturation_water">Water Saturation</option>
+                        <option value="saturation_oil">Oil Saturation</option>
+                        <option value="permeability_x">Permeability X</option>
+                        <option value="permeability_y">Permeability Y</option>
+                        <option value="permeability_z">Permeability Z</option>
+                        <option value="porosity">Porosity</option>
+                    </select>
+                </label>
                 <div>time: {simTime}</div>
                 <div>recorded steps: {history.length}</div>
             </div>

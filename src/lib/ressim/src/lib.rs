@@ -419,26 +419,38 @@ impl ReservoirSimulator {
     // Implicit pressure equation + explicit saturation update
     pub fn step(&mut self, target_dt_days: f64) {
         let mut time_stepped = 0.0;
+        const MAX_ATTEMPTS: u32 = 10;
         let mut attempts = 0;
-        const MAX_ATTEMPTS: u32 = 10; // Max attempts to reduce dt before failing
 
         while time_stepped < target_dt_days && attempts < MAX_ATTEMPTS {
-            let remaining_time = target_dt_days - time_stepped;
-            let mut current_dt = remaining_time;
+            let remaining_dt = target_dt_days - time_stepped;
+            
+            // Calculate fluxes and stability for the remaining time step
+            let (p_new, delta_water_m3, stable_dt_factor) = self.calculate_fluxes(remaining_dt);
 
-            // Perform one step and get the required dt reduction factor
-            let (p_new, delta_water_m3, stable_dt_factor) = self.calculate_fluxes(current_dt);
+            let actual_dt;
+            let final_delta_water_m3;
 
             if stable_dt_factor < 1.0 {
-                current_dt *= stable_dt_factor * 0.9; // Use 90% of the calculated stable dt for safety
-                let (p_new_stable, delta_water_m3_stable, _) = self.calculate_fluxes(current_dt);
-                self.update_saturations_and_pressure(&p_new_stable, &delta_water_m3_stable, current_dt);
+                // Timestep is too large, reduce it based on CFL condition
+                actual_dt = remaining_dt * stable_dt_factor * 0.9; // Use 90% for safety
+                
+                // Scale the water volume change by the ratio of the new dt to the old dt
+                let dt_ratio = actual_dt / remaining_dt;
+                final_delta_water_m3 = delta_water_m3.iter().map(|&dv| dv * dt_ratio).collect();
+                
                 attempts += 1;
             } else {
-                self.update_saturations_and_pressure(&p_new, &delta_water_m3, current_dt);
-                attempts = 0; // Reset attempts on successful step
+                // The full remaining timestep is stable
+                actual_dt = remaining_dt;
+                final_delta_water_m3 = delta_water_m3;
+                attempts = 0; // Reset attempts on a successful full step
             }
-            time_stepped += current_dt;
+
+            // Update saturations and pressure with the adjusted (or full) timestep
+            self.update_saturations_and_pressure(&p_new, &final_delta_water_m3, actual_dt);
+            
+            time_stepped += actual_dt;
         }
     }
 
