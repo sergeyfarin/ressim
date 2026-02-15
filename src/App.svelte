@@ -1,13 +1,11 @@
 <script lang="ts">
-    import { onMount, onDestroy, tick } from 'svelte';
-    import init, { ReservoirSimulator } from './lib/ressim/pkg/simulator.js';
-    import ThreeDView from './lib/3dview.svelte';
-    import RateChart from './lib/RateChart.svelte';
-    // import FractionalFlow from './lib/FractionalFlow.svelte';
+    import { onMount, onDestroy } from 'svelte';
+    import FractionalFlow from './lib/FractionalFlow.svelte';
 
     let wasmReady = false;
-    let simulator = null;
+    let simWorker: Worker | null = null;
     let runCompleted = false;
+    let workerRunning = false;
 
     // UI inputs
     let nx = 15;
@@ -32,9 +30,12 @@
     let permMode = 'default'; // 'default', 'random', 'perLayer'
     let minPerm = 50.0;
     let maxPerm = 200.0;
+    let useRandomSeed = true;
+    let randomSeed = 12345;
     let layerPermsXStr = "100, 150, 50, 200, 120, 1000, 90, 110, 130, 70";
     let layerPermsYStr = "100, 150, 50, 200, 120, 1000, 90, 110, 130, 70";
     let layerPermsZStr = "10, 15, 5, 20, 12, 8, 9, 11, 13, 7";
+    let scenarioPreset = 'custom';
 
     // Well inputs
     let well_radius = 0.1;
@@ -56,62 +57,218 @@
     let playing = false;
     let playSpeed = 2;
     let playTimer = null;
+    const HISTORY_RECORD_INTERVAL = 2;
+    const MAX_HISTORY_ENTRIES = 300;
+    let showDebugState = false;
+    let profileStats = {
+        batchMs: 0,
+        avgStepMs: 0,
+        extractMs: 0,
+        renderApplyMs: 0,
+        snapshotsSent: 0,
+    };
+    let ThreeDViewComponent = null;
+    let RateChartComponent = null;
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
 
-    onMount(async () => {
-        await init();
-        wasmReady = true;
-        initSimulator();
-        
+    const scenarioPresets = {
+        custom: null,
+        baseline_waterflood: {
+            initialPressure: 300,
+            initialSaturation: 0.3,
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2.0,
+            n_o: 2.0,
+            permMode: 'random',
+            minPerm: 50,
+            maxPerm: 200,
+            useRandomSeed: true,
+            randomSeed: 12345,
+        },
+        high_contrast_layers: {
+            initialPressure: 320,
+            initialSaturation: 0.25,
+            s_wc: 0.12,
+            s_or: 0.12,
+            n_w: 2.2,
+            n_o: 2.2,
+            permMode: 'perLayer',
+            layerPermsXStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
+            layerPermsYStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
+            layerPermsZStr: '3, 4, 6, 9, 15, 40, 15, 9, 6, 4',
+        },
+        viscous_fingering_risk: {
+            initialPressure: 280,
+            initialSaturation: 0.2,
+            s_wc: 0.08,
+            s_or: 0.15,
+            n_w: 1.6,
+            n_o: 2.4,
+            permMode: 'random',
+            minPerm: 20,
+            maxPerm: 500,
+            useRandomSeed: true,
+            randomSeed: 987654,
+        },
+    };
 
+    function applyScenarioPreset() {
+        const preset = scenarioPresets[scenarioPreset];
+        if (!preset) return;
+
+        if (preset.initialPressure !== undefined) initialPressure = preset.initialPressure;
+        if (preset.initialSaturation !== undefined) initialSaturation = preset.initialSaturation;
+        if (preset.s_wc !== undefined) s_wc = preset.s_wc;
+        if (preset.s_or !== undefined) s_or = preset.s_or;
+        if (preset.n_w !== undefined) n_w = preset.n_w;
+        if (preset.n_o !== undefined) n_o = preset.n_o;
+        if (preset.permMode !== undefined) permMode = preset.permMode;
+        if (preset.minPerm !== undefined) minPerm = preset.minPerm;
+        if (preset.maxPerm !== undefined) maxPerm = preset.maxPerm;
+        if (preset.useRandomSeed !== undefined) useRandomSeed = preset.useRandomSeed;
+        if (preset.randomSeed !== undefined) randomSeed = preset.randomSeed;
+        if (preset.layerPermsXStr !== undefined) layerPermsXStr = preset.layerPermsXStr;
+        if (preset.layerPermsYStr !== undefined) layerPermsYStr = preset.layerPermsYStr;
+        if (preset.layerPermsZStr !== undefined) layerPermsZStr = preset.layerPermsZStr;
+    }
+
+    function pushHistoryEntry(entry) {
+        history = [...history, entry];
+        if (history.length > MAX_HISTORY_ENTRIES) {
+            const overflow = history.length - MAX_HISTORY_ENTRIES;
+            history = history.slice(overflow);
+            currentIndex = Math.max(0, currentIndex - overflow);
+        }
+        currentIndex = history.length - 1;
+    }
+
+    function updateProfileStats(profile = {}, renderApplyMs = 0) {
+        profileStats = {
+            batchMs: Number(profile.batchMs ?? profileStats.batchMs ?? 0),
+            avgStepMs: Number(profile.avgStepMs ?? profile.simStepMs ?? profileStats.avgStepMs ?? 0),
+            extractMs: Number(profile.extractMs ?? profileStats.extractMs ?? 0),
+            renderApplyMs,
+            snapshotsSent: Number(profile.snapshotsSent ?? profileStats.snapshotsSent ?? 0),
+        };
+    }
+
+    function applyWorkerState(message) {
+        const renderStart = performance.now();
+        gridStateRaw = message.grid;
+        wellStateRaw = message.wells;
+        simTime = message.time;
+        rateHistory = message.rateHistory;
+
+        if (message.recordHistory) {
+            pushHistoryEntry({
+                time: message.time,
+                grid: message.grid,
+                wells: message.wells,
+            });
+        }
+
+        updateProfileStats(message.profile, performance.now() - renderStart);
+    }
+
+    function handleWorkerMessage(event) {
+        const { type, ...message } = event.data ?? {};
+        if (type === 'ready') {
+            wasmReady = true;
+            initSimulator();
+            return;
+        }
+
+        if (type === 'state') {
+            applyWorkerState(message);
+            return;
+        }
+
+        if (type === 'batchComplete') {
+            workerRunning = false;
+            runCompleted = true;
+            updateProfileStats(message.profile, profileStats.renderApplyMs);
+            applyHistoryIndex(history.length - 1);
+            return;
+        }
+
+        if (type === 'error') {
+            workerRunning = false;
+            console.error('Simulation worker error:', message.message);
+            alert(`Simulation error: ${message.message}`);
+        }
+    }
+
+    function setupWorker() {
+        simWorker = new Worker(new URL('./lib/sim.worker.js', import.meta.url), { type: 'module' });
+        simWorker.onmessage = handleWorkerMessage;
+        simWorker.postMessage({ type: 'init' });
+    }
+
+    async function loadUiModules() {
+        try {
+            const [threeDModule, rateChartModule] = await Promise.all([
+                import('./lib/3dview.svelte'),
+                import('./lib/RateChart.svelte'),
+            ]);
+            ThreeDViewComponent = threeDModule.default;
+            RateChartComponent = rateChartModule.default;
+        } catch (error) {
+            console.error('Failed to load UI modules:', error);
+        }
+    }
+
+    onMount(() => {
+        setupWorker();
+        loadUiModules();
     });
 
     onDestroy(() => {
-        if (wasmReady) {
-            stopPlaying();
+        stopPlaying();
+        if (simWorker) {
+            simWorker.postMessage({ type: 'dispose' });
+            simWorker.terminate();
+            simWorker = null;
         }
     });
 
     function initSimulator() {
-        if (!wasmReady) {
+        if (!wasmReady || !simWorker) {
             alert('WASM not ready yet');
             return;
         }
-        simulator = new ReservoirSimulator(Number(nx), Number(ny), Number(nz));
-
-        // Set properties from UI
-        simulator.setInitialPressure(Number(initialPressure));
-        simulator.setInitialSaturation(Number(initialSaturation));
-        simulator.setRelPermProps(Number(s_wc), Number(s_or), Number(n_w), Number(n_o));
-        simulator.setStabilityParams(Number(max_sat_change_per_step));
-
-        if (permMode === 'random') {
-            simulator.setPermeabilityRandom(Number(minPerm), Number(maxPerm));
-        } else if (permMode === 'perLayer') {
-            try {
-                const permsX = layerPermsXStr.split(',').map(Number);
-                const permsY = layerPermsYStr.split(',').map(Number);
-                const permsZ = layerPermsZStr.split(',').map(Number);
-                simulator.setPermeabilityPerLayer(permsX, permsY, permsZ);
-            } catch (e) {
-                console.error("Failed to set layer permeability:", e);
-                alert("Invalid format for layer permeability. Please use comma-separated numbers.");
-            }
-        }
-        // If permMode is 'default', we just use the default permeability from the simulator's constructor.
 
         history = [];
         currentIndex = -1;
-        
-        refreshViews();
-        for (let i = 0; i < nz; i++) {
-            simulator.add_well(Number(nx-1), Number(0), Number(i), Number(100), Number(well_radius), Number(well_skin), Boolean(false));
-        }
-        for (let i = 0; i < nz; i++) {
-            simulator.add_well(Number(0), Number(0), Number(i), Number(400), Number(well_radius), Number(well_skin), Boolean(true));
-        }
+        runCompleted = false;
+
+        simWorker.postMessage({
+            type: 'create',
+            payload: {
+                nx: Number(nx),
+                ny: Number(ny),
+                nz: Number(nz),
+                initialPressure: Number(initialPressure),
+                initialSaturation: Number(initialSaturation),
+                s_wc: Number(s_wc),
+                s_or: Number(s_or),
+                n_w: Number(n_w),
+                n_o: Number(n_o),
+                max_sat_change_per_step: Number(max_sat_change_per_step),
+                permMode,
+                minPerm: Number(minPerm),
+                maxPerm: Number(maxPerm),
+                useRandomSeed: Boolean(useRandomSeed),
+                randomSeed: Number(randomSeed),
+                permsX: layerPermsXStr.split(',').map(Number),
+                permsY: layerPermsYStr.split(',').map(Number),
+                permsZ: layerPermsZStr.split(',').map(Number),
+                well_radius: Number(well_radius),
+                well_skin: Number(well_skin),
+            }
+        });
         runSteps();
     }
 
@@ -125,54 +282,30 @@
     //     }
     // }
 
-    function recordCurrentState() {
-        if (!simulator) return;
-        try {
-            const grid = structuredClone(simulator.getGridState());
-            const wells = structuredClone(simulator.getWellState());
-            const t = simulator.get_time();
-            history.push({ time: t, grid, wells });
-            currentIndex = history.length - 1;
-            rateHistory = simulator.getRateHistory();
-            // Reassign to trigger Svelte reactivity for arrays
-            history = [...history];
-        } catch (err) {
-            try {
-                const grid = JSON.parse(JSON.stringify(simulator.getGridState()));
-                const wells = JSON.parse(JSON.stringify(simulator.getWellState()));
-                const t = simulator.get_time();
-                history.push({ time: t, grid, wells });
-                currentIndex = history.length - 1;
-                rateHistory = simulator.getRateHistory();
-                // Reassign to trigger Svelte reactivity for arrays
-                history = [...history];
-            } catch (e) {
-                console.error('Failed to record state:', e);
-            }
-        }
-    }
-
     function stepOnce() {
-        if (!simulator) return;
-        simulator.step(Number(delta_t_days));
-        refreshViews();
-        recordCurrentState();
+        if (!simWorker || workerRunning) return;
+        workerRunning = true;
+        simWorker.postMessage({
+            type: 'run',
+            payload: {
+                steps: 1,
+                deltaTDays: Number(delta_t_days),
+                historyInterval: 1,
+            }
+        });
     }
 
-    async function runSteps() {
-        if (!simulator) return;
-        const total = Number(steps);
-        for (let i = 0; i < total; i++) {
-            simulator.step(Number(delta_t_days));
-            refreshViews();
-            recordCurrentState();
-            // Yield occasionally so UI (slider, 3D) can update during long runs
-            if (i % 10 === 0) {
-                await tick();
+    function runSteps() {
+        if (!simWorker || workerRunning) return;
+        workerRunning = true;
+        simWorker.postMessage({
+            type: 'run',
+            payload: {
+                steps: Number(steps),
+                deltaTDays: Number(delta_t_days),
+                historyInterval: HISTORY_RECORD_INTERVAL,
             }
-        }
-        // Ensure the latest snapshot is applied to the view
-        applyHistoryIndex(history.length - 1);
+        });
     }
 
 
@@ -217,48 +350,23 @@
     function applyHistoryIndex(idx) {
         if (idx < 0 || idx >= history.length) return;
         const entry = history[idx];
-        gridStateRaw = structuredClone(entry.grid);
-        wellStateRaw = structuredClone(entry.wells);
+        gridStateRaw = entry.grid;
+        wellStateRaw = entry.wells;
         simTime = entry.time;
         // We don't update rateHistory here, as it's cumulative
     }
 
-    /* Three.js setup - improved lighting, color encoding and resize handling */
-    function refreshViews() {
-        if (!simulator) return;
-        try {
-            // Always clone so ThreeDView sees a new reference and re-renders colors
-            // (wasm may mutate the same underlying array/object in place)
-            const g = simulator.getGridState();
-            const w = simulator.getWellState();
-            try {
-                gridStateRaw = structuredClone(g);
-            } catch (_) {
-                gridStateRaw = JSON.parse(JSON.stringify(g));
-            }
-            try {
-                wellStateRaw = structuredClone(w);
-            } catch (_) {
-                wellStateRaw = JSON.parse(JSON.stringify(w));
-            }
-            simTime = simulator.get_time();
-            rateHistory = simulator.getRateHistory();
-        } catch (err) {
-            console.error('Failed to read simulator state', err);
-        }
-    }
-
-        
+    
 </script>
 <main class="min-h-screen bg-base-200">
-<!-- <FractionalFlow
+<FractionalFlow
     rockProps={{ s_wc, s_or, n_w, n_o }}
     fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
     timeHistory={history.map(h => h.time)}
     injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
     reservoir={{ length: nx * 10, area: ny * 10 * nz * 1, porosity: 0.2 }}
     on:analyticalData={(e) => analyticalProductionData = e.detail.production}
-/> -->
+/>
 <h1 class="text-4xl font-bold mb-6">A Simplified Reservoir Simulation Model</h1>
 
     <div class="grid grid-cols-2 gap-4">
@@ -268,7 +376,19 @@
                 <div>
                     <br />
                     <label class="form-control">
-                        <span class="label-text">Pressure (psi)</span>
+                        <span class="label-text">Scenario Preset</span>
+                        <select class="select select-bordered w-1/2" bind:value={scenarioPreset} on:change={applyScenarioPreset}>
+                            <option value="custom">Custom</option>
+                            <option value="baseline_waterflood">Baseline Waterflood</option>
+                            <option value="high_contrast_layers">High Contrast Layers</option>
+                            <option value="viscous_fingering_risk">Viscous Fingering Risk</option>
+                        </select>
+                    </label>
+                </div>
+                <div>
+                    <br />
+                    <label class="form-control">
+                        <span class="label-text">Pressure (bar)</span>
                         <input type="number" step="10" class="input input-bordered w-1/4" bind:value={initialPressure} />
                     </label>
                 </div>
@@ -313,6 +433,16 @@
                 </label>
                 {#if permMode === 'random'}
                     <div>
+                        <label class="form-control w-full">
+                            <span class="label-text">Use Seeded Randomness</span>
+                            <input type="checkbox" class="checkbox" bind:checked={useRandomSeed} />
+                        </label>
+                        {#if useRandomSeed}
+                            <label class="form-control w-full">
+                                <span class="label-text">Random Seed</span>
+                                <input type="number" step="1" class="input input-bordered" bind:value={randomSeed} />
+                            </label>
+                        {/if}
                         <label class="form-control w-full">
                             <span class="label-text">Min Perm</span>
                             <input type="number" class="input input-bordered" bind:value={minPerm} />
@@ -393,6 +523,10 @@
             </div>
 
             <div>
+                <label class="label cursor-pointer justify-start gap-3 mb-2">
+                    <input type="checkbox" class="checkbox checkbox-sm" bind:checked={showDebugState} />
+                    <span class="label-text">Show raw debug state</span>
+                </label>
                 <!-- <h4>Replay</h4>
                 <div class="row">
                     <button class="btn btn-outline" on:click={prev} disabled={history.length===0}>Prev</button>
@@ -427,6 +561,14 @@
                 </label>
                 <div>time: {simTime}</div>
                 <div>recorded steps: {history.length}</div>
+                <div>worker: {workerRunning ? 'running' : 'idle'}</div>
+                <div>run completed: {runCompleted ? 'yes' : 'no'}</div>
+                <div style="font-size:12px; color:#666; margin-top:4px;">
+                    avg step: {profileStats.avgStepMs.toFixed(3)} ms · batch: {profileStats.batchMs.toFixed(1)} ms
+                </div>
+                <div style="font-size:12px; color:#666;">
+                    state extract: {profileStats.extractMs.toFixed(3)} ms · apply: {profileStats.renderApplyMs.toFixed(3)} ms · snapshots: {profileStats.snapshotsSent}
+                </div>
             </div>
         </div>
         
@@ -434,29 +576,42 @@
             
         </div>
         <div class="row" style="margin-top: 1rem;">
-            <RateChart {rateHistory} {analyticalProductionData} />
+            {#if RateChartComponent}
+                <svelte:component this={RateChartComponent} {rateHistory} {analyticalProductionData} />
+            {:else}
+                <div style="padding:0.75rem; color:#666; font-size:12px;">Loading rate chart…</div>
+            {/if}
         </div>
     </div>
     <div class="viz-wrapper">
-        <ThreeDView
-            nx={nx}
-            ny={ny}
-            nz={nz}
-            gridState={gridStateRaw}
-            showProperty={showProperty}
-            history={history}
-            currentIndex={currentIndex}
-            wellState={wellStateRaw}
-        />
+        {#if ThreeDViewComponent}
+            <svelte:component
+                this={ThreeDViewComponent}
+                nx={nx}
+                ny={ny}
+                nz={nz}
+                gridState={gridStateRaw}
+                showProperty={showProperty}
+                history={history}
+                currentIndex={currentIndex}
+                wellState={wellStateRaw}
+            />
+        {:else}
+            <div style="height:600px; border:1px solid #ddd; background:#fff; display:flex; align-items:center; justify-content:center; color:#666; font-size:12px;">
+                Loading 3D view…
+            </div>
+        {/if}
     </div>
-    <div class="grid-well-wrapper">
-        <div>
-            <h4>Grid State (current)</h4>
-            <pre>{JSON.stringify(gridStateRaw, null, 2)}</pre>
+    {#if showDebugState}
+        <div class="grid-well-wrapper">
+            <div>
+                <h4>Grid State (current)</h4>
+                <pre>{JSON.stringify(gridStateRaw, null, 2)}</pre>
+            </div>
+            <div>
+                <h4>Well State (current)</h4>
+                <pre>{JSON.stringify(wellStateRaw, null, 2)}</pre>
+            </div>
         </div>
-        <div>
-            <h4>Well State (current)</h4>
-            <pre>{JSON.stringify(wellStateRaw, null, 2)}</pre>
-        </div>
-    </div>
+    {/if}
 </main>

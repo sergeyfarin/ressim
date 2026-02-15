@@ -50,6 +50,8 @@
     let tooltipContent = '';
     let raycaster = new THREE.Raycaster();
     let mouse = new THREE.Vector2();
+    let tooltipRafId: number | null = null;
+    let latestMouseEvent: MouseEvent | null = null;
 
     // Helpers used in instancing and color mapping
     const tmpMatrix = new THREE.Matrix4();
@@ -85,6 +87,13 @@
             animationId = null;
         }
         controls?.dispose();
+        if (renderer?.domElement) {
+            renderer.domElement.removeEventListener('mousemove', onCanvasMouseMove);
+        }
+        if (tooltipRafId !== null) {
+            cancelAnimationFrame(tooltipRafId);
+            tooltipRafId = null;
+        }
         renderer?.dispose();
         renderer?.forceContextLoss?.();
         window.removeEventListener('resize', onWindowResize);
@@ -217,6 +226,17 @@
     }
 
     function onCanvasMouseMove(event: MouseEvent): void {
+        latestMouseEvent = event;
+        if (tooltipRafId !== null) return;
+
+        tooltipRafId = requestAnimationFrame(() => {
+            tooltipRafId = null;
+            if (!latestMouseEvent) return;
+            performTooltipHitTest(latestMouseEvent);
+        });
+    }
+
+    function performTooltipHitTest(event: MouseEvent): void {
         if (!renderer || !scene || !camera || !instancedMesh || !canvasContainer) {
             tooltipVisible = false;
             return;
@@ -355,29 +375,21 @@
         mesh.instanceColor && (mesh.instanceColor.needsUpdate = true);
         scene.add(mesh);
 
-        // Create wireframe edges for each cell using LineSegments (only edges, no diagonals)
+        // Create a single wireframe outline for the whole reservoir volume
         wireframeGroup = new THREE.Group();
-        const edgesGeometry = new THREE.EdgesGeometry(geometry);
+        const reservoirGeometry = new THREE.BoxGeometry(nx * boxSize, ny * boxSize, nz * boxSize);
+        const edgesGeometry = new THREE.EdgesGeometry(reservoirGeometry);
+        reservoirGeometry.dispose();
         const lineMaterial = new THREE.LineBasicMaterial({ 
             color: 0x000000,
             transparent: true,
-            opacity: 0.8,
+            opacity: 0.6,
             depthTest: true,
             depthWrite: false
         });
-        
-        idx = 0;
-        for (let k = 0; k < nz; k++) {
-            for (let j = 0; j < ny; j++) {
-                for (let i = 0; i < nx; i++) {
-                    const lineSegments = new THREE.LineSegments(edgesGeometry, lineMaterial);
-                    tmpMatrix.makeTranslation((i - xOff) * boxSize, (j - yOff) * boxSize, (k - zOff) * boxSize);
-                    lineSegments.applyMatrix4(tmpMatrix);
-                    wireframeGroup.add(lineSegments);
-                    idx++;
-                }
-            }
-        }
+        const reservoirEdges = new THREE.LineSegments(edgesGeometry, lineMaterial);
+        reservoirEdges.position.set(0, 0, 0);
+        wireframeGroup.add(reservoirEdges);
         scene.add(wireframeGroup);
 
         try {

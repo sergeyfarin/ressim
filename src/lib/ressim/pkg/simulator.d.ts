@@ -49,6 +49,10 @@ export class ReservoirSimulator {
      */
     setPermeabilityRandom(min_perm: number, max_perm: number): void;
     /**
+     * Set permeability with deterministic random distribution using a fixed seed
+     */
+    setPermeabilityRandomSeeded(min_perm: number, max_perm: number, seed: bigint): void;
+    /**
      * Set relative permeability properties
      */
     setRelPermProps(s_wc: number, s_or: number, n_w: number, n_o: number): void;
@@ -76,8 +80,9 @@ export interface InitOutput {
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
-    readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => void;
-    readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
+    readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number) => void;
     readonly reservoirsimulator_step: (a: number, b: number) => void;
     readonly set_panic_hook: () => void;

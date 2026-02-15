@@ -127,7 +127,22 @@ export class ReservoirSimulator {
      * @param {number} max_perm
      */
     setPermeabilityRandom(min_perm, max_perm) {
-        wasm.reservoirsimulator_setPermeabilityRandom(this.__wbg_ptr, min_perm, max_perm);
+        const ret = wasm.reservoirsimulator_setPermeabilityRandom(this.__wbg_ptr, min_perm, max_perm);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Set permeability with deterministic random distribution using a fixed seed
+     * @param {number} min_perm
+     * @param {number} max_perm
+     * @param {bigint} seed
+     */
+    setPermeabilityRandomSeeded(min_perm, max_perm, seed) {
+        const ret = wasm.reservoirsimulator_setPermeabilityRandomSeeded(this.__wbg_ptr, min_perm, max_perm, seed);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Set relative permeability properties
@@ -137,7 +152,10 @@ export class ReservoirSimulator {
      * @param {number} n_o
      */
     setRelPermProps(s_wc, s_or, n_w, n_o) {
-        wasm.reservoirsimulator_setRelPermProps(this.__wbg_ptr, s_wc, s_or, n_w, n_o);
+        const ret = wasm.reservoirsimulator_setRelPermProps(this.__wbg_ptr, s_wc, s_or, n_w, n_o);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Set stability parameters for the simulation

@@ -21,6 +21,8 @@ use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
 use rand::RngExt;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WellRates {
@@ -323,6 +325,24 @@ impl ReservoirSimulator {
     /// - Negative productivity index
     /// - BHP outside reasonable range
     pub fn add_well(&mut self, i: usize, j: usize, k: usize, bhp: f64, well_radius: f64, skin: f64, injector: bool) -> Result<(), String> {
+        if i >= self.nx || j >= self.ny || k >= self.nz {
+            return Err(format!(
+                "Well indices out of bounds: (i={}, j={}, k={}) for grid ({}, {}, {})",
+                i, j, k, self.nx, self.ny, self.nz
+            ));
+        }
+
+        if !bhp.is_finite() {
+            return Err(format!("BHP must be finite, got: {}", bhp));
+        }
+
+        if well_radius <= 0.0 || !well_radius.is_finite() {
+            return Err(format!("Well radius must be positive and finite, got: {}", well_radius));
+        }
+
+        if !skin.is_finite() {
+            return Err(format!("Skin factor must be finite, got: {}", skin));
+        }
         
         let cell_id = self.idx(i,j,k);
         let cell = self.grid_cells[cell_id];
@@ -330,11 +350,42 @@ impl ReservoirSimulator {
         // Calculate equivalent radius (Peaceman's model)
         let kx = cell.perm_x;
         let ky = cell.perm_y;
+        if !kx.is_finite() || !ky.is_finite() || kx <= 0.0 || ky <= 0.0 {
+            return Err(format!(
+                "Cell permeability must be positive and finite for well PI calculation, got kx={}, ky={}",
+                kx, ky
+            ));
+        }
+
         let r_eq = 0.28 * f64::sqrt(f64::sqrt(kx / ky) * self.dx.powi(2) + f64::sqrt(ky / kx) * self.dy.powi(2)) / ((kx/ky).powf(0.25) + (ky/kx).powf(0.25));
+        if !r_eq.is_finite() || r_eq <= 0.0 {
+            return Err(format!("Equivalent radius must be positive and finite, got: {}", r_eq));
+        }
+
+        if r_eq <= well_radius {
+            return Err(format!(
+                "Equivalent radius must be greater than well radius for valid PI. r_eq={}, rw={}",
+                r_eq, well_radius
+            ));
+        }
 
         // Calculate productivity index (PI)
         let k_avg = f64::sqrt(kx * ky); // Geometric mean of horizontal permeabilities
         let total_mobility = self.total_mobility(&cell);
+        if !k_avg.is_finite() || k_avg <= 0.0 {
+            return Err(format!("Average permeability must be positive and finite, got: {}", k_avg));
+        }
+        if !total_mobility.is_finite() || total_mobility < 0.0 {
+            return Err(format!("Total mobility must be finite and non-negative, got: {}", total_mobility));
+        }
+
+        let denom = f64::ln(r_eq / well_radius) + skin;
+        if !denom.is_finite() || denom.abs() <= f64::EPSILON {
+            return Err(format!(
+                "Invalid PI denominator ln(r_eq/r_w)+skin = {}. Check well radius and skin.",
+                denom
+            ));
+        }
         
         // Peaceman's well index formula for metric units (m³, bar, day)
         // PI = (2 * PI * k * h * mob) / (ln(r_e/r_w) + s)
@@ -344,7 +395,7 @@ impl ReservoirSimulator {
         // Let's assume the constant is correct for the intended units.
         // PI = C * k_avg * dz * total_mobility / (ln(r_eq/well_radius) + skin)
         // Let's use the same constant as transmissibility for consistency.
-        let pi = (0.001127 * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility) / (f64::ln(r_eq / well_radius) + skin);
+        let pi = (0.001127 * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility) / denom;
 
         let well = Well { i, j, k, bhp, productivity_index: pi, injector, well_radius, skin };
         
@@ -748,19 +799,95 @@ impl ReservoirSimulator {
 
     /// Set relative permeability properties
     #[wasm_bindgen(js_name = setRelPermProps)]
-    pub fn set_rel_perm_props(&mut self, s_wc: f64, s_or: f64, n_w: f64, n_o: f64) {
+    pub fn set_rel_perm_props(&mut self, s_wc: f64, s_or: f64, n_w: f64, n_o: f64) -> Result<(), String> {
+        if !s_wc.is_finite() || !s_or.is_finite() || !n_w.is_finite() || !n_o.is_finite() {
+            return Err("Relative permeability parameters must be finite numbers".to_string());
+        }
+
+        if s_wc < 0.0 || s_wc >= 1.0 {
+            return Err(format!("S_wc must be in [0, 1), got {}", s_wc));
+        }
+
+        if s_or < 0.0 || s_or >= 1.0 {
+            return Err(format!("S_or must be in [0, 1), got {}", s_or));
+        }
+
+        if s_wc + s_or >= 1.0 {
+            return Err(format!(
+                "Invalid saturation endpoints: S_wc + S_or must be < 1.0, got {}",
+                s_wc + s_or
+            ));
+        }
+
+        if n_w <= 0.0 || n_o <= 0.0 {
+            return Err(format!(
+                "Corey exponents must be positive, got n_w={}, n_o={}",
+                n_w, n_o
+            ));
+        }
+
         self.scal = RockFluidProps { s_wc, s_or, n_w, n_o };
+        Ok(())
     }
 
     /// Set permeability with random distribution
     #[wasm_bindgen(js_name = setPermeabilityRandom)]
-    pub fn set_permeability_random(&mut self, min_perm: f64, max_perm: f64) {
+    pub fn set_permeability_random(&mut self, min_perm: f64, max_perm: f64) -> Result<(), String> {
+        if !min_perm.is_finite() || !max_perm.is_finite() {
+            return Err("Permeability bounds must be finite numbers".to_string());
+        }
+
+        if min_perm <= 0.0 || max_perm <= 0.0 {
+            return Err(format!(
+                "Permeability bounds must be positive, got min={}, max={}",
+                min_perm, max_perm
+            ));
+        }
+
+        if min_perm > max_perm {
+            return Err(format!(
+                "Invalid permeability bounds: min ({}) cannot exceed max ({})",
+                min_perm, max_perm
+            ));
+        }
+
         let mut rng = rand::rng();
         for cell in self.grid_cells.iter_mut() {
             cell.perm_x = rng.random_range(min_perm..=max_perm);
             cell.perm_y = rng.random_range(min_perm..=max_perm);
             cell.perm_z = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
         }
+        Ok(())
+    }
+
+    /// Set permeability with deterministic random distribution using a fixed seed
+    #[wasm_bindgen(js_name = setPermeabilityRandomSeeded)]
+    pub fn set_permeability_random_seeded(&mut self, min_perm: f64, max_perm: f64, seed: u64) -> Result<(), String> {
+        if !min_perm.is_finite() || !max_perm.is_finite() {
+            return Err("Permeability bounds must be finite numbers".to_string());
+        }
+
+        if min_perm <= 0.0 || max_perm <= 0.0 {
+            return Err(format!(
+                "Permeability bounds must be positive, got min={}, max={}",
+                min_perm, max_perm
+            ));
+        }
+
+        if min_perm > max_perm {
+            return Err(format!(
+                "Invalid permeability bounds: min ({}) cannot exceed max ({})",
+                min_perm, max_perm
+            ));
+        }
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        for cell in self.grid_cells.iter_mut() {
+            cell.perm_x = rng.random_range(min_perm..=max_perm);
+            cell.perm_y = rng.random_range(min_perm..=max_perm);
+            cell.perm_z = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
+        }
+        Ok(())
     }
 
     /// Set permeability per layer
@@ -769,6 +896,22 @@ impl ReservoirSimulator {
         if perms_x.len() != self.nz || perms_y.len() != self.nz || perms_z.len() != self.nz {
             return Err(format!("Permeability vectors must have length equal to nz ({})", self.nz));
         }
+
+        for k in 0..self.nz {
+            let px = perms_x[k];
+            let py = perms_y[k];
+            let pz = perms_z[k];
+            if !px.is_finite() || !py.is_finite() || !pz.is_finite() {
+                return Err(format!("Permeability for layer {} must be finite", k));
+            }
+            if px <= 0.0 || py <= 0.0 || pz <= 0.0 {
+                return Err(format!(
+                    "Permeability for layer {} must be positive, got px={}, py={}, pz={}",
+                    k, px, py, pz
+                ));
+            }
+        }
+
         for k in 0..self.nz {
             for j in 0..self.ny {
                 for i in 0..self.nx {
@@ -833,4 +976,164 @@ fn solve_pcg_with_guess(
         r_dot_z = r_new_dot_z_new;
     }
     x
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn err_contains(result: Result<(), String>, expected: &str) {
+        match result {
+            Ok(()) => panic!("Expected error containing '{}', got Ok(())", expected),
+            Err(message) => assert!(
+                message.contains(expected),
+                "Expected error containing '{}', got '{}'",
+                expected,
+                message
+            ),
+        }
+    }
+
+    fn total_water_volume(sim: &ReservoirSimulator) -> f64 {
+        sim.grid_cells
+            .iter()
+            .map(|cell| cell.sat_water * cell.pore_volume_m3(sim.dx, sim.dy, sim.dz))
+            .sum()
+    }
+
+    #[test]
+    fn saturation_stays_within_physical_bounds() {
+        let mut sim = ReservoirSimulator::new(5, 1, 1);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(4, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        for _ in 0..20 {
+            sim.step(0.5);
+        }
+
+        let sw_min = sim.scal.s_wc;
+        let sw_max = 1.0 - sim.scal.s_or;
+
+        for cell in &sim.grid_cells {
+            assert!(cell.sat_water >= sw_min - 1e-9);
+            assert!(cell.sat_water <= sw_max + 1e-9);
+            assert!(cell.sat_oil >= -1e-9);
+            assert!(cell.sat_oil <= 1.0 + 1e-9);
+            assert!((cell.sat_water + cell.sat_oil - 1.0).abs() < 1e-8);
+        }
+    }
+
+    #[test]
+    fn water_mass_balance_sanity_without_wells() {
+        let mut sim = ReservoirSimulator::new(4, 4, 1);
+        let water_before = total_water_volume(&sim);
+
+        sim.step(1.0);
+
+        let water_after = total_water_volume(&sim);
+        assert!((water_after - water_before).abs() < 1e-6);
+    }
+
+    #[test]
+    fn adaptive_timestep_produces_multiple_substeps_for_strong_flow() {
+        let mut sim = ReservoirSimulator::new(3, 1, 1);
+        sim.set_permeability_random(100_000.0, 100_000.0).unwrap();
+        sim.set_stability_params(0.01);
+        sim.add_well(0, 0, 0, 700.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(30.0);
+
+        assert!(sim.rate_history.len() > 1);
+        assert!(sim.time_days > 0.0);
+        assert!(sim.time_days < 30.0);
+    }
+
+    #[test]
+    fn multiple_wells_in_same_block_keep_rates_finite() {
+        let mut sim = ReservoirSimulator::new(4, 1, 1);
+        sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(0, 0, 0, 550.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(3, 0, 0, 120.0, 0.1, 0.0, false).unwrap();
+
+        for _ in 0..12 {
+            sim.step(0.5);
+        }
+
+        assert!(!sim.rate_history.is_empty());
+        let latest = sim.rate_history.last().unwrap();
+        assert!(latest.total_injection.is_finite());
+        assert!(latest.total_production_liquid.is_finite());
+        assert!(latest.total_production_oil.is_finite());
+
+        for cell in &sim.grid_cells {
+            assert!(cell.pressure.is_finite());
+            assert!(cell.sat_water.is_finite());
+            assert!(cell.sat_oil.is_finite());
+        }
+    }
+
+    #[test]
+    fn out_of_bounds_well_is_rejected_without_state_change() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        let wells_before = sim.wells.len();
+
+        let result = sim.add_well(2, 0, 0, 250.0, 0.1, 0.0, false);
+        err_contains(result, "out of bounds");
+
+        assert_eq!(sim.wells.len(), wells_before);
+    }
+
+    #[test]
+    fn stability_extremes_produce_finite_state() {
+        let mut sim_loose = ReservoirSimulator::new(3, 1, 1);
+        sim_loose.set_stability_params(1.0);
+        sim_loose.set_permeability_random(20_000.0, 20_000.0).unwrap();
+        sim_loose.add_well(0, 0, 0, 650.0, 0.1, 0.0, true).unwrap();
+        sim_loose.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        sim_loose.step(5.0);
+
+        let mut sim_tight = ReservoirSimulator::new(3, 1, 1);
+        sim_tight.set_stability_params(0.01);
+        sim_tight.set_permeability_random(20_000.0, 20_000.0).unwrap();
+        sim_tight.add_well(0, 0, 0, 650.0, 0.1, 0.0, true).unwrap();
+        sim_tight.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        sim_tight.step(5.0);
+
+        for sim in [&sim_loose, &sim_tight] {
+            for cell in &sim.grid_cells {
+                assert!(cell.pressure.is_finite());
+                assert!(cell.sat_water.is_finite());
+                assert!(cell.sat_oil.is_finite());
+            }
+            assert!(sim.time_days > 0.0);
+            assert!(sim.time_days <= 5.0);
+            assert!(!sim.rate_history.is_empty());
+        }
+
+        assert!(sim_tight.rate_history.len() >= sim_loose.rate_history.len());
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_relperm_parameters() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        err_contains(sim.set_rel_perm_props(0.6, 0.5, 2.0, 2.0), "must be < 1.0");
+        err_contains(sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0), "must be positive");
+        err_contains(sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0), "finite numbers");
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_permeability_inputs() {
+        let mut sim = ReservoirSimulator::new(2, 2, 2);
+        err_contains(sim.set_permeability_random(200.0, 50.0), "cannot exceed max");
+        err_contains(sim.set_permeability_random_seeded(-1.0, 100.0, 123), "must be positive");
+        err_contains(
+            sim.set_permeability_per_layer(vec![100.0], vec![100.0, 120.0], vec![10.0, 12.0]),
+            "length equal to nz",
+        );
+        err_contains(
+            sim.set_permeability_per_layer(vec![100.0, 120.0], vec![100.0, 120.0], vec![0.0, 12.0]),
+            "must be positive",
+        );
+    }
 }

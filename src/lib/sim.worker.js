@@ -1,0 +1,135 @@
+import init, { ReservoirSimulator } from './ressim/pkg/simulator.js';
+
+let wasmReady = false;
+let simulator = null;
+
+function post(type, payload = {}) {
+  self.postMessage({ type, ...payload });
+}
+
+function getStatePayload(recordHistory, stepIndex, profile = {}) {
+  if (!simulator) {
+    throw new Error('Simulator not initialized');
+  }
+
+  const extractStart = performance.now();
+  const grid = simulator.getGridState();
+  const wells = simulator.getWellState();
+  const time = simulator.get_time();
+  const rateHistory = simulator.getRateHistory();
+  const extractMs = performance.now() - extractStart;
+
+  return {
+    grid,
+    wells,
+    time,
+    rateHistory,
+    recordHistory,
+    stepIndex,
+    profile: {
+      ...profile,
+      extractMs,
+    },
+  };
+}
+
+function configureSimulator(payload) {
+  simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz);
+
+  simulator.setInitialPressure(payload.initialPressure);
+  simulator.setInitialSaturation(payload.initialSaturation);
+  simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o);
+  simulator.setStabilityParams(payload.max_sat_change_per_step);
+
+  if (payload.permMode === 'random') {
+    if (payload.useRandomSeed) {
+      simulator.setPermeabilityRandomSeeded(payload.minPerm, payload.maxPerm, payload.randomSeed);
+    } else {
+      simulator.setPermeabilityRandom(payload.minPerm, payload.maxPerm);
+    }
+  } else if (payload.permMode === 'perLayer') {
+    simulator.setPermeabilityPerLayer(payload.permsX, payload.permsY, payload.permsZ);
+  }
+
+  for (let i = 0; i < payload.nz; i++) {
+    simulator.add_well(payload.nx - 1, 0, i, 100, payload.well_radius, payload.well_skin, false);
+  }
+  for (let i = 0; i < payload.nz; i++) {
+    simulator.add_well(0, 0, i, 400, payload.well_radius, payload.well_skin, true);
+  }
+}
+
+self.onmessage = async (event) => {
+  const { type, payload } = event.data ?? {};
+
+  try {
+    if (type === 'init') {
+      if (!wasmReady) {
+        await init();
+        wasmReady = true;
+      }
+      post('ready');
+      return;
+    }
+
+    if (type === 'create') {
+      if (!wasmReady) {
+        await init();
+        wasmReady = true;
+      }
+
+      configureSimulator(payload);
+      post('state', getStatePayload(false, -1, { batchMs: 0, avgStepMs: 0, snapshotsSent: 0 }));
+      return;
+    }
+
+    if (type === 'run') {
+      if (!simulator) {
+        throw new Error('Simulator not initialized');
+      }
+
+      const steps = Number(payload?.steps ?? 0);
+      const deltaTDays = Number(payload?.deltaTDays ?? 0);
+      const historyInterval = Math.max(1, Number(payload?.historyInterval ?? 1));
+
+      const batchStart = performance.now();
+      let stepMsTotal = 0;
+      let snapshotsSent = 0;
+
+      for (let i = 0; i < steps; i++) {
+        const stepStart = performance.now();
+        simulator.step(deltaTDays);
+        stepMsTotal += performance.now() - stepStart;
+
+        const shouldRecord = i % historyInterval === 0 || i === steps - 1;
+        if (shouldRecord) {
+          snapshotsSent += 1;
+          post(
+            'state',
+            getStatePayload(true, i, {
+              batchMs: performance.now() - batchStart,
+              avgStepMs: stepMsTotal / (i + 1),
+              snapshotsSent,
+            })
+          );
+        }
+      }
+
+      post('batchComplete', {
+        profile: {
+          batchMs: performance.now() - batchStart,
+          avgStepMs: steps > 0 ? stepMsTotal / steps : 0,
+          snapshotsSent,
+        },
+      });
+      return;
+    }
+
+    if (type === 'dispose') {
+      simulator = null;
+      close();
+    }
+  } catch (error) {
+    post('error', { message: error instanceof Error ? error.message : String(error) });
+  }
+};
