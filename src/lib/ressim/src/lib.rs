@@ -20,7 +20,7 @@ use serde::{Serialize, Deserialize};
 use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
-use rand::distributions::{Distribution, Uniform};
+use rand::RngExt;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WellRates {
@@ -755,12 +755,11 @@ impl ReservoirSimulator {
     /// Set permeability with random distribution
     #[wasm_bindgen(js_name = setPermeabilityRandom)]
     pub fn set_permeability_random(&mut self, min_perm: f64, max_perm: f64) {
-        let mut rng = rand::thread_rng();
-        let dist = Uniform::from(min_perm..=max_perm);
+        let mut rng = rand::rng();
         for cell in self.grid_cells.iter_mut() {
-            cell.perm_x = dist.sample(&mut rng);
-            cell.perm_y = dist.sample(&mut rng);
-            cell.perm_z = dist.sample(&mut rng) / 10.0; // Anisotropy
+            cell.perm_x = rng.random_range(min_perm..=max_perm);
+            cell.perm_y = rng.random_range(min_perm..=max_perm);
+            cell.perm_z = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
         }
     }
 
