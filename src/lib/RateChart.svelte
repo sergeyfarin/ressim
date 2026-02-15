@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
-    import { Chart, registerables } from 'chart.js';
+    import { Chart, registerables, type ChartDataset, type PointStyle } from 'chart.js';
 
     export let rateHistory = [];
     export let analyticalProductionData = [];
@@ -16,9 +16,19 @@
         mape: number;
     };
 
+    type ChartTab = 'oil' | 'water' | 'voidage' | 'validation' | 'custom';
+    type LineDataset = ChartDataset<'line', Array<number | null>>;
+    type AxisScaleConfig = {
+        display?: boolean;
+        min?: number;
+        title?: { text?: string };
+        grid?: { color?: string };
+    };
+    type ChartScalesMap = Record<string, AxisScaleConfig | undefined>;
+
     let chartCanvas: HTMLCanvasElement;
-    let chart: Chart;
-    let activeTab: 'oil' | 'water' | 'voidage' | 'validation' | 'custom' = 'oil';
+    let chart: Chart<'line', Array<number | null>, string>;
+    let activeTab: ChartTab = 'oil';
     let selectedDatasetIndexes: number[] = [];
     let lineSelectorExpanded = false;
     // Reserved for future 3-phase extension: use red for gas-related series.
@@ -82,7 +92,7 @@
         applyThemeStyles();
     }
 
-    const tabLabels: Record<typeof activeTab, string> = {
+    const tabLabels: Record<ChartTab, string> = {
         oil: 'Oil Rate + Cumulative',
         water: 'Water Injection + Production',
         voidage: 'Voidage / Liquid Balance',
@@ -111,13 +121,13 @@
         return 99;
     }
 
-    function buildLegendLineSwatch(color: string, width: number, dash: number[]): string | HTMLCanvasElement {
-        if (typeof document === 'undefined') return 'line';
+    function buildLegendLineSwatch(color: string, width: number, dash: number[]): PointStyle {
+        if (typeof document === 'undefined') return 'rect';
         const canvas = document.createElement('canvas');
         canvas.width = 36;
         canvas.height = 10;
         const ctx = canvas.getContext('2d');
-        if (!ctx) return 'line';
+        if (!ctx) return 'rect';
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = color;
@@ -131,6 +141,14 @@
         ctx.stroke();
 
         return canvas;
+    }
+
+    function getLineDataset(datasetIndex: number): LineDataset | undefined {
+        return chart?.data.datasets?.[datasetIndex] as LineDataset | undefined;
+    }
+
+    function getScalesMap(): ChartScalesMap {
+        return (chart.options.scales ?? {}) as ChartScalesMap;
     }
 
     onMount(() => {
@@ -243,7 +261,7 @@
                                 const defaultLabels = Chart.defaults.plugins.legend.labels.generateLabels(chartRef);
                                 return defaultLabels.map((label) => {
                                     const datasetIndex = label.datasetIndex ?? -1;
-                                    const dataset = chartRef.data.datasets?.[datasetIndex];
+                                    const dataset = getLineDataset(datasetIndex);
                                     const borderWidth = Number(dataset?.borderWidth ?? label.lineWidth ?? 2);
                                     const borderColor = Array.isArray(dataset?.borderColor)
                                         ? String(dataset.borderColor[0] ?? label.strokeStyle)
@@ -264,8 +282,8 @@
                             sort: (a, b, data) => {
                                 const aIndex = a.datasetIndex ?? Number.MAX_SAFE_INTEGER;
                                 const bIndex = b.datasetIndex ?? Number.MAX_SAFE_INTEGER;
-                                const aAxisId = data.datasets?.[aIndex]?.yAxisID as string | undefined;
-                                const bAxisId = data.datasets?.[bIndex]?.yAxisID as string | undefined;
+                                const aAxisId = (data.datasets?.[aIndex] as LineDataset | undefined)?.yAxisID;
+                                const bAxisId = (data.datasets?.[bIndex] as LineDataset | undefined)?.yAxisID;
                                 const priorityDelta = legendAxisPriority(aAxisId) - legendAxisPriority(bAxisId);
                                 if (priorityDelta !== 0) return priorityDelta;
                                 return aIndex - bIndex;
@@ -495,9 +513,10 @@
 
         const showPoints = labels.length <= 20;
         for (const dataset of chart.data.datasets) {
-            dataset.pointRadius = showPoints ? 2 : 0;
-            dataset.pointHoverRadius = showPoints ? 3 : 4;
-            dataset.pointHitRadius = 8;
+            const lineDataset = dataset as LineDataset;
+            lineDataset.pointRadius = showPoints ? 2 : 0;
+            lineDataset.pointHoverRadius = showPoints ? 3 : 4;
+            lineDataset.pointHitRadius = 8;
         }
 
         chart.update();
@@ -513,7 +532,7 @@
 
     function applyThemeStyles() {
         if (!chart) return;
-        const scales = chart.options.scales ?? {};
+        const scales = getScalesMap();
         const gridColor = theme === 'dark' ? 'rgba(203, 213, 225, 0.07)' : 'rgba(15, 23, 42, 0.10)';
 
         if (scales.x?.grid) scales.x.grid.color = gridColor;
@@ -530,10 +549,10 @@
         if (!chart) return;
         setDatasetVisibility(visibleIndexes);
 
-        const scales = chart.options.scales ?? {};
+        const scales = getScalesMap();
         const activeAxisIds = new Set(
             visibleIndexes
-                .map((idx) => chart.data.datasets[idx]?.yAxisID)
+                .map((idx) => (chart.data.datasets[idx] as LineDataset | undefined)?.yAxisID)
                 .filter((axisId): axisId is string => Boolean(axisId))
         );
 
