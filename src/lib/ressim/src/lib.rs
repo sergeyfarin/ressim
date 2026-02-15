@@ -20,7 +20,6 @@ use serde::{Serialize, Deserialize};
 use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
-use rand::Rng;
 use rand::distributions::{Distribution, Uniform};
 
 #[derive(Clone, Serialize, Deserialize)]

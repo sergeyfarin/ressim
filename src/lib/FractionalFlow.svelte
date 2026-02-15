@@ -1,4 +1,3 @@
-```svelte
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
 
@@ -106,4 +105,3 @@
 </script>
 
 <!-- This component has no UI, it only performs calculations -->
-```
