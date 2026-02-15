@@ -46,9 +46,11 @@
     export let history: HistoryEntry[] = [];
     export let currentIndex = -1;
     export let wellState: unknown = null;
-    export let legendRangeMode: 'fixed' | 'percentile' = 'fixed';
+    export let legendRangeMode: 'fixed' | 'percentile' = 'percentile';
     export let legendPercentileLow = 5;
     export let legendPercentileHigh = 95;
+    export let legendFixedMin = 0;
+    export let legendFixedMax = 1;
     export let theme: 'dark' | 'light' = 'dark';
 
     let renderer: WebGLRenderer | null = null;
@@ -60,7 +62,6 @@
     let wellsGroup: Group | null = null;
     let animationId: number | null = null;
     let legendCanvas: HTMLCanvasElement | null = null;
-    let topRightLegendCanvas: HTMLCanvasElement | null = null;
     let canvasContainer: HTMLElement | null = null;
     let legendMin = 0;
     let legendMax = 1;
@@ -81,6 +82,7 @@
     const tmpColor = new Color();
 
     // Fixed color ranges per property to keep legend stable
+    // Pressure is intentionally auto-scaled from current values for better contrast.
     const fixedRanges: Record<PropertyKey, { min: number; max: number }> = {
         pressure: { min: 0, max: 1000 },
         saturation_water: { min: 0, max: 1 },
@@ -127,11 +129,29 @@
 
     function computeLegendRange(property: PropertyKey, values: number[]): { min: number; max: number } {
         const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
-        if (legendRangeMode !== 'percentile') {
+        const finiteValues = values.filter((value) => Number.isFinite(value));
+
+        if (legendRangeMode === 'fixed') {
+            const userMin = Number(legendFixedMin);
+            const userMax = Number(legendFixedMax);
+            if (Number.isFinite(userMin) && Number.isFinite(userMax) && userMax > userMin) {
+                return { min: userMin, max: userMax };
+            }
             return fixed;
         }
 
-        const finiteValues = values.filter((value) => Number.isFinite(value));
+        if (property === 'pressure') {
+            if (finiteValues.length < 2) return fixed;
+            const minValue = Math.min(...finiteValues);
+            const maxValue = Math.max(...finiteValues);
+            if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || maxValue <= minValue) {
+                return fixed;
+            }
+            const span = maxValue - minValue;
+            const padding = Math.max(span * 0.03, 1e-6);
+            return { min: minValue - padding, max: maxValue + padding };
+        }
+
         if (finiteValues.length < 2) {
             return fixed;
         }
@@ -205,8 +225,14 @@
         }
     })();
 
-    // Trigger on property changes
+    // Trigger on property and legend-range changes
     $: if (instancedMesh && activeGrid && showProperty) {
+        // Touch legend controls so updates re-run when user edits range mode/values.
+        legendRangeMode;
+        legendPercentileLow;
+        legendPercentileHigh;
+        legendFixedMin;
+        legendFixedMax;
         updateVisualization(activeGrid, showProperty);
     }
 
@@ -260,18 +286,11 @@
         renderer.setClearColor(backgroundHex);
 
         if (canvasContainer) {
-            // Clear existing children except for the legend canvas
+            // Clear existing children
             while (canvasContainer.firstChild) {
-                if (canvasContainer.firstChild !== topRightLegendCanvas) {
-                    canvasContainer.removeChild(canvasContainer.firstChild);
-                } else {
-                    break;
-                }
+                canvasContainer.removeChild(canvasContainer.firstChild);
             }
             canvasContainer.appendChild(renderer.domElement);
-            if (topRightLegendCanvas && topRightLegendCanvas.parentNode !== canvasContainer) {
-                canvasContainer.appendChild(topRightLegendCanvas);
-            }
             try {
                 const _w = window as typeof window & { __ressim?: unknown };
                 _w.__ressim = { renderer, scene, camera, instancedMesh };
@@ -680,56 +699,10 @@
         const textWidth = ctx.measureText(maxText).width;
         ctx.fillText(maxText, w - textWidth - 2, h + 2);
         
-        // Draw top-right legend
-        if (topRightLegendCanvas) {
-            const ctx2 = topRightLegendCanvas.getContext('2d');
-            if (ctx2) {
-                const w2 = topRightLegendCanvas.width;
-                const h2 = topRightLegendCanvas.height;
-                const gradientH = ctx2.createLinearGradient(0, 0, w2, 0);
-                for (let i = 0; i <= steps; i++) {
-                    const t = i / steps;
-                    tmpColor.setHSL((1 - t) * 0.6, 1.0, 0.5);
-                    gradientH.addColorStop(t, tmpColor.getStyle());
-                }
-                
-                ctx2.clearRect(0, 0, w2, h2);
-                ctx2.fillStyle = gradientH;
-                ctx2.fillRect(0, 0, w2, h2);
-                
-                ctx2.strokeStyle = 'rgba(0,0,0,0.8)';
-                ctx2.lineWidth = 1;
-                ctx2.strokeRect(0.5, 0.5, w2 - 1, h2 - 1);
-                
-                ctx2.font = 'bold 10px sans-serif';
-                ctx2.fillStyle = '#000';
-                ctx2.textBaseline = 'bottom';
-                ctx2.textAlign = 'left';
-                ctx2.fillText(formatLegendValue(property, min), 4, h2 - 4);
-                ctx2.textAlign = 'right';
-                ctx2.fillText(formatLegendValue(property, max), w2 - 4, h2 - 4);
-                
-                ctx2.font = 'bold 9px sans-serif';
-                ctx2.fillStyle = '#333';
-                ctx2.textAlign = 'center';
-                const display = getPropertyDisplay(property);
-                const shortMode = legendRangeMode === 'percentile'
-                    ? `P${clamp(legendPercentileLow, 0, 99)}–P${clamp(Math.max(legendPercentileHigh, legendPercentileLow + 1), 1, 100)}`
-                    : 'Fixed';
-                ctx2.fillText(`${display.label} (${display.unit})`, w2 / 2, 10);
-                ctx2.fillText(shortMode, w2 / 2, 20);
-            }
-        }
     }
 </script>
 <div style="display:flex; flex-direction:column;">
     <div class="viz" bind:this={canvasContainer} style="position:relative;">
-        <canvas 
-            bind:this={topRightLegendCanvas} 
-            width="160" 
-            height="70" 
-            style="position:absolute; top:10px; right:10px; width:160px; height:70px; background:rgba(255,255,255,0.9); border:1px solid #999; border-radius:4px; padding:8px; box-sizing:border-box; cursor:default; pointer-events:none;">
-        </canvas>
         {#if tooltipVisible}
             <div style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:pre-line; line-height:1.4; z-index:1000; border:1px solid #ddd;">
                 {tooltipContent}
@@ -745,7 +718,7 @@
             <div style="color:#444; font-size:11px">
                 {legendRangeMode === 'percentile'
                     ? `Percentile P${clamp(legendPercentileLow, 0, 99)}–P${clamp(Math.max(legendPercentileHigh, legendPercentileLow + 1), 1, 100)}`
-                    : 'Fixed range'}
+                    : (showProperty === 'pressure' ? 'Auto range' : 'Fixed range')}
             </div>
             <div style="color:#444; font-size:11px">
                 min {formatLegendValue(showProperty, legendMin)} — max {formatLegendValue(showProperty, legendMax)}
@@ -755,7 +728,7 @@
 </div>
 <style>
     /* Revert to non-absolute sizing so parent controls height explicitly */
-    .viz { border: 1px solid #ddd; width: 100%; height: clamp(240px, 35vh, 420px); position: relative; background: #fff; }
+    .viz { border: 1px solid #ddd; width: 100%; height: clamp(255px, 37vh, 440px); position: relative; background: #fff; }
     .legend { margin-top: 8px; color: #222; display:flex; align-items:center; gap:8px; }
     .legend canvas { border: 1px solid #ccc; background: #fff; }
 </style>

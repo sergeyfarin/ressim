@@ -6,10 +6,11 @@
     export let timeHistory: number[] = [];
     export let injectionRate: number; // Total injection rate m³/day
     export let reservoir: { length: number; area: number; porosity: number };
+    export let initialSaturation = 0.3;
 
     const dispatch = createEventDispatcher();
 
-    let analyticalProduction: { time: number; oilRate: number }[] = [];
+    let analyticalProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
 
     $: if (timeHistory.length > 0 && rockProps && fluidProps && reservoir && injectionRate > 0) {
         calculateAnalyticalProduction();
@@ -49,7 +50,7 @@
 
     function calculateAnalyticalProduction() {
         const { s_wc, s_or } = rockProps;
-        const initial_sw = s_wc;
+        const initial_sw = Math.max(s_wc, Math.min(1 - s_or, initialSaturation));
 
         // Find shock front saturation (Sw_f) using graphical tangent method
         let sw_f = initial_sw;
@@ -70,9 +71,11 @@
         const v_shock = (injectionRate / (reservoir.area * reservoir.porosity)) * dfw_at_shock;
         const breakthroughTime = reservoir.length / v_shock;
 
-        const newProduction: { time: number; oilRate: number }[] = [];
+        const newProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
+        let cumulativeOil = 0;
 
-        for (const t of timeHistory) {
+        for (let i = 0; i < timeHistory.length; i++) {
+            const t = timeHistory[i];
             let oilRate = 0;
             if (t <= breakthroughTime) {
                 // Before breakthrough, production is pure oil (at injection rate)
@@ -101,7 +104,17 @@
                 const waterCut = fw_at_outlet;
                 oilRate = injectionRate * (1 - waterCut);
             }
-            newProduction.push({ time: t, oilRate: Math.max(0, oilRate) });
+            const boundedOilRate = Math.max(0, oilRate);
+            const waterRate = Math.max(0, injectionRate - boundedOilRate);
+            const dt = i > 0 ? Math.max(0, t - timeHistory[i - 1]) : Math.max(0, t);
+            cumulativeOil += boundedOilRate * dt;
+
+            newProduction.push({
+                time: t,
+                oilRate: boundedOilRate,
+                waterRate,
+                cumulativeOil,
+            });
         }
         analyticalProduction = newProduction;
     }

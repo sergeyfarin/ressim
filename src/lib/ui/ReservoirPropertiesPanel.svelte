@@ -1,6 +1,7 @@
 <script lang="ts">
   export let initialPressure = 300;
   export let initialSaturation = 0.3;
+  export let gravityEnabled = false;
 
   export let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
   export let uniformPermX = 100;
@@ -50,6 +51,11 @@
         <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm w-full" bind:value={initialSaturation} />
       </label>
     </div>
+
+    <label class="label cursor-pointer justify-start gap-2">
+      <input type="checkbox" class="checkbox checkbox-sm" bind:checked={gravityEnabled} />
+      <span class="label-text text-sm">Enable Gravity</span>
+    </label>
 
     <label class="form-control">
       <span class="label-text text-xs">Permeability Mode</span>

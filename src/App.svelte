@@ -28,6 +28,15 @@
     // Initial Conditions
     let initialPressure = 300.0;
     let initialSaturation = 0.3;
+    const reservoirPorosity = 0.2;
+
+    // Fluid properties (single source of truth for simulator + analytical)
+    let mu_w = 0.5;
+    let mu_o = 1.0;
+    let rho_w = 1000.0;
+    let rho_o = 800.0;
+    let ooipM3 = 0;
+    $: ooipM3 = nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity * Math.max(0, 1 - initialSaturation);
 
     // Permeability
     let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
@@ -177,6 +186,8 @@
 
     // History / replay
     let history = [];
+    let avgReservoirPressureSeries: Array<number | null> = [];
+    let avgWaterSaturationSeries: Array<number | null> = [];
     let currentIndex = -1;
     let playing = false;
     let playSpeed = 2;
@@ -197,9 +208,11 @@
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
-    let legendRangeMode: 'fixed' | 'percentile' = 'fixed';
+    let legendRangeMode: 'fixed' | 'percentile' = 'percentile';
     let legendPercentileLow = 5;
     let legendPercentileHigh = 95;
+    let legendFixedMin = 0;
+    let legendFixedMax = 1;
 
     const scenarioPresets = {
         custom: null,
@@ -516,8 +529,15 @@
             nx: Number(nx),
             ny: Number(ny),
             nz: Number(nz),
+            cellDx: Number(cellDx),
+            cellDy: Number(cellDy),
+            cellDz: Number(cellDz),
             initialPressure: Number(initialPressure),
             initialSaturation: Number(initialSaturation),
+            mu_w: Number(mu_w),
+            mu_o: Number(mu_o),
+            rho_w: Number(rho_w),
+            rho_o: Number(rho_o),
             s_wc: Number(s_wc),
             s_or: Number(s_or),
             n_w: Number(n_w),
@@ -657,6 +677,108 @@
         ? history[currentIndex].time
         : null;
 
+    function computeAveragePressure(grid: Array<{ pressure?: number }>): number {
+        if (!Array.isArray(grid) || grid.length === 0) return 0;
+        let sum = 0;
+        let count = 0;
+        for (const cell of grid) {
+            const value = Number(cell?.pressure);
+            if (Number.isFinite(value)) {
+                sum += value;
+                count += 1;
+            }
+        }
+        return count > 0 ? sum / count : 0;
+    }
+
+    function computeAverageWaterSaturation(
+        grid: Array<{ sat_water?: number; satWater?: number; sw?: number }>
+    ): number {
+        if (!Array.isArray(grid) || grid.length === 0) return 0;
+        let sum = 0;
+        let count = 0;
+        for (const cell of grid) {
+            const value = Number(cell?.sat_water ?? cell?.satWater ?? cell?.sw);
+            if (Number.isFinite(value)) {
+                sum += value;
+                count += 1;
+            }
+        }
+        return count > 0 ? sum / count : 0;
+    }
+
+    function buildAvgPressureSeries(
+        ratePoints: Array<{ time?: number }>,
+        historyEntries: Array<{ time?: number; grid?: Array<{ pressure?: number }> }>
+    ): Array<number | null> {
+        if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
+
+        const snapshots = historyEntries
+            .filter((entry) => Number.isFinite(Number(entry?.time)) && Array.isArray(entry?.grid))
+            .map((entry) => ({
+                time: Number(entry.time),
+                avgPressure: computeAveragePressure(entry.grid ?? []),
+            }))
+            .sort((a, b) => a.time - b.time);
+
+        if (snapshots.length === 0) {
+            return ratePoints.map(() => null);
+        }
+
+        let snapIdx = 0;
+        let currentAvg = snapshots[0].avgPressure;
+        const aligned = [];
+
+        for (const point of ratePoints) {
+            const t = Number(point?.time ?? 0);
+            while (snapIdx + 1 < snapshots.length && snapshots[snapIdx + 1].time <= t) {
+                snapIdx += 1;
+                currentAvg = snapshots[snapIdx].avgPressure;
+            }
+            aligned.push(currentAvg);
+        }
+
+        return aligned;
+    }
+
+    $: avgReservoirPressureSeries = buildAvgPressureSeries(rateHistory, history);
+
+    function buildAvgWaterSaturationSeries(
+        ratePoints: Array<{ time?: number }>,
+        historyEntries: Array<{ time?: number; grid?: Array<{ sat_water?: number; satWater?: number; sw?: number }> }>
+    ): Array<number | null> {
+        if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
+
+        const snapshots = historyEntries
+            .filter((entry) => Number.isFinite(Number(entry?.time)) && Array.isArray(entry?.grid))
+            .map((entry) => ({
+                time: Number(entry.time),
+                avgSw: computeAverageWaterSaturation(entry.grid ?? []),
+            }))
+            .sort((a, b) => a.time - b.time);
+
+        if (snapshots.length === 0) {
+            return ratePoints.map(() => null);
+        }
+
+        let snapIdx = 0;
+        let currentAvg = snapshots[0].avgSw;
+        const aligned = [];
+
+        for (const point of ratePoints) {
+            const t = Number(point?.time ?? 0);
+            while (snapIdx + 1 < snapshots.length && snapshots[snapIdx + 1].time <= t) {
+                snapIdx += 1;
+                currentAvg = snapshots[snapIdx].avgSw;
+            }
+            aligned.push(currentAvg);
+        }
+
+        return aligned;
+    }
+
+    $: avgWaterSaturationSeries = buildAvgWaterSaturationSeries(rateHistory, history);
+
     
 </script>
 
@@ -664,10 +786,11 @@
     <div class="mx-auto max-w-[1600px] space-y-4 p-4 lg:p-6">
         <FractionalFlow
             rockProps={{ s_wc, s_or, n_w, n_o }}
-            fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
+            fluidProps={{ mu_w, mu_o }}
+            {initialSaturation}
             timeHistory={rateHistory.map((point) => point.time)}
             injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
-            reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: 0.2 }}
+            reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
             on:analyticalData={(e) => analyticalProductionData = e.detail.production}
         />
 
@@ -709,6 +832,7 @@
                 <ReservoirPropertiesPanel
                     bind:initialPressure
                     bind:initialSaturation
+                    bind:gravityEnabled
                     bind:permMode
                     bind:uniformPermX
                     bind:uniformPermY
@@ -746,13 +870,11 @@
 
                 <TimestepControlsPanel
                     bind:delta_t_days
-                    bind:steps
                     bind:max_sat_change_per_step
                 />
 
                 <DynamicControlsPanel
                     bind:steps
-                    bind:gravityEnabled
                     {wasmReady}
                     {workerRunning}
                     {runCompleted}
@@ -764,29 +886,21 @@
                     onInitSimulator={initSimulator}
                 />
 
-                <VisualizationReplayPanel
-                    bind:showProperty
-                    bind:legendRangeMode
-                    bind:legendPercentileLow
-                    bind:legendPercentileHigh
-                    historyLength={history.length}
-                    bind:currentIndex
-                    replayTime={replayTime}
-                    bind:playing
-                    bind:playSpeed
-                    bind:showDebugState
-                    onApplyHistoryIndex={applyHistoryIndex}
-                    onPrev={prev}
-                    onNext={next}
-                    onTogglePlay={togglePlay}
-                />
             </aside>
 
             <section class="space-y-3 md:col-span-9">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if RateChartComponent}
-                            <svelte:component this={RateChartComponent} {rateHistory} {analyticalProductionData} />
+                            <svelte:component
+                                this={RateChartComponent}
+                                {rateHistory}
+                                {analyticalProductionData}
+                                {avgReservoirPressureSeries}
+                                {avgWaterSaturationSeries}
+                                {ooipM3}
+                                {theme}
+                            />
                         {:else}
                             <div class="text-sm opacity-70">Loading rate chart…</div>
                         {/if}
@@ -807,6 +921,8 @@
                                 legendRangeMode={legendRangeMode}
                                 legendPercentileLow={legendPercentileLow}
                                 legendPercentileHigh={legendPercentileHigh}
+                                legendFixedMin={legendFixedMin}
+                                legendFixedMax={legendFixedMax}
                                 history={history}
                                 currentIndex={currentIndex}
                                 wellState={wellStateRaw}
@@ -816,6 +932,27 @@
                                 <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
                             </div>
                         {/if}
+
+                        <div class="mt-4 border-t border-base-300 pt-4">
+                            <VisualizationReplayPanel
+                                bind:showProperty
+                                bind:legendRangeMode
+                                bind:legendPercentileLow
+                                bind:legendPercentileHigh
+                                bind:legendFixedMin
+                                bind:legendFixedMax
+                                historyLength={history.length}
+                                bind:currentIndex
+                                replayTime={replayTime}
+                                bind:playing
+                                bind:playSpeed
+                                bind:showDebugState
+                                onApplyHistoryIndex={applyHistoryIndex}
+                                onPrev={prev}
+                                onNext={next}
+                                onTogglePlay={togglePlay}
+                            />
+                        </div>
                     </div>
                 </div>
 

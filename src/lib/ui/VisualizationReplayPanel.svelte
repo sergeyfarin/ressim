@@ -1,8 +1,10 @@
 <script lang="ts">
   export let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
-  export let legendRangeMode: 'fixed' | 'percentile' = 'fixed';
+  export let legendRangeMode: 'fixed' | 'percentile' = 'percentile';
   export let legendPercentileLow = 5;
   export let legendPercentileHigh = 95;
+  export let legendFixedMin = 0;
+  export let legendFixedMax = 1;
   export let historyLength = 0;
   export let currentIndex = -1;
   export let replayTime: number | null = null;
@@ -14,6 +16,30 @@
   export let onPrev: () => void;
   export let onNext: () => void;
   export let onTogglePlay: () => void;
+
+  $: if (legendRangeMode === 'fixed') {
+    const minValue = Number(legendFixedMin);
+    const maxValue = Number(legendFixedMax);
+
+    if (!Number.isFinite(minValue)) {
+      legendFixedMin = 0;
+    }
+    if (!Number.isFinite(maxValue)) {
+      legendFixedMax = 1;
+    }
+
+    if (Number.isFinite(legendFixedMin) && Number.isFinite(legendFixedMax) && legendFixedMin > legendFixedMax) {
+      const tmp = legendFixedMin;
+      legendFixedMin = legendFixedMax;
+      legendFixedMax = tmp;
+    }
+  }
+
+  function applySliderValue(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    currentIndex = Number(input.value);
+    onApplyHistoryIndex(currentIndex);
+  }
 
   $: groupSummary = `${showProperty.replace('_', ' ')} · ${legendRangeMode} · step ${Math.max(0, currentIndex)}`;
 </script>
@@ -49,8 +75,8 @@
     <label class="form-control">
       <span class="label-text text-xs">Legend Range Mode</span>
       <select class="select select-bordered select-sm w-full" bind:value={legendRangeMode}>
-        <option value="fixed">Fixed</option>
         <option value="percentile">Percentile (adaptive)</option>
+        <option value="fixed">Fixed</option>
       </select>
     </label>
 
@@ -65,6 +91,17 @@
           <input type="number" min="1" max="100" step="1" class="input input-bordered input-sm w-full" bind:value={legendPercentileHigh} />
         </label>
       </div>
+    {:else}
+      <div class="grid grid-cols-2 gap-2">
+        <label class="form-control">
+          <span class="label-text text-xs">Fixed Min</span>
+          <input type="number" step="any" class="input input-bordered input-sm w-full" bind:value={legendFixedMin} />
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Fixed Max</span>
+          <input type="number" step="any" class="input input-bordered input-sm w-full" bind:value={legendFixedMax} />
+        </label>
+      </div>
     {/if}
 
     <div class="space-y-1">
@@ -74,7 +111,8 @@
         min="0"
         max={Math.max(0, historyLength - 1)}
         bind:value={currentIndex}
-        on:input={() => onApplyHistoryIndex(currentIndex)}
+        on:input={applySliderValue}
+        on:change={applySliderValue}
       />
       <div class="text-xs opacity-80">Step: {currentIndex} / {Math.max(0, historyLength - 1)}</div>
       {#if replayTime !== null}
@@ -83,9 +121,9 @@
     </div>
 
     <div class="grid grid-cols-3 gap-2">
-      <button class="btn btn-xs" on:click={onPrev} disabled={historyLength === 0}>Prev</button>
-      <button class="btn btn-xs" on:click={onTogglePlay} disabled={historyLength === 0}>{playing ? 'Stop' : 'Play'}</button>
-      <button class="btn btn-xs" on:click={onNext} disabled={historyLength === 0}>Next</button>
+      <button type="button" class="btn btn-xs" on:click={onPrev} disabled={historyLength === 0}>Prev</button>
+      <button type="button" class="btn btn-xs" on:click={onTogglePlay} disabled={historyLength === 0}>{playing ? 'Stop' : 'Play'}</button>
+      <button type="button" class="btn btn-xs" on:click={onNext} disabled={historyLength === 0}>Next</button>
     </div>
     <label class="form-control">
       <span class="label-text text-xs">Playback Speed</span>

@@ -4,6 +4,10 @@
 
     export let rateHistory = [];
     export let analyticalProductionData = [];
+    export let avgReservoirPressureSeries: Array<number | null> = [];
+    export let avgWaterSaturationSeries: Array<number | null> = [];
+    export let ooipM3 = 0;
+    export let theme: 'dark' | 'light' = 'dark';
 
     type MismatchSummary = {
         pointsCompared: number;
@@ -14,7 +18,35 @@
 
     let chartCanvas: HTMLCanvasElement;
     let chart: Chart;
-    let activeTab: 'oil' | 'water' | 'voidage' | 'validation' = 'oil';
+    let activeTab: 'oil' | 'water' | 'voidage' | 'validation' | 'custom' = 'oil';
+    let selectedDatasetIndexes: number[] = [];
+    let lineSelectorExpanded = false;
+    // Reserved for future 3-phase extension: use red for gas-related series.
+    const GAS_COLOR = '#ef4444';
+    const OIL_COLOR = '#16a34a';
+    const OIL_COLOR_DARK = '#15803d';
+    const OIL_CUM_COLOR = '#0f5132';
+    const WATER_PROD_COLOR = '#1e3a8a';
+    const WATER_INJ_COLOR = '#06b6d4';
+    const WATER_BALANCE_COLOR = '#2563eb';
+    const PRESSURE_COLOR = '#dc2626';
+    const VOIDAGE_COLOR = '#7c3aed';
+    const SATURATION_COLOR = '#1d4ed8';
+    const ERROR_GREEN_COLOR = '#15803d';
+    const DATASET_INDEX = {
+        OIL_RATE: 0,
+        ANALYTICAL_OIL_RATE: 1,
+        WATER_PROD: 2,
+        WATER_INJ: 3,
+        CUM_OIL: 4,
+        ANALYTICAL_CUM_OIL: 5,
+        RECOVERY_FACTOR: 6,
+        LIQUID_PROD: 7,
+        VRR: 8,
+        AVG_PRESSURE: 9,
+        AVG_WATER_SAT: 10,
+        OIL_RATE_ABS_ERROR: 11,
+    } as const;
     let mismatchSummary: MismatchSummary = {
         pointsCompared: 0,
         mae: 0,
@@ -30,8 +62,24 @@
         updateChart();
     }
 
-    $: if (chart) {
+    $: if (avgReservoirPressureSeries && chart) {
+        updateChart();
+    }
+
+    $: if (avgWaterSaturationSeries && chart) {
+        updateChart();
+    }
+
+    $: if (chart && activeTab) {
         applyActiveTab();
+    }
+
+    $: if (activeTab === 'custom') {
+        lineSelectorExpanded = true;
+    }
+
+    $: if (chart && theme) {
+        applyThemeStyles();
     }
 
     const tabLabels: Record<typeof activeTab, string> = {
@@ -39,7 +87,51 @@
         water: 'Water Injection + Production',
         voidage: 'Voidage / Liquid Balance',
         validation: 'Model vs Analytical',
+        custom: 'Custom',
     };
+
+    const presetSelections: Record<'oil' | 'water' | 'voidage' | 'validation', number[]> = {
+        oil: [DATASET_INDEX.OIL_RATE, DATASET_INDEX.CUM_OIL, DATASET_INDEX.RECOVERY_FACTOR],
+        water: [DATASET_INDEX.WATER_PROD, DATASET_INDEX.WATER_INJ, DATASET_INDEX.AVG_WATER_SAT],
+        voidage: [DATASET_INDEX.AVG_PRESSURE, DATASET_INDEX.VRR, DATASET_INDEX.LIQUID_PROD],
+        validation: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.ANALYTICAL_OIL_RATE,
+            DATASET_INDEX.CUM_OIL,
+            DATASET_INDEX.ANALYTICAL_CUM_OIL,
+            DATASET_INDEX.OIL_RATE_ABS_ERROR,
+        ],
+    };
+
+    function legendAxisPriority(axisId: string | undefined): number {
+        if (!axisId) return 99;
+        if (axisId === 'y') return 0;
+        if (axisId === 'y1' || axisId === 'y2') return 1;
+        if (axisId === 'y3' || axisId === 'y4') return 2;
+        return 99;
+    }
+
+    function buildLegendLineSwatch(color: string, width: number, dash: number[]): string | HTMLCanvasElement {
+        if (typeof document === 'undefined') return 'line';
+        const canvas = document.createElement('canvas');
+        canvas.width = 36;
+        canvas.height = 10;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return 'line';
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1, width);
+        ctx.setLineDash(Array.isArray(dash) ? dash : []);
+        ctx.lineCap = 'butt';
+        const y = Math.floor(canvas.height / 2) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+
+        return canvas;
+    }
 
     onMount(() => {
         Chart.register(...registerables);
@@ -52,66 +144,139 @@
                     {
                         label: 'Oil Production (m³/day)',
                         data: [],
-                        borderColor: 'green',
+                        borderColor: OIL_COLOR,
+                        borderWidth: 2.5,
                         yAxisID: 'y',
                     },
                     {
                         label: 'Analytical Oil Production (m³/day)',
                         data: [],
-                        borderColor: 'green',
+                        borderColor: OIL_COLOR_DARK,
+                        borderWidth: 2,
                         borderDash: [5, 5],
                         yAxisID: 'y',
                     },
                     {
                         label: 'Water Production (m³/day)',
                         data: [],
-                        borderColor: '#0ea5e9',
+                        borderColor: WATER_PROD_COLOR,
+                        borderWidth: 2.5,
                         yAxisID: 'y',
                     },
                     {
                         label: 'Water Injection (m³/day)',
                         data: [],
-                        borderColor: '#ef4444',
+                        borderColor: WATER_INJ_COLOR,
+                        borderWidth: 2.5,
                         yAxisID: 'y',
                     },
                     {
                         label: 'Cumulative Oil (m³)',
                         data: [],
-                        borderColor: 'purple',
+                        borderColor: OIL_CUM_COLOR,
+                        borderWidth: 2.5,
                         yAxisID: 'y1',
+                    },
+                    {
+                        label: 'Analytical Cumulative Oil (m³)',
+                        data: [],
+                        borderColor: OIL_CUM_COLOR,
+                        borderWidth: 2,
+                        borderDash: [8, 4],
+                        yAxisID: 'y1',
+                    },
+                    {
+                        label: 'Recovery Factor',
+                        data: [],
+                        borderColor: '#22c55e',
+                        borderWidth: 2,
+                        yAxisID: 'y5',
                     },
                     {
                         label: 'Liquid Production (m³/day)',
                         data: [],
-                        borderColor: '#2563eb',
-                        borderDash: [4, 4],
-                        yAxisID: 'y',
+                        borderColor: WATER_BALANCE_COLOR,
+                        borderWidth: 2,
+                        yAxisID: 'y4',
                     },
                     {
                         label: 'Voidage Replacement Ratio',
                         data: [],
-                        borderColor: '#f59e0b',
+                        borderColor: VOIDAGE_COLOR,
+                        borderWidth: 2.5,
                         yAxisID: 'y2',
+                    },
+                    {
+                        label: 'Average Reservoir Pressure (bar)',
+                        data: [],
+                        borderColor: PRESSURE_COLOR,
+                        borderWidth: 2,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: 'Average Water Saturation',
+                        data: [],
+                        borderColor: SATURATION_COLOR,
+                        borderWidth: 2,
+                        yAxisID: 'y5',
                     },
                     {
                         label: 'Oil Rate Abs Error (m³/day)',
                         data: [],
-                        borderColor: 'black',
-                        borderDash: [6, 4],
+                        borderColor: ERROR_GREEN_COLOR,
+                        borderWidth: 1.3,
+                        borderDash: [2, 4],
                         yAxisID: 'y',
-                    },
-                    {
-                        label: 'Oil Rate Error (%)',
-                        data: [],
-                        borderColor: '#8b5cf6',
-                        borderDash: [3, 3],
-                        yAxisID: 'y3',
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            filter: (legendItem) => {
+                                return !legendItem.hidden;
+                            },
+                            generateLabels: (chartRef) => {
+                                const defaultLabels = Chart.defaults.plugins.legend.labels.generateLabels(chartRef);
+                                return defaultLabels.map((label) => {
+                                    const datasetIndex = label.datasetIndex ?? -1;
+                                    const dataset = chartRef.data.datasets?.[datasetIndex];
+                                    const borderWidth = Number(dataset?.borderWidth ?? label.lineWidth ?? 2);
+                                    const borderColor = Array.isArray(dataset?.borderColor)
+                                        ? String(dataset.borderColor[0] ?? label.strokeStyle)
+                                        : String(dataset?.borderColor ?? label.strokeStyle);
+                                    const borderDash = Array.isArray(dataset?.borderDash)
+                                        ? dataset.borderDash.map((segment) => Number(segment))
+                                        : (Array.isArray(label.lineDash) ? label.lineDash : []);
+
+                                    return {
+                                        ...label,
+                                        fillStyle: 'rgba(0,0,0,0)',
+                                        strokeStyle: borderColor,
+                                        lineWidth: Math.max(1, borderWidth),
+                                        pointStyle: buildLegendLineSwatch(borderColor, borderWidth, borderDash),
+                                    };
+                                });
+                            },
+                            sort: (a, b, data) => {
+                                const aIndex = a.datasetIndex ?? Number.MAX_SAFE_INTEGER;
+                                const bIndex = b.datasetIndex ?? Number.MAX_SAFE_INTEGER;
+                                const aAxisId = data.datasets?.[aIndex]?.yAxisID as string | undefined;
+                                const bAxisId = data.datasets?.[bIndex]?.yAxisID as string | undefined;
+                                const priorityDelta = legendAxisPriority(aAxisId) - legendAxisPriority(bAxisId);
+                                if (priorityDelta !== 0) return priorityDelta;
+                                return aIndex - bIndex;
+                            },
+                            boxWidth: 36,
+                            boxHeight: 1,
+                            usePointStyle: true,
+                            pointStyleWidth: 36,
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         title: {
@@ -123,15 +288,21 @@
                         type: 'linear',
                         display: true,
                         position: 'left',
+                        min: 0,
+                        alignToPixels: true,
                         title: {
                             display: true,
                             text: 'Rate (m³/day)'
+                        },
+                        ticks: {
+                            count: 6,
                         },
                     },
                     y1: {
                         type: 'linear',
                         display: true,
                         position: 'right',
+                        min: 0,
                         title: {
                             display: true,
                             text: 'Cumulative Oil (m³)'
@@ -144,6 +315,7 @@
                         type: 'linear',
                         display: true,
                         position: 'right',
+                        alignToPixels: true,
                         title: {
                             display: true,
                             text: 'Voidage Replacement Ratio'
@@ -152,24 +324,52 @@
                             drawOnChartArea: false,
                         },
                         min: 0,
+                        ticks: {
+                            count: 6,
+                        },
                     },
-                    y3: {
+                    y4: {
                         type: 'linear',
                         display: true,
                         position: 'right',
                         offset: true,
+                        min: 0,
+                        alignToPixels: true,
                         title: {
                             display: true,
-                            text: 'Oil Rate Error (%)'
+                            text: 'Liquid Production (m³/day)'
                         },
                         grid: {
                             drawOnChartArea: false,
+                        },
+                        ticks: {
+                            count: 6,
+                        }
+                    },
+                    y5: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        offset: true,
+                        min: 0,
+                        max: 1,
+                        alignToPixels: true,
+                        title: {
+                            display: true,
+                            text: 'Fraction'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                        ticks: {
+                            count: 6,
                         }
                     }
                 }
             }
         });
 
+        selectedDatasetIndexes = [...presetSelections.oil];
         applyActiveTab();
     });
 
@@ -190,6 +390,34 @@
             const value = analyticalProductionData[idx]?.oilRate;
             return Number.isFinite(value) ? value : null;
         });
+
+        const analyticalCumulativeOilData = rateHistory.map((point, idx) => {
+            const explicitValue = analyticalProductionData[idx]?.cumulativeOil;
+            if (Number.isFinite(explicitValue)) return explicitValue;
+
+            const analyticalOil = analyticalOilProd[idx];
+            if (!Number.isFinite(analyticalOil)) return null;
+
+            let runningCum = 0;
+            for (let i = 0; i <= idx; i++) {
+                const oi = analyticalOilProd[i];
+                if (!Number.isFinite(oi)) return null;
+                const dt = i > 0 ? Math.max(0, rateHistory[i].time - rateHistory[i - 1].time) : Math.max(0, rateHistory[i].time);
+                runningCum += (oi as number) * dt;
+            }
+            return runningCum;
+        });
+
+        const avgReservoirPressure = rateHistory.map((point, idx) => {
+            const seriesValue = avgReservoirPressureSeries?.[idx];
+            const value = seriesValue ?? point.avg_reservoir_pressure ?? point.average_reservoir_pressure ?? point.avg_pressure;
+            return Number.isFinite(value) ? value : null;
+        });
+
+        const avgWaterSat = rateHistory.map((_, idx) => {
+            const value = avgWaterSaturationSeries?.[idx];
+            return Number.isFinite(value) ? value : null;
+        });
         
         // Calculate cumulative oil production
         let cumulativeOil = 0;
@@ -199,6 +427,11 @@
             cumulativeOil += oilProd[i] * dt;
             cumulativeOilData.push(cumulativeOil);
         }
+
+        const recoveryFactorData = cumulativeOilData.map((cumOil) => {
+            if (!Number.isFinite(ooipM3) || ooipM3 <= 1e-12) return null;
+            return Math.max(0, Math.min(1, cumOil / ooipM3));
+        });
 
         // Calculate Voidage Replacement Ratio
         const vrrData = rateHistory.map(p => {
@@ -252,10 +485,20 @@
         chart.data.datasets[2].data = waterProd;
         chart.data.datasets[3].data = injection;
         chart.data.datasets[4].data = cumulativeOilData;
-        chart.data.datasets[5].data = liquidProd;
-        chart.data.datasets[6].data = vrrData;
-        chart.data.datasets[7].data = absErrorData;
-        chart.data.datasets[8].data = percentErrorData;
+        chart.data.datasets[5].data = analyticalCumulativeOilData;
+        chart.data.datasets[6].data = recoveryFactorData;
+        chart.data.datasets[7].data = liquidProd;
+        chart.data.datasets[8].data = vrrData;
+        chart.data.datasets[9].data = avgReservoirPressure;
+        chart.data.datasets[10].data = avgWaterSat;
+        chart.data.datasets[11].data = absErrorData;
+
+        const showPoints = labels.length <= 20;
+        for (const dataset of chart.data.datasets) {
+            dataset.pointRadius = showPoints ? 2 : 0;
+            dataset.pointHoverRadius = showPoints ? 3 : 4;
+            dataset.pointHitRadius = 8;
+        }
 
         chart.update();
     }
@@ -268,39 +511,90 @@
         });
     }
 
-    function applyAxisVisibility(config: { y: boolean; y1: boolean; y2: boolean; y3: boolean }) {
+    function applyThemeStyles() {
         if (!chart) return;
         const scales = chart.options.scales ?? {};
-        if (scales.y) scales.y.display = config.y;
-        if (scales.y1) scales.y1.display = config.y1;
-        if (scales.y2) scales.y2.display = config.y2;
-        if (scales.y3) scales.y3.display = config.y3;
+        const gridColor = theme === 'dark' ? 'rgba(203, 213, 225, 0.07)' : 'rgba(15, 23, 42, 0.10)';
+
+        if (scales.x?.grid) scales.x.grid.color = gridColor;
+        if (scales.y?.grid) scales.y.grid.color = gridColor;
+        if (scales.y1?.grid) scales.y1.grid.color = gridColor;
+        if (scales.y2?.grid) scales.y2.grid.color = gridColor;
+        if (scales.y4?.grid) scales.y4.grid.color = gridColor;
+        if (scales.y5?.grid) scales.y5.grid.color = gridColor;
+
+        chart.update();
+    }
+
+    function applySelection(visibleIndexes: number[]) {
+        if (!chart) return;
+        setDatasetVisibility(visibleIndexes);
+
+        const scales = chart.options.scales ?? {};
+        const activeAxisIds = new Set(
+            visibleIndexes
+                .map((idx) => chart.data.datasets[idx]?.yAxisID)
+                .filter((axisId): axisId is string => Boolean(axisId))
+        );
+
+        if (scales.y) scales.y.display = activeAxisIds.has('y');
+        if (scales.y1) scales.y1.display = activeAxisIds.has('y1');
+        if (scales.y2) scales.y2.display = activeAxisIds.has('y2');
+        if (scales.y4) scales.y4.display = activeAxisIds.has('y4');
+        if (scales.y5) scales.y5.display = activeAxisIds.has('y5');
+
+        if (scales.y?.title) {
+            if (visibleIndexes.includes(DATASET_INDEX.AVG_PRESSURE)) {
+                scales.y.title.text = 'Average Reservoir Pressure (bar)';
+                if (scales.y) delete scales.y.min;
+            } else {
+                scales.y.title.text = 'Rate (m³/day)';
+                if (scales.y) scales.y.min = 0;
+            }
+        }
+
+        if (scales.y5?.title) {
+            if (visibleIndexes.includes(DATASET_INDEX.AVG_WATER_SAT)) {
+                scales.y5.title.text = 'Average Water Saturation';
+            } else {
+                scales.y5.title.text = 'Recovery Factor';
+            }
+        }
+
+        chart.update();
     }
 
     function applyActiveTab() {
         if (!chart) return;
 
-        if (activeTab === 'oil') {
-            setDatasetVisibility([0, 1, 4]);
-            applyAxisVisibility({ y: true, y1: true, y2: false, y3: false });
-        } else if (activeTab === 'water') {
-            setDatasetVisibility([2, 3]);
-            applyAxisVisibility({ y: true, y1: false, y2: false, y3: false });
-        } else if (activeTab === 'voidage') {
-            setDatasetVisibility([3, 5, 6]);
-            applyAxisVisibility({ y: true, y1: false, y2: true, y3: false });
+        if (activeTab !== 'custom') {
+            selectedDatasetIndexes = [...presetSelections[activeTab]];
+        }
+        applySelection(selectedDatasetIndexes);
+    }
+
+    function toggleDataset(datasetIndex: number) {
+        const next = new Set(selectedDatasetIndexes);
+        if (next.has(datasetIndex)) {
+            next.delete(datasetIndex);
         } else {
-            setDatasetVisibility([0, 1, 7, 8]);
-            applyAxisVisibility({ y: true, y1: false, y2: false, y3: true });
+            next.add(datasetIndex);
         }
 
-        chart.update();
+        selectedDatasetIndexes = [...next].sort((a, b) => a - b);
+        activeTab = 'custom';
+        applySelection(selectedDatasetIndexes);
+    }
+
+    function toggleLineSelector() {
+        lineSelectorExpanded = !lineSelectorExpanded;
     }
 </script>
 
 <div class="mb-2 flex flex-wrap gap-2">
     {#each Object.entries(tabLabels) as [key, label]}
         <button
+            type="button"
             class={`btn btn-xs sm:btn-sm ${activeTab === key ? 'btn-primary' : 'btn-outline'}`}
             on:click={() => activeTab = key as typeof activeTab}
         >
@@ -308,6 +602,32 @@
         </button>
     {/each}
 </div>
+
+<div class="mb-2">
+    <button
+        type="button"
+        class="btn btn-xs btn-outline"
+        on:click={toggleLineSelector}
+    >
+        {lineSelectorExpanded ? 'Hide line selection' : 'Show line selection'}
+    </button>
+</div>
+
+{#if lineSelectorExpanded}
+    <div class="mb-2 flex flex-wrap gap-1">
+        {#if chart}
+            {#each chart.data.datasets as dataset, idx}
+                <button
+                    type="button"
+                    class={`btn btn-xs ${selectedDatasetIndexes.includes(idx) ? 'btn-secondary' : 'btn-ghost'}`}
+                    on:click={() => toggleDataset(idx)}
+                >
+                    {dataset.label}
+                </button>
+            {/each}
+        {/if}
+    </div>
+{/if}
 
 <div class="chart-container" style="position: relative; height: min(52vh, 440px); width:100%;">
     <canvas bind:this={chartCanvas}></canvas>

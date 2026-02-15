@@ -840,6 +840,24 @@ impl ReservoirSimulator {
         }
     }
 
+    #[wasm_bindgen(js_name = setCellDimensions)]
+    pub fn set_cell_dimensions(&mut self, dx: f64, dy: f64, dz: f64) -> Result<(), String> {
+        if !dx.is_finite() || !dy.is_finite() || !dz.is_finite() {
+            return Err("Cell dimensions must be finite numbers".to_string());
+        }
+        if dx <= 0.0 || dy <= 0.0 || dz <= 0.0 {
+            return Err(format!(
+                "Cell dimensions must be positive, got dx={}, dy={}, dz={}",
+                dx, dy, dz
+            ));
+        }
+
+        self.dx = dx;
+        self.dy = dy;
+        self.dz = dz;
+        Ok(())
+    }
+
     /// Set initial water saturation for all grid cells
     #[wasm_bindgen(js_name = setInitialSaturation)]
     pub fn set_initial_saturation(&mut self, sat_water: f64) {
@@ -892,6 +910,23 @@ impl ReservoirSimulator {
         }
         self.pvt.rho_o = rho_o;
         self.pvt.rho_w = rho_w;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setFluidProperties)]
+    pub fn set_fluid_properties(&mut self, mu_o: f64, mu_w: f64) -> Result<(), String> {
+        if !mu_o.is_finite() || !mu_w.is_finite() {
+            return Err("Fluid viscosities must be finite numbers".to_string());
+        }
+        if mu_o <= 0.0 || mu_w <= 0.0 {
+            return Err(format!(
+                "Fluid viscosities must be positive, got mu_o={}, mu_w={}",
+                mu_o, mu_w
+            ));
+        }
+
+        self.pvt.mu_o = mu_o;
+        self.pvt.mu_w = mu_w;
         Ok(())
     }
 

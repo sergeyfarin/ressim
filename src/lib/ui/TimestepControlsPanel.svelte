@@ -1,9 +1,8 @@
 <script lang="ts">
   export let delta_t_days = 0.25;
-  export let steps = 20;
   export let max_sat_change_per_step = 0.1;
 
-  $: groupSummary = `Δt=${delta_t_days} d · steps=${steps} · max ΔS=${max_sat_change_per_step}`;
+  $: groupSummary = `Δt=${delta_t_days} d · max ΔS=${max_sat_change_per_step}`;
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
@@ -26,11 +25,7 @@
         <span class="label-text text-xs">Δt (Days)</span>
         <input type="number" step="0.1" class="input input-bordered input-sm w-full" bind:value={delta_t_days} />
       </label>
-      <label class="form-control">
-        <span class="label-text text-xs">Steps</span>
-        <input type="number" min="1" class="input input-bordered input-sm w-full" bind:value={steps} />
-      </label>
-      <label class="form-control col-span-2">
+      <label class="form-control col-span-2 md:col-span-1">
         <span class="label-text text-xs">Max Saturation Change per Step</span>
         <input type="number" min="0.01" max="1" step="0.01" class="input input-bordered input-sm w-full max-w-40" bind:value={max_sat_change_per_step} />
       </label>

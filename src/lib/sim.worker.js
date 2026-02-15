@@ -36,6 +36,21 @@ function getStatePayload(recordHistory, stepIndex, profile = {}) {
 function configureSimulator(payload) {
   simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz);
 
+  const setCellDimensions = /** @type {any} */ (simulator).setCellDimensions;
+  if (typeof setCellDimensions === 'function') {
+    setCellDimensions.call(simulator, Number(payload.cellDx), Number(payload.cellDy), Number(payload.cellDz));
+  }
+
+  const setFluidProperties = /** @type {any} */ (simulator).setFluidProperties;
+  if (typeof setFluidProperties === 'function') {
+    setFluidProperties.call(simulator, Number(payload.mu_o), Number(payload.mu_w));
+  }
+
+  const setFluidDensities = /** @type {any} */ (simulator).setFluidDensities;
+  if (typeof setFluidDensities === 'function') {
+    setFluidDensities.call(simulator, Number(payload.rho_o), Number(payload.rho_w));
+  }
+
   simulator.setInitialPressure(payload.initialPressure);
   simulator.setInitialSaturation(payload.initialSaturation);
 

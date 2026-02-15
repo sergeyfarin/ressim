@@ -33,7 +33,9 @@ export class ReservoirSimulator {
      */
     constructor(nx: number, ny: number, nz: number);
     setCapillaryParams(p_entry: number, lambda: number): void;
+    setCellDimensions(dx: number, dy: number, dz: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
+    setFluidProperties(mu_o: number, mu_w: number): void;
     setGravityEnabled(enabled: boolean): void;
     /**
      * Set initial pressure for all grid cells
@@ -81,7 +83,9 @@ export interface InitOutput {
     readonly reservoirsimulator_get_time: (a: number) => number;
     readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;

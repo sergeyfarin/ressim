@@ -7,7 +7,6 @@
     snapshotsSent: number;
   };
 
-  export let gravityEnabled = false;
   export let wasmReady = false;
   export let workerRunning = false;
   export let runCompleted = false;
@@ -43,9 +42,9 @@
   <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
     <p class="text-xs opacity-70">Simulation run actions and runtime diagnostics.</p>
 
-    <label class="label cursor-pointer justify-start gap-2">
-      <input type="checkbox" class="checkbox checkbox-sm" bind:checked={gravityEnabled} />
-      <span class="label-text text-sm">Enable Gravity</span>
+    <label class="form-control">
+      <span class="label-text text-xs">Steps</span>
+      <input type="number" min="1" class="input input-bordered input-sm w-full max-w-40" bind:value={steps} />
     </label>
 
     <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -100,11 +100,32 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {number} dx
+     * @param {number} dy
+     * @param {number} dz
+     */
+    setCellDimensions(dx, dy, dz) {
+        const ret = wasm.reservoirsimulator_setCellDimensions(this.__wbg_ptr, dx, dy, dz);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} rho_o
      * @param {number} rho_w
      */
     setFluidDensities(rho_o, rho_w) {
         const ret = wasm.reservoirsimulator_setFluidDensities(this.__wbg_ptr, rho_o, rho_w);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} mu_o
+     * @param {number} mu_w
+     */
+    setFluidProperties(mu_o, mu_w) {
+        const ret = wasm.reservoirsimulator_setFluidProperties(this.__wbg_ptr, mu_o, mu_w);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
