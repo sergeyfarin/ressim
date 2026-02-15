@@ -329,24 +329,34 @@
         simWorker.postMessage({ type: 'init' });
     }
 
-    async function loadUiModules() {
+    async function loadRateChartModule() {
         try {
-            const [threeDModule, rateChartModule] = await Promise.all([
-                import('./lib/3dview.svelte'),
-                import('./lib/RateChart.svelte'),
-            ]);
-            ThreeDViewComponent = threeDModule.default;
+            const rateChartModule = await import('./lib/RateChart.svelte');
             RateChartComponent = rateChartModule.default;
         } catch (error) {
-            console.error('Failed to load UI modules:', error);
+            console.error('Failed to load rate chart module:', error);
+        }
+    }
+
+    async function loadThreeDViewModule() {
+        if (ThreeDViewComponent) return;
+        try {
+            const threeDModule = await import('./lib/3dview.svelte');
+            ThreeDViewComponent = threeDModule.default;
+        } catch (error) {
+            console.error('Failed to load 3D view module:', error);
         }
     }
 
     onMount(() => {
         setupWorker();
-        loadUiModules();
+        loadRateChartModule();
         loadBenchmarkResults();
     });
+
+    $: if (!ThreeDViewComponent && (gridStateRaw || history.length > 0)) {
+        loadThreeDViewModule();
+    }
 
     onDestroy(() => {
         stopPlaying();
@@ -807,7 +817,7 @@
             />
         {:else}
             <div style="height:600px; border:1px solid #ddd; background:#fff; display:flex; align-items:center; justify-content:center; color:#666; font-size:12px;">
-                Loading 3D view…
+                <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
             </div>
         {/if}
     </div>

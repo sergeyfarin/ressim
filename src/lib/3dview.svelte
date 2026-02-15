@@ -1,8 +1,27 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
-    import * as THREE from 'three';
+    import {
+        AmbientLight,
+        BoxGeometry,
+        Color,
+        CylinderGeometry,
+        DirectionalLight,
+        EdgesGeometry,
+        Group,
+        InstancedMesh,
+        LineBasicMaterial,
+        LineSegments,
+        Matrix4,
+        Mesh,
+        MeshStandardMaterial,
+        PerspectiveCamera,
+        Raycaster,
+        Scene,
+        Vector2,
+        WebGLRenderer,
+    } from 'three';
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-    import type { InstancedMesh as ThreeInstancedMesh, PerspectiveCamera as ThreePerspectiveCamera } from 'three';
+    import type { Material } from 'three';
 
     type GridCell = {
         pressure?: number;
@@ -31,13 +50,13 @@
     export let legendPercentileLow = 5;
     export let legendPercentileHigh = 95;
 
-    let renderer: THREE.WebGLRenderer | null = null;
-    let scene: THREE.Scene | null = null;
+    let renderer: WebGLRenderer | null = null;
+    let scene: Scene | null = null;
     let controls: OrbitControls | null = null;
-    let camera: ThreePerspectiveCamera | null = null;
-    let instancedMesh: ThreeInstancedMesh | null = null;
-    let wireframeGroup: THREE.Group | null = null;
-    let wellsGroup: THREE.Group | null = null;
+    let camera: PerspectiveCamera | null = null;
+    let instancedMesh: InstancedMesh | null = null;
+    let wireframeGroup: Group | null = null;
+    let wellsGroup: Group | null = null;
     let animationId: number | null = null;
     let legendCanvas: HTMLCanvasElement | null = null;
     let topRightLegendCanvas: HTMLCanvasElement | null = null;
@@ -51,14 +70,14 @@
     let tooltipX = 0;
     let tooltipY = 0;
     let tooltipContent = '';
-    let raycaster = new THREE.Raycaster();
-    let mouse = new THREE.Vector2();
+    let raycaster = new Raycaster();
+    let mouse = new Vector2();
     let tooltipRafId: number | null = null;
     let latestMouseEvent: MouseEvent | null = null;
 
     // Helpers used in instancing and color mapping
-    const tmpMatrix = new THREE.Matrix4();
-    const tmpColor = new THREE.Color();
+    const tmpMatrix = new Matrix4();
+    const tmpColor = new Color();
 
     // Fixed color ranges per property to keep legend stable
     const fixedRanges: Record<PropertyKey, { min: number; max: number }> = {
@@ -207,24 +226,24 @@
         const width = canvasContainer?.clientWidth ?? 800;
         const height = canvasContainer?.clientHeight ?? 600;
 
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf6f6f6);
+        scene = new Scene();
+        scene.background = new Color(0xf6f6f6);
 
         // Add lights for MeshStandardMaterial to show colors
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        const ambientLight = new AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        const directionalLight = new DirectionalLight(0xffffff, 0.6);
         directionalLight.position.set(5, 10, 7);
         scene.add(directionalLight);    
         
         const gridSize = Math.max(nx, ny, nz)*4.5;
-        const newCamera = new THREE.PerspectiveCamera(
+        const newCamera = new PerspectiveCamera(
             7, 
             1, 
             10, 
             1000
-        ) as ThreePerspectiveCamera;
+        );
         
         // Position camera at an angle to see 3D depth
         newCamera.position.set(gridSize * 1.2, -gridSize * 1.8, gridSize * 0.8);
@@ -233,7 +252,7 @@
     
         camera = newCamera;
 
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(width, height, false);
         renderer.setClearColor(0xf6f6f6);
@@ -276,7 +295,7 @@
 
         if (w === 0 || h === 0) return; // Avoid resizing to zero
         
-        const perspectiveCamera = camera as THREE.PerspectiveCamera;
+        const perspectiveCamera = camera as PerspectiveCamera;
         perspectiveCamera.aspect = w / h;
         perspectiveCamera.updateProjectionMatrix();
         renderer.setSize(w, h, false);
@@ -379,9 +398,9 @@
         if (wireframeGroup) {
             scene.remove(wireframeGroup);
             wireframeGroup.traverse((child) => {
-                if (child instanceof THREE.LineSegments) {
+                if (child instanceof LineSegments) {
                     child.geometry.dispose();
-                    (child.material as THREE.Material).dispose();
+                    (child.material as Material).dispose();
                 }
             });
             wireframeGroup = null;
@@ -389,7 +408,7 @@
 
         // Initialize wells group if not already done
         if (!wellsGroup) {
-            wellsGroup = new THREE.Group();
+            wellsGroup = new Group();
             scene.add(wellsGroup);
         } else {
             wellsGroup.clear();
@@ -399,21 +418,21 @@
         if (total === 0) return;
 
         const boxSize = 1.0;
-        const geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+        const geometry = new BoxGeometry(boxSize, boxSize, boxSize);
         
         // Use per-instance colors
-        const material = new THREE.MeshStandardMaterial({ 
+        const material = new MeshStandardMaterial({ 
             color: 0xffffff,
             roughness: 0.8,
             metalness: 0.0,
             wireframe: false
         });
 
-        const mesh = new THREE.InstancedMesh(geometry, material, total) as ThreeInstancedMesh;
+        const mesh = new InstancedMesh(geometry, material, total);
         instancedMesh = mesh;
 
         // Assign a default per-instance color (medium gray)
-        const defaultColor = new THREE.Color(0x888888);
+        const defaultColor = new Color(0x888888);
 
         let idx = 0;
         const xOff = (nx - 1) * 0.5;
@@ -437,18 +456,18 @@
         scene.add(mesh);
 
         // Create a single wireframe outline for the whole reservoir volume
-        wireframeGroup = new THREE.Group();
-        const reservoirGeometry = new THREE.BoxGeometry(nx * boxSize, ny * boxSize, nz * boxSize);
-        const edgesGeometry = new THREE.EdgesGeometry(reservoirGeometry);
+        wireframeGroup = new Group();
+        const reservoirGeometry = new BoxGeometry(nx * boxSize, ny * boxSize, nz * boxSize);
+        const edgesGeometry = new EdgesGeometry(reservoirGeometry);
         reservoirGeometry.dispose();
-        const lineMaterial = new THREE.LineBasicMaterial({ 
+        const lineMaterial = new LineBasicMaterial({ 
             color: 0x000000,
             transparent: true,
             opacity: 0.6,
             depthTest: true,
             depthWrite: false
         });
-        const reservoirEdges = new THREE.LineSegments(edgesGeometry, lineMaterial);
+        const reservoirEdges = new LineSegments(edgesGeometry, lineMaterial);
         reservoirEdges.position.set(0, 0, 0);
         wireframeGroup.add(reservoirEdges);
         scene.add(wireframeGroup);
@@ -542,9 +561,9 @@
         // Remove old wells
         scene.remove(wellsGroup);
         wellsGroup.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
+            if (child instanceof Mesh) {
                 child.geometry.dispose();
-                (child.material as THREE.Material).dispose();
+                (child.material as Material).dispose();
             }
         });
         wellsGroup.clear();
@@ -585,9 +604,9 @@
                 const wellRadius = 0.15;
                 const wellHeight = 10.0;
 
-                const wellCylinder = new THREE.Mesh(
-                    new THREE.CylinderGeometry(wellRadius, wellRadius, wellHeight, 16),
-                    new THREE.MeshStandardMaterial({
+                const wellCylinder = new Mesh(
+                    new CylinderGeometry(wellRadius, wellRadius, wellHeight, 16),
+                    new MeshStandardMaterial({
                         color: 0x8B4513,
                         roughness: 0.6,
                         metalness: 0.3,

@@ -42,5 +42,17 @@ export default defineConfig({
   build: {
     outDir: 'dist/ressim',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/three')) {
+            return 'vendor-three'
+          }
+          if (id.includes('node_modules/chart.js')) {
+            return 'vendor-chartjs'
+          }
+        },
+      },
+    },
   },
 })
