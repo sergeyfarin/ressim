@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run build:wasm && vite",
+    "predev": "npm run build:wasm",
+    "dev": "vite",
     "bench:export": "node scripts/export-benchmarks.mjs",
     "prebuild": "npm run bench:export",
     "build": "vite build",

@@ -179,6 +179,9 @@
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
+    let legendRangeMode: 'fixed' | 'percentile' = 'fixed';
+    let legendPercentileLow = 5;
+    let legendPercentileHigh = 95;
 
     const scenarioPresets = {
         custom: null,
@@ -743,6 +746,25 @@
                         <option value="porosity">Porosity</option>
                     </select>
                 </label>
+                <label class="form-control w-full mt-2">
+                    <span class="label-text">Legend Range Mode</span>
+                    <select class="select select-bordered" bind:value={legendRangeMode}>
+                        <option value="fixed">Fixed</option>
+                        <option value="percentile">Percentile (adaptive)</option>
+                    </select>
+                </label>
+                {#if legendRangeMode === 'percentile'}
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <label class="form-control w-full">
+                            <span class="label-text">Low Percentile (%)</span>
+                            <input type="number" min="0" max="99" step="1" class="input input-bordered" bind:value={legendPercentileLow} />
+                        </label>
+                        <label class="form-control w-full">
+                            <span class="label-text">High Percentile (%)</span>
+                            <input type="number" min="1" max="100" step="1" class="input input-bordered" bind:value={legendPercentileHigh} />
+                        </label>
+                    </div>
+                {/if}
                 <div>time: {simTime}</div>
                 <div>recorded steps: {history.length}</div>
                 <div>worker: {workerRunning ? 'running' : 'idle'}</div>
@@ -776,6 +798,9 @@
                 nz={nz}
                 gridState={gridStateRaw}
                 showProperty={showProperty}
+                legendRangeMode={legendRangeMode}
+                legendPercentileLow={legendPercentileLow}
+                legendPercentileHigh={legendPercentileHigh}
                 history={history}
                 currentIndex={currentIndex}
                 wellState={wellStateRaw}

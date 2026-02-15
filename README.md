@@ -1,59 +1,174 @@
-# Svelte + Vite
+# ResSim: Browser-Based Reservoir Simulator
 
-## Model Validation Benchmarks (P4-1)
+ResSim is a 3D browser reservoir simulation app that combines a Rust/WASM simulation core with a Svelte + Vite frontend. It focuses on practical two-phase (oil/water) flow experimentation, interactive visualization, and benchmark-based credibility checks.
 
-Two published-reference two-phase benchmarks are now part of the simulator regression suite using Buckley-Leverett theory as baseline.
+## What the app does
 
-- Reference benchmark details: [docs/P4_TWO_PHASE_BENCHMARKS.md](docs/P4_TWO_PHASE_BENCHMARKS.md)
-- Acceptance tolerance policy:
-	- Breakthrough pore-volume relative error <= `25%` for BL-Case-A
-	- Breakthrough pore-volume relative error <= `30%` for BL-Case-B
+- Simulates pressure and saturation evolution on a 3D Cartesian grid.
+- Supports configurable rock/fluid properties, capillary pressure, gravity toggle, and permeability scenarios.
+- Renders a real-time 3D property view (Three.js), production-rate trends, and Buckley-Leverett analytical comparison.
+- Records simulation history and supports replay for time-step inspection.
+- Publishes benchmark summaries from generated artifacts so frontend values stay in sync with tests.
 
-Run benchmark checks with:
+## Main features
+
+### Simulation & physics
+
+- Rust core compiled to WebAssembly (`src/lib/ressim`).
+- SCAL controls (`S_wc`, `S_or`, Corey exponents), capillary pressure (`P_entry`, `lambda`), and gravity option.
+- Permeability setup modes:
+	- `default`
+	- `random` (optional deterministic seed)
+	- `perLayer` (layer-wise CSV input)
+
+### Visualization & analysis
+
+- 3D grid view with selectable properties:
+	- Pressure
+	- Water/Oil saturation
+	- Permeability (`x`, `y`, `z`)
+	- Porosity
+- Rate chart with analytical Buckley-Leverett comparison.
+- Scenario presets for reproducible demonstrations.
+- Worker-based simulation stepping to keep UI responsive.
+
+### Validation & credibility
+
+- P4 Buckley-Leverett benchmark coverage with documented tolerances.
+- Artifact pipeline: benchmark JSON is generated from test output and loaded by frontend.
+- Baseline/Refined benchmark mode comparison shown in-app.
+
+See:
+
+- [docs/P4_TWO_PHASE_BENCHMARKS.md](docs/P4_TWO_PHASE_BENCHMARKS.md)
+- [docs/P4_SUMMARY.md](docs/P4_SUMMARY.md)
+- [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
+
+## Legend mode (Fixed vs Percentile)
+
+In the **Visualization** panel:
+
+1. Choose **Legend Range Mode**.
+2. Use **Fixed** for stable, property-specific ranges (best for cross-run comparisons).
+3. Use **Percentile (adaptive)** to emphasize contrast in the current dataset.
+4. When using percentile mode, set **Low Percentile** and **High Percentile** bounds.
+
+Defaults:
+
+- Mode: `Fixed`
+- Percentile bounds (when enabled): `P5` to `P95`
+
+Legend labels now include:
+
+- Clear property name
+- Unit (`bar`, `mD`, or `fraction`)
+- Active mode (`Fixed` or selected percentile window)
+
+## Quick start
+
+### Prerequisites
+
+- Node.js + npm
+- Rust toolchain (`cargo`)
+- `wasm-pack`
+
+### Install
 
 ```bash
+npm install
+```
+
+### Run locally
+
+```bash
+npm run dev
+```
+
+### Build production
+
+```bash
+npm run build
+```
+
+Notes:
+
+- `npm run build` runs `bench:export` first, generating `public/benchmark-results.json`.
+- Known non-blocking warnings: DaisyUI CSS `@property` compatibility warning and large JS chunk warning.
+
+## FAQ / Troubleshooting
+
+- **What does `npm run dev` do?**
+	- npm runs `predev` first (`npm run build:wasm`), then starts Vite:
+		```bash
+		npm run dev
+		```
+	- No Bun runtime is required.
+
+- **`wasm-pack: command not found`**
+	- Install via Cargo:
+		```bash
+		cargo install wasm-pack
+		```
+	- Confirm installation:
+		```bash
+		wasm-pack --version
+		```
+
+- **WASM build fails due to missing target**
+	- Add the required Rust target:
+		```bash
+		rustup target add wasm32-unknown-unknown
+		```
+
+- **Rust toolchain not found (`cargo` missing)**
+	- Install Rust using `rustup` from https://rustup.rs/.
+	- Re-open terminal and verify with:
+		```bash
+		cargo --version
+		```
+
+- **Large chunk warning during `npm run build`**
+	- This is currently expected and non-blocking for this project state.
+
+- **DaisyUI `@property` CSS warning**
+	- This is also expected in current build logs and does not block output generation.
+
+## Useful commands
+
+```bash
+# Build WASM package only
+npm run build:wasm
+
+# Export benchmark artifact JSON
+npm run bench:export
+
+# Preview production build
+npm run preview
+
+# Run benchmark test directly from Rust core
 cd src/lib/ressim
 cargo test benchmark_buckley_leverett -- --nocapture
 ```
 
-This template should help get you started developing with Svelte in Vite.
+## Project layout
 
-## Recommended IDE Setup
+- `src/App.svelte` — main UI controls, playback, benchmark table.
+- `src/lib/3dview.svelte` — Three.js reservoir rendering + legend.
+- `src/lib/RateChart.svelte` — production/analytical charting.
+- `src/lib/FractionalFlow.svelte` — analytical Buckley-Leverett support.
+- `src/lib/sim.worker.js` — worker bridge between UI and WASM simulator.
+- `src/lib/ressim/src/lib.rs` — Rust simulator core.
+- `scripts/export-benchmarks.mjs` — benchmark artifact generation.
+- `public/benchmark-results.json` — generated benchmark summary consumed by frontend.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Current status & roadmap summary
 
-## Need an official Svelte framework?
+From `TODO_2026.md`:
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+- Completed: P0 and P1 must-haves, all P3 items, and all P4 items (`P4-1` to `P4-5`).
+- Recently completed: adaptive legend mode (`P4-4`) and benchmark artifact automation (`P4-5`).
+- Open long-horizon items:
+	- `NTH-2`: extend to three-phase flow (oil/water/gas)
+	- `NTH-3`: optional aquifer coupling model
 
-## Technical considerations
-
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `checkJs` in the JS template?**
-
-It is likely that most cases of changing variable types in runtime are likely to be accidental, rather than deliberate. This provides advanced typechecking out of the box. Should you like to take advantage of the dynamically-typed nature of JavaScript, it is trivial to change the configuration.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/sveltejs/svelte-hmr/tree/master/packages/svelte-hmr#preservation-of-local-state).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```js
-// store.js
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
-```
+For full details, see [TODO_2026.md](TODO_2026.md).

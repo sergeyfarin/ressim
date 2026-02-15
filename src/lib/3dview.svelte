@@ -27,6 +27,9 @@
     export let history: HistoryEntry[] = [];
     export let currentIndex = -1;
     export let wellState: unknown = null;
+    export let legendRangeMode: 'fixed' | 'percentile' = 'fixed';
+    export let legendPercentileLow = 5;
+    export let legendPercentileHigh = 95;
 
     let renderer: THREE.WebGLRenderer | null = null;
     let scene: THREE.Scene | null = null;
@@ -67,6 +70,64 @@
         permeability_z: { min: 0, max: 1000 },
         porosity: { min: 0, max: 0.4 },
     };
+
+    const propertyDisplay: Record<PropertyKey, { label: string; unit: string; decimals: number }> = {
+        pressure: { label: 'Pressure', unit: 'bar', decimals: 2 },
+        saturation_water: { label: 'Water Saturation', unit: 'fraction', decimals: 3 },
+        saturation_oil: { label: 'Oil Saturation', unit: 'fraction', decimals: 3 },
+        permeability_x: { label: 'Permeability X', unit: 'mD', decimals: 1 },
+        permeability_y: { label: 'Permeability Y', unit: 'mD', decimals: 1 },
+        permeability_z: { label: 'Permeability Z', unit: 'mD', decimals: 1 },
+        porosity: { label: 'Porosity', unit: 'fraction', decimals: 3 },
+    };
+
+    function clamp(value: number, min: number, max: number): number {
+        return Math.min(max, Math.max(min, value));
+    }
+
+    function percentile(sortedValues: number[], p: number): number {
+        if (sortedValues.length === 0) return NaN;
+        const bounded = clamp(p, 0, 100);
+        const idx = (bounded / 100) * (sortedValues.length - 1);
+        const lo = Math.floor(idx);
+        const hi = Math.ceil(idx);
+        if (lo === hi) return sortedValues[lo];
+        const t = idx - lo;
+        return sortedValues[lo] * (1 - t) + sortedValues[hi] * t;
+    }
+
+    function formatLegendValue(property: PropertyKey, value: number): string {
+        const decimals = propertyDisplay[property]?.decimals ?? 3;
+        return Number.isFinite(value) ? value.toFixed(decimals) : 'n/a';
+    }
+
+    function getPropertyDisplay(property: PropertyKey): { label: string; unit: string; decimals: number } {
+        return propertyDisplay[property] ?? { label: 'Property', unit: '-', decimals: 3 };
+    }
+
+    function computeLegendRange(property: PropertyKey, values: number[]): { min: number; max: number } {
+        const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
+        if (legendRangeMode !== 'percentile') {
+            return fixed;
+        }
+
+        const finiteValues = values.filter((value) => Number.isFinite(value));
+        if (finiteValues.length < 2) {
+            return fixed;
+        }
+
+        const sorted = [...finiteValues].sort((a, b) => a - b);
+        const lowP = clamp(legendPercentileLow, 0, 99);
+        const highP = clamp(Math.max(legendPercentileHigh, lowP + 1), 1, 100);
+        const pLow = percentile(sorted, lowP);
+        const pHigh = percentile(sorted, highP);
+
+        if (!Number.isFinite(pLow) || !Number.isFinite(pHigh) || pHigh <= pLow) {
+            return fixed;
+        }
+
+        return { min: pLow, max: pHigh };
+    }
 
     onMount(() => {
         try {
@@ -450,14 +511,13 @@
             values.push(rawValue);
         }
 
-        // Use fixed ranges for consistent color mapping
-        const range = fixedRanges[property] ?? { min: 0, max: 1 };
-        let min = range.min;
-        let max = range.max;
+        const range = computeLegendRange(property, values);
+        const min = range.min;
+        const max = range.max;
 
         legendMin = min;
         legendMax = max;
-        drawLegend(min, max);
+        drawLegend(min, max, property);
 
         for (let i = 0; i < values.length && i < instancedMesh.count; i++) {
             const value = values[i];
@@ -561,7 +621,7 @@
         }
     }
 
-    function drawLegend(min: number, max: number): void {
+    function drawLegend(min: number, max: number, property: PropertyKey): void {
         if (!legendCanvas) return;
         const ctx = legendCanvas.getContext('2d');
         if (!ctx) return;
@@ -586,8 +646,8 @@
         ctx.font = '11px sans-serif';
         ctx.fillStyle = '#111';
         ctx.textBaseline = 'top';
-        ctx.fillText(min.toFixed(3), 2, h + 2);
-        const maxText = max.toFixed(3);
+        ctx.fillText(formatLegendValue(property, min), 2, h + 2);
+        const maxText = formatLegendValue(property, max);
         const textWidth = ctx.measureText(maxText).width;
         ctx.fillText(maxText, w - textWidth - 2, h + 2);
         
@@ -616,21 +676,19 @@
                 ctx2.fillStyle = '#000';
                 ctx2.textBaseline = 'bottom';
                 ctx2.textAlign = 'left';
-                ctx2.fillText(min.toFixed(2), 4, h2 - 4);
+                ctx2.fillText(formatLegendValue(property, min), 4, h2 - 4);
                 ctx2.textAlign = 'right';
-                ctx2.fillText(max.toFixed(2), w2 - 4, h2 - 4);
+                ctx2.fillText(formatLegendValue(property, max), w2 - 4, h2 - 4);
                 
                 ctx2.font = 'bold 9px sans-serif';
                 ctx2.fillStyle = '#333';
                 ctx2.textAlign = 'center';
-                let propLabel = 'Pressure';
-                if (showProperty === 'saturation_water') propLabel = 'Water Sat.';
-                else if (showProperty === 'saturation_oil') propLabel = 'Oil Sat.';
-                else if (showProperty === 'permeability_x') propLabel = 'Perm X';
-                else if (showProperty === 'permeability_y') propLabel = 'Perm Y';
-                else if (showProperty === 'permeability_z') propLabel = 'Perm Z';
-                else if (showProperty === 'porosity') propLabel = 'Porosity';
-                ctx2.fillText(propLabel, w2 / 2, 10);
+                const display = getPropertyDisplay(property);
+                const shortMode = legendRangeMode === 'percentile'
+                    ? `P${clamp(legendPercentileLow, 0, 99)}–P${clamp(Math.max(legendPercentileHigh, legendPercentileLow + 1), 1, 100)}`
+                    : 'Fixed';
+                ctx2.fillText(`${display.label} (${display.unit})`, w2 / 2, 10);
+                ctx2.fillText(shortMode, w2 / 2, 20);
             }
         }
     }
@@ -652,8 +710,17 @@
     <div class="legend" style="margin-left:4px;">
         <canvas bind:this={legendCanvas} width="200" height="18" style="width:200px;height:14px"></canvas>
         <div style="display:flex; flex-direction:column; margin-left:8px;">
-            <div style="color:#222; font-size:12px">{showProperty === 'pressure' ? 'Pressure' : 'Saturation'}</div>
-            <div style="color:#444; font-size:11px">min {legendMin.toFixed(3)} — max {legendMax.toFixed(3)}</div>
+            <div style="color:#222; font-size:12px">
+                {getPropertyDisplay(showProperty).label} ({getPropertyDisplay(showProperty).unit})
+            </div>
+            <div style="color:#444; font-size:11px">
+                {legendRangeMode === 'percentile'
+                    ? `Percentile P${clamp(legendPercentileLow, 0, 99)}–P${clamp(Math.max(legendPercentileHigh, legendPercentileLow + 1), 1, 100)}`
+                    : 'Fixed range'}
+            </div>
+            <div style="color:#444; font-size:11px">
+                min {formatLegendValue(showProperty, legendMin)} — max {formatLegendValue(showProperty, legendMax)}
+            </div>
         </div>
     </div>
 </div>
