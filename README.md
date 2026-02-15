@@ -1,5 +1,21 @@
 # Svelte + Vite
 
+## Model Validation Benchmarks (P4-1)
+
+Two published-reference two-phase benchmarks are now part of the simulator regression suite using Buckley-Leverett theory as baseline.
+
+- Reference benchmark details: [docs/P4_TWO_PHASE_BENCHMARKS.md](docs/P4_TWO_PHASE_BENCHMARKS.md)
+- Acceptance tolerance policy:
+	- Breakthrough pore-volume relative error <= `25%` for BL-Case-A
+	- Breakthrough pore-volume relative error <= `30%` for BL-Case-B
+
+Run benchmark checks with:
+
+```bash
+cd src/lib/ressim
+cargo test benchmark_buckley_leverett -- --nocapture
+```
+
 This template should help get you started developing with Svelte in Vite.
 
 ## Recommended IDE Setup

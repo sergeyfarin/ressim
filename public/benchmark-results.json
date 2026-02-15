@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-02-15T16:54:53.370Z",
+  "source": "cargo-test",
+  "command": "cargo test benchmark_buckley_leverett -- --nocapture",
+  "defaultMode": "baseline",
+  "modes": {
+    "baseline": [
+      {
+        "name": "BL-Case-A",
+        "pvBtSim": 0.5239,
+        "pvBtRef": 0.586,
+        "relError": 0.106,
+        "tolerance": 0.25,
+        "passes": true
+      },
+      {
+        "name": "BL-Case-B",
+        "pvBtSim": 0.4768,
+        "pvBtRef": 0.5074,
+        "relError": 0.06,
+        "tolerance": 0.3,
+        "passes": true
+      }
+    ],
+    "refined": [
+      {
+        "name": "BL-Case-A-Refined",
+        "pvBtSim": 0.5646,
+        "pvBtRef": 0.586,
+        "relError": 0.036,
+        "tolerance": 0.25,
+        "passes": true
+      },
+      {
+        "name": "BL-Case-B-Refined",
+        "pvBtSim": 0.4905,
+        "pvBtRef": 0.5074,
+        "relError": 0.033,
+        "tolerance": 0.3,
+        "passes": true
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "BL-Case-A",
+      "pvBtSim": 0.5239,
+      "pvBtRef": 0.586,
+      "relError": 0.106,
+      "tolerance": 0.25,
+      "passes": true
+    },
+    {
+      "name": "BL-Case-B",
+      "pvBtSim": 0.4768,
+      "pvBtRef": 0.5074,
+      "relError": 0.06,
+      "tolerance": 0.3,
+      "passes": true
+    }
+  ]
+}

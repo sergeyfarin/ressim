@@ -39,9 +39,11 @@
     }
 
     function dfw_dSw(s_w: number, ds: number = 1e-6) {
-        if (s_w < rockProps.s_wc || s_w > 1 - rockProps.s_or) return 0;
-        const fw_plus = fractionalFlow(s_w + ds);
-        const fw_minus = fractionalFlow(s_w - ds);
+        const sMin = rockProps.s_wc;
+        const sMax = 1 - rockProps.s_or;
+        if (s_w < sMin || s_w > sMax) return 0;
+        const fw_plus = fractionalFlow(Math.min(sMax, s_w + ds));
+        const fw_minus = fractionalFlow(Math.max(sMin, s_w - ds));
         return (fw_plus - fw_minus) / (2 * ds);
     }
 
@@ -50,9 +52,9 @@
         const initial_sw = s_wc;
 
         // Find shock front saturation (Sw_f) using graphical tangent method
-        let sw_f = 0;
+        let sw_f = initial_sw;
         let max_slope = 0;
-        for (let s = initial_sw; s <= 1 - s_or; s += 0.001) {
+        for (let s = initial_sw + 5e-4; s <= 1 - s_or; s += 5e-4) {
             const fw = fractionalFlow(s);
             const slope = fw / (s - initial_sw);
             if (slope > max_slope) {
@@ -79,18 +81,19 @@
                 // After breakthrough, find saturation at the outlet (x=L)
                 const v_t = injectionRate / (reservoir.area * reservoir.porosity);
                 
-                let s_w_at_outlet = 1 - s_or;
-                let found_sw = false;
+                let s_w_at_outlet = sw_f;
                 // Find Sw at x=L by solving x/t = v_t * dfw/dSw for Sw
                 // L/t = v_t * dfw/dSw  => dfw/dSw = (L/t) / v_t
                 const target_dfw = (reservoir.length / t) / v_t;
+                let bestDelta = Number.POSITIVE_INFINITY;
 
-                // Search for Sw that has this derivative, starting from shock front saturation
-                for (let s = sw_f; s <= 1 - s_or; s += 0.001) {
-                    if (dfw_dSw(s) >= target_dfw) {
+                // Search Sw that minimizes derivative mismatch.
+                for (let s = sw_f; s <= 1 - s_or; s += 5e-4) {
+                    const derivative = dfw_dSw(s, 1e-4);
+                    const delta = Math.abs(derivative - target_dfw);
+                    if (delta < bestDelta) {
+                        bestDelta = delta;
                         s_w_at_outlet = s;
-                        found_sw = true;
-                        break;
                     }
                 }
                 

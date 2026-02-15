@@ -1,0 +1,36 @@
+name: Benchmark Artifact
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  publish-benchmark-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run build (includes prebuild benchmark export)
+        run: npm run build
+
+      - name: Upload benchmark-results.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-json
+          path: public/benchmark-results.json
+          if-no-files-found: error
+          retention-days: 14

@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run build:wasm && vite",
+    "bench:export": "node scripts/export-benchmarks.mjs",
+    "prebuild": "npm run bench:export",
     "build": "vite build",
     "preview": "vite preview",
     "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore"

@@ -66,6 +66,14 @@ Comprehensive physics analysis:
 - Priority-ordered improvements
 - **Perfect for:** Physics validation, planning enhancements
 
+#### [P4_TWO_PHASE_BENCHMARKS.md](P4_TWO_PHASE_BENCHMARKS.md)
+Published-reference benchmark validation:
+- Buckley-Leverett reference basis
+- Implemented regression benchmark cases
+- Acceptance tolerance thresholds
+- Latest measured mismatch values
+- **Perfect for:** Validation evidence, release gates
+
 ### 🎯 Purpose-Based Navigation
 
 #### I'm a **User** wanting to set up a simulation
@@ -192,7 +200,7 @@ A: No, simulator uses oil-field units. Conversion factors available in [UNIT_REF
 ## Next Steps
 
 ### Short Term
-- [ ] Test simulator with benchmark problems
+- [x] Test simulator with benchmark problems
 - [ ] Validate output units in frontend
 - [ ] Add unit labels to visualization tooltips
 

@@ -51,6 +51,109 @@
     let rateHistory = [];
     let analyticalProductionData = [];
 
+    type BenchmarkRow = {
+        name: string;
+        pvBtSim: number;
+        pvBtRef: number;
+        relError: number;
+        tolerance: number;
+    };
+
+    type BenchmarkMode = 'baseline' | 'refined';
+    type BenchmarkModes = Record<BenchmarkMode, BenchmarkRow[]>;
+
+    type WorkerProfile = {
+        batchMs: number;
+        avgStepMs: number;
+        simStepMs: number;
+        extractMs: number;
+        snapshotsSent: number;
+    };
+
+    type ProfileStats = {
+        batchMs: number;
+        avgStepMs: number;
+        extractMs: number;
+        renderApplyMs: number;
+        snapshotsSent: number;
+    };
+
+    type BenchmarkArtifact = {
+        generatedAt?: string;
+        source?: string;
+        command?: string;
+        defaultMode?: BenchmarkMode;
+        modes?: Partial<BenchmarkModes>;
+        cases?: BenchmarkRow[];
+    };
+
+    const fallbackBenchmarkModes: BenchmarkModes = {
+        baseline: [
+            {
+                name: 'BL-Case-A',
+                pvBtSim: 0.5239,
+                pvBtRef: 0.5860,
+                relError: 0.106,
+                tolerance: 0.25,
+            },
+            {
+                name: 'BL-Case-B',
+                pvBtSim: 0.4768,
+                pvBtRef: 0.5074,
+                relError: 0.060,
+                tolerance: 0.30,
+            },
+        ],
+        refined: [
+            {
+                name: 'BL-Case-A-Refined',
+                pvBtSim: 0.5649,
+                pvBtRef: 0.5860,
+                relError: 0.036,
+                tolerance: 0.25,
+            },
+            {
+                name: 'BL-Case-B-Refined',
+                pvBtSim: 0.4907,
+                pvBtRef: 0.5074,
+                relError: 0.033,
+                tolerance: 0.30,
+            },
+        ],
+    };
+
+    let benchmarkModes: BenchmarkModes = {
+        baseline: [...fallbackBenchmarkModes.baseline],
+        refined: [...fallbackBenchmarkModes.refined],
+    };
+    let selectedBenchmarkMode: BenchmarkMode = 'baseline';
+    let benchmarkSource = 'fallback';
+    let benchmarkGeneratedAt = '';
+
+    const benchmarkModeLabel: Record<BenchmarkMode, string> = {
+        baseline: 'Baseline (nx=24, dt=0.5 day)',
+        refined: 'Refined (nx=96, dt=0.125 day)',
+    };
+
+    $: benchmarkRows = benchmarkModes[selectedBenchmarkMode] ?? [];
+
+    $: baselineRelErrByCase = new Map(
+        (benchmarkModes.baseline ?? []).map((row) => [row.name.replace('-Refined', ''), row.relError])
+    );
+
+    $: benchmarkRowsWithStatus = benchmarkRows.map((row) => ({
+        ...row,
+        passes: row.relError <= row.tolerance,
+        improvementVsBaselinePp: (() => {
+            const baseKey = row.name.replace('-Refined', '');
+            const baselineRelErr = baselineRelErrByCase.get(baseKey);
+            if (!Number.isFinite(baselineRelErr)) return null;
+            return (baselineRelErr - row.relError) * 100.0;
+        })(),
+    }));
+
+    $: allBenchmarksPass = benchmarkRowsWithStatus.every((row) => row.passes);
+
     // History / replay
     let history = [];
     let currentIndex = -1;
@@ -60,7 +163,7 @@
     const HISTORY_RECORD_INTERVAL = 2;
     const MAX_HISTORY_ENTRIES = 300;
     let showDebugState = false;
-    let profileStats = {
+    let profileStats: ProfileStats = {
         batchMs: 0,
         avgStepMs: 0,
         extractMs: 0,
@@ -145,7 +248,7 @@
         currentIndex = history.length - 1;
     }
 
-    function updateProfileStats(profile = {}, renderApplyMs = 0) {
+    function updateProfileStats(profile: Partial<WorkerProfile> = {}, renderApplyMs = 0) {
         profileStats = {
             batchMs: Number(profile.batchMs ?? profileStats.batchMs ?? 0),
             avgStepMs: Number(profile.avgStepMs ?? profile.simStepMs ?? profileStats.avgStepMs ?? 0),
@@ -223,6 +326,7 @@
     onMount(() => {
         setupWorker();
         loadUiModules();
+        loadBenchmarkResults();
     });
 
     onDestroy(() => {
@@ -270,6 +374,45 @@
             }
         });
         runSteps();
+    }
+
+    async function loadBenchmarkResults() {
+        try {
+            const response = await fetch('/benchmark-results.json', { cache: 'no-store' });
+            if (!response.ok) return;
+
+            const artifact = (await response.json()) as BenchmarkArtifact;
+            const normalizeRows = (rows: BenchmarkRow[] | undefined): BenchmarkRow[] => (rows ?? [])
+                .map((row) => ({
+                    name: String(row.name),
+                    pvBtSim: Number(row.pvBtSim),
+                    pvBtRef: Number(row.pvBtRef),
+                    relError: Number(row.relError),
+                    tolerance: Number(row.tolerance),
+                }))
+                .filter((row) =>
+                    row.name.length > 0 &&
+                    Number.isFinite(row.pvBtSim) &&
+                    Number.isFinite(row.pvBtRef) &&
+                    Number.isFinite(row.relError) &&
+                    Number.isFinite(row.tolerance)
+                );
+
+            const normalizedBaseline = normalizeRows(artifact.modes?.baseline ?? artifact.cases);
+            const normalizedRefined = normalizeRows(artifact.modes?.refined);
+
+            if (normalizedBaseline.length > 0) {
+                benchmarkModes = {
+                    baseline: normalizedBaseline,
+                    refined: normalizedRefined.length > 0 ? normalizedRefined : benchmarkModes.refined,
+                };
+                selectedBenchmarkMode = artifact.defaultMode ?? 'baseline';
+                benchmarkSource = artifact.source ? String(artifact.source) : 'artifact';
+                benchmarkGeneratedAt = artifact.generatedAt ? String(artifact.generatedAt) : '';
+            }
+        } catch (error) {
+            console.warn('Failed to load benchmark-results artifact, using fallback values.', error);
+        }
     }
 
     // function addWell() {
@@ -362,7 +505,7 @@
 <FractionalFlow
     rockProps={{ s_wc, s_or, n_w, n_o }}
     fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
-    timeHistory={history.map(h => h.time)}
+    timeHistory={rateHistory.map((point) => point.time)}
     injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
     reservoir={{ length: nx * 10, area: ny * 10 * nz * 1, porosity: 0.2 }}
     on:analyticalData={(e) => analyticalProductionData = e.detail.production}
@@ -614,4 +757,58 @@
             </div>
         </div>
     {/if}
+
+    <div class="bg-base-100 p-4 mt-4 rounded-lg shadow-sm">
+        <h3 class="text-xl font-semibold mb-2">P4-1 Benchmark Results</h3>
+        <p class="text-sm mb-3">Published-reference Buckley-Leverett comparison (analytical vs simulation).</p>
+        <div class="text-xs mb-3">Data source: {benchmarkSource}{benchmarkGeneratedAt ? `, generated: ${benchmarkGeneratedAt}` : ''}</div>
+        <div class="join mb-3">
+            <button
+                class="btn btn-sm join-item"
+                class:btn-active={selectedBenchmarkMode === 'baseline'}
+                on:click={() => selectedBenchmarkMode = 'baseline'}
+            >
+                Baseline
+            </button>
+            <button
+                class="btn btn-sm join-item"
+                class:btn-active={selectedBenchmarkMode === 'refined'}
+                on:click={() => selectedBenchmarkMode = 'refined'}
+            >
+                Refined
+            </button>
+        </div>
+        <div class="text-xs mb-3">Showing: {benchmarkModeLabel[selectedBenchmarkMode]}</div>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                    <tr>
+                        <th>Case</th>
+                        <th>PV_BT_sim</th>
+                        <th>PV_BT_ref</th>
+                        <th>Relative Error</th>
+                        <th>Improvement vs baseline</th>
+                        <th>Tolerance</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each benchmarkRowsWithStatus as row}
+                        <tr>
+                            <td>{row.name}</td>
+                            <td>{row.pvBtSim.toFixed(4)}</td>
+                            <td>{row.pvBtRef.toFixed(4)}</td>
+                            <td>{(row.relError * 100).toFixed(1)}%</td>
+                            <td>{row.improvementVsBaselinePp === null ? '-' : `${row.improvementVsBaselinePp.toFixed(1)} pp`}</td>
+                            <td>{(row.tolerance * 100).toFixed(1)}%</td>
+                            <td>{row.passes ? 'PASS' : 'FAIL'}</td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
+        </div>
+        <div class="text-sm mt-2">
+            Overall status: {allBenchmarksPass ? 'PASS' : 'FAIL'}
+        </div>
+    </div>
 </main>
