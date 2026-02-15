@@ -158,6 +158,6 @@
     }
 </script>
 
-<div class="chart-container" style="position: relative; height:40vh; width:80vw">
+<div class="chart-container" style="position: relative; height:100% ; width:100%;">
     <canvas bind:this={chartCanvas}></canvas>
 </div>

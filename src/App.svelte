@@ -14,7 +14,7 @@
     let ny = 10;
     let nz = 10;
     let delta_t_days = 0.25;
-    let steps = 400;
+    let steps = 5;
 
     // --- NEW STATE VARIABLES ---
 
@@ -32,8 +32,8 @@
     let permMode = 'default'; // 'default', 'random', 'perLayer'
     let minPerm = 50.0;
     let maxPerm = 200.0;
-    let layerPermsXStr = "100, 150, 50, 200, 120, 80, 90, 110, 130, 70";
-    let layerPermsYStr = "100, 150, 50, 200, 120, 80, 90, 110, 130, 70";
+    let layerPermsXStr = "100, 150, 50, 200, 120, 1000, 90, 110, 130, 70";
+    let layerPermsYStr = "100, 150, 50, 200, 120, 1000, 90, 110, 130, 70";
     let layerPermsZStr = "10, 15, 5, 20, 12, 8, 9, 11, 13, 7";
 
     // Well inputs
@@ -264,21 +264,19 @@
     <div class="grid grid-cols-2 gap-4">
         <div class="grid grid-cols-2 gap-4">
             <div class="bg-blue-200">
-                <h3>Reservoir Properties</h3>
-                
+                <h3>Reservoir Properties</h3>                
                 <div>
-                    
-                    <!-- <label class="form-control w-full"> -->
-                        <div class="label-text">Pressure</div>
-                        <div class=""> (psi) </div>
-                        <input type="number" step="10" class="input input-bordered w-1/3" bind:value={initialPressure} />
-                    <!-- </label> -->
+                    <br />
+                    <label class="form-control">
+                        <span class="label-text">Pressure (psi)</span>
+                        <input type="number" step="10" class="input input-bordered w-1/4" bind:value={initialPressure} />
+                    </label>
                 </div>
                 <div>
                     <br />
                     <label class="form-control">
-                        <span class="label-text w-1/2">Water Saturation</span>
-                        <input type="number" step="0.05" class="input input-bordered w-1/2" bind:value={initialSaturation} />
+                        <span class="label-text">Water Saturation</span>
+                        <input type="number" step="0.05" class="input input-bordered w-1/4" bind:value={initialSaturation} />
                     </label>
                 </div>
 
@@ -352,17 +350,16 @@
                     <input type="number" step="0.1" class="input input-bordered" bind:value={well_skin} />
                 </label>
             </div>
-            <div>
+            <!-- <div>
                 <h4>Stability</h4>
                 <label class="form-control w-full">
                     <span class="label-text">Max Saturation Change</span>
                     <input type="number" step="0.01" class="input input-bordered" bind:value={max_sat_change_per_step} />
                 </label>
-            </div>
-        </div>
-        <div class="controls">
+            </div> -->
+            <div class="controls">
             <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
-            <div>
+            <!-- <div>
                 <label class="form-control w-full">
                     <span class="label-text">nx</span>
                     <input type="number" min="1" class="input input-bordered" bind:value={nx} />
@@ -378,7 +375,7 @@
                 <div class="row">
                     <button class="btn btn-primary" on:click={initSimulator}>Init Simulator</button>
                 </div>
-            </div>
+            </div> -->
 
             <div>
                 <label class="form-control w-full">
@@ -389,14 +386,14 @@
                     <span class="label-text">steps</span>
                     <input type="number" min="1" class="input input-bordered" bind:value={steps} />
                 </label>
-                <div class="row">
+                <!-- <div class="row">
                     <button class="btn btn-secondary" on:click={stepOnce} disabled={!simulator}>Step & Record</button>
                     <button class="btn btn-secondary" on:click={runSteps} disabled={!simulator}>Run {steps} & Record</button>
-                </div>
+                </div> -->
             </div>
 
             <div>
-                <h4>Replay</h4>
+                <!-- <h4>Replay</h4>
                 <div class="row">
                     <button class="btn btn-outline" on:click={prev} disabled={history.length===0}>Prev</button>
                     <button class="btn btn-outline" on:click={togglePlay} disabled={history.length===0}>{playing ? 'Stop' : 'Play'}</button>
@@ -405,7 +402,7 @@
                         <span class="label-text">Speed</span>
                         <input type="number" min="0.1" step="0.1" class="input input-bordered" bind:value={playSpeed} />
                     </label>
-                </div>
+                </div> -->
                 <div style="display:flex; gap:0.5rem; align-items:center;">
                     <input type="range" class="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
                     <span style="min-width:80px;">Step: {currentIndex} / {history.length - 1}</span>
@@ -414,7 +411,6 @@
                     <div style="color:#666; font-size:12px;">Time: {history[currentIndex].time.toFixed(2)} days</div>
                 {/if}
             </div>
-
             <div>
                 <h4>Visualization</h4>
                 <label class="form-control w-full">
@@ -432,6 +428,10 @@
                 <div>time: {simTime}</div>
                 <div>recorded steps: {history.length}</div>
             </div>
+        </div>
+        
+
+            
         </div>
         <div class="row" style="margin-top: 1rem;">
             <RateChart {rateHistory} {analyticalProductionData} />
