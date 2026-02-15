@@ -43,6 +43,10 @@
 
     // Stability
     let max_sat_change_per_step = 0.1;
+    let gravityEnabled = false;
+    let capillaryEnabled = true;
+    let capillaryPEntry = 5.0;
+    let capillaryLambda = 2.0;
 
     // Display data
     let gridStateRaw = null;
@@ -185,6 +189,9 @@
             s_or: 0.1,
             n_w: 2.0,
             n_o: 2.0,
+            capillaryEnabled: true,
+            capillaryPEntry: 5.0,
+            capillaryLambda: 2.0,
             permMode: 'random',
             minPerm: 50,
             maxPerm: 200,
@@ -198,6 +205,9 @@
             s_or: 0.12,
             n_w: 2.2,
             n_o: 2.2,
+            capillaryEnabled: true,
+            capillaryPEntry: 8.0,
+            capillaryLambda: 2.5,
             permMode: 'perLayer',
             layerPermsXStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
             layerPermsYStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
@@ -210,6 +220,9 @@
             s_or: 0.15,
             n_w: 1.6,
             n_o: 2.4,
+            capillaryEnabled: true,
+            capillaryPEntry: 3.0,
+            capillaryLambda: 1.6,
             permMode: 'random',
             minPerm: 20,
             maxPerm: 500,
@@ -228,6 +241,9 @@
         if (preset.s_or !== undefined) s_or = preset.s_or;
         if (preset.n_w !== undefined) n_w = preset.n_w;
         if (preset.n_o !== undefined) n_o = preset.n_o;
+        if (preset.capillaryEnabled !== undefined) capillaryEnabled = preset.capillaryEnabled;
+        if (preset.capillaryPEntry !== undefined) capillaryPEntry = preset.capillaryPEntry;
+        if (preset.capillaryLambda !== undefined) capillaryLambda = preset.capillaryLambda;
         if (preset.permMode !== undefined) permMode = preset.permMode;
         if (preset.minPerm !== undefined) minPerm = preset.minPerm;
         if (preset.maxPerm !== undefined) maxPerm = preset.maxPerm;
@@ -361,6 +377,10 @@
                 n_w: Number(n_w),
                 n_o: Number(n_o),
                 max_sat_change_per_step: Number(max_sat_change_per_step),
+                capillaryEnabled: Boolean(capillaryEnabled),
+                capillaryPEntry: Number(capillaryPEntry),
+                capillaryLambda: Number(capillaryLambda),
+                gravityEnabled: Boolean(gravityEnabled),
                 permMode,
                 minPerm: Number(minPerm),
                 maxPerm: Number(maxPerm),
@@ -542,6 +562,13 @@
                         <input type="number" step="0.05" class="input input-bordered w-1/4" bind:value={initialSaturation} />
                     </label>
                 </div>
+                <div>
+                    <br />
+                    <label class="label cursor-pointer justify-start gap-3">
+                        <input type="checkbox" class="checkbox checkbox-sm" bind:checked={gravityEnabled} />
+                        <span class="label-text">Enable gravity terms</span>
+                    </label>
+                </div>
 
             </div>
             
@@ -562,6 +589,20 @@
                 <label class="form-control w-full">
                     <span class="label-text">n_o</span>
                     <input type="number" step="0.1" class="input input-bordered" bind:value={n_o} />
+                </label>
+
+                <h4 class="mt-4">Capillary Pressure</h4>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input type="checkbox" class="checkbox checkbox-sm" bind:checked={capillaryEnabled} />
+                    <span class="label-text">Enable capillary pressure</span>
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">P_entry (bar)</span>
+                    <input type="number" min="0" step="0.1" class="input input-bordered" bind:value={capillaryPEntry} disabled={!capillaryEnabled} />
+                </label>
+                <label class="form-control w-full">
+                    <span class="label-text">Lambda</span>
+                    <input type="number" min="0.1" step="0.1" class="input input-bordered" bind:value={capillaryLambda} disabled={!capillaryEnabled} />
                 </label>
             </div>
             <div class="col-span-2">

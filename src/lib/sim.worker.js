@@ -38,6 +38,17 @@ function configureSimulator(payload) {
 
   simulator.setInitialPressure(payload.initialPressure);
   simulator.setInitialSaturation(payload.initialSaturation);
+
+  const setCapillaryParams = /** @type {any} */ (simulator).setCapillaryParams;
+  if (typeof setCapillaryParams === 'function') {
+    const pEntry = Boolean(payload.capillaryEnabled) ? Number(payload.capillaryPEntry) : 0;
+    setCapillaryParams.call(simulator, pEntry, Number(payload.capillaryLambda));
+  }
+
+  const setGravityEnabled = /** @type {any} */ (simulator).setGravityEnabled;
+  if (typeof setGravityEnabled === 'function') {
+    setGravityEnabled.call(simulator, Boolean(payload.gravityEnabled));
+  }
   simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o);
   simulator.setStabilityParams(payload.max_sat_change_per_step);
 

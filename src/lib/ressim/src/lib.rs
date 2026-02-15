@@ -169,6 +169,10 @@ pub struct FluidProperties {
     pub c_o: f64,
     /// Water compressibility [1/bar]
     pub c_w: f64,
+    /// Oil density [kg/m³]
+    pub rho_o: f64,
+    /// Water density [kg/m³]
+    pub rho_w: f64,
 }
 
 impl FluidProperties {
@@ -178,6 +182,8 @@ impl FluidProperties {
             mu_w: 0.5,      // cP (water at reservoir conditions)
             c_o: 1e-5,      // 1/bar (oil compressibility)
             c_w: 3e-6,      // 1/bar (water compressibility)
+            rho_o: 800.0,   // kg/m³
+            rho_w: 1000.0,  // kg/m³
         }
     }
 }
@@ -276,6 +282,7 @@ pub struct ReservoirSimulator {
     pvt: FluidProperties,
     scal: RockFluidProps,
     pc: CapillaryPressure,
+    gravity_enabled: bool,
     max_sat_change_per_step: f64,
     rate_history: Vec<TimePointRates>,
 }
@@ -300,6 +307,7 @@ impl ReservoirSimulator {
             pvt: FluidProperties::default_pvt(),
             scal: RockFluidProps::default_scal(),
             pc: CapillaryPressure::default_pc(),  // Brooks-Corey capillary pressure
+            gravity_enabled: false,
             max_sat_change_per_step: 0.1, // Default max saturation change
             rate_history: Vec::new(),
         }
@@ -432,6 +440,34 @@ impl ReservoirSimulator {
         self.pc.capillary_pressure(s_w, &self.scal)
     }
 
+    fn depth_at_k(&self, k: usize) -> f64 {
+        (k as f64 + 0.5) * self.dz
+    }
+
+    fn gravity_head_bar(&self, depth_i: f64, depth_j: f64, density_kg_m3: f64) -> f64 {
+        if !self.gravity_enabled {
+            return 0.0;
+        }
+
+        // rho [kg/m³] * g [m/s²] * dz [m] = Pa, then convert Pa -> bar using 1e-5
+        density_kg_m3 * 9.80665 * (depth_i - depth_j) * 1e-5
+    }
+
+    fn total_density_face(&self, c_i: &GridCell, c_j: &GridCell) -> f64 {
+        let (lam_w_i, lam_o_i) = self.phase_mobilities(c_i);
+        let (lam_w_j, lam_o_j) = self.phase_mobilities(c_j);
+
+        let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
+        let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
+        let lam_t_avg = lam_w_avg + lam_o_avg;
+
+        if lam_t_avg <= f64::EPSILON {
+            return 0.5 * (self.pvt.rho_w + self.pvt.rho_o);
+        }
+
+        ((lam_w_avg * self.pvt.rho_w) + (lam_o_avg * self.pvt.rho_o)) / lam_t_avg
+    }
+
     /// Fractional flow of water [dimensionless] = f_w = λ_w / λ_t
     /// Used in upwind scheme for saturation transport
     fn frac_flow_water(&self, cell: &GridCell) -> f64 {
@@ -504,6 +540,11 @@ impl ReservoirSimulator {
         }
     }
 
+    #[wasm_bindgen(js_name = setGravityEnabled)]
+    pub fn set_gravity_enabled(&mut self, enabled: bool) {
+        self.gravity_enabled = enabled;
+    }
+
     fn calculate_fluxes(&self, delta_t_days: f64) -> (DVector<f64>, Vec<f64>, f64) {
         let n_cells = self.nx * self.ny * self.nz;
         if n_cells == 0 { return (DVector::zeros(0), vec![], 1.0); }
@@ -540,19 +581,26 @@ impl ReservoirSimulator {
                     b_rhs[id] += accum * cell.pressure;
 
                     // neighbors: compute flux transmissibilities
-                    let mut neighbors: Vec<(usize, char)> = Vec::new();
-                    if i > 0 { neighbors.push((self.idx(i-1,j,k), 'x')); }
-                    if i < self.nx-1 { neighbors.push((self.idx(i+1,j,k), 'x')); }
-                    if j > 0 { neighbors.push((self.idx(i,j-1,k), 'y')); }
-                    if j < self.ny-1 { neighbors.push((self.idx(i,j+1,k), 'y')); }
-                    if k > 0 { neighbors.push((self.idx(i,j,k-1), 'z')); }
-                    if k < self.nz-1 { neighbors.push((self.idx(i,j,k+1), 'z')); }
+                    let mut neighbors: Vec<(usize, char, usize)> = Vec::new();
+                    if i > 0 { neighbors.push((self.idx(i-1,j,k), 'x', k)); }
+                    if i < self.nx-1 { neighbors.push((self.idx(i+1,j,k), 'x', k)); }
+                    if j > 0 { neighbors.push((self.idx(i,j-1,k), 'y', k)); }
+                    if j < self.ny-1 { neighbors.push((self.idx(i,j+1,k), 'y', k)); }
+                    if k > 0 { neighbors.push((self.idx(i,j,k-1), 'z', k - 1)); }
+                    if k < self.nz-1 { neighbors.push((self.idx(i,j,k+1), 'z', k + 1)); }
 
-                    for (n_id, dim) in neighbors.iter() {
+                    for (n_id, dim, n_k) in neighbors.iter() {
                         // Transmissibility [m³/day/bar]
                         let t = self.transmissibility(cell, &self.grid_cells[*n_id], *dim);
                         diag += t;
                         rows.push(id); cols.push(*n_id); vals.push(-t);
+
+                        // Gravity source contribution on RHS from potential formulation
+                        let depth_i = self.depth_at_k(k);
+                        let depth_j = self.depth_at_k(*n_k);
+                        let rho_t = self.total_density_face(cell, &self.grid_cells[*n_id]);
+                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
+                        b_rhs[id] += t * grav_head_bar;
                     }
 
                     // well implicit coupling: add PI to diagonal and PI*BHP to RHS
@@ -604,11 +652,11 @@ impl ReservoirSimulator {
                     
                     // Check neighbors in positive direction to avoid duplicate pairs
                     let mut check = Vec::new();
-                    if i < self.nx - 1 { check.push((self.idx(i+1,j,k), 'x')); }
-                    if j < self.ny - 1 { check.push((self.idx(i,j+1,k), 'y')); }
-                    if k < self.nz - 1 { check.push((self.idx(i,j,k+1), 'z')); }
+                    if i < self.nx - 1 { check.push((self.idx(i+1,j,k), 'x', k)); }
+                    if j < self.ny - 1 { check.push((self.idx(i,j+1,k), 'y', k)); }
+                    if k < self.nz - 1 { check.push((self.idx(i,j,k+1), 'z', k + 1)); }
 
-                    for (nid, dim) in check {
+                    for (nid, dim, n_k) in check {
                         let p_j = p_new[nid];
                         // Transmissibility [m³/day/bar]
                         let t = self.transmissibility(&self.grid_cells[id], &self.grid_cells[nid], dim);
@@ -620,7 +668,11 @@ impl ReservoirSimulator {
                         if lam_t_avg <= f64::EPSILON { continue; }
 
                         // Total volumetric flux [m³/day]: positive = from id -> nid
-                        let total_flux = t * (p_i - p_j);
+                        let depth_i = self.depth_at_k(k);
+                        let depth_j = self.depth_at_k(n_k);
+                        let rho_t = self.total_density_face(&self.grid_cells[id], &self.grid_cells[nid]);
+                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
+                        let total_flux = t * ((p_i - p_j) - grav_head_bar);
 
                         // Upwind fractional flow for water
                         let f_w = if total_flux >= 0.0 {
@@ -827,6 +879,36 @@ impl ReservoirSimulator {
         }
 
         self.scal = RockFluidProps { s_wc, s_or, n_w, n_o };
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setFluidDensities)]
+    pub fn set_fluid_densities(&mut self, rho_o: f64, rho_w: f64) -> Result<(), String> {
+        if !rho_o.is_finite() || !rho_w.is_finite() {
+            return Err("Fluid densities must be finite numbers".to_string());
+        }
+        if rho_o <= 0.0 || rho_w <= 0.0 {
+            return Err(format!("Fluid densities must be positive, got rho_o={}, rho_w={}", rho_o, rho_w));
+        }
+        self.pvt.rho_o = rho_o;
+        self.pvt.rho_w = rho_w;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setCapillaryParams)]
+    pub fn set_capillary_params(&mut self, p_entry: f64, lambda: f64) -> Result<(), String> {
+        if !p_entry.is_finite() || !lambda.is_finite() {
+            return Err("Capillary parameters must be finite numbers".to_string());
+        }
+        if p_entry < 0.0 {
+            return Err(format!("Capillary entry pressure must be non-negative, got {}", p_entry));
+        }
+        if lambda <= 0.0 {
+            return Err(format!("Capillary lambda must be positive, got {}", lambda));
+        }
+
+        self.pc.p_entry = p_entry;
+        self.pc.lambda = lambda;
         Ok(())
     }
 
@@ -1272,6 +1354,85 @@ mod tests {
         err_contains(sim.set_rel_perm_props(0.6, 0.5, 2.0, 2.0), "must be < 1.0");
         err_contains(sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0), "must be positive");
         err_contains(sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0), "finite numbers");
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_density_inputs() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        err_contains(sim.set_fluid_densities(-800.0, 1000.0), "must be positive");
+        err_contains(sim.set_fluid_densities(800.0, f64::NAN), "finite numbers");
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_capillary_inputs() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        err_contains(sim.set_capillary_params(-1.0, 2.0), "non-negative");
+        err_contains(sim.set_capillary_params(5.0, 0.0), "positive");
+        err_contains(sim.set_capillary_params(f64::NAN, 2.0), "finite numbers");
+    }
+
+    #[test]
+    fn gravity_toggle_builds_hydrostatic_vertical_gradient() {
+        let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
+        sim_no_g.set_permeability_random_seeded(50_000.0, 50_000.0, 42).unwrap();
+        sim_no_g.set_initial_pressure(300.0);
+        sim_no_g.set_initial_saturation(0.9);
+        sim_no_g.pc.p_entry = 0.0;
+        sim_no_g.set_gravity_enabled(false);
+        sim_no_g.step(2.0);
+
+        let p_top_no_g = sim_no_g.grid_cells[sim_no_g.idx(0, 0, 0)].pressure;
+        let p_bot_no_g = sim_no_g.grid_cells[sim_no_g.idx(0, 0, 1)].pressure;
+
+        let mut sim_g = ReservoirSimulator::new(1, 1, 2);
+        sim_g.set_permeability_random_seeded(50_000.0, 50_000.0, 42).unwrap();
+        sim_g.set_initial_pressure(300.0);
+        sim_g.set_initial_saturation(0.9);
+        sim_g.pc.p_entry = 0.0;
+        sim_g.set_gravity_enabled(true);
+        sim_g.step(2.0);
+
+        let p_top_g = sim_g.grid_cells[sim_g.idx(0, 0, 0)].pressure;
+        let p_bot_g = sim_g.grid_cells[sim_g.idx(0, 0, 1)].pressure;
+
+        assert!((p_bot_no_g - p_top_no_g).abs() < 1e-5);
+        assert!(p_bot_g > p_top_g);
+    }
+
+    #[test]
+    fn hydrostatic_initial_gradient_stays_quieter_with_gravity_enabled() {
+        let initial_sw = 0.9;
+
+        let mut sim_g = ReservoirSimulator::new(1, 1, 2);
+        sim_g.set_permeability_random_seeded(80_000.0, 80_000.0, 7).unwrap();
+        sim_g.set_initial_saturation(initial_sw);
+        sim_g.pc.p_entry = 0.0;
+        sim_g.set_fluid_densities(800.0, 1000.0).unwrap();
+        sim_g.set_gravity_enabled(true);
+
+        let hydro_dp_bar = sim_g.pvt.rho_w * 9.80665 * sim_g.dz * 1e-5;
+        let top_id_g = sim_g.idx(0, 0, 0);
+        let bot_id_g = sim_g.idx(0, 0, 1);
+        sim_g.grid_cells[top_id_g].pressure = 300.0;
+        sim_g.grid_cells[bot_id_g].pressure = 300.0 + hydro_dp_bar;
+        sim_g.step(5.0);
+        let sw_change_top_g = (sim_g.grid_cells[top_id_g].sat_water - initial_sw).abs();
+
+        let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
+        sim_no_g.set_permeability_random_seeded(80_000.0, 80_000.0, 7).unwrap();
+        sim_no_g.set_initial_saturation(initial_sw);
+        sim_no_g.pc.p_entry = 0.0;
+        sim_no_g.set_fluid_densities(800.0, 1000.0).unwrap();
+        sim_no_g.set_gravity_enabled(false);
+
+        let top_id_no_g = sim_no_g.idx(0, 0, 0);
+        let bot_id_no_g = sim_no_g.idx(0, 0, 1);
+        sim_no_g.grid_cells[top_id_no_g].pressure = 300.0;
+        sim_no_g.grid_cells[bot_id_no_g].pressure = 300.0 + hydro_dp_bar;
+        sim_no_g.step(5.0);
+        let sw_change_top_no_g = (sim_no_g.grid_cells[top_id_no_g].sat_water - initial_sw).abs();
+
+        assert!(sw_change_top_g <= sw_change_top_no_g);
     }
 
     #[test]
