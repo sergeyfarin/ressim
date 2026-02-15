@@ -1,6 +1,6 @@
 <script lang="ts">
   export let initialPressure = 300;
-  export let initialSaturation = 0.3;
+  export let initialSaturation = 0.2;
   export let gravityEnabled = false;
 
   export let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';

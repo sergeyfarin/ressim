@@ -797,7 +797,7 @@
         <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold lg:text-3xl">Simplified Reservoir Simulation Model</h1>
-                <p class="text-sm opacity-80">Interactive two-phase simulation, visualization, and benchmark tracking.</p>
+                <p class="text-sm opacity-80">Interactive two-phase simulation with 3D visualisation fully in browser.</p>
             </div>
             <button class="btn btn-sm btn-outline" on:click={toggleTheme}>
                 {theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
@@ -819,7 +819,18 @@
                         </label>
                     </div>
                 </div>
-
+                <DynamicControlsPanel
+                    bind:steps
+                    {wasmReady}
+                    {workerRunning}
+                    {runCompleted}
+                    {simTime}
+                    historyLength={history.length}
+                    {profileStats}
+                    onRunSteps={runSteps}
+                    onStepOnce={stepOnce}
+                    onInitSimulator={initSimulator}
+                />
                 <StaticPropertiesPanel
                     bind:nx
                     bind:ny
@@ -873,18 +884,7 @@
                     bind:max_sat_change_per_step
                 />
 
-                <DynamicControlsPanel
-                    bind:steps
-                    {wasmReady}
-                    {workerRunning}
-                    {runCompleted}
-                    {simTime}
-                    historyLength={history.length}
-                    {profileStats}
-                    onRunSteps={runSteps}
-                    onStepOnce={stepOnce}
-                    onInitSimulator={initSimulator}
-                />
+                
 
             </aside>
 
@@ -956,7 +956,7 @@
                     </div>
                 </div>
 
-                <BenchmarkResultsCard
+                <!-- <BenchmarkResultsCard
                     {benchmarkSource}
                     {benchmarkGeneratedAt}
                     {selectedBenchmarkMode}
@@ -964,7 +964,7 @@
                     {benchmarkRowsWithStatus}
                     {allBenchmarksPass}
                     onSelectMode={(mode) => selectedBenchmarkMode = mode}
-                />
+                /> -->
 
                 {#if showDebugState}
                     <div class="card border border-base-300 bg-base-100 shadow-sm">

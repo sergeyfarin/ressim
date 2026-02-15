@@ -24,7 +24,8 @@
   export let onInitSimulator: () => void;
 
   export let steps = 20;
-  $: groupSummary = `steps=${steps} · ${workerRunning ? 'Running' : 'Idle'}`;
+  // steps=${steps} ·
+  $: groupSummary = `${workerRunning ? 'Running...' : runCompleted ? 'Run completed' : ''}`;
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let s_wc = 0.1;
+  export let s_wc = 0.2;
   export let s_or = 0.1;
   export let n_w = 2;
   export let n_o = 2;
