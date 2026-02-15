@@ -45,8 +45,8 @@ h1 {
 #app {
   max-width: 1600px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  padding: 0;
+  text-align: left;
 }
 /* 
 button {

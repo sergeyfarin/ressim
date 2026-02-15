@@ -49,6 +49,7 @@
     export let legendRangeMode: 'fixed' | 'percentile' = 'fixed';
     export let legendPercentileLow = 5;
     export let legendPercentileHigh = 95;
+    export let theme: 'dark' | 'light' = 'dark';
 
     let renderer: WebGLRenderer | null = null;
     let scene: Scene | null = null;
@@ -227,7 +228,8 @@
         const height = canvasContainer?.clientHeight ?? 600;
 
         scene = new Scene();
-        scene.background = new Color(0xf6f6f6);
+        const backgroundHex = theme === 'dark' ? 0x000000 : 0xf6f6f6;
+        scene.background = new Color(backgroundHex);
 
         // Add lights for MeshStandardMaterial to show colors
         const ambientLight = new AmbientLight(0xffffff, 0.8);
@@ -254,8 +256,8 @@
 
         renderer = new WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(width, height, false);
-        renderer.setClearColor(0xf6f6f6);
+        renderer.setSize(width, height, true);
+        renderer.setClearColor(backgroundHex);
 
         if (canvasContainer) {
             // Clear existing children except for the legend canvas
@@ -288,6 +290,12 @@
         animate();
     }
 
+    $: if (scene && renderer) {
+        const backgroundHex = theme === 'dark' ? 0x000000 : 0xf6f6f6;
+        scene.background = new Color(backgroundHex);
+        renderer.setClearColor(backgroundHex);
+    }
+
     function resize(): void {
         if (!canvasContainer || !renderer || !camera) return;
         const w = canvasContainer.clientWidth;
@@ -298,7 +306,7 @@
         const perspectiveCamera = camera as PerspectiveCamera;
         perspectiveCamera.aspect = w / h;
         perspectiveCamera.updateProjectionMatrix();
-        renderer.setSize(w, h, false);
+        renderer.setSize(w, h, true);
     }
 
     function onWindowResize(): void {
@@ -452,7 +460,9 @@
         }
 
         mesh.instanceMatrix.needsUpdate = true;
-        mesh.instanceColor && (mesh.instanceColor.needsUpdate = true);
+        if (mesh.instanceColor) {
+            mesh.instanceColor.needsUpdate = true;
+        }
         scene.add(mesh);
 
         // Create a single wireframe outline for the whole reservoir volume
@@ -745,7 +755,7 @@
 </div>
 <style>
     /* Revert to non-absolute sizing so parent controls height explicitly */
-    .viz { border: 1px solid #ddd; width: 100%; height: 600px; position: relative; background: #fff; }
+    .viz { border: 1px solid #ddd; width: 100%; height: clamp(240px, 35vh, 420px); position: relative; background: #fff; }
     .legend { margin-top: 8px; color: #222; display:flex; align-items:center; gap:8px; }
     .legend canvas { border: 1px solid #ccc; background: #fff; }
 </style>

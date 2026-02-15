@@ -14,6 +14,7 @@
 
     let chartCanvas: HTMLCanvasElement;
     let chart: Chart;
+    let activeTab: 'oil' | 'water' | 'voidage' | 'validation' = 'oil';
     let mismatchSummary: MismatchSummary = {
         pointsCompared: 0,
         mae: 0,
@@ -28,6 +29,17 @@
     $: if (analyticalProductionData && chart) {
         updateChart();
     }
+
+    $: if (chart) {
+        applyActiveTab();
+    }
+
+    const tabLabels: Record<typeof activeTab, string> = {
+        oil: 'Oil Rate + Cumulative',
+        water: 'Water Injection + Production',
+        voidage: 'Voidage / Liquid Balance',
+        validation: 'Model vs Analytical',
+    };
 
     onMount(() => {
         Chart.register(...registerables);
@@ -51,15 +63,15 @@
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Total Liquid Production (m³/day)',
+                        label: 'Water Production (m³/day)',
                         data: [],
-                        borderColor: 'blue',
+                        borderColor: '#0ea5e9',
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Total Injection (m³/day)',
+                        label: 'Water Injection (m³/day)',
                         data: [],
-                        borderColor: 'red',
+                        borderColor: '#ef4444',
                         yAxisID: 'y',
                     },
                     {
@@ -69,9 +81,16 @@
                         yAxisID: 'y1',
                     },
                     {
+                        label: 'Liquid Production (m³/day)',
+                        data: [],
+                        borderColor: '#2563eb',
+                        borderDash: [4, 4],
+                        yAxisID: 'y',
+                    },
+                    {
                         label: 'Voidage Replacement Ratio',
                         data: [],
-                        borderColor: 'orange',
+                        borderColor: '#f59e0b',
                         yAxisID: 'y2',
                     },
                     {
@@ -132,10 +151,7 @@
                         grid: {
                             drawOnChartArea: false,
                         },
-                        // Place it after y1
-                        afterDataLimits: (axis) => {
-                            axis.paddingTop = 60;
-                        }
+                        min: 0,
                     },
                     y3: {
                         type: 'linear',
@@ -153,6 +169,8 @@
                 }
             }
         });
+
+        applyActiveTab();
     });
 
     onDestroy(() => {
@@ -166,6 +184,7 @@
         const oilProd = rateHistory.map(p => p.total_production_oil);
         const liquidProd = rateHistory.map(p => p.total_production_liquid);
         const injection = rateHistory.map(p => p.total_injection);
+        const waterProd = liquidProd.map((qL, idx) => Math.max(0, qL - oilProd[idx]));
 
         const analyticalOilProd = rateHistory.map((_, idx) => {
             const value = analyticalProductionData[idx]?.oilRate;
@@ -230,18 +249,67 @@
         chart.data.labels = labels;
         chart.data.datasets[0].data = oilProd;
         chart.data.datasets[1].data = analyticalOilProd;
-        chart.data.datasets[2].data = liquidProd;
+        chart.data.datasets[2].data = waterProd;
         chart.data.datasets[3].data = injection;
         chart.data.datasets[4].data = cumulativeOilData;
-        chart.data.datasets[5].data = vrrData;
-        chart.data.datasets[6].data = absErrorData;
-        chart.data.datasets[7].data = percentErrorData;
+        chart.data.datasets[5].data = liquidProd;
+        chart.data.datasets[6].data = vrrData;
+        chart.data.datasets[7].data = absErrorData;
+        chart.data.datasets[8].data = percentErrorData;
+
+        chart.update();
+    }
+
+    function setDatasetVisibility(visibleIndexes: number[]) {
+        if (!chart) return;
+        chart.data.datasets.forEach((_, idx) => {
+            const show = visibleIndexes.includes(idx);
+            chart.setDatasetVisibility(idx, show);
+        });
+    }
+
+    function applyAxisVisibility(config: { y: boolean; y1: boolean; y2: boolean; y3: boolean }) {
+        if (!chart) return;
+        const scales = chart.options.scales ?? {};
+        if (scales.y) scales.y.display = config.y;
+        if (scales.y1) scales.y1.display = config.y1;
+        if (scales.y2) scales.y2.display = config.y2;
+        if (scales.y3) scales.y3.display = config.y3;
+    }
+
+    function applyActiveTab() {
+        if (!chart) return;
+
+        if (activeTab === 'oil') {
+            setDatasetVisibility([0, 1, 4]);
+            applyAxisVisibility({ y: true, y1: true, y2: false, y3: false });
+        } else if (activeTab === 'water') {
+            setDatasetVisibility([2, 3]);
+            applyAxisVisibility({ y: true, y1: false, y2: false, y3: false });
+        } else if (activeTab === 'voidage') {
+            setDatasetVisibility([3, 5, 6]);
+            applyAxisVisibility({ y: true, y1: false, y2: true, y3: false });
+        } else {
+            setDatasetVisibility([0, 1, 7, 8]);
+            applyAxisVisibility({ y: true, y1: false, y2: false, y3: true });
+        }
 
         chart.update();
     }
 </script>
 
-<div class="chart-container" style="position: relative; height:100% ; width:100%;">
+<div class="mb-2 flex flex-wrap gap-2">
+    {#each Object.entries(tabLabels) as [key, label]}
+        <button
+            class={`btn btn-xs sm:btn-sm ${activeTab === key ? 'btn-primary' : 'btn-outline'}`}
+            on:click={() => activeTab = key as typeof activeTab}
+        >
+            {label}
+        </button>
+    {/each}
+</div>
+
+<div class="chart-container" style="position: relative; height: min(52vh, 440px); width:100%;">
     <canvas bind:this={chartCanvas}></canvas>
 </div>
 

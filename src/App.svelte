@@ -1,6 +1,14 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import FractionalFlow from './lib/FractionalFlow.svelte';
+    import StaticPropertiesPanel from './lib/ui/StaticPropertiesPanel.svelte';
+    import TimestepControlsPanel from './lib/ui/TimestepControlsPanel.svelte';
+    import ReservoirPropertiesPanel from './lib/ui/ReservoirPropertiesPanel.svelte';
+    import RelativeCapillaryPanel from './lib/ui/RelativeCapillaryPanel.svelte';
+    import WellPropertiesPanel from './lib/ui/WellPropertiesPanel.svelte';
+    import DynamicControlsPanel from './lib/ui/DynamicControlsPanel.svelte';
+    import VisualizationReplayPanel from './lib/ui/VisualizationReplayPanel.svelte';
+    import BenchmarkResultsCard from './lib/ui/BenchmarkResultsCard.svelte';
 
     let wasmReady = false;
     let simWorker: Worker | null = null;
@@ -11,35 +19,43 @@
     let nx = 15;
     let ny = 10;
     let nz = 10;
+    let cellDx = 10;
+    let cellDy = 10;
+    let cellDz = 1;
     let delta_t_days = 0.25;
-    let steps = 5;
-
-    // --- NEW STATE VARIABLES ---
+    let steps = 20;
 
     // Initial Conditions
     let initialPressure = 300.0;
     let initialSaturation = 0.3;
 
-    // Relative Permeability
+    // Permeability
+    let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
+    let uniformPermX = 100.0;
+    let uniformPermY = 100.0;
+    let uniformPermZ = 10.0;
+    let minPerm = 50.0;
+    let maxPerm = 200.0;
+    let useRandomSeed = true;
+    let randomSeed = 12345;
+    let layerPermsX: number[] = [100, 150, 50, 200, 120, 1000, 90, 110, 130, 70];
+    let layerPermsY: number[] = [100, 150, 50, 200, 120, 1000, 90, 110, 130, 70];
+    let layerPermsZ: number[] = [10, 15, 5, 20, 12, 8, 9, 11, 13, 7];
+    let scenarioPreset = 'custom';
+
+    // Relative Permeability / Capillary
     let s_wc = 0.1;
     let s_or = 0.1;
     let n_w = 2.0;
     let n_o = 2.0;
 
-    // Permeability
-    let permMode = 'default'; // 'default', 'random', 'perLayer'
-    let minPerm = 50.0;
-    let maxPerm = 200.0;
-    let useRandomSeed = true;
-    let randomSeed = 12345;
-    let layerPermsXStr = "100, 150, 50, 200, 120, 1000, 90, 110, 130, 70";
-    let layerPermsYStr = "100, 150, 50, 200, 120, 1000, 90, 110, 130, 70";
-    let layerPermsZStr = "10, 15, 5, 20, 12, 8, 9, 11, 13, 7";
-    let scenarioPreset = 'custom';
-
     // Well inputs
     let well_radius = 0.1;
     let well_skin = 0.0;
+    let injectorI = 0;
+    let injectorJ = 0;
+    let producerI = nx - 1;
+    let producerJ = 0;
 
     // Stability
     let max_sat_change_per_step = 0.1;
@@ -133,6 +149,7 @@
     let selectedBenchmarkMode: BenchmarkMode = 'baseline';
     let benchmarkSource = 'fallback';
     let benchmarkGeneratedAt = '';
+    let theme: 'dark' | 'light' = 'dark';
 
     const benchmarkModeLabel: Record<BenchmarkMode, string> = {
         baseline: 'Baseline (nx=24, dt=0.5 day)',
@@ -176,6 +193,7 @@
     };
     let ThreeDViewComponent = null;
     let RateChartComponent = null;
+    let loadingThreeDView = false;
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
@@ -200,6 +218,10 @@
             maxPerm: 200,
             useRandomSeed: true,
             randomSeed: 12345,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: nx - 1,
+            producerJ: 0,
         },
         high_contrast_layers: {
             initialPressure: 320,
@@ -215,6 +237,10 @@
             layerPermsXStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
             layerPermsYStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
             layerPermsZStr: '3, 4, 6, 9, 15, 40, 15, 9, 6, 4',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: nx - 1,
+            producerJ: 0,
         },
         viscous_fingering_risk: {
             initialPressure: 280,
@@ -231,30 +257,94 @@
             maxPerm: 500,
             useRandomSeed: true,
             randomSeed: 987654,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: nx - 1,
+            producerJ: 0,
         },
     };
 
+    function parseLayerValues(value: unknown): number[] {
+        if (Array.isArray(value)) {
+            return value.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0);
+        }
+        return String(value)
+            .split(',')
+            .map((v) => Number(v.trim()))
+            .filter((v) => Number.isFinite(v) && v > 0);
+    }
+
+    function normalizeLayerArray(values: number[], fallback: number, length: number): number[] {
+        return Array.from({ length }, (_, i) => {
+            const value = Number(values[i]);
+            return Number.isFinite(value) && value > 0 ? value : fallback;
+        });
+    }
+
+    function syncLayerArraysToGrid() {
+        layerPermsX = normalizeLayerArray(layerPermsX, uniformPermX, nz);
+        layerPermsY = normalizeLayerArray(layerPermsY, uniformPermY, nz);
+        layerPermsZ = normalizeLayerArray(layerPermsZ, uniformPermZ, nz);
+    }
+
+    function isPermMode(value: string): value is 'uniform' | 'random' | 'perLayer' {
+        return value === 'uniform' || value === 'random' || value === 'perLayer';
+    }
+
+    $: if (layerPermsX.length !== nz || layerPermsY.length !== nz || layerPermsZ.length !== nz) {
+        syncLayerArraysToGrid();
+    }
+
+    $: producerI = Math.max(0, Math.min(nx - 1, Number(producerI)));
+    $: producerJ = Math.max(0, Math.min(ny - 1, Number(producerJ)));
+    $: injectorI = Math.max(0, Math.min(nx - 1, Number(injectorI)));
+    $: injectorJ = Math.max(0, Math.min(ny - 1, Number(injectorJ)));
+
+    const scenarioPresetSetters: Record<string, (value: unknown) => void> = {
+        initialPressure: (value) => initialPressure = Number(value),
+        initialSaturation: (value) => initialSaturation = Number(value),
+        s_wc: (value) => s_wc = Number(value),
+        s_or: (value) => s_or = Number(value),
+        n_w: (value) => n_w = Number(value),
+        n_o: (value) => n_o = Number(value),
+        capillaryEnabled: (value) => capillaryEnabled = Boolean(value),
+        capillaryPEntry: (value) => capillaryPEntry = Number(value),
+        capillaryLambda: (value) => capillaryLambda = Number(value),
+        permMode: (value) => {
+            const candidate = String(value);
+            if (isPermMode(candidate)) {
+                permMode = candidate;
+            }
+        },
+        uniformPermX: (value) => uniformPermX = Number(value),
+        uniformPermY: (value) => uniformPermY = Number(value),
+        uniformPermZ: (value) => uniformPermZ = Number(value),
+        minPerm: (value) => minPerm = Number(value),
+        maxPerm: (value) => maxPerm = Number(value),
+        useRandomSeed: (value) => useRandomSeed = Boolean(value),
+        randomSeed: (value) => randomSeed = Number(value),
+        layerPermsXStr: (value) => layerPermsX = parseLayerValues(value),
+        layerPermsYStr: (value) => layerPermsY = parseLayerValues(value),
+        layerPermsZStr: (value) => layerPermsZ = parseLayerValues(value),
+        injectorI: (value) => injectorI = Number(value),
+        injectorJ: (value) => injectorJ = Number(value),
+        producerI: (value) => producerI = Number(value),
+        producerJ: (value) => producerJ = Number(value),
+    };
+
+    $: cellDx = Math.max(0.1, Number(cellDx) || 0.1);
+    $: cellDy = Math.max(0.1, Number(cellDy) || 0.1);
+    $: cellDz = Math.max(0.1, Number(cellDz) || 0.1);
+    $: steps = Math.max(1, Math.round(Number(steps) || 1));
+
     function applyScenarioPreset() {
-        const preset = scenarioPresets[scenarioPreset];
+        const preset = scenarioPresets[scenarioPreset] as Record<string, unknown> | null;
         if (!preset) return;
 
-        if (preset.initialPressure !== undefined) initialPressure = preset.initialPressure;
-        if (preset.initialSaturation !== undefined) initialSaturation = preset.initialSaturation;
-        if (preset.s_wc !== undefined) s_wc = preset.s_wc;
-        if (preset.s_or !== undefined) s_or = preset.s_or;
-        if (preset.n_w !== undefined) n_w = preset.n_w;
-        if (preset.n_o !== undefined) n_o = preset.n_o;
-        if (preset.capillaryEnabled !== undefined) capillaryEnabled = preset.capillaryEnabled;
-        if (preset.capillaryPEntry !== undefined) capillaryPEntry = preset.capillaryPEntry;
-        if (preset.capillaryLambda !== undefined) capillaryLambda = preset.capillaryLambda;
-        if (preset.permMode !== undefined) permMode = preset.permMode;
-        if (preset.minPerm !== undefined) minPerm = preset.minPerm;
-        if (preset.maxPerm !== undefined) maxPerm = preset.maxPerm;
-        if (preset.useRandomSeed !== undefined) useRandomSeed = preset.useRandomSeed;
-        if (preset.randomSeed !== undefined) randomSeed = preset.randomSeed;
-        if (preset.layerPermsXStr !== undefined) layerPermsXStr = preset.layerPermsXStr;
-        if (preset.layerPermsYStr !== undefined) layerPermsYStr = preset.layerPermsYStr;
-        if (preset.layerPermsZStr !== undefined) layerPermsZStr = preset.layerPermsZStr;
+        for (const [key, value] of Object.entries(preset)) {
+            if (value === undefined) continue;
+            scenarioPresetSetters[key]?.(value);
+        }
     }
 
     function pushHistoryEntry(entry) {
@@ -339,20 +429,41 @@
     }
 
     async function loadThreeDViewModule() {
-        if (ThreeDViewComponent) return;
+        if (ThreeDViewComponent || loadingThreeDView) return;
+        loadingThreeDView = true;
         try {
             const threeDModule = await import('./lib/3dview.svelte');
             ThreeDViewComponent = threeDModule.default;
         } catch (error) {
             console.error('Failed to load 3D view module:', error);
+        } finally {
+            loadingThreeDView = false;
         }
     }
 
+    function toggleTheme() {
+        theme = theme === 'dark' ? 'light' : 'dark';
+    }
+
     onMount(() => {
+        const savedTheme = localStorage.getItem('ressim-theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+            theme = savedTheme;
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+
         setupWorker();
         loadRateChartModule();
         loadBenchmarkResults();
     });
+
+    $: if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    $: if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('ressim-theme', theme);
+    }
 
     $: if (!ThreeDViewComponent && (gridStateRaw || history.length > 0)) {
         loadThreeDViewModule();
@@ -373,45 +484,70 @@
             return;
         }
 
+        const validWellLocations =
+            Number.isInteger(injectorI) && Number.isInteger(injectorJ) &&
+            Number.isInteger(producerI) && Number.isInteger(producerJ) &&
+            injectorI >= 0 && injectorI < nx && injectorJ >= 0 && injectorJ < ny &&
+            producerI >= 0 && producerI < nx && producerJ >= 0 && producerJ < ny;
+
+        if (!validWellLocations) {
+            alert('Invalid well location. Ensure i/j are within grid bounds.');
+            return;
+        }
+
         history = [];
         currentIndex = -1;
         runCompleted = false;
 
         simWorker.postMessage({
             type: 'create',
-            payload: {
-                nx: Number(nx),
-                ny: Number(ny),
-                nz: Number(nz),
-                initialPressure: Number(initialPressure),
-                initialSaturation: Number(initialSaturation),
-                s_wc: Number(s_wc),
-                s_or: Number(s_or),
-                n_w: Number(n_w),
-                n_o: Number(n_o),
-                max_sat_change_per_step: Number(max_sat_change_per_step),
-                capillaryEnabled: Boolean(capillaryEnabled),
-                capillaryPEntry: Number(capillaryPEntry),
-                capillaryLambda: Number(capillaryLambda),
-                gravityEnabled: Boolean(gravityEnabled),
-                permMode,
-                minPerm: Number(minPerm),
-                maxPerm: Number(maxPerm),
-                useRandomSeed: Boolean(useRandomSeed),
-                randomSeed: Number(randomSeed),
-                permsX: layerPermsXStr.split(',').map(Number),
-                permsY: layerPermsYStr.split(',').map(Number),
-                permsZ: layerPermsZStr.split(',').map(Number),
-                well_radius: Number(well_radius),
-                well_skin: Number(well_skin),
-            }
+            payload: buildCreatePayload(),
         });
         runSteps();
     }
 
+    function buildCreatePayload() {
+        const useUniformPerm = permMode === 'uniform';
+        const permsX = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermX)) : layerPermsX.map(Number);
+        const permsY = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermY)) : layerPermsY.map(Number);
+        const permsZ = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermZ)) : layerPermsZ.map(Number);
+
+        return {
+            nx: Number(nx),
+            ny: Number(ny),
+            nz: Number(nz),
+            initialPressure: Number(initialPressure),
+            initialSaturation: Number(initialSaturation),
+            s_wc: Number(s_wc),
+            s_or: Number(s_or),
+            n_w: Number(n_w),
+            n_o: Number(n_o),
+            max_sat_change_per_step: Number(max_sat_change_per_step),
+            capillaryEnabled: Boolean(capillaryEnabled),
+            capillaryPEntry: Number(capillaryPEntry),
+            capillaryLambda: Number(capillaryLambda),
+            gravityEnabled: Boolean(gravityEnabled),
+            permMode: useUniformPerm ? 'perLayer' : permMode,
+            minPerm: Number(minPerm),
+            maxPerm: Number(maxPerm),
+            useRandomSeed: Boolean(useRandomSeed),
+            randomSeed: Number(randomSeed),
+            permsX,
+            permsY,
+            permsZ,
+            well_radius: Number(well_radius),
+            well_skin: Number(well_skin),
+            injectorI: Number(injectorI),
+            injectorJ: Number(injectorJ),
+            producerI: Number(producerI),
+            producerJ: Number(producerJ),
+        };
+    }
+
     async function loadBenchmarkResults() {
         try {
-            const response = await fetch('/benchmark-results.json', { cache: 'no-store' });
+            const artifactUrl = `${import.meta.env.BASE_URL}benchmark-results.json`;
+            const response = await fetch(artifactUrl, { cache: 'no-store' });
             if (!response.ok) return;
 
             const artifact = (await response.json()) as BenchmarkArtifact;
@@ -448,38 +584,23 @@
         }
     }
 
-    // function addWell() {
-    //     if (!simulator) return;
-    //     try {
-    //         simulator.add_well(Number(well_i), Number(well_j), Number(well_k), Number(well_rate), Boolean(is_injector));
-    //         refreshViews();
-    //     } catch (e) {
-    //         console.warn('add_well call failed (check wasm signature):', e);
-    //     }
-    // }
-
     function stepOnce() {
-        if (!simWorker || workerRunning) return;
-        workerRunning = true;
-        simWorker.postMessage({
-            type: 'run',
-            payload: {
-                steps: 1,
-                deltaTDays: Number(delta_t_days),
-                historyInterval: 1,
-            }
-        });
+        runSimulationBatch(1, 1);
     }
 
     function runSteps() {
+        runSimulationBatch(Number(steps), HISTORY_RECORD_INTERVAL);
+    }
+
+    function runSimulationBatch(batchSteps: number, historyInterval: number) {
         if (!simWorker || workerRunning) return;
         workerRunning = true;
         simWorker.postMessage({
             type: 'run',
             payload: {
-                steps: Number(steps),
+                steps: batchSteps,
                 deltaTDays: Number(delta_t_days),
-                historyInterval: HISTORY_RECORD_INTERVAL,
+                historyInterval,
             }
         });
     }
@@ -532,359 +653,197 @@
         // We don't update rateHistory here, as it's cumulative
     }
 
+    $: replayTime = history.length > 0 && currentIndex >= 0 && currentIndex < history.length
+        ? history[currentIndex].time
+        : null;
+
     
 </script>
-<main class="min-h-screen bg-base-200">
-<FractionalFlow
-    rockProps={{ s_wc, s_or, n_w, n_o }}
-    fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
-    timeHistory={rateHistory.map((point) => point.time)}
-    injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
-    reservoir={{ length: nx * 10, area: ny * 10 * nz * 1, porosity: 0.2 }}
-    on:analyticalData={(e) => analyticalProductionData = e.detail.production}
-/>
-<h1 class="text-4xl font-bold mb-6">A Simplified Reservoir Simulation Model</h1>
 
-    <div class="grid grid-cols-2 gap-4">
-        <div class="grid grid-cols-2 gap-4">
-            <div class="bg-blue-200">
-                <h3>Reservoir Properties</h3>                
-                <div>
-                    <br />
-                    <label class="form-control">
-                        <span class="label-text">Scenario Preset</span>
-                        <select class="select select-bordered w-1/2" bind:value={scenarioPreset} on:change={applyScenarioPreset}>
-                            <option value="custom">Custom</option>
-                            <option value="baseline_waterflood">Baseline Waterflood</option>
-                            <option value="high_contrast_layers">High Contrast Layers</option>
-                            <option value="viscous_fingering_risk">Viscous Fingering Risk</option>
-                        </select>
-                    </label>
-                </div>
-                <div>
-                    <br />
-                    <label class="form-control">
-                        <span class="label-text">Pressure (bar)</span>
-                        <input type="number" step="10" class="input input-bordered w-1/4" bind:value={initialPressure} />
-                    </label>
-                </div>
-                <div>
-                    <br />
-                    <label class="form-control">
-                        <span class="label-text">Water Saturation</span>
-                        <input type="number" step="0.05" class="input input-bordered w-1/4" bind:value={initialSaturation} />
-                    </label>
-                </div>
-                <div>
-                    <br />
-                    <label class="label cursor-pointer justify-start gap-3">
-                        <input type="checkbox" class="checkbox checkbox-sm" bind:checked={gravityEnabled} />
-                        <span class="label-text">Enable gravity terms</span>
-                    </label>
-                </div>
+<main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
+    <div class="mx-auto max-w-[1600px] space-y-4 p-4 lg:p-6">
+        <FractionalFlow
+            rockProps={{ s_wc, s_or, n_w, n_o }}
+            fluidProps={{ mu_w: 0.5, mu_o: 1.0 }}
+            timeHistory={rateHistory.map((point) => point.time)}
+            injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
+            reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: 0.2 }}
+            on:analyticalData={(e) => analyticalProductionData = e.detail.production}
+        />
 
-            </div>
-            
+        <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <h4>Rel. Permeability</h4>
-                <label class="form-control w-full">
-                    <span class="label-text">S_wc</span>
-                    <input type="number" step="0.05" class="input input-bordered" bind:value={s_wc} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">S_or</span>
-                    <input type="number" step="0.05" class="input input-bordered" bind:value={s_or} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">n_w</span>
-                    <input type="number" step="0.1" class="input input-bordered" bind:value={n_w} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">n_o</span>
-                    <input type="number" step="0.1" class="input input-bordered" bind:value={n_o} />
-                </label>
-
-                <h4 class="mt-4">Capillary Pressure</h4>
-                <label class="label cursor-pointer justify-start gap-3">
-                    <input type="checkbox" class="checkbox checkbox-sm" bind:checked={capillaryEnabled} />
-                    <span class="label-text">Enable capillary pressure</span>
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">P_entry (bar)</span>
-                    <input type="number" min="0" step="0.1" class="input input-bordered" bind:value={capillaryPEntry} disabled={!capillaryEnabled} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">Lambda</span>
-                    <input type="number" min="0.1" step="0.1" class="input input-bordered" bind:value={capillaryLambda} disabled={!capillaryEnabled} />
-                </label>
+                <h1 class="text-2xl font-bold lg:text-3xl">Simplified Reservoir Simulation Model</h1>
+                <p class="text-sm opacity-80">Interactive two-phase simulation, visualization, and benchmark tracking.</p>
             </div>
-            <div class="col-span-2">
-                <h4>Permeability</h4>
-                <label class="form-control w-full">
-                    <span class="label-text">Mode</span>
-                    <select class="select select-bordered" bind:value={permMode}>
-                        <option value="default">Default</option>
-                        <option value="random">Random</option>
-                        <option value="perLayer">Per Layer</option>
-                    </select>
-                </label>
-                {#if permMode === 'random'}
-                    <div>
-                        <label class="form-control w-full">
-                            <span class="label-text">Use Seeded Randomness</span>
-                            <input type="checkbox" class="checkbox" bind:checked={useRandomSeed} />
+            <button class="btn btn-sm btn-outline" on:click={toggleTheme}>
+                {theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-12">
+            <aside class="space-y-3 md:col-span-3 md:max-w-[280px]">
+                <div class="card border border-base-300 bg-base-100 shadow-sm">
+                    <div class="card-body p-3">
+                        <label class="form-control">
+                            <span class="label-text text-xs">Scenario Preset</span>
+                            <select class="select select-bordered select-sm w-full" bind:value={scenarioPreset} on:change={applyScenarioPreset}>
+                                <option value="custom">Custom</option>
+                                <option value="baseline_waterflood">Baseline Waterflood</option>
+                                <option value="high_contrast_layers">High Contrast Layers</option>
+                                <option value="viscous_fingering_risk">Viscous Fingering Risk</option>
+                            </select>
                         </label>
-                        {#if useRandomSeed}
-                            <label class="form-control w-full">
-                                <span class="label-text">Random Seed</span>
-                                <input type="number" step="1" class="input input-bordered" bind:value={randomSeed} />
-                            </label>
+                    </div>
+                </div>
+
+                <StaticPropertiesPanel
+                    bind:nx
+                    bind:ny
+                    bind:nz
+                    bind:cellDx
+                    bind:cellDy
+                    bind:cellDz
+                />
+
+                <ReservoirPropertiesPanel
+                    bind:initialPressure
+                    bind:initialSaturation
+                    bind:permMode
+                    bind:uniformPermX
+                    bind:uniformPermY
+                    bind:uniformPermZ
+                    bind:useRandomSeed
+                    bind:randomSeed
+                    bind:minPerm
+                    bind:maxPerm
+                    bind:nz
+                    bind:layerPermsX
+                    bind:layerPermsY
+                    bind:layerPermsZ
+                />
+
+                <RelativeCapillaryPanel
+                    bind:s_wc
+                    bind:s_or
+                    bind:n_w
+                    bind:n_o
+                    bind:capillaryEnabled
+                    bind:capillaryPEntry
+                    bind:capillaryLambda
+                />
+
+                <WellPropertiesPanel
+                    bind:well_radius
+                    bind:well_skin
+                    bind:nx
+                    bind:ny
+                    bind:injectorI
+                    bind:injectorJ
+                    bind:producerI
+                    bind:producerJ
+                />
+
+                <TimestepControlsPanel
+                    bind:delta_t_days
+                    bind:steps
+                    bind:max_sat_change_per_step
+                />
+
+                <DynamicControlsPanel
+                    bind:steps
+                    bind:gravityEnabled
+                    {wasmReady}
+                    {workerRunning}
+                    {runCompleted}
+                    {simTime}
+                    historyLength={history.length}
+                    {profileStats}
+                    onRunSteps={runSteps}
+                    onStepOnce={stepOnce}
+                    onInitSimulator={initSimulator}
+                />
+
+                <VisualizationReplayPanel
+                    bind:showProperty
+                    bind:legendRangeMode
+                    bind:legendPercentileLow
+                    bind:legendPercentileHigh
+                    historyLength={history.length}
+                    bind:currentIndex
+                    replayTime={replayTime}
+                    bind:playing
+                    bind:playSpeed
+                    bind:showDebugState
+                    onApplyHistoryIndex={applyHistoryIndex}
+                    onPrev={prev}
+                    onNext={next}
+                    onTogglePlay={togglePlay}
+                />
+            </aside>
+
+            <section class="space-y-3 md:col-span-9">
+                <div class="card border border-base-300 bg-base-100 shadow-sm">
+                    <div class="card-body p-4 md:p-5">
+                        {#if RateChartComponent}
+                            <svelte:component this={RateChartComponent} {rateHistory} {analyticalProductionData} />
+                        {:else}
+                            <div class="text-sm opacity-70">Loading rate chart…</div>
                         {/if}
-                        <label class="form-control w-full">
-                            <span class="label-text">Min Perm</span>
-                            <input type="number" class="input input-bordered" bind:value={minPerm} />
-                        </label>
-                        <label class="form-control w-full">
-                            <span class="label-text">Max Perm</span>
-                            <input type="number" class="input input-bordered" bind:value={maxPerm} />
-                        </label>
                     </div>
-                {:else if permMode === 'perLayer'}
-                    <div>
-                        <label class="form-control w-full">
-                            <span class="label-text">Perm X (by layer, csv)</span>
-                            <input type="text" class="input input-bordered" bind:value={layerPermsXStr} />
-                        </label>
-                        <label class="form-control w-full">
-                            <span class="label-text">Perm Y (by layer, csv)</span>
-                            <input type="text" class="input input-bordered" bind:value={layerPermsYStr} />
-                        </label>
-                        <label class="form-control w-full">
-                            <span class="label-text">Perm Z (by layer, csv)</span>
-                            <input type="text" class="input input-bordered" bind:value={layerPermsZStr} />
-                        </label>
+                </div>
+
+                <div class="card border border-base-300 bg-base-100 shadow-sm">
+                    <div class="card-body p-4 md:p-5">
+                        {#if ThreeDViewComponent}
+                            <svelte:component
+                                this={ThreeDViewComponent}
+                                nx={nx}
+                                ny={ny}
+                                nz={nz}
+                                {theme}
+                                gridState={gridStateRaw}
+                                showProperty={showProperty}
+                                legendRangeMode={legendRangeMode}
+                                legendPercentileLow={legendPercentileLow}
+                                legendPercentileHigh={legendPercentileHigh}
+                                history={history}
+                                currentIndex={currentIndex}
+                                wellState={wellStateRaw}
+                            />
+                        {:else}
+                            <div class="flex items-center justify-center rounded border border-base-300 bg-base-200" style="height: clamp(240px, 35vh, 420px);">
+                                <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
+                            </div>
+                        {/if}
                     </div>
-                {/if}
-            </div>
-            <div>
-                <h4>Well Properties</h4>
-                <label class="form-control w-full">
-                    <span class="label-text">Well Radius (m)</span>
-                    <input type="number" step="0.01" class="input input-bordered" bind:value={well_radius} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">Skin</span>
-                    <input type="number" step="0.1" class="input input-bordered" bind:value={well_skin} />
-                </label>
-            </div>
-            <!-- <div>
-                <h4>Stability</h4>
-                <label class="form-control w-full">
-                    <span class="label-text">Max Saturation Change</span>
-                    <input type="number" step="0.01" class="input input-bordered" bind:value={max_sat_change_per_step} />
-                </label>
-            </div> -->
-            <div class="controls">
-            <span>{wasmReady ? 'WASM ready' : 'WASM loading...'}</span>
-            <!-- <div>
-                <label class="form-control w-full">
-                    <span class="label-text">nx</span>
-                    <input type="number" min="1" class="input input-bordered" bind:value={nx} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">ny</span>
-                    <input type="number" min="1" class="input input-bordered" bind:value={ny} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">nz</span>
-                    <input type="number" min="1" class="input input-bordered" bind:value={nz} />
-                </label>
-                <div class="row">
-                    <button class="btn btn-primary" on:click={initSimulator}>Init Simulator</button>
                 </div>
-            </div> -->
 
-            <div>
-                <label class="form-control w-full">
-                    <span class="label-text">delta_t_days</span>
-                    <input type="number" step="0.1" class="input input-bordered" bind:value={delta_t_days} />
-                </label>
-                <label class="form-control w-full">
-                    <span class="label-text">steps</span>
-                    <input type="number" min="1" class="input input-bordered" bind:value={steps} />
-                </label>
-                <!-- <div class="row">
-                    <button class="btn btn-secondary" on:click={stepOnce} disabled={!simulator}>Step & Record</button>
-                    <button class="btn btn-secondary" on:click={runSteps} disabled={!simulator}>Run {steps} & Record</button>
-                </div> -->
-            </div>
+                <BenchmarkResultsCard
+                    {benchmarkSource}
+                    {benchmarkGeneratedAt}
+                    {selectedBenchmarkMode}
+                    {benchmarkModeLabel}
+                    {benchmarkRowsWithStatus}
+                    {allBenchmarksPass}
+                    onSelectMode={(mode) => selectedBenchmarkMode = mode}
+                />
 
-            <div>
-                <label class="label cursor-pointer justify-start gap-3 mb-2">
-                    <input type="checkbox" class="checkbox checkbox-sm" bind:checked={showDebugState} />
-                    <span class="label-text">Show raw debug state</span>
-                </label>
-                <!-- <h4>Replay</h4>
-                <div class="row">
-                    <button class="btn btn-outline" on:click={prev} disabled={history.length===0}>Prev</button>
-                    <button class="btn btn-outline" on:click={togglePlay} disabled={history.length===0}>{playing ? 'Stop' : 'Play'}</button>
-                    <button class="btn btn-outline" on:click={next} disabled={history.length===0}>Next</button>
-                    <label class="form-control">
-                        <span class="label-text">Speed</span>
-                        <input type="number" min="0.1" step="0.1" class="input input-bordered" bind:value={playSpeed} />
-                    </label>
-                </div> -->
-                <div style="display:flex; gap:0.5rem; align-items:center;">
-                    <input type="range" class="range" min="0" max={Math.max(0, history.length-1)} bind:value={currentIndex} on:input={() => applyHistoryIndex(currentIndex)} style="flex:1;" />
-                    <span style="min-width:80px;">Step: {currentIndex} / {history.length - 1}</span>
-                </div>
-                {#if history.length > 0 && currentIndex >= 0 && currentIndex < history.length}
-                    <div style="color:#666; font-size:12px;">Time: {history[currentIndex].time.toFixed(2)} days</div>
-                {/if}
-            </div>
-            <div>
-                <h4>Visualization</h4>
-                <label class="form-control w-full">
-                    <span class="label-text">Property</span>
-                    <select class="select select-bordered" bind:value={showProperty}>
-                        <option value="pressure">Pressure</option>
-                        <option value="saturation_water">Water Saturation</option>
-                        <option value="saturation_oil">Oil Saturation</option>
-                        <option value="permeability_x">Permeability X</option>
-                        <option value="permeability_y">Permeability Y</option>
-                        <option value="permeability_z">Permeability Z</option>
-                        <option value="porosity">Porosity</option>
-                    </select>
-                </label>
-                <label class="form-control w-full mt-2">
-                    <span class="label-text">Legend Range Mode</span>
-                    <select class="select select-bordered" bind:value={legendRangeMode}>
-                        <option value="fixed">Fixed</option>
-                        <option value="percentile">Percentile (adaptive)</option>
-                    </select>
-                </label>
-                {#if legendRangeMode === 'percentile'}
-                    <div class="grid grid-cols-2 gap-2 mt-2">
-                        <label class="form-control w-full">
-                            <span class="label-text">Low Percentile (%)</span>
-                            <input type="number" min="0" max="99" step="1" class="input input-bordered" bind:value={legendPercentileLow} />
-                        </label>
-                        <label class="form-control w-full">
-                            <span class="label-text">High Percentile (%)</span>
-                            <input type="number" min="1" max="100" step="1" class="input input-bordered" bind:value={legendPercentileHigh} />
-                        </label>
+                {#if showDebugState}
+                    <div class="card border border-base-300 bg-base-100 shadow-sm">
+                        <div class="card-body grid gap-4 p-4 lg:grid-cols-2">
+                            <div>
+                                <h4 class="mb-2 text-sm font-semibold">Grid State (current)</h4>
+                                <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(gridStateRaw, null, 2)}</pre>
+                            </div>
+                            <div>
+                                <h4 class="mb-2 text-sm font-semibold">Well State (current)</h4>
+                                <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(wellStateRaw, null, 2)}</pre>
+                            </div>
+                        </div>
                     </div>
                 {/if}
-                <div>time: {simTime}</div>
-                <div>recorded steps: {history.length}</div>
-                <div>worker: {workerRunning ? 'running' : 'idle'}</div>
-                <div>run completed: {runCompleted ? 'yes' : 'no'}</div>
-                <div style="font-size:12px; color:#666; margin-top:4px;">
-                    avg step: {profileStats.avgStepMs.toFixed(3)} ms · batch: {profileStats.batchMs.toFixed(1)} ms
-                </div>
-                <div style="font-size:12px; color:#666;">
-                    state extract: {profileStats.extractMs.toFixed(3)} ms · apply: {profileStats.renderApplyMs.toFixed(3)} ms · snapshots: {profileStats.snapshotsSent}
-                </div>
-            </div>
-        </div>
-        
-
-            
-        </div>
-        <div class="row" style="margin-top: 1rem;">
-            {#if RateChartComponent}
-                <svelte:component this={RateChartComponent} {rateHistory} {analyticalProductionData} />
-            {:else}
-                <div style="padding:0.75rem; color:#666; font-size:12px;">Loading rate chart…</div>
-            {/if}
-        </div>
-    </div>
-    <div class="viz-wrapper">
-        {#if ThreeDViewComponent}
-            <svelte:component
-                this={ThreeDViewComponent}
-                nx={nx}
-                ny={ny}
-                nz={nz}
-                gridState={gridStateRaw}
-                showProperty={showProperty}
-                legendRangeMode={legendRangeMode}
-                legendPercentileLow={legendPercentileLow}
-                legendPercentileHigh={legendPercentileHigh}
-                history={history}
-                currentIndex={currentIndex}
-                wellState={wellStateRaw}
-            />
-        {:else}
-            <div style="height:600px; border:1px solid #ddd; background:#fff; display:flex; align-items:center; justify-content:center; color:#666; font-size:12px;">
-                <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
-            </div>
-        {/if}
-    </div>
-    {#if showDebugState}
-        <div class="grid-well-wrapper">
-            <div>
-                <h4>Grid State (current)</h4>
-                <pre>{JSON.stringify(gridStateRaw, null, 2)}</pre>
-            </div>
-            <div>
-                <h4>Well State (current)</h4>
-                <pre>{JSON.stringify(wellStateRaw, null, 2)}</pre>
-            </div>
-        </div>
-    {/if}
-
-    <div class="bg-base-100 p-4 mt-4 rounded-lg shadow-sm">
-        <h3 class="text-xl font-semibold mb-2">P4-1 Benchmark Results</h3>
-        <p class="text-sm mb-3">Published-reference Buckley-Leverett comparison (analytical vs simulation).</p>
-        <div class="text-xs mb-3">Data source: {benchmarkSource}{benchmarkGeneratedAt ? `, generated: ${benchmarkGeneratedAt}` : ''}</div>
-        <div class="join mb-3">
-            <button
-                class="btn btn-sm join-item"
-                class:btn-active={selectedBenchmarkMode === 'baseline'}
-                on:click={() => selectedBenchmarkMode = 'baseline'}
-            >
-                Baseline
-            </button>
-            <button
-                class="btn btn-sm join-item"
-                class:btn-active={selectedBenchmarkMode === 'refined'}
-                on:click={() => selectedBenchmarkMode = 'refined'}
-            >
-                Refined
-            </button>
-        </div>
-        <div class="text-xs mb-3">Showing: {benchmarkModeLabel[selectedBenchmarkMode]}</div>
-        <div class="overflow-x-auto">
-            <table class="table table-sm w-full">
-                <thead>
-                    <tr>
-                        <th>Case</th>
-                        <th>PV_BT_sim</th>
-                        <th>PV_BT_ref</th>
-                        <th>Relative Error</th>
-                        <th>Improvement vs baseline</th>
-                        <th>Tolerance</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {#each benchmarkRowsWithStatus as row}
-                        <tr>
-                            <td>{row.name}</td>
-                            <td>{row.pvBtSim.toFixed(4)}</td>
-                            <td>{row.pvBtRef.toFixed(4)}</td>
-                            <td>{(row.relError * 100).toFixed(1)}%</td>
-                            <td>{row.improvementVsBaselinePp === null ? '-' : `${row.improvementVsBaselinePp.toFixed(1)} pp`}</td>
-                            <td>{(row.tolerance * 100).toFixed(1)}%</td>
-                            <td>{row.passes ? 'PASS' : 'FAIL'}</td>
-                        </tr>
-                    {/each}
-                </tbody>
-            </table>
-        </div>
-        <div class="text-sm mt-2">
-            Overall status: {allBenchmarksPass ? 'PASS' : 'FAIL'}
+            </section>
         </div>
     </div>
 </main>

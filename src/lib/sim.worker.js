@@ -62,11 +62,17 @@ function configureSimulator(payload) {
     simulator.setPermeabilityPerLayer(payload.permsX, payload.permsY, payload.permsZ);
   }
 
+  const clampIndex = (value, maxExclusive) => Math.max(0, Math.min(maxExclusive - 1, Number(value)));
+  const producerI = clampIndex(payload.producerI ?? (payload.nx - 1), payload.nx);
+  const producerJ = clampIndex(payload.producerJ ?? 0, payload.ny);
+  const injectorI = clampIndex(payload.injectorI ?? 0, payload.nx);
+  const injectorJ = clampIndex(payload.injectorJ ?? 0, payload.ny);
+
   for (let i = 0; i < payload.nz; i++) {
-    simulator.add_well(payload.nx - 1, 0, i, 100, payload.well_radius, payload.well_skin, false);
+    simulator.add_well(producerI, producerJ, i, 100, payload.well_radius, payload.well_skin, false);
   }
   for (let i = 0; i < payload.nz; i++) {
-    simulator.add_well(0, 0, i, 400, payload.well_radius, payload.well_skin, true);
+    simulator.add_well(injectorI, injectorJ, i, 400, payload.well_radius, payload.well_skin, true);
   }
 }
 

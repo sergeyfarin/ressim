@@ -90,6 +90,32 @@ export class ReservoirSimulator {
         return this;
     }
     /**
+     * @param {number} p_entry
+     * @param {number} lambda
+     */
+    setCapillaryParams(p_entry, lambda) {
+        const ret = wasm.reservoirsimulator_setCapillaryParams(this.__wbg_ptr, p_entry, lambda);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} rho_o
+     * @param {number} rho_w
+     */
+    setFluidDensities(rho_o, rho_w) {
+        const ret = wasm.reservoirsimulator_setFluidDensities(this.__wbg_ptr, rho_o, rho_w);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {boolean} enabled
+     */
+    setGravityEnabled(enabled) {
+        wasm.reservoirsimulator_setGravityEnabled(this.__wbg_ptr, enabled);
+    }
+    /**
      * Set initial pressure for all grid cells
      * @param {number} pressure
      */
