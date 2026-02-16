@@ -1,0 +1,46 @@
+name: Publish Dist
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build dist
+        run: npm run build
+
+      - name: Package dist artifact
+        run: |
+          ARCHIVE="ressim-dist-${GITHUB_SHA}.tar.gz"
+          tar -czf "$ARCHIVE" -C dist ressim
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dist-${{ github.sha }}
+          name: dist-${{ github.sha }}
+          files: ${{ env.ARCHIVE }}
+          generate_release_notes: false
+          make_latest: false
