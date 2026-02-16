@@ -284,6 +284,9 @@ pub struct ReservoirSimulator {
     pc: CapillaryPressure,
     gravity_enabled: bool,
     max_sat_change_per_step: f64,
+    rate_controlled_wells: bool,
+    target_injector_rate_m3_day: f64,
+    target_producer_rate_m3_day: f64,
     rate_history: Vec<TimePointRates>,
 }
 
@@ -309,6 +312,9 @@ impl ReservoirSimulator {
             pc: CapillaryPressure::default_pc(),  // Brooks-Corey capillary pressure
             gravity_enabled: false,
             max_sat_change_per_step: 0.1, // Default max saturation change
+            rate_controlled_wells: false,
+            target_injector_rate_m3_day: 0.0,
+            target_producer_rate_m3_day: 0.0,
             rate_history: Vec::new(),
         }
     }
@@ -545,6 +551,66 @@ impl ReservoirSimulator {
         self.gravity_enabled = enabled;
     }
 
+    #[wasm_bindgen(js_name = setRateControlledWells)]
+    pub fn set_rate_controlled_wells(&mut self, enabled: bool) {
+        self.rate_controlled_wells = enabled;
+    }
+
+    #[wasm_bindgen(js_name = setTargetWellRates)]
+    pub fn set_target_well_rates(&mut self, injector_rate_m3_day: f64, producer_rate_m3_day: f64) -> Result<(), String> {
+        if !injector_rate_m3_day.is_finite() || !producer_rate_m3_day.is_finite() {
+            return Err("Target well rates must be finite numbers".to_string());
+        }
+        if injector_rate_m3_day < 0.0 || producer_rate_m3_day < 0.0 {
+            return Err(format!(
+                "Target well rates must be non-negative, got injector={}, producer={}",
+                injector_rate_m3_day,
+                producer_rate_m3_day
+            ));
+        }
+
+        self.target_injector_rate_m3_day = injector_rate_m3_day;
+        self.target_producer_rate_m3_day = producer_rate_m3_day;
+        Ok(())
+    }
+
+    fn injector_well_count(&self) -> usize {
+        self.wells.iter().filter(|w| w.injector).count()
+    }
+
+    fn producer_well_count(&self) -> usize {
+        self.wells.iter().filter(|w| !w.injector).count()
+    }
+
+    fn well_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
+        if self.rate_controlled_wells {
+            if well.injector {
+                let n_inj = self.injector_well_count();
+                if n_inj == 0 {
+                    return Some(0.0);
+                }
+                return Some(-(self.target_injector_rate_m3_day / n_inj as f64));
+            }
+
+            let n_prod = self.producer_well_count();
+            if n_prod == 0 {
+                return Some(0.0);
+            }
+            return Some(self.target_producer_rate_m3_day / n_prod as f64);
+        }
+
+        if !well.productivity_index.is_finite() || !well.bhp.is_finite() || !pressure_bar.is_finite() {
+            return None;
+        }
+
+        let q_m3_day = well.productivity_index * (pressure_bar - well.bhp);
+        if q_m3_day.is_finite() {
+            Some(q_m3_day)
+        } else {
+            None
+        }
+    }
+
     fn calculate_fluxes(&self, delta_t_days: f64) -> (DVector<f64>, Vec<f64>, f64) {
         let n_cells = self.nx * self.ny * self.nz;
         if n_cells == 0 { return (DVector::zeros(0), vec![], 1.0); }
@@ -603,18 +669,21 @@ impl ReservoirSimulator {
                         b_rhs[id] += t * grav_head_bar;
                     }
 
-                    // well implicit coupling: add PI to diagonal and PI*BHP to RHS
-                    // Well rate [m³/day] = PI [m³/day/bar] * (p_cell - BHP) [bar]
-                    // For producer (injector=false): positive PI, well produces when p_cell > BHP
-                    // For injector (injector=true): well injects 100% water when p_cell < BHP
+                    // Well source terms
                     for w in &self.wells {
                         if w.i == i && w.j == j && w.k == k {
-                            // Defensive checks: well should be validated on add_well, but check at runtime too
-                            if w.productivity_index.is_finite() && w.bhp.is_finite() {
-                                diag += w.productivity_index;
-                                b_rhs[id] += w.productivity_index * w.bhp;
+                            if self.rate_controlled_wells {
+                                if let Some(q_m3_day) = self.well_rate_m3_day(w, cell.pressure) {
+                                    b_rhs[id] -= q_m3_day;
+                                }
+                            } else {
+                                // BHP-controlled: add PI to diagonal and PI*BHP to RHS
+                                // q [m³/day] = PI [m³/day/bar] * (p_cell - BHP)
+                                if w.productivity_index.is_finite() && w.bhp.is_finite() {
+                                    diag += w.productivity_index;
+                                    b_rhs[id] += w.productivity_index * w.bhp;
+                                }
                             }
-                            // Skip malformed well parameters (shouldn't happen with validation)
                         }
                     }
 
@@ -709,32 +778,23 @@ impl ReservoirSimulator {
         // Add well explicit contributions using solved pressure
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            
-            // Defensive check: ensure well parameters are finite (shouldn't happen with validation)
-            if w.productivity_index.is_finite() && w.bhp.is_finite() && p_new[id].is_finite() {
-                // Well rate [m³/day] = PI [m³/day/bar] * (p_block - BHP) [bar]
-                // Positive = production (outflow), negative = injection (inflow)
-                let q_m3_day = w.productivity_index * (p_new[id] - w.bhp);
-                
-                // Check result is finite
-                if q_m3_day.is_finite() {
-                    // Determine water composition of well fluid
-                    let fw = if w.injector {
-                        // Injectors inject 100% water
-                        1.0
-                    } else {
-                        // Producers produce at reservoir fluid composition (fractional flow)
-                        self.frac_flow_water(&self.grid_cells[id])
-                    };
-                    
-                    let water_q_m3_day = q_m3_day * fw;
-                    
-                    // Volume change [m³]. Production (q>0) removes fluid from block.
-                    // For injector: q<0 (inflow), so -q_water*dt adds water to the block
-                    delta_water_m3[id] -= water_q_m3_day * dt_days;
-                }
+
+            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+                // Determine water composition of well fluid
+                let fw = if w.injector {
+                    // Injectors inject 100% water
+                    1.0
+                } else {
+                    // Producers produce at reservoir fluid composition (fractional flow)
+                    self.frac_flow_water(&self.grid_cells[id])
+                };
+
+                let water_q_m3_day = q_m3_day * fw;
+
+                // Volume change [m³]. Production (q>0) removes fluid from block.
+                // For injector: q<0 (inflow), so -q_water*dt adds water to the block
+                delta_water_m3[id] -= water_q_m3_day * dt_days;
             }
-            // Skip malformed well parameters (shouldn't happen with validation)
         }
 
         // Calculate max saturation change for CFL condition
@@ -787,19 +847,16 @@ impl ReservoirSimulator {
 
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            if w.productivity_index.is_finite() && w.bhp.is_finite() && p_new[id].is_finite() {
-                let q_m3_day = w.productivity_index * (p_new[id] - w.bhp);
-                if q_m3_day.is_finite() {
-                    if w.injector {
-                        // Injection is negative flow
-                        total_injection -= q_m3_day;
-                    } else {
-                        // Production is positive flow
-                        let fw = self.frac_flow_water(&self.grid_cells[id]);
-                        let oil_rate = q_m3_day * (1.0 - fw);
-                        total_prod_oil += oil_rate;
-                        total_prod_liquid += q_m3_day;
-                    }
+            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+                if w.injector {
+                    // Injection is negative flow
+                    total_injection -= q_m3_day;
+                } else {
+                    // Production is positive flow
+                    let fw = self.frac_flow_water(&self.grid_cells[id]);
+                    let oil_rate = q_m3_day * (1.0 - fw);
+                    total_prod_oil += oil_rate;
+                    total_prod_liquid += q_m3_day;
                 }
             }
         }

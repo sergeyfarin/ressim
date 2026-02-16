@@ -67,6 +67,18 @@ function configureSimulator(payload) {
   simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o);
   simulator.setStabilityParams(payload.max_sat_change_per_step);
 
+  const setRateControlledWells = /** @type {any} */ (simulator).setRateControlledWells;
+  if (typeof setRateControlledWells === 'function') {
+    setRateControlledWells.call(simulator, Boolean(payload.rateControlledWells));
+  }
+
+  const setTargetWellRates = /** @type {any} */ (simulator).setTargetWellRates;
+  if (typeof setTargetWellRates === 'function') {
+    const targetInjectorRate = Number(payload.targetInjectorRate ?? 0);
+    const targetProducerRate = Number(payload.targetProducerRate ?? targetInjectorRate);
+    setTargetWellRates.call(simulator, targetInjectorRate, targetProducerRate);
+  }
+
   if (payload.permMode === 'random') {
     if (payload.useRandomSeed) {
       simulator.setPermeabilityRandomSeeded(payload.minPerm, payload.maxPerm, payload.randomSeed);
@@ -82,12 +94,14 @@ function configureSimulator(payload) {
   const producerJ = clampIndex(payload.producerJ ?? 0, payload.ny);
   const injectorI = clampIndex(payload.injectorI ?? 0, payload.nx);
   const injectorJ = clampIndex(payload.injectorJ ?? 0, payload.ny);
+  const producerBhp = Number(payload.producerBhp ?? 100);
+  const injectorBhp = Number(payload.injectorBhp ?? 400);
 
   for (let i = 0; i < payload.nz; i++) {
-    simulator.add_well(producerI, producerJ, i, 100, payload.well_radius, payload.well_skin, false);
+    simulator.add_well(producerI, producerJ, i, producerBhp, payload.well_radius, payload.well_skin, false);
   }
   for (let i = 0; i < payload.nz; i++) {
-    simulator.add_well(injectorI, injectorJ, i, 400, payload.well_radius, payload.well_skin, true);
+    simulator.add_well(injectorI, injectorJ, i, injectorBhp, payload.well_radius, payload.well_skin, true);
   }
 }
 

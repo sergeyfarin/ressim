@@ -61,6 +61,11 @@
     // Well inputs
     let well_radius = 0.1;
     let well_skin = 0.0;
+    let injectorBhp = 400.0;
+    let producerBhp = 100.0;
+    let rateControlledWells = false;
+    let targetInjectorRate = 350.0;
+    let targetProducerRate = 350.0;
     let injectorI = 0;
     let injectorJ = 0;
     let producerI = nx - 1;
@@ -216,6 +221,180 @@
 
     const scenarioPresets = {
         custom: null,
+        bl_case_a_refined: {
+            nx: 96,
+            ny: 1,
+            nz: 1,
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 1,
+            delta_t_days: 0.125,
+            steps: 240,
+            max_sat_change_per_step: 0.05,
+            initialPressure: 300,
+            initialSaturation: 0.1,
+            mu_w: 0.5,
+            mu_o: 1.0,
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2.0,
+            n_o: 2.0,
+            gravityEnabled: false,
+            capillaryEnabled: false,
+            capillaryPEntry: 0.0,
+            capillaryLambda: 2.0,
+            permMode: 'uniform',
+            uniformPermX: 2000,
+            uniformPermY: 2000,
+            uniformPermZ: 2000,
+            injectorBhp: 500,
+            producerBhp: 100,
+            rateControlledWells: true,
+            targetInjectorRate: 350,
+            targetProducerRate: 350,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 95,
+            producerJ: 0,
+        },
+        bl_case_b_refined: {
+            nx: 96,
+            ny: 1,
+            nz: 1,
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 1,
+            delta_t_days: 0.125,
+            steps: 240,
+            max_sat_change_per_step: 0.05,
+            initialPressure: 300,
+            initialSaturation: 0.15,
+            mu_w: 0.6,
+            mu_o: 1.4,
+            s_wc: 0.15,
+            s_or: 0.15,
+            n_w: 2.2,
+            n_o: 2.0,
+            gravityEnabled: false,
+            capillaryEnabled: false,
+            capillaryPEntry: 0.0,
+            capillaryLambda: 2.0,
+            permMode: 'uniform',
+            uniformPermX: 2000,
+            uniformPermY: 2000,
+            uniformPermZ: 2000,
+            injectorBhp: 500,
+            producerBhp: 100,
+            rateControlledWells: true,
+            targetInjectorRate: 350,
+            targetProducerRate: 350,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 95,
+            producerJ: 0,
+        },
+        bl_aligned_homogeneous: {
+            nx: 48,
+            ny: 1,
+            nz: 1,
+            cellDx: 5,
+            cellDy: 10,
+            cellDz: 10,
+            delta_t_days: 0.1,
+            steps: 120,
+            max_sat_change_per_step: 0.05,
+            initialPressure: 300,
+            initialSaturation: 0.2,
+            mu_w: 0.5,
+            mu_o: 1.0,
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2.0,
+            n_o: 2.0,
+            gravityEnabled: false,
+            capillaryEnabled: false,
+            capillaryPEntry: 0.0,
+            capillaryLambda: 2.0,
+            permMode: 'uniform',
+            uniformPermX: 150,
+            uniformPermY: 150,
+            uniformPermZ: 150,
+            rateControlledWells: true,
+            targetInjectorRate: 250,
+            targetProducerRate: 250,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 47,
+            producerJ: 0,
+        },
+        bl_aligned_mild_capillary: {
+            nx: 48,
+            ny: 1,
+            nz: 1,
+            cellDx: 5,
+            cellDy: 10,
+            cellDz: 10,
+            delta_t_days: 0.1,
+            steps: 120,
+            max_sat_change_per_step: 0.05,
+            initialPressure: 300,
+            initialSaturation: 0.2,
+            mu_w: 0.5,
+            mu_o: 1.0,
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2.0,
+            n_o: 2.0,
+            gravityEnabled: false,
+            capillaryEnabled: true,
+            capillaryPEntry: 0.75,
+            capillaryLambda: 3.2,
+            permMode: 'uniform',
+            uniformPermX: 150,
+            uniformPermY: 150,
+            uniformPermZ: 150,
+            rateControlledWells: true,
+            targetInjectorRate: 250,
+            targetProducerRate: 250,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 47,
+            producerJ: 0,
+        },
+        bl_aligned_mobility_balanced: {
+            nx: 48,
+            ny: 1,
+            nz: 1,
+            cellDx: 5,
+            cellDy: 10,
+            cellDz: 10,
+            delta_t_days: 0.1,
+            steps: 120,
+            max_sat_change_per_step: 0.05,
+            initialPressure: 300,
+            initialSaturation: 0.2,
+            mu_w: 0.8,
+            mu_o: 1.0,
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2.1,
+            n_o: 1.9,
+            gravityEnabled: false,
+            capillaryEnabled: false,
+            capillaryPEntry: 0.0,
+            capillaryLambda: 2.0,
+            permMode: 'uniform',
+            uniformPermX: 150,
+            uniformPermY: 150,
+            uniformPermZ: 150,
+            rateControlledWells: true,
+            targetInjectorRate: 250,
+            targetProducerRate: 250,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 47,
+            producerJ: 0,
+        },
         baseline_waterflood: {
             initialPressure: 300,
             initialSaturation: 0.3,
@@ -277,6 +456,18 @@
         },
     };
 
+    const scenarioPresetOptions = [
+        { value: 'custom', label: 'Custom' },
+        { value: 'bl_case_a_refined', label: 'BL Case A — Refined (benchmark-like)' },
+        { value: 'bl_case_b_refined', label: 'BL Case B — Refined (benchmark-like)' },
+        { value: 'bl_aligned_homogeneous', label: 'BL Aligned — Homogeneous 1D-like' },
+        { value: 'bl_aligned_mild_capillary', label: 'BL Aligned — Mild Capillary' },
+        { value: 'bl_aligned_mobility_balanced', label: 'BL Aligned — Mobility Balanced' },
+        { value: 'baseline_waterflood', label: 'Baseline Waterflood' },
+        { value: 'high_contrast_layers', label: 'High Contrast Layers' },
+        { value: 'viscous_fingering_risk', label: 'Viscous Fingering Risk' },
+    ];
+
     function parseLayerValues(value: unknown): number[] {
         if (Array.isArray(value)) {
             return value.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0);
@@ -314,12 +505,24 @@
     $: injectorJ = Math.max(0, Math.min(ny - 1, Number(injectorJ)));
 
     const scenarioPresetSetters: Record<string, (value: unknown) => void> = {
+        nx: (value) => nx = Math.max(1, Math.round(Number(value) || 1)),
+        ny: (value) => ny = Math.max(1, Math.round(Number(value) || 1)),
+        nz: (value) => nz = Math.max(1, Math.round(Number(value) || 1)),
+        cellDx: (value) => cellDx = Number(value),
+        cellDy: (value) => cellDy = Number(value),
+        cellDz: (value) => cellDz = Number(value),
+        delta_t_days: (value) => delta_t_days = Number(value),
+        steps: (value) => steps = Math.max(1, Math.round(Number(value) || 1)),
         initialPressure: (value) => initialPressure = Number(value),
         initialSaturation: (value) => initialSaturation = Number(value),
+        mu_w: (value) => mu_w = Number(value),
+        mu_o: (value) => mu_o = Number(value),
         s_wc: (value) => s_wc = Number(value),
         s_or: (value) => s_or = Number(value),
         n_w: (value) => n_w = Number(value),
         n_o: (value) => n_o = Number(value),
+        max_sat_change_per_step: (value) => max_sat_change_per_step = Number(value),
+        gravityEnabled: (value) => gravityEnabled = Boolean(value),
         capillaryEnabled: (value) => capillaryEnabled = Boolean(value),
         capillaryPEntry: (value) => capillaryPEntry = Number(value),
         capillaryLambda: (value) => capillaryLambda = Number(value),
@@ -339,6 +542,11 @@
         layerPermsXStr: (value) => layerPermsX = parseLayerValues(value),
         layerPermsYStr: (value) => layerPermsY = parseLayerValues(value),
         layerPermsZStr: (value) => layerPermsZ = parseLayerValues(value),
+        injectorBhp: (value) => injectorBhp = Number(value),
+        producerBhp: (value) => producerBhp = Number(value),
+        rateControlledWells: (value) => rateControlledWells = Boolean(value),
+        targetInjectorRate: (value) => targetInjectorRate = Number(value),
+        targetProducerRate: (value) => targetProducerRate = Number(value),
         injectorI: (value) => injectorI = Number(value),
         injectorJ: (value) => injectorJ = Number(value),
         producerI: (value) => producerI = Number(value),
@@ -349,6 +557,8 @@
     $: cellDy = Math.max(0.1, Number(cellDy) || 0.1);
     $: cellDz = Math.max(0.1, Number(cellDz) || 0.1);
     $: steps = Math.max(1, Math.round(Number(steps) || 1));
+    $: targetInjectorRate = Math.max(0, Number(targetInjectorRate) || 0);
+    $: targetProducerRate = Math.max(0, Number(targetProducerRate) || 0);
 
     function applyScenarioPreset() {
         const preset = scenarioPresets[scenarioPreset] as Record<string, unknown> | null;
@@ -557,6 +767,11 @@
             permsZ,
             well_radius: Number(well_radius),
             well_skin: Number(well_skin),
+            injectorBhp: Number(injectorBhp),
+            producerBhp: Number(producerBhp),
+            rateControlledWells: Boolean(rateControlledWells),
+            targetInjectorRate: Number(targetInjectorRate),
+            targetProducerRate: Number(targetProducerRate),
             injectorI: Number(injectorI),
             injectorJ: Number(injectorJ),
             producerI: Number(producerI),
@@ -811,10 +1026,9 @@
                         <label class="form-control">
                             <span class="label-text text-xs">Scenario Preset</span>
                             <select class="select select-bordered select-sm w-full" bind:value={scenarioPreset} on:change={applyScenarioPreset}>
-                                <option value="custom">Custom</option>
-                                <option value="baseline_waterflood">Baseline Waterflood</option>
-                                <option value="high_contrast_layers">High Contrast Layers</option>
-                                <option value="viscous_fingering_risk">Viscous Fingering Risk</option>
+                                {#each scenarioPresetOptions as option}
+                                    <option value={option.value}>{option.label}</option>
+                                {/each}
                             </select>
                         </label>
                     </div>
