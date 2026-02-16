@@ -22,10 +22,15 @@
   export let onRunSteps: () => void;
   export let onStepOnce: () => void;
   export let onInitSimulator: () => void;
+  export let onStopRun: () => void;
+  export let estimatedRunSeconds = 0;
+  export let longRunEstimate = false;
+  export let canStop = false;
+  export let hasValidationErrors = false;
 
   export let steps = 20;
   // steps=${steps} ·
-  $: groupSummary = `${workerRunning ? 'Running...' : runCompleted ? 'Run completed' : ''}`;
+  $: groupSummary = `${workerRunning ? 'Running...' : runCompleted ? 'Run completed' : ''} ${longRunEstimate ? '· long run estimate' : ''}`;
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open>
@@ -49,15 +54,17 @@
     </label>
 
     <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <button class="btn btn-sm btn-primary w-full" on:click={onRunSteps} disabled={!wasmReady || workerRunning}>Run {steps} Steps</button>
-      <button class="btn btn-sm w-full" on:click={onStepOnce} disabled={!wasmReady || workerRunning}>Step Once</button>
-      <button class="btn btn-sm btn-outline sm:col-span-2" on:click={onInitSimulator} disabled={!wasmReady || workerRunning}>Reinitialize Simulator</button>
+      <button class="btn btn-sm btn-primary w-full" on:click={onRunSteps} disabled={!wasmReady || workerRunning || hasValidationErrors}>Run {steps} Steps</button>
+      <button class="btn btn-sm w-full" on:click={onStepOnce} disabled={!wasmReady || workerRunning || hasValidationErrors}>Step Once</button>
+      <button class="btn btn-sm btn-warning w-full" on:click={onStopRun} disabled={!canStop}>Stop</button>
+      <button class="btn btn-sm btn-outline w-full" on:click={onInitSimulator} disabled={!wasmReady || workerRunning || hasValidationErrors}>Reinitialize Simulator</button>
     </div>
 
     <div class="text-xs opacity-80">
       <div>Status: {wasmReady ? 'WASM Ready' : 'WASM Loading...'}</div>
       <div>Worker: {workerRunning ? 'Running' : 'Idle'} · Run Completed: {runCompleted ? 'Yes' : 'No'}</div>
       <div>Time: {simTime.toFixed(2)} days · Recorded Steps: {historyLength}</div>
+      <div>Estimated run time: {estimatedRunSeconds.toFixed(1)} s {#if longRunEstimate}· consider Stop for long runs{/if}</div>
       <div>Avg Step: {profileStats.avgStepMs.toFixed(3)} ms · Batch: {profileStats.batchMs.toFixed(1)} ms</div>
       <div>Extract: {profileStats.extractMs.toFixed(3)} ms · Apply: {profileStats.renderApplyMs.toFixed(3)} ms · Snapshots: {profileStats.snapshotsSent}</div>
     </div>

@@ -33,6 +33,12 @@
     // Fluid properties (single source of truth for simulator + analytical)
     let mu_w = 0.5;
     let mu_o = 1.0;
+    let c_o = 1e-5;
+    let c_w = 3e-6;
+    let rock_compressibility = 1e-6;
+    let depth_reference = 0.0;
+    let volume_expansion_o = 1.0;
+    let volume_expansion_w = 1.0;
     let rho_w = 1000.0;
     let rho_o = 800.0;
     let ooipM3 = 0;
@@ -63,6 +69,9 @@
     let well_skin = 0.0;
     let injectorBhp = 400.0;
     let producerBhp = 100.0;
+    let injectorControlMode: 'rate' | 'pressure' = 'pressure';
+    let producerControlMode: 'rate' | 'pressure' = 'pressure';
+    let injectorEnabled = true;
     let rateControlledWells = false;
     let targetInjectorRate = 350.0;
     let targetProducerRate = 350.0;
@@ -73,6 +82,8 @@
 
     // Stability
     let max_sat_change_per_step = 0.1;
+    let max_pressure_change_per_step = 75.0;
+    let max_well_rate_change_fraction = 0.75;
     let gravityEnabled = false;
     let capillaryEnabled = true;
     let capillaryPEntry = 5.0;
@@ -84,6 +95,20 @@
     let simTime = 0;
     let rateHistory = [];
     let analyticalProductionData = [];
+    let analyticalMeta: { mode: 'waterflood' | 'depletion'; shapeFactor: number | null; shapeLabel: string } = {
+        mode: 'waterflood',
+        shapeFactor: null,
+        shapeLabel: '',
+    };
+    let runtimeWarning = '';
+    let runtimeError = '';
+    let vizRevision = 0;
+    let validationState: { errors: Record<string, string>; warnings: string[] } = { errors: {}, warnings: [] };
+    let validationErrors: Record<string, string> = {};
+    let validationWarnings: string[] = [];
+    let hasValidationErrors = false;
+    let estimatedRunSeconds = 0;
+    let longRunEstimate = false;
 
     type BenchmarkRow = {
         name: string;
@@ -454,6 +479,44 @@
             producerI: nx - 1,
             producerJ: 0,
         },
+        depletion_corner_producer: {
+            nx: 48,
+            ny: 1,
+            nz: 1,
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 5,
+            delta_t_days: 0.1,
+            steps: 180,
+            initialPressure: 300,
+            initialSaturation: 0.25,
+            injectorEnabled: false,
+            producerControlMode: 'pressure',
+            producerBhp: 80,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 0,
+            producerJ: 0,
+        },
+        depletion_center_producer: {
+            nx: 49,
+            ny: 49,
+            nz: 1,
+            cellDx: 10,
+            cellDy: 10,
+            cellDz: 5,
+            delta_t_days: 0.1,
+            steps: 220,
+            initialPressure: 300,
+            initialSaturation: 0.25,
+            injectorEnabled: false,
+            producerControlMode: 'pressure',
+            producerBhp: 80,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 24,
+            producerJ: 24,
+        },
     };
 
     const scenarioPresetOptions = [
@@ -466,6 +529,8 @@
         { value: 'baseline_waterflood', label: 'Baseline Waterflood' },
         { value: 'high_contrast_layers', label: 'High Contrast Layers' },
         { value: 'viscous_fingering_risk', label: 'Viscous Fingering Risk' },
+        { value: 'depletion_corner_producer', label: 'Depletion — Corner Producer' },
+        { value: 'depletion_center_producer', label: 'Depletion — Center Producer' },
     ];
 
     function parseLayerValues(value: unknown): number[] {
@@ -517,11 +582,19 @@
         initialSaturation: (value) => initialSaturation = Number(value),
         mu_w: (value) => mu_w = Number(value),
         mu_o: (value) => mu_o = Number(value),
+        c_o: (value) => c_o = Number(value),
+        c_w: (value) => c_w = Number(value),
+        rock_compressibility: (value) => rock_compressibility = Number(value),
+        depth_reference: (value) => depth_reference = Number(value),
+        volume_expansion_o: (value) => volume_expansion_o = Number(value),
+        volume_expansion_w: (value) => volume_expansion_w = Number(value),
         s_wc: (value) => s_wc = Number(value),
         s_or: (value) => s_or = Number(value),
         n_w: (value) => n_w = Number(value),
         n_o: (value) => n_o = Number(value),
         max_sat_change_per_step: (value) => max_sat_change_per_step = Number(value),
+        max_pressure_change_per_step: (value) => max_pressure_change_per_step = Number(value),
+        max_well_rate_change_fraction: (value) => max_well_rate_change_fraction = Number(value),
         gravityEnabled: (value) => gravityEnabled = Boolean(value),
         capillaryEnabled: (value) => capillaryEnabled = Boolean(value),
         capillaryPEntry: (value) => capillaryPEntry = Number(value),
@@ -544,7 +617,16 @@
         layerPermsZStr: (value) => layerPermsZ = parseLayerValues(value),
         injectorBhp: (value) => injectorBhp = Number(value),
         producerBhp: (value) => producerBhp = Number(value),
-        rateControlledWells: (value) => rateControlledWells = Boolean(value),
+        rateControlledWells: (value) => {
+            rateControlledWells = Boolean(value);
+            if (rateControlledWells) {
+                injectorControlMode = 'rate';
+                producerControlMode = 'rate';
+            }
+        },
+        injectorControlMode: (value) => injectorControlMode = String(value) === 'rate' ? 'rate' : 'pressure',
+        producerControlMode: (value) => producerControlMode = String(value) === 'rate' ? 'rate' : 'pressure',
+        injectorEnabled: (value) => injectorEnabled = Boolean(value),
         targetInjectorRate: (value) => targetInjectorRate = Number(value),
         targetProducerRate: (value) => targetProducerRate = Number(value),
         injectorI: (value) => injectorI = Number(value),
@@ -557,8 +639,20 @@
     $: cellDy = Math.max(0.1, Number(cellDy) || 0.1);
     $: cellDz = Math.max(0.1, Number(cellDz) || 0.1);
     $: steps = Math.max(1, Math.round(Number(steps) || 1));
+    $: delta_t_days = Math.max(0.001, Number(delta_t_days) || 0.001);
+    $: mu_w = Math.max(0.01, Number(mu_w) || 0.01);
+    $: mu_o = Math.max(0.01, Number(mu_o) || 0.01);
+    $: c_o = Math.max(0, Number(c_o) || 0);
+    $: c_w = Math.max(0, Number(c_w) || 0);
+    $: rock_compressibility = Math.max(0, Number(rock_compressibility) || 0);
+    $: volume_expansion_o = Math.max(0.01, Number(volume_expansion_o) || 0.01);
+    $: volume_expansion_w = Math.max(0.01, Number(volume_expansion_w) || 0.01);
+    $: max_sat_change_per_step = Math.max(0.01, Math.min(1, Number(max_sat_change_per_step) || 0.01));
+    $: max_pressure_change_per_step = Math.max(1, Number(max_pressure_change_per_step) || 1);
+    $: max_well_rate_change_fraction = Math.max(0.01, Number(max_well_rate_change_fraction) || 0.01);
     $: targetInjectorRate = Math.max(0, Number(targetInjectorRate) || 0);
     $: targetProducerRate = Math.max(0, Number(targetProducerRate) || 0);
+    $: rateControlledWells = injectorControlMode === 'rate' && producerControlMode === 'rate';
 
     function applyScenarioPreset() {
         const preset = scenarioPresets[scenarioPreset] as Record<string, unknown> | null;
@@ -569,6 +663,59 @@
             scenarioPresetSetters[key]?.(value);
         }
     }
+
+    type ValidationState = {
+        errors: Record<string, string>;
+        warnings: string[];
+    };
+
+    function validateInputs(): ValidationState {
+        const errors: Record<string, string> = {};
+        const warnings: string[] = [];
+
+        if (initialSaturation < 0 || initialSaturation > 1) {
+            errors.initialSaturation = 'Initial water saturation must be in [0, 1].';
+        }
+        if (delta_t_days <= 0) {
+            errors.deltaT = 'Timestep must be positive.';
+        }
+        if (well_radius <= 0) {
+            errors.wellRadius = 'Well radius must be positive.';
+        }
+        if (s_wc + s_or >= 1) {
+            errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
+        }
+        if (minPerm > maxPerm) {
+            errors.permBounds = 'Min permeability must not exceed max permeability.';
+        }
+        if (injectorEnabled && injectorI === producerI && injectorJ === producerJ) {
+            errors.wellOverlap = 'Injector and producer cannot share the same i/j location.';
+        }
+        if (injectorControlMode === 'pressure' && producerControlMode === 'pressure' && injectorBhp <= producerBhp) {
+            errors.wellPressureOrder = 'Injector BHP should be greater than producer BHP for pressure-driven displacement.';
+        }
+        if (injectorControlMode === 'rate' && targetInjectorRate <= 0 && injectorEnabled) {
+            errors.injectorRate = 'Injector rate must be positive when injector is enabled and rate-controlled.';
+        }
+        if (producerControlMode === 'rate' && targetProducerRate <= 0) {
+            errors.producerRate = 'Producer rate must be positive when rate-controlled.';
+        }
+        if (delta_t_days * steps > 3650) {
+            warnings.push('Requested run covers more than 10 years of simulated time; results may require tighter timestep limits.');
+        }
+        if (max_pressure_change_per_step > 250) {
+            warnings.push('Large max ΔP per step may reduce numerical robustness.');
+        }
+
+        return { errors, warnings };
+    }
+
+    $: validationState = validateInputs();
+    $: validationErrors = validationState.errors;
+    $: validationWarnings = validationState.warnings;
+    $: hasValidationErrors = Object.keys(validationErrors).length > 0;
+    $: estimatedRunSeconds = Math.max(0, (Number(profileStats.avgStepMs || 0) * Number(steps || 0)) / 1000);
+    $: longRunEstimate = estimatedRunSeconds > 10;
 
     function pushHistoryEntry(entry) {
         history = [...history, entry];
@@ -616,6 +763,13 @@
             return;
         }
 
+        if (type === 'runStarted') {
+            runtimeWarning = '';
+            runtimeError = '';
+            workerRunning = true;
+            return;
+        }
+
         if (type === 'state') {
             applyWorkerState(message);
             return;
@@ -629,16 +783,40 @@
             return;
         }
 
+        if (type === 'stopped') {
+            workerRunning = false;
+            runCompleted = true;
+            runtimeWarning = message.reason === 'user'
+                ? `Simulation stopped by user after ${Number(message.completedSteps ?? 0)} step(s).`
+                : 'No running simulation to stop.';
+            updateProfileStats(message.profile, profileStats.renderApplyMs);
+            applyHistoryIndex(history.length - 1);
+            return;
+        }
+
+        if (type === 'warning') {
+            runtimeWarning = String(message.message ?? 'Simulation warning');
+            return;
+        }
+
         if (type === 'error') {
             workerRunning = false;
             console.error('Simulation worker error:', message.message);
-            alert(`Simulation error: ${message.message}`);
+            runtimeError = String(message.message ?? 'Simulation error');
         }
     }
 
     function setupWorker() {
         simWorker = new Worker(new URL('./lib/sim.worker.js', import.meta.url), { type: 'module' });
         simWorker.onmessage = handleWorkerMessage;
+        simWorker.onerror = (event) => {
+            workerRunning = false;
+            runtimeError = `Worker error: ${event.message || 'Unknown worker failure'}`;
+        };
+        simWorker.onmessageerror = () => {
+            workerRunning = false;
+            runtimeError = 'Worker message deserialization failed. Reinitialize and retry.';
+        };
         simWorker.postMessage({ type: 'init' });
     }
 
@@ -703,7 +881,7 @@
 
     function initSimulator() {
         if (!wasmReady || !simWorker) {
-            alert('WASM not ready yet');
+            runtimeError = 'WASM not ready yet.';
             return;
         }
 
@@ -714,13 +892,21 @@
             producerI >= 0 && producerI < nx && producerJ >= 0 && producerJ < ny;
 
         if (!validWellLocations) {
-            alert('Invalid well location. Ensure i/j are within grid bounds.');
+            runtimeError = 'Invalid well location. Ensure i/j are within grid bounds.';
+            return;
+        }
+
+        if (hasValidationErrors) {
+            runtimeError = 'Input validation failed. Review highlighted controls.';
             return;
         }
 
         history = [];
         currentIndex = -1;
         runCompleted = false;
+        runtimeError = '';
+        runtimeWarning = '';
+        vizRevision += 1;
 
         simWorker.postMessage({
             type: 'create',
@@ -746,6 +932,12 @@
             initialSaturation: Number(initialSaturation),
             mu_w: Number(mu_w),
             mu_o: Number(mu_o),
+            c_o: Number(c_o),
+            c_w: Number(c_w),
+            rock_compressibility: Number(rock_compressibility),
+            depth_reference: Number(depth_reference),
+            volume_expansion_o: Number(volume_expansion_o),
+            volume_expansion_w: Number(volume_expansion_w),
             rho_w: Number(rho_w),
             rho_o: Number(rho_o),
             s_wc: Number(s_wc),
@@ -753,6 +945,8 @@
             n_w: Number(n_w),
             n_o: Number(n_o),
             max_sat_change_per_step: Number(max_sat_change_per_step),
+            max_pressure_change_per_step: Number(max_pressure_change_per_step),
+            max_well_rate_change_fraction: Number(max_well_rate_change_fraction),
             capillaryEnabled: Boolean(capillaryEnabled),
             capillaryPEntry: Number(capillaryPEntry),
             capillaryLambda: Number(capillaryLambda),
@@ -770,6 +964,9 @@
             injectorBhp: Number(injectorBhp),
             producerBhp: Number(producerBhp),
             rateControlledWells: Boolean(rateControlledWells),
+            injectorControlMode,
+            producerControlMode,
+            injectorEnabled: Boolean(injectorEnabled),
             targetInjectorRate: Number(targetInjectorRate),
             targetProducerRate: Number(targetProducerRate),
             injectorI: Number(injectorI),
@@ -828,16 +1025,26 @@
     }
 
     function runSimulationBatch(batchSteps: number, historyInterval: number) {
-        if (!simWorker || workerRunning) return;
+        if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
+        runtimeError = '';
+        runtimeWarning = longRunEstimate
+            ? `Estimated run duration is ${estimatedRunSeconds.toFixed(1)}s. You can stop at any time.`
+            : runtimeWarning;
         simWorker.postMessage({
             type: 'run',
             payload: {
                 steps: batchSteps,
                 deltaTDays: Number(delta_t_days),
                 historyInterval,
+                chunkYieldInterval: 20,
             }
         });
+    }
+
+    function stopRun() {
+        if (!simWorker) return;
+        simWorker.postMessage({ type: 'stop' });
     }
 
 
@@ -845,8 +1052,11 @@
     /* Playback controls */
     function play() {
         if (history.length === 0) return;
+        if (playTimer) {
+            clearInterval(playTimer);
+            playTimer = null;
+        }
         playing = true;
-        stopPlaying();
         playTimer = setInterval(() => {
             next();
             if (currentIndex >= history.length - 1) {
@@ -881,6 +1091,7 @@
 
     function applyHistoryIndex(idx) {
         if (idx < 0 || idx >= history.length) return;
+        currentIndex = idx;
         const entry = history[idx];
         gridStateRaw = entry.grid;
         wellStateRaw = entry.wells;
@@ -1006,7 +1217,10 @@
             timeHistory={rateHistory.map((point) => point.time)}
             injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
+            scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
+            producerLocation={{ i: producerI, j: producerJ, nx, ny }}
             on:analyticalData={(e) => analyticalProductionData = e.detail.production}
+            on:analyticalMeta={(e) => analyticalMeta = e.detail}
         />
 
         <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1039,11 +1253,16 @@
                     {workerRunning}
                     {runCompleted}
                     {simTime}
+                    {estimatedRunSeconds}
+                    {longRunEstimate}
+                    canStop={workerRunning}
+                    hasValidationErrors={hasValidationErrors}
                     historyLength={history.length}
                     {profileStats}
                     onRunSteps={runSteps}
                     onStepOnce={stepOnce}
                     onInitSimulator={initSimulator}
+                    onStopRun={stopRun}
                 />
                 <StaticPropertiesPanel
                     bind:nx
@@ -1057,6 +1276,16 @@
                 <ReservoirPropertiesPanel
                     bind:initialPressure
                     bind:initialSaturation
+                    bind:mu_w
+                    bind:mu_o
+                    bind:c_o
+                    bind:c_w
+                    bind:rho_w
+                    bind:rho_o
+                    bind:rock_compressibility
+                    bind:depth_reference
+                    bind:volume_expansion_o
+                    bind:volume_expansion_w
                     bind:gravityEnabled
                     bind:permMode
                     bind:uniformPermX
@@ -1070,6 +1299,7 @@
                     bind:layerPermsX
                     bind:layerPermsY
                     bind:layerPermsZ
+                    fieldErrors={validationErrors}
                 />
 
                 <RelativeCapillaryPanel
@@ -1087,16 +1317,44 @@
                     bind:well_skin
                     bind:nx
                     bind:ny
+                    bind:injectorEnabled
+                    bind:injectorControlMode
+                    bind:producerControlMode
+                    bind:injectorBhp
+                    bind:producerBhp
+                    bind:targetInjectorRate
+                    bind:targetProducerRate
                     bind:injectorI
                     bind:injectorJ
                     bind:producerI
                     bind:producerJ
+                    fieldErrors={validationErrors}
                 />
 
                 <TimestepControlsPanel
                     bind:delta_t_days
                     bind:max_sat_change_per_step
+                    bind:max_pressure_change_per_step
+                    bind:max_well_rate_change_fraction
+                    fieldErrors={validationErrors}
                 />
+
+                {#if validationWarnings.length > 0}
+                    <div class="card border border-warning bg-base-100 shadow-sm">
+                        <div class="card-body p-3 text-xs">
+                            {#each validationWarnings as warning}
+                                <div class="text-warning">⚠ {warning}</div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
+                {#if runtimeWarning}
+                    <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{runtimeWarning}</div>
+                {/if}
+                {#if runtimeError}
+                    <div class="rounded-md border border-error bg-base-100 p-2 text-xs text-error">{runtimeError}</div>
+                {/if}
 
                 
 
@@ -1124,23 +1382,25 @@
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if ThreeDViewComponent}
-                            <svelte:component
-                                this={ThreeDViewComponent}
-                                nx={nx}
-                                ny={ny}
-                                nz={nz}
-                                {theme}
-                                gridState={gridStateRaw}
-                                showProperty={showProperty}
-                                legendRangeMode={legendRangeMode}
-                                legendPercentileLow={legendPercentileLow}
-                                legendPercentileHigh={legendPercentileHigh}
-                                legendFixedMin={legendFixedMin}
-                                legendFixedMax={legendFixedMax}
-                                history={history}
-                                currentIndex={currentIndex}
-                                wellState={wellStateRaw}
-                            />
+                            {#key `${nx}-${ny}-${nz}-${vizRevision}`}
+                                <svelte:component
+                                    this={ThreeDViewComponent}
+                                    nx={nx}
+                                    ny={ny}
+                                    nz={nz}
+                                    {theme}
+                                    gridState={gridStateRaw}
+                                    showProperty={showProperty}
+                                    legendRangeMode={legendRangeMode}
+                                    legendPercentileLow={legendPercentileLow}
+                                    legendPercentileHigh={legendPercentileHigh}
+                                    legendFixedMin={legendFixedMin}
+                                    legendFixedMax={legendFixedMax}
+                                    history={history}
+                                    currentIndex={currentIndex}
+                                    wellState={wellStateRaw}
+                                />
+                            {/key}
                         {:else}
                             <div class="flex items-center justify-center rounded border border-base-300 bg-base-200" style="height: clamp(240px, 35vh, 420px);">
                                 <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
@@ -1169,6 +1429,13 @@
                         </div>
                     </div>
                 </div>
+
+                {#if analyticalMeta.mode === 'depletion'}
+                    <div class="rounded-md border border-base-300 bg-base-100 p-3 text-xs">
+                        <div class="font-semibold">Depletion Analytical Mode</div>
+                        <div class="opacity-80">Dietz shape factor: {analyticalMeta.shapeFactor ?? 'n/a'} ({analyticalMeta.shapeLabel || 'unspecified location'})</div>
+                    </div>
+                {/if}
 
                 <!-- <BenchmarkResultsCard
                     {benchmarkSource}

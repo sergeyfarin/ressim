@@ -7,6 +7,8 @@
     export let injectionRate: number; // Total injection rate m³/day
     export let reservoir: { length: number; area: number; porosity: number };
     export let initialSaturation = 0.3;
+    export let scenarioMode: 'waterflood' | 'depletion' = 'waterflood';
+    export let producerLocation: { i: number; j: number; nx: number; ny: number } = { i: 0, j: 0, nx: 1, ny: 1 };
 
     const dispatch = createEventDispatcher();
 
@@ -15,6 +17,25 @@
     $: if (timeHistory.length > 0 && rockProps && fluidProps && reservoir && injectionRate > 0) {
         calculateAnalyticalProduction();
         dispatch('analyticalData', { production: analyticalProduction });
+    }
+
+    $: if (timeHistory.length > 0 && rockProps && fluidProps && reservoir && scenarioMode === 'depletion') {
+        calculateAnalyticalProduction();
+        dispatch('analyticalData', { production: analyticalProduction });
+    }
+
+    function dietzShapeFactor() {
+        const { i, j, nx, ny } = producerLocation;
+        const nearCorner = (i <= 1 || i >= nx - 2) && (j <= 1 || j >= ny - 2);
+        const nearEdge = i <= 1 || i >= nx - 2 || j <= 1 || j >= ny - 2;
+
+        if (nearCorner) {
+            return { value: 31.6, label: 'corner' };
+        }
+        if (nearEdge) {
+            return { value: 27.6, label: 'edge' };
+        }
+        return { value: 21.2, label: 'interior/center' };
     }
 
     function k_rw(s_w: number) {
@@ -49,6 +70,33 @@
     }
 
     function calculateAnalyticalProduction() {
+        const shape = dietzShapeFactor();
+        dispatch('analyticalMeta', {
+            mode: scenarioMode,
+            shapeFactor: scenarioMode === 'depletion' ? shape.value : null,
+            shapeLabel: scenarioMode === 'depletion' ? shape.label : '',
+        });
+
+        if (scenarioMode === 'depletion') {
+            const poreVolume = Math.max(1e-9, reservoir.length * reservoir.area * reservoir.porosity);
+            const initialOilInPlace = poreVolume * Math.max(0, 1 - initialSaturation);
+            const tauDays = Math.max(1e-6, (poreVolume / Math.max(shape.value, 1.0)) * 0.25);
+            let cumulativeOil = 0;
+
+            analyticalProduction = timeHistory.map((t, idx) => {
+                const oilRate = Math.max(0, (initialOilInPlace / tauDays) * Math.exp(-Math.max(0, t) / tauDays));
+                const dt = idx > 0 ? Math.max(0, t - timeHistory[idx - 1]) : Math.max(0, t);
+                cumulativeOil += oilRate * dt;
+                return {
+                    time: t,
+                    oilRate,
+                    waterRate: 0,
+                    cumulativeOil,
+                };
+            });
+            return;
+        }
+
         const { s_wc, s_or } = rockProps;
         const initial_sw = Math.max(s_wc, Math.min(1 - s_or, initialSaturation));
 

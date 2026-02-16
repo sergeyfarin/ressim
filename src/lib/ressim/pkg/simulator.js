@@ -111,6 +111,16 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {number} c_o
+     * @param {number} c_w
+     */
+    setFluidCompressibilities(c_o, c_w) {
+        const ret = wasm.reservoirsimulator_setFluidCompressibilities(this.__wbg_ptr, c_o, c_w);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} rho_o
      * @param {number} rho_w
      */
@@ -149,6 +159,12 @@ export class ReservoirSimulator {
      */
     setInitialSaturation(sat_water) {
         wasm.reservoirsimulator_setInitialSaturation(this.__wbg_ptr, sat_water);
+    }
+    /**
+     * @param {boolean} enabled
+     */
+    setInjectorEnabled(enabled) {
+        wasm.reservoirsimulator_setInjectorEnabled(this.__wbg_ptr, enabled);
     }
     /**
      * Set permeability per layer
@@ -211,11 +227,25 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {number} c_r
+     * @param {number} depth_reference_m
+     * @param {number} b_o
+     * @param {number} b_w
+     */
+    setRockProperties(c_r, depth_reference_m, b_o, b_w) {
+        const ret = wasm.reservoirsimulator_setRockProperties(this.__wbg_ptr, c_r, depth_reference_m, b_o, b_w);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Set stability parameters for the simulation
      * @param {number} max_sat_change_per_step
+     * @param {number} max_pressure_change_per_step
+     * @param {number} max_well_rate_change_fraction
      */
-    setStabilityParams(max_sat_change_per_step) {
-        wasm.reservoirsimulator_setStabilityParams(this.__wbg_ptr, max_sat_change_per_step);
+    setStabilityParams(max_sat_change_per_step, max_pressure_change_per_step, max_well_rate_change_fraction) {
+        wasm.reservoirsimulator_setStabilityParams(this.__wbg_ptr, max_sat_change_per_step, max_pressure_change_per_step, max_well_rate_change_fraction);
     }
     /**
      * @param {number} injector_rate_m3_day
@@ -226,6 +256,17 @@ export class ReservoirSimulator {
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
+    }
+    /**
+     * @param {string} injector_mode
+     * @param {string} producer_mode
+     */
+    setWellControlModes(injector_mode, producer_mode) {
+        const ptr0 = passStringToWasm0(injector_mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(producer_mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.reservoirsimulator_setWellControlModes(this.__wbg_ptr, ptr0, len0, ptr1, len1);
     }
     /**
      * @param {number} target_dt_days

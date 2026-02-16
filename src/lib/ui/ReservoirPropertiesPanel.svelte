@@ -1,6 +1,16 @@
 <script lang="ts">
   export let initialPressure = 300;
   export let initialSaturation = 0.2;
+  export let mu_w = 0.5;
+  export let mu_o = 1.0;
+  export let c_o = 1e-5;
+  export let c_w = 3e-6;
+  export let rho_w = 1000;
+  export let rho_o = 800;
+  export let rock_compressibility = 1e-6;
+  export let depth_reference = 0;
+  export let volume_expansion_o = 1;
+  export let volume_expansion_w = 1;
   export let gravityEnabled = false;
 
   export let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
@@ -17,6 +27,7 @@
   export let layerPermsX: number[] = [];
   export let layerPermsY: number[] = [];
   export let layerPermsZ: number[] = [];
+  export let fieldErrors: Record<string, string> = {};
 
   $: permSummary =
     permMode === 'uniform'
@@ -24,10 +35,11 @@
       : permMode === 'random'
         ? `Random ${minPerm}-${maxPerm} mD`
         : `Per Layer (${nz} layers)`;
-  $: groupSummary = `P=${initialPressure.toFixed(0)} bar · Sw=${initialSaturation.toFixed(2)} · ${permSummary}`;
+  $: hasError = Object.keys(fieldErrors).some((key) => key.includes('perm') || key.includes('saturation') || key.includes('initial'));
+  $: groupSummary = `P=${initialPressure.toFixed(0)} bar · Sw=${initialSaturation.toFixed(2)} · μw/μo=${mu_w.toFixed(2)}/${mu_o.toFixed(2)} · ${permSummary}`;
 </script>
 
-<details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
+<details class="rounded-lg border bg-base-100 shadow-sm" class:border-error={hasError} class:border-base-300={!hasError}>
   <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5">
     <div>
       <div class="font-semibold">Reservoir Properties</div>
@@ -48,7 +60,50 @@
       </label>
       <label class="form-control">
         <span class="label-text text-xs">Water Saturation</span>
-        <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm w-full" bind:value={initialSaturation} />
+        <input type="number" min="0" max="1" step="0.05" class="input input-bordered input-sm w-full" class:input-error={Boolean(fieldErrors.initialSaturation)} bind:value={initialSaturation} />
+      </label>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2">
+      <label class="form-control">
+        <span class="label-text text-xs">Water Viscosity (cP)</span>
+        <input type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-full" bind:value={mu_w} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Oil Viscosity (cP)</span>
+        <input type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-full" bind:value={mu_o} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Water Compressibility (1/bar)</span>
+        <input type="number" min="0" step="1e-6" class="input input-bordered input-sm w-full" bind:value={c_w} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Oil Compressibility (1/bar)</span>
+        <input type="number" min="0" step="1e-6" class="input input-bordered input-sm w-full" bind:value={c_o} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Water Density (kg/m³)</span>
+        <input type="number" min="1" step="1" class="input input-bordered input-sm w-full" bind:value={rho_w} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Oil Density (kg/m³)</span>
+        <input type="number" min="1" step="1" class="input input-bordered input-sm w-full" bind:value={rho_o} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Rock Compressibility (1/bar)</span>
+        <input type="number" min="0" step="1e-6" class="input input-bordered input-sm w-full" bind:value={rock_compressibility} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Depth Reference (m)</span>
+        <input type="number" step="1" class="input input-bordered input-sm w-full" bind:value={depth_reference} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Oil Volume Expansion Factor (B_o)</span>
+        <input type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-full" bind:value={volume_expansion_o} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Water Volume Expansion Factor (B_w)</span>
+        <input type="number" min="0.01" step="0.01" class="input input-bordered input-sm w-full" bind:value={volume_expansion_w} />
       </label>
     </div>
 
@@ -97,11 +152,11 @@
       <div class="grid grid-cols-2 gap-2">
         <label class="form-control">
           <span class="label-text text-xs">Min Permeability (mD)</span>
-          <input type="number" min="1" class="input input-bordered input-sm w-full" bind:value={minPerm} />
+          <input type="number" min="1" class="input input-bordered input-sm w-full" class:input-error={Boolean(fieldErrors.permBounds)} bind:value={minPerm} />
         </label>
         <label class="form-control">
           <span class="label-text text-xs">Max Permeability (mD)</span>
-          <input type="number" min="1" class="input input-bordered input-sm w-full" bind:value={maxPerm} />
+          <input type="number" min="1" class="input input-bordered input-sm w-full" class:input-error={Boolean(fieldErrors.permBounds)} bind:value={maxPerm} />
         </label>
       </div>
     {:else}
