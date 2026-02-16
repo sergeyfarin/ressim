@@ -57,6 +57,7 @@ export class ReservoirSimulator {
      * Set permeability with deterministic random distribution using a fixed seed
      */
     setPermeabilityRandomSeeded(min_perm: number, max_perm: number, seed: bigint): void;
+    setRateControlledWells(enabled: boolean): void;
     /**
      * Set relative permeability properties
      */
@@ -65,6 +66,7 @@ export class ReservoirSimulator {
      * Set stability parameters for the simulation
      */
     setStabilityParams(max_sat_change_per_step: number): void;
+    setTargetWellRates(injector_rate_m3_day: number, producer_rate_m3_day: number): void;
     step(target_dt_days: number): void;
 }
 
@@ -92,8 +94,10 @@ export interface InitOutput {
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
+    readonly reservoirsimulator_setRateControlledWells: (a: number, b: number) => void;
     readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number) => void;
+    readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_step: (a: number, b: number) => void;
     readonly set_panic_hook: () => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

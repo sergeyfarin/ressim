@@ -192,6 +192,12 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {boolean} enabled
+     */
+    setRateControlledWells(enabled) {
+        wasm.reservoirsimulator_setRateControlledWells(this.__wbg_ptr, enabled);
+    }
+    /**
      * Set relative permeability properties
      * @param {number} s_wc
      * @param {number} s_or
@@ -210,6 +216,16 @@ export class ReservoirSimulator {
      */
     setStabilityParams(max_sat_change_per_step) {
         wasm.reservoirsimulator_setStabilityParams(this.__wbg_ptr, max_sat_change_per_step);
+    }
+    /**
+     * @param {number} injector_rate_m3_day
+     * @param {number} producer_rate_m3_day
+     */
+    setTargetWellRates(injector_rate_m3_day, producer_rate_m3_day) {
+        const ret = wasm.reservoirsimulator_setTargetWellRates(this.__wbg_ptr, injector_rate_m3_day, producer_rate_m3_day);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * @param {number} target_dt_days
