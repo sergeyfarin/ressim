@@ -777,8 +777,17 @@
 
         skipNextAutoModelReset = true;
 
+        // Set grid dimensions first to ensure well positions are clamped correctly
+        const priorityKeys = ['nx', 'ny', 'nz', 'cellDx', 'cellDy', 'cellDz'];
+        for (const key of priorityKeys) {
+            if (preset[key] !== undefined) {
+                scenarioPresetSetters[key]?.(preset[key]);
+            }
+        }
+
+        // Then set the rest
         for (const [key, value] of Object.entries(preset)) {
-            if (value === undefined) continue;
+            if (value === undefined || priorityKeys.includes(key)) continue;
             scenarioPresetSetters[key]?.(value);
         }
 
@@ -1088,6 +1097,7 @@
         runtimeWarning = '';
         vizRevision += 1;
 
+        const payload = buildCreatePayload();
         simWorker.postMessage({
             type: 'create',
             payload,

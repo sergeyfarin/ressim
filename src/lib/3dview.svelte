@@ -558,7 +558,7 @@
 
         const values: number[] = [];
 
-        for (let i = 0; i < instanceCount; i++) {
+        for (let i = 0; i < gridArray.length; i++) {
             const cell = gridArray[i];
 
             if (!cell) {
@@ -607,7 +607,7 @@
         legendMax = max;
         drawLegend(min, max, property);
 
-        for (let i = 0; i < instanceCount; i++) {
+        for (let i = 0; i < gridArray.length; i++) {
             const value = values[i];
             if (!Number.isFinite(value)) {
                 tmpColor.set(0x888888);
