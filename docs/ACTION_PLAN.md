@@ -41,16 +41,16 @@ Each phase is designed to be independently shippable and builds on the previous 
   - Add porosity input to `ReservoirPropertiesPanel.svelte` (uniform / per-layer modes)
   - Wire through `sim.worker.js` payload
 
-- [ ] **2.2 Per-cell initial water saturation**
+- [X] **2.2 Per-cell initial water saturation**
   - Add `setInitialSaturationPerLayer(sw: Vec<f64>)` to Rust
   - Enables water-oil contact / transition zone initialization
 
-- [ ] **2.3 Dynamic well PI update**
+- [X] **2.3 Dynamic well PI update**
   - Recalculate total mobility at well cell each timestep
   - Update `well.productivity_index` before pressure solve
   - Add test: PI should increase as water (lower viscosity) arrives at producer
 
-- [ ] **2.4 Well BHP min/max constraints in rate mode**
+- [X] **2.4 Well BHP min/max constraints in rate mode**
   - When rate-controlled, clamp computed BHP to `[BHP_min, BHP_max]`
   - Switch to BHP-control if constraint is violated (hybrid control)
 
@@ -60,19 +60,19 @@ Each phase is designed to be independently shippable and builds on the previous 
 
 > Strengthen credibility with visible validation.
 
-- [ ] **3.1 Recovery factor vs PV-injected chart**
+- [X] **3.1 Recovery factor vs PV-injected chart**
   - Compute RF = cumulative oil / OOIP, PVI = cumulative injection / pore volume
   - New dataset in `RateChart.svelte`
 
-- [ ] **3.2 Water cut vs PV-injected overlay**
+- [X] **3.2 Water cut vs PV-injected overlay**
   - Simulated + analytical (from `FractionalFlow.svelte`) on same axis
 
-- [ ] **3.3 Welge f(Sw) diagram**
+- [X] **3.3 Welge f(Sw) diagram**
   - Small Chart.js canvas in `FractionalFlow.svelte`
   - Plot fractional flow curve + tangent line from initial Sw to shock front
   - Display breakthrough PVI, shock Sw, and water cut at breakthrough
 
-- [ ] **3.4 Sw profile along injector-producer axis**
+- [X] **3.4 Sw profile along injector-producer axis**
   - 1D line chart showing Sw vs cell index along a user-selected row
   - Compare to analytical flood-front position at current time
 
@@ -118,7 +118,7 @@ Each phase is designed to be independently shippable and builds on the previous 
   - GitHub Actions: `cargo test` (Rust) + `npm run build` (frontend) on push/PR
   - Regenerate `benchmark-results.json` and compare to committed version
 
-- [ ] **5.2 Split `lib.rs` into modules**
+- [X] **5.2 Split `lib.rs` into modules**
   - `grid.rs`, `well.rs`, `solver.rs`, `relperm.rs`, `capillary.rs`, `step.rs`
   - Keep `lib.rs` as the public WASM API surface
 

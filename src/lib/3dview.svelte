@@ -67,6 +67,9 @@
     let legendMax = 1;
     let lastDimsKey = '';
     
+    // Reactive grid reference
+    let activeGrid: GridCell[] | null = null;
+
     // Tooltip state
     let tooltipVisible = false;
     let tooltipX = 0;
@@ -200,7 +203,16 @@
         window.removeEventListener('resize', onWindowResize);
     });
 
-    $: activeGrid = getActiveGrid();
+    // Compute activeGrid reactively — explicitly reference every dependency
+    // so Svelte's compiler can track them (function-body refs are invisible).
+    $: {
+        gridState;
+        history;
+        history.length;
+        currentIndex;
+        nx; ny; nz;
+        activeGrid = getActiveGrid();
+    }
 
     $: {
         const dimsKey = `${nx}|${ny}|${nz}`;
@@ -210,24 +222,10 @@
         lastDimsKey = dimsKey;
     }
 
-    // Trigger on gridState changes
-    $: if (instancedMesh && gridState) {
-        updateVisualization(gridState, showProperty);
-    }
-
-    // Trigger on history/index changes
-    $: currentIndex, history.length, (() => {
-        if (instancedMesh && history.length > currentIndex && currentIndex >= 0) {
-            const grid = history[currentIndex]?.grid;
-            if (grid) {
-                updateVisualization(grid, showProperty);
-            }
-        }
-    })();
-
-    // Trigger on property and legend-range changes
-    $: if (instancedMesh && activeGrid && showProperty) {
-        // Touch legend controls so updates re-run when user edits range mode/values.
+    // Trigger visualization on any data / property / legend change
+    $: if (instancedMesh && activeGrid) {
+        // Touch legend + property deps so edits re-trigger.
+        showProperty;
         legendRangeMode;
         legendPercentileLow;
         legendPercentileHigh;
@@ -236,17 +234,32 @@
         updateVisualization(activeGrid, showProperty);
     }
 
+    $: if (instancedMesh && !activeGrid) {
+        clearVisualization(showProperty);
+    }
+
     // Trigger on well state changes
     $: if (scene && wellState) {
         updateWellVisualization(wellState as unknown as unknown[]);
     }
 
     function getActiveGrid(): GridCell[] | null {
+        const expectedCount = nx * ny * nz;
+        if (expectedCount <= 0) return null;
+
         if (history.length > 0 && currentIndex >= 0 && currentIndex < history.length) {
             const entry = history[currentIndex];
-            return entry?.grid ?? null;
+            const historyGrid = entry?.grid ?? null;
+            if (Array.isArray(historyGrid) && historyGrid.length === expectedCount) {
+                return historyGrid;
+            }
         }
-        return gridState;
+
+        if (Array.isArray(gridState) && gridState.length === expectedCount) {
+            return gridState;
+        }
+
+        return null;
     }
 
     function initThree(): void {
@@ -518,11 +531,32 @@
         applyGridToInstances(gridArray, property);
     }
 
+    function clearVisualization(property: PropertyKey): void {
+        if (!instancedMesh || !instancedMesh.instanceColor) return;
+
+        const defaultColor = new Color(0x888888);
+        for (let i = 0; i < instancedMesh.count; i++) {
+            instancedMesh.setColorAt(i, defaultColor);
+        }
+        instancedMesh.instanceColor.needsUpdate = true;
+
+        const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
+        legendMin = fixed.min;
+        legendMax = fixed.max;
+        drawLegend(legendMin, legendMax, property);
+    }
+
     function applyGridToInstances(gridArray: GridCell[], property: PropertyKey): void {
         if (!instancedMesh) return;
 
-    if (!instancedMesh.instanceColor) return;
-    const values: number[] = [];
+        if (!instancedMesh.instanceColor) return;
+
+        const defaultColor = new Color(0x888888);
+        for (let i = 0; i < instancedMesh.count; i++) {
+            instancedMesh.setColorAt(i, defaultColor);
+        }
+
+        const values: number[] = [];
 
         for (let i = 0; i < gridArray.length; i++) {
             const cell = gridArray[i];
@@ -570,7 +604,7 @@
         for (let i = 0; i < values.length && i < instancedMesh.count; i++) {
             const value = values[i];
             if (!Number.isFinite(value)) {
-                tmpColor.set(0xB3B3B3); // fallback gray
+                tmpColor.set(0x888888);
                 instancedMesh.setColorAt(i, tmpColor);
                 continue;
             }

@@ -18,6 +18,7 @@ export const reservoirsimulator_setFluidProperties: (a: number, b: number, c: nu
 export const reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
+export const reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setInjectorEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
@@ -27,6 +28,7 @@ export const reservoirsimulator_setRelPermProps: (a: number, b: number, c: numbe
 export const reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
 export const reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
+export const reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
 export const reservoirsimulator_step: (a: number, b: number) => void;
 export const set_panic_hook: () => void;

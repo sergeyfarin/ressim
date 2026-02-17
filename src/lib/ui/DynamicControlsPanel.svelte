@@ -10,6 +10,7 @@
   export let wasmReady = false;
   export let workerRunning = false;
   export let runCompleted = false;
+  export let modelReinitNotice = "";
   export let simTime = 0;
   export let historyLength = 0;
   export let profileStats: ProfileStats = {
@@ -90,6 +91,9 @@
     </div>
 
     <div class="text-xs opacity-80">
+      {#if modelReinitNotice}
+        <div class="text-warning font-semibold">⚠ {modelReinitNotice}</div>
+      {/if}
       <div>Status: {wasmReady ? "WASM Ready" : "WASM Loading..."}</div>
       <div>
         Worker: {workerRunning ? "Running" : "Idle"} · Run Completed: {runCompleted

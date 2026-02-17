@@ -177,6 +177,18 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setInitialSaturation(this.__wbg_ptr, sat_water);
     }
     /**
+     * Set initial water saturation per z-layer
+     * @param {Float64Array} sw
+     */
+    setInitialSaturationPerLayer(sw) {
+        const ptr0 = passArrayF64ToWasm0(sw, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setInitialSaturationPerLayer(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {boolean} enabled
      */
     setInjectorEnabled(enabled) {
@@ -274,6 +286,16 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {number} bhp_min
+     * @param {number} bhp_max
+     */
+    setWellBhpLimits(bhp_min, bhp_max) {
+        const ret = wasm.reservoirsimulator_setWellBhpLimits(this.__wbg_ptr, bhp_min, bhp_max);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {string} injector_mode
      * @param {string} producer_mode
      */
@@ -285,6 +307,7 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setWellControlModes(this.__wbg_ptr, ptr0, len0, ptr1, len1);
     }
     /**
+     * Advance simulator by target timestep [days]
      * @param {number} target_dt_days
      */
     step(target_dt_days) {

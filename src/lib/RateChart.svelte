@@ -7,6 +7,7 @@
     export let avgReservoirPressureSeries: Array<number | null> = [];
     export let avgWaterSaturationSeries: Array<number | null> = [];
     export let ooipM3 = 0;
+    export let poreVolumeM3 = 0;
     export let theme: 'dark' | 'light' = 'dark';
 
     type MismatchSummary = {
@@ -16,7 +17,7 @@
         mape: number;
     };
 
-    type ChartTab = 'oil' | 'water' | 'voidage' | 'validation' | 'custom';
+    type ChartTab = 'oil' | 'water' | 'voidage' | 'validation' | 'pvi' | 'custom';
     type LineDataset = ChartDataset<'line', Array<number | null>>;
     type AxisScaleConfig = {
         display?: boolean;
@@ -56,6 +57,9 @@
         AVG_PRESSURE: 9,
         AVG_WATER_SAT: 10,
         OIL_RATE_ABS_ERROR: 11,
+        RF_VS_PVI: 12,
+        WATERCUT_SIM_VS_PVI: 13,
+        WATERCUT_ANALYTICAL_VS_PVI: 14,
     } as const;
     let mismatchSummary: MismatchSummary = {
         pointsCompared: 0,
@@ -97,10 +101,11 @@
         water: 'Water Injection + Production',
         voidage: 'Voidage / Liquid Balance',
         validation: 'Model vs Analytical',
+        pvi: 'RF + Water Cut vs PVI',
         custom: 'Custom',
     };
 
-    const presetSelections: Record<'oil' | 'water' | 'voidage' | 'validation', number[]> = {
+    const presetSelections: Record<'oil' | 'water' | 'voidage' | 'validation' | 'pvi', number[]> = {
         oil: [DATASET_INDEX.OIL_RATE, DATASET_INDEX.CUM_OIL, DATASET_INDEX.RECOVERY_FACTOR],
         water: [DATASET_INDEX.WATER_PROD, DATASET_INDEX.WATER_INJ, DATASET_INDEX.AVG_WATER_SAT],
         voidage: [DATASET_INDEX.AVG_PRESSURE, DATASET_INDEX.VRR, DATASET_INDEX.LIQUID_PROD],
@@ -110,6 +115,11 @@
             DATASET_INDEX.CUM_OIL,
             DATASET_INDEX.ANALYTICAL_CUM_OIL,
             DATASET_INDEX.OIL_RATE_ABS_ERROR,
+        ],
+        pvi: [
+            DATASET_INDEX.RF_VS_PVI,
+            DATASET_INDEX.WATERCUT_SIM_VS_PVI,
+            DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI,
         ],
     };
 
@@ -218,10 +228,12 @@
                         yAxisID: 'y4',
                     },
                     {
-                        label: 'Voidage Replacement Ratio',
+                        label: 'Cumulative Voidage Replacement Ratio',
                         data: [],
                         borderColor: VOIDAGE_COLOR,
                         borderWidth: 2.5,
+                        tension: 0,
+                        cubicInterpolationMode: 'monotone',
                         yAxisID: 'y2',
                     },
                     {
@@ -245,6 +257,28 @@
                         borderWidth: 1.3,
                         borderDash: [2, 4],
                         yAxisID: 'y',
+                    },
+                    {
+                        label: 'Recovery Factor vs PVI',
+                        data: [],
+                        borderColor: '#16a34a',
+                        borderWidth: 2.3,
+                        yAxisID: 'y5',
+                    },
+                    {
+                        label: 'Water Cut (Sim) vs PVI',
+                        data: [],
+                        borderColor: '#2563eb',
+                        borderWidth: 2.3,
+                        yAxisID: 'y5',
+                    },
+                    {
+                        label: 'Water Cut (Analytical) vs PVI',
+                        data: [],
+                        borderColor: '#1d4ed8',
+                        borderWidth: 2,
+                        borderDash: [6, 4],
+                        yAxisID: 'y5',
                     }
                 ]
             },
@@ -293,6 +327,23 @@
                             usePointStyle: true,
                             pointStyleWidth: 36,
                         }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const datasetLabel = context.dataset.label ?? '';
+                                const rawValue = context.parsed?.y;
+                                if (!Number.isFinite(rawValue)) {
+                                    return datasetLabel;
+                                }
+
+                                if (context.datasetIndex === DATASET_INDEX.VRR) {
+                                    return `${datasetLabel}: ${Number(rawValue).toFixed(4)}`;
+                                }
+
+                                return `${datasetLabel}: ${Number(rawValue).toFixed(3)}`;
+                            },
+                        },
                     }
                 },
                 scales: {
@@ -398,7 +449,7 @@
     function updateChart() {
         if (!chart || !rateHistory || rateHistory.length === 0) return;
 
-        const labels = rateHistory.map(p => p.time.toFixed(2));
+        const timeLabels = rateHistory.map(p => p.time.toFixed(2));
         const oilProd = rateHistory.map(p => p.total_production_oil);
         const liquidProd = rateHistory.map(p => p.total_production_liquid);
         const injection = rateHistory.map(p => p.total_injection);
@@ -440,10 +491,18 @@
         // Calculate cumulative oil production
         let cumulativeOil = 0;
         const cumulativeOilData = [];
+        let cumulativeInjection = 0;
+        const pviData = [];
         for (let i = 0; i < rateHistory.length; i++) {
             const dt = i > 0 ? rateHistory[i].time - rateHistory[i-1].time : rateHistory[i].time;
             cumulativeOil += oilProd[i] * dt;
             cumulativeOilData.push(cumulativeOil);
+            cumulativeInjection += Math.max(0, injection[i]) * dt;
+            if (!Number.isFinite(poreVolumeM3) || poreVolumeM3 <= 1e-12) {
+                pviData.push(0);
+            } else {
+                pviData.push(cumulativeInjection / poreVolumeM3);
+            }
         }
 
         const recoveryFactorData = cumulativeOilData.map((cumOil) => {
@@ -451,12 +510,37 @@
             return Math.max(0, Math.min(1, cumOil / ooipM3));
         });
 
-        // Calculate Voidage Replacement Ratio
-        const vrrData = rateHistory.map(p => {
-            if (p.total_production_liquid > 0) {
-                return p.total_injection / p.total_production_liquid;
+        const waterCutSimVsPvi = rateHistory.map((point, idx) => {
+            const liquid = Number(point.total_production_liquid);
+            if (!Number.isFinite(liquid) || liquid <= 1e-12) return 0;
+            const waterCut = Math.max(0, Math.min(1, waterProd[idx] / liquid));
+            return waterCut;
+        });
+
+        const waterCutAnalyticalVsPvi = rateHistory.map((_, idx) => {
+            const oil = Number(analyticalProductionData[idx]?.oilRate);
+            const water = Number(analyticalProductionData[idx]?.waterRate);
+            const total = oil + water;
+            if (!Number.isFinite(total) || total <= 1e-12) return null;
+            return Math.max(0, Math.min(1, water / total));
+        });
+
+        // Calculate cumulative VRR using reservoir-condition rates (aligns with pressure support physics)
+        let cumulativeInjReservoir = 0;
+        let cumulativeProdReservoir = 0;
+        const vrrData = rateHistory.map((p, idx) => {
+            const dt = idx > 0 ? Math.max(0, Number(rateHistory[idx].time) - Number(rateHistory[idx - 1].time)) : Math.max(0, Number(rateHistory[idx].time));
+            const injectedReservoir = Number(p.total_injection_reservoir ?? p.total_injection);
+            const producedReservoir = Number(p.total_production_liquid_reservoir ?? p.total_production_liquid);
+
+            if (dt > 0 && Number.isFinite(injectedReservoir) && Number.isFinite(producedReservoir)) {
+                cumulativeInjReservoir += Math.max(0, injectedReservoir) * dt;
+                cumulativeProdReservoir += Math.max(0, producedReservoir) * dt;
             }
-            return 0; // Avoid division by zero
+
+            if (cumulativeProdReservoir <= 1e-12) return null;
+            const rawVrr = cumulativeInjReservoir / cumulativeProdReservoir;
+            return Math.abs(rawVrr - 1.0) < 1e-9 ? 1.0 : rawVrr;
         });
 
         const absErrorData = oilProd.map((simValue, idx) => {
@@ -497,7 +581,8 @@
             };
         }
 
-        chart.data.labels = labels;
+        const pviLabels = pviData.map((value) => value.toFixed(3));
+        chart.data.labels = activeTab === 'pvi' ? pviLabels : timeLabels;
         chart.data.datasets[0].data = oilProd;
         chart.data.datasets[1].data = analyticalOilProd;
         chart.data.datasets[2].data = waterProd;
@@ -510,8 +595,11 @@
         chart.data.datasets[9].data = avgReservoirPressure;
         chart.data.datasets[10].data = avgWaterSat;
         chart.data.datasets[11].data = absErrorData;
+        chart.data.datasets[12].data = recoveryFactorData;
+        chart.data.datasets[13].data = waterCutSimVsPvi;
+        chart.data.datasets[14].data = waterCutAnalyticalVsPvi;
 
-        const showPoints = labels.length <= 20;
+        const showPoints = timeLabels.length <= 20;
         for (const dataset of chart.data.datasets) {
             const lineDataset = dataset as LineDataset;
             lineDataset.pointRadius = showPoints ? 2 : 0;
@@ -575,9 +663,18 @@
         if (scales.y5?.title) {
             if (visibleIndexes.includes(DATASET_INDEX.AVG_WATER_SAT)) {
                 scales.y5.title.text = 'Average Water Saturation';
+            } else if (
+                visibleIndexes.includes(DATASET_INDEX.WATERCUT_SIM_VS_PVI)
+                || visibleIndexes.includes(DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI)
+            ) {
+                scales.y5.title.text = 'Fraction (RF / Water Cut)';
             } else {
                 scales.y5.title.text = 'Recovery Factor';
             }
+        }
+
+        if (scales.x?.title) {
+            scales.x.title.text = activeTab === 'pvi' ? 'PV Injected (PVI)' : 'Time (days)';
         }
 
         chart.update();
@@ -589,6 +686,7 @@
         if (activeTab !== 'custom') {
             selectedDatasetIndexes = [...presetSelections[activeTab]];
         }
+        updateChart();
         applySelection(selectedDatasetIndexes);
     }
 

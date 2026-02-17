@@ -50,6 +50,10 @@ export class ReservoirSimulator {
      * Set initial water saturation for all grid cells
      */
     setInitialSaturation(sat_water: number): void;
+    /**
+     * Set initial water saturation per z-layer
+     */
+    setInitialSaturationPerLayer(sw: Float64Array): void;
     setInjectorEnabled(enabled: boolean): void;
     /**
      * Set permeability per layer
@@ -74,7 +78,11 @@ export class ReservoirSimulator {
      */
     setStabilityParams(max_sat_change_per_step: number, max_pressure_change_per_step: number, max_well_rate_change_fraction: number): void;
     setTargetWellRates(injector_rate_m3_day: number, producer_rate_m3_day: number): void;
+    setWellBhpLimits(bhp_min: number, bhp_max: number): void;
     setWellControlModes(injector_mode: string, producer_mode: string): void;
+    /**
+     * Advance simulator by target timestep [days]
+     */
     step(target_dt_days: number): void;
 }
 
@@ -101,6 +109,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
+    readonly reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInjectorEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
@@ -110,6 +119,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
     readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly reservoirsimulator_step: (a: number, b: number) => void;
     readonly set_panic_hook: () => void;
