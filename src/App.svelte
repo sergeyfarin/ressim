@@ -9,6 +9,7 @@
     import DynamicControlsPanel from './lib/ui/DynamicControlsPanel.svelte';
     import VisualizationReplayPanel from './lib/ui/VisualizationReplayPanel.svelte';
     import BenchmarkResultsCard from './lib/ui/BenchmarkResultsCard.svelte';
+    import SwProfileChart from './lib/SwProfileChart.svelte';
 
     let wasmReady = false;
     let simWorker: Worker | null = null;
@@ -42,7 +43,9 @@
     let rho_w = 1000.0;
     let rho_o = 800.0;
     let ooipM3 = 0;
+    let poreVolumeM3 = 0;
     $: ooipM3 = nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity * Math.max(0, 1 - initialSaturation);
+    $: poreVolumeM3 = nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity;
 
     // Permeability
     let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
@@ -101,8 +104,13 @@
         shapeLabel: '',
     };
     let runtimeWarning = '';
+    let solverWarning = '';
     let runtimeError = '';
     let vizRevision = 0;
+    let modelReinitNotice = '';
+    let modelNeedsReinit = false;
+    let modelResetKey = '';
+    let skipNextAutoModelReset = false;
     let validationState: { errors: Record<string, string>; warnings: string[] } = { errors: {}, warnings: [] };
     let validationErrors: Record<string, string> = {};
     let validationWarnings: string[] = [];
@@ -197,6 +205,16 @@
     let benchmarkSource = 'fallback';
     let benchmarkGeneratedAt = '';
     let theme: 'dark' | 'light' = 'dark';
+    let latestInjectionRate = 0;
+
+    $: latestInjectionRate = (() => {
+        if (!Array.isArray(rateHistory) || rateHistory.length === 0) return 0;
+        for (let i = rateHistory.length - 1; i >= 0; i--) {
+            const q = Number(rateHistory[i]?.total_injection);
+            if (Number.isFinite(q) && q > 0) return q;
+        }
+        return 0;
+    })();
 
     const benchmarkModeLabel: Record<BenchmarkMode, string> = {
         baseline: 'Baseline (nx=24, dt=0.5 day)',
@@ -230,7 +248,7 @@
     let playing = false;
     let playSpeed = 2;
     let playTimer = null;
-    const HISTORY_RECORD_INTERVAL = 2;
+    const HISTORY_RECORD_INTERVAL = 1;
     const MAX_HISTORY_ENTRIES = 300;
     let showDebugState = false;
     let profileStats: ProfileStats = { ...EMPTY_PROFILE_STATS };
@@ -658,14 +676,113 @@
     $: targetProducerRate = Math.max(0, Number(targetProducerRate) || 0);
     $: rateControlledWells = injectorControlMode === 'rate' && producerControlMode === 'rate';
 
+    function resetModelAndVisualizationState(stopWorker = true, showReinitNotice = false) {
+        stopPlaying();
+
+        if (stopWorker && simWorker && workerRunning) {
+            simWorker.postMessage({ type: 'stop' });
+        }
+
+        history = [];
+        currentIndex = -1;
+        gridStateRaw = null;
+        wellStateRaw = null;
+        rateHistory = [];
+        runCompleted = false;
+        simTime = 0;
+        runtimeWarning = '';
+        runtimeError = '';
+        if (showReinitNotice) {
+            modelNeedsReinit = true;
+            modelReinitNotice = 'Model reinit required due to input changes';
+        }
+        vizRevision += 1;
+    }
+
+    function buildModelResetKey() {
+        return JSON.stringify({
+            nx: Number(nx),
+            ny: Number(ny),
+            nz: Number(nz),
+            cellDx: Number(cellDx),
+            cellDy: Number(cellDy),
+            cellDz: Number(cellDz),
+            initialPressure: Number(initialPressure),
+            initialSaturation: Number(initialSaturation),
+            mu_w: Number(mu_w),
+            mu_o: Number(mu_o),
+            c_o: Number(c_o),
+            c_w: Number(c_w),
+            rock_compressibility: Number(rock_compressibility),
+            depth_reference: Number(depth_reference),
+            volume_expansion_o: Number(volume_expansion_o),
+            volume_expansion_w: Number(volume_expansion_w),
+            rho_w: Number(rho_w),
+            rho_o: Number(rho_o),
+            s_wc: Number(s_wc),
+            s_or: Number(s_or),
+            n_w: Number(n_w),
+            n_o: Number(n_o),
+            max_sat_change_per_step: Number(max_sat_change_per_step),
+            max_pressure_change_per_step: Number(max_pressure_change_per_step),
+            max_well_rate_change_fraction: Number(max_well_rate_change_fraction),
+            gravityEnabled: Boolean(gravityEnabled),
+            capillaryEnabled: Boolean(capillaryEnabled),
+            capillaryPEntry: Number(capillaryPEntry),
+            capillaryLambda: Number(capillaryLambda),
+            permMode,
+            uniformPermX: Number(uniformPermX),
+            uniformPermY: Number(uniformPermY),
+            uniformPermZ: Number(uniformPermZ),
+            minPerm: Number(minPerm),
+            maxPerm: Number(maxPerm),
+            useRandomSeed: Boolean(useRandomSeed),
+            randomSeed: Number(randomSeed),
+            layerPermsX: layerPermsX.map(Number),
+            layerPermsY: layerPermsY.map(Number),
+            layerPermsZ: layerPermsZ.map(Number),
+            well_radius: Number(well_radius),
+            well_skin: Number(well_skin),
+            injectorBhp: Number(injectorBhp),
+            producerBhp: Number(producerBhp),
+            injectorControlMode,
+            producerControlMode,
+            injectorEnabled: Boolean(injectorEnabled),
+            targetInjectorRate: Number(targetInjectorRate),
+            targetProducerRate: Number(targetProducerRate),
+            injectorI: Number(injectorI),
+            injectorJ: Number(injectorJ),
+            producerI: Number(producerI),
+            producerJ: Number(producerJ),
+        });
+    }
+
+    $: {
+        const nextKey = buildModelResetKey();
+        if (!modelResetKey) {
+            modelResetKey = nextKey;
+        } else if (nextKey !== modelResetKey) {
+            modelResetKey = nextKey;
+            if (skipNextAutoModelReset) {
+                skipNextAutoModelReset = false;
+            } else {
+                resetModelAndVisualizationState(true, true);
+            }
+        }
+    }
+
     function applyScenarioPreset() {
         const preset = scenarioPresets[scenarioPreset] as Record<string, unknown> | null;
         if (!preset) return;
+
+        skipNextAutoModelReset = true;
 
         for (const [key, value] of Object.entries(preset)) {
             if (value === undefined) continue;
             scenarioPresetSetters[key]?.(value);
         }
+
+        resetModelAndVisualizationState(true, true);
     }
 
     type ValidationState = {
@@ -778,6 +895,9 @@
         wellStateRaw = message.wells;
         simTime = message.time;
         rateHistory = message.rateHistory;
+
+        // Capture solver warning from worker state
+        solverWarning = message.solverWarning || '';
 
         if (message.recordHistory) {
             pushHistoryEntry({
@@ -959,14 +1079,15 @@
             return false;
         }
 
-        resetSimulationState({
-            clearErrors: true,
-            clearWarnings: !silent,
-            resetProfile: true,
-            bumpViz: true,
-        });
+        history = [];
+        currentIndex = -1;
+        runCompleted = false;
+        modelNeedsReinit = false;
+        modelReinitNotice = '';
+        runtimeError = '';
+        runtimeWarning = '';
+        vizRevision += 1;
 
-        const payload = buildCreatePayload();
         simWorker.postMessage({
             type: 'create',
             payload,
@@ -1115,6 +1236,10 @@
     }
 
     function runSimulationBatch(batchSteps: number, historyInterval: number) {
+        if (modelNeedsReinit) {
+            initSimulator();
+            return;
+        }
         if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
         runtimeError = '';
@@ -1127,7 +1252,7 @@
                 steps: batchSteps,
                 deltaTDays: Number(delta_t_days),
                 historyInterval,
-                chunkYieldInterval: 20,
+                chunkYieldInterval: 5,
             }
         });
     }
@@ -1305,7 +1430,7 @@
             fluidProps={{ mu_w, mu_o }}
             {initialSaturation}
             timeHistory={rateHistory.map((point) => point.time)}
-            injectionRate={rateHistory.find(r => r.total_injection > 0)?.total_injection ?? 0}
+            injectionRate={latestInjectionRate}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
             scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
             producerLocation={{ i: producerI, j: producerJ, nx, ny }}
@@ -1342,6 +1467,7 @@
                     {wasmReady}
                     {workerRunning}
                     {runCompleted}
+                    {modelReinitNotice}
                     {simTime}
                     {estimatedRunSeconds}
                     {longRunEstimate}
@@ -1349,6 +1475,7 @@
                     hasValidationErrors={hasValidationErrors}
                     historyLength={history.length}
                     {profileStats}
+                    {solverWarning}
                     onRunSteps={runSteps}
                     onStepOnce={stepOnce}
                     onInitSimulator={initSimulator}
@@ -1461,6 +1588,7 @@
                                 {avgReservoirPressureSeries}
                                 {avgWaterSaturationSeries}
                                 {ooipM3}
+                                {poreVolumeM3}
                                 {theme}
                             />
                         {:else}
@@ -1519,6 +1647,24 @@
                         </div>
                     </div>
                 </div>
+
+                <SwProfileChart
+                    gridState={gridStateRaw ?? []}
+                    {nx}
+                    {ny}
+                    {nz}
+                    {cellDx}
+                    {cellDy}
+                    {cellDz}
+                    simTime={simTime}
+                    producerJ={producerJ}
+                    {initialSaturation}
+                    reservoirPorosity={reservoirPorosity}
+                    injectionRate={latestInjectionRate}
+                    scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
+                    rockProps={{ s_wc, s_or, n_w, n_o }}
+                    fluidProps={{ mu_w, mu_o }}
+                />
 
                 {#if analyticalMeta.mode === 'depletion'}
                     <div class="rounded-md border border-base-300 bg-base-100 p-3 text-xs">

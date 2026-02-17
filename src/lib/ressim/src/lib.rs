@@ -15,147 +15,30 @@
 // - Transmissibility calculation includes conversion from mD·bar·m³/day to flow units
 // - All calculations maintain consistency in these base units with no hidden conversions
 
-use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize};
-use nalgebra::DVector;
-use sprs::{CsMat, TriMatI};
-use std::f64;
+use rand::rngs::StdRng;
 use rand::RngExt;
 use rand::SeedableRng;
-use rand::rngs::StdRng;
+use serde::{Deserialize, Serialize};
+use std::f64;
+use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct WellRates {
-    pub oil_rate: f64,
-    pub water_rate: f64,
-    pub total_liquid_rate: f64,
-}
+mod capillary;
+mod grid;
+mod relperm;
+mod solver;
+mod step;
+mod well;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct TimePointRates {
-    pub time: f64,
-    pub total_production_oil: f64,
-    pub total_production_liquid: f64,
-    pub total_injection: f64,
-}
-
+pub use capillary::CapillaryPressure;
+pub use grid::GridCell;
+pub use relperm::RockFluidProps;
+pub use well::{TimePointRates, Well, WellRates};
 
 // Utility to log panics to the browser console
 #[wasm_bindgen(start)]
 pub fn set_panic_hook() {
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
-}
-
-// --- Data Structures ---
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct GridCell {
-    /// Porosity [dimensionless, 0-1]
-    pub porosity: f64,
-    /// Permeability in x-direction [mD] (milliDarcy)
-    pub perm_x: f64,
-    /// Permeability in y-direction [mD] (milliDarcy)
-    pub perm_y: f64,
-    /// Permeability in z-direction [mD] (milliDarcy)
-    pub perm_z: f64,
-    /// Pressure [bar]
-    pub pressure: f64,
-    /// Water saturation [dimensionless, 0-1]
-    pub sat_water: f64,
-    /// Oil saturation [dimensionless, 0-1]. Note: sat_water + sat_oil = 1.0
-    pub sat_oil: f64,
-}
-
-impl GridCell {
-    /// Create default grid cell with oil-field units
-    fn default_cell() -> Self {
-        GridCell {
-            porosity: 0.2,        // dimensionless [0-1]
-            perm_x: 100.0,        // mD (milliDarcy)
-            perm_y: 100.0,        // mD
-            perm_z: 10.0,         // mD (vertical permeability typically lower)
-            pressure: 300.0,      // bar (typical reservoir pressure ~30 MPa = 300 bar)
-            sat_water: 0.3,       // dimensionless [0-1]
-            sat_oil: 0.7,         // dimensionless [0-1], s_w + s_o = 1.0
-        }
-    }
-
-    /// Returns pore volume in cubic meters
-    /// Cell dimensions (dx, dy, dz) must be in meters (m)
-    pub fn pore_volume_m3(&self, dx: f64, dy: f64, dz: f64) -> f64 {
-        dx * dy * dz * self.porosity
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Well {
-    /// Cell index i (x-direction)
-    pub i: usize,
-    /// Cell index j (y-direction)
-    pub j: usize,
-    /// Cell index k (z-direction)
-    pub k: usize,
-    /// Bottom hole pressure [bar]
-    pub bhp: f64,
-    /// Productivity index [m³/(day·bar)]
-    /// Rate = PI * (p_cell - bhp) for producer; negative for injector.
-    pub productivity_index: f64,
-    /// True if injector, false if producer
-    pub injector: bool,
-    /// Wellbore radius [m]
-    pub well_radius: f64,
-    /// Skin factor [dimensionless]
-    pub skin: f64,
-}
-
-impl Well {
-    /// Validate well parameters to prevent NaN/Inf and unphysical values
-    /// Returns Ok(()) if parameters are valid, Err(message) otherwise
-    pub fn validate(&self, nx: usize, ny: usize, nz: usize) -> Result<(), String> {
-        // Check grid indices are within bounds
-        if self.i >= nx {
-            return Err(format!("Well index i={} out of bounds (nx={})", self.i, nx));
-        }
-        if self.j >= ny {
-            return Err(format!("Well index j={} out of bounds (ny={})", self.j, ny));
-        }
-        if self.k >= nz {
-            return Err(format!("Well index k={} out of bounds (nz={})", self.k, nz));
-        }
-        
-        // Check BHP is finite (not NaN or Inf)
-        if !self.bhp.is_finite() {
-            return Err(format!("BHP must be finite, got: {}", self.bhp));
-        }
-        
-        // Check well radius is positive and finite
-        if self.well_radius <= 0.0 || !self.well_radius.is_finite() {
-            return Err(format!("Well radius must be positive and finite, got: {}", self.well_radius));
-        }
-
-        // Check skin factor is finite
-        if !self.skin.is_finite() {
-            return Err(format!("Skin factor must be finite, got: {}", self.skin));
-        }
-
-        // Check productivity index is non-negative (PI = 0 means no well, PI < 0 is unphysical)
-        if self.productivity_index < 0.0 {
-            return Err(format!("Productivity index must be non-negative, got: {}", self.productivity_index));
-        }
-        
-        // Check productivity index is finite
-        if !self.productivity_index.is_finite() {
-            return Err(format!("Productivity index must be finite, got: {}", self.productivity_index));
-        }
-        
-        // Check BHP is physically reasonable (typically between -50 bar vacuum to 1000 bar)
-        // Allow wider range for generality: [-100, 2000] bar
-        if self.bhp < -100.0 || self.bhp > 2000.0 {
-            return Err(format!("BHP out of reasonable range [-100, 2000] bar, got: {}", self.bhp));
-        }
-        
-        Ok(())
-    }
 }
 
 // --- Fluid / Rock ---
@@ -178,104 +61,25 @@ pub struct FluidProperties {
 impl FluidProperties {
     fn default_pvt() -> Self {
         Self {
-            mu_o: 1.0,      // cP (typical oil)
-            mu_w: 0.5,      // cP (water at reservoir conditions)
-            c_o: 1e-5,      // 1/bar (oil compressibility)
-            c_w: 3e-6,      // 1/bar (water compressibility)
-            rho_o: 800.0,   // kg/m³
-            rho_w: 1000.0,  // kg/m³
+            mu_o: 1.0,     // cP (typical oil)
+            mu_w: 0.5,     // cP (water at reservoir conditions)
+            c_o: 1e-5,     // 1/bar (oil compressibility)
+            c_w: 3e-6,     // 1/bar (water compressibility)
+            rho_o: 800.0,  // kg/m³
+            rho_w: 1000.0, // kg/m³
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct RockFluidProps {
-    /// Connate water saturation (irreducible water) [dimensionless]
-    pub s_wc: f64,
-    /// Residual oil saturation [dimensionless]
-    pub s_or: f64,
-    /// Corey exponent for water relative permeability [dimensionless]
-    pub n_w: f64,
-    /// Corey exponent for oil relative permeability [dimensionless]
-    pub n_o: f64,
-}
-
-impl RockFluidProps {
-    fn default_scal() -> Self {
-        // Reduced saturation thresholds to allow better water flow at initial conditions
-        // s_wc: connate water saturation (irreducible water that doesn't flow)
-        // s_or: residual oil saturation (oil left after water breakthrough)
-        Self { s_wc: 0.1, s_or: 0.1, n_w: 2.0, n_o: 2.0 }
-    }
-
-    /// Water relative permeability [dimensionless] using Corey-Brooks correlation
-    /// k_rw(Sw) = ((Sw - Swc) / (1 - Swc - Sor))^nw
-    /// Returns 0 for Sw <= Swc, 1 for Sw >= 1-Sor
-    pub fn k_rw(&self, s_w: f64) -> f64 {
-        let s_eff = ((s_w - self.s_wc) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        s_eff.powf(self.n_w)
-    }
-    
-    /// Oil relative permeability [dimensionless] using Corey-Brooks correlation
-    /// k_ro(Sw) = ((1 - Sw - Sor) / (1 - Swc - Sor))^no
-    /// Returns 0 for Sw >= 1-Sor (critical water saturation), 1 for Sw <= Swc
-    pub fn k_ro(&self, s_w: f64) -> f64 {
-        let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        s_eff.powf(self.n_o)
-    }
-}
-
-// --- Capillary Pressure (Brooks-Corey) ---
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct CapillaryPressure {
-    /// Entry pressure (displacement pressure) [bar]
-    /// Minimum pressure needed to enter largest pores
-    pub p_entry: f64,
-    /// Brooks-Corey exponent (lambda) [dimensionless]
-    /// Controls shape of capillary pressure curve
-    pub lambda: f64,
-}
-
-impl CapillaryPressure {
-    /// Create capillary pressure with default parameters
-    fn default_pc() -> Self {
-        Self {
-            p_entry: 5.0,   // bar - typical entry pressure
-            lambda: 2.0,    // dimensionless - typical exponent
-        }
-    }
-
-    /// Calculate capillary pressure [bar] at given water saturation
-    /// Uses Brooks-Corey correlation:
-    /// P_c(S_w) = P_entry * ((S_eff)^(-1/lambda))
-    /// where S_eff = (S_w - S_wc) / (1 - S_wc - S_or)
-    /// 
-    /// Physical meaning: P_c = P_oil - P_water (oil-water capillary pressure)
-    pub fn capillary_pressure(&self, s_w: f64, rock: &RockFluidProps) -> f64 {
-        // Calculate effective saturation
-        let s_eff = ((s_w - rock.s_wc) / (1.0 - rock.s_wc - rock.s_or)).clamp(0.0, 1.0);
-        
-        // Avoid division by zero
-        if s_eff >= 1.0 {
-            return 0.0;  // At maximum water saturation, capillary pressure is zero
-        }
-        if s_eff <= 0.0 {
-            return 1000.0;  // At connate water, very high capillary pressure (clamped)
-        }
-        
-        // Brooks-Corey capillary pressure: P_c = P_entry * (S_eff)^(-1/lambda)
-        let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
-        
-        // Clamp to reasonable range [0, 500 bar]
-        pc.clamp(0.0, 500.0)
     }
 }
 
 // --- Simulator ---
 #[wasm_bindgen]
 pub struct ReservoirSimulator {
-    nx: usize, ny: usize, nz: usize,
-    dx: f64, dy: f64, dz: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    dx: f64,
+    dy: f64,
+    dz: f64,
     grid_cells: Vec<GridCell>,
     wells: Vec<Well>,
     time_days: f64,
@@ -291,6 +95,16 @@ pub struct ReservoirSimulator {
     producer_rate_controlled: bool,
     injector_enabled: bool,
     target_injector_rate_m3_day: f64,
+    /// Minimum BHP constraint [bar] when running in rate mode
+    well_bhp_min: f64,
+    /// Maximum BHP constraint [bar] when running in rate mode
+    well_bhp_max: f64,
+    /// Last solver warning message (empty if converged)
+    last_solver_warning: String,
+    /// Cumulative water injected [m³] for material balance
+    cumulative_injection_m3: f64,
+    /// Cumulative water produced [m³] for material balance
+    cumulative_production_m3: f64,
     target_producer_rate_m3_day: f64,
     rock_compressibility: f64,
     depth_reference_m: f64,
@@ -309,16 +123,18 @@ impl ReservoirSimulator {
         let n = nx * ny * nz;
         let grid_cells = vec![GridCell::default_cell(); n];
         ReservoirSimulator {
-            nx, ny, nz,
-            dx: 10.0,   // meters (x-direction cell size)
-            dy: 10.0,   // meters (y-direction cell size)
-            dz: 1.0,    // meters (z-direction cell size)
+            nx,
+            ny,
+            nz,
+            dx: 10.0, // meters (x-direction cell size)
+            dy: 10.0, // meters (y-direction cell size)
+            dz: 1.0,  // meters (z-direction cell size)
             grid_cells,
             wells: Vec::new(),
-            time_days: 0.0,  // simulation time in days
+            time_days: 0.0, // simulation time in days
             pvt: FluidProperties::default_pvt(),
             scal: RockFluidProps::default_scal(),
-            pc: CapillaryPressure::default_pc(),  // Brooks-Corey capillary pressure
+            pc: CapillaryPressure::default_pc(), // Brooks-Corey capillary pressure
             gravity_enabled: false,
             max_sat_change_per_step: 0.1, // Default max saturation change
             max_pressure_change_per_step: 75.0,
@@ -329,18 +145,22 @@ impl ReservoirSimulator {
             injector_enabled: true,
             target_injector_rate_m3_day: 0.0,
             target_producer_rate_m3_day: 0.0,
+            well_bhp_min: -100.0,
+            well_bhp_max: 2000.0,
             rock_compressibility: 0.0,
             depth_reference_m: 0.0,
             b_o: 1.0,
             b_w: 1.0,
             rate_history: Vec::new(),
+            last_solver_warning: String::new(),
+            cumulative_injection_m3: 0.0,
+            cumulative_production_m3: 0.0,
         }
     }
 
     fn idx(&self, i: usize, j: usize, k: usize) -> usize {
         (k * self.nx * self.ny) + (j * self.nx) + i
     }
-
 
     /// Add a well to the simulator
     /// Parameters in oil-field units:
@@ -349,14 +169,23 @@ impl ReservoirSimulator {
     /// - well_radius: wellbore radius [m]
     /// - skin: skin factor [dimensionless]
     /// - injector: true for injector (injects fluid), false for producer (extracts fluid)
-    /// 
+    ///
     /// Returns Ok(()) on success, or Err(message) if parameters are invalid.
     /// Invalid parameters include:
     /// - Out-of-bounds grid indices
     /// - NaN or Inf values in bhp or pi
     /// - Negative productivity index
     /// - BHP outside reasonable range
-    pub fn add_well(&mut self, i: usize, j: usize, k: usize, bhp: f64, well_radius: f64, skin: f64, injector: bool) -> Result<(), String> {
+    pub fn add_well(
+        &mut self,
+        i: usize,
+        j: usize,
+        k: usize,
+        bhp: f64,
+        well_radius: f64,
+        skin: f64,
+        injector: bool,
+    ) -> Result<(), String> {
         if i >= self.nx || j >= self.ny || k >= self.nz {
             return Err(format!(
                 "Well indices out of bounds: (i={}, j={}, k={}) for grid ({}, {}, {})",
@@ -369,201 +198,55 @@ impl ReservoirSimulator {
         }
 
         if well_radius <= 0.0 || !well_radius.is_finite() {
-            return Err(format!("Well radius must be positive and finite, got: {}", well_radius));
+            return Err(format!(
+                "Well radius must be positive and finite, got: {}",
+                well_radius
+            ));
         }
 
         if !skin.is_finite() {
             return Err(format!("Skin factor must be finite, got: {}", skin));
         }
-        
-        let cell_id = self.idx(i,j,k);
+
+        let cell_id = self.idx(i, j, k);
         let cell = self.grid_cells[cell_id];
 
-        // Calculate equivalent radius (Peaceman's model)
-        let kx = cell.perm_x;
-        let ky = cell.perm_y;
-        if !kx.is_finite() || !ky.is_finite() || kx <= 0.0 || ky <= 0.0 {
-            return Err(format!(
-                "Cell permeability must be positive and finite for well PI calculation, got kx={}, ky={}",
-                kx, ky
-            ));
-        }
+        let pi = self.calculate_well_productivity_index(&cell, well_radius, skin)?;
 
-        let r_eq = 0.28 * f64::sqrt(f64::sqrt(kx / ky) * self.dx.powi(2) + f64::sqrt(ky / kx) * self.dy.powi(2)) / ((kx/ky).powf(0.25) + (ky/kx).powf(0.25));
-        if !r_eq.is_finite() || r_eq <= 0.0 {
-            return Err(format!("Equivalent radius must be positive and finite, got: {}", r_eq));
-        }
+        let well = Well {
+            i,
+            j,
+            k,
+            bhp,
+            productivity_index: pi,
+            injector,
+            well_radius,
+            skin,
+        };
 
-        if r_eq <= well_radius {
-            return Err(format!(
-                "Equivalent radius must be greater than well radius for valid PI. r_eq={}, rw={}",
-                r_eq, well_radius
-            ));
-        }
-
-        // Calculate productivity index (PI)
-        let k_avg = f64::sqrt(kx * ky); // Geometric mean of horizontal permeabilities
-        let total_mobility = self.total_mobility(&cell);
-        if !k_avg.is_finite() || k_avg <= 0.0 {
-            return Err(format!("Average permeability must be positive and finite, got: {}", k_avg));
-        }
-        if !total_mobility.is_finite() || total_mobility < 0.0 {
-            return Err(format!("Total mobility must be finite and non-negative, got: {}", total_mobility));
-        }
-
-        let denom = f64::ln(r_eq / well_radius) + skin;
-        if !denom.is_finite() || denom.abs() <= f64::EPSILON {
-            return Err(format!(
-                "Invalid PI denominator ln(r_eq/r_w)+skin = {}. Check well radius and skin.",
-                denom
-            ));
-        }
-        
-        // Peaceman's well index formula for metric units (m³, bar, day)
-        // PI = (2 * PI * k * h * mob) / (ln(r_e/r_w) + s)
-        // The constant 0.008527 is for converting from mD to m² and other unit consistencies.
-        // Here we use a simplified form that should be consistent with the transmissibility calculation.
-        // The transmissibility constant is 0.001127, which is for bbl/day/psi, but the comment says m³/day/bar.
-        // Let's assume the constant is correct for the intended units.
-        // PI = C * k_avg * dz * total_mobility / (ln(r_eq/well_radius) + skin)
-        // Let's use the same constant as transmissibility for consistency.
-        let pi = (0.001127 * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility) / denom;
-
-        let well = Well { i, j, k, bhp, productivity_index: pi, injector, well_radius, skin };
-        
         // Validate well parameters
         well.validate(self.nx, self.ny, self.nz)?;
-        
+
         self.wells.push(well);
         Ok(())
     }
 
     /// Set stability parameters for the simulation
     #[wasm_bindgen(js_name = setStabilityParams)]
-    pub fn set_stability_params(&mut self, max_sat_change_per_step: f64, max_pressure_change_per_step: f64, max_well_rate_change_fraction: f64) {
+    pub fn set_stability_params(
+        &mut self,
+        max_sat_change_per_step: f64,
+        max_pressure_change_per_step: f64,
+        max_well_rate_change_fraction: f64,
+    ) {
         self.max_sat_change_per_step = max_sat_change_per_step.clamp(0.01, 1.0);
         self.max_pressure_change_per_step = max_pressure_change_per_step.clamp(1.0, 2_000.0);
         self.max_well_rate_change_fraction = max_well_rate_change_fraction.clamp(0.01, 5.0);
     }
 
-    /// Total mobility [1/cP] = lambda_t = (k_rw/μ_w) + (k_ro/μ_o)
-    /// Sum of phase mobilities used in pressure equation
-    fn total_mobility(&self, cell: &GridCell) -> f64 {
-        let krw = self.scal.k_rw(cell.sat_water);
-        let kro = self.scal.k_ro(cell.sat_water);
-        krw / self.pvt.mu_w + kro / self.pvt.mu_o
-    }
-
-    /// Phase mobilities [1/cP] for water and oil
-    fn phase_mobilities(&self, cell: &GridCell) -> (f64, f64) {
-        let krw = self.scal.k_rw(cell.sat_water);
-        let kro = self.scal.k_ro(cell.sat_water);
-        (krw / self.pvt.mu_w, kro / self.pvt.mu_o)
-    }
-
-    /// Get capillary pressure [bar] at given water saturation
-    fn get_capillary_pressure(&self, s_w: f64) -> f64 {
-        self.pc.capillary_pressure(s_w, &self.scal)
-    }
-
-    fn depth_at_k(&self, k: usize) -> f64 {
-        self.depth_reference_m + (k as f64 + 0.5) * self.dz
-    }
-
-    fn gravity_head_bar(&self, depth_i: f64, depth_j: f64, density_kg_m3: f64) -> f64 {
-        if !self.gravity_enabled {
-            return 0.0;
-        }
-
-        // rho [kg/m³] * g [m/s²] * dz [m] = Pa, then convert Pa -> bar using 1e-5
-        density_kg_m3 * 9.80665 * (depth_i - depth_j) * 1e-5
-    }
-
-    fn total_density_face(&self, c_i: &GridCell, c_j: &GridCell) -> f64 {
-        let (lam_w_i, lam_o_i) = self.phase_mobilities(c_i);
-        let (lam_w_j, lam_o_j) = self.phase_mobilities(c_j);
-
-        let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
-        let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
-        let lam_t_avg = lam_w_avg + lam_o_avg;
-
-        if lam_t_avg <= f64::EPSILON {
-            return 0.5 * (self.pvt.rho_w + self.pvt.rho_o);
-        }
-
-        ((lam_w_avg * self.pvt.rho_w) + (lam_o_avg * self.pvt.rho_o)) / lam_t_avg
-    }
-
-    /// Fractional flow of water [dimensionless] = f_w = λ_w / λ_t
-    /// Used in upwind scheme for saturation transport
-    fn frac_flow_water(&self, cell: &GridCell) -> f64 {
-        let krw = self.scal.k_rw(cell.sat_water);
-        let lam_w = krw / self.pvt.mu_w;
-        let lam_t = lam_w + (self.scal.k_ro(cell.sat_water) / self.pvt.mu_o);
-        if lam_t <= 0.0 { 0.0 } else { (lam_w / lam_t).clamp(0.0, 1.0) }
-    }
-
-    // transmissibility between two neighboring cells (oil-field units)
-    // Inputs: permeability [mD], area [m²], distance [m], mobility [1/cP]
-    // Output: T [m³/day/bar]
-    // Formula: T = 0.001127 * k[mD] * A[m²] / (L[m] * mu[cP])
-    // The factor 0.001127 converts from oilfield units to consistent flow units
-    fn transmissibility(&self, c1: &GridCell, c2: &GridCell, dim: char) -> f64 {
-        let (perm1, perm2, dist, area) = match dim {
-            'x' => (c1.perm_x, c2.perm_x, self.dx, self.dy * self.dz),
-            'y' => (c1.perm_y, c2.perm_y, self.dy, self.dx * self.dz),
-            'z' => (c1.perm_z, c2.perm_z, self.dz, self.dx * self.dy),
-            _ => (0.0, 0.0, 1.0, 1.0),
-        };
-        // Harmonic mean of permeabilities [mD]
-        let k_h = if perm1 + perm2 == 0.0 { 0.0 } else { 2.0 * perm1 * perm2 / (perm1 + perm2) };
-        if k_h == 0.0 { return 0.0; }
-        
-        // Average total mobility [1/cP]
-        let mob_avg = (self.total_mobility(c1) + self.total_mobility(c2)) / 2.0;
-        
-        // Transmissibility [m³/day/bar]
-        // 0.001127 factor: converts mD·m²/(m·cP) to m³/day/bar
-        0.001127 * k_h * area / dist * mob_avg
-    }
-
-    // main IMPES step: delta_t in days (oil-field units)
-    // Implicit pressure equation + explicit saturation update
+    /// Advance simulator by target timestep [days]
     pub fn step(&mut self, target_dt_days: f64) {
-        let mut time_stepped = 0.0;
-        const MAX_ATTEMPTS: u32 = 10;
-        let mut attempts = 0;
-
-        while time_stepped < target_dt_days && attempts < MAX_ATTEMPTS {
-            let remaining_dt = target_dt_days - time_stepped;
-            
-            // Calculate fluxes and stability for the remaining time step
-            let (p_new, delta_water_m3, stable_dt_factor) = self.calculate_fluxes(remaining_dt);
-
-            let actual_dt;
-            let final_delta_water_m3;
-
-            if stable_dt_factor < 1.0 {
-                // Timestep is too large, reduce it based on CFL condition
-                actual_dt = remaining_dt * stable_dt_factor * 0.9; // Use 90% for safety
-                
-                // Scale the water volume change by the ratio of the new dt to the old dt
-                let dt_ratio = actual_dt / remaining_dt;
-                final_delta_water_m3 = delta_water_m3.iter().map(|&dv| dv * dt_ratio).collect();
-                
-                attempts += 1;
-            } else {
-                // The full remaining timestep is stable
-                actual_dt = remaining_dt;
-                final_delta_water_m3 = delta_water_m3;
-                attempts = 0; // Reset attempts on a successful full step
-            }
-
-            // Update saturations and pressure with the adjusted (or full) timestep
-            self.update_saturations_and_pressure(&p_new, &final_delta_water_m3, actual_dt);
-            
-            time_stepped += actual_dt;
-        }
+        self.step_internal(target_dt_days);
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]
@@ -594,15 +277,18 @@ impl ReservoirSimulator {
     }
 
     #[wasm_bindgen(js_name = setTargetWellRates)]
-    pub fn set_target_well_rates(&mut self, injector_rate_m3_day: f64, producer_rate_m3_day: f64) -> Result<(), String> {
+    pub fn set_target_well_rates(
+        &mut self,
+        injector_rate_m3_day: f64,
+        producer_rate_m3_day: f64,
+    ) -> Result<(), String> {
         if !injector_rate_m3_day.is_finite() || !producer_rate_m3_day.is_finite() {
             return Err("Target well rates must be finite numbers".to_string());
         }
         if injector_rate_m3_day < 0.0 || producer_rate_m3_day < 0.0 {
             return Err(format!(
                 "Target well rates must be non-negative, got injector={}, producer={}",
-                injector_rate_m3_day,
-                producer_rate_m3_day
+                injector_rate_m3_day, producer_rate_m3_day
             ));
         }
 
@@ -611,363 +297,52 @@ impl ReservoirSimulator {
         Ok(())
     }
 
-    fn injector_well_count(&self) -> usize {
-        self.wells.iter().filter(|w| w.injector).count()
+    #[wasm_bindgen(js_name = setWellBhpLimits)]
+    pub fn set_well_bhp_limits(&mut self, bhp_min: f64, bhp_max: f64) -> Result<(), String> {
+        if !bhp_min.is_finite() || !bhp_max.is_finite() {
+            return Err("Well BHP limits must be finite numbers".to_string());
+        }
+        if bhp_min > bhp_max {
+            return Err(format!(
+                "Invalid BHP limits: bhp_min ({}) must be <= bhp_max ({})",
+                bhp_min, bhp_max
+            ));
+        }
+
+        self.well_bhp_min = bhp_min;
+        self.well_bhp_max = bhp_max;
+        Ok(())
     }
 
-    fn producer_well_count(&self) -> usize {
-        self.wells.iter().filter(|w| !w.injector).count()
+    pub fn get_time(&self) -> f64 {
+        self.time_days
     }
-
-    fn well_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
-        if well.injector && !self.injector_enabled {
-            return Some(0.0);
-        }
-
-        let use_rate_control = if well.injector {
-            self.injector_rate_controlled
-        } else {
-            self.producer_rate_controlled
-        };
-
-        if use_rate_control {
-            if well.injector {
-                let n_inj = self.injector_well_count();
-                if n_inj == 0 {
-                    return Some(0.0);
-                }
-                return Some(-(self.target_injector_rate_m3_day / n_inj as f64));
-            }
-
-            let n_prod = self.producer_well_count();
-            if n_prod == 0 {
-                return Some(0.0);
-            }
-            return Some(self.target_producer_rate_m3_day / n_prod as f64);
-        }
-
-        if !well.productivity_index.is_finite() || !well.bhp.is_finite() || !pressure_bar.is_finite() {
-            return None;
-        }
-
-        let q_m3_day = well.productivity_index * (pressure_bar - well.bhp);
-        if q_m3_day.is_finite() {
-            Some(q_m3_day)
-        } else {
-            None
-        }
-    }
-
-    fn calculate_fluxes(&self, delta_t_days: f64) -> (DVector<f64>, Vec<f64>, f64) {
-        let n_cells = self.nx * self.ny * self.nz;
-        if n_cells == 0 { return (DVector::zeros(0), vec![], 1.0); }
-        let dt_days = delta_t_days.max(1e-12);
-        
-        // Total compressibility [1/bar] = c_oil + c_water
-        // Simplified: should be ct = phi * (c_o * S_o + c_w * S_w + c_r)
-        let c_t = self.pvt.c_o + self.pvt.c_w + self.rock_compressibility;
-
-        // Build triplet lists for A matrix and RHS b of pressure equation
-        let mut rows: Vec<usize> = Vec::with_capacity(n_cells * 7);
-        let mut cols: Vec<usize> = Vec::with_capacity(n_cells * 7);
-        let mut vals: Vec<f64> = Vec::with_capacity(n_cells * 7);
-
-        let mut b_rhs = DVector::<f64>::zeros(n_cells);
-        let mut diag_inv = DVector::<f64>::zeros(n_cells);
-
-        // Assemble pressure equation: accumulation + transmissibility + well terms
-        for k in 0..self.nz {
-            for j in 0..self.ny {
-                for i in 0..self.nx {
-                    let id = self.idx(i, j, k);
-                    let cell = &self.grid_cells[id];
-                    
-                    // Pore volume [m³]
-                    let vp_m3 = cell.pore_volume_m3(self.dx, self.dy, self.dz);
-                    
-                    // Accumulation term: (Vp [m³] * c_t [1/bar]) / dt [day]
-                    // Units: [m³ * 1/bar / day] = [m³/bar/day]
-                    let accum = (vp_m3 * c_t) / dt_days;
-                    let mut diag = accum;
-                    
-                    // Move old pressure term to RHS: accum * p_old
-                    b_rhs[id] += accum * cell.pressure;
-
-                    // neighbors: compute flux transmissibilities
-                    let mut neighbors: Vec<(usize, char, usize)> = Vec::new();
-                    if i > 0 { neighbors.push((self.idx(i-1,j,k), 'x', k)); }
-                    if i < self.nx-1 { neighbors.push((self.idx(i+1,j,k), 'x', k)); }
-                    if j > 0 { neighbors.push((self.idx(i,j-1,k), 'y', k)); }
-                    if j < self.ny-1 { neighbors.push((self.idx(i,j+1,k), 'y', k)); }
-                    if k > 0 { neighbors.push((self.idx(i,j,k-1), 'z', k - 1)); }
-                    if k < self.nz-1 { neighbors.push((self.idx(i,j,k+1), 'z', k + 1)); }
-
-                    for (n_id, dim, n_k) in neighbors.iter() {
-                        // Transmissibility [m³/day/bar]
-                        let t = self.transmissibility(cell, &self.grid_cells[*n_id], *dim);
-                        diag += t;
-                        rows.push(id); cols.push(*n_id); vals.push(-t);
-
-                        // Gravity source contribution on RHS from potential formulation
-                        let depth_i = self.depth_at_k(k);
-                        let depth_j = self.depth_at_k(*n_k);
-                        let rho_t = self.total_density_face(cell, &self.grid_cells[*n_id]);
-                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
-                        b_rhs[id] += t * grav_head_bar;
-                    }
-
-                    // Well source terms
-                    for w in &self.wells {
-                        if w.i == i && w.j == j && w.k == k {
-                            if self.rate_controlled_wells {
-                                if let Some(q_m3_day) = self.well_rate_m3_day(w, cell.pressure) {
-                                    b_rhs[id] -= q_m3_day;
-                                }
-                            } else {
-                                // BHP-controlled: add PI to diagonal and PI*BHP to RHS
-                                // q [m³/day] = PI [m³/day/bar] * (p_cell - BHP)
-                                if w.productivity_index.is_finite() && w.bhp.is_finite() {
-                                    diag += w.productivity_index;
-                                    b_rhs[id] += w.productivity_index * w.bhp;
-                                }
-                            }
-                        }
-                    }
-
-                    // push diagonal to matrix
-                    rows.push(id); cols.push(id); vals.push(diag);
-                    // Safe inverse for Jacobi preconditioner
-                    diag_inv[id] = if diag.abs() > f64::EPSILON { 1.0 / diag } else { 1.0 };
-                }
-            }
-        }
-
-        // Build sparse matrix and solve pressure equation
-        let mut tri = TriMatI::<f64, usize>::new((n_cells, n_cells));
-        for idx in 0..vals.len() {
-            tri.add_triplet(rows[idx], cols[idx], vals[idx]);
-        }
-        let a_mat: CsMat<f64> = tri.to_csr();
-
-        // Solve pressure equation A*p_new = b with PCG, initial guess = current pressures
-        let mut x0 = DVector::<f64>::zeros(n_cells);
-        for i in 0..n_cells { x0[i] = self.grid_cells[i].pressure; }
-        let p_new = solve_pcg_with_guess(&a_mat, &b_rhs, &diag_inv, &x0, 1e-7, 1000);
-
-        // Compute phase fluxes and explicit saturation update (upwind fractional flow method)
-        // Track total water volume change [m³] per cell over dt_days
-        let mut delta_water_m3 = vec![0.0f64; n_cells];
-        let mut max_sat_change = 0.0;
-
-        // Interface fluxes: compute once per neighbor pair and distribute upwind
-        for k in 0..self.nz {
-            for j in 0..self.ny {
-                for i in 0..self.nx {
-                    let id = self.idx(i,j,k);
-                    let p_i = p_new[id];
-                    
-                    // Check neighbors in positive direction to avoid duplicate pairs
-                    let mut check = Vec::new();
-                    if i < self.nx - 1 { check.push((self.idx(i+1,j,k), 'x', k)); }
-                    if j < self.ny - 1 { check.push((self.idx(i,j+1,k), 'y', k)); }
-                    if k < self.nz - 1 { check.push((self.idx(i,j,k+1), 'z', k + 1)); }
-
-                    for (nid, dim, n_k) in check {
-                        let p_j = p_new[nid];
-                        // Transmissibility [m³/day/bar]
-                        let t = self.transmissibility(&self.grid_cells[id], &self.grid_cells[nid], dim);
-                        let (lam_w_i, lam_o_i) = self.phase_mobilities(&self.grid_cells[id]);
-                        let (lam_w_j, lam_o_j) = self.phase_mobilities(&self.grid_cells[nid]);
-                        let lam_t_i = lam_w_i + lam_o_i;
-                        let lam_t_j = lam_w_j + lam_o_j;
-                        let lam_t_avg = 0.5 * (lam_t_i + lam_t_j);
-                        if lam_t_avg <= f64::EPSILON { continue; }
-
-                        // Total volumetric flux [m³/day]: positive = from id -> nid
-                        let depth_i = self.depth_at_k(k);
-                        let depth_j = self.depth_at_k(n_k);
-                        let rho_t = self.total_density_face(&self.grid_cells[id], &self.grid_cells[nid]);
-                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
-                        let total_flux = t * ((p_i - p_j) - grav_head_bar);
-
-                        // Upwind fractional flow for water
-                        let f_w = if total_flux >= 0.0 {
-                            self.frac_flow_water(&self.grid_cells[id])
-                        } else {
-                            self.frac_flow_water(&self.grid_cells[nid])
-                        };
-
-                        // Capillary-driven diffusion term using harmonic transmissibility geometry
-                        let pc_i = self.get_capillary_pressure(self.grid_cells[id].sat_water);
-                        let pc_j = self.get_capillary_pressure(self.grid_cells[nid].sat_water);
-                        let geom_t = t / lam_t_avg;
-                        let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
-                        let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
-                        let capillary_flux = if lam_t_avg <= f64::EPSILON {
-                            0.0
-                        } else {
-                            -geom_t * (lam_w_avg * lam_o_avg / lam_t_avg) * (pc_i - pc_j)
-                        };
-
-                        // Water flux [m³/day]
-                        let water_flux_m3_day = total_flux * f_w + capillary_flux;
-                        // Volume change over dt_days [m³]
-                        let dv_water = water_flux_m3_day * dt_days;
-                        
-                        // Distribute: outgoing flow reduces water in source cell
-                        delta_water_m3[id] -= dv_water;
-                        delta_water_m3[nid] += dv_water;
-                    }
-                }
-            }
-        }
-
-        // Add well explicit contributions using solved pressure
-        for w in &self.wells {
-            let id = self.idx(w.i, w.j, w.k);
-
-            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
-                // Determine water composition of well fluid
-                let fw = if w.injector {
-                    // Injectors inject 100% water
-                    1.0
-                } else {
-                    // Producers produce at reservoir fluid composition (fractional flow)
-                    self.frac_flow_water(&self.grid_cells[id])
-                };
-
-                let water_q_m3_day = q_m3_day * fw;
-
-                // Volume change [m³]. Production (q>0) removes fluid from block.
-                // For injector: q<0 (inflow), so -q_water*dt adds water to the block
-                delta_water_m3[id] -= water_q_m3_day * dt_days;
-            }
-        }
-
-        // Calculate max saturation change for CFL condition
-        for idx in 0..n_cells {
-            let vp_m3 = self.grid_cells[idx].pore_volume_m3(self.dx, self.dy, self.dz);
-            if vp_m3 > 0.0 {
-                let sat_change = (delta_water_m3[idx] / vp_m3).abs();
-                if sat_change > max_sat_change {
-                    max_sat_change = sat_change;
-                }
-            }
-        }
-
-        let sat_factor = if max_sat_change > self.max_sat_change_per_step {
-            self.max_sat_change_per_step / max_sat_change
-        } else {
-            1.0
-        };
-
-        let mut max_pressure_change = 0.0;
-        for idx in 0..n_cells {
-            let dp = (p_new[idx] - self.grid_cells[idx].pressure).abs();
-            if dp > max_pressure_change {
-                max_pressure_change = dp;
-            }
-        }
-        let pressure_factor = if max_pressure_change > self.max_pressure_change_per_step {
-            self.max_pressure_change_per_step / max_pressure_change
-        } else {
-            1.0
-        };
-
-        let mut max_well_rate_rel_change = 0.0;
-        for w in &self.wells {
-            let id = self.idx(w.i, w.j, w.k);
-            let q_old = self.well_rate_m3_day(w, self.grid_cells[id].pressure).unwrap_or(0.0);
-            let q_new = self.well_rate_m3_day(w, p_new[id]).unwrap_or(0.0);
-
-            let rel = (q_new - q_old).abs() / (q_old.abs() + 1.0);
-            if rel > max_well_rate_rel_change {
-                max_well_rate_rel_change = rel;
-            }
-        }
-        let rate_factor = if max_well_rate_rel_change > self.max_well_rate_change_fraction {
-            self.max_well_rate_change_fraction / max_well_rate_rel_change
-        } else {
-            1.0
-        };
-
-        let stable_dt_factor = sat_factor.min(pressure_factor).min(rate_factor).clamp(0.01, 1.0);
-
-        (p_new, delta_water_m3, stable_dt_factor)
-    }
-
-    fn update_saturations_and_pressure(&mut self, p_new: &DVector<f64>, delta_water_m3: &Vec<f64>, dt_days: f64) {
-        let n_cells = self.nx * self.ny * self.nz;
-        // Update saturations based on water volume changes
-        for idx in 0..n_cells {
-            let vp_m3 = self.grid_cells[idx].pore_volume_m3(self.dx, self.dy, self.dz);
-            if vp_m3 <= 0.0 { continue; }
-
-            // Change in water saturation [dimensionless] = ΔV_water [m³] / V_pore [m³]
-            let sw_old = self.grid_cells[idx].sat_water;
-            let sw_min = self.scal.s_wc;
-            let sw_max = 1.0 - self.scal.s_or;
-            let delta_sw = delta_water_m3[idx] / vp_m3;
-            let sw_new = (sw_old + delta_sw).clamp(sw_min, sw_max);
-            
-            // Ensure material balance: s_w + s_o = 1.0 (two-phase system, no gas phase)
-            let so_new = (1.0 - sw_new).clamp(0.0, 1.0);
-
-            // Update state variables
-            self.grid_cells[idx].sat_water = sw_new;
-            self.grid_cells[idx].sat_oil = so_new;
-            self.grid_cells[idx].pressure = p_new[idx];
-        }
-
-        // Calculate and store rates
-        let mut total_prod_oil = 0.0;
-        let mut total_prod_liquid = 0.0;
-        let mut total_injection = 0.0;
-
-        for w in &self.wells {
-            let id = self.idx(w.i, w.j, w.k);
-            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
-                if w.injector {
-                    // Injection is negative flow
-                    total_injection -= q_m3_day / self.b_w.max(1e-9);
-                } else {
-                    // Production is positive flow
-                    let fw = self.frac_flow_water(&self.grid_cells[id]);
-                    let oil_rate = q_m3_day * (1.0 - fw) / self.b_o.max(1e-9);
-                    let water_rate = q_m3_day * fw / self.b_w.max(1e-9);
-                    total_prod_oil += oil_rate;
-                    total_prod_liquid += oil_rate + water_rate;
-                }
-            }
-        }
-
-        self.rate_history.push(TimePointRates {
-            time: self.time_days + dt_days,
-            total_production_oil: total_prod_oil,
-            total_production_liquid: total_prod_liquid,
-            total_injection: total_injection,
-        });
-
-
-        // Advance simulation time [s]
-        self.time_days += dt_days;
-    }
-
-    pub fn get_time(&self) -> f64 { self.time_days }
 
     #[wasm_bindgen(js_name = getGridState)]
-    pub fn get_grid_state(&self) -> JsValue { serde_wasm_bindgen::to_value(&self.grid_cells).unwrap() }
+    pub fn get_grid_state(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.grid_cells).unwrap()
+    }
 
     #[wasm_bindgen(js_name = getWellState)]
-    pub fn get_well_state(&self) -> JsValue { serde_wasm_bindgen::to_value(&self.wells).unwrap() }
+    pub fn get_well_state(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.wells).unwrap()
+    }
 
     #[wasm_bindgen(js_name = getRateHistory)]
     pub fn get_rate_history(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.rate_history).unwrap()
     }
 
+    /// Get last solver warning message (empty string if no warning)
+    #[wasm_bindgen(js_name = getLastSolverWarning)]
+    pub fn get_last_solver_warning(&self) -> String {
+        self.last_solver_warning.clone()
+    }
+
     #[wasm_bindgen(js_name = getDimensions)]
-    pub fn get_dimensions(&self) -> JsValue { serde_wasm_bindgen::to_value(&[self.nx, self.ny, self.nz]).unwrap() }
+    pub fn get_dimensions(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&[self.nx, self.ny, self.nz]).unwrap()
+    }
 
     /// Set initial pressure for all grid cells
     #[wasm_bindgen(js_name = setInitialPressure)]
@@ -1004,9 +379,53 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Set initial water saturation per z-layer
+    #[wasm_bindgen(js_name = setInitialSaturationPerLayer)]
+    pub fn set_initial_saturation_per_layer(&mut self, sw: Vec<f64>) -> Result<(), String> {
+        if sw.len() != self.nz {
+            return Err(format!(
+                "Initial saturation vector must have length equal to nz ({})",
+                self.nz
+            ));
+        }
+
+        for (k, sat) in sw.iter().enumerate() {
+            if !sat.is_finite() {
+                return Err(format!(
+                    "Initial saturation for layer {} must be finite, got {}",
+                    k, sat
+                ));
+            }
+            if *sat < 0.0 || *sat > 1.0 {
+                return Err(format!(
+                    "Initial saturation for layer {} must be within [0, 1], got {}",
+                    k, sat
+                ));
+            }
+        }
+
+        for k in 0..self.nz {
+            for j in 0..self.ny {
+                for i in 0..self.nx {
+                    let id = self.idx(i, j, k);
+                    self.grid_cells[id].sat_water = sw[k];
+                    self.grid_cells[id].sat_oil = 1.0 - sw[k];
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Set relative permeability properties
     #[wasm_bindgen(js_name = setRelPermProps)]
-    pub fn set_rel_perm_props(&mut self, s_wc: f64, s_or: f64, n_w: f64, n_o: f64) -> Result<(), String> {
+    pub fn set_rel_perm_props(
+        &mut self,
+        s_wc: f64,
+        s_or: f64,
+        n_w: f64,
+        n_o: f64,
+    ) -> Result<(), String> {
         if !s_wc.is_finite() || !s_or.is_finite() || !n_w.is_finite() || !n_o.is_finite() {
             return Err("Relative permeability parameters must be finite numbers".to_string());
         }
@@ -1033,7 +452,12 @@ impl ReservoirSimulator {
             ));
         }
 
-        self.scal = RockFluidProps { s_wc, s_or, n_w, n_o };
+        self.scal = RockFluidProps {
+            s_wc,
+            s_or,
+            n_w,
+            n_o,
+        };
         Ok(())
     }
 
@@ -1043,7 +467,10 @@ impl ReservoirSimulator {
             return Err("Fluid densities must be finite numbers".to_string());
         }
         if rho_o <= 0.0 || rho_w <= 0.0 {
-            return Err(format!("Fluid densities must be positive, got rho_o={}, rho_w={}", rho_o, rho_w));
+            return Err(format!(
+                "Fluid densities must be positive, got rho_o={}, rho_w={}",
+                rho_o, rho_w
+            ));
         }
         self.pvt.rho_o = rho_o;
         self.pvt.rho_w = rho_w;
@@ -1085,15 +512,31 @@ impl ReservoirSimulator {
     }
 
     #[wasm_bindgen(js_name = setRockProperties)]
-    pub fn set_rock_properties(&mut self, c_r: f64, depth_reference_m: f64, b_o: f64, b_w: f64) -> Result<(), String> {
-        if !c_r.is_finite() || !depth_reference_m.is_finite() || !b_o.is_finite() || !b_w.is_finite() {
+    pub fn set_rock_properties(
+        &mut self,
+        c_r: f64,
+        depth_reference_m: f64,
+        b_o: f64,
+        b_w: f64,
+    ) -> Result<(), String> {
+        if !c_r.is_finite()
+            || !depth_reference_m.is_finite()
+            || !b_o.is_finite()
+            || !b_w.is_finite()
+        {
             return Err("Rock properties must be finite numbers".to_string());
         }
         if c_r < 0.0 {
-            return Err(format!("Rock compressibility must be non-negative, got {}", c_r));
+            return Err(format!(
+                "Rock compressibility must be non-negative, got {}",
+                c_r
+            ));
         }
         if b_o <= 0.0 || b_w <= 0.0 {
-            return Err(format!("Volume expansion factors must be positive, got b_o={}, b_w={}", b_o, b_w));
+            return Err(format!(
+                "Volume expansion factors must be positive, got b_o={}, b_w={}",
+                b_o, b_w
+            ));
         }
 
         self.rock_compressibility = c_r;
@@ -1109,7 +552,10 @@ impl ReservoirSimulator {
             return Err("Capillary parameters must be finite numbers".to_string());
         }
         if p_entry < 0.0 {
-            return Err(format!("Capillary entry pressure must be non-negative, got {}", p_entry));
+            return Err(format!(
+                "Capillary entry pressure must be non-negative, got {}",
+                p_entry
+            ));
         }
         if lambda <= 0.0 {
             return Err(format!("Capillary lambda must be positive, got {}", lambda));
@@ -1152,7 +598,12 @@ impl ReservoirSimulator {
 
     /// Set permeability with deterministic random distribution using a fixed seed
     #[wasm_bindgen(js_name = setPermeabilityRandomSeeded)]
-    pub fn set_permeability_random_seeded(&mut self, min_perm: f64, max_perm: f64, seed: u64) -> Result<(), String> {
+    pub fn set_permeability_random_seeded(
+        &mut self,
+        min_perm: f64,
+        max_perm: f64,
+        seed: u64,
+    ) -> Result<(), String> {
         if !min_perm.is_finite() || !max_perm.is_finite() {
             return Err("Permeability bounds must be finite numbers".to_string());
         }
@@ -1182,9 +633,17 @@ impl ReservoirSimulator {
 
     /// Set permeability per layer
     #[wasm_bindgen(js_name = setPermeabilityPerLayer)]
-    pub fn set_permeability_per_layer(&mut self, perms_x: Vec<f64>, perms_y: Vec<f64>, perms_z: Vec<f64>) -> Result<(), String> {
+    pub fn set_permeability_per_layer(
+        &mut self,
+        perms_x: Vec<f64>,
+        perms_y: Vec<f64>,
+        perms_z: Vec<f64>,
+    ) -> Result<(), String> {
         if perms_x.len() != self.nz || perms_y.len() != self.nz || perms_z.len() != self.nz {
-            return Err(format!("Permeability vectors must have length equal to nz ({})", self.nz));
+            return Err(format!(
+                "Permeability vectors must have length equal to nz ({})",
+                self.nz
+            ));
         }
 
         for k in 0..self.nz {
@@ -1216,61 +675,10 @@ impl ReservoirSimulator {
     }
 }
 
-// --- Helper: sparse matrix-vector multiply ---
-fn cs_mat_mul_vec(a: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
-    let n = a.rows();
-    let mut y = DVector::<f64>::zeros(n);
-    for (row, vec) in a.outer_iterator().enumerate() {
-        let mut sum = 0.0;
-        for (&col, &val) in vec.indices().iter().zip(vec.data().iter()) {
-            sum += val * x[col];
-        }
-        y[row] = sum;
-    }
-    y
-}
-
-// PCG solver with initial guess
-fn solve_pcg_with_guess(
-    a: &CsMat<f64>,
-    b: &DVector<f64>,
-    m_inv_diag: &DVector<f64>,
-    x0: &DVector<f64>,
-    tolerance: f64,
-    max_iter: usize,
-) -> DVector<f64> {
-    let n = b.len();
-    let mut x = x0.clone();
-    let mut r = b - &cs_mat_mul_vec(a, &x);
-    let mut z = DVector::<f64>::zeros(n);
-    for i in 0..n { z[i] = r[i] * m_inv_diag[i]; }
-    let mut p = z.clone();
-    let mut r_dot_z = r.dot(&z);
-    let r0_norm = r.norm();
-    if r0_norm == 0.0 { return x; }
-
-    for _ in 0..max_iter {
-        if r.norm() / r0_norm < tolerance { break; }
-        let q = cs_mat_mul_vec(a, &p);
-        let p_dot_q = p.dot(&q);
-        if p_dot_q.abs() < f64::EPSILON { break; }
-        let alpha = r_dot_z / p_dot_q;
-        x += alpha * p.clone();
-        let r_new = r - alpha * q;
-        let mut z_new = DVector::<f64>::zeros(n);
-        for i in 0..n { z_new[i] = r_new[i] * m_inv_diag[i]; }
-        let r_new_dot_z_new = r_new.dot(&z_new);
-        let beta = if r_dot_z.abs() < f64::EPSILON { 0.0 } else { r_new_dot_z_new / r_dot_z };
-        p = z_new.clone() + beta * p;
-        r = r_new;
-        r_dot_z = r_new_dot_z_new;
-    }
-    x
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::step::WellControlDecision;
 
     struct BuckleyCase {
         name: &'static str,
@@ -1352,7 +760,9 @@ mod tests {
         let s_max = 1.0 - case.s_or;
 
         while s <= s_max {
-            let fw = corey_fractional_flow(s, case.s_wc, case.s_or, case.n_w, case.n_o, case.mu_w, case.mu_o);
+            let fw = corey_fractional_flow(
+                s, case.s_wc, case.s_or, case.n_w, case.n_o, case.mu_w, case.mu_o,
+            );
             let slope = fw / (s - sw_init);
             if slope > best_slope && slope.is_finite() {
                 best_slope = slope;
@@ -1391,16 +801,20 @@ mod tests {
 
     fn run_buckley_case(case: &BuckleyCase) -> BuckleyMetrics {
         let mut sim = ReservoirSimulator::new(case.nx, 1, 1);
-        sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o).unwrap();
+        sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o)
+            .unwrap();
         sim.set_initial_saturation(case.s_wc);
-        sim.set_permeability_random_seeded(case.permeability_md, case.permeability_md, 42).unwrap();
+        sim.set_permeability_random_seeded(case.permeability_md, case.permeability_md, 42)
+            .unwrap();
         sim.set_stability_params(0.05, 75.0, 0.75);
         sim.pc.p_entry = 0.0;
         sim.pvt.mu_w = case.mu_w;
         sim.pvt.mu_o = case.mu_o;
 
-        sim.add_well(0, 0, 0, case.injector_bhp, 0.1, 0.0, true).unwrap();
-        sim.add_well(case.nx - 1, 0, 0, case.producer_bhp, 0.1, 0.0, false).unwrap();
+        sim.add_well(0, 0, 0, case.injector_bhp, 0.1, 0.0, true)
+            .unwrap();
+        sim.add_well(case.nx - 1, 0, 0, case.producer_bhp, 0.1, 0.0, false)
+            .unwrap();
 
         let total_pv = sim
             .grid_cells
@@ -1414,14 +828,18 @@ mod tests {
 
         for _ in 0..case.max_steps {
             sim.step(case.dt_days);
-            let point = sim.rate_history.last().expect("rate history should have entries");
+            let point = sim
+                .rate_history
+                .last()
+                .expect("rate history should have entries");
             let dt = point.time - previous_time;
             previous_time = point.time;
 
             cumulative_injection += point.total_injection.max(0.0) * dt;
 
             if point.total_production_liquid > 1e-9 {
-                let water_rate = (point.total_production_liquid - point.total_production_oil).max(0.0);
+                let water_rate =
+                    (point.total_production_liquid - point.total_production_oil).max(0.0);
                 let watercut = (water_rate / point.total_production_liquid).clamp(0.0, 1.0);
                 if watercut >= case.breakthrough_watercut {
                     breakthrough_pv = Some(cumulative_injection / total_pv);
@@ -1530,14 +948,18 @@ mod tests {
     fn stability_extremes_produce_finite_state() {
         let mut sim_loose = ReservoirSimulator::new(3, 1, 1);
         sim_loose.set_stability_params(1.0, 75.0, 0.75);
-        sim_loose.set_permeability_random(20_000.0, 20_000.0).unwrap();
+        sim_loose
+            .set_permeability_random(20_000.0, 20_000.0)
+            .unwrap();
         sim_loose.add_well(0, 0, 0, 650.0, 0.1, 0.0, true).unwrap();
         sim_loose.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
         sim_loose.step(5.0);
 
         let mut sim_tight = ReservoirSimulator::new(3, 1, 1);
         sim_tight.set_stability_params(0.01, 75.0, 0.75);
-        sim_tight.set_permeability_random(20_000.0, 20_000.0).unwrap();
+        sim_tight
+            .set_permeability_random(20_000.0, 20_000.0)
+            .unwrap();
         sim_tight.add_well(0, 0, 0, 650.0, 0.1, 0.0, true).unwrap();
         sim_tight.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
         sim_tight.step(5.0);
@@ -1560,8 +982,14 @@ mod tests {
     fn api_contract_rejects_invalid_relperm_parameters() {
         let mut sim = ReservoirSimulator::new(2, 2, 1);
         err_contains(sim.set_rel_perm_props(0.6, 0.5, 2.0, 2.0), "must be < 1.0");
-        err_contains(sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0), "must be positive");
-        err_contains(sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0), "finite numbers");
+        err_contains(
+            sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0),
+            "must be positive",
+        );
+        err_contains(
+            sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0),
+            "finite numbers",
+        );
     }
 
     #[test]
@@ -1582,7 +1010,9 @@ mod tests {
     #[test]
     fn gravity_toggle_builds_hydrostatic_vertical_gradient() {
         let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
-        sim_no_g.set_permeability_random_seeded(50_000.0, 50_000.0, 42).unwrap();
+        sim_no_g
+            .set_permeability_random_seeded(50_000.0, 50_000.0, 42)
+            .unwrap();
         sim_no_g.set_initial_pressure(300.0);
         sim_no_g.set_initial_saturation(0.9);
         sim_no_g.pc.p_entry = 0.0;
@@ -1593,7 +1023,9 @@ mod tests {
         let p_bot_no_g = sim_no_g.grid_cells[sim_no_g.idx(0, 0, 1)].pressure;
 
         let mut sim_g = ReservoirSimulator::new(1, 1, 2);
-        sim_g.set_permeability_random_seeded(50_000.0, 50_000.0, 42).unwrap();
+        sim_g
+            .set_permeability_random_seeded(50_000.0, 50_000.0, 42)
+            .unwrap();
         sim_g.set_initial_pressure(300.0);
         sim_g.set_initial_saturation(0.9);
         sim_g.pc.p_entry = 0.0;
@@ -1612,7 +1044,9 @@ mod tests {
         let initial_sw = 0.9;
 
         let mut sim_g = ReservoirSimulator::new(1, 1, 2);
-        sim_g.set_permeability_random_seeded(80_000.0, 80_000.0, 7).unwrap();
+        sim_g
+            .set_permeability_random_seeded(80_000.0, 80_000.0, 7)
+            .unwrap();
         sim_g.set_initial_saturation(initial_sw);
         sim_g.pc.p_entry = 0.0;
         sim_g.set_fluid_densities(800.0, 1000.0).unwrap();
@@ -1627,7 +1061,9 @@ mod tests {
         let sw_change_top_g = (sim_g.grid_cells[top_id_g].sat_water - initial_sw).abs();
 
         let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
-        sim_no_g.set_permeability_random_seeded(80_000.0, 80_000.0, 7).unwrap();
+        sim_no_g
+            .set_permeability_random_seeded(80_000.0, 80_000.0, 7)
+            .unwrap();
         sim_no_g.set_initial_saturation(initial_sw);
         sim_no_g.pc.p_entry = 0.0;
         sim_no_g.set_fluid_densities(800.0, 1000.0).unwrap();
@@ -1646,8 +1082,14 @@ mod tests {
     #[test]
     fn api_contract_rejects_invalid_permeability_inputs() {
         let mut sim = ReservoirSimulator::new(2, 2, 2);
-        err_contains(sim.set_permeability_random(200.0, 50.0), "cannot exceed max");
-        err_contains(sim.set_permeability_random_seeded(-1.0, 100.0, 123), "must be positive");
+        err_contains(
+            sim.set_permeability_random(200.0, 50.0),
+            "cannot exceed max",
+        );
+        err_contains(
+            sim.set_permeability_random_seeded(-1.0, 100.0, 123),
+            "must be positive",
+        );
         err_contains(
             sim.set_permeability_per_layer(vec![100.0], vec![100.0, 120.0], vec![10.0, 12.0]),
             "length equal to nz",
@@ -1685,10 +1127,7 @@ mod tests {
 
         println!(
             "{}: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
-            case.name,
-            metrics.breakthrough_pv,
-            metrics.reference_breakthrough_pv,
-            rel_err
+            case.name, metrics.breakthrough_pv, metrics.reference_breakthrough_pv, rel_err
         );
 
         assert!(
@@ -1729,10 +1168,7 @@ mod tests {
 
         println!(
             "{}: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
-            case.name,
-            metrics.breakthrough_pv,
-            metrics.reference_breakthrough_pv,
-            rel_err
+            case.name, metrics.breakthrough_pv, metrics.reference_breakthrough_pv, rel_err
         );
 
         assert!(
@@ -1800,26 +1236,29 @@ mod tests {
 
         let metrics_coarse_a = run_buckley_case(&coarse_a);
         let metrics_refined_a = run_buckley_case(&refined_a);
-        let rel_err_coarse_a = ((metrics_coarse_a.breakthrough_pv - metrics_coarse_a.reference_breakthrough_pv)
+        let rel_err_coarse_a = ((metrics_coarse_a.breakthrough_pv
+            - metrics_coarse_a.reference_breakthrough_pv)
             / metrics_coarse_a.reference_breakthrough_pv)
             .abs();
-        let rel_err_refined_a = ((metrics_refined_a.breakthrough_pv - metrics_refined_a.reference_breakthrough_pv)
+        let rel_err_refined_a = ((metrics_refined_a.breakthrough_pv
+            - metrics_refined_a.reference_breakthrough_pv)
             / metrics_refined_a.reference_breakthrough_pv)
             .abs();
 
         let metrics_coarse_b = run_buckley_case(&coarse_b);
         let metrics_refined_b = run_buckley_case(&refined_b);
-        let rel_err_coarse_b = ((metrics_coarse_b.breakthrough_pv - metrics_coarse_b.reference_breakthrough_pv)
+        let rel_err_coarse_b = ((metrics_coarse_b.breakthrough_pv
+            - metrics_coarse_b.reference_breakthrough_pv)
             / metrics_coarse_b.reference_breakthrough_pv)
             .abs();
-        let rel_err_refined_b = ((metrics_refined_b.breakthrough_pv - metrics_refined_b.reference_breakthrough_pv)
+        let rel_err_refined_b = ((metrics_refined_b.breakthrough_pv
+            - metrics_refined_b.reference_breakthrough_pv)
             / metrics_refined_b.reference_breakthrough_pv)
             .abs();
 
         println!(
             "Case-A coarse/refined rel_err: {:.3} -> {:.3}",
-            rel_err_coarse_a,
-            rel_err_refined_a
+            rel_err_coarse_a, rel_err_refined_a
         );
         println!(
             "BL-Case-A-Refined: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
@@ -1829,8 +1268,7 @@ mod tests {
         );
         println!(
             "Case-B coarse/refined rel_err: {:.3} -> {:.3}",
-            rel_err_coarse_b,
-            rel_err_refined_b
+            rel_err_coarse_b, rel_err_refined_b
         );
         println!(
             "BL-Case-B-Refined: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
@@ -1851,5 +1289,73 @@ mod tests {
             rel_err_coarse_b,
             rel_err_refined_b
         );
+    }
+
+    #[test]
+    fn set_initial_saturation_per_layer_applies_uniformly_by_k() {
+        let mut sim = ReservoirSimulator::new(2, 2, 3);
+        sim.set_initial_saturation_per_layer(vec![0.1, 0.4, 0.8])
+            .unwrap();
+
+        for k in 0..sim.nz {
+            for j in 0..sim.ny {
+                for i in 0..sim.nx {
+                    let id = sim.idx(i, j, k);
+                    let sw = sim.grid_cells[id].sat_water;
+                    assert!((sw - [0.1, 0.4, 0.8][k]).abs() < 1e-12);
+                    assert!((sim.grid_cells[id].sat_oil - (1.0 - sw)).abs() < 1e-12);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dynamic_pi_increases_with_higher_water_saturation() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1);
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0).unwrap();
+        sim.set_fluid_properties(3.0, 0.5).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let id = sim.idx(0, 0, 0);
+        sim.grid_cells[id].sat_water = sim.scal.s_wc;
+        sim.grid_cells[id].sat_oil = 1.0 - sim.scal.s_wc;
+        sim.update_dynamic_well_productivity_indices();
+        let pi_low_sw = sim.wells[0].productivity_index;
+
+        let sw_high = 0.95 - sim.scal.s_or;
+        sim.grid_cells[id].sat_water = sw_high;
+        sim.grid_cells[id].sat_oil = 1.0 - sw_high;
+        sim.update_dynamic_well_productivity_indices();
+        let pi_high_sw = sim.wells[0].productivity_index;
+
+        assert!(pi_high_sw > pi_low_sw);
+    }
+
+    #[test]
+    fn rate_control_switches_to_bhp_when_limits_are_hit() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_rates(0.0, 500.0).unwrap();
+        sim.set_well_bhp_limits(80.0, 120.0).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let well = &sim.wells[0];
+        let pressure = 100.0;
+
+        let control = sim
+            .resolve_well_control(well, pressure)
+            .expect("control decision should be available");
+
+        match control {
+            WellControlDecision::Bhp { bhp_bar } => {
+                assert!((bhp_bar - 80.0).abs() < 1e-9);
+            }
+            _ => panic!("Expected BHP fallback control when target rate violates BHP limits"),
+        }
+
+        let q = sim.well_rate_m3_day(well, pressure).unwrap();
+        let expected_q = well.productivity_index * (pressure - 80.0);
+        assert!((q - expected_q).abs() < 1e-9);
+        assert!(q < 500.0);
     }
 }

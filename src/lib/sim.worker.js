@@ -5,6 +5,22 @@ let simulator = null;
 let isRunning = false;
 let stopRequested = false;
 
+function buildRunProfile(batchStart, stepMsTotal, completedSteps, snapshotsSent) {
+  return {
+    batchMs: performance.now() - batchStart,
+    avgStepMs: completedSteps > 0 ? stepMsTotal / completedSteps : 0,
+    snapshotsSent,
+  };
+}
+
+function postStopped(batchStart, stepMsTotal, completedSteps, snapshotsSent) {
+  post('stopped', {
+    reason: 'user',
+    completedSteps,
+    profile: buildRunProfile(batchStart, stepMsTotal, completedSteps, snapshotsSent),
+  });
+}
+
 function formatWorkerError(error) {
   const raw = error instanceof Error ? error.message : String(error);
   const lower = raw.toLowerCase();
@@ -39,6 +55,7 @@ function getStatePayload(recordHistory, stepIndex, profile = {}) {
   const wells = simulator.getWellState();
   const time = simulator.get_time();
   const rateHistory = simulator.getRateHistory();
+  const solverWarning = simulator.getLastSolverWarning();
   const extractMs = performance.now() - extractStart;
 
   return {
@@ -46,6 +63,7 @@ function getStatePayload(recordHistory, stepIndex, profile = {}) {
     wells,
     time,
     rateHistory,
+    solverWarning,
     recordHistory,
     stepIndex,
     profile: {
@@ -130,6 +148,15 @@ function configureSimulator(payload) {
     setTargetWellRates.call(simulator, targetInjectorRate, targetProducerRate);
   }
 
+  const setWellBhpLimits = /** @type {any} */ (simulator).setWellBhpLimits;
+  if (typeof setWellBhpLimits === 'function') {
+    const producerBhp = Number(payload.producerBhp ?? 100);
+    const injectorBhp = Number(payload.injectorBhp ?? 400);
+    const bhpMin = Number(payload.bhpMin ?? Math.min(producerBhp, injectorBhp));
+    const bhpMax = Number(payload.bhpMax ?? Math.max(producerBhp, injectorBhp));
+    setWellBhpLimits.call(simulator, bhpMin, bhpMax);
+  }
+
   if (payload.permMode === 'random') {
     if (payload.useRandomSeed) {
       simulator.setPermeabilityRandomSeeded(payload.minPerm, payload.maxPerm, payload.randomSeed);
@@ -208,7 +235,7 @@ self.onmessage = async (event) => {
       const steps = Math.max(0, Math.floor(Number(payload?.steps ?? 0)));
       const deltaTDays = Number(payload?.deltaTDays ?? 0);
       const historyInterval = Math.max(1, Number(payload?.historyInterval ?? 1));
-      const chunkYieldInterval = Math.max(5, Number(payload?.chunkYieldInterval ?? 25));
+      const chunkYieldInterval = Math.max(1, Number(payload?.chunkYieldInterval ?? 5));
 
       if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
         throw new Error(`Invalid timestep value: ${deltaTDays}`);
@@ -223,18 +250,7 @@ self.onmessage = async (event) => {
 
       for (let i = 0; i < steps; i++) {
         if (stopRequested) {
-          post(
-            'stopped',
-            {
-              reason: 'user',
-              completedSteps: i,
-              profile: {
-                batchMs: performance.now() - batchStart,
-                avgStepMs: i > 0 ? stepMsTotal / i : 0,
-                snapshotsSent,
-              },
-            }
-          );
+          postStopped(batchStart, stepMsTotal, i, snapshotsSent);
           isRunning = false;
           stopRequested = false;
           return;
@@ -243,6 +259,13 @@ self.onmessage = async (event) => {
         const stepStart = performance.now();
         simulator.step(deltaTDays);
         stepMsTotal += performance.now() - stepStart;
+
+        if (stopRequested) {
+          postStopped(batchStart, stepMsTotal, i + 1, snapshotsSent);
+          isRunning = false;
+          stopRequested = false;
+          return;
+        }
 
         const shouldRecord = i % historyInterval === 0 || i === steps - 1;
         if (shouldRecord) {
@@ -259,15 +282,25 @@ self.onmessage = async (event) => {
 
         if ((i + 1) % chunkYieldInterval === 0) {
           await new Promise((resolve) => setTimeout(resolve, 0));
+
+          if (stopRequested) {
+            postStopped(batchStart, stepMsTotal, i + 1, snapshotsSent);
+            isRunning = false;
+            stopRequested = false;
+            return;
+          }
         }
       }
 
+      if (stopRequested) {
+        postStopped(batchStart, stepMsTotal, steps, snapshotsSent);
+        isRunning = false;
+        stopRequested = false;
+        return;
+      }
+
       post('batchComplete', {
-        profile: {
-          batchMs: performance.now() - batchStart,
-          avgStepMs: steps > 0 ? stepMsTotal / steps : 0,
-          snapshotsSent,
-        },
+        profile: buildRunProfile(batchStart, stepMsTotal, steps, snapshotsSent),
       });
       isRunning = false;
       stopRequested = false;
