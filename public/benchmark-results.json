@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-15T22:03:47.869Z",
+  "generatedAt": "2026-02-17T18:17:36.150Z",
   "source": "cargo-test",
   "command": "cargo test benchmark_buckley_leverett -- --nocapture",
   "defaultMode": "baseline",
@@ -7,17 +7,17 @@
     "baseline": [
       {
         "name": "BL-Case-A",
-        "pvBtSim": 0.5239,
+        "pvBtSim": 0.5191,
         "pvBtRef": 0.586,
-        "relError": 0.106,
+        "relError": 0.114,
         "tolerance": 0.25,
         "passes": true
       },
       {
         "name": "BL-Case-B",
-        "pvBtSim": 0.4768,
+        "pvBtSim": 0.4542,
         "pvBtRef": 0.5074,
-        "relError": 0.06,
+        "relError": 0.105,
         "tolerance": 0.3,
         "passes": true
       }
@@ -25,17 +25,17 @@
     "refined": [
       {
         "name": "BL-Case-A-Refined",
-        "pvBtSim": 0.5646,
+        "pvBtSim": 0.5625,
         "pvBtRef": 0.586,
-        "relError": 0.036,
+        "relError": 0.04,
         "tolerance": 0.25,
         "passes": true
       },
       {
         "name": "BL-Case-B-Refined",
-        "pvBtSim": 0.4905,
+        "pvBtSim": 0.4891,
         "pvBtRef": 0.5074,
-        "relError": 0.033,
+        "relError": 0.036,
         "tolerance": 0.3,
         "passes": true
       }
@@ -44,17 +44,17 @@
   "cases": [
     {
       "name": "BL-Case-A",
-      "pvBtSim": 0.5239,
+      "pvBtSim": 0.5191,
       "pvBtRef": 0.586,
-      "relError": 0.106,
+      "relError": 0.114,
       "tolerance": 0.25,
       "passes": true
     },
     {
       "name": "BL-Case-B",
-      "pvBtSim": 0.4768,
+      "pvBtSim": 0.4542,
       "pvBtRef": 0.5074,
-      "relError": 0.06,
+      "relError": 0.105,
       "tolerance": 0.3,
       "passes": true
     }

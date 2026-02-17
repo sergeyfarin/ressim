@@ -39,6 +39,7 @@ function getStatePayload(recordHistory, stepIndex, profile = {}) {
   const wells = simulator.getWellState();
   const time = simulator.get_time();
   const rateHistory = simulator.getRateHistory();
+  const solverWarning = simulator.getLastSolverWarning();
   const extractMs = performance.now() - extractStart;
 
   return {
@@ -46,6 +47,7 @@ function getStatePayload(recordHistory, stepIndex, profile = {}) {
     wells,
     time,
     rateHistory,
+    solverWarning,
     recordHistory,
     stepIndex,
     profile: {

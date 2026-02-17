@@ -23,6 +23,10 @@ export class ReservoirSimulator {
     add_well(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean): void;
     getDimensions(): any;
     getGridState(): any;
+    /**
+     * Get last solver warning message (empty string if no warning)
+     */
+    getLastSolverWarning(): string;
     getRateHistory(): any;
     getWellState(): any;
     get_time(): number;
@@ -84,6 +88,7 @@ export interface InitOutput {
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
     readonly reservoirsimulator_getGridState: (a: number) => any;
+    readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
     readonly reservoirsimulator_getWellState: (a: number) => any;
     readonly reservoirsimulator_get_time: (a: number) => number;
@@ -114,6 +119,7 @@ export interface InitOutput {
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __externref_table_dealloc: (a: number) => void;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

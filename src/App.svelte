@@ -101,6 +101,7 @@
         shapeLabel: '',
     };
     let runtimeWarning = '';
+    let solverWarning = '';
     let runtimeError = '';
     let vizRevision = 0;
     let validationState: { errors: Record<string, string>; warnings: string[] } = { errors: {}, warnings: [] };
@@ -744,6 +745,9 @@
         simTime = message.time;
         rateHistory = message.rateHistory;
 
+        // Capture solver warning from worker state
+        solverWarning = message.solverWarning || '';
+
         if (message.recordHistory) {
             pushHistoryEntry({
                 time: message.time,
@@ -1259,6 +1263,7 @@
                     hasValidationErrors={hasValidationErrors}
                     historyLength={history.length}
                     {profileStats}
+                    {solverWarning}
                     onRunSteps={runSteps}
                     onStepOnce={stepOnce}
                     onInitSimulator={initSimulator}
