@@ -284,6 +284,18 @@ pub struct ReservoirSimulator {
     pc: CapillaryPressure,
     gravity_enabled: bool,
     max_sat_change_per_step: f64,
+    max_pressure_change_per_step: f64,
+    max_well_rate_change_fraction: f64,
+    rate_controlled_wells: bool,
+    injector_rate_controlled: bool,
+    producer_rate_controlled: bool,
+    injector_enabled: bool,
+    target_injector_rate_m3_day: f64,
+    target_producer_rate_m3_day: f64,
+    rock_compressibility: f64,
+    depth_reference_m: f64,
+    b_o: f64,
+    b_w: f64,
     rate_history: Vec<TimePointRates>,
 }
 
@@ -309,6 +321,18 @@ impl ReservoirSimulator {
             pc: CapillaryPressure::default_pc(),  // Brooks-Corey capillary pressure
             gravity_enabled: false,
             max_sat_change_per_step: 0.1, // Default max saturation change
+            max_pressure_change_per_step: 75.0,
+            max_well_rate_change_fraction: 0.75,
+            rate_controlled_wells: false,
+            injector_rate_controlled: false,
+            producer_rate_controlled: false,
+            injector_enabled: true,
+            target_injector_rate_m3_day: 0.0,
+            target_producer_rate_m3_day: 0.0,
+            rock_compressibility: 0.0,
+            depth_reference_m: 0.0,
+            b_o: 1.0,
+            b_w: 1.0,
             rate_history: Vec::new(),
         }
     }
@@ -416,8 +440,10 @@ impl ReservoirSimulator {
 
     /// Set stability parameters for the simulation
     #[wasm_bindgen(js_name = setStabilityParams)]
-    pub fn set_stability_params(&mut self, max_sat_change_per_step: f64) {
+    pub fn set_stability_params(&mut self, max_sat_change_per_step: f64, max_pressure_change_per_step: f64, max_well_rate_change_fraction: f64) {
         self.max_sat_change_per_step = max_sat_change_per_step.clamp(0.01, 1.0);
+        self.max_pressure_change_per_step = max_pressure_change_per_step.clamp(1.0, 2_000.0);
+        self.max_well_rate_change_fraction = max_well_rate_change_fraction.clamp(0.01, 5.0);
     }
 
     /// Total mobility [1/cP] = lambda_t = (k_rw/μ_w) + (k_ro/μ_o)
@@ -441,7 +467,7 @@ impl ReservoirSimulator {
     }
 
     fn depth_at_k(&self, k: usize) -> f64 {
-        (k as f64 + 0.5) * self.dz
+        self.depth_reference_m + (k as f64 + 0.5) * self.dz
     }
 
     fn gravity_head_bar(&self, depth_i: f64, depth_j: f64, density_kg_m3: f64) -> f64 {
@@ -545,6 +571,93 @@ impl ReservoirSimulator {
         self.gravity_enabled = enabled;
     }
 
+    #[wasm_bindgen(js_name = setRateControlledWells)]
+    pub fn set_rate_controlled_wells(&mut self, enabled: bool) {
+        self.rate_controlled_wells = enabled;
+        self.injector_rate_controlled = enabled;
+        self.producer_rate_controlled = enabled;
+    }
+
+    #[wasm_bindgen(js_name = setWellControlModes)]
+    pub fn set_well_control_modes(&mut self, injector_mode: String, producer_mode: String) {
+        let inj_mode = injector_mode.to_ascii_lowercase();
+        let prod_mode = producer_mode.to_ascii_lowercase();
+
+        self.injector_rate_controlled = inj_mode == "rate";
+        self.producer_rate_controlled = prod_mode == "rate";
+        self.rate_controlled_wells = self.injector_rate_controlled && self.producer_rate_controlled;
+    }
+
+    #[wasm_bindgen(js_name = setInjectorEnabled)]
+    pub fn set_injector_enabled(&mut self, enabled: bool) {
+        self.injector_enabled = enabled;
+    }
+
+    #[wasm_bindgen(js_name = setTargetWellRates)]
+    pub fn set_target_well_rates(&mut self, injector_rate_m3_day: f64, producer_rate_m3_day: f64) -> Result<(), String> {
+        if !injector_rate_m3_day.is_finite() || !producer_rate_m3_day.is_finite() {
+            return Err("Target well rates must be finite numbers".to_string());
+        }
+        if injector_rate_m3_day < 0.0 || producer_rate_m3_day < 0.0 {
+            return Err(format!(
+                "Target well rates must be non-negative, got injector={}, producer={}",
+                injector_rate_m3_day,
+                producer_rate_m3_day
+            ));
+        }
+
+        self.target_injector_rate_m3_day = injector_rate_m3_day;
+        self.target_producer_rate_m3_day = producer_rate_m3_day;
+        Ok(())
+    }
+
+    fn injector_well_count(&self) -> usize {
+        self.wells.iter().filter(|w| w.injector).count()
+    }
+
+    fn producer_well_count(&self) -> usize {
+        self.wells.iter().filter(|w| !w.injector).count()
+    }
+
+    fn well_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
+        if well.injector && !self.injector_enabled {
+            return Some(0.0);
+        }
+
+        let use_rate_control = if well.injector {
+            self.injector_rate_controlled
+        } else {
+            self.producer_rate_controlled
+        };
+
+        if use_rate_control {
+            if well.injector {
+                let n_inj = self.injector_well_count();
+                if n_inj == 0 {
+                    return Some(0.0);
+                }
+                return Some(-(self.target_injector_rate_m3_day / n_inj as f64));
+            }
+
+            let n_prod = self.producer_well_count();
+            if n_prod == 0 {
+                return Some(0.0);
+            }
+            return Some(self.target_producer_rate_m3_day / n_prod as f64);
+        }
+
+        if !well.productivity_index.is_finite() || !well.bhp.is_finite() || !pressure_bar.is_finite() {
+            return None;
+        }
+
+        let q_m3_day = well.productivity_index * (pressure_bar - well.bhp);
+        if q_m3_day.is_finite() {
+            Some(q_m3_day)
+        } else {
+            None
+        }
+    }
+
     fn calculate_fluxes(&self, delta_t_days: f64) -> (DVector<f64>, Vec<f64>, f64) {
         let n_cells = self.nx * self.ny * self.nz;
         if n_cells == 0 { return (DVector::zeros(0), vec![], 1.0); }
@@ -552,7 +665,7 @@ impl ReservoirSimulator {
         
         // Total compressibility [1/bar] = c_oil + c_water
         // Simplified: should be ct = phi * (c_o * S_o + c_w * S_w + c_r)
-        let c_t = self.pvt.c_o + self.pvt.c_w;
+        let c_t = self.pvt.c_o + self.pvt.c_w + self.rock_compressibility;
 
         // Build triplet lists for A matrix and RHS b of pressure equation
         let mut rows: Vec<usize> = Vec::with_capacity(n_cells * 7);
@@ -603,18 +716,21 @@ impl ReservoirSimulator {
                         b_rhs[id] += t * grav_head_bar;
                     }
 
-                    // well implicit coupling: add PI to diagonal and PI*BHP to RHS
-                    // Well rate [m³/day] = PI [m³/day/bar] * (p_cell - BHP) [bar]
-                    // For producer (injector=false): positive PI, well produces when p_cell > BHP
-                    // For injector (injector=true): well injects 100% water when p_cell < BHP
+                    // Well source terms
                     for w in &self.wells {
                         if w.i == i && w.j == j && w.k == k {
-                            // Defensive checks: well should be validated on add_well, but check at runtime too
-                            if w.productivity_index.is_finite() && w.bhp.is_finite() {
-                                diag += w.productivity_index;
-                                b_rhs[id] += w.productivity_index * w.bhp;
+                            if self.rate_controlled_wells {
+                                if let Some(q_m3_day) = self.well_rate_m3_day(w, cell.pressure) {
+                                    b_rhs[id] -= q_m3_day;
+                                }
+                            } else {
+                                // BHP-controlled: add PI to diagonal and PI*BHP to RHS
+                                // q [m³/day] = PI [m³/day/bar] * (p_cell - BHP)
+                                if w.productivity_index.is_finite() && w.bhp.is_finite() {
+                                    diag += w.productivity_index;
+                                    b_rhs[id] += w.productivity_index * w.bhp;
+                                }
                             }
-                            // Skip malformed well parameters (shouldn't happen with validation)
                         }
                     }
 
@@ -709,32 +825,23 @@ impl ReservoirSimulator {
         // Add well explicit contributions using solved pressure
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            
-            // Defensive check: ensure well parameters are finite (shouldn't happen with validation)
-            if w.productivity_index.is_finite() && w.bhp.is_finite() && p_new[id].is_finite() {
-                // Well rate [m³/day] = PI [m³/day/bar] * (p_block - BHP) [bar]
-                // Positive = production (outflow), negative = injection (inflow)
-                let q_m3_day = w.productivity_index * (p_new[id] - w.bhp);
-                
-                // Check result is finite
-                if q_m3_day.is_finite() {
-                    // Determine water composition of well fluid
-                    let fw = if w.injector {
-                        // Injectors inject 100% water
-                        1.0
-                    } else {
-                        // Producers produce at reservoir fluid composition (fractional flow)
-                        self.frac_flow_water(&self.grid_cells[id])
-                    };
-                    
-                    let water_q_m3_day = q_m3_day * fw;
-                    
-                    // Volume change [m³]. Production (q>0) removes fluid from block.
-                    // For injector: q<0 (inflow), so -q_water*dt adds water to the block
-                    delta_water_m3[id] -= water_q_m3_day * dt_days;
-                }
+
+            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+                // Determine water composition of well fluid
+                let fw = if w.injector {
+                    // Injectors inject 100% water
+                    1.0
+                } else {
+                    // Producers produce at reservoir fluid composition (fractional flow)
+                    self.frac_flow_water(&self.grid_cells[id])
+                };
+
+                let water_q_m3_day = q_m3_day * fw;
+
+                // Volume change [m³]. Production (q>0) removes fluid from block.
+                // For injector: q<0 (inflow), so -q_water*dt adds water to the block
+                delta_water_m3[id] -= water_q_m3_day * dt_days;
             }
-            // Skip malformed well parameters (shouldn't happen with validation)
         }
 
         // Calculate max saturation change for CFL condition
@@ -748,11 +855,43 @@ impl ReservoirSimulator {
             }
         }
 
-        let stable_dt_factor = if max_sat_change > self.max_sat_change_per_step {
+        let sat_factor = if max_sat_change > self.max_sat_change_per_step {
             self.max_sat_change_per_step / max_sat_change
         } else {
             1.0
         };
+
+        let mut max_pressure_change = 0.0;
+        for idx in 0..n_cells {
+            let dp = (p_new[idx] - self.grid_cells[idx].pressure).abs();
+            if dp > max_pressure_change {
+                max_pressure_change = dp;
+            }
+        }
+        let pressure_factor = if max_pressure_change > self.max_pressure_change_per_step {
+            self.max_pressure_change_per_step / max_pressure_change
+        } else {
+            1.0
+        };
+
+        let mut max_well_rate_rel_change = 0.0;
+        for w in &self.wells {
+            let id = self.idx(w.i, w.j, w.k);
+            let q_old = self.well_rate_m3_day(w, self.grid_cells[id].pressure).unwrap_or(0.0);
+            let q_new = self.well_rate_m3_day(w, p_new[id]).unwrap_or(0.0);
+
+            let rel = (q_new - q_old).abs() / (q_old.abs() + 1.0);
+            if rel > max_well_rate_rel_change {
+                max_well_rate_rel_change = rel;
+            }
+        }
+        let rate_factor = if max_well_rate_rel_change > self.max_well_rate_change_fraction {
+            self.max_well_rate_change_fraction / max_well_rate_rel_change
+        } else {
+            1.0
+        };
+
+        let stable_dt_factor = sat_factor.min(pressure_factor).min(rate_factor).clamp(0.01, 1.0);
 
         (p_new, delta_water_m3, stable_dt_factor)
     }
@@ -787,19 +926,17 @@ impl ReservoirSimulator {
 
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            if w.productivity_index.is_finite() && w.bhp.is_finite() && p_new[id].is_finite() {
-                let q_m3_day = w.productivity_index * (p_new[id] - w.bhp);
-                if q_m3_day.is_finite() {
-                    if w.injector {
-                        // Injection is negative flow
-                        total_injection -= q_m3_day;
-                    } else {
-                        // Production is positive flow
-                        let fw = self.frac_flow_water(&self.grid_cells[id]);
-                        let oil_rate = q_m3_day * (1.0 - fw);
-                        total_prod_oil += oil_rate;
-                        total_prod_liquid += q_m3_day;
-                    }
+            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+                if w.injector {
+                    // Injection is negative flow
+                    total_injection -= q_m3_day / self.b_w.max(1e-9);
+                } else {
+                    // Production is positive flow
+                    let fw = self.frac_flow_water(&self.grid_cells[id]);
+                    let oil_rate = q_m3_day * (1.0 - fw) / self.b_o.max(1e-9);
+                    let water_rate = q_m3_day * fw / self.b_w.max(1e-9);
+                    total_prod_oil += oil_rate;
+                    total_prod_liquid += oil_rate + water_rate;
                 }
             }
         }
@@ -927,6 +1064,42 @@ impl ReservoirSimulator {
 
         self.pvt.mu_o = mu_o;
         self.pvt.mu_w = mu_w;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setFluidCompressibilities)]
+    pub fn set_fluid_compressibilities(&mut self, c_o: f64, c_w: f64) -> Result<(), String> {
+        if !c_o.is_finite() || !c_w.is_finite() {
+            return Err("Fluid compressibilities must be finite numbers".to_string());
+        }
+        if c_o < 0.0 || c_w < 0.0 {
+            return Err(format!(
+                "Fluid compressibilities must be non-negative, got c_o={}, c_w={}",
+                c_o, c_w
+            ));
+        }
+
+        self.pvt.c_o = c_o;
+        self.pvt.c_w = c_w;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setRockProperties)]
+    pub fn set_rock_properties(&mut self, c_r: f64, depth_reference_m: f64, b_o: f64, b_w: f64) -> Result<(), String> {
+        if !c_r.is_finite() || !depth_reference_m.is_finite() || !b_o.is_finite() || !b_w.is_finite() {
+            return Err("Rock properties must be finite numbers".to_string());
+        }
+        if c_r < 0.0 {
+            return Err(format!("Rock compressibility must be non-negative, got {}", c_r));
+        }
+        if b_o <= 0.0 || b_w <= 0.0 {
+            return Err(format!("Volume expansion factors must be positive, got b_o={}, b_w={}", b_o, b_w));
+        }
+
+        self.rock_compressibility = c_r;
+        self.depth_reference_m = depth_reference_m;
+        self.b_o = b_o;
+        self.b_w = b_w;
         Ok(())
     }
 
@@ -1221,7 +1394,7 @@ mod tests {
         sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o).unwrap();
         sim.set_initial_saturation(case.s_wc);
         sim.set_permeability_random_seeded(case.permeability_md, case.permeability_md, 42).unwrap();
-        sim.set_stability_params(0.05);
+        sim.set_stability_params(0.05, 75.0, 0.75);
         sim.pc.p_entry = 0.0;
         sim.pvt.mu_w = case.mu_w;
         sim.pvt.mu_o = case.mu_o;
@@ -1307,7 +1480,7 @@ mod tests {
     fn adaptive_timestep_produces_multiple_substeps_for_strong_flow() {
         let mut sim = ReservoirSimulator::new(3, 1, 1);
         sim.set_permeability_random(100_000.0, 100_000.0).unwrap();
-        sim.set_stability_params(0.01);
+        sim.set_stability_params(0.01, 75.0, 0.75);
         sim.add_well(0, 0, 0, 700.0, 0.1, 0.0, true).unwrap();
         sim.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
 
@@ -1356,14 +1529,14 @@ mod tests {
     #[test]
     fn stability_extremes_produce_finite_state() {
         let mut sim_loose = ReservoirSimulator::new(3, 1, 1);
-        sim_loose.set_stability_params(1.0);
+        sim_loose.set_stability_params(1.0, 75.0, 0.75);
         sim_loose.set_permeability_random(20_000.0, 20_000.0).unwrap();
         sim_loose.add_well(0, 0, 0, 650.0, 0.1, 0.0, true).unwrap();
         sim_loose.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
         sim_loose.step(5.0);
 
         let mut sim_tight = ReservoirSimulator::new(3, 1, 1);
-        sim_tight.set_stability_params(0.01);
+        sim_tight.set_stability_params(0.01, 75.0, 0.75);
         sim_tight.set_permeability_random(20_000.0, 20_000.0).unwrap();
         sim_tight.add_well(0, 0, 0, 650.0, 0.1, 0.0, true).unwrap();
         sim_tight.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();

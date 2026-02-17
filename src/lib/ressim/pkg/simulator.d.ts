@@ -34,6 +34,7 @@ export class ReservoirSimulator {
     constructor(nx: number, ny: number, nz: number);
     setCapillaryParams(p_entry: number, lambda: number): void;
     setCellDimensions(dx: number, dy: number, dz: number): void;
+    setFluidCompressibilities(c_o: number, c_w: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
     setFluidProperties(mu_o: number, mu_w: number): void;
     setGravityEnabled(enabled: boolean): void;
@@ -45,6 +46,7 @@ export class ReservoirSimulator {
      * Set initial water saturation for all grid cells
      */
     setInitialSaturation(sat_water: number): void;
+    setInjectorEnabled(enabled: boolean): void;
     /**
      * Set permeability per layer
      */
@@ -57,14 +59,18 @@ export class ReservoirSimulator {
      * Set permeability with deterministic random distribution using a fixed seed
      */
     setPermeabilityRandomSeeded(min_perm: number, max_perm: number, seed: bigint): void;
+    setRateControlledWells(enabled: boolean): void;
     /**
      * Set relative permeability properties
      */
     setRelPermProps(s_wc: number, s_or: number, n_w: number, n_o: number): void;
+    setRockProperties(c_r: number, depth_reference_m: number, b_o: number, b_w: number): void;
     /**
      * Set stability parameters for the simulation
      */
-    setStabilityParams(max_sat_change_per_step: number): void;
+    setStabilityParams(max_sat_change_per_step: number, max_pressure_change_per_step: number, max_well_rate_change_fraction: number): void;
+    setTargetWellRates(injector_rate_m3_day: number, producer_rate_m3_day: number): void;
+    setWellControlModes(injector_mode: string, producer_mode: string): void;
     step(target_dt_days: number): void;
 }
 
@@ -84,16 +90,22 @@ export interface InitOutput {
     readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
+    readonly reservoirsimulator_setInjectorEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
+    readonly reservoirsimulator_setRateControlledWells: (a: number, b: number) => void;
     readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number) => [number, number];
-    readonly reservoirsimulator_setStabilityParams: (a: number, b: number) => void;
+    readonly reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
+    readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly reservoirsimulator_step: (a: number, b: number) => void;
     readonly set_panic_hook: () => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
