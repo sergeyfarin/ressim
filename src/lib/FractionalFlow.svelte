@@ -6,7 +6,7 @@
     export let rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
     export let fluidProps: { mu_w: number; mu_o: number };
     export let timeHistory: number[] = [];
-    export let injectionRate: number; // Total injection rate m³/day
+    export let injectionRateSeries: number[] = []; // Total injection rate m³/day at each time
     export let reservoir: { length: number; area: number; porosity: number };
     export let initialSaturation = 0.3;
     export let scenarioMode: 'waterflood' | 'depletion' = 'waterflood';
@@ -37,7 +37,14 @@
         updateWelgeChart();
     }
 
-    $: if (timeHistory.length > 0 && rockProps && fluidProps && reservoir && injectionRate > 0) {
+    $: if (
+        scenarioMode === 'waterflood' &&
+        timeHistory.length > 0 &&
+        rockProps &&
+        fluidProps &&
+        reservoir &&
+        injectionRateSeries.length > 0
+    ) {
         calculateAnalyticalProduction();
         dispatch('analyticalData', { production: analyticalProduction });
     }
@@ -258,21 +265,37 @@
         const dfw_at_shock = fw_at_shock / (sw_f - initial_sw);
 
         const poreVolume = reservoir.length * reservoir.area * reservoir.porosity;
-        const v_shock = (injectionRate / (reservoir.area * reservoir.porosity)) * dfw_at_shock;
-        const breakthroughTime = reservoir.length / v_shock;
+        const q0 = injectionRateSeries.find((rate) => Number.isFinite(rate) && rate > 0) ?? 0;
+        if (q0 <= 0) {
+            analyticalProduction = timeHistory.map((t) => ({
+                time: t,
+                oilRate: 0,
+                waterRate: 0,
+                cumulativeOil: 0,
+            }));
+            return;
+        }
+
+        const v_shock = (q0 / (reservoir.area * reservoir.porosity)) * dfw_at_shock;
+        const breakthroughTime = Number.isFinite(v_shock) && v_shock > 1e-12
+            ? reservoir.length / v_shock
+            : Number.POSITIVE_INFINITY;
 
         const newProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
         let cumulativeOil = 0;
 
         for (let i = 0; i < timeHistory.length; i++) {
             const t = timeHistory[i];
+            const q = Number.isFinite(injectionRateSeries[i]) && injectionRateSeries[i] > 0
+                ? injectionRateSeries[i]
+                : q0;
             let oilRate = 0;
             if (t <= breakthroughTime) {
                 // Before breakthrough, production is pure oil (at injection rate)
-                oilRate = injectionRate;
+                oilRate = q;
             } else {
                 // After breakthrough, find saturation at the outlet (x=L)
-                const v_t = injectionRate / (reservoir.area * reservoir.porosity);
+                const v_t = q / (reservoir.area * reservoir.porosity);
                 
                 let s_w_at_outlet = sw_f;
                 // Find Sw at x=L by solving x/t = v_t * dfw/dSw for Sw
@@ -292,10 +315,10 @@
                 
                 const fw_at_outlet = fractionalFlow(s_w_at_outlet);
                 const waterCut = fw_at_outlet;
-                oilRate = injectionRate * (1 - waterCut);
+                oilRate = q * (1 - waterCut);
             }
             const boundedOilRate = Math.max(0, oilRate);
-            const waterRate = Math.max(0, injectionRate - boundedOilRate);
+            const waterRate = Math.max(0, q - boundedOilRate);
             const dt = i > 0 ? Math.max(0, t - timeHistory[i - 1]) : Math.max(0, t);
             cumulativeOil += boundedOilRate * dt;
 

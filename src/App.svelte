@@ -1440,7 +1440,7 @@
             fluidProps={{ mu_w, mu_o }}
             {initialSaturation}
             timeHistory={rateHistory.map((point) => point.time)}
-            injectionRate={latestInjectionRate}
+            injectionRateSeries={rateHistory.map((point) => point.total_injection)}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
             scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
             producerLocation={{ i: producerI, j: producerJ, nx, ny }}
