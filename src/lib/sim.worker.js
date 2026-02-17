@@ -187,7 +187,12 @@ self.onmessage = async (event) => {
         wasmReady = true;
       }
 
-      configureSimulator(payload);
+      try {
+        configureSimulator(payload);
+      } catch (error) {
+        simulator = null;
+        throw error;
+      }
       post('state', getStatePayload(false, -1, { batchMs: 0, avgStepMs: 0, snapshotsSent: 0 }));
       return;
     }
@@ -200,10 +205,14 @@ self.onmessage = async (event) => {
         throw new Error('Simulator is already running');
       }
 
-      const steps = Number(payload?.steps ?? 0);
+      const steps = Math.max(0, Math.floor(Number(payload?.steps ?? 0)));
       const deltaTDays = Number(payload?.deltaTDays ?? 0);
       const historyInterval = Math.max(1, Number(payload?.historyInterval ?? 1));
       const chunkYieldInterval = Math.max(5, Number(payload?.chunkYieldInterval ?? 25));
+
+      if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
+        throw new Error(`Invalid timestep value: ${deltaTDays}`);
+      }
 
       const batchStart = performance.now();
       let stepMsTotal = 0;

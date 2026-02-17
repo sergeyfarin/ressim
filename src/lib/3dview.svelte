@@ -521,11 +521,18 @@
     function applyGridToInstances(gridArray: GridCell[], property: PropertyKey): void {
         if (!instancedMesh) return;
 
-    if (!instancedMesh.instanceColor) return;
-    const values: number[] = [];
+        if (!instancedMesh.instanceColor) return;
+        const values: number[] = [];
+        const instanceCount = instancedMesh.count;
 
-        for (let i = 0; i < gridArray.length; i++) {
+        for (let i = 0; i < instanceCount; i++) {
             const cell = gridArray[i];
+
+            if (!cell) {
+                values.push(NaN);
+                continue;
+            }
+
             let rawValue: number;
             
             if (property === 'pressure') {
@@ -567,7 +574,7 @@
         legendMax = max;
         drawLegend(min, max, property);
 
-        for (let i = 0; i < values.length && i < instancedMesh.count; i++) {
+        for (let i = 0; i < instanceCount; i++) {
             const value = values[i];
             if (!Number.isFinite(value)) {
                 tmpColor.set(0xB3B3B3); // fallback gray
@@ -718,7 +725,7 @@
             <div style="color:#444; font-size:11px">
                 {legendRangeMode === 'percentile'
                     ? `Percentile P${clamp(legendPercentileLow, 0, 99)}–P${clamp(Math.max(legendPercentileHigh, legendPercentileLow + 1), 1, 100)}`
-                    : (showProperty === 'pressure' ? 'Auto range' : 'Fixed range')}
+                    : 'Fixed range'}
             </div>
             <div style="color:#444; font-size:11px">
                 min {formatLegendValue(showProperty, legendMin)} — max {formatLegendValue(showProperty, legendMax)}

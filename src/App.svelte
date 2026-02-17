@@ -137,6 +137,14 @@
         snapshotsSent: number;
     };
 
+    const EMPTY_PROFILE_STATS: ProfileStats = {
+        batchMs: 0,
+        avgStepMs: 0,
+        extractMs: 0,
+        renderApplyMs: 0,
+        snapshotsSent: 0,
+    };
+
     type BenchmarkArtifact = {
         generatedAt?: string;
         source?: string;
@@ -225,16 +233,12 @@
     const HISTORY_RECORD_INTERVAL = 2;
     const MAX_HISTORY_ENTRIES = 300;
     let showDebugState = false;
-    let profileStats: ProfileStats = {
-        batchMs: 0,
-        avgStepMs: 0,
-        extractMs: 0,
-        renderApplyMs: 0,
-        snapshotsSent: 0,
-    };
+    let profileStats: ProfileStats = { ...EMPTY_PROFILE_STATS };
     let ThreeDViewComponent = null;
     let RateChartComponent = null;
     let loadingThreeDView = false;
+    let lastCreateSignature = '';
+    let pendingAutoReinit = false;
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
@@ -717,6 +721,37 @@
     $: estimatedRunSeconds = Math.max(0, (Number(profileStats.avgStepMs || 0) * Number(steps || 0)) / 1000);
     $: longRunEstimate = estimatedRunSeconds > 10;
 
+    function resetSimulationState(options: { clearErrors?: boolean; clearWarnings?: boolean; resetProfile?: boolean; bumpViz?: boolean } = {}) {
+        const {
+            clearErrors = false,
+            clearWarnings = false,
+            resetProfile = false,
+            bumpViz = false,
+        } = options;
+
+        stopPlaying();
+        history = [];
+        currentIndex = -1;
+        gridStateRaw = null;
+        wellStateRaw = null;
+        simTime = 0;
+        rateHistory = [];
+        runCompleted = false;
+
+        if (resetProfile) {
+            profileStats = { ...EMPTY_PROFILE_STATS };
+        }
+        if (clearErrors) {
+            runtimeError = '';
+        }
+        if (clearWarnings) {
+            runtimeWarning = '';
+        }
+        if (bumpViz) {
+            vizRevision += 1;
+        }
+    }
+
     function pushHistoryEntry(entry) {
         history = [...history, entry];
         if (history.length > MAX_HISTORY_ENTRIES) {
@@ -759,12 +794,11 @@
         const { type, ...message } = event.data ?? {};
         if (type === 'ready') {
             wasmReady = true;
-            initSimulator();
+            initSimulator({ silent: true });
             return;
         }
 
         if (type === 'runStarted') {
-            runtimeWarning = '';
             runtimeError = '';
             workerRunning = true;
             return;
@@ -780,12 +814,30 @@
             runCompleted = true;
             updateProfileStats(message.profile, profileStats.renderApplyMs);
             applyHistoryIndex(history.length - 1);
+
+            if (pendingAutoReinit) {
+                pendingAutoReinit = false;
+                const reinitialized = initSimulator({ silent: true });
+                runtimeWarning = reinitialized
+                    ? 'Configuration changed. Reservoir reset and reinitialized at step 0.'
+                    : runtimeWarning;
+            }
             return;
         }
 
         if (type === 'stopped') {
             workerRunning = false;
             runCompleted = true;
+
+            if (pendingAutoReinit) {
+                pendingAutoReinit = false;
+                const reinitialized = initSimulator({ silent: true });
+                runtimeWarning = reinitialized
+                    ? 'Configuration changed during run. Reservoir reinitialized at step 0.'
+                    : runtimeWarning;
+                return;
+            }
+
             runtimeWarning = message.reason === 'user'
                 ? `Simulation stopped by user after ${Number(message.completedSteps ?? 0)} step(s).`
                 : 'No running simulation to stop.';
@@ -803,6 +855,10 @@
             workerRunning = false;
             console.error('Simulation worker error:', message.message);
             runtimeError = String(message.message ?? 'Simulation error');
+
+            if (pendingAutoReinit) {
+                pendingAutoReinit = false;
+            }
         }
     }
 
@@ -879,10 +935,12 @@
         }
     });
 
-    function initSimulator() {
+    function initSimulator(options: { runAfterInit?: boolean; silent?: boolean } = {}): boolean {
+        const { runAfterInit = false, silent = false } = options;
+
         if (!wasmReady || !simWorker) {
-            runtimeError = 'WASM not ready yet.';
-            return;
+            if (!silent) runtimeError = 'WASM not ready yet.';
+            return false;
         }
 
         const validWellLocations =
@@ -892,27 +950,35 @@
             producerI >= 0 && producerI < nx && producerJ >= 0 && producerJ < ny;
 
         if (!validWellLocations) {
-            runtimeError = 'Invalid well location. Ensure i/j are within grid bounds.';
-            return;
+            if (!silent) runtimeError = 'Invalid well location. Ensure i/j are within grid bounds.';
+            return false;
         }
 
         if (hasValidationErrors) {
-            runtimeError = 'Input validation failed. Review highlighted controls.';
-            return;
+            if (!silent) runtimeError = 'Input validation failed. Review highlighted controls.';
+            return false;
         }
 
-        history = [];
-        currentIndex = -1;
-        runCompleted = false;
-        runtimeError = '';
-        runtimeWarning = '';
-        vizRevision += 1;
+        resetSimulationState({
+            clearErrors: true,
+            clearWarnings: !silent,
+            resetProfile: true,
+            bumpViz: true,
+        });
 
+        const payload = buildCreatePayload();
         simWorker.postMessage({
             type: 'create',
-            payload: buildCreatePayload(),
+            payload,
         });
-        runSteps();
+        lastCreateSignature = JSON.stringify(payload);
+        pendingAutoReinit = false;
+
+        if (runAfterInit) {
+            runSteps();
+        }
+
+        return true;
     }
 
     function buildCreatePayload() {
@@ -974,6 +1040,30 @@
             producerI: Number(producerI),
             producerJ: Number(producerJ),
         };
+    }
+
+    $: if (wasmReady && simWorker) {
+        const nextSignature = JSON.stringify(buildCreatePayload());
+
+        if (lastCreateSignature && nextSignature !== lastCreateSignature) {
+            resetSimulationState({
+                clearErrors: true,
+                clearWarnings: false,
+                resetProfile: true,
+                bumpViz: true,
+            });
+
+            if (workerRunning) {
+                pendingAutoReinit = true;
+                runtimeWarning = 'Configuration changed during run. Stopping and reinitializing at step 0…';
+                stopRun();
+            } else {
+                const reinitialized = initSimulator({ silent: true });
+                runtimeWarning = reinitialized
+                    ? 'Configuration changed. Reservoir reset and reinitialized at step 0.'
+                    : runtimeWarning;
+            }
+        }
     }
 
     async function loadBenchmarkResults() {

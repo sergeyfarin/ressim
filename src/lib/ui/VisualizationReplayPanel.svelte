@@ -33,6 +33,14 @@
       legendFixedMin = legendFixedMax;
       legendFixedMax = tmp;
     }
+  } else {
+    const low = Number(legendPercentileLow);
+    const high = Number(legendPercentileHigh);
+    legendPercentileLow = Number.isFinite(low) ? Math.max(0, Math.min(99, Math.round(low))) : 5;
+    legendPercentileHigh = Number.isFinite(high) ? Math.max(1, Math.min(100, Math.round(high))) : 95;
+    if (legendPercentileLow >= legendPercentileHigh) {
+      legendPercentileHigh = Math.min(100, legendPercentileLow + 1);
+    }
   }
 
   function applySliderValue(event: Event) {

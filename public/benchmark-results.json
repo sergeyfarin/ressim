@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-15T22:03:47.869Z",
+  "generatedAt": "2026-02-16T21:40:49.600Z",
   "source": "cargo-test",
   "command": "cargo test benchmark_buckley_leverett -- --nocapture",
   "defaultMode": "baseline",

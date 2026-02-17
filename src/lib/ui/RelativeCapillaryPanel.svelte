@@ -54,9 +54,11 @@
   }
 
   function pcWith(sw: number, swc: number, sor: number, pEntry: number, lambda: number, enabled: boolean) {
-    if (!enabled) return 0;
+    if (!enabled || pEntry <= 0) return 0;
     const se = swEffWith(sw, swc, sor);
-    return pEntry * Math.pow(1 - se, lambda);
+    if (se >= 1) return 0;
+    if (se <= 0) return 500;
+    return Math.min(500, pEntry * Math.pow(se, -1 / lambda));
   }
 
   $: maxPc = Math.max(
