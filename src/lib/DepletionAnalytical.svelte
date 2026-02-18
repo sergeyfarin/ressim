@@ -33,20 +33,19 @@
         const poreVolume = Math.max(1e-9, reservoir.length * reservoir.area * reservoir.porosity);
         const initialOilInPlace = poreVolume * Math.max(0, 1 - initialSaturation);
 
-        // TODO: Unit-conversion coupling placeholder.
-        // This scale currently calibrates depletion timescale against simulation output.
-        const tauDays = Math.max(1e-6, (poreVolume / Math.max(dietzShapeFactor, 1e-9)) * Math.max(1e-9, depletionTauScale));
+        // Material-balance + semi-steady-state decline:
+        // q = J * (p_avg - p_wf),  dN/dt = -q,  p_avg ∝ N  => q(t) = N(t) / tau.
+        // We represent J with Dietz shape factor and user scale, and retain depletionTauScale
+        // as the storage/compressibility lumped coefficient.
+        const productivityScale = Math.max(1e-9, Math.max(dietzShapeFactor, 1e-9) * Math.max(1e-9, depletionRateScale));
+        const tauDays = Math.max(1e-6, (poreVolume * Math.max(1e-9, depletionTauScale)) / productivityScale);
 
-        // TODO: Unit-conversion coupling placeholder.
-        // This scale currently calibrates analytical rate magnitude against simulation output.
-        const nominalRate = (initialOilInPlace / tauDays) * Math.max(0, depletionRateScale);
-
-        let cumulativeOil = 0;
-        analyticalProduction = timeHistory.map((t, idx) => {
+        analyticalProduction = timeHistory.map((t) => {
             const boundedTime = Math.max(0, Number(t) || 0);
-            const oilRate = Math.max(0, nominalRate * Math.exp(-boundedTime / tauDays));
-            const dt = idx > 0 ? Math.max(0, boundedTime - Math.max(0, Number(timeHistory[idx - 1]) || 0)) : boundedTime;
-            cumulativeOil += oilRate * dt;
+            const boundedExponent = Math.min(700, boundedTime / tauDays);
+            const cumulativeOil = initialOilInPlace * (1 - Math.exp(-boundedExponent));
+            const remainingOil = Math.max(0, initialOilInPlace - cumulativeOil);
+            const oilRate = remainingOil / tauDays;
 
             return {
                 time: boundedTime,

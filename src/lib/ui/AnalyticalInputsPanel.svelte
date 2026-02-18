@@ -68,7 +68,7 @@
         </label>
       </div>
       <div class="text-[11px] opacity-70">
-        Conversion factors are intentionally left as tunable placeholders in the analytical depletion component.
+        Depletion uses material balance with a semi-steady-state decline form; shape and scaling tune the effective productivity and depletion time constant.
       </div>
     {/if}
   </div>
