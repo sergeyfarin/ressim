@@ -2,21 +2,38 @@
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables } from 'chart.js';
 
-    export let rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
-    export let fluidProps: { mu_w: number; mu_o: number };
-    export let timeHistory: number[] = [];
-    export let injectionRateSeries: number[] = []; // Total injection rate m³/day at each time
-    export let reservoir: { length: number; area: number; porosity: number };
-    export let initialSaturation = 0.3;
-    export let scenarioMode: 'waterflood' | 'depletion' = 'waterflood';
-    export let onAnalyticalData: (payload: {
-        production: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[];
-    }) => void = () => {};
-    export let onAnalyticalMeta: (payload: {
+    type RockProps = { s_wc: number; s_or: number; n_w: number; n_o: number };
+    type FluidProps = { mu_w: number; mu_o: number };
+    type Reservoir = { length: number; area: number; porosity: number };
+    type AnalyticalPoint = { time: number; oilRate: number; waterRate: number; cumulativeOil: number };
+    type AnalyticalDataPayload = { production: AnalyticalPoint[] };
+    type AnalyticalMetaPayload = {
         mode: 'waterflood' | 'depletion';
         shapeFactor: number | null;
         shapeLabel: string;
-    }) => void = () => {};
+    };
+
+    let {
+        rockProps,
+        fluidProps,
+        timeHistory = [],
+        injectionRateSeries = [],
+        reservoir,
+        initialSaturation = 0.3,
+        scenarioMode = 'waterflood',
+        onAnalyticalData = () => {},
+        onAnalyticalMeta = () => {},
+    }: {
+        rockProps: RockProps;
+        fluidProps: FluidProps;
+        timeHistory?: number[];
+        injectionRateSeries?: number[];
+        reservoir: Reservoir;
+        initialSaturation?: number;
+        scenarioMode?: 'waterflood' | 'depletion';
+        onAnalyticalData?: (payload: AnalyticalDataPayload) => void;
+        onAnalyticalMeta?: (payload: AnalyticalMetaPayload) => void;
+    } = $props();
 
     type WelgeMetrics = {
         shockSw: number;
@@ -27,31 +44,35 @@
 
     let welgeCanvas: HTMLCanvasElement;
     let welgeChart: Chart<'line', Array<{ x: number; y: number }>, number> | null = null;
-    let welgeMetrics: WelgeMetrics = {
+    let welgeMetrics = $state<WelgeMetrics>({
         shockSw: 0,
         breakthroughPvi: 0,
         waterCutAtBreakthrough: 0,
         initialSw: 0,
-    };
+    });
 
-    let analyticalProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
+    let analyticalProduction: AnalyticalPoint[] = [];
 
-    $: if (rockProps && fluidProps) {
-        welgeMetrics = computeWelgeMetrics();
-        updateWelgeChart();
-    }
+    $effect(() => {
+        if (rockProps && fluidProps) {
+            welgeMetrics = computeWelgeMetrics();
+            updateWelgeChart();
+        }
+    });
 
-    $: if (
-        scenarioMode === 'waterflood' &&
-        timeHistory.length > 0 &&
-        rockProps &&
-        fluidProps &&
-        reservoir &&
-        injectionRateSeries.length > 0
-    ) {
-        calculateAnalyticalProduction();
-        onAnalyticalData({ production: analyticalProduction });
-    }
+    $effect(() => {
+        if (
+            scenarioMode === 'waterflood' &&
+            timeHistory.length > 0 &&
+            rockProps &&
+            fluidProps &&
+            reservoir &&
+            injectionRateSeries.length > 0
+        ) {
+            calculateAnalyticalProduction();
+            onAnalyticalData({ production: analyticalProduction });
+        }
+    });
 
     onMount(() => {
         Chart.register(...registerables);
@@ -245,7 +266,7 @@
             ? reservoir.length / v_shock
             : Number.POSITIVE_INFINITY;
 
-        const newProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
+        const newProduction: AnalyticalPoint[] = [];
         let cumulativeOil = 0;
 
         for (let i = 0; i < timeHistory.length; i++) {

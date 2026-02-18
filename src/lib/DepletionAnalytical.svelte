@@ -1,21 +1,36 @@
 <script lang="ts">
-    export let enabled = false;
-    export let timeHistory: number[] = [];
-    export let reservoir: { length: number; area: number; porosity: number };
-    export let initialSaturation = 0.3;
-    export let dietzShapeFactor = 21.2;
-    export let depletionTauScale = 0.25;
-    export let depletionRateScale = 1.0;
-    export let onAnalyticalData: (payload: {
-        production: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[];
-    }) => void = () => {};
-    export let onAnalyticalMeta: (payload: {
+    type Reservoir = { length: number; area: number; porosity: number };
+    type AnalyticalPoint = { time: number; oilRate: number; waterRate: number; cumulativeOil: number };
+    type AnalyticalDataPayload = { production: AnalyticalPoint[] };
+    type AnalyticalMetaPayload = {
         mode: 'waterflood' | 'depletion';
         shapeFactor: number | null;
         shapeLabel: string;
-    }) => void = () => {};
+    };
 
-    let analyticalProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
+    let {
+        enabled = false,
+        timeHistory = [],
+        reservoir,
+        initialSaturation = 0.3,
+        dietzShapeFactor = 21.2,
+        depletionTauScale = 0.25,
+        depletionRateScale = 1.0,
+        onAnalyticalData = () => {},
+        onAnalyticalMeta = () => {},
+    }: {
+        enabled?: boolean;
+        timeHistory?: number[];
+        reservoir: Reservoir;
+        initialSaturation?: number;
+        dietzShapeFactor?: number;
+        depletionTauScale?: number;
+        depletionRateScale?: number;
+        onAnalyticalData?: (payload: AnalyticalDataPayload) => void;
+        onAnalyticalMeta?: (payload: AnalyticalMetaPayload) => void;
+    } = $props();
+
+    let analyticalProduction: AnalyticalPoint[] = [];
 
     function emitEmpty() {
         analyticalProduction = [];
@@ -62,16 +77,20 @@
         onAnalyticalData({ production: analyticalProduction });
     }
 
-    $: if (!enabled) {
+    $effect(() => {
+        if (!enabled) {
         onAnalyticalMeta({
             mode: 'waterflood',
             shapeFactor: null,
             shapeLabel: '',
         });
         emitEmpty();
-    }
+        }
+    });
 
-    $: if (enabled && timeHistory.length > 0 && reservoir) {
-        calculateDepletionAnalyticalProduction();
-    }
+    $effect(() => {
+        if (enabled && timeHistory.length > 0 && reservoir) {
+            calculateDepletionAnalyticalProduction();
+        }
+    });
 </script>

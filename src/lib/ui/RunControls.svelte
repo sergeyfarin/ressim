@@ -1,12 +1,4 @@
 <script lang="ts">
-  type ProfileStats = {
-    batchMs: number;
-    avgStepMs: number;
-    extractMs: number;
-    renderApplyMs: number;
-    snapshotsSent: number;
-  };
-
   export let wasmReady = false;
   export let workerRunning = false;
   export let runCompleted = false;
@@ -19,9 +11,6 @@
   export let solverWarning = '';
   export let modelReinitNotice = '';
   export let steps = 20;
-  export let profileStats: ProfileStats = {
-    batchMs: 0, avgStepMs: 0, extractMs: 0, renderApplyMs: 0, snapshotsSent: 0,
-  };
 
   export let onRunSteps: () => void;
   export let onStepOnce: () => void;

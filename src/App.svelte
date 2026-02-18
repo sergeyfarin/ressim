@@ -1010,7 +1010,6 @@
             {solverWarning}
             modelReinitNotice={modelReinitNotice}
             bind:steps
-            {profileStats}
             onRunSteps={runSteps}
             onStepOnce={stepOnce}
             onInitSimulator={initSimulator}
