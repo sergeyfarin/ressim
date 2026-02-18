@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
-
     export let enabled = false;
     export let timeHistory: number[] = [];
     export let reservoir: { length: number; area: number; porosity: number };
@@ -8,18 +6,24 @@
     export let dietzShapeFactor = 21.2;
     export let depletionTauScale = 0.25;
     export let depletionRateScale = 1.0;
-
-    const dispatch = createEventDispatcher();
+    export let onAnalyticalData: (payload: {
+        production: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[];
+    }) => void = () => {};
+    export let onAnalyticalMeta: (payload: {
+        mode: 'waterflood' | 'depletion';
+        shapeFactor: number | null;
+        shapeLabel: string;
+    }) => void = () => {};
 
     let analyticalProduction: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[] = [];
 
     function emitEmpty() {
         analyticalProduction = [];
-        dispatch('analyticalData', { production: analyticalProduction });
+        onAnalyticalData({ production: analyticalProduction });
     }
 
     function calculateDepletionAnalyticalProduction() {
-        dispatch('analyticalMeta', {
+        onAnalyticalMeta({
             mode: 'depletion',
             shapeFactor: dietzShapeFactor,
             shapeLabel: 'user-defined',
@@ -55,11 +59,11 @@
             };
         });
 
-        dispatch('analyticalData', { production: analyticalProduction });
+        onAnalyticalData({ production: analyticalProduction });
     }
 
     $: if (!enabled) {
-        dispatch('analyticalMeta', {
+        onAnalyticalMeta({
             mode: 'waterflood',
             shapeFactor: null,
             shapeLabel: '',

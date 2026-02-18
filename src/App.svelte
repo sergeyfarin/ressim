@@ -943,14 +943,14 @@
             injectionRateSeries={rateHistory.map((point) => point.total_injection)}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
             scenarioMode={analyticalSolutionMode}
-            on:analyticalData={(e) => {
+            onAnalyticalData={(detail) => {
                 if (analyticalSolutionMode === 'waterflood') {
-                    analyticalProductionData = e.detail.production;
+                    analyticalProductionData = detail.production;
                 }
             }}
-            on:analyticalMeta={(e) => {
+            onAnalyticalMeta={(detail) => {
                 if (analyticalSolutionMode === 'waterflood') {
-                    analyticalMeta = e.detail;
+                    analyticalMeta = detail;
                 }
             }}
         />
@@ -963,14 +963,14 @@
             dietzShapeFactor={analyticalDietzShapeFactor}
             depletionTauScale={analyticalDepletionTauScale}
             depletionRateScale={analyticalDepletionRateScale}
-            on:analyticalData={(e) => {
+            onAnalyticalData={(detail) => {
                 if (analyticalSolutionMode === 'depletion') {
-                    analyticalProductionData = e.detail.production;
+                    analyticalProductionData = detail.production;
                 }
             }}
-            on:analyticalMeta={(e) => {
+            onAnalyticalMeta={(detail) => {
                 if (analyticalSolutionMode === 'depletion') {
-                    analyticalMeta = e.detail;
+                    analyticalMeta = detail;
                 }
             }}
         />

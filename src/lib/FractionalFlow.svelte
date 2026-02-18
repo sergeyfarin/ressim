@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables } from 'chart.js';
-    import { createEventDispatcher } from 'svelte';
 
     export let rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
     export let fluidProps: { mu_w: number; mu_o: number };
@@ -10,8 +9,14 @@
     export let reservoir: { length: number; area: number; porosity: number };
     export let initialSaturation = 0.3;
     export let scenarioMode: 'waterflood' | 'depletion' = 'waterflood';
-
-    const dispatch = createEventDispatcher();
+    export let onAnalyticalData: (payload: {
+        production: { time: number; oilRate: number; waterRate: number; cumulativeOil: number }[];
+    }) => void = () => {};
+    export let onAnalyticalMeta: (payload: {
+        mode: 'waterflood' | 'depletion';
+        shapeFactor: number | null;
+        shapeLabel: string;
+    }) => void = () => {};
 
     type WelgeMetrics = {
         shockSw: number;
@@ -45,7 +50,7 @@
         injectionRateSeries.length > 0
     ) {
         calculateAnalyticalProduction();
-        dispatch('analyticalData', { production: analyticalProduction });
+        onAnalyticalData({ production: analyticalProduction });
     }
 
     onMount(() => {
@@ -199,7 +204,7 @@
     }
 
     function calculateAnalyticalProduction() {
-        dispatch('analyticalMeta', {
+        onAnalyticalMeta({
             mode: scenarioMode,
             shapeFactor: null,
             shapeLabel: '',
