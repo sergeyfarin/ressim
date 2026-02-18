@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import FractionalFlow from './lib/FractionalFlow.svelte';
+    import DepletionAnalytical from './lib/DepletionAnalytical.svelte';
     import TopBar from './lib/ui/TopBar.svelte';
     import RunControls from './lib/ui/RunControls.svelte';
     import TabContainer from './lib/ui/TabContainer.svelte';
@@ -103,11 +104,16 @@
     let simTime = 0;
     let rateHistory = [];
     let analyticalProductionData = [];
+    let analyticalSolutionMode: 'waterflood' | 'depletion' = 'depletion';
+    let analyticalDietzShapeFactor = 21.2;
+    let analyticalDepletionTauScale = 0.25;
+    let analyticalDepletionRateScale = 1.0;
     let analyticalMeta: { mode: 'waterflood' | 'depletion'; shapeFactor: number | null; shapeLabel: string } = {
         mode: 'waterflood',
         shapeFactor: null,
         shapeLabel: '',
     };
+    let previousAnalyticalSolutionMode: 'waterflood' | 'depletion' = analyticalSolutionMode;
     let runtimeWarning = '';
     let solverWarning = '';
     let runtimeError = '';
@@ -118,6 +124,16 @@
     let skipNextAutoModelReset = false;
     let validationState: { errors: Record<string, string>; warnings: string[] } = { errors: {}, warnings: [] };
     let validationErrors: Record<string, string> = {};
+
+    $: if (analyticalSolutionMode !== previousAnalyticalSolutionMode) {
+        previousAnalyticalSolutionMode = analyticalSolutionMode;
+        analyticalProductionData = [];
+        analyticalMeta = {
+            mode: analyticalSolutionMode,
+            shapeFactor: analyticalSolutionMode === 'depletion' ? analyticalDietzShapeFactor : null,
+            shapeLabel: analyticalSolutionMode === 'depletion' ? 'user-defined' : '',
+        };
+    }
     let validationWarnings: string[] = [];
     let hasValidationErrors = false;
     let estimatedRunSeconds = 0;
@@ -314,6 +330,7 @@
         capillaryPEntry = Number(resolved.capillaryPEntry) || 0;
         capillaryLambda = Number(resolved.capillaryLambda) || 2;
         injectorEnabled = resolved.injectorEnabled !== false;
+        analyticalSolutionMode = injectorEnabled ? 'waterflood' : 'depletion';
         injectorControlMode = resolved.injectorControlMode === 'rate' ? 'rate' : 'pressure';
         producerControlMode = resolved.producerControlMode === 'rate' ? 'rate' : 'pressure';
         injectorBhp = Number(resolved.injectorBhp) || 400;
@@ -915,7 +932,7 @@
 </script>
 
 <main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
-    <div class="mx-auto max-w-[1600px] space-y-4 p-4 lg:p-6">
+    <div class="mx-auto max-w-400 space-y-4 p-4 lg:p-6">
 
         <!-- Hidden component for analytical calculations -->
         <FractionalFlow
@@ -925,10 +942,37 @@
             timeHistory={rateHistory.map((point) => point.time)}
             injectionRateSeries={rateHistory.map((point) => point.total_injection)}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
-            scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
-            producerLocation={{ i: producerI, j: producerJ, nx, ny }}
-            on:analyticalData={(e) => analyticalProductionData = e.detail.production}
-            on:analyticalMeta={(e) => analyticalMeta = e.detail}
+            scenarioMode={analyticalSolutionMode}
+            on:analyticalData={(e) => {
+                if (analyticalSolutionMode === 'waterflood') {
+                    analyticalProductionData = e.detail.production;
+                }
+            }}
+            on:analyticalMeta={(e) => {
+                if (analyticalSolutionMode === 'waterflood') {
+                    analyticalMeta = e.detail;
+                }
+            }}
+        />
+
+        <DepletionAnalytical
+            enabled={analyticalSolutionMode === 'depletion'}
+            timeHistory={rateHistory.map((point) => point.time)}
+            reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
+            {initialSaturation}
+            dietzShapeFactor={analyticalDietzShapeFactor}
+            depletionTauScale={analyticalDepletionTauScale}
+            depletionRateScale={analyticalDepletionRateScale}
+            on:analyticalData={(e) => {
+                if (analyticalSolutionMode === 'depletion') {
+                    analyticalProductionData = e.detail.production;
+                }
+            }}
+            on:analyticalMeta={(e) => {
+                if (analyticalSolutionMode === 'depletion') {
+                    analyticalMeta = e.detail;
+                }
+            }}
         />
 
         <!-- Header -->
@@ -1016,7 +1060,7 @@
                     {initialSaturation}
                     reservoirPorosity={reservoirPorosity}
                     injectionRate={latestInjectionRate}
-                    scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
+                    scenarioMode={analyticalSolutionMode}
                     rockProps={{ s_wc, s_or, n_w, n_o }}
                     fluidProps={{ mu_w, mu_o }}
                 />
@@ -1113,6 +1157,10 @@
                     bind:max_sat_change_per_step
                     bind:max_pressure_change_per_step
                     bind:max_well_rate_change_fraction
+                    bind:analyticalSolutionMode
+                    bind:analyticalDietzShapeFactor
+                    bind:analyticalDepletionTauScale
+                    bind:analyticalDepletionRateScale
                     {validationErrors}
                     {validationWarnings}
                     readOnly={!isCustomMode && activeCase !== ''}
@@ -1126,11 +1174,11 @@
                 <div class="card-body grid gap-4 p-4 lg:grid-cols-2">
                     <div>
                         <h4 class="mb-2 text-sm font-semibold">Grid State (current)</h4>
-                        <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(gridStateRaw, null, 2)}</pre>
+                        <pre class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(gridStateRaw, null, 2)}</pre>
                     </div>
                     <div>
                         <h4 class="mb-2 text-sm font-semibold">Well State (current)</h4>
-                        <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(wellStateRaw, null, 2)}</pre>
+                        <pre class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(wellStateRaw, null, 2)}</pre>
                     </div>
                 </div>
             </div>

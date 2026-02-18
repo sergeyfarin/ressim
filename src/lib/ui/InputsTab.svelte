@@ -4,6 +4,7 @@
   import RelativeCapillaryPanel from './RelativeCapillaryPanel.svelte';
   import WellPropertiesPanel from './WellPropertiesPanel.svelte';
   import TimestepControlsPanel from './TimestepControlsPanel.svelte';
+  import AnalyticalInputsPanel from './AnalyticalInputsPanel.svelte';
 
   // All the same bindings that the sidebar panels used to have
   export let nx: number;
@@ -60,6 +61,10 @@
   export let max_sat_change_per_step: number;
   export let max_pressure_change_per_step: number;
   export let max_well_rate_change_fraction: number;
+  export let analyticalSolutionMode: 'waterflood' | 'depletion';
+  export let analyticalDietzShapeFactor: number;
+  export let analyticalDepletionTauScale: number;
+  export let analyticalDepletionRateScale: number;
 
   export let validationErrors: Record<string, string> = {};
   export let validationWarnings: string[] = [];
@@ -117,6 +122,12 @@
       bind:injectorI bind:injectorJ
       bind:producerI bind:producerJ
       fieldErrors={validationErrors}
+    />
+    <AnalyticalInputsPanel
+      bind:analyticalSolutionMode
+      bind:analyticalDietzShapeFactor
+      bind:analyticalDepletionTauScale
+      bind:analyticalDepletionRateScale
     />
   </div>
 </div>
