@@ -3,11 +3,10 @@
 
   let {
     showProperty = $bindable<ShowProperty>('pressure'),
-    legendRangeMode = $bindable<'fixed' | 'percentile'>('percentile'),
-    legendPercentileLow = $bindable(5),
-    legendPercentileHigh = $bindable(95),
     legendFixedMin = $bindable(0),
     legendFixedMax = $bindable(1),
+    autoLegendMin = $bindable(true),
+    autoLegendMax = $bindable(true),
     historyLength = 0,
     currentIndex = $bindable(-1),
     replayTime = null,
@@ -20,11 +19,10 @@
     onTogglePlay = () => {},
   }: {
     showProperty?: ShowProperty;
-    legendRangeMode?: 'fixed' | 'percentile';
-    legendPercentileLow?: number;
-    legendPercentileHigh?: number;
     legendFixedMin?: number;
     legendFixedMax?: number;
+    autoLegendMin?: boolean;
+    autoLegendMax?: boolean;
     historyLength?: number;
     currentIndex?: number;
     replayTime?: number | null;
@@ -38,7 +36,6 @@
   } = $props();
 
   $effect(() => {
-    if (legendRangeMode === 'fixed') {
     const minValue = Number(legendFixedMin);
     const maxValue = Number(legendFixedMax);
 
@@ -54,16 +51,19 @@
       legendFixedMin = legendFixedMax;
       legendFixedMax = tmp;
     }
-    } else {
-    const low = Number(legendPercentileLow);
-    const high = Number(legendPercentileHigh);
-    legendPercentileLow = Number.isFinite(low) ? Math.max(0, Math.min(99, Math.round(low))) : 5;
-    legendPercentileHigh = Number.isFinite(high) ? Math.max(1, Math.min(100, Math.round(high))) : 95;
-    if (legendPercentileLow >= legendPercentileHigh) {
-      legendPercentileHigh = Math.min(100, legendPercentileLow + 1);
-    }
-    }
   });
+
+  function onLegendMinInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    legendFixedMin = Number(input.value);
+    autoLegendMin = false;
+  }
+
+  function onLegendMaxInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    legendFixedMax = Number(input.value);
+    autoLegendMax = false;
+  }
 
   function applySliderValue(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
@@ -71,7 +71,17 @@
     onApplyHistoryIndex(currentIndex);
   }
 
-  const groupSummary = $derived(`${showProperty.replace('_', ' ')} · ${legendRangeMode} · step ${Math.max(0, currentIndex)}`);
+  const showPropertyOptions: Array<{ value: ShowProperty; label: string }> = [
+    { value: 'pressure', label: 'Pressure' },
+    { value: 'saturation_water', label: 'Water Sat' },
+    { value: 'saturation_oil', label: 'Oil Sat' },
+    { value: 'permeability_x', label: 'Perm X' },
+    { value: 'permeability_y', label: 'Perm Y' },
+    { value: 'permeability_z', label: 'Perm Z' },
+    { value: 'porosity', label: 'Porosity' },
+  ];
+
+  const groupSummary = $derived(`${showProperty.replace('_', ' ')} · step ${Math.max(0, currentIndex)}`);
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open>
@@ -91,48 +101,73 @@
 
     <label class="form-control">
       <span class="label-text text-xs">Property</span>
-      <select class="select select-bordered select-sm w-full" bind:value={showProperty}>
-        <option value="pressure">Pressure</option>
-        <option value="saturation_water">Water Saturation</option>
-        <option value="saturation_oil">Oil Saturation</option>
-        <option value="permeability_x">Permeability X</option>
-        <option value="permeability_y">Permeability Y</option>
-        <option value="permeability_z">Permeability Z</option>
-        <option value="porosity">Porosity</option>
-      </select>
+      <div class="flex flex-wrap gap-1">
+        {#each showPropertyOptions as option}
+          <button
+            type="button"
+            class="btn btn-xs {showProperty === option.value ? 'btn-primary' : 'btn-outline'}"
+            onclick={() => showProperty = option.value}
+          >
+            {option.label}
+          </button>
+        {/each}
+      </div>
     </label>
 
-    <label class="form-control">
-      <span class="label-text text-xs">Legend Range Mode</span>
-      <select class="select select-bordered select-sm w-full" bind:value={legendRangeMode}>
-        <option value="percentile">Percentile (adaptive)</option>
-        <option value="fixed">Fixed</option>
-      </select>
-    </label>
-
-    {#if legendRangeMode === 'percentile'}
-      <div class="grid grid-cols-2 gap-2">
-        <label class="form-control">
-          <span class="label-text text-xs">Low Percentile (%)</span>
-          <input type="number" min="0" max="99" step="1" class="input input-bordered input-sm w-full" bind:value={legendPercentileLow} />
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs">High Percentile (%)</span>
-          <input type="number" min="1" max="100" step="1" class="input input-bordered input-sm w-full" bind:value={legendPercentileHigh} />
-        </label>
-      </div>
-    {:else}
-      <div class="grid grid-cols-2 gap-2">
-        <label class="form-control">
-          <span class="label-text text-xs">Fixed Min</span>
-          <input type="number" step="any" class="input input-bordered input-sm w-full" bind:value={legendFixedMin} />
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs">Fixed Max</span>
-          <input type="number" step="any" class="input input-bordered input-sm w-full" bind:value={legendFixedMax} />
-        </label>
-      </div>
-    {/if}
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <label class="form-control">
+        <span class="label-text text-xs">Legend Min</span>
+        <div
+          class="flex items-center gap-2 rounded-md border p-1 transition-colors"
+          class:border-base-300={autoLegendMin}
+          class:bg-base-100={autoLegendMin}
+          class:border-primary={!autoLegendMin}
+          class:bg-base-200={!autoLegendMin}
+        >
+          <label class="label cursor-pointer gap-2 py-0">
+            <input type="checkbox" class="toggle toggle-xs" bind:checked={autoLegendMin} />
+            <span class="label-text text-xs">Auto min</span>
+          </label>
+          <input
+            type="number"
+            step="any"
+            class="input input-bordered input-sm w-full"
+            class:input-primary={!autoLegendMin}
+            value={legendFixedMin}
+            oninput={onLegendMinInput}
+          />
+        </div>
+        {#if !autoLegendMin}
+          <span class="label-text-alt text-[11px] text-primary/80">Manual mode</span>
+        {/if}
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Legend Max</span>
+        <div
+          class="flex items-center gap-2 rounded-md border p-1 transition-colors"
+          class:border-base-300={autoLegendMax}
+          class:bg-base-100={autoLegendMax}
+          class:border-primary={!autoLegendMax}
+          class:bg-base-200={!autoLegendMax}
+        >
+          <label class="label cursor-pointer gap-2 py-0">
+            <input type="checkbox" class="toggle toggle-xs" bind:checked={autoLegendMax} />
+            <span class="label-text text-xs">Auto max</span>
+          </label>
+          <input
+            type="number"
+            step="any"
+            class="input input-bordered input-sm w-full"
+            class:input-primary={!autoLegendMax}
+            value={legendFixedMax}
+            oninput={onLegendMaxInput}
+          />
+        </div>
+        {#if !autoLegendMax}
+          <span class="label-text-alt text-[11px] text-primary/80">Manual mode</span>
+        {/if}
+      </label>
+    </div>
 
     <div class="space-y-1">
       <input

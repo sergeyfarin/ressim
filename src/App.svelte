@@ -191,11 +191,12 @@
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
-    let legendRangeMode: 'fixed' | 'percentile' = 'percentile';
-    let legendPercentileLow = 5;
-    let legendPercentileHigh = 95;
     let legendFixedMin = 0;
     let legendFixedMax = 1;
+    let autoLegendMin = true;
+    let autoLegendMax = true;
+    const LEGEND_PERCENTILE_LOW = 1;
+    const LEGEND_PERCENTILE_HIGH = 99;
 
     // ---------- Helper utilities ----------
 
@@ -888,6 +889,61 @@
         return count > 0 ? sum / count : 0;
     }
 
+    function getPropertyValue(cell: Record<string, unknown>, property: typeof showProperty): number {
+        if (property === 'pressure') return Number(cell.pressure ?? NaN);
+        if (property === 'saturation_water') return Number(cell.sat_water ?? cell.satWater ?? cell.sw ?? NaN);
+        if (property === 'saturation_oil') return Number(cell.sat_oil ?? cell.satOil ?? cell.so ?? NaN);
+        if (property === 'permeability_x') return Number(cell.perm_x ?? NaN);
+        if (property === 'permeability_y') return Number(cell.perm_y ?? NaN);
+        if (property === 'permeability_z') return Number(cell.perm_z ?? NaN);
+        if (property === 'porosity') return Number(cell.porosity ?? NaN);
+        return NaN;
+    }
+
+    function percentile(sortedValues: number[], p: number): number {
+        if (sortedValues.length === 0) return NaN;
+        const bounded = Math.min(100, Math.max(0, p));
+        const idx = (bounded / 100) * (sortedValues.length - 1);
+        const lo = Math.floor(idx);
+        const hi = Math.ceil(idx);
+        if (lo === hi) return sortedValues[lo];
+        const t = idx - lo;
+        return sortedValues[lo] * (1 - t) + sortedValues[hi] * t;
+    }
+
+    function computeAutoLegendRange(
+        grid: Array<Record<string, unknown>>,
+        property: typeof showProperty
+    ): { min: number; max: number } | null {
+        if (!Array.isArray(grid) || grid.length === 0) return null;
+        const values = grid
+            .map((cell) => getPropertyValue(cell ?? {}, property))
+            .filter((value) => Number.isFinite(value));
+        if (values.length < 2) return null;
+        const sorted = [...values].sort((a, b) => a - b);
+        const pLow = percentile(sorted, LEGEND_PERCENTILE_LOW);
+        const pHigh = percentile(sorted, LEGEND_PERCENTILE_HIGH);
+        if (!Number.isFinite(pLow) || !Number.isFinite(pHigh) || pHigh <= pLow) return null;
+        return { min: pLow, max: pHigh };
+    }
+
+    function getLegendSourceGrid(): Array<Record<string, unknown>> {
+        if (history.length > 0 && currentIndex >= 0 && currentIndex < history.length) {
+            const grid = history[currentIndex]?.grid;
+            if (Array.isArray(grid)) return grid as Array<Record<string, unknown>>;
+        }
+        return Array.isArray(gridStateRaw) ? (gridStateRaw as Array<Record<string, unknown>>) : [];
+    }
+
+    $: {
+        const sourceGrid = getLegendSourceGrid();
+        const autoRange = computeAutoLegendRange(sourceGrid, showProperty);
+        if (autoRange) {
+            if (autoLegendMin) legendFixedMin = autoRange.min;
+            if (autoLegendMax) legendFixedMax = autoRange.max;
+        }
+    }
+
     function buildAvgPressureSeries(ratePoints, historyEntries): Array<number | null> {
         if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
         const snapshots = historyEntries
@@ -1085,9 +1141,6 @@
                                     {theme}
                                     gridState={gridStateRaw}
                                     showProperty={showProperty}
-                                    legendRangeMode={legendRangeMode}
-                                    legendPercentileLow={legendPercentileLow}
-                                    legendPercentileHigh={legendPercentileHigh}
                                     legendFixedMin={legendFixedMin}
                                     legendFixedMax={legendFixedMax}
                                     history={history}
@@ -1108,11 +1161,10 @@
                         <div class="mt-4 border-t border-base-300 pt-4">
                             <VisualizationReplayPanel
                                 bind:showProperty
-                                bind:legendRangeMode
-                                bind:legendPercentileLow
-                                bind:legendPercentileHigh
                                 bind:legendFixedMin
                                 bind:legendFixedMax
+                                bind:autoLegendMin
+                                bind:autoLegendMax
                                 historyLength={history.length}
                                 bind:currentIndex
                                 replayTime={replayTime}

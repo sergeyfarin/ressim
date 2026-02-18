@@ -46,9 +46,6 @@
     export let history: HistoryEntry[] = [];
     export let currentIndex = -1;
     export let wellState: unknown = null;
-    export let legendRangeMode: 'fixed' | 'percentile' = 'percentile';
-    export let legendPercentileLow = 5;
-    export let legendPercentileHigh = 95;
     export let legendFixedMin = 0;
     export let legendFixedMax = 1;
     export let theme: 'dark' | 'light' = 'dark';
@@ -110,17 +107,6 @@
         return Math.min(max, Math.max(min, value));
     }
 
-    function percentile(sortedValues: number[], p: number): number {
-        if (sortedValues.length === 0) return NaN;
-        const bounded = clamp(p, 0, 100);
-        const idx = (bounded / 100) * (sortedValues.length - 1);
-        const lo = Math.floor(idx);
-        const hi = Math.ceil(idx);
-        if (lo === hi) return sortedValues[lo];
-        const t = idx - lo;
-        return sortedValues[lo] * (1 - t) + sortedValues[hi] * t;
-    }
-
     function formatLegendValue(property: PropertyKey, value: number): string {
         const decimals = propertyDisplay[property]?.decimals ?? 3;
         return Number.isFinite(value) ? value.toFixed(decimals) : 'n/a';
@@ -132,44 +118,19 @@
 
     function computeLegendRange(property: PropertyKey, values: number[]): { min: number; max: number } {
         const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
-        const finiteValues = values.filter((value) => Number.isFinite(value));
-
-        if (legendRangeMode === 'fixed') {
-            const userMin = Number(legendFixedMin);
-            const userMax = Number(legendFixedMax);
-            if (Number.isFinite(userMin) && Number.isFinite(userMax) && userMax > userMin) {
-                return { min: userMin, max: userMax };
-            }
-            return fixed;
+        const userMin = Number(legendFixedMin);
+        const userMax = Number(legendFixedMax);
+        if (Number.isFinite(userMin) && Number.isFinite(userMax) && userMax > userMin) {
+            return { min: userMin, max: userMax };
         }
+        return fixed;
+    }
 
-        if (property === 'pressure') {
-            if (finiteValues.length < 2) return fixed;
-            const minValue = Math.min(...finiteValues);
-            const maxValue = Math.max(...finiteValues);
-            if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || maxValue <= minValue) {
-                return fixed;
-            }
-            const span = maxValue - minValue;
-            const padding = Math.max(span * 0.03, 1e-6);
-            return { min: minValue - padding, max: maxValue + padding };
+    function getHue(property: PropertyKey, t: number): number {
+        if (property === 'saturation_water') {
+            return t * 0.66;
         }
-
-        if (finiteValues.length < 2) {
-            return fixed;
-        }
-
-        const sorted = [...finiteValues].sort((a, b) => a - b);
-        const lowP = clamp(legendPercentileLow, 0, 99);
-        const highP = clamp(Math.max(legendPercentileHigh, lowP + 1), 1, 100);
-        const pLow = percentile(sorted, lowP);
-        const pHigh = percentile(sorted, highP);
-
-        if (!Number.isFinite(pLow) || !Number.isFinite(pHigh) || pHigh <= pLow) {
-            return fixed;
-        }
-
-        return { min: pLow, max: pHigh };
+        return (1 - t) * 0.66;
     }
 
     onMount(() => {
@@ -226,9 +187,6 @@
     $: if (instancedMesh && activeGrid) {
         // Touch legend + property deps so edits re-trigger.
         showProperty;
-        legendRangeMode;
-        legendPercentileLow;
-        legendPercentileHigh;
         legendFixedMin;
         legendFixedMax;
         updateVisualization(activeGrid, showProperty);
@@ -617,7 +575,7 @@
             let t = (value - min) / (max - min);
             if (!Number.isFinite(t)) t = 0;
             t = Math.max(0, Math.min(1, t));
-            const hue = (1 - t) * 0.66; // blue (high) to red (low)
+            const hue = getHue(property, t);
             tmpColor.setHSL(hue, 0.85, 0.55);
             instancedMesh.setColorAt(i, tmpColor);
         }
@@ -720,7 +678,7 @@
         const steps = 64;
         for (let i = 0; i <= steps; i++) {
             const t = i / steps;
-            tmpColor.setHSL((1 - t) * 0.6, 1.0, 0.5);
+            tmpColor.setHSL(getHue(property, t), 1.0, 0.5);
             gradient.addColorStop(t, tmpColor.getStyle());
         }
 
@@ -754,11 +712,6 @@
         <div style="display:flex; flex-direction:column; margin-left:8px;">
             <div style="color:#222; font-size:12px">
                 {getPropertyDisplay(showProperty).label} ({getPropertyDisplay(showProperty).unit})
-            </div>
-            <div style="color:#444; font-size:11px">
-                {legendRangeMode === 'percentile'
-                    ? `Percentile P${clamp(legendPercentileLow, 0, 99)}–P${clamp(Math.max(legendPercentileHigh, legendPercentileLow + 1), 1, 100)}`
-                    : 'Fixed range'}
             </div>
             <div style="color:#444; font-size:11px">
                 min {formatLegendValue(showProperty, legendMin)} — max {formatLegendValue(showProperty, legendMax)}
