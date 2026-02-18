@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-02-18T13:51:18.644Z",
+  "cases": [
+    {
+      "key": "depletion_corner_producer",
+      "category": "depletion",
+      "label": "Corner Producer (1D)",
+      "description": "1D depletion with producer at corner — linear geometry",
+      "file": "depletion_corner_producer.json"
+    },
+    {
+      "key": "depletion_center_producer",
+      "category": "depletion",
+      "label": "Center Producer (2D)",
+      "description": "2D depletion with producer at centre — radial geometry",
+      "file": "depletion_center_producer.json"
+    },
+    {
+      "key": "bl_case_a_refined",
+      "category": "waterflood",
+      "label": "BL Case A — Refined",
+      "description": "Benchmark-grade 96-cell case A with fine timestep",
+      "file": "bl_case_a_refined.json"
+    },
+    {
+      "key": "bl_case_b_refined",
+      "category": "waterflood",
+      "label": "BL Case B — Refined",
+      "description": "Benchmark-grade 96-cell case B with different fluid properties",
+      "file": "bl_case_b_refined.json"
+    },
+    {
+      "key": "bl_aligned_homogeneous",
+      "category": "waterflood",
+      "label": "BL Aligned — Homogeneous",
+      "description": "48-cell homogeneous 1D-like waterflood",
+      "file": "bl_aligned_homogeneous.json"
+    },
+    {
+      "key": "bl_aligned_mild_capillary",
+      "category": "waterflood",
+      "label": "BL Aligned — Mild Capillary",
+      "description": "48-cell with mild capillary pressure",
+      "file": "bl_aligned_mild_capillary.json"
+    },
+    {
+      "key": "bl_aligned_mobility_balanced",
+      "category": "waterflood",
+      "label": "BL Aligned — Mobility Balanced",
+      "description": "48-cell with balanced mobility ratio",
+      "file": "bl_aligned_mobility_balanced.json"
+    },
+    {
+      "key": "baseline_waterflood",
+      "category": "exploration",
+      "label": "Baseline Waterflood",
+      "description": "Random heterogeneity with capillary pressure",
+      "file": "baseline_waterflood.json"
+    },
+    {
+      "key": "high_contrast_layers",
+      "category": "exploration",
+      "label": "High Contrast Layers",
+      "description": "Layered permeability with 10x contrast and strong capillary",
+      "file": "high_contrast_layers.json"
+    },
+    {
+      "key": "viscous_fingering_risk",
+      "category": "exploration",
+      "label": "Viscous Fingering Risk",
+      "description": "Unfavourable mobility ratio with strong heterogeneity",
+      "file": "viscous_fingering_risk.json"
+    }
+  ]
+}

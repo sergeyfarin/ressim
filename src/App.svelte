@@ -1,20 +1,26 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import FractionalFlow from './lib/FractionalFlow.svelte';
-    import StaticPropertiesPanel from './lib/ui/StaticPropertiesPanel.svelte';
-    import TimestepControlsPanel from './lib/ui/TimestepControlsPanel.svelte';
-    import ReservoirPropertiesPanel from './lib/ui/ReservoirPropertiesPanel.svelte';
-    import RelativeCapillaryPanel from './lib/ui/RelativeCapillaryPanel.svelte';
-    import WellPropertiesPanel from './lib/ui/WellPropertiesPanel.svelte';
-    import DynamicControlsPanel from './lib/ui/DynamicControlsPanel.svelte';
+    import TopBar from './lib/ui/TopBar.svelte';
+    import RunControls from './lib/ui/RunControls.svelte';
+    import TabContainer from './lib/ui/TabContainer.svelte';
+    import InputsTab from './lib/ui/InputsTab.svelte';
     import VisualizationReplayPanel from './lib/ui/VisualizationReplayPanel.svelte';
-    import BenchmarkResultsCard from './lib/ui/BenchmarkResultsCard.svelte';
     import SwProfileChart from './lib/SwProfileChart.svelte';
+    import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog.js';
 
     let wasmReady = false;
     let simWorker: Worker | null = null;
     let runCompleted = false;
     let workerRunning = false;
+
+    // Navigation State
+    let activeCategory = 'depletion';
+    let activeCase = '';
+    let isCustomMode = false;
+    let activeTab: 'charts' | '3d' | 'inputs' = 'charts';
+    let preRunData: any = null;
+    let preRunLoading = false;
 
     // UI inputs
     let nx = 15;
@@ -31,7 +37,7 @@
     let initialSaturation = 0.3;
     const reservoirPorosity = 0.2;
 
-    // Fluid properties (single source of truth for simulator + analytical)
+    // Fluid properties
     let mu_w = 0.5;
     let mu_o = 1.0;
     let c_o = 1e-5;
@@ -59,7 +65,6 @@
     let layerPermsX: number[] = [100, 150, 50, 200, 120, 1000, 90, 110, 130, 70];
     let layerPermsY: number[] = [100, 150, 50, 200, 120, 1000, 90, 110, 130, 70];
     let layerPermsZ: number[] = [10, 15, 5, 20, 12, 8, 9, 11, 13, 7];
-    let scenarioPreset = 'custom';
 
     // Relative Permeability / Capillary
     let s_wc = 0.1;
@@ -117,17 +122,16 @@
     let hasValidationErrors = false;
     let estimatedRunSeconds = 0;
     let longRunEstimate = false;
+    let latestInjectionRate = 0;
 
-    type BenchmarkRow = {
-        name: string;
-        pvBtSim: number;
-        pvBtRef: number;
-        relError: number;
-        tolerance: number;
-    };
-
-    type BenchmarkMode = 'baseline' | 'refined';
-    type BenchmarkModes = Record<BenchmarkMode, BenchmarkRow[]>;
+    $: latestInjectionRate = (() => {
+        if (!Array.isArray(rateHistory) || rateHistory.length === 0) return 0;
+        for (let i = rateHistory.length - 1; i >= 0; i--) {
+            const q = Number(rateHistory[i]?.total_injection);
+            if (Number.isFinite(q) && q > 0) return q;
+        }
+        return 0;
+    })();
 
     type WorkerProfile = {
         batchMs: number;
@@ -146,99 +150,10 @@
     };
 
     const EMPTY_PROFILE_STATS: ProfileStats = {
-        batchMs: 0,
-        avgStepMs: 0,
-        extractMs: 0,
-        renderApplyMs: 0,
-        snapshotsSent: 0,
+        batchMs: 0, avgStepMs: 0, extractMs: 0, renderApplyMs: 0, snapshotsSent: 0,
     };
 
-    type BenchmarkArtifact = {
-        generatedAt?: string;
-        source?: string;
-        command?: string;
-        defaultMode?: BenchmarkMode;
-        modes?: Partial<BenchmarkModes>;
-        cases?: BenchmarkRow[];
-    };
-
-    const fallbackBenchmarkModes: BenchmarkModes = {
-        baseline: [
-            {
-                name: 'BL-Case-A',
-                pvBtSim: 0.5239,
-                pvBtRef: 0.5860,
-                relError: 0.106,
-                tolerance: 0.25,
-            },
-            {
-                name: 'BL-Case-B',
-                pvBtSim: 0.4768,
-                pvBtRef: 0.5074,
-                relError: 0.060,
-                tolerance: 0.30,
-            },
-        ],
-        refined: [
-            {
-                name: 'BL-Case-A-Refined',
-                pvBtSim: 0.5649,
-                pvBtRef: 0.5860,
-                relError: 0.036,
-                tolerance: 0.25,
-            },
-            {
-                name: 'BL-Case-B-Refined',
-                pvBtSim: 0.4907,
-                pvBtRef: 0.5074,
-                relError: 0.033,
-                tolerance: 0.30,
-            },
-        ],
-    };
-
-    let benchmarkModes: BenchmarkModes = {
-        baseline: [...fallbackBenchmarkModes.baseline],
-        refined: [...fallbackBenchmarkModes.refined],
-    };
-    let selectedBenchmarkMode: BenchmarkMode = 'baseline';
-    let benchmarkSource = 'fallback';
-    let benchmarkGeneratedAt = '';
     let theme: 'dark' | 'light' = 'dark';
-    let latestInjectionRate = 0;
-
-    $: latestInjectionRate = (() => {
-        if (!Array.isArray(rateHistory) || rateHistory.length === 0) return 0;
-        for (let i = rateHistory.length - 1; i >= 0; i--) {
-            const q = Number(rateHistory[i]?.total_injection);
-            if (Number.isFinite(q) && q > 0) return q;
-        }
-        return 0;
-    })();
-
-    const benchmarkModeLabel: Record<BenchmarkMode, string> = {
-        baseline: 'Baseline (nx=24, dt=0.5 day)',
-        refined: 'Refined (nx=96, dt=0.125 day)',
-    };
-
-    $: benchmarkRows = benchmarkModes[selectedBenchmarkMode] ?? [];
-
-    $: baselineRelErrByCase = new Map(
-        (benchmarkModes.baseline ?? []).map((row) => [row.name.replace('-Refined', ''), row.relError])
-    );
-
-    $: benchmarkRowsWithStatus = benchmarkRows.map((row) => ({
-        ...row,
-        passes: row.relError <= row.tolerance,
-        improvementVsBaselinePp: (() => {
-            const baseKey = row.name.replace('-Refined', '');
-            const baselineRelErr = baselineRelErrByCase.get(baseKey);
-            if (!Number.isFinite(baselineRelErr)) return null;
-            return (baselineRelErr - row.relError) * 100.0;
-        })(),
-    }));
-
-    $: allBenchmarksPass = benchmarkRowsWithStatus.every((row) => row.passes);
 
     // History / replay
     let history = [];
@@ -266,294 +181,7 @@
     let legendFixedMin = 0;
     let legendFixedMax = 1;
 
-    const scenarioPresets = {
-        custom: null,
-        bl_case_a_refined: {
-            nx: 96,
-            ny: 1,
-            nz: 1,
-            cellDx: 10,
-            cellDy: 10,
-            cellDz: 1,
-            delta_t_days: 0.125,
-            steps: 240,
-            max_sat_change_per_step: 0.05,
-            initialPressure: 300,
-            initialSaturation: 0.1,
-            mu_w: 0.5,
-            mu_o: 1.0,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.0,
-            n_o: 2.0,
-            gravityEnabled: false,
-            capillaryEnabled: false,
-            capillaryPEntry: 0.0,
-            capillaryLambda: 2.0,
-            permMode: 'uniform',
-            uniformPermX: 2000,
-            uniformPermY: 2000,
-            uniformPermZ: 2000,
-            injectorBhp: 500,
-            producerBhp: 100,
-            rateControlledWells: true,
-            targetInjectorRate: 350,
-            targetProducerRate: 350,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 95,
-            producerJ: 0,
-        },
-        bl_case_b_refined: {
-            nx: 96,
-            ny: 1,
-            nz: 1,
-            cellDx: 10,
-            cellDy: 10,
-            cellDz: 1,
-            delta_t_days: 0.125,
-            steps: 240,
-            max_sat_change_per_step: 0.05,
-            initialPressure: 300,
-            initialSaturation: 0.15,
-            mu_w: 0.6,
-            mu_o: 1.4,
-            s_wc: 0.15,
-            s_or: 0.15,
-            n_w: 2.2,
-            n_o: 2.0,
-            gravityEnabled: false,
-            capillaryEnabled: false,
-            capillaryPEntry: 0.0,
-            capillaryLambda: 2.0,
-            permMode: 'uniform',
-            uniformPermX: 2000,
-            uniformPermY: 2000,
-            uniformPermZ: 2000,
-            injectorBhp: 500,
-            producerBhp: 100,
-            rateControlledWells: true,
-            targetInjectorRate: 350,
-            targetProducerRate: 350,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 95,
-            producerJ: 0,
-        },
-        bl_aligned_homogeneous: {
-            nx: 48,
-            ny: 1,
-            nz: 1,
-            cellDx: 5,
-            cellDy: 10,
-            cellDz: 10,
-            delta_t_days: 0.1,
-            steps: 120,
-            max_sat_change_per_step: 0.05,
-            initialPressure: 300,
-            initialSaturation: 0.2,
-            mu_w: 0.5,
-            mu_o: 1.0,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.0,
-            n_o: 2.0,
-            gravityEnabled: false,
-            capillaryEnabled: false,
-            capillaryPEntry: 0.0,
-            capillaryLambda: 2.0,
-            permMode: 'uniform',
-            uniformPermX: 150,
-            uniformPermY: 150,
-            uniformPermZ: 150,
-            rateControlledWells: true,
-            targetInjectorRate: 250,
-            targetProducerRate: 250,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 47,
-            producerJ: 0,
-        },
-        bl_aligned_mild_capillary: {
-            nx: 48,
-            ny: 1,
-            nz: 1,
-            cellDx: 5,
-            cellDy: 10,
-            cellDz: 10,
-            delta_t_days: 0.1,
-            steps: 120,
-            max_sat_change_per_step: 0.05,
-            initialPressure: 300,
-            initialSaturation: 0.2,
-            mu_w: 0.5,
-            mu_o: 1.0,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.0,
-            n_o: 2.0,
-            gravityEnabled: false,
-            capillaryEnabled: true,
-            capillaryPEntry: 0.75,
-            capillaryLambda: 3.2,
-            permMode: 'uniform',
-            uniformPermX: 150,
-            uniformPermY: 150,
-            uniformPermZ: 150,
-            rateControlledWells: true,
-            targetInjectorRate: 250,
-            targetProducerRate: 250,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 47,
-            producerJ: 0,
-        },
-        bl_aligned_mobility_balanced: {
-            nx: 48,
-            ny: 1,
-            nz: 1,
-            cellDx: 5,
-            cellDy: 10,
-            cellDz: 10,
-            delta_t_days: 0.1,
-            steps: 120,
-            max_sat_change_per_step: 0.05,
-            initialPressure: 300,
-            initialSaturation: 0.2,
-            mu_w: 0.8,
-            mu_o: 1.0,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.1,
-            n_o: 1.9,
-            gravityEnabled: false,
-            capillaryEnabled: false,
-            capillaryPEntry: 0.0,
-            capillaryLambda: 2.0,
-            permMode: 'uniform',
-            uniformPermX: 150,
-            uniformPermY: 150,
-            uniformPermZ: 150,
-            rateControlledWells: true,
-            targetInjectorRate: 250,
-            targetProducerRate: 250,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 47,
-            producerJ: 0,
-        },
-        baseline_waterflood: {
-            initialPressure: 300,
-            initialSaturation: 0.3,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.0,
-            n_o: 2.0,
-            capillaryEnabled: true,
-            capillaryPEntry: 5.0,
-            capillaryLambda: 2.0,
-            permMode: 'random',
-            minPerm: 50,
-            maxPerm: 200,
-            useRandomSeed: true,
-            randomSeed: 12345,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: nx - 1,
-            producerJ: 0,
-        },
-        high_contrast_layers: {
-            initialPressure: 320,
-            initialSaturation: 0.25,
-            s_wc: 0.12,
-            s_or: 0.12,
-            n_w: 2.2,
-            n_o: 2.2,
-            capillaryEnabled: true,
-            capillaryPEntry: 8.0,
-            capillaryLambda: 2.5,
-            permMode: 'perLayer',
-            layerPermsXStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
-            layerPermsYStr: '30, 40, 60, 90, 150, 400, 150, 90, 60, 40',
-            layerPermsZStr: '3, 4, 6, 9, 15, 40, 15, 9, 6, 4',
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: nx - 1,
-            producerJ: 0,
-        },
-        viscous_fingering_risk: {
-            initialPressure: 280,
-            initialSaturation: 0.2,
-            s_wc: 0.08,
-            s_or: 0.15,
-            n_w: 1.6,
-            n_o: 2.4,
-            capillaryEnabled: true,
-            capillaryPEntry: 3.0,
-            capillaryLambda: 1.6,
-            permMode: 'random',
-            minPerm: 20,
-            maxPerm: 500,
-            useRandomSeed: true,
-            randomSeed: 987654,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: nx - 1,
-            producerJ: 0,
-        },
-        depletion_corner_producer: {
-            nx: 48,
-            ny: 1,
-            nz: 1,
-            cellDx: 10,
-            cellDy: 10,
-            cellDz: 5,
-            delta_t_days: 0.1,
-            steps: 180,
-            initialPressure: 300,
-            initialSaturation: 0.25,
-            injectorEnabled: false,
-            producerControlMode: 'pressure',
-            producerBhp: 80,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 0,
-            producerJ: 0,
-        },
-        depletion_center_producer: {
-            nx: 49,
-            ny: 49,
-            nz: 1,
-            cellDx: 10,
-            cellDy: 10,
-            cellDz: 5,
-            delta_t_days: 0.1,
-            steps: 220,
-            initialPressure: 300,
-            initialSaturation: 0.25,
-            injectorEnabled: false,
-            producerControlMode: 'pressure',
-            producerBhp: 80,
-            injectorI: 0,
-            injectorJ: 0,
-            producerI: 24,
-            producerJ: 24,
-        },
-    };
-
-    const scenarioPresetOptions = [
-        { value: 'custom', label: 'Custom' },
-        { value: 'bl_case_a_refined', label: 'BL Case A — Refined (benchmark-like)' },
-        { value: 'bl_case_b_refined', label: 'BL Case B — Refined (benchmark-like)' },
-        { value: 'bl_aligned_homogeneous', label: 'BL Aligned — Homogeneous 1D-like' },
-        { value: 'bl_aligned_mild_capillary', label: 'BL Aligned — Mild Capillary' },
-        { value: 'bl_aligned_mobility_balanced', label: 'BL Aligned — Mobility Balanced' },
-        { value: 'baseline_waterflood', label: 'Baseline Waterflood' },
-        { value: 'high_contrast_layers', label: 'High Contrast Layers' },
-        { value: 'viscous_fingering_risk', label: 'Viscous Fingering Risk' },
-        { value: 'depletion_corner_producer', label: 'Depletion — Corner Producer' },
-        { value: 'depletion_center_producer', label: 'Depletion — Center Producer' },
-    ];
+    // ---------- Helper utilities ----------
 
     function parseLayerValues(value: unknown): number[] {
         if (Array.isArray(value)) {
@@ -591,72 +219,6 @@
     $: injectorI = Math.max(0, Math.min(nx - 1, Number(injectorI)));
     $: injectorJ = Math.max(0, Math.min(ny - 1, Number(injectorJ)));
 
-    const scenarioPresetSetters: Record<string, (value: unknown) => void> = {
-        nx: (value) => nx = Math.max(1, Math.round(Number(value) || 1)),
-        ny: (value) => ny = Math.max(1, Math.round(Number(value) || 1)),
-        nz: (value) => nz = Math.max(1, Math.round(Number(value) || 1)),
-        cellDx: (value) => cellDx = Number(value),
-        cellDy: (value) => cellDy = Number(value),
-        cellDz: (value) => cellDz = Number(value),
-        delta_t_days: (value) => delta_t_days = Number(value),
-        steps: (value) => steps = Math.max(1, Math.round(Number(value) || 1)),
-        initialPressure: (value) => initialPressure = Number(value),
-        initialSaturation: (value) => initialSaturation = Number(value),
-        mu_w: (value) => mu_w = Number(value),
-        mu_o: (value) => mu_o = Number(value),
-        c_o: (value) => c_o = Number(value),
-        c_w: (value) => c_w = Number(value),
-        rock_compressibility: (value) => rock_compressibility = Number(value),
-        depth_reference: (value) => depth_reference = Number(value),
-        volume_expansion_o: (value) => volume_expansion_o = Number(value),
-        volume_expansion_w: (value) => volume_expansion_w = Number(value),
-        s_wc: (value) => s_wc = Number(value),
-        s_or: (value) => s_or = Number(value),
-        n_w: (value) => n_w = Number(value),
-        n_o: (value) => n_o = Number(value),
-        max_sat_change_per_step: (value) => max_sat_change_per_step = Number(value),
-        max_pressure_change_per_step: (value) => max_pressure_change_per_step = Number(value),
-        max_well_rate_change_fraction: (value) => max_well_rate_change_fraction = Number(value),
-        gravityEnabled: (value) => gravityEnabled = Boolean(value),
-        capillaryEnabled: (value) => capillaryEnabled = Boolean(value),
-        capillaryPEntry: (value) => capillaryPEntry = Number(value),
-        capillaryLambda: (value) => capillaryLambda = Number(value),
-        permMode: (value) => {
-            const candidate = String(value);
-            if (isPermMode(candidate)) {
-                permMode = candidate;
-            }
-        },
-        uniformPermX: (value) => uniformPermX = Number(value),
-        uniformPermY: (value) => uniformPermY = Number(value),
-        uniformPermZ: (value) => uniformPermZ = Number(value),
-        minPerm: (value) => minPerm = Number(value),
-        maxPerm: (value) => maxPerm = Number(value),
-        useRandomSeed: (value) => useRandomSeed = Boolean(value),
-        randomSeed: (value) => randomSeed = Number(value),
-        layerPermsXStr: (value) => layerPermsX = parseLayerValues(value),
-        layerPermsYStr: (value) => layerPermsY = parseLayerValues(value),
-        layerPermsZStr: (value) => layerPermsZ = parseLayerValues(value),
-        injectorBhp: (value) => injectorBhp = Number(value),
-        producerBhp: (value) => producerBhp = Number(value),
-        rateControlledWells: (value) => {
-            rateControlledWells = Boolean(value);
-            if (rateControlledWells) {
-                injectorControlMode = 'rate';
-                producerControlMode = 'rate';
-            }
-        },
-        injectorControlMode: (value) => injectorControlMode = String(value) === 'rate' ? 'rate' : 'pressure',
-        producerControlMode: (value) => producerControlMode = String(value) === 'rate' ? 'rate' : 'pressure',
-        injectorEnabled: (value) => injectorEnabled = Boolean(value),
-        targetInjectorRate: (value) => targetInjectorRate = Number(value),
-        targetProducerRate: (value) => targetProducerRate = Number(value),
-        injectorI: (value) => injectorI = Number(value),
-        injectorJ: (value) => injectorJ = Number(value),
-        producerI: (value) => producerI = Number(value),
-        producerJ: (value) => producerJ = Number(value),
-    };
-
     $: cellDx = Math.max(0.1, Number(cellDx) || 0.1);
     $: cellDy = Math.max(0.1, Number(cellDy) || 0.1);
     $: cellDz = Math.max(0.1, Number(cellDz) || 0.1);
@@ -675,6 +237,149 @@
     $: targetInjectorRate = Math.max(0, Number(targetInjectorRate) || 0);
     $: targetProducerRate = Math.max(0, Number(targetProducerRate) || 0);
     $: rateControlledWells = injectorControlMode === 'rate' && producerControlMode === 'rate';
+
+    // ---------- Category / case navigation ----------
+
+    function handleCategoryChange(cat: string) {
+        isCustomMode = false;
+        activeCategory = cat;
+        activeCase = '';
+        preRunData = null;
+        // Auto-select first case
+        const cases = caseCatalog[cat]?.cases;
+        if (cases && cases.length > 0) {
+            handleCaseChange(cases[0].key);
+        }
+    }
+
+    function handleCaseChange(key: string) {
+        activeCase = key;
+        isCustomMode = false;
+        const found = findCaseByKey(key);
+        if (found) {
+            applyCaseParams(found.case.params);
+            loadPreRunCase(key);
+        }
+    }
+
+    function handleCustomMode() {
+        isCustomMode = true;
+        activeCase = '';
+        preRunData = null;
+        activeTab = 'inputs';
+    }
+
+    function handleTabChange(tab: 'charts' | '3d' | 'inputs') {
+        activeTab = tab;
+        if (tab === '3d') {
+            loadThreeDViewModule();
+        }
+    }
+
+    // Apply a case's params to the local state
+    function applyCaseParams(params: Record<string, any>) {
+        const resolved = resolveParams(params);
+        skipNextAutoModelReset = true;
+
+        // Grid dimensions first
+        nx = Math.max(1, Math.round(Number(resolved.nx) || 1));
+        ny = Math.max(1, Math.round(Number(resolved.ny) || 1));
+        nz = Math.max(1, Math.round(Number(resolved.nz) || 1));
+        cellDx = Number(resolved.cellDx) || 10;
+        cellDy = Number(resolved.cellDy) || 10;
+        cellDz = Number(resolved.cellDz) || 1;
+
+        // Then everything else
+        delta_t_days = Number(resolved.delta_t_days) || 0.25;
+        steps = Math.max(1, Math.round(Number(resolved.steps) || 20));
+        max_sat_change_per_step = Number(resolved.max_sat_change_per_step) || 0.1;
+        initialPressure = Number(resolved.initialPressure) || 300;
+        initialSaturation = Number(resolved.initialSaturation) || 0.3;
+        mu_w = Number(resolved.mu_w) || 0.5;
+        mu_o = Number(resolved.mu_o) || 1.0;
+        c_o = Number(resolved.c_o) || 1e-5;
+        c_w = Number(resolved.c_w) || 3e-6;
+        rock_compressibility = Number(resolved.rock_compressibility) || 1e-6;
+        depth_reference = Number(resolved.depth_reference) || 0;
+        volume_expansion_o = Number(resolved.volume_expansion_o) || 1.0;
+        volume_expansion_w = Number(resolved.volume_expansion_w) || 1.0;
+        rho_w = Number(resolved.rho_w) || 1000;
+        rho_o = Number(resolved.rho_o) || 800;
+        s_wc = Number(resolved.s_wc) || 0.1;
+        s_or = Number(resolved.s_or) || 0.1;
+        n_w = Number(resolved.n_w) || 2.0;
+        n_o = Number(resolved.n_o) || 2.0;
+        gravityEnabled = Boolean(resolved.gravityEnabled);
+        capillaryEnabled = resolved.capillaryEnabled !== false;
+        capillaryPEntry = Number(resolved.capillaryPEntry) || 0;
+        capillaryLambda = Number(resolved.capillaryLambda) || 2;
+        injectorEnabled = resolved.injectorEnabled !== false;
+        injectorControlMode = resolved.injectorControlMode === 'rate' ? 'rate' : 'pressure';
+        producerControlMode = resolved.producerControlMode === 'rate' ? 'rate' : 'pressure';
+        injectorBhp = Number(resolved.injectorBhp) || 400;
+        producerBhp = Number(resolved.producerBhp) || 100;
+        targetInjectorRate = Number(resolved.targetInjectorRate) || 350;
+        targetProducerRate = Number(resolved.targetProducerRate) || 350;
+        well_radius = Number(resolved.well_radius) || 0.1;
+        well_skin = Number(resolved.well_skin) || 0;
+        max_pressure_change_per_step = Number(resolved.max_pressure_change_per_step) || 75;
+        max_well_rate_change_fraction = Number(resolved.max_well_rate_change_fraction) || 0.75;
+
+        if (resolved.permMode && isPermMode(resolved.permMode)) {
+            permMode = resolved.permMode;
+        }
+        if (resolved.uniformPermX !== undefined) uniformPermX = Number(resolved.uniformPermX);
+        if (resolved.uniformPermY !== undefined) uniformPermY = Number(resolved.uniformPermY);
+        if (resolved.uniformPermZ !== undefined) uniformPermZ = Number(resolved.uniformPermZ);
+        if (resolved.minPerm !== undefined) minPerm = Number(resolved.minPerm);
+        if (resolved.maxPerm !== undefined) maxPerm = Number(resolved.maxPerm);
+        if (resolved.useRandomSeed !== undefined) useRandomSeed = Boolean(resolved.useRandomSeed);
+        if (resolved.randomSeed !== undefined) randomSeed = Number(resolved.randomSeed);
+        if (resolved.layerPermsX) layerPermsX = parseLayerValues(resolved.layerPermsX);
+        if (resolved.layerPermsY) layerPermsY = parseLayerValues(resolved.layerPermsY);
+        if (resolved.layerPermsZ) layerPermsZ = parseLayerValues(resolved.layerPermsZ);
+
+        injectorI = Number(resolved.injectorI) || 0;
+        injectorJ = Number(resolved.injectorJ) || 0;
+        producerI = Number(resolved.producerI) || (nx - 1);
+        producerJ = Number(resolved.producerJ) || 0;
+
+        resetModelAndVisualizationState(true, true);
+    }
+
+    // Load pre-run case data
+    async function loadPreRunCase(key: string) {
+        preRunLoading = true;
+        preRunData = null;
+        try {
+            const url = `${import.meta.env.BASE_URL}cases/${key}.json`;
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (!resp.ok) {
+                preRunData = null;
+                return;
+            }
+            const data = await resp.json();
+            preRunData = data;
+
+            // Apply pre-run data to visualization
+            if (data.finalGrid) gridStateRaw = data.finalGrid;
+            if (data.finalWells) wellStateRaw = data.finalWells;
+            if (data.rateHistory) rateHistory = data.rateHistory;
+            if (data.simTime != null) simTime = data.simTime;
+            if (Array.isArray(data.history)) {
+                history = data.history;
+                currentIndex = data.history.length - 1;
+            }
+            runCompleted = true;
+            vizRevision += 1;
+        } catch {
+            preRunData = null;
+        } finally {
+            preRunLoading = false;
+        }
+    }
+
+    // ---------- Model reset / validation ----------
 
     function resetModelAndVisualizationState(stopWorker = true, showReinitNotice = false) {
         stopPlaying();
@@ -701,28 +406,19 @@
 
     function buildModelResetKey() {
         return JSON.stringify({
-            nx: Number(nx),
-            ny: Number(ny),
-            nz: Number(nz),
-            cellDx: Number(cellDx),
-            cellDy: Number(cellDy),
-            cellDz: Number(cellDz),
+            nx: Number(nx), ny: Number(ny), nz: Number(nz),
+            cellDx: Number(cellDx), cellDy: Number(cellDy), cellDz: Number(cellDz),
             initialPressure: Number(initialPressure),
             initialSaturation: Number(initialSaturation),
-            mu_w: Number(mu_w),
-            mu_o: Number(mu_o),
-            c_o: Number(c_o),
-            c_w: Number(c_w),
+            mu_w: Number(mu_w), mu_o: Number(mu_o),
+            c_o: Number(c_o), c_w: Number(c_w),
             rock_compressibility: Number(rock_compressibility),
             depth_reference: Number(depth_reference),
             volume_expansion_o: Number(volume_expansion_o),
             volume_expansion_w: Number(volume_expansion_w),
-            rho_w: Number(rho_w),
-            rho_o: Number(rho_o),
-            s_wc: Number(s_wc),
-            s_or: Number(s_or),
-            n_w: Number(n_w),
-            n_o: Number(n_o),
+            rho_w: Number(rho_w), rho_o: Number(rho_o),
+            s_wc: Number(s_wc), s_or: Number(s_or),
+            n_w: Number(n_w), n_o: Number(n_o),
             max_sat_change_per_step: Number(max_sat_change_per_step),
             max_pressure_change_per_step: Number(max_pressure_change_per_step),
             max_well_rate_change_fraction: Number(max_well_rate_change_fraction),
@@ -731,29 +427,20 @@
             capillaryPEntry: Number(capillaryPEntry),
             capillaryLambda: Number(capillaryLambda),
             permMode,
-            uniformPermX: Number(uniformPermX),
-            uniformPermY: Number(uniformPermY),
-            uniformPermZ: Number(uniformPermZ),
-            minPerm: Number(minPerm),
-            maxPerm: Number(maxPerm),
-            useRandomSeed: Boolean(useRandomSeed),
-            randomSeed: Number(randomSeed),
+            uniformPermX: Number(uniformPermX), uniformPermY: Number(uniformPermY), uniformPermZ: Number(uniformPermZ),
+            minPerm: Number(minPerm), maxPerm: Number(maxPerm),
+            useRandomSeed: Boolean(useRandomSeed), randomSeed: Number(randomSeed),
             layerPermsX: layerPermsX.map(Number),
             layerPermsY: layerPermsY.map(Number),
             layerPermsZ: layerPermsZ.map(Number),
-            well_radius: Number(well_radius),
-            well_skin: Number(well_skin),
-            injectorBhp: Number(injectorBhp),
-            producerBhp: Number(producerBhp),
-            injectorControlMode,
-            producerControlMode,
+            well_radius: Number(well_radius), well_skin: Number(well_skin),
+            injectorBhp: Number(injectorBhp), producerBhp: Number(producerBhp),
+            injectorControlMode, producerControlMode,
             injectorEnabled: Boolean(injectorEnabled),
             targetInjectorRate: Number(targetInjectorRate),
             targetProducerRate: Number(targetProducerRate),
-            injectorI: Number(injectorI),
-            injectorJ: Number(injectorJ),
-            producerI: Number(producerI),
-            producerJ: Number(producerJ),
+            injectorI: Number(injectorI), injectorJ: Number(injectorJ),
+            producerI: Number(producerI), producerJ: Number(producerJ),
         });
     }
 
@@ -771,33 +458,7 @@
         }
     }
 
-    function applyScenarioPreset() {
-        const preset = scenarioPresets[scenarioPreset] as Record<string, unknown> | null;
-        if (!preset) return;
-
-        skipNextAutoModelReset = true;
-
-        // Set grid dimensions first to ensure well positions are clamped correctly
-        const priorityKeys = ['nx', 'ny', 'nz', 'cellDx', 'cellDy', 'cellDz'];
-        for (const key of priorityKeys) {
-            if (preset[key] !== undefined) {
-                scenarioPresetSetters[key]?.(preset[key]);
-            }
-        }
-
-        // Then set the rest
-        for (const [key, value] of Object.entries(preset)) {
-            if (value === undefined || priorityKeys.includes(key)) continue;
-            scenarioPresetSetters[key]?.(value);
-        }
-
-        resetModelAndVisualizationState(true, true);
-    }
-
-    type ValidationState = {
-        errors: Record<string, string>;
-        warnings: string[];
-    };
+    type ValidationState = { errors: Record<string, string>; warnings: string[] };
 
     function validateInputs(): ValidationState {
         const errors: Record<string, string> = {};
@@ -806,37 +467,28 @@
         if (initialSaturation < 0 || initialSaturation > 1) {
             errors.initialSaturation = 'Initial water saturation must be in [0, 1].';
         }
-        if (delta_t_days <= 0) {
-            errors.deltaT = 'Timestep must be positive.';
-        }
-        if (well_radius <= 0) {
-            errors.wellRadius = 'Well radius must be positive.';
-        }
-        if (s_wc + s_or >= 1) {
-            errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
-        }
-        if (minPerm > maxPerm) {
-            errors.permBounds = 'Min permeability must not exceed max permeability.';
-        }
+        if (delta_t_days <= 0) errors.deltaT = 'Timestep must be positive.';
+        if (well_radius <= 0) errors.wellRadius = 'Well radius must be positive.';
+        if (s_wc + s_or >= 1) errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
+        if (minPerm > maxPerm) errors.permBounds = 'Min perm must not exceed max perm.';
         if (injectorEnabled && injectorI === producerI && injectorJ === producerJ) {
             errors.wellOverlap = 'Injector and producer cannot share the same i/j location.';
         }
         if (injectorControlMode === 'pressure' && producerControlMode === 'pressure' && injectorBhp <= producerBhp) {
-            errors.wellPressureOrder = 'Injector BHP should be greater than producer BHP for pressure-driven displacement.';
+            errors.wellPressureOrder = 'Injector BHP should be greater than producer BHP.';
         }
         if (injectorControlMode === 'rate' && targetInjectorRate <= 0 && injectorEnabled) {
-            errors.injectorRate = 'Injector rate must be positive when injector is enabled and rate-controlled.';
+            errors.injectorRate = 'Injector rate must be positive when enabled and rate-controlled.';
         }
         if (producerControlMode === 'rate' && targetProducerRate <= 0) {
             errors.producerRate = 'Producer rate must be positive when rate-controlled.';
         }
         if (delta_t_days * steps > 3650) {
-            warnings.push('Requested run covers more than 10 years of simulated time; results may require tighter timestep limits.');
+            warnings.push('Requested run covers more than 10 years; results may require tighter timestep limits.');
         }
         if (max_pressure_change_per_step > 250) {
             warnings.push('Large max ΔP per step may reduce numerical robustness.');
         }
-
         return { errors, warnings };
     }
 
@@ -847,14 +499,10 @@
     $: estimatedRunSeconds = Math.max(0, (Number(profileStats.avgStepMs || 0) * Number(steps || 0)) / 1000);
     $: longRunEstimate = estimatedRunSeconds > 10;
 
-    function resetSimulationState(options: { clearErrors?: boolean; clearWarnings?: boolean; resetProfile?: boolean; bumpViz?: boolean } = {}) {
-        const {
-            clearErrors = false,
-            clearWarnings = false,
-            resetProfile = false,
-            bumpViz = false,
-        } = options;
+    // ---------- Simulation state management ----------
 
+    function resetSimulationState(options: { clearErrors?: boolean; clearWarnings?: boolean; resetProfile?: boolean; bumpViz?: boolean } = {}) {
+        const { clearErrors = false, clearWarnings = false, resetProfile = false, bumpViz = false } = options;
         stopPlaying();
         history = [];
         currentIndex = -1;
@@ -863,19 +511,10 @@
         simTime = 0;
         rateHistory = [];
         runCompleted = false;
-
-        if (resetProfile) {
-            profileStats = { ...EMPTY_PROFILE_STATS };
-        }
-        if (clearErrors) {
-            runtimeError = '';
-        }
-        if (clearWarnings) {
-            runtimeWarning = '';
-        }
-        if (bumpViz) {
-            vizRevision += 1;
-        }
+        if (resetProfile) profileStats = { ...EMPTY_PROFILE_STATS };
+        if (clearErrors) runtimeError = '';
+        if (clearWarnings) runtimeWarning = '';
+        if (bumpViz) vizRevision += 1;
     }
 
     function pushHistoryEntry(entry) {
@@ -904,8 +543,6 @@
         wellStateRaw = message.wells;
         simTime = message.time;
         rateHistory = message.rateHistory;
-
-        // Capture solver warning from worker state
         solverWarning = message.solverWarning || '';
 
         if (message.recordHistory) {
@@ -915,7 +552,6 @@
                 wells: message.wells,
             });
         }
-
         updateProfileStats(message.profile, performance.now() - renderStart);
     }
 
@@ -926,17 +562,8 @@
             initSimulator({ silent: true });
             return;
         }
-
-        if (type === 'runStarted') {
-            runtimeError = '';
-            workerRunning = true;
-            return;
-        }
-
-        if (type === 'state') {
-            applyWorkerState(message);
-            return;
-        }
+        if (type === 'runStarted') { runtimeError = ''; workerRunning = true; return; }
+        if (type === 'state') { applyWorkerState(message); return; }
 
         if (type === 'batchComplete') {
             workerRunning = false;
@@ -947,9 +574,7 @@
             if (pendingAutoReinit) {
                 pendingAutoReinit = false;
                 const reinitialized = initSimulator({ silent: true });
-                runtimeWarning = reinitialized
-                    ? 'Configuration changed. Reservoir reset and reinitialized at step 0.'
-                    : runtimeWarning;
+                runtimeWarning = reinitialized ? 'Config changed. Reservoir reinitialized at step 0.' : runtimeWarning;
             }
             return;
         }
@@ -957,37 +582,26 @@
         if (type === 'stopped') {
             workerRunning = false;
             runCompleted = true;
-
             if (pendingAutoReinit) {
                 pendingAutoReinit = false;
                 const reinitialized = initSimulator({ silent: true });
-                runtimeWarning = reinitialized
-                    ? 'Configuration changed during run. Reservoir reinitialized at step 0.'
-                    : runtimeWarning;
+                runtimeWarning = reinitialized ? 'Config changed during run. Reinitialized at step 0.' : runtimeWarning;
                 return;
             }
-
             runtimeWarning = message.reason === 'user'
-                ? `Simulation stopped by user after ${Number(message.completedSteps ?? 0)} step(s).`
+                ? `Simulation stopped after ${Number(message.completedSteps ?? 0)} step(s).`
                 : 'No running simulation to stop.';
             updateProfileStats(message.profile, profileStats.renderApplyMs);
             applyHistoryIndex(history.length - 1);
             return;
         }
 
-        if (type === 'warning') {
-            runtimeWarning = String(message.message ?? 'Simulation warning');
-            return;
-        }
-
+        if (type === 'warning') { runtimeWarning = String(message.message ?? 'Simulation warning'); return; }
         if (type === 'error') {
             workerRunning = false;
             console.error('Simulation worker error:', message.message);
             runtimeError = String(message.message ?? 'Simulation error');
-
-            if (pendingAutoReinit) {
-                pendingAutoReinit = false;
-            }
+            if (pendingAutoReinit) pendingAutoReinit = false;
         }
     }
 
@@ -1004,6 +618,8 @@
         };
         simWorker.postMessage({ type: 'init' });
     }
+
+    // ---------- Lazy module loading ----------
 
     async function loadRateChartModule() {
         try {
@@ -1027,31 +643,33 @@
         }
     }
 
+    // ---------- Theme ----------
+
     function toggleTheme() {
         theme = theme === 'dark' ? 'light' : 'dark';
     }
 
+    // ---------- Lifecycle ----------
+
     onMount(() => {
         const savedTheme = localStorage.getItem('ressim-theme');
-        if (savedTheme === 'light' || savedTheme === 'dark') {
-            theme = savedTheme;
-        }
+        if (savedTheme === 'light' || savedTheme === 'dark') theme = savedTheme;
         document.documentElement.setAttribute('data-theme', theme);
-
         setupWorker();
         loadRateChartModule();
-        loadBenchmarkResults();
+        // Auto-select first category and case
+        handleCategoryChange('depletion');
     });
 
     $: if (typeof document !== 'undefined') {
         document.documentElement.setAttribute('data-theme', theme);
     }
-
     $: if (typeof localStorage !== 'undefined') {
         localStorage.setItem('ressim-theme', theme);
     }
 
-    $: if (!ThreeDViewComponent && (gridStateRaw || history.length > 0)) {
+    // Load 3D view when tab is selected or data arrives
+    $: if (activeTab === '3d' && !ThreeDViewComponent) {
         loadThreeDViewModule();
     }
 
@@ -1064,9 +682,10 @@
         }
     });
 
+    // ---------- Simulator init / run ----------
+
     function initSimulator(options: { runAfterInit?: boolean; silent?: boolean } = {}): boolean {
         const { runAfterInit = false, silent = false } = options;
-
         if (!wasmReady || !simWorker) {
             if (!silent) runtimeError = 'WASM not ready yet.';
             return false;
@@ -1079,12 +698,11 @@
             producerI >= 0 && producerI < nx && producerJ >= 0 && producerJ < ny;
 
         if (!validWellLocations) {
-            if (!silent) runtimeError = 'Invalid well location. Ensure i/j are within grid bounds.';
+            if (!silent) runtimeError = 'Invalid well location.';
             return false;
         }
-
         if (hasValidationErrors) {
-            if (!silent) runtimeError = 'Input validation failed. Review highlighted controls.';
+            if (!silent) runtimeError = 'Input validation failed.';
             return false;
         }
 
@@ -1098,17 +716,11 @@
         vizRevision += 1;
 
         const payload = buildCreatePayload();
-        simWorker.postMessage({
-            type: 'create',
-            payload,
-        });
+        simWorker.postMessage({ type: 'create', payload });
         lastCreateSignature = JSON.stringify(payload);
         pendingAutoReinit = false;
 
-        if (runAfterInit) {
-            runSteps();
-        }
-
+        if (runAfterInit) runSteps();
         return true;
     }
 
@@ -1119,142 +731,63 @@
         const permsZ = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermZ)) : layerPermsZ.map(Number);
 
         return {
-            nx: Number(nx),
-            ny: Number(ny),
-            nz: Number(nz),
-            cellDx: Number(cellDx),
-            cellDy: Number(cellDy),
-            cellDz: Number(cellDz),
-            initialPressure: Number(initialPressure),
-            initialSaturation: Number(initialSaturation),
-            mu_w: Number(mu_w),
-            mu_o: Number(mu_o),
-            c_o: Number(c_o),
-            c_w: Number(c_w),
+            nx: Number(nx), ny: Number(ny), nz: Number(nz),
+            cellDx: Number(cellDx), cellDy: Number(cellDy), cellDz: Number(cellDz),
+            initialPressure: Number(initialPressure), initialSaturation: Number(initialSaturation),
+            mu_w: Number(mu_w), mu_o: Number(mu_o),
+            c_o: Number(c_o), c_w: Number(c_w),
             rock_compressibility: Number(rock_compressibility),
             depth_reference: Number(depth_reference),
-            volume_expansion_o: Number(volume_expansion_o),
-            volume_expansion_w: Number(volume_expansion_w),
-            rho_w: Number(rho_w),
-            rho_o: Number(rho_o),
-            s_wc: Number(s_wc),
-            s_or: Number(s_or),
-            n_w: Number(n_w),
-            n_o: Number(n_o),
+            volume_expansion_o: Number(volume_expansion_o), volume_expansion_w: Number(volume_expansion_w),
+            rho_w: Number(rho_w), rho_o: Number(rho_o),
+            s_wc: Number(s_wc), s_or: Number(s_or),
+            n_w: Number(n_w), n_o: Number(n_o),
             max_sat_change_per_step: Number(max_sat_change_per_step),
             max_pressure_change_per_step: Number(max_pressure_change_per_step),
             max_well_rate_change_fraction: Number(max_well_rate_change_fraction),
             capillaryEnabled: Boolean(capillaryEnabled),
-            capillaryPEntry: Number(capillaryPEntry),
-            capillaryLambda: Number(capillaryLambda),
+            capillaryPEntry: Number(capillaryPEntry), capillaryLambda: Number(capillaryLambda),
             gravityEnabled: Boolean(gravityEnabled),
             permMode: useUniformPerm ? 'perLayer' : permMode,
-            minPerm: Number(minPerm),
-            maxPerm: Number(maxPerm),
-            useRandomSeed: Boolean(useRandomSeed),
-            randomSeed: Number(randomSeed),
-            permsX,
-            permsY,
-            permsZ,
-            well_radius: Number(well_radius),
-            well_skin: Number(well_skin),
-            injectorBhp: Number(injectorBhp),
-            producerBhp: Number(producerBhp),
+            minPerm: Number(minPerm), maxPerm: Number(maxPerm),
+            useRandomSeed: Boolean(useRandomSeed), randomSeed: Number(randomSeed),
+            permsX, permsY, permsZ,
+            well_radius: Number(well_radius), well_skin: Number(well_skin),
+            injectorBhp: Number(injectorBhp), producerBhp: Number(producerBhp),
             rateControlledWells: Boolean(rateControlledWells),
-            injectorControlMode,
-            producerControlMode,
+            injectorControlMode, producerControlMode,
             injectorEnabled: Boolean(injectorEnabled),
-            targetInjectorRate: Number(targetInjectorRate),
-            targetProducerRate: Number(targetProducerRate),
-            injectorI: Number(injectorI),
-            injectorJ: Number(injectorJ),
-            producerI: Number(producerI),
-            producerJ: Number(producerJ),
+            targetInjectorRate: Number(targetInjectorRate), targetProducerRate: Number(targetProducerRate),
+            injectorI: Number(injectorI), injectorJ: Number(injectorJ),
+            producerI: Number(producerI), producerJ: Number(producerJ),
         };
     }
 
-    $: if (wasmReady && simWorker) {
+    $: if (wasmReady && simWorker && isCustomMode) {
         const nextSignature = JSON.stringify(buildCreatePayload());
-
         if (lastCreateSignature && nextSignature !== lastCreateSignature) {
-            resetSimulationState({
-                clearErrors: true,
-                clearWarnings: false,
-                resetProfile: true,
-                bumpViz: true,
-            });
-
+            resetSimulationState({ clearErrors: true, clearWarnings: false, resetProfile: true, bumpViz: true });
             if (workerRunning) {
                 pendingAutoReinit = true;
-                runtimeWarning = 'Configuration changed during run. Stopping and reinitializing at step 0…';
+                runtimeWarning = 'Config changed during run. Stopping and reinitializing…';
                 stopRun();
             } else {
                 const reinitialized = initSimulator({ silent: true });
-                runtimeWarning = reinitialized
-                    ? 'Configuration changed. Reservoir reset and reinitialized at step 0.'
-                    : runtimeWarning;
+                runtimeWarning = reinitialized ? 'Config changed. Reservoir reinitialized at step 0.' : runtimeWarning;
             }
         }
     }
 
-    async function loadBenchmarkResults() {
-        try {
-            const artifactUrl = `${import.meta.env.BASE_URL}benchmark-results.json`;
-            const response = await fetch(artifactUrl, { cache: 'no-store' });
-            if (!response.ok) return;
-
-            const artifact = (await response.json()) as BenchmarkArtifact;
-            const normalizeRows = (rows: BenchmarkRow[] | undefined): BenchmarkRow[] => (rows ?? [])
-                .map((row) => ({
-                    name: String(row.name),
-                    pvBtSim: Number(row.pvBtSim),
-                    pvBtRef: Number(row.pvBtRef),
-                    relError: Number(row.relError),
-                    tolerance: Number(row.tolerance),
-                }))
-                .filter((row) =>
-                    row.name.length > 0 &&
-                    Number.isFinite(row.pvBtSim) &&
-                    Number.isFinite(row.pvBtRef) &&
-                    Number.isFinite(row.relError) &&
-                    Number.isFinite(row.tolerance)
-                );
-
-            const normalizedBaseline = normalizeRows(artifact.modes?.baseline ?? artifact.cases);
-            const normalizedRefined = normalizeRows(artifact.modes?.refined);
-
-            if (normalizedBaseline.length > 0) {
-                benchmarkModes = {
-                    baseline: normalizedBaseline,
-                    refined: normalizedRefined.length > 0 ? normalizedRefined : benchmarkModes.refined,
-                };
-                selectedBenchmarkMode = artifact.defaultMode ?? 'baseline';
-                benchmarkSource = artifact.source ? String(artifact.source) : 'artifact';
-                benchmarkGeneratedAt = artifact.generatedAt ? String(artifact.generatedAt) : '';
-            }
-        } catch (error) {
-            console.warn('Failed to load benchmark-results artifact, using fallback values.', error);
-        }
-    }
-
-    function stepOnce() {
-        runSimulationBatch(1, 1);
-    }
-
-    function runSteps() {
-        runSimulationBatch(Number(steps), HISTORY_RECORD_INTERVAL);
-    }
+    function stepOnce() { runSimulationBatch(1, 1); }
+    function runSteps() { runSimulationBatch(Number(steps), HISTORY_RECORD_INTERVAL); }
 
     function runSimulationBatch(batchSteps: number, historyInterval: number) {
-        if (modelNeedsReinit) {
-            initSimulator();
-            return;
-        }
+        if (modelNeedsReinit) { initSimulator(); return; }
         if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
         runtimeError = '';
         runtimeWarning = longRunEstimate
-            ? `Estimated run duration is ${estimatedRunSeconds.toFixed(1)}s. You can stop at any time.`
+            ? `Estimated run: ${estimatedRunSeconds.toFixed(1)}s. You can stop at any time.`
             : runtimeWarning;
         simWorker.postMessage({
             type: 'run',
@@ -1272,35 +805,24 @@
         simWorker.postMessage({ type: 'stop' });
     }
 
+    // ---------- Playback controls ----------
 
-
-    /* Playback controls */
     function play() {
         if (history.length === 0) return;
-        if (playTimer) {
-            clearInterval(playTimer);
-            playTimer = null;
-        }
+        if (playTimer) { clearInterval(playTimer); playTimer = null; }
         playing = true;
         playTimer = setInterval(() => {
             next();
-            if (currentIndex >= history.length - 1) {
-                stopPlaying();
-            }
+            if (currentIndex >= history.length - 1) stopPlaying();
         }, 1000 / playSpeed);
     }
 
     function stopPlaying() {
         playing = false;
-        if (playTimer) {
-            clearInterval(playTimer);
-            playTimer = null;
-        }
+        if (playTimer) { clearInterval(playTimer); playTimer = null; }
     }
 
-    function togglePlay() {
-        if (playing) stopPlaying(); else play();
-    }
+    function togglePlay() { if (playing) stopPlaying(); else play(); }
 
     function next() {
         if (history.length === 0) return;
@@ -1321,120 +843,81 @@
         gridStateRaw = entry.grid;
         wellStateRaw = entry.wells;
         simTime = entry.time;
-        // We don't update rateHistory here, as it's cumulative
     }
 
     $: replayTime = history.length > 0 && currentIndex >= 0 && currentIndex < history.length
         ? history[currentIndex].time
         : null;
 
+    // ---------- Derived series for charts ----------
+
     function computeAveragePressure(grid: Array<{ pressure?: number }>): number {
         if (!Array.isArray(grid) || grid.length === 0) return 0;
-        let sum = 0;
-        let count = 0;
+        let sum = 0, count = 0;
         for (const cell of grid) {
             const value = Number(cell?.pressure);
-            if (Number.isFinite(value)) {
-                sum += value;
-                count += 1;
-            }
+            if (Number.isFinite(value)) { sum += value; count += 1; }
         }
         return count > 0 ? sum / count : 0;
     }
 
-    function computeAverageWaterSaturation(
-        grid: Array<{ sat_water?: number; satWater?: number; sw?: number }>
-    ): number {
+    function computeAverageWaterSaturation(grid: Array<{ sat_water?: number; satWater?: number; sw?: number }>): number {
         if (!Array.isArray(grid) || grid.length === 0) return 0;
-        let sum = 0;
-        let count = 0;
+        let sum = 0, count = 0;
         for (const cell of grid) {
             const value = Number(cell?.sat_water ?? cell?.satWater ?? cell?.sw);
-            if (Number.isFinite(value)) {
-                sum += value;
-                count += 1;
-            }
+            if (Number.isFinite(value)) { sum += value; count += 1; }
         }
         return count > 0 ? sum / count : 0;
     }
 
-    function buildAvgPressureSeries(
-        ratePoints: Array<{ time?: number }>,
-        historyEntries: Array<{ time?: number; grid?: Array<{ pressure?: number }> }>
-    ): Array<number | null> {
+    function buildAvgPressureSeries(ratePoints, historyEntries): Array<number | null> {
         if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
-
         const snapshots = historyEntries
             .filter((entry) => Number.isFinite(Number(entry?.time)) && Array.isArray(entry?.grid))
-            .map((entry) => ({
-                time: Number(entry.time),
-                avgPressure: computeAveragePressure(entry.grid ?? []),
-            }))
+            .map((entry) => ({ time: Number(entry.time), avgPressure: computeAveragePressure(entry.grid ?? []) }))
             .sort((a, b) => a.time - b.time);
-
-        if (snapshots.length === 0) {
-            return ratePoints.map(() => null);
-        }
-
-        let snapIdx = 0;
-        let currentAvg = snapshots[0].avgPressure;
+        if (snapshots.length === 0) return ratePoints.map(() => null);
+        let snapIdx = 0, currentAvg = snapshots[0].avgPressure;
         const aligned = [];
-
         for (const point of ratePoints) {
             const t = Number(point?.time ?? 0);
             while (snapIdx + 1 < snapshots.length && snapshots[snapIdx + 1].time <= t) {
-                snapIdx += 1;
-                currentAvg = snapshots[snapIdx].avgPressure;
+                snapIdx += 1; currentAvg = snapshots[snapIdx].avgPressure;
             }
             aligned.push(currentAvg);
         }
-
         return aligned;
     }
 
     $: avgReservoirPressureSeries = buildAvgPressureSeries(rateHistory, history);
 
-    function buildAvgWaterSaturationSeries(
-        ratePoints: Array<{ time?: number }>,
-        historyEntries: Array<{ time?: number; grid?: Array<{ sat_water?: number; satWater?: number; sw?: number }> }>
-    ): Array<number | null> {
+    function buildAvgWaterSaturationSeries(ratePoints, historyEntries): Array<number | null> {
         if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
-
         const snapshots = historyEntries
             .filter((entry) => Number.isFinite(Number(entry?.time)) && Array.isArray(entry?.grid))
-            .map((entry) => ({
-                time: Number(entry.time),
-                avgSw: computeAverageWaterSaturation(entry.grid ?? []),
-            }))
+            .map((entry) => ({ time: Number(entry.time), avgSw: computeAverageWaterSaturation(entry.grid ?? []) }))
             .sort((a, b) => a.time - b.time);
-
-        if (snapshots.length === 0) {
-            return ratePoints.map(() => null);
-        }
-
-        let snapIdx = 0;
-        let currentAvg = snapshots[0].avgSw;
+        if (snapshots.length === 0) return ratePoints.map(() => null);
+        let snapIdx = 0, currentAvg = snapshots[0].avgSw;
         const aligned = [];
-
         for (const point of ratePoints) {
             const t = Number(point?.time ?? 0);
             while (snapIdx + 1 < snapshots.length && snapshots[snapIdx + 1].time <= t) {
-                snapIdx += 1;
-                currentAvg = snapshots[snapIdx].avgSw;
+                snapIdx += 1; currentAvg = snapshots[snapIdx].avgSw;
             }
             aligned.push(currentAvg);
         }
-
         return aligned;
     }
 
     $: avgWaterSaturationSeries = buildAvgWaterSaturationSeries(rateHistory, history);
-
-    
 </script>
 
 <main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
     <div class="mx-auto max-w-[1600px] space-y-4 p-4 lg:p-6">
+
+        <!-- Hidden component for analytical calculations -->
         <FractionalFlow
             rockProps={{ s_wc, s_or, n_w, n_o }}
             fluidProps={{ mu_w, mu_o }}
@@ -1448,146 +931,63 @@
             on:analyticalMeta={(e) => analyticalMeta = e.detail}
         />
 
+        <!-- Header -->
         <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold lg:text-3xl">Simplified Reservoir Simulation Model</h1>
                 <p class="text-sm opacity-80">Interactive two-phase simulation with 3D visualisation fully in browser.</p>
             </div>
             <button class="btn btn-sm btn-outline" on:click={toggleTheme}>
-                {theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+                {theme === 'dark' ? '☀ Light' : '🌙 Dark'}
             </button>
         </header>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-12">
-            <aside class="space-y-3 md:col-span-3 md:max-w-[280px]">
-                <div class="card border border-base-300 bg-base-100 shadow-sm">
-                    <div class="card-body p-3">
-                        <label class="form-control">
-                            <span class="label-text text-xs">Scenario Preset</span>
-                            <select class="select select-bordered select-sm w-full" bind:value={scenarioPreset} on:change={applyScenarioPreset}>
-                                {#each scenarioPresetOptions as option}
-                                    <option value={option.value}>{option.label}</option>
-                                {/each}
-                            </select>
-                        </label>
-                    </div>
-                </div>
-                <DynamicControlsPanel
-                    bind:steps
-                    {wasmReady}
-                    {workerRunning}
-                    {runCompleted}
-                    {modelReinitNotice}
-                    {simTime}
-                    {estimatedRunSeconds}
-                    {longRunEstimate}
-                    canStop={workerRunning}
-                    hasValidationErrors={hasValidationErrors}
-                    historyLength={history.length}
-                    {profileStats}
-                    {solverWarning}
-                    onRunSteps={runSteps}
-                    onStepOnce={stepOnce}
-                    onInitSimulator={initSimulator}
-                    onStopRun={stopRun}
-                />
-                <StaticPropertiesPanel
-                    bind:nx
-                    bind:ny
-                    bind:nz
-                    bind:cellDx
-                    bind:cellDy
-                    bind:cellDz
-                />
+        <!-- Top Bar: category buttons + case selector -->
+        <TopBar
+            {activeCategory}
+            {activeCase}
+            {isCustomMode}
+            onCategoryChange={handleCategoryChange}
+            onCaseChange={handleCaseChange}
+            onCustomMode={handleCustomMode}
+        />
 
-                <ReservoirPropertiesPanel
-                    bind:initialPressure
-                    bind:initialSaturation
-                    bind:mu_w
-                    bind:mu_o
-                    bind:c_o
-                    bind:c_w
-                    bind:rho_w
-                    bind:rho_o
-                    bind:rock_compressibility
-                    bind:depth_reference
-                    bind:volume_expansion_o
-                    bind:volume_expansion_w
-                    bind:gravityEnabled
-                    bind:permMode
-                    bind:uniformPermX
-                    bind:uniformPermY
-                    bind:uniformPermZ
-                    bind:useRandomSeed
-                    bind:randomSeed
-                    bind:minPerm
-                    bind:maxPerm
-                    bind:nz
-                    bind:layerPermsX
-                    bind:layerPermsY
-                    bind:layerPermsZ
-                    fieldErrors={validationErrors}
-                />
+        <!-- Run Controls -->
+        <RunControls
+            {wasmReady}
+            {workerRunning}
+            {runCompleted}
+            {simTime}
+            historyLength={history.length}
+            {estimatedRunSeconds}
+            {longRunEstimate}
+            canStop={workerRunning}
+            hasValidationErrors={hasValidationErrors}
+            {solverWarning}
+            modelReinitNotice={modelReinitNotice}
+            bind:steps
+            {profileStats}
+            onRunSteps={runSteps}
+            onStepOnce={stepOnce}
+            onInitSimulator={initSimulator}
+            onStopRun={stopRun}
+        />
 
-                <RelativeCapillaryPanel
-                    bind:s_wc
-                    bind:s_or
-                    bind:n_w
-                    bind:n_o
-                    bind:capillaryEnabled
-                    bind:capillaryPEntry
-                    bind:capillaryLambda
-                />
+        <!-- Error / Warning banners -->
+        {#if runtimeWarning}
+            <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{runtimeWarning}</div>
+        {/if}
+        {#if runtimeError}
+            <div class="rounded-md border border-error bg-base-100 p-2 text-xs text-error">{runtimeError}</div>
+        {/if}
+        {#if preRunLoading}
+            <div class="text-xs opacity-60 text-center">Loading pre-run case data…</div>
+        {/if}
 
-                <WellPropertiesPanel
-                    bind:well_radius
-                    bind:well_skin
-                    bind:nx
-                    bind:ny
-                    bind:injectorEnabled
-                    bind:injectorControlMode
-                    bind:producerControlMode
-                    bind:injectorBhp
-                    bind:producerBhp
-                    bind:targetInjectorRate
-                    bind:targetProducerRate
-                    bind:injectorI
-                    bind:injectorJ
-                    bind:producerI
-                    bind:producerJ
-                    fieldErrors={validationErrors}
-                />
-
-                <TimestepControlsPanel
-                    bind:delta_t_days
-                    bind:max_sat_change_per_step
-                    bind:max_pressure_change_per_step
-                    bind:max_well_rate_change_fraction
-                    fieldErrors={validationErrors}
-                />
-
-                {#if validationWarnings.length > 0}
-                    <div class="card border border-warning bg-base-100 shadow-sm">
-                        <div class="card-body p-3 text-xs">
-                            {#each validationWarnings as warning}
-                                <div class="text-warning">⚠ {warning}</div>
-                            {/each}
-                        </div>
-                    </div>
-                {/if}
-
-                {#if runtimeWarning}
-                    <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{runtimeWarning}</div>
-                {/if}
-                {#if runtimeError}
-                    <div class="rounded-md border border-error bg-base-100 p-2 text-xs text-error">{runtimeError}</div>
-                {/if}
-
-                
-
-            </aside>
-
-            <section class="space-y-3 md:col-span-9">
+        <!-- Tab Container -->
+        <TabContainer {activeTab} onTabChange={handleTabChange}>
+            <!-- Charts Tab -->
+            <div slot="charts" class="space-y-3">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if RateChartComponent}
@@ -1607,15 +1007,37 @@
                     </div>
                 </div>
 
+                <SwProfileChart
+                    gridState={gridStateRaw ?? []}
+                    {nx} {ny} {nz}
+                    {cellDx} {cellDy} {cellDz}
+                    simTime={simTime}
+                    producerJ={producerJ}
+                    {initialSaturation}
+                    reservoirPorosity={reservoirPorosity}
+                    injectionRate={latestInjectionRate}
+                    scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
+                    rockProps={{ s_wc, s_or, n_w, n_o }}
+                    fluidProps={{ mu_w, mu_o }}
+                />
+
+                {#if analyticalMeta.mode === 'depletion'}
+                    <div class="rounded-md border border-base-300 bg-base-100 p-3 text-xs">
+                        <div class="font-semibold">Depletion Analytical Mode</div>
+                        <div class="opacity-80">Dietz shape factor: {analyticalMeta.shapeFactor ?? 'n/a'} ({analyticalMeta.shapeLabel || 'unspecified location'})</div>
+                    </div>
+                {/if}
+            </div>
+
+            <!-- 3D Visualization Tab -->
+            <div slot="3d" class="space-y-3">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if ThreeDViewComponent}
                             {#key `${nx}-${ny}-${nz}-${vizRevision}`}
                                 <svelte:component
                                     this={ThreeDViewComponent}
-                                    nx={nx}
-                                    ny={ny}
-                                    nz={nz}
+                                    nx={nx} ny={ny} nz={nz}
                                     {theme}
                                     gridState={gridStateRaw}
                                     showProperty={showProperty}
@@ -1631,7 +1053,11 @@
                             {/key}
                         {:else}
                             <div class="flex items-center justify-center rounded border border-base-300 bg-base-200" style="height: clamp(240px, 35vh, 420px);">
-                                <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
+                                {#if loadingThreeDView}
+                                    <span class="loading loading-spinner loading-md"></span>
+                                {:else}
+                                    <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
+                                {/if}
                             </div>
                         {/if}
 
@@ -1657,57 +1083,57 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <SwProfileChart
-                    gridState={gridStateRaw ?? []}
-                    {nx}
-                    {ny}
-                    {nz}
-                    {cellDx}
-                    {cellDy}
-                    {cellDz}
-                    simTime={simTime}
-                    producerJ={producerJ}
-                    {initialSaturation}
-                    reservoirPorosity={reservoirPorosity}
-                    injectionRate={latestInjectionRate}
-                    scenarioMode={injectorEnabled ? 'waterflood' : 'depletion'}
-                    rockProps={{ s_wc, s_or, n_w, n_o }}
-                    fluidProps={{ mu_w, mu_o }}
+            <!-- Inputs Tab -->
+            <div slot="inputs">
+                <InputsTab
+                    bind:nx bind:ny bind:nz
+                    bind:cellDx bind:cellDy bind:cellDz
+                    bind:initialPressure bind:initialSaturation
+                    bind:mu_w bind:mu_o bind:c_o bind:c_w
+                    bind:rho_w bind:rho_o
+                    bind:rock_compressibility bind:depth_reference
+                    bind:volume_expansion_o bind:volume_expansion_w
+                    bind:gravityEnabled
+                    bind:permMode
+                    bind:uniformPermX bind:uniformPermY bind:uniformPermZ
+                    bind:useRandomSeed bind:randomSeed
+                    bind:minPerm bind:maxPerm
+                    bind:layerPermsX bind:layerPermsY bind:layerPermsZ
+                    bind:s_wc bind:s_or bind:n_w bind:n_o
+                    bind:capillaryEnabled bind:capillaryPEntry bind:capillaryLambda
+                    bind:well_radius bind:well_skin
+                    bind:injectorEnabled
+                    bind:injectorControlMode bind:producerControlMode
+                    bind:injectorBhp bind:producerBhp
+                    bind:targetInjectorRate bind:targetProducerRate
+                    bind:injectorI bind:injectorJ bind:producerI bind:producerJ
+                    bind:delta_t_days
+                    bind:max_sat_change_per_step
+                    bind:max_pressure_change_per_step
+                    bind:max_well_rate_change_fraction
+                    {validationErrors}
+                    {validationWarnings}
+                    readOnly={!isCustomMode && activeCase !== ''}
                 />
+            </div>
+        </TabContainer>
 
-                {#if analyticalMeta.mode === 'depletion'}
-                    <div class="rounded-md border border-base-300 bg-base-100 p-3 text-xs">
-                        <div class="font-semibold">Depletion Analytical Mode</div>
-                        <div class="opacity-80">Dietz shape factor: {analyticalMeta.shapeFactor ?? 'n/a'} ({analyticalMeta.shapeLabel || 'unspecified location'})</div>
+        <!-- Debug State -->
+        {#if showDebugState}
+            <div class="card border border-base-300 bg-base-100 shadow-sm">
+                <div class="card-body grid gap-4 p-4 lg:grid-cols-2">
+                    <div>
+                        <h4 class="mb-2 text-sm font-semibold">Grid State (current)</h4>
+                        <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(gridStateRaw, null, 2)}</pre>
                     </div>
-                {/if}
-
-                <!-- <BenchmarkResultsCard
-                    {benchmarkSource}
-                    {benchmarkGeneratedAt}
-                    {selectedBenchmarkMode}
-                    {benchmarkModeLabel}
-                    {benchmarkRowsWithStatus}
-                    {allBenchmarksPass}
-                    onSelectMode={(mode) => selectedBenchmarkMode = mode}
-                /> -->
-
-                {#if showDebugState}
-                    <div class="card border border-base-300 bg-base-100 shadow-sm">
-                        <div class="card-body grid gap-4 p-4 lg:grid-cols-2">
-                            <div>
-                                <h4 class="mb-2 text-sm font-semibold">Grid State (current)</h4>
-                                <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(gridStateRaw, null, 2)}</pre>
-                            </div>
-                            <div>
-                                <h4 class="mb-2 text-sm font-semibold">Well State (current)</h4>
-                                <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(wellStateRaw, null, 2)}</pre>
-                            </div>
-                        </div>
+                    <div>
+                        <h4 class="mb-2 text-sm font-semibold">Well State (current)</h4>
+                        <pre class="max-h-[420px] overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(wellStateRaw, null, 2)}</pre>
                     </div>
-                {/if}
-            </section>
-        </div>
+                </div>
+            </div>
+        {/if}
     </div>
 </main>

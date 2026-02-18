@@ -7,6 +7,7 @@
     "predev": "npm run build:wasm",
     "dev": "vite",
     "bench:export": "node scripts/export-benchmarks.mjs",
+    "cases:export": "node scripts/export-cases.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore"
