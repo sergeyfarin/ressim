@@ -1,12 +1,23 @@
 <script lang="ts">
-  export let permMode = 'default';
-  export let useRandomSeed = true;
-  export let randomSeed = 12345;
-  export let minPerm = 50;
-  export let maxPerm = 200;
-  export let layerPermsXStr = '';
-  export let layerPermsYStr = '';
-  export let layerPermsZStr = '';
+  let {
+    permMode = $bindable('default'),
+    useRandomSeed = $bindable(true),
+    randomSeed = $bindable(12345),
+    minPerm = $bindable(50),
+    maxPerm = $bindable(200),
+    layerPermsXStr = $bindable(''),
+    layerPermsYStr = $bindable(''),
+    layerPermsZStr = $bindable(''),
+  }: {
+    permMode?: string;
+    useRandomSeed?: boolean;
+    randomSeed?: number;
+    minPerm?: number;
+    maxPerm?: number;
+    layerPermsXStr?: string;
+    layerPermsYStr?: string;
+    layerPermsZStr?: string;
+  } = $props();
 </script>
 
 <section class="card border border-base-300 bg-base-100 shadow-sm">

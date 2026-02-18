@@ -11,16 +11,26 @@
     improvementVsBaselinePp: number | null;
   };
 
-  export let benchmarkSource = 'fallback';
-  export let benchmarkGeneratedAt = '';
-  export let selectedBenchmarkMode: BenchmarkMode = 'baseline';
-  export let benchmarkModeLabel: Record<BenchmarkMode, string> = {
-    baseline: 'Baseline',
-    refined: 'Refined',
-  };
-  export let benchmarkRowsWithStatus: BenchmarkRowWithStatus[] = [];
-  export let allBenchmarksPass = false;
-  export let onSelectMode: (mode: BenchmarkMode) => void;
+  let {
+    benchmarkSource = 'fallback',
+    benchmarkGeneratedAt = '',
+    selectedBenchmarkMode = 'baseline',
+    benchmarkModeLabel = {
+      baseline: 'Baseline',
+      refined: 'Refined',
+    },
+    benchmarkRowsWithStatus = [],
+    allBenchmarksPass = false,
+    onSelectMode = () => {},
+  }: {
+    benchmarkSource?: string;
+    benchmarkGeneratedAt?: string;
+    selectedBenchmarkMode?: BenchmarkMode;
+    benchmarkModeLabel?: Record<BenchmarkMode, string>;
+    benchmarkRowsWithStatus?: BenchmarkRowWithStatus[];
+    allBenchmarksPass?: boolean;
+    onSelectMode?: (mode: BenchmarkMode) => void;
+  } = $props();
 </script>
 
 <div class="card border border-base-300 bg-base-100 shadow-sm">
@@ -30,10 +40,10 @@
     <div class="text-xs opacity-70">Data Source: {benchmarkSource}{benchmarkGeneratedAt ? `, Generated: ${benchmarkGeneratedAt}` : ''}</div>
 
     <div class="join my-2">
-      <button class="btn btn-sm join-item" class:btn-active={selectedBenchmarkMode === 'baseline'} on:click={() => onSelectMode('baseline')}>
+      <button class="btn btn-sm join-item" class:btn-active={selectedBenchmarkMode === 'baseline'} onclick={() => onSelectMode('baseline')}>
         Baseline
       </button>
-      <button class="btn btn-sm join-item" class:btn-active={selectedBenchmarkMode === 'refined'} on:click={() => onSelectMode('refined')}>
+      <button class="btn btn-sm join-item" class:btn-active={selectedBenchmarkMode === 'refined'} onclick={() => onSelectMode('refined')}>
         Refined
       </button>
     </div>

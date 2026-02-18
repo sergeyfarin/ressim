@@ -1,42 +1,69 @@
 <script lang="ts">
-  export let initialPressure = 300;
-  export let initialSaturation = 0.2;
-  export let mu_w = 0.5;
-  export let mu_o = 1.0;
-  export let c_o = 1e-5;
-  export let c_w = 3e-6;
-  export let rho_w = 1000;
-  export let rho_o = 800;
-  export let rock_compressibility = 1e-6;
-  export let depth_reference = 0;
-  export let volume_expansion_o = 1;
-  export let volume_expansion_w = 1;
-  export let gravityEnabled = false;
+  let {
+    initialPressure = $bindable(300),
+    initialSaturation = $bindable(0.2),
+    mu_w = $bindable(0.5),
+    mu_o = $bindable(1.0),
+    c_o = $bindable(1e-5),
+    c_w = $bindable(3e-6),
+    rho_w = $bindable(1000),
+    rho_o = $bindable(800),
+    rock_compressibility = $bindable(1e-6),
+    depth_reference = $bindable(0),
+    volume_expansion_o = $bindable(1),
+    volume_expansion_w = $bindable(1),
+    gravityEnabled = $bindable(false),
+    permMode = $bindable<'uniform' | 'random' | 'perLayer'>('uniform'),
+    uniformPermX = $bindable(100),
+    uniformPermY = $bindable(100),
+    uniformPermZ = $bindable(10),
+    minPerm = $bindable(50),
+    maxPerm = $bindable(200),
+    useRandomSeed = $bindable(true),
+    randomSeed = $bindable(12345),
+    nz = $bindable(10),
+    layerPermsX = $bindable<number[]>([]),
+    layerPermsY = $bindable<number[]>([]),
+    layerPermsZ = $bindable<number[]>([]),
+    fieldErrors = {},
+  }: {
+    initialPressure?: number;
+    initialSaturation?: number;
+    mu_w?: number;
+    mu_o?: number;
+    c_o?: number;
+    c_w?: number;
+    rho_w?: number;
+    rho_o?: number;
+    rock_compressibility?: number;
+    depth_reference?: number;
+    volume_expansion_o?: number;
+    volume_expansion_w?: number;
+    gravityEnabled?: boolean;
+    permMode?: 'uniform' | 'random' | 'perLayer';
+    uniformPermX?: number;
+    uniformPermY?: number;
+    uniformPermZ?: number;
+    minPerm?: number;
+    maxPerm?: number;
+    useRandomSeed?: boolean;
+    randomSeed?: number;
+    nz?: number;
+    layerPermsX?: number[];
+    layerPermsY?: number[];
+    layerPermsZ?: number[];
+    fieldErrors?: Record<string, string>;
+  } = $props();
 
-  export let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
-  export let uniformPermX = 100;
-  export let uniformPermY = 100;
-  export let uniformPermZ = 10;
-
-  export let minPerm = 50;
-  export let maxPerm = 200;
-  export let useRandomSeed = true;
-  export let randomSeed = 12345;
-
-  export let nz = 10;
-  export let layerPermsX: number[] = [];
-  export let layerPermsY: number[] = [];
-  export let layerPermsZ: number[] = [];
-  export let fieldErrors: Record<string, string> = {};
-
-  $: permSummary =
+  const permSummary = $derived(
     permMode === 'uniform'
       ? `Uniform ${uniformPermX}/${uniformPermY}/${uniformPermZ} mD`
       : permMode === 'random'
         ? `Random ${minPerm}-${maxPerm} mD`
-        : `Per Layer (${nz} layers)`;
-  $: hasError = Object.keys(fieldErrors).some((key) => key.includes('perm') || key.includes('saturation') || key.includes('initial'));
-  $: groupSummary = `P=${initialPressure.toFixed(0)} bar · Sw=${initialSaturation.toFixed(2)} · μw/μo=${mu_w.toFixed(2)}/${mu_o.toFixed(2)} · ${permSummary}`;
+        : `Per Layer (${nz} layers)`
+  );
+  const hasError = $derived(Object.keys(fieldErrors).some((key) => key.includes('perm') || key.includes('saturation') || key.includes('initial')));
+  const groupSummary = $derived(`P=${initialPressure.toFixed(0)} bar · Sw=${initialSaturation.toFixed(2)} · μw/μo=${mu_w.toFixed(2)}/${mu_o.toFixed(2)} · ${permSummary}`);
 </script>
 
 <details class="rounded-lg border bg-base-100 shadow-sm" class:border-error={hasError} class:border-base-300={!hasError}>

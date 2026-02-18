@@ -9,8 +9,23 @@
  * and the export-cases script.
  */
 
+export type CaseParams = Record<string, any>;
+
+export type CaseEntry = {
+    key: string;
+    label: string;
+    description: string;
+    params: CaseParams;
+};
+
+export type CaseCategory = {
+    label: string;
+    description: string;
+    cases: CaseEntry[];
+};
+
 // Default fluid / rock properties shared across all presets
-const DEFAULTS = {
+const DEFAULTS: CaseParams = {
     mu_w: 0.5,
     mu_o: 1.0,
     c_o: 1e-5,
@@ -39,18 +54,17 @@ const DEFAULTS = {
  * Merge a case's sparse params with defaults, and calculate
  * derived well positions if not specified.
  */
-export function resolveParams(sparse) {
-    const merged = { ...DEFAULTS, ...sparse };
+export function resolveParams(sparse: CaseParams): CaseParams {
+    const merged: CaseParams = { ...DEFAULTS, ...sparse };
     // Default well positions if not specified
     if (merged.injectorI === undefined) merged.injectorI = 0;
     if (merged.injectorJ === undefined) merged.injectorJ = 0;
-    if (merged.producerI === undefined) merged.producerI = merged.nx - 1;
+    if (merged.producerI === undefined) merged.producerI = Number(merged.nx ?? 1) - 1;
     if (merged.producerJ === undefined) merged.producerJ = 0;
     return merged;
 }
 
-/** @type {Record<string, { label: string, description: string, cases: Array<{ key: string, label: string, description: string, params: Record<string, any> }> }>} */
-export const caseCatalog = {
+export const caseCatalog: Record<string, CaseCategory> = {
     depletion: {
         label: 'Depletion vs. Analytical',
         description: 'Primary depletion with analytical comparison (Dietz shape factor)',
@@ -291,7 +305,7 @@ export const caseCatalog = {
 export const categoryKeys = Object.keys(caseCatalog);
 
 /** Flat lookup: key → { categoryKey, case } */
-export function findCaseByKey(key) {
+export function findCaseByKey(key: string): { categoryKey: string; case: CaseEntry } | null {
     for (const [catKey, cat] of Object.entries(caseCatalog)) {
         const found = cat.cases.find((c) => c.key === key);
         if (found) return { categoryKey: catKey, case: found };

@@ -1,23 +1,44 @@
 <script lang="ts">
-  export let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
-  export let legendRangeMode: 'fixed' | 'percentile' = 'percentile';
-  export let legendPercentileLow = 5;
-  export let legendPercentileHigh = 95;
-  export let legendFixedMin = 0;
-  export let legendFixedMax = 1;
-  export let historyLength = 0;
-  export let currentIndex = -1;
-  export let replayTime: number | null = null;
-  export let playing = false;
-  export let playSpeed = 2;
-  export let showDebugState = false;
+  type ShowProperty = 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity';
 
-  export let onApplyHistoryIndex: (index: number) => void;
-  export let onPrev: () => void;
-  export let onNext: () => void;
-  export let onTogglePlay: () => void;
+  let {
+    showProperty = $bindable<ShowProperty>('pressure'),
+    legendRangeMode = $bindable<'fixed' | 'percentile'>('percentile'),
+    legendPercentileLow = $bindable(5),
+    legendPercentileHigh = $bindable(95),
+    legendFixedMin = $bindable(0),
+    legendFixedMax = $bindable(1),
+    historyLength = 0,
+    currentIndex = $bindable(-1),
+    replayTime = null,
+    playing = $bindable(false),
+    playSpeed = $bindable(2),
+    showDebugState = $bindable(false),
+    onApplyHistoryIndex = () => {},
+    onPrev = () => {},
+    onNext = () => {},
+    onTogglePlay = () => {},
+  }: {
+    showProperty?: ShowProperty;
+    legendRangeMode?: 'fixed' | 'percentile';
+    legendPercentileLow?: number;
+    legendPercentileHigh?: number;
+    legendFixedMin?: number;
+    legendFixedMax?: number;
+    historyLength?: number;
+    currentIndex?: number;
+    replayTime?: number | null;
+    playing?: boolean;
+    playSpeed?: number;
+    showDebugState?: boolean;
+    onApplyHistoryIndex?: (index: number) => void;
+    onPrev?: () => void;
+    onNext?: () => void;
+    onTogglePlay?: () => void;
+  } = $props();
 
-  $: if (legendRangeMode === 'fixed') {
+  $effect(() => {
+    if (legendRangeMode === 'fixed') {
     const minValue = Number(legendFixedMin);
     const maxValue = Number(legendFixedMax);
 
@@ -33,7 +54,7 @@
       legendFixedMin = legendFixedMax;
       legendFixedMax = tmp;
     }
-  } else {
+    } else {
     const low = Number(legendPercentileLow);
     const high = Number(legendPercentileHigh);
     legendPercentileLow = Number.isFinite(low) ? Math.max(0, Math.min(99, Math.round(low))) : 5;
@@ -41,7 +62,8 @@
     if (legendPercentileLow >= legendPercentileHigh) {
       legendPercentileHigh = Math.min(100, legendPercentileLow + 1);
     }
-  }
+    }
+  });
 
   function applySliderValue(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
@@ -49,7 +71,7 @@
     onApplyHistoryIndex(currentIndex);
   }
 
-  $: groupSummary = `${showProperty.replace('_', ' ')} · ${legendRangeMode} · step ${Math.max(0, currentIndex)}`;
+  const groupSummary = $derived(`${showProperty.replace('_', ' ')} · ${legendRangeMode} · step ${Math.max(0, currentIndex)}`);
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open>
@@ -119,8 +141,8 @@
         min="0"
         max={Math.max(0, historyLength - 1)}
         bind:value={currentIndex}
-        on:input={applySliderValue}
-        on:change={applySliderValue}
+        oninput={applySliderValue}
+        onchange={applySliderValue}
       />
       <div class="text-xs opacity-80">Step: {currentIndex} / {Math.max(0, historyLength - 1)}</div>
       {#if replayTime !== null}
@@ -129,9 +151,9 @@
     </div>
 
     <div class="grid grid-cols-3 gap-2">
-      <button type="button" class="btn btn-xs" on:click={onPrev} disabled={historyLength === 0}>Prev</button>
-      <button type="button" class="btn btn-xs" on:click={onTogglePlay} disabled={historyLength === 0}>{playing ? 'Stop' : 'Play'}</button>
-      <button type="button" class="btn btn-xs" on:click={onNext} disabled={historyLength === 0}>Next</button>
+      <button type="button" class="btn btn-xs" onclick={onPrev} disabled={historyLength === 0}>Prev</button>
+      <button type="button" class="btn btn-xs" onclick={onTogglePlay} disabled={historyLength === 0}>{playing ? 'Stop' : 'Play'}</button>
+      <button type="button" class="btn btn-xs" onclick={onNext} disabled={historyLength === 0}>Next</button>
     </div>
     <label class="form-control">
       <span class="label-text text-xs">Playback Speed</span>

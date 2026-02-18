@@ -1,13 +1,22 @@
 <script lang="ts">
-  export let analyticalSolutionMode: 'waterflood' | 'depletion' = 'waterflood';
-  export let analyticalDietzShapeFactor = 21.2;
-  export let analyticalDepletionTauScale = 0.25;
-  export let analyticalDepletionRateScale = 1.0;
+  let {
+    analyticalSolutionMode = $bindable<'waterflood' | 'depletion'>('waterflood'),
+    analyticalDietzShapeFactor = $bindable(21.2),
+    analyticalDepletionTauScale = $bindable(0.25),
+    analyticalDepletionRateScale = $bindable(1.0),
+    }: {
+      analyticalSolutionMode?: 'waterflood' | 'depletion';
+      analyticalDietzShapeFactor?: number;
+      analyticalDepletionTauScale?: number;
+      analyticalDepletionRateScale?: number;
+  } = $props();
 
-  $: modeLabel = analyticalSolutionMode === 'depletion' ? 'Depletion' : 'Buckley-Leverett';
-  $: summary = analyticalSolutionMode === 'depletion'
-    ? `Mode=${modeLabel} · Shape=${analyticalDietzShapeFactor.toFixed(2)} · τ-scale=${analyticalDepletionTauScale.toFixed(3)}`
-    : `Mode=${modeLabel}`;
+  const modeLabel = $derived(analyticalSolutionMode === 'depletion' ? 'Depletion' : 'Buckley-Leverett');
+  const summary = $derived(
+    analyticalSolutionMode === 'depletion'
+      ? `Mode=${modeLabel} · Shape=${analyticalDietzShapeFactor.toFixed(2)} · τ-scale=${analyticalDepletionTauScale.toFixed(3)}`
+      : `Mode=${modeLabel}`
+  );
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">

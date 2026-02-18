@@ -8,7 +8,7 @@
     import InputsTab from './lib/ui/InputsTab.svelte';
     import VisualizationReplayPanel from './lib/ui/VisualizationReplayPanel.svelte';
     import SwProfileChart from './lib/SwProfileChart.svelte';
-    import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog.js';
+    import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog';
 
     let wasmReady = false;
     let simWorker: Worker | null = null;
@@ -623,7 +623,7 @@
     }
 
     function setupWorker() {
-        simWorker = new Worker(new URL('./lib/sim.worker.js', import.meta.url), { type: 'module' });
+        simWorker = new Worker(new URL('./lib/sim.worker.ts', import.meta.url), { type: 'module' });
         simWorker.onmessage = handleWorkerMessage;
         simWorker.onerror = (event) => {
             workerRunning = false;
@@ -981,7 +981,7 @@
                 <h1 class="text-2xl font-bold lg:text-3xl">Simplified Reservoir Simulation Model</h1>
                 <p class="text-sm opacity-80">Interactive two-phase simulation with 3D visualisation fully in browser.</p>
             </div>
-            <button class="btn btn-sm btn-outline" on:click={toggleTheme}>
+            <button class="btn btn-sm btn-outline" onclick={toggleTheme}>
                 {theme === 'dark' ? '☀ Light' : '🌙 Dark'}
             </button>
         </header>
@@ -1029,8 +1029,8 @@
 
         <!-- Tab Container -->
         <TabContainer {activeTab} onTabChange={handleTabChange}>
-            <!-- Charts Tab -->
-            <div slot="charts" class="space-y-3">
+            {#snippet charts()}
+            <div class="space-y-3">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if RateChartComponent}
@@ -1071,9 +1071,10 @@
                     </div>
                 {/if}
             </div>
+            {/snippet}
 
-            <!-- 3D Visualization Tab -->
-            <div slot="3d" class="space-y-3">
+            {#snippet threeD()}
+            <div class="space-y-3">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if ThreeDViewComponent}
@@ -1099,7 +1100,7 @@
                                 {#if loadingThreeDView}
                                     <span class="loading loading-spinner loading-md"></span>
                                 {:else}
-                                    <button class="btn btn-sm" on:click={loadThreeDViewModule}>Load 3D view</button>
+                                    <button class="btn btn-sm" onclick={loadThreeDViewModule}>Load 3D view</button>
                                 {/if}
                             </div>
                         {/if}
@@ -1127,9 +1128,10 @@
                     </div>
                 </div>
             </div>
+            {/snippet}
 
-            <!-- Inputs Tab -->
-            <div slot="inputs">
+            {#snippet inputs()}
+            <div>
                 <InputsTab
                     bind:nx bind:ny bind:nz
                     bind:cellDx bind:cellDy bind:cellDz
@@ -1165,6 +1167,7 @@
                     readOnly={!isCustomMode && activeCase !== ''}
                 />
             </div>
+            {/snippet}
         </TabContainer>
 
         <!-- Debug State -->

@@ -1,30 +1,48 @@
 <script lang="ts">
-  export let well_radius = 0.1;
-  export let well_skin = 0;
-  export let nx = 15;
-  export let ny = 10;
-  export let injectorEnabled = true;
-  export let injectorControlMode: 'rate' | 'pressure' = 'pressure';
-  export let producerControlMode: 'rate' | 'pressure' = 'pressure';
-  export let injectorBhp = 400;
-  export let producerBhp = 100;
-  export let targetInjectorRate = 350;
-  export let targetProducerRate = 350;
-  export let fieldErrors: Record<string, string> = {};
-
-  export let injectorI = 0;
-  export let injectorJ = 0;
-  export let producerI = 14;
-  export let producerJ = 0;
+  let {
+    well_radius = $bindable(0.1),
+    well_skin = $bindable(0),
+    nx = $bindable(15),
+    ny = $bindable(10),
+    injectorEnabled = $bindable(true),
+    injectorControlMode = $bindable<'rate' | 'pressure'>('pressure'),
+    producerControlMode = $bindable<'rate' | 'pressure'>('pressure'),
+    injectorBhp = $bindable(400),
+    producerBhp = $bindable(100),
+    targetInjectorRate = $bindable(350),
+    targetProducerRate = $bindable(350),
+    fieldErrors = {},
+    injectorI = $bindable(0),
+    injectorJ = $bindable(0),
+    producerI = $bindable(14),
+    producerJ = $bindable(0),
+  }: {
+    well_radius?: number;
+    well_skin?: number;
+    nx?: number;
+    ny?: number;
+    injectorEnabled?: boolean;
+    injectorControlMode?: 'rate' | 'pressure';
+    producerControlMode?: 'rate' | 'pressure';
+    injectorBhp?: number;
+    producerBhp?: number;
+    targetInjectorRate?: number;
+    targetProducerRate?: number;
+    fieldErrors?: Record<string, string>;
+    injectorI?: number;
+    injectorJ?: number;
+    producerI?: number;
+    producerJ?: number;
+  } = $props();
 
   function inBounds(i: number, j: number) {
     return i >= 0 && i < nx && j >= 0 && j < ny;
   }
 
-  $: injectorValid = inBounds(injectorI, injectorJ);
-  $: producerValid = inBounds(producerI, producerJ);
-  $: hasError = injectorValid === false || producerValid === false || Object.keys(fieldErrors).some((key) => key.includes('well') || key.includes('injector') || key.includes('producer'));
-  $: groupSummary = `Inj(${injectorI},${injectorJ}) ${injectorEnabled ? 'on' : 'off'} · Prod(${producerI},${producerJ}) · r=${well_radius.toFixed(2)} m`;
+  const injectorValid = $derived(inBounds(injectorI, injectorJ));
+  const producerValid = $derived(inBounds(producerI, producerJ));
+  const hasError = $derived(injectorValid === false || producerValid === false || Object.keys(fieldErrors).some((key) => key.includes('well') || key.includes('injector') || key.includes('producer')));
+  const groupSummary = $derived(`Inj(${injectorI},${injectorJ}) ${injectorEnabled ? 'on' : 'off'} · Prod(${producerI},${producerJ}) · r=${well_radius.toFixed(2)} m`);
 </script>
 
 <details class="rounded-lg border bg-base-100 shadow-sm" class:border-error={hasError} class:border-base-300={!hasError}>

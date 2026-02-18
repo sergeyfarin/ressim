@@ -22,7 +22,7 @@ const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, '..');
 
 // Import case catalog
-const { caseCatalog, resolveParams } = await import(resolve(rootDir, 'src/lib/caseCatalog.js'));
+const { caseCatalog, resolveParams } = await import(resolve(rootDir, 'src/lib/caseCatalog.ts'));
 
 // Load WASM synchronously in Node.js
 const wasmPath = resolve(rootDir, 'src/lib/ressim/pkg/simulator_bg.wasm');

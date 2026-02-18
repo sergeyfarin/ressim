@@ -1,15 +1,24 @@
 <script lang="ts">
-  export let nx = 15;
-  export let ny = 10;
-  export let nz = 10;
-  export let cellDx = 10;
-  export let cellDy = 10;
-  export let cellDz = 1;
+  let {
+    nx = $bindable(15),
+    ny = $bindable(10),
+    nz = $bindable(10),
+    cellDx = $bindable(10),
+    cellDy = $bindable(10),
+    cellDz = $bindable(1),
+  }: {
+    nx?: number;
+    ny?: number;
+    nz?: number;
+    cellDx?: number;
+    cellDy?: number;
+    cellDz?: number;
+  } = $props();
 
-  $: modelSizeX = nx * cellDx;
-  $: modelSizeY = ny * cellDy;
-  $: modelSizeZ = nz * cellDz;
-  $: groupSummary = `${nx}×${ny}×${nz} · ${modelSizeX}×${modelSizeY}×${modelSizeZ} m`;
+  const modelSizeX = $derived(nx * cellDx);
+  const modelSizeY = $derived(ny * cellDy);
+  const modelSizeZ = $derived(nz * cellDz);
+  const groupSummary = $derived(`${nx}×${ny}×${nz} · ${modelSizeX}×${modelSizeY}×${modelSizeZ} m`);
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">

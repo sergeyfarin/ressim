@@ -7,32 +7,51 @@
     snapshotsSent: number;
   };
 
-  export let wasmReady = false;
-  export let workerRunning = false;
-  export let runCompleted = false;
-  export let modelReinitNotice = "";
-  export let simTime = 0;
-  export let historyLength = 0;
-  export let profileStats: ProfileStats = {
-    batchMs: 0,
-    avgStepMs: 0,
-    extractMs: 0,
-    renderApplyMs: 0,
-    snapshotsSent: 0,
-  };
-  export let onRunSteps: () => void;
-  export let onStepOnce: () => void;
-  export let onInitSimulator: () => void;
-  export let onStopRun: () => void;
-  export let estimatedRunSeconds = 0;
-  export let longRunEstimate = false;
-  export let canStop = false;
-  export let hasValidationErrors = false;
-  export let solverWarning = "";
+  let {
+    wasmReady = false,
+    workerRunning = false,
+    runCompleted = false,
+    modelReinitNotice = "",
+    simTime = 0,
+    historyLength = 0,
+    profileStats = {
+      batchMs: 0,
+      avgStepMs: 0,
+      extractMs: 0,
+      renderApplyMs: 0,
+      snapshotsSent: 0,
+    },
+    onRunSteps = () => {},
+    onStepOnce = () => {},
+    onInitSimulator = () => {},
+    onStopRun = () => {},
+    estimatedRunSeconds = 0,
+    longRunEstimate = false,
+    canStop = false,
+    hasValidationErrors = false,
+    solverWarning = "",
+    steps = $bindable(20),
+  }: {
+    wasmReady?: boolean;
+    workerRunning?: boolean;
+    runCompleted?: boolean;
+    modelReinitNotice?: string;
+    simTime?: number;
+    historyLength?: number;
+    profileStats?: ProfileStats;
+    onRunSteps?: () => void;
+    onStepOnce?: () => void;
+    onInitSimulator?: () => void;
+    onStopRun?: () => void;
+    estimatedRunSeconds?: number;
+    longRunEstimate?: boolean;
+    canStop?: boolean;
+    hasValidationErrors?: boolean;
+    solverWarning?: string;
+    steps?: number;
+  } = $props();
 
-  export let steps = 20;
-  // steps=${steps} ·
-  $: groupSummary = `${workerRunning ? "Running..." : runCompleted ? "Run completed" : ""} ${longRunEstimate ? "· long run estimate" : ""}`;
+  const groupSummary = $derived(`${workerRunning ? "Running..." : runCompleted ? "Run completed" : ""} ${longRunEstimate ? "· long run estimate" : ""}`);
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open>
@@ -67,24 +86,24 @@
     <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <button
         class="btn btn-sm btn-primary w-full"
-        on:click={onRunSteps}
+        onclick={onRunSteps}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
         >Run {steps} Steps</button
       >
       <button
         class="btn btn-sm w-full"
-        on:click={onStepOnce}
+        onclick={onStepOnce}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
         >Step Once</button
       >
       <button
         class="btn btn-sm btn-warning w-full"
-        on:click={onStopRun}
+        onclick={onStopRun}
         disabled={!canStop}>Stop</button
       >
       <button
         class="btn btn-sm btn-outline w-full"
-        on:click={onInitSimulator}
+        onclick={onInitSimulator}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
         >Reinitialize Simulator</button
       >

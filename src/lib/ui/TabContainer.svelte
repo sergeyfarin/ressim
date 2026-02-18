@@ -1,6 +1,19 @@
 <script lang="ts">
-  export let activeTab: 'charts' | '3d' | 'inputs' = 'charts';
-  export let onTabChange: (tab: 'charts' | '3d' | 'inputs') => void = () => {};
+  import type { Snippet } from 'svelte';
+
+  let {
+    activeTab = 'charts',
+    onTabChange = () => {},
+    charts,
+    threeD,
+    inputs,
+  }: {
+    activeTab?: 'charts' | '3d' | 'inputs';
+    onTabChange?: (tab: 'charts' | '3d' | 'inputs') => void;
+    charts?: Snippet;
+    threeD?: Snippet;
+    inputs?: Snippet;
+  } = $props();
 
   const tabs = [
     { key: 'charts', label: '📊 Charts', title: 'Rate charts, Sw profile, and analytical comparisons' },
@@ -17,7 +30,7 @@
         role="tab"
         class="tab {activeTab === tab.key ? 'tab-active font-semibold' : ''}"
         title={tab.title}
-        on:click={() => onTabChange(tab.key)}
+        onclick={() => onTabChange(tab.key)}
       >
         {tab.label}
       </button>
@@ -27,11 +40,11 @@
   <!-- Tab content -->
   <div class="mt-3">
     {#if activeTab === 'charts'}
-      <slot name="charts" />
+      {@render charts?.()}
     {:else if activeTab === '3d'}
-      <slot name="3d" />
+      {@render threeD?.()}
     {:else if activeTab === 'inputs'}
-      <slot name="inputs" />
+      {@render inputs?.()}
     {/if}
   </div>
 </div>

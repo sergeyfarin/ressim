@@ -1,11 +1,21 @@
 <script lang="ts">
-  export let s_wc = 0.2;
-  export let s_or = 0.1;
-  export let n_w = 2;
-  export let n_o = 2;
-  export let capillaryEnabled = true;
-  export let capillaryPEntry = 5;
-  export let capillaryLambda = 2;
+  let {
+    s_wc = $bindable(0.2),
+    s_or = $bindable(0.1),
+    n_w = $bindable(2),
+    n_o = $bindable(2),
+    capillaryEnabled = $bindable(true),
+    capillaryPEntry = $bindable(5),
+    capillaryLambda = $bindable(2),
+  }: {
+    s_wc?: number;
+    s_or?: number;
+    n_w?: number;
+    n_o?: number;
+    capillaryEnabled?: boolean;
+    capillaryPEntry?: number;
+    capillaryLambda?: number;
+  } = $props();
 
   const width = 180;
   const height = 80;
@@ -26,19 +36,19 @@
     return pts.join(' ');
   }
 
-  $: numericSwc = Number(s_wc);
-  $: numericSor = Number(s_or);
-  $: numericNw = Number(n_w);
-  $: numericNo = Number(n_o);
-  $: numericPEntry = Number(capillaryPEntry);
-  $: numericLambda = Number(capillaryLambda);
+  const numericSwc = $derived(Number(s_wc));
+  const numericSor = $derived(Number(s_or));
+  const numericNw = $derived(Number(n_w));
+  const numericNo = $derived(Number(n_o));
+  const numericPEntry = $derived(Number(capillaryPEntry));
+  const numericLambda = $derived(Number(capillaryLambda));
 
-  $: safeSwc = Number.isFinite(numericSwc) ? clamp(numericSwc, 0, 0.95) : 0.1;
-  $: safeSor = Number.isFinite(numericSor) ? clamp(numericSor, 0, 0.95) : 0.1;
-  $: safeNw = Number.isFinite(numericNw) ? Math.max(0.1, numericNw) : 2;
-  $: safeNo = Number.isFinite(numericNo) ? Math.max(0.1, numericNo) : 2;
-  $: safePEntry = Number.isFinite(numericPEntry) ? Math.max(0, numericPEntry) : 0;
-  $: safeLambda = Number.isFinite(numericLambda) ? Math.max(0.1, numericLambda) : 2;
+  const safeSwc = $derived(Number.isFinite(numericSwc) ? clamp(numericSwc, 0, 0.95) : 0.1);
+  const safeSor = $derived(Number.isFinite(numericSor) ? clamp(numericSor, 0, 0.95) : 0.1);
+  const safeNw = $derived(Number.isFinite(numericNw) ? Math.max(0.1, numericNw) : 2);
+  const safeNo = $derived(Number.isFinite(numericNo) ? Math.max(0.1, numericNo) : 2);
+  const safePEntry = $derived(Number.isFinite(numericPEntry) ? Math.max(0, numericPEntry) : 0);
+  const safeLambda = $derived(Number.isFinite(numericLambda) ? Math.max(0.1, numericLambda) : 2);
 
   function swEffWith(sw: number, swc: number, sor: number) {
     const denom = Math.max(1e-6, 1 - swc - sor);
@@ -61,24 +71,24 @@
     return Math.min(500, pEntry * Math.pow(se, -1 / lambda));
   }
 
-  $: maxPc = Math.max(
+  const maxPc = $derived(Math.max(
     1,
     ...Array.from({ length: 41 }, (_, i) =>
       pcWith(i / 40, safeSwc, safeSor, safePEntry, safeLambda, capillaryEnabled)
     )
-  );
+  ));
 
-  $: relPermPathW = toPath((sw) => krwWith(sw, safeSwc, safeSor, safeNw), 1);
-  $: relPermPathO = toPath((sw) => kroWith(sw, safeSwc, safeSor, safeNo), 1);
-  $: capillaryPath = toPath(
+  const relPermPathW = $derived(toPath((sw) => krwWith(sw, safeSwc, safeSor, safeNw), 1));
+  const relPermPathO = $derived(toPath((sw) => kroWith(sw, safeSwc, safeSor, safeNo), 1));
+  const capillaryPath = $derived(toPath(
     (sw) => pcWith(sw, safeSwc, safeSor, safePEntry, safeLambda, capillaryEnabled),
     maxPc
-  );
-  $: relPermSummary = `S_wc=${s_wc.toFixed(2)}, S_or=${s_or.toFixed(2)}, n_w=${n_w.toFixed(1)}, n_o=${n_o.toFixed(1)}`;
-  $: capSummary = capillaryEnabled
+  ));
+  const relPermSummary = $derived(`S_wc=${s_wc.toFixed(2)}, S_or=${s_or.toFixed(2)}, n_w=${n_w.toFixed(1)}, n_o=${n_o.toFixed(1)}`);
+  const capSummary = $derived(capillaryEnabled
     ? `Pc on (P_entry=${capillaryPEntry.toFixed(1)} bar, λ=${capillaryLambda.toFixed(1)})`
-    : 'Pc off';
-  $: groupSummary = `${relPermSummary} · ${capSummary}`;
+    : 'Pc off');
+  const groupSummary = $derived(`${relPermSummary} · ${capSummary}`);
 </script>
 
 <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">

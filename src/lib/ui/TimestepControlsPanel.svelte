@@ -1,12 +1,20 @@
 <script lang="ts">
-  export let delta_t_days = 0.25;
-  export let max_sat_change_per_step = 0.1;
-  export let max_pressure_change_per_step = 75;
-  export let max_well_rate_change_fraction = 0.75;
-  export let fieldErrors: Record<string, string> = {};
+  let {
+    delta_t_days = $bindable(0.25),
+    max_sat_change_per_step = $bindable(0.1),
+    max_pressure_change_per_step = $bindable(75),
+    max_well_rate_change_fraction = $bindable(0.75),
+    fieldErrors = {},
+  }: {
+    delta_t_days?: number;
+    max_sat_change_per_step?: number;
+    max_pressure_change_per_step?: number;
+    max_well_rate_change_fraction?: number;
+    fieldErrors?: Record<string, string>;
+  } = $props();
 
-  $: hasError = Object.keys(fieldErrors).some((key) => key.includes('well') || key.includes('pressure') || key.includes('saturation'));
-  $: groupSummary = `Δt=${delta_t_days} d · max ΔS=${max_sat_change_per_step} · max ΔP=${max_pressure_change_per_step} bar`;
+  const hasError = $derived(Object.keys(fieldErrors).some((key) => key.includes('well') || key.includes('pressure') || key.includes('saturation')));
+  const groupSummary = $derived(`Δt=${delta_t_days} d · max ΔS=${max_sat_change_per_step} · max ΔP=${max_pressure_change_per_step} bar`);
 </script>
 
 <details class="rounded-lg border bg-base-100 shadow-sm" class:border-error={hasError} class:border-base-300={!hasError}>

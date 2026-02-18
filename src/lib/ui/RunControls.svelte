@@ -1,21 +1,39 @@
 <script lang="ts">
-  export let wasmReady = false;
-  export let workerRunning = false;
-  export let runCompleted = false;
-  export let simTime = 0;
-  export let historyLength = 0;
-  export let estimatedRunSeconds = 0;
-  export let longRunEstimate = false;
-  export let canStop = false;
-  export let hasValidationErrors = false;
-  export let solverWarning = '';
-  export let modelReinitNotice = '';
-  export let steps = 20;
-
-  export let onRunSteps: () => void;
-  export let onStepOnce: () => void;
-  export let onInitSimulator: () => void;
-  export let onStopRun: () => void;
+  let {
+    wasmReady = false,
+    workerRunning = false,
+    runCompleted = false,
+    simTime = 0,
+    historyLength = 0,
+    estimatedRunSeconds = 0,
+    longRunEstimate = false,
+    canStop = false,
+    hasValidationErrors = false,
+    solverWarning = '',
+    modelReinitNotice = '',
+    steps = $bindable(20),
+    onRunSteps = () => {},
+    onStepOnce = () => {},
+    onInitSimulator = () => {},
+    onStopRun = () => {},
+  }: {
+    wasmReady?: boolean;
+    workerRunning?: boolean;
+    runCompleted?: boolean;
+    simTime?: number;
+    historyLength?: number;
+    estimatedRunSeconds?: number;
+    longRunEstimate?: boolean;
+    canStop?: boolean;
+    hasValidationErrors?: boolean;
+    solverWarning?: string;
+    modelReinitNotice?: string;
+    steps?: number;
+    onRunSteps?: () => void;
+    onStepOnce?: () => void;
+    onInitSimulator?: () => void;
+    onStopRun?: () => void;
+  } = $props();
 </script>
 
 <div class="card border border-base-300 bg-base-100 shadow-sm">
@@ -36,25 +54,25 @@
       <div class="flex flex-wrap gap-2">
         <button
           class="btn btn-sm btn-primary"
-          on:click={onRunSteps}
+          onclick={onRunSteps}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
         >▶ Run {steps} Steps</button>
 
         <button
           class="btn btn-sm btn-outline"
-          on:click={onStepOnce}
+          onclick={onStepOnce}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
         >Step Once</button>
 
         <button
           class="btn btn-sm btn-warning"
-          on:click={onStopRun}
+          onclick={onStopRun}
           disabled={!canStop}
         >⏹ Stop</button>
 
         <button
           class="btn btn-sm btn-ghost"
-          on:click={onInitSimulator}
+          onclick={onInitSimulator}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
         >↻ Reinit</button>
       </div>

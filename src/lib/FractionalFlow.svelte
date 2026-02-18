@@ -318,7 +318,7 @@
     }
 </script>
 
-<div class="card border border-base-300 bg-base-100 shadow-sm">
+<!-- <div class="card border border-base-300 bg-base-100 shadow-sm">
     <div class="card-body p-3 sm:p-4">
         <h3 class="text-sm font-semibold">Welge f(Sw) Diagram</h3>
         <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -332,4 +332,4 @@
             </div>
         </div>
     </div>
-</div>
+</div> -->

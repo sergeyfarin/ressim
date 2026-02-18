@@ -1,16 +1,25 @@
 <script lang="ts">
-  import { caseCatalog, categoryKeys } from '../caseCatalog.js';
+  import { caseCatalog, categoryKeys } from '../caseCatalog';
 
-  export let activeCategory: string = '';
-  export let activeCase: string = '';
-  export let isCustomMode: boolean = false;
-  export let onCategoryChange: (cat: string) => void = () => {};
-  export let onCaseChange: (key: string) => void = () => {};
-  export let onCustomMode: () => void = () => {};
+  let {
+    activeCategory = '',
+    activeCase = '',
+    isCustomMode = false,
+    onCategoryChange = () => {},
+    onCaseChange = () => {},
+    onCustomMode = () => {},
+  }: {
+    activeCategory?: string;
+    activeCase?: string;
+    isCustomMode?: boolean;
+    onCategoryChange?: (cat: string) => void;
+    onCaseChange?: (key: string) => void;
+    onCustomMode?: () => void;
+  } = $props();
 
-  $: activeCases = activeCategory && caseCatalog[activeCategory]
+  const activeCases = $derived(activeCategory && caseCatalog[activeCategory]
     ? caseCatalog[activeCategory].cases
-    : [];
+    : []);
 </script>
 
 <div class="space-y-3">
@@ -19,14 +28,14 @@
     {#each categoryKeys as catKey}
       <button
         class="btn btn-sm {activeCategory === catKey && !isCustomMode ? 'btn-primary' : 'btn-outline'}"
-        on:click={() => onCategoryChange(catKey)}
+        onclick={() => onCategoryChange(catKey)}
       >
         {caseCatalog[catKey].label}
       </button>
     {/each}
     <button
       class="btn btn-sm {isCustomMode ? 'btn-accent' : 'btn-outline'}"
-      on:click={onCustomMode}
+      onclick={onCustomMode}
     >
       ⚙ Custom
     </button>
@@ -38,7 +47,7 @@
       {#each activeCases as caseEntry}
         <button
           class="btn btn-sm {activeCase === caseEntry.key ? 'btn-secondary' : 'btn-ghost border border-base-300'}"
-          on:click={() => onCaseChange(caseEntry.key)}
+          onclick={() => onCaseChange(caseEntry.key)}
           title={caseEntry.description}
         >
           {caseEntry.label}
