@@ -172,6 +172,15 @@ export interface RunProfile {
 export type RateHistory = RateHistoryPoint[];
 export type SolverWarning = string | null;
 
+/** Analytical production point used for analytical comparisons in the UI */
+export interface AnalyticalProductionPoint {
+  time: number;
+  oilRate?: number;
+  waterRate?: number;
+  cumulativeOil?: number;
+  cumulativeLiquid?: number;
+}
+
 // Worker -> UI messages
 export interface WorkerReadyMessage { type: 'ready' }
 export interface WorkerStateMessage { type: 'state'; data: SimulatorSnapshot }

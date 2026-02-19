@@ -4,17 +4,17 @@
 
     import type { GridCell } from './simulator-types';
     export let gridState: GridCell[] = [];
-    export let nx = 1;
-    export let ny = 1;
-    export let nz = 1;
-    export let cellDx = 10;
-    export let cellDy = 10;
-    export let cellDz = 1;
-    export let simTime = 0;
-    export let producerJ = 0;
-    export let initialSaturation = 0.3;
-    export let reservoirPorosity = 0.2;
-    export let injectionRate = 0;
+    export let nx: number = 1;
+    export let ny: number = 1;
+    export let nz: number = 1;
+    export let cellDx: number = 10;
+    export let cellDy: number = 10;
+    export let cellDz: number = 1;
+    export let simTime: number = 0;
+    export let producerJ: number = 0;
+    export let initialSaturation: number = 0.3;
+    export let reservoirPorosity: number = 0.2;
+    export let injectionRate: number = 0;
     export let scenarioMode: 'waterflood' | 'depletion' = 'waterflood';
     export let rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
     export let fluidProps: { mu_w: number; mu_o: number };

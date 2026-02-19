@@ -111,7 +111,8 @@
     let wellStateRaw: WellState | null = null;
     let simTime = 0;
     let rateHistory = [];
-    let analyticalProductionData = [];
+    import type { AnalyticalProductionPoint } from './lib';
+    let analyticalProductionData: AnalyticalProductionPoint[] = [];
     let analyticalSolutionMode: 'waterflood' | 'depletion' = 'depletion';
     let analyticalDietzShapeFactor = 21.2;
     let analyticalDepletionTauScale = 0.25;

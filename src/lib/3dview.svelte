@@ -29,21 +29,21 @@
 
     type PropertyKey = 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity';
 
-    export let nx = 20;
-    export let ny = 10;
-    export let nz = 10;
-    export let cellDx = 10;
-    export let cellDy = 10;
-    export let cellDz = 1;
+    export let nx: number = 20;
+    export let ny: number = 10;
+    export let nz: number = 10;
+    export let cellDx: number = 10;
+    export let cellDy: number = 10;
+    export let cellDz: number = 1;
     export let gridState: GridCell[] | null = null;
     export let showProperty: PropertyKey = 'pressure';
     export let history: HistoryEntry[] = [];
-    export let currentIndex = -1;
+    export let currentIndex: number = -1;
     export let wellState: WellState | null = null;
-    export let legendFixedMin = 0;
-    export let legendFixedMax = 1;
-    export let s_wc = 0.1;
-    export let s_or = 0.1;
+    export let legendFixedMin: number = 0;
+    export let legendFixedMax: number = 1;
+    export let s_wc: number = 0.1;
+    export let s_or: number = 0.1;
     export let replayTime: number | null = null;
     // export let playing = false;
     // export let playSpeed = 2;

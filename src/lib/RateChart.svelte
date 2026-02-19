@@ -4,13 +4,15 @@
 
     import type { RateHistoryPoint } from './simulator-types';
     export let rateHistory: RateHistoryPoint[] = [];
-    export let analyticalProductionData = [];
+    import type { AnalyticalProductionPoint } from './simulator-types';
+
+    export let analyticalProductionData: AnalyticalProductionPoint[] = [];
     export let avgReservoirPressureSeries: Array<number | null> = [];
     export let avgWaterSaturationSeries: Array<number | null> = [];
-    export let ooipM3 = 0;
-    export let poreVolumeM3 = 0;
-    export let activeCategory = '';
-    export let activeCase = '';
+    export let ooipM3: number = 0;
+    export let poreVolumeM3: number = 0;
+    export let activeCategory: string = '';
+    export let activeCase: string = '';
     export let theme: 'dark' | 'light' = 'dark';
 
     type MismatchSummary = {
