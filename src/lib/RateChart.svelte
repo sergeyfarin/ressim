@@ -23,18 +23,20 @@
     };
 
     type XAxisMode = 'time' | 'pvi' | 'cumLiquid' | 'cumInjection';
+    type XYPoint = { x: number; y: number | null };
 
-    type LineDataset = ChartDataset<'line', Array<number | null>>;
+    type LineDataset = ChartDataset<'line', Array<number | null | XYPoint>>;
     type AxisScaleConfig = {
         display?: boolean;
         min?: number;
+        max?: number;
         title?: { text?: string };
         grid?: { color?: string };
     };
     type ChartScalesMap = Record<string, AxisScaleConfig | undefined>;
 
     let chartCanvas: HTMLCanvasElement;
-    let chart: Chart<'line', Array<number | null>, string>;
+    let chart: Chart<'line', XYPoint[], number>;
     let selectedDatasetIndexes: number[] = [];
     // Reserved for future 3-phase extension: use red for gas-related series.
     const GAS_COLOR = '#ef4444';
@@ -140,12 +142,25 @@
             DATASET_INDEX.OIL_RATE_ABS_ERROR,
             DATASET_INDEX.AVG_PRESSURE,
         ],
+        depletion_custom_subcase: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.ANALYTICAL_OIL_RATE,
+            DATASET_INDEX.CUM_OIL,
+            DATASET_INDEX.ANALYTICAL_CUM_OIL,
+            DATASET_INDEX.OIL_RATE_ABS_ERROR,
+            DATASET_INDEX.AVG_PRESSURE,
+        ],
         bl_case_a_refined: [
             DATASET_INDEX.RF_VS_PVI,
             DATASET_INDEX.WATERCUT_SIM_VS_PVI,
             DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI,
         ],
         bl_case_b_refined: [
+            DATASET_INDEX.RF_VS_PVI,
+            DATASET_INDEX.WATERCUT_SIM_VS_PVI,
+            DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI,
+        ],
+        waterflood_custom_subcase: [
             DATASET_INDEX.RF_VS_PVI,
             DATASET_INDEX.WATERCUT_SIM_VS_PVI,
             DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI,
@@ -258,12 +273,11 @@
         if (mode === 'pvi' && !pviAvailable) return;
         xAxisMode = mode;
         updateChart();
-        applySelection(selectedDatasetIndexes);
     }
 
     function resolveScenarioDefaultXAxis(caseKey: string): XAxisMode {
         const normalizedCase = String(caseKey ?? '').toLowerCase();
-        if (normalizedCase.startsWith('bl_')) {
+        if (normalizedCase.startsWith('bl_') || normalizedCase === 'waterflood_custom_subcase') {
             return 'pvi';
         }
         return 'time';
@@ -297,7 +311,6 @@
             pendingScenarioXAxisMode = null;
         }
         updateChart();
-        applySelection(selectedDatasetIndexes);
     }
 
     onMount(() => {
@@ -380,7 +393,7 @@
                         data: [],
                         borderColor: PRESSURE_COLOR,
                         borderWidth: 2,
-                        yAxisID: 'y',
+                        yAxisID: 'y3',
                     },
                     {
                         label: 'Average Water Saturation',
@@ -487,9 +500,18 @@
                 },
                 scales: {
                     x: {
+                        type: 'linear',
                         title: {
                             display: true,
                             text: 'Time (days)'
+                        },
+                        ticks: {
+                            callback: (value) => {
+                                const numeric = Number(value);
+                                if (!Number.isFinite(numeric)) return '';
+                                if (xAxisMode === 'pvi') return numeric.toFixed(3);
+                                return numeric.toFixed(1);
+                            },
                         }
                     },
                     y: {
@@ -532,6 +554,23 @@
                             drawOnChartArea: false,
                         },
                         min: 0,
+                        ticks: {
+                            count: 6,
+                        },
+                    },
+                    y3: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        offset: true,
+                        alignToPixels: true,
+                        title: {
+                            display: true,
+                            text: 'Average Reservoir Pressure (bar)'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
                         ticks: {
                             count: 6,
                         },
@@ -734,31 +773,44 @@
             };
         }
 
-        const pviLabels = pviData.map((value) => value.toFixed(3));
-        const cumLiquidLabels = cumulativeLiquidData.map((value) => value.toFixed(1));
-        const cumInjectionLabels = cumulativeInjectionData.map((value) => value.toFixed(1));
-        chart.data.labels = xAxisMode === 'pvi'
-            ? pviLabels
+        const xValues = xAxisMode === 'pvi'
+            ? pviData
             : xAxisMode === 'cumLiquid'
-                ? cumLiquidLabels
+                ? cumulativeLiquidData
                 : xAxisMode === 'cumInjection'
-                    ? cumInjectionLabels
-                    : timeLabels;
-        safeSetDatasetData(chart, 0, oilProd);
-        safeSetDatasetData(chart, 1, analyticalOilProd as Array<number | null>);
-        safeSetDatasetData(chart, 2, waterProd);
-        safeSetDatasetData(chart, 3, injection);
-        safeSetDatasetData(chart, 4, cumulativeOilData);
-        safeSetDatasetData(chart, 5, analyticalCumulativeOilData as Array<number | null>);
-        safeSetDatasetData(chart, 6, recoveryFactorData as Array<number | null>);
-        safeSetDatasetData(chart, 7, liquidProd);
-        safeSetDatasetData(chart, 8, vrrData as Array<number | null>);
-        safeSetDatasetData(chart, 9, avgReservoirPressure as Array<number | null>);
-        safeSetDatasetData(chart, 10, avgWaterSat as Array<number | null>);
-        safeSetDatasetData(chart, 11, absErrorData as Array<number | null>);
-        safeSetDatasetData(chart, 12, recoveryFactorData as Array<number | null>);
-        safeSetDatasetData(chart, 13, waterCutSimVsPvi as Array<number | null>);
-        safeSetDatasetData(chart, 14, waterCutAnalyticalVsPvi as Array<number | null>);
+                    ? cumulativeInjectionData
+                    : rateHistory.map((p) => Number(p.time));
+
+        const toXYSeries = (yValues: Array<number | null | undefined>): XYPoint[] => {
+            const points: XYPoint[] = [];
+            for (let idx = 0; idx < yValues.length; idx++) {
+                const rawX = xValues[idx];
+                const rawY = yValues[idx];
+                if (!Number.isFinite(rawX)) continue;
+                points.push({
+                    x: Number(rawX),
+                    y: Number.isFinite(rawY) ? Number(rawY) : null,
+                });
+            }
+            return points;
+        };
+
+        chart.data.labels = [];
+        safeSetDatasetData(chart, 0, toXYSeries(oilProd));
+        safeSetDatasetData(chart, 1, toXYSeries(analyticalOilProd as Array<number | null>));
+        safeSetDatasetData(chart, 2, toXYSeries(waterProd));
+        safeSetDatasetData(chart, 3, toXYSeries(injection));
+        safeSetDatasetData(chart, 4, toXYSeries(cumulativeOilData));
+        safeSetDatasetData(chart, 5, toXYSeries(analyticalCumulativeOilData as Array<number | null>));
+        safeSetDatasetData(chart, 6, toXYSeries(recoveryFactorData as Array<number | null>));
+        safeSetDatasetData(chart, 7, toXYSeries(liquidProd));
+        safeSetDatasetData(chart, 8, toXYSeries(vrrData as Array<number | null>));
+        safeSetDatasetData(chart, 9, toXYSeries(avgReservoirPressure as Array<number | null>));
+        safeSetDatasetData(chart, 10, toXYSeries(avgWaterSat as Array<number | null>));
+        safeSetDatasetData(chart, 11, toXYSeries(absErrorData as Array<number | null>));
+        safeSetDatasetData(chart, 12, toXYSeries(recoveryFactorData as Array<number | null>));
+        safeSetDatasetData(chart, 13, toXYSeries(waterCutSimVsPvi as Array<number | null>));
+        safeSetDatasetData(chart, 14, toXYSeries(waterCutAnalyticalVsPvi as Array<number | null>));
 
         const showPoints = timeLabels.length <= 20;
         for (let idx = 0; idx < (chart.data.datasets?.length ?? 0); idx++) {
@@ -769,7 +821,10 @@
             lineDataset.pointHitRadius = 8;
         }
 
-        chart.update();
+        const effectiveSelection = selectedDatasetIndexes.length > 0
+            ? selectedDatasetIndexes
+            : chart.data.datasets.map((_, idx) => idx);
+        applySelection(effectiveSelection);
     }
 
     function setDatasetVisibility(visibleIndexes: number[]) {
@@ -778,6 +833,93 @@
             const show = visibleIndexes.includes(idx);
             chart.setDatasetVisibility(idx, show);
         }
+    }
+
+    function collectAxisValues(axisId: string, visibleIndexes: number[]): number[] {
+        if (!chart) return [];
+        const values: number[] = [];
+
+        for (const idx of visibleIndexes) {
+            const dataset = getLineDataset(chart, idx);
+            if (!dataset || dataset.yAxisID !== axisId || !Array.isArray(dataset.data)) continue;
+
+            for (const point of dataset.data as Array<XYPoint | number | null | undefined>) {
+                if (typeof point === 'number') {
+                    if (Number.isFinite(point)) values.push(point);
+                    continue;
+                }
+                if (!point || typeof point !== 'object') continue;
+                const yValue = Number((point as XYPoint).y);
+                if (Number.isFinite(yValue)) values.push(yValue);
+            }
+        }
+
+        return values;
+    }
+
+    function clearAxisBounds(axis: AxisScaleConfig | undefined) {
+        if (!axis) return;
+        delete axis.min;
+        delete axis.max;
+    }
+
+    function niceUpperBound(value: number): number {
+        if (!Number.isFinite(value) || value <= 0) return 1;
+        const exponent = Math.floor(Math.log10(value));
+        const magnitude = 10 ** exponent;
+        const fraction = value / magnitude;
+        let niceFraction = 1;
+        if (fraction <= 1) niceFraction = 1;
+        else if (fraction <= 2) niceFraction = 2;
+        else if (fraction <= 5) niceFraction = 5;
+        else niceFraction = 10;
+        return niceFraction * magnitude;
+    }
+
+    function applyPositiveAxisBounds(axis: AxisScaleConfig | undefined, values: number[], fallbackMax = 1) {
+        if (!axis) return;
+        if (!values.length) {
+            clearAxisBounds(axis);
+            return;
+        }
+        const maxValue = Math.max(0, ...values);
+        axis.min = 0;
+        axis.max = niceUpperBound(Math.max(maxValue * 1.05, fallbackMax));
+    }
+
+    function applyFractionAxisBounds(axis: AxisScaleConfig | undefined, values: number[]) {
+        if (!axis) return;
+        if (!values.length) {
+            clearAxisBounds(axis);
+            return;
+        }
+        const maxValue = Math.max(0, ...values);
+        axis.min = 0;
+        const targetMax = Math.max(maxValue * 1.1, 0.05);
+        axis.max = Math.min(1, niceUpperBound(targetMax));
+    }
+
+    function applyAutoAxisBounds(axis: AxisScaleConfig | undefined, values: number[]) {
+        if (!axis) return;
+        if (!values.length) {
+            clearAxisBounds(axis);
+            return;
+        }
+
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
+
+        if (Math.abs(maxValue - minValue) < 1e-9) {
+            const pad = Math.max(Math.abs(maxValue) * 0.05, 1);
+            axis.min = minValue - pad;
+            axis.max = maxValue + pad;
+            return;
+        }
+
+        const span = maxValue - minValue;
+        const pad = span * 0.1;
+        axis.min = minValue - pad;
+        axis.max = maxValue + pad;
     }
 
     function applySelection(visibleIndexes: number[]) {
@@ -794,18 +936,12 @@
         if (scales.y) scales.y.display = activeAxisIds.has('y');
         if (scales.y1) scales.y1.display = activeAxisIds.has('y1');
         if (scales.y2) scales.y2.display = activeAxisIds.has('y2');
+        if (scales.y3) scales.y3.display = activeAxisIds.has('y3');
         if (scales.y4) scales.y4.display = activeAxisIds.has('y4');
         if (scales.y5) scales.y5.display = activeAxisIds.has('y5');
 
-        if (scales.y?.title) {
-            if (visibleIndexes.includes(DATASET_INDEX.AVG_PRESSURE)) {
-                scales.y.title.text = 'Average Reservoir Pressure (bar)';
-                if (scales.y) delete scales.y.min;
-            } else {
-                scales.y.title.text = 'Rate (m³/day)';
-                if (scales.y) scales.y.min = 0;
-            }
-        }
+        if (scales.y?.title) scales.y.title.text = 'Rate (m³/day)';
+        if (scales.y3?.title) scales.y3.title.text = 'Average Reservoir Pressure (bar)';
 
         if (scales.y5?.title) {
             if (visibleIndexes.includes(DATASET_INDEX.AVG_WATER_SAT)) {
@@ -824,6 +960,13 @@
             scales.x.title.text = getXAxisTitle(xAxisMode);
         }
 
+        applyPositiveAxisBounds(scales.y, collectAxisValues('y', visibleIndexes));
+        applyPositiveAxisBounds(scales.y1, collectAxisValues('y1', visibleIndexes));
+        applyPositiveAxisBounds(scales.y2, collectAxisValues('y2', visibleIndexes));
+        applyAutoAxisBounds(scales.y3, collectAxisValues('y3', visibleIndexes));
+        applyPositiveAxisBounds(scales.y4, collectAxisValues('y4', visibleIndexes));
+        applyFractionAxisBounds(scales.y5, collectAxisValues('y5', visibleIndexes));
+
         chart.update();
     }
 
@@ -840,7 +983,6 @@
 
         selectedDatasetIndexes = [...next].sort((a, b) => a - b);
         updateChart();
-        applySelection(selectedDatasetIndexes);
     }
 
     $: if (chart) {

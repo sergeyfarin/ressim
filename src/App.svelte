@@ -194,7 +194,13 @@
     let RateChartComponent = null;
     let loadingThreeDView = false;
     let lastCreateSignature = '';
+    let baseCaseSignature = '';
     let pendingAutoReinit = false;
+
+    const CUSTOM_SUBCASE_BY_CATEGORY: Record<string, { key: string; label: string }> = {
+        depletion: { key: 'depletion_custom_subcase', label: 'Custom Depletion Sub-case' },
+        waterflood: { key: 'waterflood_custom_subcase', label: 'Custom Waterflood Sub-case' },
+    };
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
@@ -266,6 +272,7 @@
         isCustomMode = false;
         activeCategory = cat;
         activeCase = '';
+        baseCaseSignature = '';
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
@@ -280,10 +287,12 @@
         resetPreRunContinuationState();
         activeCase = key;
         isCustomMode = false;
+        baseCaseSignature = '';
         preRunWarning = '';
         const found = findCaseByKey(key);
         if (found) {
             applyCaseParams(found.case.params);
+            baseCaseSignature = buildCaseSignature();
             loadPreRunCase(key);
         }
     }
@@ -293,9 +302,44 @@
         resetPreRunContinuationState();
         isCustomMode = true;
         activeCase = '';
+        baseCaseSignature = '';
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
+    }
+
+    function resolveCustomSubCase(category: string): { key: string; label: string } | null {
+        return CUSTOM_SUBCASE_BY_CATEGORY[String(category ?? '').toLowerCase()] ?? null;
+    }
+
+    function buildCaseSignature(): string {
+        return JSON.stringify({
+            model: buildModelResetKey(),
+            delta_t_days: Number(delta_t_days),
+            steps: Number(steps),
+            analyticalSolutionMode,
+            analyticalDepletionRateScale: Number(analyticalDepletionRateScale),
+        });
+    }
+
+    function maybeSwitchToCustomSubCaseOnReinit(): boolean {
+        if (isCustomMode || !activeCase || !baseCaseSignature) return false;
+        if (!findCaseByKey(activeCase)) return false;
+
+        const customSubCase = resolveCustomSubCase(activeCategory);
+        if (!customSubCase) return false;
+
+        const nextSignature = buildCaseSignature();
+        if (nextSignature === baseCaseSignature) return false;
+
+        preRunLoadToken += 1;
+        resetPreRunContinuationState();
+        preRunData = null;
+        preRunWarning = '';
+        preRunLoading = false;
+        activeCase = customSubCase.key;
+        baseCaseSignature = nextSignature;
+        return true;
     }
 
     // Apply a case's params to the local state
@@ -463,6 +507,12 @@
                 runtimeWarning = 'Pre-run case data is still loading.';
                 return false;
             }
+
+            const nextCreateSignature = JSON.stringify(buildCreatePayload());
+            if (lastCreateSignature && lastCreateSignature === nextCreateSignature && !modelNeedsReinit) {
+                return true;
+            }
+
             const initialized = initSimulator({ silent: true });
             if (initialized) {
                 runtimeWarning = 'Pre-run continuation unavailable. Simulation started from step 0.';
@@ -866,6 +916,8 @@
             return false;
         }
 
+        const switchedToCustomSubCase = maybeSwitchToCustomSubCaseOnReinit();
+
         history = [];
         currentIndex = -1;
         runCompleted = false;
@@ -877,6 +929,9 @@
         resolvePendingPreRunHydration(false);
         runtimeError = '';
         runtimeWarning = '';
+        if (switchedToCustomSubCase) {
+            runtimeWarning = 'Preset modified. Reinitialized as a custom sub-case.';
+        }
         vizRevision += 1;
 
         const payload = buildCreatePayload();
@@ -1141,6 +1196,7 @@
             {activeCategory}
             {activeCase}
             {isCustomMode}
+            customSubCase={resolveCustomSubCase(activeCategory)}
             onCategoryChange={handleCategoryChange}
             onCaseChange={handleCaseChange}
             onCustomMode={handleCustomMode}

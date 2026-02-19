@@ -5,6 +5,7 @@
     activeCategory = '',
     activeCase = '',
     isCustomMode = false,
+    customSubCase = null,
     onCategoryChange = () => {},
     onCaseChange = () => {},
     onCustomMode = () => {},
@@ -12,6 +13,7 @@
     activeCategory?: string;
     activeCase?: string;
     isCustomMode?: boolean;
+    customSubCase?: { key: string; label: string } | null;
     onCategoryChange?: (cat: string) => void;
     onCaseChange?: (key: string) => void;
     onCustomMode?: () => void;
@@ -20,6 +22,12 @@
   const activeCases = $derived(activeCategory && caseCatalog[activeCategory]
     ? caseCatalog[activeCategory].cases
     : []);
+
+  const isCustomSubCaseActive = $derived(
+    !isCustomMode &&
+      Boolean(customSubCase?.key) &&
+      activeCase === customSubCase?.key
+  );
 </script>
 
 <div class="space-y-3">
@@ -53,6 +61,11 @@
           {caseEntry.label}
         </button>
       {/each}
+      {#if isCustomSubCaseActive}
+        <button class="btn btn-sm btn-secondary" disabled>
+          {customSubCase?.label}
+        </button>
+      {/if}
     </div>
     {#if activeCategory && caseCatalog[activeCategory]}
       <p class="text-xs opacity-60">{caseCatalog[activeCategory].description}</p>
