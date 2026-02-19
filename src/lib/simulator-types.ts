@@ -184,8 +184,8 @@ export interface AnalyticalProductionPoint {
 // Worker -> UI messages
 export interface WorkerReadyMessage { type: 'ready' }
 export interface WorkerStateMessage { type: 'state'; data: SimulatorSnapshot }
-export interface WorkerRunStartedMessage { type: 'runStarted'; steps?: number; deltaTDays?: number; hydration?: boolean }
-export interface WorkerStoppedMessage { type: 'stopped'; reason?: string; completedSteps?: number; hydration?: boolean }
+export interface WorkerRunStartedMessage { type: 'runStarted'; steps?: number; deltaTDays?: number; hydration?: boolean; hydrationId?: number | string }
+export interface WorkerStoppedMessage { type: 'stopped'; reason?: string; completedSteps?: number; hydration?: boolean; hydrationId?: number | string }
 export interface WorkerHydratedMessage { type: 'hydrated'; hydration: true; hydrationId?: number | string; time?: number; rateHistoryLength?: number }
 export interface WorkerBatchCompleteMessage { type: 'batchComplete'; profile: RunProfile }
 export interface WorkerErrorMessage { type: 'error'; message: string }

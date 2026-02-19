@@ -206,6 +206,11 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
   if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
     throw new Error(`Invalid hydration timestep: ${deltaTDays}`);
   }
+  if (isRunning) {
+    throw new Error('Simulator is already running');
+  }
+
+  const hydrationId = Number(payload.hydrationId ?? 0);
 
   configureSimulator(createPayload);
 
@@ -215,14 +220,14 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
 
   isRunning = true;
   stopRequested = false;
-  post('runStarted', { hydration: true, steps, deltaTDays });
+  post('runStarted', { hydration: true, hydrationId, steps, deltaTDays });
 
-  const yieldInterval = 10;
+  const yieldInterval = 1;
   for (let i = 0; i < steps; i++) {
     if (stopRequested) {
       isRunning = false;
       stopRequested = false;
-      post('stopped', { reason: 'user', hydration: true, completedSteps: i });
+      post('stopped', { reason: 'user', hydration: true, hydrationId, completedSteps: i });
       return;
     }
 
@@ -233,7 +238,7 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
       if (stopRequested) {
         isRunning = false;
         stopRequested = false;
-        post('stopped', { reason: 'user', hydration: true, completedSteps: i + 1 });
+        post('stopped', { reason: 'user', hydration: true, hydrationId, completedSteps: i + 1 });
         return;
       }
     }
@@ -243,7 +248,7 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
   stopRequested = false;
   post('hydrated', {
     hydration: true,
-    hydrationId: Number(payload.hydrationId ?? 0),
+    hydrationId,
     time: simulator.get_time(),
     rateHistoryLength: simulator.getRateHistory().length,
   });
@@ -322,6 +327,8 @@ self.onmessage = async (event) => {
       stopRequested = false;
       post('runStarted', { steps, deltaTDays });
 
+      let lastYieldTime = performance.now();
+
       for (let i = 0; i < steps; i++) {
         if (stopRequested) {
           postStopped(batchStart, stepMsTotal, i, snapshotsSent);
@@ -354,8 +361,10 @@ self.onmessage = async (event) => {
           );
         }
 
-        if ((i + 1) % chunkYieldInterval === 0) {
+        const timeSinceLastYield = performance.now() - lastYieldTime;
+        if ((i + 1) % chunkYieldInterval === 0 || timeSinceLastYield > 16) {
           await new Promise((resolve) => setTimeout(resolve, 0));
+          lastYieldTime = performance.now();
 
           if (stopRequested) {
             postStopped(batchStart, stepMsTotal, i + 1, snapshotsSent);

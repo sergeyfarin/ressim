@@ -377,11 +377,11 @@ impl ReservoirSimulator {
                     let vp_m3 = cell.pore_volume_m3(self.dx, self.dy, self.dz);
 
                     // Per-cell total compressibility [1/bar]
-                    // c_t = ϕ * (c_o * S_o + c_w * S_w) + c_r
-                    // Weighted by phase saturations for physically correct accumulation
-                    let c_t = cell.porosity
-                        * (self.pvt.c_o * cell.sat_oil + self.pvt.c_w * cell.sat_water)
-                        + self.rock_compressibility;
+                    // c_t = (c_o * S_o + c_w * S_w) + c_r
+                    // Note: pore volume Vp already includes porosity, so do not multiply by ϕ again.
+                    let c_t =
+                        (self.pvt.c_o * cell.sat_oil + self.pvt.c_w * cell.sat_water)
+                            + self.rock_compressibility;
 
                     // Accumulation term: (Vp [m³] * c_t [1/bar]) / dt [day]
                     // Units: [m³ * 1/bar / day] = [m³/bar/day]
@@ -671,6 +671,7 @@ impl ReservoirSimulator {
         let mut total_prod_liquid_reservoir = 0.0;
         let mut total_injection = 0.0;
         let mut total_injection_reservoir = 0.0;
+        let mut total_prod_water_reservoir = 0.0;
 
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
@@ -683,6 +684,7 @@ impl ReservoirSimulator {
                     // Production is positive flow
                     total_prod_liquid_reservoir += q_m3_day;
                     let fw = self.frac_flow_water(&self.grid_cells[id]);
+                    total_prod_water_reservoir += q_m3_day * fw;
                     let oil_rate = q_m3_day * (1.0 - fw) / self.b_o.max(1e-9);
                     let water_rate = q_m3_day * fw / self.b_w.max(1e-9);
                     total_prod_oil += oil_rate;
@@ -691,18 +693,17 @@ impl ReservoirSimulator {
             }
         }
 
-        // Update cumulative volumes for material balance
-        self.cumulative_injection_m3 += total_injection * dt_days;
-        self.cumulative_production_m3 += total_prod_liquid * dt_days;
+        // Update cumulative water volumes in reservoir conditions for material balance
+        self.cumulative_injection_m3 += total_injection_reservoir * dt_days;
+        self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
         // Compute material balance error [m³]
-        // MB error = (cumulative injection - cumulative production) - (current water in place - initial water in place)
-        // For a simpler approach: track step-wise balance
-        // Net volume added this step = (injection - production) * dt
-        let net_added_m3 = (total_injection - total_prod_liquid) * dt_days;
-        // Actual in-place change = sum of delta_water volumes (already applied)
+        // Step-wise water balance in reservoir conditions:
+        // Net water added via wells = (water injection_res - water production_res) * dt
+        let net_added_m3 = (total_injection_reservoir - total_prod_water_reservoir) * dt_days;
+        // Actual water in-place change = sum of delta_water volumes (already applied)
         let actual_change_m3: f64 = delta_water_m3.iter().sum();
-        // Error = what we added via wells minus what changed in the grid
+        // Error = water added/removed by wells minus water-volume change in cells
         let mb_error = (net_added_m3 - actual_change_m3).abs();
 
         self.rate_history.push(TimePointRates {

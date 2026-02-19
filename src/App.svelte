@@ -7,7 +7,7 @@
     import InputsTab from './lib/ui/InputsTab.svelte';
     import SwProfileChart from './lib/SwProfileChart.svelte';
     import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog';
-    import type { WorkerMessage, SimulatorSnapshot } from './lib';
+    import type { WorkerMessage, SimulatorSnapshot, RateHistoryPoint } from './lib';
 
     let wasmReady = false;
     let simWorker: Worker | null = null;
@@ -28,6 +28,7 @@
     let preRunContinuationStatus = '';
     let pendingPreRunHydrationId = 0;
     let pendingPreRunHydrationResolve: ((ready: boolean) => void) | null = null;
+    let pendingPreRunHydrationTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // UI inputs
     let nx = 15;
@@ -201,6 +202,7 @@
         depletion: { key: 'depletion_custom_subcase', label: 'Custom Depletion Sub-case' },
         waterflood: { key: 'waterflood_custom_subcase', label: 'Custom Waterflood Sub-case' },
     };
+    const PRE_RUN_HYDRATION_TIMEOUT_MS = 15000;
 
     // Visualization
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
@@ -217,6 +219,32 @@
             .split(',')
             .map((v) => Number(v.trim()))
             .filter((v) => Number.isFinite(v) && v > 0);
+    }
+
+    function normalizeRateHistory(raw: unknown): RateHistoryPoint[] {
+        if (!Array.isArray(raw)) return [];
+        return raw.map((entry: Record<string, unknown>, idx: number) => {
+            const point = entry && typeof entry === 'object' ? entry : {};
+            const fallbackTime = idx > 0 ? idx : 0;
+            const numeric = (value: unknown, fallback = 0) => {
+                const next = Number(value);
+                return Number.isFinite(next) ? next : fallback;
+            };
+
+            return {
+                ...point,
+                time: numeric(point.time, fallbackTime),
+                total_production_oil: numeric(point.total_production_oil),
+                total_production_liquid: numeric(point.total_production_liquid),
+                total_production_liquid_reservoir: numeric(point.total_production_liquid_reservoir),
+                total_injection: numeric(point.total_injection),
+                total_injection_reservoir: numeric(point.total_injection_reservoir),
+                material_balance_error_m3: numeric(point.material_balance_error_m3),
+                avg_reservoir_pressure: numeric(point.avg_reservoir_pressure),
+                avg_pressure: numeric(point.avg_pressure),
+                avg_water_saturation: numeric(point.avg_water_saturation),
+            };
+        });
     }
 
     function normalizeLayerArray(values: number[], fallback: number, length: number): number[] {
@@ -306,6 +334,7 @@
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
+        resetModelAndVisualizationState(true, false);
     }
 
     function resolveCustomSubCase(category: string): { key: string; label: string } | null {
@@ -465,7 +494,7 @@
                 preRunWarning = `Some pre-run history snapshots do not match selected grid size (${nx}×${ny}×${nz}); only valid snapshots were loaded.`;
             }
 
-            rateHistory = Array.isArray(data.rateHistory) ? data.rateHistory : [];
+            rateHistory = normalizeRateHistory(data.rateHistory);
             runCompleted = true;
             preRunContinuationAvailable = true;
             preRunHydrated = false;
@@ -485,6 +514,10 @@
     }
 
     function resolvePendingPreRunHydration(ready: boolean) {
+        if (pendingPreRunHydrationTimeout) {
+            clearTimeout(pendingPreRunHydrationTimeout);
+            pendingPreRunHydrationTimeout = null;
+        }
         if (pendingPreRunHydrationResolve) {
             pendingPreRunHydrationResolve(ready);
             pendingPreRunHydrationResolve = null;
@@ -550,6 +583,18 @@
         const hydrationId = ++pendingPreRunHydrationId;
         const waitForHydration = new Promise<boolean>((resolve) => {
             pendingPreRunHydrationResolve = resolve;
+
+            pendingPreRunHydrationTimeout = setTimeout(() => {
+                if (pendingPreRunHydrationId === hydrationId && preRunHydrating) {
+                    runtimeError = `Hydration timed out after ${Math.round(PRE_RUN_HYDRATION_TIMEOUT_MS / 1000)}s.`;
+                    preRunHydrating = false;
+                    preRunHydrated = false;
+                    preRunContinuationStatus = '';
+                    workerRunning = false;
+                    simWorker?.postMessage({ type: 'stop' });
+                    resolvePendingPreRunHydration(false);
+                }
+            }, PRE_RUN_HYDRATION_TIMEOUT_MS);
         });
 
         simWorker.postMessage({
@@ -756,7 +801,8 @@
         if (message.type === 'runStarted') { runtimeError = ''; workerRunning = true; return; }
         if (message.type === 'state') { applyWorkerState(message.data); return; }
         if (message.type === 'hydrated') {
-            if (Number(message.hydrationId) !== pendingPreRunHydrationId) return;
+            if (!preRunHydrating) return;
+            if (Number(message.hydrationId ?? 0) !== pendingPreRunHydrationId) return;
             preRunHydrating = false;
             preRunHydrated = true;
             preRunContinuationStatus = '';
@@ -781,7 +827,9 @@
 
         if (message.type === 'stopped') {
             workerRunning = false;
-            if (preRunHydrating) {
+            if (preRunHydrating && message.hydration) {
+                const hydrationId = Number(message.hydrationId ?? pendingPreRunHydrationId);
+                if (hydrationId !== pendingPreRunHydrationId) return;
                 preRunHydrating = false;
                 preRunHydrated = false;
                 preRunContinuationStatus = '';
@@ -1003,7 +1051,7 @@
                 steps: batchSteps,
                 deltaTDays: Number(delta_t_days),
                 historyInterval,
-                chunkYieldInterval: 5,
+                chunkYieldInterval: 1,
             }
         });
     }

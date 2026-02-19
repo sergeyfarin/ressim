@@ -101,9 +101,9 @@ pub struct ReservoirSimulator {
     well_bhp_max: f64,
     /// Last solver warning message (empty if converged)
     last_solver_warning: String,
-    /// Cumulative water injected [m³] for material balance
+    /// Cumulative water injected in reservoir conditions [m³] for material balance
     cumulative_injection_m3: f64,
-    /// Cumulative water produced [m³] for material balance
+    /// Cumulative water produced in reservoir conditions [m³] for material balance
     cumulative_production_m3: f64,
     target_producer_rate_m3_day: f64,
     rock_compressibility: f64,
