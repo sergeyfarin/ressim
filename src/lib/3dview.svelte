@@ -23,7 +23,7 @@
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
     import type { Material } from 'three';
 
-    import type { GridCell, SimulatorSnapshot, WellState } from './';
+    import type { GridCell, SimulatorSnapshot, WellState, WellStateEntry } from './';
 
     type HistoryEntry = SimulatorSnapshot;
 
@@ -39,7 +39,7 @@
     export let showProperty: PropertyKey = 'pressure';
     export let history: HistoryEntry[] = [];
     export let currentIndex = -1;
-    export let wellState: unknown = null;
+    export let wellState: WellState | null = null;
     export let legendFixedMin = 0;
     export let legendFixedMax = 1;
     export let s_wc = 0.1;
@@ -536,7 +536,7 @@
 
     // Trigger on well state changes
     $: if (scene && wellState) {
-        updateWellVisualization(wellState as unknown as unknown[]);
+        updateWellVisualization(wellState ?? []);
     }
 
     function getActiveGrid(): GridCell[] | null {
@@ -928,7 +928,7 @@
         instancedMesh.instanceColor.needsUpdate = true;
     }
 
-    function updateWellVisualization(wells: unknown[]): void {
+    function updateWellVisualization(wells: WellState): void {
         if (!scene || !wellsGroup) return;
 
         // Remove old wells
@@ -948,10 +948,10 @@
 
         // Find the topmost cell for each well column
         for (const well of wells) {
-            const w = well as Record<string, unknown>;
-            const i = Number(w.i ?? w.x ?? 0);
-            const j = Number(w.j ?? w.y ?? 0);
-            const k = Number(w.k ?? w.z ?? 0);
+            const w = well as WellStateEntry;
+            const i = Number(w.i ?? w.ix ?? 0);
+            const j = Number(w.j ?? w.jy ?? 0);
+            const k = Number(w.k ?? w.k ?? 0);
             
             const colKey = `${i},${j}`;
             if (!wellColumns.has(colKey)) {
@@ -960,10 +960,10 @@
                 // Find topmost cell with this well (minimum k)
                 let topK = k;
                 for (const other of wells) {
-                    const o = other as Record<string, unknown>;
-                    const oi = Number(o.i ?? o.x ?? 0);
-                    const oj = Number(o.j ?? o.y ?? 0);
-                    const ok = Number(o.k ?? o.z ?? 0);
+                    const o = other as WellStateEntry;
+                    const oi = Number(o.i ?? o.ix ?? 0);
+                    const oj = Number(o.j ?? o.jy ?? 0);
+                    const ok = Number(o.k ?? o.k ?? 0);
                     if (oi === i && oj === j && ok < topK) {
                         topK = ok;
                     }
