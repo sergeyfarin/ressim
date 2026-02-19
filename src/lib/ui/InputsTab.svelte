@@ -63,8 +63,6 @@
     max_pressure_change_per_step = $bindable(75),
     max_well_rate_change_fraction = $bindable(0.75),
     analyticalSolutionMode = $bindable<'waterflood' | 'depletion'>('waterflood'),
-    analyticalDietzShapeFactor = $bindable(21.2),
-    analyticalDepletionTauScale = $bindable(0.25),
     analyticalDepletionRateScale = $bindable(1.0),
     validationErrors = {},
     validationWarnings = [],
@@ -125,8 +123,6 @@
     max_pressure_change_per_step?: number;
     max_well_rate_change_fraction?: number;
     analyticalSolutionMode?: 'waterflood' | 'depletion';
-    analyticalDietzShapeFactor?: number;
-    analyticalDepletionTauScale?: number;
     analyticalDepletionRateScale?: number;
     validationErrors?: Record<string, string>;
     validationWarnings?: string[];
@@ -188,8 +184,6 @@
     />
     <AnalyticalInputsPanel
       bind:analyticalSolutionMode
-      bind:analyticalDietzShapeFactor
-      bind:analyticalDepletionTauScale
       bind:analyticalDepletionRateScale
     />
   </div>

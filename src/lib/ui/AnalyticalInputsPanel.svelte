@@ -1,20 +1,16 @@
 <script lang="ts">
   let {
     analyticalSolutionMode = $bindable<'waterflood' | 'depletion'>('waterflood'),
-    analyticalDietzShapeFactor = $bindable(21.2),
-    analyticalDepletionTauScale = $bindable(0.25),
     analyticalDepletionRateScale = $bindable(1.0),
     }: {
       analyticalSolutionMode?: 'waterflood' | 'depletion';
-      analyticalDietzShapeFactor?: number;
-      analyticalDepletionTauScale?: number;
       analyticalDepletionRateScale?: number;
   } = $props();
 
   const modeLabel = $derived(analyticalSolutionMode === 'depletion' ? 'Depletion' : 'Buckley-Leverett');
   const summary = $derived(
     analyticalSolutionMode === 'depletion'
-      ? `Mode=${modeLabel} · Shape=${analyticalDietzShapeFactor.toFixed(2)} · τ-scale=${analyticalDepletionTauScale.toFixed(3)}`
+      ? `Mode=${modeLabel} · Rate scale=${analyticalDepletionRateScale.toFixed(2)}`
       : `Mode=${modeLabel}`
   );
 </script>
@@ -44,28 +40,6 @@
     {#if analyticalSolutionMode === 'depletion'}
       <div class="grid grid-cols-1 gap-2">
         <label class="form-control">
-          <span class="label-text text-xs">Dietz Shape Factor</span>
-          <input
-            type="number"
-            min="0.001"
-            step="0.1"
-            class="input input-bordered input-sm w-full"
-            bind:value={analyticalDietzShapeFactor}
-          />
-        </label>
-
-        <label class="form-control">
-          <span class="label-text text-xs">Depletion τ Scale</span>
-          <input
-            type="number"
-            min="0.000001"
-            step="0.01"
-            class="input input-bordered input-sm w-full"
-            bind:value={analyticalDepletionTauScale}
-          />
-        </label>
-
-        <label class="form-control">
           <span class="label-text text-xs">Rate Scale</span>
           <input
             type="number"
@@ -77,7 +51,9 @@
         </label>
       </div>
       <div class="text-[11px] opacity-70">
-        Depletion uses material balance with a semi-steady-state decline form; shape and scaling tune the effective productivity and depletion time constant.
+        Pseudo-steady-state depletion: q(t)&nbsp;=&nbsp;J_oil·ΔP·exp(−t/τ), τ&nbsp;=&nbsp;V_pore·c_t/J_oil.
+        J_oil is computed from the Peaceman well model using reservoir/well parameters.
+        Rate scale multiplies J_oil for manual calibration (default 1.0).
       </div>
     {/if}
   </div>

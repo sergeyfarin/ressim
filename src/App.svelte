@@ -114,8 +114,6 @@
     import type { AnalyticalProductionPoint } from './lib';
     let analyticalProductionData: AnalyticalProductionPoint[] = [];
     let analyticalSolutionMode: 'waterflood' | 'depletion' = 'depletion';
-    let analyticalDietzShapeFactor = 21.2;
-    let analyticalDepletionTauScale = 0.25;
     let analyticalDepletionRateScale = 1.0;
     let analyticalMeta: { mode: 'waterflood' | 'depletion'; shapeFactor: number | null; shapeLabel: string } = {
         mode: 'waterflood',
@@ -139,8 +137,8 @@
         analyticalProductionData = [];
         analyticalMeta = {
             mode: analyticalSolutionMode,
-            shapeFactor: analyticalSolutionMode === 'depletion' ? analyticalDietzShapeFactor : null,
-            shapeLabel: analyticalSolutionMode === 'depletion' ? 'user-defined' : '',
+            shapeFactor: null,
+            shapeLabel: analyticalSolutionMode === 'depletion' ? 'Peaceman PSS' : '',
         };
     }
     let validationWarnings: string[] = [];
@@ -751,7 +749,7 @@
             runtimeWarning = message.reason === 'user'
                 ? `Simulation stopped after ${Number(message.completedSteps ?? 0)} step(s).`
                 : 'No running simulation to stop.';
-            updateProfileStats(message.profile, profileStats.renderApplyMs);
+            if ('profile' in message && message.profile) updateProfileStats(message.profile, profileStats.renderApplyMs);
             applyHistoryIndex(history.length - 1);
             return;
         }
@@ -1098,8 +1096,22 @@
             timeHistory={rateHistory.map((point) => point.time)}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
             {initialSaturation}
-            dietzShapeFactor={analyticalDietzShapeFactor}
-            depletionTauScale={analyticalDepletionTauScale}
+            permX={uniformPermX}
+            permY={uniformPermY}
+            {cellDx}
+            {cellDy}
+            wellboreDz={nz * cellDz}
+            wellRadius={well_radius}
+            wellSkin={well_skin}
+            muO={mu_o}
+            sWc={s_wc}
+            sOr={s_or}
+            nO={n_o}
+            c_o={c_o}
+            c_w={c_w}
+            cRock={rock_compressibility}
+            {initialPressure}
+            producerBhp={producerBhp}
             depletionRateScale={analyticalDepletionRateScale}
             onAnalyticalData={(detail) => {
                 if (analyticalSolutionMode === 'depletion') {
@@ -1210,7 +1222,7 @@
                 {#if analyticalMeta.mode === 'depletion'}
                     <div class="rounded-md border border-base-300 bg-base-100 p-3 text-xs">
                         <div class="font-semibold">Depletion Analytical Mode</div>
-                        <div class="opacity-80">Dietz shape factor: {analyticalMeta.shapeFactor ?? 'n/a'} ({analyticalMeta.shapeLabel || 'unspecified location'})</div>
+                        <div class="opacity-80">Model: {analyticalMeta.shapeLabel || 'PSS'} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup>−t/τ</sup>, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J</div>
                     </div>
                 {/if}
             </div>
@@ -1286,8 +1298,6 @@
                 bind:max_pressure_change_per_step
                 bind:max_well_rate_change_fraction
                 bind:analyticalSolutionMode
-                bind:analyticalDietzShapeFactor
-                bind:analyticalDepletionTauScale
                 bind:analyticalDepletionRateScale
                 {validationErrors}
                 {validationWarnings}
