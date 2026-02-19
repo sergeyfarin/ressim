@@ -885,44 +885,27 @@
     }
 
     import type { SimulatorCreatePayload } from './lib';
+    import { buildCreatePayloadFromState } from './lib/buildCreatePayload';
 
     function buildCreatePayload(): SimulatorCreatePayload {
-        const useUniformPerm = permMode === 'uniform';
-        const permsX = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermX)) : layerPermsX.map(Number);
-        const permsY = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermY)) : layerPermsY.map(Number);
-        const permsZ = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermZ)) : layerPermsZ.map(Number);
-
-        return {
-            nx: Number(nx), ny: Number(ny), nz: Number(nz),
-            cellDx: Number(cellDx), cellDy: Number(cellDy), cellDz: Number(cellDz),
-            initialPressure: Number(initialPressure), initialSaturation: Number(initialSaturation),
-            mu_w: Number(mu_w), mu_o: Number(mu_o),
-            c_o: Number(c_o), c_w: Number(c_w),
-            rock_compressibility: Number(rock_compressibility),
-            depth_reference: Number(depth_reference),
-            volume_expansion_o: Number(volume_expansion_o), volume_expansion_w: Number(volume_expansion_w),
-            rho_w: Number(rho_w), rho_o: Number(rho_o),
-            s_wc: Number(s_wc), s_or: Number(s_or),
-            n_w: Number(n_w), n_o: Number(n_o),
-            max_sat_change_per_step: Number(max_sat_change_per_step),
-            max_pressure_change_per_step: Number(max_pressure_change_per_step),
-            max_well_rate_change_fraction: Number(max_well_rate_change_fraction),
-            capillaryEnabled: Boolean(capillaryEnabled),
-            capillaryPEntry: Number(capillaryPEntry), capillaryLambda: Number(capillaryLambda),
-            gravityEnabled: Boolean(gravityEnabled),
-            permMode: useUniformPerm ? 'perLayer' : permMode,
-            minPerm: Number(minPerm), maxPerm: Number(maxPerm),
-            useRandomSeed: Boolean(useRandomSeed), randomSeed: Number(randomSeed),
-            permsX, permsY, permsZ,
-            well_radius: Number(well_radius), well_skin: Number(well_skin),
-            injectorBhp: Number(injectorBhp), producerBhp: Number(producerBhp),
-            rateControlledWells: Boolean(rateControlledWells),
-            injectorControlMode, producerControlMode,
-            injectorEnabled: Boolean(injectorEnabled),
-            targetInjectorRate: Number(targetInjectorRate), targetProducerRate: Number(targetProducerRate),
-            injectorI: Number(injectorI), injectorJ: Number(injectorJ),
-            producerI: Number(producerI), producerJ: Number(producerJ),
-        };
+        return buildCreatePayloadFromState({
+            nx, ny, nz,
+            cellDx, cellDy, cellDz,
+            initialPressure, initialSaturation,
+            mu_w, mu_o, c_o, c_w, rho_w, rho_o,
+            rock_compressibility, depth_reference, volume_expansion_o, volume_expansion_w,
+            s_wc, s_or, n_w, n_o,
+            max_sat_change_per_step, max_pressure_change_per_step, max_well_rate_change_fraction,
+            capillaryEnabled, capillaryPEntry, capillaryLambda,
+            gravityEnabled,
+            permMode, minPerm, maxPerm, useRandomSeed, randomSeed,
+            permsX: layerPermsX, permsY: layerPermsY, permsZ: layerPermsZ,
+            well_radius, well_skin, injectorBhp, producerBhp,
+            rateControlledWells, injectorControlMode, producerControlMode, injectorEnabled,
+            targetInjectorRate, targetProducerRate,
+            injectorI, injectorJ, producerI, producerJ,
+            uniformPermX, uniformPermY, uniformPermZ,
+        });
     }
 
     // exported for compile-time assertions/tests
