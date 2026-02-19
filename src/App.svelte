@@ -104,8 +104,10 @@
     let capillaryLambda = 2.0;
 
     // Display data
-    let gridStateRaw = null;
-    let wellStateRaw = null;
+    import type { GridCell, WellState } from './lib';
+
+    let gridStateRaw: GridCell[] | null = null;
+    let wellStateRaw: WellState | null = null;
     let simTime = 0;
     let rateHistory = [];
     let analyticalProductionData = [];

@@ -1,19 +1,20 @@
 import init, { ReservoirSimulator } from './ressim/pkg/simulator.js';
+import type { SimulatorCreatePayload, HydratePreRunPayload, WorkerRunPayload } from './simulator-types';
 
 let wasmReady = false;
-let simulator = null;
+let simulator: ReservoirSimulator | null = null;
 let isRunning = false;
 let stopRequested = false;
 
-function buildRunProfile(batchStart, stepMsTotal, completedSteps, snapshotsSent) {
+function buildRunProfile(batchStart: number, stepMsTotal: number, completedSteps: number, snapshotsSent: number) {
   return {
     batchMs: performance.now() - batchStart,
     avgStepMs: completedSteps > 0 ? stepMsTotal / completedSteps : 0,
     snapshotsSent,
-  };
+  } as { batchMs: number; avgStepMs: number; snapshotsSent: number };
 }
 
-function postStopped(batchStart, stepMsTotal, completedSteps, snapshotsSent) {
+function postStopped(batchStart: number, stepMsTotal: number, completedSteps: number, snapshotsSent: number): void {
   post('stopped', {
     reason: 'user',
     completedSteps,
@@ -21,7 +22,7 @@ function postStopped(batchStart, stepMsTotal, completedSteps, snapshotsSent) {
   });
 }
 
-function formatWorkerError(error) {
+function formatWorkerError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   const lower = raw.toLowerCase();
 
@@ -41,11 +42,11 @@ function formatWorkerError(error) {
   return `${raw}. Try reducing timestep or reinitializing with validated inputs.`;
 }
 
-function post(type, payload = {}) {
+function post(type: string, payload: Record<string, any> = {}): void {
   self.postMessage({ type, ...payload });
 }
 
-function getStatePayload(recordHistory, stepIndex, profile = {}) {
+function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Record<string, any> = {}): Record<string, any> {
   if (!simulator) {
     throw new Error('Simulator not initialized');
   }
@@ -73,7 +74,7 @@ function getStatePayload(recordHistory, stepIndex, profile = {}) {
   };
 }
 
-function configureSimulator(payload) {
+function configureSimulator(payload: SimulatorCreatePayload) {
   simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz);
 
   const setCellDimensions = /** @type {any} */ (simulator).setCellDimensions;
@@ -159,15 +160,16 @@ function configureSimulator(payload) {
 
   if (payload.permMode === 'random') {
     if (payload.useRandomSeed) {
-      simulator.setPermeabilityRandomSeeded(payload.minPerm, payload.maxPerm, payload.randomSeed);
+      const seed = typeof payload.randomSeed === 'bigint' ? payload.randomSeed : BigInt(Math.floor(Number(payload.randomSeed ?? 0)));
+      simulator.setPermeabilityRandomSeeded(payload.minPerm, payload.maxPerm, seed);
     } else {
       simulator.setPermeabilityRandom(payload.minPerm, payload.maxPerm);
     }
   } else if (payload.permMode === 'perLayer') {
-    simulator.setPermeabilityPerLayer(payload.permsX, payload.permsY, payload.permsZ);
+    simulator.setPermeabilityPerLayer(new Float64Array(payload.permsX), new Float64Array(payload.permsY), new Float64Array(payload.permsZ));
   }
 
-  const clampIndex = (value, maxExclusive) => Math.max(0, Math.min(maxExclusive - 1, Number(value)));
+  const clampIndex = (value: number, maxExclusive: number): number => Math.max(0, Math.min(maxExclusive - 1, Number(value)));
   const producerI = clampIndex(payload.producerI ?? (payload.nx - 1), payload.nx);
   const producerJ = clampIndex(payload.producerJ ?? 0, payload.ny);
   const injectorI = clampIndex(payload.injectorI ?? 0, payload.nx);
@@ -185,7 +187,7 @@ function configureSimulator(payload) {
   }
 }
 
-async function hydratePreRunState(payload) {
+async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Invalid hydrate payload');
   }
@@ -206,6 +208,10 @@ async function hydratePreRunState(payload) {
   }
 
   configureSimulator(createPayload);
+
+  if (!simulator) {
+    throw new Error('Failed to initialize simulator');
+  }
 
   isRunning = true;
   stopRequested = false;
@@ -299,10 +305,11 @@ self.onmessage = async (event) => {
         throw new Error('Simulator is already running');
       }
 
-      const steps = Math.max(0, Math.floor(Number(payload?.steps ?? 0)));
-      const deltaTDays = Number(payload?.deltaTDays ?? 0);
-      const historyInterval = Math.max(1, Number(payload?.historyInterval ?? 1));
-      const chunkYieldInterval = Math.max(1, Number(payload?.chunkYieldInterval ?? 5));
+      const runPayload = payload as WorkerRunPayload;
+      const steps = Math.max(0, Math.floor(Number(runPayload?.steps ?? 0)));
+      const deltaTDays = Number(runPayload?.deltaTDays ?? 0);
+      const historyInterval = Math.max(1, Number(runPayload?.historyInterval ?? 1));
+      const chunkYieldInterval = Math.max(1, Number(runPayload?.chunkYieldInterval ?? 5));
 
       if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
         throw new Error(`Invalid timestep value: ${deltaTDays}`);

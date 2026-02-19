@@ -100,3 +100,63 @@ export interface HydratePreRunPayload {
   deltaTDays: number;
   hydrationId?: number | string;
 }
+
+// --- Simulator runtime / output shapes ---
+
+export interface GridCell {
+  // primary values used by UI
+  pressure?: number;
+  sat_water?: number; // wasm -> snake_case
+  satWater?: number; // JS/camelCase aliases
+  sw?: number; // sometimes 'sw' is used
+  permeability_x?: number;
+  permeability_y?: number;
+  permeability_z?: number;
+  porosity?: number;
+
+  // optional cell indices (some outputs include i/j/k)
+  i?: number;
+  j?: number;
+  k?: number;
+
+  // catch-all for additional simulator-provided properties
+  [key: string]: unknown;
+}
+
+export interface WellStateEntry {
+  i: number;
+  j: number;
+  k: number;
+  bhp?: number;
+  injector?: boolean;
+  rate_o?: number;
+  rate_w?: number;
+  well_radius?: number;
+  skin?: number;
+  [key: string]: unknown;
+}
+
+export type WellState = WellStateEntry[];
+
+export interface RateHistoryPoint {
+  time: number;
+  total_production_oil?: number;
+  total_production_liquid?: number;
+  total_injection?: number;
+  avg_reservoir_pressure?: number;
+  avg_pressure?: number;
+  avg_water_saturation?: number;
+  // additional fields produced by the simulator may exist
+  [key: string]: unknown;
+}
+
+export interface SimulatorSnapshot {
+  grid: GridCell[];
+  wells: WellState;
+  time: number;
+  rateHistory?: RateHistoryPoint[];
+  solverWarning?: string;
+  recordHistory?: boolean;
+  stepIndex?: number;
+  profile?: Record<string, unknown>;
+}

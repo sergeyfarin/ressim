@@ -2,7 +2,8 @@
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables } from 'chart.js';
 
-    export let gridState: Array<Record<string, unknown>> = [];
+    import type { GridCell } from './simulator-types';
+    export let gridState: GridCell[] = [];
     export let nx = 1;
     export let ny = 1;
     export let nz = 1;

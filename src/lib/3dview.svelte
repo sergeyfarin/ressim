@@ -23,18 +23,9 @@
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
     import type { Material } from 'three';
 
-    type GridCell = {
-        pressure?: number;
-        sat_water?: number;
-        satWater?: number;
-        [key: string]: unknown;
-    };
+    import type { GridCell, SimulatorSnapshot, WellState } from './';
 
-    type HistoryEntry = {
-        time: number;
-        grid: GridCell[];
-        wells: unknown;
-    };
+    type HistoryEntry = SimulatorSnapshot;
 
     type PropertyKey = 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity';
 
