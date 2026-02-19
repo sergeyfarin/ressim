@@ -746,21 +746,21 @@
                 : xAxisMode === 'cumInjection'
                     ? cumInjectionLabels
                     : timeLabels;
-        chart.data.datasets[0].data = oilProd;
-        chart.data.datasets[1].data = analyticalOilProd;
-        chart.data.datasets[2].data = waterProd;
-        chart.data.datasets[3].data = injection;
-        chart.data.datasets[4].data = cumulativeOilData;
-        chart.data.datasets[5].data = analyticalCumulativeOilData;
-        chart.data.datasets[6].data = recoveryFactorData;
-        chart.data.datasets[7].data = liquidProd;
-        chart.data.datasets[8].data = vrrData;
-        chart.data.datasets[9].data = avgReservoirPressure;
-        chart.data.datasets[10].data = avgWaterSat;
-        chart.data.datasets[11].data = absErrorData;
-        chart.data.datasets[12].data = recoveryFactorData;
-        chart.data.datasets[13].data = waterCutSimVsPvi;
-        chart.data.datasets[14].data = waterCutAnalyticalVsPvi;
+        const ds0 = getLineDataset(0); if (ds0) ds0.data = oilProd;
+        const ds1 = getLineDataset(1); if (ds1) ds1.data = analyticalOilProd as Array<number | null>;
+        const ds2 = getLineDataset(2); if (ds2) ds2.data = waterProd;
+        const ds3 = getLineDataset(3); if (ds3) ds3.data = injection;
+        const ds4 = getLineDataset(4); if (ds4) ds4.data = cumulativeOilData;
+        const ds5 = getLineDataset(5); if (ds5) ds5.data = analyticalCumulativeOilData as Array<number | null>;
+        const ds6 = getLineDataset(6); if (ds6) ds6.data = recoveryFactorData as Array<number | null>;
+        const ds7 = getLineDataset(7); if (ds7) ds7.data = liquidProd;
+        const ds8 = getLineDataset(8); if (ds8) ds8.data = vrrData as Array<number | null>;
+        const ds9 = getLineDataset(9); if (ds9) ds9.data = avgReservoirPressure as Array<number | null>;
+        const ds10 = getLineDataset(10); if (ds10) ds10.data = avgWaterSat as Array<number | null>;
+        const ds11 = getLineDataset(11); if (ds11) ds11.data = absErrorData as Array<number | null>;
+        const ds12 = getLineDataset(12); if (ds12) ds12.data = recoveryFactorData as Array<number | null>;
+        const ds13 = getLineDataset(13); if (ds13) ds13.data = waterCutSimVsPvi as Array<number | null>;
+        const ds14 = getLineDataset(14); if (ds14) ds14.data = waterCutAnalyticalVsPvi as Array<number | null>;
 
         const showPoints = timeLabels.length <= 20;
         for (const dataset of chart.data.datasets) {

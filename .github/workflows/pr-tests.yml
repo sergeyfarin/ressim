@@ -25,5 +25,14 @@ jobs:
       - name: Run unit tests (Vitest)
         run: npm run test --if-present
 
+      - name: Run coverage and upload report
+        run: npm run test:coverage --if-present
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-coverage
+          path: coverage/**
+
       - name: Run TypeScript typecheck
         run: npm run typecheck
