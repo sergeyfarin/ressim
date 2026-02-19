@@ -11,6 +11,8 @@
     hasValidationErrors = false,
     solverWarning = '',
     modelReinitNotice = '',
+    continuationStatus = '',
+    inputsAnchorHref = '',
     steps = $bindable(20),
     onRunSteps = () => {},
     onStepOnce = () => {},
@@ -28,6 +30,8 @@
     hasValidationErrors?: boolean;
     solverWarning?: string;
     modelReinitNotice?: string;
+    continuationStatus?: string;
+    inputsAnchorHref?: string;
     steps?: number;
     onRunSteps?: () => void;
     onStepOnce?: () => void;
@@ -75,6 +79,10 @@
           onclick={onInitSimulator}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
         >↻ Reinit</button>
+
+        {#if inputsAnchorHref}
+          <a class="link link-primary text-xs self-center" href={inputsAnchorHref}>Jump to Inputs</a>
+        {/if}
       </div>
 
       <!-- Status -->
@@ -82,11 +90,15 @@
         <span class="badge badge-sm {wasmReady ? 'badge-success' : 'badge-warning'}">
           {wasmReady ? 'WASM Ready' : 'Loading…'}
         </span>
-        <span>{workerRunning ? '⏳ Running' : runCompleted ? '✓ Done' : '○ Idle'}</span>
+        <span>{continuationStatus || (workerRunning ? '⏳ Running' : runCompleted ? '✓ Done' : '○ Idle')}</span>
         <span>{simTime.toFixed(1)} days</span>
         <span>{historyLength} steps</span>
       </div>
     </div>
+
+    {#if continuationStatus}
+      <div class="text-xs text-info mt-1">{continuationStatus}</div>
+    {/if}
 
     <!-- Warnings / notices -->
     {#if modelReinitNotice}

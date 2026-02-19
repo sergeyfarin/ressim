@@ -185,6 +185,64 @@ function configureSimulator(payload) {
   }
 }
 
+async function hydratePreRunState(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Invalid hydrate payload');
+  }
+
+  const createPayload = payload.createPayload;
+  if (!createPayload || typeof createPayload !== 'object') {
+    throw new Error('Missing create payload for hydration');
+  }
+
+  const steps = Math.max(0, Math.floor(Number(payload.steps ?? 0)));
+  const deltaTDays = Number(payload.deltaTDays ?? 0);
+
+  if (steps <= 0) {
+    throw new Error('Hydration requires at least one step');
+  }
+  if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
+    throw new Error(`Invalid hydration timestep: ${deltaTDays}`);
+  }
+
+  configureSimulator(createPayload);
+
+  isRunning = true;
+  stopRequested = false;
+  post('runStarted', { hydration: true, steps, deltaTDays });
+
+  const yieldInterval = 10;
+  for (let i = 0; i < steps; i++) {
+    if (stopRequested) {
+      isRunning = false;
+      stopRequested = false;
+      post('stopped', { reason: 'user', hydration: true, completedSteps: i });
+      return;
+    }
+
+    simulator.step(deltaTDays);
+
+    if ((i + 1) % yieldInterval === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (stopRequested) {
+        isRunning = false;
+        stopRequested = false;
+        post('stopped', { reason: 'user', hydration: true, completedSteps: i + 1 });
+        return;
+      }
+    }
+  }
+
+  isRunning = false;
+  stopRequested = false;
+  post('hydrated', {
+    hydration: true,
+    hydrationId: Number(payload.hydrationId ?? 0),
+    time: simulator.get_time(),
+    rateHistoryLength: simulator.getRateHistory().length,
+  });
+}
+
 self.onmessage = async (event) => {
   const { type, payload } = event.data ?? {};
 
@@ -221,6 +279,15 @@ self.onmessage = async (event) => {
         throw error;
       }
       post('state', getStatePayload(false, -1, { batchMs: 0, avgStepMs: 0, snapshotsSent: 0 }));
+      return;
+    }
+
+    if (type === 'hydratePreRun') {
+      if (!wasmReady) {
+        await init();
+        wasmReady = true;
+      }
+      await hydratePreRunState(payload);
       return;
     }
 

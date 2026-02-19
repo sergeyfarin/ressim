@@ -8,6 +8,8 @@
     export let avgWaterSaturationSeries: Array<number | null> = [];
     export let ooipM3 = 0;
     export let poreVolumeM3 = 0;
+    export let activeCategory = '';
+    export let activeCase = '';
     export let theme: 'dark' | 'light' = 'dark';
 
     type MismatchSummary = {
@@ -17,7 +19,8 @@
         mape: number;
     };
 
-    type ChartTab = 'oil' | 'water' | 'voidage' | 'validation' | 'pvi' | 'custom';
+    type XAxisMode = 'time' | 'pvi' | 'cumLiquid' | 'cumInjection';
+
     type LineDataset = ChartDataset<'line', Array<number | null>>;
     type AxisScaleConfig = {
         display?: boolean;
@@ -29,9 +32,7 @@
 
     let chartCanvas: HTMLCanvasElement;
     let chart: Chart<'line', Array<number | null>, string>;
-    let activeTab: ChartTab = 'oil';
     let selectedDatasetIndexes: number[] = [];
-    let lineSelectorExpanded = false;
     // Reserved for future 3-phase extension: use red for gas-related series.
     const GAS_COLOR = '#ef4444';
     const OIL_COLOR = '#16a34a';
@@ -61,6 +62,10 @@
         WATERCUT_SIM_VS_PVI: 13,
         WATERCUT_ANALYTICAL_VS_PVI: 14,
     } as const;
+
+    let xAxisMode: XAxisMode = 'time';
+    let pviAvailable = false;
+    let pendingScenarioXAxisMode: XAxisMode | null = null;
     let mismatchSummary: MismatchSummary = {
         pointsCompared: 0,
         mae: 0,
@@ -84,44 +89,123 @@
         updateChart();
     }
 
-    $: if (chart && activeTab) {
-        applyActiveTab();
-    }
-
-    $: if (activeTab === 'custom') {
-        lineSelectorExpanded = true;
-    }
-
     $: if (chart && theme) {
         applyThemeStyles();
     }
 
-    const tabLabels: Record<ChartTab, string> = {
-        oil: 'Oil Rate + Cumulative',
-        water: 'Water Injection + Production',
-        voidage: 'Voidage / Liquid Balance',
-        validation: 'Model vs Analytical',
-        pvi: 'RF + Water Cut vs PVI',
-        custom: 'Custom',
-    };
-
-    const presetSelections: Record<'oil' | 'water' | 'voidage' | 'validation' | 'pvi', number[]> = {
-        oil: [DATASET_INDEX.OIL_RATE, DATASET_INDEX.CUM_OIL, DATASET_INDEX.RECOVERY_FACTOR],
-        water: [DATASET_INDEX.WATER_PROD, DATASET_INDEX.WATER_INJ, DATASET_INDEX.AVG_WATER_SAT],
-        voidage: [DATASET_INDEX.AVG_PRESSURE, DATASET_INDEX.VRR, DATASET_INDEX.LIQUID_PROD],
-        validation: [
+    const scenarioSelectionByCategory: Record<string, number[]> = {
+        depletion: [
             DATASET_INDEX.OIL_RATE,
             DATASET_INDEX.ANALYTICAL_OIL_RATE,
             DATASET_INDEX.CUM_OIL,
             DATASET_INDEX.ANALYTICAL_CUM_OIL,
             DATASET_INDEX.OIL_RATE_ABS_ERROR,
+            DATASET_INDEX.AVG_PRESSURE,
         ],
-        pvi: [
+        waterflood: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.CUM_OIL,
+            DATASET_INDEX.RECOVERY_FACTOR,
+            DATASET_INDEX.AVG_WATER_SAT,
+        ],
+        exploration: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.LIQUID_PROD,
+            DATASET_INDEX.VRR,
+            DATASET_INDEX.AVG_PRESSURE,
+        ],
+    };
+
+    const scenarioSelectionByCase: Record<string, number[]> = {
+        depletion_corner_producer: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.ANALYTICAL_OIL_RATE,
+            DATASET_INDEX.CUM_OIL,
+            DATASET_INDEX.ANALYTICAL_CUM_OIL,
+            DATASET_INDEX.OIL_RATE_ABS_ERROR,
+            DATASET_INDEX.AVG_PRESSURE,
+        ],
+        depletion_center_producer: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.ANALYTICAL_OIL_RATE,
+            DATASET_INDEX.CUM_OIL,
+            DATASET_INDEX.ANALYTICAL_CUM_OIL,
+            DATASET_INDEX.OIL_RATE_ABS_ERROR,
+            DATASET_INDEX.AVG_PRESSURE,
+        ],
+        bl_case_a_refined: [
             DATASET_INDEX.RF_VS_PVI,
             DATASET_INDEX.WATERCUT_SIM_VS_PVI,
             DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI,
         ],
+        bl_case_b_refined: [
+            DATASET_INDEX.RF_VS_PVI,
+            DATASET_INDEX.WATERCUT_SIM_VS_PVI,
+            DATASET_INDEX.WATERCUT_ANALYTICAL_VS_PVI,
+        ],
+        bl_aligned_homogeneous: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.CUM_OIL,
+            DATASET_INDEX.RECOVERY_FACTOR,
+            DATASET_INDEX.AVG_WATER_SAT,
+        ],
+        bl_aligned_mild_capillary: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.AVG_WATER_SAT,
+            DATASET_INDEX.AVG_PRESSURE,
+            DATASET_INDEX.VRR,
+        ],
+        bl_aligned_mobility_balanced: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.VRR,
+            DATASET_INDEX.RECOVERY_FACTOR,
+            DATASET_INDEX.AVG_WATER_SAT,
+        ],
+        baseline_waterflood: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.LIQUID_PROD,
+            DATASET_INDEX.VRR,
+            DATASET_INDEX.AVG_PRESSURE,
+        ],
+        high_contrast_layers: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.AVG_PRESSURE,
+            DATASET_INDEX.AVG_WATER_SAT,
+            DATASET_INDEX.VRR,
+        ],
+        viscous_fingering_risk: [
+            DATASET_INDEX.OIL_RATE,
+            DATASET_INDEX.WATER_PROD,
+            DATASET_INDEX.WATER_INJ,
+            DATASET_INDEX.LIQUID_PROD,
+            DATASET_INDEX.AVG_WATER_SAT,
+            DATASET_INDEX.VRR,
+        ],
     };
+
+    const fallbackSelection: number[] = [
+        DATASET_INDEX.OIL_RATE,
+        DATASET_INDEX.WATER_PROD,
+        DATASET_INDEX.WATER_INJ,
+        DATASET_INDEX.CUM_OIL,
+        DATASET_INDEX.AVG_PRESSURE,
+    ];
+
+    let lastScenarioSelectionKey = '';
 
     function legendAxisPriority(axisId: string | undefined): number {
         if (!axisId) return 99;
@@ -161,6 +245,60 @@
         return (chart.options.scales ?? {}) as ChartScalesMap;
     }
 
+    function getXAxisTitle(mode: XAxisMode): string {
+        if (mode === 'pvi') return 'PV Injected (PVI)';
+        if (mode === 'cumLiquid') return 'Cumulative Liquid Production (m³)';
+        if (mode === 'cumInjection') return 'Cumulative Injection (m³)';
+        return 'Time (days)';
+    }
+
+    function setXAxisMode(mode: XAxisMode) {
+        pendingScenarioXAxisMode = null;
+        if (mode === 'pvi' && !pviAvailable) return;
+        xAxisMode = mode;
+        updateChart();
+        applySelection(selectedDatasetIndexes);
+    }
+
+    function resolveScenarioDefaultXAxis(caseKey: string): XAxisMode {
+        const normalizedCase = String(caseKey ?? '').toLowerCase();
+        if (normalizedCase.startsWith('bl_')) {
+            return 'pvi';
+        }
+        return 'time';
+    }
+
+    function resolveScenarioSelection(category: string, caseKey: string): number[] {
+        const normalizedCategory = String(category ?? '').toLowerCase();
+        const normalizedCase = String(caseKey ?? '').toLowerCase();
+
+        const byCase = scenarioSelectionByCase[normalizedCase];
+        if (Array.isArray(byCase) && byCase.length > 0) {
+            return [...byCase];
+        }
+
+        const byCategory = scenarioSelectionByCategory[normalizedCategory];
+        if (Array.isArray(byCategory) && byCategory.length > 0) {
+            return [...byCategory];
+        }
+
+        return [...fallbackSelection];
+    }
+
+    function applyScenarioSelection() {
+        if (!chart) return;
+        const selection = resolveScenarioSelection(activeCategory, activeCase)
+            .filter((idx) => idx >= 0 && idx < chart.data.datasets.length);
+        selectedDatasetIndexes = [...new Set(selection)].sort((a, b) => a - b);
+        pendingScenarioXAxisMode = resolveScenarioDefaultXAxis(activeCase);
+        if (pendingScenarioXAxisMode !== 'pvi') {
+            xAxisMode = pendingScenarioXAxisMode;
+            pendingScenarioXAxisMode = null;
+        }
+        updateChart();
+        applySelection(selectedDatasetIndexes);
+    }
+
     onMount(() => {
         Chart.register(...registerables);
         const ctx = chartCanvas.getContext('2d');
@@ -170,14 +308,14 @@
                 labels: [],
                 datasets: [
                     {
-                        label: 'Oil Production (m³/day)',
+                        label: 'Oil Rate',
                         data: [],
                         borderColor: OIL_COLOR,
                         borderWidth: 2.5,
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Analytical Oil Production (m³/day)',
+                        label: 'Oil Rate (Analytical)',
                         data: [],
                         borderColor: OIL_COLOR_DARK,
                         borderWidth: 2,
@@ -185,28 +323,28 @@
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Water Production (m³/day)',
+                        label: 'Water Rate',
                         data: [],
                         borderColor: WATER_PROD_COLOR,
                         borderWidth: 2.5,
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Water Injection (m³/day)',
+                        label: 'Water Injection Rate',
                         data: [],
                         borderColor: WATER_INJ_COLOR,
                         borderWidth: 2.5,
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Cumulative Oil (m³)',
+                        label: 'Cumulative Oil',
                         data: [],
                         borderColor: OIL_CUM_COLOR,
                         borderWidth: 2.5,
                         yAxisID: 'y1',
                     },
                     {
-                        label: 'Analytical Cumulative Oil (m³)',
+                        label: 'Cumulative Oil (Rate)',
                         data: [],
                         borderColor: OIL_CUM_COLOR,
                         borderWidth: 2,
@@ -221,7 +359,7 @@
                         yAxisID: 'y5',
                     },
                     {
-                        label: 'Liquid Production (m³/day)',
+                        label: 'Liquid Production',
                         data: [],
                         borderColor: WATER_BALANCE_COLOR,
                         borderWidth: 2,
@@ -237,7 +375,7 @@
                         yAxisID: 'y2',
                     },
                     {
-                        label: 'Average Reservoir Pressure (bar)',
+                        label: 'Average Reservoir Pressure',
                         data: [],
                         borderColor: PRESSURE_COLOR,
                         borderWidth: 2,
@@ -251,7 +389,7 @@
                         yAxisID: 'y5',
                     },
                     {
-                        label: 'Oil Rate Abs Error (m³/day)',
+                        label: 'Oil Rate (Difference vs. Analytical)',
                         data: [],
                         borderColor: ERROR_GREEN_COLOR,
                         borderWidth: 1.3,
@@ -259,21 +397,21 @@
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Recovery Factor vs PVI',
+                        label: 'Recovery Factor',
                         data: [],
                         borderColor: '#16a34a',
                         borderWidth: 2.3,
                         yAxisID: 'y5',
                     },
                     {
-                        label: 'Water Cut (Sim) vs PVI',
+                        label: 'Water Cut',
                         data: [],
                         borderColor: '#2563eb',
                         borderWidth: 2.3,
                         yAxisID: 'y5',
                     },
                     {
-                        label: 'Water Cut (Analytical) vs PVI',
+                        label: 'Water Cut (Analytical)',
                         data: [],
                         borderColor: '#1d4ed8',
                         borderWidth: 2,
@@ -438,8 +576,7 @@
             }
         });
 
-        selectedDatasetIndexes = [...presetSelections.oil];
-        applyActiveTab();
+        applyScenarioSelection();
     });
 
     onDestroy(() => {
@@ -492,17 +629,32 @@
         let cumulativeOil = 0;
         const cumulativeOilData = [];
         let cumulativeInjection = 0;
+        let cumulativeLiquid = 0;
         const pviData = [];
+        const cumulativeLiquidData = [];
+        const cumulativeInjectionData = [];
         for (let i = 0; i < rateHistory.length; i++) {
             const dt = i > 0 ? rateHistory[i].time - rateHistory[i-1].time : rateHistory[i].time;
             cumulativeOil += oilProd[i] * dt;
             cumulativeOilData.push(cumulativeOil);
             cumulativeInjection += Math.max(0, injection[i]) * dt;
+            cumulativeLiquid += Math.max(0, liquidProd[i]) * dt;
+            cumulativeLiquidData.push(cumulativeLiquid);
+            cumulativeInjectionData.push(cumulativeInjection);
             if (!Number.isFinite(poreVolumeM3) || poreVolumeM3 <= 1e-12) {
                 pviData.push(0);
             } else {
                 pviData.push(cumulativeInjection / poreVolumeM3);
             }
+        }
+
+        pviAvailable = cumulativeInjection > 1e-12;
+        if (pendingScenarioXAxisMode === 'pvi' && pviAvailable) {
+            xAxisMode = 'pvi';
+            pendingScenarioXAxisMode = null;
+        }
+        if (!pviAvailable && xAxisMode === 'pvi') {
+            xAxisMode = 'time';
         }
 
         const recoveryFactorData = cumulativeOilData.map((cumOil) => {
@@ -582,7 +734,15 @@
         }
 
         const pviLabels = pviData.map((value) => value.toFixed(3));
-        chart.data.labels = activeTab === 'pvi' ? pviLabels : timeLabels;
+        const cumLiquidLabels = cumulativeLiquidData.map((value) => value.toFixed(1));
+        const cumInjectionLabels = cumulativeInjectionData.map((value) => value.toFixed(1));
+        chart.data.labels = xAxisMode === 'pvi'
+            ? pviLabels
+            : xAxisMode === 'cumLiquid'
+                ? cumLiquidLabels
+                : xAxisMode === 'cumInjection'
+                    ? cumInjectionLabels
+                    : timeLabels;
         chart.data.datasets[0].data = oilProd;
         chart.data.datasets[1].data = analyticalOilProd;
         chart.data.datasets[2].data = waterProd;
@@ -674,24 +834,17 @@
         }
 
         if (scales.x?.title) {
-            scales.x.title.text = activeTab === 'pvi' ? 'PV Injected (PVI)' : 'Time (days)';
+            scales.x.title.text = getXAxisTitle(xAxisMode);
         }
 
         chart.update();
     }
 
-    function applyActiveTab() {
-        if (!chart) return;
-
-        if (activeTab !== 'custom') {
-            selectedDatasetIndexes = [...presetSelections[activeTab]];
-        }
-        updateChart();
-        applySelection(selectedDatasetIndexes);
-    }
-
     function toggleDataset(datasetIndex: number) {
-        const next = new Set(selectedDatasetIndexes);
+        const next = new Set<number>();
+        for (const idx of selectedDatasetIndexes) {
+            next.add(idx);
+        }
         if (next.has(datasetIndex)) {
             next.delete(datasetIndex);
         } else {
@@ -699,52 +852,82 @@
         }
 
         selectedDatasetIndexes = [...next].sort((a, b) => a - b);
-        activeTab = 'custom';
+        updateChart();
         applySelection(selectedDatasetIndexes);
     }
 
-    function toggleLineSelector() {
-        lineSelectorExpanded = !lineSelectorExpanded;
+    $: if (chart) {
+        const nextKey = `${activeCategory}::${activeCase}`;
+        if (nextKey !== lastScenarioSelectionKey) {
+            lastScenarioSelectionKey = nextKey;
+            applyScenarioSelection();
+        }
     }
 </script>
 
-<div class="mb-2 flex flex-wrap gap-2">
-    {#each Object.entries(tabLabels) as [key, label]}
-        <button
-            type="button"
-            class={`btn btn-xs sm:btn-sm ${activeTab === key ? 'btn-primary' : 'btn-outline'}`}
-            on:click={() => activeTab = key as typeof activeTab}
-        >
-            {label}
-        </button>
-    {/each}
-</div>
-
-<div class="mb-2">
-    <button
-        type="button"
-        class="btn btn-xs btn-outline"
-        on:click={toggleLineSelector}
-    >
-        {lineSelectorExpanded ? 'Hide line selection' : 'Show line selection'}
-    </button>
-</div>
-
-{#if lineSelectorExpanded}
-    <div class="mb-2 flex flex-wrap gap-1">
-        {#if chart}
-            {#each chart.data.datasets as dataset, idx}
+<div class="mb-2 space-y-2">
+    {#if chart}
+        <div>
+            <div class="mb-1 text-[11px] uppercase tracking-wide opacity-65">X-axis</div>
+            <div class="flex flex-wrap gap-1">
                 <button
                     type="button"
-                    class={`btn btn-xs ${selectedDatasetIndexes.includes(idx) ? 'btn-secondary' : 'btn-ghost'}`}
-                    on:click={() => toggleDataset(idx)}
+                    class={`btn btn-xs border ${xAxisMode === 'time'
+                        ? 'border-base-300 bg-base-200 text-base-content'
+                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
+                    on:click={() => setXAxisMode('time')}
                 >
-                    {dataset.label}
+                    Time
                 </button>
-            {/each}
-        {/if}
-    </div>
-{/if}
+                <button
+                    type="button"
+                    disabled={!pviAvailable}
+                    class={`btn btn-xs border ${xAxisMode === 'pvi'
+                        ? 'border-base-300 bg-base-200 text-base-content'
+                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'} ${!pviAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    on:click={() => setXAxisMode('pvi')}
+                >
+                    PVI
+                </button>
+                <button
+                    type="button"
+                    class={`btn btn-xs border ${xAxisMode === 'cumLiquid'
+                        ? 'border-base-300 bg-base-200 text-base-content'
+                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
+                    on:click={() => setXAxisMode('cumLiquid')}
+                >
+                    Cum Liquid Prod
+                </button>
+                <button
+                    type="button"
+                    class={`btn btn-xs border ${xAxisMode === 'cumInjection'
+                        ? 'border-base-300 bg-base-200 text-base-content'
+                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
+                    on:click={() => setXAxisMode('cumInjection')}
+                >
+                    Cum Injection
+                </button>
+            </div>
+        </div>
+
+        <div>
+            <div class="mb-1 text-[11px] uppercase tracking-wide opacity-65">Curves</div>
+            <div class="flex flex-wrap gap-1">
+                {#each chart.data.datasets as dataset, idx}
+                    <button
+                        type="button"
+                        class={`btn btn-xs border ${selectedDatasetIndexes.includes(idx)
+                            ? 'border-base-300 bg-base-200 text-base-content'
+                            : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
+                        on:click={() => toggleDataset(idx)}
+                    >
+                        {dataset.label}
+                    </button>
+                {/each}
+            </div>
+        </div>
+    {/if}
+</div>
 
 <div class="chart-container" style="position: relative; height: min(52vh, 440px); width:100%;">
     <canvas bind:this={chartCanvas}></canvas>

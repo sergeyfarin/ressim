@@ -4,9 +4,7 @@
     import DepletionAnalytical from './lib/DepletionAnalytical.svelte';
     import TopBar from './lib/ui/TopBar.svelte';
     import RunControls from './lib/ui/RunControls.svelte';
-    import TabContainer from './lib/ui/TabContainer.svelte';
     import InputsTab from './lib/ui/InputsTab.svelte';
-    import VisualizationReplayPanel from './lib/ui/VisualizationReplayPanel.svelte';
     import SwProfileChart from './lib/SwProfileChart.svelte';
     import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog';
 
@@ -19,9 +17,16 @@
     let activeCategory = 'depletion';
     let activeCase = '';
     let isCustomMode = false;
-    let activeTab: 'charts' | '3d' | 'inputs' = 'charts';
     let preRunData: any = null;
     let preRunLoading = false;
+    let preRunWarning = '';
+    let preRunLoadToken = 0;
+    let preRunContinuationAvailable = false;
+    let preRunHydrated = false;
+    let preRunHydrating = false;
+    let preRunContinuationStatus = '';
+    let pendingPreRunHydrationId = 0;
+    let pendingPreRunHydrationResolve: ((ready: boolean) => void) | null = null;
 
     // UI inputs
     let nx = 15;
@@ -193,10 +198,6 @@
     let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
     let legendFixedMin = 0;
     let legendFixedMax = 1;
-    let autoLegendMin = true;
-    let autoLegendMax = true;
-    const LEGEND_PERCENTILE_LOW = 1;
-    const LEGEND_PERCENTILE_HIGH = 99;
 
     // ---------- Helper utilities ----------
 
@@ -258,10 +259,14 @@
     // ---------- Category / case navigation ----------
 
     function handleCategoryChange(cat: string) {
+        preRunLoadToken += 1;
+        resetPreRunContinuationState();
         isCustomMode = false;
         activeCategory = cat;
         activeCase = '';
         preRunData = null;
+        preRunWarning = '';
+        preRunLoading = false;
         // Auto-select first case
         const cases = caseCatalog[cat]?.cases;
         if (cases && cases.length > 0) {
@@ -270,8 +275,10 @@
     }
 
     function handleCaseChange(key: string) {
+        resetPreRunContinuationState();
         activeCase = key;
         isCustomMode = false;
+        preRunWarning = '';
         const found = findCaseByKey(key);
         if (found) {
             applyCaseParams(found.case.params);
@@ -280,17 +287,13 @@
     }
 
     function handleCustomMode() {
+        preRunLoadToken += 1;
+        resetPreRunContinuationState();
         isCustomMode = true;
         activeCase = '';
         preRunData = null;
-        activeTab = 'inputs';
-    }
-
-    function handleTabChange(tab: 'charts' | '3d' | 'inputs') {
-        activeTab = tab;
-        if (tab === '3d') {
-            loadThreeDViewModule();
-        }
+        preRunWarning = '';
+        preRunLoading = false;
     }
 
     // Apply a case's params to the local state
@@ -362,45 +365,161 @@
         producerI = Number(resolved.producerI) || (nx - 1);
         producerJ = Number(resolved.producerJ) || 0;
 
-        resetModelAndVisualizationState(true, true);
+        resetModelAndVisualizationState(true, false);
     }
 
     // Load pre-run case data
     async function loadPreRunCase(key: string) {
+        const requestToken = ++preRunLoadToken;
+        resetPreRunContinuationState();
         preRunLoading = true;
         preRunData = null;
+        preRunWarning = '';
         try {
             const url = `${import.meta.env.BASE_URL}cases/${key}.json`;
             const resp = await fetch(url, { cache: 'no-store' });
+            if (requestToken !== preRunLoadToken || key !== activeCase || isCustomMode) return;
             if (!resp.ok) {
                 preRunData = null;
                 return;
             }
             const data = await resp.json();
+            if (requestToken !== preRunLoadToken || key !== activeCase || isCustomMode) return;
             preRunData = data;
 
-            // Apply pre-run data to visualization
-            if (data.finalGrid) gridStateRaw = data.finalGrid;
-            if (data.finalWells) wellStateRaw = data.finalWells;
-            if (data.rateHistory) rateHistory = data.rateHistory;
-            if (data.simTime != null) simTime = data.simTime;
-            if (Array.isArray(data.history)) {
-                history = data.history;
-                currentIndex = data.history.length - 1;
+            const expectedCellCount = Math.max(1, Number(nx) * Number(ny) * Number(nz));
+            const loadedHistory = Array.isArray(data.history) ? data.history : [];
+            const loadedFinalGrid = Array.isArray(data.finalGrid) ? data.finalGrid : null;
+            const validHistoryEntries = loadedHistory.filter((entry) => Array.isArray(entry?.grid) && entry.grid.length === expectedCellCount);
+            const historyHasMismatches = loadedHistory.length > 0 && validHistoryEntries.length !== loadedHistory.length;
+            const finalGridMatches = Boolean(loadedFinalGrid && loadedFinalGrid.length === expectedCellCount);
+
+            history = validHistoryEntries;
+            currentIndex = validHistoryEntries.length - 1;
+
+            const selectedHistoryEntry = currentIndex >= 0 ? validHistoryEntries[currentIndex] : null;
+            const selectedHistoryGrid = Array.isArray(selectedHistoryEntry?.grid) ? selectedHistoryEntry.grid : null;
+
+            if (selectedHistoryGrid && selectedHistoryGrid.length === expectedCellCount) {
+                gridStateRaw = selectedHistoryGrid;
+                wellStateRaw = selectedHistoryEntry?.wells ?? data.finalWells ?? null;
+                simTime = Number(selectedHistoryEntry?.time ?? data.simTime ?? 0);
+            } else if (finalGridMatches) {
+                gridStateRaw = loadedFinalGrid;
+                wellStateRaw = data.finalWells ?? null;
+                simTime = Number(data.simTime ?? 0);
+            } else {
+                gridStateRaw = null;
+                wellStateRaw = data.finalWells ?? null;
+                simTime = Number(data.simTime ?? 0);
+                preRunWarning = `Pre-run data grid size mismatch for selected case (${nx}×${ny}×${nz}, expected ${expectedCellCount} cells). Re-export case data.`;
             }
+
+            if (!preRunWarning && historyHasMismatches) {
+                preRunWarning = `Some pre-run history snapshots do not match selected grid size (${nx}×${ny}×${nz}); only valid snapshots were loaded.`;
+            }
+
+            rateHistory = Array.isArray(data.rateHistory) ? data.rateHistory : [];
             runCompleted = true;
+            preRunContinuationAvailable = true;
+            preRunHydrated = false;
+            runtimeWarning = 'Pre-run case loaded. Click Run to continue from the saved endpoint.';
             vizRevision += 1;
         } catch {
-            preRunData = null;
+            if (requestToken === preRunLoadToken) {
+                preRunData = null;
+                preRunWarning = 'Failed to load pre-run data for this case.';
+                resetPreRunContinuationState();
+            }
         } finally {
-            preRunLoading = false;
+            if (requestToken === preRunLoadToken) {
+                preRunLoading = false;
+            }
         }
+    }
+
+    function resolvePendingPreRunHydration(ready: boolean) {
+        if (pendingPreRunHydrationResolve) {
+            pendingPreRunHydrationResolve(ready);
+            pendingPreRunHydrationResolve = null;
+        }
+    }
+
+    function resetPreRunContinuationState() {
+        preRunContinuationAvailable = false;
+        preRunHydrated = false;
+        preRunHydrating = false;
+        preRunContinuationStatus = '';
+        pendingPreRunHydrationId = 0;
+        resolvePendingPreRunHydration(false);
+    }
+
+    async function ensurePreRunContinuationReady(): Promise<boolean> {
+        if (isCustomMode || !activeCase) return true;
+        if (!preRunContinuationAvailable) {
+            if (preRunLoading) {
+                runtimeWarning = 'Pre-run case data is still loading.';
+                return false;
+            }
+            const initialized = initSimulator({ silent: true });
+            if (initialized) {
+                runtimeWarning = 'Pre-run continuation unavailable. Simulation started from step 0.';
+            }
+            return initialized;
+        }
+        if (preRunHydrated) return true;
+        if (!wasmReady || !simWorker) {
+            runtimeError = 'WASM not ready yet.';
+            return false;
+        }
+
+        if (preRunHydrating && pendingPreRunHydrationResolve) {
+            return new Promise<boolean>((resolve) => {
+                const previousResolver = pendingPreRunHydrationResolve;
+                pendingPreRunHydrationResolve = (ready: boolean) => {
+                    previousResolver?.(ready);
+                    resolve(ready);
+                };
+            });
+        }
+
+        const hydrateSteps = Math.max(1, Math.floor(Number(preRunData?.steps ?? steps ?? 1)));
+        const hydrateDeltaT = Number(preRunData?.params?.delta_t_days ?? delta_t_days);
+        if (!Number.isFinite(hydrateDeltaT) || hydrateDeltaT <= 0) {
+            runtimeError = 'Cannot continue pre-run case: invalid timestep in case data.';
+            return false;
+        }
+
+        preRunHydrating = true;
+        preRunContinuationStatus = 'Preparing continuation…';
+        workerRunning = true;
+        runtimeError = '';
+
+        const hydrationId = ++pendingPreRunHydrationId;
+        const waitForHydration = new Promise<boolean>((resolve) => {
+            pendingPreRunHydrationResolve = resolve;
+        });
+
+        simWorker.postMessage({
+            type: 'hydratePreRun',
+            payload: {
+                hydrationId,
+                createPayload: buildCreatePayload(),
+                steps: hydrateSteps,
+                deltaTDays: hydrateDeltaT,
+            },
+        });
+
+        return waitForHydration;
     }
 
     // ---------- Model reset / validation ----------
 
     function resetModelAndVisualizationState(stopWorker = true, showReinitNotice = false) {
         stopPlaying();
+        if (!isCustomMode && activeCase) {
+            resetPreRunContinuationState();
+        }
 
         if (stopWorker && simWorker && workerRunning) {
             simWorker.postMessage({ type: 'stop' });
@@ -582,6 +701,15 @@
         }
         if (type === 'runStarted') { runtimeError = ''; workerRunning = true; return; }
         if (type === 'state') { applyWorkerState(message); return; }
+        if (type === 'hydrated') {
+            if (Number(message.hydrationId) !== pendingPreRunHydrationId) return;
+            preRunHydrating = false;
+            preRunHydrated = true;
+            preRunContinuationStatus = '';
+            workerRunning = false;
+            resolvePendingPreRunHydration(true);
+            return;
+        }
 
         if (type === 'batchComplete') {
             workerRunning = false;
@@ -599,6 +727,14 @@
 
         if (type === 'stopped') {
             workerRunning = false;
+            if (preRunHydrating) {
+                preRunHydrating = false;
+                preRunHydrated = false;
+                preRunContinuationStatus = '';
+                runtimeWarning = 'Pre-run continuation cancelled before completion.';
+                resolvePendingPreRunHydration(false);
+                return;
+            }
             runCompleted = true;
             if (pendingAutoReinit) {
                 pendingAutoReinit = false;
@@ -620,6 +756,12 @@
             console.error('Simulation worker error:', message.message);
             runtimeError = String(message.message ?? 'Simulation error');
             if (pendingAutoReinit) pendingAutoReinit = false;
+            if (preRunHydrating) {
+                preRunHydrating = false;
+                preRunHydrated = false;
+                preRunContinuationStatus = '';
+                resolvePendingPreRunHydration(false);
+            }
         }
     }
 
@@ -675,6 +817,7 @@
         document.documentElement.setAttribute('data-theme', theme);
         setupWorker();
         loadRateChartModule();
+        loadThreeDViewModule();
         // Auto-select first category and case
         handleCategoryChange('depletion');
     });
@@ -684,11 +827,6 @@
     }
     $: if (typeof localStorage !== 'undefined') {
         localStorage.setItem('ressim-theme', theme);
-    }
-
-    // Load 3D view when tab is selected or data arrives
-    $: if (activeTab === '3d' && !ThreeDViewComponent) {
-        loadThreeDViewModule();
     }
 
     onDestroy(() => {
@@ -729,6 +867,10 @@
         runCompleted = false;
         modelNeedsReinit = false;
         modelReinitNotice = '';
+        preRunHydrated = false;
+        preRunHydrating = false;
+        preRunContinuationStatus = '';
+        resolvePendingPreRunHydration(false);
         runtimeError = '';
         runtimeWarning = '';
         vizRevision += 1;
@@ -799,8 +941,10 @@
     function stepOnce() { runSimulationBatch(1, 1); }
     function runSteps() { runSimulationBatch(Number(steps), HISTORY_RECORD_INTERVAL); }
 
-    function runSimulationBatch(batchSteps: number, historyInterval: number) {
+    async function runSimulationBatch(batchSteps: number, historyInterval: number) {
         if (modelNeedsReinit) { initSimulator(); return; }
+        const continuationReady = await ensurePreRunContinuationReady();
+        if (!continuationReady) return;
         if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
         runtimeError = '';
@@ -887,61 +1031,6 @@
             if (Number.isFinite(value)) { sum += value; count += 1; }
         }
         return count > 0 ? sum / count : 0;
-    }
-
-    function getPropertyValue(cell: Record<string, unknown>, property: typeof showProperty): number {
-        if (property === 'pressure') return Number(cell.pressure ?? NaN);
-        if (property === 'saturation_water') return Number(cell.sat_water ?? cell.satWater ?? cell.sw ?? NaN);
-        if (property === 'saturation_oil') return Number(cell.sat_oil ?? cell.satOil ?? cell.so ?? NaN);
-        if (property === 'permeability_x') return Number(cell.perm_x ?? NaN);
-        if (property === 'permeability_y') return Number(cell.perm_y ?? NaN);
-        if (property === 'permeability_z') return Number(cell.perm_z ?? NaN);
-        if (property === 'porosity') return Number(cell.porosity ?? NaN);
-        return NaN;
-    }
-
-    function percentile(sortedValues: number[], p: number): number {
-        if (sortedValues.length === 0) return NaN;
-        const bounded = Math.min(100, Math.max(0, p));
-        const idx = (bounded / 100) * (sortedValues.length - 1);
-        const lo = Math.floor(idx);
-        const hi = Math.ceil(idx);
-        if (lo === hi) return sortedValues[lo];
-        const t = idx - lo;
-        return sortedValues[lo] * (1 - t) + sortedValues[hi] * t;
-    }
-
-    function computeAutoLegendRange(
-        grid: Array<Record<string, unknown>>,
-        property: typeof showProperty
-    ): { min: number; max: number } | null {
-        if (!Array.isArray(grid) || grid.length === 0) return null;
-        const values = grid
-            .map((cell) => getPropertyValue(cell ?? {}, property))
-            .filter((value) => Number.isFinite(value));
-        if (values.length < 2) return null;
-        const sorted = [...values].sort((a, b) => a - b);
-        const pLow = percentile(sorted, LEGEND_PERCENTILE_LOW);
-        const pHigh = percentile(sorted, LEGEND_PERCENTILE_HIGH);
-        if (!Number.isFinite(pLow) || !Number.isFinite(pHigh) || pHigh <= pLow) return null;
-        return { min: pLow, max: pHigh };
-    }
-
-    function getLegendSourceGrid(): Array<Record<string, unknown>> {
-        if (history.length > 0 && currentIndex >= 0 && currentIndex < history.length) {
-            const grid = history[currentIndex]?.grid;
-            if (Array.isArray(grid)) return grid as Array<Record<string, unknown>>;
-        }
-        return Array.isArray(gridStateRaw) ? (gridStateRaw as Array<Record<string, unknown>>) : [];
-    }
-
-    $: {
-        const sourceGrid = getLegendSourceGrid();
-        const autoRange = computeAutoLegendRange(sourceGrid, showProperty);
-        if (autoRange) {
-            if (autoLegendMin) legendFixedMin = autoRange.min;
-            if (autoLegendMax) legendFixedMax = autoRange.max;
-        }
     }
 
     function buildAvgPressureSeries(ratePoints, historyEntries): Array<number | null> {
@@ -1065,6 +1154,8 @@
             hasValidationErrors={hasValidationErrors}
             {solverWarning}
             modelReinitNotice={modelReinitNotice}
+            continuationStatus={preRunContinuationStatus}
+            inputsAnchorHref="#inputs-section"
             bind:steps
             onRunSteps={runSteps}
             onStepOnce={stepOnce}
@@ -1076,6 +1167,9 @@
         {#if runtimeWarning}
             <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{runtimeWarning}</div>
         {/if}
+        {#if preRunWarning}
+            <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{preRunWarning}</div>
+        {/if}
         {#if runtimeError}
             <div class="rounded-md border border-error bg-base-100 p-2 text-xs text-error">{runtimeError}</div>
         {/if}
@@ -1083,9 +1177,7 @@
             <div class="text-xs opacity-60 text-center">Loading pre-run case data…</div>
         {/if}
 
-        <!-- Tab Container -->
-        <TabContainer {activeTab} onTabChange={handleTabChange}>
-            {#snippet charts()}
+        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
             <div class="space-y-3">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
@@ -1098,6 +1190,8 @@
                                 {avgWaterSaturationSeries}
                                 {ooipM3}
                                 {poreVolumeM3}
+                                {activeCategory}
+                                {activeCase}
                                 {theme}
                             />
                         {:else}
@@ -1127,9 +1221,7 @@
                     </div>
                 {/if}
             </div>
-            {/snippet}
 
-            {#snippet threeD()}
             <div class="space-y-3">
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
@@ -1138,13 +1230,24 @@
                                 <svelte:component
                                     this={ThreeDViewComponent}
                                     nx={nx} ny={ny} nz={nz}
+                                    cellDx={cellDx} cellDy={cellDy} cellDz={cellDz}
                                     {theme}
                                     gridState={gridStateRaw}
-                                    showProperty={showProperty}
-                                    legendFixedMin={legendFixedMin}
-                                    legendFixedMax={legendFixedMax}
+                                    bind:showProperty
+                                    bind:legendFixedMin
+                                    bind:legendFixedMax
+                                    {s_wc}
+                                    {s_or}
+                                    bind:currentIndex
+                                    {replayTime}
+                                    bind:playing
+                                    bind:playSpeed
+                                    bind:showDebugState
+                                    onApplyHistoryIndex={applyHistoryIndex}
+                                    onPrev={prev}
+                                    onNext={next}
+                                    onTogglePlay={togglePlay}
                                     history={history}
-                                    currentIndex={currentIndex}
                                     wellState={wellStateRaw}
                                 />
                             {/key}
@@ -1157,70 +1260,47 @@
                                 {/if}
                             </div>
                         {/if}
-
-                        <div class="mt-4 border-t border-base-300 pt-4">
-                            <VisualizationReplayPanel
-                                bind:showProperty
-                                bind:legendFixedMin
-                                bind:legendFixedMax
-                                bind:autoLegendMin
-                                bind:autoLegendMax
-                                historyLength={history.length}
-                                bind:currentIndex
-                                replayTime={replayTime}
-                                bind:playing
-                                bind:playSpeed
-                                bind:showDebugState
-                                onApplyHistoryIndex={applyHistoryIndex}
-                                onPrev={prev}
-                                onNext={next}
-                                onTogglePlay={togglePlay}
-                            />
-                        </div>
                     </div>
                 </div>
             </div>
-            {/snippet}
+        </div>
 
-            {#snippet inputs()}
-            <div>
-                <InputsTab
-                    bind:nx bind:ny bind:nz
-                    bind:cellDx bind:cellDy bind:cellDz
-                    bind:initialPressure bind:initialSaturation
-                    bind:mu_w bind:mu_o bind:c_o bind:c_w
-                    bind:rho_w bind:rho_o
-                    bind:rock_compressibility bind:depth_reference
-                    bind:volume_expansion_o bind:volume_expansion_w
-                    bind:gravityEnabled
-                    bind:permMode
-                    bind:uniformPermX bind:uniformPermY bind:uniformPermZ
-                    bind:useRandomSeed bind:randomSeed
-                    bind:minPerm bind:maxPerm
-                    bind:layerPermsX bind:layerPermsY bind:layerPermsZ
-                    bind:s_wc bind:s_or bind:n_w bind:n_o
-                    bind:capillaryEnabled bind:capillaryPEntry bind:capillaryLambda
-                    bind:well_radius bind:well_skin
-                    bind:injectorEnabled
-                    bind:injectorControlMode bind:producerControlMode
-                    bind:injectorBhp bind:producerBhp
-                    bind:targetInjectorRate bind:targetProducerRate
-                    bind:injectorI bind:injectorJ bind:producerI bind:producerJ
-                    bind:delta_t_days
-                    bind:max_sat_change_per_step
-                    bind:max_pressure_change_per_step
-                    bind:max_well_rate_change_fraction
-                    bind:analyticalSolutionMode
-                    bind:analyticalDietzShapeFactor
-                    bind:analyticalDepletionTauScale
-                    bind:analyticalDepletionRateScale
-                    {validationErrors}
-                    {validationWarnings}
-                    readOnly={!isCustomMode && activeCase !== ''}
-                />
-            </div>
-            {/snippet}
-        </TabContainer>
+        <div id="inputs-section">
+            <InputsTab
+                bind:nx bind:ny bind:nz
+                bind:cellDx bind:cellDy bind:cellDz
+                bind:initialPressure bind:initialSaturation
+                bind:mu_w bind:mu_o bind:c_o bind:c_w
+                bind:rho_w bind:rho_o
+                bind:rock_compressibility bind:depth_reference
+                bind:volume_expansion_o bind:volume_expansion_w
+                bind:gravityEnabled
+                bind:permMode
+                bind:uniformPermX bind:uniformPermY bind:uniformPermZ
+                bind:useRandomSeed bind:randomSeed
+                bind:minPerm bind:maxPerm
+                bind:layerPermsX bind:layerPermsY bind:layerPermsZ
+                bind:s_wc bind:s_or bind:n_w bind:n_o
+                bind:capillaryEnabled bind:capillaryPEntry bind:capillaryLambda
+                bind:well_radius bind:well_skin
+                bind:injectorEnabled
+                bind:injectorControlMode bind:producerControlMode
+                bind:injectorBhp bind:producerBhp
+                bind:targetInjectorRate bind:targetProducerRate
+                bind:injectorI bind:injectorJ bind:producerI bind:producerJ
+                bind:delta_t_days
+                bind:max_sat_change_per_step
+                bind:max_pressure_change_per_step
+                bind:max_well_rate_change_fraction
+                bind:analyticalSolutionMode
+                bind:analyticalDietzShapeFactor
+                bind:analyticalDepletionTauScale
+                bind:analyticalDepletionRateScale
+                {validationErrors}
+                {validationWarnings}
+                readOnly={!isCustomMode && activeCase !== ''}
+            />
+        </div>
 
         <!-- Debug State -->
         {#if showDebugState}
