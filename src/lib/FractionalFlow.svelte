@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables } from 'chart.js';
+    import { safeSetDatasetData } from './chart-helpers';
 
     type RockProps = { s_wc: number; s_or: number; n_w: number; n_o: number };
     type FluidProps = { mu_w: number; mu_o: number };
@@ -42,7 +43,7 @@
         initialSw: number;
     };
 
-    let welgeCanvas: HTMLCanvasElement;
+    let welgeCanvas: HTMLCanvasElement | undefined;
     let welgeChart: Chart<'line', Array<{ x: number; y: number }>, number> | null = null;
     let welgeMetrics = $state<WelgeMetrics>({
         shockSw: 0,
@@ -143,6 +144,8 @@
         welgeChart = null;
     });
 
+
+
     function k_rw(s_w: number) {
         const { s_wc, s_or, n_w } = rockProps;
         const s_eff = Math.max(0, Math.min(1, (s_w - s_wc) / (1 - s_wc - s_or)));
@@ -219,8 +222,8 @@
             tangentCurve.push({ x: s, y: Math.max(0, Math.min(1, fwInitial + slope * (s - welgeMetrics.initialSw))) });
         }
 
-        welgeChart.data.datasets[0].data = fwCurve;
-        welgeChart.data.datasets[1].data = tangentCurve;
+        safeSetDatasetData(welgeChart, 0, fwCurve);
+        safeSetDatasetData(welgeChart, 1, tangentCurve);
         welgeChart.update();
     }
 

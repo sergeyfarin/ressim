@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables } from 'chart.js';
+    import { safeSetDatasetData } from './chart-helpers';
 
     import type { GridCell } from './simulator-types';
     export let gridState: GridCell[] = [];
@@ -89,6 +90,8 @@
         chart?.destroy();
         chart = null;
     });
+
+
 
     function cellIndex(i: number, j: number, k: number) {
         return (k * nx * ny) + (j * nx) + i;
@@ -182,8 +185,8 @@
         const analytical = buildAnalyticalProfile();
 
         chart.data.labels = labels;
-        chart.data.datasets[0].data = simulated;
-        chart.data.datasets[1].data = analytical;
+        safeSetDatasetData(chart, 0, simulated);
+        safeSetDatasetData(chart, 1, analytical);
         chart.update();
     }
 </script>

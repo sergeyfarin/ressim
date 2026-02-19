@@ -1,10 +1,10 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables, type ChartDataset, type PointStyle } from 'chart.js';
+    import { getLineDataset, getDatasetLabel, safeSetDatasetData, applyThemeToChart } from './chart-helpers';
+    import type { RateHistoryPoint, AnalyticalProductionPoint } from './simulator-types';
 
-    import type { RateHistoryPoint } from './simulator-types';
     export let rateHistory: RateHistoryPoint[] = [];
-    import type { AnalyticalProductionPoint } from './simulator-types';
 
     export let analyticalProductionData: AnalyticalProductionPoint[] = [];
     export let avgReservoirPressureSeries: Array<number | null> = [];
@@ -93,7 +93,7 @@
     }
 
     $: if (chart && theme) {
-        applyThemeStyles();
+        applyThemeToChart(chart, theme);
     }
 
     const scenarioSelectionByCategory: Record<string, number[]> = {
@@ -240,9 +240,7 @@
         return canvas;
     }
 
-    function getLineDataset(datasetIndex: number): LineDataset | undefined {
-        return chart?.data.datasets?.[datasetIndex] as LineDataset | undefined;
-    }
+
 
     function getScalesMap(): ChartScalesMap {
         return (chart.options.scales ?? {}) as ChartScalesMap;
@@ -436,7 +434,7 @@
                                 const defaultLabels = Chart.defaults.plugins.legend.labels.generateLabels(chartRef);
                                 return defaultLabels.map((label) => {
                                     const datasetIndex = label.datasetIndex ?? -1;
-                                    const dataset = getLineDataset(datasetIndex);
+                                    const dataset = getLineDataset(chartRef as Chart, datasetIndex);
                                     const borderWidth = Number(dataset?.borderWidth ?? label.lineWidth ?? 2);
                                     const borderColor = Array.isArray(dataset?.borderColor)
                                         ? String(dataset.borderColor[0] ?? label.strokeStyle)
@@ -746,25 +744,26 @@
                 : xAxisMode === 'cumInjection'
                     ? cumInjectionLabels
                     : timeLabels;
-        const ds0 = getLineDataset(0); if (ds0) ds0.data = oilProd;
-        const ds1 = getLineDataset(1); if (ds1) ds1.data = analyticalOilProd as Array<number | null>;
-        const ds2 = getLineDataset(2); if (ds2) ds2.data = waterProd;
-        const ds3 = getLineDataset(3); if (ds3) ds3.data = injection;
-        const ds4 = getLineDataset(4); if (ds4) ds4.data = cumulativeOilData;
-        const ds5 = getLineDataset(5); if (ds5) ds5.data = analyticalCumulativeOilData as Array<number | null>;
-        const ds6 = getLineDataset(6); if (ds6) ds6.data = recoveryFactorData as Array<number | null>;
-        const ds7 = getLineDataset(7); if (ds7) ds7.data = liquidProd;
-        const ds8 = getLineDataset(8); if (ds8) ds8.data = vrrData as Array<number | null>;
-        const ds9 = getLineDataset(9); if (ds9) ds9.data = avgReservoirPressure as Array<number | null>;
-        const ds10 = getLineDataset(10); if (ds10) ds10.data = avgWaterSat as Array<number | null>;
-        const ds11 = getLineDataset(11); if (ds11) ds11.data = absErrorData as Array<number | null>;
-        const ds12 = getLineDataset(12); if (ds12) ds12.data = recoveryFactorData as Array<number | null>;
-        const ds13 = getLineDataset(13); if (ds13) ds13.data = waterCutSimVsPvi as Array<number | null>;
-        const ds14 = getLineDataset(14); if (ds14) ds14.data = waterCutAnalyticalVsPvi as Array<number | null>;
+        safeSetDatasetData(chart, 0, oilProd);
+        safeSetDatasetData(chart, 1, analyticalOilProd as Array<number | null>);
+        safeSetDatasetData(chart, 2, waterProd);
+        safeSetDatasetData(chart, 3, injection);
+        safeSetDatasetData(chart, 4, cumulativeOilData);
+        safeSetDatasetData(chart, 5, analyticalCumulativeOilData as Array<number | null>);
+        safeSetDatasetData(chart, 6, recoveryFactorData as Array<number | null>);
+        safeSetDatasetData(chart, 7, liquidProd);
+        safeSetDatasetData(chart, 8, vrrData as Array<number | null>);
+        safeSetDatasetData(chart, 9, avgReservoirPressure as Array<number | null>);
+        safeSetDatasetData(chart, 10, avgWaterSat as Array<number | null>);
+        safeSetDatasetData(chart, 11, absErrorData as Array<number | null>);
+        safeSetDatasetData(chart, 12, recoveryFactorData as Array<number | null>);
+        safeSetDatasetData(chart, 13, waterCutSimVsPvi as Array<number | null>);
+        safeSetDatasetData(chart, 14, waterCutAnalyticalVsPvi as Array<number | null>);
 
         const showPoints = timeLabels.length <= 20;
-        for (const dataset of chart.data.datasets) {
-            const lineDataset = dataset as LineDataset;
+        for (let idx = 0; idx < (chart.data.datasets?.length ?? 0); idx++) {
+            const lineDataset = getLineDataset(chart, idx);
+            if (!lineDataset) continue;
             lineDataset.pointRadius = showPoints ? 2 : 0;
             lineDataset.pointHoverRadius = showPoints ? 3 : 4;
             lineDataset.pointHitRadius = 8;
@@ -775,25 +774,10 @@
 
     function setDatasetVisibility(visibleIndexes: number[]) {
         if (!chart) return;
-        chart.data.datasets.forEach((_, idx) => {
+        for (let idx = 0; idx < (chart.data.datasets?.length ?? 0); idx++) {
             const show = visibleIndexes.includes(idx);
             chart.setDatasetVisibility(idx, show);
-        });
-    }
-
-    function applyThemeStyles() {
-        if (!chart) return;
-        const scales = getScalesMap();
-        const gridColor = theme === 'dark' ? 'rgba(203, 213, 225, 0.07)' : 'rgba(15, 23, 42, 0.10)';
-
-        if (scales.x?.grid) scales.x.grid.color = gridColor;
-        if (scales.y?.grid) scales.y.grid.color = gridColor;
-        if (scales.y1?.grid) scales.y1.grid.color = gridColor;
-        if (scales.y2?.grid) scales.y2.grid.color = gridColor;
-        if (scales.y4?.grid) scales.y4.grid.color = gridColor;
-        if (scales.y5?.grid) scales.y5.grid.color = gridColor;
-
-        chart.update();
+        }
     }
 
     function applySelection(visibleIndexes: number[]) {
@@ -803,7 +787,7 @@
         const scales = getScalesMap();
         const activeAxisIds = new Set(
             visibleIndexes
-                .map((idx) => (chart.data.datasets[idx] as LineDataset | undefined)?.yAxisID)
+                .map((idx) => getLineDataset(chart, idx)?.yAxisID)
                 .filter((axisId): axisId is string => Boolean(axisId))
         );
 
@@ -916,7 +900,7 @@
         <div>
             <div class="mb-1 text-[11px] uppercase tracking-wide opacity-65">Curves</div>
             <div class="flex flex-wrap gap-1">
-                {#each chart.data.datasets as dataset, idx}
+                {#each chart.data.datasets as _, idx}
                     <button
                         type="button"
                         class={`btn btn-xs border ${selectedDatasetIndexes.includes(idx)
@@ -924,7 +908,7 @@
                             : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
                         on:click={() => toggleDataset(idx)}
                     >
-                        {dataset.label}
+                        {getDatasetLabel(chart, idx)}
                     </button>
                 {/each}
             </div>

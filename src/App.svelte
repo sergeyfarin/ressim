@@ -678,12 +678,12 @@
         };
     }
 
-    function applyWorkerState(message) {
+    function applyWorkerState(message: SimulatorSnapshot) {
         const renderStart = performance.now();
         gridStateRaw = message.grid;
         wellStateRaw = message.wells;
         simTime = message.time;
-        rateHistory = message.rateHistory;
+        rateHistory = message.rateHistory ?? [];
         solverWarning = message.solverWarning || '';
 
         if (message.recordHistory) {
@@ -697,15 +697,17 @@
     }
 
     function handleWorkerMessage(event: MessageEvent<WorkerMessage>) {
-        const { type, ...message } = event.data ?? {};
-        if (type === 'ready') {
+        const message = event.data;
+        if (!message) return;
+
+        if (message.type === 'ready') {
             wasmReady = true;
             initSimulator({ silent: true });
             return;
         }
-        if (type === 'runStarted') { runtimeError = ''; workerRunning = true; return; }
-        if (type === 'state') { applyWorkerState(message); return; }
-        if (type === 'hydrated') {
+        if (message.type === 'runStarted') { runtimeError = ''; workerRunning = true; return; }
+        if (message.type === 'state') { applyWorkerState(message.data); return; }
+        if (message.type === 'hydrated') {
             if (Number(message.hydrationId) !== pendingPreRunHydrationId) return;
             preRunHydrating = false;
             preRunHydrated = true;
@@ -715,7 +717,7 @@
             return;
         }
 
-        if (type === 'batchComplete') {
+        if (message.type === 'batchComplete') {
             workerRunning = false;
             runCompleted = true;
             updateProfileStats(message.profile, profileStats.renderApplyMs);
@@ -729,7 +731,7 @@
             return;
         }
 
-        if (type === 'stopped') {
+        if (message.type === 'stopped') {
             workerRunning = false;
             if (preRunHydrating) {
                 preRunHydrating = false;
@@ -754,8 +756,8 @@
             return;
         }
 
-        if (type === 'warning') { runtimeWarning = String(message.message ?? 'Simulation warning'); return; }
-        if (type === 'error') {
+        if (message.type === 'warning') { runtimeWarning = String(message.message ?? 'Simulation warning'); return; }
+        if (message.type === 'error') {
             workerRunning = false;
             console.error('Simulation worker error:', message.message);
             runtimeError = String(message.message ?? 'Simulation error');
