@@ -10,7 +10,8 @@
     "cases:export": "npx --yes tsx scripts/export-cases.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore"
+    "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
@@ -26,6 +27,7 @@
     "chart.js": "^4.5.1",
     "daisyui": "^5.5.18",
     "tailwindcss": "^4.1.18",
-    "three": "0.183.0"
+    "three": "0.183.0",
+    "typescript": "^5.9.3"
   }
 }

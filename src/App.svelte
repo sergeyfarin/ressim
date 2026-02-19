@@ -884,7 +884,9 @@
         return true;
     }
 
-    function buildCreatePayload() {
+    import type { SimulatorCreatePayload } from './lib';
+
+    function buildCreatePayload(): SimulatorCreatePayload {
         const useUniformPerm = permMode === 'uniform';
         const permsX = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermX)) : layerPermsX.map(Number);
         const permsY = useUniformPerm ? Array.from({ length: nz }, () => Number(uniformPermY)) : layerPermsY.map(Number);
@@ -922,6 +924,9 @@
             producerI: Number(producerI), producerJ: Number(producerJ),
         };
     }
+
+    // exported for compile-time assertions/tests
+    export type AppCreatePayload = ReturnType<typeof buildCreatePayload>;
 
     $: if (wasmReady && simWorker && isCustomMode) {
         const nextSignature = JSON.stringify(buildCreatePayload());
