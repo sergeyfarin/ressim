@@ -2,7 +2,8 @@
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables, type ChartDataset, type PointStyle } from 'chart.js';
 
-    export let rateHistory = [];
+    import type { RateHistoryPoint } from './simulator-types';
+    export let rateHistory: RateHistoryPoint[] = [];
     export let analyticalProductionData = [];
     export let avgReservoirPressureSeries: Array<number | null> = [];
     export let avgWaterSaturationSeries: Array<number | null> = [];

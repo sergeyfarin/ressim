@@ -155,8 +155,39 @@ export interface SimulatorSnapshot {
   wells: WellState;
   time: number;
   rateHistory?: RateHistoryPoint[];
-  solverWarning?: string;
+  solverWarning?: string | null;
   recordHistory?: boolean;
   stepIndex?: number;
-  profile?: Record<string, unknown>;
+  profile?: RunProfile;
 }
+
+/** Lightweight profile reported after run chunks */
+export interface RunProfile {
+  batchMs: number;
+  avgStepMs: number;
+  snapshotsSent: number;
+  extractMs?: number;
+}
+
+export type RateHistory = RateHistoryPoint[];
+export type SolverWarning = string | null;
+
+// Worker -> UI messages
+export interface WorkerReadyMessage { type: 'ready' }
+export interface WorkerStateMessage { type: 'state'; data: SimulatorSnapshot }
+export interface WorkerRunStartedMessage { type: 'runStarted'; steps?: number; deltaTDays?: number; hydration?: boolean }
+export interface WorkerStoppedMessage { type: 'stopped'; reason?: string; completedSteps?: number; hydration?: boolean }
+export interface WorkerHydratedMessage { type: 'hydrated'; hydration: true; hydrationId?: number | string; time?: number; rateHistoryLength?: number }
+export interface WorkerBatchCompleteMessage { type: 'batchComplete'; profile: RunProfile }
+export interface WorkerErrorMessage { type: 'error'; message: string }
+export interface WorkerWarningMessage { type: 'warning'; message: string }
+
+export type WorkerMessage =
+  | WorkerReadyMessage
+  | WorkerStateMessage
+  | WorkerRunStartedMessage
+  | WorkerStoppedMessage
+  | WorkerHydratedMessage
+  | WorkerBatchCompleteMessage
+  | WorkerErrorMessage
+  | WorkerWarningMessage;

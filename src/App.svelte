@@ -7,6 +7,7 @@
     import InputsTab from './lib/ui/InputsTab.svelte';
     import SwProfileChart from './lib/SwProfileChart.svelte';
     import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog';
+    import type { WorkerMessage, SimulatorSnapshot } from './lib';
 
     let wasmReady = false;
     let simWorker: Worker | null = null;
@@ -694,7 +695,7 @@
         updateProfileStats(message.profile, performance.now() - renderStart);
     }
 
-    function handleWorkerMessage(event) {
+    function handleWorkerMessage(event: MessageEvent<WorkerMessage>) {
         const { type, ...message } = event.data ?? {};
         if (type === 'ready') {
             wasmReady = true;
@@ -910,8 +911,7 @@
         });
     }
 
-    // exported for compile-time assertions/tests
-    export type AppCreatePayload = ReturnType<typeof buildCreatePayload>;
+    // Use the typed helper and shared `SimulatorCreatePayload` from `src/lib` for compile-time checks.
 
     $: if (wasmReady && simWorker && isCustomMode) {
         const nextSignature = JSON.stringify(buildCreatePayload());
