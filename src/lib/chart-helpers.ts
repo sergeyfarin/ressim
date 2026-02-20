@@ -1,4 +1,4 @@
-import type { Chart, ChartDataset } from 'chart.js';
+import { Chart, type ChartDataset } from 'chart.js';
 
 /**
  * Return the typed line dataset for a given chart index or undefined.
@@ -32,6 +32,10 @@ export function getDatasetLabel(chart: Chart | null | undefined, datasetIndex: n
 export function applyThemeToChart(chart: Chart | null | undefined, theme: 'dark' | 'light') {
   if (!chart) return;
   const gridColor = theme === 'dark' ? 'rgba(203, 213, 225, 0.07)' : 'rgba(15, 23, 42, 0.10)';
+  const textColor = theme === 'dark' ? '#9ca3af' : '#4b5563'; // Tailwind slate-400 vs gray-600
+
+  Chart.defaults.color = textColor;
+
   // chart.options.scales is a loose object in Chart.js typing — guard access
   const scales = (chart.options && (chart.options as any).scales) ?? {};
   if (scales.x?.grid) scales.x.grid.color = gridColor;
