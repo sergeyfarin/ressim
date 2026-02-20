@@ -9,153 +9,131 @@
     import { caseCatalog, findCaseByKey, resolveParams } from './lib/caseCatalog';
     import type { WorkerMessage, SimulatorSnapshot, RateHistoryPoint } from './lib';
 
-    let wasmReady = false;
-    let simWorker: Worker | null = null;
-    let runCompleted = false;
-    let workerRunning = false;
+    let wasmReady = $state(false);
+    let simWorker: Worker | null = $state(null);
+    let runCompleted = $state(false);
+    let workerRunning = $state(false);
 
     // Navigation State
-    let activeCategory = 'depletion';
-    let activeCase = '';
-    let isCustomMode = false;
-    let preRunData: any = null;
-    let preRunLoading = false;
-    let preRunWarning = '';
-    let preRunLoadToken = 0;
-    let preRunContinuationAvailable = false;
-    let preRunHydrated = false;
-    let preRunHydrating = false;
-    let preRunContinuationStatus = '';
-    let pendingPreRunHydrationId = 0;
-    let pendingPreRunHydrationResolve: ((ready: boolean) => void) | null = null;
-    let pendingPreRunHydrationTimeout: ReturnType<typeof setTimeout> | null = null;
+    let activeCategory = $state('depletion');
+    let activeCase = $state('');
+    let isCustomMode = $state(false);
+    let preRunData: any = $state(null);
+    let preRunLoading = $state(false);
+    let preRunWarning = $state('');
+    let preRunLoadToken = $state(0);
+    let preRunContinuationAvailable = $state(false);
+    let preRunHydrated = $state(false);
+    let preRunHydrating = $state(false);
+    let preRunContinuationStatus = $state('');
+    let pendingPreRunHydrationId = $state(0);
+    let pendingPreRunHydrationResolve: ((ready: boolean) => void) | null = $state(null);
+    let pendingPreRunHydrationTimeout: ReturnType<typeof setTimeout> | null = $state(null);
 
     // UI inputs
-    let nx = 15;
-    let ny = 10;
-    let nz = 10;
-    let cellDx = 10;
-    let cellDy = 10;
-    let cellDz = 1;
-    let delta_t_days = 0.25;
-    let steps = 20;
+    let nx = $state(15);
+    let ny = $state(10);
+    let nz = $state(10);
+    let cellDx = $state(10);
+    let cellDy = $state(10);
+    let cellDz = $state(1);
+    let delta_t_days = $state(0.25);
+    let steps = $state(20);
 
     // Initial Conditions
-    let initialPressure = 300.0;
-    let initialSaturation = 0.3;
+    let initialPressure = $state(300.0);
+    let initialSaturation = $state(0.3);
     const reservoirPorosity = 0.2;
 
     // Fluid properties
-    let mu_w = 0.5;
-    let mu_o = 1.0;
-    let c_o = 1e-5;
-    let c_w = 3e-6;
-    let rock_compressibility = 1e-6;
-    let depth_reference = 0.0;
-    let volume_expansion_o = 1.0;
-    let volume_expansion_w = 1.0;
-    let rho_w = 1000.0;
-    let rho_o = 800.0;
-    let ooipM3 = 0;
-    let poreVolumeM3 = 0;
-    $: ooipM3 = nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity * Math.max(0, 1 - initialSaturation);
-    $: poreVolumeM3 = nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity;
+    let mu_w = $state(0.5);
+    let mu_o = $state(1.0);
+    let c_o = $state(1e-5);
+    let c_w = $state(3e-6);
+    let rock_compressibility = $state(1e-6);
+    let depth_reference = $state(0.0);
+    let volume_expansion_o = $state(1.0);
+    let volume_expansion_w = $state(1.0);
+    let rho_w = $state(1000.0);
+    let rho_o = $state(800.0);
+    const ooipM3 = $derived(nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity * Math.max(0, 1 - initialSaturation));
+    const poreVolumeM3 = $derived(nx * ny * nz * cellDx * cellDy * cellDz * reservoirPorosity);
 
     // Permeability
-    let permMode: 'uniform' | 'random' | 'perLayer' = 'uniform';
-    let uniformPermX = 100.0;
-    let uniformPermY = 100.0;
-    let uniformPermZ = 10.0;
-    let minPerm = 50.0;
-    let maxPerm = 200.0;
-    let useRandomSeed = true;
-    let randomSeed = 12345;
-    let layerPermsX: number[] = [100, 150, 50, 200, 120, 1000, 90, 110, 130, 70];
-    let layerPermsY: number[] = [100, 150, 50, 200, 120, 1000, 90, 110, 130, 70];
-    let layerPermsZ: number[] = [10, 15, 5, 20, 12, 8, 9, 11, 13, 7];
+    let permMode: 'uniform' | 'random' | 'perLayer' = $state('uniform');
+    let uniformPermX = $state(100.0);
+    let uniformPermY = $state(100.0);
+    let uniformPermZ = $state(10.0);
+    let minPerm = $state(50.0);
+    let maxPerm = $state(200.0);
+    let useRandomSeed = $state(true);
+    let randomSeed = $state(12345);
+    let layerPermsX: number[] = $state([100, 150, 50, 200, 120, 1000, 90, 110, 130, 70]);
+    let layerPermsY: number[] = $state([100, 150, 50, 200, 120, 1000, 90, 110, 130, 70]);
+    let layerPermsZ: number[] = $state([10, 15, 5, 20, 12, 8, 9, 11, 13, 7]);
 
     // Relative Permeability / Capillary
-    let s_wc = 0.1;
-    let s_or = 0.1;
-    let n_w = 2.0;
-    let n_o = 2.0;
+    let s_wc = $state(0.1);
+    let s_or = $state(0.1);
+    let n_w = $state(2.0);
+    let n_o = $state(2.0);
 
     // Well inputs
-    let well_radius = 0.1;
-    let well_skin = 0.0;
-    let injectorBhp = 400.0;
-    let producerBhp = 100.0;
-    let injectorControlMode: 'rate' | 'pressure' = 'pressure';
-    let producerControlMode: 'rate' | 'pressure' = 'pressure';
-    let injectorEnabled = true;
-    let rateControlledWells = false;
-    let targetInjectorRate = 350.0;
-    let targetProducerRate = 350.0;
-    let injectorI = 0;
-    let injectorJ = 0;
-    let producerI = nx - 1;
-    let producerJ = 0;
+    let well_radius = $state(0.1);
+    let well_skin = $state(0.0);
+    let injectorBhp = $state(400.0);
+    let producerBhp = $state(100.0);
+    let injectorControlMode: 'rate' | 'pressure' = $state('pressure');
+    let producerControlMode: 'rate' | 'pressure' = $state('pressure');
+    let injectorEnabled = $state(true);
+    let targetInjectorRate = $state(350.0);
+    let targetProducerRate = $state(350.0);
+    let injectorI = $state(0);
+    let injectorJ = $state(0);
+    let producerI = $state(14);
+    let producerJ = $state(0);
 
     // Stability
-    let max_sat_change_per_step = 0.1;
-    let max_pressure_change_per_step = 75.0;
-    let max_well_rate_change_fraction = 0.75;
-    let gravityEnabled = false;
-    let capillaryEnabled = true;
-    let capillaryPEntry = 5.0;
-    let capillaryLambda = 2.0;
+    let max_sat_change_per_step = $state(0.1);
+    let max_pressure_change_per_step = $state(75.0);
+    let max_well_rate_change_fraction = $state(0.75);
+    let gravityEnabled = $state(false);
+    let capillaryEnabled = $state(true);
+    let capillaryPEntry = $state(5.0);
+    let capillaryLambda = $state(2.0);
 
     // Display data
     import type { GridCell, WellState } from './lib';
 
-    let gridStateRaw: GridCell[] | null = null;
-    let wellStateRaw: WellState | null = null;
-    let simTime = 0;
-    let rateHistory = [];
+    let gridStateRaw: GridCell[] | null = $state(null);
+    let wellStateRaw: WellState | null = $state(null);
+    let simTime = $state(0);
+    let rateHistory = $state<RateHistoryPoint[]>([]);
     import type { AnalyticalProductionPoint } from './lib';
-    let analyticalProductionData: AnalyticalProductionPoint[] = [];
-    let analyticalSolutionMode: 'waterflood' | 'depletion' = 'depletion';
-    let analyticalDepletionRateScale = 1.0;
-    let analyticalMeta: { mode: 'waterflood' | 'depletion'; shapeFactor: number | null; shapeLabel: string } = {
+    let analyticalProductionData: AnalyticalProductionPoint[] = $state([]);
+    let analyticalSolutionMode: 'waterflood' | 'depletion' = $state('depletion');
+    let analyticalDepletionRateScale = $state(1.0);
+    let analyticalMeta: { mode: 'waterflood' | 'depletion'; shapeFactor: number | null; shapeLabel: string } = $state({
         mode: 'waterflood',
         shapeFactor: null,
         shapeLabel: '',
-    };
-    let previousAnalyticalSolutionMode: 'waterflood' | 'depletion' = analyticalSolutionMode;
-    let runtimeWarning = '';
-    let solverWarning = '';
-    let runtimeError = '';
-    let vizRevision = 0;
-    let modelReinitNotice = '';
-    let modelNeedsReinit = false;
-    let modelResetKey = '';
-    let skipNextAutoModelReset = false;
-    let validationState: { errors: Record<string, string>; warnings: string[] } = { errors: {}, warnings: [] };
-    let validationErrors: Record<string, string> = {};
-
-    $: if (analyticalSolutionMode !== previousAnalyticalSolutionMode) {
-        previousAnalyticalSolutionMode = analyticalSolutionMode;
-        analyticalProductionData = [];
-        analyticalMeta = {
-            mode: analyticalSolutionMode,
-            shapeFactor: null,
-            shapeLabel: analyticalSolutionMode === 'depletion' ? 'Peaceman PSS' : '',
-        };
-    }
-    let validationWarnings: string[] = [];
-    let hasValidationErrors = false;
-    let estimatedRunSeconds = 0;
-    let longRunEstimate = false;
-    let latestInjectionRate = 0;
-
-    $: latestInjectionRate = (() => {
+    });
+    let runtimeWarning = $state('');
+    let solverWarning = $state('');
+    let runtimeError = $state('');
+    let vizRevision = $state(0);
+    let modelReinitNotice = $state('');
+    let modelNeedsReinit = $state(false);
+    let configDiffSignature = $state('');
+    let skipNextAutoModelReset = $state(false);
+    const latestInjectionRate = $derived.by(() => {
         if (!Array.isArray(rateHistory) || rateHistory.length === 0) return 0;
         for (let i = rateHistory.length - 1; i >= 0; i--) {
             const q = Number(rateHistory[i]?.total_injection);
             if (Number.isFinite(q) && q > 0) return q;
         }
         return 0;
-    })();
+    });
 
     type WorkerProfile = {
         batchMs: number;
@@ -177,26 +155,29 @@
         batchMs: 0, avgStepMs: 0, extractMs: 0, renderApplyMs: 0, snapshotsSent: 0,
     };
 
-    let theme: 'dark' | 'light' = 'dark';
+    let theme: 'dark' | 'light' = $state('dark');
 
     // History / replay
-    let history = [];
-    let avgReservoirPressureSeries: Array<number | null> = [];
-    let avgWaterSaturationSeries: Array<number | null> = [];
-    let currentIndex = -1;
-    let playing = false;
-    let playSpeed = 2;
-    let playTimer = null;
+    type HistoryEntry = SimulatorSnapshot;
+    type ThreeDViewComponentType = typeof import('./lib/3dview.svelte').default;
+    type RateChartComponentType = typeof import('./lib/RateChart.svelte').default;
+    let history = $state<HistoryEntry[]>([]);
+    const avgReservoirPressureSeries: Array<number | null> = $derived(buildAvgPressureSeries(rateHistory, history));
+    const avgWaterSaturationSeries: Array<number | null> = $derived(buildAvgWaterSaturationSeries(rateHistory, history));
+    let currentIndex = $state(-1);
+    let playing = $state(false);
+    let playSpeed = $state(2);
+    let playTimer: ReturnType<typeof setInterval> | null = $state(null);
     const HISTORY_RECORD_INTERVAL = 1;
     const MAX_HISTORY_ENTRIES = 300;
-    let showDebugState = false;
-    let profileStats: ProfileStats = { ...EMPTY_PROFILE_STATS };
-    let ThreeDViewComponent = null;
-    let RateChartComponent = null;
-    let loadingThreeDView = false;
-    let lastCreateSignature = '';
-    let baseCaseSignature = '';
-    let pendingAutoReinit = false;
+    let showDebugState = $state(false);
+    let profileStats: ProfileStats = $state({ ...EMPTY_PROFILE_STATS });
+    let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
+    let RateChartComponent = $state<RateChartComponentType | null>(null);
+    let loadingThreeDView = $state(false);
+    let lastCreateSignature = $state('');
+    let baseCaseSignature = $state('');
+    let pendingAutoReinit = $state(false);
 
     const CUSTOM_SUBCASE_BY_CATEGORY: Record<string, { key: string; label: string }> = {
         depletion: { key: 'depletion_custom_subcase', label: 'Custom Depletion Sub-case' },
@@ -205,9 +186,9 @@
     const PRE_RUN_HYDRATION_TIMEOUT_MS = 15000;
 
     // Visualization
-    let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = 'pressure';
-    let legendFixedMin = 0;
-    let legendFixedMax = 1;
+    let showProperty: 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity' = $state('pressure');
+    let legendFixedMin = $state(0);
+    let legendFixedMax = $state(1);
 
     // ---------- Helper utilities ----------
 
@@ -264,33 +245,20 @@
         return value === 'uniform' || value === 'random' || value === 'perLayer';
     }
 
-    $: if (layerPermsX.length !== nz || layerPermsY.length !== nz || layerPermsZ.length !== nz) {
-        syncLayerArraysToGrid();
+    function handleAnalyticalSolutionModeChange(mode: 'waterflood' | 'depletion') {
+        analyticalSolutionMode = mode;
+        analyticalProductionData = [];
+        analyticalMeta = {
+            mode,
+            shapeFactor: null,
+            shapeLabel: mode === 'depletion' ? 'Peaceman PSS' : '',
+        };
     }
 
-    $: producerI = Math.max(0, Math.min(nx - 1, Number(producerI)));
-    $: producerJ = Math.max(0, Math.min(ny - 1, Number(producerJ)));
-    $: injectorI = Math.max(0, Math.min(nx - 1, Number(injectorI)));
-    $: injectorJ = Math.max(0, Math.min(ny - 1, Number(injectorJ)));
-
-    $: cellDx = Math.max(0.1, Number(cellDx) || 0.1);
-    $: cellDy = Math.max(0.1, Number(cellDy) || 0.1);
-    $: cellDz = Math.max(0.1, Number(cellDz) || 0.1);
-    $: steps = Math.max(1, Math.round(Number(steps) || 1));
-    $: delta_t_days = Math.max(0.001, Number(delta_t_days) || 0.001);
-    $: mu_w = Math.max(0.01, Number(mu_w) || 0.01);
-    $: mu_o = Math.max(0.01, Number(mu_o) || 0.01);
-    $: c_o = Math.max(0, Number(c_o) || 0);
-    $: c_w = Math.max(0, Number(c_w) || 0);
-    $: rock_compressibility = Math.max(0, Number(rock_compressibility) || 0);
-    $: volume_expansion_o = Math.max(0.01, Number(volume_expansion_o) || 0.01);
-    $: volume_expansion_w = Math.max(0.01, Number(volume_expansion_w) || 0.01);
-    $: max_sat_change_per_step = Math.max(0.01, Math.min(1, Number(max_sat_change_per_step) || 0.01));
-    $: max_pressure_change_per_step = Math.max(1, Number(max_pressure_change_per_step) || 1);
-    $: max_well_rate_change_fraction = Math.max(0.01, Number(max_well_rate_change_fraction) || 0.01);
-    $: targetInjectorRate = Math.max(0, Number(targetInjectorRate) || 0);
-    $: targetProducerRate = Math.max(0, Number(targetProducerRate) || 0);
-    $: rateControlledWells = injectorControlMode === 'rate' && producerControlMode === 'rate';
+    function handleNzOrPermModeChange() {
+        syncLayerArraysToGrid();
+    }
+    const rateControlledWells = $derived.by(() => injectorControlMode === 'rate' && producerControlMode === 'rate');
 
     // ---------- Category / case navigation ----------
 
@@ -434,6 +402,7 @@
         if (resolved.layerPermsX) layerPermsX = parseLayerValues(resolved.layerPermsX);
         if (resolved.layerPermsY) layerPermsY = parseLayerValues(resolved.layerPermsY);
         if (resolved.layerPermsZ) layerPermsZ = parseLayerValues(resolved.layerPermsZ);
+        handleNzOrPermModeChange();
 
         injectorI = Number(resolved.injectorI) || 0;
         injectorJ = Number(resolved.injectorJ) || 0;
@@ -464,8 +433,17 @@
 
             const expectedCellCount = Math.max(1, Number(nx) * Number(ny) * Number(nz));
             const loadedHistory = Array.isArray(data.history) ? data.history : [];
-            const loadedFinalGrid = Array.isArray(data.finalGrid) ? data.finalGrid : null;
-            const validHistoryEntries = loadedHistory.filter((entry) => Array.isArray(entry?.grid) && entry.grid.length === expectedCellCount);
+            const loadedFinalGrid: GridCell[] | null = Array.isArray(data.finalGrid) ? data.finalGrid as GridCell[] : null;
+            const validHistoryEntries: HistoryEntry[] = loadedHistory
+                .filter((entry: any) => Array.isArray(entry?.grid) && entry.grid.length === expectedCellCount)
+                .map((entry: any) => ({
+                    time: Number(entry?.time ?? 0),
+                    grid: entry.grid,
+                    wells: Array.isArray(entry?.wells) ? entry.wells : [],
+                    rateHistory: Array.isArray(entry?.rateHistory) ? normalizeRateHistory(entry.rateHistory) : [],
+                    solverWarning: typeof entry?.solverWarning === 'string' ? entry.solverWarning : '',
+                    recordHistory: Boolean(entry?.recordHistory),
+                }));
             const historyHasMismatches = loadedHistory.length > 0 && validHistoryEntries.length !== loadedHistory.length;
             const finalGridMatches = Boolean(loadedFinalGrid && loadedFinalGrid.length === expectedCellCount);
 
@@ -678,31 +656,67 @@
         });
     }
 
-    $: {
-        const nextKey = buildModelResetKey();
-        if (!modelResetKey) {
-            modelResetKey = nextKey;
-        } else if (nextKey !== modelResetKey) {
-            modelResetKey = nextKey;
-            if (skipNextAutoModelReset) {
-                skipNextAutoModelReset = false;
-            } else {
-                resetModelAndVisualizationState(true, true);
-            }
-        }
-    }
-
     type ValidationState = { errors: Record<string, string>; warnings: string[] };
 
     function validateInputs(): ValidationState {
         const errors: Record<string, string> = {};
         const warnings: string[] = [];
 
+        const numeric = (value: unknown) => Number(value);
+        const isFiniteNumber = (value: unknown) => Number.isFinite(numeric(value));
+
+        if (!Number.isInteger(numeric(nx)) || numeric(nx) < 1) errors.nx = 'Nx must be an integer ≥ 1.';
+        if (!Number.isInteger(numeric(ny)) || numeric(ny) < 1) errors.ny = 'Ny must be an integer ≥ 1.';
+        if (!Number.isInteger(numeric(nz)) || numeric(nz) < 1) errors.nz = 'Nz must be an integer ≥ 1.';
+
+        if (!isFiniteNumber(cellDx) || numeric(cellDx) <= 0) errors.cellDx = 'Cell Δx must be positive.';
+        if (!isFiniteNumber(cellDy) || numeric(cellDy) <= 0) errors.cellDy = 'Cell Δy must be positive.';
+        if (!isFiniteNumber(cellDz) || numeric(cellDz) <= 0) errors.cellDz = 'Cell Δz must be positive.';
+
+        if (!Number.isInteger(numeric(steps)) || numeric(steps) < 1) errors.steps = 'Steps must be an integer ≥ 1.';
+
         if (initialSaturation < 0 || initialSaturation > 1) {
             errors.initialSaturation = 'Initial water saturation must be in [0, 1].';
         }
-        if (delta_t_days <= 0) errors.deltaT = 'Timestep must be positive.';
-        if (well_radius <= 0) errors.wellRadius = 'Well radius must be positive.';
+        if (!isFiniteNumber(delta_t_days) || numeric(delta_t_days) <= 0) errors.deltaT = 'Timestep must be positive.';
+        if (!isFiniteNumber(well_radius) || numeric(well_radius) <= 0) errors.wellRadius = 'Well radius must be positive.';
+
+        if (!isFiniteNumber(mu_w) || numeric(mu_w) <= 0) errors.mu_w = 'Water viscosity must be positive.';
+        if (!isFiniteNumber(mu_o) || numeric(mu_o) <= 0) errors.mu_o = 'Oil viscosity must be positive.';
+        if (!isFiniteNumber(c_o) || numeric(c_o) < 0) errors.c_o = 'Oil compressibility must be ≥ 0.';
+        if (!isFiniteNumber(c_w) || numeric(c_w) < 0) errors.c_w = 'Water compressibility must be ≥ 0.';
+        if (!isFiniteNumber(rock_compressibility) || numeric(rock_compressibility) < 0) {
+            errors.rock_compressibility = 'Rock compressibility must be ≥ 0.';
+        }
+        if (!isFiniteNumber(volume_expansion_o) || numeric(volume_expansion_o) <= 0) {
+            errors.volume_expansion_o = 'Oil formation volume factor must be positive.';
+        }
+        if (!isFiniteNumber(volume_expansion_w) || numeric(volume_expansion_w) <= 0) {
+            errors.volume_expansion_w = 'Water formation volume factor must be positive.';
+        }
+
+        if (!isFiniteNumber(max_sat_change_per_step) || numeric(max_sat_change_per_step) <= 0 || numeric(max_sat_change_per_step) > 1) {
+            errors.max_sat_change_per_step = 'Max ΔSw per step must be in (0, 1].';
+        }
+        if (!isFiniteNumber(max_pressure_change_per_step) || numeric(max_pressure_change_per_step) <= 0) {
+            errors.max_pressure_change_per_step = 'Max ΔP per step must be positive.';
+        }
+        if (!isFiniteNumber(max_well_rate_change_fraction) || numeric(max_well_rate_change_fraction) <= 0) {
+            errors.max_well_rate_change_fraction = 'Max well-rate change fraction must be positive.';
+        }
+
+        if (!Number.isInteger(numeric(injectorI)) || !Number.isInteger(numeric(injectorJ)) ||
+            !Number.isInteger(numeric(producerI)) || !Number.isInteger(numeric(producerJ))) {
+            errors.wellIndexType = 'Well indices must be integers.';
+        } else if (
+            numeric(injectorI) < 0 || numeric(injectorI) >= numeric(nx) ||
+            numeric(injectorJ) < 0 || numeric(injectorJ) >= numeric(ny) ||
+            numeric(producerI) < 0 || numeric(producerI) >= numeric(nx) ||
+            numeric(producerJ) < 0 || numeric(producerJ) >= numeric(ny)
+        ) {
+            errors.wellIndexRange = 'Well indices must lie within the grid bounds.';
+        }
+
         if (s_wc + s_or >= 1) errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
         if (minPerm > maxPerm) errors.permBounds = 'Min perm must not exceed max perm.';
         if (injectorEnabled && injectorI === producerI && injectorJ === producerJ) {
@@ -726,12 +740,12 @@
         return { errors, warnings };
     }
 
-    $: validationState = validateInputs();
-    $: validationErrors = validationState.errors;
-    $: validationWarnings = validationState.warnings;
-    $: hasValidationErrors = Object.keys(validationErrors).length > 0;
-    $: estimatedRunSeconds = Math.max(0, (Number(profileStats.avgStepMs || 0) * Number(steps || 0)) / 1000);
-    $: longRunEstimate = estimatedRunSeconds > 10;
+    const validationState: ValidationState = $derived(validateInputs());
+    const validationErrors: Record<string, string> = $derived(validationState.errors);
+    const validationWarnings: string[] = $derived(validationState.warnings);
+    const hasValidationErrors = $derived(Object.keys(validationErrors).length > 0);
+    const estimatedRunSeconds = $derived(Math.max(0, (Number(profileStats.avgStepMs || 0) * Number(steps || 0)) / 1000));
+    const longRunEstimate = $derived(estimatedRunSeconds > 10);
 
     // ---------- Simulation state management ----------
 
@@ -751,7 +765,7 @@
         if (bumpViz) vizRevision += 1;
     }
 
-    function pushHistoryEntry(entry) {
+    function pushHistoryEntry(entry: HistoryEntry) {
         history = [...history, entry];
         if (history.length > MAX_HISTORY_ENTRIES) {
             const overflow = history.length - MAX_HISTORY_ENTRIES;
@@ -924,12 +938,14 @@
         handleCategoryChange('depletion');
     });
 
-    $: if (typeof document !== 'undefined') {
+    $effect(() => {
+        if (typeof document === 'undefined') return;
         document.documentElement.setAttribute('data-theme', theme);
-    }
-    $: if (typeof localStorage !== 'undefined') {
+    });
+    $effect(() => {
+        if (typeof localStorage === 'undefined') return;
         localStorage.setItem('ressim-theme', theme);
-    }
+    });
 
     onDestroy(() => {
         stopPlaying();
@@ -1017,9 +1033,22 @@
 
     // Use the typed helper and shared `SimulatorCreatePayload` from `src/lib` for compile-time checks.
 
-    $: if (wasmReady && simWorker && isCustomMode) {
+    function checkConfigDiff() {
         const nextSignature = JSON.stringify(buildCreatePayload());
-        if (lastCreateSignature && nextSignature !== lastCreateSignature) {
+        if (!configDiffSignature) {
+            configDiffSignature = nextSignature;
+            return;
+        }
+        if (nextSignature === configDiffSignature) return;
+
+        configDiffSignature = nextSignature;
+
+        if (skipNextAutoModelReset) {
+            skipNextAutoModelReset = false;
+            return;
+        }
+
+        if (wasmReady && simWorker && isCustomMode && lastCreateSignature) {
             resetSimulationState({ clearErrors: true, clearWarnings: false, resetProfile: true, bumpViz: true });
             if (workerRunning) {
                 pendingAutoReinit = true;
@@ -1029,8 +1058,15 @@
                 const reinitialized = initSimulator({ silent: true });
                 runtimeWarning = reinitialized ? 'Config changed. Reservoir reinitialized at step 0.' : runtimeWarning;
             }
+            return;
         }
+
+        resetModelAndVisualizationState(true, true);
     }
+
+    $effect(() => {
+        checkConfigDiff();
+    });
 
     function stepOnce() { runSimulationBatch(1, 1); }
     function runSteps() { runSimulationBatch(Number(steps), HISTORY_RECORD_INTERVAL); }
@@ -1092,7 +1128,7 @@
         applyHistoryIndex(currentIndex);
     }
 
-    function applyHistoryIndex(idx) {
+    function applyHistoryIndex(idx: number) {
         if (idx < 0 || idx >= history.length) return;
         currentIndex = idx;
         const entry = history[idx];
@@ -1101,9 +1137,9 @@
         simTime = entry.time;
     }
 
-    $: replayTime = history.length > 0 && currentIndex >= 0 && currentIndex < history.length
+    const replayTime = $derived(history.length > 0 && currentIndex >= 0 && currentIndex < history.length
         ? history[currentIndex].time
-        : null;
+        : null);
 
     // ---------- Derived series for charts ----------
 
@@ -1127,7 +1163,7 @@
         return count > 0 ? sum / count : 0;
     }
 
-    function buildAvgPressureSeries(ratePoints, historyEntries): Array<number | null> {
+    function buildAvgPressureSeries(ratePoints: RateHistoryPoint[], historyEntries: HistoryEntry[]): Array<number | null> {
         if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
         const snapshots = historyEntries
             .filter((entry) => Number.isFinite(Number(entry?.time)) && Array.isArray(entry?.grid))
@@ -1146,9 +1182,7 @@
         return aligned;
     }
 
-    $: avgReservoirPressureSeries = buildAvgPressureSeries(rateHistory, history);
-
-    function buildAvgWaterSaturationSeries(ratePoints, historyEntries): Array<number | null> {
+    function buildAvgWaterSaturationSeries(ratePoints: RateHistoryPoint[], historyEntries: HistoryEntry[]): Array<number | null> {
         if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
         const snapshots = historyEntries
             .filter((entry) => Number.isFinite(Number(entry?.time)) && Array.isArray(entry?.grid))
@@ -1167,7 +1201,6 @@
         return aligned;
     }
 
-    $: avgWaterSaturationSeries = buildAvgWaterSaturationSeries(rateHistory, history);
 </script>
 
 <main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
@@ -1179,7 +1212,7 @@
             fluidProps={{ mu_w, mu_o }}
             {initialSaturation}
             timeHistory={rateHistory.map((point) => point.time)}
-            injectionRateSeries={rateHistory.map((point) => point.total_injection)}
+            injectionRateSeries={rateHistory.map((point) => Number(point.total_injection ?? 0))}
             reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
             scenarioMode={analyticalSolutionMode}
             onAnalyticalData={(detail) => {
@@ -1291,8 +1324,7 @@
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
                     <div class="card-body p-4 md:p-5">
                         {#if RateChartComponent}
-                            <svelte:component
-                                this={RateChartComponent}
+                            <RateChartComponent
                                 {rateHistory}
                                 {analyticalProductionData}
                                 {avgReservoirPressureSeries}
@@ -1336,8 +1368,7 @@
                     <div class="card-body p-4 md:p-5">
                         {#if ThreeDViewComponent}
                             {#key `${nx}-${ny}-${nz}-${vizRevision}`}
-                                <svelte:component
-                                    this={ThreeDViewComponent}
+                                <ThreeDViewComponent
                                     nx={nx} ny={ny} nz={nz}
                                     cellDx={cellDx} cellDy={cellDy} cellDz={cellDz}
                                     {theme}
@@ -1349,13 +1380,7 @@
                                     {s_or}
                                     bind:currentIndex
                                     {replayTime}
-                                    bind:playing
-                                    bind:playSpeed
-                                    bind:showDebugState
                                     onApplyHistoryIndex={applyHistoryIndex}
-                                    onPrev={prev}
-                                    onNext={next}
-                                    onTogglePlay={togglePlay}
                                     history={history}
                                     wellState={wellStateRaw}
                                 />
@@ -1403,6 +1428,8 @@
                 bind:max_well_rate_change_fraction
                 bind:analyticalSolutionMode
                 bind:analyticalDepletionRateScale
+                onAnalyticalSolutionModeChange={handleAnalyticalSolutionModeChange}
+                onNzOrPermModeChange={handleNzOrPermModeChange}
                 {validationErrors}
                 {validationWarnings}
                 readOnly={!isCustomMode && activeCase !== ''}

@@ -25,6 +25,7 @@
     layerPermsX = $bindable<number[]>([]),
     layerPermsY = $bindable<number[]>([]),
     layerPermsZ = $bindable<number[]>([]),
+    onNzOrPermModeChange = () => {},
     fieldErrors = {},
   }: {
     initialPressure?: number;
@@ -52,6 +53,7 @@
     layerPermsX?: number[];
     layerPermsY?: number[];
     layerPermsZ?: number[];
+    onNzOrPermModeChange?: () => void;
     fieldErrors?: Record<string, string>;
   } = $props();
 
@@ -141,7 +143,7 @@
 
     <label class="form-control">
       <span class="label-text text-xs">Permeability Mode</span>
-      <select class="select select-bordered select-sm w-full" bind:value={permMode}>
+      <select class="select select-bordered select-sm w-full" bind:value={permMode} onchange={onNzOrPermModeChange}>
         <option value="uniform">Uniform</option>
         <option value="random">Random</option>
         <option value="perLayer">Per Layer</option>

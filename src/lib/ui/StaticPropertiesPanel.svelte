@@ -6,6 +6,7 @@
     cellDx = $bindable(10),
     cellDy = $bindable(10),
     cellDz = $bindable(1),
+    onNzOrPermModeChange = () => {},
   }: {
     nx?: number;
     ny?: number;
@@ -13,6 +14,7 @@
     cellDx?: number;
     cellDy?: number;
     cellDz?: number;
+    onNzOrPermModeChange?: () => void;
   } = $props();
 
   const modelSizeX = $derived(nx * cellDx);
@@ -47,7 +49,7 @@
       </label>
       <label class="form-control">
         <span class="label-text text-xs">nz</span>
-        <input type="number" min="1" class="input input-bordered input-sm w-full" bind:value={nz} />
+        <input type="number" min="1" class="input input-bordered input-sm w-full" bind:value={nz} oninput={onNzOrPermModeChange} />
       </label>
     </div>
 

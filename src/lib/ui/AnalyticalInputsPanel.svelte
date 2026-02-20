@@ -2,9 +2,11 @@
   let {
     analyticalSolutionMode = $bindable<'waterflood' | 'depletion'>('waterflood'),
     analyticalDepletionRateScale = $bindable(1.0),
+    onAnalyticalSolutionModeChange = (_mode: 'waterflood' | 'depletion') => {},
     }: {
       analyticalSolutionMode?: 'waterflood' | 'depletion';
       analyticalDepletionRateScale?: number;
+      onAnalyticalSolutionModeChange?: (mode: 'waterflood' | 'depletion') => void;
   } = $props();
 
   const modeLabel = $derived(analyticalSolutionMode === 'depletion' ? 'Depletion' : 'Buckley-Leverett');
@@ -31,7 +33,7 @@
   <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
     <label class="form-control">
       <span class="label-text text-xs">Analytical Model</span>
-      <select class="select select-bordered select-sm w-full" bind:value={analyticalSolutionMode}>
+      <select class="select select-bordered select-sm w-full" bind:value={analyticalSolutionMode} onchange={() => onAnalyticalSolutionModeChange(analyticalSolutionMode)}>
         <option value="depletion">Depletion</option>
         <option value="waterflood">Buckley-Leverett</option>
       </select>
