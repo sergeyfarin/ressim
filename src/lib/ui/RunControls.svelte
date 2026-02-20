@@ -9,10 +9,11 @@
     longRunEstimate = false,
     canStop = false,
     hasValidationErrors = false,
-    solverWarning = '',
-    modelReinitNotice = '',
-    continuationStatus = '',
-    inputsAnchorHref = '',
+    solverWarning = "",
+    modelReinitNotice = "",
+    continuationStatus = "",
+    runProgress = "",
+    inputsAnchorHref = "",
     steps = $bindable(20),
     onRunSteps = () => {},
     onStepOnce = () => {},
@@ -31,6 +32,7 @@
     solverWarning?: string;
     modelReinitNotice?: string;
     continuationStatus?: string;
+    runProgress?: string;
     inputsAnchorHref?: string;
     steps?: number;
     onRunSteps?: () => void;
@@ -60,39 +62,57 @@
           class="btn btn-sm btn-primary"
           onclick={onRunSteps}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >▶ Run {steps} Steps</button>
+          >▶ Run {steps} Steps</button
+        >
 
         <button
           class="btn btn-sm btn-outline"
           onclick={onStepOnce}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >Step Once</button>
+          >Step Once</button
+        >
 
         <button
           class="btn btn-sm btn-warning"
           onclick={onStopRun}
-          disabled={!canStop}
-        >⏹ Stop</button>
+          disabled={!canStop}>⏹ Stop</button
+        >
 
         <button
           class="btn btn-sm btn-ghost"
           onclick={onInitSimulator}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >↻ Reinit</button>
+          >↻ Reinit</button
+        >
 
         {#if inputsAnchorHref}
-          <a class="link link-primary text-xs self-center" href={inputsAnchorHref}>Jump to Inputs</a>
+          <a
+            class="link link-primary text-xs self-center"
+            href={inputsAnchorHref}>Jump to Inputs</a
+          >
         {/if}
       </div>
 
       <!-- Status -->
       <div class="flex flex-wrap items-center gap-3 text-xs opacity-70 ml-auto">
-        <span class="badge badge-sm {wasmReady ? 'badge-success' : 'badge-warning'}">
-          {wasmReady ? 'WASM Ready' : 'Loading…'}
+        <span
+          class="badge badge-sm {wasmReady ? 'badge-success' : 'badge-warning'}"
+        >
+          {wasmReady ? "WASM Ready" : "Loading…"}
         </span>
-        <span>{continuationStatus || (workerRunning ? '⏳ Running' : runCompleted ? '✓ Done' : '○ Idle')}</span>
+        <span
+          >{continuationStatus ||
+            (workerRunning
+              ? "⏳ Running"
+              : runCompleted
+                ? "✓ Done"
+                : "○ Idle")}</span
+        >
         <span>{simTime.toFixed(1)} days</span>
         <span>{historyLength} steps</span>
+        {#if runProgress}
+          <span class="text-primary">{runProgress}</span>
+        {/if}
       </div>
     </div>
 
@@ -108,7 +128,9 @@
       <div class="text-xs text-warning mt-1">⚠ {solverWarning}</div>
     {/if}
     {#if longRunEstimate}
-      <div class="text-xs opacity-60 mt-1">Estimated: {estimatedRunSeconds.toFixed(1)}s — you can stop at any time</div>
+      <div class="text-xs opacity-60 mt-1">
+        Estimated: {estimatedRunSeconds.toFixed(1)}s — you can stop at any time
+      </div>
     {/if}
   </div>
 </div>

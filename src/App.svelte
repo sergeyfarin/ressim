@@ -13,6 +13,8 @@
     let simWorker: Worker | null = $state(null);
     let runCompleted = $state(false);
     let workerRunning = $state(false);
+    let currentRunTotalSteps = $state(0);
+    let currentRunStepsCompleted = $state(0);
 
     // Navigation State
     let activeCategory = $state('depletion');
@@ -473,6 +475,12 @@
             }
 
             rateHistory = normalizeRateHistory(data.rateHistory);
+            // Append missing keys to history to avoid chart X-axis anomalies if we append to it
+            rateHistory.forEach((point) => {
+                if (point.total_production_liquid_reservoir === undefined) point.total_production_liquid_reservoir = point.total_production_liquid || 0;
+                if (point.total_injection_reservoir === undefined) point.total_injection_reservoir = point.total_injection || 0;
+                if (point.material_balance_error_m3 === undefined) point.material_balance_error_m3 = 0;
+            });
             runCompleted = true;
             preRunContinuationAvailable = true;
             preRunHydrated = false;
@@ -800,6 +808,9 @@
                 wells: message.wells,
             });
         }
+        if (message.stepIndex !== undefined && currentRunTotalSteps > 0) {
+            currentRunStepsCompleted = message.stepIndex + 1;
+        }
         updateProfileStats(message.profile, performance.now() - renderStart);
     }
 
@@ -828,6 +839,8 @@
         if (message.type === 'batchComplete') {
             workerRunning = false;
             runCompleted = true;
+            currentRunTotalSteps = 0;
+            currentRunStepsCompleted = 0;
             updateProfileStats(message.profile, profileStats.renderApplyMs);
             applyHistoryIndex(history.length - 1);
 
@@ -858,9 +871,9 @@
                 runtimeWarning = reinitialized ? 'Config changed during run. Reinitialized at step 0.' : runtimeWarning;
                 return;
             }
-            runtimeWarning = message.reason === 'user'
-                ? `Simulation stopped after ${Number(message.completedSteps ?? 0)} step(s).`
                 : 'No running simulation to stop.';
+            currentRunTotalSteps = 0;
+            currentRunStepsCompleted = 0;
             if ('profile' in message && message.profile) updateProfileStats(message.profile, profileStats.renderApplyMs);
             applyHistoryIndex(history.length - 1);
             return;
@@ -1077,6 +1090,8 @@
         if (!continuationReady) return;
         if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
+        currentRunTotalSteps = batchSteps;
+        currentRunStepsCompleted = 0;
         runtimeError = '';
         runtimeWarning = longRunEstimate
             ? `Estimated run: ${estimatedRunSeconds.toFixed(1)}s. You can stop at any time.`
@@ -1205,32 +1220,41 @@
 
 <main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
     <div class="mx-auto max-w-400 space-y-4 p-4 lg:p-6">
-
         <!-- Hidden component for analytical calculations -->
         <FractionalFlow
             rockProps={{ s_wc, s_or, n_w, n_o }}
             fluidProps={{ mu_w, mu_o }}
             {initialSaturation}
             timeHistory={rateHistory.map((point) => point.time)}
-            injectionRateSeries={rateHistory.map((point) => Number(point.total_injection ?? 0))}
-            reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
+            injectionRateSeries={rateHistory.map((point) =>
+                Number(point.total_injection ?? 0),
+            )}
+            reservoir={{
+                length: nx * cellDx,
+                area: ny * cellDy * nz * cellDz,
+                porosity: reservoirPorosity,
+            }}
             scenarioMode={analyticalSolutionMode}
             onAnalyticalData={(detail) => {
-                if (analyticalSolutionMode === 'waterflood') {
+                if (analyticalSolutionMode === "waterflood") {
                     analyticalProductionData = detail.production;
                 }
             }}
             onAnalyticalMeta={(detail) => {
-                if (analyticalSolutionMode === 'waterflood') {
+                if (analyticalSolutionMode === "waterflood") {
                     analyticalMeta = detail;
                 }
             }}
         />
 
         <DepletionAnalytical
-            enabled={analyticalSolutionMode === 'depletion'}
+            enabled={analyticalSolutionMode === "depletion"}
             timeHistory={rateHistory.map((point) => point.time)}
-            reservoir={{ length: nx * cellDx, area: ny * cellDy * nz * cellDz, porosity: reservoirPorosity }}
+            reservoir={{
+                length: nx * cellDx,
+                area: ny * cellDy * nz * cellDz,
+                porosity: reservoirPorosity,
+            }}
             {initialSaturation}
             permX={uniformPermX}
             permY={uniformPermY}
@@ -1243,32 +1267,39 @@
             sWc={s_wc}
             sOr={s_or}
             nO={n_o}
-            c_o={c_o}
-            c_w={c_w}
+            {c_o}
+            {c_w}
             cRock={rock_compressibility}
             {initialPressure}
-            producerBhp={producerBhp}
+            {producerBhp}
             depletionRateScale={analyticalDepletionRateScale}
             onAnalyticalData={(detail) => {
-                if (analyticalSolutionMode === 'depletion') {
+                if (analyticalSolutionMode === "depletion") {
                     analyticalProductionData = detail.production;
                 }
             }}
             onAnalyticalMeta={(detail) => {
-                if (analyticalSolutionMode === 'depletion') {
+                if (analyticalSolutionMode === "depletion") {
                     analyticalMeta = detail;
                 }
             }}
         />
 
         <!-- Header -->
-        <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <header
+            class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+        >
             <div>
-                <h1 class="text-2xl font-bold lg:text-3xl">Simplified Reservoir Simulation Model</h1>
-                <p class="text-sm opacity-80">Interactive two-phase simulation with 3D visualisation fully in browser.</p>
+                <h1 class="text-2xl font-bold lg:text-3xl">
+                    Simplified Reservoir Simulation Model
+                </h1>
+                <p class="text-sm opacity-80">
+                    Interactive two-phase simulation with 3D visualisation fully
+                    in browser.
+                </p>
             </div>
             <button class="btn btn-sm btn-outline" onclick={toggleTheme}>
-                {theme === 'dark' ? '☀ Light' : '🌙 Dark'}
+                {theme === "dark" ? "☀ Light" : "🌙 Dark"}
             </button>
         </header>
 
@@ -1293,10 +1324,13 @@
             {estimatedRunSeconds}
             {longRunEstimate}
             canStop={workerRunning}
-            hasValidationErrors={hasValidationErrors}
+            {hasValidationErrors}
             {solverWarning}
-            modelReinitNotice={modelReinitNotice}
+            {modelReinitNotice}
             continuationStatus={preRunContinuationStatus}
+            runProgress={workerRunning && currentRunTotalSteps > 0
+                ? `${currentRunStepsCompleted} / ${currentRunTotalSteps}`
+                : ""}
             inputsAnchorHref="#inputs-section"
             bind:steps
             onRunSteps={runSteps}
@@ -1307,16 +1341,30 @@
 
         <!-- Error / Warning banners -->
         {#if runtimeWarning}
-            <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{runtimeWarning}</div>
+            <div
+                class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning"
+            >
+                {runtimeWarning}
+            </div>
         {/if}
         {#if preRunWarning}
-            <div class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning">{preRunWarning}</div>
+            <div
+                class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning"
+            >
+                {preRunWarning}
+            </div>
         {/if}
         {#if runtimeError}
-            <div class="rounded-md border border-error bg-base-100 p-2 text-xs text-error">{runtimeError}</div>
+            <div
+                class="rounded-md border border-error bg-base-100 p-2 text-xs text-error"
+            >
+                {runtimeError}
+            </div>
         {/if}
         {#if preRunLoading}
-            <div class="text-xs opacity-60 text-center">Loading pre-run case data…</div>
+            <div class="text-xs opacity-60 text-center">
+                Loading pre-run case data…
+            </div>
         {/if}
 
         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
@@ -1336,29 +1384,43 @@
                                 {theme}
                             />
                         {:else}
-                            <div class="text-sm opacity-70">Loading rate chart…</div>
+                            <div class="text-sm opacity-70">
+                                Loading rate chart…
+                            </div>
                         {/if}
                     </div>
                 </div>
 
                 <SwProfileChart
                     gridState={gridStateRaw ?? []}
-                    {nx} {ny} {nz}
-                    {cellDx} {cellDy} {cellDz}
-                    simTime={simTime}
-                    producerJ={producerJ}
+                    {nx}
+                    {ny}
+                    {nz}
+                    {cellDx}
+                    {cellDy}
+                    {cellDz}
+                    {simTime}
+                    {producerJ}
                     {initialSaturation}
-                    reservoirPorosity={reservoirPorosity}
+                    {reservoirPorosity}
                     injectionRate={latestInjectionRate}
                     scenarioMode={analyticalSolutionMode}
                     rockProps={{ s_wc, s_or, n_w, n_o }}
                     fluidProps={{ mu_w, mu_o }}
                 />
 
-                {#if analyticalMeta.mode === 'depletion'}
-                    <div class="rounded-md border border-base-300 bg-base-100 p-3 text-xs">
-                        <div class="font-semibold">Depletion Analytical Mode</div>
-                        <div class="opacity-80">Model: {analyticalMeta.shapeLabel || 'PSS'} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup>−t/τ</sup>, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J</div>
+                {#if analyticalMeta.mode === "depletion"}
+                    <div
+                        class="rounded-md border border-base-300 bg-base-100 p-3 text-xs"
+                    >
+                        <div class="font-semibold">
+                            Depletion Analytical Mode
+                        </div>
+                        <div class="opacity-80">
+                            Model: {analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
+                                >−t/τ</sup
+                            >, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J
+                        </div>
                     </div>
                 {/if}
             </div>
@@ -1369,8 +1431,12 @@
                         {#if ThreeDViewComponent}
                             {#key `${nx}-${ny}-${nz}-${vizRevision}`}
                                 <ThreeDViewComponent
-                                    nx={nx} ny={ny} nz={nz}
-                                    cellDx={cellDx} cellDy={cellDy} cellDz={cellDz}
+                                    {nx}
+                                    {ny}
+                                    {nz}
+                                    {cellDx}
+                                    {cellDy}
+                                    {cellDz}
                                     {theme}
                                     gridState={gridStateRaw}
                                     bind:showProperty
@@ -1381,16 +1447,25 @@
                                     bind:currentIndex
                                     {replayTime}
                                     onApplyHistoryIndex={applyHistoryIndex}
-                                    history={history}
+                                    {history}
                                     wellState={wellStateRaw}
                                 />
                             {/key}
                         {:else}
-                            <div class="flex items-center justify-center rounded border border-base-300 bg-base-200" style="height: clamp(240px, 35vh, 420px);">
+                            <div
+                                class="flex items-center justify-center rounded border border-base-300 bg-base-200"
+                                style="height: clamp(240px, 35vh, 420px);"
+                            >
                                 {#if loadingThreeDView}
-                                    <span class="loading loading-spinner loading-md"></span>
+                                    <span
+                                        class="loading loading-spinner loading-md"
+                                    ></span>
                                 {:else}
-                                    <button class="btn btn-sm" onclick={loadThreeDViewModule}>Load 3D view</button>
+                                    <button
+                                        class="btn btn-sm"
+                                        onclick={loadThreeDViewModule}
+                                        >Load 3D view</button
+                                    >
                                 {/if}
                             </div>
                         {/if}
@@ -1401,27 +1476,56 @@
 
         <div id="inputs-section">
             <InputsTab
-                bind:nx bind:ny bind:nz
-                bind:cellDx bind:cellDy bind:cellDz
-                bind:initialPressure bind:initialSaturation
-                bind:mu_w bind:mu_o bind:c_o bind:c_w
-                bind:rho_w bind:rho_o
-                bind:rock_compressibility bind:depth_reference
-                bind:volume_expansion_o bind:volume_expansion_w
+                bind:nx
+                bind:ny
+                bind:nz
+                bind:cellDx
+                bind:cellDy
+                bind:cellDz
+                bind:initialPressure
+                bind:initialSaturation
+                bind:mu_w
+                bind:mu_o
+                bind:c_o
+                bind:c_w
+                bind:rho_w
+                bind:rho_o
+                bind:rock_compressibility
+                bind:depth_reference
+                bind:volume_expansion_o
+                bind:volume_expansion_w
                 bind:gravityEnabled
                 bind:permMode
-                bind:uniformPermX bind:uniformPermY bind:uniformPermZ
-                bind:useRandomSeed bind:randomSeed
-                bind:minPerm bind:maxPerm
-                bind:layerPermsX bind:layerPermsY bind:layerPermsZ
-                bind:s_wc bind:s_or bind:n_w bind:n_o
-                bind:capillaryEnabled bind:capillaryPEntry bind:capillaryLambda
-                bind:well_radius bind:well_skin
+                bind:uniformPermX
+                bind:uniformPermY
+                bind:uniformPermZ
+                bind:useRandomSeed
+                bind:randomSeed
+                bind:minPerm
+                bind:maxPerm
+                bind:layerPermsX
+                bind:layerPermsY
+                bind:layerPermsZ
+                bind:s_wc
+                bind:s_or
+                bind:n_w
+                bind:n_o
+                bind:capillaryEnabled
+                bind:capillaryPEntry
+                bind:capillaryLambda
+                bind:well_radius
+                bind:well_skin
                 bind:injectorEnabled
-                bind:injectorControlMode bind:producerControlMode
-                bind:injectorBhp bind:producerBhp
-                bind:targetInjectorRate bind:targetProducerRate
-                bind:injectorI bind:injectorJ bind:producerI bind:producerJ
+                bind:injectorControlMode
+                bind:producerControlMode
+                bind:injectorBhp
+                bind:producerBhp
+                bind:targetInjectorRate
+                bind:targetProducerRate
+                bind:injectorI
+                bind:injectorJ
+                bind:producerI
+                bind:producerJ
                 bind:delta_t_days
                 bind:max_sat_change_per_step
                 bind:max_pressure_change_per_step
@@ -1432,7 +1536,7 @@
                 onNzOrPermModeChange={handleNzOrPermModeChange}
                 {validationErrors}
                 {validationWarnings}
-                readOnly={!isCustomMode && activeCase !== ''}
+                readOnly={false}
             />
         </div>
 
@@ -1441,12 +1545,26 @@
             <div class="card border border-base-300 bg-base-100 shadow-sm">
                 <div class="card-body grid gap-4 p-4 lg:grid-cols-2">
                     <div>
-                        <h4 class="mb-2 text-sm font-semibold">Grid State (current)</h4>
-                        <pre class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(gridStateRaw, null, 2)}</pre>
+                        <h4 class="mb-2 text-sm font-semibold">
+                            Grid State (current)
+                        </h4>
+                        <pre
+                            class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(
+                                gridStateRaw,
+                                null,
+                                2,
+                            )}</pre>
                     </div>
                     <div>
-                        <h4 class="mb-2 text-sm font-semibold">Well State (current)</h4>
-                        <pre class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(wellStateRaw, null, 2)}</pre>
+                        <h4 class="mb-2 text-sm font-semibold">
+                            Well State (current)
+                        </h4>
+                        <pre
+                            class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(
+                                wellStateRaw,
+                                null,
+                                2,
+                            )}</pre>
                     </div>
                 </div>
             </div>
