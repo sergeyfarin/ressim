@@ -441,46 +441,7 @@
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        labels: {
-                            filter: (legendItem) => {
-                                return !legendItem.hidden;
-                            },
-                            generateLabels: (chartRef) => {
-                                const defaultLabels = Chart.defaults.plugins.legend.labels.generateLabels(chartRef);
-                                return defaultLabels.map((label) => {
-                                    const datasetIndex = label.datasetIndex ?? -1;
-                                    const dataset = getLineDataset(chartRef as Chart, datasetIndex);
-                                    const borderWidth = Number(dataset?.borderWidth ?? label.lineWidth ?? 2);
-                                    const borderColor = Array.isArray(dataset?.borderColor)
-                                        ? String(dataset.borderColor[0] ?? label.strokeStyle)
-                                        : String(dataset?.borderColor ?? label.strokeStyle);
-                                    const borderDash = Array.isArray(dataset?.borderDash)
-                                        ? dataset.borderDash.map((segment) => Number(segment))
-                                        : (Array.isArray(label.lineDash) ? label.lineDash : []);
-
-                                    return {
-                                        ...label,
-                                        fillStyle: 'rgba(0,0,0,0)',
-                                        strokeStyle: borderColor,
-                                        lineWidth: Math.max(1, borderWidth),
-                                        pointStyle: buildLegendLineSwatch(borderColor, borderWidth, borderDash),
-                                    };
-                                });
-                            },
-                            sort: (a, b, data) => {
-                                const aIndex = a.datasetIndex ?? Number.MAX_SAFE_INTEGER;
-                                const bIndex = b.datasetIndex ?? Number.MAX_SAFE_INTEGER;
-                                const aAxisId = (data.datasets?.[aIndex] as LineDataset | undefined)?.yAxisID;
-                                const bAxisId = (data.datasets?.[bIndex] as LineDataset | undefined)?.yAxisID;
-                                const priorityDelta = legendAxisPriority(aAxisId) - legendAxisPriority(bAxisId);
-                                if (priorityDelta !== 0) return priorityDelta;
-                                return aIndex - bIndex;
-                            },
-                            boxWidth: 36,
-                            boxHeight: 1,
-                            usePointStyle: true,
-                            pointStyleWidth: 36,
-                        }
+                        display: false
                     },
                     tooltip: {
                         callbacks: {
@@ -504,7 +465,7 @@
                     x: {
                         type: 'linear',
                         title: {
-                            display: true,
+                            display: false,
                             text: 'Time (days)'
                         },
                         ticks: {
@@ -990,6 +951,27 @@
         updateChart();
     }
 
+    function getDatasetColor(idx: number): string {
+        const ds = getLineDataset(chart, idx);
+        if (!ds) return '#888';
+        if (Array.isArray(ds.borderColor)) return String(ds.borderColor[0]);
+        return String(ds.borderColor);
+    }
+    
+    function getDatasetDashArray(idx: number): string {
+        const ds = getLineDataset(chart, idx);
+        if (!ds) return '';
+        if (Array.isArray(ds.borderDash)) return ds.borderDash.join(', ');
+        return '';
+    }
+
+    function getDatasetBorderWidth(idx: number): number {
+        const ds = getLineDataset(chart, idx);
+        if (!ds) return 2;
+        if (typeof ds.borderWidth === 'number') return ds.borderWidth;
+        return 2;
+    }
+
     $: if (chart) {
         const nextKey = `${activeCategory}::${activeCase}`;
         if (nextKey !== lastScenarioSelectionKey) {
@@ -1001,63 +983,51 @@
 
 <div class="mb-2 space-y-2">
     {#if chart}
-        <div>
-            <div class="mb-1 text-[11px] uppercase tracking-wide opacity-65">X-axis</div>
-            <div class="flex flex-wrap gap-1">
-                <button
-                    type="button"
-                    class={`btn btn-xs border ${xAxisMode === 'time'
-                        ? 'border-base-300 bg-base-200 text-base-content'
-                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
-                    on:click={() => setXAxisMode('time')}
-                >
-                    Time
-                </button>
-                <button
-                    type="button"
-                    disabled={!pviAvailable}
-                    class={`btn btn-xs border ${xAxisMode === 'pvi'
-                        ? 'border-base-300 bg-base-200 text-base-content'
-                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'} ${!pviAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    on:click={() => setXAxisMode('pvi')}
-                >
-                    PVI
-                </button>
-                <button
-                    type="button"
-                    class={`btn btn-xs border ${xAxisMode === 'cumLiquid'
-                        ? 'border-base-300 bg-base-200 text-base-content'
-                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
-                    on:click={() => setXAxisMode('cumLiquid')}
-                >
-                    Cum Liquid Prod
-                </button>
-                <button
-                    type="button"
-                    class={`btn btn-xs border ${xAxisMode === 'cumInjection'
-                        ? 'border-base-300 bg-base-200 text-base-content'
-                        : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
-                    on:click={() => setXAxisMode('cumInjection')}
-                >
-                    Cum Injection
-                </button>
-            </div>
-        </div>
 
-        <div>
+
+        <div class="mt-2">
             <div class="mb-1 text-[11px] uppercase tracking-wide opacity-65">Curves</div>
-            <div class="flex flex-wrap gap-1">
-                {#each chart.data.datasets as _, idx}
-                    <button
-                        type="button"
-                        class={`btn btn-xs border ${selectedDatasetIndexes.includes(idx)
-                            ? 'border-base-300 bg-base-200 text-base-content'
-                            : 'border-transparent bg-base-100 text-base-content/70 hover:border-base-300 hover:bg-base-200'}`}
-                        on:click={() => toggleDataset(idx)}
-                    >
-                        {getDatasetLabel(chart, idx)}
-                    </button>
+            <div class="flex flex-wrap gap-2 items-center">
+                {#each selectedDatasetIndexes as idx}
+                    <div class="inline-flex items-center gap-1.5 px-2 py-1 bg-base-200 border border-base-300 rounded-full text-xs shadow-sm shadow-base-300/20">
+                        <svg width="16" height="4" class="overflow-visible shrink-0 ml-0.5" viewBox="0 0 16 4">
+                            <line x1="0" y1="2" x2="16" y2="2" 
+                                stroke={getDatasetColor(idx)} 
+                                stroke-width={getDatasetBorderWidth(idx)} 
+                                stroke-dasharray={getDatasetDashArray(idx)} 
+                            />
+                        </svg>
+                        <span class="opacity-90">{getDatasetLabel(chart, idx)}</span>
+                        <button 
+                            type="button" 
+                            class="btn btn-ghost btn-xs h-4 min-h-4 w-4 px-0 rounded-full opacity-60 hover:opacity-100 hover:bg-base-300 mr-[-2px] ml-0.5 pb-[1px]" 
+                            on:click={() => toggleDataset(idx)}
+                            aria-label="Remove curve"
+                            title="Remove curve"
+                        >
+                            ✕
+                        </button>
+                    </div>
                 {/each}
+
+                {#if selectedDatasetIndexes.length < chart.data.datasets.length}
+                    <select 
+                        class="select select-bordered select-xs bg-base-100 max-w-[200px] rounded-full focus:outline-none focus:ring-1 focus:ring-base-content/20 font-normal shadow-sm"
+                        on:change={(e) => {
+                            if (e.currentTarget.value) {
+                                toggleDataset(Number(e.currentTarget.value));
+                                e.currentTarget.value = '';
+                            }
+                        }}
+                    >
+                        <option value="" disabled selected>+ Select curve...</option>
+                        {#each chart.data.datasets as _, idx}
+                            {#if !selectedDatasetIndexes.includes(idx)}
+                                <option value={idx}>{getDatasetLabel(chart, idx)}</option>
+                            {/if}
+                        {/each}
+                    </select>
+                {/if}
             </div>
         </div>
     {/if}
@@ -1065,6 +1035,23 @@
 
 <div class="chart-container" style="position: relative; height: min(52vh, 440px); width:100%;">
     <canvas bind:this={chartCanvas}></canvas>
+</div>
+
+<div class="mt-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+        <label for="x-axis-select" class="text-xs uppercase tracking-wide opacity-70 font-medium">X-Axis:</label>
+        <select 
+            id="x-axis-select"
+            class="select select-bordered select-sm bg-base-100 shadow-sm min-w-[160px]"
+            bind:value={xAxisMode}
+            on:change={(e) => setXAxisMode(e.currentTarget.value as XAxisMode)}
+        >
+            <option value="time">Time (days)</option>
+            <option value="pvi" disabled={!pviAvailable}>PV Injected (PVI)</option>
+            <option value="cumLiquid">Cumulative Liquid (m³)</option>
+            <option value="cumInjection">Cumulative Injection (m³)</option>
+        </select>
+    </div>
 </div>
 
 <div style="margin-top: 0.5rem; font-size: 12px; color: #555; text-align: left;">
