@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint 'src/**/*.{js,ts,svelte}' --max-warnings=0"
   },
