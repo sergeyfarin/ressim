@@ -33,14 +33,6 @@
     let preRunWarning = $state("");
     let preRunLoadToken = $state(0);
     let preRunContinuationAvailable = $state(false);
-    let preRunHydrated = $state(false);
-    let preRunHydrating = $state(false);
-    let preRunContinuationStatus = $state("");
-    let pendingPreRunHydrationId = $state(0);
-    let pendingPreRunHydrationResolve: ((ready: boolean) => void) | null =
-        $state(null);
-    let pendingPreRunHydrationTimeout: ReturnType<typeof setTimeout> | null =
-        $state(null);
 
     // UI inputs
     let nx = $state(15);
@@ -233,8 +225,6 @@
             label: "Custom Waterflood Sub-case",
         },
     };
-    const PRE_RUN_HYDRATION_TIMEOUT_MS = 15000;
-
     // Visualization
     let showProperty:
         | "pressure"
@@ -341,7 +331,6 @@
 
     function handleCategoryChange(cat: string) {
         preRunLoadToken += 1;
-        resetPreRunContinuationState();
         isCustomMode = false;
         activeCategory = cat;
         activeCase = "";
@@ -357,10 +346,7 @@
     }
 
     function handleCaseChange(key: string) {
-        resetPreRunContinuationState();
         activeCase = key;
-        isCustomMode = false;
-        baseCaseSignature = "";
         preRunWarning = "";
         const found = findCaseByKey(key);
         if (found) {
@@ -371,15 +357,13 @@
     }
 
     function handleCustomMode() {
+        if (isCustomMode) return;
         preRunLoadToken += 1;
-        resetPreRunContinuationState();
         isCustomMode = true;
         activeCase = "";
         baseCaseSignature = "";
         preRunData = null;
         preRunWarning = "";
-        preRunLoading = false;
-        resetModelAndVisualizationState(true, false);
     }
 
     function resolveCustomSubCase(
@@ -411,11 +395,10 @@
         const nextSignature = buildCaseSignature();
         if (nextSignature === baseCaseSignature) return false;
 
+        isCustomMode = false;
         preRunLoadToken += 1;
-        resetPreRunContinuationState();
         preRunData = null;
         preRunWarning = "";
-        preRunLoading = false;
         activeCase = customSubCase.key;
         baseCaseSignature = nextSignature;
         return true;
@@ -510,7 +493,6 @@
     // Load pre-run case data
     async function loadPreRunCase(key: string) {
         const requestToken = ++preRunLoadToken;
-        resetPreRunContinuationState();
         preRunLoading = true;
         preRunData = null;
         preRunWarning = "";
@@ -612,15 +594,14 @@
             });
             runCompleted = true;
             preRunContinuationAvailable = true;
-            preRunHydrated = false;
             runtimeWarning =
                 "Pre-run case loaded. Click Run to continue from the saved endpoint.";
             vizRevision += 1;
-        } catch {
+        } catch (e) {
+            console.error("Failed to load pre-run data:", e);
             if (requestToken === preRunLoadToken) {
                 preRunData = null;
                 preRunWarning = "Failed to load pre-run data for this case.";
-                resetPreRunContinuationState();
             }
         } finally {
             if (requestToken === preRunLoadToken) {
@@ -629,123 +610,7 @@
         }
     }
 
-    function resolvePendingPreRunHydration(ready: boolean) {
-        if (pendingPreRunHydrationTimeout) {
-            clearTimeout(pendingPreRunHydrationTimeout);
-            pendingPreRunHydrationTimeout = null;
-        }
-        if (pendingPreRunHydrationResolve) {
-            pendingPreRunHydrationResolve(ready);
-            pendingPreRunHydrationResolve = null;
-        }
-    }
 
-    function resetPreRunContinuationState() {
-        preRunContinuationAvailable = false;
-        preRunHydrated = false;
-        preRunHydrating = false;
-        preRunContinuationStatus = "";
-        pendingPreRunHydrationId = 0;
-        resolvePendingPreRunHydration(false);
-    }
-
-    async function ensurePreRunContinuationReady(): Promise<boolean> {
-        if (isCustomMode || !activeCase) return true;
-        if (!preRunContinuationAvailable) {
-            if (preRunLoading) {
-                runtimeWarning = "Pre-run case data is still loading.";
-                return false;
-            }
-
-            const nextCreateSignature = JSON.stringify(buildCreatePayload());
-            if (
-                lastCreateSignature &&
-                lastCreateSignature === nextCreateSignature &&
-                !modelNeedsReinit
-            ) {
-                return true;
-            }
-
-            const initialized = initSimulator({ silent: true });
-            if (initialized) {
-                runtimeWarning =
-                    "Pre-run continuation unavailable. Simulation started from step 0.";
-            }
-            return initialized;
-        }
-        if (preRunHydrated) return true;
-        if (!wasmReady || !simWorker) {
-            runtimeError = "WASM not ready yet.";
-            return false;
-        }
-
-        if (preRunHydrating && pendingPreRunHydrationResolve) {
-            return new Promise<boolean>((resolve) => {
-                const previousResolver = pendingPreRunHydrationResolve;
-                pendingPreRunHydrationResolve = (ready: boolean) => {
-                    previousResolver?.(ready);
-                    resolve(ready);
-                };
-            });
-        }
-
-        const hydrateSteps = Math.max(
-            1,
-            Math.floor(Number(preRunData?.steps ?? steps ?? 1)),
-        );
-        const hydrateDeltaT = Number(
-            preRunData?.params?.delta_t_days ?? delta_t_days,
-        );
-        if (!Number.isFinite(hydrateDeltaT) || hydrateDeltaT <= 0) {
-            runtimeError =
-                "Cannot continue pre-run case: invalid timestep in case data.";
-            return false;
-        }
-
-        preRunHydrating = true;
-        preRunContinuationStatus = "Preparing continuation…";
-        workerRunning = true;
-        runtimeError = "";
-
-        const hydrationId = ++pendingPreRunHydrationId;
-        const waitForHydration = new Promise<boolean>((resolve) => {
-            pendingPreRunHydrationResolve = resolve;
-
-            pendingPreRunHydrationTimeout = setTimeout(() => {
-                if (
-                    pendingPreRunHydrationId === hydrationId &&
-                    preRunHydrating
-                ) {
-                    runtimeError = `Hydration timed out after ${Math.round(PRE_RUN_HYDRATION_TIMEOUT_MS / 1000)}s.`;
-                    preRunHydrating = false;
-                    preRunHydrated = false;
-                    preRunContinuationStatus = "";
-                    workerRunning = false;
-                    simWorker?.postMessage({ type: "stop" });
-                    resolvePendingPreRunHydration(false);
-                }
-            }, PRE_RUN_HYDRATION_TIMEOUT_MS);
-        });
-
-        // Strip all Svelte $state proxies deeply to avoid DataCloneError
-        const cleanPayload = JSON.parse(JSON.stringify({
-            hydrationId,
-            createPayload: buildCreatePayload(),
-            steps: hydrateSteps,
-            deltaTDays: hydrateDeltaT,
-            time: simTime,
-            grid: Array.isArray(gridStateRaw) ? gridStateRaw : [],
-            wells: wellStateRaw ? wellStateRaw : [],
-            rateHistory: preRunData?.rateHistory || [],
-        }));
-
-        simWorker.postMessage({
-            type: "hydratePreRun",
-            payload: cleanPayload,
-        });
-
-        return waitForHydration;
-    }
 
     // ---------- Model reset / validation ----------
 
@@ -754,9 +619,6 @@
         showReinitNotice = false,
     ) {
         stopPlaying();
-        if (!isCustomMode && activeCase) {
-            resetPreRunContinuationState();
-        }
 
         if (stopWorker && simWorker && workerRunning) {
             simWorker.postMessage({ type: "stop" });
@@ -1110,17 +972,6 @@
             applyWorkerState(message as unknown as SimulatorSnapshot);
             return;
         }
-        if (message.type === "hydrated") {
-            if (!preRunHydrating) return;
-            if (Number(message.hydrationId ?? 0) !== pendingPreRunHydrationId)
-                return;
-            preRunHydrating = false;
-            preRunHydrated = true;
-            preRunContinuationStatus = "";
-            workerRunning = false;
-            resolvePendingPreRunHydration(true);
-            return;
-        }
 
         if (message.type === "batchComplete") {
             workerRunning = false;
@@ -1142,19 +993,6 @@
 
         if (message.type === "stopped") {
             workerRunning = false;
-            if (preRunHydrating && message.hydration) {
-                const hydrationId = Number(
-                    message.hydrationId ?? pendingPreRunHydrationId,
-                );
-                if (hydrationId !== pendingPreRunHydrationId) return;
-                preRunHydrating = false;
-                preRunHydrated = false;
-                preRunContinuationStatus = "";
-                runtimeWarning =
-                    "Pre-run continuation cancelled before completion.";
-                resolvePendingPreRunHydration(false);
-                return;
-            }
             runCompleted = true;
             if (pendingAutoReinit) {
                 pendingAutoReinit = false;
@@ -1185,12 +1023,6 @@
             console.error("Simulation worker error:", message.message);
             runtimeError = String(message.message ?? "Simulation error");
             if (pendingAutoReinit) pendingAutoReinit = false;
-            if (preRunHydrating) {
-                preRunHydrating = false;
-                preRunHydrated = false;
-                preRunContinuationStatus = "";
-                resolvePendingPreRunHydration(false);
-            }
         }
     }
 
@@ -1314,10 +1146,6 @@
         runCompleted = false;
         modelNeedsReinit = false;
         modelReinitNotice = "";
-        preRunHydrated = false;
-        preRunHydrating = false;
-        preRunContinuationStatus = "";
-        resolvePendingPreRunHydration(false);
         runtimeError = "";
         runtimeWarning = "";
         if (switchedToCustomSubCase) {
@@ -1457,8 +1285,6 @@
             initSimulator();
             return;
         }
-        const continuationReady = await ensurePreRunContinuationReady();
-        if (!continuationReady) return;
         if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
         currentRunTotalSteps = batchSteps;
@@ -1648,10 +1474,6 @@
             {estimatedRunSeconds}
             {longRunEstimate}
             canStop={workerRunning}
-            {hasValidationErrors}
-            {solverWarning}
-            {modelReinitNotice}
-            continuationStatus={preRunContinuationStatus}
             runProgress={workerRunning && currentRunTotalSteps > 0
                 ? `${currentRunStepsCompleted} / ${currentRunTotalSteps}`
                 : ""}

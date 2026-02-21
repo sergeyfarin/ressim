@@ -1,5 +1,5 @@
 import init, { ReservoirSimulator } from './ressim/pkg/simulator.js';
-import type { SimulatorCreatePayload, HydratePreRunPayload, WorkerRunPayload } from './simulator-types';
+import type { SimulatorCreatePayload, WorkerRunPayload } from './simulator-types';
 
 let wasmReady = false;
 let simulator: ReservoirSimulator | null = null;
@@ -195,99 +195,6 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   }
 }
 
-async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> {
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('Invalid hydrate payload');
-  }
-
-  const createPayload = payload.createPayload;
-  if (!createPayload || typeof createPayload !== 'object') {
-    throw new Error('Missing create payload for hydration');
-  }
-
-  const steps = Math.max(0, Math.floor(Number(payload.steps ?? 0)));
-  const deltaTDays = Number(payload.deltaTDays ?? 0);
-
-  if (steps <= 0) {
-    throw new Error('Hydration requires at least one step');
-  }
-  if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
-    throw new Error(`Invalid hydration timestep: ${deltaTDays}`);
-  }
-  if (isRunning) {
-    throw new Error('Simulator is already running');
-  }
-
-  const hydrationId = Number(payload.hydrationId ?? 0);
-
-  configureSimulator(createPayload);
-
-  if (!simulator) {
-    throw new Error('Failed to initialize simulator');
-  }
-
-  if (payload.grid && payload.wells && typeof payload.time === 'number') {
-    try {
-      // @ts-ignore - loadState exists on the wasm object
-      simulator.loadState(
-        payload.time,
-        payload.grid,
-        payload.wells,
-        payload.rateHistory || []
-      );
-      post('hydrated', {
-        hydration: true,
-        hydrationId,
-        time: simulator.get_time(),
-        rateHistoryLength: simulator.getRateHistory().length,
-      });
-      return;
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      console.error('Fast hydration failed, falling back to full simulation:', e);
-      post('warning', { message: `Fast hydration failed (${errMsg}), falling back to 15s hydration...` });
-    }
-  }
-
-  isRunning = true;
-  stopRequested = false;
-  post('runStarted', { hydration: true, hydrationId, steps, deltaTDays });
-
-  let lastYieldTime = performance.now();
-  const yieldInterval = 1;
-  for (let i = 0; i < steps; i++) {
-    if (stopRequested) {
-      isRunning = false;
-      stopRequested = false;
-      post('stopped', { reason: 'user', hydration: true, hydrationId, completedSteps: i });
-      return;
-    }
-
-    simulator.step(deltaTDays);
-
-    const timeSinceLastYield = performance.now() - lastYieldTime;
-    if ((i + 1) % yieldInterval === 0 || timeSinceLastYield > 16) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      lastYieldTime = performance.now();
-
-      if (stopRequested) {
-        isRunning = false;
-        stopRequested = false;
-        post('stopped', { reason: 'user', hydration: true, hydrationId, completedSteps: i + 1 });
-        return;
-      }
-    }
-  }
-
-  isRunning = false;
-  stopRequested = false;
-  post('hydrated', {
-    hydration: true,
-    hydrationId,
-    time: simulator.get_time(),
-    rateHistoryLength: simulator.getRateHistory().length,
-  });
-}
 
 self.onmessage = async (event) => {
   const { type, payload } = event.data ?? {};
@@ -328,14 +235,7 @@ self.onmessage = async (event) => {
       return;
     }
 
-    if (type === 'hydratePreRun') {
-      if (!wasmReady) {
-        await init();
-        wasmReady = true;
-      }
-      await hydratePreRunState(payload);
-      return;
-    }
+
 
     if (type === 'run') {
       if (!simulator) {

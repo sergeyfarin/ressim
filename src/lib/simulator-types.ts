@@ -94,16 +94,6 @@ export interface WorkerRunPayload {
 }
 
 /** Payload for pre-run hydration */
-export interface HydratePreRunPayload {
-  createPayload: SimulatorCreatePayload;
-  steps: number;
-  deltaTDays: number;
-  hydrationId?: number | string;
-  time?: number;
-  grid?: GridState;
-  wells?: WellState;
-  rateHistory?: RateHistoryPoint[];
-}
 
 // --- Simulator runtime / output shapes ---
 
