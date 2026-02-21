@@ -15,6 +15,7 @@
     runProgress = "",
     inputsAnchorHref = "",
     steps = $bindable(20),
+    historyInterval = $bindable(1),
     onRunSteps = () => {},
     onStepOnce = () => {},
     onInitSimulator = () => {},
@@ -35,6 +36,7 @@
     runProgress?: string;
     inputsAnchorHref?: string;
     steps?: number;
+    historyInterval?: number;
     onRunSteps?: () => void;
     onStepOnce?: () => void;
     onInitSimulator?: () => void;
@@ -53,6 +55,16 @@
           min="1"
           class="input input-bordered input-sm w-20"
           bind:value={steps}
+        />
+      </label>
+
+      <label class="flex items-center gap-2">
+        <span class="text-xs font-medium whitespace-nowrap">Render Every:</span>
+        <input
+          type="number"
+          min="1"
+          class="input input-bordered input-sm w-16"
+          bind:value={historyInterval}
         />
       </label>
 

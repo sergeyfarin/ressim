@@ -79,6 +79,8 @@
     let raycaster = new Raycaster();
     let mouse = new Vector2();
     let tooltipRafId: number | null = null;
+
+    let visibleCellIndices: number[] = [];
     let latestMouseEvent: MouseEvent | null = null;
 
     // Helpers used in instancing and color mapping
@@ -525,12 +527,12 @@
         if (history.length > 0 && currentIndex >= 0 && currentIndex < history.length) {
             const entry = history[currentIndex];
             const historyGrid = entry?.grid ?? null;
-            if (Array.isArray(historyGrid) && historyGrid.length === expectedCount) {
+            if (historyGrid && historyGrid.pressure && historyGrid.pressure.length === expectedCount) {
                 return historyGrid;
             }
         }
 
-        if (Array.isArray(gridState) && gridState.length === expectedCount) {
+        if (gridState && gridState.pressure && gridState.pressure.length === expectedCount) {
             return gridState;
         }
 
@@ -661,18 +663,22 @@
 
         if (intersects.length > 0) {
             const intersection = intersects[0];
-            // Get the instance ID from the intersection
             const instanceId = intersection.instanceId;
             
-            if (instanceId !== undefined && currentGrid.pressure && instanceId < currentGrid.pressure.length) {
-                const pressure = Number(currentGrid.pressure?.[instanceId] ?? 0);
-                const satWater = Number(currentGrid.sat_water?.[instanceId] ?? 0);
-                const satOil = Number(currentGrid.sat_oil?.[instanceId] ?? 0);
+            if (instanceId !== undefined && instanceId < visibleCellIndices.length) {
+                const cellIndex = visibleCellIndices[instanceId];
+                if (currentGrid.pressure && cellIndex < currentGrid.pressure.length) {
+                    const pressure = Number(currentGrid.pressure?.[cellIndex] ?? 0);
+                    const satWater = Number(currentGrid.sat_water?.[cellIndex] ?? 0);
+                    const satOil = Number(currentGrid.sat_oil?.[cellIndex] ?? 0);
 
-                tooltipContent = `Pressure: ${pressure.toFixed(2)}\nWater Sat: ${satWater.toFixed(3)}\nOil Sat: ${satOil.toFixed(3)}`;
-                tooltipX = x + 10;
-                tooltipY = y + 10;
-                tooltipVisible = true;
+                    tooltipContent = `Pressure: ${pressure.toFixed(2)}\nWater Sat: ${satWater.toFixed(3)}\nOil Sat: ${satOil.toFixed(3)}`;
+                    tooltipX = x + 10;
+                    tooltipY = y + 10;
+                    tooltipVisible = true;
+                } else {
+                    tooltipVisible = false;
+                }
             } else {
                 tooltipVisible = false;
             }
@@ -721,10 +727,25 @@
         const total = nx * ny * nz;
         if (total === 0) return;
 
+        visibleCellIndices = [];
+        for (let k = 0; k < nz; k++) {
+            for (let j = 0; j < ny; j++) {
+                for (let i = 0; i < nx; i++) {
+                    const isBoundary = (i === 0 || i === nx - 1 || j === 0 || j === ny - 1 || k === 0 || k === nz - 1);
+                    if (isBoundary) {
+                        const cellIndex = i + j * nx + k * nx * ny;
+                        visibleCellIndices.push(cellIndex);
+                    }
+                }
+            }
+        }
+
+        const meshCount = visibleCellIndices.length;
+        if (meshCount === 0) return;
+
         const cellSize = getVisualCellSizes();
         const geometry = new BoxGeometry(cellSize.x, cellSize.y, cellSize.z);
         
-        // Use per-instance colors
         const material = new MeshStandardMaterial({ 
             color: 0xffffff,
             roughness: 0.8,
@@ -732,31 +753,27 @@
             wireframe: false
         });
 
-        const mesh = new InstancedMesh(geometry, material, total);
+        const mesh = new InstancedMesh(geometry, material, meshCount);
         instancedMesh = mesh;
 
-        // Assign a default per-instance color (medium gray)
         const defaultColor = new Color(0x888888);
-
-        let idx = 0;
         const xOff = (nx - 1) * 0.5;
         const yOff = (ny - 1) * 0.5;
         const zOff = (nz - 1) * 0.5;
 
-        for (let k = 0; k < nz; k++) {
-            for (let j = 0; j < ny; j++) {
-                for (let i = 0; i < nx; i++) {
-                    tmpMatrix.makeTranslation(
-                        (i - xOff) * cellSize.x,
-                        (j - yOff) * cellSize.y,
-                        (k - zOff) * cellSize.z
-                    );
-                    mesh.setMatrixAt(idx, tmpMatrix);
-                    // Default color; will be overwritten by updateVisualization
-                    mesh.setColorAt(idx, defaultColor);
-                    idx++;
-                }
-            }
+        for (let idx = 0; idx < visibleCellIndices.length; idx++) {
+            const cellIndex = visibleCellIndices[idx];
+            const i = cellIndex % nx;
+            const j = Math.floor(cellIndex / nx) % ny;
+            const k = Math.floor(cellIndex / (nx * ny));
+
+            tmpMatrix.makeTranslation(
+                (i - xOff) * cellSize.x,
+                (j - yOff) * cellSize.y,
+                (k - zOff) * cellSize.z
+            );
+            mesh.setMatrixAt(idx, tmpMatrix);
+            mesh.setColorAt(idx, defaultColor);
         }
 
         mesh.instanceMatrix.needsUpdate = true;
@@ -828,14 +845,21 @@
             instancedMesh.setColorAt(i, defaultColor);
         }
 
-        const values: number[] = [];
-        const len = gridArray.pressure.length;
+        if (!gridArray || !gridArray.pressure) return;
 
-        for (let i = 0; i < len; i++) {
-            values.push(getCellPropertyValue(gridArray, i, property));
+        const values: number[] = [];
+        const numInstances = visibleCellIndices.length;
+
+        for (let idx = 0; idx < numInstances; idx++) {
+            const cellIndex = visibleCellIndices[idx];
+            if (cellIndex < gridArray.pressure.length) {
+                values.push(getCellPropertyValue(gridArray, cellIndex, property));
+            } else {
+                values.push(NaN);
+            }
         }
 
-        const range = computeLegendRange(property, values);
+        const range = computeLegendRange(property, values.filter(v => Number.isFinite(v)));
         const min = range.min;
         const max = range.max;
 
@@ -843,11 +867,11 @@
         legendMax = max;
         drawLegend(min, max, property);
 
-        for (let i = 0; i < len; i++) {
-            const value = values[i];
+        for (let idx = 0; idx < numInstances; idx++) {
+            const value = values[idx];
             if (!Number.isFinite(value)) {
                 tmpColor.set(0x888888);
-                instancedMesh.setColorAt(i, tmpColor);
+                instancedMesh.setColorAt(idx, tmpColor);
                 continue;
             }
             let t = (value - min) / (max - min);
@@ -855,7 +879,7 @@
             t = Math.max(0, Math.min(1, t));
             const hue = getHue(property, t);
             tmpColor.setHSL(hue, 0.85, 0.55);
-            instancedMesh.setColorAt(i, tmpColor);
+            instancedMesh.setColorAt(idx, tmpColor);
         }
         instancedMesh.instanceColor.needsUpdate = true;
     }

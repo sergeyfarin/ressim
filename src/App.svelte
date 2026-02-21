@@ -200,16 +200,16 @@
         typeof import("./lib/RateChart.svelte").default;
     let history = $state<HistoryEntry[]>([]);
     const avgReservoirPressureSeries: Array<number | null> = $derived(
-        buildAvgPressureSeries(rateHistory, history),
+        rateHistory.map((point) => point.avg_reservoir_pressure ?? null),
     );
     const avgWaterSaturationSeries: Array<number | null> = $derived(
-        buildAvgWaterSaturationSeries(rateHistory, history),
+        rateHistory.map((point) => point.avg_water_saturation ?? null),
     );
     let currentIndex = $state(-1);
     let playing = $state(false);
     let playSpeed = $state(2);
     let playTimer: ReturnType<typeof setInterval> | null = $state(null);
-    const HISTORY_RECORD_INTERVAL = 1;
+    let historyInterval = $state(1);
     const MAX_HISTORY_ENTRIES = 300;
     let showDebugState = $state(false);
     let profileStats: ProfileStats = $state({ ...EMPTY_PROFILE_STATS });
@@ -1446,7 +1446,7 @@
         runSimulationBatch(1, 1);
     }
     function runSteps() {
-        runSimulationBatch(Number(steps), HISTORY_RECORD_INTERVAL);
+        runSimulationBatch(Number(steps), Number(historyInterval));
     }
 
     async function runSimulationBatch(
@@ -1540,101 +1540,6 @@
 
     // ---------- Derived series for charts ----------
 
-    function computeAveragePressure(grid: GridState): number {
-        if (!grid || !grid.pressure || grid.pressure.length === 0) return 0;
-        let sum = 0,
-            count = 0;
-        for (let i = 0; i < grid.pressure.length; i++) {
-            const value = Number(grid.pressure[i]);
-            if (Number.isFinite(value)) {
-                sum += value;
-                count += 1;
-            }
-        }
-        return count > 0 ? sum / count : 0;
-    }
-
-    function computeAverageWaterSaturation(grid: GridState): number {
-        if (!grid || !grid.sat_water || grid.sat_water.length === 0) return 0;
-        let sum = 0,
-            count = 0;
-        for (let i = 0; i < grid.sat_water.length; i++) {
-            const value = Number(grid.sat_water[i]);
-            if (Number.isFinite(value)) {
-                sum += value;
-                count += 1;
-            }
-        }
-        return count > 0 ? sum / count : 0;
-    }
-
-    function buildAvgPressureSeries(
-        ratePoints: RateHistoryPoint[],
-        historyEntries: HistoryEntry[],
-    ): Array<number | null> {
-        if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
-        const snapshots = historyEntries
-            .filter(
-                (entry) =>
-                    Number.isFinite(Number(entry?.time)) &&
-                    (entry?.grid?.pressure?.length ?? 0) > 0,
-            )
-            .map((entry) => ({
-                time: Number(entry.time),
-                avgPressure: computeAveragePressure(entry.grid as GridState),
-            }))
-            .sort((a, b) => a.time - b.time);
-        if (snapshots.length === 0) return ratePoints.map(() => null);
-        let snapIdx = 0,
-            currentAvg = snapshots[0].avgPressure;
-        const aligned = [];
-        for (const point of ratePoints) {
-            const t = Number(point?.time ?? 0);
-            while (
-                snapIdx + 1 < snapshots.length &&
-                snapshots[snapIdx + 1].time <= t
-            ) {
-                snapIdx += 1;
-                currentAvg = snapshots[snapIdx].avgPressure;
-            }
-            aligned.push(currentAvg);
-        }
-        return aligned;
-    }
-
-    function buildAvgWaterSaturationSeries(
-        ratePoints: RateHistoryPoint[],
-        historyEntries: HistoryEntry[],
-    ): Array<number | null> {
-        if (!Array.isArray(ratePoints) || ratePoints.length === 0) return [];
-        const snapshots = historyEntries
-            .filter(
-                (entry) =>
-                    Number.isFinite(Number(entry?.time)) &&
-                    (entry?.grid?.sat_water?.length ?? 0) > 0,
-            )
-            .map((entry) => ({
-                time: Number(entry.time),
-                avgSw: computeAverageWaterSaturation(entry.grid as GridState),
-            }))
-            .sort((a, b) => a.time - b.time);
-        if (snapshots.length === 0) return ratePoints.map(() => null);
-        let snapIdx = 0,
-            currentAvg = snapshots[0].avgSw;
-        const aligned = [];
-        for (const point of ratePoints) {
-            const t = Number(point?.time ?? 0);
-            while (
-                snapIdx + 1 < snapshots.length &&
-                snapshots[snapIdx + 1].time <= t
-            ) {
-                snapIdx += 1;
-                currentAvg = snapshots[snapIdx].avgSw;
-            }
-            aligned.push(currentAvg);
-        }
-        return aligned;
-    }
 </script>
 
 <main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
@@ -1752,6 +1657,7 @@
                 : ""}
             inputsAnchorHref="#inputs-section"
             bind:steps
+            bind:historyInterval
             onRunSteps={runSteps}
             onStepOnce={stepOnce}
             onInitSimulator={initSimulator}
