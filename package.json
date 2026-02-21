@@ -8,6 +8,7 @@
     "dev": "vite",
     "bench:export": "node scripts/export-benchmarks.mjs",
     "cases:export": "npx --yes tsx scripts/export-cases.mjs",
+    "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview",
     "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore",
