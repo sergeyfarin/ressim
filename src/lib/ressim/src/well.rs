@@ -17,6 +17,10 @@ pub struct TimePointRates {
     pub total_injection_reservoir: f64,
     /// Material balance error [m³]: cumulative (injection - production) vs actual in-place change
     pub material_balance_error_m3: f64,
+    /// Average reservoir pressure [bar]
+    pub avg_reservoir_pressure: f64,
+    /// Average water saturation
+    pub avg_water_saturation: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

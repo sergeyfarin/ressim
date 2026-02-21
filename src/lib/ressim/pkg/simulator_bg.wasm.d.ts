@@ -9,6 +9,7 @@ export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, nu
 export const reservoirsimulator_getRateHistory: (a: number) => any;
 export const reservoirsimulator_getWellState: (a: number) => any;
 export const reservoirsimulator_get_time: (a: number) => number;
+export const reservoirsimulator_loadState: (a: number, b: number, c: any, d: any, e: any) => [number, number];
 export const reservoirsimulator_new: (a: number, b: number, c: number) => number;
 export const reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];

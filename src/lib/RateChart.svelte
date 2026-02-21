@@ -660,8 +660,9 @@
             return Number.isFinite(value) ? value : null;
         });
 
-        const avgWaterSat = rateHistory.map((_, idx) => {
-            const value = avgWaterSaturationSeries?.[idx];
+        const avgWaterSat = rateHistory.map((point, idx) => {
+            const seriesValue = avgWaterSaturationSeries?.[idx];
+            const value = seriesValue ?? point.avg_water_saturation;
             return Number.isFinite(value) ? value : null;
         });
         

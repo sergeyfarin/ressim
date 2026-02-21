@@ -774,6 +774,15 @@ impl ReservoirSimulator {
         // Error = water added/removed by wells minus water-volume change in cells
         let mb_error = (net_added_m3 - actual_change_m3).abs();
 
+        let mut sum_pressure = 0.0;
+        let mut sum_sat_water = 0.0;
+        for cell in self.grid_cells.iter() {
+            sum_pressure += cell.pressure;
+            sum_sat_water += cell.sat_water;
+        }
+        let avg_reservoir_pressure = if n_cells > 0 { sum_pressure / (n_cells as f64) } else { 0.0 };
+        let avg_water_saturation = if n_cells > 0 { sum_sat_water / (n_cells as f64) } else { 0.0 };
+
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
             total_production_oil: total_prod_oil,
@@ -782,6 +791,8 @@ impl ReservoirSimulator {
             total_injection: total_injection,
             total_injection_reservoir: total_injection_reservoir,
             material_balance_error_m3: mb_error,
+            avg_reservoir_pressure,
+            avg_water_saturation,
         });
 
         // Advance simulation time

@@ -100,16 +100,14 @@
         >
           {wasmReady ? "WASM Ready" : "Loading…"}
         </span>
-        <span
-          >{continuationStatus ||
+        <span>{continuationStatus ||
             (workerRunning
               ? "⏳ Running"
               : runCompleted
                 ? "✓ Done"
-                : "○ Idle")}</span
-        >
+                : "○ Idle")}</span>
         <span>{simTime.toFixed(1)} days</span>
-        <span>{historyLength} steps</span>
+        <span>{historyLength} snapshots</span>
         {#if runProgress}
           <span class="text-primary">{runProgress}</span>
         {/if}

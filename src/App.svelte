@@ -548,28 +548,23 @@
             )
                 ? (data.finalGrid as GridCell[])
                 : null;
-            const validHistoryEntries: HistoryEntry[] = loadedHistory
-                .filter(
-                    (entry: any) =>
-                        Array.isArray(entry?.grid) &&
-                        entry.grid.length === expectedCellCount,
-                )
-                .map((entry: any) => ({
-                    time: Number(entry?.time ?? 0),
-                    grid: entry.grid,
-                    wells: Array.isArray(entry?.wells) ? entry.wells : [],
-                    rateHistory: Array.isArray(entry?.rateHistory)
-                        ? normalizeRateHistory(entry.rateHistory)
-                        : [],
-                    solverWarning:
-                        typeof entry?.solverWarning === "string"
-                            ? entry.solverWarning
-                            : "",
-                    recordHistory: Boolean(entry?.recordHistory),
-                }));
-            const historyHasMismatches =
-                loadedHistory.length > 0 &&
-                validHistoryEntries.length !== loadedHistory.length;
+            const validHistoryEntries: HistoryEntry[] = [];
+            let historyHasMismatches = false;
+            for (let i = 0; i < loadedHistory.length; i++) {
+                const entry = loadedHistory[i];
+                if (Array.isArray(entry?.grid) && entry.grid.length === expectedCellCount) {
+                    validHistoryEntries.push({
+                        time: Number(entry.time ?? 0),
+                        grid: entry.grid,
+                        wells: Array.isArray(entry.wells) ? entry.wells : [],
+                        rateHistory: [],
+                        solverWarning: "",
+                        recordHistory: false,
+                    } as HistoryEntry);
+                } else {
+                    historyHasMismatches = true;
+                }
+            }
             const finalGridMatches = Boolean(
                 loadedFinalGrid && loadedFinalGrid.length === expectedCellCount,
             );
@@ -739,14 +734,21 @@
             }, PRE_RUN_HYDRATION_TIMEOUT_MS);
         });
 
+        // Strip all Svelte $state proxies deeply to avoid DataCloneError
+        const cleanPayload = JSON.parse(JSON.stringify({
+            hydrationId,
+            createPayload: buildCreatePayload(),
+            steps: hydrateSteps,
+            deltaTDays: hydrateDeltaT,
+            time: simTime,
+            grid: Array.isArray(gridStateRaw) ? gridStateRaw : [],
+            wells: wellStateRaw ? wellStateRaw : [],
+            rateHistory: preRunData?.rateHistory || [],
+        }));
+
         simWorker.postMessage({
             type: "hydratePreRun",
-            payload: {
-                hydrationId,
-                createPayload: buildCreatePayload(),
-                steps: hydrateSteps,
-                deltaTDays: hydrateDeltaT,
-            },
+            payload: cleanPayload,
         });
 
         return waitForHydration;
@@ -1112,7 +1114,7 @@
             return;
         }
         if (message.type === "state") {
-            applyWorkerState(message.data);
+            applyWorkerState(message as SimulatorSnapshot);
             return;
         }
         if (message.type === "hydrated") {

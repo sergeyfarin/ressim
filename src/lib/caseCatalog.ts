@@ -76,7 +76,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 48, ny: 1, nz: 1,
                     cellDx: 10, cellDy: 10, cellDz: 5,
-                    delta_t_days: 0.1, steps: 180,
+                    delta_t_days: 0.5, steps: 36,
                     max_sat_change_per_step: 0.1,
                     initialPressure: 300, initialSaturation: 0.25,
                     injectorEnabled: false,
@@ -97,7 +97,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 49, ny: 49, nz: 1,
                     cellDx: 10, cellDy: 10, cellDz: 5,
-                    delta_t_days: 0.1, steps: 220,
+                    delta_t_days: 0.5, steps: 44,
                     max_sat_change_per_step: 0.1,
                     initialPressure: 300, initialSaturation: 0.25,
                     injectorEnabled: false,
@@ -125,7 +125,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 96, ny: 1, nz: 1,
                     cellDx: 10, cellDy: 10, cellDz: 1,
-                    delta_t_days: 0.125, steps: 240,
+                    delta_t_days: 0.5, steps: 60,
                     max_sat_change_per_step: 0.05,
                     initialPressure: 300, initialSaturation: 0.1,
                     mu_w: 0.5, mu_o: 1.0,
@@ -149,7 +149,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 96, ny: 1, nz: 1,
                     cellDx: 10, cellDy: 10, cellDz: 1,
-                    delta_t_days: 0.125, steps: 240,
+                    delta_t_days: 0.5, steps: 60,
                     max_sat_change_per_step: 0.05,
                     initialPressure: 300, initialSaturation: 0.15,
                     mu_w: 0.6, mu_o: 1.4,
@@ -173,7 +173,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 48, ny: 1, nz: 1,
                     cellDx: 5, cellDy: 10, cellDz: 10,
-                    delta_t_days: 0.1, steps: 120,
+                    delta_t_days: 0.5, steps: 24,
                     max_sat_change_per_step: 0.05,
                     initialPressure: 300, initialSaturation: 0.2,
                     mu_w: 0.5, mu_o: 1.0,
@@ -196,7 +196,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 48, ny: 1, nz: 1,
                     cellDx: 5, cellDy: 10, cellDz: 10,
-                    delta_t_days: 0.1, steps: 120,
+                    delta_t_days: 0.5, steps: 24,
                     max_sat_change_per_step: 0.05,
                     initialPressure: 300, initialSaturation: 0.2,
                     mu_w: 0.5, mu_o: 1.0,
@@ -219,7 +219,7 @@ export const caseCatalog: Record<string, CaseCategory> = {
                 params: {
                     nx: 48, ny: 1, nz: 1,
                     cellDx: 5, cellDy: 10, cellDz: 10,
-                    delta_t_days: 0.1, steps: 120,
+                    delta_t_days: 0.5, steps: 24,
                     max_sat_change_per_step: 0.05,
                     initialPressure: 300, initialSaturation: 0.2,
                     mu_w: 0.8, mu_o: 1.0,

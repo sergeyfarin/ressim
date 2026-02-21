@@ -99,6 +99,10 @@ export interface HydratePreRunPayload {
   steps: number;
   deltaTDays: number;
   hydrationId?: number | string;
+  time?: number;
+  grid?: GridCell[];
+  wells?: WellState;
+  rateHistory?: RateHistoryPoint[];
 }
 
 // --- Simulator runtime / output shapes ---

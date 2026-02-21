@@ -31,6 +31,10 @@ export class ReservoirSimulator {
     getWellState(): any;
     get_time(): number;
     /**
+     * Load the entire state to continue simulation without re-computing from step 0
+     */
+    loadState(time_days: number, grid_state: any, well_state: any, rate_history: any): void;
+    /**
      * Create a new reservoir simulator with oil-field units
      * Grid dimensions: nx, ny, nz (number of cells in each direction)
      * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -100,6 +104,7 @@ export interface InitOutput {
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
     readonly reservoirsimulator_getWellState: (a: number) => any;
     readonly reservoirsimulator_get_time: (a: number) => number;
+    readonly reservoirsimulator_loadState: (a: number, b: number, c: any, d: any, e: any) => [number, number];
     readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];

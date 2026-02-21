@@ -170,7 +170,8 @@ function runCase(payload, steps, deltaTDays) {
     }
 
     // Collect history snapshots every N steps
-    const historyInterval = Math.max(1, Math.floor(steps / 50));
+    // Target ~4 steps of history visually so the scrub slider isn't overloaded + final state
+    const historyInterval = Math.max(1, Math.floor(steps / 4));
     const history = [];
 
     for (let i = 0; i < steps; i++) {

@@ -218,6 +218,29 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
     throw new Error('Failed to initialize simulator');
   }
 
+  if (payload.grid && payload.wells && typeof payload.time === 'number') {
+    try {
+      // @ts-ignore - loadState exists on the wasm object
+      simulator.loadState(
+        payload.time,
+        payload.grid,
+        payload.wells,
+        payload.rateHistory || []
+      );
+      post('hydrated', {
+        hydration: true,
+        hydrationId,
+        time: simulator.get_time(),
+        rateHistoryLength: simulator.getRateHistory().length,
+      });
+      return;
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('Fast hydration failed, falling back to full simulation:', e);
+      post('warning', { message: `Fast hydration failed (${errMsg}), falling back to 15s hydration...` });
+    }
+  }
+
   isRunning = true;
   stopRequested = false;
   post('runStarted', { hydration: true, hydrationId, steps, deltaTDays });

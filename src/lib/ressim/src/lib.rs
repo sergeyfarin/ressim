@@ -631,6 +631,41 @@ impl ReservoirSimulator {
         Ok(())
     }
 
+    /// Load the entire state to continue simulation without re-computing from step 0
+    #[wasm_bindgen(js_name = loadState)]
+    pub fn load_state(
+        &mut self,
+        time_days: f64,
+        grid_state: JsValue,
+        well_state: JsValue,
+        rate_history: JsValue,
+    ) -> Result<(), JsValue> {
+        let grid_cells: Vec<GridCell> = serde_wasm_bindgen::from_value(grid_state)?;
+        let wells: Vec<Well> = serde_wasm_bindgen::from_value(well_state)?;
+        let rate_history_vec: Vec<TimePointRates> = serde_wasm_bindgen::from_value(rate_history)?;
+        
+        let expected_cells = self.nx * self.ny * self.nz;
+        if grid_cells.len() != expected_cells {
+            return Err(JsValue::from_str(&format!(
+                "Mismatch grid size. Expected {}, got {}",
+                expected_cells,
+                grid_cells.len()
+            )));
+        }
+
+        self.time_days = time_days;
+        self.grid_cells = grid_cells;
+        self.wells = wells;
+        self.rate_history = rate_history_vec;
+        
+        if let Some(last) = self.rate_history.last() {
+            self.cumulative_injection_m3 = last.total_injection_reservoir;
+            self.cumulative_production_m3 = last.total_production_liquid_reservoir;
+        }
+
+        Ok(())
+    }
+
     /// Set permeability per layer
     #[wasm_bindgen(js_name = setPermeabilityPerLayer)]
     pub fn set_permeability_per_layer(
