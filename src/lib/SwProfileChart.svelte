@@ -3,8 +3,8 @@
     import { Chart, registerables } from 'chart.js';
     import { safeSetDatasetData } from './chart-helpers';
 
-    import type { GridCell } from './simulator-types';
-    export let gridState: GridCell[] = [];
+    import type { GridState } from './simulator-types';
+    export let gridState: GridState | null = null;
     export let nx: number = 1;
     export let ny: number = 1;
     export let nz: number = 1;
@@ -140,7 +140,7 @@
     }
 
     function buildSimulatedProfile() {
-        if (!Array.isArray(gridState) || gridState.length === 0 || nx <= 0 || ny <= 0 || nz <= 0) {
+        if (!gridState || !gridState.sat_water || gridState.sat_water.length === 0 || nx <= 0 || ny <= 0 || nz <= 0) {
             return Array.from({ length: Math.max(1, nx) }, () => null);
         }
 
@@ -149,8 +149,7 @@
 
         for (let i = 0; i < nx; i++) {
             const id = cellIndex(i, row, 0);
-            const cell = gridState[id] ?? {};
-            const sw = Number((cell as any).sat_water ?? (cell as any).satWater ?? (cell as any).sw);
+            const sw = gridState.sat_water[id];
             values.push(Number.isFinite(sw) ? Math.max(0, Math.min(1, sw)) : null);
         }
 

@@ -22,24 +22,31 @@ export class ReservoirSimulator {
      */
     add_well(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean): void;
     getDimensions(): any;
-    getGridState(): any;
     /**
      * Get last solver warning message (empty string if no warning)
      */
     getLastSolverWarning(): string;
+    getPermX(): Float64Array;
+    getPermY(): Float64Array;
+    getPermZ(): Float64Array;
+    getPorosity(): Float64Array;
+    getPressures(): Float64Array;
     getRateHistory(): any;
+    getSatOil(): Float64Array;
+    getSatWater(): Float64Array;
     getWellState(): any;
     get_time(): number;
     /**
      * Load the entire state to continue simulation without re-computing from step 0
      */
-    loadState(time_days: number, grid_state: any, well_state: any, rate_history: any): void;
+    loadState(time_days: number, _grid_state: any, well_state: any, rate_history: any): void;
     /**
      * Create a new reservoir simulator with oil-field units
      * Grid dimensions: nx, ny, nz (number of cells in each direction)
      * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
      */
     constructor(nx: number, ny: number, nz: number);
+    pore_volume_m3(id: number): number;
     setCapillaryParams(p_entry: number, lambda: number): void;
     setCellDimensions(dx: number, dy: number, dz: number): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
@@ -99,13 +106,20 @@ export interface InitOutput {
     readonly __wbg_reservoirsimulator_free: (a: number, b: number) => void;
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
-    readonly reservoirsimulator_getGridState: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
+    readonly reservoirsimulator_getPermX: (a: number) => [number, number];
+    readonly reservoirsimulator_getPermY: (a: number) => [number, number];
+    readonly reservoirsimulator_getPermZ: (a: number) => [number, number];
+    readonly reservoirsimulator_getPorosity: (a: number) => [number, number];
+    readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
+    readonly reservoirsimulator_getSatOil: (a: number) => [number, number];
+    readonly reservoirsimulator_getSatWater: (a: number) => [number, number];
     readonly reservoirsimulator_getWellState: (a: number) => any;
     readonly reservoirsimulator_get_time: (a: number) => number;
     readonly reservoirsimulator_loadState: (a: number, b: number, c: any, d: any, e: any) => [number, number];
     readonly reservoirsimulator_new: (a: number, b: number, c: number) => number;
+    readonly reservoirsimulator_pore_volume_m3: (a: number, b: number) => number;
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];

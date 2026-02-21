@@ -48,13 +48,6 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * @returns {any}
-     */
-    getGridState() {
-        const ret = wasm.reservoirsimulator_getGridState(this.__wbg_ptr);
-        return ret;
-    }
-    /**
      * Get last solver warning message (empty string if no warning)
      * @returns {string}
      */
@@ -71,11 +64,74 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @returns {Float64Array}
+     */
+    getPermX() {
+        const ret = wasm.reservoirsimulator_getPermX(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    getPermY() {
+        const ret = wasm.reservoirsimulator_getPermY(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    getPermZ() {
+        const ret = wasm.reservoirsimulator_getPermZ(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    getPorosity() {
+        const ret = wasm.reservoirsimulator_getPorosity(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    getPressures() {
+        const ret = wasm.reservoirsimulator_getPressures(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * @returns {any}
      */
     getRateHistory() {
         const ret = wasm.reservoirsimulator_getRateHistory(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    getSatOil() {
+        const ret = wasm.reservoirsimulator_getSatOil(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    getSatWater() {
+        const ret = wasm.reservoirsimulator_getSatWater(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
     }
     /**
      * @returns {any}
@@ -94,12 +150,12 @@ export class ReservoirSimulator {
     /**
      * Load the entire state to continue simulation without re-computing from step 0
      * @param {number} time_days
-     * @param {any} grid_state
+     * @param {any} _grid_state
      * @param {any} well_state
      * @param {any} rate_history
      */
-    loadState(time_days, grid_state, well_state, rate_history) {
-        const ret = wasm.reservoirsimulator_loadState(this.__wbg_ptr, time_days, grid_state, well_state, rate_history);
+    loadState(time_days, _grid_state, well_state, rate_history) {
+        const ret = wasm.reservoirsimulator_loadState(this.__wbg_ptr, time_days, _grid_state, well_state, rate_history);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -117,6 +173,14 @@ export class ReservoirSimulator {
         this.__wbg_ptr = ret >>> 0;
         ReservoirSimulatorFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @param {number} id
+     * @returns {number}
+     */
+    pore_volume_m3(id) {
+        const ret = wasm.reservoirsimulator_pore_volume_m3(this.__wbg_ptr, id);
+        return ret;
     }
     /**
      * @param {number} p_entry
@@ -608,6 +672,11 @@ function debugString(val) {
     }
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
+}
+
+function getArrayF64FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
 
 function getArrayU8FromWasm0(ptr, len) {

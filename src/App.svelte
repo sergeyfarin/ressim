@@ -130,9 +130,9 @@
     let capillaryLambda = $state(2.0);
 
     // Display data
-    import type { GridCell, WellState } from "./lib";
+    import type { GridState, WellState } from "./lib";
 
-    let gridStateRaw: GridCell[] | null = $state(null);
+    let gridStateRaw: GridState | null = $state(null);
     let wellStateRaw: WellState | null = $state(null);
     let simTime = $state(0);
     let rateHistory = $state<RateHistoryPoint[]>([]);
@@ -543,16 +543,12 @@
             const loadedHistory = Array.isArray(data.history)
                 ? data.history
                 : [];
-            const loadedFinalGrid: GridCell[] | null = Array.isArray(
-                data.finalGrid,
-            )
-                ? (data.finalGrid as GridCell[])
-                : null;
+            const loadedFinalGrid: GridState | null = data.finalGrid ? (data.finalGrid as GridState) : null;
             const validHistoryEntries: HistoryEntry[] = [];
             let historyHasMismatches = false;
             for (let i = 0; i < loadedHistory.length; i++) {
                 const entry = loadedHistory[i];
-                if (Array.isArray(entry?.grid) && entry.grid.length === expectedCellCount) {
+                if (entry?.grid?.pressure && entry.grid.pressure.length === expectedCellCount) {
                     validHistoryEntries.push({
                         time: Number(entry.time ?? 0),
                         grid: entry.grid,
@@ -566,7 +562,7 @@
                 }
             }
             const finalGridMatches = Boolean(
-                loadedFinalGrid && loadedFinalGrid.length === expectedCellCount,
+                loadedFinalGrid && loadedFinalGrid.pressure && loadedFinalGrid.pressure.length === expectedCellCount,
             );
 
             history = validHistoryEntries;
@@ -574,15 +570,12 @@
 
             const selectedHistoryEntry =
                 currentIndex >= 0 ? validHistoryEntries[currentIndex] : null;
-            const selectedHistoryGrid = Array.isArray(
-                selectedHistoryEntry?.grid,
-            )
-                ? selectedHistoryEntry.grid
-                : null;
+            const selectedHistoryGrid = selectedHistoryEntry?.grid ?? null;
 
             if (
                 selectedHistoryGrid &&
-                selectedHistoryGrid.length === expectedCellCount
+                selectedHistoryGrid.pressure &&
+                selectedHistoryGrid.pressure.length === expectedCellCount
             ) {
                 gridStateRaw = selectedHistoryGrid;
                 wellStateRaw =
@@ -1114,7 +1107,7 @@
             return;
         }
         if (message.type === "state") {
-            applyWorkerState(message as SimulatorSnapshot);
+            applyWorkerState(message as unknown as SimulatorSnapshot);
             return;
         }
         if (message.type === "hydrated") {
@@ -1547,14 +1540,12 @@
 
     // ---------- Derived series for charts ----------
 
-    function computeAveragePressure(
-        grid: Array<{ pressure?: number }>,
-    ): number {
-        if (!Array.isArray(grid) || grid.length === 0) return 0;
+    function computeAveragePressure(grid: GridState): number {
+        if (!grid || !grid.pressure || grid.pressure.length === 0) return 0;
         let sum = 0,
             count = 0;
-        for (const cell of grid) {
-            const value = Number(cell?.pressure);
+        for (let i = 0; i < grid.pressure.length; i++) {
+            const value = Number(grid.pressure[i]);
             if (Number.isFinite(value)) {
                 sum += value;
                 count += 1;
@@ -1563,14 +1554,12 @@
         return count > 0 ? sum / count : 0;
     }
 
-    function computeAverageWaterSaturation(
-        grid: Array<{ sat_water?: number; satWater?: number; sw?: number }>,
-    ): number {
-        if (!Array.isArray(grid) || grid.length === 0) return 0;
+    function computeAverageWaterSaturation(grid: GridState): number {
+        if (!grid || !grid.sat_water || grid.sat_water.length === 0) return 0;
         let sum = 0,
             count = 0;
-        for (const cell of grid) {
-            const value = Number(cell?.sat_water ?? cell?.satWater ?? cell?.sw);
+        for (let i = 0; i < grid.sat_water.length; i++) {
+            const value = Number(grid.sat_water[i]);
             if (Number.isFinite(value)) {
                 sum += value;
                 count += 1;
@@ -1588,11 +1577,11 @@
             .filter(
                 (entry) =>
                     Number.isFinite(Number(entry?.time)) &&
-                    Array.isArray(entry?.grid),
+                    (entry?.grid?.pressure?.length ?? 0) > 0,
             )
             .map((entry) => ({
                 time: Number(entry.time),
-                avgPressure: computeAveragePressure(entry.grid ?? []),
+                avgPressure: computeAveragePressure(entry.grid as GridState),
             }))
             .sort((a, b) => a.time - b.time);
         if (snapshots.length === 0) return ratePoints.map(() => null);
@@ -1622,11 +1611,11 @@
             .filter(
                 (entry) =>
                     Number.isFinite(Number(entry?.time)) &&
-                    Array.isArray(entry?.grid),
+                    (entry?.grid?.sat_water?.length ?? 0) > 0,
             )
             .map((entry) => ({
                 time: Number(entry.time),
-                avgSw: computeAverageWaterSaturation(entry.grid ?? []),
+                avgSw: computeAverageWaterSaturation(entry.grid as GridState),
             }))
             .sort((a, b) => a.time - b.time);
         if (snapshots.length === 0) return ratePoints.map(() => null);
@@ -1822,7 +1811,7 @@
                 </div>
 
                 <SwProfileChart
-                    gridState={gridStateRaw ?? []}
+                    gridState={gridStateRaw ?? null}
                     {nx}
                     {ny}
                     {nz}

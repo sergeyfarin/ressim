@@ -3,7 +3,7 @@ use sprs::{CsMat, TriMatI};
 use std::f64;
 
 use crate::solver::solve_pcg_with_guess;
-use crate::{GridCell, ReservoirSimulator, TimePointRates, Well};
+use crate::{ReservoirSimulator, TimePointRates, Well};
 
 pub(crate) enum WellControlDecision {
     Disabled,
@@ -12,15 +12,13 @@ pub(crate) enum WellControlDecision {
 }
 
 impl ReservoirSimulator {
-    pub(crate) fn calculate_well_productivity_index(
-        &self,
-        cell: &GridCell,
+    pub(crate) fn calculate_well_productivity_index(&self, id: usize,
         well_radius: f64,
         skin: f64,
     ) -> Result<f64, String> {
         // Calculate equivalent radius (Peaceman's model)
-        let kx = cell.perm_x;
-        let ky = cell.perm_y;
+        let kx = self.perm_x[id];
+        let ky = self.perm_y[id];
         if !kx.is_finite() || !ky.is_finite() || kx <= 0.0 || ky <= 0.0 {
             return Err(format!(
                 "Cell permeability must be positive and finite for well PI calculation, got kx={}, ky={}",
@@ -49,7 +47,7 @@ impl ReservoirSimulator {
 
         // Calculate productivity index (PI)
         let k_avg = f64::sqrt(kx * ky); // Geometric mean of horizontal permeabilities
-        let total_mobility = self.total_mobility(cell);
+        let total_mobility = self.total_mobility(id);
         if !k_avg.is_finite() || k_avg <= 0.0 {
             return Err(format!(
                 "Average permeability must be positive and finite, got: {}",
@@ -84,9 +82,9 @@ impl ReservoirSimulator {
 
         for well in self.wells.iter() {
             let id = self.idx(well.i, well.j, well.k);
-            let cell = self.grid_cells[id];
+            
             let maybe_pi = self
-                .calculate_well_productivity_index(&cell, well.well_radius, well.skin)
+                .calculate_well_productivity_index(id, well.well_radius, well.skin)
                 .ok()
                 .filter(|pi| pi.is_finite() && *pi >= 0.0);
             updated_pi.push(maybe_pi);
@@ -101,16 +99,16 @@ impl ReservoirSimulator {
 
     /// Total mobility [1/cP] = lambda_t = (k_rw/μ_w) + (k_ro/μ_o)
     /// Sum of phase mobilities used in pressure equation
-    fn total_mobility(&self, cell: &GridCell) -> f64 {
-        let krw = self.scal.k_rw(cell.sat_water);
-        let kro = self.scal.k_ro(cell.sat_water);
+    fn total_mobility(&self, id: usize) -> f64 {
+        let krw = self.scal.k_rw(self.sat_water[id]);
+        let kro = self.scal.k_ro(self.sat_water[id]);
         krw / self.pvt.mu_w + kro / self.pvt.mu_o
     }
 
     /// Phase mobilities [1/cP] for water and oil
-    fn phase_mobilities(&self, cell: &GridCell) -> (f64, f64) {
-        let krw = self.scal.k_rw(cell.sat_water);
-        let kro = self.scal.k_ro(cell.sat_water);
+    fn phase_mobilities(&self, id: usize) -> (f64, f64) {
+        let krw = self.scal.k_rw(self.sat_water[id]);
+        let kro = self.scal.k_ro(self.sat_water[id]);
         (krw / self.pvt.mu_w, kro / self.pvt.mu_o)
     }
 
@@ -132,9 +130,9 @@ impl ReservoirSimulator {
         density_kg_m3 * 9.80665 * (depth_i - depth_j) * 1e-5
     }
 
-    fn total_density_face(&self, c_i: &GridCell, c_j: &GridCell) -> f64 {
-        let (lam_w_i, lam_o_i) = self.phase_mobilities(c_i);
-        let (lam_w_j, lam_o_j) = self.phase_mobilities(c_j);
+    fn total_density_face(&self, i: usize, j: usize) -> f64 {
+        let (lam_w_i, lam_o_i) = self.phase_mobilities(i);
+        let (lam_w_j, lam_o_j) = self.phase_mobilities(j);
 
         let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
         let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
@@ -149,10 +147,10 @@ impl ReservoirSimulator {
 
     /// Fractional flow of water [dimensionless] = f_w = λ_w / λ_t
     /// Used in upwind scheme for saturation transport
-    fn frac_flow_water(&self, cell: &GridCell) -> f64 {
-        let krw = self.scal.k_rw(cell.sat_water);
+    fn frac_flow_water(&self, id: usize) -> f64 {
+        let krw = self.scal.k_rw(self.sat_water[id]);
         let lam_w = krw / self.pvt.mu_w;
-        let lam_t = lam_w + (self.scal.k_ro(cell.sat_water) / self.pvt.mu_o);
+        let lam_t = lam_w + (self.scal.k_ro(self.sat_water[id]) / self.pvt.mu_o);
         if lam_t <= 0.0 {
             0.0
         } else {
@@ -164,11 +162,11 @@ impl ReservoirSimulator {
     /// This is the constant part of transmissibility that depends only on rock properties
     /// and grid geometry. Used with upstream mobility for proper flow direction.
     /// Formula: T_geom = k_h * A / L where k_h is harmonic mean of permeabilities
-    fn geometric_transmissibility(&self, c1: &GridCell, c2: &GridCell, dim: char) -> f64 {
+    fn geometric_transmissibility(&self, id1: usize, id2: usize, dim: char) -> f64 {
         let (perm1, perm2, dist, area) = match dim {
-            'x' => (c1.perm_x, c2.perm_x, self.dx, self.dy * self.dz),
-            'y' => (c1.perm_y, c2.perm_y, self.dy, self.dx * self.dz),
-            'z' => (c1.perm_z, c2.perm_z, self.dz, self.dx * self.dy),
+            'x' => (self.perm_x[id1], self.perm_x[id2], self.dx, self.dy * self.dz),
+            'y' => (self.perm_y[id1], self.perm_y[id2], self.dy, self.dx * self.dz),
+            'z' => (self.perm_z[id1], self.perm_z[id2], self.dz, self.dx * self.dy),
             _ => (0.0, 0.0, 1.0, 1.0),
         };
         // Harmonic mean of permeabilities [mD]
@@ -190,29 +188,25 @@ impl ReservoirSimulator {
     /// This is the standard reservoir simulation practice for better accuracy at sharp fronts
     /// p_i, p_j: pressures in cells i and j
     /// grav_head_bar: gravity head term (positive if cell i is deeper)
-    fn transmissibility_upstream(
-        &self,
-        c1: &GridCell,
-        c2: &GridCell,
-        dim: char,
+    fn transmissibility_upstream(&self, id1: usize, id2: usize, dim: char,
         p_i: f64,
         p_j: f64,
         grav_head_bar: f64,
     ) -> f64 {
-        let t_geom = self.geometric_transmissibility(c1, c2, dim);
+        let t_geom = self.geometric_transmissibility(id1, id2, dim);
         if t_geom == 0.0 {
             return 0.0;
         }
 
         // Potential difference determines flow direction
-        // Positive potential_diff means flow from c1 to c2
+        // Positive potential_diff means flow from id1 to id2
         let potential_diff = (p_i - p_j) - grav_head_bar;
 
         // Upstream total mobility: take from the cell where flow originates
         let mob_upstream = if potential_diff >= 0.0 {
-            self.total_mobility(c1)
+            self.total_mobility(id1)
         } else {
-            self.total_mobility(c2)
+            self.total_mobility(id2)
         };
 
         // Transmissibility [m³/day/bar]
@@ -222,14 +216,8 @@ impl ReservoirSimulator {
 
     /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
     /// Uses previous pressure solution to determine flow direction
-    fn transmissibility_with_prev_pressure(
-        &self,
-        c1: &GridCell,
-        c2: &GridCell,
-        dim: char,
-        grav_head_bar: f64,
-    ) -> f64 {
-        self.transmissibility_upstream(c1, c2, dim, c1.pressure, c2.pressure, grav_head_bar)
+    fn transmissibility_with_prev_pressure(&self, id1: usize, id2: usize, dim: char, grav_head_bar: f64) -> f64 {
+        self.transmissibility_upstream(id1, id2, dim, self.pressure[id1], self.pressure[id2], grav_head_bar)
     }
 
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
@@ -412,16 +400,16 @@ impl ReservoirSimulator {
             for j in 0..self.ny {
                 for i in 0..self.nx {
                     let id = self.idx(i, j, k);
-                    let cell = &self.grid_cells[id];
+                    let cell = id;
 
                     // Pore volume [m³]
-                    let vp_m3 = cell.pore_volume_m3(self.dx, self.dy, self.dz);
+                    let vp_m3 = self.pore_volume_m3(i);
 
                     // Per-cell total compressibility [1/bar]
                     // c_t = (c_o * S_o + c_w * S_w) + c_r
                     // Note: pore volume Vp already includes porosity, so do not multiply by ϕ again.
                     let c_t =
-                        (self.pvt.c_o * cell.sat_oil + self.pvt.c_w * cell.sat_water)
+                        (self.pvt.c_o * self.sat_oil[id] + self.pvt.c_w * self.sat_water[id])
                             + self.rock_compressibility;
 
                     // Accumulation term: (Vp [m³] * c_t [1/bar]) / dt [day]
@@ -430,7 +418,7 @@ impl ReservoirSimulator {
                     let mut diag = accum;
 
                     // Move old pressure term to RHS: accum * p_old
-                    b_rhs[id] += accum * cell.pressure;
+                    b_rhs[id] += accum * self.pressure[id];
 
                     // neighbors: compute flux transmissibilities
                     let mut neighbors: Vec<(usize, char, usize)> = Vec::new();
@@ -457,14 +445,14 @@ impl ReservoirSimulator {
                         // Gravity head for potential calculation
                         let depth_i = self.depth_at_k(k);
                         let depth_j = self.depth_at_k(*n_k);
-                        let rho_t = self.total_density_face(cell, &self.grid_cells[*n_id]);
+                        let rho_t = self.total_density_face(cell, *n_id);
                         let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
 
                         // Transmissibility with upstream weighting [m³/day/bar]
                         // Uses previous pressure to determine flow direction
                         let t = self.transmissibility_with_prev_pressure(
                             cell,
-                            &self.grid_cells[*n_id],
+                            *n_id,
                             *dim,
                             grav_head_bar,
                         );
@@ -480,7 +468,7 @@ impl ReservoirSimulator {
                     // Well source terms
                     for w in &self.wells {
                         if w.i == i && w.j == j && w.k == k {
-                            if let Some(control) = self.resolve_well_control(w, cell.pressure) {
+                            if let Some(control) = self.resolve_well_control(w, self.pressure[id]) {
                                 match control {
                                     WellControlDecision::Disabled => {}
                                     WellControlDecision::Rate { q_m3_day } => {
@@ -523,7 +511,7 @@ impl ReservoirSimulator {
         // Solve pressure equation A*p_new = b with PCG, initial guess = current pressures
         let mut x0 = DVector::<f64>::zeros(n_cells);
         for i in 0..n_cells {
-            x0[i] = self.grid_cells[i].pressure;
+            x0[i] = self.pressure[i];
         }
         let pcg_result = solve_pcg_with_guess(&a_mat, &b_rhs, &diag_inv, &x0, 1e-7, 1000);
         let p_new = pcg_result.solution;
@@ -558,14 +546,14 @@ impl ReservoirSimulator {
                         // Gravity head for potential calculation
                         let depth_i = self.depth_at_k(k);
                         let depth_j = self.depth_at_k(n_k);
-                        let rho_t = self.total_density_face(&self.grid_cells[id], &self.grid_cells[nid]);
+                        let rho_t = self.total_density_face(id, nid);
                         let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
 
                         // Transmissibility with upstream weighting [m³/day/bar]
                         // Uses new pressure solution to determine flow direction
                         let t = self.transmissibility_upstream(
-                            &self.grid_cells[id],
-                            &self.grid_cells[nid],
+                            id,
+                            nid,
                             dim,
                             p_i,
                             p_j,
@@ -575,13 +563,13 @@ impl ReservoirSimulator {
                         // Get geometric transmissibility for capillary flux calculation
                         let geom_t = 8.527e-5
                             * self.geometric_transmissibility(
-                                &self.grid_cells[id],
-                                &self.grid_cells[nid],
+                                id,
+                                nid,
                                 dim,
                             );
 
-                        let (lam_w_i, lam_o_i) = self.phase_mobilities(&self.grid_cells[id]);
-                        let (lam_w_j, lam_o_j) = self.phase_mobilities(&self.grid_cells[nid]);
+                        let (lam_w_i, lam_o_i) = self.phase_mobilities(id);
+                        let (lam_w_j, lam_o_j) = self.phase_mobilities(nid);
                         let lam_t_i = lam_w_i + lam_o_i;
                         let lam_t_j = lam_w_j + lam_o_j;
                         let lam_t_avg = 0.5 * (lam_t_i + lam_t_j);
@@ -594,14 +582,14 @@ impl ReservoirSimulator {
 
                         // Upwind fractional flow for water
                         let f_w = if total_flux >= 0.0 {
-                            self.frac_flow_water(&self.grid_cells[id])
+                            self.frac_flow_water(id)
                         } else {
-                            self.frac_flow_water(&self.grid_cells[nid])
+                            self.frac_flow_water(nid)
                         };
 
                         // Capillary-driven diffusion term using harmonic transmissibility geometry
-                        let pc_i = self.get_capillary_pressure(self.grid_cells[id].sat_water);
-                        let pc_j = self.get_capillary_pressure(self.grid_cells[nid].sat_water);
+                        let pc_i = self.get_capillary_pressure(self.sat_water[id]);
+                        let pc_j = self.get_capillary_pressure(self.sat_water[nid]);
                         let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
                         let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
                         let capillary_flux = if lam_t_avg <= f64::EPSILON {
@@ -634,7 +622,7 @@ impl ReservoirSimulator {
                     1.0
                 } else {
                     // Producers produce at reservoir fluid composition (fractional flow)
-                    self.frac_flow_water(&self.grid_cells[id])
+                    self.frac_flow_water(id)
                 };
 
                 let water_q_m3_day = q_m3_day * fw;
@@ -647,7 +635,7 @@ impl ReservoirSimulator {
 
         // Calculate max saturation change for CFL condition
         for idx in 0..n_cells {
-            let vp_m3 = self.grid_cells[idx].pore_volume_m3(self.dx, self.dy, self.dz);
+            let vp_m3 = self.pore_volume_m3(idx);
             if vp_m3 > 0.0 {
                 let sat_change = (delta_water_m3[idx] / vp_m3).abs();
                 if sat_change > max_sat_change {
@@ -664,7 +652,7 @@ impl ReservoirSimulator {
 
         let mut max_pressure_change = 0.0;
         for idx in 0..n_cells {
-            let dp = (p_new[idx] - self.grid_cells[idx].pressure).abs();
+            let dp = (p_new[idx] - self.pressure[idx]).abs();
             if dp > max_pressure_change {
                 max_pressure_change = dp;
             }
@@ -678,7 +666,7 @@ impl ReservoirSimulator {
         let mut max_well_rate_rel_change = 0.0;
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            let q_old = self.well_rate_m3_day(w, self.grid_cells[id].pressure).unwrap_or(0.0);
+            let q_old = self.well_rate_m3_day(w, self.pressure[id]).unwrap_or(0.0);
             let q_new = self.well_rate_m3_day(w, p_new[id]).unwrap_or(0.0);
 
             let rel = (q_new - q_old).abs() / (q_old.abs() + 1.0);
@@ -712,13 +700,13 @@ impl ReservoirSimulator {
         let n_cells = self.nx * self.ny * self.nz;
         // Update saturations based on water volume changes
         for idx in 0..n_cells {
-            let vp_m3 = self.grid_cells[idx].pore_volume_m3(self.dx, self.dy, self.dz);
+            let vp_m3 = self.pore_volume_m3(idx);
             if vp_m3 <= 0.0 {
                 continue;
             }
 
             // Change in water saturation [dimensionless] = ΔV_water [m³] / V_pore [m³]
-            let sw_old = self.grid_cells[idx].sat_water;
+            let sw_old = self.sat_water[idx];
             let sw_min = self.scal.s_wc;
             let sw_max = 1.0 - self.scal.s_or;
             let delta_sw = delta_water_m3[idx] / vp_m3;
@@ -728,9 +716,9 @@ impl ReservoirSimulator {
             let so_new = (1.0 - sw_new).clamp(0.0, 1.0);
 
             // Update state variables
-            self.grid_cells[idx].sat_water = sw_new;
-            self.grid_cells[idx].sat_oil = so_new;
-            self.grid_cells[idx].pressure = p_new[idx];
+            self.sat_water[idx] = sw_new;
+            self.sat_oil[idx] = so_new;
+            self.pressure[idx] = p_new[idx];
         }
 
         // Calculate and store rates
@@ -751,7 +739,7 @@ impl ReservoirSimulator {
                 } else {
                     // Production is positive flow
                     total_prod_liquid_reservoir += q_m3_day;
-                    let fw = self.frac_flow_water(&self.grid_cells[id]);
+                    let fw = self.frac_flow_water(id);
                     total_prod_water_reservoir += q_m3_day * fw;
                     let oil_rate = q_m3_day * (1.0 - fw) / self.b_o.max(1e-9);
                     let water_rate = q_m3_day * fw / self.b_w.max(1e-9);
@@ -776,9 +764,9 @@ impl ReservoirSimulator {
 
         let mut sum_pressure = 0.0;
         let mut sum_sat_water = 0.0;
-        for cell in self.grid_cells.iter() {
-            sum_pressure += cell.pressure;
-            sum_sat_water += cell.sat_water;
+        for i in 0..self.nx*self.ny*self.nz {
+            sum_pressure += self.pressure[i];
+            sum_sat_water += self.sat_water[i];
         }
         let avg_reservoir_pressure = if n_cells > 0 { sum_pressure / (n_cells as f64) } else { 0.0 };
         let avg_water_saturation = if n_cells > 0 { sum_sat_water / (n_cells as f64) } else { 0.0 };

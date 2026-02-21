@@ -23,7 +23,7 @@
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
     import type { Material } from 'three';
 
-    import type { GridCell, SimulatorSnapshot, WellState, WellStateEntry } from './';
+    import type { GridState, SimulatorSnapshot, WellState, WellStateEntry } from './';
 
     type HistoryEntry = SimulatorSnapshot;
 
@@ -35,7 +35,7 @@
     export let cellDx: number = 10;
     export let cellDy: number = 10;
     export let cellDz: number = 1;
-    export let gridState: GridCell[] | null = null;
+    export let gridState: GridState | null = null;
     export let showProperty: PropertyKey = 'pressure';
     export let history: HistoryEntry[] = [];
     export let currentIndex: number = -1;
@@ -69,7 +69,7 @@
     let lastDimsKey = '';
     
     // Reactive grid reference
-    let activeGrid: GridCell[] | null = null;
+    let activeGrid: GridState | null = null;
 
     // Tooltip state
     let tooltipVisible = false;
@@ -162,34 +162,36 @@
         return Math.max(0, Number(nx) * Number(ny) * Number(nz));
     }
 
-    function getValidHistoryGrids(): GridCell[][] {
+    function getValidHistoryGrids(): GridState[] {
         const expectedCount = getExpectedCellCount();
         if (expectedCount <= 0 || !Array.isArray(history) || history.length === 0) return [];
-        const grids: GridCell[][] = [];
+        const grids: GridState[] = [];
         for (const entry of history) {
             const grid = entry?.grid;
-            if (Array.isArray(grid) && grid.length === expectedCount) {
+            if (grid && grid.pressure && grid.pressure.length === expectedCount) {
                 grids.push(grid);
             }
         }
         return grids;
     }
 
-    function getStaticReferenceGrid(): GridCell[] | null {
+    function getStaticReferenceGrid(): GridState | null {
         const historyGrids = getValidHistoryGrids();
         if (historyGrids.length > 0) return historyGrids[0];
         const expectedCount = getExpectedCellCount();
-        if (expectedCount > 0 && Array.isArray(gridState) && gridState.length === expectedCount) {
+        if (expectedCount > 0 && gridState && gridState.pressure && gridState.pressure.length === expectedCount) {
             return gridState;
         }
         return null;
     }
 
-    function getPropertyValuesFromGrid(grid: GridCell[] | null | undefined, property: PropertyKey): number[] {
-        if (!Array.isArray(grid) || grid.length === 0) return [];
-        return grid
-            .map((cell) => getCellPropertyValue(cell, property))
-            .filter((value) => Number.isFinite(value));
+    function getPropertyValuesFromGrid(grid: GridState | null | undefined, property: PropertyKey): number[] {
+        if (!grid || !grid.pressure || grid.pressure.length === 0) return [];
+        const values = [];
+        for (let i = 0; i < grid.pressure.length; i++) {
+            values.push(getCellPropertyValue(grid, i, property));
+        }
+        return values.filter((value) => Number.isFinite(value));
     }
 
     function getHistoryPropertyRange(property: PropertyKey): { min: number; max: number } | null {
@@ -200,8 +202,9 @@
         let max = Number.NEGATIVE_INFINITY;
 
         for (const grid of historyGrids) {
-            for (const cell of grid) {
-                const value = getCellPropertyValue(cell, property);
+            if (!grid.pressure) continue;
+            for (let i = 0; i < grid.pressure.length; i++) {
+                const value = getCellPropertyValue(grid, i, property);
                 if (!Number.isFinite(value)) continue;
                 if (value < min) min = value;
                 if (value > max) max = value;
@@ -214,39 +217,15 @@
         return { min, max };
     }
 
-    function getCellPropertyValue(cell: GridCell | null | undefined, property: PropertyKey): number {
-        if (!cell) return NaN;
-        if (property === 'pressure') {
-            return Number(cell.pressure ?? NaN);
-        }
-        if (property === 'saturation_water') {
-            return Number(
-                (cell as Record<string, unknown>).sat_water ??
-                (cell as Record<string, unknown>).satWater ??
-                (cell as Record<string, unknown>).sw ??
-                NaN
-            );
-        }
-        if (property === 'saturation_oil') {
-            return Number(
-                (cell as Record<string, unknown>).sat_oil ??
-                (cell as Record<string, unknown>).satOil ??
-                (cell as Record<string, unknown>).so ??
-                NaN
-            );
-        }
-        if (property === 'permeability_x') {
-            return Number((cell as Record<string, unknown>).perm_x ?? NaN);
-        }
-        if (property === 'permeability_y') {
-            return Number((cell as Record<string, unknown>).perm_y ?? NaN);
-        }
-        if (property === 'permeability_z') {
-            return Number((cell as Record<string, unknown>).perm_z ?? NaN);
-        }
-        if (property === 'porosity') {
-            return Number((cell as Record<string, unknown>).porosity ?? NaN);
-        }
+    function getCellPropertyValue(grid: GridState | null | undefined, index: number, property: PropertyKey): number {
+        if (!grid) return NaN;
+        if (property === 'pressure') return Number(grid.pressure?.[index] ?? NaN);
+        if (property === 'saturation_water') return Number(grid.sat_water?.[index] ?? NaN);
+        if (property === 'saturation_oil') return Number(grid.sat_oil?.[index] ?? NaN);
+        if (property === 'permeability_x') return Number(grid.perm_x?.[index] ?? NaN);
+        if (property === 'permeability_y') return Number(grid.perm_y?.[index] ?? NaN);
+        if (property === 'permeability_z') return Number(grid.perm_z?.[index] ?? NaN);
+        if (property === 'porosity') return Number(grid.porosity?.[index] ?? NaN);
         return NaN;
     }
 
@@ -467,7 +446,7 @@
             return `${property}|${dimsKey}|${s_wc}|${s_or}`;
         }
 
-        const staticRefLen = getStaticReferenceGrid()?.length ?? 0;
+        const staticRefLen = getStaticReferenceGrid()?.pressure?.length ?? 0;
         return `${property}|${dimsKey}|${staticRefLen}`;
     }
 
@@ -539,7 +518,7 @@
         updateWellVisualization(wellState ?? []);
     }
 
-    function getActiveGrid(): GridCell[] | null {
+    function getActiveGrid(): GridState | null {
         const expectedCount = nx * ny * nz;
         if (expectedCount <= 0) return null;
 
@@ -660,7 +639,7 @@
 
         // Get the active grid - use current gridState or history entry
         const currentGrid = getActiveGrid();
-        if (!currentGrid || currentGrid.length === 0) {
+        if (!currentGrid || !currentGrid.pressure || currentGrid.pressure.length === 0) {
             tooltipVisible = false;
             return;
         }
@@ -685,21 +664,10 @@
             // Get the instance ID from the intersection
             const instanceId = intersection.instanceId;
             
-            if (instanceId !== undefined && instanceId < currentGrid.length) {
-                const cell = currentGrid[instanceId];
-                const pressure = Number(cell.pressure ?? 0);
-                const satWater = Number(
-                    (cell as Record<string, unknown>).sat_water ?? 
-                    (cell as Record<string, unknown>).satWater ?? 
-                    (cell as Record<string, unknown>).sw ?? 
-                    0
-                );
-                const satOil = Number(
-                    (cell as Record<string, unknown>).sat_oil ?? 
-                    (cell as Record<string, unknown>).satOil ?? 
-                    (cell as Record<string, unknown>).so ?? 
-                    0
-                );
+            if (instanceId !== undefined && currentGrid.pressure && instanceId < currentGrid.pressure.length) {
+                const pressure = Number(currentGrid.pressure?.[instanceId] ?? 0);
+                const satWater = Number(currentGrid.sat_water?.[instanceId] ?? 0);
+                const satOil = Number(currentGrid.sat_oil?.[instanceId] ?? 0);
 
                 tooltipContent = `Pressure: ${pressure.toFixed(2)}\nWater Sat: ${satWater.toFixed(3)}\nOil Sat: ${satOil.toFixed(3)}`;
                 tooltipX = x + 10;
@@ -831,7 +799,7 @@
         }
     }
 
-    function updateVisualization(gridArray: GridCell[], property: PropertyKey): void {
+    function updateVisualization(gridArray: GridState, property: PropertyKey): void {
         applyGridToInstances(gridArray, property);
     }
 
@@ -850,7 +818,7 @@
         drawLegend(legendMin, legendMax, property);
     }
 
-    function applyGridToInstances(gridArray: GridCell[], property: PropertyKey): void {
+    function applyGridToInstances(gridArray: GridState, property: PropertyKey): void {
         if (!instancedMesh) return;
 
         if (!instancedMesh.instanceColor) return;
@@ -861,46 +829,10 @@
         }
 
         const values: number[] = [];
+        const len = gridArray.pressure.length;
 
-        for (let i = 0; i < gridArray.length; i++) {
-            const cell = gridArray[i];
-
-            if (!cell) {
-                values.push(NaN);
-                continue;
-            }
-
-            let rawValue: number;
-            
-            if (property === 'pressure') {
-                rawValue = Number(cell.pressure);
-            } else if (property === 'saturation_water') {
-                rawValue = Number(
-                    (cell as Record<string, unknown>).sat_water ?? 
-                    (cell as Record<string, unknown>).satWater ?? 
-                    (cell as Record<string, unknown>).sw ?? 
-                    NaN
-                );
-            } else if (property === 'saturation_oil') {
-                rawValue = Number(
-                    (cell as Record<string, unknown>).sat_oil ?? 
-                    (cell as Record<string, unknown>).satOil ?? 
-                    (cell as Record<string, unknown>).so ?? 
-                    NaN
-                );
-            } else if (property === 'permeability_x') {
-                rawValue = Number((cell as Record<string, unknown>).perm_x ?? NaN);
-            } else if (property === 'permeability_y') {
-                rawValue = Number((cell as Record<string, unknown>).perm_y ?? NaN);
-            } else if (property === 'permeability_z') {
-                rawValue = Number((cell as Record<string, unknown>).perm_z ?? NaN);
-            } else if (property === 'porosity') {
-                rawValue = Number((cell as Record<string, unknown>).porosity ?? NaN);
-            } else {
-                rawValue = NaN;
-            }
-            
-            values.push(rawValue);
+        for (let i = 0; i < len; i++) {
+            values.push(getCellPropertyValue(gridArray, i, property));
         }
 
         const range = computeLegendRange(property, values);
@@ -911,7 +843,7 @@
         legendMax = max;
         drawLegend(min, max, property);
 
-        for (let i = 0; i < gridArray.length; i++) {
+        for (let i = 0; i < len; i++) {
             const value = values[i];
             if (!Number.isFinite(value)) {
                 tmpColor.set(0x888888);

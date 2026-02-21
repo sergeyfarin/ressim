@@ -101,6 +101,21 @@ function buildCreatePayload(caseParams) {
 }
 
 /**
+ * Extract the SoA grid state from the simulator and convert TypedArrays to standard Arrays for JSON serialization.
+ */
+function getGridStateFromSim(sim) {
+    return {
+        pressure: Array.from(sim.getPressures()),
+        sat_water: Array.from(sim.getSatWater()),
+        sat_oil: Array.from(sim.getSatOil()),
+        porosity: Array.from(sim.getPorosity()),
+        perm_x: Array.from(sim.getPermX()),
+        perm_y: Array.from(sim.getPermY()),
+        perm_z: Array.from(sim.getPermZ()),
+    };
+}
+
+/**
  * Configure and run a simulator for given payload (mirrors sim.worker.js configureSimulator)
  */
 function runCase(payload, steps, deltaTDays) {
@@ -179,7 +194,7 @@ function runCase(payload, steps, deltaTDays) {
         if (i % historyInterval === 0 || i === steps - 1) {
             history.push({
                 time: sim.get_time(),
-                grid: sim.getGridState(),
+                grid: getGridStateFromSim(sim),
                 wells: sim.getWellState(),
             });
         }
@@ -187,7 +202,7 @@ function runCase(payload, steps, deltaTDays) {
 
     return {
         rateHistory: sim.getRateHistory(),
-        finalGrid: sim.getGridState(),
+        finalGrid: getGridStateFromSim(sim),
         finalWells: sim.getWellState(),
         simTime: sim.get_time(),
         history,

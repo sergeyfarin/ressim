@@ -315,7 +315,8 @@
 
     onMount(() => {
         Chart.register(...registerables);
-        const ctx = chartCanvas.getContext('2d');
+        const ctx = chartCanvas?.getContext('2d');
+        if (!ctx) return;
         chart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -630,7 +631,7 @@
         const oilProd = rateHistory.map(p => p.total_production_oil);
         const liquidProd = rateHistory.map(p => p.total_production_liquid);
         const injection = rateHistory.map(p => p.total_injection);
-        const waterProd = liquidProd.map((qL, idx) => Math.max(0, qL - oilProd[idx]));
+        const waterProd = liquidProd.map((qL, idx) => Math.max(0, Number(qL ?? 0) - Number(oilProd[idx] ?? 0)));
 
         const analyticalOilProd = rateHistory.map((_, idx) => {
             const value = analyticalProductionData[idx]?.oilRate;
@@ -676,10 +677,10 @@
         const cumulativeInjectionData = [];
         for (let i = 0; i < rateHistory.length; i++) {
             const dt = i > 0 ? rateHistory[i].time - rateHistory[i-1].time : rateHistory[i].time;
-            cumulativeOil += oilProd[i] * dt;
+            cumulativeOil += Number(oilProd[i] ?? 0) * dt;
             cumulativeOilData.push(cumulativeOil);
-            cumulativeInjection += Math.max(0, injection[i]) * dt;
-            cumulativeLiquid += Math.max(0, liquidProd[i]) * dt;
+            cumulativeInjection += Math.max(0, Number(injection[i] ?? 0)) * dt;
+            cumulativeLiquid += Math.max(0, Number(liquidProd[i] ?? 0)) * dt;
             cumulativeLiquidData.push(cumulativeLiquid);
             cumulativeInjectionData.push(cumulativeInjection);
             if (!Number.isFinite(poreVolumeM3) || poreVolumeM3 <= 1e-12) {
@@ -736,15 +737,17 @@
             return Math.abs(rawVrr - 1.0) < 1e-9 ? 1.0 : rawVrr;
         });
 
-        const absErrorData = oilProd.map((simValue, idx) => {
-            const analyticalValue = analyticalOilProd[idx];
-            if (analyticalValue === null || !Number.isFinite(analyticalValue)) return null;
+        const absErrorData = oilProd.map((simValueOpt, idx) => {
+            const analyticalValue = Number(analyticalOilProd[idx]);
+            const simValue = Number(simValueOpt);
+            if (!Number.isFinite(analyticalValue) || !Number.isFinite(simValue)) return null;
             return Math.abs(simValue - analyticalValue);
         });
 
-        const percentErrorData = oilProd.map((simValue, idx) => {
-            const analyticalValue = analyticalOilProd[idx];
-            if (analyticalValue === null || !Number.isFinite(analyticalValue)) return null;
+        const percentErrorData = oilProd.map((simValueOpt, idx) => {
+            const analyticalValue = Number(analyticalOilProd[idx]);
+            const simValue = Number(simValueOpt);
+            if (!Number.isFinite(analyticalValue) || !Number.isFinite(simValue)) return null;
             const denominator = Math.max(Math.abs(analyticalValue), 1e-9);
             return (Math.abs(simValue - analyticalValue) / denominator) * 100.0;
         });

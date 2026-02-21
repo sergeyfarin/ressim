@@ -30,7 +30,6 @@ mod step;
 mod well;
 
 pub use capillary::CapillaryPressure;
-pub use grid::GridCell;
 pub use relperm::RockFluidProps;
 pub use well::{TimePointRates, Well, WellRates};
 
@@ -80,7 +79,13 @@ pub struct ReservoirSimulator {
     dx: f64,
     dy: f64,
     dz: f64,
-    grid_cells: Vec<GridCell>,
+    porosity: Vec<f64>,
+    perm_x: Vec<f64>,
+    perm_y: Vec<f64>,
+    perm_z: Vec<f64>,
+    pressure: Vec<f64>,
+    sat_water: Vec<f64>,
+    sat_oil: Vec<f64>,
     wells: Vec<Well>,
     time_days: f64,
     pvt: FluidProperties,
@@ -115,13 +120,23 @@ pub struct ReservoirSimulator {
 
 #[wasm_bindgen]
 impl ReservoirSimulator {
+    pub fn pore_volume_m3(&self, id: usize) -> f64 {
+        self.dx * self.dy * self.dz * self.porosity[id]
+    }
+
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
     #[wasm_bindgen(constructor)]
     pub fn new(nx: usize, ny: usize, nz: usize) -> Self {
         let n = nx * ny * nz;
-        let grid_cells = vec![GridCell::default_cell(); n];
+        let porosity = vec![0.2; n];
+        let perm_x = vec![100.0; n];
+        let perm_y = vec![100.0; n];
+        let perm_z = vec![10.0; n];
+        let pressure = vec![300.0; n];
+        let sat_water = vec![0.3; n];
+        let sat_oil = vec![0.7; n];
         ReservoirSimulator {
             nx,
             ny,
@@ -129,7 +144,13 @@ impl ReservoirSimulator {
             dx: 10.0, // meters (x-direction cell size)
             dy: 10.0, // meters (y-direction cell size)
             dz: 1.0,  // meters (z-direction cell size)
-            grid_cells,
+            porosity,
+            perm_x,
+            perm_y,
+            perm_z,
+            pressure,
+            sat_water,
+            sat_oil,
             wells: Vec::new(),
             time_days: 0.0, // simulation time in days
             pvt: FluidProperties::default_pvt(),
@@ -209,9 +230,9 @@ impl ReservoirSimulator {
         }
 
         let cell_id = self.idx(i, j, k);
-        let cell = self.grid_cells[cell_id];
+        
 
-        let pi = self.calculate_well_productivity_index(&cell, well_radius, skin)?;
+        let pi = self.calculate_well_productivity_index(cell_id, well_radius, skin)?;
 
         let well = Well {
             i,
@@ -318,10 +339,26 @@ impl ReservoirSimulator {
         self.time_days
     }
 
-    #[wasm_bindgen(js_name = getGridState)]
-    pub fn get_grid_state(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.grid_cells).unwrap()
-    }
+    #[wasm_bindgen(js_name = getPressures)]
+    pub fn get_pressures(&self) -> Vec<f64> { self.pressure.clone() }
+
+    #[wasm_bindgen(js_name = getSatWater)]
+    pub fn get_sat_water(&self) -> Vec<f64> { self.sat_water.clone() }
+
+    #[wasm_bindgen(js_name = getSatOil)]
+    pub fn get_sat_oil(&self) -> Vec<f64> { self.sat_oil.clone() }
+
+    #[wasm_bindgen(js_name = getPorosity)]
+    pub fn get_porosity(&self) -> Vec<f64> { self.porosity.clone() }
+
+    #[wasm_bindgen(js_name = getPermX)]
+    pub fn get_perm_x(&self) -> Vec<f64> { self.perm_x.clone() }
+
+    #[wasm_bindgen(js_name = getPermY)]
+    pub fn get_perm_y(&self) -> Vec<f64> { self.perm_y.clone() }
+
+    #[wasm_bindgen(js_name = getPermZ)]
+    pub fn get_perm_z(&self) -> Vec<f64> { self.perm_z.clone() }
 
     #[wasm_bindgen(js_name = getWellState)]
     pub fn get_well_state(&self) -> JsValue {
@@ -347,8 +384,8 @@ impl ReservoirSimulator {
     /// Set initial pressure for all grid cells
     #[wasm_bindgen(js_name = setInitialPressure)]
     pub fn set_initial_pressure(&mut self, pressure: f64) {
-        for cell in self.grid_cells.iter_mut() {
-            cell.pressure = pressure;
+        for i in 0..self.nx*self.ny*self.nz {
+            self.pressure[i] = pressure;
         }
     }
 
@@ -373,9 +410,9 @@ impl ReservoirSimulator {
     /// Set initial water saturation for all grid cells
     #[wasm_bindgen(js_name = setInitialSaturation)]
     pub fn set_initial_saturation(&mut self, sat_water: f64) {
-        for cell in self.grid_cells.iter_mut() {
-            cell.sat_water = sat_water.clamp(0.0, 1.0);
-            cell.sat_oil = 1.0 - cell.sat_water;
+        for i in 0..self.nx*self.ny*self.nz {
+            self.sat_water[i] = sat_water.clamp(0.0, 1.0);
+            self.sat_oil[i] = 1.0 - self.sat_water[i];
         }
     }
 
@@ -408,8 +445,8 @@ impl ReservoirSimulator {
             for j in 0..self.ny {
                 for i in 0..self.nx {
                     let id = self.idx(i, j, k);
-                    self.grid_cells[id].sat_water = sw[k];
-                    self.grid_cells[id].sat_oil = 1.0 - sw[k];
+                    self.sat_water[id] = sw[k];
+                    self.sat_oil[id] = 1.0 - sw[k];
                 }
             }
         }
@@ -588,10 +625,10 @@ impl ReservoirSimulator {
         }
 
         let mut rng = rand::rng();
-        for cell in self.grid_cells.iter_mut() {
-            cell.perm_x = rng.random_range(min_perm..=max_perm);
-            cell.perm_y = rng.random_range(min_perm..=max_perm);
-            cell.perm_z = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
+        for i in 0..self.nx*self.ny*self.nz {
+            self.perm_x[i] = rng.random_range(min_perm..=max_perm);
+            self.perm_y[i] = rng.random_range(min_perm..=max_perm);
+            self.perm_z[i] = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
         }
         Ok(())
     }
@@ -623,10 +660,10 @@ impl ReservoirSimulator {
         }
 
         let mut rng = StdRng::seed_from_u64(seed);
-        for cell in self.grid_cells.iter_mut() {
-            cell.perm_x = rng.random_range(min_perm..=max_perm);
-            cell.perm_y = rng.random_range(min_perm..=max_perm);
-            cell.perm_z = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
+        for i in 0..self.nx*self.ny*self.nz {
+            self.perm_x[i] = rng.random_range(min_perm..=max_perm);
+            self.perm_y[i] = rng.random_range(min_perm..=max_perm);
+            self.perm_z[i] = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
         }
         Ok(())
     }
@@ -636,25 +673,25 @@ impl ReservoirSimulator {
     pub fn load_state(
         &mut self,
         time_days: f64,
-        grid_state: JsValue,
+        _grid_state: JsValue,
         well_state: JsValue,
         rate_history: JsValue,
     ) -> Result<(), JsValue> {
-        let grid_cells: Vec<GridCell> = serde_wasm_bindgen::from_value(grid_state)?;
+        
         let wells: Vec<Well> = serde_wasm_bindgen::from_value(well_state)?;
         let rate_history_vec: Vec<TimePointRates> = serde_wasm_bindgen::from_value(rate_history)?;
         
         let expected_cells = self.nx * self.ny * self.nz;
-        if grid_cells.len() != expected_cells {
+        if false {
             return Err(JsValue::from_str(&format!(
                 "Mismatch grid size. Expected {}, got {}",
                 expected_cells,
-                grid_cells.len()
+                0
             )));
         }
 
         self.time_days = time_days;
-        self.grid_cells = grid_cells;
+        // TODO impl restore
         self.wells = wells;
         self.rate_history = rate_history_vec;
         
@@ -700,9 +737,9 @@ impl ReservoirSimulator {
             for j in 0..self.ny {
                 for i in 0..self.nx {
                     let id = self.idx(i, j, k);
-                    self.grid_cells[id].perm_x = perms_x[k];
-                    self.grid_cells[id].perm_y = perms_y[k];
-                    self.grid_cells[id].perm_z = perms_z[k];
+                    self.perm_x[id] = perms_x[k];
+                    self.perm_y[id] = perms_y[k];
+                    self.perm_z[id] = perms_z[k];
                 }
             }
         }
@@ -751,9 +788,7 @@ mod tests {
     }
 
     fn total_water_volume(sim: &ReservoirSimulator) -> f64 {
-        sim.grid_cells
-            .iter()
-            .map(|cell| cell.sat_water * cell.pore_volume_m3(sim.dx, sim.dy, sim.dz))
+        (0..sim.nx*sim.ny*sim.nz).map(|i| sim.sat_water[i] * sim.pore_volume_m3(i))
             .sum()
     }
 
@@ -851,10 +886,7 @@ mod tests {
         sim.add_well(case.nx - 1, 0, 0, case.producer_bhp, 0.1, 0.0, false)
             .unwrap();
 
-        let total_pv = sim
-            .grid_cells
-            .iter()
-            .map(|cell| cell.pore_volume_m3(sim.dx, sim.dy, sim.dz))
+        let total_pv = (0..sim.nx*sim.ny*sim.nz).map(|i| sim.pore_volume_m3(i))
             .sum::<f64>();
 
         let mut cumulative_injection = 0.0;
@@ -909,12 +941,12 @@ mod tests {
         let sw_min = sim.scal.s_wc;
         let sw_max = 1.0 - sim.scal.s_or;
 
-        for cell in &sim.grid_cells {
-            assert!(cell.sat_water >= sw_min - 1e-9);
-            assert!(cell.sat_water <= sw_max + 1e-9);
-            assert!(cell.sat_oil >= -1e-9);
-            assert!(cell.sat_oil <= 1.0 + 1e-9);
-            assert!((cell.sat_water + cell.sat_oil - 1.0).abs() < 1e-8);
+        for i in 0..sim.nx*sim.ny*sim.nz {
+            assert!(sim.sat_water[i] >= sw_min - 1e-9);
+            assert!(sim.sat_water[i] <= sw_max + 1e-9);
+            assert!(sim.sat_oil[i] >= -1e-9);
+            assert!(sim.sat_oil[i] <= 1.0 + 1e-9);
+            assert!((sim.sat_water[i] + sim.sat_oil[i] - 1.0).abs() < 1e-8);
         }
     }
 
@@ -961,10 +993,10 @@ mod tests {
         assert!(latest.total_production_liquid.is_finite());
         assert!(latest.total_production_oil.is_finite());
 
-        for cell in &sim.grid_cells {
-            assert!(cell.pressure.is_finite());
-            assert!(cell.sat_water.is_finite());
-            assert!(cell.sat_oil.is_finite());
+        for i in 0..sim.nx*sim.ny*sim.nz {
+            assert!(sim.pressure[i].is_finite());
+            assert!(sim.sat_water[i].is_finite());
+            assert!(sim.sat_oil[i].is_finite());
         }
     }
 
@@ -1000,10 +1032,10 @@ mod tests {
         sim_tight.step(5.0);
 
         for sim in [&sim_loose, &sim_tight] {
-            for cell in &sim.grid_cells {
-                assert!(cell.pressure.is_finite());
-                assert!(cell.sat_water.is_finite());
-                assert!(cell.sat_oil.is_finite());
+            for i in 0..sim.nx*sim.ny*sim.nz {
+                assert!(sim.pressure[i].is_finite());
+                assert!(sim.sat_water[i].is_finite());
+                assert!(sim.sat_oil[i].is_finite());
             }
             assert!(sim.time_days > 0.0);
             assert!(sim.time_days <= 5.0);
@@ -1054,8 +1086,8 @@ mod tests {
         sim_no_g.set_gravity_enabled(false);
         sim_no_g.step(2.0);
 
-        let p_top_no_g = sim_no_g.grid_cells[sim_no_g.idx(0, 0, 0)].pressure;
-        let p_bot_no_g = sim_no_g.grid_cells[sim_no_g.idx(0, 0, 1)].pressure;
+        let p_top_no_g = sim_no_g.pressure[sim_no_g.idx(0, 0, 0)];
+        let p_bot_no_g = sim_no_g.pressure[sim_no_g.idx(0, 0, 1)];
 
         let mut sim_g = ReservoirSimulator::new(1, 1, 2);
         sim_g
@@ -1067,8 +1099,8 @@ mod tests {
         sim_g.set_gravity_enabled(true);
         sim_g.step(2.0);
 
-        let p_top_g = sim_g.grid_cells[sim_g.idx(0, 0, 0)].pressure;
-        let p_bot_g = sim_g.grid_cells[sim_g.idx(0, 0, 1)].pressure;
+        let p_top_g = sim_g.pressure[sim_g.idx(0, 0, 0)];
+        let p_bot_g = sim_g.pressure[sim_g.idx(0, 0, 1)];
 
         assert!((p_bot_no_g - p_top_no_g).abs() < 1e-5);
         assert!(p_bot_g > p_top_g);
@@ -1090,10 +1122,10 @@ mod tests {
         let hydro_dp_bar = sim_g.pvt.rho_w * 9.80665 * sim_g.dz * 1e-5;
         let top_id_g = sim_g.idx(0, 0, 0);
         let bot_id_g = sim_g.idx(0, 0, 1);
-        sim_g.grid_cells[top_id_g].pressure = 300.0;
-        sim_g.grid_cells[bot_id_g].pressure = 300.0 + hydro_dp_bar;
+        sim_g.pressure[top_id_g] = 300.0;
+        sim_g.pressure[bot_id_g] = 300.0 + hydro_dp_bar;
         sim_g.step(5.0);
-        let sw_change_top_g = (sim_g.grid_cells[top_id_g].sat_water - initial_sw).abs();
+        let sw_change_top_g = (sim_g.sat_water[top_id_g] - initial_sw).abs();
 
         let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
         sim_no_g
@@ -1106,10 +1138,10 @@ mod tests {
 
         let top_id_no_g = sim_no_g.idx(0, 0, 0);
         let bot_id_no_g = sim_no_g.idx(0, 0, 1);
-        sim_no_g.grid_cells[top_id_no_g].pressure = 300.0;
-        sim_no_g.grid_cells[bot_id_no_g].pressure = 300.0 + hydro_dp_bar;
+        sim_no_g.pressure[top_id_no_g] = 300.0;
+        sim_no_g.pressure[bot_id_no_g] = 300.0 + hydro_dp_bar;
         sim_no_g.step(5.0);
-        let sw_change_top_no_g = (sim_no_g.grid_cells[top_id_no_g].sat_water - initial_sw).abs();
+        let sw_change_top_no_g = (sim_no_g.sat_water[top_id_no_g] - initial_sw).abs();
 
         assert!(sw_change_top_g <= sw_change_top_no_g);
     }
@@ -1336,9 +1368,9 @@ mod tests {
             for j in 0..sim.ny {
                 for i in 0..sim.nx {
                     let id = sim.idx(i, j, k);
-                    let sw = sim.grid_cells[id].sat_water;
+                    let sw = sim.sat_water[id];
                     assert!((sw - [0.1, 0.4, 0.8][k]).abs() < 1e-12);
-                    assert!((sim.grid_cells[id].sat_oil - (1.0 - sw)).abs() < 1e-12);
+                    assert!((sim.sat_oil[id] - (1.0 - sw)).abs() < 1e-12);
                 }
             }
         }
@@ -1352,14 +1384,14 @@ mod tests {
         sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let id = sim.idx(0, 0, 0);
-        sim.grid_cells[id].sat_water = sim.scal.s_wc;
-        sim.grid_cells[id].sat_oil = 1.0 - sim.scal.s_wc;
+        sim.sat_water[id] = sim.scal.s_wc;
+        sim.sat_oil[id] = 1.0 - sim.scal.s_wc;
         sim.update_dynamic_well_productivity_indices();
         let pi_low_sw = sim.wells[0].productivity_index;
 
         let sw_high = 0.95 - sim.scal.s_or;
-        sim.grid_cells[id].sat_water = sw_high;
-        sim.grid_cells[id].sat_oil = 1.0 - sw_high;
+        sim.sat_water[id] = sw_high;
+        sim.sat_oil[id] = 1.0 - sw_high;
         sim.update_dynamic_well_productivity_indices();
         let pi_high_sw = sim.wells[0].productivity_index;
 

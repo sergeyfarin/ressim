@@ -52,7 +52,15 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
   }
 
   const extractStart = performance.now();
-  const grid = simulator.getGridState();
+  const grid = {
+    pressure: simulator.getPressures(),
+    sat_water: simulator.getSatWater(),
+    sat_oil: simulator.getSatOil(),
+    porosity: simulator.getPorosity(),
+    perm_x: simulator.getPermX(),
+    perm_y: simulator.getPermY(),
+    perm_z: simulator.getPermZ(),
+  };
   const wells = simulator.getWellState();
   const time = simulator.get_time();
   const rateHistory = simulator.getRateHistory();
