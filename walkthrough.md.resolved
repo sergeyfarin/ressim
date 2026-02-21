@@ -1,0 +1,49 @@
+# Frontend Fixes Walkthrough
+
+This document summarizes the changes made to address critical bugs and UI issues in the frontend simulator logic, specifically regarding the stop button, pre-loaded case continuation, inputs tweaking, and light/dark theme aesthetics.
+
+## Changes Made
+
+### 1. Stop Button Responsiveness
+- **Issue**: The stop button was often unresponsive during long simulation runs because the Rust WASM module in the worker thread blocked the JavaScript event loop, preventing it from processing the `stop` message sent from the main thread.
+- **Fix**: Modified the [run](file:///home/reken/Repos/ressim/scripts/export-cases.mjs#103-195) loop inside [sim.worker.ts](file:///home/reken/Repos/ressim/src/lib/sim.worker.ts) to actively yield to the event loop using `setTimeout(resolve, 0)` based on a time threshold (`performance.now() - lastYieldTime > 16ms`) rather than just checking chunk intervals. This guarantees the worker checks for messages roughly every frame (16ms), allowing the stop signal to be processed almost immediately.
+
+### 2. Pre-loaded Case Continuation and Inputs
+- **Issue 1**: Continuing a pre-loaded case required "hydrating" the simulation to match the pre-run endpoint, which was done without yielding to the event loop, causing severe UI blocking and freezing.
+- **Fix 1**: Updated the [hydratePreRunState](file:///home/reken/Repos/ressim/src/lib/sim.worker.ts#190-260) function in [sim.worker.ts](file:///home/reken/Repos/ressim/src/lib/sim.worker.ts) to also yield every 16ms, ensuring the UI remains responsive (e.g., showing a spinner) while the simulator replays the steps to reach the saved state.
+- **Issue 2**: When a pre-loaded case was hydrated, appending new points to the rate history sometimes caused X-axis graphical glitches due to missing keys in the pre-run JSON compared to live data.
+- **Fix 2**: Added padding for `total_production_liquid_reservoir`, `total_injection_reservoir`, and `material_balance_error_m3` in [App.svelte](file:///home/reken/Repos/ressim/src/App.svelte) when loading pre-run data so the data schema perfectly aligns with live data.
+- **Issue 3**: The user could not observe "what-if" scenarios because the inputs were strictly locked to `readOnly` when a pre-loaded case was active.
+- **Fix 3**: Changed `InputsTab` `readOnly` prop to always be `false`. Modifying an input will now gracefully branch the simulation into a "Custom Sub-Case", allowing further simulation without overwriting the base case signature.
+
+### 3. Simulation Progress Indicator
+- **Issue**: There was no explicit feedback on how many steps of the current playback have completed.
+- **Fix**: Added a state tracker in [App.svelte](file:///home/reken/Repos/ressim/src/App.svelte) (`currentRunStepsCompleted` / `currentRunTotalSteps`). Mapped this to a new `runProgress` prop in [RunControls.svelte](file:///home/reken/Repos/ressim/src/lib/ui/RunControls.svelte), which now beautifully displays `⏳ Running X / Y` during simulation.
+
+### 4. Consistent Theme Switching
+- **Issue**: Toggling the Light/Dark mode updated the background but axis labels and internal Chart.js elements stayed the previous color until the chart was deeply re-rendered or refreshed.
+- **Fix**: Updated [applyThemeToChart](file:///home/reken/Repos/ressim/src/lib/chart-helpers.ts#28-53) in [src/lib/chart-helpers.ts](file:///home/reken/Repos/ressim/src/lib/chart-helpers.ts) to mutate `Chart.defaults.color` when the theme toggles. This natively forces Chart.js to re-read the default text color (switching between slate-400 and gray-600) for all scales and labels instantly.
+
+## Validation Results
+
+Automated `npm run build` completed successfully, ensuring TypeScript types and Svelte component usage remained correct.
+
+### Manual Verification Steps 
+Please run the app locally and perform these interactions to confirm the UI feels responsive and robust:
+
+1. **Stop Button Test**: 
+   - Open any case (e.g. "Waterflood Baseline"). 
+   - Request 200 steps and click Run. 
+   - Click "Stop" halfway through. 
+   - *Expected:* The UI should immediately halt and display "Simulation stopped after X step(s)."
+2. **Pre-run Continuation Test**: 
+   - Open "Depletion -> Corner Producer". Wait until "Pre-run case loaded" appears.
+   - Click "Run 10 Steps". 
+   - *Expected:* The app should quickly hydrate and continue plotting seamlessly; X-axis anomalies should not appear.
+3. **Editable Inputs / "What-If" Test**: 
+   - Open any pre-loaded case.
+   - Open the "Inputs" tab and alter an input (e.g., change Target Injector Rate). 
+   - *Expected:* The case name in the top right should switch to "Custom Sub-case". You should be able to run and observe the modified effects.
+4. **Theme Toggle Test**: 
+   - Toggle the Light/Dark mode from the top right. 
+   - *Expected:* Chart text colors and grid colors should snap instantly without manual page refreshes.

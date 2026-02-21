@@ -222,6 +222,7 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
   stopRequested = false;
   post('runStarted', { hydration: true, hydrationId, steps, deltaTDays });
 
+  let lastYieldTime = performance.now();
   const yieldInterval = 1;
   for (let i = 0; i < steps; i++) {
     if (stopRequested) {
@@ -233,8 +234,11 @@ async function hydratePreRunState(payload: HydratePreRunPayload): Promise<void> 
 
     simulator.step(deltaTDays);
 
-    if ((i + 1) % yieldInterval === 0) {
+    const timeSinceLastYield = performance.now() - lastYieldTime;
+    if ((i + 1) % yieldInterval === 0 || timeSinceLastYield > 16) {
       await new Promise((resolve) => setTimeout(resolve, 0));
+      lastYieldTime = performance.now();
+
       if (stopRequested) {
         isRunning = false;
         stopRequested = false;

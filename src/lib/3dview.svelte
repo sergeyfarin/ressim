@@ -1081,59 +1081,10 @@
             </div>
         </div>
     </label>
-    <!-- <details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open> -->
-        <!-- <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5">
-            <div>
-                <div class="font-semibold">Visualization and Replay</div>
-                <div class="text-xs opacity-70">{groupSummary}</div>
-            </div>
-            <div class="flex items-center gap-2 text-xs opacity-70">
-                <span class="collapse-label-open hidden">Collapse</span>
-                <span class="collapse-label-closed">Expand</span>
-                <span class="collapse-chevron">▸</span>
-            </div>
-        </summary> -->
-        <!-- <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
-            <p class="text-xs opacity-70">Display selection, legend behavior, and timeline navigation.</p> -->
-
-            
-
-            
-
-            
-
-            <!-- <div class="grid grid-cols-3 gap-2">
-                <button type="button" class="btn btn-xs" onclick={onPrev} disabled={history.length === 0}>Prev</button>
-                <button type="button" class="btn btn-xs" onclick={onTogglePlay} disabled={history.length === 0}>{playing ? 'Stop' : 'Play'}</button>
-                <button type="button" class="btn btn-xs" onclick={onNext} disabled={history.length === 0}>Next</button>
-            </div> -->
-            <!-- <label class="form-control">
-                <span class="label-text text-xs">Playback Speed</span>
-                <input type="number" min="0.1" step="0.1" class="input input-bordered input-sm w-full max-w-32" bind:value={playSpeed} />
-            </label> -->
-
-            <!-- <label class="label cursor-pointer justify-start gap-2">
-                <input type="checkbox" class="checkbox checkbox-sm" bind:checked={showDebugState} />
-                <span class="label-text text-sm">Show Raw Debug State</span>
-            </label> -->
-        <!-- </div> -->
-    <!-- </details> -->
-
     <div class="flex items-start gap-4" style="margin-left:4px; align-items:center;">
         <div class="legend" style="margin:0;">
             <canvas bind:this={legendCanvas} width="300" height="18" style="width:200px;height:14px"></canvas>
         </div>
-        <!-- <div style="display:flex; flex-direction:column; margin-left:8px;">
-            <div style="color:#222; font-size:12px">
-                {getPropertyDisplay(showProperty).label} ({getPropertyDisplay(showProperty).unit})
-            </div>
-            <div style="color:#444; font-size:11px">
-                min {formatLegendValue(showProperty, legendMin)} — max {formatLegendValue(showProperty, legendMax)}
-            </div>
-        </div> -->
-        <!-- <div class="grid grid-cols-1 gap-2 sm:grid-cols-2"> -->
-                <!-- <label class="form-control"> -->
-                 
                     <span class="label-text text-xs">Min</span>
                     <div
                         class="flex items-center gap-2 rounded-md border border-base-300 bg-base-100 p-1 transition-colors"
@@ -1148,11 +1099,6 @@
                         <button type="button" class="btn btn-xs btn-outline" onclick={applyModelLegendMin}>Auto</button>
                         
                     </div>
-                    <!-- {#if !autoLegendMin}
-                        <span class="label-text-alt text-[11px] text-primary/80">Manual mode</span>
-                    {/if} -->
-                <!-- </label>
-                <label class="form-control"> -->
                     <span class="label-text text-xs">Max</span>
                     <div
                         class="flex items-center gap-2 rounded-md border border-base-300 bg-base-100 p-1 transition-colors"
@@ -1167,11 +1113,6 @@
                         <button type="button" class="btn btn-xs btn-outline" onclick={applyModelLegendMax}>Auto</button>
                         
                     </div>
-                    <!-- {#if !autoLegendMax}
-                        <span class="label-text-alt text-[11px] text-primary/80">Manual mode</span>
-                    {/if} -->
-                <!-- </label> -->
-                <!-- </div> -->
             
             </div>
             <div class="viz" bind:this={canvasContainer} style="position:relative;">
@@ -1187,8 +1128,4 @@
     .viz { border: 1px solid #ddd; width: 100%; height: clamp(255px, 37vh, 440px); position: relative; background: #fff; }
     .legend { margin-top: 8px; margin-bottom: 8px; color: #222; display:flex; align-items:center; gap:8px; }
     .legend canvas { border: 1px solid #ccc; background: #fff; }
-    details[open] .collapse-chevron { transform: rotate(90deg); }
-    .collapse-chevron { transition: transform 0.15s ease; display: inline-block; }
-    details[open] .collapse-label-open { display: inline; }
-    details[open] .collapse-label-closed { display: none; }
 </style>

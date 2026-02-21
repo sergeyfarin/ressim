@@ -1,0 +1,12 @@
+# Frontend Review and Improvements
+
+- [x] Review implementation of Execution Phases 1, 2, 3, 4
+- [x] Review frontend logic, events, and actions in App.svelte and UI components
+- [x] Investigate and fix: "Not possible to continue pre-loaded runs" (Root cause identified: hydration blocks UI without yielding)
+- [x] Create an action plan for further improvements
+- [x] Fix Stop Button in [sim.worker.ts](file:///home/reken/Repos/ressim/src/lib/sim.worker.ts) and [App.svelte](file:///home/reken/Repos/ressim/src/App.svelte)
+- [x] Fix pre-loaded run continuation in [sim.worker.ts](file:///home/reken/Repos/ressim/src/lib/sim.worker.ts) and [App.svelte](file:///home/reken/Repos/ressim/src/App.svelte)
+- [x] Fix read-only inputs for pre-loaded cases in [App.svelte](file:///home/reken/Repos/ressim/src/App.svelte)
+- [x] Add simulation progress indicator in [RunControls.svelte](file:///home/reken/Repos/ressim/src/lib/ui/RunControls.svelte)
+- [x] Enhance visuals: correct colors, smooth light/dark theme switching everywhere
+

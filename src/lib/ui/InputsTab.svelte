@@ -64,6 +64,8 @@
     max_well_rate_change_fraction = $bindable(0.75),
     analyticalSolutionMode = $bindable<'waterflood' | 'depletion'>('waterflood'),
     analyticalDepletionRateScale = $bindable(1.0),
+    onAnalyticalSolutionModeChange = (_mode: 'waterflood' | 'depletion') => {},
+    onNzOrPermModeChange = () => {},
     validationErrors = {},
     validationWarnings = [],
     readOnly = false,
@@ -124,6 +126,8 @@
     max_well_rate_change_fraction?: number;
     analyticalSolutionMode?: 'waterflood' | 'depletion';
     analyticalDepletionRateScale?: number;
+    onAnalyticalSolutionModeChange?: (mode: 'waterflood' | 'depletion') => void;
+    onNzOrPermModeChange?: () => void;
     validationErrors?: Record<string, string>;
     validationWarnings?: string[];
     readOnly?: boolean;
@@ -135,6 +139,7 @@
     <StaticPropertiesPanel
       bind:nx bind:ny bind:nz
       bind:cellDx bind:cellDy bind:cellDz
+      {onNzOrPermModeChange}
     />
     <TimestepControlsPanel
       bind:delta_t_days
@@ -161,6 +166,7 @@
       bind:minPerm bind:maxPerm
       bind:nz
       bind:layerPermsX bind:layerPermsY bind:layerPermsZ
+      {onNzOrPermModeChange}
       fieldErrors={validationErrors}
     />
   </div>
@@ -185,6 +191,7 @@
     <AnalyticalInputsPanel
       bind:analyticalSolutionMode
       bind:analyticalDepletionRateScale
+      {onAnalyticalSolutionModeChange}
     />
   </div>
 </div>

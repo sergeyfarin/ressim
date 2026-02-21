@@ -1,0 +1,14 @@
+# Task Plan
+
+- [x] Review [App.svelte](file:///home/reken/Repos/ressim/src/App.svelte) for reactivity triggers and events logic.
+- [x] Document the current state of reactivity and events.
+- [x] Identify overcomplicated parts, bugs, or anti-patterns.
+- [x] Propose an action plan for simplification, correction, and refactoring.
+- [x] Write the report to a new [.md](file:///home/reken/.gemini/antigravity/brain/0bab692c-79f9-49b2-8cdd-142d4ea3f9ce/task.md) file.
+- [x] Wait for user review.
+
+## Execution
+- [ ] Phase 1: Consolidate Configuration State Watchers
+- [ ] Phase 2: Eliminate Aggressive Clamping (UX Fix)
+- [ ] Phase 3: Move Actions to Explicit Handlers
+- [ ] Phase 4: Final verification and testing
