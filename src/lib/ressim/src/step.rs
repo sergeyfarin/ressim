@@ -160,13 +160,11 @@ impl ReservoirSimulator {
         }
     }
 
-    // transmissibility between two neighboring cells (metric/bar units)
-    // Inputs: permeability [mD], area [m²], distance [m], mobility [1/cP]
-    // Output: T [m³/day/bar]
-    // Formula: T = 8.527e-5 * k[mD] * A[m²] / L[m] * mob[1/cP]
-    // Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
-    // Factor = 9.8692e-16 * 86400 / (1e-3 * 1e5) = 8.527e-5
-    fn transmissibility(&self, c1: &GridCell, c2: &GridCell, dim: char) -> f64 {
+    /// Geometric transmissibility factor [mD·m²/m] - geometry only, no mobility
+    /// This is the constant part of transmissibility that depends only on rock properties
+    /// and grid geometry. Used with upstream mobility for proper flow direction.
+    /// Formula: T_geom = k_h * A / L where k_h is harmonic mean of permeabilities
+    fn geometric_transmissibility(&self, c1: &GridCell, c2: &GridCell, dim: char) -> f64 {
         let (perm1, perm2, dist, area) = match dim {
             'x' => (c1.perm_x, c2.perm_x, self.dx, self.dy * self.dz),
             'y' => (c1.perm_y, c2.perm_y, self.dy, self.dx * self.dz),
@@ -183,12 +181,55 @@ impl ReservoirSimulator {
             return 0.0;
         }
 
-        // Average total mobility [1/cP]
-        let mob_avg = (self.total_mobility(c1) + self.total_mobility(c2)) / 2.0;
+        // Geometric transmissibility factor [mD·m²/m]
+        k_h * area / dist
+    }
+
+    /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
+    /// Uses upstream weighting: mobility is taken from the upstream cell (where flow comes from)
+    /// This is the standard reservoir simulation practice for better accuracy at sharp fronts
+    /// p_i, p_j: pressures in cells i and j
+    /// grav_head_bar: gravity head term (positive if cell i is deeper)
+    fn transmissibility_upstream(
+        &self,
+        c1: &GridCell,
+        c2: &GridCell,
+        dim: char,
+        p_i: f64,
+        p_j: f64,
+        grav_head_bar: f64,
+    ) -> f64 {
+        let t_geom = self.geometric_transmissibility(c1, c2, dim);
+        if t_geom == 0.0 {
+            return 0.0;
+        }
+
+        // Potential difference determines flow direction
+        // Positive potential_diff means flow from c1 to c2
+        let potential_diff = (p_i - p_j) - grav_head_bar;
+
+        // Upstream total mobility: take from the cell where flow originates
+        let mob_upstream = if potential_diff >= 0.0 {
+            self.total_mobility(c1)
+        } else {
+            self.total_mobility(c2)
+        };
 
         // Transmissibility [m³/day/bar]
         // 8.527e-5 converts mD·m²/(m·cP) to m³/day/bar
-        8.527e-5 * k_h * area / dist * mob_avg
+        8.527e-5 * t_geom * mob_upstream
+    }
+
+    /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
+    /// Uses previous pressure solution to determine flow direction
+    fn transmissibility_with_prev_pressure(
+        &self,
+        c1: &GridCell,
+        c2: &GridCell,
+        dim: char,
+        grav_head_bar: f64,
+    ) -> f64 {
+        self.transmissibility_upstream(c1, c2, dim, c1.pressure, c2.pressure, grav_head_bar)
     }
 
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
@@ -413,18 +454,26 @@ impl ReservoirSimulator {
                     }
 
                     for (n_id, dim, n_k) in neighbors.iter() {
-                        // Transmissibility [m³/day/bar]
-                        let t = self.transmissibility(cell, &self.grid_cells[*n_id], *dim);
+                        // Gravity head for potential calculation
+                        let depth_i = self.depth_at_k(k);
+                        let depth_j = self.depth_at_k(*n_k);
+                        let rho_t = self.total_density_face(cell, &self.grid_cells[*n_id]);
+                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
+
+                        // Transmissibility with upstream weighting [m³/day/bar]
+                        // Uses previous pressure to determine flow direction
+                        let t = self.transmissibility_with_prev_pressure(
+                            cell,
+                            &self.grid_cells[*n_id],
+                            *dim,
+                            grav_head_bar,
+                        );
                         diag += t;
                         rows.push(id);
                         cols.push(*n_id);
                         vals.push(-t);
 
                         // Gravity source contribution on RHS from potential formulation
-                        let depth_i = self.depth_at_k(k);
-                        let depth_j = self.depth_at_k(*n_k);
-                        let rho_t = self.total_density_face(cell, &self.grid_cells[*n_id]);
-                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
                         b_rhs[id] += t * grav_head_bar;
                     }
 
@@ -505,8 +554,32 @@ impl ReservoirSimulator {
 
                     for (nid, dim, n_k) in check {
                         let p_j = p_new[nid];
-                        // Transmissibility [m³/day/bar]
-                        let t = self.transmissibility(&self.grid_cells[id], &self.grid_cells[nid], dim);
+
+                        // Gravity head for potential calculation
+                        let depth_i = self.depth_at_k(k);
+                        let depth_j = self.depth_at_k(n_k);
+                        let rho_t = self.total_density_face(&self.grid_cells[id], &self.grid_cells[nid]);
+                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
+
+                        // Transmissibility with upstream weighting [m³/day/bar]
+                        // Uses new pressure solution to determine flow direction
+                        let t = self.transmissibility_upstream(
+                            &self.grid_cells[id],
+                            &self.grid_cells[nid],
+                            dim,
+                            p_i,
+                            p_j,
+                            grav_head_bar,
+                        );
+
+                        // Get geometric transmissibility for capillary flux calculation
+                        let geom_t = 8.527e-5
+                            * self.geometric_transmissibility(
+                                &self.grid_cells[id],
+                                &self.grid_cells[nid],
+                                dim,
+                            );
+
                         let (lam_w_i, lam_o_i) = self.phase_mobilities(&self.grid_cells[id]);
                         let (lam_w_j, lam_o_j) = self.phase_mobilities(&self.grid_cells[nid]);
                         let lam_t_i = lam_w_i + lam_o_i;
@@ -517,10 +590,6 @@ impl ReservoirSimulator {
                         }
 
                         // Total volumetric flux [m³/day]: positive = from id -> nid
-                        let depth_i = self.depth_at_k(k);
-                        let depth_j = self.depth_at_k(n_k);
-                        let rho_t = self.total_density_face(&self.grid_cells[id], &self.grid_cells[nid]);
-                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
                         let total_flux = t * ((p_i - p_j) - grav_head_bar);
 
                         // Upwind fractional flow for water
@@ -533,7 +602,6 @@ impl ReservoirSimulator {
                         // Capillary-driven diffusion term using harmonic transmissibility geometry
                         let pc_i = self.get_capillary_pressure(self.grid_cells[id].sat_water);
                         let pc_j = self.get_capillary_pressure(self.grid_cells[nid].sat_water);
-                        let geom_t = t / lam_t_avg;
                         let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
                         let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
                         let capillary_flux = if lam_t_avg <= f64::EPSILON {
