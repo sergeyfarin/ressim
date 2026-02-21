@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-02-21T08:18:52.425Z",
+  "generatedAt": "2026-02-21T08:37:39.816Z",
   "source": "cargo-test",
-  "command": "cargo test benchmark_buckley_leverett -- --nocapture",
+  "command": "cargo test benchmark_buckley_leverett --release -- --nocapture",
   "defaultMode": "baseline",
   "modes": {
     "baseline": [

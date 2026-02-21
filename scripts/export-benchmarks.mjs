@@ -7,7 +7,7 @@ const rustDir = resolve(rootDir, 'src/lib/ressim');
 const outputDir = resolve(rootDir, 'public');
 const outputFile = resolve(outputDir, 'benchmark-results.json');
 
-const command = 'cargo test benchmark_buckley_leverett -- --nocapture';
+const command = 'cargo test benchmark_buckley_leverett --release -- --nocapture';
 const tolerances = {
   'BL-Case-A': 0.25,
   'BL-Case-B': 0.30,

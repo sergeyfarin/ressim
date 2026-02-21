@@ -21,6 +21,11 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ressim-benchmark-cache"
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -30,8 +35,11 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
-      - name: Run build (includes prebuild benchmark export)
+      - name: Run build
         run: npm run build
+
+      - name: Run Benchmark Export
+        run: npm run bench:export
 
       - name: Upload benchmark-results.json
         uses: actions/upload-artifact@v4
