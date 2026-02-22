@@ -150,9 +150,12 @@ function runCase(payload, steps, deltaTDays) {
     );
     sim.setTargetWellRates(payload.targetInjectorRate, payload.targetProducerRate);
 
-    const bhpMin = Math.min(payload.producerBhp, payload.injectorBhp);
-    const bhpMax = Math.max(payload.producerBhp, payload.injectorBhp);
-    sim.setWellBhpLimits(bhpMin, bhpMax);
+    const injIsRate = payload.injectorControlMode === 'rate';
+    const prodIsRate = payload.producerControlMode === 'rate';
+    // When rate-controlled, allow wide BHP range so rate targets can be achieved.
+    const defaultBhpMin = prodIsRate ? 0 : Math.min(payload.producerBhp, payload.injectorBhp);
+    const defaultBhpMax = injIsRate ? 2000 : Math.max(payload.producerBhp, payload.injectorBhp);
+    sim.setWellBhpLimits(defaultBhpMin, defaultBhpMax);
 
     if (payload.permMode === 'random') {
         if (payload.useRandomSeed) {

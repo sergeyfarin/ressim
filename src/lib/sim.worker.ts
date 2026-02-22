@@ -161,8 +161,14 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   if (typeof setWellBhpLimits === 'function') {
     const producerBhp = Number(payload.producerBhp ?? 100);
     const injectorBhp = Number(payload.injectorBhp ?? 400);
-    const bhpMin = Number(payload.bhpMin ?? Math.min(producerBhp, injectorBhp));
-    const bhpMax = Number(payload.bhpMax ?? Math.max(producerBhp, injectorBhp));
+    const injIsRate = String(payload.injectorControlMode ?? 'pressure') === 'rate';
+    const prodIsRate = String(payload.producerControlMode ?? 'pressure') === 'rate';
+    // When rate-controlled, allow wide BHP range so rate targets can be achieved.
+    // For BHP-controlled wells, use the specified BHP values as limits.
+    const defaultBhpMin = prodIsRate ? 0 : Math.min(producerBhp, injectorBhp);
+    const defaultBhpMax = injIsRate ? 2000 : Math.max(producerBhp, injectorBhp);
+    const bhpMin = Number(payload.bhpMin ?? defaultBhpMin);
+    const bhpMax = Number(payload.bhpMax ?? defaultBhpMax);
     setWellBhpLimits.call(simulator, bhpMin, bhpMax);
   }
 

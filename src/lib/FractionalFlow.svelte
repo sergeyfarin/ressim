@@ -183,11 +183,12 @@
         const sMax = 1 - s_or;
         const initialSwClamped = Math.max(sMin, Math.min(sMax, initialSaturation));
 
+        const fwInitial = fractionalFlow(initialSwClamped);
         let swShock = initialSwClamped;
         let maxSlope = 0;
         for (let s = initialSwClamped + 5e-4; s <= sMax; s += 5e-4) {
             const fw = fractionalFlow(s);
-            const slope = fw / Math.max(1e-12, s - initialSwClamped);
+            const slope = (fw - fwInitial) / Math.max(1e-12, s - initialSwClamped);
             if (slope > maxSlope && Number.isFinite(slope)) {
                 maxSlope = slope;
                 swShock = s;
@@ -195,7 +196,7 @@
         }
 
         const fwShock = fractionalFlow(swShock);
-        const dfwAtShock = fwShock / Math.max(1e-12, swShock - initialSwClamped);
+        const dfwAtShock = (fwShock - fwInitial) / Math.max(1e-12, swShock - initialSwClamped);
         const breakthroughPvi = dfwAtShock > 1e-12 ? 1.0 / dfwAtShock : 0;
 
         return {
@@ -237,12 +238,14 @@
         const { s_wc, s_or } = rockProps;
         const initial_sw = Math.max(s_wc, Math.min(1 - s_or, initialSaturation));
 
-        // Find shock front saturation (Sw_f) using graphical tangent method
+        // Find shock front saturation (Sw_f) using Welge tangent method
+        // Tangent is drawn from (Sw_init, fw(Sw_init)) to the fw curve
+        const fw_initial = fractionalFlow(initial_sw);
         let sw_f = initial_sw;
         let max_slope = 0;
         for (let s = initial_sw + 5e-4; s <= 1 - s_or; s += 5e-4) {
             const fw = fractionalFlow(s);
-            const slope = fw / (s - initial_sw);
+            const slope = (fw - fw_initial) / Math.max(1e-12, s - initial_sw);
             if (slope > max_slope) {
                 max_slope = slope;
                 sw_f = s;
@@ -250,7 +253,7 @@
         }
 
         const fw_at_shock = fractionalFlow(sw_f);
-        const dfw_at_shock = fw_at_shock / (sw_f - initial_sw);
+        const dfw_at_shock = (fw_at_shock - fw_initial) / Math.max(1e-12, sw_f - initial_sw);
 
         const poreVolume = reservoir.length * reservoir.area * reservoir.porosity;
         const q0 = injectionRateSeries.find((rate) => Number.isFinite(rate) && rate > 0) ?? 0;
@@ -264,50 +267,69 @@
             return;
         }
 
-        const v_shock = (q0 / (reservoir.area * reservoir.porosity)) * dfw_at_shock;
-        const breakthroughTime = Number.isFinite(v_shock) && v_shock > 1e-12
-            ? reservoir.length / v_shock
-            : Number.POSITIVE_INFINITY;
+        // Breakthrough PVI from Welge tangent: PVI_bt = 1 / dfw_at_shock
+        const breakthroughPVI = dfw_at_shock > 1e-12 ? 1.0 / dfw_at_shock : Number.POSITIVE_INFINITY;
+
+        // Helper: find outlet Sw after breakthrough using bisection on dfw/dSw
+        // In the rarefaction zone [sw_f, 1-s_or], dfw/dSw is monotonically decreasing
+        // so we can use bisection to find Sw where dfw/dSw = target_dfw
+        function findOutletSw(target_dfw: number): number {
+            let lo = sw_f;
+            let hi = 1 - s_or;
+
+            // Check if target is within the range of dfw/dSw
+            const dfw_lo = dfw_dSw(lo, 1e-4);
+            const dfw_hi = dfw_dSw(hi, 1e-4);
+
+            if (target_dfw >= dfw_lo) return lo;   // before shock front
+            if (target_dfw <= dfw_hi) return hi;   // fully swept
+
+            // Bisection: dfw/dSw is decreasing, so we look for where dfw/dSw crosses target_dfw
+            for (let iter = 0; iter < 50; iter++) {
+                const mid = 0.5 * (lo + hi);
+                const dfw_mid = dfw_dSw(mid, 1e-4);
+                if (dfw_mid > target_dfw) {
+                    lo = mid;  // need higher Sw (lower dfw/dSw)
+                } else {
+                    hi = mid;  // need lower Sw (higher dfw/dSw)
+                }
+                if (hi - lo < 1e-6) break;
+            }
+            return 0.5 * (lo + hi);
+        }
 
         const newProduction: AnalyticalPoint[] = [];
         let cumulativeOil = 0;
+        let cumulativePVI = 0;  // track cumulative pore volumes injected
 
         for (let i = 0; i < timeHistory.length; i++) {
             const t = timeHistory[i];
             const q = Number.isFinite(injectionRateSeries[i]) && injectionRateSeries[i] > 0
                 ? injectionRateSeries[i]
                 : q0;
-            let oilRate = 0;
-            if (t <= breakthroughTime) {
-                // Before breakthrough, production is pure oil (at injection rate)
-                oilRate = q;
-            } else {
-                // After breakthrough, find saturation at the outlet (x=L)
-                const v_t = q / (reservoir.area * reservoir.porosity);
-                
-                let s_w_at_outlet = sw_f;
-                // Find Sw at x=L by solving x/t = v_t * dfw/dSw for Sw
-                // L/t = v_t * dfw/dSw  => dfw/dSw = (L/t) / v_t
-                const target_dfw = (reservoir.length / t) / v_t;
-                let bestDelta = Number.POSITIVE_INFINITY;
 
-                // Search Sw that minimizes derivative mismatch.
-                for (let s = sw_f; s <= 1 - s_or; s += 5e-4) {
-                    const derivative = dfw_dSw(s, 1e-4);
-                    const delta = Math.abs(derivative - target_dfw);
-                    if (delta < bestDelta) {
-                        bestDelta = delta;
-                        s_w_at_outlet = s;
-                    }
-                }
-                
+            // Accumulate PVI using the actual injection rate (I5 fix)
+            const dt = i > 0 ? Math.max(0, t - timeHistory[i - 1]) : Math.max(0, t);
+            if (poreVolume > 0) {
+                cumulativePVI += (q * dt) / poreVolume;
+            }
+
+            let oilRate = 0;
+            if (cumulativePVI <= breakthroughPVI) {
+                // Before breakthrough, outlet is at initial saturation
+                oilRate = q * (1 - fw_initial);
+            } else {
+                // After breakthrough, find Sw at outlet via method of characteristics
+                // x = v_t * dfw/dSw * t  →  at outlet x=L: dfw/dSw = L / (v_t * t)
+                // Using PVI: dfw/dSw = 1/PVI (dimensionless form)
+                const target_dfw = cumulativePVI > 1e-12 ? 1.0 / cumulativePVI : dfw_at_shock;
+                const s_w_at_outlet = findOutletSw(target_dfw);
+
                 const fw_at_outlet = fractionalFlow(s_w_at_outlet);
-                const waterCut = fw_at_outlet;
-                oilRate = q * (1 - waterCut);
+                oilRate = q * (1 - fw_at_outlet);
             }
             const boundedOilRate = Math.max(0, oilRate);
             const waterRate = Math.max(0, q - boundedOilRate);
-            const dt = i > 0 ? Math.max(0, t - timeHistory[i - 1]) : Math.max(0, t);
             cumulativeOil += boundedOilRate * dt;
 
             newProduction.push({

@@ -5,6 +5,11 @@ use std::f64;
 use crate::solver::solve_pcg_with_guess;
 use crate::{ReservoirSimulator, TimePointRates, Well};
 
+/// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
+/// Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
+/// Factor = 9.8692e-16 × 86400 / 1e-3 / 1e5 = 8.527e-5
+const DARCY_METRIC_FACTOR: f64 = 8.527e-5;
+
 pub(crate) enum WellControlDecision {
     Disabled,
     Rate { q_m3_day: f64 },
@@ -74,7 +79,7 @@ impl ReservoirSimulator {
         // Constant 8.527e-5 converts from mD·m²/(m·cP) to m³/day/bar
         // Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
         // Factor = 9.8692e-16 * 86400 / 1e-3 / 1e5 = 8.527e-5
-        Ok((8.527e-5 * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility) / denom)
+        Ok((DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility) / denom)
     }
 
     pub(crate) fn update_dynamic_well_productivity_indices(&mut self) {
@@ -211,7 +216,7 @@ impl ReservoirSimulator {
 
         // Transmissibility [m³/day/bar]
         // 8.527e-5 converts mD·m²/(m·cP) to m³/day/bar
-        8.527e-5 * t_geom * mob_upstream
+        DARCY_METRIC_FACTOR * t_geom * mob_upstream
     }
 
     /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
@@ -561,7 +566,7 @@ impl ReservoirSimulator {
                         );
 
                         // Get geometric transmissibility for capillary flux calculation
-                        let geom_t = 8.527e-5
+                        let geom_t = DARCY_METRIC_FACTOR
                             * self.geometric_transmissibility(
                                 id,
                                 nid,

@@ -1368,8 +1368,57 @@
 
 </script>
 
-<main class="min-h-screen bg-base-200 text-base-content" data-theme={theme}>
-    <div class="mx-auto max-w-400 space-y-4 p-4 lg:p-6">
+<main class="min-h-screen text-base-content relative" data-theme={theme}>
+    <!-- Geological layers — styled by .geo-layers in app.css (opacity adapts via [data-theme]) -->
+    <div class="geo-layers">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full">
+            <!-- ORDER MATTERS: shallowest (top of page) rendered FIRST, deepest LAST -->
+            <!-- Each path fills from its wavy top edge down to Y=100. Later paths paint over earlier ones. -->
+            <!-- So you see each layer's color only in the band between its top edge and the next deeper layer's top edge. -->
+
+            {#if theme === "dark"}
+                <!-- Dark theme: muted desaturated earth tones -->
+                <path fill="#3a3228" d="M0,5 C24,11 76,-1 100,8 L100,100 L0,100 Z" />
+                <path fill="#4a3d2e" d="M0,15 C26,20 70,8 100,17 L100,100 L0,100 Z" />
+                <path fill="#3e3326" d="M0,24 C30,29 65,16 100,26 L100,100 L0,100 Z" />
+                <path fill="#554838" d="M0,30 C28,36 72,21 100,32 L100,100 L0,100 Z" />
+                <path fill="#4a3f30" d="M0,38 C35,43 65,29 100,41 L100,100 L0,100 Z" />
+                <path fill="#362c22" d="M0,45 C30,49 60,37 100,47 L100,100 L0,100 Z" />
+                <path fill="#5a4f40" d="M0,49 C25,54 75,41 100,51 L100,100 L0,100 Z" />
+                <path fill="#483e30" d="M0,56 C32,62 66,50 100,58 L100,100 L0,100 Z" />
+                <path fill="#3a3228" d="M0,64 C26,69 70,58 100,66 L100,100 L0,100 Z" />
+                <path fill="#5e5345" d="M0,69 C28,74 68,62 100,71 L100,100 L0,100 Z" />
+                <path fill="#4a3d2e" d="M0,75 C32,79 68,69 100,76 L100,100 L0,100 Z" />
+                <path fill="#362c22" d="M0,79 C32,83 68,74 100,80 L100,100 L0,100 Z" />
+                <path fill="#554838" d="M0,84 C30,89 70,78 100,85 L100,100 L0,100 Z" />
+                <path fill="#3e3326" d="M0,91 C35,94 65,86 100,93 L100,100 L0,100 Z" />
+                <path fill="#2e2620" d="M0,95 C30,98 60,93 100,97 L100,100 L0,100 Z" />
+            {:else}
+                <!-- Light theme: warm saturated earth tones -->
+                <path fill="#F2DFB8" d="M0,5 C24,11 76,-1 100,8 L100,100 L0,100 Z" />
+                <path fill="#D9B78D" d="M0,15 C26,20 70,8 100,17 L100,100 L0,100 Z" />
+                <path fill="#F2DFB8" d="M0,24 C30,29 65,16 100,26 L100,100 L0,100 Z" />
+                <path fill="#7A4B29" d="M0,30 C28,36 72,21 100,32 L100,100 L0,100 Z" />
+                <path fill="#BA8E68" d="M0,38 C35,43 65,29 100,41 L100,100 L0,100 Z" />
+                <path fill="#4A2E1B" d="M0,45 C30,49 60,37 100,47 L100,100 L0,100 Z" />
+                <path fill="#7A4B29" d="M0,49 C25,54 75,41 100,51 L100,100 L0,100 Z" />
+                <path fill="#D9B78D" d="M0,56 C32,62 66,50 100,58 L100,100 L0,100 Z" />
+                <path fill="#9C6B46" d="M0,64 C26,69 70,58 100,66 L100,100 L0,100 Z" />
+                <path fill="#e6d5b9" d="M0,69 C28,74 68,62 100,71 L100,100 L0,100 Z" />
+                <path fill="#BA8E68" d="M0,75 C32,79 68,69 100,76 L100,100 L0,100 Z" />
+                <path fill="#4A2E1B" d="M0,79 C32,83 68,74 100,80 L100,100 L0,100 Z" />
+                <path fill="#9C6B46" d="M0,84 C30,89 70,78 100,85 L100,100 L0,100 Z" />
+                <path fill="#7A4B29" d="M0,91 C35,94 65,86 100,93 L100,100 L0,100 Z" />
+                <path fill="#4A2E1B" d="M0,95 C30,98 60,93 100,97 L100,100 L0,100 Z" />
+            {/if}
+        </svg>
+    </div>
+
+    <!-- Gradient overlay — tints the geo-layers area and continues down the page -->
+    <div class="geo-gradient-overlay"></div>
+
+    <!-- Main Content — z-[2] ensures it renders above both layers and gradient overlay -->
+    <div class="mx-auto max-w-400 space-y-4 p-4 lg:p-6 relative z-[2]">
         <!-- Hidden component for analytical calculations -->
         <FractionalFlow
             rockProps={{ s_wc, s_or, n_w, n_o }}

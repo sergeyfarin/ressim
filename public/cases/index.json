@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-21T19:04:19.857Z",
+  "generatedAt": "2026-02-22T13:04:50.882Z",
   "cases": [
     {
       "key": "depletion_corner_producer",
@@ -14,6 +14,20 @@
       "label": "Center Producer (2D)",
       "description": "2D depletion with producer at centre — radial geometry",
       "file": "depletion_center_producer.json"
+    },
+    {
+      "key": "depletion_1d_clean",
+      "category": "depletion",
+      "label": "Clean 1D Depletion",
+      "description": "Sw=Swc, no capillary — ideal for analytical match",
+      "file": "depletion_1d_clean.json"
+    },
+    {
+      "key": "depletion_2d_radial_clean",
+      "category": "depletion",
+      "label": "Clean 2D Radial Depletion",
+      "description": "Center producer, Sw=Swc, no capillary — radial analytical match",
+      "file": "depletion_2d_radial_clean.json"
     },
     {
       "key": "bl_case_a_refined",
@@ -49,6 +63,20 @@
       "label": "BL Aligned — Mobility Balanced",
       "description": "48-cell with balanced mobility ratio",
       "file": "bl_aligned_mobility_balanced.json"
+    },
+    {
+      "key": "waterflood_bl_clean",
+      "category": "waterflood",
+      "label": "BL Clean — Ideal Match",
+      "description": "Sw=Swc, no capillary, rate-controlled — cleanest BL comparison",
+      "file": "waterflood_bl_clean.json"
+    },
+    {
+      "key": "waterflood_unfavorable_mobility",
+      "category": "waterflood",
+      "label": "BL Unfavorable Mobility",
+      "description": "High oil viscosity (M≈17) — early breakthrough",
+      "file": "waterflood_unfavorable_mobility.json"
     },
     {
       "key": "baseline_waterflood",
