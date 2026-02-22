@@ -63,12 +63,9 @@ export function externalTooltipHandler(context: any) {
   if (!tooltipEl) {
     tooltipEl = document.createElement('div');
     tooltipEl.className = 'chartjs-tooltip';
-    tooltipEl.style.background = 'rgba(30, 30, 30, 0.85)';
-    tooltipEl.style.color = '#fff';
     tooltipEl.style.borderRadius = '6px';
     tooltipEl.style.pointerEvents = 'none';
     tooltipEl.style.position = 'absolute';
-    tooltipEl.style.transform = 'translate(-50%, 0)';
     tooltipEl.style.transition = 'all .1s ease';
     tooltipEl.style.fontFamily = "'JetBrains Mono', monospace";
     tooltipEl.style.fontSize = '11px';
@@ -78,6 +75,12 @@ export function externalTooltipHandler(context: any) {
 
     chart.canvas.parentNode.appendChild(tooltipEl);
   }
+
+  // Dynamic theme support (can toggle after creation)
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  tooltipEl.style.background = isDark ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.9)';
+  tooltipEl.style.color = isDark ? '#fff' : '#1f2937';
+  tooltipEl.style.border = isDark ? 'none' : '1px solid rgba(0,0,0,0.1)';
 
   // Hide if no tooltip
   if (tooltip.opacity === 0) {
@@ -119,11 +122,42 @@ export function externalTooltipHandler(context: any) {
   }
 
   // Use offset properties of canvas to accurately position the tooltip within the relative parent DIV
-  const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
+  const { offsetLeft: positionX, offsetTop: positionY, clientWidth: canvasWidth, clientHeight: canvasHeight } = chart.canvas;
 
   tooltipEl.style.opacity = '1';
-  // Small vertical adjustment to make it float neatly above the pointer
-  tooltipEl.style.left = positionX + tooltip.caretX + 'px';
-  tooltipEl.style.top = positionY + tooltip.caretY - 8 + 'px';
+  tooltipEl.style.transform = 'none';
+
+  // Measure tooltip dimensions (opacity is 1, so it is rendered and measurable)
+  const tooltipWidth = tooltipEl.offsetWidth;
+  const tooltipHeight = tooltipEl.offsetHeight;
+
+  const gap = 12; // Gap from the point of interest
+
+  // Default: bottom-right of point
+  let left = tooltip.caretX + gap;
+  let top = tooltip.caretY + gap;
+
+  // 1. If it does not fit to the right, place it to the left of the point
+  if (left + tooltipWidth > canvasWidth) {
+    left = tooltip.caretX - tooltipWidth - gap;
+  }
+
+  // 2. If it does not fit below, it can go higher to stay in visible area
+  if (top + tooltipHeight > canvasHeight) {
+    const topAbove = tooltip.caretY - tooltipHeight - gap;
+    if (topAbove > 0) {
+      top = topAbove;
+    } else {
+      // Just clamp strictly inside the canvas if it's too large to fit cleanly either above or below
+      top = canvasHeight - tooltipHeight - 4;
+    }
+  }
+
+  // Final clamp to ensure no overflow off top/left edges
+  left = Math.max(4, left);
+  top = Math.max(4, top);
+
+  tooltipEl.style.left = positionX + left + 'px';
+  tooltipEl.style.top = positionY + top + 'px';
 }
 

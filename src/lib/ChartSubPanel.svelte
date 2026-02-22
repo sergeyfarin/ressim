@@ -24,7 +24,8 @@
         seriesData = [],
         scaleConfigs = {},
         theme = 'dark',
-        logScale = false,
+        logScale = $bindable(false),
+        allowLogToggle = false,
         chartHeight = 'min(36vh, 300px)',
         targetLeftGutter = 0,
         targetRightGutter = 0,
@@ -38,6 +39,7 @@
         scaleConfigs?: Record<string, any>;
         theme?: 'dark' | 'light';
         logScale?: boolean;
+        allowLogToggle?: boolean;
         chartHeight?: string;
         targetLeftGutter?: number;
         targetRightGutter?: number;
@@ -411,9 +413,33 @@
 
     {#if expanded}
     <div class="px-3 pb-3 space-y-2">
-        <!-- FIX #3: Curve toggles with visible border and ✕/+ indicators -->
-        <div class="flex flex-wrap gap-1.5">
-            {#each curves as curve, idx}
+        {#if allowLogToggle || curves.length > 0}
+            <div class="flex flex-wrap items-center gap-2">
+                {#if allowLogToggle}
+                    <!-- Linear/Log radio-style toggle pair -->
+                    <div class="inline-flex rounded-full border border-base-content/20 shadow-sm overflow-hidden shrink-0">
+                        <button
+                            type="button"
+                            class="px-2.5 py-0.5 text-[11px] font-medium transition-colors
+                                {!logScale ? 'bg-base-content/10 text-base-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                            onclick={() => { logScale = false; }}
+                        >
+                            Linear
+                        </button>
+                        <button
+                            type="button"
+                            class="px-2.5 py-0.5 text-[11px] font-medium transition-colors border-l border-base-content/20
+                                {logScale ? 'bg-base-content/10 text-base-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                            onclick={() => { logScale = true; }}
+                        >
+                            Log
+                        </button>
+                    </div>
+                {/if}
+
+                <!-- Curve toggles with visible border and ✕/+ indicators -->
+                <div class="flex flex-wrap gap-1.5">
+                    {#each curves as curve, idx}
                 <button
                     type="button"
                     class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-all cursor-pointer select-none
@@ -434,7 +460,9 @@
                     <span class="opacity-60 ml-0.5 {visibleCurves[idx] ? 'text-[9px]' : 'text-[14px]'}">{visibleCurves[idx] ? '✕' : '+'}</span>
                 </button>
             {/each}
-        </div>
+                </div>
+            </div>
+        {/if}
 
         <!-- FIX #2: Chart canvas with fixed left padding for y-axis alignment -->
         <div style="position: relative; height: {chartHeight}; width: 100%;">

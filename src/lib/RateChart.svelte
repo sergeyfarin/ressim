@@ -365,10 +365,10 @@
     <!-- X-axis controls at top -->
     <div class="flex items-center gap-2 mb-2">
         <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0">X-axis</span>
-        <div class="relative flex items-center bg-base-100 border border-base-content/20 rounded-full shadow-sm hover:border-base-content/40 transition-colors cursor-pointer group">
+        <div class="relative flex items-center bg-base-100 border border-base-content/20 rounded-full shadow-sm hover:border-base-content/40 transition-colors cursor-pointer group overflow-hidden">
             <select
                 id="x-axis-select"
-                class="select select-xs bg-base-100 text-base-content border-none focus:outline-none focus:ring-0 min-w-[180px] pl-3 pr-8 appearance-none cursor-pointer ![background-image:none]"
+                class="select select-xs bg-base-100 rounded-full text-base-content border-none focus:outline-none focus:ring-0 min-w-[180px] pl-3 pr-8 appearance-none cursor-pointer ![background-image:none]"
                 bind:value={xAxisMode}
                 onchange={(e) => setXAxisMode(e.currentTarget.value as XAxisMode)}
             >
@@ -384,25 +384,6 @@
                 </svg>
             </div>
         </div>
-        <!-- FIX #4: Linear/Log radio-style toggle pair -->
-        <div class="inline-flex rounded-full border border-base-content/20 shadow-sm overflow-hidden">
-            <button
-                type="button"
-                class="px-2.5 py-0.5 text-[11px] font-medium transition-colors
-                    {!logScale ? 'bg-base-content/10 text-base-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
-                onclick={() => { logScale = false; }}
-            >
-                Linear
-            </button>
-            <button
-                type="button"
-                class="px-2.5 py-0.5 text-[11px] font-medium transition-colors border-l border-base-content/20
-                    {logScale ? 'bg-base-content/10 text-base-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
-                onclick={() => { logScale = true; }}
-            >
-                Log
-            </button>
-        </div>
     </div>
 
     <!-- Rates panel -->
@@ -414,7 +395,8 @@
         seriesData={ratesSeries}
         scaleConfigs={ratesScales}
         {theme}
-        {logScale}
+        bind:logScale
+        allowLogToggle={true}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left, right) => { nativeGutters = { ...nativeGutters, rates: { left, right } }; }}
