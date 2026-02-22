@@ -1037,12 +1037,11 @@
     <canvas bind:this={chartCanvas}></canvas>
 </div>
 
-<div class="mt-3 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-        <label for="x-axis-select" class="text-xs uppercase tracking-wide opacity-70 font-medium">X-Axis:</label>
+<div class="mt-3 flex items-center justify-center">
+    <div class="relative flex items-center bg-base-100 border border-base-content/20 rounded-full shadow-sm hover:border-base-content/40 transition-colors cursor-pointer group">
         <select 
             id="x-axis-select"
-            class="select select-bordered select-sm bg-base-100 shadow-sm min-w-[160px]"
+            class="select select-sm bg-transparent border-none focus:outline-none focus:ring-0 min-w-[200px] pl-4 pr-10 appearance-none cursor-pointer ![background-image:none]"
             bind:value={xAxisMode}
             on:change={(e) => setXAxisMode(e.currentTarget.value as XAxisMode)}
         >
@@ -1051,6 +1050,11 @@
             <option value="cumLiquid">Cumulative Liquid (m³)</option>
             <option value="cumInjection">Cumulative Injection (m³)</option>
         </select>
+        <div class="absolute right-0 h-full flex items-center justify-center w-8 bg-base-content/5 border-l border-base-content/20 rounded-r-full group-hover:bg-base-content/10 transition-colors pointer-events-none">
+            <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </div>
     </div>
 </div>
 
