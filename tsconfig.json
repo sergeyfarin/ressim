@@ -14,6 +14,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "vite.config.ts", "scripts/**/*"],
+  "include": ["src/**/*", "vite.config.ts", "svelte.config.js", "scripts/**/*"],
   "exclude": ["node_modules", "dist", "src/lib/ressim/pkg/**"]
 }
