@@ -361,9 +361,9 @@
     };
 </script>
 
-<div class="space-y-1">
+<div class="flex flex-col">
     <!-- X-axis controls at top -->
-    <div class="flex items-center gap-2 mb-2">
+    <div class="flex items-center gap-2 px-4 pt-4 md:px-5 md:pt-5 pb-2">
         <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0">X-axis</span>
         <div class="relative flex items-center bg-base-100 border border-base-content/20 rounded-full shadow-sm hover:border-base-content/40 transition-colors cursor-pointer group overflow-hidden">
             <select
@@ -434,7 +434,7 @@
 
     <!-- Error stats -->
     {#if mismatchSummary.pointsCompared > 0}
-    <div class="text-[11px] opacity-60 px-1">
+    <div class="text-[11px] opacity-60 px-4 md:px-5 pb-4 md:pb-5 pt-2">
         Analytical: {mismatchSummary.pointsCompared} pts ·
         MAE: {mismatchSummary.mae.toFixed(3)} ·
         RMSE: {mismatchSummary.rmse.toFixed(3)} ·

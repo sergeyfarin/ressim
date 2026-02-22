@@ -59,7 +59,7 @@
         for (const [key, cfg] of Object.entries(scaleConfigs)) {
             const { _dynamicTitle, _fraction, _auto, ...rest } = cfg;
             meta[key] = { _dynamicTitle, _fraction, _auto };
-            clean[key] = rest;
+            clean[key] = structuredClone(rest);
         }
         return { meta, clean };
     });
@@ -122,8 +122,12 @@
         if (!chart || !seriesData) return;
 
         for (let idx = 0; idx < curves.length; idx++) {
-            const data = seriesData[idx] ?? [];
-            safeSetDatasetData(chart, idx, data);
+            // Unwrap array and inner points so Chart.js can safely append internal tracking without triggering Proxies
+            let rawData = seriesData[idx] ?? [];
+            if (Array.isArray(rawData)) {
+                rawData = rawData.map(pt => (pt && typeof pt === 'object' ? { ...pt } : pt)) as any;
+            }
+            safeSetDatasetData(chart, idx, rawData);
 
             const lineDataset = getLineDataset(chart, idx);
             if (lineDataset) {
@@ -307,8 +311,11 @@
             data: [] as XYPoint[],
             borderColor: curve.color,
             borderWidth: curve.borderWidth ?? 2,
-            borderDash: curve.borderDash,
+            borderDash: curve.borderDash ? [...curve.borderDash] : undefined,
             yAxisID: curve.yAxisID,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            pointHitRadius: 8,
         }));
 
         chart = new Chart(ctx, {
@@ -387,11 +394,11 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 </svelte:head>
 
-<div class="border border-base-300 rounded-lg overflow-hidden {expanded ? 'bg-base-100' : 'bg-base-100/50'}" id="panel-{panelId}">
+<div class="border-t border-base-300 overflow-hidden {expanded ? 'bg-base-100' : 'bg-base-100/50'} first:border-t-0" id="panel-{panelId}">
     <!-- Collapsible header -->
     <button
         type="button"
-        class="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide
+        class="w-full flex items-center gap-2 px-4 md:px-5 py-3 text-xs font-semibold uppercase tracking-wide
             hover:bg-base-200/50 transition-colors cursor-pointer select-none"
         onclick={() => {
             if (expanded) {
@@ -412,16 +419,16 @@
     </button>
 
     {#if expanded}
-    <div class="px-3 pb-3 space-y-2">
+    <div class="pb-2 flex flex-col">
         {#if allowLogToggle || curves.length > 0}
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center gap-1.5 px-4 md:px-5 py-2">
                 {#if allowLogToggle}
                     <!-- Linear/Log radio-style toggle pair -->
-                    <div class="inline-flex rounded-full border border-base-content/20 shadow-sm overflow-hidden shrink-0">
+                    <div class="inline-flex rounded-full border border-base-content/20 shadow-sm overflow-hidden shrink-0 mr-2">
                         <button
                             type="button"
                             class="px-2.5 py-0.5 text-[11px] font-medium transition-colors
-                                {!logScale ? 'bg-base-content/10 text-base-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                                {!logScale ? 'bg-primary text-primary-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
                             onclick={() => { logScale = false; }}
                         >
                             Linear
@@ -429,7 +436,7 @@
                         <button
                             type="button"
                             class="px-2.5 py-0.5 text-[11px] font-medium transition-colors border-l border-base-content/20
-                                {logScale ? 'bg-base-content/10 text-base-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                                {logScale ? 'bg-primary text-primary-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
                             onclick={() => { logScale = true; }}
                         >
                             Log
@@ -438,8 +445,7 @@
                 {/if}
 
                 <!-- Curve toggles with visible border and ✕/+ indicators -->
-                <div class="flex flex-wrap gap-1.5">
-                    {#each curves as curve, idx}
+                {#each curves as curve, idx}
                 <button
                     type="button"
                     class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-all cursor-pointer select-none
@@ -460,12 +466,11 @@
                     <span class="opacity-60 ml-0.5 {visibleCurves[idx] ? 'text-[9px]' : 'text-[14px]'}">{visibleCurves[idx] ? '✕' : '+'}</span>
                 </button>
             {/each}
-                </div>
             </div>
         {/if}
 
         <!-- FIX #2: Chart canvas with fixed left padding for y-axis alignment -->
-        <div style="position: relative; height: {chartHeight}; width: 100%;">
+        <div style="position: relative; height: {chartHeight}; width: 100%;" class="pb-2">
             <canvas bind:this={chartCanvas}></canvas>
         </div>
     </div>

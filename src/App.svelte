@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, tick } from "svelte";
     import FractionalFlow from "./lib/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/DepletionAnalytical.svelte";
     import TopBar from "./lib/ui/TopBar.svelte";
@@ -1076,13 +1076,17 @@
 
     // ---------- Lifecycle ----------
 
-    onMount(() => {
+    onMount(async () => {
         const savedTheme = localStorage.getItem("ressim-theme");
         if (savedTheme === "light" || savedTheme === "dark") theme = savedTheme;
         document.documentElement.setAttribute("data-theme", theme);
         setupWorker();
-        loadRateChartModule();
-        loadThreeDViewModule();
+
+        // Ensure heavy components are fully loaded and rendered before loading the case
+        await loadRateChartModule();
+        await loadThreeDViewModule();
+        await tick();
+
         // Auto-select first category and case
         handleCategoryChange("depletion");
     });
@@ -1565,26 +1569,24 @@
 
         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
             <div class="space-y-3">
-                <div class="card border border-base-300 bg-base-100 shadow-sm">
-                    <div class="card-body p-4 md:p-5">
-                        {#if RateChartComponent}
-                            <RateChartComponent
-                                {rateHistory}
-                                {analyticalProductionData}
-                                {avgReservoirPressureSeries}
-                                {avgWaterSaturationSeries}
-                                {ooipM3}
-                                {poreVolumeM3}
-                                {activeCategory}
-                                {activeCase}
-                                {theme}
-                            />
-                        {:else}
-                            <div class="text-sm opacity-70">
-                                Loading rate chart…
-                            </div>
-                        {/if}
-                    </div>
+                <div class="card border border-base-300 bg-base-100 shadow-sm overflow-hidden">
+                    {#if RateChartComponent}
+                        <RateChartComponent
+                            {rateHistory}
+                            {analyticalProductionData}
+                            {avgReservoirPressureSeries}
+                            {avgWaterSaturationSeries}
+                            {ooipM3}
+                            {poreVolumeM3}
+                            {activeCategory}
+                            {activeCase}
+                            {theme}
+                        />
+                    {:else}
+                        <div class="p-4 md:p-5 text-sm opacity-70">
+                            Loading rate chart…
+                        </div>
+                    {/if}
                 </div>
 
                 <div class="card border border-base-300 bg-base-100 shadow-sm">
