@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build-artifact:
     runs-on: ubuntu-latest
 
     steps:
@@ -43,15 +43,38 @@ jobs:
 
       - name: Package dist artifact
         run: |
-          ARCHIVE="ressim-dist-${GITHUB_SHA}.tar.gz"
+          ARCHIVE="ressim-dist-latest.tar.gz"
           tar -czf "$ARCHIVE" -C dist ressim
-          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          printf '{"commit":"%s","ref":"%s","built_at":"%s"}\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist-build-meta.json
 
-      - name: Publish release asset
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ressim-dist-bundle
+          path: |
+            ressim-dist-latest.tar.gz
+            dist-build-meta.json
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs: build-artifact
+
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ressim-dist-bundle
+
+      - name: Publish stable release asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dist-${{ github.sha }}
-          name: dist-${{ github.sha }}
-          files: ${{ env.ARCHIVE }}
+          tag_name: dist-latest
+          name: dist-latest
+          files: |
+            ressim-dist-latest.tar.gz
+            dist-build-meta.json
           generate_release_notes: false
           make_latest: false
+          overwrite_files: true
