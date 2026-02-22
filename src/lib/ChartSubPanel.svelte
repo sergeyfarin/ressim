@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy, tick, untrack } from 'svelte';
     import { Chart, registerables, type ChartDataset } from 'chart.js';
-    import { getLineDataset, getDatasetLabel, safeSetDatasetData, applyThemeToChart } from './chart-helpers';
+    import { getLineDataset, getDatasetLabel, safeSetDatasetData, applyThemeToChart, externalTooltipHandler } from './chart-helpers';
 
     type XYPoint = { x: number; y: number | null };
     type LineDataset = ChartDataset<'line', Array<number | null | XYPoint>>;
@@ -319,15 +319,8 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(30, 30, 30, 0.85)',
-                        titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
-                        bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
-                        padding: 8,
-                        cornerRadius: 6,
-                        usePointStyle: false,
-                        boxWidth: 16,
-                        boxHeight: 3,
-                        boxPadding: 4,
+                        enabled: false,
+                        external: externalTooltipHandler,
                         callbacks: {
                             label: (context) => {
                                 const label = context.dataset.label ?? '';

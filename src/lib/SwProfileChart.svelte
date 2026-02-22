@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Chart, registerables } from 'chart.js';
-    import { safeSetDatasetData } from './chart-helpers';
+    import { safeSetDatasetData, externalTooltipHandler } from './chart-helpers';
 
     import type { GridState } from './simulator-types';
     let {
@@ -69,6 +69,11 @@
                 plugins: {
                     legend: {
                         display: true,
+                        labels: { font: { family: "'JetBrains Mono', monospace", size: 11 } }
+                    },
+                    tooltip: {
+                        enabled: false,
+                        external: externalTooltipHandler
                     },
                 },
                 scales: {
@@ -76,7 +81,9 @@
                         title: {
                             display: true,
                             text: 'Cell Index (i)',
+                            font: { family: "'JetBrains Mono', monospace", size: 11 }
                         },
+                        ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } }
                     },
                     y: {
                         min: 0,
@@ -84,7 +91,9 @@
                         title: {
                             display: true,
                             text: 'Water Saturation Sw',
+                            font: { family: "'JetBrains Mono', monospace", size: 11 }
                         },
+                        ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } }
                     },
                 },
             },
@@ -219,7 +228,7 @@
             </label>
         </div>
 
-        <div style="height: min(34vh, 280px); width: 100%;">
+        <div style="position: relative; height: min(34vh, 280px); width: 100%;">
             <canvas bind:this={chartCanvas}></canvas>
         </div>
 
