@@ -200,12 +200,15 @@
             const expTerm = Math.exp(-exponent);
             const oilRate = q0 * expTerm;
             const cumulativeOil = maxRecoverable * (1 - expTerm);
+            // PSS average pressure: P_avg(t) = P_bhp + (P_init - P_bhp) · exp(-t/τ)
+            const avgPressure = producerBhp + dP * expTerm;
 
             return {
                 time: boundedTime,
                 oilRate,
                 waterRate: 0,
                 cumulativeOil,
+                avgPressure,
             };
         });
 

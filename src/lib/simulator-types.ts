@@ -163,6 +163,7 @@ export interface AnalyticalProductionPoint {
   waterRate?: number;
   cumulativeOil?: number;
   cumulativeLiquid?: number;
+  avgPressure?: number;
 }
 
 // Worker -> UI messages

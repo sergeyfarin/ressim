@@ -1587,23 +1587,27 @@
                     </div>
                 </div>
 
-                <SwProfileChart
-                    gridState={gridStateRaw ?? null}
-                    {nx}
-                    {ny}
-                    {nz}
-                    {cellDx}
-                    {cellDy}
-                    {cellDz}
-                    {simTime}
-                    {producerJ}
-                    {initialSaturation}
-                    {reservoirPorosity}
-                    injectionRate={latestInjectionRate}
-                    scenarioMode={analyticalSolutionMode}
-                    rockProps={{ s_wc, s_or, n_w, n_o }}
-                    fluidProps={{ mu_w, mu_o }}
-                />
+                <div class="card border border-base-300 bg-base-100 shadow-sm">
+                    <div class="card-body p-4 md:p-5">
+                        <SwProfileChart
+                            gridState={gridStateRaw ?? null}
+                            {nx}
+                            {ny}
+                            {nz}
+                            {cellDx}
+                            {cellDy}
+                            {cellDz}
+                            {simTime}
+                            {producerJ}
+                            {initialSaturation}
+                            {reservoirPorosity}
+                            injectionRate={latestInjectionRate}
+                            scenarioMode={analyticalSolutionMode}
+                            rockProps={{ s_wc, s_or, n_w, n_o }}
+                            fluidProps={{ mu_w, mu_o }}
+                        />
+                    </div>
+                </div>
 
                 {#if analyticalMeta.mode === "depletion"}
                     <div

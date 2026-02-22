@@ -38,12 +38,12 @@ export function applyThemeToChart(chart: Chart | null | undefined, theme: 'dark'
 
   // chart.options.scales is a loose object in Chart.js typing — guard access
   const scales = (chart.options && (chart.options as any).scales) ?? {};
-  if (scales.x?.grid) scales.x.grid.color = gridColor;
-  if (scales.y?.grid) scales.y.grid.color = gridColor;
-  if (scales.y1?.grid) scales.y1.grid.color = gridColor;
-  if (scales.y2?.grid) scales.y2.grid.color = gridColor;
-  if (scales.y4?.grid) scales.y4.grid.color = gridColor;
-  if (scales.y5?.grid) scales.y5.grid.color = gridColor;
+  for (const axisId of Object.keys(scales)) {
+    const scale = scales[axisId];
+    if (!scale) continue;
+    if (scale.grid) scale.grid.color = gridColor;
+    if (scale.ticks) scale.ticks.color = textColor;
+  }
   try {
     chart.update();
   } catch (e) {

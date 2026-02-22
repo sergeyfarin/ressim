@@ -4,30 +4,37 @@
     import { safeSetDatasetData } from './chart-helpers';
 
     import type { GridState } from './simulator-types';
-    export let gridState: GridState | null = null;
-    export let nx: number = 1;
-    export let ny: number = 1;
-    export let nz: number = 1;
-    export let cellDx: number = 10;
-    export let cellDy: number = 10;
-    export let cellDz: number = 1;
-    export let simTime: number = 0;
-    export let producerJ: number = 0;
-    export let initialSaturation: number = 0.3;
-    export let reservoirPorosity: number = 0.2;
-    export let injectionRate: number = 0;
-    export let scenarioMode: 'waterflood' | 'depletion' = 'waterflood';
-    export let rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
-    export let fluidProps: { mu_w: number; mu_o: number };
+    let {
+        gridState = null,
+        nx = 1, ny = 1, nz = 1,
+        cellDx = 10, cellDy = 10, cellDz = 1,
+        simTime = 0, producerJ = 0,
+        initialSaturation = 0.3, reservoirPorosity = 0.2, injectionRate = 0,
+        scenarioMode = 'waterflood',
+        rockProps, fluidProps
+    }: {
+        gridState?: GridState | null;
+        nx?: number; ny?: number; nz?: number;
+        cellDx?: number; cellDy?: number; cellDz?: number;
+        simTime?: number; producerJ?: number;
+        initialSaturation?: number; reservoirPorosity?: number; injectionRate?: number;
+        scenarioMode?: 'waterflood' | 'depletion';
+        rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
+        fluidProps: { mu_w: number; mu_o: number };
+    } = $props();
 
-    let selectedRow = Number.NaN;
-    let chartCanvas: HTMLCanvasElement;
-    let chart: Chart<'line', Array<number | null>, string> | null = null;
-    let frontCellIndex: number | null = null;
+    let chartCanvas = $state<HTMLCanvasElement | null>(null);
+    let chart = $state<Chart<'line', Array<number | null>, string> | null>(null);
+    let frontCellIndex = $state<number | null>(null);
 
-    $: selectedRow = Math.max(0, Math.min(ny - 1, Number.isFinite(selectedRow) ? selectedRow : producerJ));
+    let selectedRowInput = $state<number>(Number.NaN);
+    let selectedRow = $derived(Math.max(0, Math.min(ny - 1, Number.isFinite(selectedRowInput) ? selectedRowInput : producerJ)));
 
-    $: updateProfileChart();
+    $effect(() => {
+        // Track reactive dependencies that affect charting
+        const _ = [gridState, selectedRow, simTime, nx, ny, nz];
+        updateProfileChart();
+    });
 
     onMount(() => {
         Chart.register(...registerables);
@@ -124,12 +131,14 @@
         const sMin = s_wc;
         const sMax = 1 - s_or;
         const swi = Math.max(sMin, Math.min(sMax, initialSaturation));
+        const fw_initial = fractionalFlow(swi);
 
         let swShock = swi;
         let maxSlope = 0;
         for (let s = swi + 5e-4; s <= sMax; s += 5e-4) {
             const fw = fractionalFlow(s);
-            const slope = fw / Math.max(1e-12, s - swi);
+            // Welge tangent from (Sw_init, fw(Sw_init)) — not from (Sw_init, 0)
+            const slope = (fw - fw_initial) / Math.max(1e-12, s - swi);
             if (slope > maxSlope && Number.isFinite(slope)) {
                 maxSlope = slope;
                 swShock = s;
@@ -205,7 +214,7 @@
                     max={Math.max(0, ny - 1)}
                     step="1"
                     class="input input-bordered input-xs"
-                    bind:value={selectedRow}
+                    bind:value={selectedRowInput}
                 />
             </label>
         </div>
