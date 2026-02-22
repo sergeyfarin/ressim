@@ -11,7 +11,7 @@
     "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview",
-    "build:wasm": "cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore",
+    "build:wasm": "command -v wasm-pack >/dev/null 2>&1 || { command -v cargo >/dev/null 2>&1 && cargo install wasm-pack --locked; }; command -v wasm-pack >/dev/null 2>&1 || { echo 'Error: wasm-pack is not installed and could not be installed automatically.'; exit 1; }; command -v rustup >/dev/null 2>&1 && rustup target add wasm32-unknown-unknown; cd src/lib/ressim && wasm-pack build --target web --out-dir ./pkg && rm -f pkg/.gitignore",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
