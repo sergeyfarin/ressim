@@ -251,40 +251,24 @@
         return values;
     }
 
-    function niceUpperBound(value: number): number {
-        if (!Number.isFinite(value) || value <= 0) return 1;
-        const exponent = Math.floor(Math.log10(value));
-        const magnitude = 10 ** exponent;
-        const fraction = value / magnitude;
-        let niceFraction = 1;
-        if (fraction <= 1) niceFraction = 1;
-        else if (fraction <= 2) niceFraction = 2;
-        else if (fraction <= 5) niceFraction = 5;
-        else niceFraction = 10;
-        return niceFraction * magnitude;
-    }
-
     function applyPositiveAxisBounds(axis: any, values: number[]) {
         if (!axis || !values.length) return;
-        const maxValue = Math.max(0, ...values);
         axis.min = 0;
-        axis.max = niceUpperBound(Math.max(maxValue * 1.05, 1));
+        // Let Chart.js automatically calculate the most aesthetic max bound natively!
     }
 
     function applyAutoAxisBounds(axis: any, values: number[]) {
         if (!axis || !values.length) return;
         const minValue = Math.min(...values);
         const maxValue = Math.max(...values);
+        // Explicitly pad completely flat lines to prevent Chart.js scaling glitches
         if (Math.abs(maxValue - minValue) < 1e-9) {
             const pad = Math.max(Math.abs(maxValue) * 0.05, 1);
             axis.min = minValue - pad;
             axis.max = maxValue + pad;
             return;
         }
-        const span = maxValue - minValue;
-        const pad = span * 0.1;
-        axis.min = minValue - pad;
-        axis.max = maxValue + pad;
+        // Otherwise, allow Chart.js to natively auto-pad both max and min ceilings!
     }
 
     function getCurveColor(idx: number): string {

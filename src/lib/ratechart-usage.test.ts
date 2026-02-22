@@ -56,7 +56,6 @@ describe('ChartSubPanel architecture checks', () => {
 
   it('contains axis bounds logic', () => {
     expect(/applyPositiveAxisBounds/.test(subPanelSrc)).toBe(true);
-    expect(/niceUpperBound/.test(subPanelSrc)).toBe(true);
   });
 
   it('applies theme to its chart', () => {
