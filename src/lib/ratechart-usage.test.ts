@@ -14,9 +14,9 @@ describe('RateChart architecture checks', () => {
   });
 
   it('defines three panel curve configs (rates, cumulative, diagnostics)', () => {
-    expect(/ratesCurves\s*:\s*CurveConfig\[\]/.test(rateChartSrc)).toBe(true);
-    expect(/cumulativeCurves\s*:\s*CurveConfig\[\]/.test(rateChartSrc)).toBe(true);
-    expect(/diagnosticsCurves\s*:\s*CurveConfig\[\]/.test(rateChartSrc)).toBe(true);
+    expect(/baseRatesCurves\s*:\s*CurveConfig\[\]/.test(rateChartSrc)).toBe(true);
+    expect(/baseCumulativeCurves\s*:\s*CurveConfig\[\]/.test(rateChartSrc)).toBe(true);
+    expect(/baseDiagnosticsCurves\s*:\s*CurveConfig\[\]/.test(rateChartSrc)).toBe(true);
   });
 
   it('builds XY series for each panel', () => {

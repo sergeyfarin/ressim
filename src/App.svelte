@@ -1581,6 +1581,7 @@
                             {activeCategory}
                             {activeCase}
                             {theme}
+                            layoutConfig={findCaseByKey(activeCase)?.case?.params?.layout}
                         />
                     {:else}
                         <div class="p-4 md:p-5 text-sm opacity-70">

@@ -12,7 +12,8 @@
         poreVolumeM3 = 0,
         activeCategory = '',
         activeCase = '',
-        theme = 'dark'
+        theme = 'dark',
+        layoutConfig
     }: {
         rateHistory?: RateHistoryPoint[];
         analyticalProductionData?: AnalyticalProductionPoint[];
@@ -23,6 +24,7 @@
         activeCategory?: string;
         activeCase?: string;
         theme?: 'dark' | 'light';
+        layoutConfig?: any;
     } = $props();
 
     // --- X-axis state (shared across all panels) ---
@@ -49,21 +51,40 @@
     // --- Scenario-aware panel defaults ---
     // --- Scenario-aware panel defaults ---
     $effect(() => {
+        // Track the activeCase trigger affirmatively so it evaluates once upon case shift
         const cat = (activeCategory ?? '').toLowerCase();
         const cs = (activeCase ?? '').toLowerCase();
-        if (cat === 'depletion' || cs.includes('depletion')) {
-            ratesExpanded = true;
-            cumulativeExpanded = false;
-            diagnosticsExpanded = true;
-        } else if (cat === 'waterflood' || cs.includes('waterflood') || cs.startsWith('bl_')) {
-            ratesExpanded = true;
-            cumulativeExpanded = true;
-            diagnosticsExpanded = false;
-        }
-        // Set default x-axis
-        if (cs.startsWith('bl_') || cs === 'waterflood_custom_subcase') {
-            xAxisMode = pviAvailable ? 'pvi' : 'time';
-        }
+        
+        // Use untrack so setting the state variables right here does not re-trigger this exact effect!
+        import("svelte").then(({ untrack }) => {
+            untrack(() => {
+                const conf = layoutConfig?.rateChart;
+                if (conf) {
+                    if (conf.logScale !== undefined) logScale = conf.logScale;
+                    if (conf.xAxisMode !== undefined) xAxisMode = conf.xAxisMode;
+                    if (conf.ratesExpanded !== undefined) ratesExpanded = conf.ratesExpanded;
+                    if (conf.cumulativeExpanded !== undefined) cumulativeExpanded = conf.cumulativeExpanded;
+                    if (conf.diagnosticsExpanded !== undefined) diagnosticsExpanded = conf.diagnosticsExpanded;
+                } else {
+                    // Fallback to purely string-matched defaults when CaseParams lacks layout metadata
+                    if (cat === 'depletion' || cs.includes('depletion')) {
+                        ratesExpanded = true;
+                        cumulativeExpanded = false;
+                        diagnosticsExpanded = true;
+                    } else if (cat === 'waterflood' || cs.includes('waterflood') || cs.startsWith('bl_')) {
+                        ratesExpanded = true;
+                        cumulativeExpanded = true;
+                        diagnosticsExpanded = false;
+                    }
+                    if (cs.startsWith('bl_') || cs === 'waterflood_custom_subcase') {
+                        xAxisMode = pviAvailable ? 'pvi' : 'time';
+                    } else {
+                        xAxisMode = 'time';
+                        logScale = false;
+                    }
+                }
+            });
+        });
     });
 
     // ════════════════════════════════════════════════════════════
@@ -268,7 +289,21 @@
     //  PANEL CURVE CONFIGS + SERIES
     // ══════════════════════════════════════════════════════════════
 
-    const ratesCurves: CurveConfig[] = [
+    function applyCurveLayout(defaultCurves: CurveConfig[]): CurveConfig[] {
+        const customCurves = layoutConfig?.rateChart?.curves;
+        if (!customCurves) return defaultCurves;
+        return defaultCurves.map(c => {
+            const override = customCurves[c.label];
+            if (!override) return c;
+            return {
+                ...c,
+                defaultVisible: override.visible !== undefined ? override.visible : c.defaultVisible,
+                disabled: override.disabled
+            };
+        });
+    }
+
+    const baseRatesCurves: CurveConfig[] = [
         { label: 'Oil Rate', color: '#16a34a', borderWidth: 2.5, yAxisID: 'y' },
         { label: 'Oil Rate (Analytical)', color: '#15803d', borderWidth: 2, borderDash: [5, 5], yAxisID: 'y' },
         { label: 'Water Rate', color: '#1e3a8a', borderWidth: 2.5, yAxisID: 'y' },
@@ -278,7 +313,7 @@
         { label: 'Oil Rate Error', color: '#15803d', borderWidth: 1.3, borderDash: [2, 4], yAxisID: 'y', defaultVisible: false },
     ];
 
-    const cumulativeCurves: CurveConfig[] = [
+    const baseCumulativeCurves: CurveConfig[] = [
         { label: 'Cum Oil', color: '#0f5132', borderWidth: 2.5, yAxisID: 'y' },
         { label: 'Cum Oil (Analytical)', color: '#0f5132', borderWidth: 2, borderDash: [8, 4], yAxisID: 'y' },
         { label: 'Cum Injection', color: '#06b6d4', borderWidth: 2, yAxisID: 'y' },
@@ -286,7 +321,7 @@
         { label: 'Recovery Factor', color: '#22c55e', borderWidth: 2, yAxisID: 'y1' },
     ];
 
-    const diagnosticsCurves: CurveConfig[] = [
+    const baseDiagnosticsCurves: CurveConfig[] = [
         { label: 'Avg Pressure', color: '#dc2626', borderWidth: 2, yAxisID: 'y' },
         { label: 'Avg Pressure (Analytical)', color: '#f97316', borderWidth: 2, borderDash: [5, 5], yAxisID: 'y' },
         { label: 'VRR', color: '#7c3aed', borderWidth: 2.5, yAxisID: 'y1', defaultVisible: false },
@@ -297,6 +332,10 @@
         { label: 'Water Cut (Analytical)', color: '#1d4ed8', borderWidth: 2, borderDash: [6, 4], yAxisID: 'y1', defaultVisible: false },
         { label: 'MB Error', color: '#ef4444', borderWidth: 1.5, borderDash: [3, 3], yAxisID: 'y2', defaultVisible: false },
     ];
+
+    let ratesCurves = $derived(applyCurveLayout(baseRatesCurves));
+    let cumulativeCurves = $derived(applyCurveLayout(baseCumulativeCurves));
+    let diagnosticsCurves = $derived(applyCurveLayout(baseDiagnosticsCurves));
 
     // --- Build XY series for each panel ---
     let ratesSeries = $derived([

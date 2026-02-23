@@ -9,7 +9,29 @@
  * and the export-cases script.
  */
 
-export type CaseParams = Record<string, any>;
+export type CurveLayoutConfig = {
+    visible?: boolean;
+    disabled?: boolean;
+};
+
+export type RateChartLayoutConfig = {
+    logScale?: boolean;
+    xAxisMode?: 'time' | 'logTime' | 'pvi' | 'cumLiquid' | 'cumInjection';
+    ratesExpanded?: boolean;
+    cumulativeExpanded?: boolean;
+    diagnosticsExpanded?: boolean;
+    curves?: Record<string, CurveLayoutConfig>; // Keyed by exact Curve label
+};
+
+export type CaseLayoutConfig = {
+    rateChart?: RateChartLayoutConfig;
+    threeDView?: Record<string, any>; // Placeholder for future 3D config
+    swProfile?: Record<string, any>;  // Placeholder for future Sw config
+};
+
+export type CaseParams = Record<string, any> & {
+    layout?: CaseLayoutConfig;
+};
 
 export type CaseEntry = {
     key: string;
@@ -88,6 +110,15 @@ export const caseCatalog: Record<string, CaseCategory> = {
                     s_wc: 0.1, s_or: 0.1, n_w: 2.0, n_o: 2.0,
                     gravityEnabled: false,
                     capillaryEnabled: false, capillaryPEntry: 0.0, capillaryLambda: 2.0,
+                    layout: {
+                        rateChart: {
+                            logScale: true,
+                            curves: {
+                                'Water Cut (Sim)': { disabled: true },
+                                'Water Cut (Analytical)': { disabled: true }
+                            }
+                        }
+                    }
                 },
             },
             {

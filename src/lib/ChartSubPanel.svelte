@@ -14,6 +14,7 @@
         borderDash?: number[];
         yAxisID: string;
         defaultVisible?: boolean;
+        disabled?: boolean;
     }
 
     let {
@@ -432,12 +433,14 @@
                 {#each curves as curve, idx}
                 <button
                     type="button"
-                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-all cursor-pointer select-none
+                    disabled={curve.disabled}
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-all select-none
                         {visibleCurves[idx]
                             ? 'bg-base-200 border-2 border-base-content/30 opacity-100 shadow-sm'
-                            : 'bg-transparent border border-dashed border-base-content/20 opacity-50 hover:opacity-75'}"
+                            : 'bg-transparent border border-dashed border-base-content/20 opacity-50'}
+                        {!curve.disabled ? 'cursor-pointer hover:opacity-75' : 'disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale'}"
                     onclick={() => toggleCurve(idx)}
-                    title={visibleCurves[idx] ? `Hide ${curve.label}` : `Show ${curve.label}`}
+                    title={curve.disabled ? 'Curve disabled for this case' : visibleCurves[idx] ? `Hide ${curve.label}` : `Show ${curve.label}`}
                 >
                     <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
                         <line x1="0" y1="1.5" x2="14" y2="1.5"
