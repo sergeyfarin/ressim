@@ -101,10 +101,6 @@ export interface GridState {
   pressure: Float64Array;
   sat_water: Float64Array;
   sat_oil: Float64Array;
-  porosity: Float64Array;
-  perm_x: Float64Array;
-  perm_y: Float64Array;
-  perm_z: Float64Array;
 }
 
 export interface WellStateEntry {

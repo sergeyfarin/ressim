@@ -18,7 +18,6 @@
         simTime = 0,
         producerJ = 0,
         initialSaturation = 0.3,
-        reservoirPorosity = 0.2,
         injectionRate = 0,
         scenarioMode = "waterflood",
         rockProps,
@@ -34,7 +33,6 @@
         simTime?: number;
         producerJ?: number;
         initialSaturation?: number;
-        reservoirPorosity?: number;
         injectionRate?: number;
         scenarioMode?: "waterflood" | "depletion";
         rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
@@ -246,9 +244,7 @@
 
         const { swi, swShock, dfwShock } = computeShockSw();
         const area = Math.max(1e-9, ny * cellDy * nz * cellDz);
-        const vShock =
-            (injectionRate / (area * Math.max(1e-9, reservoirPorosity))) *
-            Math.max(0, dfwShock);
+        const vShock = (injectionRate / area) * Math.max(0, dfwShock);
         const xFront = Math.max(
             0,
             Math.min(nx * cellDx, vShock * Math.max(0, simTime)),

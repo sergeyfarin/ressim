@@ -108,10 +108,6 @@ function getGridStateFromSim(sim) {
         pressure: Array.from(sim.getPressures()),
         sat_water: Array.from(sim.getSatWater()),
         sat_oil: Array.from(sim.getSatOil()),
-        porosity: Array.from(sim.getPorosity()),
-        perm_x: Array.from(sim.getPermX()),
-        perm_y: Array.from(sim.getPermY()),
-        perm_z: Array.from(sim.getPermZ()),
     };
 }
 

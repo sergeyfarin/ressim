@@ -32,14 +32,7 @@
 
     type HistoryEntry = SimulatorSnapshot;
 
-    type PropertyKey =
-        | "pressure"
-        | "saturation_water"
-        | "saturation_oil"
-        | "permeability_x"
-        | "permeability_y"
-        | "permeability_z"
-        | "porosity";
+    type PropertyKey = "pressure" | "saturation_water" | "saturation_oil";
 
     export let nx: number = 20;
     export let ny: number = 10;
@@ -106,10 +99,6 @@
         pressure: { min: 0, max: 1000 },
         saturation_water: { min: 0, max: 1 },
         saturation_oil: { min: 0, max: 1 },
-        permeability_x: { min: 0, max: 1000 },
-        permeability_y: { min: 0, max: 1000 },
-        permeability_z: { min: 0, max: 1000 },
-        porosity: { min: 0, max: 0.4 },
     };
 
     const propertyDisplay: Record<
@@ -127,20 +116,12 @@
             unit: "fraction",
             decimals: 3,
         },
-        permeability_x: { label: "Permeability X", unit: "mD", decimals: 1 },
-        permeability_y: { label: "Permeability Y", unit: "mD", decimals: 1 },
-        permeability_z: { label: "Permeability Z", unit: "mD", decimals: 1 },
-        porosity: { label: "Porosity", unit: "fraction", decimals: 3 },
     };
 
     const showPropertyOptions: Array<{ value: PropertyKey; label: string }> = [
         { value: "pressure", label: "Pressure" },
         { value: "saturation_water", label: "Water Sat" },
         { value: "saturation_oil", label: "Oil Sat" },
-        { value: "permeability_x", label: "Perm X" },
-        { value: "permeability_y", label: "Perm Y" },
-        { value: "permeability_z", label: "Perm Z" },
-        { value: "porosity", label: "Porosity" },
     ];
 
     let groupSummary = "";
@@ -281,14 +262,6 @@
             return Number(grid.sat_water?.[index] ?? NaN);
         if (property === "saturation_oil")
             return Number(grid.sat_oil?.[index] ?? NaN);
-        if (property === "permeability_x")
-            return Number(grid.perm_x?.[index] ?? NaN);
-        if (property === "permeability_y")
-            return Number(grid.perm_y?.[index] ?? NaN);
-        if (property === "permeability_z")
-            return Number(grid.perm_z?.[index] ?? NaN);
-        if (property === "porosity")
-            return Number(grid.porosity?.[index] ?? NaN);
         return NaN;
     }
 
@@ -328,23 +301,6 @@
             const max = Number.isFinite(dataMax)
                 ? Math.max(min + 1e-6, dataMax)
                 : Math.max(min + 1e-6, fixed.max);
-            return { min, max };
-        }
-
-        if (
-            property === "permeability_x" ||
-            property === "permeability_y" ||
-            property === "permeability_z" ||
-            property === "porosity"
-        ) {
-            const referenceGrid = getStaticReferenceGrid();
-            const values = getPropertyValuesFromGrid(referenceGrid, property);
-            if (values.length === 0) return fixed;
-            const min = Math.min(...values);
-            const max = Math.max(...values);
-            if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-                return fixed;
-            }
             return { min, max };
         }
 
@@ -1197,24 +1153,34 @@
 </script>
 
 <div style="display:flex; flex-direction:column;">
-    <div class="w-full">
-        <div class="flex items-center gap-3 w-full">
+    <div
+        class="w-full bg-card border border-border rounded-md shadow-sm p-3 mb-2"
+    >
+        <div class="flex items-center gap-4 w-full">
             <input
                 type="range"
-                class="range range-sm flex-1"
+                class="time-slider flex-1"
                 min="0"
                 max={Math.max(0, history.length - 1)}
                 bind:value={currentIndex}
                 oninput={applySliderValue}
                 onchange={applySliderValue}
             />
-            <div class="flex flex-col items-end text-right">
-                <div class="text-xs opacity-80">
-                    Step: {currentIndex} / {Math.max(0, history.length - 1)}
+            <div
+                class="flex flex-col items-end text-right min-w-[140px] select-none"
+            >
+                <div class="text-[12px] font-mono font-medium text-foreground">
+                    Step <span class="text-primary">{currentIndex}</span><span
+                        class="text-muted-foreground"
+                    >
+                        / {Math.max(0, history.length - 1)}</span
+                    >
                 </div>
                 {#if replayTime !== null}
-                    <div class="text-xs opacity-80">
-                        Replay Time: {replayTime.toFixed(2)} days
+                    <div
+                        class="text-[11px] font-medium text-muted-foreground mt-0.5"
+                    >
+                        Time: {replayTime.toFixed(2)} days
                     </div>
                 {/if}
             </div>

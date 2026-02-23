@@ -348,17 +348,7 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = getSatOil)]
     pub fn get_sat_oil(&self) -> Vec<f64> { self.sat_oil.clone() }
 
-    #[wasm_bindgen(js_name = getPorosity)]
-    pub fn get_porosity(&self) -> Vec<f64> { self.porosity.clone() }
 
-    #[wasm_bindgen(js_name = getPermX)]
-    pub fn get_perm_x(&self) -> Vec<f64> { self.perm_x.clone() }
-
-    #[wasm_bindgen(js_name = getPermY)]
-    pub fn get_perm_y(&self) -> Vec<f64> { self.perm_y.clone() }
-
-    #[wasm_bindgen(js_name = getPermZ)]
-    pub fn get_perm_z(&self) -> Vec<f64> { self.perm_z.clone() }
 
     #[wasm_bindgen(js_name = getWellState)]
     pub fn get_well_state(&self) -> JsValue {

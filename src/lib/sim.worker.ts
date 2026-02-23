@@ -56,10 +56,6 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
     pressure: simulator.getPressures(),
     sat_water: simulator.getSatWater(),
     sat_oil: simulator.getSatOil(),
-    porosity: simulator.getPorosity(),
-    perm_x: simulator.getPermX(),
-    perm_y: simulator.getPermY(),
-    perm_z: simulator.getPermZ(),
   };
   const wells = simulator.getWellState();
   const time = simulator.get_time();

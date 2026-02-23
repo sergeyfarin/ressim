@@ -26,10 +26,6 @@ export class ReservoirSimulator {
      * Get last solver warning message (empty string if no warning)
      */
     getLastSolverWarning(): string;
-    getPermX(): Float64Array;
-    getPermY(): Float64Array;
-    getPermZ(): Float64Array;
-    getPorosity(): Float64Array;
     getPressures(): Float64Array;
     getRateHistory(): any;
     getSatOil(): Float64Array;
@@ -107,10 +103,6 @@ export interface InitOutput {
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
-    readonly reservoirsimulator_getPermX: (a: number) => [number, number];
-    readonly reservoirsimulator_getPermY: (a: number) => [number, number];
-    readonly reservoirsimulator_getPermZ: (a: number) => [number, number];
-    readonly reservoirsimulator_getPorosity: (a: number) => [number, number];
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
     readonly reservoirsimulator_getSatOil: (a: number) => [number, number];
