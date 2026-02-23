@@ -1,34 +1,64 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
-    import { Chart, registerables } from 'chart.js';
-    import { safeSetDatasetData, externalTooltipHandler } from './chart-helpers';
+    import { onMount, onDestroy } from "svelte";
+    import { Chart, registerables } from "chart.js";
+    import {
+        safeSetDatasetData,
+        externalTooltipHandler,
+    } from "./chart-helpers";
 
-    import type { GridState } from './simulator-types';
+    import type { GridState } from "./simulator-types";
     let {
         gridState = null,
-        nx = 1, ny = 1, nz = 1,
-        cellDx = 10, cellDy = 10, cellDz = 1,
-        simTime = 0, producerJ = 0,
-        initialSaturation = 0.3, reservoirPorosity = 0.2, injectionRate = 0,
-        scenarioMode = 'waterflood',
-        rockProps, fluidProps
+        nx = 1,
+        ny = 1,
+        nz = 1,
+        cellDx = 10,
+        cellDy = 10,
+        cellDz = 1,
+        simTime = 0,
+        producerJ = 0,
+        initialSaturation = 0.3,
+        reservoirPorosity = 0.2,
+        injectionRate = 0,
+        scenarioMode = "waterflood",
+        rockProps,
+        fluidProps,
     }: {
         gridState?: GridState | null;
-        nx?: number; ny?: number; nz?: number;
-        cellDx?: number; cellDy?: number; cellDz?: number;
-        simTime?: number; producerJ?: number;
-        initialSaturation?: number; reservoirPorosity?: number; injectionRate?: number;
-        scenarioMode?: 'waterflood' | 'depletion';
+        nx?: number;
+        ny?: number;
+        nz?: number;
+        cellDx?: number;
+        cellDy?: number;
+        cellDz?: number;
+        simTime?: number;
+        producerJ?: number;
+        initialSaturation?: number;
+        reservoirPorosity?: number;
+        injectionRate?: number;
+        scenarioMode?: "waterflood" | "depletion";
         rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
         fluidProps: { mu_w: number; mu_o: number };
     } = $props();
 
     let chartCanvas = $state<HTMLCanvasElement | null>(null);
-    let chart = $state<Chart<'line', Array<number | null>, string> | null>(null);
+    let chart = $state<Chart<"line", Array<number | null>, string> | null>(
+        null,
+    );
     let frontCellIndex = $state<number | null>(null);
 
     let selectedRowInput = $state<number>(Number.NaN);
-    let selectedRow = $derived(Math.max(0, Math.min(ny - 1, Number.isFinite(selectedRowInput) ? selectedRowInput : producerJ)));
+    let selectedRow = $derived(
+        Math.max(
+            0,
+            Math.min(
+                ny - 1,
+                Number.isFinite(selectedRowInput)
+                    ? selectedRowInput
+                    : producerJ,
+            ),
+        ),
+    );
 
     $effect(() => {
         // Track reactive dependencies that affect charting
@@ -38,25 +68,25 @@
 
     onMount(() => {
         Chart.register(...registerables);
-        const ctx = chartCanvas?.getContext('2d');
+        const ctx = chartCanvas?.getContext("2d");
         if (!ctx) return;
 
         chart = new Chart(ctx, {
-            type: 'line',
+            type: "line",
             data: {
                 labels: [],
                 datasets: [
                     {
-                        label: 'Simulated Sw Profile',
+                        label: "Simulated Sw Profile",
                         data: [],
-                        borderColor: '#1d4ed8',
+                        borderColor: "#1d4ed8",
                         borderWidth: 2.4,
                         pointRadius: 0,
                     },
                     {
-                        label: 'Analytical Front Profile',
+                        label: "Analytical Front Profile",
                         data: [],
-                        borderColor: '#16a34a',
+                        borderColor: "#16a34a",
                         borderWidth: 2,
                         borderDash: [6, 4],
                         pointRadius: 0,
@@ -69,31 +99,52 @@
                 plugins: {
                     legend: {
                         display: true,
-                        labels: { font: { family: "'JetBrains Mono', monospace", size: 11 } }
+                        labels: {
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 11,
+                            },
+                        },
                     },
                     tooltip: {
                         enabled: false,
-                        external: externalTooltipHandler
+                        external: externalTooltipHandler,
                     },
                 },
                 scales: {
                     x: {
                         title: {
                             display: true,
-                            text: 'Cell Index (i)',
-                            font: { family: "'JetBrains Mono', monospace", size: 11 }
+                            text: "Cell Index (i)",
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 11,
+                            },
                         },
-                        ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } }
+                        ticks: {
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 10,
+                            },
+                        },
                     },
                     y: {
                         min: 0,
                         max: 1,
                         title: {
                             display: true,
-                            text: 'Water Saturation Sw',
-                            font: { family: "'JetBrains Mono', monospace", size: 11 }
+                            text: "Water Saturation Sw",
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 11,
+                            },
                         },
-                        ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } }
+                        ticks: {
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 10,
+                            },
+                        },
                     },
                 },
             },
@@ -107,21 +158,25 @@
         chart = null;
     });
 
-
-
     function cellIndex(i: number, j: number, k: number) {
-        return (k * nx * ny) + (j * nx) + i;
+        return k * nx * ny + j * nx + i;
     }
 
     function k_rw(s_w: number) {
         const { s_wc, s_or, n_w } = rockProps;
-        const s_eff = Math.max(0, Math.min(1, (s_w - s_wc) / (1 - s_wc - s_or)));
+        const s_eff = Math.max(
+            0,
+            Math.min(1, (s_w - s_wc) / (1 - s_wc - s_or)),
+        );
         return Math.pow(s_eff, n_w);
     }
 
     function k_ro(s_w: number) {
         const { s_wc, s_or, n_o } = rockProps;
-        const s_eff = Math.max(0, Math.min(1, (1 - s_w - s_or) / (1 - s_wc - s_or)));
+        const s_eff = Math.max(
+            0,
+            Math.min(1, (1 - s_w - s_or) / (1 - s_wc - s_or)),
+        );
         return Math.pow(s_eff, n_o);
     }
 
@@ -130,7 +185,7 @@
         const krw = k_rw(s_w);
         const kro = k_ro(s_w);
         const numerator = krw / mu_w;
-        const denominator = numerator + (kro / mu_o);
+        const denominator = numerator + kro / mu_o;
         if (denominator === 0) return 0;
         return numerator / denominator;
     }
@@ -158,7 +213,14 @@
     }
 
     function buildSimulatedProfile() {
-        if (!gridState || !gridState.sat_water || gridState.sat_water.length === 0 || nx <= 0 || ny <= 0 || nz <= 0) {
+        if (
+            !gridState ||
+            !gridState.sat_water ||
+            gridState.sat_water.length === 0 ||
+            nx <= 0 ||
+            ny <= 0 ||
+            nz <= 0
+        ) {
             return Array.from({ length: Math.max(1, nx) }, () => null);
         }
 
@@ -168,23 +230,33 @@
         for (let i = 0; i < nx; i++) {
             const id = cellIndex(i, row, 0);
             const sw = gridState.sat_water[id];
-            values.push(Number.isFinite(sw) ? Math.max(0, Math.min(1, sw)) : null);
+            values.push(
+                Number.isFinite(sw) ? Math.max(0, Math.min(1, sw)) : null,
+            );
         }
 
         return values;
     }
 
     function buildAnalyticalProfile() {
-        if (scenarioMode !== 'waterflood' || injectionRate <= 0 || nx <= 0) {
+        if (scenarioMode !== "waterflood" || injectionRate <= 0 || nx <= 0) {
             frontCellIndex = null;
             return Array.from({ length: Math.max(1, nx) }, () => null);
         }
 
         const { swi, swShock, dfwShock } = computeShockSw();
         const area = Math.max(1e-9, ny * cellDy * nz * cellDz);
-        const vShock = (injectionRate / (area * Math.max(1e-9, reservoirPorosity))) * Math.max(0, dfwShock);
-        const xFront = Math.max(0, Math.min(nx * cellDx, vShock * Math.max(0, simTime)));
-        frontCellIndex = Math.max(0, Math.min(nx - 1, Math.floor(xFront / Math.max(1e-9, cellDx))));
+        const vShock =
+            (injectionRate / (area * Math.max(1e-9, reservoirPorosity))) *
+            Math.max(0, dfwShock);
+        const xFront = Math.max(
+            0,
+            Math.min(nx * cellDx, vShock * Math.max(0, simTime)),
+        );
+        frontCellIndex = Math.max(
+            0,
+            Math.min(nx - 1, Math.floor(xFront / Math.max(1e-9, cellDx))),
+        );
 
         const profile = [];
         for (let i = 0; i < nx; i++) {
@@ -197,7 +269,10 @@
     function updateProfileChart() {
         if (!chart) return;
 
-        const labels = Array.from({ length: Math.max(1, nx) }, (_, idx) => `${idx}`);
+        const labels = Array.from(
+            { length: Math.max(1, nx) },
+            (_, idx) => `${idx}`,
+        );
         const simulated = buildSimulatedProfile();
         const analytical = buildAnalyticalProfile();
 
@@ -208,12 +283,17 @@
     }
 </script>
 
-<div class="card border border-base-300 bg-base-100 shadow-sm">
-    <div class="card-body p-4 md:p-5">
+<div class="rounded-lg border border-border bg-card shadow-sm">
+    <div class="p-4 md:p-5">
         <div class="mb-2 flex flex-wrap items-end gap-2">
             <div>
-                <h3 class="text-sm font-semibold">Sw Profile Along Injector-Producer Axis</h3>
-                <p class="text-xs opacity-70">Current snapshot vs analytical flood-front profile (k = 0 plane).</p>
+                <h3 class="text-sm font-semibold">
+                    Sw Profile Along Injector-Producer Axis
+                </h3>
+                <p class="text-xs opacity-70">
+                    Current snapshot vs analytical flood-front profile (k = 0
+                    plane).
+                </p>
             </div>
             <label class="form-control ml-auto w-44">
                 <span class="label-text text-xs">Row (j)</span>
@@ -222,7 +302,7 @@
                     min="0"
                     max={Math.max(0, ny - 1)}
                     step="1"
-                    class="input input-bordered input-xs"
+                    class="flex h-7 w-20 rounded-md border border-input bg-transparent px-2 py-1 shadow-sm transition-colors text-xs"
                     bind:value={selectedRowInput}
                 />
             </label>
@@ -233,7 +313,11 @@
         </div>
 
         {#if frontCellIndex !== null}
-            <div class="mt-2 text-xs opacity-80">Analytical front is near cell i ≈ {frontCellIndex} at t = {simTime.toFixed(2)} days.</div>
+            <div class="mt-2 text-xs opacity-80">
+                Analytical front is near cell i ≈ {frontCellIndex} at t = {simTime.toFixed(
+                    2,
+                )} days.
+            </div>
         {/if}
     </div>
 </div>

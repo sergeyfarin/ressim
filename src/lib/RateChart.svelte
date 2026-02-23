@@ -691,14 +691,14 @@
         >
         <div
             id="x-axis-select"
-            class="inline-flex rounded-full border border-base-content/20 shadow-sm overflow-hidden shrink-0"
+            class="inline-flex rounded-md border border-border shadow-sm overflow-hidden shrink-0"
         >
             <button
                 type="button"
                 class="px-3 py-1 text-[11px] font-medium transition-colors
                     {xAxisMode === 'time'
-                    ? 'bg-primary text-primary-content'
-                    : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
                 onclick={() => setXAxisMode("time")}
             >
                 Time
@@ -706,10 +706,10 @@
             <button
                 type="button"
                 disabled={!pviAvailable}
-                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-base-content/20
+                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-border
                     {xAxisMode === 'pvi'
-                    ? 'bg-primary text-primary-content'
-                    : 'bg-transparent text-base-content/50 hover:text-base-content/80'}
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}
                     disabled:opacity-30 disabled:cursor-not-allowed"
                 onclick={() => setXAxisMode("pvi")}
                 title="PV Injected"
@@ -718,10 +718,10 @@
             </button>
             <button
                 type="button"
-                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-base-content/20
+                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-border
                     {xAxisMode === 'cumLiquid'
-                    ? 'bg-primary text-primary-content'
-                    : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
                 onclick={() => setXAxisMode("cumLiquid")}
                 title="Cumulative Liquid"
             >
@@ -729,10 +729,10 @@
             </button>
             <button
                 type="button"
-                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-base-content/20
+                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-border
                     {xAxisMode === 'cumInjection'
-                    ? 'bg-primary text-primary-content'
-                    : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
                 onclick={() => setXAxisMode("cumInjection")}
                 title="Cumulative Injection"
             >
@@ -740,10 +740,10 @@
             </button>
             <button
                 type="button"
-                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-base-content/20
+                class="px-3 py-1 text-[11px] font-medium transition-colors border-l border-border
                     {xAxisMode === 'logTime'
-                    ? 'bg-primary text-primary-content'
-                    : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
                 onclick={() => setXAxisMode("logTime")}
                 title="Log Time (Fetkovich)"
             >

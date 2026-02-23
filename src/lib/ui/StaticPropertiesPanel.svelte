@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Collapsible from "../components/ui/Collapsible.svelte";
+  import Input from "../components/ui/Input.svelte";
+
   let {
     nx = $bindable(15),
     ny = $bindable(10),
@@ -40,120 +43,123 @@
   }
 </script>
 
-<details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
-  <summary
-    class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5"
-  >
-    <div>
-      <div class="font-semibold">Grid Parameters</div>
-      <div class="text-xs opacity-70">{groupSummary}</div>
+<Collapsible title="Grid Parameters">
+  <div class="space-y-3 p-4 md:p-5">
+    <div class="flex justify-between items-center mb-2">
+      <p class="text-xs font-medium text-muted-foreground">
+        Grid dimensions and physical model extent.
+      </p>
+      <p class="text-xs text-muted-foreground font-medium">{groupSummary}</p>
     </div>
-    <div class="flex items-center gap-2 text-xs opacity-70">
-      <span class="collapse-label-open hidden">Collapse</span>
-      <span class="collapse-label-closed">Expand</span>
-      <span class="collapse-chevron">▸</span>
-    </div>
-  </summary>
-  <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
-    <p class="text-xs opacity-70">Grid dimensions and physical model extent.</p>
 
-    <div class="overflow-x-auto rounded-md border border-base-300">
-      <table class="table table-xs compact-table w-full">
-        <thead>
-          <tr class="bg-base-200/50">
-            <th>Dimension</th>
-            <th>Cells (n)</th>
-            <th>Cell Size (Δ, m)</th>
-            <th>Total Length (m)</th>
+    <div class="overflow-x-auto rounded-md border border-border">
+      <table class="compact-table w-full text-left">
+        <thead
+          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+        >
+          <tr>
+            <th class="font-medium p-2">Dim</th>
+            <th class="font-medium p-2">Cells (n)</th>
+            <th class="font-medium p-2">Size (Δ, m)</th>
+            <th class="font-medium p-2">Total (m)</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-border">
           <tr>
-            <td class="font-semibold text-center align-middle">X</td>
             <td
-              ><input
+              class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
+              >X</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={nx}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={cellDx}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 value={modelSizeX}
                 oninput={handleTotalXChange}
               /></td
             >
           </tr>
           <tr>
-            <td class="font-semibold text-center align-middle">Y</td>
             <td
-              ><input
+              class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
+              >Y</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={ny}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={cellDy}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 value={modelSizeY}
                 oninput={handleTotalYChange}
               /></td
             >
           </tr>
           <tr>
-            <td class="font-semibold text-center align-middle">Z</td>
             <td
-              ><input
+              class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
+              >Z</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={nz}
                 oninput={onNzOrPermModeChange}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={cellDz}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 value={modelSizeZ}
                 oninput={handleTotalZChange}
               /></td
@@ -163,20 +169,4 @@
       </table>
     </div>
   </div>
-</details>
-
-<style>
-  details[open] .collapse-chevron {
-    transform: rotate(90deg);
-  }
-  .collapse-chevron {
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-  details[open] .collapse-label-open {
-    display: inline;
-  }
-  details[open] .collapse-label-closed {
-    display: none;
-  }
-</style>
+</Collapsible>

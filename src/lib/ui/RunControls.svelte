@@ -1,4 +1,8 @@
 <script lang="ts">
+  import Card from "../components/ui/Card.svelte";
+  import Input from "../components/ui/Input.svelte";
+  import Button from "../components/ui/Button.svelte";
+
   let {
     wasmReady = false,
     workerRunning = false,
@@ -44,103 +48,108 @@
   } = $props();
 </script>
 
-<div class="card border border-base-300 bg-base-100 shadow-sm">
-  <div class="card-body p-3 md:p-4">
+<Card>
+  <div class="p-3 md:p-4">
     <div class="flex flex-wrap items-center gap-3">
       <!-- Steps input -->
       <label class="flex items-center gap-2">
         <span class="text-xs font-medium whitespace-nowrap">Steps:</span>
-        <input
-          type="number"
-          min="1"
-          class="input input-bordered input-sm w-20"
-          bind:value={steps}
-        />
+        <Input type="number" min="1" class="w-20" bind:value={steps} />
       </label>
 
       <label class="flex items-center gap-2">
         <span class="text-xs font-medium whitespace-nowrap">Render Every:</span>
-        <input
+        <Input
           type="number"
           min="1"
-          class="input input-bordered input-sm w-16"
+          class="w-16"
           bind:value={historyInterval}
         />
       </label>
 
       <!-- Action buttons -->
       <div class="flex flex-wrap gap-2">
-        <button
-          class="btn btn-sm btn-primary"
+        <Button
+          size="sm"
+          variant="default"
           onclick={onRunSteps}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >▶ Run {steps} Steps</button
+          >▶ Run {steps} Steps</Button
         >
 
-        <button
-          class="btn btn-sm btn-outline"
+        <Button
+          size="sm"
+          variant="outline"
           onclick={onStepOnce}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >Step Once</button
+          >Step Once</Button
         >
 
-        <button
-          class="btn btn-sm btn-warning"
+        <Button
+          size="sm"
+          variant="destructive"
           onclick={onStopRun}
-          disabled={!canStop}>⏹ Stop</button
+          disabled={!canStop}>⏹ Stop</Button
         >
 
-        <button
-          class="btn btn-sm btn-ghost"
+        <Button
+          size="sm"
+          variant="ghost"
           onclick={onInitSimulator}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >↻ Reinit</button
+          >↻ Reinit</Button
         >
 
         {#if inputsAnchorHref}
           <a
-            class="link link-primary text-xs self-center"
+            class="text-primary text-xs self-center underline-offset-4 hover:underline"
             href={inputsAnchorHref}>Jump to Inputs</a
           >
         {/if}
       </div>
 
       <!-- Status -->
-      <div class="flex flex-wrap items-center gap-3 text-xs opacity-70 ml-auto">
+      <div
+        class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground ml-auto"
+      >
         <span
-          class="badge badge-sm {wasmReady ? 'badge-success' : 'badge-warning'}"
+          class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 {wasmReady
+            ? 'bg-primary text-primary-foreground text-[10px]'
+            : 'bg-destructive text-destructive-foreground text-[10px]'}"
         >
           {wasmReady ? "WASM Ready" : "Loading…"}
         </span>
-        <span>{continuationStatus ||
+        <span
+          >{continuationStatus ||
             (workerRunning
               ? "⏳ Running"
               : runCompleted
                 ? "✓ Done"
-                : "○ Idle")}</span>
+                : "○ Idle")}</span
+        >
         <span>{simTime.toFixed(1)} days</span>
         <span>{historyLength} snapshots</span>
         {#if runProgress}
-          <span class="text-primary">{runProgress}</span>
+          <span class="text-primary font-medium">{runProgress}</span>
         {/if}
       </div>
     </div>
 
     {#if continuationStatus}
-      <div class="text-xs text-info mt-1">{continuationStatus}</div>
+      <div class="text-xs text-primary mt-1">{continuationStatus}</div>
     {/if}
 
     <!-- Warnings / notices -->
     {#if modelReinitNotice}
-      <div class="text-xs text-warning mt-1">⚠ {modelReinitNotice}</div>
+      <div class="text-xs text-destructive mt-1">⚠ {modelReinitNotice}</div>
     {/if}
     {#if solverWarning}
-      <div class="text-xs text-warning mt-1">⚠ {solverWarning}</div>
+      <div class="text-xs text-destructive mt-1">⚠ {solverWarning}</div>
     {/if}
     {#if longRunEstimate}
-      <div class="text-xs opacity-60 mt-1">
+      <div class="text-xs text-muted-foreground mt-1">
         Estimated: {estimatedRunSeconds.toFixed(1)}s — you can stop at any time
       </div>
     {/if}
   </div>
-</div>
+</Card>

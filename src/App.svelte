@@ -6,6 +6,8 @@
     import RunControls from "./lib/ui/RunControls.svelte";
     import InputsTab from "./lib/ui/InputsTab.svelte";
     import SwProfileChart from "./lib/SwProfileChart.svelte";
+    import Button from "./lib/components/ui/Button.svelte";
+    import Card from "./lib/components/ui/Card.svelte";
     import {
         caseCatalog,
         findCaseByKey,
@@ -525,12 +527,17 @@
             const loadedHistory = Array.isArray(data.history)
                 ? data.history
                 : [];
-            const loadedFinalGrid: GridState | null = data.finalGrid ? (data.finalGrid as GridState) : null;
+            const loadedFinalGrid: GridState | null = data.finalGrid
+                ? (data.finalGrid as GridState)
+                : null;
             const validHistoryEntries: HistoryEntry[] = [];
             let historyHasMismatches = false;
             for (let i = 0; i < loadedHistory.length; i++) {
                 const entry = loadedHistory[i];
-                if (entry?.grid?.pressure && entry.grid.pressure.length === expectedCellCount) {
+                if (
+                    entry?.grid?.pressure &&
+                    entry.grid.pressure.length === expectedCellCount
+                ) {
                     validHistoryEntries.push({
                         time: Number(entry.time ?? 0),
                         grid: entry.grid,
@@ -544,7 +551,9 @@
                 }
             }
             const finalGridMatches = Boolean(
-                loadedFinalGrid && loadedFinalGrid.pressure && loadedFinalGrid.pressure.length === expectedCellCount,
+                loadedFinalGrid &&
+                    loadedFinalGrid.pressure &&
+                    loadedFinalGrid.pressure.length === expectedCellCount,
             );
 
             history = validHistoryEntries;
@@ -609,8 +618,6 @@
             }
         }
     }
-
-
 
     // ---------- Model reset / validation ----------
 
@@ -1369,51 +1376,147 @@
     );
 
     // ---------- Derived series for charts ----------
-
 </script>
 
-<main class="min-h-screen text-base-content relative" data-theme={theme}>
+<main
+    class="min-h-screen text-foreground bg-background relative"
+    data-theme={theme}
+>
     <!-- Geological layers — styled by .geo-layers in app.css (opacity adapts via [data-theme]) -->
     <div class="geo-layers">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full">
+        <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            class="w-full h-full"
+        >
             <!-- ORDER MATTERS: shallowest (top of page) rendered FIRST, deepest LAST -->
             <!-- Each path fills from its wavy top edge down to Y=100. Later paths paint over earlier ones. -->
             <!-- So you see each layer's color only in the band between its top edge and the next deeper layer's top edge. -->
 
             {#if theme === "dark"}
                 <!-- Dark theme: muted desaturated earth tones -->
-                <path fill="#3a3228" d="M0,5 C24,11 76,-1 100,8 L100,100 L0,100 Z" />
-                <path fill="#4a3d2e" d="M0,15 C26,20 70,8 100,17 L100,100 L0,100 Z" />
-                <path fill="#3e3326" d="M0,24 C30,29 65,16 100,26 L100,100 L0,100 Z" />
-                <path fill="#554838" d="M0,30 C28,36 72,21 100,32 L100,100 L0,100 Z" />
-                <path fill="#4a3f30" d="M0,38 C35,43 65,29 100,41 L100,100 L0,100 Z" />
-                <path fill="#362c22" d="M0,45 C30,49 60,37 100,47 L100,100 L0,100 Z" />
-                <path fill="#5a4f40" d="M0,49 C25,54 75,41 100,51 L100,100 L0,100 Z" />
-                <path fill="#483e30" d="M0,56 C32,62 66,50 100,58 L100,100 L0,100 Z" />
-                <path fill="#3a3228" d="M0,64 C26,69 70,58 100,66 L100,100 L0,100 Z" />
-                <path fill="#5e5345" d="M0,69 C28,74 68,62 100,71 L100,100 L0,100 Z" />
-                <path fill="#4a3d2e" d="M0,75 C32,79 68,69 100,76 L100,100 L0,100 Z" />
-                <path fill="#362c22" d="M0,79 C32,83 68,74 100,80 L100,100 L0,100 Z" />
-                <path fill="#554838" d="M0,84 C30,89 70,78 100,85 L100,100 L0,100 Z" />
-                <path fill="#3e3326" d="M0,91 C35,94 65,86 100,93 L100,100 L0,100 Z" />
-                <path fill="#2e2620" d="M0,95 C30,98 60,93 100,97 L100,100 L0,100 Z" />
+                <path
+                    fill="#3a3228"
+                    d="M0,5 C24,11 76,-1 100,8 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#4a3d2e"
+                    d="M0,15 C26,20 70,8 100,17 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#3e3326"
+                    d="M0,24 C30,29 65,16 100,26 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#554838"
+                    d="M0,30 C28,36 72,21 100,32 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#4a3f30"
+                    d="M0,38 C35,43 65,29 100,41 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#362c22"
+                    d="M0,45 C30,49 60,37 100,47 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#5a4f40"
+                    d="M0,49 C25,54 75,41 100,51 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#483e30"
+                    d="M0,56 C32,62 66,50 100,58 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#3a3228"
+                    d="M0,64 C26,69 70,58 100,66 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#5e5345"
+                    d="M0,69 C28,74 68,62 100,71 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#4a3d2e"
+                    d="M0,75 C32,79 68,69 100,76 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#362c22"
+                    d="M0,79 C32,83 68,74 100,80 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#554838"
+                    d="M0,84 C30,89 70,78 100,85 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#3e3326"
+                    d="M0,91 C35,94 65,86 100,93 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#2e2620"
+                    d="M0,95 C30,98 60,93 100,97 L100,100 L0,100 Z"
+                />
             {:else}
                 <!-- Light theme: warm saturated earth tones -->
-                <path fill="#F2DFB8" d="M0,5 C24,11 76,-1 100,8 L100,100 L0,100 Z" />
-                <path fill="#D9B78D" d="M0,15 C26,20 70,8 100,17 L100,100 L0,100 Z" />
-                <path fill="#F2DFB8" d="M0,24 C30,29 65,16 100,26 L100,100 L0,100 Z" />
-                <path fill="#7A4B29" d="M0,30 C28,36 72,21 100,32 L100,100 L0,100 Z" />
-                <path fill="#BA8E68" d="M0,38 C35,43 65,29 100,41 L100,100 L0,100 Z" />
-                <path fill="#4A2E1B" d="M0,45 C30,49 60,37 100,47 L100,100 L0,100 Z" />
-                <path fill="#7A4B29" d="M0,49 C25,54 75,41 100,51 L100,100 L0,100 Z" />
-                <path fill="#D9B78D" d="M0,56 C32,62 66,50 100,58 L100,100 L0,100 Z" />
-                <path fill="#9C6B46" d="M0,64 C26,69 70,58 100,66 L100,100 L0,100 Z" />
-                <path fill="#e6d5b9" d="M0,69 C28,74 68,62 100,71 L100,100 L0,100 Z" />
-                <path fill="#BA8E68" d="M0,75 C32,79 68,69 100,76 L100,100 L0,100 Z" />
-                <path fill="#4A2E1B" d="M0,79 C32,83 68,74 100,80 L100,100 L0,100 Z" />
-                <path fill="#9C6B46" d="M0,84 C30,89 70,78 100,85 L100,100 L0,100 Z" />
-                <path fill="#7A4B29" d="M0,91 C35,94 65,86 100,93 L100,100 L0,100 Z" />
-                <path fill="#4A2E1B" d="M0,95 C30,98 60,93 100,97 L100,100 L0,100 Z" />
+                <path
+                    fill="#F2DFB8"
+                    d="M0,5 C24,11 76,-1 100,8 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#D9B78D"
+                    d="M0,15 C26,20 70,8 100,17 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#F2DFB8"
+                    d="M0,24 C30,29 65,16 100,26 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#7A4B29"
+                    d="M0,30 C28,36 72,21 100,32 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#BA8E68"
+                    d="M0,38 C35,43 65,29 100,41 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#4A2E1B"
+                    d="M0,45 C30,49 60,37 100,47 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#7A4B29"
+                    d="M0,49 C25,54 75,41 100,51 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#D9B78D"
+                    d="M0,56 C32,62 66,50 100,58 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#9C6B46"
+                    d="M0,64 C26,69 70,58 100,66 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#e6d5b9"
+                    d="M0,69 C28,74 68,62 100,71 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#BA8E68"
+                    d="M0,75 C32,79 68,69 100,76 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#4A2E1B"
+                    d="M0,79 C32,83 68,74 100,80 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#9C6B46"
+                    d="M0,84 C30,89 70,78 100,85 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#7A4B29"
+                    d="M0,91 C35,94 65,86 100,93 L100,100 L0,100 Z"
+                />
+                <path
+                    fill="#4A2E1B"
+                    d="M0,95 C30,98 60,93 100,97 L100,100 L0,100 Z"
+                />
             {/if}
         </svg>
     </div>
@@ -1501,9 +1604,9 @@
                     in browser.
                 </p>
             </div>
-            <button class="btn btn-sm btn-outline" onclick={toggleTheme}>
+            <Button size="sm" variant="outline" onclick={toggleTheme}>
                 {theme === "dark" ? "☀ Light" : "🌙 Dark"}
-            </button>
+            </Button>
         </header>
 
         <!-- Top Bar: category buttons + case selector -->
@@ -1542,34 +1645,34 @@
         <!-- Error / Warning banners -->
         {#if runtimeWarning}
             <div
-                class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning"
+                class="rounded-md border border-warning bg-card text-warning p-3 text-xs font-medium"
             >
                 {runtimeWarning}
             </div>
         {/if}
         {#if preRunWarning}
             <div
-                class="rounded-md border border-warning bg-base-100 p-2 text-xs text-warning"
+                class="rounded-md border border-warning bg-card text-warning p-3 text-xs font-medium"
             >
                 {preRunWarning}
             </div>
         {/if}
         {#if runtimeError}
             <div
-                class="rounded-md border border-error bg-base-100 p-2 text-xs text-error"
+                class="rounded-md border border-destructive bg-card text-destructive p-3 text-xs font-medium"
             >
                 {runtimeError}
             </div>
         {/if}
         {#if preRunLoading}
-            <div class="text-xs opacity-60 text-center">
+            <div class="text-xs text-muted-foreground text-center mt-2">
                 Loading pre-run case data…
             </div>
         {/if}
 
-        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
-            <div class="space-y-3">
-                <div class="card border border-base-300 bg-base-100 shadow-sm overflow-hidden">
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start mt-2">
+            <div class="space-y-4">
+                <Card class="overflow-hidden">
                     {#if RateChartComponent}
                         <RateChartComponent
                             {rateHistory}
@@ -1581,17 +1684,20 @@
                             {activeCategory}
                             {activeCase}
                             {theme}
-                            layoutConfig={findCaseByKey(activeCase)?.case?.params?.layout}
+                            layoutConfig={findCaseByKey(activeCase)?.case
+                                ?.params?.layout}
                         />
                     {:else}
-                        <div class="p-4 md:p-5 text-sm opacity-70">
+                        <div
+                            class="p-4 md:p-5 text-sm text-muted-foreground w-full text-center"
+                        >
                             Loading rate chart…
                         </div>
                     {/if}
-                </div>
+                </Card>
 
-                <div class="card border border-base-300 bg-base-100 shadow-sm">
-                    <div class="card-body p-4 md:p-5">
+                <Card>
+                    <div class="p-4 md:p-5">
                         <SwProfileChart
                             gridState={gridStateRaw ?? null}
                             {nx}
@@ -1610,16 +1716,16 @@
                             fluidProps={{ mu_w, mu_o }}
                         />
                     </div>
-                </div>
+                </Card>
 
                 {#if analyticalMeta.mode === "depletion"}
                     <div
-                        class="rounded-md border border-base-300 bg-base-100 p-3 text-xs"
+                        class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
                     >
-                        <div class="font-semibold">
+                        <div class="font-semibold text-foreground">
                             Depletion Analytical Mode
                         </div>
-                        <div class="opacity-80">
+                        <div class="text-muted-foreground mt-1">
                             Model: {analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
                                 >−t/τ</sup
                             >, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J
@@ -1628,9 +1734,9 @@
                 {/if}
             </div>
 
-            <div class="space-y-3">
-                <div class="card border border-base-300 bg-base-100 shadow-sm">
-                    <div class="card-body p-4 md:p-5">
+            <div class="space-y-4">
+                <Card>
+                    <div class="p-4 md:p-5">
                         {#if ThreeDViewComponent}
                             {#key `${nx}-${ny}-${nz}-${vizRevision}`}
                                 <ThreeDViewComponent
@@ -1656,28 +1762,34 @@
                             {/key}
                         {:else}
                             <div
-                                class="flex items-center justify-center rounded border border-base-300 bg-base-200"
+                                class="flex items-center justify-center rounded border border-border bg-muted/20"
                                 style="height: clamp(240px, 35vh, 420px);"
                             >
                                 {#if loadingThreeDView}
-                                    <span
-                                        class="loading loading-spinner loading-md"
-                                    ></span>
+                                    <div class="flex items-center space-x-2">
+                                        <div
+                                            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary"
+                                        ></div>
+                                        <span class="text-sm font-medium"
+                                            >Loading...</span
+                                        >
+                                    </div>
                                 {:else}
-                                    <button
-                                        class="btn btn-sm"
+                                    <Button
+                                        size="sm"
+                                        variant="default"
                                         onclick={loadThreeDViewModule}
-                                        >Load 3D view</button
+                                        >Load 3D view</Button
                                     >
                                 {/if}
                             </div>
                         {/if}
                     </div>
-                </div>
+                </Card>
             </div>
         </div>
 
-        <div id="inputs-section">
+        <div id="inputs-section" class="mt-4">
             <InputsTab
                 bind:nx
                 bind:ny
@@ -1745,14 +1857,14 @@
 
         <!-- Debug State -->
         {#if showDebugState}
-            <div class="card border border-base-300 bg-base-100 shadow-sm">
-                <div class="card-body grid gap-4 p-4 lg:grid-cols-2">
+            <Card class="mt-4">
+                <div class="grid gap-4 p-4 lg:grid-cols-2">
                     <div>
                         <h4 class="mb-2 text-sm font-semibold">
                             Grid State (current)
                         </h4>
                         <pre
-                            class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(
+                            class="max-h-[400px] overflow-auto rounded border border-border bg-muted/20 p-2 text-xs">{JSON.stringify(
                                 gridStateRaw,
                                 null,
                                 2,
@@ -1763,14 +1875,14 @@
                             Well State (current)
                         </h4>
                         <pre
-                            class="max-h-105 overflow-auto rounded border border-base-300 bg-base-200 p-2 text-xs">{JSON.stringify(
+                            class="max-h-105 overflow-auto rounded border border-border bg-muted p-2 text-xs">{JSON.stringify(
                                 wellStateRaw,
                                 null,
                                 2,
                             )}</pre>
                     </div>
                 </div>
-            </div>
+            </Card>
         {/if}
     </div>
 </main>

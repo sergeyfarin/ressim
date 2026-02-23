@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Collapsible from "../components/ui/Collapsible.svelte";
+  import Input from "../components/ui/Input.svelte";
+
   let {
     s_wc = $bindable(0.2),
     s_or = $bindable(0.1),
@@ -130,72 +133,70 @@
   const groupSummary = $derived(`${relPermSummary} · ${capSummary}`);
 </script>
 
-<details class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
-  <summary
-    class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5"
-  >
-    <div>
-      <div class="font-semibold">Relative Permeability + Capillary</div>
-      <div class="text-xs opacity-70">{groupSummary}</div>
+<Collapsible title="Relative Permeability + Capillary">
+  <div class="space-y-3 p-4 md:p-5">
+    <div class="text-[11px] text-muted-foreground font-medium mb-2">
+      {groupSummary}
     </div>
-    <div class="flex items-center gap-2 text-xs opacity-70">
-      <span class="collapse-label-open hidden">Collapse</span>
-      <span class="collapse-label-closed">Expand</span>
-      <span class="collapse-chevron">▸</span>
-    </div>
-  </summary>
 
-  <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
-    <div class="overflow-x-auto rounded-md border border-base-300">
-      <table class="table table-xs compact-table w-full">
-        <thead>
-          <tr class="bg-base-200/50">
-            <th>Phase</th>
-            <th>Endpoint Sat. (S)</th>
-            <th>Corey Exponent (n)</th>
+    <div class="overflow-x-auto rounded-md border border-border">
+      <table class="compact-table w-full text-left">
+        <thead
+          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+        >
+          <tr>
+            <th class="font-medium p-2">Phase</th>
+            <th class="font-medium p-2">Endpoint Sat. (S)</th>
+            <th class="font-medium p-2">Corey Exponent (n)</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-border">
           <tr>
-            <td class="font-semibold align-middle">Water</td>
             <td
-              ><input
+              class="font-semibold align-middle p-2 border-r border-border bg-muted/20"
+              >Water</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 max="0.9"
                 step="0.01"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={s_wc}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={n_w}
               /></td
             >
           </tr>
           <tr>
-            <td class="font-semibold align-middle">Oil</td>
             <td
-              ><input
+              class="font-semibold align-middle p-2 border-r border-border bg-muted/20"
+              >Oil</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 max="0.9"
                 step="0.01"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={s_or}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={n_o}
               /></td
             >
@@ -204,44 +205,48 @@
       </table>
     </div>
 
-    <label class="label cursor-pointer justify-start gap-2 mt-1">
+    <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
       <input
         type="checkbox"
-        class="checkbox checkbox-sm"
+        class="h-4 w-4 rounded border-input text-primary accent-primary"
         bind:checked={capillaryEnabled}
       />
-      <span class="label-text font-semibold">Enable Capillary Pressure</span>
+      <span class="text-sm font-medium leading-none"
+        >Enable Capillary Pressure</span
+      >
     </label>
 
     <div
-      class="overflow-x-auto rounded-md border border-base-300 mb-2"
+      class="overflow-x-auto rounded-md border border-border mb-2"
       class:opacity-50={!capillaryEnabled}
     >
-      <table class="table table-xs compact-table w-full">
-        <thead>
-          <tr class="bg-base-200/50">
-            <th>P_entry (bar)</th>
-            <th>Lambda</th>
+      <table class="compact-table w-full text-left">
+        <thead
+          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+        >
+          <tr>
+            <th class="font-medium p-2">P_entry (bar)</th>
+            <th class="font-medium p-2">Lambda</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-border">
           <tr>
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={capillaryPEntry}
                 disabled={!capillaryEnabled}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="input input-bordered input-xs w-full max-w-24"
+                class="w-full h-7 px-2"
                 bind:value={capillaryLambda}
                 disabled={!capillaryEnabled}
               /></td
@@ -252,8 +257,8 @@
     </div>
 
     <div class="grid grid-cols-1 gap-2">
-      <div class="rounded-md border border-base-300 p-2">
-        <div class="mb-1 text-[11px] opacity-70">
+      <div class="rounded-md border border-border p-2">
+        <div class="mb-1 text-[11px] text-muted-foreground font-medium">
           Relative Permeability Curves
         </div>
         <svg viewBox={`0 0 ${width} ${height}`} class="h-20 w-full">
@@ -272,8 +277,10 @@
         </svg>
       </div>
 
-      <div class="rounded-md border border-base-300 p-2">
-        <div class="mb-1 text-[11px] opacity-70">Capillary Pressure Curve</div>
+      <div class="rounded-md border border-border p-2">
+        <div class="mb-1 text-[11px] text-muted-foreground font-medium">
+          Capillary Pressure Curve
+        </div>
         <svg viewBox={`0 0 ${width} ${height}`} class="h-20 w-full">
           <path
             d={capillaryPath}
@@ -285,20 +292,4 @@
       </div>
     </div>
   </div>
-</details>
-
-<style>
-  details[open] .collapse-chevron {
-    transform: rotate(90deg);
-  }
-  .collapse-chevron {
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-  details[open] .collapse-label-open {
-    display: inline;
-  }
-  details[open] .collapse-label-closed {
-    display: none;
-  }
-</style>
+</Collapsible>

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount } from 'svelte';
+    import { onDestroy, onMount } from "svelte";
     import {
         AmbientLight,
         BoxGeometry,
@@ -19,15 +19,27 @@
         Scene,
         Vector2,
         WebGLRenderer,
-    } from 'three';
-    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-    import type { Material } from 'three';
+    } from "three";
+    import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+    import type { Material } from "three";
 
-    import type { GridState, SimulatorSnapshot, WellState, WellStateEntry } from './';
+    import type {
+        GridState,
+        SimulatorSnapshot,
+        WellState,
+        WellStateEntry,
+    } from "./";
 
     type HistoryEntry = SimulatorSnapshot;
 
-    type PropertyKey = 'pressure' | 'saturation_water' | 'saturation_oil' | 'permeability_x' | 'permeability_y' | 'permeability_z' | 'porosity';
+    type PropertyKey =
+        | "pressure"
+        | "saturation_water"
+        | "saturation_oil"
+        | "permeability_x"
+        | "permeability_y"
+        | "permeability_z"
+        | "porosity";
 
     export let nx: number = 20;
     export let ny: number = 10;
@@ -36,7 +48,7 @@
     export let cellDy: number = 10;
     export let cellDz: number = 1;
     export let gridState: GridState | null = null;
-    export let showProperty: PropertyKey = 'pressure';
+    export let showProperty: PropertyKey = "pressure";
     export let history: HistoryEntry[] = [];
     export let currentIndex: number = -1;
     export let wellState: WellState | null = null;
@@ -52,7 +64,7 @@
     // export let onPrev: () => void = () => {};
     // export let onNext: () => void = () => {};
     // export let onTogglePlay: () => void = () => {};
-    export let theme: 'dark' | 'light' = 'dark';
+    export let theme: "dark" | "light" = "dark";
 
     let renderer: WebGLRenderer | null = null;
     let scene: Scene | null = null;
@@ -66,8 +78,8 @@
     let canvasContainer: HTMLElement | null = null;
     let legendMin = 0;
     let legendMax = 1;
-    let lastDimsKey = '';
-    
+    let lastDimsKey = "";
+
     // Reactive grid reference
     let activeGrid: GridState | null = null;
 
@@ -75,7 +87,7 @@
     let tooltipVisible = false;
     let tooltipX = 0;
     let tooltipY = 0;
-    let tooltipContent = '';
+    let tooltipContent = "";
     let raycaster = new Raycaster();
     let mouse = new Vector2();
     let tooltipRafId: number | null = null;
@@ -100,29 +112,40 @@
         porosity: { min: 0, max: 0.4 },
     };
 
-    const propertyDisplay: Record<PropertyKey, { label: string; unit: string; decimals: number }> = {
-        pressure: { label: 'Pressure', unit: 'bar', decimals: 2 },
-        saturation_water: { label: 'Water Saturation', unit: 'fraction', decimals: 3 },
-        saturation_oil: { label: 'Oil Saturation', unit: 'fraction', decimals: 3 },
-        permeability_x: { label: 'Permeability X', unit: 'mD', decimals: 1 },
-        permeability_y: { label: 'Permeability Y', unit: 'mD', decimals: 1 },
-        permeability_z: { label: 'Permeability Z', unit: 'mD', decimals: 1 },
-        porosity: { label: 'Porosity', unit: 'fraction', decimals: 3 },
+    const propertyDisplay: Record<
+        PropertyKey,
+        { label: string; unit: string; decimals: number }
+    > = {
+        pressure: { label: "Pressure", unit: "bar", decimals: 2 },
+        saturation_water: {
+            label: "Water Saturation",
+            unit: "fraction",
+            decimals: 3,
+        },
+        saturation_oil: {
+            label: "Oil Saturation",
+            unit: "fraction",
+            decimals: 3,
+        },
+        permeability_x: { label: "Permeability X", unit: "mD", decimals: 1 },
+        permeability_y: { label: "Permeability Y", unit: "mD", decimals: 1 },
+        permeability_z: { label: "Permeability Z", unit: "mD", decimals: 1 },
+        porosity: { label: "Porosity", unit: "fraction", decimals: 3 },
     };
 
     const showPropertyOptions: Array<{ value: PropertyKey; label: string }> = [
-        { value: 'pressure', label: 'Pressure' },
-        { value: 'saturation_water', label: 'Water Sat' },
-        { value: 'saturation_oil', label: 'Oil Sat' },
-        { value: 'permeability_x', label: 'Perm X' },
-        { value: 'permeability_y', label: 'Perm Y' },
-        { value: 'permeability_z', label: 'Perm Z' },
-        { value: 'porosity', label: 'Porosity' },
+        { value: "pressure", label: "Pressure" },
+        { value: "saturation_water", label: "Water Sat" },
+        { value: "saturation_oil", label: "Oil Sat" },
+        { value: "permeability_x", label: "Perm X" },
+        { value: "permeability_y", label: "Perm Y" },
+        { value: "permeability_z", label: "Perm Z" },
+        { value: "porosity", label: "Porosity" },
     ];
 
-    let groupSummary = '';
+    let groupSummary = "";
 
-    $: groupSummary = `${showProperty.replace('_', ' ')} · step ${Math.max(0, currentIndex)}`;
+    $: groupSummary = `${showProperty.replace("_", " ")} · step ${Math.max(0, currentIndex)}`;
 
     $: {
         const minValue = Number(legendFixedMin);
@@ -135,7 +158,11 @@
             legendFixedMax = 1;
         }
 
-        if (Number.isFinite(legendFixedMin) && Number.isFinite(legendFixedMax) && legendFixedMin > legendFixedMax) {
+        if (
+            Number.isFinite(legendFixedMin) &&
+            Number.isFinite(legendFixedMax) &&
+            legendFixedMin > legendFixedMax
+        ) {
             const tmp = legendFixedMin;
             legendFixedMin = legendFixedMax;
             legendFixedMax = tmp;
@@ -157,7 +184,11 @@
     }
 
     function hasTimestepsRun(): boolean {
-        return history.length > 0 && currentIndex >= 0 && currentIndex < history.length;
+        return (
+            history.length > 0 &&
+            currentIndex >= 0 &&
+            currentIndex < history.length
+        );
     }
 
     function getExpectedCellCount(): number {
@@ -166,11 +197,20 @@
 
     function getValidHistoryGrids(): GridState[] {
         const expectedCount = getExpectedCellCount();
-        if (expectedCount <= 0 || !Array.isArray(history) || history.length === 0) return [];
+        if (
+            expectedCount <= 0 ||
+            !Array.isArray(history) ||
+            history.length === 0
+        )
+            return [];
         const grids: GridState[] = [];
         for (const entry of history) {
             const grid = entry?.grid;
-            if (grid && grid.pressure && grid.pressure.length === expectedCount) {
+            if (
+                grid &&
+                grid.pressure &&
+                grid.pressure.length === expectedCount
+            ) {
                 grids.push(grid);
             }
         }
@@ -181,13 +221,21 @@
         const historyGrids = getValidHistoryGrids();
         if (historyGrids.length > 0) return historyGrids[0];
         const expectedCount = getExpectedCellCount();
-        if (expectedCount > 0 && gridState && gridState.pressure && gridState.pressure.length === expectedCount) {
+        if (
+            expectedCount > 0 &&
+            gridState &&
+            gridState.pressure &&
+            gridState.pressure.length === expectedCount
+        ) {
             return gridState;
         }
         return null;
     }
 
-    function getPropertyValuesFromGrid(grid: GridState | null | undefined, property: PropertyKey): number[] {
+    function getPropertyValuesFromGrid(
+        grid: GridState | null | undefined,
+        property: PropertyKey,
+    ): number[] {
         if (!grid || !grid.pressure || grid.pressure.length === 0) return [];
         const values = [];
         for (let i = 0; i < grid.pressure.length; i++) {
@@ -196,7 +244,9 @@
         return values.filter((value) => Number.isFinite(value));
     }
 
-    function getHistoryPropertyRange(property: PropertyKey): { min: number; max: number } | null {
+    function getHistoryPropertyRange(
+        property: PropertyKey,
+    ): { min: number; max: number } | null {
         const historyGrids = getValidHistoryGrids();
         if (historyGrids.length === 0) return null;
 
@@ -219,22 +269,36 @@
         return { min, max };
     }
 
-    function getCellPropertyValue(grid: GridState | null | undefined, index: number, property: PropertyKey): number {
+    function getCellPropertyValue(
+        grid: GridState | null | undefined,
+        index: number,
+        property: PropertyKey,
+    ): number {
         if (!grid) return NaN;
-        if (property === 'pressure') return Number(grid.pressure?.[index] ?? NaN);
-        if (property === 'saturation_water') return Number(grid.sat_water?.[index] ?? NaN);
-        if (property === 'saturation_oil') return Number(grid.sat_oil?.[index] ?? NaN);
-        if (property === 'permeability_x') return Number(grid.perm_x?.[index] ?? NaN);
-        if (property === 'permeability_y') return Number(grid.perm_y?.[index] ?? NaN);
-        if (property === 'permeability_z') return Number(grid.perm_z?.[index] ?? NaN);
-        if (property === 'porosity') return Number(grid.porosity?.[index] ?? NaN);
+        if (property === "pressure")
+            return Number(grid.pressure?.[index] ?? NaN);
+        if (property === "saturation_water")
+            return Number(grid.sat_water?.[index] ?? NaN);
+        if (property === "saturation_oil")
+            return Number(grid.sat_oil?.[index] ?? NaN);
+        if (property === "permeability_x")
+            return Number(grid.perm_x?.[index] ?? NaN);
+        if (property === "permeability_y")
+            return Number(grid.perm_y?.[index] ?? NaN);
+        if (property === "permeability_z")
+            return Number(grid.perm_z?.[index] ?? NaN);
+        if (property === "porosity")
+            return Number(grid.porosity?.[index] ?? NaN);
         return NaN;
     }
 
-    function getModelLegendRange(property: PropertyKey): { min: number; max: number } {
+    function getModelLegendRange(property: PropertyKey): {
+        min: number;
+        max: number;
+    } {
         const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
 
-        if (property === 'saturation_water') {
+        if (property === "saturation_water") {
             const swc = clamp(Number(s_wc), 0, 0.95);
             const sor = clamp(Number(s_or), 0, 0.95);
             const min = swc;
@@ -242,7 +306,7 @@
             return { min, max };
         }
 
-        if (property === 'saturation_oil') {
+        if (property === "saturation_oil") {
             const swc = clamp(Number(s_wc), 0, 0.95);
             const sor = clamp(Number(s_or), 0, 0.95);
             const min = sor;
@@ -250,8 +314,8 @@
             return { min, max };
         }
 
-        if (property === 'pressure') {
-            const historyRange = getHistoryPropertyRange('pressure');
+        if (property === "pressure") {
+            const historyRange = getHistoryPropertyRange("pressure");
             if (historyRange) {
                 return historyRange;
             }
@@ -261,11 +325,18 @@
             }
             const min = Math.min(...values);
             const dataMax = Math.max(...values);
-            const max = Number.isFinite(dataMax) ? Math.max(min + 1e-6, dataMax) : Math.max(min + 1e-6, fixed.max);
+            const max = Number.isFinite(dataMax)
+                ? Math.max(min + 1e-6, dataMax)
+                : Math.max(min + 1e-6, fixed.max);
             return { min, max };
         }
 
-        if (property === 'permeability_x' || property === 'permeability_y' || property === 'permeability_z' || property === 'porosity') {
+        if (
+            property === "permeability_x" ||
+            property === "permeability_y" ||
+            property === "permeability_z" ||
+            property === "porosity"
+        ) {
             const referenceGrid = getStaticReferenceGrid();
             const values = getPropertyValuesFromGrid(referenceGrid, property);
             if (values.length === 0) return fixed;
@@ -312,25 +383,42 @@
 
     function formatLegendValue(property: PropertyKey, value: number): string {
         const decimals = propertyDisplay[property]?.decimals ?? 3;
-        return Number.isFinite(value) ? value.toFixed(decimals) : 'n/a';
+        return Number.isFinite(value) ? value.toFixed(decimals) : "n/a";
     }
 
-    function getPropertyDisplay(property: PropertyKey): { label: string; unit: string; decimals: number } {
-        return propertyDisplay[property] ?? { label: 'Property', unit: '-', decimals: 3 };
+    function getPropertyDisplay(property: PropertyKey): {
+        label: string;
+        unit: string;
+        decimals: number;
+    } {
+        return (
+            propertyDisplay[property] ?? {
+                label: "Property",
+                unit: "-",
+                decimals: 3,
+            }
+        );
     }
 
-    function computeLegendRange(property: PropertyKey, values: number[]): { min: number; max: number } {
+    function computeLegendRange(
+        property: PropertyKey,
+        values: number[],
+    ): { min: number; max: number } {
         const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
         const userMin = Number(legendFixedMin);
         const userMax = Number(legendFixedMax);
-        if (Number.isFinite(userMin) && Number.isFinite(userMax) && userMax > userMin) {
+        if (
+            Number.isFinite(userMin) &&
+            Number.isFinite(userMax) &&
+            userMax > userMin
+        ) {
             return { min: userMin, max: userMax };
         }
         return fixed;
     }
 
     function getHue(property: PropertyKey, t: number): number {
-        if (property === 'saturation_water') {
+        if (property === "saturation_water") {
             return t * 0.66;
         }
         return (1 - t) * 0.66;
@@ -339,7 +427,12 @@
     onMount(() => {
         try {
             const _w = window as typeof window & { __ressim?: unknown };
-            _w.__ressim = _w.__ressim || { renderer: null, scene: null, camera: null, instancedMesh: null };
+            _w.__ressim = _w.__ressim || {
+                renderer: null,
+                scene: null,
+                camera: null,
+                instancedMesh: null,
+            };
         } catch (e) {
             // ignore debug exposure failures outside of browser envs
         }
@@ -357,7 +450,10 @@
         }
         controls?.dispose();
         if (renderer?.domElement) {
-            renderer.domElement.removeEventListener('mousemove', onCanvasMouseMove);
+            renderer.domElement.removeEventListener(
+                "mousemove",
+                onCanvasMouseMove,
+            );
         }
         if (tooltipRafId !== null) {
             cancelAnimationFrame(tooltipRafId);
@@ -365,7 +461,7 @@
         }
         renderer?.dispose();
         renderer?.forceContextLoss?.();
-        window.removeEventListener('resize', onWindowResize);
+        window.removeEventListener("resize", onWindowResize);
     });
 
     // Compute activeGrid reactively — explicitly reference every dependency
@@ -375,7 +471,9 @@
         history;
         history.length;
         currentIndex;
-        nx; ny; nz;
+        nx;
+        ny;
+        nz;
         activeGrid = getActiveGrid();
     }
 
@@ -394,22 +492,37 @@
         return { x, y, z };
     }
 
-    function fitCameraToReservoir(cellSize: { x: number; y: number; z: number }): void {
+    function fitCameraToReservoir(cellSize: {
+        x: number;
+        y: number;
+        z: number;
+    }): void {
         if (!camera || !canvasContainer) return;
 
         const perspectiveCamera = camera as PerspectiveCamera;
-        const aspect = Math.max(1e-3, canvasContainer.clientWidth / Math.max(1, canvasContainer.clientHeight));
+        const aspect = Math.max(
+            1e-3,
+            canvasContainer.clientWidth /
+                Math.max(1, canvasContainer.clientHeight),
+        );
         perspectiveCamera.aspect = aspect;
 
-        const halfX = (nx * cellSize.x) * 0.5;
-        const halfY = (ny * cellSize.y) * 0.5;
-        const halfZ = (nz * cellSize.z) * 0.5;
-        const radius = Math.max(0.001, Math.sqrt(halfX * halfX + halfY * halfY + halfZ * halfZ));
+        const halfX = nx * cellSize.x * 0.5;
+        const halfY = ny * cellSize.y * 0.5;
+        const halfZ = nz * cellSize.z * 0.5;
+        const radius = Math.max(
+            0.001,
+            Math.sqrt(halfX * halfX + halfY * halfY + halfZ * halfZ),
+        );
 
         const verticalFov = (perspectiveCamera.fov * Math.PI) / 60;
-        const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * perspectiveCamera.aspect);
-        const fitDistanceV = radius / Math.max(Math.sin(verticalFov * 0.5), 1e-3);
-        const fitDistanceH = radius / Math.max(Math.sin(horizontalFov * 0.5), 1e-3);
+        const horizontalFov =
+            2 *
+            Math.atan(Math.tan(verticalFov * 0.5) * perspectiveCamera.aspect);
+        const fitDistanceV =
+            radius / Math.max(Math.sin(verticalFov * 0.5), 1e-3);
+        const fitDistanceH =
+            radius / Math.max(Math.sin(horizontalFov * 0.5), 1e-3);
         const fitDistance = Math.max(fitDistanceV, fitDistanceH) * 1.35;
 
         const dirX = 1.2;
@@ -420,7 +533,11 @@
         const uy = dirY / dirLen;
         const uz = dirZ / dirLen;
 
-        perspectiveCamera.position.set(ux * fitDistance, uy * fitDistance, uz * fitDistance);
+        perspectiveCamera.position.set(
+            ux * fitDistance,
+            uy * fitDistance,
+            uz * fitDistance,
+        );
         perspectiveCamera.up.set(0, 0, 1);
         perspectiveCamera.near = Math.max(0.1, fitDistance - radius * 2.5);
         perspectiveCamera.far = Math.max(1000, fitDistance + radius * 4.0);
@@ -435,16 +552,16 @@
         }
     }
 
-    let lastModelLegendKey = '';
+    let lastModelLegendKey = "";
     let pressureHistoryScanCount = 0;
 
     function getLegendContextKey(property: PropertyKey): string {
         const dimsKey = `${nx}|${ny}|${nz}|${cellDx}|${cellDy}|${cellDz}`;
 
-        if (property === 'pressure') {
+        if (property === "pressure") {
             return `${property}|${dimsKey}`;
         }
-        if (property === 'saturation_water' || property === 'saturation_oil') {
+        if (property === "saturation_water" || property === "saturation_oil") {
             return `${property}|${dimsKey}|${s_wc}|${s_or}`;
         }
 
@@ -454,7 +571,12 @@
 
     function getPressureMaxFromHistorySlice(startIdx: number): number | null {
         const expectedCount = getExpectedCellCount();
-        if (expectedCount <= 0 || !Array.isArray(history) || history.length === 0) return null;
+        if (
+            expectedCount <= 0 ||
+            !Array.isArray(history) ||
+            history.length === 0
+        )
+            return null;
 
         const safeStart = Math.max(0, Math.min(history.length, startIdx));
         let max = Number.NEGATIVE_INFINITY;
@@ -484,19 +606,29 @@
             applyModelLegendRange();
             lastModelLegendKey = contextKey;
             pressureHistoryScanCount = history.length;
-        } else if (showProperty === 'pressure') {
+        } else if (showProperty === "pressure") {
             if (history.length < pressureHistoryScanCount) {
                 applyModelLegendRange();
                 pressureHistoryScanCount = history.length;
             } else if (history.length > pressureHistoryScanCount) {
-                const incrementalMax = getPressureMaxFromHistorySlice(pressureHistoryScanCount);
+                const incrementalMax = getPressureMaxFromHistorySlice(
+                    pressureHistoryScanCount,
+                );
                 if (incrementalMax != null) {
                     const currentMin = Number(legendFixedMin);
                     const currentMax = Number(legendFixedMax);
-                    const baseMin = Number.isFinite(currentMin) ? currentMin : getModelLegendRange('pressure').min;
-                    const baseMax = Number.isFinite(currentMax) ? currentMax : getModelLegendRange('pressure').max;
+                    const baseMin = Number.isFinite(currentMin)
+                        ? currentMin
+                        : getModelLegendRange("pressure").min;
+                    const baseMax = Number.isFinite(currentMax)
+                        ? currentMax
+                        : getModelLegendRange("pressure").max;
                     legendFixedMin = baseMin;
-                    legendFixedMax = Math.max(baseMax, incrementalMax, baseMin + 1e-6);
+                    legendFixedMax = Math.max(
+                        baseMax,
+                        incrementalMax,
+                        baseMin + 1e-6,
+                    );
                 }
                 pressureHistoryScanCount = history.length;
             }
@@ -524,15 +656,27 @@
         const expectedCount = nx * ny * nz;
         if (expectedCount <= 0) return null;
 
-        if (history.length > 0 && currentIndex >= 0 && currentIndex < history.length) {
+        if (
+            history.length > 0 &&
+            currentIndex >= 0 &&
+            currentIndex < history.length
+        ) {
             const entry = history[currentIndex];
             const historyGrid = entry?.grid ?? null;
-            if (historyGrid && historyGrid.pressure && historyGrid.pressure.length === expectedCount) {
+            if (
+                historyGrid &&
+                historyGrid.pressure &&
+                historyGrid.pressure.length === expectedCount
+            ) {
                 return historyGrid;
             }
         }
 
-        if (gridState && gridState.pressure && gridState.pressure.length === expectedCount) {
+        if (
+            gridState &&
+            gridState.pressure &&
+            gridState.pressure.length === expectedCount
+        ) {
             return gridState;
         }
 
@@ -544,30 +688,25 @@
         const height = canvasContainer?.clientHeight ?? 600;
 
         scene = new Scene();
-        const backgroundHex = theme === 'dark' ? 0x000000 : 0xf6f6f6;
+        const backgroundHex = theme === "dark" ? 0x000000 : 0xf6f6f6;
         scene.background = new Color(backgroundHex);
 
         // Add lights for MeshStandardMaterial to show colors
         const ambientLight = new AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
-        
+
         const directionalLight = new DirectionalLight(0xffffff, 0.6);
         directionalLight.position.set(5, 10, 7);
-        scene.add(directionalLight);    
-        
-        const gridSize = Math.max(nx, ny, nz)*4.5;
-        const newCamera = new PerspectiveCamera(
-            7, 
-            1, 
-            10, 
-            1000
-        );
-        
+        scene.add(directionalLight);
+
+        const gridSize = Math.max(nx, ny, nz) * 4.5;
+        const newCamera = new PerspectiveCamera(7, 1, 10, 1000);
+
         // Position camera at an angle to see 3D depth
         newCamera.position.set(gridSize * 1.2, -gridSize * 1.8, gridSize * 0.8);
         newCamera.up.set(0, 0, 1);
         newCamera.lookAt(0, 0, 0);
-    
+
         camera = newCamera;
 
         renderer = new WebGLRenderer({ antialias: true });
@@ -592,15 +731,17 @@
         controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        window.addEventListener('resize', onWindowResize);
+        window.addEventListener("resize", onWindowResize);
 
-        renderer.domElement.addEventListener('mousemove', onCanvasMouseMove, { passive: true });
+        renderer.domElement.addEventListener("mousemove", onCanvasMouseMove, {
+            passive: true,
+        });
 
         animate();
     }
 
     $: if (scene && renderer) {
-        const backgroundHex = theme === 'dark' ? 0x000000 : 0xf6f6f6;
+        const backgroundHex = theme === "dark" ? 0x000000 : 0xf6f6f6;
         scene.background = new Color(backgroundHex);
         renderer.setClearColor(backgroundHex);
     }
@@ -611,7 +752,7 @@
         const h = canvasContainer.clientHeight;
 
         if (w === 0 || h === 0) return; // Avoid resizing to zero
-        
+
         const perspectiveCamera = camera as PerspectiveCamera;
         perspectiveCamera.aspect = w / h;
         perspectiveCamera.updateProjectionMatrix();
@@ -634,14 +775,24 @@
     }
 
     function performTooltipHitTest(event: MouseEvent): void {
-        if (!renderer || !scene || !camera || !instancedMesh || !canvasContainer) {
+        if (
+            !renderer ||
+            !scene ||
+            !camera ||
+            !instancedMesh ||
+            !canvasContainer
+        ) {
             tooltipVisible = false;
             return;
         }
 
         // Get the active grid - use current gridState or history entry
         const currentGrid = getActiveGrid();
-        if (!currentGrid || !currentGrid.pressure || currentGrid.pressure.length === 0) {
+        if (
+            !currentGrid ||
+            !currentGrid.pressure ||
+            currentGrid.pressure.length === 0
+        ) {
             tooltipVisible = false;
             return;
         }
@@ -664,13 +815,25 @@
         if (intersects.length > 0) {
             const intersection = intersects[0];
             const instanceId = intersection.instanceId;
-            
-            if (instanceId !== undefined && instanceId < visibleCellIndices.length) {
+
+            if (
+                instanceId !== undefined &&
+                instanceId < visibleCellIndices.length
+            ) {
                 const cellIndex = visibleCellIndices[instanceId];
-                if (currentGrid.pressure && cellIndex < currentGrid.pressure.length) {
-                    const pressure = Number(currentGrid.pressure?.[cellIndex] ?? 0);
-                    const satWater = Number(currentGrid.sat_water?.[cellIndex] ?? 0);
-                    const satOil = Number(currentGrid.sat_oil?.[cellIndex] ?? 0);
+                if (
+                    currentGrid.pressure &&
+                    cellIndex < currentGrid.pressure.length
+                ) {
+                    const pressure = Number(
+                        currentGrid.pressure?.[cellIndex] ?? 0,
+                    );
+                    const satWater = Number(
+                        currentGrid.sat_water?.[cellIndex] ?? 0,
+                    );
+                    const satOil = Number(
+                        currentGrid.sat_oil?.[cellIndex] ?? 0,
+                    );
 
                     tooltipContent = `Pressure: ${pressure.toFixed(2)}\nWater Sat: ${satWater.toFixed(3)}\nOil Sat: ${satOil.toFixed(3)}`;
                     tooltipX = x + 10;
@@ -704,7 +867,7 @@
             }
             instancedMesh = null;
         }
-        
+
         if (wireframeGroup) {
             scene.remove(wireframeGroup);
             wireframeGroup.traverse((child) => {
@@ -731,7 +894,13 @@
         for (let k = 0; k < nz; k++) {
             for (let j = 0; j < ny; j++) {
                 for (let i = 0; i < nx; i++) {
-                    const isBoundary = (i === 0 || i === nx - 1 || j === 0 || j === ny - 1 || k === 0 || k === nz - 1);
+                    const isBoundary =
+                        i === 0 ||
+                        i === nx - 1 ||
+                        j === 0 ||
+                        j === ny - 1 ||
+                        k === 0 ||
+                        k === nz - 1;
                     if (isBoundary) {
                         const cellIndex = i + j * nx + k * nx * ny;
                         visibleCellIndices.push(cellIndex);
@@ -745,12 +914,12 @@
 
         const cellSize = getVisualCellSizes();
         const geometry = new BoxGeometry(cellSize.x, cellSize.y, cellSize.z);
-        
-        const material = new MeshStandardMaterial({ 
+
+        const material = new MeshStandardMaterial({
             color: 0xffffff,
             roughness: 0.8,
             metalness: 0.0,
-            wireframe: false
+            wireframe: false,
         });
 
         const mesh = new InstancedMesh(geometry, material, meshCount);
@@ -770,7 +939,7 @@
             tmpMatrix.makeTranslation(
                 (i - xOff) * cellSize.x,
                 (j - yOff) * cellSize.y,
-                (k - zOff) * cellSize.z
+                (k - zOff) * cellSize.z,
             );
             mesh.setMatrixAt(idx, tmpMatrix);
             mesh.setColorAt(idx, defaultColor);
@@ -788,15 +957,19 @@
 
         // Create a single wireframe outline for the whole reservoir volume
         wireframeGroup = new Group();
-        const reservoirGeometry = new BoxGeometry(nx * cellSize.x, ny * cellSize.y, nz * cellSize.z);
+        const reservoirGeometry = new BoxGeometry(
+            nx * cellSize.x,
+            ny * cellSize.y,
+            nz * cellSize.z,
+        );
         const edgesGeometry = new EdgesGeometry(reservoirGeometry);
         reservoirGeometry.dispose();
-        const lineMaterial = new LineBasicMaterial({ 
+        const lineMaterial = new LineBasicMaterial({
             color: 0x000000,
             transparent: true,
             opacity: 0.6,
             depthTest: true,
-            depthWrite: false
+            depthWrite: false,
         });
         const reservoirEdges = new LineSegments(edgesGeometry, lineMaterial);
         reservoirEdges.position.set(0, 0, 0);
@@ -816,7 +989,10 @@
         }
     }
 
-    function updateVisualization(gridArray: GridState, property: PropertyKey): void {
+    function updateVisualization(
+        gridArray: GridState,
+        property: PropertyKey,
+    ): void {
         applyGridToInstances(gridArray, property);
     }
 
@@ -835,7 +1011,10 @@
         drawLegend(legendMin, legendMax, property);
     }
 
-    function applyGridToInstances(gridArray: GridState, property: PropertyKey): void {
+    function applyGridToInstances(
+        gridArray: GridState,
+        property: PropertyKey,
+    ): void {
         if (!instancedMesh) return;
 
         if (!instancedMesh.instanceColor) return;
@@ -853,13 +1032,18 @@
         for (let idx = 0; idx < numInstances; idx++) {
             const cellIndex = visibleCellIndices[idx];
             if (cellIndex < gridArray.pressure.length) {
-                values.push(getCellPropertyValue(gridArray, cellIndex, property));
+                values.push(
+                    getCellPropertyValue(gridArray, cellIndex, property),
+                );
             } else {
                 values.push(NaN);
             }
         }
 
-        const range = computeLegendRange(property, values.filter(v => Number.isFinite(v)));
+        const range = computeLegendRange(
+            property,
+            values.filter((v) => Number.isFinite(v)),
+        );
         const min = range.min;
         const max = range.max;
 
@@ -908,7 +1092,7 @@
             const i = Number(w.i ?? w.ix ?? 0);
             const j = Number(w.j ?? w.jy ?? 0);
             const k = Number(w.k ?? w.k ?? 0);
-            
+
             const colKey = `${i},${j}`;
             if (!wellColumns.has(colKey)) {
                 wellColumns.add(colKey);
@@ -930,17 +1114,28 @@
                 const yOff = (ny - 1) * 0.5;
                 const zOff = (nz - 1) * 0.5;
                 const cellSize = getVisualCellSizes();
-                const wellRadius = Math.max(0.08 * Math.min(cellSize.x, cellSize.y), 0.05);
-                const wellHeight = Math.max(cellSize.z * 2, Math.min(cellSize.x, cellSize.y));
+                const wellRadius = Math.max(
+                    0.08 * Math.min(cellSize.x, cellSize.y),
+                    0.05,
+                );
+                const wellHeight = Math.max(
+                    cellSize.z * 2,
+                    Math.min(cellSize.x, cellSize.y),
+                );
 
                 const wellCylinder = new Mesh(
-                    new CylinderGeometry(wellRadius, wellRadius, wellHeight, 16),
+                    new CylinderGeometry(
+                        wellRadius,
+                        wellRadius,
+                        wellHeight,
+                        16,
+                    ),
                     new MeshStandardMaterial({
-                        color: 0x8B4513,
+                        color: 0x8b4513,
                         roughness: 0.6,
                         metalness: 0.3,
-                        emissive: 0x3d2817
-                    })
+                        emissive: 0x3d2817,
+                    }),
                 );
 
                 // Rotate cylinder to point along Z-axis instead of Y-axis
@@ -971,7 +1166,7 @@
 
     function drawLegend(min: number, max: number, property: PropertyKey): void {
         if (!legendCanvas) return;
-        const ctx = legendCanvas.getContext('2d');
+        const ctx = legendCanvas.getContext("2d");
         if (!ctx) return;
 
         const w = legendCanvas.width;
@@ -988,19 +1183,19 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, w, h);
 
-        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.strokeStyle = "rgba(0,0,0,0.6)";
         ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
 
-        ctx.font = '11px sans-serif';
-        ctx.fillStyle = '#111';
-        ctx.textBaseline = 'top';
+        ctx.font = "11px sans-serif";
+        ctx.fillStyle = "#111";
+        ctx.textBaseline = "top";
         ctx.fillText(formatLegendValue(property, min), 2, h + 2);
         const maxText = formatLegendValue(property, max);
         const textWidth = ctx.measureText(maxText).width;
         ctx.fillText(maxText, w - textWidth - 2, h + 2);
-        
     }
 </script>
+
 <div style="display:flex; flex-direction:column;">
     <div class="w-full">
         <div class="flex items-center gap-3 w-full">
@@ -1014,9 +1209,13 @@
                 onchange={applySliderValue}
             />
             <div class="flex flex-col items-end text-right">
-                <div class="text-xs opacity-80">Step: {currentIndex} / {Math.max(0, history.length - 1)}</div>
+                <div class="text-xs opacity-80">
+                    Step: {currentIndex} / {Math.max(0, history.length - 1)}
+                </div>
                 {#if replayTime !== null}
-                    <div class="text-xs opacity-80">Replay Time: {replayTime.toFixed(2)} days</div>
+                    <div class="text-xs opacity-80">
+                        Replay Time: {replayTime.toFixed(2)} days
+                    </div>
                 {/if}
             </div>
         </div>
@@ -1028,8 +1227,11 @@
                 {#each showPropertyOptions as option}
                     <button
                         type="button"
-                        class="btn btn-xs {showProperty === option.value ? 'btn-primary' : 'btn-outline'}"
-                        onclick={() => showProperty = option.value}
+                        class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {showProperty ===
+                        option.value
+                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                            : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'}"
+                        onclick={() => (showProperty = option.value)}
                     >
                         {option.label}
                     </button>
@@ -1037,51 +1239,83 @@
             </div>
         </div>
     </label>
-    <div class="flex items-start gap-4" style="margin-left:4px; align-items:center;">
+    <div
+        class="flex items-start gap-4"
+        style="margin-left:4px; align-items:center;"
+    >
         <div class="legend" style="margin:0;">
-            <canvas bind:this={legendCanvas} width="300" height="18" style="width:200px;height:14px"></canvas>
+            <canvas
+                bind:this={legendCanvas}
+                width="300"
+                height="18"
+                style="width:200px;height:14px"
+            ></canvas>
         </div>
-                    <span class="label-text text-xs">Min</span>
-                    <div
-                        class="flex items-center gap-2 rounded-md border border-base-300 bg-base-100 p-1 transition-colors"
-                    >
-                        <input
-                            type="number"
-                            step="any"
-                            class="input input-bordered input-sm w-full"
-                            value={legendFixedMin}
-                            oninput={onLegendMinInput}
-                        />
-                        <button type="button" class="btn btn-xs btn-outline" onclick={applyModelLegendMin}>Auto</button>
-                        
-                    </div>
-                    <span class="label-text text-xs">Max</span>
-                    <div
-                        class="flex items-center gap-2 rounded-md border border-base-300 bg-base-100 p-1 transition-colors"
-                    >
-                        <input
-                            type="number"
-                            step="any"
-                            class="input input-bordered input-sm w-full"
-                            value={legendFixedMax}
-                            oninput={onLegendMaxInput}
-                        />
-                        <button type="button" class="btn btn-xs btn-outline" onclick={applyModelLegendMax}>Auto</button>
-                        
-                    </div>
-            
-            </div>
-            <div class="viz" bind:this={canvasContainer} style="position:relative;">
+        <span class="label-text text-xs">Min</span>
+        <div
+            class="flex items-center gap-2 rounded-md border border-border bg-card p-1 transition-colors"
+        >
+            <input
+                type="number"
+                step="any"
+                class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 shadow-sm transition-colors text-xs"
+                value={legendFixedMin}
+                oninput={onLegendMinInput}
+            />
+            <button
+                type="button"
+                class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
+                onclick={applyModelLegendMin}>Auto</button
+            >
+        </div>
+        <span class="label-text text-xs">Max</span>
+        <div
+            class="flex items-center gap-2 rounded-md border border-border bg-card p-1 transition-colors"
+        >
+            <input
+                type="number"
+                step="any"
+                class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 shadow-sm transition-colors text-xs"
+                value={legendFixedMax}
+                oninput={onLegendMaxInput}
+            />
+            <button
+                type="button"
+                class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
+                onclick={applyModelLegendMax}>Auto</button
+            >
+        </div>
+    </div>
+    <div class="viz" bind:this={canvasContainer} style="position:relative;">
         {#if tooltipVisible}
-            <div style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:pre-line; line-height:1.4; z-index:1000; border:1px solid #ddd;">
+            <div
+                style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:pre-line; line-height:1.4; z-index:1000; border:1px solid #ddd;"
+            >
                 {tooltipContent}
             </div>
         {/if}
     </div>
 </div>
+
 <style>
     /* Revert to non-absolute sizing so parent controls height explicitly */
-    .viz { border: 1px solid #ddd; width: 100%; height: clamp(255px, 37vh, 440px); position: relative; background: #fff; }
-    .legend { margin-top: 8px; margin-bottom: 8px; color: #222; display:flex; align-items:center; gap:8px; }
-    .legend canvas { border: 1px solid #ccc; background: #fff; }
+    .viz {
+        border: 1px solid #ddd;
+        width: 100%;
+        height: clamp(255px, 37vh, 440px);
+        position: relative;
+        background: #fff;
+    }
+    .legend {
+        margin-top: 8px;
+        margin-bottom: 8px;
+        color: #222;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .legend canvas {
+        border: 1px solid #ccc;
+        background: #fff;
+    }
 </style>

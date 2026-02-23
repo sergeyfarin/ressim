@@ -1,10 +1,16 @@
 <script lang="ts">
-    import { onMount, onDestroy, tick, untrack } from 'svelte';
-    import { Chart, registerables, type ChartDataset } from 'chart.js';
-    import { getLineDataset, getDatasetLabel, safeSetDatasetData, applyThemeToChart, externalTooltipHandler } from './chart-helpers';
+    import { onMount, onDestroy, tick, untrack } from "svelte";
+    import { Chart, registerables, type ChartDataset } from "chart.js";
+    import {
+        getLineDataset,
+        getDatasetLabel,
+        safeSetDatasetData,
+        applyThemeToChart,
+        externalTooltipHandler,
+    } from "./chart-helpers";
 
     type XYPoint = { x: number; y: number | null };
-    type LineDataset = ChartDataset<'line', Array<number | null | XYPoint>>;
+    type LineDataset = ChartDataset<"line", Array<number | null | XYPoint>>;
 
     /** Panel configuration passed from parent */
     export interface CurveConfig {
@@ -18,19 +24,19 @@
     }
 
     let {
-        panelId = '',
-        title = '',
+        panelId = "",
+        title = "",
         expanded = $bindable(true),
         curves = [],
         seriesData = [],
         scaleConfigs = {},
-        theme = 'dark',
+        theme = "dark",
         logScale = $bindable(false),
         allowLogToggle = false,
-        chartHeight = 'min(36vh, 300px)',
+        chartHeight = "min(36vh, 300px)",
         targetLeftGutter = 0,
         targetRightGutter = 0,
-        onGutterMeasure
+        onGutterMeasure,
     }: {
         panelId?: string;
         title?: string;
@@ -38,7 +44,7 @@
         curves?: CurveConfig[];
         seriesData?: XYPoint[][];
         scaleConfigs?: Record<string, any>;
-        theme?: 'dark' | 'light';
+        theme?: "dark" | "light";
         logScale?: boolean;
         allowLogToggle?: boolean;
         chartHeight?: string;
@@ -48,12 +54,16 @@
     } = $props();
 
     let chartCanvas = $state<HTMLCanvasElement | null>(null);
-    let chart = $state<Chart<'line', XYPoint[], number> | null>(null);
+    let chart = $state<Chart<"line", XYPoint[], number> | null>(null);
     let visibleCurves = $state<boolean[]>([]);
 
     // Extract custom metadata (_dynamicTitle, _fraction, _auto) from scale configs
     // so Chart.js doesn't try to resolve them as scriptable options
-    type ScaleMeta = { _dynamicTitle?: (labels: string[]) => string; _fraction?: boolean; _auto?: boolean };
+    type ScaleMeta = {
+        _dynamicTitle?: (labels: string[]) => string;
+        _fraction?: boolean;
+        _auto?: boolean;
+    };
     let scaleDerived = $derived.by(() => {
         let meta: Record<string, ScaleMeta> = {};
         let clean: Record<string, any> = {};
@@ -70,7 +80,7 @@
     // Initialize visibility from curve defaults
     $effect(() => {
         if (curves.length > 0 && visibleCurves.length !== curves.length) {
-            visibleCurves = curves.map(c => c.defaultVisible !== false);
+            visibleCurves = curves.map((c) => c.defaultVisible !== false);
         }
     });
 
@@ -105,13 +115,13 @@
     });
 
     function toggleCurve(idx: number) {
-        visibleCurves = visibleCurves.map((v, i) => i === idx ? !v : v);
+        visibleCurves = visibleCurves.map((v, i) => (i === idx ? !v : v));
         updateChart();
     }
 
     // Smart decimal formatting for tooltips (3 significant digits)
     function formatValueTooltip(value: number): string {
-        if (!Number.isFinite(value)) return '';
+        if (!Number.isFinite(value)) return "";
         const abs = Math.abs(value);
         if (abs >= 100) return value.toFixed(0);
         if (abs >= 10) return value.toFixed(1);
@@ -126,7 +136,9 @@
             // Unwrap array and inner points so Chart.js can safely append internal tracking without triggering Proxies
             let rawData = seriesData[idx] ?? [];
             if (Array.isArray(rawData)) {
-                rawData = rawData.map(pt => (pt && typeof pt === 'object' ? { ...pt } : pt)) as any;
+                rawData = rawData.map((pt) =>
+                    pt && typeof pt === "object" ? { ...pt } : pt,
+                ) as any;
             }
             safeSetDatasetData(chart, idx, rawData);
 
@@ -144,38 +156,44 @@
         // Update axis visibility based on visible curves
         const activeAxisIds = new Set(
             visibleCurves
-                .map((visible, idx) => visible ? curves[idx]?.yAxisID : null)
-                .filter((id): id is string => Boolean(id))
+                .map((visible, idx) => (visible ? curves[idx]?.yAxisID : null))
+                .filter((id): id is string => Boolean(id)),
         );
 
         const scales = (chart.options.scales ?? {}) as Record<string, any>;
         for (const [axisId, config] of Object.entries(scales)) {
-            if (axisId === 'x') continue;
+            if (axisId === "x") continue;
             if (config) config.display = activeAxisIds.has(axisId);
         }
 
         // Handle log scale for rate axis
         if (scales.y) {
-            scales.y.type = logScale ? 'logarithmic' : 'linear';
+            scales.y.type = logScale ? "logarithmic" : "linear";
             if (logScale) {
-                const yValues = collectAxisValues('y').filter(v => v > 0);
+                const yValues = collectAxisValues("y").filter((v) => v > 0);
                 if (yValues.length > 0) {
                     const minY = Math.min(...yValues);
                     const maxY = Math.max(...yValues);
-                    scales.y.min = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, minY))));
-                    scales.y.max = Math.pow(10, Math.ceil(Math.log10(Math.max(1e-6, maxY * 1.1))));
+                    scales.y.min = Math.pow(
+                        10,
+                        Math.floor(Math.log10(Math.max(1e-6, minY))),
+                    );
+                    scales.y.max = Math.pow(
+                        10,
+                        Math.ceil(Math.log10(Math.max(1e-6, maxY * 1.1))),
+                    );
                 } else {
                     delete scales.y.min;
                 }
             } else {
                 scales.y.min = 0;
-                applyPositiveAxisBounds(scales.y, collectAxisValues('y'));
+                applyPositiveAxisBounds(scales.y, collectAxisValues("y"));
             }
         }
 
         // Auto-bound other axes
         for (const [axisId, config] of Object.entries(scales)) {
-            if (axisId === 'x' || axisId === 'y') continue;
+            if (axisId === "x" || axisId === "y") continue;
             if (!config || !config.display) continue;
             if ((scaleMeta[axisId] as any)?._fraction) {
                 // Remove hard cap of 1 so WOR can exceed 1, but default to 0-1 bounds
@@ -189,12 +207,14 @@
 
         // Dynamic axis title based on which curves are visible
         for (const [axisId, config] of Object.entries(scales)) {
-            if (!config || axisId === 'x') continue;
+            if (!config || axisId === "x") continue;
             const meta = scaleMeta[axisId];
-            if (meta && typeof meta._dynamicTitle === 'function') {
+            if (meta && typeof meta._dynamicTitle === "function") {
                 const visibleLabels = curves
-                    .filter((c, idx) => visibleCurves[idx] && c.yAxisID === axisId)
-                    .map(c => c.label);
+                    .filter(
+                        (c, idx) => visibleCurves[idx] && c.yAxisID === axisId,
+                    )
+                    .map((c) => c.label);
                 const newTitle = meta._dynamicTitle(visibleLabels);
                 if (config.title && newTitle) config.title.text = newTitle;
             }
@@ -204,10 +224,13 @@
 
         // After update, measure the native gutters (excluding any manual padding we added)
         if (onGutterMeasure && chart.chartArea) {
-            const currentPaddingLeft = (chart.options.layout?.padding as any)?.left ?? 0;
-            const currentPaddingRight = (chart.options.layout?.padding as any)?.right ?? 0;
+            const currentPaddingLeft =
+                (chart.options.layout?.padding as any)?.left ?? 0;
+            const currentPaddingRight =
+                (chart.options.layout?.padding as any)?.right ?? 0;
             const nativeLeft = chart.chartArea.left - currentPaddingLeft;
-            const nativeRight = chart.width - chart.chartArea.right - currentPaddingRight;
+            const nativeRight =
+                chart.width - chart.chartArea.right - currentPaddingRight;
             onGutterMeasure(nativeLeft, nativeRight);
         }
     }
@@ -216,35 +239,52 @@
     $effect(() => {
         const _left = targetLeftGutter;
         const _right = targetRightGutter;
-        if (chart && chartCanvas && (targetLeftGutter > 0 || targetRightGutter > 0)) {
+        if (
+            chart &&
+            chartCanvas &&
+            (targetLeftGutter > 0 || targetRightGutter > 0)
+        ) {
             untrack(() => applyTargetGutters());
         }
     });
 
     function applyTargetGutters() {
         if (!chart || !chart.chartArea) return;
-        const currentPaddingLeft = (chart.options.layout?.padding as any)?.left ?? 0;
-        const currentPaddingRight = (chart.options.layout?.padding as any)?.right ?? 0;
-        
+        const currentPaddingLeft =
+            (chart.options.layout?.padding as any)?.left ?? 0;
+        const currentPaddingRight =
+            (chart.options.layout?.padding as any)?.right ?? 0;
+
         const myNativeLeft = chart.chartArea.left - currentPaddingLeft;
-        const myNativeRight = chart.width - chart.chartArea.right - currentPaddingRight;
+        const myNativeRight =
+            chart.width - chart.chartArea.right - currentPaddingRight;
 
         const padLeft = Math.max(0, targetLeftGutter - myNativeLeft);
         const padRight = Math.max(0, targetRightGutter - myNativeRight);
 
-        if (Math.abs(padLeft - currentPaddingLeft) > 1 || Math.abs(padRight - currentPaddingRight) > 1) {
-            chart.options.layout = { padding: { left: padLeft, right: padRight } };
-            chart.update('none'); // Update without animation to prevent UI jitter
+        if (
+            Math.abs(padLeft - currentPaddingLeft) > 1 ||
+            Math.abs(padRight - currentPaddingRight) > 1
+        ) {
+            chart.options.layout = {
+                padding: { left: padLeft, right: padRight },
+            };
+            chart.update("none"); // Update without animation to prevent UI jitter
         }
     }
 
     function collectAxisValues(axisId: string): number[] {
         const values: number[] = [];
         for (let idx = 0; idx < curves.length; idx++) {
-            if (!visibleCurves[idx] || curves[idx]?.yAxisID !== axisId) continue;
+            if (!visibleCurves[idx] || curves[idx]?.yAxisID !== axisId)
+                continue;
             const data = seriesData[idx] ?? [];
             for (const point of data) {
-                if (point && typeof point === 'object' && Number.isFinite(point.y)) {
+                if (
+                    point &&
+                    typeof point === "object" &&
+                    Number.isFinite(point.y)
+                ) {
                     values.push(point.y as number);
                 }
             }
@@ -273,12 +313,12 @@
     }
 
     function getCurveColor(idx: number): string {
-        return curves[idx]?.color ?? '#888';
+        return curves[idx]?.color ?? "#888";
     }
 
     function getCurveDash(idx: number): string {
         const dash = curves[idx]?.borderDash;
-        return Array.isArray(dash) ? dash.join(', ') : '';
+        return Array.isArray(dash) ? dash.join(", ") : "";
     }
 
     function getCurveBorderWidth(idx: number): number {
@@ -288,10 +328,10 @@
     function createChart() {
         if (!chartCanvas || chart) return;
         Chart.register(...registerables);
-        const ctx = chartCanvas.getContext('2d');
+        const ctx = chartCanvas.getContext("2d");
         if (!ctx) return;
 
-        const datasets = curves.map(curve => ({
+        const datasets = curves.map((curve) => ({
             label: curve.label,
             data: [] as XYPoint[],
             borderColor: curve.color,
@@ -304,7 +344,7 @@
         }));
 
         chart = new Chart(ctx, {
-            type: 'line',
+            type: "line",
             data: { labels: [], datasets },
             options: {
                 animation: false,
@@ -317,7 +357,7 @@
                         external: externalTooltipHandler,
                         callbacks: {
                             label: (context) => {
-                                const label = context.dataset.label ?? '';
+                                const label = context.dataset.label ?? "";
                                 const rawValue = context.parsed?.y;
                                 if (!Number.isFinite(rawValue)) return label;
                                 return `${label}: ${formatValueTooltip(Number(rawValue))}`;
@@ -327,11 +367,19 @@
                 },
                 scales: {
                     x: {
-                        type: 'linear',
+                        type: "linear",
                         display: true,
-                        title: { font: { family: "'JetBrains Mono', monospace", size: 11 } },
+                        title: {
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 11,
+                            },
+                        },
                         ticks: {
-                            font: { family: "'JetBrains Mono', monospace", size: 10 },
+                            font: {
+                                family: "'JetBrains Mono', monospace",
+                                size: 10,
+                            },
                         },
                     },
                     ...Object.fromEntries(
@@ -341,14 +389,20 @@
                                 ...cfg,
                                 title: {
                                     ...(cfg.title ?? {}),
-                                    font: { family: "'JetBrains Mono', monospace", size: 11 }
+                                    font: {
+                                        family: "'JetBrains Mono', monospace",
+                                        size: 11,
+                                    },
                                 },
                                 ticks: {
                                     ...(cfg.ticks ?? {}),
-                                    font: { family: "'JetBrains Mono', monospace", size: 10 },
+                                    font: {
+                                        family: "'JetBrains Mono', monospace",
+                                        size: 10,
+                                    },
                                 },
                             },
-                        ])
+                        ]),
                     ),
                 },
             },
@@ -375,16 +429,28 @@
 <!-- FIX #6: Load JetBrains Mono font for digits -->
 <svelte:head>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link
+        rel="preconnect"
+        href="https://fonts.gstatic.com"
+        crossorigin="anonymous"
+    />
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet"
+    />
 </svelte:head>
 
-<div class="border-t border-base-300 overflow-hidden {expanded ? 'bg-base-100' : 'bg-base-100/50'} first:border-t-0" id="panel-{panelId}">
+<div
+    class="border-t border-border overflow-hidden {expanded
+        ? 'bg-card'
+        : 'bg-muted/50'} first:border-t-0"
+    id="panel-{panelId}"
+>
     <!-- Collapsible header -->
     <button
         type="button"
-        class="w-full flex items-center gap-2 px-4 md:px-5 py-3 text-xs font-semibold uppercase tracking-wide
-            hover:bg-base-200/50 transition-colors cursor-pointer select-none"
+        class="w-full flex items-center justify-between px-4 py-2 bg-muted/40 text-xs font-semibold
+            hover:bg-muted/60 transition-colors cursor-pointer select-none"
         onclick={() => {
             if (expanded) {
                 expanded = false;
@@ -395,71 +461,117 @@
         }}
     >
         <svg
-            class="w-3.5 h-3.5 transition-transform {expanded ? 'rotate-90' : ''}"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            class="w-3.5 h-3.5 transition-transform {expanded
+                ? 'rotate-90'
+                : ''}"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
         >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5l7 7-7 7"
+            ></path>
         </svg>
         {title}
     </button>
 
     {#if expanded}
-    <div class="pb-2 flex flex-col">
-        {#if allowLogToggle || curves.length > 0}
-            <div class="flex flex-wrap items-center gap-1.5 px-4 md:px-5 py-2">
-                {#if allowLogToggle}
-                    <!-- Linear/Log radio-style toggle pair -->
-                    <div class="inline-flex rounded-full border border-base-content/20 shadow-sm overflow-hidden shrink-0 mr-2">
-                        <button
-                            type="button"
-                            class="px-2.5 py-0.5 text-[11px] font-medium transition-colors
-                                {!logScale ? 'bg-primary text-primary-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
-                            onclick={() => { logScale = false; }}
-                        >
-                            Linear
-                        </button>
-                        <button
-                            type="button"
-                            class="px-2.5 py-0.5 text-[11px] font-medium transition-colors border-l border-base-content/20
-                                {logScale ? 'bg-primary text-primary-content' : 'bg-transparent text-base-content/50 hover:text-base-content/80'}"
-                            onclick={() => { logScale = true; }}
-                        >
-                            Log
-                        </button>
-                    </div>
-                {/if}
-
-                <!-- Curve toggles with visible border and ✕/+ indicators -->
-                {#each curves as curve, idx}
-                <button
-                    type="button"
-                    disabled={curve.disabled}
-                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] transition-all select-none
-                        {visibleCurves[idx]
-                            ? 'bg-base-200 border-2 border-base-content/30 opacity-100 shadow-sm'
-                            : 'bg-transparent border border-dashed border-base-content/20 opacity-50'}
-                        {!curve.disabled ? 'cursor-pointer hover:opacity-75' : 'disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale'}"
-                    onclick={() => toggleCurve(idx)}
-                    title={curve.disabled ? 'Curve disabled for this case' : visibleCurves[idx] ? `Hide ${curve.label}` : `Show ${curve.label}`}
+        <div class="pb-2 flex flex-col">
+            {#if allowLogToggle || curves.length > 0}
+                <div
+                    class="flex flex-wrap items-center gap-1.5 px-4 md:px-5 py-2"
                 >
-                    <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
-                        <line x1="0" y1="1.5" x2="14" y2="1.5"
-                            stroke={getCurveColor(idx)}
-                            stroke-width={getCurveBorderWidth(idx)}
-                            stroke-dasharray={getCurveDash(idx)}
-                        />
-                    </svg>
-                    <span>{curve.label}</span>
-                    <span class="opacity-60 ml-0.5 {visibleCurves[idx] ? 'text-[9px]' : 'text-[14px]'}">{visibleCurves[idx] ? '✕' : '+'}</span>
-                </button>
-            {/each}
-            </div>
-        {/if}
+                    {#if allowLogToggle}
+                        <!-- Linear/Log radio-style toggle pair -->
+                        <div
+                            class="inline-flex rounded-md border border-border shadow-sm overflow-hidden shrink-0 mr-2"
+                        >
+                            <button
+                                type="button"
+                                class="px-2.5 py-0.5 text-[11px] font-medium transition-colors
+                                {!logScale
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    logScale = false;
+                                }}
+                                title="Linear Scale"
+                            >
+                                Lin
+                            </button>
+                            <button
+                                type="button"
+                                class="px-2.5 py-0.5 text-[11px] font-medium transition-colors border-l border-border
+                                {logScale
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'}"
+                                onclick={() => {
+                                    logScale = true;
+                                }}
+                            >
+                                Log
+                            </button>
+                        </div>
+                    {/if}
 
-        <!-- FIX #2: Chart canvas with fixed left padding for y-axis alignment -->
-        <div style="position: relative; height: {chartHeight}; width: 100%;" class="pb-2">
-            <canvas bind:this={chartCanvas}></canvas>
+                    <!-- Curve toggles with visible border and ✕/+ indicators -->
+                    {#each curves as curve, idx}
+                        <button
+                            type="button"
+                            disabled={curve.disabled}
+                            class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all
+                        {visibleCurves[idx]
+                                ? 'bg-muted border-2 border-primary/30 opacity-100 shadow-sm'
+                                : 'bg-transparent border border-dashed border-border opacity-50'}
+                        {!curve.disabled
+                                ? 'cursor-pointer hover:opacity-75'
+                                : 'disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale'}"
+                            onclick={() => toggleCurve(idx)}
+                            title={curve.disabled
+                                ? "Curve disabled for this case"
+                                : visibleCurves[idx]
+                                  ? `Hide ${curve.label}`
+                                  : `Show ${curve.label}`}
+                        >
+                            <svg
+                                width="14"
+                                height="3"
+                                class="overflow-visible shrink-0"
+                                viewBox="0 0 14 3"
+                            >
+                                <line
+                                    x1="0"
+                                    y1="1.5"
+                                    x2="14"
+                                    y2="1.5"
+                                    stroke={getCurveColor(idx)}
+                                    stroke-width={getCurveBorderWidth(idx)}
+                                    stroke-dasharray={getCurveDash(idx)}
+                                />
+                            </svg>
+                            <span>{curve.label}</span>
+                            <span
+                                class="opacity-60 ml-0.5 {visibleCurves[idx]
+                                    ? 'text-[9px]'
+                                    : 'text-[14px]'}"
+                                >{visibleCurves[idx] ? "✕" : "+"}</span
+                            >
+                        </button>
+                    {/each}
+                </div>
+            {/if}
+
+            <!-- FIX #2: Chart canvas with fixed left padding for y-axis alignment -->
+            <div
+                style="position: relative; height: {chartHeight}; width: 100%;"
+                class="pb-2"
+            >
+                <canvas bind:this={chartCanvas}></canvas>
+            </div>
         </div>
-    </div>
     {/if}
 </div>

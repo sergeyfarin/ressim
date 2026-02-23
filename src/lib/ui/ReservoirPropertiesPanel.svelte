@@ -1,4 +1,8 @@
 <script lang="ts">
+  import Collapsible from "../components/ui/Collapsible.svelte";
+  import Input from "../components/ui/Input.svelte";
+  import Select from "../components/ui/Select.svelte";
+
   let {
     initialPressure = $bindable(300),
     initialSaturation = $bindable(0.2),
@@ -77,155 +81,151 @@
   );
 </script>
 
-<details
-  class="rounded-lg border bg-base-100 shadow-sm"
-  class:border-error={hasError}
-  class:border-base-300={!hasError}
->
-  <summary
-    class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5"
-  >
-    <div>
-      <div class="font-semibold">Reservoir Properties</div>
-      <div class="text-xs opacity-70">{groupSummary}</div>
+<Collapsible title="Reservoir Properties" {hasError}>
+  <div class="space-y-3 p-4 md:p-5">
+    <div class="flex justify-between items-center mb-2">
+      <p class="text-xs font-medium text-muted-foreground"></p>
+      <p class="text-xs font-medium text-muted-foreground">
+        {groupSummary}
+      </p>
     </div>
-    <div class="flex items-center gap-2 text-xs opacity-70">
-      <span class="collapse-label-open hidden">Collapse</span>
-      <span class="collapse-label-closed">Expand</span>
-      <span class="collapse-chevron">▸</span>
-    </div>
-  </summary>
 
-  <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-      <label class="form-control">
-        <span class="label-text text-xs">Pressure (bar)</span>
-        <input
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-medium">Pressure (bar)</span>
+        <Input
           type="number"
           step="10"
-          class="input input-bordered input-sm w-full"
+          class="w-full h-8"
           bind:value={initialPressure}
         />
       </label>
-      <label class="form-control">
-        <span class="label-text text-xs">Water Saturation</span>
-        <input
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-medium">Water Saturation</span>
+        <Input
           type="number"
           min="0"
           max="1"
           step="0.05"
-          class="input input-bordered input-sm w-full"
-          class:input-error={Boolean(fieldErrors.initialSaturation)}
+          class={`w-full h-8 ${Boolean(fieldErrors.initialSaturation) ? "border-destructive" : ""}`}
           bind:value={initialSaturation}
         />
       </label>
-      <label class="form-control">
-        <span class="label-text text-xs">Depth Ref (m)</span>
-        <input
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-medium">Depth Ref (m)</span>
+        <Input
           type="number"
           step="1"
-          class="input input-bordered input-sm w-full"
+          class="w-full h-8"
           bind:value={depth_reference}
         />
       </label>
-      <label class="form-control">
-        <span class="label-text text-xs">Rock Compress. (1/bar)</span>
-        <input
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-medium">Rock Compress. (1/bar)</span>
+        <Input
           type="number"
           min="0"
           step="1e-6"
-          class="input input-bordered input-sm w-full"
+          class="w-full h-8"
           bind:value={rock_compressibility}
         />
       </label>
     </div>
 
-    <div class="overflow-x-auto rounded-md border border-base-300 mt-2 mb-2">
-      <table class="table table-xs compact-table w-full">
-        <thead>
-          <tr class="bg-base-200/50">
-            <th>Phase</th>
-            <th>Viscosity (cP)</th>
-            <th>Density (kg/m³)</th>
-            <th>Compress. (1/bar)</th>
-            <th>Vol Exp Factor</th>
+    <div class="overflow-x-auto rounded-md border border-border mt-2 mb-2">
+      <table class="compact-table w-full text-left">
+        <thead
+          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+        >
+          <tr>
+            <th class="font-medium p-2">Phase</th>
+            <th class="font-medium p-2">Viscosity (cP)</th>
+            <th class="font-medium p-2">Density (kg/m³)</th>
+            <th class="font-medium p-2">Compress. (1/bar)</th>
+            <th class="font-medium p-2">Vol Exp Factor</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-border">
           <tr>
-            <td class="font-semibold text-center align-middle">Water</td>
             <td
-              ><input
+              class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
+              >Water</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.01"
                 step="0.01"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={mu_w}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="1"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={rho_w}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 step="1e-6"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={c_w}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.01"
                 step="0.01"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={volume_expansion_w}
               /></td
             >
           </tr>
           <tr>
-            <td class="font-semibold text-center align-middle">Oil</td>
             <td
-              ><input
+              class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
+              >Oil</td
+            >
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.01"
                 step="0.01"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={mu_o}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="1"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={rho_o}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 step="1e-6"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={c_o}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.01"
                 step="0.01"
-                class="input input-bordered input-xs w-full min-w-16"
+                class="w-full h-7 px-2"
                 bind:value={volume_expansion_o}
               /></td
             >
@@ -234,162 +234,153 @@
       </table>
     </div>
 
-    <label class="label cursor-pointer justify-start gap-2">
+    <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
       <input
         type="checkbox"
-        class="checkbox checkbox-sm"
+        class="h-4 w-4 rounded border-input text-primary accent-primary"
         bind:checked={gravityEnabled}
       />
-      <span class="label-text text-sm">Enable Gravity</span>
+      <span class="text-sm font-medium leading-none">Enable Gravity</span>
     </label>
 
-    <label class="form-control">
-      <span class="label-text text-xs">Permeability Mode</span>
-      <select
-        class="select select-bordered select-sm w-full"
+    <label class="flex flex-col gap-1.5 mt-2">
+      <span class="text-xs font-medium">Permeability Mode</span>
+      <Select
+        class="w-full"
         bind:value={permMode}
         onchange={onNzOrPermModeChange}
       >
         <option value="uniform">Uniform</option>
         <option value="random">Random</option>
         <option value="perLayer">Per Layer</option>
-      </select>
+      </Select>
     </label>
 
-    {#if permMode === "uniform"}
-      <div class="grid grid-cols-3 gap-2">
-        <label class="form-control">
-          <span class="label-text text-xs">kX (mD)</span>
+    <div class="mt-2">
+      {#if permMode === "uniform"}
+        <div class="grid grid-cols-3 gap-2">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-xs font-medium">kX (mD)</span>
+            <Input
+              type="number"
+              min="1"
+              class="w-full"
+              bind:value={uniformPermX}
+            />
+          </label>
+          <label class="flex flex-col gap-1.5">
+            <span class="text-xs font-medium">kY (mD)</span>
+            <Input
+              type="number"
+              min="1"
+              class="w-full"
+              bind:value={uniformPermY}
+            />
+          </label>
+          <label class="flex flex-col gap-1.5">
+            <span class="text-xs font-medium">kZ (mD)</span>
+            <Input
+              type="number"
+              min="1"
+              class="w-full"
+              bind:value={uniformPermZ}
+            />
+          </label>
+        </div>
+      {:else if permMode === "random"}
+        <label class="flex items-center gap-2 cursor-pointer mb-2">
           <input
-            type="number"
-            min="1"
-            class="input input-bordered input-sm w-full"
-            bind:value={uniformPermX}
+            type="checkbox"
+            class="h-4 w-4 rounded border-input text-primary accent-primary"
+            bind:checked={useRandomSeed}
           />
+          <span class="text-sm font-medium leading-none"
+            >Use Seeded Randomness</span
+          >
         </label>
-        <label class="form-control">
-          <span class="label-text text-xs">kY (mD)</span>
-          <input
-            type="number"
-            min="1"
-            class="input input-bordered input-sm w-full"
-            bind:value={uniformPermY}
-          />
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs">kZ (mD)</span>
-          <input
-            type="number"
-            min="1"
-            class="input input-bordered input-sm w-full"
-            bind:value={uniformPermZ}
-          />
-        </label>
-      </div>
-    {:else if permMode === "random"}
-      <label class="label cursor-pointer justify-start gap-2">
-        <input
-          type="checkbox"
-          class="checkbox checkbox-sm"
-          bind:checked={useRandomSeed}
-        />
-        <span class="label-text text-sm">Use Seeded Randomness</span>
-      </label>
 
-      {#if useRandomSeed}
-        <label class="form-control">
-          <span class="label-text text-xs">Random Seed</span>
-          <input
-            type="number"
-            step="1"
-            class="input input-bordered input-sm w-full max-w-40"
-            bind:value={randomSeed}
-          />
-        </label>
-      {/if}
+        {#if useRandomSeed}
+          <label class="flex flex-col gap-1.5 mb-2">
+            <span class="text-xs font-medium">Random Seed</span>
+            <Input
+              type="number"
+              step="1"
+              class="w-full max-w-40"
+              bind:value={randomSeed}
+            />
+          </label>
+        {/if}
 
-      <div class="grid grid-cols-2 gap-2">
-        <label class="form-control">
-          <span class="label-text text-xs">Min Permeability (mD)</span>
-          <input
-            type="number"
-            min="1"
-            class="input input-bordered input-sm w-full"
-            class:input-error={Boolean(fieldErrors.permBounds)}
-            bind:value={minPerm}
-          />
-        </label>
-        <label class="form-control">
-          <span class="label-text text-xs">Max Permeability (mD)</span>
-          <input
-            type="number"
-            min="1"
-            class="input input-bordered input-sm w-full"
-            class:input-error={Boolean(fieldErrors.permBounds)}
-            bind:value={maxPerm}
-          />
-        </label>
-      </div>
-    {:else}
-      <div class="overflow-x-auto rounded-md border border-base-300">
-        <table class="table table-xs w-full">
-          <thead>
-            <tr>
-              <th>Layer</th>
-              <th>kX (mD)</th>
-              <th>kY (mD)</th>
-              <th>kZ (mD)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each Array.from({ length: nz }) as _, i}
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-xs font-medium">Min Permeability (mD)</span>
+            <Input
+              type="number"
+              min="1"
+              class={`w-full ${Boolean(fieldErrors.permBounds) ? "border-destructive" : ""}`}
+              bind:value={minPerm}
+            />
+          </label>
+          <label class="flex flex-col gap-1.5">
+            <span class="text-xs font-medium">Max Permeability (mD)</span>
+            <Input
+              type="number"
+              min="1"
+              class={`w-full ${Boolean(fieldErrors.permBounds) ? "border-destructive" : ""}`}
+              bind:value={maxPerm}
+            />
+          </label>
+        </div>
+      {:else}
+        <div class="overflow-x-auto rounded-md border border-border">
+          <table class="compact-table w-full text-left">
+            <thead
+              class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+            >
               <tr>
-                <td>{i + 1}</td>
-                <td
-                  ><input
-                    type="number"
-                    min="1"
-                    class="input input-bordered input-xs w-20"
-                    bind:value={layerPermsX[i]}
-                  /></td
-                >
-                <td
-                  ><input
-                    type="number"
-                    min="1"
-                    class="input input-bordered input-xs w-20"
-                    bind:value={layerPermsY[i]}
-                  /></td
-                >
-                <td
-                  ><input
-                    type="number"
-                    min="1"
-                    class="input input-bordered input-xs w-20"
-                    bind:value={layerPermsZ[i]}
-                  /></td
-                >
+                <th class="font-medium p-2">Layer</th>
+                <th class="font-medium p-2">kX (mD)</th>
+                <th class="font-medium p-2">kY (mD)</th>
+                <th class="font-medium p-2">kZ (mD)</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
+            </thead>
+            <tbody class="divide-y divide-border">
+              {#each Array.from({ length: nz }) as _, i}
+                <tr>
+                  <td
+                    class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
+                    >{i + 1}</td
+                  >
+                  <td class="p-2"
+                    ><Input
+                      type="number"
+                      min="1"
+                      class="w-full h-7 px-2"
+                      bind:value={layerPermsX[i]}
+                    /></td
+                  >
+                  <td class="p-2"
+                    ><Input
+                      type="number"
+                      min="1"
+                      class="w-full h-7 px-2"
+                      bind:value={layerPermsY[i]}
+                    /></td
+                  >
+                  <td class="p-2"
+                    ><Input
+                      type="number"
+                      min="1"
+                      class="w-full h-7 px-2"
+                      bind:value={layerPermsZ[i]}
+                    /></td
+                  >
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
   </div>
-</details>
-
-<style>
-  details[open] .collapse-chevron {
-    transform: rotate(90deg);
-  }
-  .collapse-chevron {
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-  details[open] .collapse-label-open {
-    display: inline;
-  }
-  details[open] .collapse-label-closed {
-    display: none;
-  }
-</style>
+</Collapsible>

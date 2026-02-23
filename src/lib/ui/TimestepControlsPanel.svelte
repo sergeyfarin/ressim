@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Collapsible from "../components/ui/Collapsible.svelte";
+  import Input from "../components/ui/Input.svelte";
+
   let {
     delta_t_days = $bindable(0.25),
     max_sat_change_per_step = $bindable(0.1),
@@ -26,77 +29,61 @@
   );
 </script>
 
-<details
-  class="rounded-lg border bg-base-100 shadow-sm"
-  class:border-error={hasError}
-  class:border-base-300={!hasError}
->
-  <summary
-    class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5"
-  >
-    <div>
-      <div class="font-semibold">Timestep Controls</div>
-      <div class="text-xs opacity-70">{groupSummary}</div>
+<Collapsible title="Timestep Controls" {hasError}>
+  <div class="space-y-3 p-4 md:p-5">
+    <div class="flex justify-between items-center mb-2">
+      <p class="text-xs font-medium text-muted-foreground">
+        Adjust timestep and run-size settings.
+      </p>
+      <p class="text-xs text-muted-foreground font-medium">{groupSummary}</p>
     </div>
-    <div class="flex items-center gap-2 text-xs opacity-70">
-      <span class="collapse-label-open hidden">Collapse</span>
-      <span class="collapse-label-closed">Expand</span>
-      <span class="collapse-chevron">▸</span>
-    </div>
-  </summary>
-
-  <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
-    <p class="text-xs opacity-70">Adjust timestep and run-size settings.</p>
-    <div class="overflow-x-auto rounded-md border border-base-300 mt-2">
-      <table class="table table-xs compact-table w-full">
-        <thead>
-          <tr class="bg-base-200/50">
-            <th>Δt (Days)</th>
-            <th>Max ΔS</th>
-            <th>Max ΔP (bar)</th>
-            <th>Max ΔRate (Rel)</th>
+    <div class="overflow-x-auto rounded-md border border-border mt-2">
+      <table class="compact-table w-full text-left">
+        <thead
+          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+        >
+          <tr>
+            <th class="font-medium p-2">Δt (Days)</th>
+            <th class="font-medium p-2">Max ΔS</th>
+            <th class="font-medium p-2">Max ΔP (bar)</th>
+            <th class="font-medium p-2">Max ΔRate (Rel)</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-border">
           <tr>
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 step="0.1"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.deltaT)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.deltaT) ? "border-destructive" : ""}`}
                 bind:value={delta_t_days}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.01"
                 max="1"
                 step="0.01"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.saturationEndpoints)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
                 bind:value={max_sat_change_per_step}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="1"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.wellPressureOrder)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
                 bind:value={max_pressure_change_per_step}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0.01"
                 step="0.05"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.injectorRate) ||
-                  Boolean(fieldErrors.producerRate)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.injectorRate) || Boolean(fieldErrors.producerRate) ? "border-destructive" : ""}`}
                 bind:value={max_well_rate_change_fraction}
               /></td
             >
@@ -105,20 +92,4 @@
       </table>
     </div>
   </div>
-</details>
-
-<style>
-  details[open] .collapse-chevron {
-    transform: rotate(90deg);
-  }
-  .collapse-chevron {
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-  details[open] .collapse-label-open {
-    display: inline;
-  }
-  details[open] .collapse-label-closed {
-    display: none;
-  }
-</style>
+</Collapsible>

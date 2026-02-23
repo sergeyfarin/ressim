@@ -1,4 +1,8 @@
 <script lang="ts">
+  import Collapsible from "../components/ui/Collapsible.svelte";
+  import Button from "../components/ui/Button.svelte";
+  import Input from "../components/ui/Input.svelte";
+
   type ProfileStats = {
     batchMs: number;
     avgStepMs: number;
@@ -51,67 +55,60 @@
     steps?: number;
   } = $props();
 
-  const groupSummary = $derived(`${workerRunning ? "Running..." : runCompleted ? "Run completed" : ""} ${longRunEstimate ? "· long run estimate" : ""}`);
+  const groupSummary = $derived(
+    `${workerRunning ? "Running..." : runCompleted ? "Run completed" : ""} ${longRunEstimate ? "· long run estimate" : ""}`,
+  );
 </script>
 
-<details class="rounded-lg border border-base-300 bg-base-100 shadow-sm" open>
-  <summary
-    class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5"
-  >
-    <div>
-      <div class="font-semibold">Simulation and Timestep</div>
-      <div class="text-xs opacity-70">{groupSummary}</div>
-    </div>
-    <div class="flex items-center gap-2 text-xs opacity-70">
-      <span class="collapse-label-open hidden">Collapse</span>
-      <span class="collapse-label-closed">Expand</span>
-      <span class="collapse-chevron">▸</span>
-    </div>
-  </summary>
-  <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
-    <p class="text-xs opacity-70">
-      Simulation run actions and runtime diagnostics.
+<Collapsible title="Simulation and Timestep" open>
+  <div class="space-y-3 p-4 md:p-5">
+    <p class="text-xs text-muted-foreground flex justify-between">
+      <span>Simulation run actions and runtime diagnostics.</span>
+      <span>{groupSummary}</span>
     </p>
 
-    <label class="form-control">
-      <span class="label-text text-xs">Steps</span>
-      <input
-        type="number"
-        min="1"
-        class="input input-bordered input-sm w-full max-w-40"
-        bind:value={steps}
-      />
+    <label class="flex items-center gap-2">
+      <span class="text-xs font-medium whitespace-nowrap">Steps</span>
+      <Input type="number" min="1" class="w-full max-w-40" bind:value={steps} />
     </label>
 
     <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <button
-        class="btn btn-sm btn-primary w-full"
+      <Button
+        size="sm"
+        variant="default"
+        class="w-full"
         onclick={onRunSteps}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >Run {steps} Steps</button
+        >Run {steps} Steps</Button
       >
-      <button
-        class="btn btn-sm w-full"
+      <Button
+        size="sm"
+        variant="secondary"
+        class="w-full"
         onclick={onStepOnce}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >Step Once</button
+        >Step Once</Button
       >
-      <button
-        class="btn btn-sm btn-warning w-full"
+      <Button
+        size="sm"
+        variant="destructive"
+        class="w-full"
         onclick={onStopRun}
-        disabled={!canStop}>Stop</button
+        disabled={!canStop}>Stop</Button
       >
-      <button
-        class="btn btn-sm btn-outline w-full"
+      <Button
+        size="sm"
+        variant="outline"
+        class="w-full"
         onclick={onInitSimulator}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >Reinitialize Simulator</button
+        >Reinitialize Simulator</Button
       >
     </div>
 
-    <div class="text-xs opacity-80">
+    <div class="text-xs text-muted-foreground mt-2 space-y-1">
       {#if modelReinitNotice}
-        <div class="text-warning font-semibold">⚠ {modelReinitNotice}</div>
+        <div class="text-destructive font-semibold">⚠ {modelReinitNotice}</div>
       {/if}
       <div>Status: {wasmReady ? "WASM Ready" : "WASM Loading..."}</div>
       <div>
@@ -120,7 +117,7 @@
           : "No"}
       </div>
       {#if solverWarning}
-        <div class="text-warning font-semibold">⚠ {solverWarning}</div>
+        <div class="text-destructive font-semibold">⚠ {solverWarning}</div>
       {/if}
       <div>
         Time: {simTime.toFixed(2)} days · Recorded Steps: {historyLength}
@@ -141,20 +138,4 @@
       </div>
     </div>
   </div>
-</details>
-
-<style>
-  details[open] .collapse-chevron {
-    transform: rotate(90deg);
-  }
-  .collapse-chevron {
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-  details[open] .collapse-label-open {
-    display: inline;
-  }
-  details[open] .collapse-label-closed {
-    display: none;
-  }
-</style>
+</Collapsible>

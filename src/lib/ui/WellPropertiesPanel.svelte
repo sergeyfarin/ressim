@@ -1,4 +1,8 @@
 <script lang="ts">
+  import Collapsible from "../components/ui/Collapsible.svelte";
+  import Input from "../components/ui/Input.svelte";
+  import Select from "../components/ui/Select.svelte";
+
   let {
     well_radius = $bindable(0.1),
     well_skin = $bindable(0),
@@ -56,134 +60,112 @@
   );
 </script>
 
-<details
-  class="rounded-lg border bg-base-100 shadow-sm"
-  class:border-error={hasError}
-  class:border-base-300={!hasError}
->
-  <summary
-    class="flex cursor-pointer list-none items-center justify-between px-4 py-3 md:px-5"
-  >
-    <div>
-      <div class="font-semibold">Well Controls</div>
-      <div class="text-xs opacity-70">{groupSummary}</div>
+<Collapsible title="Well Controls" {hasError}>
+  <div class="space-y-3 p-4 md:p-5">
+    <div class="flex justify-between items-center mb-2">
+      <p class="text-xs font-medium text-muted-foreground">
+        Well geometry and XY wellhead locations across all layers.
+      </p>
+      <p class="text-xs text-muted-foreground font-medium">{groupSummary}</p>
     </div>
-    <div class="flex items-center gap-2 text-xs opacity-70">
-      <span class="collapse-label-open hidden">Collapse</span>
-      <span class="collapse-label-closed">Expand</span>
-      <span class="collapse-chevron">▸</span>
-    </div>
-  </summary>
 
-  <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
-    <p class="text-xs opacity-70">
-      Well geometry and XY wellhead locations across all layers.
-    </p>
-    <div class="grid grid-cols-2 gap-2">
-      <label class="form-control">
-        <span class="label-text text-xs">Well Radius (m)</span>
-        <input
+    <div class="grid grid-cols-2 gap-2 mt-2">
+      <label class="flex flex-col gap-1.5">
+        <span class="text-xs font-medium">Well Radius (m)</span>
+        <Input
           type="number"
           min="0.01"
           step="0.01"
-          class="input input-bordered input-sm w-full"
-          class:input-error={Boolean(fieldErrors.wellRadius)}
+          class={`w-full ${Boolean(fieldErrors.wellRadius) ? "border-destructive" : ""}`}
           bind:value={well_radius}
         />
       </label>
-      <label class="form-control">
-        <span class="label-text text-xs">Skin</span>
-        <input
-          type="number"
-          step="0.1"
-          class="input input-bordered input-sm w-full"
-          bind:value={well_skin}
-        />
+      <label class="flex flex-col gap-1.5">
+        <span class="text-xs font-medium">Skin</span>
+        <Input type="number" step="0.1" class="w-full" bind:value={well_skin} />
       </label>
     </div>
 
-    <label class="label cursor-pointer justify-start gap-2">
+    <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
       <input
         type="checkbox"
-        class="checkbox checkbox-sm"
+        class="h-4 w-4 rounded border-input text-primary accent-primary"
         bind:checked={injectorEnabled}
       />
-      <span class="label-text text-sm"
-        >Enable Injector (disable for depletion case)</span
+      <span class="text-sm font-medium leading-none"
+        >Enable Injector <span class="text-muted-foreground font-normal"
+          >(disable for depletion case)</span
+        ></span
       >
     </label>
 
-    <div class="overflow-x-auto rounded-md border border-base-300">
-      <table class="table table-xs compact-table w-full">
-        <thead>
-          <tr class="bg-base-200/50">
-            <th>Well</th>
-            <th>Control Mode</th>
-            <th>Target BHP (bar)</th>
-            <th>Target Rate (m³/d)</th>
-            <th>Location (i, j)</th>
+    <div class="overflow-x-auto rounded-md border border-border">
+      <table class="compact-table w-full text-left">
+        <thead
+          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
+        >
+          <tr>
+            <th class="font-medium p-2 w-[80px]">Well</th>
+            <th class="font-medium p-2">Control Mode</th>
+            <th class="font-medium p-2">Target BHP (bar)</th>
+            <th class="font-medium p-2">Target Rate (m³/d)</th>
+            <th class="font-medium p-2">Loc (i, j)</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-border">
           <tr>
             <td
-              class="font-semibold align-middle text-center"
-              class:opacity-50={!injectorEnabled}>Injector</td
+              class={`font-semibold align-middle text-center p-2 border-r border-border bg-muted/20 ${!injectorEnabled ? "opacity-40" : ""}`}
+              >Injector</td
             >
-            <td>
-              <select
-                class="select select-bordered select-xs w-full min-w-24"
+            <td class="p-2">
+              <Select
+                class="w-full h-7 px-2 text-xs"
                 bind:value={injectorControlMode}
                 disabled={!injectorEnabled}
               >
                 <option value="pressure">Pressure</option>
                 <option value="rate">Rate</option>
-              </select>
+              </Select>
             </td>
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.wellPressureOrder)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
                 bind:value={injectorBhp}
                 disabled={injectorControlMode === "rate" || !injectorEnabled}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.injectorRate)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.injectorRate) ? "border-destructive" : ""}`}
                 bind:value={targetInjectorRate}
                 disabled={injectorControlMode === "pressure" ||
                   !injectorEnabled}
               /></td
             >
-            <td>
+            <td class="p-2">
               <div class="flex items-center gap-1">
-                <input
+                <Input
                   type="number"
                   min="0"
                   max={Math.max(0, nx - 1)}
                   step="1"
-                  class="input input-bordered input-xs w-12"
-                  class:input-error={!injectorValid ||
-                    Boolean(fieldErrors.wellOverlap)}
+                  class={`w-12 h-7 px-1 text-center ${!injectorValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={injectorI}
                   disabled={!injectorEnabled}
                 />
-                <span class="text-xs">,</span>
-                <input
+                <span class="text-xs text-muted-foreground">,</span>
+                <Input
                   type="number"
                   min="0"
                   max={Math.max(0, ny - 1)}
                   step="1"
-                  class="input input-bordered input-xs w-12"
-                  class:input-error={!injectorValid ||
-                    Boolean(fieldErrors.wellOverlap)}
+                  class={`w-12 h-7 px-1 text-center ${!injectorValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={injectorJ}
                   disabled={!injectorEnabled}
                 />
@@ -191,58 +173,55 @@
             </td>
           </tr>
           <tr>
-            <td class="font-semibold align-middle text-center">Producer</td>
-            <td>
-              <select
-                class="select select-bordered select-xs w-full min-w-24"
+            <td
+              class="font-semibold align-middle text-center p-2 border-r border-border bg-muted/20"
+              >Producer</td
+            >
+            <td class="p-2">
+              <Select
+                class="w-full h-7 px-2 text-xs"
                 bind:value={producerControlMode}
               >
                 <option value="pressure">Pressure</option>
                 <option value="rate">Rate</option>
-              </select>
+              </Select>
             </td>
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.wellPressureOrder)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
                 bind:value={producerBhp}
                 disabled={producerControlMode === "rate"}
               /></td
             >
-            <td
-              ><input
+            <td class="p-2"
+              ><Input
                 type="number"
                 min="0"
                 step="1"
-                class="input input-bordered input-xs w-full min-w-16 max-w-24"
-                class:input-error={Boolean(fieldErrors.producerRate)}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.producerRate) ? "border-destructive" : ""}`}
                 bind:value={targetProducerRate}
                 disabled={producerControlMode === "pressure"}
               /></td
             >
-            <td>
+            <td class="p-2">
               <div class="flex items-center gap-1">
-                <input
+                <Input
                   type="number"
                   min="0"
                   max={Math.max(0, nx - 1)}
                   step="1"
-                  class="input input-bordered input-xs w-12"
-                  class:input-error={!producerValid ||
-                    Boolean(fieldErrors.wellOverlap)}
+                  class={`w-12 h-7 px-1 text-center ${!producerValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={producerI}
                 />
-                <span class="text-xs">,</span>
-                <input
+                <span class="text-xs text-muted-foreground">,</span>
+                <Input
                   type="number"
                   min="0"
                   max={Math.max(0, ny - 1)}
                   step="1"
-                  class="input input-bordered input-xs w-12"
-                  class:input-error={!producerValid ||
-                    Boolean(fieldErrors.wellOverlap)}
+                  class={`w-12 h-7 px-1 text-center ${!producerValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={producerJ}
                 />
               </div>
@@ -252,35 +231,23 @@
       </table>
     </div>
 
-    <div class="text-xs mt-2 flex justify-between">
+    <div class="text-[11px] mt-2 flex justify-between">
       <div>
-        <span class:opacity-70={injectorValid} class:text-error={!injectorValid}
+        <span
+          class={!injectorValid
+            ? "text-destructive font-medium"
+            : "text-muted-foreground"}
           >Injector: {injectorValid ? "valid" : "OOB"}</span
-        ><span class="mx-2">·</span><span
-          class:opacity-70={producerValid}
-          class:text-error={!producerValid}
+        ><span class="mx-2 text-muted-foreground">·</span><span
+          class={!producerValid
+            ? "text-destructive font-medium"
+            : "text-muted-foreground"}
           >Producer: {producerValid ? "valid" : "OOB"}</span
         >
       </div>
-      <div class="opacity-70">
+      <div class="text-muted-foreground">
         Grid i: 0–{Math.max(0, nx - 1)}, j: 0–{Math.max(0, ny - 1)}
       </div>
     </div>
   </div>
-</details>
-
-<style>
-  details[open] .collapse-chevron {
-    transform: rotate(90deg);
-  }
-  .collapse-chevron {
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-  details[open] .collapse-label-open {
-    display: inline;
-  }
-  details[open] .collapse-label-closed {
-    display: none;
-  }
-</style>
+</Collapsible>

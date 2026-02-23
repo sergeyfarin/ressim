@@ -1,10 +1,10 @@
 <script lang="ts">
-  import StaticPropertiesPanel from './StaticPropertiesPanel.svelte';
-  import ReservoirPropertiesPanel from './ReservoirPropertiesPanel.svelte';
-  import RelativeCapillaryPanel from './RelativeCapillaryPanel.svelte';
-  import WellPropertiesPanel from './WellPropertiesPanel.svelte';
-  import TimestepControlsPanel from './TimestepControlsPanel.svelte';
-  import AnalyticalInputsPanel from './AnalyticalInputsPanel.svelte';
+  import StaticPropertiesPanel from "./StaticPropertiesPanel.svelte";
+  import ReservoirPropertiesPanel from "./ReservoirPropertiesPanel.svelte";
+  import RelativeCapillaryPanel from "./RelativeCapillaryPanel.svelte";
+  import WellPropertiesPanel from "./WellPropertiesPanel.svelte";
+  import TimestepControlsPanel from "./TimestepControlsPanel.svelte";
+  import AnalyticalInputsPanel from "./AnalyticalInputsPanel.svelte";
 
   // All the same bindings that the sidebar panels used to have
   let {
@@ -27,7 +27,7 @@
     volume_expansion_o = $bindable(1),
     volume_expansion_w = $bindable(1),
     gravityEnabled = $bindable(false),
-    permMode = $bindable<'uniform' | 'random' | 'perLayer'>('uniform'),
+    permMode = $bindable<"uniform" | "random" | "perLayer">("uniform"),
     uniformPermX = $bindable(100),
     uniformPermY = $bindable(100),
     uniformPermZ = $bindable(10),
@@ -48,8 +48,8 @@
     well_radius = $bindable(0.1),
     well_skin = $bindable(0),
     injectorEnabled = $bindable(true),
-    injectorControlMode = $bindable<'rate' | 'pressure'>('pressure'),
-    producerControlMode = $bindable<'rate' | 'pressure'>('pressure'),
+    injectorControlMode = $bindable<"rate" | "pressure">("pressure"),
+    producerControlMode = $bindable<"rate" | "pressure">("pressure"),
     injectorBhp = $bindable(400),
     producerBhp = $bindable(100),
     targetInjectorRate = $bindable(350),
@@ -62,9 +62,11 @@
     max_sat_change_per_step = $bindable(0.1),
     max_pressure_change_per_step = $bindable(75),
     max_well_rate_change_fraction = $bindable(0.75),
-    analyticalSolutionMode = $bindable<'waterflood' | 'depletion'>('waterflood'),
+    analyticalSolutionMode = $bindable<"waterflood" | "depletion">(
+      "waterflood",
+    ),
     analyticalDepletionRateScale = $bindable(1.0),
-    onAnalyticalSolutionModeChange = (_mode: 'waterflood' | 'depletion') => {},
+    onAnalyticalSolutionModeChange = (_mode: "waterflood" | "depletion") => {},
     onNzOrPermModeChange = () => {},
     validationErrors = {},
     validationWarnings = [],
@@ -89,7 +91,7 @@
     volume_expansion_o?: number;
     volume_expansion_w?: number;
     gravityEnabled?: boolean;
-    permMode?: 'uniform' | 'random' | 'perLayer';
+    permMode?: "uniform" | "random" | "perLayer";
     uniformPermX?: number;
     uniformPermY?: number;
     uniformPermZ?: number;
@@ -110,8 +112,8 @@
     well_radius?: number;
     well_skin?: number;
     injectorEnabled?: boolean;
-    injectorControlMode?: 'rate' | 'pressure';
-    producerControlMode?: 'rate' | 'pressure';
+    injectorControlMode?: "rate" | "pressure";
+    producerControlMode?: "rate" | "pressure";
     injectorBhp?: number;
     producerBhp?: number;
     targetInjectorRate?: number;
@@ -124,9 +126,9 @@
     max_sat_change_per_step?: number;
     max_pressure_change_per_step?: number;
     max_well_rate_change_fraction?: number;
-    analyticalSolutionMode?: 'waterflood' | 'depletion';
+    analyticalSolutionMode?: "waterflood" | "depletion";
     analyticalDepletionRateScale?: number;
-    onAnalyticalSolutionModeChange?: (mode: 'waterflood' | 'depletion') => void;
+    onAnalyticalSolutionModeChange?: (mode: "waterflood" | "depletion") => void;
     onNzOrPermModeChange?: () => void;
     validationErrors?: Record<string, string>;
     validationWarnings?: string[];
@@ -137,8 +139,12 @@
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
   <div class="space-y-3">
     <StaticPropertiesPanel
-      bind:nx bind:ny bind:nz
-      bind:cellDx bind:cellDy bind:cellDz
+      bind:nx
+      bind:ny
+      bind:nz
+      bind:cellDx
+      bind:cellDy
+      bind:cellDz
       {onNzOrPermModeChange}
     />
     <TimestepControlsPanel
@@ -152,20 +158,31 @@
 
   <div class="space-y-3">
     <ReservoirPropertiesPanel
-      bind:initialPressure bind:initialSaturation
-      bind:mu_w bind:mu_o
-      bind:c_o bind:c_w
-      bind:rho_w bind:rho_o
+      bind:initialPressure
+      bind:initialSaturation
+      bind:mu_w
+      bind:mu_o
+      bind:c_o
+      bind:c_w
+      bind:rho_w
+      bind:rho_o
       bind:rock_compressibility
       bind:depth_reference
-      bind:volume_expansion_o bind:volume_expansion_w
+      bind:volume_expansion_o
+      bind:volume_expansion_w
       bind:gravityEnabled
       bind:permMode
-      bind:uniformPermX bind:uniformPermY bind:uniformPermZ
-      bind:useRandomSeed bind:randomSeed
-      bind:minPerm bind:maxPerm
+      bind:uniformPermX
+      bind:uniformPermY
+      bind:uniformPermZ
+      bind:useRandomSeed
+      bind:randomSeed
+      bind:minPerm
+      bind:maxPerm
       bind:nz
-      bind:layerPermsX bind:layerPermsY bind:layerPermsZ
+      bind:layerPermsX
+      bind:layerPermsY
+      bind:layerPermsZ
       {onNzOrPermModeChange}
       fieldErrors={validationErrors}
     />
@@ -173,19 +190,30 @@
 
   <div class="space-y-3">
     <RelativeCapillaryPanel
-      bind:s_wc bind:s_or bind:n_w bind:n_o
+      bind:s_wc
+      bind:s_or
+      bind:n_w
+      bind:n_o
       bind:capillaryEnabled
-      bind:capillaryPEntry bind:capillaryLambda
+      bind:capillaryPEntry
+      bind:capillaryLambda
     />
     <WellPropertiesPanel
-      bind:well_radius bind:well_skin
-      bind:nx bind:ny
+      bind:well_radius
+      bind:well_skin
+      bind:nx
+      bind:ny
       bind:injectorEnabled
-      bind:injectorControlMode bind:producerControlMode
-      bind:injectorBhp bind:producerBhp
-      bind:targetInjectorRate bind:targetProducerRate
-      bind:injectorI bind:injectorJ
-      bind:producerI bind:producerJ
+      bind:injectorControlMode
+      bind:producerControlMode
+      bind:injectorBhp
+      bind:producerBhp
+      bind:targetInjectorRate
+      bind:targetProducerRate
+      bind:injectorI
+      bind:injectorJ
+      bind:producerI
+      bind:producerJ
       fieldErrors={validationErrors}
     />
     <AnalyticalInputsPanel
@@ -197,17 +225,21 @@
 </div>
 
 {#if validationWarnings.length > 0}
-  <div class="mt-3 card border border-warning bg-base-100 shadow-sm">
-    <div class="card-body p-3 text-xs">
+  <div
+    class="mt-3 rounded-xl border border-warning bg-card text-card-foreground shadow-sm"
+  >
+    <div class="p-3 text-xs">
       {#each validationWarnings as warning}
-        <div class="text-warning">⚠ {warning}</div>
+        <div class="text-warning font-medium">⚠ {warning}</div>
       {/each}
     </div>
   </div>
 {/if}
 
 {#if readOnly}
-  <div class="mt-3 text-xs opacity-60 text-center">
-    Viewing pre-run case parameters. Switch to <strong>Custom</strong> mode to edit.
+  <div class="mt-3 text-xs text-muted-foreground text-center">
+    Viewing pre-run case parameters. Switch to <strong class="text-foreground"
+      >Custom</strong
+    > mode to edit.
   </div>
 {/if}
