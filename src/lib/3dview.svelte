@@ -29,6 +29,7 @@
         WellState,
         WellStateEntry,
     } from "./";
+    import ToggleGroup from "./ui/ToggleGroup.svelte";
 
     type HistoryEntry = SimulatorSnapshot;
 
@@ -1153,103 +1154,99 @@
 </script>
 
 <div style="display:flex; flex-direction:column;">
-    <div
-        class="w-full bg-card border border-border rounded-md shadow-sm p-3 mb-2"
-    >
-        <div class="flex items-center gap-4 w-full">
-            <input
-                type="range"
-                class="time-slider flex-1"
-                min="0"
-                max={Math.max(0, history.length - 1)}
-                bind:value={currentIndex}
-                oninput={applySliderValue}
-                onchange={applySliderValue}
-            />
-            <div
-                class="flex flex-col items-end text-right min-w-[140px] select-none"
-            >
-                <div class="text-[12px] font-mono font-medium text-foreground">
-                    Step <span class="text-primary">{currentIndex}</span><span
-                        class="text-muted-foreground"
-                    >
-                        / {Math.max(0, history.length - 1)}</span
-                    >
-                </div>
+    <div class="flex items-center gap-4 w-full px-1">
+        <input
+            type="range"
+            class="time-slider flex-1"
+            min="0"
+            max={Math.max(0, history.length - 1)}
+            bind:value={currentIndex}
+            oninput={applySliderValue}
+            onchange={applySliderValue}
+        />
+        <div
+            class="flex flex-col items-end text-right min-w-[140px] select-none"
+        >
+            <div class="text-[12px] font-mono font-medium text-foreground">
+                Step <span class="text-primary">{currentIndex}</span><span
+                    class="text-muted-foreground"
+                >
+                    / {Math.max(0, history.length - 1)}</span
+                >
                 {#if replayTime !== null}
-                    <div
-                        class="text-[11px] font-medium text-muted-foreground mt-0.5"
-                    >
-                        Time: {replayTime.toFixed(2)} days
-                    </div>
+                    {@const hrs = replayTime * 24}
+                    {@const yrs = replayTime / 365.25}
+                    <span class="text-muted-foreground ml-1">
+                        ({replayTime < 1
+                            ? `${hrs.toFixed(1)} hrs`
+                            : replayTime > 365
+                              ? `${yrs.toFixed(1)} yrs`
+                              : `${replayTime.toFixed(1)} days`})
+                    </span>
                 {/if}
             </div>
         </div>
     </div>
-    <label class="form-control mt-3">
-        <div class="flex flex-wrap items-center gap-2">
-            <div class="label-text text-xs self-center mr-1">Property</div>
-            <div class="flex flex-wrap gap-1">
-                {#each showPropertyOptions as option}
+    <div
+        class="flex flex-wrap items-center gap-4 mt-2 mb-2 w-full justify-between"
+    >
+        <ToggleGroup options={showPropertyOptions} bind:value={showProperty} />
+
+        <div class="flex items-center gap-3">
+            <div class="legend" style="margin:0;">
+                <canvas
+                    bind:this={legendCanvas}
+                    width="200"
+                    height="18"
+                    style="width:140px;height:12px"
+                ></canvas>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+                <span
+                    class="label-text text-[10px] text-muted-foreground uppercase tracking-wide"
+                    >Min</span
+                >
+                <div
+                    class="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 transition-colors"
+                >
+                    <input
+                        type="number"
+                        step="any"
+                        class="flex h-6 w-14 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-mono shadow-sm transition-colors focus:ring-1 focus:ring-ring"
+                        value={legendFixedMin}
+                        oninput={onLegendMinInput}
+                    />
                     <button
                         type="button"
-                        class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {showProperty ===
-                        option.value
-                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                            : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'}"
-                        onclick={() => (showProperty = option.value)}
+                        class="inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted text-[10px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                        onclick={applyModelLegendMin}>Auto</button
                     >
-                        {option.label}
-                    </button>
-                {/each}
+                </div>
             </div>
-        </div>
-    </label>
-    <div
-        class="flex items-start gap-4"
-        style="margin-left:4px; align-items:center;"
-    >
-        <div class="legend" style="margin:0;">
-            <canvas
-                bind:this={legendCanvas}
-                width="300"
-                height="18"
-                style="width:200px;height:14px"
-            ></canvas>
-        </div>
-        <span class="label-text text-xs">Min</span>
-        <div
-            class="flex items-center gap-2 rounded-md border border-border bg-card p-1 transition-colors"
-        >
-            <input
-                type="number"
-                step="any"
-                class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 shadow-sm transition-colors text-xs"
-                value={legendFixedMin}
-                oninput={onLegendMinInput}
-            />
-            <button
-                type="button"
-                class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
-                onclick={applyModelLegendMin}>Auto</button
-            >
-        </div>
-        <span class="label-text text-xs">Max</span>
-        <div
-            class="flex items-center gap-2 rounded-md border border-border bg-card p-1 transition-colors"
-        >
-            <input
-                type="number"
-                step="any"
-                class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 shadow-sm transition-colors text-xs"
-                value={legendFixedMax}
-                oninput={onLegendMaxInput}
-            />
-            <button
-                type="button"
-                class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
-                onclick={applyModelLegendMax}>Auto</button
-            >
+
+            <div class="flex items-center gap-1.5">
+                <span
+                    class="label-text text-[10px] text-muted-foreground uppercase tracking-wide"
+                    >Max</span
+                >
+                <div
+                    class="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 transition-colors"
+                >
+                    <input
+                        type="number"
+                        step="any"
+                        class="flex h-6 w-14 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-mono shadow-sm transition-colors focus:ring-1 focus:ring-ring"
+                        value={legendFixedMax}
+                        oninput={onLegendMaxInput}
+                    />
+                    <button
+                        type="button"
+                        class="inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted text-[10px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                        onclick={applyModelLegendMax}>Auto</button
+                    >
+                </div>
+            </div>
         </div>
     </div>
     <div class="viz" bind:this={canvasContainer} style="position:relative;">

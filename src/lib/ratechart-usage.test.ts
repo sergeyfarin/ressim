@@ -26,7 +26,7 @@ describe('RateChart architecture checks', () => {
   });
 
   it('has x-axis control at the top level (not inside sub-panels)', () => {
-    expect(/x-axis-select/.test(rateChartSrc)).toBe(true);
+    expect(/ToggleGroup/.test(rateChartSrc)).toBe(true);
     expect(/xAxisMode/.test(rateChartSrc)).toBe(true);
   });
 
