@@ -98,6 +98,30 @@ body {
       rgba(18, 18, 18, 0.6) 100%);
 }
 
+/* ── Compact Tables (for Input Panels) ── */
+.compact-table {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.compact-table th, 
+.compact-table td {
+  padding: 0.15rem 0.25rem;
+  font-size: 11px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.compact-table .input-xs,
+.compact-table .select-xs {
+  height: 1.35rem;
+  min-height: 1.35rem;
+  font-size: 11px;
+  padding-left: 0.25rem;
+}
+
+.compact-table .input-xs {
+  padding-right: 0.25rem;
+}
 
 /* 
 button {

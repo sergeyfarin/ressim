@@ -114,7 +114,7 @@
     </label>
 
     <div class="overflow-x-auto rounded-md border border-base-300">
-      <table class="table table-xs w-full">
+      <table class="table table-xs compact-table w-full">
         <thead>
           <tr class="bg-base-200/50">
             <th>Well</th>

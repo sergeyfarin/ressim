@@ -147,7 +147,7 @@
 
   <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
     <div class="overflow-x-auto rounded-md border border-base-300">
-      <table class="table table-xs w-full">
+      <table class="table table-xs compact-table w-full">
         <thead>
           <tr class="bg-base-200/50">
             <th>Phase</th>
@@ -217,7 +217,7 @@
       class="overflow-x-auto rounded-md border border-base-300 mb-2"
       class:opacity-50={!capillaryEnabled}
     >
-      <table class="table table-xs w-full">
+      <table class="table table-xs compact-table w-full">
         <thead>
           <tr class="bg-base-200/50">
             <th>P_entry (bar)</th>

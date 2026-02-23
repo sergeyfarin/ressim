@@ -141,7 +141,7 @@
     </div>
 
     <div class="overflow-x-auto rounded-md border border-base-300 mt-2 mb-2">
-      <table class="table table-xs w-full">
+      <table class="table table-xs compact-table w-full">
         <thead>
           <tr class="bg-base-200/50">
             <th>Phase</th>

@@ -48,7 +48,7 @@
   <div class="space-y-3 border-t border-base-300 p-4 md:p-5">
     <p class="text-xs opacity-70">Adjust timestep and run-size settings.</p>
     <div class="overflow-x-auto rounded-md border border-base-300 mt-2">
-      <table class="table table-xs w-full">
+      <table class="table table-xs compact-table w-full">
         <thead>
           <tr class="bg-base-200/50">
             <th>Δt (Days)</th>
