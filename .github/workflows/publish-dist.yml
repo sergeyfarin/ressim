@@ -70,8 +70,8 @@ jobs:
       - name: Publish stable release asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dist-latest
-          name: dist-latest
+          tag_name: dist-${{ github.sha }}
+          name: dist-${{ github.sha }}
           files: |
             ressim-dist-latest.tar.gz
             dist-build-meta.json
