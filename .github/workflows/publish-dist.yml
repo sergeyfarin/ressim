@@ -67,11 +67,14 @@ jobs:
         with:
           name: ressim-dist-bundle
 
+      - name: Set Release Tag
+        run: echo "RELEASE_TAG=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+
       - name: Publish stable release asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dist-${{ github.sha }}
-          name: dist-${{ github.sha }}
+          tag_name: dist-${{ env.RELEASE_TAG }}
+          name: dist-${{ env.RELEASE_TAG }}
           files: |
             ressim-dist-latest.tar.gz
             dist-build-meta.json
