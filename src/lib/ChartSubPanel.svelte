@@ -449,7 +449,7 @@
     <!-- Collapsible header -->
     <button
         type="button"
-        class="w-full flex items-center justify-between px-4 py-2 bg-muted/40 text-xs font-semibold
+        class="w-full flex items-center justify-start px-4 py-2 bg-muted/40 text-xs font-semibold
             hover:bg-muted/60 transition-colors cursor-pointer select-none"
         onclick={() => {
             if (expanded) {
@@ -460,8 +460,9 @@
             }
         }}
     >
+        {title}
         <svg
-            class="w-3.5 h-3.5 transition-transform {expanded
+            class="w-3.5 h-3.5 transition-transform ml-2 {expanded
                 ? 'rotate-90'
                 : ''}"
             fill="none"
@@ -475,7 +476,6 @@
                 d="M9 5l7 7-7 7"
             ></path>
         </svg>
-        {title}
     </button>
 
     {#if expanded}
