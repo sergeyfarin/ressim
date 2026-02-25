@@ -79,7 +79,7 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
 }
 
 function configureSimulator(payload: SimulatorCreatePayload) {
-  simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz);
+  simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
 
   const setCellDimensions = /** @type {any} */ (simulator).setCellDimensions;
   if (typeof setCellDimensions === 'function') {
