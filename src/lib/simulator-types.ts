@@ -20,6 +20,7 @@ export interface SimulatorCreatePayload {
   // initial conditions
   initialPressure: number;
   initialSaturation: number;
+  porosity: number;
 
   // fluid properties
   mu_w: number;

@@ -128,9 +128,9 @@ impl ReservoirSimulator {
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
     #[wasm_bindgen(constructor)]
-    pub fn new(nx: usize, ny: usize, nz: usize) -> Self {
+    pub fn new(nx: usize, ny: usize, nz: usize, porosity_val: f64) -> Self {
         let n = nx * ny * nz;
-        let porosity = vec![0.2; n];
+        let porosity = vec![porosity_val; n];
         let perm_x = vec![100.0; n];
         let perm_y = vec![100.0; n];
         let perm_z = vec![10.0; n];
@@ -860,7 +860,7 @@ mod tests {
     }
 
     fn run_buckley_case(case: &BuckleyCase) -> BuckleyMetrics {
-        let mut sim = ReservoirSimulator::new(case.nx, 1, 1);
+        let mut sim = ReservoirSimulator::new(case.nx, 1, 1, 0.2);
         sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o)
             .unwrap();
         sim.set_initial_saturation(case.s_wc);
@@ -920,7 +920,7 @@ mod tests {
 
     #[test]
     fn saturation_stays_within_physical_bounds() {
-        let mut sim = ReservoirSimulator::new(5, 1, 1);
+        let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
         sim.add_well(4, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
@@ -942,7 +942,7 @@ mod tests {
 
     #[test]
     fn water_mass_balance_sanity_without_wells() {
-        let mut sim = ReservoirSimulator::new(4, 4, 1);
+        let mut sim = ReservoirSimulator::new(4, 4, 1, 0.2);
         let water_before = total_water_volume(&sim);
 
         sim.step(1.0);
@@ -953,7 +953,7 @@ mod tests {
 
     #[test]
     fn adaptive_timestep_produces_multiple_substeps_for_strong_flow() {
-        let mut sim = ReservoirSimulator::new(3, 1, 1);
+        let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
         sim.set_permeability_random(100_000.0, 100_000.0).unwrap();
         sim.set_stability_params(0.01, 75.0, 0.75);
         sim.add_well(0, 0, 0, 700.0, 0.1, 0.0, true).unwrap();
@@ -968,7 +968,7 @@ mod tests {
 
     #[test]
     fn multiple_wells_in_same_block_keep_rates_finite() {
-        let mut sim = ReservoirSimulator::new(4, 1, 1);
+        let mut sim = ReservoirSimulator::new(4, 1, 1, 0.2);
         sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
         sim.add_well(0, 0, 0, 550.0, 0.1, 0.0, true).unwrap();
         sim.add_well(3, 0, 0, 120.0, 0.1, 0.0, false).unwrap();
@@ -992,7 +992,7 @@ mod tests {
 
     #[test]
     fn out_of_bounds_well_is_rejected_without_state_change() {
-        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
         let wells_before = sim.wells.len();
 
         let result = sim.add_well(2, 0, 0, 250.0, 0.1, 0.0, false);
@@ -1003,7 +1003,7 @@ mod tests {
 
     #[test]
     fn stability_extremes_produce_finite_state() {
-        let mut sim_loose = ReservoirSimulator::new(3, 1, 1);
+        let mut sim_loose = ReservoirSimulator::new(3, 1, 1, 0.2);
         sim_loose.set_stability_params(1.0, 75.0, 0.75);
         sim_loose
             .set_permeability_random(20_000.0, 20_000.0)
@@ -1012,7 +1012,7 @@ mod tests {
         sim_loose.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
         sim_loose.step(5.0);
 
-        let mut sim_tight = ReservoirSimulator::new(3, 1, 1);
+        let mut sim_tight = ReservoirSimulator::new(3, 1, 1, 0.2);
         sim_tight.set_stability_params(0.01, 75.0, 0.75);
         sim_tight
             .set_permeability_random(20_000.0, 20_000.0)
@@ -1037,7 +1037,7 @@ mod tests {
 
     #[test]
     fn api_contract_rejects_invalid_relperm_parameters() {
-        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
         err_contains(sim.set_rel_perm_props(0.6, 0.5, 2.0, 2.0), "must be < 1.0");
         err_contains(
             sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0),
@@ -1051,14 +1051,14 @@ mod tests {
 
     #[test]
     fn api_contract_rejects_invalid_density_inputs() {
-        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
         err_contains(sim.set_fluid_densities(-800.0, 1000.0), "must be positive");
         err_contains(sim.set_fluid_densities(800.0, f64::NAN), "finite numbers");
     }
 
     #[test]
     fn api_contract_rejects_invalid_capillary_inputs() {
-        let mut sim = ReservoirSimulator::new(2, 2, 1);
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
         err_contains(sim.set_capillary_params(-1.0, 2.0), "non-negative");
         err_contains(sim.set_capillary_params(5.0, 0.0), "positive");
         err_contains(sim.set_capillary_params(f64::NAN, 2.0), "finite numbers");
@@ -1066,7 +1066,7 @@ mod tests {
 
     #[test]
     fn gravity_toggle_builds_hydrostatic_vertical_gradient() {
-        let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
+        let mut sim_no_g = ReservoirSimulator::new(1, 1, 2, 0.2);
         sim_no_g
             .set_permeability_random_seeded(50_000.0, 50_000.0, 42)
             .unwrap();
@@ -1079,7 +1079,7 @@ mod tests {
         let p_top_no_g = sim_no_g.pressure[sim_no_g.idx(0, 0, 0)];
         let p_bot_no_g = sim_no_g.pressure[sim_no_g.idx(0, 0, 1)];
 
-        let mut sim_g = ReservoirSimulator::new(1, 1, 2);
+        let mut sim_g = ReservoirSimulator::new(1, 1, 2, 0.2);
         sim_g
             .set_permeability_random_seeded(50_000.0, 50_000.0, 42)
             .unwrap();
@@ -1100,7 +1100,7 @@ mod tests {
     fn hydrostatic_initial_gradient_stays_quieter_with_gravity_enabled() {
         let initial_sw = 0.9;
 
-        let mut sim_g = ReservoirSimulator::new(1, 1, 2);
+        let mut sim_g = ReservoirSimulator::new(1, 1, 2, 0.2);
         sim_g
             .set_permeability_random_seeded(80_000.0, 80_000.0, 7)
             .unwrap();
@@ -1117,7 +1117,7 @@ mod tests {
         sim_g.step(5.0);
         let sw_change_top_g = (sim_g.sat_water[top_id_g] - initial_sw).abs();
 
-        let mut sim_no_g = ReservoirSimulator::new(1, 1, 2);
+        let mut sim_no_g = ReservoirSimulator::new(1, 1, 2, 0.2);
         sim_no_g
             .set_permeability_random_seeded(80_000.0, 80_000.0, 7)
             .unwrap();
@@ -1138,7 +1138,7 @@ mod tests {
 
     #[test]
     fn api_contract_rejects_invalid_permeability_inputs() {
-        let mut sim = ReservoirSimulator::new(2, 2, 2);
+        let mut sim = ReservoirSimulator::new(2, 2, 2, 0.2);
         err_contains(
             sim.set_permeability_random(200.0, 50.0),
             "cannot exceed max",
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[test]
     fn set_initial_saturation_per_layer_applies_uniformly_by_k() {
-        let mut sim = ReservoirSimulator::new(2, 2, 3);
+        let mut sim = ReservoirSimulator::new(2, 2, 3, 0.2);
         sim.set_initial_saturation_per_layer(vec![0.1, 0.4, 0.8])
             .unwrap();
 
@@ -1368,7 +1368,7 @@ mod tests {
 
     #[test]
     fn dynamic_pi_increases_with_higher_water_saturation() {
-        let mut sim = ReservoirSimulator::new(1, 1, 1);
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0).unwrap();
         sim.set_fluid_properties(3.0, 0.5).unwrap();
         sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
@@ -1390,7 +1390,7 @@ mod tests {
 
     #[test]
     fn rate_control_switches_to_bhp_when_limits_are_hit() {
-        let mut sim = ReservoirSimulator::new(1, 1, 1);
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
         sim.set_target_well_rates(0.0, 500.0).unwrap();
         sim.set_well_bhp_limits(80.0, 120.0).unwrap();

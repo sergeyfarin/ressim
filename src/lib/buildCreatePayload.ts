@@ -91,6 +91,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
 
     initialPressure: toFiniteNumber(state.initialPressure, 300),
     initialSaturation: toClamped(state.initialSaturation, 0, 1, 0.3),
+    porosity: toClamped(state.porosity, 0.01, 1, 0.2),
 
     mu_w: toMin(state.mu_w, 0.01, 0.5),
     mu_o: toMin(state.mu_o, 0.01, 1.0),
@@ -130,7 +131,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
 
     well_radius: toMin(state.well_radius, 0.0001, 0.1),
     well_skin: toFiniteNumber(state.well_skin, 0),
-    injectorBhp: toMin(state.injectorBhp, 0.1, 400),
+    injectorBhp: toMin(state.injectorBhp, 0.1, 500),
     producerBhp: toMin(state.producerBhp, 0.1, 100),
 
     rateControlledWells: Boolean(state.rateControlledWells ?? false),

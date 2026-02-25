@@ -49,7 +49,7 @@
     // Initial Conditions
     let initialPressure = $state(300.0);
     let initialSaturation = $state(0.3);
-    const reservoirPorosity = 0.2;
+    let reservoirPorosity = $state(0.2);
 
     // Fluid properties
     let mu_w = $state(0.5);
@@ -102,7 +102,7 @@
     // Well inputs
     let well_radius = $state(0.1);
     let well_skin = $state(0.0);
-    let injectorBhp = $state(400.0);
+    let injectorBhp = $state(500.0);
     let producerBhp = $state(100.0);
     let injectorControlMode: "rate" | "pressure" = $state("pressure");
     let producerControlMode: "rate" | "pressure" = $state("pressure");
@@ -1187,6 +1187,7 @@
             cellDz,
             initialPressure,
             initialSaturation,
+            porosity: reservoirPorosity,
             mu_w,
             mu_o,
             c_o,
@@ -1562,11 +1563,15 @@
                 porosity: reservoirPorosity,
             }}
             {initialSaturation}
-            permX={uniformPermX}
-            permY={uniformPermY}
+            {nz}
+            {permMode}
+            {uniformPermX}
+            {uniformPermY}
+            {layerPermsX}
+            {layerPermsY}
             {cellDx}
             {cellDy}
-            wellboreDz={nz * cellDz}
+            {cellDz}
             wellRadius={well_radius}
             wellSkin={well_skin}
             muO={mu_o}
@@ -1684,6 +1689,7 @@
                             {activeCategory}
                             {activeCase}
                             {theme}
+                            {analyticalMeta}
                             layoutConfig={findCaseByKey(activeCase)?.case
                                 ?.params?.layout}
                         />
@@ -1799,6 +1805,7 @@
                 bind:cellDz
                 bind:initialPressure
                 bind:initialSaturation
+                bind:reservoirPorosity
                 bind:mu_w
                 bind:mu_o
                 bind:c_o

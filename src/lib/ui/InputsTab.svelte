@@ -16,6 +16,7 @@
     cellDz = $bindable(1),
     initialPressure = $bindable(300),
     initialSaturation = $bindable(0.2),
+    reservoirPorosity = $bindable(0.2),
     mu_w = $bindable(0.5),
     mu_o = $bindable(1.0),
     c_o = $bindable(1e-5),
@@ -50,7 +51,7 @@
     injectorEnabled = $bindable(true),
     injectorControlMode = $bindable<"rate" | "pressure">("pressure"),
     producerControlMode = $bindable<"rate" | "pressure">("pressure"),
-    injectorBhp = $bindable(400),
+    injectorBhp = $bindable(500),
     producerBhp = $bindable(100),
     targetInjectorRate = $bindable(350),
     targetProducerRate = $bindable(350),
@@ -80,6 +81,7 @@
     cellDz?: number;
     initialPressure?: number;
     initialSaturation?: number;
+    reservoirPorosity?: number;
     mu_w?: number;
     mu_o?: number;
     c_o?: number;
@@ -160,6 +162,7 @@
     <ReservoirPropertiesPanel
       bind:initialPressure
       bind:initialSaturation
+      bind:reservoirPorosity
       bind:mu_w
       bind:mu_o
       bind:c_o
