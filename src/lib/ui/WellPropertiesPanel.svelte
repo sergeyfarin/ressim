@@ -11,7 +11,7 @@
     injectorEnabled = $bindable(true),
     injectorControlMode = $bindable<"rate" | "pressure">("pressure"),
     producerControlMode = $bindable<"rate" | "pressure">("pressure"),
-    injectorBhp = $bindable(400),
+    injectorBhp = $bindable(500),
     producerBhp = $bindable(100),
     targetInjectorRate = $bindable(350),
     targetProducerRate = $bindable(350),

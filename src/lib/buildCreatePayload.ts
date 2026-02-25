@@ -131,7 +131,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
 
     well_radius: toMin(state.well_radius, 0.0001, 0.1),
     well_skin: toFiniteNumber(state.well_skin, 0),
-    injectorBhp: toMin(state.injectorBhp, 0.1, 400),
+    injectorBhp: toMin(state.injectorBhp, 0.1, 500),
     producerBhp: toMin(state.producerBhp, 0.1, 100),
 
     rateControlledWells: Boolean(state.rateControlledWells ?? false),

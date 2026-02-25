@@ -102,7 +102,7 @@
     // Well inputs
     let well_radius = $state(0.1);
     let well_skin = $state(0.0);
-    let injectorBhp = $state(400.0);
+    let injectorBhp = $state(500.0);
     let producerBhp = $state(100.0);
     let injectorControlMode: "rate" | "pressure" = $state("pressure");
     let producerControlMode: "rate" | "pressure" = $state("pressure");
