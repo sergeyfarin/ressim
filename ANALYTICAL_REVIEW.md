@@ -28,6 +28,8 @@ The simulator adds one well per layer (`for k in 0..nz`) meaning the total well 
 
 For uniform permeability and uniform initial saturation these coincidentally match, but the formula basis differs. For multi-layer cases they would diverge. **Risk: moderate** for current single-layer depletion cases.
 
+**Status:** ✅ Fixed. Analytical model now iterates `k = 0..nz-1`, computing and summing `J_oil_k` using the correct per-layer permeabilities.
+
 #### C3. Depletion analytical uses `reservoir.length * reservoir.area` which is `(nx·dx) × (ny·dy·nz·dz)` — mixing flow length with pore volume
 **File:** `DepletionAnalytical.svelte:80`, `App.svelte:1431-1435`
 
@@ -316,8 +318,8 @@ High mobility ratio (M ≈ 16.7) → early breakthrough around 0.15-0.2 PVI.
 
 | # | Issue | Action | Effort |
 |---|---|---|---|
-| 14 | **I4** Hardcoded porosity | Make porosity a user-editable parameter | 1-2 hr |
-| 15 | **C2** Multi-layer PI mismatch | Refactor analytical PI to sum per-layer, matching simulator | 1 hr |
+| 14 | **I4** Hardcoded porosity | Make porosity a user-editable parameter | 1-2 hr | ✅ Fixed |
+| 15 | **C2** Multi-layer PI mismatch | Refactor analytical PI to sum per-layer, matching simulator | 1 hr | ✅ Fixed |
 | 16 | **M4** Misleading `maxRecoverable` name | Rename to `totalExpelledVolume` or similar | 5 min |
 
 ---
@@ -391,3 +393,10 @@ Remaining gap (1.73 vs 2.42) is physical: PSS assumes equilibrated pressure fiel
 **Fix:** Rate-controlled injectors now get `bhpMax = 2000` (was `max(prodBhp, injBhp) = 400`); rate-controlled producers get `bhpMin = 0`.
 
 **Status:** ✅ Fixed in `sim.worker.ts`
+
+### Priority 4 — Completed ✅ 
+
+| # | Issue | Status | Details |
+|---|---|---|---|
+| 14 | **I4** Hardcoded porosity | ✅ Fixed | Made reservoir porosity a `$state` variable in UI and plumbed it via `SimulatorCreatePayload` to the Rust simulator `init_simulator` and `ReservoirSimulator::new`. |
+| 15 | **C2** Multi-layer PI mismatch | ✅ Fixed | Analytical PI now loops over layers and sums `J_oil_k` using per-layer permeability. |

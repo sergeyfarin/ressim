@@ -131,9 +131,10 @@ export class ReservoirSimulator {
      * @param {number} nx
      * @param {number} ny
      * @param {number} nz
+     * @param {number} porosity_val
      */
-    constructor(nx, ny, nz) {
-        const ret = wasm.reservoirsimulator_new(nx, ny, nz);
+    constructor(nx, ny, nz, porosity_val) {
+        const ret = wasm.reservoirsimulator_new(nx, ny, nz, porosity_val);
         this.__wbg_ptr = ret >>> 0;
         ReservoirSimulatorFinalization.register(this, this.__wbg_ptr, this);
         return this;

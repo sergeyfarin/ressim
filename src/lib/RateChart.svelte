@@ -17,6 +17,7 @@
         activeCategory = "",
         activeCase = "",
         theme = "dark",
+        analyticalMeta,
         layoutConfig,
     }: {
         rateHistory?: RateHistoryPoint[];
@@ -28,15 +29,17 @@
         activeCategory?: string;
         activeCase?: string;
         theme?: "dark" | "light";
+        analyticalMeta?: any;
         layoutConfig?: any;
     } = $props();
 
     // --- X-axis state (shared across all panels) ---
-    type XAxisMode = "time" | "logTime" | "pvi" | "cumLiquid" | "cumInjection";
+    type XAxisMode = "time" | "tD" | "logTime" | "pvi" | "pvp" | "cumLiquid" | "cumInjection";
     type XYPoint = { x: number; y: number | null };
 
     let xAxisMode = $state<XAxisMode>("time");
     let logScale = $state(false);
+    let normalizeRates = $state(false);
 
     // --- Panel expand/collapse state ---
     let ratesExpanded = $state(true);
@@ -165,6 +168,22 @@
         }),
     );
 
+    let ratesScaleFactor = $derived(normalizeRates && analyticalMeta?.q0 && analyticalMeta.q0 > 0 ? (1.0 / analyticalMeta.q0) : 1.0);
+
+    let normOilProd = $derived(oilProd.map((v) => Number(v) * ratesScaleFactor));
+    let normLiquidProd = $derived(liquidProd.map((v) => Number(v) * ratesScaleFactor));
+    let normInjection = $derived(injection.map((v) => Number(v) * ratesScaleFactor));
+    let normWaterProd = $derived(waterProd.map((v) => Number(v) * ratesScaleFactor));
+    let normAnalyticalOilProd = $derived(analyticalOilProd.map((v) => v === null ? null : (v * ratesScaleFactor)));
+    let normAnalyticalWaterRate = $derived(analyticalWaterRate.map((v) => v === null ? null : (v * ratesScaleFactor)));
+    let normOilRateAbsError = $derived(
+        normOilProd.map((sim, idx) => {
+            const analytical = normAnalyticalOilProd[idx];
+            if (analytical === null || sim === null) return null;
+            return Math.abs(sim - analytical);
+        })
+    );
+
     // Cumulative computations
     let cumulatives = $derived.by(() => {
         let cumOil = 0,
@@ -176,6 +195,7 @@
         const cumLiqArr: number[] = [];
         const cumWaterArr: number[] = [];
         const pviArr: number[] = [];
+        const pvpArr: number[] = [];
         for (let i = 0; i < rateHistory.length; i++) {
             const dt =
                 i > 0
@@ -190,6 +210,7 @@
             cumLiqArr.push(cumLiq);
             cumWaterArr.push(cumWater);
             pviArr.push(poreVolumeM3 > 1e-12 ? cumInj / poreVolumeM3 : 0);
+            pvpArr.push(poreVolumeM3 > 1e-12 ? cumLiq / poreVolumeM3 : 0);
         }
         return {
             cumOil: cumOilArr,
@@ -197,6 +218,7 @@
             cumLiq: cumLiqArr,
             cumWater: cumWaterArr,
             pvi: pviArr,
+            pvp: pvpArr,
         };
     });
 
@@ -380,9 +402,12 @@
         }
     });
 
-    // PVI availability
+    // PVI/PVP availability
     let pviAvailable = $derived(
         cumulatives.cumInj[cumulatives.cumInj.length - 1] > 1e-12,
+    );
+    let pvpAvailable = $derived(
+        cumulatives.cumLiq[cumulatives.cumLiq.length - 1] > 1e-12,
     );
 
     // ══════════════════════════════════════════════════════════════
@@ -391,24 +416,31 @@
 
     let xValues = $derived.by(() => {
         if (xAxisMode === "pvi") return cumulatives.pvi;
+        if (xAxisMode === "pvp") return cumulatives.pvp;
         if (xAxisMode === "cumLiquid") return cumulatives.cumLiq;
         if (xAxisMode === "cumInjection") return cumulatives.cumInj;
         if (xAxisMode === "logTime")
             return timeValues.map((t) => (t > 0 ? Math.log10(t) : null));
+        if (xAxisMode === "tD" && analyticalMeta?.tau && analyticalMeta.tau > 0)
+            return timeValues.map((t) => t / analyticalMeta.tau);
         return timeValues;
     });
 
     function setXAxisMode(mode: XAxisMode) {
         if (mode === "pvi" && !pviAvailable) return;
+        if (mode === "pvp" && !pvpAvailable) return;
+        if (mode === "tD" && (!analyticalMeta?.tau || analyticalMeta.tau <= 0)) return;
         xAxisMode = mode;
     }
 
     function getXAxisTitle(): string {
         if (xAxisMode === "pvi") return "PV Injected (PVI)";
+        if (xAxisMode === "pvp") return "PV Produced (PVP)";
         if (xAxisMode === "cumLiquid")
             return "Cumulative Liquid Production (m³)";
         if (xAxisMode === "cumInjection") return "Cumulative Injection (m³)";
         if (xAxisMode === "logTime") return "Time (days) — log₁₀";
+        if (xAxisMode === "tD") return "Dimensionless Time (tD = t/τ)";
         return "Time (days)";
     }
 
@@ -575,13 +607,13 @@
 
     // --- Build XY series for each panel ---
     let ratesSeries = $derived([
-        toXYSeries(xValues, oilProd),
-        toXYSeries(xValues, analyticalOilProd as Array<number | null>),
-        toXYSeries(xValues, waterProd),
-        toXYSeries(xValues, analyticalWaterRate as Array<number | null>),
-        toXYSeries(xValues, injection),
-        toXYSeries(xValues, liquidProd),
-        toXYSeries(xValues, oilRateAbsError as Array<number | null>),
+        toXYSeries(xValues, normOilProd),
+        toXYSeries(xValues, normAnalyticalOilProd),
+        toXYSeries(xValues, normWaterProd),
+        toXYSeries(xValues, normAnalyticalWaterRate),
+        toXYSeries(xValues, normInjection),
+        toXYSeries(xValues, normLiquidProd),
+        toXYSeries(xValues, normOilRateAbsError),
     ]);
 
     let cumulativeSeries = $derived([
@@ -604,18 +636,17 @@
         toXYSeries(xValues, mbError as Array<number | null>),
     ]);
 
-    // --- Scale configs for each panel ---
-    const ratesScales = {
+    let ratesScales = $derived({
         y: {
             type: "linear",
             display: true,
             position: "left",
             min: 0,
             alignToPixels: true,
-            title: { display: true, text: "Rate (m³/day)" },
+            title: { display: true, text: normalizeRates ? "Normalized Rate (q/q₀)" : "Rate (m³/day)" },
             ticks: { count: 6 },
         },
-    };
+    });
     const cumulativeScales = {
         y: {
             type: "linear",
@@ -683,10 +714,22 @@
     let xAxisOptions = $derived([
         { value: "time", label: "Time" },
         {
+            value: "tD",
+            label: "tD",
+            disabled: !analyticalMeta?.tau || analyticalMeta.tau <= 0,
+            title: "Dimensionless Time (t/τ)",
+        },
+        {
             value: "pvi",
             label: "PVI",
             disabled: !pviAvailable,
             title: "PV Injected",
+        },
+        {
+            value: "pvp",
+            label: "PVP",
+            disabled: !pvpAvailable,
+            title: "PV Produced",
         },
         { value: "cumLiquid", label: "Cum Liq", title: "Cumulative Liquid" },
         {
@@ -701,16 +744,30 @@
 <div class="flex flex-col">
     <!-- X-axis controls at top -->
     <div
-        class="flex items-center gap-2 px-4 pt-4 md:px-5 md:pt-5 pb-2 overflow-x-auto"
+        class="flex flex-col sm:flex-row sm:items-center gap-2 px-4 pt-4 md:px-5 md:pt-5 pb-2 border-b border-border/50"
     >
-        <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
-            >X-axis</span
-        >
-        <ToggleGroup
-            options={xAxisOptions}
-            bind:value={xAxisMode}
-            onChange={(val) => setXAxisMode(val as XAxisMode)}
-        />
+        <div class="flex items-center gap-2 overflow-x-auto">
+            <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
+                >X-axis</span
+            >
+            <ToggleGroup
+                options={xAxisOptions}
+                bind:value={xAxisMode}
+                onChange={(val) => setXAxisMode(val as XAxisMode)}
+            />
+        </div>
+        
+        <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
+            {#if analyticalMeta?.q0 && analyticalMeta.q0 > 0}
+                <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
+                    >Y-axis</span
+                >
+                <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="checkbox" bind:checked={normalizeRates} class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5" />
+                    <span class="text-xs text-muted-foreground whitespace-nowrap">Normalize Rates (q/q₀)</span>
+                </label>
+            {/if}
+        </div>
     </div>
 
     <!-- Rates panel -->

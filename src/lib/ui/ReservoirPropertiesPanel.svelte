@@ -6,6 +6,7 @@
   let {
     initialPressure = $bindable(300),
     initialSaturation = $bindable(0.2),
+    reservoirPorosity = $bindable(0.2),
     mu_w = $bindable(0.5),
     mu_o = $bindable(1.0),
     c_o = $bindable(1e-5),
@@ -34,6 +35,7 @@
   }: {
     initialPressure?: number;
     initialSaturation?: number;
+    reservoirPorosity?: number;
     mu_w?: number;
     mu_o?: number;
     c_o?: number;
@@ -77,7 +79,7 @@
     ),
   );
   const groupSummary = $derived(
-    `P=${initialPressure.toFixed(0)} bar · Sw=${initialSaturation.toFixed(2)} · μw/μo=${mu_w.toFixed(2)}/${mu_o.toFixed(2)} · ${permSummary}`,
+    `P=${initialPressure.toFixed(0)} bar · Sw=${initialSaturation.toFixed(2)} · Φ=${reservoirPorosity.toFixed(2)} · μw/μo=${mu_w.toFixed(2)}/${mu_o.toFixed(2)} · ${permSummary}`,
   );
 </script>
 
@@ -90,7 +92,7 @@
       </p>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
       <label class="flex flex-col gap-1.5">
         <span class="text-[11px] font-medium">Pressure (bar)</span>
         <Input
@@ -109,6 +111,17 @@
           step="0.05"
           class={`w-full h-8 ${Boolean(fieldErrors.initialSaturation) ? "border-destructive" : ""}`}
           bind:value={initialSaturation}
+        />
+      </label>
+      <label class="flex flex-col gap-1.5">
+        <span class="text-[11px] font-medium">Porosity</span>
+        <Input
+          type="number"
+          min="0.01"
+          max="1.0"
+          step="0.01"
+          class="w-full h-8"
+          bind:value={reservoirPorosity}
         />
       </label>
       <label class="flex flex-col gap-1.5">

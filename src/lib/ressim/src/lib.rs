@@ -128,9 +128,9 @@ impl ReservoirSimulator {
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
     #[wasm_bindgen(constructor)]
-    pub fn new(nx: usize, ny: usize, nz: usize) -> Self {
+    pub fn new(nx: usize, ny: usize, nz: usize, porosity_val: f64) -> Self {
         let n = nx * ny * nz;
-        let porosity = vec![0.2; n];
+        let porosity = vec![porosity_val; n];
         let perm_x = vec![100.0; n];
         let perm_y = vec![100.0; n];
         let perm_z = vec![10.0; n];

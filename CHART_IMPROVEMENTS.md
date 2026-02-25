@@ -100,11 +100,11 @@
 - [ ] **Consider SwProfile as 3D viz subcard** — it shows spatial information similar to the 3D view
 
 ### Medium Priority
-- [ ] **C2** Dimensionless normalization (q/q₀, tD)
+- [x] **C2** Dimensionless normalization (q/q₀, tD)
 - [ ] **C3** Export chart data as CSV
 - [ ] **C5** Relative error (%) curve
-- [ ] **D1** Dimensionless time tD = t/τ
-- [ ] **D2** Pore Volumes Produced (PVP)
+- [x] **D1** Dimensionless time tD = t/τ
+- [x] **D2** Pore Volumes Produced (PVP)
 
 ### Low Priority / Future
 - [ ] Multi-chart synchronized zoom/pan (requires Chart.js plugins)

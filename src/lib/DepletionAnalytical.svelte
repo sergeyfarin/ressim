@@ -6,6 +6,8 @@
         mode: 'waterflood' | 'depletion';
         shapeFactor: number | null;
         shapeLabel: string;
+        q0?: number;
+        tau?: number;
     };
 
     let {
@@ -14,11 +16,15 @@
         reservoir,
         initialSaturation = 0.3,
         // Well & reservoir physics (matched to simulator Peaceman model)
-        permX = 100.0,        // Horizontal permeability X [mD]
-        permY = 100.0,        // Horizontal permeability Y [mD]
+        nz = 1,               // Number of layers
+        permMode = 'uniform', // 'uniform' | 'perLayer' | 'random'
+        uniformPermX = 100.0, // Horizontal permeability X [mD]
+        uniformPermY = 100.0, // Horizontal permeability Y [mD]
+        layerPermsX = [] as number[],
+        layerPermsY = [] as number[],
         cellDx = 10.0,        // Cell size in X [m]
         cellDy = 10.0,        // Cell size in Y [m]
-        wellboreDz = 10.0,    // Total perforated thickness nz*cellDz [m]
+        cellDz = 10.0,        // Cell size in Z [m]
         wellRadius = 0.1,     // Wellbore radius [m]
         wellSkin = 0.0,       // Skin factor [-]
         muO = 1.0,            // Oil viscosity [cP]
@@ -38,11 +44,15 @@
         timeHistory?: number[];
         reservoir: Reservoir;
         initialSaturation?: number;
-        permX?: number;
-        permY?: number;
+        nz?: number;
+        permMode?: string;
+        uniformPermX?: number;
+        uniformPermY?: number;
+        layerPermsX?: number[];
+        layerPermsY?: number[];
         cellDx?: number;
         cellDy?: number;
-        wellboreDz?: number;
+        cellDz?: number;
         wellRadius?: number;
         wellSkin?: number;
         muO?: number;
@@ -68,7 +78,7 @@
 
     function calculateDepletionAnalyticalProduction() {
         if (!reservoir || timeHistory.length === 0) {
-            onAnalyticalMeta({ mode: 'depletion', shapeFactor: null, shapeLabel: '' });
+            onAnalyticalMeta({ mode: 'depletion', shapeFactor: null, shapeLabel: '', q0: undefined, tau: undefined });
             emitEmpty();
             return;
         }
@@ -78,8 +88,6 @@
         // ── PSS Productivity Index using Dietz shape factor ─────────────────────
         // J_PSS = DARCY_FACTOR × 2πkh / (μ × [0.5 × ln(4A / (CA × e^(2γ) × rw²))])
         // where A = drainage area, CA = shape factor, γ = Euler constant
-        const kx = Math.max(1e-6, permX);
-        const ky = Math.max(1e-6, permY);
         const rw = Math.max(1e-6, wellRadius);
 
         // k_ro at initial water saturation (Corey model)
@@ -91,6 +99,7 @@
         // Drainage area in the horizontal plane
         // reservoir.length = Lx = nx*dx, reservoir.area = Ly*Lz = ny*dy*nz*dz
         // For nz=1: drainage area A = Lx × Ly = reservoir.length × (reservoir.area / wellboreDz)
+        const wellboreDz = nz * cellDz;
         const Lx = reservoir.length;
         const Ly = Math.max(cellDy, reservoir.area / Math.max(1e-6, wellboreDz));
         const A_drain = Lx * Ly;
@@ -143,56 +152,63 @@
         // Oil PI [m³/(day·bar)]
         // DARCY_METRIC_FACTOR converts mD·m / cP → m³/(day·bar)
         const DARCY_METRIC_FACTOR = 8.527e-5;
-        const kAvg = Math.sqrt(kx * ky);
-        let J_oil: number;
+        let J_oil_total = 0;
 
-        if (CA === 0) {
-            // ── 1D PSS: total resistance = reservoir linear + near-wellbore ──
-            // R_linear = μ × L / (3 × k × A_cross × DARCY)  [1D slab, well at end]
-            // R_well = 1 / PI_Peaceman
-            const A_cross = Ly * wellboreDz; // cross-section perpendicular to flow
-            const R_linear = muO / (3 * kAvg * A_cross * DARCY_METRIC_FACTOR * (k_ro_swi / muO) * muO);
-            // Peaceman near-well resistance
-            const ratio = kx / ky;
-            const r_eq = 0.28
-                * Math.sqrt(Math.sqrt(ratio) * cellDx * cellDx + Math.sqrt(1 / ratio) * cellDy * cellDy)
-                / (ratio ** 0.25 + (1 / ratio) ** 0.25);
-            const denomPI = Math.max(1e-9, Math.log(Math.max(1 + 1e-9, r_eq / rw)) + wellSkin);
-            const PI_peaceman = DARCY_METRIC_FACTOR * 2 * Math.PI * kAvg * wellboreDz * (k_ro_swi / muO) / denomPI;
+        for (let k = 0; k < nz; k++) {
+            let kx_k = uniformPermX;
+            let ky_k = uniformPermY;
+            if (permMode === 'perLayer') {
+                kx_k = layerPermsX[k] ?? uniformPermX;
+                ky_k = layerPermsY[k] ?? uniformPermY;
+            }
+            kx_k = Math.max(1e-6, kx_k);
+            ky_k = Math.max(1e-6, ky_k);
+            const kAvg_k = Math.sqrt(kx_k * ky_k);
 
-            // R_linear = L / (3 * kAvg * A_cross * DARCY * (k_ro/mu))
-            const R_lin = Lx / (3 * kAvg * A_cross * DARCY_METRIC_FACTOR * (k_ro_swi / muO));
-            const R_well = 1 / PI_peaceman;
+            let J_oil_k = 0;
+            if (CA === 0) {
+                // ── 1D PSS: total resistance = reservoir linear + near-wellbore ──
+                const A_cross_k = Ly * cellDz; 
+                const ratio = kx_k / ky_k;
+                const r_eq = 0.28
+                    * Math.sqrt(Math.sqrt(ratio) * cellDx * cellDx + Math.sqrt(1 / ratio) * cellDy * cellDy)
+                    / (ratio ** 0.25 + (1 / ratio) ** 0.25);
+                const denomPI = Math.max(1e-9, Math.log(Math.max(1 + 1e-9, r_eq / rw)) + wellSkin);
+                const PI_peaceman_k = DARCY_METRIC_FACTOR * 2 * Math.PI * kAvg_k * cellDz * (k_ro_swi / muO) / denomPI;
 
-            J_oil = Math.max(1e-12, 1 / (R_lin + R_well));
-        } else {
-            // ── 2D PSS with Dietz shape factor ──────────────────────────────────
-            const euler_gamma = 0.5772156649;
-            const denom = 0.5 * Math.log(4 * A_drain / (CA * Math.exp(2 * euler_gamma) * rw * rw));
-            J_oil = Math.max(1e-12,
-                DARCY_METRIC_FACTOR * 2 * Math.PI * kAvg * wellboreDz * (k_ro_swi / muO) / Math.max(1e-9, denom + wellSkin)
-            );
+                const R_lin_k = Lx / (3 * kAvg_k * A_cross_k * DARCY_METRIC_FACTOR * (k_ro_swi / muO));
+                const R_well_k = Math.max(1e-12, 1 / PI_peaceman_k);
+
+                J_oil_k = 1 / (R_lin_k + R_well_k);
+            } else {
+                // ── 2D PSS with Dietz shape factor ──────────────────────────────────
+                const euler_gamma = 0.5772156649;
+                const denom = 0.5 * Math.log(4 * A_drain / (CA * Math.exp(2 * euler_gamma) * rw * rw));
+                J_oil_k = DARCY_METRIC_FACTOR * 2 * Math.PI * kAvg_k * cellDz * (k_ro_swi / muO) / Math.max(1e-9, denom + wellSkin);
+            }
+            J_oil_total += Math.max(0, J_oil_k);
         }
 
-        onAnalyticalMeta({
-            mode: 'depletion',
-            shapeFactor: CA,
-            shapeLabel,
-        });
+        const J_oil = Math.max(1e-12, J_oil_total);
 
         // ── Total compressibility c_t [1/bar] ──────────────────────────────────
-        const sO = 1 - sw;
-        const c_t = Math.max(1e-12, sO * c_o + sw * c_w + cRock);
+        let sO = 1 - sw;
+        let c_t = Math.max(1e-12, sO * c_o + sw * c_w + cRock);
 
-        // ── PSS time constant τ = V_pore · c_t / J_oil  [days] ───────────────
-        // Derivation: dp_avg/dt = −q / (V_pore · c_t),  q = J_oil · (p_avg − p_wf)
-        // → q(t) = q₀ · exp(−t/τ),  τ = V_pore · c_t / J_oil
         const tau = Math.max(1e-6, (poreVolume * c_t) / J_oil);
 
         // ── Initial rate and maximum recoverable volume ────────────────────────
         const dP = Math.max(0, initialPressure - producerBhp);
         const q0 = J_oil * dP * Math.max(0, depletionRateScale);  // scale applied to rate only
         const maxRecoverable = q0 * tau;              // = V_pore · c_t · ΔP · scale [m³]
+
+        onAnalyticalMeta({
+            mode: 'depletion',
+            shapeFactor: CA,
+            shapeLabel,
+            q0,
+            tau
+        });
 
         analyticalProduction = timeHistory.map((t) => {
             const boundedTime = Math.max(0, Number(t) || 0);
@@ -221,6 +237,8 @@
                 mode: 'depletion',
                 shapeFactor: null,
                 shapeLabel: '',
+                q0: undefined,
+                tau: undefined
             });
             emitEmpty();
         }

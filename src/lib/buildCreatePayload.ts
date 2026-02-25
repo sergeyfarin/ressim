@@ -91,6 +91,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
 
     initialPressure: toFiniteNumber(state.initialPressure, 300),
     initialSaturation: toClamped(state.initialSaturation, 0, 1, 0.3),
+    porosity: toClamped(state.porosity, 0.01, 1, 0.2),
 
     mu_w: toMin(state.mu_w, 0.01, 0.5),
     mu_o: toMin(state.mu_o, 0.01, 1.0),
