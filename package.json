@@ -20,20 +20,19 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
-    "@types/node": "^25.3.0",
+    "@types/node": "^25.3.2",
     "@types/three": "0.183.1",
     "@vitest/coverage-v8": "^4.0.18",
-    "svelte": "^5.53.5",
+    "svelte": "^5.53.6",
     "vite": "^7.3.1",
-    "vitest": "^4.0.18"
-  },
-  "dependencies": {
-    "@tailwindcss/postcss": "^4.2.1",
+    "vitest": "^4.0.18",
     "@tailwindcss/vite": "^4.2.1",
     "autoprefixer": "^10.4.27",
-    "chart.js": "^4.5.1",
     "tailwindcss": "^4.2.1",
-    "three": "0.183.1",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "three": "0.183.1"    
   }
 }

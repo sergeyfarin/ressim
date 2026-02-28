@@ -31,6 +31,7 @@ export default defineConfig({
   ],
   base: '/ressim/',
   build: {
+    chunkSizeWarningLimit: 600,
     outDir: 'dist/ressim',
     emptyOutDir: true,
     rollupOptions: {
