@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import tailwindcss from '@tailwindcss/vite'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -11,7 +10,6 @@ const __dirname = path.dirname(__filename)
 export default defineConfig({
   plugins: [
     svelte(),
-    tailwindcss(),
     // write a simple redirect HTML file into the build output after bundling
     {
       name: 'root-redirect',

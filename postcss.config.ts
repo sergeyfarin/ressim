@@ -1,11 +1,7 @@
-import type { ProcessOptions } from 'postcss';
-
-type PostcssConfig = {
-  plugins: Record<string, ProcessOptions>;
-};
-
-const config: PostcssConfig = {
-  plugins: {},
+const config = {
+  plugins: {
+    '@tailwindcss/postcss': {},
+  },
 };
 
 export default config;
