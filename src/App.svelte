@@ -17,14 +17,8 @@
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("dark");
     let showDebugState = $state(false);
-    let showProperty:
-        | "pressure"
-        | "saturation_water"
-        | "saturation_oil"
-        | "permeability_x"
-        | "permeability_y"
-        | "permeability_z"
-        | "porosity" = $state("pressure");
+    let showProperty: "pressure" | "saturation_water" | "saturation_oil" =
+        $state("pressure");
     let legendFixedMin = $state(0);
     let legendFixedMax = $state(1);
 
@@ -437,7 +431,6 @@
                             simTime={sim.simTime}
                             producerJ={sim.producerJ}
                             initialSaturation={sim.initialSaturation}
-                            reservoirPorosity={sim.reservoirPorosity}
                             injectionRate={sim.latestInjectionRate}
                             scenarioMode={sim.analyticalSolutionMode}
                             rockProps={{
