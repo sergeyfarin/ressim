@@ -1,175 +1,179 @@
-# ResSim: Browser-Based Reservoir Simulator
+# ResSim — Browser-Based 3D Reservoir Simulator
 
-ResSim is a 3D browser reservoir simulation app that combines a Rust/WASM simulation core with a Svelte + Vite frontend. It focuses on practical two-phase (oil/water) flow experimentation, interactive visualization, and benchmark-based credibility checks.
+A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with analytical comparisons, and benchmark-based validation — all running entirely in the browser.
 
-## What the app does
+## Features
 
-- Simulates pressure and saturation evolution on a 3D Cartesian grid.
-- Supports configurable rock/fluid properties, capillary pressure, gravity toggle, and permeability scenarios.
-- Renders a real-time 3D property view (Three.js), production-rate trends, and Buckley-Leverett analytical comparison.
-- Records simulation history and supports replay for time-step inspection.
-- Publishes benchmark summaries from generated artifacts so frontend values stay in sync with tests.
+### Simulation Engine (Rust → WASM)
 
-## Main features
+- **IMPES solver** — implicit pressure, explicit saturation on a 3D Cartesian grid.
+- **Corey relative permeability** model with configurable endpoints (`S_wc`, `S_or`) and exponents (`n_w`, `n_o`).
+- **Brooks-Corey capillary pressure** — optional toggle, `P_entry` and `lambda` parameters.
+- **Gravity** — configurable toggle with phase-density-weighted hydrostatic head.
+- **Permeability modes**: uniform, random (optional deterministic seed), per-layer CSV input.
+- **User-editable porosity**, initial water saturation, and rock compressibility.
+- **Well model**: Peaceman PI, rate or BHP control, per-layer completion, auto BHP constraint switching. Dynamic PI update each timestep.
+- **Material-balance error** tracking returned per timestep.
+- **PCG solver convergence** warning surfaced in the UI.
+- **Modular Rust layout**: `lib.rs` (WASM API), `step.rs`, `solver.rs`, `relperm.rs`, `capillary.rs`, `well.rs`, `grid.rs`.
 
-### Simulation & physics
+### Analytical Comparisons
 
-- Rust core compiled to WebAssembly (`src/lib/ressim`).
-- SCAL controls (`S_wc`, `S_or`, Corey exponents), capillary pressure (`P_entry`, `lambda`), and gravity option.
-- Permeability setup modes:
-	- `default`
-	- `random` (optional deterministic seed)
-	- `perLayer` (layer-wise CSV input)
+- **Buckley-Leverett** fractional-flow analytical curve for waterflood cases.
+  - Welge tangent construction, Sw profile, post-breakthrough outlet Sw via bisection.
+  - Breakthrough via cumulative PVI tracking.
+- **Depletion decline** — PSS exponential decline `q(t) = q₀·exp(−t/τ)` with Dietz shape-factor PI.
+  - 1D slab and 2D radial drainage geometry support.
+  - Per-layer PI summation for multi-layer cases.
+- Mismatch metrics: MAE, RMSE, MAPE displayed in the rate chart.
 
-### Visualization & analysis
+### Visualization & UI
 
-- 3D grid view with selectable properties:
-	- Pressure
-	- Water/Oil saturation
-	- Permeability (`x`, `y`, `z`)
-	- Porosity
-- Rate chart with analytical Buckley-Leverett comparison.
-- Scenario presets for reproducible demonstrations.
-- Worker-based simulation stepping to keep UI responsive.
+- **3D property view** (Three.js) — selectable properties: pressure, water/oil saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
+- **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
+- **Sw Profile chart** — cell-index saturation profile compared to analytical flood front.
+- **Scenario catalog** with 10+ preset cases (depletion, waterflood, exploration) including pre-run data.
+- **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
+- **Simulation progress indicator** (step X / N).
+- **Dark/Light theme** toggle.
+- **Benchmark results card** — reads from `public/benchmark-results.json`, shows Baseline vs Refined discretization evidence.
 
-### Validation & credibility
+### Validation & Benchmarks
 
-- P4 Buckley-Leverett benchmark coverage with documented tolerances.
-- Artifact pipeline: benchmark JSON is generated from test output and loaded by frontend.
-- Baseline/Refined benchmark mode comparison shown in-app.
+Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 
-See:
+| Case | Analytical PV_BT | Simulator PV_BT | Relative Error |
+|------|------------------:|----------------:|---------------:|
+| BL-Case-A (favorable mobility) | 0.586 | 0.524 | 10.6% |
+| BL-Case-B (adverse mobility) | 0.507 | 0.477 | 6.0% |
 
-- [docs/P4_TWO_PHASE_BENCHMARKS.md](docs/P4_TWO_PHASE_BENCHMARKS.md)
-- [docs/P4_SUMMARY.md](docs/P4_SUMMARY.md)
-- [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
+Refined discretization (nx=96, dt=0.125d) reduces errors to 3–4%, confirming numerical diffusion as primary mismatch source.
 
-## Legend mode (Fixed vs Percentile)
+Artifact pipeline: `npm run bench:export` → `public/benchmark-results.json`, consumed by frontend and CI.
 
-In the **Visualization** panel:
+## Unit System
 
-1. Choose **Legend Range Mode**.
-2. Use **Fixed** for stable, property-specific ranges (best for cross-run comparisons).
-3. Use **Percentile (adaptive)** to emphasize contrast in the current dataset.
-4. When using percentile mode, set **Low Percentile** and **High Percentile** bounds.
+All quantities use **oil-field metric units**:
 
-Defaults:
+| Quantity | Unit |
+|----------|------|
+| Pressure | bar |
+| Distance | m |
+| Time | day |
+| Permeability | mD |
+| Viscosity | cP |
+| Compressibility | 1/bar |
+| Transmissibility factor | `8.527×10⁻⁵` (DARCY_METRIC_FACTOR) |
 
-- Mode: `Fixed`
-- Percentile bounds (when enabled): `P5` to `P95`
-
-Legend labels now include:
-
-- Clear property name
-- Unit (`bar`, `mD`, or `fraction`)
-- Active mode (`Fixed` or selected percentile window)
-
-## Quick start
+## Quick Start
 
 ### Prerequisites
 
-- Node.js + npm
-- Rust toolchain (`cargo`)
-- `wasm-pack`
+- Node.js ≥ 18 + npm
+- Rust toolchain (`cargo`, `rustup`)
+- `wasm-pack` (`cargo install wasm-pack`)
+- WASM target: `rustup target add wasm32-unknown-unknown`
 
-### Install
+### Install & Run
 
 ```bash
 npm install
+npm run dev        # builds WASM (predev hook), starts Vite dev server
 ```
 
-### Run locally
+### Production Build
 
 ```bash
-npm run dev
+npm run build      # runs bench:export → build:wasm → vite build
+npm run preview    # serve production bundle locally
 ```
 
-### Build production
+### Tests
 
 ```bash
-npm run build
+npm test                           # Vitest frontend tests
+cd src/lib/ressim && cargo test    # Rust unit + benchmark tests
 ```
 
-Notes:
+> **Known non-blocking warnings**: DaisyUI `@property` CSS warning, large JS chunk warning.
+> `src/lib/ressim/pkg/simulator.js` is wasm-pack generated — do not convert manually.
 
-- `npm run build` runs `bench:export` first, generating `public/benchmark-results.json`.
-- Known non-blocking warnings: DaisyUI CSS `@property` compatibility warning and large JS chunk warning.
-- `src/lib/ressim/pkg/simulator.js` is generated by `wasm-pack` and intentionally remains JavaScript (do not convert manually).
+## Project Layout
 
-## FAQ / Troubleshooting
-
-- **What does `npm run dev` do?**
-	- npm runs `predev` first (`npm run build:wasm`), then starts Vite:
-		```bash
-		npm run dev
-		```
-	- No Bun runtime is required.
-
-- **`wasm-pack: command not found`**
-	- Install via Cargo:
-		```bash
-		cargo install wasm-pack
-		```
-	- Confirm installation:
-		```bash
-		wasm-pack --version
-		```
-
-- **WASM build fails due to missing target**
-	- Add the required Rust target:
-		```bash
-		rustup target add wasm32-unknown-unknown
-		```
-
-- **Rust toolchain not found (`cargo` missing)**
-	- Install Rust using `rustup` from https://rustup.rs/.
-	- Re-open terminal and verify with:
-		```bash
-		cargo --version
-		```
-
-- **Large chunk warning during `npm run build`**
-	- This is currently expected and non-blocking for this project state.
-
-- **DaisyUI `@property` CSS warning**
-	- This is also expected in current build logs and does not block output generation.
-
-## Useful commands
-
-```bash
-# Build WASM package only
-npm run build:wasm
-
-# Export benchmark artifact JSON
-npm run bench:export
-
-# Preview production build
-npm run preview
-
-# Run benchmark test directly from Rust core
-cd src/lib/ressim
-cargo test benchmark_buckley_leverett -- --nocapture
+```
+src/
+├── App.svelte                      — main UI: state, controls, scenario management
+├── app.css                         — global styles
+├── main.ts                         — app entry point
+└── lib/
+    ├── sim.worker.ts               — WebWorker bridge to WASM simulator
+    ├── simulator-types.ts          — TypeScript interfaces for worker payloads
+    ├── buildCreatePayload.ts       — payload builder + tests
+    ├── caseCatalog.ts              — 10+ scenario presets with params + pre-run data
+    ├── chart-helpers.ts            — chart data/config utilities + tests
+    ├── RateChart.svelte            — rate/cumulative/diagnostics charting
+    ├── ChartSubPanel.svelte        — reusable collapsible chart panel
+    ├── SwProfileChart.svelte       — 1D saturation profile chart
+    ├── FractionalFlow.svelte       — BL analytical computation
+    ├── DepletionAnalytical.svelte  — PSS depletion analytical
+    ├── 3dview.svelte               — Three.js 3D grid rendering + legend
+    ├── ui/                         — TopBar, RunControls, TabContainer, InputsTab, panels
+    ├── components/                 — ToggleGroup, PropertyToggle, etc.
+    └── ressim/src/                 — Rust simulator core
+        ├── lib.rs                  — WASM API surface
+        ├── step.rs                 — IMPES timestep logic
+        ├── solver.rs               — PCG pressure solver
+        ├── relperm.rs              — Corey relative permeability
+        ├── capillary.rs            — Brooks-Corey capillary pressure
+        ├── well.rs                 — well model + validation
+        └── grid.rs                 — grid cell definitions
+scripts/
+├── export-benchmarks.mjs           — benchmark artifact generation
+├── export-cases.mjs                — pre-run case export
+└── build-wasm.sh                   — WASM build script
+public/
+└── benchmark-results.json          — generated benchmark summary
+docs/                               — technical reference docs (see below)
 ```
 
-## Project layout
+## Key Documentation (in `docs/`)
 
-- `src/App.svelte` — main UI controls, playback, benchmark table.
-- `src/lib/3dview.svelte` — Three.js reservoir rendering + legend.
-- `src/lib/RateChart.svelte` — production/analytical charting.
-- `src/lib/FractionalFlow.svelte` — analytical Buckley-Leverett support.
-- `src/lib/sim.worker.js` — worker bridge between UI and WASM simulator.
-- `src/lib/ressim/src/lib.rs` — Rust simulator core.
-- `scripts/export-benchmarks.mjs` — benchmark artifact generation.
-- `public/benchmark-results.json` — generated benchmark summary consumed by frontend.
+| Document | Content |
+|----------|---------|
+| `P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
+| `UNIT_SYSTEM.md` | Comprehensive unit system reference |
+| `UNIT_REFERENCE.md` | Quick unit lookup card |
+| `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻⁵` constant |
+| `ANALYTICAL_REVIEW.md` (root) | Full audit of analytical vs simulator physics |
+| `CHART_IMPROVEMENTS.md` (root) | Chart architecture & curve reference |
 
-## Current status & roadmap summary
+## Physics Summary
 
-From `TODO_2026.md`:
+### Implemented ✅
 
-- Completed: P0 and P1 must-haves, all P3 items, and all P4 items (`P4-1` to `P4-5`).
-- Recently completed: adaptive legend mode (`P4-4`) and benchmark artifact automation (`P4-5`).
-- Open long-horizon items:
-	- `NTH-2`: extend to three-phase flow (oil/water/gas)
-	- `NTH-3`: optional aquifer coupling model
+| Feature | Details |
+|---------|---------|
+| Two-phase oil/water flow | IMPES pressure-saturation splitting |
+| Corey relative permeability | Configurable S_wc, S_or, n_w, n_o |
+| Brooks-Corey capillary pressure | Optional, P_entry + lambda |
+| Gravity segregation | Optional toggle, ρ·g·Δz head |
+| Peaceman well model | Rate or BHP control, dynamic PI |
+| Well BHP constraints | Auto-switch rate→BHP if limit violated |
+| Material balance tracking | Per-timestep MB error |
+| PCG solver with convergence warning | Max 1000 iterations, residual check |
+| Saturation-weighted compressibility | Per-cell c_t = ϕ(c_o·S_o + c_w·S_w) + c_r |
+| Injection of 100% water | Injector flag controls fluid composition |
 
-For full details, see [TODO_2026.md](TODO_2026.md).
+### Not Implemented
+
+| Feature | Priority |
+|---------|----------|
+| Three-phase flow (oil/water/gas) | Long-term |
+| Aquifer boundary conditions | Medium |
+| Horizontal / deviated wells | Medium |
+| Non-uniform cell sizes | Medium |
+| Capillary hysteresis | Low |
+| Per-cell capillary pressure variation | Low |
+| Relative permeability endpoint scaling (k_rw_max, k_ro_max) | Medium |
+
+See [TODO.md](TODO.md) for the full list of remaining work items.
