@@ -41,6 +41,8 @@ export interface SimulatorCreatePayload {
   s_or: number;
   n_w: number;
   n_o: number;
+  k_rw_max: number;
+  k_ro_max: number;
 
   // stability / timestep controls
   max_sat_change_per_step: number;

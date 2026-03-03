@@ -7,6 +7,8 @@
     s_or = $bindable(0.1),
     n_w = $bindable(2),
     n_o = $bindable(2),
+    k_rw_max = $bindable(1.0),
+    k_ro_max = $bindable(1.0),
     capillaryEnabled = $bindable(true),
     capillaryPEntry = $bindable(5),
     capillaryLambda = $bindable(2),
@@ -15,6 +17,8 @@
     s_or?: number;
     n_w?: number;
     n_o?: number;
+    k_rw_max?: number;
+    k_ro_max?: number;
     capillaryEnabled?: boolean;
     capillaryPEntry?: number;
     capillaryLambda?: number;
@@ -43,6 +47,8 @@
   const numericSor = $derived(Number(s_or));
   const numericNw = $derived(Number(n_w));
   const numericNo = $derived(Number(n_o));
+  const numericKrwMax = $derived(Number(k_rw_max));
+  const numericKroMax = $derived(Number(k_ro_max));
   const numericPEntry = $derived(Number(capillaryPEntry));
   const numericLambda = $derived(Number(capillaryLambda));
 
@@ -58,6 +64,12 @@
   const safeNo = $derived(
     Number.isFinite(numericNo) ? Math.max(0.1, numericNo) : 2,
   );
+  const safeKrwMax = $derived(
+    Number.isFinite(numericKrwMax) ? clamp(numericKrwMax, 0.01, 1.0) : 1.0,
+  );
+  const safeKroMax = $derived(
+    Number.isFinite(numericKroMax) ? clamp(numericKroMax, 0.01, 1.0) : 1.0,
+  );
   const safePEntry = $derived(
     Number.isFinite(numericPEntry) ? Math.max(0, numericPEntry) : 0,
   );
@@ -70,12 +82,24 @@
     return clamp((sw - swc) / denom, 0, 1);
   }
 
-  function krwWith(sw: number, swc: number, sor: number, nw: number) {
-    return Math.pow(swEffWith(sw, swc, sor), nw);
+  function krwWith(
+    sw: number,
+    swc: number,
+    sor: number,
+    nw: number,
+    krw_max: number,
+  ) {
+    return krw_max * Math.pow(swEffWith(sw, swc, sor), nw);
   }
 
-  function kroWith(sw: number, swc: number, sor: number, no: number) {
-    return Math.pow(1 - swEffWith(sw, swc, sor), no);
+  function kroWith(
+    sw: number,
+    swc: number,
+    sor: number,
+    no: number,
+    kro_max: number,
+  ) {
+    return kro_max * Math.pow(1 - swEffWith(sw, swc, sor), no);
   }
 
   function pcWith(
@@ -110,10 +134,10 @@
   );
 
   const relPermPathW = $derived(
-    toPath((sw) => krwWith(sw, safeSwc, safeSor, safeNw), 1),
+    toPath((sw) => krwWith(sw, safeSwc, safeSor, safeNw, safeKrwMax), 1),
   );
   const relPermPathO = $derived(
-    toPath((sw) => kroWith(sw, safeSwc, safeSor, safeNo), 1),
+    toPath((sw) => kroWith(sw, safeSwc, safeSor, safeNo, safeKroMax), 1),
   );
   const capillaryPath = $derived(
     toPath(
@@ -148,6 +172,7 @@
             <th class="font-medium p-2">Phase</th>
             <th class="font-medium p-2">Endpoint Sat. (S)</th>
             <th class="font-medium p-2">Corey Exponent (n)</th>
+            <th class="font-medium p-2">Max Multiplier</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border">
@@ -175,6 +200,16 @@
                 bind:value={n_w}
               /></td
             >
+            <td class="p-2"
+              ><Input
+                type="number"
+                min="0.01"
+                max="1.0"
+                step="0.01"
+                class="w-full h-7 px-2"
+                bind:value={k_rw_max}
+              /></td
+            >
           </tr>
           <tr>
             <td
@@ -198,6 +233,16 @@
                 step="0.1"
                 class="w-full h-7 px-2"
                 bind:value={n_o}
+              /></td
+            >
+            <td class="p-2"
+              ><Input
+                type="number"
+                min="0.01"
+                max="1.0"
+                step="0.01"
+                class="w-full h-7 px-2"
+                bind:value={k_ro_max}
               /></td
             >
           </tr>

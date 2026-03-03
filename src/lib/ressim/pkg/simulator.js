@@ -12,6 +12,14 @@ export class ReservoirSimulator {
         wasm.__wbg_reservoirsimulator_free(ptr, 0);
     }
     /**
+     * Cumulative material balance error [m³]
+     * @returns {number}
+     */
+    get cumulative_mb_error_m3() {
+        const ret = wasm.__wbg_get_reservoirsimulator_cumulative_mb_error_m3(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Add a well to the simulator
      * Parameters in oil-field units:
      * - i, j, k: grid cell indices (must be within grid bounds)
@@ -289,9 +297,11 @@ export class ReservoirSimulator {
      * @param {number} s_or
      * @param {number} n_w
      * @param {number} n_o
+     * @param {number} k_rw_max
+     * @param {number} k_ro_max
      */
-    setRelPermProps(s_wc, s_or, n_w, n_o) {
-        const ret = wasm.reservoirsimulator_setRelPermProps(this.__wbg_ptr, s_wc, s_or, n_w, n_o);
+    setRelPermProps(s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max) {
+        const ret = wasm.reservoirsimulator_setRelPermProps(this.__wbg_ptr, s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -354,6 +364,13 @@ export class ReservoirSimulator {
      */
     step(target_dt_days) {
         wasm.reservoirsimulator_step(this.__wbg_ptr, target_dt_days);
+    }
+    /**
+     * Cumulative material balance error [m³]
+     * @param {number} arg0
+     */
+    set cumulative_mb_error_m3(arg0) {
+        wasm.__wbg_set_reservoirsimulator_cumulative_mb_error_m3(this.__wbg_ptr, arg0);
     }
 }
 if (Symbol.dispose) ReservoirSimulator.prototype[Symbol.dispose] = ReservoirSimulator.prototype.free;

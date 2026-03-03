@@ -43,6 +43,8 @@
     s_or = $bindable(0.1),
     n_w = $bindable(2),
     n_o = $bindable(2),
+    k_rw_max = $bindable(1.0),
+    k_ro_max = $bindable(1.0),
     capillaryEnabled = $bindable(true),
     capillaryPEntry = $bindable(5),
     capillaryLambda = $bindable(2),
@@ -108,6 +110,8 @@
     s_or?: number;
     n_w?: number;
     n_o?: number;
+    k_rw_max?: number;
+    k_ro_max?: number;
     capillaryEnabled?: boolean;
     capillaryPEntry?: number;
     capillaryLambda?: number;
@@ -197,6 +201,8 @@
       bind:s_or
       bind:n_w
       bind:n_o
+      bind:k_rw_max
+      bind:k_ro_max
       bind:capillaryEnabled
       bind:capillaryPEntry
       bind:capillaryLambda

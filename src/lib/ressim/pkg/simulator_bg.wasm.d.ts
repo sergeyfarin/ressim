@@ -1,7 +1,9 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const __wbg_get_reservoirsimulator_cumulative_mb_error_m3: (a: number) => number;
 export const __wbg_reservoirsimulator_free: (a: number, b: number) => void;
+export const __wbg_set_reservoirsimulator_cumulative_mb_error_m3: (a: number, b: number) => void;
 export const reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
 export const reservoirsimulator_getDimensions: (a: number) => any;
 export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
@@ -28,7 +30,7 @@ export const reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, 
 export const reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
 export const reservoirsimulator_setRateControlledWells: (a: number, b: number) => void;
-export const reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+export const reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
 export const reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];

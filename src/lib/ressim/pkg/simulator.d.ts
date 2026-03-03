@@ -78,7 +78,7 @@ export class ReservoirSimulator {
     /**
      * Set relative permeability properties
      */
-    setRelPermProps(s_wc: number, s_or: number, n_w: number, n_o: number): void;
+    setRelPermProps(s_wc: number, s_or: number, n_w: number, n_o: number, k_rw_max: number, k_ro_max: number): void;
     setRockProperties(c_r: number, depth_reference_m: number, b_o: number, b_w: number): void;
     /**
      * Set stability parameters for the simulation
@@ -91,6 +91,10 @@ export class ReservoirSimulator {
      * Advance simulator by target timestep [days]
      */
     step(target_dt_days: number): void;
+    /**
+     * Cumulative material balance error [m³]
+     */
+    cumulative_mb_error_m3: number;
 }
 
 export function set_panic_hook(): void;
@@ -99,7 +103,9 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_get_reservoirsimulator_cumulative_mb_error_m3: (a: number) => number;
     readonly __wbg_reservoirsimulator_free: (a: number, b: number) => void;
+    readonly __wbg_set_reservoirsimulator_cumulative_mb_error_m3: (a: number, b: number) => void;
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
@@ -126,7 +132,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
     readonly reservoirsimulator_setRateControlledWells: (a: number, b: number) => void;
-    readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
     readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];

@@ -458,8 +458,16 @@ impl ReservoirSimulator {
         s_or: f64,
         n_w: f64,
         n_o: f64,
+        k_rw_max: f64,
+        k_ro_max: f64,
     ) -> Result<(), String> {
-        if !s_wc.is_finite() || !s_or.is_finite() || !n_w.is_finite() || !n_o.is_finite() {
+        if !s_wc.is_finite()
+            || !s_or.is_finite()
+            || !n_w.is_finite()
+            || !n_o.is_finite()
+            || !k_rw_max.is_finite()
+            || !k_ro_max.is_finite()
+        {
             return Err("Relative permeability parameters must be finite numbers".to_string());
         }
 
@@ -485,11 +493,21 @@ impl ReservoirSimulator {
             ));
         }
 
+        if k_rw_max <= 0.0 || k_rw_max > 1.0 {
+            return Err(format!("k_rw_max must be in (0, 1], got {}", k_rw_max));
+        }
+
+        if k_ro_max <= 0.0 || k_ro_max > 1.0 {
+            return Err(format!("k_ro_max must be in (0, 1], got {}", k_ro_max));
+        }
+
         self.scal = RockFluidProps {
             s_wc,
             s_or,
             n_w,
             n_o,
+            k_rw_max,
+            k_ro_max,
         };
         Ok(())
     }
@@ -866,7 +884,7 @@ mod tests {
 
     fn run_buckley_case(case: &BuckleyCase) -> BuckleyMetrics {
         let mut sim = ReservoirSimulator::new(case.nx, 1, 1, 0.2);
-        sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o)
+        sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o, 1.0, 1.0)
             .unwrap();
         sim.set_initial_saturation(case.s_wc);
         sim.set_permeability_random_seeded(case.permeability_md, case.permeability_md, 42)
@@ -1044,13 +1062,16 @@ mod tests {
     #[test]
     fn api_contract_rejects_invalid_relperm_parameters() {
         let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
-        err_contains(sim.set_rel_perm_props(0.6, 0.5, 2.0, 2.0), "must be < 1.0");
         err_contains(
-            sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0),
+            sim.set_rel_perm_props(0.6, 0.5, 2.0, 2.0, 1.0, 1.0),
+            "must be < 1.0",
+        );
+        err_contains(
+            sim.set_rel_perm_props(0.1, 0.1, 0.0, 2.0, 1.0, 1.0),
             "must be positive",
         );
         err_contains(
-            sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0),
+            sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0, 1.0, 1.0),
             "finite numbers",
         );
     }
@@ -1437,7 +1458,8 @@ mod tests {
     #[test]
     fn dynamic_pi_increases_with_higher_water_saturation() {
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
-        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0).unwrap();
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+            .unwrap();
         sim.set_fluid_properties(3.0, 0.5).unwrap();
         sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 

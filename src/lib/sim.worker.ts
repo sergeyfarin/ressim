@@ -125,7 +125,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   if (typeof setGravityEnabled === 'function') {
     setGravityEnabled.call(simulator, Boolean(payload.gravityEnabled));
   }
-  simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o);
+  simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o, payload.k_rw_max ?? 1.0, payload.k_ro_max ?? 1.0);
   simulator.setStabilityParams(
     payload.max_sat_change_per_step,
     payload.max_pressure_change_per_step,

@@ -154,7 +154,7 @@ docs/                               — technical reference docs (see below)
 | Feature | Details |
 |---------|---------|
 | Two-phase oil/water flow | IMPES pressure-saturation splitting |
-| Corey relative permeability | Configurable S_wc, S_or, n_w, n_o |
+| Corey relative permeability | Configurable S_wc, S_or, n_w, n_o, k_rw_max, k_ro_max |
 | Brooks-Corey capillary pressure | Optional, P_entry + lambda (with scaled physical caps) |
 | Gravity segregation | Optional toggle, ρ·g·Δz head |
 | Peaceman well model | Rate or BHP control, dynamic PI |
@@ -175,6 +175,6 @@ docs/                               — technical reference docs (see below)
 | Leverett J-Function capillary scaling | Medium |
 | Capillary hysteresis | Low |
 | Per-cell capillary pressure variation | Low |
-| Relative permeability endpoint scaling (k_rw_max, k_ro_max) | Medium |
+| Relative permeability endpoint scaling (k_rw_max, k_ro_max) | **Done** |
 
 See [TODO.md](TODO.md) for the full list of remaining work items.

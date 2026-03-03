@@ -109,6 +109,8 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     s_or: toClamped(state.s_or, 0, 1, 0.1),
     n_w: toMin(state.n_w, 0.01, 2),
     n_o: toMin(state.n_o, 0.01, 2),
+    k_rw_max: toClamped(state.k_rw_max, 0.01, 1, 1.0),
+    k_ro_max: toClamped(state.k_ro_max, 0.01, 1, 1.0),
 
     max_sat_change_per_step: toClamped(state.max_sat_change_per_step, 0.01, 1, 0.1),
     max_pressure_change_per_step: toMin(state.max_pressure_change_per_step, 1, 75),
