@@ -12,6 +12,7 @@
     capillaryEnabled = $bindable(true),
     capillaryPEntry = $bindable(5),
     capillaryLambda = $bindable(2),
+    fieldErrors = {},
   }: {
     s_wc?: number;
     s_or?: number;
@@ -22,6 +23,7 @@
     capillaryEnabled?: boolean;
     capillaryPEntry?: number;
     capillaryLambda?: number;
+    fieldErrors?: Record<string, string>;
   } = $props();
 
   const width = 180;
@@ -155,9 +157,12 @@
       : "Pc off",
   );
   const groupSummary = $derived(`${relPermSummary} · ${capSummary}`);
+  const hasError = $derived(
+    Object.keys(fieldErrors).some((key) => key.includes("saturationEndpoints")),
+  );
 </script>
 
-<Collapsible title="Relative Permeability + Capillary">
+<Collapsible title="Relative Permeability + Capillary" {hasError}>
   <div class="space-y-3 p-4 md:p-5">
     <div class="text-[11px] text-muted-foreground font-medium mb-2">
       {groupSummary}
@@ -187,7 +192,7 @@
                 min="0"
                 max="0.9"
                 step="0.01"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
                 bind:value={s_wc}
               /></td
             >
@@ -222,7 +227,7 @@
                 min="0"
                 max="0.9"
                 step="0.01"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
                 bind:value={s_or}
               /></td
             >
@@ -249,6 +254,12 @@
         </tbody>
       </table>
     </div>
+
+    {#if fieldErrors.saturationEndpoints}
+      <div class="text-[10px] text-destructive leading-tight">
+        {fieldErrors.saturationEndpoints}
+      </div>
+    {/if}
 
     <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
       <input

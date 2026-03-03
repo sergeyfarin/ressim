@@ -42,7 +42,6 @@ export class ReservoirSimulator {
      * All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
      */
     constructor(nx: number, ny: number, nz: number, porosity_val: number);
-    pore_volume_m3(id: number): number;
     setCapillaryParams(p_entry: number, lambda: number): void;
     setCellDimensions(dx: number, dy: number, dz: number): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
@@ -117,7 +116,6 @@ export interface InitOutput {
     readonly reservoirsimulator_get_time: (a: number) => number;
     readonly reservoirsimulator_loadState: (a: number, b: number, c: any, d: any, e: any) => [number, number];
     readonly reservoirsimulator_new: (a: number, b: number, c: number, d: number) => number;
-    readonly reservoirsimulator_pore_volume_m3: (a: number, b: number) => number;
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];

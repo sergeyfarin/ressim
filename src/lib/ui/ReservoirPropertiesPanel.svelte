@@ -112,6 +112,11 @@
           class={`w-full h-8 ${Boolean(fieldErrors.initialSaturation) ? "border-destructive" : ""}`}
           bind:value={initialSaturation}
         />
+        {#if fieldErrors.initialSaturation}
+          <div class="text-[10px] text-destructive leading-tight mt-0.5">
+            {fieldErrors.initialSaturation}
+          </div>
+        {/if}
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-[11px] font-medium">Porosity</span>
@@ -333,6 +338,11 @@
               class={`w-full ${Boolean(fieldErrors.permBounds) ? "border-destructive" : ""}`}
               bind:value={minPerm}
             />
+            {#if fieldErrors.permBounds}
+              <div class="text-[10px] text-destructive leading-tight mt-0.5">
+                {fieldErrors.permBounds}
+              </div>
+            {/if}
           </label>
           <label class="flex flex-col gap-1.5">
             <span class="text-xs font-medium">Max Permeability (mD)</span>
@@ -342,6 +352,11 @@
               class={`w-full ${Boolean(fieldErrors.permBounds) ? "border-destructive" : ""}`}
               bind:value={maxPerm}
             />
+            {#if fieldErrors.permBounds}
+              <div class="text-[10px] text-destructive leading-tight mt-0.5">
+                {fieldErrors.permBounds}
+              </div>
+            {/if}
           </label>
         </div>
       {:else}

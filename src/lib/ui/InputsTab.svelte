@@ -206,6 +206,7 @@
       bind:capillaryEnabled
       bind:capillaryPEntry
       bind:capillaryLambda
+      fieldErrors={validationErrors}
     />
     <WellPropertiesPanel
       bind:well_radius

@@ -148,14 +148,6 @@ export class ReservoirSimulator {
         return this;
     }
     /**
-     * @param {number} id
-     * @returns {number}
-     */
-    pore_volume_m3(id) {
-        const ret = wasm.reservoirsimulator_pore_volume_m3(this.__wbg_ptr, id);
-        return ret;
-    }
-    /**
      * @param {number} p_entry
      * @param {number} lambda
      */

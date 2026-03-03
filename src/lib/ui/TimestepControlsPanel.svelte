@@ -51,42 +51,62 @@
         </thead>
         <tbody class="divide-y divide-border">
           <tr>
-            <td class="p-2"
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 step="0.1"
                 class={`w-full h-7 px-2 ${Boolean(fieldErrors.deltaT) ? "border-destructive" : ""}`}
                 bind:value={delta_t_days}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.deltaT}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.deltaT}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.01"
                 max="1"
                 step="0.01"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.max_sat_change_per_step) ? "border-destructive" : ""}`}
                 bind:value={max_sat_change_per_step}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.max_sat_change_per_step}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.max_sat_change_per_step}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="1"
                 step="1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.max_pressure_change_per_step) ? "border-destructive" : ""}`}
                 bind:value={max_pressure_change_per_step}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.max_pressure_change_per_step}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.max_pressure_change_per_step}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.01"
                 step="0.05"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.injectorRate) || Boolean(fieldErrors.producerRate) ? "border-destructive" : ""}`}
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.max_well_rate_change_fraction) ? "border-destructive" : ""}`}
                 bind:value={max_well_rate_change_fraction}
-              /></td
-            >
+              />
+              {#if fieldErrors.max_well_rate_change_fraction}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.max_well_rate_change_fraction}
+                </div>
+              {/if}
+            </td>
           </tr>
         </tbody>
       </table>

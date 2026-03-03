@@ -79,6 +79,11 @@
           class={`w-full ${Boolean(fieldErrors.wellRadius) ? "border-destructive" : ""}`}
           bind:value={well_radius}
         />
+        {#if fieldErrors.wellRadius}
+          <div class="text-[10px] text-destructive leading-tight mt-0.5">
+            {fieldErrors.wellRadius}
+          </div>
+        {/if}
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-xs font-medium">Skin</span>
@@ -118,7 +123,7 @@
               class={`font-semibold align-middle text-center p-2 border-r border-border bg-muted/20 ${!injectorEnabled ? "opacity-40" : ""}`}
               >Injector</td
             >
-            <td class="p-2">
+            <td class="p-2 align-top">
               <Select
                 class="w-full h-7 px-2 text-xs"
                 bind:value={injectorControlMode}
@@ -128,16 +133,21 @@
                 <option value="rate">Rate</option>
               </Select>
             </td>
-            <td class="p-2"
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 step="1"
                 class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
                 bind:value={injectorBhp}
                 disabled={injectorControlMode === "rate" || !injectorEnabled}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.wellPressureOrder && injectorControlMode === "pressure"}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.wellPressureOrder}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0"
@@ -146,9 +156,14 @@
                 bind:value={targetInjectorRate}
                 disabled={injectorControlMode === "pressure" ||
                   !injectorEnabled}
-              /></td
-            >
-            <td class="p-2">
+              />
+              {#if fieldErrors.injectorRate && injectorControlMode === "rate"}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.injectorRate}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top">
               <div class="flex items-center gap-1">
                 <Input
                   type="number"
@@ -170,6 +185,13 @@
                   disabled={!injectorEnabled}
                 />
               </div>
+              {#if (fieldErrors.wellOverlap || fieldErrors.wellIndexType || fieldErrors.wellIndexRange) && injectorEnabled}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.wellOverlap ||
+                    fieldErrors.wellIndexRange ||
+                    fieldErrors.wellIndexType}
+                </div>
+              {/if}
             </td>
           </tr>
           <tr>
@@ -177,7 +199,7 @@
               class="font-semibold align-middle text-center p-2 border-r border-border bg-muted/20"
               >Producer</td
             >
-            <td class="p-2">
+            <td class="p-2 align-top">
               <Select
                 class="w-full h-7 px-2 text-xs"
                 bind:value={producerControlMode}
@@ -186,16 +208,21 @@
                 <option value="rate">Rate</option>
               </Select>
             </td>
-            <td class="p-2"
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 step="1"
                 class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
                 bind:value={producerBhp}
                 disabled={producerControlMode === "rate"}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.wellPressureOrder && producerControlMode === "pressure"}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.wellPressureOrder}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0"
@@ -203,9 +230,14 @@
                 class={`w-full h-7 px-2 ${Boolean(fieldErrors.producerRate) ? "border-destructive" : ""}`}
                 bind:value={targetProducerRate}
                 disabled={producerControlMode === "pressure"}
-              /></td
-            >
-            <td class="p-2">
+              />
+              {#if fieldErrors.producerRate && producerControlMode === "rate"}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.producerRate}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top">
               <div class="flex items-center gap-1">
                 <Input
                   type="number"
@@ -225,6 +257,13 @@
                   bind:value={producerJ}
                 />
               </div>
+              {#if fieldErrors.wellOverlap || fieldErrors.wellIndexType || fieldErrors.wellIndexRange}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.wellOverlap ||
+                    fieldErrors.wellIndexRange ||
+                    fieldErrors.wellIndexType}
+                </div>
+              {/if}
             </td>
           </tr>
         </tbody>
