@@ -15,8 +15,8 @@ Items are grouped by priority.
 - [x] **Relative permeability endpoint scaling** — `k_rw_max` and `k_ro_max` multipliers natively supported and routed natively up into the front-end configuration inputs and Analytical plot lines `FractionalFlow.svelte`.
 - [x] **Gravity head uses total density, not phase-density split** — gravity should act per-phase via phase potentials. Acceptable for weak gravity but incorrect for strong density contrast.
   - *Note: Phase-potential formulation significantly improved numeric stability for high-flow test cases over IMPES total velocity.*
-- [ ] **`maxRecoverable` naming** — `DepletionAnalytical.svelte` names `q0 × tau` as `maxRecoverable`; this is total expelled volume from compressible depletion, not recoverable oil. Rename to `totalExpelledVolume` or similar.
-- [ ] **`loadState` is broken** — `lib.rs:662-694`: `_grid_state` parameter is accepted but completely ignored; pressure/saturation arrays are never restored from it. Contains dead code (`if false {…}`) and a `TODO impl restore` comment. State hydration is incomplete.
+- [x] **`maxRecoverable` naming** — `DepletionAnalytical.svelte` names `q0 × tau` as `maxRecoverable`; this is total expelled volume from compressible depletion, not recoverable oil. Rename to `totalExpelledVolume` or similar.
+- [x] **`loadState` is broken** — `lib.rs:662-694`: `_grid_state` parameter is accepted but completely ignored; pressure/saturation arrays are never restored from it. Contains dead code (`if false {…}`) and a `TODO impl restore` comment. State hydration is incomplete.
 - [ ] **`so_new` redundantly clamped** — `step.rs:721` computes `so_new = (1.0 - sw_new).clamp(0.0, 1.0)` but `sw_new` is already clamped to `[s_wc, 1-s_or]`, so `so_new` is inherently in `[s_or, 1-s_wc]`. The `clamp` is misleading (suggests it could be out of range).
 - [ ] **`grid.rs` is empty** — the file exists and is imported via `mod grid` but contains no code (1 byte). Either populate it (e.g., move `GridCell` equivalent, `pore_volume_m3`, `idx`) or remove the empty module.
 

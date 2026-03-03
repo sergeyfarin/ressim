@@ -698,6 +698,8 @@ export function createSimulationStore() {
                 deltaTDays: Number(delta_t_days),
                 historyInterval: batchHistoryInterval,
                 chunkYieldInterval: 1,
+                history,
+                rateHistory,
             },
         });
     }

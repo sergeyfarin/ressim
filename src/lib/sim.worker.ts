@@ -248,6 +248,25 @@ self.onmessage = async (event) => {
       }
 
       const runPayload = payload as WorkerRunPayload;
+
+      // If continuing an existing run, load the previous state
+      if (runPayload.history && runPayload.history.length > 0) {
+        const lastHistory = runPayload.history[runPayload.history.length - 1];
+        if (lastHistory && lastHistory.grid && lastHistory.wells) {
+          const loadStateFn = /** @type {any} */ (simulator).loadState;
+          if (typeof loadStateFn === 'function') {
+            const rateHistoryPayload = payload.rateHistory ?? [];
+            loadStateFn.call(
+              simulator,
+              lastHistory.time,
+              lastHistory.grid,
+              lastHistory.wells,
+              rateHistoryPayload
+            );
+          }
+        }
+      }
+
       const steps = Math.max(0, Math.floor(Number(runPayload?.steps ?? 0)));
       const deltaTDays = Number(runPayload?.deltaTDays ?? 0);
       const historyInterval = Math.max(1, Number(runPayload?.historyInterval ?? 1));

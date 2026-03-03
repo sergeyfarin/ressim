@@ -122,12 +122,12 @@ export class ReservoirSimulator {
     /**
      * Load the entire state to continue simulation without re-computing from step 0
      * @param {number} time_days
-     * @param {any} _grid_state
+     * @param {any} grid_state
      * @param {any} well_state
      * @param {any} rate_history
      */
-    loadState(time_days, _grid_state, well_state, rate_history) {
-        const ret = wasm.reservoirsimulator_loadState(this.__wbg_ptr, time_days, _grid_state, well_state, rate_history);
+    loadState(time_days, grid_state, well_state, rate_history) {
+        const ret = wasm.reservoirsimulator_loadState(this.__wbg_ptr, time_days, grid_state, well_state, rate_history);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

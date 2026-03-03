@@ -94,6 +94,8 @@ export interface WorkerRunPayload {
   deltaTDays: number;
   historyInterval?: number;
   chunkYieldInterval?: number;
+  history?: SimulatorSnapshot[];
+  rateHistory?: RateHistory[];
 }
 
 /** Payload for pre-run hydration */

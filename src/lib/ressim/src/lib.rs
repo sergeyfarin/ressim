@@ -687,23 +687,37 @@ impl ReservoirSimulator {
     pub fn load_state(
         &mut self,
         time_days: f64,
-        _grid_state: JsValue,
+        grid_state: JsValue,
         well_state: JsValue,
         rate_history: JsValue,
     ) -> Result<(), JsValue> {
         let wells: Vec<Well> = serde_wasm_bindgen::from_value(well_state)?;
         let rate_history_vec: Vec<TimePointRates> = serde_wasm_bindgen::from_value(rate_history)?;
 
+        #[derive(Deserialize)]
+        struct GridStatePayload {
+            pressure: Vec<f64>,
+            sat_water: Vec<f64>,
+            sat_oil: Vec<f64>,
+        }
+        let grid_data: GridStatePayload = serde_wasm_bindgen::from_value(grid_state)?;
+
         let expected_cells = self.nx * self.ny * self.nz;
-        if false {
+        if grid_data.pressure.len() != expected_cells
+            || grid_data.sat_water.len() != expected_cells
+            || grid_data.sat_oil.len() != expected_cells
+        {
             return Err(JsValue::from_str(&format!(
-                "Mismatch grid size. Expected {}, got {}",
-                expected_cells, 0
+                "Mismatch grid size. Expected {}, got pressure len: {}, sat_water len: {}, sat_oil len: {}",
+                expected_cells, grid_data.pressure.len(), grid_data.sat_water.len(), grid_data.sat_oil.len()
             )));
         }
 
         self.time_days = time_days;
-        // TODO impl restore
+        self.pressure = grid_data.pressure;
+        self.sat_water = grid_data.sat_water;
+        self.sat_oil = grid_data.sat_oil;
+
         self.wells = wells;
         self.rate_history = rate_history_vec;
 

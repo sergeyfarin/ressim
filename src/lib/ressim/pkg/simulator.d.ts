@@ -35,7 +35,7 @@ export class ReservoirSimulator {
     /**
      * Load the entire state to continue simulation without re-computing from step 0
      */
-    loadState(time_days: number, _grid_state: any, well_state: any, rate_history: any): void;
+    loadState(time_days: number, grid_state: any, well_state: any, rate_history: any): void;
     /**
      * Create a new reservoir simulator with oil-field units
      * Grid dimensions: nx, ny, nz (number of cells in each direction)
