@@ -122,10 +122,6 @@ pub struct ReservoirSimulator {
 
 #[wasm_bindgen]
 impl ReservoirSimulator {
-    pub fn pore_volume_m3(&self, id: usize) -> f64 {
-        self.dx * self.dy * self.dz * self.porosity[id]
-    }
-
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -180,10 +176,6 @@ impl ReservoirSimulator {
             cumulative_production_m3: 0.0,
             cumulative_mb_error_m3: 0.0,
         }
-    }
-
-    fn idx(&self, i: usize, j: usize, k: usize) -> usize {
-        (k * self.nx * self.ny) + (j * self.nx) + i
     }
 
     /// Add a well to the simulator

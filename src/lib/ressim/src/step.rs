@@ -126,10 +126,6 @@ impl ReservoirSimulator {
         self.pc.capillary_pressure(s_w, &self.scal)
     }
 
-    fn depth_at_k(&self, k: usize) -> f64 {
-        self.depth_reference_m + (k as f64 + 0.5) * self.dz
-    }
-
     fn gravity_head_bar(&self, depth_i: f64, depth_j: f64, density_kg_m3: f64) -> f64 {
         if !self.gravity_enabled {
             return 0.0;
@@ -151,47 +147,6 @@ impl ReservoirSimulator {
             (lam_w / lam_t).clamp(0.0, 1.0)
         }
     }
-
-    /// Geometric transmissibility factor [mD·m²/m] - geometry only, no mobility
-    /// This is the constant part of transmissibility that depends only on rock properties
-    /// and grid geometry. Used with upstream mobility for proper flow direction.
-    /// Formula: T_geom = k_h * A / L where k_h is harmonic mean of permeabilities
-    fn geometric_transmissibility(&self, id1: usize, id2: usize, dim: char) -> f64 {
-        let (perm1, perm2, dist, area) = match dim {
-            'x' => (
-                self.perm_x[id1],
-                self.perm_x[id2],
-                self.dx,
-                self.dy * self.dz,
-            ),
-            'y' => (
-                self.perm_y[id1],
-                self.perm_y[id2],
-                self.dy,
-                self.dx * self.dz,
-            ),
-            'z' => (
-                self.perm_z[id1],
-                self.perm_z[id2],
-                self.dz,
-                self.dx * self.dy,
-            ),
-            _ => (0.0, 0.0, 1.0, 1.0),
-        };
-        // Harmonic mean of permeabilities [mD]
-        let k_h = if perm1 + perm2 == 0.0 {
-            0.0
-        } else {
-            2.0 * perm1 * perm2 / (perm1 + perm2)
-        };
-        if k_h == 0.0 {
-            return 0.0;
-        }
-
-        // Geometric transmissibility factor [mD·m²/m]
-        k_h * area / dist
-    }
-
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
         let mut time_stepped = 0.0;
         const MAX_ATTEMPTS: u32 = 10;
@@ -678,7 +633,7 @@ impl ReservoirSimulator {
             actual_change_m3 += (sw_new - sw_old) * vp_m3;
 
             // Ensure material balance: s_w + s_o = 1.0 (two-phase system, no gas phase)
-            let so_new = (1.0 - sw_new).clamp(0.0, 1.0);
+            let so_new = 1.0 - sw_new;
 
             // Update state variables
             self.sat_water[idx] = sw_new;
