@@ -251,26 +251,41 @@ impl ReservoirSimulator {
             }
 
             let actual_dt;
+            let final_p;
             let final_delta_water_m3;
 
             if stable_dt_factor < 1.0 {
                 // Timestep is too large, reduce it based on CFL condition
                 actual_dt = remaining_dt * stable_dt_factor * 0.9; // Use 90% for safety
 
-                // Scale the water volume change by the ratio of the new dt to the old dt
-                let dt_ratio = actual_dt / remaining_dt;
-                final_delta_water_m3 = delta_water_m3.iter().map(|&dv| dv * dt_ratio).collect();
+                // Re-solve pressure and fluxes with reduced dt for accuracy.
+                // The pressure accumulation term (Vp·ct/dt) is inversely proportional to dt,
+                // so the pressure solution from the full remaining_dt is inconsistent with
+                // the reduced sub-step. Re-solving gives correct pressure for actual_dt.
+                let (p_resolv, dw_resolv, _factor2, pcg_conv2, pcg_iters2) =
+                    self.calculate_fluxes(actual_dt);
+                final_p = p_resolv;
+                final_delta_water_m3 = dw_resolv;
+
+                if !pcg_conv2 {
+                    self.last_solver_warning = format!(
+                        "PCG solver did not converge after {} iterations (re-solve, t={:.2} days)",
+                        pcg_iters2,
+                        self.time_days + time_stepped
+                    );
+                }
 
                 attempts += 1;
             } else {
                 // The full remaining timestep is stable
                 actual_dt = remaining_dt;
+                final_p = p_new;
                 final_delta_water_m3 = delta_water_m3;
                 attempts = 0; // Reset attempts on a successful full step
             }
 
             // Update saturations and pressure with the adjusted (or full) timestep
-            self.update_saturations_and_pressure(&p_new, &final_delta_water_m3, actual_dt);
+            self.update_saturations_and_pressure(&final_p, &final_delta_water_m3, actual_dt);
 
             time_stepped += actual_dt;
         }

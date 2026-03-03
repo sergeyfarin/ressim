@@ -230,7 +230,6 @@ impl ReservoirSimulator {
         }
 
         let cell_id = self.idx(i, j, k);
-        
 
         let pi = self.calculate_well_productivity_index(cell_id, well_radius, skin)?;
 
@@ -340,15 +339,19 @@ impl ReservoirSimulator {
     }
 
     #[wasm_bindgen(js_name = getPressures)]
-    pub fn get_pressures(&self) -> Vec<f64> { self.pressure.clone() }
+    pub fn get_pressures(&self) -> Vec<f64> {
+        self.pressure.clone()
+    }
 
     #[wasm_bindgen(js_name = getSatWater)]
-    pub fn get_sat_water(&self) -> Vec<f64> { self.sat_water.clone() }
+    pub fn get_sat_water(&self) -> Vec<f64> {
+        self.sat_water.clone()
+    }
 
     #[wasm_bindgen(js_name = getSatOil)]
-    pub fn get_sat_oil(&self) -> Vec<f64> { self.sat_oil.clone() }
-
-
+    pub fn get_sat_oil(&self) -> Vec<f64> {
+        self.sat_oil.clone()
+    }
 
     #[wasm_bindgen(js_name = getWellState)]
     pub fn get_well_state(&self) -> JsValue {
@@ -374,7 +377,7 @@ impl ReservoirSimulator {
     /// Set initial pressure for all grid cells
     #[wasm_bindgen(js_name = setInitialPressure)]
     pub fn set_initial_pressure(&mut self, pressure: f64) {
-        for i in 0..self.nx*self.ny*self.nz {
+        for i in 0..self.nx * self.ny * self.nz {
             self.pressure[i] = pressure;
         }
     }
@@ -400,7 +403,7 @@ impl ReservoirSimulator {
     /// Set initial water saturation for all grid cells
     #[wasm_bindgen(js_name = setInitialSaturation)]
     pub fn set_initial_saturation(&mut self, sat_water: f64) {
-        for i in 0..self.nx*self.ny*self.nz {
+        for i in 0..self.nx * self.ny * self.nz {
             self.sat_water[i] = sat_water.clamp(0.0, 1.0);
             self.sat_oil[i] = 1.0 - self.sat_water[i];
         }
@@ -615,7 +618,7 @@ impl ReservoirSimulator {
         }
 
         let mut rng = rand::rng();
-        for i in 0..self.nx*self.ny*self.nz {
+        for i in 0..self.nx * self.ny * self.nz {
             self.perm_x[i] = rng.random_range(min_perm..=max_perm);
             self.perm_y[i] = rng.random_range(min_perm..=max_perm);
             self.perm_z[i] = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
@@ -650,7 +653,7 @@ impl ReservoirSimulator {
         }
 
         let mut rng = StdRng::seed_from_u64(seed);
-        for i in 0..self.nx*self.ny*self.nz {
+        for i in 0..self.nx * self.ny * self.nz {
             self.perm_x[i] = rng.random_range(min_perm..=max_perm);
             self.perm_y[i] = rng.random_range(min_perm..=max_perm);
             self.perm_z[i] = rng.random_range(min_perm..=max_perm) / 10.0; // Anisotropy
@@ -667,16 +670,14 @@ impl ReservoirSimulator {
         well_state: JsValue,
         rate_history: JsValue,
     ) -> Result<(), JsValue> {
-        
         let wells: Vec<Well> = serde_wasm_bindgen::from_value(well_state)?;
         let rate_history_vec: Vec<TimePointRates> = serde_wasm_bindgen::from_value(rate_history)?;
-        
+
         let expected_cells = self.nx * self.ny * self.nz;
         if false {
             return Err(JsValue::from_str(&format!(
                 "Mismatch grid size. Expected {}, got {}",
-                expected_cells,
-                0
+                expected_cells, 0
             )));
         }
 
@@ -684,7 +685,7 @@ impl ReservoirSimulator {
         // TODO impl restore
         self.wells = wells;
         self.rate_history = rate_history_vec;
-        
+
         if let Some(last) = self.rate_history.last() {
             self.cumulative_injection_m3 = last.total_injection_reservoir;
             self.cumulative_production_m3 = last.total_production_liquid_reservoir;
@@ -778,7 +779,8 @@ mod tests {
     }
 
     fn total_water_volume(sim: &ReservoirSimulator) -> f64 {
-        (0..sim.nx*sim.ny*sim.nz).map(|i| sim.sat_water[i] * sim.pore_volume_m3(i))
+        (0..sim.nx * sim.ny * sim.nz)
+            .map(|i| sim.sat_water[i] * sim.pore_volume_m3(i))
             .sum()
     }
 
@@ -876,7 +878,8 @@ mod tests {
         sim.add_well(case.nx - 1, 0, 0, case.producer_bhp, 0.1, 0.0, false)
             .unwrap();
 
-        let total_pv = (0..sim.nx*sim.ny*sim.nz).map(|i| sim.pore_volume_m3(i))
+        let total_pv = (0..sim.nx * sim.ny * sim.nz)
+            .map(|i| sim.pore_volume_m3(i))
             .sum::<f64>();
 
         let mut cumulative_injection = 0.0;
@@ -931,7 +934,7 @@ mod tests {
         let sw_min = sim.scal.s_wc;
         let sw_max = 1.0 - sim.scal.s_or;
 
-        for i in 0..sim.nx*sim.ny*sim.nz {
+        for i in 0..sim.nx * sim.ny * sim.nz {
             assert!(sim.sat_water[i] >= sw_min - 1e-9);
             assert!(sim.sat_water[i] <= sw_max + 1e-9);
             assert!(sim.sat_oil[i] >= -1e-9);
@@ -983,7 +986,7 @@ mod tests {
         assert!(latest.total_production_liquid.is_finite());
         assert!(latest.total_production_oil.is_finite());
 
-        for i in 0..sim.nx*sim.ny*sim.nz {
+        for i in 0..sim.nx * sim.ny * sim.nz {
             assert!(sim.pressure[i].is_finite());
             assert!(sim.sat_water[i].is_finite());
             assert!(sim.sat_oil[i].is_finite());
@@ -1022,7 +1025,7 @@ mod tests {
         sim_tight.step(5.0);
 
         for sim in [&sim_loose, &sim_tight] {
-            for i in 0..sim.nx*sim.ny*sim.nz {
+            for i in 0..sim.nx * sim.ny * sim.nz {
                 assert!(sim.pressure[i].is_finite());
                 assert!(sim.sat_water[i].is_finite());
                 assert!(sim.sat_oil[i].is_finite());
@@ -1155,6 +1158,68 @@ mod tests {
             sim.set_permeability_per_layer(vec![100.0, 120.0], vec![100.0, 120.0], vec![0.0, 12.0]),
             "must be positive",
         );
+    }
+
+    #[test]
+    fn pressure_resolve_on_substep_produces_physical_results() {
+        // Setup: high permeability + large dt forces stable_dt_factor < 1.0
+        // triggering the re-solve path in step_internal
+        let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);
+        sim.set_permeability_random_seeded(100_000.0, 100_000.0, 42)
+            .unwrap();
+        sim.set_stability_params(0.02, 50.0, 0.5);
+        sim.pc.p_entry = 0.0;
+        sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(4, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        // Large dt to force sub-stepping
+        sim.step(20.0);
+
+        // Must have sub-stepped (multiple rate history entries)
+        assert!(
+            sim.rate_history.len() > 1,
+            "Expected sub-stepping, got {} entries",
+            sim.rate_history.len()
+        );
+
+        // All state must be finite and physical
+        for i in 0..sim.nx * sim.ny * sim.nz {
+            assert!(
+                sim.pressure[i].is_finite(),
+                "Pressure not finite at cell {}",
+                i
+            );
+            assert!(sim.sat_water[i].is_finite(), "Sw not finite at cell {}", i);
+            assert!(
+                sim.sat_water[i] >= sim.scal.s_wc - 1e-9,
+                "Sw below s_wc at cell {}",
+                i
+            );
+            assert!(
+                sim.sat_water[i] <= 1.0 - sim.scal.s_or + 1e-9,
+                "Sw above 1-s_or at cell {}",
+                i
+            );
+            assert!((sim.sat_water[i] + sim.sat_oil[i] - 1.0).abs() < 1e-8);
+        }
+
+        // Pressure should remain within physical range (bounded by well BHPs)
+        for i in 0..sim.nx * sim.ny * sim.nz {
+            assert!(
+                sim.pressure[i] > 50.0 && sim.pressure[i] < 700.0,
+                "Pressure {} at cell {} outside physical range",
+                sim.pressure[i],
+                i
+            );
+        }
+
+        // Material balance: each rate entry should have finite MB error
+        for entry in &sim.rate_history {
+            assert!(
+                entry.material_balance_error_m3.is_finite(),
+                "MB error not finite"
+            );
+        }
     }
 
     #[test]

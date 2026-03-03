@@ -8,7 +8,7 @@ Items are grouped by priority.
 ## High Priority — Physics & Correctness
 
 - [x] **Upstream mobility weighting in pressure equation** — `transmissibility_upstream()` in `step.rs` now uses upstream weighting based on potential difference. Confirmed in code review.
-- [ ] **Re-solve pressure on IMPES sub-step** — when `stable_dt_factor < 1.0`, pressure is computed for full `remaining_dt` but only saturation volumes are scaled. Should re-solve pressure with reduced dt for accuracy.
+- [x] **Re-solve pressure on IMPES sub-step** — when `stable_dt_factor < 1.0`, pressure is now re-solved with the reduced dt via a second `calculate_fluxes(actual_dt)` call instead of reusing the pressure from the full `remaining_dt`.
 - [ ] **Material-balance error uses inconsistent volume basis** — `step.rs` compares water volume changes (`delta_water_m3`) against total liquid net flow. Surface vs reservoir condition mismatch. Track MB in consistent basis (reservoir or surface, not mixed).
 - [ ] **Capillary pressure cap at `S_w ≤ S_wc` returns 1000 bar** — `capillary.rs` returns an arbitrary 1000 bar when `s_eff <= 0`. Should use a physically motivated cap (e.g., `p_entry × 20` or match the 500 bar cap used elsewhere).
 - [ ] **Relative permeability endpoint scaling** — `k_rw` and `k_ro` always reach 1.0 at endpoints. Should support `k_rw_max` and `k_ro_max` endpoint multipliers (standard in reservoir simulation).
@@ -22,7 +22,6 @@ Items are grouped by priority.
 
 ## High Priority — Frontend & UX
 
-- [ ] **Extract simulation state from `App.svelte`** — `App.svelte` is ~68K / 1700+ lines. Move state, validation, and worker communication into a dedicated store or context module (`src/lib/stores/simulation.ts`).
 - [ ] **Reactive clamping anti-pattern** — ~20 reactive statements aggressively clamp inputs while user types (e.g., deleting makes `0.` → forces `0.1`). Move validation to `buildCreatePayload` or `onBlur`.
 - [ ] **Dual config-changed watchers** — two reactive blocks overlap in detecting parameter changes, causing redundant reinitializations. Consolidate into a single `checkConfigDiff()`.
 - [ ] **CSV/JSON export of results** — no way to export rate history, grid state snapshots, or saturation profiles for external analysis. Add download buttons via Blob API.
