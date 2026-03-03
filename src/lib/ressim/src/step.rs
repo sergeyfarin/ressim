@@ -139,21 +139,6 @@ impl ReservoirSimulator {
         density_kg_m3 * 9.80665 * (depth_i - depth_j) * 1e-5
     }
 
-    fn total_density_face(&self, i: usize, j: usize) -> f64 {
-        let (lam_w_i, lam_o_i) = self.phase_mobilities(i);
-        let (lam_w_j, lam_o_j) = self.phase_mobilities(j);
-
-        let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
-        let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
-        let lam_t_avg = lam_w_avg + lam_o_avg;
-
-        if lam_t_avg <= f64::EPSILON {
-            return 0.5 * (self.pvt.rho_w + self.pvt.rho_o);
-        }
-
-        ((lam_w_avg * self.pvt.rho_w) + (lam_o_avg * self.pvt.rho_o)) / lam_t_avg
-    }
-
     /// Fractional flow of water [dimensionless] = f_w = λ_w / λ_t
     /// Used in upwind scheme for saturation transport
     fn frac_flow_water(&self, id: usize) -> f64 {
@@ -205,60 +190,6 @@ impl ReservoirSimulator {
 
         // Geometric transmissibility factor [mD·m²/m]
         k_h * area / dist
-    }
-
-    /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
-    /// Uses upstream weighting: mobility is taken from the upstream cell (where flow comes from)
-    /// This is the standard reservoir simulation practice for better accuracy at sharp fronts
-    /// p_i, p_j: pressures in cells i and j
-    /// grav_head_bar: gravity head term (positive if cell i is deeper)
-    fn transmissibility_upstream(
-        &self,
-        id1: usize,
-        id2: usize,
-        dim: char,
-        p_i: f64,
-        p_j: f64,
-        grav_head_bar: f64,
-    ) -> f64 {
-        let t_geom = self.geometric_transmissibility(id1, id2, dim);
-        if t_geom == 0.0 {
-            return 0.0;
-        }
-
-        // Potential difference determines flow direction
-        // Positive potential_diff means flow from id1 to id2
-        let potential_diff = (p_i - p_j) - grav_head_bar;
-
-        // Upstream total mobility: take from the cell where flow originates
-        let mob_upstream = if potential_diff >= 0.0 {
-            self.total_mobility(id1)
-        } else {
-            self.total_mobility(id2)
-        };
-
-        // Transmissibility [m³/day/bar]
-        // 8.527e-5 converts mD·m²/(m·cP) to m³/day/bar
-        DARCY_METRIC_FACTOR * t_geom * mob_upstream
-    }
-
-    /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
-    /// Uses previous pressure solution to determine flow direction
-    fn transmissibility_with_prev_pressure(
-        &self,
-        id1: usize,
-        id2: usize,
-        dim: char,
-        grav_head_bar: f64,
-    ) -> f64 {
-        self.transmissibility_upstream(
-            id1,
-            id2,
-            dim,
-            self.pressure[id1],
-            self.pressure[id2],
-            grav_head_bar,
-        )
     }
 
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
@@ -452,7 +383,6 @@ impl ReservoirSimulator {
             for j in 0..self.ny {
                 for i in 0..self.nx {
                     let id = self.idx(i, j, k);
-                    let cell = id;
 
                     // Pore volume [m³]
                     let vp_m3 = self.pore_volume_m3(i);
@@ -493,27 +423,41 @@ impl ReservoirSimulator {
                     }
 
                     for (n_id, dim, n_k) in neighbors.iter() {
-                        // Gravity head for potential calculation
+                        // Phase potential formulation
                         let depth_i = self.depth_at_k(k);
                         let depth_j = self.depth_at_k(*n_k);
-                        let rho_t = self.total_density_face(cell, *n_id);
-                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
 
-                        // Transmissibility with upstream weighting [m³/day/bar]
-                        // Uses previous pressure to determine flow direction
-                        let t = self.transmissibility_with_prev_pressure(
-                            cell,
-                            *n_id,
-                            *dim,
-                            grav_head_bar,
-                        );
-                        diag += t;
+                        let p_i = self.pressure[id];
+                        let p_j = self.pressure[*n_id];
+                        let pc_i = self.get_capillary_pressure(self.sat_water[id]);
+                        let pc_j = self.get_capillary_pressure(self.sat_water[*n_id]);
+
+                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.pvt.rho_w);
+                        let grav_o = self.gravity_head_bar(depth_i, depth_j, self.pvt.rho_o);
+
+                        // Phase potential differences (positive if flowing from i to j)
+                        let dphi_o = (p_i - p_j) - grav_o;
+                        let dphi_w = (p_i - p_j) - (pc_i - pc_j) - grav_w;
+
+                        let (lam_w_i, lam_o_i) = self.phase_mobilities(id);
+                        let (lam_w_j, lam_o_j) = self.phase_mobilities(*n_id);
+
+                        let lam_o_up = if dphi_o >= 0.0 { lam_o_i } else { lam_o_j };
+                        let lam_w_up = if dphi_w >= 0.0 { lam_w_i } else { lam_w_j };
+
+                        let geom_t =
+                            DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, *n_id, *dim);
+                        let t_o = geom_t * lam_o_up;
+                        let t_w = geom_t * lam_w_up;
+                        let t_total = t_o + t_w;
+
+                        diag += t_total;
                         rows.push(id);
                         cols.push(*n_id);
-                        vals.push(-t);
+                        vals.push(-t_total);
 
-                        // Gravity source contribution on RHS from potential formulation
-                        b_rhs[id] += t * grav_head_bar;
+                        // Explicit terms: gravity and capillary forces
+                        b_rhs[id] += t_o * grav_o + t_w * (pc_i - pc_j + grav_w);
                     }
 
                     // Well source terms
@@ -594,53 +538,27 @@ impl ReservoirSimulator {
                     for (nid, dim, n_k) in check {
                         let p_j = p_new[nid];
 
-                        // Gravity head for potential calculation
                         let depth_i = self.depth_at_k(k);
                         let depth_j = self.depth_at_k(n_k);
-                        let rho_t = self.total_density_face(id, nid);
-                        let grav_head_bar = self.gravity_head_bar(depth_i, depth_j, rho_t);
 
-                        // Transmissibility with upstream weighting [m³/day/bar]
-                        // Uses new pressure solution to determine flow direction
-                        let t =
-                            self.transmissibility_upstream(id, nid, dim, p_i, p_j, grav_head_bar);
-
-                        // Get geometric transmissibility for capillary flux calculation
-                        let geom_t =
-                            DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
-
-                        let (lam_w_i, lam_o_i) = self.phase_mobilities(id);
-                        let (lam_w_j, lam_o_j) = self.phase_mobilities(nid);
-                        let lam_t_i = lam_w_i + lam_o_i;
-                        let lam_t_j = lam_w_j + lam_o_j;
-                        let lam_t_avg = 0.5 * (lam_t_i + lam_t_j);
-                        if lam_t_avg <= f64::EPSILON {
-                            continue;
-                        }
-
-                        // Total volumetric flux [m³/day]: positive = from id -> nid
-                        let total_flux = t * ((p_i - p_j) - grav_head_bar);
-
-                        // Upwind fractional flow for water
-                        let f_w = if total_flux >= 0.0 {
-                            self.frac_flow_water(id)
-                        } else {
-                            self.frac_flow_water(nid)
-                        };
-
-                        // Capillary-driven diffusion term using harmonic transmissibility geometry
                         let pc_i = self.get_capillary_pressure(self.sat_water[id]);
                         let pc_j = self.get_capillary_pressure(self.sat_water[nid]);
-                        let lam_w_avg = 0.5 * (lam_w_i + lam_w_j);
-                        let lam_o_avg = 0.5 * (lam_o_i + lam_o_j);
-                        let capillary_flux = if lam_t_avg <= f64::EPSILON {
-                            0.0
-                        } else {
-                            -geom_t * (lam_w_avg * lam_o_avg / lam_t_avg) * (pc_i - pc_j)
-                        };
+
+                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.pvt.rho_w);
+
+                        let dphi_w = (p_i - p_j) - (pc_i - pc_j) - grav_w;
+
+                        let (lam_w_i, _) = self.phase_mobilities(id);
+                        let (lam_w_j, _) = self.phase_mobilities(nid);
+
+                        let lam_w_up = if dphi_w >= 0.0 { lam_w_i } else { lam_w_j };
+
+                        let geom_t =
+                            DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
+                        let t_w = geom_t * lam_w_up;
 
                         // Water flux [m³/day]
-                        let water_flux_m3_day = total_flux * f_w + capillary_flux;
+                        let water_flux_m3_day = t_w * dphi_w;
                         // Volume change over dt_days [m³]
                         let dv_water = water_flux_m3_day * dt_days;
 

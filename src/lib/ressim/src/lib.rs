@@ -987,7 +987,7 @@ mod tests {
 
         assert!(sim.rate_history.len() > 1);
         assert!(sim.time_days > 0.0);
-        assert!(sim.time_days < 30.0);
+        assert!((sim.time_days - 30.0).abs() < 1e-9);
     }
 
     #[test]
