@@ -52,7 +52,7 @@ Items are grouped by priority.
 - [ ] **Cross-section / slice viewer** — add i/j/k slice selector to 3D view to inspect interior cells.
 - [ ] **Sync x-axis range across chart panels** — zoom one panel → zoom all (requires Chart.js plugin coordination).
 - [ ] **SwProfileChart legend consistency** — make legend pills match ChartSubPanel style.
-- [ ] **Consider SwProfile as 3D viz sub-card** — it shows spatial information similar to the 3D view.
+- [ ] **Make SwProfile as 3D viz sub-card** — it shows spatial information similar to the 3D view.
 - [ ] **Structured scenario export/import (JSON)** — allow saving/loading custom parameter configurations.
 - [ ] **A/B run comparison** — store previous run's rate history, overlay as dashed series.
 - [ ] **Relative error (%) curve in charts** — add percentage error between simulator and analytical.

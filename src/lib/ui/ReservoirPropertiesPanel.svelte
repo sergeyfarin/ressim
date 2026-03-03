@@ -144,9 +144,14 @@
           type="number"
           min="0"
           step="1e-6"
-          class="w-full h-8"
+          class={`w-full h-8 ${Boolean(fieldErrors.rock_compressibility) ? "border-destructive" : ""}`}
           bind:value={rock_compressibility}
         />
+        {#if fieldErrors.rock_compressibility}
+          <div class="text-[10px] text-destructive leading-tight mt-0.5">
+            {fieldErrors.rock_compressibility}
+          </div>
+        {/if}
       </label>
     </div>
 
@@ -169,15 +174,22 @@
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >Water</td
             >
-            <td class="p-2"
+            <td class="p-2 align-top text-center"
               ><Input
                 type="number"
-                min="0.01"
-                step="0.01"
-                class="w-full h-7 px-2"
+                min="0.1"
+                step="0.1"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.mu_w) ? "border-destructive" : ""}`}
                 bind:value={mu_w}
-              /></td
-            >
+              />
+              {#if fieldErrors.mu_w}
+                <div
+                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
+                >
+                  {fieldErrors.mu_w}
+                </div>
+              {/if}
+            </td>
             <td class="p-2"
               ><Input
                 type="number"
@@ -187,39 +199,60 @@
                 bind:value={rho_w}
               /></td
             >
-            <td class="p-2"
+            <td class="p-2 align-top text-center"
               ><Input
                 type="number"
                 min="0"
                 step="1e-6"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.c_w) ? "border-destructive" : ""}`}
                 bind:value={c_w}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.c_w}
+                <div
+                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
+                >
+                  {fieldErrors.c_w}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top text-center"
               ><Input
                 type="number"
-                min="0.01"
-                step="0.01"
-                class="w-full h-7 px-2"
+                min="0.1"
+                step="0.1"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.volume_expansion_w) ? "border-destructive" : ""}`}
                 bind:value={volume_expansion_w}
-              /></td
-            >
+              />
+              {#if fieldErrors.volume_expansion_w}
+                <div
+                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
+                >
+                  {fieldErrors.volume_expansion_w}
+                </div>
+              {/if}
+            </td>
           </tr>
           <tr>
             <td
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >Oil</td
             >
-            <td class="p-2"
+            <td class="p-2 align-top text-center"
               ><Input
                 type="number"
-                min="0.01"
-                step="0.01"
-                class="w-full h-7 px-2"
+                min="0.1"
+                step="0.1"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.mu_o) ? "border-destructive" : ""}`}
                 bind:value={mu_o}
-              /></td
-            >
+              />
+              {#if fieldErrors.mu_o}
+                <div
+                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
+                >
+                  {fieldErrors.mu_o}
+                </div>
+              {/if}
+            </td>
             <td class="p-2"
               ><Input
                 type="number"
@@ -229,24 +262,38 @@
                 bind:value={rho_o}
               /></td
             >
-            <td class="p-2"
+            <td class="p-2 align-top text-center"
               ><Input
                 type="number"
                 min="0"
                 step="1e-6"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.c_o) ? "border-destructive" : ""}`}
                 bind:value={c_o}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.c_o}
+                <div
+                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
+                >
+                  {fieldErrors.c_o}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top text-center"
               ><Input
                 type="number"
-                min="0.01"
-                step="0.01"
-                class="w-full h-7 px-2"
+                min="0.1"
+                step="0.1"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.volume_expansion_o) ? "border-destructive" : ""}`}
                 bind:value={volume_expansion_o}
-              /></td
-            >
+              />
+              {#if fieldErrors.volume_expansion_o}
+                <div
+                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
+                >
+                  {fieldErrors.volume_expansion_o}
+                </div>
+              {/if}
+            </td>
           </tr>
         </tbody>
       </table>

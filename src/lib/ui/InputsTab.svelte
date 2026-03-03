@@ -151,7 +151,14 @@
       bind:cellDx
       bind:cellDy
       bind:cellDz
-      {onNzOrPermModeChange}
+      fieldErrors={validationErrors}
+      onNzOrPermModeChange={() => {
+        if (permMode === "perLayer") {
+          layerPermsX = Array(nz).fill(100);
+          layerPermsY = Array(nz).fill(100);
+          layerPermsZ = Array(nz).fill(10);
+        }
+      }}
     />
     <TimestepControlsPanel
       bind:delta_t_days

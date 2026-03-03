@@ -10,6 +10,7 @@
     cellDy = $bindable(10),
     cellDz = $bindable(1),
     onNzOrPermModeChange = () => {},
+    fieldErrors = {},
   }: {
     nx?: number;
     ny?: number;
@@ -18,6 +19,7 @@
     cellDy?: number;
     cellDz?: number;
     onNzOrPermModeChange?: () => void;
+    fieldErrors?: Record<string, string>;
   } = $props();
 
   const modelSizeX = $derived(nx * cellDx);
@@ -41,9 +43,18 @@
     const val = parseFloat((e.target as HTMLInputElement).value);
     if (!isNaN(val) && nz > 0) cellDz = parseFloat((val / nz).toFixed(3));
   }
+  const hasError = $derived(
+    Object.keys(fieldErrors).some(
+      (key) =>
+        key.includes("nx") ||
+        key.includes("ny") ||
+        key.includes("nz") ||
+        key.includes("cellD"),
+    ),
+  );
 </script>
 
-<Collapsible title="Grid Parameters">
+<Collapsible title="Grid Parameters" {hasError}>
   <div class="space-y-3 p-4 md:p-5">
     <div class="flex justify-between items-center mb-2">
       <p class="text-xs font-medium text-muted-foreground">
@@ -70,24 +81,34 @@
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >X</td
             >
-            <td class="p-2"
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="1"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.nx) ? "border-destructive" : ""}`}
                 bind:value={nx}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.nx}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.nx}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.cellDx) ? "border-destructive" : ""}`}
                 bind:value={cellDx}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.cellDx}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.cellDx}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.1"
@@ -103,24 +124,34 @@
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >Y</td
             >
-            <td class="p-2"
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="1"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.ny) ? "border-destructive" : ""}`}
                 bind:value={ny}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.ny}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.ny}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.cellDy) ? "border-destructive" : ""}`}
                 bind:value={cellDy}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.cellDy}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.cellDy}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.1"
@@ -136,25 +167,35 @@
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >Z</td
             >
-            <td class="p-2"
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="1"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.nz) ? "border-destructive" : ""}`}
                 bind:value={nz}
                 oninput={onNzOrPermModeChange}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.nz}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.nz}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.1"
                 step="0.1"
-                class="w-full h-7 px-2"
+                class={`w-full h-7 px-2 ${Boolean(fieldErrors.cellDz) ? "border-destructive" : ""}`}
                 bind:value={cellDz}
-              /></td
-            >
-            <td class="p-2"
+              />
+              {#if fieldErrors.cellDz}
+                <div class="text-[10px] text-destructive mt-1 leading-tight">
+                  {fieldErrors.cellDz}
+                </div>
+              {/if}
+            </td>
+            <td class="p-2 align-top"
               ><Input
                 type="number"
                 min="0.1"

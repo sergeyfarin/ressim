@@ -237,7 +237,7 @@
     <div class="geo-gradient-overlay"></div>
 
     <!-- Main Content — z-[2] ensures it renders above both layers and gradient overlay -->
-    <div class="mx-auto max-w-400 space-y-4 p-4 lg:p-6 relative z-[2]">
+    <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-[2]">
         <!-- Hidden component for analytical calculations -->
         <FractionalFlow
             rockProps={{
@@ -245,6 +245,8 @@
                 s_or: sim.s_or,
                 n_w: sim.n_w,
                 n_o: sim.n_o,
+                k_rw_max: sim.k_rw_max,
+                k_ro_max: sim.k_ro_max,
             }}
             fluidProps={{ mu_w: sim.mu_w, mu_o: sim.mu_o }}
             initialSaturation={sim.initialSaturation}
@@ -361,6 +363,7 @@
             onStepOnce={sim.stepOnce}
             onInitSimulator={sim.initSimulator}
             onStopRun={sim.stopRun}
+            fieldErrors={sim.validationErrors}
         />
 
         <!-- Error / Warning banners -->

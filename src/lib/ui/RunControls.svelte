@@ -24,6 +24,7 @@
     onStepOnce = () => {},
     onInitSimulator = () => {},
     onStopRun = () => {},
+    fieldErrors = {},
   }: {
     wasmReady?: boolean;
     workerRunning?: boolean;
@@ -45,6 +46,7 @@
     onStepOnce?: () => void;
     onInitSimulator?: () => void;
     onStopRun?: () => void;
+    fieldErrors?: Record<string, string>;
   } = $props();
 </script>
 
@@ -52,9 +54,21 @@
   <div class="p-3 md:p-4">
     <div class="flex flex-wrap items-center gap-3">
       <!-- Steps input -->
-      <label class="flex items-center gap-2">
-        <span class="text-xs font-medium whitespace-nowrap">Steps:</span>
-        <Input type="number" min="1" class="w-20" bind:value={steps} />
+      <label class="flex flex-col items-start gap-1">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-medium whitespace-nowrap">Steps:</span>
+          <Input
+            type="number"
+            min="1"
+            class={`w-20 ${Boolean(fieldErrors.steps) ? "border-destructive" : ""}`}
+            bind:value={steps}
+          />
+        </div>
+        {#if fieldErrors.steps}
+          <div class="text-[10px] text-destructive leading-tight">
+            {fieldErrors.steps}
+          </div>
+        {/if}
       </label>
 
       <label class="flex items-center gap-2">
