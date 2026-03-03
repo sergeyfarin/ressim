@@ -110,6 +110,8 @@ pub struct ReservoirSimulator {
     cumulative_injection_m3: f64,
     /// Cumulative water produced in reservoir conditions [m³] for material balance
     cumulative_production_m3: f64,
+    /// Cumulative material balance error [m³]
+    pub cumulative_mb_error_m3: f64,
     target_producer_rate_m3_day: f64,
     rock_compressibility: f64,
     depth_reference_m: f64,
@@ -176,6 +178,7 @@ impl ReservoirSimulator {
             last_solver_warning: String::new(),
             cumulative_injection_m3: 0.0,
             cumulative_production_m3: 0.0,
+            cumulative_mb_error_m3: 0.0,
         }
     }
 

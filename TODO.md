@@ -9,7 +9,7 @@ Items are grouped by priority.
 
 - [x] **Upstream mobility weighting in pressure equation** — `transmissibility_upstream()` in `step.rs` now uses upstream weighting based on potential difference. Confirmed in code review.
 - [x] **Re-solve pressure on IMPES sub-step** — when `stable_dt_factor < 1.0`, pressure is now re-solved with the reduced dt via a second `calculate_fluxes(actual_dt)` call instead of reusing the pressure from the full `remaining_dt`.
-- [ ] **Material-balance error uses inconsistent volume basis** — `step.rs` compares water volume changes (`delta_water_m3`) against total liquid net flow. Surface vs reservoir condition mismatch. Track MB in consistent basis (reservoir or surface, not mixed).
+- [x] **Material-balance error uses inconsistent volume basis** — Fixed to compute true cumulative missing material by accurately comparing effective mass changes after saturation bounds clamping strictly in reservoir volume conditions.
 - [ ] **Capillary pressure cap at `S_w ≤ S_wc` returns 1000 bar** — `capillary.rs` returns an arbitrary 1000 bar when `s_eff <= 0`. Should use a physically motivated cap (e.g., `p_entry × 20` or match the 500 bar cap used elsewhere).
 - [ ] **Relative permeability endpoint scaling** — `k_rw` and `k_ro` always reach 1.0 at endpoints. Should support `k_rw_max` and `k_ro_max` endpoint multipliers (standard in reservoir simulation).
 - [ ] **Gravity head uses total density, not phase-density split** — gravity should act per-phase via phase potentials. Acceptable for weak gravity but incorrect for strong density contrast.

@@ -17,7 +17,9 @@ pub(crate) enum WellControlDecision {
 }
 
 impl ReservoirSimulator {
-    pub(crate) fn calculate_well_productivity_index(&self, id: usize,
+    pub(crate) fn calculate_well_productivity_index(
+        &self,
+        id: usize,
         well_radius: f64,
         skin: f64,
     ) -> Result<f64, String> {
@@ -31,11 +33,10 @@ impl ReservoirSimulator {
             ));
         }
 
-        let r_eq = 0.28
-            * f64::sqrt(
+        let r_eq =
+            0.28 * f64::sqrt(
                 f64::sqrt(kx / ky) * self.dx.powi(2) + f64::sqrt(ky / kx) * self.dy.powi(2),
-            )
-            / ((kx / ky).powf(0.25) + (ky / kx).powf(0.25));
+            ) / ((kx / ky).powf(0.25) + (ky / kx).powf(0.25));
         if !r_eq.is_finite() || r_eq <= 0.0 {
             return Err(format!(
                 "Equivalent radius must be positive and finite, got: {}",
@@ -79,7 +80,10 @@ impl ReservoirSimulator {
         // Constant 8.527e-5 converts from mD·m²/(m·cP) to m³/day/bar
         // Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
         // Factor = 9.8692e-16 * 86400 / 1e-3 / 1e5 = 8.527e-5
-        Ok((DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility) / denom)
+        Ok(
+            (DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility)
+                / denom,
+        )
     }
 
     pub(crate) fn update_dynamic_well_productivity_indices(&mut self) {
@@ -87,7 +91,7 @@ impl ReservoirSimulator {
 
         for well in self.wells.iter() {
             let id = self.idx(well.i, well.j, well.k);
-            
+
             let maybe_pi = self
                 .calculate_well_productivity_index(id, well.well_radius, well.skin)
                 .ok()
@@ -169,9 +173,24 @@ impl ReservoirSimulator {
     /// Formula: T_geom = k_h * A / L where k_h is harmonic mean of permeabilities
     fn geometric_transmissibility(&self, id1: usize, id2: usize, dim: char) -> f64 {
         let (perm1, perm2, dist, area) = match dim {
-            'x' => (self.perm_x[id1], self.perm_x[id2], self.dx, self.dy * self.dz),
-            'y' => (self.perm_y[id1], self.perm_y[id2], self.dy, self.dx * self.dz),
-            'z' => (self.perm_z[id1], self.perm_z[id2], self.dz, self.dx * self.dy),
+            'x' => (
+                self.perm_x[id1],
+                self.perm_x[id2],
+                self.dx,
+                self.dy * self.dz,
+            ),
+            'y' => (
+                self.perm_y[id1],
+                self.perm_y[id2],
+                self.dy,
+                self.dx * self.dz,
+            ),
+            'z' => (
+                self.perm_z[id1],
+                self.perm_z[id2],
+                self.dz,
+                self.dx * self.dy,
+            ),
             _ => (0.0, 0.0, 1.0, 1.0),
         };
         // Harmonic mean of permeabilities [mD]
@@ -193,7 +212,11 @@ impl ReservoirSimulator {
     /// This is the standard reservoir simulation practice for better accuracy at sharp fronts
     /// p_i, p_j: pressures in cells i and j
     /// grav_head_bar: gravity head term (positive if cell i is deeper)
-    fn transmissibility_upstream(&self, id1: usize, id2: usize, dim: char,
+    fn transmissibility_upstream(
+        &self,
+        id1: usize,
+        id2: usize,
+        dim: char,
         p_i: f64,
         p_j: f64,
         grav_head_bar: f64,
@@ -221,8 +244,21 @@ impl ReservoirSimulator {
 
     /// Full transmissibility [m³/day/bar] with upstream-weighted total mobility
     /// Uses previous pressure solution to determine flow direction
-    fn transmissibility_with_prev_pressure(&self, id1: usize, id2: usize, dim: char, grav_head_bar: f64) -> f64 {
-        self.transmissibility_upstream(id1, id2, dim, self.pressure[id1], self.pressure[id2], grav_head_bar)
+    fn transmissibility_with_prev_pressure(
+        &self,
+        id1: usize,
+        id2: usize,
+        dim: char,
+        grav_head_bar: f64,
+    ) -> f64 {
+        self.transmissibility_upstream(
+            id1,
+            id2,
+            dim,
+            self.pressure[id1],
+            self.pressure[id2],
+            grav_head_bar,
+        )
     }
 
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
@@ -355,9 +391,7 @@ impl ReservoirSimulator {
             }
 
             if well.productivity_index <= f64::EPSILON {
-                return Some(WellControlDecision::Rate {
-                    q_m3_day: q_target,
-                });
+                return Some(WellControlDecision::Rate { q_m3_day: q_target });
             }
 
             // Rate target implies a dynamic BHP. If it violates limits, switch to BHP-control.
@@ -370,9 +404,7 @@ impl ReservoirSimulator {
                 });
             }
 
-            return Some(WellControlDecision::Rate {
-                q_m3_day: q_target,
-            });
+            return Some(WellControlDecision::Rate { q_m3_day: q_target });
         }
 
         if !well.productivity_index.is_finite()
@@ -428,9 +460,8 @@ impl ReservoirSimulator {
                     // Per-cell total compressibility [1/bar]
                     // c_t = (c_o * S_o + c_w * S_w) + c_r
                     // Note: pore volume Vp already includes porosity, so do not multiply by ϕ again.
-                    let c_t =
-                        (self.pvt.c_o * self.sat_oil[id] + self.pvt.c_w * self.sat_water[id])
-                            + self.rock_compressibility;
+                    let c_t = (self.pvt.c_o * self.sat_oil[id] + self.pvt.c_w * self.sat_water[id])
+                        + self.rock_compressibility;
 
                     // Accumulation term: (Vp [m³] * c_t [1/bar]) / dt [day]
                     // Units: [m³ * 1/bar / day] = [m³/bar/day]
@@ -571,22 +602,12 @@ impl ReservoirSimulator {
 
                         // Transmissibility with upstream weighting [m³/day/bar]
                         // Uses new pressure solution to determine flow direction
-                        let t = self.transmissibility_upstream(
-                            id,
-                            nid,
-                            dim,
-                            p_i,
-                            p_j,
-                            grav_head_bar,
-                        );
+                        let t =
+                            self.transmissibility_upstream(id, nid, dim, p_i, p_j, grav_head_bar);
 
                         // Get geometric transmissibility for capillary flux calculation
-                        let geom_t = DARCY_METRIC_FACTOR
-                            * self.geometric_transmissibility(
-                                id,
-                                nid,
-                                dim,
-                            );
+                        let geom_t =
+                            DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
 
                         let (lam_w_i, lam_o_i) = self.phase_mobilities(id);
                         let (lam_w_j, lam_o_j) = self.phase_mobilities(nid);
@@ -700,7 +721,10 @@ impl ReservoirSimulator {
             1.0
         };
 
-        let stable_dt_factor = sat_factor.min(pressure_factor).min(rate_factor).clamp(0.01, 1.0);
+        let stable_dt_factor = sat_factor
+            .min(pressure_factor)
+            .min(rate_factor)
+            .clamp(0.01, 1.0);
 
         (
             p_new,
@@ -718,7 +742,8 @@ impl ReservoirSimulator {
         dt_days: f64,
     ) {
         let n_cells = self.nx * self.ny * self.nz;
-        // Update saturations based on water volume changes
+        // Apply saturation updates with physical clipping
+        let mut actual_change_m3 = 0.0;
         for idx in 0..n_cells {
             let vp_m3 = self.pore_volume_m3(idx);
             if vp_m3 <= 0.0 {
@@ -731,6 +756,8 @@ impl ReservoirSimulator {
             let sw_max = 1.0 - self.scal.s_or;
             let delta_sw = delta_water_m3[idx] / vp_m3;
             let sw_new = (sw_old + delta_sw).clamp(sw_min, sw_max);
+
+            actual_change_m3 += (sw_new - sw_old) * vp_m3;
 
             // Ensure material balance: s_w + s_o = 1.0 (two-phase system, no gas phase)
             let so_new = (1.0 - sw_new).clamp(0.0, 1.0);
@@ -773,23 +800,32 @@ impl ReservoirSimulator {
         self.cumulative_injection_m3 += total_injection_reservoir * dt_days;
         self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
-        // Compute material balance error [m³]
-        // Step-wise water balance in reservoir conditions:
+        // Compute cumulative material balance error [m³]
         // Net water added via wells = (water injection_res - water production_res) * dt
         let net_added_m3 = (total_injection_reservoir - total_prod_water_reservoir) * dt_days;
-        // Actual water in-place change = sum of delta_water volumes (already applied)
-        let actual_change_m3: f64 = delta_water_m3.iter().sum();
-        // Error = water added/removed by wells minus water-volume change in cells
-        let mb_error = (net_added_m3 - actual_change_m3).abs();
+
+        // Accumulate missing material (positive if mass vanished, negative if mass was created)
+        self.cumulative_mb_error_m3 += net_added_m3 - actual_change_m3;
+
+        // Report the absolute cumulative error
+        let mb_error = self.cumulative_mb_error_m3.abs();
 
         let mut sum_pressure = 0.0;
         let mut sum_sat_water = 0.0;
-        for i in 0..self.nx*self.ny*self.nz {
+        for i in 0..self.nx * self.ny * self.nz {
             sum_pressure += self.pressure[i];
             sum_sat_water += self.sat_water[i];
         }
-        let avg_reservoir_pressure = if n_cells > 0 { sum_pressure / (n_cells as f64) } else { 0.0 };
-        let avg_water_saturation = if n_cells > 0 { sum_sat_water / (n_cells as f64) } else { 0.0 };
+        let avg_reservoir_pressure = if n_cells > 0 {
+            sum_pressure / (n_cells as f64)
+        } else {
+            0.0
+        };
+        let avg_water_saturation = if n_cells > 0 {
+            sum_sat_water / (n_cells as f64)
+        } else {
+            0.0
+        };
 
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
