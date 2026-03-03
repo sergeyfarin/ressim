@@ -31,18 +31,22 @@ impl CapillaryPressure {
         // Calculate effective saturation
         let s_eff = ((s_w - rock.s_wc) / (1.0 - rock.s_wc - rock.s_or)).clamp(0.0, 1.0);
 
-        // Avoid division by zero
+        // Avoid division by zero and handle physical bounds
         if s_eff >= 1.0 {
             return 0.0; // At maximum water saturation, capillary pressure is zero
         }
+
+        // Use a scaled heuristic to avoid the "capillary sponge" artifact where infinite curves
+        // overpower gravity over hundreds of meters. We cap at 20x the entry pressure.
+        let pc_max = self.p_entry * 20.0;
+
         if s_eff <= 0.0 {
-            return 1000.0; // At connate water, very high capillary pressure (clamped)
+            return pc_max; // At connate water, capillary pressure hits the scaling bound
         }
 
         // Brooks-Corey capillary pressure: P_c = P_entry * (S_eff)^(-1/lambda)
         let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
 
-        // Clamp to reasonable range [0, 500 bar]
-        pc.clamp(0.0, 500.0)
+        pc.clamp(0.0, pc_max)
     }
 }

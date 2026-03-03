@@ -10,6 +10,10 @@ pub struct RockFluidProps {
     pub n_w: f64,
     /// Corey exponent for oil relative permeability [dimensionless]
     pub n_o: f64,
+    /// Maximum water relative permeability at Sw = 1 - Sor [dimensionless]
+    pub k_rw_max: f64,
+    /// Maximum oil relative permeability at Sw = Swc [dimensionless]
+    pub k_ro_max: f64,
 }
 
 impl RockFluidProps {
@@ -22,22 +26,24 @@ impl RockFluidProps {
             s_or: 0.1,
             n_w: 2.0,
             n_o: 2.0,
+            k_rw_max: 1.0,
+            k_ro_max: 1.0,
         }
     }
 
     /// Water relative permeability [dimensionless] using Corey-Brooks correlation
-    /// k_rw(Sw) = ((Sw - Swc) / (1 - Swc - Sor))^nw
-    /// Returns 0 for Sw <= Swc, 1 for Sw >= 1-Sor
+    /// k_rw(Sw) = krw_max * ((Sw - Swc) / (1 - Swc - Sor))^nw
+    /// Returns 0 for Sw <= Swc, krw_max for Sw >= 1-Sor
     pub fn k_rw(&self, s_w: f64) -> f64 {
         let s_eff = ((s_w - self.s_wc) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        s_eff.powf(self.n_w)
+        self.k_rw_max * s_eff.powf(self.n_w)
     }
 
     /// Oil relative permeability [dimensionless] using Corey-Brooks correlation
-    /// k_ro(Sw) = ((1 - Sw - Sor) / (1 - Swc - Sor))^no
-    /// Returns 0 for Sw >= 1-Sor (critical water saturation), 1 for Sw <= Swc
+    /// k_ro(Sw) = kro_max * ((1 - Sw - Sor) / (1 - Swc - Sor))^no
+    /// Returns 0 for Sw >= 1-Sor (critical water saturation), kro_max for Sw <= Swc
     pub fn k_ro(&self, s_w: f64) -> f64 {
         let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
-        s_eff.powf(self.n_o)
+        self.k_ro_max * s_eff.powf(self.n_o)
     }
 }
