@@ -1,15 +1,15 @@
 {
     "version": 1,
     "defaults": {
-        "reservoirLength": 1000,
-        "reservoirWidth": 1000,
-        "reservoirThickness": 50,
+        "reservoirLength": 100,
+        "reservoirWidth": 100,
+        "reservoirThickness": 5,
         "depth_reference": 0,
         "reservoirPorosity": 0.2,
         "well_radius": 0.1,
         "skin_factor": 0,
         "c_r": 1e-6,
-        "p_initial": 300,
+        "initialPressure": 300,
         "mu_w": 0.5,
         "mu_o": 1.0,
         "c_w": 3e-6,
@@ -57,7 +57,7 @@
         "injectorControlMode": "pressure",
         "producerControlMode": "pressure",
         "injectorBhp": 500,
-        "producerBhp": 1000,
+        "producerBhp": 100,
         "max_sat_change_per_step": 0.1,
         "steps": 30,
         "delta_t_days": 1.0,
@@ -301,10 +301,6 @@
             "label": "Grid Density",
             "options": [
                 {
-                    "value": "def",
-                    "label": "Default"
-                },
-                {
                     "value": "12",
                     "label": "12 cells",
                     "params": {
@@ -339,10 +335,6 @@
             "label": "Timestep",
             "options": [
                 {
-                    "value": "def",
-                    "label": "Default"
-                },
-                {
                     "value": "5d",
                     "label": "5 days",
                     "params": {
@@ -355,6 +347,14 @@
                     "label": "1 day",
                     "params": {
                         "delta_t_days": 1.0,
+                        "steps": 50
+                    }
+                },
+                {
+                    "value": "05d",
+                    "label": "0.5 days",
+                    "params": {
+                        "delta_t_days": 0.5,
                         "steps": 50
                     }
                 },
@@ -595,7 +595,7 @@
                 "injectorEnabled": false,
                 "producerControlMode": "pressure",
                 "producerBhp": 100,
-                "p_initial": 300,
+                "initialPressure": 300,
                 "permMode": "uniform",
                 "uniformPermX": 50,
                 "steps": 50,
@@ -620,7 +620,7 @@
                 "injectorEnabled": false,
                 "producerControlMode": "pressure",
                 "producerBhp": 100,
-                "p_initial": 300,
+                "initialPressure": 300,
                 "permMode": "uniform",
                 "uniformPermX": 50,
                 "steps": 50,
@@ -645,7 +645,7 @@
                 "injectorEnabled": false,
                 "producerControlMode": "pressure",
                 "producerBhp": 50,
-                "p_initial": 1500,
+                "initialPressure": 1500,
                 "permMode": "uniform",
                 "uniformPermX": 20,
                 "steps": 100,

@@ -700,6 +700,13 @@ export function createSimulationStore() {
     }
 
     function runSimulationBatch(batchSteps: number, batchHistoryInterval: number) {
+        // If viewing pre-run data, force a fresh re-init instead of continuing
+        if (preRunContinuationAvailable) {
+            preRunContinuationAvailable = false;
+            runtimeWarning = '';
+            initSimulator({ runAfterInit: true });
+            return;
+        }
         if (modelNeedsReinit) { initSimulator(); return; }
         if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
@@ -716,8 +723,6 @@ export function createSimulationStore() {
                 deltaTDays: Number(delta_t_days),
                 historyInterval: batchHistoryInterval,
                 chunkYieldInterval: 1,
-                history,
-                rateHistory,
             },
         });
     }
@@ -925,9 +930,14 @@ export function createSimulationStore() {
             for (let i = 0; i < loadedHistory.length; i++) {
                 const entry = loadedHistory[i];
                 if (!entry.grid || (entry.grid.pressure && entry.grid.pressure.length === expectedCellCount)) {
+                    // Derive sat_oil from sat_water if missing
+                    const grid = entry.grid ?? null;
+                    if (grid && grid.sat_water && !grid.sat_oil) {
+                        grid.sat_oil = grid.sat_water.map((sw: number) => 1 - sw);
+                    }
                     validHistoryEntries.push({
                         time: Number(entry.time ?? 0),
-                        grid: entry.grid ?? null,
+                        grid,
                         wells: Array.isArray(entry.wells) ? entry.wells : [],
                         rateHistory: [],
                         solverWarning: '',
@@ -940,6 +950,10 @@ export function createSimulationStore() {
             const finalGridMatches = Boolean(
                 loadedFinalGrid && loadedFinalGrid.pressure && loadedFinalGrid.pressure.length === expectedCellCount,
             );
+            // Derive sat_oil for final grid too
+            if (loadedFinalGrid && loadedFinalGrid.sat_water && !loadedFinalGrid.sat_oil) {
+                (loadedFinalGrid as any).sat_oil = Array.from(loadedFinalGrid.sat_water).map((sw: any) => 1 - sw);
+            }
 
             history = validHistoryEntries;
             currentIndex = validHistoryEntries.length - 1;
@@ -977,7 +991,7 @@ export function createSimulationStore() {
             });
             runCompleted = true;
             preRunContinuationAvailable = true;
-            runtimeWarning = 'Pre-run case loaded. Click Run to continue from the saved endpoint.';
+            runtimeWarning = 'Pre-run case loaded. Click Run to re-initialize and simulate from scratch.';
             vizRevision += 1;
         } catch (e) {
             console.error('Failed to load pre-run data:', e);

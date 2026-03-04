@@ -88,6 +88,7 @@
 
     let visibleCellIndices: number[] = [];
     let latestMouseEvent: MouseEvent | null = null;
+    let modelRadius = 100; // Tracks the bounding radius, updated by fitCamera
 
     // Helpers used in instancing and color mapping
     const tmpMatrix = new Matrix4();
@@ -514,6 +515,9 @@
             Math.sqrt(halfX * halfX + halfY * halfY + halfZ * halfZ),
         );
 
+        // Store radius for dynamic clipping updates
+        modelRadius = radius;
+
         const verticalFov = (perspectiveCamera.fov * Math.PI) / 60;
         const horizontalFov =
             2 *
@@ -522,7 +526,7 @@
             radius / Math.max(Math.sin(verticalFov * 0.5), 1e-3);
         const fitDistanceH =
             radius / Math.max(Math.sin(horizontalFov * 0.5), 1e-3);
-        const fitDistance = Math.max(fitDistanceV, fitDistanceH) * 1.35;
+        const fitDistance = Math.max(fitDistanceV, fitDistanceH) * 2.1;
 
         const dirX = 1.2;
         const dirY = -1.8;
@@ -538,15 +542,16 @@
             uz * fitDistance,
         );
         perspectiveCamera.up.set(0, 0, 1);
-        perspectiveCamera.near = Math.max(0.1, fitDistance - radius * 2.5);
-        perspectiveCamera.far = Math.max(1000, fitDistance + radius * 4.0);
+        // Use generous near/far based on radius
+        perspectiveCamera.near = Math.max(0.01, radius * 0.001);
+        perspectiveCamera.far = Math.max(1000, radius * 100);
         perspectiveCamera.lookAt(0, 0, 0);
         perspectiveCamera.updateProjectionMatrix();
 
         if (controls) {
             controls.target.set(0, 0, 0);
-            controls.minDistance = Math.max(0.1, fitDistance * 0.15);
-            controls.maxDistance = Math.max(50, fitDistance * 8);
+            controls.minDistance = Math.max(0.1, radius * 0.3);
+            controls.maxDistance = Math.max(50, radius * 20);
             controls.update();
         }
     }
@@ -699,7 +704,7 @@
         scene.add(directionalLight);
 
         const gridSize = Math.max(nx, ny, nz) * 4.5;
-        const newCamera = new PerspectiveCamera(7, 1, 10, 1000);
+        const newCamera = new PerspectiveCamera(7, 1, 0.01, 100000);
 
         // Position camera at an angle to see 3D depth
         newCamera.position.set(gridSize * 1.2, -gridSize * 1.8, gridSize * 0.8);
@@ -729,6 +734,19 @@
 
         controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
+
+        // Dynamically update near/far clipping planes as user orbits/zooms
+        controls.addEventListener("change", () => {
+            if (!camera) return;
+            const dist = camera.position.length();
+            const perspectiveCamera = camera as PerspectiveCamera;
+            perspectiveCamera.near = Math.max(0.01, dist * 0.001);
+            perspectiveCamera.far = Math.max(
+                dist + modelRadius * 20,
+                modelRadius * 100,
+            );
+            perspectiveCamera.updateProjectionMatrix();
+        });
 
         window.addEventListener("resize", onWindowResize);
 
@@ -834,7 +852,21 @@
                         currentGrid.sat_oil?.[cellIndex] ?? 0,
                     );
 
-                    tooltipContent = `Pressure: ${pressure.toFixed(2)}\nWater Sat: ${satWater.toFixed(3)}\nOil Sat: ${satOil.toFixed(3)}`;
+                    const pLabel = `P: ${pressure.toFixed(2)} bar`;
+                    const swLabel = `Sw: ${satWater.toFixed(3)}`;
+                    const soLabel = `So: ${satOil.toFixed(3)}`;
+
+                    const bold = (s: string) => `<b>${s}</b>`;
+                    tooltipContent =
+                        (showProperty === "pressure" ? bold(pLabel) : pLabel) +
+                        "<br>" +
+                        (showProperty === "saturation_water"
+                            ? bold(swLabel)
+                            : swLabel) +
+                        "<br>" +
+                        (showProperty === "saturation_oil"
+                            ? bold(soLabel)
+                            : soLabel);
                     tooltipX = x + 10;
                     tooltipY = y + 10;
                     tooltipVisible = true;
@@ -1291,12 +1323,13 @@
             </div>
         </div>
     </div>
-    <div class="viz" bind:this={canvasContainer} style="position:relative;">
+    <div style="position:relative;">
+        <div class="viz" bind:this={canvasContainer}></div>
         {#if tooltipVisible}
             <div
-                style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:pre-line; line-height:1.4; z-index:1000; border:1px solid #ddd;"
+                style="position:absolute; left:{tooltipX}px; top:{tooltipY}px; background:rgba(0,0,0,0.85); color:#fff; padding:6px 8px; border-radius:4px; font-size:11px; pointer-events:none; white-space:nowrap; line-height:1.5; z-index:1000; border:1px solid rgba(255,255,255,0.15);"
             >
-                {tooltipContent}
+                {@html tooltipContent}
             </div>
         {/if}
     </div>
@@ -1307,7 +1340,7 @@
     .viz {
         border: 1px solid #ddd;
         width: 100%;
-        height: clamp(255px, 37vh, 440px);
+        height: clamp(383px, 56vh, 660px);
         position: relative;
         background: #fff;
     }

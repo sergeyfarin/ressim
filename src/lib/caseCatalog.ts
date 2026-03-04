@@ -7,6 +7,7 @@ export type DimensionOption = {
     value: string;
     label: string;
     params?: Record<string, any>;
+    default?: boolean;
 };
 
 export type Dimension = {
@@ -174,7 +175,8 @@ export function getDefaultToggles(mode: CaseMode = 'dep'): ToggleState {
         if (dim.key === 'mode') {
             toggles[dim.key] = mode;
         } else {
-            toggles[dim.key] = dim.options[0].value;
+            const defaultOpt = dim.options.find(o => o.default);
+            toggles[dim.key] = (defaultOpt ?? dim.options[0]).value;
         }
     }
 

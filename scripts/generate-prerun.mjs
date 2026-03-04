@@ -235,7 +235,7 @@ async function main() {
                 );
             }
 
-            runtime.setInitialPressure(Number(params.p_initial || 300));
+            runtime.setInitialPressure(Number(params.initialPressure || 300));
             runtime.setInitialSaturation(Number(params.s_wc || 0.0));
 
             for (let i = 0; i < nz; i++) {
