@@ -338,9 +338,14 @@
             activeCase={sim.activeCase}
             isCustomMode={sim.isCustomMode}
             customSubCase={sim.resolveCustomSubCase(sim.activeMode)}
+            toggles={sim.toggles}
+            matchingCases={sim.matchingCases}
             onModeChange={sim.handleModeChange}
             onCaseChange={sim.handleCaseChange}
             onCustomMode={sim.handleCustomMode}
+            onToggleChange={(key, value) => {
+                sim.toggles = { ...sim.toggles, [key]: value };
+            }}
         />
 
         <!-- Run Controls -->

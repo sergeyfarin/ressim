@@ -1,46 +1,38 @@
 <script lang="ts">
-    import { tweened } from "svelte/motion";
-    import { cubicOut } from "svelte/easing";
-
     let {
-        label,
-        options,
-        selected = $bindable<string[]>(),
+        label = "",
+        options = [] as string[],
+        selected = "",
+        disabled = [] as string[],
+        disabledReasons = {} as Record<string, string>,
+        onchange = (_v: string) => {},
     } = $props<{
         label: string;
-        options: readonly string[];
-        selected: string[];
+        options: string[];
+        selected: string;
+        disabled?: string[];
+        disabledReasons?: Record<string, string>;
+        onchange: (v: string) => void;
     }>();
-
-    function toggle(opt: string) {
-        if (selected.includes(opt)) {
-            selected = selected.filter((s) => s !== opt);
-        } else {
-            selected = [...selected, opt];
-        }
-    }
-
-    // Animation for count badge
-    let matchCount = $derived(selected.length);
-
-    $effect(() => {
-        // optional animation logic
-    });
 </script>
 
 <div class="filter-card">
-    <div class="card-header">
-        <span class="filter-label">{label}</span>
-        {#if matchCount > 0}
-            <span class="count-badge">{matchCount}</span>
-        {/if}
-    </div>
-    <div class="pill-container">
+    <span class="filter-label">{label}</span>
+    <div class="flex flex-wrap gap-1">
         {#each options as opt}
+            {@const isDisabled = disabled.includes(opt)}
+            {@const isActive = selected === opt}
             <button
                 class="filter-pill"
-                class:active={selected.includes(opt)}
-                onclick={() => toggle(opt)}
+                class:active={isActive}
+                class:disabled={isDisabled}
+                disabled={isDisabled}
+                title={isDisabled
+                    ? (disabledReasons[opt] ?? "Not available")
+                    : opt}
+                onclick={() => {
+                    if (!isDisabled) onchange(opt);
+                }}
             >
                 {opt}
             </button>
@@ -52,63 +44,46 @@
     .filter-card {
         display: inline-flex;
         flex-direction: column;
-        gap: 4px;
-        padding: 6px 10px;
-        border-radius: var(--radius, 0.5rem);
-        border: 1px solid hsl(var(--border));
-        background-color: hsl(var(--card) / 0.5);
-        min-width: 100px;
+        gap: 3px;
+        border: 1px solid hsl(var(--border) / 0.6);
+        border-radius: var(--radius);
+        padding: 5px 8px 6px;
+        background: hsl(var(--card) / 0.5);
+        min-width: 0;
     }
-
-    .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 6px;
-    }
-
     .filter-label {
-        font-size: 0.7rem;
+        font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: hsl(var(--muted-foreground));
+        line-height: 1;
     }
-
-    .count-badge {
-        background-color: hsl(var(--primary) / 0.2);
-        color: hsl(var(--primary));
-        font-size: 0.6rem;
-        font-weight: 700;
-        padding: 0 4px;
-        border-radius: 4px;
-    }
-
-    .pill-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-
     .filter-pill {
-        font-size: 0.7rem;
-        padding: 2px 6px;
-        border-radius: 4px;
-        background-color: transparent;
-        border: 1px solid hsl(var(--border));
+        font-size: 11px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid hsl(var(--border) / 0.5);
+        background: transparent;
         color: hsl(var(--foreground) / 0.8);
         cursor: pointer;
-        transition: all 0.15s ease-in-out;
+        transition: all 0.15s ease;
+        line-height: 1.3;
+        white-space: nowrap;
     }
-
-    .filter-pill:hover {
-        background-color: hsl(var(--secondary));
-        color: hsl(var(--secondary-foreground));
+    .filter-pill:hover:not(.disabled) {
+        background: hsl(var(--accent) / 0.15);
+        border-color: hsl(var(--accent));
     }
-
     .filter-pill.active {
-        background-color: hsl(var(--primary));
+        background: hsl(var(--primary));
         color: hsl(var(--primary-foreground));
         border-color: hsl(var(--primary));
+        font-weight: 600;
+    }
+    .filter-pill.disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        text-decoration: line-through;
     }
 </style>

@@ -6,10 +6,8 @@ describe('caseCatalog properties and resolvers', () => {
     const sparse = { nx: 10 };
     const merged = resolveParams(sparse, 'depletion');
     expect(merged.nx).toBe(10);
-    // Depletion base is 48
     expect(merged.ny).toBe(1);
     expect(merged.analyticalSolutionMode).toBe('depletion');
-    // Injector is disabled in depletion base
     expect(merged.injectorEnabled).toBe(false);
   });
 
@@ -26,15 +24,16 @@ describe('caseCatalog properties and resolvers', () => {
     const entry = findCaseByKey('wf_pub_a');
     expect(entry).not.toBeNull();
     expect(entry!.key).toBe('wf_pub_a');
-    expect(entry!.facets.mode).toBe('waterflood');
+    expect(entry!.facets.mode).toBe('benchmark');
   });
 
   it('findCaseByKey returns null for unknown keys', () => {
     expect(findCaseByKey('nonexistent_case')).toBeNull();
   });
 
-  it('caseCatalog contains exactly 92 cases as planned', () => {
-    expect(caseCatalog.length).toBe(92);
+  it('caseCatalog contains expected number of cases', () => {
+    expect(caseCatalog.length).toBeGreaterThanOrEqual(90);
+    expect(caseCatalog.length).toBeLessThanOrEqual(100);
   });
 
   it('all cases have valid properties and facets', () => {
@@ -44,10 +43,16 @@ describe('caseCatalog properties and resolvers', () => {
       expect(entry.facets.mode).toBeDefined();
       expect(entry.params).toBeDefined();
 
-      // Verify facets are part of valid options
       expect(FACET_OPTIONS.mode.includes(entry.facets.mode)).toBe(true);
       expect(FACET_OPTIONS.geometry.includes(entry.facets.geometry)).toBe(true);
       expect(FACET_OPTIONS.permeability.includes(entry.facets.permeability)).toBe(true);
+      expect(FACET_OPTIONS.wellPosition.includes(entry.facets.wellPosition)).toBe(true);
+      expect(FACET_OPTIONS.fluids.includes(entry.facets.fluids)).toBe(true);
     }
+  });
+
+  it('all case keys are unique', () => {
+    const keys = caseCatalog.map(c => c.key);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

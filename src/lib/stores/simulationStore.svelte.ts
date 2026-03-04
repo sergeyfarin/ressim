@@ -10,8 +10,11 @@ import type {
 import {
     caseCatalog,
     findCaseByKey,
+    findMatchingCases,
     resolveParams,
+    FOCUS_OPTIONS,
     type CaseMode,
+    type CaseEntry,
 } from '../caseCatalog';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 
@@ -199,12 +202,14 @@ export function createSimulationStore() {
     let preRunLoadToken = $state(0);
     let preRunContinuationAvailable = $state(false);
 
-    let filters = $state({
-        geometry: [] as string[],
-        permeability: [] as string[],
-        physics: [] as string[],
-        fluids: [] as string[],
-        study: [] as string[],
+    let toggles = $state({
+        geometry: '1D' as string,
+        wellPosition: 'end-to-end' as string,
+        permeability: 'uniform' as string,
+        gravity: false,
+        capillary: false,
+        fluids: 'standard' as string,
+        focus: 'shape-factor' as string,
     });
 
     // Display data
@@ -275,12 +280,13 @@ export function createSimulationStore() {
     const matchingCases = $derived(
         caseCatalog.filter(c => {
             if (c.facets.mode !== activeMode) return false;
-            if (filters.geometry.length && !filters.geometry.includes(c.facets.geometry)) return false;
-            if (filters.permeability.length && !filters.permeability.includes(c.facets.permeability)) return false;
-            if (filters.physics.includes('Gravity') && !c.facets.gravity) return false;
-            if (filters.physics.includes('Capillary') && !c.facets.capillary) return false;
-            if (filters.fluids.length && !filters.fluids.some(f => c.facets.fluidVariation.includes(f))) return false;
-            if (filters.study.length && !filters.study.some(s => c.facets.studyType.includes(s))) return false;
+            if (c.facets.geometry !== toggles.geometry) return false;
+            if (c.facets.wellPosition !== toggles.wellPosition) return false;
+            if (c.facets.permeability !== toggles.permeability) return false;
+            if (c.facets.gravity !== toggles.gravity) return false;
+            if (c.facets.capillary !== toggles.capillary) return false;
+            if (c.facets.fluids !== toggles.fluids) return false;
+            if (c.facets.focus !== toggles.focus) return false;
             return true;
         })
     );
@@ -769,12 +775,15 @@ export function createSimulationStore() {
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
-        // Reset filters when switching modes
-        filters.geometry = [];
-        filters.permeability = [];
-        filters.physics = [];
-        filters.fluids = [];
-        filters.study = [];
+        // Reset toggles to mode defaults
+        const focusOpts = FOCUS_OPTIONS[mode];
+        toggles.geometry = '1D';
+        toggles.wellPosition = 'end-to-end';
+        toggles.permeability = 'uniform';
+        toggles.gravity = false;
+        toggles.capillary = false;
+        toggles.fluids = 'standard';
+        toggles.focus = focusOpts?.[0]?.value ?? 'shape-factor';
 
         const cases = caseCatalog.filter(c => c.facets.mode === mode);
         if (cases.length > 0) {
@@ -1048,6 +1057,9 @@ export function createSimulationStore() {
         get activeMode() { return activeMode; },
         get activeCase() { return activeCase; },
         get isCustomMode() { return isCustomMode; },
+        get toggles() { return toggles; },
+        set toggles(v) { toggles = v; },
+        get matchingCases() { return matchingCases; },
         get preRunData() { return preRunData; },
         get preRunLoading() { return preRunLoading; },
         get preRunWarning() { return preRunWarning; },
