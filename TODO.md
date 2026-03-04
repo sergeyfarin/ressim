@@ -77,7 +77,7 @@ Items are grouped by priority.
 
 - [ ] **CI pipeline for tests** — GitHub Actions: `cargo test` + `npm test` + `npm run build` on push/PR. Regenerate `benchmark-results.json` and compare.
 - [ ] **Worker `typeof` guards → typed WASM interface** — `configureSimulator()` in `sim.worker.ts` uses 12+ `typeof X === 'function'` guards with `/** @type {any} */` casts. Generate proper TS bindings from `wasm-bindgen` or define a typed wrapper.
-- [ ] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
+- [x] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
 - [ ] **Selective Chart.js imports** — both `RateChart.svelte` and `FractionalFlow.svelte` register all registerables. Register only needed components to reduce bundle.
 - [ ] **PCG solver allocation reuse** — `solver.rs:38,70` allocates new `DVector`s (`z`, `z_new`) per iteration. Pre-allocate workspace vectors outside the loop.
 - [ ] **Remove redundant `sat_oil` array** — `sat_oil = 1.0 - sat_water` is maintained separately in every cell across `sat_oil: Vec<f64>`. Derive on access or via a helper to halve memory and eliminate sync risk.
