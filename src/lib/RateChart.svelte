@@ -150,9 +150,11 @@
     }
 
     // Computed data series
-    let oilProd = $derived(rateHistory.map((p) => p.total_production_oil ?? 0));
+    let oilProd = $derived(
+        rateHistory.map((p) => Math.abs(p.total_production_oil ?? 0)),
+    );
     let liquidProd = $derived(
-        rateHistory.map((p) => p.total_production_liquid ?? 0),
+        rateHistory.map((p) => Math.abs(p.total_production_liquid ?? 0)),
     );
     let injection = $derived(rateHistory.map((p) => p.total_injection ?? 0));
     let waterProd = $derived(

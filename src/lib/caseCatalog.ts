@@ -1,4 +1,4 @@
-import catalogDataRaw from '../../public/cases/catalog.json';
+import catalogDataRaw from './catalog.json';
 
 // --- Type Definitions ---
 export type CaseMode = 'dep' | 'wf' | 'sim' | 'benchmark';

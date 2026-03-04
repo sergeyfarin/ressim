@@ -367,6 +367,32 @@
                     }
                 }
             ]
+        },
+        {
+            "key": "benchmarkId",
+            "label": "Benchmark Case",
+            "options": [
+                {
+                    "value": "spe_bl_a",
+                    "label": "SPE BL Case A"
+                },
+                {
+                    "value": "spe_bl_b",
+                    "label": "SPE BL Case B"
+                },
+                {
+                    "value": "dietz_sq_center",
+                    "label": "Dietz Square Center"
+                },
+                {
+                    "value": "dietz_sq_corner",
+                    "label": "Dietz Square Corner"
+                },
+                {
+                    "value": "fetkovich_exp",
+                    "label": "Fetkovich Exponential"
+                }
+            ]
         }
     ],
     "disabilityRules": [

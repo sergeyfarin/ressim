@@ -2,13 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { fileURLToPath } from 'url';
-import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Read catalog
-const catalogPath = path.join(__dirname, '../public/cases/catalog.json');
+const catalogPath = path.join(__dirname, '../src/lib/catalog.json');
 const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
 
 const outDir = path.join(__dirname, '../public/cases/prerun');
@@ -261,6 +260,7 @@ async function main() {
                     gridState = { pressure: Array.from(runtime.getPressures()), sat_water: Array.from(runtime.getSatWater()) };
                 }
 
+                const avg_reservoir_pressure = runtime.getPressures().reduce((a, b) => a + b, 0) / cellCount;
                 const rh = runtime.getRateHistory();
                 const lastRh = Array.isArray(rh) ? rh[rh.length - 1] : null;
                 const water_cut = lastRh && lastRh.producer_water_rate !== undefined && lastRh.producer_oil_rate !== undefined ?
@@ -287,7 +287,7 @@ async function main() {
                 warnings
             };
 
-            const outPath = path.join(prerunDir, `${key}.json.gz`);
+            const outPath = path.join(outDir, `${key}.json.gz`);
             const compressedContext = zlib.gzipSync(JSON.stringify(outData));
             fs.writeFileSync(outPath, compressedContext);
 
