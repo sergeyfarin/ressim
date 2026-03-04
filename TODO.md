@@ -44,6 +44,15 @@ Items are grouped by priority.
 - [ ] **Benchmark trend tracking across commits** — baseline drift dashboard or CI report comparing benchmark values over time.
 - [ ] **Calibrate depletion analytical model** — validate against published radial-flow references for center-producer depletion cases.
 - [ ] **Full Dietz shape-factor table** — add output for additional boundary geometries and anisotropic grids beyond current 1D slab and 2D center cases.
+- [ ] **Additional published benchmarks** — search for 2-phase immiscible verification cases in:
+  - SPE Comparative Solution Projects (extract 2-phase subsets from SPE1/SPE5/SPE9)
+  - Dake, "Fundamentals of Reservoir Engineering" — worked examples Ch. 5-10
+  - Craft, Hawkins & Terry, "Applied Petroleum Reservoir Engineering" — depletion cases
+  - Craig, "The Reservoir Engineering Aspects of Waterflooding" — areal sweep factors
+  - MRST (MATLAB Reservoir Simulation Toolbox) verification tutorials
+  - ECLIPSE/CMG published benchmarks (reservoir engineering textbook appendices)
+  - ResearchGate papers tagged "reservoir simulation verification" or "immiscible displacement"
+  - McEwen (1961) — single-phase slightly compressible radial flow analytical solution
 
 ---
 

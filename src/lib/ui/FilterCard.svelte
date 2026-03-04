@@ -5,6 +5,7 @@
         selected = "",
         disabled = [] as string[],
         disabledReasons = {} as Record<string, string>,
+        customLabels = {} as Record<string, string>,
         onchange = (_v: string) => {},
     } = $props<{
         label: string;
@@ -12,6 +13,7 @@
         selected: string;
         disabled?: string[];
         disabledReasons?: Record<string, string>;
+        customLabels?: Record<string, string>;
         onchange: (v: string) => void;
     }>();
 </script>
@@ -29,12 +31,12 @@
                 disabled={isDisabled}
                 title={isDisabled
                     ? (disabledReasons[opt] ?? "Not available")
-                    : opt}
+                    : (customLabels[opt] ?? opt)}
                 onclick={() => {
                     if (!isDisabled) onchange(opt);
                 }}
             >
-                {opt}
+                {customLabels[opt] ?? opt}
             </button>
         {/each}
     </div>

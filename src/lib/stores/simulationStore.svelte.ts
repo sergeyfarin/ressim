@@ -8,13 +8,13 @@ import type {
     WellState,
 } from '../simulator-types';
 import {
-    caseCatalog,
-    findCaseByKey,
-    findMatchingCases,
-    resolveParams,
-    FOCUS_OPTIONS,
+    catalog,
+    buildCaseKey,
+    composeCaseParams,
+    getDefaultToggles,
+    getDisabledOptions,
     type CaseMode,
-    type CaseEntry,
+    type ToggleState
 } from '../caseCatalog';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 
@@ -193,24 +193,16 @@ export function createSimulationStore() {
     let currentRunStepsCompleted = $state(0);
 
     // Navigation State
-    let activeMode = $state<CaseMode>('depletion');
+    let activeMode = $state<CaseMode>('dep');
     let activeCase = $state('');
-    let isCustomMode = $state(false);
+    let isModified = $state(false);
     let preRunData: any = $state(null);
     let preRunLoading = $state(false);
     let preRunWarning = $state('');
     let preRunLoadToken = $state(0);
     let preRunContinuationAvailable = $state(false);
 
-    let toggles = $state({
-        geometry: '1D' as string,
-        wellPosition: 'end-to-end' as string,
-        permeability: 'uniform' as string,
-        gravity: false,
-        capillary: false,
-        fluids: 'standard' as string,
-        focus: 'shape-factor' as string,
-    });
+    let toggles = $state<ToggleState>(getDefaultToggles('dep'));
 
     // Display data
     let gridStateRaw: GridState | null = $state(null);
@@ -277,19 +269,7 @@ export function createSimulationStore() {
             : null,
     );
 
-    const matchingCases = $derived(
-        caseCatalog.filter(c => {
-            if (c.facets.mode !== activeMode) return false;
-            if (c.facets.geometry !== toggles.geometry) return false;
-            if (c.facets.wellPosition !== toggles.wellPosition) return false;
-            if (c.facets.permeability !== toggles.permeability) return false;
-            if (c.facets.gravity !== toggles.gravity) return false;
-            if (c.facets.capillary !== toggles.capillary) return false;
-            if (c.facets.fluids !== toggles.fluids) return false;
-            if (c.facets.focus !== toggles.focus) return false;
-            return true;
-        })
-    );
+    const disabledOptions = $derived(getDisabledOptions(toggles));
 
     // ===== Validation =====
     function validateInputs(): ValidationState {
@@ -660,13 +640,18 @@ export function createSimulationStore() {
     }
 
     function maybeSwitchToCustomSubCaseOnReinit(): boolean {
-        if (isCustomMode || !activeCase || !baseCaseSignature) return false;
-        if (!findCaseByKey(activeCase)) return false;
+        if (isModified || !activeCase || !baseCaseSignature) return false;
+
+        let foundKey = activeCase;
+
+        if (foundKey && foundKey !== activeCase) {
+            isModified = false;
+            activeCase = foundKey;
+        }
         const customSubCase = resolveCustomSubCase(activeMode);
         if (!customSubCase) return false;
         const nextSignature = buildCaseSignature();
         if (nextSignature === baseCaseSignature) return false;
-        isCustomMode = false;
         preRunLoadToken += 1;
         preRunData = null;
         preRunWarning = '';
@@ -749,7 +734,7 @@ export function createSimulationStore() {
         if (nextSignature === configDiffSignature) return;
         configDiffSignature = nextSignature;
         if (skipNextAutoModelReset) { skipNextAutoModelReset = false; return; }
-        if (wasmReady && simWorker && isCustomMode && lastCreateSignature) {
+        if (wasmReady && simWorker && isModified && lastCreateSignature) {
             resetSimulationState({ clearErrors: true, clearWarnings: false, resetProfile: true, bumpViz: true });
             if (workerRunning) {
                 pendingAutoReinit = true;
@@ -768,45 +753,48 @@ export function createSimulationStore() {
 
     function handleModeChange(mode: CaseMode) {
         preRunLoadToken += 1;
-        isCustomMode = false;
+        isModified = false;
         activeMode = mode;
-        activeCase = '';
+        toggles = getDefaultToggles(mode);
         baseCaseSignature = '';
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
-        // Reset toggles to mode defaults
-        const focusOpts = FOCUS_OPTIONS[mode];
-        toggles.geometry = '1D';
-        toggles.wellPosition = 'end-to-end';
-        toggles.permeability = 'uniform';
-        toggles.gravity = false;
-        toggles.capillary = false;
-        toggles.fluids = 'standard';
-        toggles.focus = focusOpts?.[0]?.value ?? 'shape-factor';
 
-        const cases = caseCatalog.filter(c => c.facets.mode === mode);
-        if (cases.length > 0) {
-            handleCaseChange(cases[0].key);
-        }
+        handleToggleChange(); // applies defaults and pre-runs
     }
 
-    function handleCaseChange(key: string) {
-        activeCase = key;
+    function handleToggleChange(dimKey?: string, value?: string) {
+        if (dimKey && value) {
+            toggles[dimKey] = value;
+        }
+
+        // Auto-fix any toggles that just became disabled
+        const currentDisabled = getDisabledOptions(toggles);
+        for (const [dKey, reasonMap] of Object.entries(currentDisabled)) {
+            if (reasonMap[toggles[dKey]]) {
+                const dim = catalog.dimensions.find(d => d.key === dKey);
+                if (dim) {
+                    const validOpt = dim.options.find(o => !reasonMap[o.value]);
+                    if (validOpt) toggles[dKey] = validOpt.value;
+                }
+            }
+        }
+
+        const newKey = buildCaseKey(toggles);
+        activeCase = newKey;
+        isModified = false;
         preRunWarning = '';
-        const found = findCaseByKey(key);
-        if (found) {
-            applyCaseParams(found.params);
-            baseCaseSignature = buildCaseSignature();
-            loadPreRunCase(key);
-        }
+
+        applyCaseParams(composeCaseParams(toggles));
+        baseCaseSignature = buildCaseSignature();
+        loadPreRunCase(newKey);
     }
 
-    function handleCustomMode() {
-        if (isCustomMode) return;
+    function handleParamEdit() {
+        if (isModified) return;
         preRunLoadToken += 1;
-        isCustomMode = true;
-        activeCase = '';
+        isModified = true;
         baseCaseSignature = '';
         preRunData = null;
         preRunWarning = '';
@@ -827,7 +815,7 @@ export function createSimulationStore() {
     }
 
     function applyCaseParams(params: Record<string, any>) {
-        const resolved = resolveParams(params);
+        const resolved = { ...catalog.defaults, ...params };
         skipNextAutoModelReset = true;
         userHistoryInterval = null;
         nx = Math.max(1, Math.round(Number(resolved.nx) || 1));
@@ -898,12 +886,18 @@ export function createSimulationStore() {
         preRunData = null;
         preRunWarning = '';
         try {
-            const url = `${import.meta.env.BASE_URL}cases/${key}.json`;
+            const url = `${import.meta.env.BASE_URL}cases/prerun/${key}.json.gz`;
             const resp = await fetch(url, { cache: 'no-store' });
-            if (requestToken !== preRunLoadToken || key !== activeCase || isCustomMode) return;
+            if (requestToken !== preRunLoadToken || key !== activeCase || isModified) return;
             if (!resp.ok) { preRunData = null; return; }
-            const data = await resp.json();
-            if (requestToken !== preRunLoadToken || key !== activeCase || isCustomMode) return;
+
+            // Decompress stream natively in browser
+            const ds = new DecompressionStream("gzip");
+            const readable = resp.body!.pipeThrough(ds);
+            const response = new Response(readable);
+            const data = await response.json();
+
+            if (requestToken !== preRunLoadToken || key !== activeCase || isModified) return;
             preRunData = data;
 
             const expectedCellCount = Math.max(1, Number(nx) * Number(ny) * Number(nz));
@@ -1056,10 +1050,10 @@ export function createSimulationStore() {
         get currentRunStepsCompleted() { return currentRunStepsCompleted; },
         get activeMode() { return activeMode; },
         get activeCase() { return activeCase; },
-        get isCustomMode() { return isCustomMode; },
+        get isModified() { return isModified; },
         get toggles() { return toggles; },
         set toggles(v) { toggles = v; },
-        get matchingCases() { return matchingCases; },
+        get disabledOptions() { return disabledOptions; },
         get preRunData() { return preRunData; },
         get preRunLoading() { return preRunLoading; },
         get preRunWarning() { return preRunWarning; },
@@ -1106,8 +1100,8 @@ export function createSimulationStore() {
         stopRun,
         checkConfigDiff,
         handleModeChange,
-        handleCaseChange,
-        handleCustomMode,
+        handleToggleChange,
+        handleParamEdit,
         handleAnalyticalSolutionModeChange,
         handleNzOrPermModeChange,
         resolveCustomSubCase,

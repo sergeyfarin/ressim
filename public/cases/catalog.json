@@ -1,0 +1,632 @@
+{
+    "version": 1,
+    "defaults": {
+        "reservoirLength": 1000,
+        "reservoirWidth": 1000,
+        "reservoirThickness": 50,
+        "depth_reference": 0,
+        "reservoirPorosity": 0.2,
+        "well_radius": 0.1,
+        "skin_factor": 0,
+        "c_r": 1e-6,
+        "p_initial": 300,
+        "mu_w": 0.5,
+        "mu_o": 1.0,
+        "c_w": 3e-6,
+        "c_o": 1e-5,
+        "rho_w": 1000,
+        "rho_o": 800,
+        "s_wc": 0.1,
+        "s_or": 0.1,
+        "n_w": 2,
+        "n_o": 2,
+        "k_rw_max": 1.0,
+        "k_ro_max": 1.0,
+        "permMode": "uniform",
+        "uniformPermX": 200,
+        "uniformPermY": 200,
+        "uniformPermZ": 20,
+        "layerPermsX": [
+            200,
+            200,
+            200,
+            200,
+            200
+        ],
+        "layerPermsY": [
+            200,
+            200,
+            200,
+            200,
+            200
+        ],
+        "layerPermsZ": [
+            20,
+            20,
+            20,
+            20,
+            20
+        ],
+        "minPerm": 50,
+        "maxPerm": 500,
+        "seed": 42,
+        "capillaryEnabled": false,
+        "capillaryPEntry": 1.0,
+        "capillaryLambda": 2.5,
+        "gravityEnabled": false,
+        "injectorControlMode": "pressure",
+        "producerControlMode": "pressure",
+        "injectorBhp": 500,
+        "producerBhp": 1000,
+        "max_sat_change_per_step": 0.1,
+        "steps": 30,
+        "delta_t_days": 1.0,
+        "injectorEnabled": false,
+        "analyticalSolutionMode": "none",
+        "useCapillaryGravity": false
+    },
+    "dimensions": [
+        {
+            "key": "mode",
+            "label": "Mode",
+            "options": [
+                {
+                    "value": "dep",
+                    "label": "Depletion",
+                    "params": {
+                        "injectorEnabled": false,
+                        "analyticalSolutionMode": "depletion",
+                        "steps": 36,
+                        "delta_t_days": 0.5
+                    }
+                },
+                {
+                    "value": "wf",
+                    "label": "Waterflood",
+                    "params": {
+                        "injectorEnabled": true,
+                        "analyticalSolutionMode": "waterflood",
+                        "steps": 50,
+                        "delta_t_days": 0.5
+                    }
+                },
+                {
+                    "value": "sim",
+                    "label": "Simulation",
+                    "params": {
+                        "injectorEnabled": true,
+                        "analyticalSolutionMode": "none",
+                        "steps": 30,
+                        "delta_t_days": 0.5
+                    }
+                }
+            ]
+        },
+        {
+            "key": "geo",
+            "label": "Geometry",
+            "options": [
+                {
+                    "value": "1d",
+                    "label": "1D",
+                    "params": {
+                        "nx": 48,
+                        "ny": 1,
+                        "nz": 1,
+                        "cellDx": 10,
+                        "cellDy": 10,
+                        "cellDz": 5
+                    }
+                },
+                {
+                    "value": "2dxz",
+                    "label": "2D X-Z (Cross Section)",
+                    "params": {
+                        "nx": 21,
+                        "ny": 1,
+                        "nz": 5,
+                        "cellDx": 20,
+                        "cellDy": 20,
+                        "cellDz": 5
+                    }
+                },
+                {
+                    "value": "2dxy",
+                    "label": "2D X-Y (Areal)",
+                    "params": {
+                        "nx": 21,
+                        "ny": 21,
+                        "nz": 1,
+                        "cellDx": 20,
+                        "cellDy": 20,
+                        "cellDz": 10
+                    }
+                },
+                {
+                    "value": "3d",
+                    "label": "3D",
+                    "params": {
+                        "nx": 11,
+                        "ny": 11,
+                        "nz": 5,
+                        "cellDx": 20,
+                        "cellDy": 20,
+                        "cellDz": 5
+                    }
+                }
+            ]
+        },
+        {
+            "key": "well",
+            "label": "Well Position",
+            "options": [
+                {
+                    "value": "e2e",
+                    "label": "End-to-End"
+                },
+                {
+                    "value": "corner",
+                    "label": "Corner"
+                },
+                {
+                    "value": "center",
+                    "label": "Center"
+                },
+                {
+                    "value": "offctr",
+                    "label": "Off-Center"
+                }
+            ]
+        },
+        {
+            "key": "rock",
+            "label": "Rock",
+            "options": [
+                {
+                    "value": "uni",
+                    "label": "Uniform",
+                    "params": {
+                        "permMode": "uniform",
+                        "uniformPermX": 200
+                    }
+                },
+                {
+                    "value": "layer",
+                    "label": "Layered",
+                    "params": {
+                        "permMode": "perLayer",
+                        "layerPermsX": [
+                            50,
+                            200,
+                            10,
+                            400,
+                            50
+                        ]
+                    }
+                },
+                {
+                    "value": "rand",
+                    "label": "Random",
+                    "params": {
+                        "permMode": "random",
+                        "minPerm": 10,
+                        "maxPerm": 500
+                    }
+                }
+            ]
+        },
+        {
+            "key": "grav",
+            "label": "Gravity",
+            "options": [
+                {
+                    "value": "off",
+                    "label": "Off",
+                    "params": {
+                        "gravityEnabled": false
+                    }
+                },
+                {
+                    "value": "on",
+                    "label": "On",
+                    "params": {
+                        "gravityEnabled": true,
+                        "useCapillaryGravity": true
+                    }
+                }
+            ]
+        },
+        {
+            "key": "cap",
+            "label": "Capillary",
+            "options": [
+                {
+                    "value": "off",
+                    "label": "Off",
+                    "params": {
+                        "capillaryEnabled": false
+                    }
+                },
+                {
+                    "value": "on",
+                    "label": "On",
+                    "params": {
+                        "capillaryEnabled": true,
+                        "capillaryPEntry": 0.5,
+                        "useCapillaryGravity": true
+                    }
+                }
+            ]
+        },
+        {
+            "key": "fluid",
+            "label": "Fluids",
+            "options": [
+                {
+                    "value": "std",
+                    "label": "Standard"
+                },
+                {
+                    "value": "heavy",
+                    "label": "Heavy Oil",
+                    "params": {
+                        "mu_o": 10.0
+                    }
+                },
+                {
+                    "value": "light",
+                    "label": "Light Oil",
+                    "params": {
+                        "mu_o": 0.3
+                    }
+                },
+                {
+                    "value": "hicomp",
+                    "label": "High Comp",
+                    "params": {
+                        "c_o": 5e-5
+                    }
+                },
+                {
+                    "value": "locomp",
+                    "label": "Low Comp",
+                    "params": {
+                        "c_o": 1e-6
+                    }
+                }
+            ]
+        },
+        {
+            "key": "grid",
+            "label": "Grid Density",
+            "options": [
+                {
+                    "value": "def",
+                    "label": "Default"
+                },
+                {
+                    "value": "12",
+                    "label": "12 cells",
+                    "params": {
+                        "nx": 12
+                    }
+                },
+                {
+                    "value": "24",
+                    "label": "24 cells",
+                    "params": {
+                        "nx": 24
+                    }
+                },
+                {
+                    "value": "48",
+                    "label": "48 cells",
+                    "params": {
+                        "nx": 48
+                    }
+                },
+                {
+                    "value": "96",
+                    "label": "96 cells",
+                    "params": {
+                        "nx": 96
+                    }
+                }
+            ]
+        },
+        {
+            "key": "dt",
+            "label": "Timestep",
+            "options": [
+                {
+                    "value": "def",
+                    "label": "Default"
+                },
+                {
+                    "value": "5d",
+                    "label": "5 days",
+                    "params": {
+                        "delta_t_days": 5.0,
+                        "steps": 10
+                    }
+                },
+                {
+                    "value": "1d",
+                    "label": "1 day",
+                    "params": {
+                        "delta_t_days": 1.0,
+                        "steps": 50
+                    }
+                },
+                {
+                    "value": "025d",
+                    "label": "0.25 days",
+                    "params": {
+                        "delta_t_days": 0.25,
+                        "steps": 100
+                    }
+                }
+            ]
+        }
+    ],
+    "disabilityRules": [
+        {
+            "when": {
+                "geo": "1d"
+            },
+            "disable": {
+                "grav": [
+                    "on"
+                ],
+                "rock": [
+                    "layer"
+                ],
+                "well": [
+                    "center",
+                    "offctr"
+                ]
+            }
+        },
+        {
+            "when": {
+                "geo": "2dxz"
+            },
+            "disable": {
+                "well": [
+                    "corner",
+                    "center",
+                    "offctr"
+                ]
+            },
+            "note": "2D XZ implies side-to-side flooding"
+        },
+        {
+            "when": {
+                "mode": "wf"
+            },
+            "disable": {
+                "geo": [
+                    "2dxy",
+                    "3d"
+                ]
+            },
+            "reason": "Use Simulation for areal/3D flooding"
+        },
+        {
+            "when": {
+                "mode": "wf",
+                "geo": "1d"
+            },
+            "disable": {
+                "well": [
+                    "corner",
+                    "center",
+                    "offctr"
+                ]
+            }
+        },
+        {
+            "when": {
+                "mode": "dep"
+            },
+            "disable": {
+                "well": [
+                    "e2e"
+                ],
+                "geo": [
+                    "2dxz"
+                ]
+            }
+        },
+        {
+            "when": {
+                "mode": "sim",
+                "geo": "1d"
+            },
+            "disable": {}
+        },
+        {
+            "when": {
+                "rock": "uni"
+            },
+            "disable": {},
+            "note": "Always allowed"
+        },
+        {
+            "when": {
+                "geo": [
+                    "2dxz",
+                    "2dxy",
+                    "3d"
+                ]
+            },
+            "disable": {
+                "grid": [
+                    "12",
+                    "24",
+                    "48",
+                    "96"
+                ],
+                "dt": [
+                    "5d",
+                    "1d",
+                    "025d"
+                ]
+            },
+            "note": "Pragmatic limits: run varying grid/dt only on 1D"
+        }
+    ],
+    "benchmarks": [
+        {
+            "key": "spe_bl_a",
+            "label": "SPE BL Case A",
+            "description": "Standard Buckley-Leverett (k=2000mD, L=960m, q_inj=350)",
+            "params": {
+                "mode": "benchmark",
+                "analyticalSolutionMode": "waterflood",
+                "nx": 96,
+                "ny": 1,
+                "nz": 1,
+                "cellDx": 10,
+                "cellDy": 20,
+                "cellDz": 5,
+                "injectorEnabled": true,
+                "injectorControlMode": "rate",
+                "targetInjectorRate": 350,
+                "producerControlMode": "pressure",
+                "producerBhp": 1000,
+                "mu_w": 0.5,
+                "mu_o": 1.0,
+                "n_w": 2,
+                "n_o": 2,
+                "s_wc": 0.0,
+                "s_or": 0.0,
+                "k_rw_max": 1.0,
+                "k_ro_max": 1.0,
+                "permMode": "uniform",
+                "uniformPermX": 2000,
+                "steps": 100,
+                "delta_t_days": 1.0,
+                "gravityEnabled": false,
+                "capillaryEnabled": false,
+                "injectorI": 0,
+                "injectorJ": 0,
+                "producerI": 95,
+                "producerJ": 0
+            }
+        },
+        {
+            "key": "spe_bl_b",
+            "label": "SPE BL Case B",
+            "description": "Non-zero residual saturations, distinct exponents",
+            "params": {
+                "mode": "benchmark",
+                "analyticalSolutionMode": "waterflood",
+                "nx": 96,
+                "ny": 1,
+                "nz": 1,
+                "cellDx": 10,
+                "cellDy": 20,
+                "cellDz": 5,
+                "injectorEnabled": true,
+                "injectorControlMode": "rate",
+                "targetInjectorRate": 350,
+                "producerControlMode": "pressure",
+                "producerBhp": 1000,
+                "mu_w": 0.6,
+                "mu_o": 1.4,
+                "n_w": 2.2,
+                "n_o": 1.8,
+                "s_wc": 0.15,
+                "s_or": 0.15,
+                "k_rw_max": 0.8,
+                "k_ro_max": 0.9,
+                "permMode": "uniform",
+                "uniformPermX": 2000,
+                "steps": 100,
+                "delta_t_days": 1.0,
+                "gravityEnabled": false,
+                "capillaryEnabled": false,
+                "injectorI": 0,
+                "injectorJ": 0,
+                "producerI": 95,
+                "producerJ": 0
+            }
+        },
+        {
+            "key": "dietz_sq_center",
+            "label": "Dietz Square Center",
+            "description": "Shape factor C_A ≈ 30.88 (Dietz, 1965)",
+            "params": {
+                "mode": "benchmark",
+                "analyticalSolutionMode": "depletion",
+                "nx": 21,
+                "ny": 21,
+                "nz": 1,
+                "cellDx": 20,
+                "cellDy": 20,
+                "cellDz": 10,
+                "injectorEnabled": false,
+                "producerControlMode": "pressure",
+                "producerBhp": 100,
+                "p_initial": 300,
+                "permMode": "uniform",
+                "uniformPermX": 50,
+                "steps": 50,
+                "delta_t_days": 1.0,
+                "producerI": 10,
+                "producerJ": 10
+            }
+        },
+        {
+            "key": "dietz_sq_corner",
+            "label": "Dietz Square Corner",
+            "description": "Shape factor C_A ≈ 0.56 (Dietz, 1965)",
+            "params": {
+                "mode": "benchmark",
+                "analyticalSolutionMode": "depletion",
+                "nx": 21,
+                "ny": 21,
+                "nz": 1,
+                "cellDx": 20,
+                "cellDy": 20,
+                "cellDz": 10,
+                "injectorEnabled": false,
+                "producerControlMode": "pressure",
+                "producerBhp": 100,
+                "p_initial": 300,
+                "permMode": "uniform",
+                "uniformPermX": 50,
+                "steps": 50,
+                "delta_t_days": 1.0,
+                "producerI": 0,
+                "producerJ": 0
+            }
+        },
+        {
+            "key": "fetkovich_exp",
+            "label": "Fetkovich Exponential",
+            "description": "Constant BHP exponential decline",
+            "params": {
+                "mode": "benchmark",
+                "analyticalSolutionMode": "depletion",
+                "nx": 48,
+                "ny": 1,
+                "nz": 1,
+                "cellDx": 10,
+                "cellDy": 10,
+                "cellDz": 10,
+                "injectorEnabled": false,
+                "producerControlMode": "pressure",
+                "producerBhp": 50,
+                "p_initial": 1500,
+                "permMode": "uniform",
+                "uniformPermX": 20,
+                "steps": 100,
+                "delta_t_days": 5.0,
+                "producerI": 47,
+                "producerJ": 0
+            }
+        }
+    ]
+}

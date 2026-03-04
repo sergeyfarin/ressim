@@ -1,58 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { resolveParams, findCaseByKey, caseCatalog, FACET_OPTIONS } from './caseCatalog';
+import { catalog, buildCaseKey, getDefaultToggles, getDisabledOptions } from './caseCatalog';
 
-describe('caseCatalog properties and resolvers', () => {
-  it('resolveParams merges depletion defaults properly', () => {
-    const sparse = { nx: 10 };
-    const merged = resolveParams(sparse, 'depletion');
-    expect(merged.nx).toBe(10);
-    expect(merged.ny).toBe(1);
-    expect(merged.analyticalSolutionMode).toBe('depletion');
-    expect(merged.injectorEnabled).toBe(false);
+describe('caseCatalog Dynamic Catalog', () => {
+  it('has a valid catalog loaded', () => {
+    expect(catalog.version).toBeDefined();
+    expect(catalog.dimensions.length).toBeGreaterThan(0);
   });
 
-  it('resolveParams merges waterflood defaults properly', () => {
-    const sparse = { nx: 96, targetInjectorRate: 500 };
-    const merged = resolveParams(sparse, 'waterflood');
-    expect(merged.nx).toBe(96);
-    expect(merged.targetInjectorRate).toBe(500);
-    expect(merged.analyticalSolutionMode).toBe('waterflood');
-    expect(merged.injectorEnabled).toBe(true);
+  it('generates a case key deterministically', () => {
+    const toggles = getDefaultToggles('dep');
+    const key = buildCaseKey(toggles);
+    expect(key).toContain('mode-dep');
   });
 
-  it('findCaseByKey returns the correct case entry', () => {
-    const entry = findCaseByKey('wf_pub_a');
-    expect(entry).not.toBeNull();
-    expect(entry!.key).toBe('wf_pub_a');
-    expect(entry!.facets.mode).toBe('benchmark');
-  });
+  it('evaluates disability rules correctly for 1D gravity', () => {
+    const toggles = getDefaultToggles('dep');
+    toggles.geo = '1d';
+    toggles.grav = 'off';
 
-  it('findCaseByKey returns null for unknown keys', () => {
-    expect(findCaseByKey('nonexistent_case')).toBeNull();
-  });
-
-  it('caseCatalog contains expected number of cases', () => {
-    expect(caseCatalog.length).toBeGreaterThanOrEqual(90);
-    expect(caseCatalog.length).toBeLessThanOrEqual(100);
-  });
-
-  it('all cases have valid properties and facets', () => {
-    for (const entry of caseCatalog) {
-      expect(entry.key).toBeDefined();
-      expect(entry.label).toBeDefined();
-      expect(entry.facets.mode).toBeDefined();
-      expect(entry.params).toBeDefined();
-
-      expect(FACET_OPTIONS.mode.includes(entry.facets.mode)).toBe(true);
-      expect(FACET_OPTIONS.geometry.includes(entry.facets.geometry)).toBe(true);
-      expect(FACET_OPTIONS.permeability.includes(entry.facets.permeability)).toBe(true);
-      expect(FACET_OPTIONS.wellPosition.includes(entry.facets.wellPosition)).toBe(true);
-      expect(FACET_OPTIONS.fluids.includes(entry.facets.fluids)).toBe(true);
-    }
-  });
-
-  it('all case keys are unique', () => {
-    const keys = caseCatalog.map(c => c.key);
-    expect(new Set(keys).size).toBe(keys.length);
+    const disabled = getDisabledOptions(toggles);
+    expect(disabled['grav']).toBeDefined();
+    // Since it's a 1D case, setting gravity to "on" should be disabled
+    expect(disabled['grav']['on']).toBeDefined();
   });
 });

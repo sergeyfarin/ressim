@@ -195,12 +195,12 @@
     );
     let normAnalyticalOilProd = $derived(
         analyticalOilProd.map((v) =>
-            v === null ? null : v * ratesScaleFactor,
+            v === null || v === undefined ? null : v * ratesScaleFactor,
         ),
     );
     let normAnalyticalWaterRate = $derived(
         analyticalWaterRate.map((v) =>
-            v === null ? null : v * ratesScaleFactor,
+            v === null || v === undefined ? null : v * ratesScaleFactor,
         ),
     );
     let normOilRateAbsError = $derived(

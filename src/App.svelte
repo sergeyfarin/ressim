@@ -8,7 +8,6 @@
     import SwProfileChart from "./lib/SwProfileChart.svelte";
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";
-    import { findCaseByKey } from "./lib/caseCatalog";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
 
     // ---------- Store ----------
@@ -82,7 +81,7 @@
         await loadThreeDViewModule();
         await tick();
 
-        sim.handleModeChange("depletion");
+        sim.handleModeChange("dep");
     });
 
     onDestroy(() => {
@@ -335,17 +334,12 @@
         <!-- Top Bar: category buttons + case selector -->
         <TopBar
             activeMode={sim.activeMode}
-            activeCase={sim.activeCase}
-            isCustomMode={sim.isCustomMode}
-            customSubCase={sim.resolveCustomSubCase(sim.activeMode)}
+            isModified={sim.isModified}
             toggles={sim.toggles}
-            matchingCases={sim.matchingCases}
+            disabledOptions={sim.disabledOptions}
             onModeChange={sim.handleModeChange}
-            onCaseChange={sim.handleCaseChange}
-            onCustomMode={sim.handleCustomMode}
-            onToggleChange={(key, value) => {
-                sim.toggles = { ...sim.toggles, [key]: value };
-            }}
+            onParamEdit={sim.handleParamEdit}
+            onToggleChange={sim.handleToggleChange}
         />
 
         <!-- Run Controls -->
@@ -414,8 +408,7 @@
                             activeCase={sim.activeCase}
                             {theme}
                             analyticalMeta={sim.analyticalMeta}
-                            layoutConfig={findCaseByKey(sim.activeCase)?.params
-                                ?.layout}
+                            layoutConfig={{}}
                         />
                     {:else}
                         <div
