@@ -127,7 +127,7 @@
 
     let groupSummary = "";
 
-    $: groupSummary = `${showProperty.replace("_", " ")} · step ${Math.max(0, currentIndex)}`;
+    $: groupSummary = `${showProperty.replace("_", " ")} · snapshot ${Math.max(0, currentIndex)}`;
 
     $: {
         const minValue = Number(legendFixedMin);
@@ -276,7 +276,7 @@
             if (!Number.isFinite(val) || val === 0) return val;
             const absVal = Math.abs(val);
             const sign = Math.sign(val);
-            
+
             // If the value has 2 or more digits before decimal point (>= 10)
             if (absVal >= 10) {
                 // Determine magnitude for 2 significant digits
@@ -290,9 +290,9 @@
             } else if (absVal >= 1) {
                 // If value is between 1 and 10, keep 1 decimal place max (2 sig figs)
                 if ((isMax && sign > 0) || (!isMax && sign < 0)) {
-                    return Math.ceil(absVal * 10) / 10 * sign;
+                    return (Math.ceil(absVal * 10) / 10) * sign;
                 } else {
-                    return Math.floor(absVal * 10) / 10 * sign;
+                    return (Math.floor(absVal * 10) / 10) * sign;
                 }
             } else {
                 // Less than 1, keep 2 significant digits
@@ -326,7 +326,7 @@
             if (historyRange) {
                 return {
                     min: roundLegendBound(historyRange.min, false),
-                    max: roundLegendBound(historyRange.max, true)
+                    max: roundLegendBound(historyRange.max, true),
                 };
             }
             const values = getPropertyValuesFromGrid(activeGrid, property);
@@ -340,7 +340,7 @@
                 : Math.max(min + 1e-6, fixed.max);
             return {
                 min: roundLegendBound(min, false),
-                max: roundLegendBound(max, true)
+                max: roundLegendBound(max, true),
             };
         }
 
@@ -356,7 +356,7 @@
         }
         return {
             min: roundLegendBound(min, false),
-            max: roundLegendBound(max, true)
+            max: roundLegendBound(max, true),
         };
     }
 

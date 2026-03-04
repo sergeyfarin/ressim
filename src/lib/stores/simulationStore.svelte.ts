@@ -223,7 +223,8 @@ export function createSimulationStore() {
     let playing = $state(false);
     let playSpeed = $state(2);
     let playTimer: ReturnType<typeof setInterval> | null = $state(null);
-    let historyInterval = $state(1);
+    let userHistoryInterval = $state<number | null>(null);
+    const defaultHistoryInterval = $derived(Math.max(1, Math.ceil(steps / 50)));
 
     // Profile
     let profileStats: ProfileStats = $state({ ...EMPTY_PROFILE_STATS });
@@ -705,7 +706,7 @@ export function createSimulationStore() {
     }
 
     function stepOnce() { runSimulationBatch(1, 1); }
-    function runSteps() { runSimulationBatch(Number(steps), Number(historyInterval)); }
+    function runSteps() { runSimulationBatch(Number(steps), Number(userHistoryInterval ?? defaultHistoryInterval)); }
     function stopRun() { if (simWorker) simWorker.postMessage({ type: 'stop' }); }
 
     // ===== Config Diff Detection =====
@@ -786,6 +787,7 @@ export function createSimulationStore() {
     function applyCaseParams(params: Record<string, any>) {
         const resolved = resolveParams(params);
         skipNextAutoModelReset = true;
+        userHistoryInterval = null;
         nx = Math.max(1, Math.round(Number(resolved.nx) || 1));
         ny = Math.max(1, Math.round(Number(resolved.ny) || 1));
         nz = Math.max(1, Math.round(Number(resolved.nz) || 1));
@@ -997,7 +999,7 @@ export function createSimulationStore() {
         get capillaryLambda() { return capillaryLambda; }, set capillaryLambda(v) { capillaryLambda = v; },
         get analyticalSolutionMode() { return analyticalSolutionMode; }, set analyticalSolutionMode(v) { analyticalSolutionMode = v; },
         get analyticalDepletionRateScale() { return analyticalDepletionRateScale; }, set analyticalDepletionRateScale(v) { analyticalDepletionRateScale = v; },
-        get historyInterval() { return historyInterval; }, set historyInterval(v) { historyInterval = v; },
+        get historyInterval() { return userHistoryInterval ?? defaultHistoryInterval; }, set historyInterval(v) { userHistoryInterval = v; },
         get currentIndex() { return currentIndex; }, set currentIndex(v) { currentIndex = v; },
 
         // ----- Read-only state -----

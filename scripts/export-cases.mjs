@@ -72,6 +72,7 @@ function buildCreatePayload(caseParams) {
         rho_w: Number(p.rho_w), rho_o: Number(p.rho_o),
         s_wc: Number(p.s_wc), s_or: Number(p.s_or),
         n_w: Number(p.n_w), n_o: Number(p.n_o),
+        k_rw_max: Number(p.k_rw_max ?? 1.0), k_ro_max: Number(p.k_ro_max ?? 1.0),
         max_sat_change_per_step: Number(p.max_sat_change_per_step),
         max_pressure_change_per_step: Number(p.max_pressure_change_per_step),
         max_well_rate_change_fraction: Number(p.max_well_rate_change_fraction),
@@ -133,7 +134,7 @@ function runCase(payload, steps, deltaTDays) {
     const pEntry = payload.capillaryEnabled ? payload.capillaryPEntry : 0;
     sim.setCapillaryParams(pEntry, payload.capillaryLambda);
     sim.setGravityEnabled(payload.gravityEnabled);
-    sim.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o);
+    sim.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o, payload.k_rw_max, payload.k_ro_max);
     sim.setStabilityParams(
         payload.max_sat_change_per_step,
         payload.max_pressure_change_per_step,
@@ -254,7 +255,7 @@ for (const [catKey, category] of Object.entries(caseCatalog)) {
             });
             success++;
         } catch (err) {
-            console.error(`    ✗ ${key}: ${err.message}`);
+            console.error(`    ✗ ${key}:`, err);
         }
     }
 }
