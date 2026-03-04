@@ -19,9 +19,10 @@
   const hasError = $derived(
     Object.keys(fieldErrors).some(
       (key) =>
-        key.includes("well") ||
-        key.includes("pressure") ||
-        key.includes("saturation"),
+        key === "deltaT" ||
+        key === "max_sat_change_per_step" ||
+        key === "max_pressure_change_per_step" ||
+        key === "max_well_rate_change_fraction",
     ),
   );
   const groupSummary = $derived(

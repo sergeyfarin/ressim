@@ -32,7 +32,7 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 - **3D property view** (Three.js) — selectable properties: pressure, water/oil saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
 - **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
 - **Sw Profile chart** — cell-index saturation profile compared to analytical flood front.
-- **Scenario catalog (Demo Case Framework)** — 92 pre-calculated preset cases exploring geometry, heterogenty, physics, fluid properties, and relative permeability via a fast, faceted "compact flowing cards" UX.
+- **Scenario catalog (Demo Case Framework)** — Dynamic, JSON-driven orthogonal toggle system. Fast, faceted selection UX via responsive grid `ToggleGroup` cards with tooltips for disabled combinations exploring geometry, rock properties, fluids, and variants.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.

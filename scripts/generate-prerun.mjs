@@ -261,10 +261,10 @@ async function main() {
                     gridState = { pressure: Array.from(runtime.getPressures()), sat_water: Array.from(runtime.getSatWater()) };
                 }
 
-                const avg_reservoir_pressure = runtime.getPressures().reduce((a, b) => a + b, 0) / cellCount;
                 const rh = runtime.getRateHistory();
-                const water_cut = rh && rh.producer_water_rate && rh.producer_oil_rate ?
-                    (rh.producer_water_rate?.[i] / (rh.producer_oil_rate?.[i] + rh.producer_water_rate?.[i] || 1)) : 0;
+                const lastRh = Array.isArray(rh) ? rh[rh.length - 1] : null;
+                const water_cut = lastRh && lastRh.producer_water_rate !== undefined && lastRh.producer_oil_rate !== undefined ?
+                    (lastRh.producer_water_rate / (lastRh.producer_oil_rate + lastRh.producer_water_rate || 1)) : 0;
 
                 history.push({
                     time: Number(runtime.get_time()),

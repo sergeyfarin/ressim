@@ -891,11 +891,20 @@ export function createSimulationStore() {
             if (requestToken !== preRunLoadToken || key !== activeCase || isModified) return;
             if (!resp.ok) { preRunData = null; return; }
 
-            // Decompress stream natively in browser
-            const ds = new DecompressionStream("gzip");
-            const readable = resp.body!.pipeThrough(ds);
-            const response = new Response(readable);
-            const data = await response.json();
+            let data;
+            const fallbackResp = resp.clone();
+            try {
+                // Try native JSON parse. If the server sent Content-Encoding: gzip,
+                // the browser automatically decompresses it for us.
+                data = await resp.json();
+            } catch (e) {
+                // If the data is raw gzip bytes (e.g. GitHub pages application/gzip),
+                // manual decompression via DecompressionStream is required
+                const ds = new DecompressionStream("gzip");
+                const readable = fallbackResp.body!.pipeThrough(ds);
+                const decoder = new Response(readable);
+                data = await decoder.json();
+            }
 
             if (requestToken !== preRunLoadToken || key !== activeCase || isModified) return;
             preRunData = data;

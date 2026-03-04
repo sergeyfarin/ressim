@@ -29,7 +29,10 @@ Items are grouped by priority.
 - [ ] **CSV/JSON export of results** — no way to export rate history, grid state snapshots, or saturation profiles for external analysis. Add download buttons via Blob API.
 - [x] **Inline validation error highlighting** — validation errors exist but aren't shown inline on the offending input fields. Highlight with red borders and inline messages.
 - [x] **History memory optimization** — each snapshot stores the full grid array. For large grids (e.g., 20×20×10 = 4000 cells, 300 steps), this consumes significant memory. Consider delta compression or reduced snapshot frequency.Reduced snapshots were implemented but not consistently used, missing in parts of the code across preloaded cases generation, UX, etc.
-- [x] **Worker silently ignores `add_well` errors** — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
+- [x] Worker silently ignores `add_well` errors — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
+- [x] **FilterCard/ToggleGroup alignment** — unified `FilterCard` to use the more polished `ToggleGroup` internally, including adding a wrapping grid layout for elements > 3.
+- [x] **Double-decompression of Pre-run data** — Vite auto-decompresses `.json.gz` in dev due to headers, while GitHub Pages doesn't. Handled dual path natively in `simulationStore.svelte.ts`.
+- [ ] **End-to-end regression validation for pre-run data** — test whether GitHub Pages serves `.json.gz` correctly with `application/gzip` headers to ensure `DecompressionStream` kicks in as expected on production.
 
 ---
 

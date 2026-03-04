@@ -16,30 +16,29 @@
         customLabels?: Record<string, string>;
         onchange: (v: string) => void;
     }>();
+
+    import ToggleGroup from "./ToggleGroup.svelte";
+
+    const formattedOptions = $derived(
+        options.map((opt: string) => ({
+            value: opt,
+            label: customLabels[opt] ?? opt,
+            disabled: disabled?.includes(opt),
+            title: disabled?.includes(opt)
+                ? (disabledReasons?.[opt] ?? "Not available")
+                : undefined,
+        })),
+    );
 </script>
 
 <div class="filter-card">
     <span class="filter-label">{label}</span>
-    <div class="flex flex-wrap gap-1">
-        {#each options as opt}
-            {@const isDisabled = disabled.includes(opt)}
-            {@const isActive = selected === opt}
-            <button
-                class="filter-pill"
-                class:active={isActive}
-                class:disabled={isDisabled}
-                disabled={isDisabled}
-                title={isDisabled
-                    ? (disabledReasons[opt] ?? "Not available")
-                    : (customLabels[opt] ?? opt)}
-                onclick={() => {
-                    if (!isDisabled) onchange(opt);
-                }}
-            >
-                {customLabels[opt] ?? opt}
-            </button>
-        {/each}
-    </div>
+    <ToggleGroup
+        options={formattedOptions}
+        value={selected}
+        onChange={(val: string | number) => onchange(val as string)}
+        wrap={options.length >= 4}
+    />
 </div>
 
 <style>
@@ -60,32 +59,5 @@
         letter-spacing: 0.05em;
         color: hsl(var(--muted-foreground));
         line-height: 1;
-    }
-    .filter-pill {
-        font-size: 11px;
-        padding: 2px 7px;
-        border-radius: 999px;
-        border: 1px solid hsl(var(--border) / 0.5);
-        background: transparent;
-        color: hsl(var(--foreground) / 0.8);
-        cursor: pointer;
-        transition: all 0.15s ease;
-        line-height: 1.3;
-        white-space: nowrap;
-    }
-    .filter-pill:hover:not(.disabled) {
-        background: hsl(var(--accent) / 0.15);
-        border-color: hsl(var(--accent));
-    }
-    .filter-pill.active {
-        background: hsl(var(--primary));
-        color: hsl(var(--primary-foreground));
-        border-color: hsl(var(--primary));
-        font-weight: 600;
-    }
-    .filter-pill.disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-        text-decoration: line-through;
     }
 </style>
