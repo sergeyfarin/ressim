@@ -854,7 +854,15 @@ export function createSimulationStore() {
         capillaryPEntry = Number(resolved.capillaryPEntry) || 0;
         capillaryLambda = Number(resolved.capillaryLambda) || 2;
         injectorEnabled = resolved.injectorEnabled !== false;
-        analyticalSolutionMode = injectorEnabled ? 'waterflood' : 'depletion';
+
+        // Sync analyticalSolutionMode using the actual resolved parameters
+        if (resolved.analyticalSolutionMode === 'waterflood' || resolved.analyticalSolutionMode === 'depletion') {
+            analyticalSolutionMode = resolved.analyticalSolutionMode;
+        } else if (resolved.analyticalSolutionMode === 'none' && resolved.mode) {
+            analyticalSolutionMode = resolved.mode === 'wf' ? 'waterflood' : 'depletion';
+        } else {
+            analyticalSolutionMode = injectorEnabled ? 'waterflood' : 'depletion';
+        }
         injectorControlMode = resolved.injectorControlMode === 'rate' ? 'rate' : 'pressure';
         producerControlMode = resolved.producerControlMode === 'rate' ? 'rate' : 'pressure';
         injectorBhp = Number(resolved.injectorBhp) || 400;
@@ -916,10 +924,10 @@ export function createSimulationStore() {
             let historyHasMismatches = false;
             for (let i = 0; i < loadedHistory.length; i++) {
                 const entry = loadedHistory[i];
-                if (entry?.grid?.pressure && entry.grid.pressure.length === expectedCellCount) {
+                if (!entry.grid || (entry.grid.pressure && entry.grid.pressure.length === expectedCellCount)) {
                     validHistoryEntries.push({
                         time: Number(entry.time ?? 0),
-                        grid: entry.grid,
+                        grid: entry.grid ?? null,
                         wells: Array.isArray(entry.wells) ? entry.wells : [],
                         rateHistory: [],
                         solverWarning: '',

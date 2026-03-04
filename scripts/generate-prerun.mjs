@@ -140,7 +140,8 @@ async function main() {
     set_panic_hook();
 
     console.log("Generating valid combinations...");
-    const theoreticalCombos = generateAllCombinations(catalog.dimensions);
+    const baseDimensions = catalog.dimensions.filter(d => d.key !== 'benchmarkId');
+    const theoreticalCombos = generateAllCombinations(baseDimensions);
     const validCombos = theoreticalCombos.filter(combo => !evaluateDisabilityRules(combo, catalog.disabilityRules));
 
     console.log(`Theoretical combinations: ${theoreticalCombos.length}`);
@@ -151,7 +152,7 @@ async function main() {
     // Map regular combos
     for (const combo of validCombos) {
         let params = { ...catalog.defaults };
-        for (const dim of catalog.dimensions) {
+        for (const dim of baseDimensions) {
             const opt = dim.options.find(o => o.value === combo[dim.key]);
             if (opt && opt.params) {
                 params = { ...params, ...opt.params };
@@ -160,7 +161,7 @@ async function main() {
         const wells = computeWellPositions(params, combo.geo, combo.well);
         params = { ...params, ...wells };
 
-        const keyParts = catalog.dimensions.map(d => `${d.key}-${combo[d.key]}`);
+        const keyParts = baseDimensions.map(d => `${d.key}-${combo[d.key]}`);
         const caseKey = keyParts.join('_');
         casesToRun.push({ key: caseKey, isBenchmark: false, toggles: combo, params });
     }
