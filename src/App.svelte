@@ -82,7 +82,7 @@
         await loadThreeDViewModule();
         await tick();
 
-        sim.handleCategoryChange("depletion");
+        sim.handleModeChange("depletion");
     });
 
     onDestroy(() => {
@@ -334,11 +334,11 @@
 
         <!-- Top Bar: category buttons + case selector -->
         <TopBar
-            activeCategory={sim.activeCategory}
+            activeMode={sim.activeMode}
             activeCase={sim.activeCase}
             isCustomMode={sim.isCustomMode}
-            customSubCase={sim.resolveCustomSubCase(sim.activeCategory)}
-            onCategoryChange={sim.handleCategoryChange}
+            customSubCase={sim.resolveCustomSubCase(sim.activeMode)}
+            onModeChange={sim.handleModeChange}
             onCaseChange={sim.handleCaseChange}
             onCustomMode={sim.handleCustomMode}
         />
@@ -405,12 +405,12 @@
                             avgWaterSaturationSeries={sim.avgWaterSaturationSeries}
                             ooipM3={sim.ooipM3}
                             poreVolumeM3={sim.poreVolumeM3}
-                            activeCategory={sim.activeCategory}
+                            activeMode={sim.activeMode}
                             activeCase={sim.activeCase}
                             {theme}
                             analyticalMeta={sim.analyticalMeta}
-                            layoutConfig={findCaseByKey(sim.activeCase)?.case
-                                ?.params?.layout}
+                            layoutConfig={findCaseByKey(sim.activeCase)?.params
+                                ?.layout}
                         />
                     {:else}
                         <div
@@ -447,7 +447,7 @@
                     </div>
                 </Card>
 
-                {#if sim.analyticalMeta.mode === "depletion"}
+                {#if sim.analyticalSolutionMode === "depletion"}
                     <div
                         class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
                     >
@@ -458,6 +458,17 @@
                             Model: {sim.analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
                                 >−t/τ</sup
                             >, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J
+                        </div>
+                    </div>
+                {:else if sim.analyticalSolutionMode === "waterflood"}
+                    <div
+                        class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
+                    >
+                        <div class="font-semibold text-foreground">
+                            Waterflood Analytical Mode
+                        </div>
+                        <div class="text-muted-foreground mt-1">
+                            Model: Buckley-Leverett Fractional Flow
                         </div>
                     </div>
                 {/if}

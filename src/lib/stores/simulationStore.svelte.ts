@@ -11,6 +11,7 @@ import {
     caseCatalog,
     findCaseByKey,
     resolveParams,
+    type CaseMode,
 } from '../caseCatalog';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 
@@ -99,9 +100,10 @@ const EMPTY_PROFILE_STATS: ProfileStats = {
 
 const MAX_HISTORY_ENTRIES = 300;
 
-const CUSTOM_SUBCASE_BY_CATEGORY: Record<string, { key: string; label: string }> = {
+const CUSTOM_SUBCASE_BY_MODE: Record<string, { key: string; label: string }> = {
     depletion: { key: 'depletion_custom_subcase', label: 'Custom Depletion Sub-case' },
     waterflood: { key: 'waterflood_custom_subcase', label: 'Custom Waterflood Sub-case' },
+    simulation: { key: 'simulation_custom_subcase', label: 'Custom Simulation Sub-case' },
 };
 
 // ---------- Store ----------
@@ -152,6 +154,8 @@ export function createSimulationStore() {
     let s_or = $state(0.1);
     let n_w = $state(2.0);
     let n_o = $state(2.0);
+    let k_rw_max = $state(1.0);
+    let k_ro_max = $state(1.0);
 
     // Well inputs
     let well_radius = $state(0.1);
@@ -186,7 +190,7 @@ export function createSimulationStore() {
     let currentRunStepsCompleted = $state(0);
 
     // Navigation State
-    let activeCategory = $state('depletion');
+    let activeMode = $state<CaseMode>('depletion');
     let activeCase = $state('');
     let isCustomMode = $state(false);
     let preRunData: any = $state(null);
@@ -194,6 +198,14 @@ export function createSimulationStore() {
     let preRunWarning = $state('');
     let preRunLoadToken = $state(0);
     let preRunContinuationAvailable = $state(false);
+
+    let filters = $state({
+        geometry: [] as string[],
+        permeability: [] as string[],
+        physics: [] as string[],
+        fluids: [] as string[],
+        study: [] as string[],
+    });
 
     // Display data
     let gridStateRaw: GridState | null = $state(null);
@@ -258,6 +270,19 @@ export function createSimulationStore() {
         history.length > 0 && currentIndex >= 0 && currentIndex < history.length
             ? history[currentIndex].time
             : null,
+    );
+
+    const matchingCases = $derived(
+        caseCatalog.filter(c => {
+            if (c.facets.mode !== activeMode) return false;
+            if (filters.geometry.length && !filters.geometry.includes(c.facets.geometry)) return false;
+            if (filters.permeability.length && !filters.permeability.includes(c.facets.permeability)) return false;
+            if (filters.physics.includes('Gravity') && !c.facets.gravity) return false;
+            if (filters.physics.includes('Capillary') && !c.facets.capillary) return false;
+            if (filters.fluids.length && !filters.fluids.some(f => c.facets.fluidVariation.includes(f))) return false;
+            if (filters.study.length && !filters.study.some(s => c.facets.studyType.includes(s))) return false;
+            return true;
+        })
     );
 
     // ===== Validation =====
@@ -350,7 +375,7 @@ export function createSimulationStore() {
             initialPressure, initialSaturation, porosity: reservoirPorosity,
             mu_w, mu_o, c_o, c_w, rho_w, rho_o,
             rock_compressibility, depth_reference, volume_expansion_o, volume_expansion_w,
-            s_wc, s_or, n_w, n_o,
+            s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max,
             max_sat_change_per_step, max_pressure_change_per_step, max_well_rate_change_fraction,
             capillaryEnabled, capillaryPEntry, capillaryLambda, gravityEnabled,
             permMode, minPerm, maxPerm, useRandomSeed, randomSeed,
@@ -373,6 +398,7 @@ export function createSimulationStore() {
             volume_expansion_o: Number(volume_expansion_o), volume_expansion_w: Number(volume_expansion_w),
             rho_w: Number(rho_w), rho_o: Number(rho_o),
             s_wc: Number(s_wc), s_or: Number(s_or), n_w: Number(n_w), n_o: Number(n_o),
+            k_rw_max: Number(k_rw_max), k_ro_max: Number(k_ro_max),
             max_sat_change_per_step: Number(max_sat_change_per_step),
             max_pressure_change_per_step: Number(max_pressure_change_per_step),
             max_well_rate_change_fraction: Number(max_well_rate_change_fraction),
@@ -623,14 +649,14 @@ export function createSimulationStore() {
 
     // ===== Simulator Init / Run =====
 
-    function resolveCustomSubCase(category: string): { key: string; label: string } | null {
-        return CUSTOM_SUBCASE_BY_CATEGORY[String(category ?? '').toLowerCase()] ?? null;
+    function resolveCustomSubCase(mode: string): { key: string; label: string } | null {
+        return CUSTOM_SUBCASE_BY_MODE[String(mode ?? '').toLowerCase()] ?? null;
     }
 
     function maybeSwitchToCustomSubCaseOnReinit(): boolean {
         if (isCustomMode || !activeCase || !baseCaseSignature) return false;
         if (!findCaseByKey(activeCase)) return false;
-        const customSubCase = resolveCustomSubCase(activeCategory);
+        const customSubCase = resolveCustomSubCase(activeMode);
         if (!customSubCase) return false;
         const nextSignature = buildCaseSignature();
         if (nextSignature === baseCaseSignature) return false;
@@ -734,17 +760,24 @@ export function createSimulationStore() {
 
     // ===== Case Navigation =====
 
-    function handleCategoryChange(cat: string) {
+    function handleModeChange(mode: CaseMode) {
         preRunLoadToken += 1;
         isCustomMode = false;
-        activeCategory = cat;
+        activeMode = mode;
         activeCase = '';
         baseCaseSignature = '';
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
-        const cases = caseCatalog[cat]?.cases;
-        if (cases && cases.length > 0) {
+        // Reset filters when switching modes
+        filters.geometry = [];
+        filters.permeability = [];
+        filters.physics = [];
+        filters.fluids = [];
+        filters.study = [];
+
+        const cases = caseCatalog.filter(c => c.facets.mode === mode);
+        if (cases.length > 0) {
             handleCaseChange(cases[0].key);
         }
     }
@@ -754,7 +787,7 @@ export function createSimulationStore() {
         preRunWarning = '';
         const found = findCaseByKey(key);
         if (found) {
-            applyCaseParams(found.case.params);
+            applyCaseParams(found.params);
             baseCaseSignature = buildCaseSignature();
             loadPreRunCase(key);
         }
@@ -813,6 +846,12 @@ export function createSimulationStore() {
         s_or = Number(resolved.s_or) || 0.1;
         n_w = Number(resolved.n_w) || 2.0;
         n_o = Number(resolved.n_o) || 2.0;
+        k_rw_max = Number(resolved.k_rw_max) || 1.0;
+        k_ro_max = Number(resolved.k_ro_max) || 1.0;
+        well_radius = Number(resolved.well_radius) || 0.1;
+        well_skin = Number(resolved.well_skin) || 0;
+        max_pressure_change_per_step = Number(resolved.max_pressure_change_per_step) || 75;
+        max_well_rate_change_fraction = Number(resolved.max_well_rate_change_fraction) || 0.75;
         gravityEnabled = Boolean(resolved.gravityEnabled);
         capillaryEnabled = resolved.capillaryEnabled !== false;
         capillaryPEntry = Number(resolved.capillaryPEntry) || 0;
@@ -825,10 +864,6 @@ export function createSimulationStore() {
         producerBhp = Number(resolved.producerBhp) || 100;
         targetInjectorRate = Number(resolved.targetInjectorRate) || 350;
         targetProducerRate = Number(resolved.targetProducerRate) || 350;
-        well_radius = Number(resolved.well_radius) || 0.1;
-        well_skin = Number(resolved.well_skin) || 0;
-        max_pressure_change_per_step = Number(resolved.max_pressure_change_per_step) || 75;
-        max_well_rate_change_fraction = Number(resolved.max_well_rate_change_fraction) || 0.75;
         if (resolved.permMode && isPermMode(resolved.permMode)) { permMode = resolved.permMode; }
         if (resolved.uniformPermX !== undefined) uniformPermX = Number(resolved.uniformPermX);
         if (resolved.uniformPermY !== undefined) uniformPermY = Number(resolved.uniformPermY);
@@ -973,11 +1008,13 @@ export function createSimulationStore() {
         get layerPermsX() { return layerPermsX; }, set layerPermsX(v) { layerPermsX = v; },
         get layerPermsY() { return layerPermsY; }, set layerPermsY(v) { layerPermsY = v; },
         get layerPermsZ() { return layerPermsZ; }, set layerPermsZ(v) { layerPermsZ = v; },
-        get s_wc() { return s_wc; }, set s_wc(v) { s_wc = v; },
-        get s_or() { return s_or; }, set s_or(v) { s_or = v; },
-        get n_w() { return n_w; }, set n_w(v) { n_w = v; },
-        get n_o() { return n_o; }, set n_o(v) { n_o = v; },
-        get well_radius() { return well_radius; }, set well_radius(v) { well_radius = v; },
+        get s_wc() { return s_wc; }, set s_wc(v: number) { s_wc = v; },
+        get s_or() { return s_or; }, set s_or(v: number) { s_or = v; },
+        get n_w() { return n_w; }, set n_w(v: number) { n_w = v; },
+        get n_o() { return n_o; }, set n_o(v: number) { n_o = v; },
+        get k_rw_max() { return k_rw_max; }, set k_rw_max(v: number) { k_rw_max = v; },
+        get k_ro_max() { return k_ro_max; }, set k_ro_max(v: number) { k_ro_max = v; },
+        get well_radius() { return well_radius; }, set well_radius(v: number) { well_radius = v; },
         get well_skin() { return well_skin; }, set well_skin(v) { well_skin = v; },
         get injectorBhp() { return injectorBhp; }, set injectorBhp(v) { injectorBhp = v; },
         get producerBhp() { return producerBhp; }, set producerBhp(v) { producerBhp = v; },
@@ -1008,7 +1045,7 @@ export function createSimulationStore() {
         get runCompleted() { return runCompleted; },
         get currentRunTotalSteps() { return currentRunTotalSteps; },
         get currentRunStepsCompleted() { return currentRunStepsCompleted; },
-        get activeCategory() { return activeCategory; },
+        get activeMode() { return activeMode; },
         get activeCase() { return activeCase; },
         get isCustomMode() { return isCustomMode; },
         get preRunData() { return preRunData; },
@@ -1056,7 +1093,7 @@ export function createSimulationStore() {
         stepOnce,
         stopRun,
         checkConfigDiff,
-        handleCategoryChange,
+        handleModeChange,
         handleCaseChange,
         handleCustomMode,
         handleAnalyticalSolutionModeChange,

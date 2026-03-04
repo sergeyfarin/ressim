@@ -14,7 +14,7 @@
         avgWaterSaturationSeries = [],
         ooipM3 = 0,
         poreVolumeM3 = 0,
-        activeCategory = "",
+        activeMode = "",
         activeCase = "",
         theme = "dark",
         analyticalMeta,
@@ -26,7 +26,7 @@
         avgWaterSaturationSeries?: Array<number | null>;
         ooipM3?: number;
         poreVolumeM3?: number;
-        activeCategory?: string;
+        activeMode?: string;
         activeCase?: string;
         theme?: "dark" | "light";
         analyticalMeta?: any;
@@ -34,7 +34,14 @@
     } = $props();
 
     // --- X-axis state (shared across all panels) ---
-    type XAxisMode = "time" | "tD" | "logTime" | "pvi" | "pvp" | "cumLiquid" | "cumInjection";
+    type XAxisMode =
+        | "time"
+        | "tD"
+        | "logTime"
+        | "pvi"
+        | "pvp"
+        | "cumLiquid"
+        | "cumInjection";
     type XYPoint = { x: number; y: number | null };
 
     let xAxisMode = $state<XAxisMode>("time");
@@ -75,7 +82,7 @@
     // --- Scenario-aware panel defaults ---
     $effect(() => {
         // Track the activeCase trigger affirmatively so it evaluates once upon case shift
-        const cat = (activeCategory ?? "").toLowerCase();
+        const cat = (activeMode ?? "").toLowerCase();
         const cs = (activeCase ?? "").toLowerCase();
 
         // Use untrack so setting the state variables right here does not re-trigger this exact effect!
@@ -168,20 +175,40 @@
         }),
     );
 
-    let ratesScaleFactor = $derived(normalizeRates && analyticalMeta?.q0 && analyticalMeta.q0 > 0 ? (1.0 / analyticalMeta.q0) : 1.0);
+    let ratesScaleFactor = $derived(
+        normalizeRates && analyticalMeta?.q0 && analyticalMeta.q0 > 0
+            ? 1.0 / analyticalMeta.q0
+            : 1.0,
+    );
 
-    let normOilProd = $derived(oilProd.map((v) => Number(v) * ratesScaleFactor));
-    let normLiquidProd = $derived(liquidProd.map((v) => Number(v) * ratesScaleFactor));
-    let normInjection = $derived(injection.map((v) => Number(v) * ratesScaleFactor));
-    let normWaterProd = $derived(waterProd.map((v) => Number(v) * ratesScaleFactor));
-    let normAnalyticalOilProd = $derived(analyticalOilProd.map((v) => v === null ? null : (v * ratesScaleFactor)));
-    let normAnalyticalWaterRate = $derived(analyticalWaterRate.map((v) => v === null ? null : (v * ratesScaleFactor)));
+    let normOilProd = $derived(
+        oilProd.map((v) => Number(v) * ratesScaleFactor),
+    );
+    let normLiquidProd = $derived(
+        liquidProd.map((v) => Number(v) * ratesScaleFactor),
+    );
+    let normInjection = $derived(
+        injection.map((v) => Number(v) * ratesScaleFactor),
+    );
+    let normWaterProd = $derived(
+        waterProd.map((v) => Number(v) * ratesScaleFactor),
+    );
+    let normAnalyticalOilProd = $derived(
+        analyticalOilProd.map((v) =>
+            v === null ? null : v * ratesScaleFactor,
+        ),
+    );
+    let normAnalyticalWaterRate = $derived(
+        analyticalWaterRate.map((v) =>
+            v === null ? null : v * ratesScaleFactor,
+        ),
+    );
     let normOilRateAbsError = $derived(
         normOilProd.map((sim, idx) => {
             const analytical = normAnalyticalOilProd[idx];
             if (analytical === null || sim === null) return null;
             return Math.abs(sim - analytical);
-        })
+        }),
     );
 
     // Cumulative computations
@@ -429,7 +456,8 @@
     function setXAxisMode(mode: XAxisMode) {
         if (mode === "pvi" && !pviAvailable) return;
         if (mode === "pvp" && !pvpAvailable) return;
-        if (mode === "tD" && (!analyticalMeta?.tau || analyticalMeta.tau <= 0)) return;
+        if (mode === "tD" && (!analyticalMeta?.tau || analyticalMeta.tau <= 0))
+            return;
         xAxisMode = mode;
     }
 
@@ -643,7 +671,12 @@
             position: "left",
             min: 0,
             alignToPixels: true,
-            title: { display: true, text: normalizeRates ? "Normalized Rate (q/q₀)" : "Rate (m³/day)" },
+            title: {
+                display: true,
+                text: normalizeRates
+                    ? "Normalized Rate (q/q₀)"
+                    : "Rate (m³/day)",
+            },
             ticks: { count: 6 },
         },
     });
@@ -747,7 +780,8 @@
         class="flex flex-col sm:flex-row sm:items-center gap-2 px-4 pt-4 md:px-5 md:pt-5 pb-2 border-b border-border/50"
     >
         <div class="flex items-center gap-2 overflow-x-auto">
-            <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
+            <span
+                class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
                 >X-axis</span
             >
             <ToggleGroup
@@ -756,15 +790,25 @@
                 onChange={(val) => setXAxisMode(val as XAxisMode)}
             />
         </div>
-        
+
         <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
             {#if analyticalMeta?.q0 && analyticalMeta.q0 > 0}
-                <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
+                <span
+                    class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
                     >Y-axis</span
                 >
-                <label class="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input type="checkbox" bind:checked={normalizeRates} class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5" />
-                    <span class="text-xs text-muted-foreground whitespace-nowrap">Normalize Rates (q/q₀)</span>
+                <label
+                    class="flex items-center gap-1.5 cursor-pointer select-none"
+                >
+                    <input
+                        type="checkbox"
+                        bind:checked={normalizeRates}
+                        class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                    />
+                    <span
+                        class="text-xs text-muted-foreground whitespace-nowrap"
+                        >Normalize Rates (q/q₀)</span
+                    >
                 </label>
             {/if}
         </div>
