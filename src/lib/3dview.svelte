@@ -1210,7 +1210,7 @@
             class="flex flex-col items-end text-right min-w-[140px] select-none"
         >
             <div class="text-[12px] font-mono font-medium text-foreground">
-                Step <span class="text-primary">{currentIndex}</span><span
+                Snapshot <span class="text-primary">{currentIndex}</span><span
                     class="text-muted-foreground"
                 >
                     / {Math.max(0, history.length - 1)}</span
