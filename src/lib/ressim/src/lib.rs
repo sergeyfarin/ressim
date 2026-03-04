@@ -192,6 +192,7 @@ impl ReservoirSimulator {
     /// - NaN or Inf values in bhp or pi
     /// - Negative productivity index
     /// - BHP outside reasonable range
+
     pub fn add_well(
         &mut self,
         i: usize,

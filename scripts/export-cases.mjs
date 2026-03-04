@@ -169,11 +169,10 @@ function runCase(payload, steps, deltaTDays) {
     }
 
     // Add wells
-    const clamp = (v, max) => Math.max(0, Math.min(max - 1, Number(v)));
-    const prodI = clamp(payload.producerI, payload.nx);
-    const prodJ = clamp(payload.producerJ, payload.ny);
-    const injI = clamp(payload.injectorI, payload.nx);
-    const injJ = clamp(payload.injectorJ, payload.ny);
+    const prodI = Number(payload.producerI);
+    const prodJ = Number(payload.producerJ);
+    const injI = Number(payload.injectorI);
+    const injJ = Number(payload.injectorJ);
 
     for (let k = 0; k < payload.nz; k++) {
         sim.add_well(prodI, prodJ, k, payload.producerBhp, payload.well_radius, payload.well_skin, false);

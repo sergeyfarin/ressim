@@ -29,7 +29,7 @@ Items are grouped by priority.
 - [ ] **CSV/JSON export of results** — no way to export rate history, grid state snapshots, or saturation profiles for external analysis. Add download buttons via Blob API.
 - [x] **Inline validation error highlighting** — validation errors exist but aren't shown inline on the offending input fields. Highlight with red borders and inline messages.
 - [x] **History memory optimization** — each snapshot stores the full grid array. For large grids (e.g., 20×20×10 = 4000 cells, 300 steps), this consumes significant memory. Consider delta compression or reduced snapshot frequency.Reduced snapshots were implemented but not consistently used, missing in parts of the code across preloaded cases generation, UX, etc.
-- [ ] **Worker silently ignores `add_well` errors** — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
+- [x] **Worker silently ignores `add_well` errors** — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
 
 ---
 

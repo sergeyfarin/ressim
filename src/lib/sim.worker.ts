@@ -179,21 +179,24 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     simulator.setPermeabilityPerLayer(new Float64Array(payload.permsX), new Float64Array(payload.permsY), new Float64Array(payload.permsZ));
   }
 
-  const clampIndex = (value: number, maxExclusive: number): number => Math.max(0, Math.min(maxExclusive - 1, Number(value)));
-  const producerI = clampIndex(payload.producerI ?? (payload.nx - 1), payload.nx);
-  const producerJ = clampIndex(payload.producerJ ?? 0, payload.ny);
-  const injectorI = clampIndex(payload.injectorI ?? 0, payload.nx);
-  const injectorJ = clampIndex(payload.injectorJ ?? 0, payload.ny);
+  const producerI = Number(payload.producerI ?? (payload.nx - 1));
+  const producerJ = Number(payload.producerJ ?? 0);
+  const injectorI = Number(payload.injectorI ?? 0);
+  const injectorJ = Number(payload.injectorJ ?? 0);
   const producerBhp = Number(payload.producerBhp ?? 100);
   const injectorBhp = Number(payload.injectorBhp ?? 500);
 
-  for (let i = 0; i < payload.nz; i++) {
-    simulator.add_well(producerI, producerJ, i, producerBhp, payload.well_radius, payload.well_skin, false);
-  }
-  if (Boolean(payload.injectorEnabled ?? true)) {
+  try {
     for (let i = 0; i < payload.nz; i++) {
-      simulator.add_well(injectorI, injectorJ, i, injectorBhp, payload.well_radius, payload.well_skin, true);
+      simulator.add_well(producerI, producerJ, i, producerBhp, payload.well_radius, payload.well_skin, false);
     }
+    if (Boolean(payload.injectorEnabled ?? true)) {
+      for (let i = 0; i < payload.nz; i++) {
+        simulator.add_well(injectorI, injectorJ, i, injectorBhp, payload.well_radius, payload.well_skin, true);
+      }
+    }
+  } catch (err: any) {
+    throw new Error(`Failed to configure wells: ${err?.message || err}`);
   }
 }
 
