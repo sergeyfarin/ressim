@@ -114,8 +114,10 @@ export function buildCaseKey(toggles: ToggleState): string {
     }
 
     // Always use the dimensions in the order defined in catalog
-    const parts = catalog.dimensions.map(d => `${d.key}-${toggles[d.key] || d.options[0].value}`);
-    return parts.join('_');
+    return catalog.dimensions
+        .filter(d => d.key !== 'benchmarkId')
+        .map(d => `${d.key}-${toggles[d.key] || d.options[0].value}`)
+        .join('_');
 }
 
 /**

@@ -82,6 +82,13 @@
     }
 
     function calculateDepletionAnalyticalProduction() {
+        console.log("CALCULATING DEPLETION ANALYTICAL", {
+            enabled,
+            len: timeHistory.length,
+            reservoir,
+            initP: initialPressure,
+            producerBhp,
+        });
         if (!reservoir || timeHistory.length === 0) {
             onAnalyticalMeta({
                 mode: "depletion",
@@ -178,8 +185,8 @@
                 kx_k = layerPermsX[k] ?? uniformPermX;
                 ky_k = layerPermsY[k] ?? uniformPermY;
             }
-            kx_k = Math.max(1e-6, kx_k);
-            ky_k = Math.max(1e-6, ky_k);
+            kx_k = Math.max(1e-6, kx_k) * 9.869233e-16; // mD to m^2
+            ky_k = Math.max(1e-6, ky_k) * 9.869233e-16; // mD to m^2
             const kAvg_k = Math.sqrt(kx_k * ky_k);
 
             let J_oil_k = 0;
@@ -278,6 +285,13 @@
         });
 
         onAnalyticalData({ production: analyticalProduction });
+        console.log("DEPLETION ANALYTICAL DONE", {
+            len: analyticalProduction.length,
+            q0,
+            tau,
+            first: analyticalProduction[0],
+            last: analyticalProduction[analyticalProduction.length - 1],
+        });
     }
 
     $effect(() => {

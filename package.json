@@ -6,8 +6,7 @@
   "scripts": {
     "predev": "npm run build:wasm",
     "dev": "vite",
-    "bench:export": "node scripts/export-benchmarks.mjs",
-    "cases:export": "npx --yes tsx scripts/export-cases.mjs",
+    "cases:export": "node scripts/generate-prerun.mjs",
     "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview",
@@ -33,6 +32,6 @@
   },
   "dependencies": {
     "chart.js": "^4.5.1",
-    "three": "0.183.1"    
+    "three": "0.183.1"
   }
 }
