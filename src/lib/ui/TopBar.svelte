@@ -2,6 +2,7 @@
   import Button from "../components/ui/Button.svelte";
   import FilterCard from "./FilterCard.svelte";
   import { type CaseMode, catalog, type ToggleState } from "../caseCatalog";
+  import { getFacetOverrideGroups } from "../stores/phase2PresetContract";
 
   let {
     activeMode = "dep" as CaseMode,
@@ -11,6 +12,10 @@
     onModeChange,
     onParamEdit,
     onToggleChange,
+    onCustomizeFacet = (_dimKey: string) => {},
+    onResetFacet = (_dimKey: string) => {},
+    activeCustomizeGroup = null,
+    parameterOverrideGroups = {},
   } = $props<{
     activeMode: CaseMode;
     isModified?: boolean;
@@ -19,6 +24,10 @@
     onModeChange: (mode: CaseMode) => void;
     onParamEdit: () => void;
     onToggleChange: (key: string, value: any) => void;
+    onCustomizeFacet?: (dimensionKey: string) => void;
+    onResetFacet?: (dimensionKey: string) => void;
+    activeCustomizeGroup?: string | null;
+    parameterOverrideGroups?: Record<string, string[]>;
   }>();
 
   let isCollapsed = $state(false);
@@ -52,6 +61,23 @@
       return true;
     }),
   );
+
+  function groupsForFacet(dimKey: string): string[] {
+    return getFacetOverrideGroups(dimKey);
+  }
+
+  function facetOverrideCount(dimKey: string): number {
+    const groups = groupsForFacet(dimKey);
+    return groups.reduce(
+      (sum, group) => sum + (parameterOverrideGroups[group]?.length ?? 0),
+      0,
+    );
+  }
+
+  function facetCustomizeActive(dimKey: string): boolean {
+    const groups = groupsForFacet(dimKey);
+    return !!activeCustomizeGroup && groups.includes(activeCustomizeGroup);
+  }
 </script>
 
 <div class="case-selector" class:collapsed={isCollapsed}>
@@ -70,20 +96,14 @@
           {label}
         </Button>
       {/each}
-      <div class="w-px h-6 bg-border mx-1"></div>
-      <Button
-        size="sm"
-        variant={isModified ? "default" : "outline"}
-        onclick={onParamEdit}
-        title="Selecting manual parameters overrides preset selections"
-      >
-        <span class="mr-1 opacity-70">⚙</span> Custom
-        {#if isModified}
-          <span
-            class="ml-2 w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.6)]"
-          ></span>
-        {/if}
-      </Button>
+      {#if isModified}
+        <span
+          class="ml-2 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700"
+          title="Current inputs include manual overrides over the selected preset"
+        >
+          Customized
+        </span>
+      {/if}
     </div>
 
     <button
@@ -121,33 +141,65 @@
         {/each}
       {/if}
     </div>
-  {:else if isModified}
-    <div
-      class="mt-3 text-sm text-amber-600 dark:text-amber-400/90 font-medium px-2 flex items-center gap-2"
-    >
-      <span>Parameter overrides active. </span>
-      <span class="text-xs font-normal text-muted-foreground"
-        >Select a mode above to reset to predefined cases.</span
-      >
-    </div>
   {:else}
+    {#if isModified}
+      <div
+        class="mt-3 text-sm text-amber-600 dark:text-amber-400/90 font-medium px-2 flex items-center gap-2"
+      >
+        <span>Parameter overrides active. </span>
+        <span class="text-xs font-normal text-muted-foreground"
+          >Use per-facet Customize actions below, or select a mode above to reset to predefined cases.</span
+        >
+      </div>
+    {/if}
     <!-- Row 2: Toggle cards mapping directly from catalog -->
     <div
       class="flex flex-wrap gap-2 mt-3 animate-in fade-in slide-in-from-top-1 duration-200"
     >
       {#each activeModeDimensions as dim}
-        <FilterCard
-          label={dim.label}
-          options={dim.options.map((o) => o.value)}
-          customLabels={dim.options.reduce(
-            (acc, o) => ({ ...acc, [o.value]: o.label }),
-            {},
-          )}
-          selected={toggles[dim.key]}
-          disabled={Object.keys(disabledOptions[dim.key] || {})}
-          disabledReasons={disabledOptions[dim.key] || {}}
-          onchange={(val) => onToggleChange(dim.key, val)}
-        />
+        <div class="flex flex-col gap-1">
+          <FilterCard
+            label={dim.label}
+            options={dim.options.map((o) => o.value)}
+            customLabels={dim.options.reduce(
+              (acc, o) => ({ ...acc, [o.value]: o.label }),
+              {},
+            )}
+            selected={toggles[dim.key]}
+            disabled={Object.keys(disabledOptions[dim.key] || {})}
+            disabledReasons={disabledOptions[dim.key] || {}}
+            onchange={(val) => onToggleChange(dim.key, val)}
+          />
+          <button
+            class={`self-start rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
+              facetCustomizeActive(dim.key)
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+            onclick={() => {
+              onParamEdit();
+              onCustomizeFacet(dim.key);
+            }}
+            title={`Customize fields related to ${dim.label}`}
+          >
+            Customize {dim.label}
+          </button>
+          {#if groupsForFacet(dim.key).length > 0}
+            <button
+              class="self-start rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              onclick={() => onResetFacet(dim.key)}
+              disabled={facetOverrideCount(dim.key) === 0}
+              title={`Reset customized ${dim.label} fields back to preset values`}
+            >
+              Reset {dim.label}
+            </button>
+          {/if}
+          {#if facetOverrideCount(dim.key) > 0}
+            <div class="self-start text-[10px] font-medium text-muted-foreground px-1">
+              {facetOverrideCount(dim.key)} changed field{facetOverrideCount(dim.key) === 1 ? "" : "s"}
+            </div>
+          {/if}
+        </div>
       {/each}
     </div>
 

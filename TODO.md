@@ -50,7 +50,7 @@ Interruption resume protocol (mandatory):
 Single source of truth: this section is the authoritative tracker for ongoing Phase 2 work.
 
 - [x] **P2.1 UX contract + state schema freeze** — unified contract module and store schema fields landed (`basePreset`, `parameterOverrides`, `benchmarkProvenance`, `analyticalStatus`) with focused tests and docs (`src/lib/stores/phase2PresetContract.ts`, `src/lib/stores/phase2PresetContract.test.ts`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`).
-- [ ] **P2.2 Preset composer shell UI (in progress)** — first visible shell landed in `InputsTab` (Preset + Customize panel bound to `basePreset`, overrides, and analytical status); remaining work is mode/facet composer interactions and generated-profile controls.
+- [ ] **P2.2 Preset composer shell UI (in progress)** — hybrid flow polished: per-facet `Customize` + `Reset` controls are part of each facet group, active customize selection is highlighted, section-targeted focus/highlight is wired, customize sessions collapse via explicit `OK`, and facet mapping is centralized in shared Phase 2 contract helpers; remaining work is richer generated-profile controls in shell.
 - [ ] **P2.3 Override tracking + changed-field UX** — add per-group reset-to-preset and "show changed fields" using deterministic diff against base preset.
 - [ ] **P2.4 Benchmark clone-to-custom flow** — add one-click clone path from benchmark presets to editable custom state with immutable source benchmark metadata.
 - [ ] **P2.5 Analytical eligibility evaluator** — implement `reference | approximate | off` status computation with explicit reasons and warning severity.

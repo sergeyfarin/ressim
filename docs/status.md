@@ -179,6 +179,81 @@ Phase 2 progress update (2026-03-05)
 Slice in progress:
 - P2.2 Preset composer shell UI
 
+Implemented in this sub-slice (centralized facet mapping):
+- Centralized facet mapping in `src/lib/stores/phase2PresetContract.ts`:
+	- Added `FACET_TO_SECTION_TARGET` and `FACET_TO_OVERRIDE_GROUPS`.
+	- Added exported helpers `getFacetCustomizeSectionTarget(...)` and `getFacetOverrideGroups(...)`.
+- Refactored `src/App.svelte` to consume centralized helpers for both customize routing and reset-group resolution.
+- Refactored `src/lib/ui/TopBar.svelte` to consume centralized helper for facet override-group resolution.
+- Extended `src/lib/stores/phase2PresetContract.test.ts` with mapping helper tests (known keys + fallback behavior).
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 10 tests).
+
+Next active slice:
+P2.2 Preset composer shell UI (in progress).
+
+Phase 2 progress update (2026-03-05)
+Slice in progress:
+- P2.2 Preset composer shell UI
+
+Implemented in this sub-slice (Hybrid polish):
+- `src/lib/ui/TopBar.svelte`
+	- Added per-facet `Customize` and `Reset` controls directly under each facet card.
+	- Added per-facet changed-field summary under the customize controls.
+	- Active customize selection is visually highlighted on the facet customize action.
+- `src/App.svelte`
+	- Added active customize-group state and facet reset handlers.
+	- Reset now applies base values for overridden fields in the selected facet group.
+	- When overrides clear completely, flow returns to preset state by reapplying current toggles.
+- `src/lib/ui/InputsTab.svelte`
+	- Added customize-session collapsible footer with explicit `OK` button.
+	- Kept section focus/highlight routing for local customize entry points.
+
+Design note:
+- Implemented collapsible inline customize sessions rather than modal popup, to keep scientific context visible and avoid modal churn while editing coupled parameters.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 8 tests).
+
+Remaining in current slice:
+- Add richer generated-profile controls in shell (show changed fields toggle + per-group quick actions).
+
+Next active slice:
+P2.2 Preset composer shell UI (in progress).
+
+Phase 2 progress update (2026-03-05)
+Slice in progress:
+- P2.2 Preset composer shell UI
+
+Implemented in this sub-slice (Hybrid interaction pass):
+- Updated `src/lib/ui/TopBar.svelte`:
+	- Removed the prominent global `Custom` action button.
+	- Added per-facet `Customize <Facet>` actions under each facet card.
+	- Kept customization state visible as a lightweight `Customized` status badge.
+- Updated `src/App.svelte`:
+	- Added facet-to-input-section routing (`geo/grid/dt/fluid/rock/grav/cap/well/benchmarkId`).
+	- Wired `TopBar` customize actions to section-focus requests for `InputsTab`.
+- Updated `src/lib/ui/InputsTab.svelte`:
+	- Added targeted section focus/highlight behavior for customize requests.
+	- Section wrappers now smoothly scroll/focus: shell, static, timestep, reservoir, relcap, well, analytical.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 8 tests).
+
+Remaining in current slice:
+- Add richer generated-profile controls in shell (show changed fields toggle + per-group quick actions).
+
+Next active slice:
+P2.2 Preset composer shell UI (in progress).
+
+Phase 2 progress update (2026-03-05)
+Slice in progress:
+- P2.2 Preset composer shell UI
+
 Implemented in this sub-slice:
 - Added first visible Preset + Customize shell component: `src/lib/ui/PresetCustomizeShell.svelte`.
 - Wired the shell into `src/lib/ui/InputsTab.svelte` above the existing parameter panels.

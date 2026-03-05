@@ -84,6 +84,48 @@ export const PHASE2_PARAMETER_GROUPS: Record<ParameterOverrideGroupKey, readonly
 
 export type ParameterOverrideGroups = Record<ParameterOverrideGroupKey, string[]>;
 
+export type CustomizeSectionTarget =
+    | 'shell'
+    | 'static'
+    | 'timestep'
+    | 'reservoir'
+    | 'relcap'
+    | 'well'
+    | 'analytical';
+
+export const FACET_TO_SECTION_TARGET: Record<string, CustomizeSectionTarget> = {
+    geo: 'static',
+    grid: 'static',
+    dt: 'timestep',
+    fluid: 'reservoir',
+    rock: 'reservoir',
+    grav: 'reservoir',
+    cap: 'relcap',
+    well: 'well',
+    benchmarkId: 'shell',
+};
+
+export const FACET_TO_OVERRIDE_GROUPS: Record<string, readonly ParameterOverrideGroupKey[]> = {
+    geo: ['grid'],
+    grid: ['grid'],
+    dt: ['stability'],
+    fluid: ['fluids'],
+    rock: ['permeability'],
+    grav: ['physics'],
+    cap: ['physics'],
+    well: ['wells'],
+    benchmarkId: [],
+};
+
+export function getFacetCustomizeSectionTarget(dimensionKey: string): CustomizeSectionTarget {
+    return FACET_TO_SECTION_TARGET[dimensionKey] ?? 'shell';
+}
+
+export function getFacetOverrideGroups(dimensionKey: string): ParameterOverrideGroupKey[] {
+    const groups = FACET_TO_OVERRIDE_GROUPS[dimensionKey] ?? [];
+    return [...groups];
+}
+
 export type BenchmarkProvenance = {
     sourceBenchmarkId: string;
     sourceCaseKey: string;

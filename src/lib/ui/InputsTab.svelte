@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from "svelte";
+  import Button from "../components/ui/Button.svelte";
   import StaticPropertiesPanel from "./StaticPropertiesPanel.svelte";
   import ReservoirPropertiesPanel from "./ReservoirPropertiesPanel.svelte";
   import RelativeCapillaryPanel from "./RelativeCapillaryPanel.svelte";
@@ -83,6 +85,10 @@
       mode: "none",
       reasons: ["Analytical overlay is disabled for this scenario."],
     },
+    customizeSectionTarget = null,
+    customizeSectionNonce = 0,
+    activeCustomizeGroup = null,
+    onDoneCustomize = () => {},
     readOnly = false,
   }: {
     nx?: number;
@@ -169,11 +175,77 @@
       mode: "waterflood" | "depletion" | "none";
       reasons: string[];
     };
+    customizeSectionTarget?:
+      | "shell"
+      | "static"
+      | "timestep"
+      | "reservoir"
+      | "relcap"
+      | "well"
+      | "analytical"
+      | null;
+    customizeSectionNonce?: number;
+    activeCustomizeGroup?: string | null;
+    onDoneCustomize?: () => void;
     readOnly?: boolean;
   } = $props();
+
+  let shellSectionEl: HTMLDivElement | null = null;
+  let staticSectionEl: HTMLDivElement | null = null;
+  let timestepSectionEl: HTMLDivElement | null = null;
+  let reservoirSectionEl: HTMLDivElement | null = null;
+  let relcapSectionEl: HTMLDivElement | null = null;
+  let wellSectionEl: HTMLDivElement | null = null;
+  let analyticalSectionEl: HTMLDivElement | null = null;
+  let highlightedSection = $state<string | null>(null);
+
+  async function focusCustomizeSection(
+    target:
+      | "shell"
+      | "static"
+      | "timestep"
+      | "reservoir"
+      | "relcap"
+      | "well"
+      | "analytical"
+      | null,
+  ) {
+    if (!target) return;
+    await tick();
+    const el =
+      target === "shell"
+        ? shellSectionEl
+        : target === "static"
+          ? staticSectionEl
+          : target === "timestep"
+            ? timestepSectionEl
+            : target === "reservoir"
+              ? reservoirSectionEl
+              : target === "relcap"
+                ? relcapSectionEl
+                : target === "well"
+                  ? wellSectionEl
+                  : analyticalSectionEl;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    highlightedSection = target;
+    setTimeout(() => {
+      if (highlightedSection === target) highlightedSection = null;
+    }, 1600);
+  }
+
+  $effect(() => {
+    const nonce = customizeSectionNonce;
+    if (!nonce) return;
+    if (!customizeSectionTarget) return;
+    void focusCustomizeSection(customizeSectionTarget);
+  });
 </script>
 
-<div class="mb-4">
+<div
+  class={`mb-4 rounded-lg transition-shadow ${highlightedSection === "shell" ? "ring-2 ring-primary/35" : ""}`}
+  bind:this={shellSectionEl}
+>
   <PresetCustomizeShell
     {basePreset}
     {benchmarkProvenance}
@@ -185,96 +257,141 @@
 
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
   <div class="space-y-3">
-    <StaticPropertiesPanel
-      bind:nx
-      bind:ny
-      bind:nz
-      bind:cellDx
-      bind:cellDy
-      bind:cellDz
-      fieldErrors={validationErrors}
-      {onNzOrPermModeChange}
-    />
-    <TimestepControlsPanel
-      bind:delta_t_days
-      bind:max_sat_change_per_step
-      bind:max_pressure_change_per_step
-      bind:max_well_rate_change_fraction
-      fieldErrors={validationErrors}
-    />
+    <div
+      class={`rounded-lg transition-shadow ${highlightedSection === "static" ? "ring-2 ring-primary/35" : ""}`}
+      bind:this={staticSectionEl}
+    >
+      <StaticPropertiesPanel
+        bind:nx
+        bind:ny
+        bind:nz
+        bind:cellDx
+        bind:cellDy
+        bind:cellDz
+        fieldErrors={validationErrors}
+        {onNzOrPermModeChange}
+      />
+    </div>
+    <div
+      class={`rounded-lg transition-shadow ${highlightedSection === "timestep" ? "ring-2 ring-primary/35" : ""}`}
+      bind:this={timestepSectionEl}
+    >
+      <TimestepControlsPanel
+        bind:delta_t_days
+        bind:max_sat_change_per_step
+        bind:max_pressure_change_per_step
+        bind:max_well_rate_change_fraction
+        fieldErrors={validationErrors}
+      />
+    </div>
   </div>
 
   <div class="space-y-3">
-    <ReservoirPropertiesPanel
-      bind:initialPressure
-      bind:initialSaturation
-      bind:reservoirPorosity
-      bind:mu_w
-      bind:mu_o
-      bind:c_o
-      bind:c_w
-      bind:rho_w
-      bind:rho_o
-      bind:rock_compressibility
-      bind:depth_reference
-      bind:volume_expansion_o
-      bind:volume_expansion_w
-      bind:gravityEnabled
-      bind:permMode
-      bind:uniformPermX
-      bind:uniformPermY
-      bind:uniformPermZ
-      bind:useRandomSeed
-      bind:randomSeed
-      bind:minPerm
-      bind:maxPerm
-      bind:nz
-      bind:layerPermsX
-      bind:layerPermsY
-      bind:layerPermsZ
-      {onNzOrPermModeChange}
-      fieldErrors={validationErrors}
-    />
+    <div
+      class={`rounded-lg transition-shadow ${highlightedSection === "reservoir" ? "ring-2 ring-primary/35" : ""}`}
+      bind:this={reservoirSectionEl}
+    >
+      <ReservoirPropertiesPanel
+        bind:initialPressure
+        bind:initialSaturation
+        bind:reservoirPorosity
+        bind:mu_w
+        bind:mu_o
+        bind:c_o
+        bind:c_w
+        bind:rho_w
+        bind:rho_o
+        bind:rock_compressibility
+        bind:depth_reference
+        bind:volume_expansion_o
+        bind:volume_expansion_w
+        bind:gravityEnabled
+        bind:permMode
+        bind:uniformPermX
+        bind:uniformPermY
+        bind:uniformPermZ
+        bind:useRandomSeed
+        bind:randomSeed
+        bind:minPerm
+        bind:maxPerm
+        bind:nz
+        bind:layerPermsX
+        bind:layerPermsY
+        bind:layerPermsZ
+        {onNzOrPermModeChange}
+        fieldErrors={validationErrors}
+      />
+    </div>
   </div>
 
   <div class="space-y-3">
-    <RelativeCapillaryPanel
-      bind:s_wc
-      bind:s_or
-      bind:n_w
-      bind:n_o
-      bind:k_rw_max
-      bind:k_ro_max
-      bind:capillaryEnabled
-      bind:capillaryPEntry
-      bind:capillaryLambda
-      fieldErrors={validationErrors}
-    />
-    <WellPropertiesPanel
-      bind:well_radius
-      bind:well_skin
-      bind:nx
-      bind:ny
-      bind:injectorEnabled
-      bind:injectorControlMode
-      bind:producerControlMode
-      bind:injectorBhp
-      bind:producerBhp
-      bind:targetInjectorRate
-      bind:targetProducerRate
-      bind:injectorI
-      bind:injectorJ
-      bind:producerI
-      bind:producerJ
-      fieldErrors={validationErrors}
-    />
-    <AnalyticalInputsPanel
-      bind:analyticalSolutionMode
-      bind:analyticalDepletionRateScale
-      {onAnalyticalSolutionModeChange}
-    />
+    <div
+      class={`rounded-lg transition-shadow ${highlightedSection === "relcap" ? "ring-2 ring-primary/35" : ""}`}
+      bind:this={relcapSectionEl}
+    >
+      <RelativeCapillaryPanel
+        bind:s_wc
+        bind:s_or
+        bind:n_w
+        bind:n_o
+        bind:k_rw_max
+        bind:k_ro_max
+        bind:capillaryEnabled
+        bind:capillaryPEntry
+        bind:capillaryLambda
+        fieldErrors={validationErrors}
+      />
+    </div>
+    <div
+      class={`rounded-lg transition-shadow ${highlightedSection === "well" ? "ring-2 ring-primary/35" : ""}`}
+      bind:this={wellSectionEl}
+    >
+      <WellPropertiesPanel
+        bind:well_radius
+        bind:well_skin
+        bind:nx
+        bind:ny
+        bind:injectorEnabled
+        bind:injectorControlMode
+        bind:producerControlMode
+        bind:injectorBhp
+        bind:producerBhp
+        bind:targetInjectorRate
+        bind:targetProducerRate
+        bind:injectorI
+        bind:injectorJ
+        bind:producerI
+        bind:producerJ
+        fieldErrors={validationErrors}
+      />
+    </div>
+    <div
+      class={`rounded-lg transition-shadow ${highlightedSection === "analytical" ? "ring-2 ring-primary/35" : ""}`}
+      bind:this={analyticalSectionEl}
+    >
+      <AnalyticalInputsPanel
+        bind:analyticalSolutionMode
+        bind:analyticalDepletionRateScale
+        {onAnalyticalSolutionModeChange}
+      />
+    </div>
   </div>
 </div>
+
+{#if activeCustomizeGroup}
+  <div
+    class="mt-3 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 flex items-center justify-between gap-3"
+  >
+    <div class="text-xs">
+      <span class="font-semibold text-foreground">Customizing group:</span>
+      <span class="ml-1 text-primary font-medium">{activeCustomizeGroup}</span>
+      <span class="ml-2 text-muted-foreground"
+        >Press <strong>OK</strong> to collapse this customize session.</span
+      >
+    </div>
+    <Button size="sm" variant="outline" onclick={onDoneCustomize}>OK</Button>
+  </div>
+{/if}
 
 {#if validationWarnings.length > 0}
   <div
@@ -290,8 +407,8 @@
 
 {#if readOnly}
   <div class="mt-3 text-xs text-muted-foreground text-center">
-    Viewing pre-run case parameters. Switch to <strong class="text-foreground"
-      >Custom</strong
-    > mode to edit.
+    Viewing pre-run case parameters. Use a facet-level
+    <strong class="text-foreground">Customize</strong>
+    action to edit.
   </div>
 {/if}

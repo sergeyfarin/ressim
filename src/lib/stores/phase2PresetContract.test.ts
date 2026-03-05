@@ -3,6 +3,8 @@ import {
     buildBasePresetProfile,
     buildParameterOverrides,
     evaluateAnalyticalStatus,
+    getFacetCustomizeSectionTarget,
+    getFacetOverrideGroups,
     groupParameterOverrides,
 } from './phase2PresetContract';
 
@@ -79,5 +81,17 @@ describe('phase2PresetContract', () => {
 
         expect(status.level).toBe('approximate');
         expect(status.reasons.length).toBeGreaterThan(0);
+    });
+
+    it('uses centralized facet section mapping with safe fallback', () => {
+        expect(getFacetCustomizeSectionTarget('geo')).toBe('static');
+        expect(getFacetCustomizeSectionTarget('dt')).toBe('timestep');
+        expect(getFacetCustomizeSectionTarget('unknown-dim')).toBe('shell');
+    });
+
+    it('uses centralized facet override-group mapping with safe fallback', () => {
+        expect(getFacetOverrideGroups('rock')).toEqual(['permeability']);
+        expect(getFacetOverrideGroups('well')).toEqual(['wells']);
+        expect(getFacetOverrideGroups('unknown-dim')).toEqual([]);
     });
 });

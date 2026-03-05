@@ -9,12 +9,70 @@
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
+    import {
+        getFacetCustomizeSectionTarget,
+        getFacetOverrideGroups,
+        type CustomizeSectionTarget,
+    } from "./lib/stores/phase2PresetContract";
 
     // ---------- Store ----------
     const store = createSimulationStore();
     const scenario = store.scenarioSelection;
     const params = store.parameterState;
     const runtime = store.runtimeState;
+
+    let customizeSectionTarget = $state<CustomizeSectionTarget | null>(null);
+    let customizeSectionNonce = $state(0);
+    let activeCustomizeGroup = $state<string | null>(null);
+
+    function setParamValueByKey(key: string, value: unknown) {
+        const nextValue = Array.isArray(value) ? [...value] : value;
+        (params as any)[key] = nextValue;
+    }
+
+    function handleCustomizeFacet(dimKey: string) {
+        customizeSectionTarget = getFacetCustomizeSectionTarget(dimKey);
+        customizeSectionNonce += 1;
+        const groups = getFacetOverrideGroups(dimKey);
+        activeCustomizeGroup = groups.length > 0 ? groups[0] : null;
+        const anchor = document.getElementById("inputs-section");
+        if (anchor) {
+            anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }
+
+    function handleDoneCustomize() {
+        activeCustomizeGroup = null;
+    }
+
+    function handleResetFacet(dimKey: string) {
+        const groups = getFacetOverrideGroups(dimKey);
+        if (!groups.length) return;
+
+        const groupOverrides = params.parameterOverrideGroups;
+        const allOverrides = params.parameterOverrides as Record<
+            string,
+            { base: unknown; current: unknown }
+        >;
+
+        for (const group of groups) {
+            const keys = groupOverrides[group] ?? [];
+            for (const key of keys) {
+                const entry = allOverrides[key];
+                if (!entry) continue;
+                setParamValueByKey(key, entry.base);
+            }
+        }
+
+        activeCustomizeGroup = groups[0] ?? activeCustomizeGroup;
+
+        queueMicrotask(() => {
+            if (params.parameterOverrideCount === 0) {
+                activeCustomizeGroup = null;
+                scenario.handleToggleChange();
+            }
+        });
+    }
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("dark");
@@ -343,6 +401,10 @@
             onModeChange={scenario.handleModeChange}
             onParamEdit={scenario.handleParamEdit}
             onToggleChange={scenario.handleToggleChange}
+            onCustomizeFacet={handleCustomizeFacet}
+            onResetFacet={handleResetFacet}
+            activeCustomizeGroup={activeCustomizeGroup}
+            parameterOverrideGroups={params.parameterOverrideGroups}
         />
 
         <!-- Run Controls -->
@@ -605,6 +667,10 @@
                 parameterOverrideCount={params.parameterOverrideCount}
                 parameterOverrideGroups={params.parameterOverrideGroups}
                 analyticalStatus={runtime.analyticalStatus}
+                customizeSectionTarget={customizeSectionTarget}
+                customizeSectionNonce={customizeSectionNonce}
+                activeCustomizeGroup={activeCustomizeGroup}
+                onDoneCustomize={handleDoneCustomize}
                 readOnly={false}
             />
         </div>
