@@ -12,6 +12,39 @@ Items are grouped by priority.
 
 ---
 
+## Active Execution Plan — Phase 1 (Interruption-Safe)
+
+Single source of truth: this section is the authoritative tracker for ongoing Phase 1 work.
+
+- [x] **P1.1 Validation centralization** — store uses shared `validateInputs.ts` implementation.
+- [x] **P1.2 Explicit model-reset diff domain** — model reset key narrowed to structural/model domain.
+- [x] **P1.3 Store state domain split (API layer)** — introduce explicit `scenarioSelection`, `parameterState`, `runtimeState` in store return shape.
+- [x] **P1.4 Compatibility shim window** — preserve current top-level store fields as temporary aliases to avoid big-bang breakage.
+- [x] **P1.5 App migration** — move `App.svelte` consumers to domain objects with no behavior change.
+- [x] **P1.6 UI consumer migration** — verified no additional direct store consumers beyond `App.svelte`; no extra migration edits required in this slice.
+- [ ] **P1.7 Domain-scoped dirty/reset behavior (in progress)** — ensure only model-domain edits trigger model stale/reinit paths.
+- [ ] **P1.8 Remove shim fields** — after migration and test pass, remove temporary aliases.
+- [ ] **P1.9 Validation and regression pass** — run targeted tests and type checks for store/app/case selection paths.
+- [ ] **P1.10 Docs and handoff update** — update `docs/status.md` with completed slice, files touched, tests run, and next slice.
+
+Phase 1 acceptance checklist:
+
+- [ ] Store exposes explicit domain objects and App uses them.
+- [ ] No silent behavior regression in run/init/step flow.
+- [ ] Validation gating and error visibility remain unchanged or improved.
+- [ ] Benchmark and non-benchmark case selection behavior remains correct.
+- [ ] Temporary compatibility shims removed before Phase 1 close.
+
+Interruption resume protocol (mandatory):
+
+- [ ] Keep this Phase 1 section current before ending a work session.
+- [ ] Mark only one active slice at a time by adding `(in progress)` in the item text.
+- [ ] Append each completed slice outcome to `docs/status.md` with tests run and explicit next step.
+- [ ] If interrupted mid-slice, add a short `WIP` note in `docs/status.md` with current file and pending edit.
+- [ ] Do not start a new slice until TODO and status are synchronized.
+
+---
+
 ## High Priority — Physics & Correctness
 
 - [x] **Upstream mobility weighting in pressure equation** — `transmissibility_upstream()` in `step.rs` now uses upstream weighting based on potential difference. Confirmed in code review.
@@ -34,10 +67,14 @@ Items are grouped by priority.
 - [ ] **Implement Option B shell UI** — consolidate top-level mode/facet selection and editable parameter inputs into one unified "Preset + Customize" surface.
 - [ ] **Benchmark clone flow** — add `Clone to Custom` action that copies all benchmark parameters and stores source benchmark provenance.
 - [ ] **Analytical status banner** — introduce `reference | approximate | off` status with persistent, highly visible warning for approximate overlays.
-- [ ] **Benchmark-only pre-run loading** — remove pre-run fetch/continuation path from non-benchmark modes; keep only for benchmark artifacts.
-- [ ] **Fix run validation gating** — pass `hasValidationErrors` into run controls and show explicit message when run is blocked by invalid inputs.
-- [ ] **Stabilize faceted constraints** — replace one-pass toggle auto-fix with iterative constraint stabilization.
-- [ ] **Preserve per-layer edits on Nz change** — resize layer arrays without wiping existing user values.
+- [x] **Benchmark-only pre-run loading** — remove pre-run fetch/continuation path from non-benchmark modes; keep only for benchmark artifacts. Pre-runs hydrate charts/3D only; running always re-initializes from step 0.
+- [x] **Fix run validation gating** — pass `hasValidationErrors` into run controls and show explicit message when run is blocked by invalid inputs.
+- [x] **Fix custom-subcase mode mapping** — normalize mode aliases (`dep/wf/sim` vs `depletion/waterflood/simulation`) so custom sub-case switching is reliable.
+- [x] **Stabilize faceted constraints** — replace one-pass toggle auto-fix with iterative constraint stabilization.
+- [x] **Preserve per-layer edits on Nz change** — resize layer arrays without wiping existing user values.
+- [x] **Fix stale simulator reuse after case geometry changes** — 2D/3D runs could execute on previous 1D simulator instance; runs now force reinit when model is stale before sending run payload.
+- [x] **Use single-source validation in store** — `simulationStore` now consumes `validateInputs.ts` instead of duplicating rules.
+- [x] **Model-domain config diff tracking** — config diff signature now tracks model-reset domain explicitly via `buildModelResetKey`.
 
 - [x] **Reactive clamping anti-pattern** — ~20 reactive statements aggressively clamp inputs while user types (e.g., deleting makes `0.` → forces `0.1`). Move validation to `buildCreatePayload` or `onBlur`. (Resolved via Svelte 5 store transition)
 - [x] **Dual config-changed watchers** — two reactive blocks overlap in detecting parameter changes, causing redundant reinitializations. Consolidate into a single `checkConfigDiff()`. (Resolved via Svelte 5 store transition)
@@ -93,6 +130,7 @@ Items are grouped by priority.
 - [ ] **CI pipeline for tests** — GitHub Actions: `cargo test` + `npm test` + `npm run build` on push/PR. Regenerate `benchmark-results.json` and compare.
 - [ ] **Worker `typeof` guards → typed WASM interface** — `configureSimulator()` in `sim.worker.ts` uses 12+ `typeof X === 'function'` guards with `/** @type {any} */` casts. Generate proper TS bindings from `wasm-bindgen` or define a typed wrapper.
 - [x] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
+- [ ] **App-store domain wiring regression tests** — add tests that assert `App.svelte` consumes `scenarioSelection` / `parameterState` / `runtimeState` correctly, preventing accidental fallback to flat compatibility fields during Phase 1.
 - [ ] **Selective Chart.js imports** — both `RateChart.svelte` and `FractionalFlow.svelte` register all registerables. Register only needed components to reduce bundle.
 - [ ] **PCG solver allocation reuse** — `solver.rs:38,70` allocates new `DVector`s (`z`, `z_new`) per iteration. Pre-allocate workspace vectors outside the loop.
 - [ ] **Remove redundant `sat_oil` array** — `sat_oil = 1.0 - sat_water` is maintained separately in every cell across `sat_oil: Vec<f64>`. Derive on access or via a helper to halve memory and eliminate sync risk.

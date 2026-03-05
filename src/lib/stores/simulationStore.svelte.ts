@@ -13,10 +13,16 @@ import {
     composeCaseParams,
     getDefaultToggles,
     getDisabledOptions,
+    stabilizeToggleState,
     type CaseMode,
     type ToggleState
 } from '../caseCatalog';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
+import {
+    validateInputs as validateSimulationInputs,
+    type SimulationInputs,
+    type ValidationState as InputValidationState,
+} from '../validateInputs';
 
 // ---------- Helper utilities (pure, no runes) ----------
 
@@ -88,11 +94,6 @@ type ProfileStats = {
     snapshotsSent: number;
 };
 
-type ValidationState = {
-    errors: Record<string, string>;
-    warnings: string[];
-};
-
 const EMPTY_PROFILE_STATS: ProfileStats = {
     batchMs: 0,
     avgStepMs: 0,
@@ -103,10 +104,10 @@ const EMPTY_PROFILE_STATS: ProfileStats = {
 
 const MAX_HISTORY_ENTRIES = 300;
 
-const CUSTOM_SUBCASE_BY_MODE: Record<string, { key: string; label: string }> = {
-    depletion: { key: 'depletion_custom_subcase', label: 'Custom Depletion Sub-case' },
-    waterflood: { key: 'waterflood_custom_subcase', label: 'Custom Waterflood Sub-case' },
-    simulation: { key: 'simulation_custom_subcase', label: 'Custom Simulation Sub-case' },
+const CUSTOM_SUBCASE_BY_MODE: Partial<Record<CaseMode, { key: string; label: string }>> = {
+    dep: { key: 'depletion_custom_subcase', label: 'Custom Depletion Sub-case' },
+    wf: { key: 'waterflood_custom_subcase', label: 'Custom Waterflood Sub-case' },
+    sim: { key: 'simulation_custom_subcase', label: 'Custom Simulation Sub-case' },
 };
 
 // ---------- Store ----------
@@ -223,7 +224,7 @@ export function createSimulationStore() {
     let vizRevision = $state(0);
     let modelReinitNotice = $state('');
     let modelNeedsReinit = $state(false);
-    let configDiffSignature = $state('');
+    let modelConfigSignature = $state('');
     let skipNextAutoModelReset = $state(false);
 
     // History / replay
@@ -272,73 +273,39 @@ export function createSimulationStore() {
     const disabledOptions = $derived(getDisabledOptions(toggles));
 
     // ===== Validation =====
-    function validateInputs(): ValidationState {
-        const errors: Record<string, string> = {};
-        const warnings: string[] = [];
-        const numeric = (value: unknown) => Number(value);
-        const isFiniteNumber = (value: unknown) => Number.isFinite(numeric(value));
-
-        if (!Number.isInteger(numeric(nx)) || numeric(nx) < 1) errors.nx = 'Nx must be an integer ≥ 1.';
-        if (!Number.isInteger(numeric(ny)) || numeric(ny) < 1) errors.ny = 'Ny must be an integer ≥ 1.';
-        if (!Number.isInteger(numeric(nz)) || numeric(nz) < 1) errors.nz = 'Nz must be an integer ≥ 1.';
-        if (!isFiniteNumber(cellDx) || numeric(cellDx) <= 0) errors.cellDx = 'Cell Δx must be positive.';
-        if (!isFiniteNumber(cellDy) || numeric(cellDy) <= 0) errors.cellDy = 'Cell Δy must be positive.';
-        if (!isFiniteNumber(cellDz) || numeric(cellDz) <= 0) errors.cellDz = 'Cell Δz must be positive.';
-        if (!Number.isInteger(numeric(steps)) || numeric(steps) < 1) errors.steps = 'Steps must be an integer ≥ 1.';
-        if (initialSaturation < 0 || initialSaturation > 1) errors.initialSaturation = 'Initial water saturation must be in [0, 1].';
-        if (!isFiniteNumber(delta_t_days) || numeric(delta_t_days) <= 0) errors.deltaT = 'Timestep must be positive.';
-        if (!isFiniteNumber(well_radius) || numeric(well_radius) <= 0) errors.wellRadius = 'Well radius must be positive.';
-        if (!isFiniteNumber(mu_w) || numeric(mu_w) <= 0) errors.mu_w = 'Water viscosity must be positive.';
-        if (!isFiniteNumber(mu_o) || numeric(mu_o) <= 0) errors.mu_o = 'Oil viscosity must be positive.';
-        if (!isFiniteNumber(c_o) || numeric(c_o) < 0) errors.c_o = 'Oil compressibility must be ≥ 0.';
-        if (!isFiniteNumber(c_w) || numeric(c_w) < 0) errors.c_w = 'Water compressibility must be ≥ 0.';
-        if (!isFiniteNumber(rock_compressibility) || numeric(rock_compressibility) < 0) errors.rock_compressibility = 'Rock compressibility must be ≥ 0.';
-        if (!isFiniteNumber(volume_expansion_o) || numeric(volume_expansion_o) <= 0) errors.volume_expansion_o = 'Oil formation volume factor must be positive.';
-        if (!isFiniteNumber(volume_expansion_w) || numeric(volume_expansion_w) <= 0) errors.volume_expansion_w = 'Water formation volume factor must be positive.';
-        if (!isFiniteNumber(max_sat_change_per_step) || numeric(max_sat_change_per_step) <= 0 || numeric(max_sat_change_per_step) > 1) errors.max_sat_change_per_step = 'Max ΔSw per step must be in (0, 1].';
-        if (!isFiniteNumber(max_pressure_change_per_step) || numeric(max_pressure_change_per_step) <= 0) errors.max_pressure_change_per_step = 'Max ΔP per step must be positive.';
-        if (!isFiniteNumber(max_well_rate_change_fraction) || numeric(max_well_rate_change_fraction) <= 0) errors.max_well_rate_change_fraction = 'Max well-rate change fraction must be positive.';
-
-        if (
-            !Number.isInteger(numeric(injectorI)) ||
-            !Number.isInteger(numeric(injectorJ)) ||
-            !Number.isInteger(numeric(producerI)) ||
-            !Number.isInteger(numeric(producerJ))
-        ) {
-            errors.wellIndexType = 'Well indices must be integers.';
-        } else if (
-            numeric(injectorI) < 0 || numeric(injectorI) >= numeric(nx) ||
-            numeric(injectorJ) < 0 || numeric(injectorJ) >= numeric(ny) ||
-            numeric(producerI) < 0 || numeric(producerI) >= numeric(nx) ||
-            numeric(producerJ) < 0 || numeric(producerJ) >= numeric(ny)
-        ) {
-            errors.wellIndexRange = 'Well indices must lie within the grid bounds.';
-        }
-
-        if (s_wc + s_or >= 1) errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
-        if (minPerm > maxPerm) errors.permBounds = 'Min perm must not exceed max perm.';
-        if (injectorEnabled && injectorI === producerI && injectorJ === producerJ) {
-            errors.wellOverlap = 'Injector and producer cannot share the same i/j location.';
-        }
-        if (injectorControlMode === 'pressure' && producerControlMode === 'pressure' && injectorBhp <= producerBhp) {
-            errors.wellPressureOrder = 'Injector BHP should be greater than producer BHP.';
-        }
-        if (injectorControlMode === 'rate' && targetInjectorRate <= 0 && injectorEnabled) {
-            errors.injectorRate = 'Injector rate must be positive when enabled and rate-controlled.';
-        }
-        if (producerControlMode === 'rate' && targetProducerRate <= 0) {
-            errors.producerRate = 'Producer rate must be positive when rate-controlled.';
-        }
-        if (delta_t_days * steps > 3650) {
-            warnings.push('Requested run covers more than 10 years; results may require tighter timestep limits.');
-        }
-        if (max_pressure_change_per_step > 250) {
-            warnings.push('Large max ΔP per step may reduce numerical robustness.');
-        }
-        return { errors, warnings };
+    function buildValidationInput(): SimulationInputs {
+        return {
+            nx, ny, nz,
+            cellDx, cellDy, cellDz,
+            steps,
+            initialSaturation,
+            delta_t_days,
+            well_radius,
+            mu_w, mu_o,
+            c_o, c_w,
+            rock_compressibility,
+            volume_expansion_o,
+            volume_expansion_w,
+            max_sat_change_per_step,
+            max_pressure_change_per_step,
+            max_well_rate_change_fraction,
+            injectorI, injectorJ,
+            producerI, producerJ,
+            s_wc, s_or,
+            minPerm, maxPerm,
+            injectorEnabled,
+            injectorControlMode,
+            producerControlMode,
+            injectorBhp,
+            producerBhp,
+            targetInjectorRate,
+            targetProducerRate,
+        };
     }
 
-    const validationState: ValidationState = $derived(validateInputs());
+    const validationState: InputValidationState = $derived(
+        validateSimulationInputs(buildValidationInput()),
+    );
     const validationErrors: Record<string, string> = $derived(validationState.errors);
     const validationWarnings: string[] = $derived(validationState.warnings);
     const hasValidationErrors = $derived(Object.keys(validationErrors).length > 0);
@@ -635,19 +602,21 @@ export function createSimulationStore() {
 
     // ===== Simulator Init / Run =====
 
-    function resolveCustomSubCase(mode: string): { key: string; label: string } | null {
-        return CUSTOM_SUBCASE_BY_MODE[String(mode ?? '').toLowerCase()] ?? null;
+    function resolveCustomSubCase(mode: CaseMode | string): { key: string; label: string } | null {
+        const raw = String(mode ?? '').toLowerCase();
+        const normalizedMode: CaseMode | null =
+            raw === 'dep' || raw === 'depletion' ? 'dep'
+                : raw === 'wf' || raw === 'waterflood' ? 'wf'
+                    : raw === 'sim' || raw === 'simulation' ? 'sim'
+                        : raw === 'benchmark' ? 'benchmark'
+                            : null;
+        if (!normalizedMode) return null;
+        return CUSTOM_SUBCASE_BY_MODE[normalizedMode] ?? null;
     }
 
     function maybeSwitchToCustomSubCaseOnReinit(): boolean {
         if (isModified || !activeCase || !baseCaseSignature) return false;
 
-        let foundKey = activeCase;
-
-        if (foundKey && foundKey !== activeCase) {
-            isModified = false;
-            activeCase = foundKey;
-        }
         const customSubCase = resolveCustomSubCase(activeMode);
         if (!customSubCase) return false;
         const nextSignature = buildCaseSignature();
@@ -655,6 +624,7 @@ export function createSimulationStore() {
         preRunLoadToken += 1;
         preRunData = null;
         preRunWarning = '';
+        preRunContinuationAvailable = false;
         activeCase = customSubCase.key;
         baseCaseSignature = nextSignature;
         return true;
@@ -687,6 +657,7 @@ export function createSimulationStore() {
         modelReinitNotice = '';
         runtimeError = '';
         runtimeWarning = '';
+        preRunContinuationAvailable = false;
         if (switchedToCustomSubCase) {
             runtimeWarning = 'Preset modified. Reinitialized as a custom sub-case.';
         }
@@ -700,15 +671,25 @@ export function createSimulationStore() {
     }
 
     function runSimulationBatch(batchSteps: number, batchHistoryInterval: number) {
-        // If viewing pre-run data, force a fresh re-init instead of continuing
+        // Pre-run payloads hydrate visualization only; always re-init before running.
         if (preRunContinuationAvailable) {
             preRunContinuationAvailable = false;
             runtimeWarning = '';
-            initSimulator({ runAfterInit: true });
+            const initialized = initSimulator({ silent: true });
+            if (!initialized) return;
+        }
+
+        // If model inputs changed, create a fresh simulator first, then run this batch.
+        if (modelNeedsReinit) {
+            const initialized = initSimulator({ silent: true });
+            if (!initialized) return;
+        }
+
+        if (!simWorker || workerRunning) return;
+        if (hasValidationErrors) {
+            runtimeError = 'Input validation failed. Resolve highlighted fields before running.';
             return;
         }
-        if (modelNeedsReinit) { initSimulator(); return; }
-        if (!simWorker || workerRunning || hasValidationErrors) return;
         workerRunning = true;
         currentRunTotalSteps = batchSteps;
         currentRunStepsCompleted = 0;
@@ -734,10 +715,10 @@ export function createSimulationStore() {
     // ===== Config Diff Detection =====
 
     function checkConfigDiff() {
-        const nextSignature = JSON.stringify(buildCreatePayload());
-        if (!configDiffSignature) { configDiffSignature = nextSignature; return; }
-        if (nextSignature === configDiffSignature) return;
-        configDiffSignature = nextSignature;
+        const nextSignature = buildModelResetKey();
+        if (!modelConfigSignature) { modelConfigSignature = nextSignature; return; }
+        if (nextSignature === modelConfigSignature) return;
+        modelConfigSignature = nextSignature;
         if (skipNextAutoModelReset) { skipNextAutoModelReset = false; return; }
         if (wasmReady && simWorker && isModified && lastCreateSignature) {
             resetSimulationState({ clearErrors: true, clearWarnings: false, resetProfile: true, bumpViz: true });
@@ -765,26 +746,17 @@ export function createSimulationStore() {
         preRunData = null;
         preRunWarning = '';
         preRunLoading = false;
+        preRunContinuationAvailable = false;
 
         handleToggleChange(); // applies defaults and pre-runs
     }
 
     function handleToggleChange(dimKey?: string, value?: string) {
+        const nextToggles = { ...toggles };
         if (dimKey && value) {
-            toggles[dimKey] = value;
+            nextToggles[dimKey] = value;
         }
-
-        // Auto-fix any toggles that just became disabled
-        const currentDisabled = getDisabledOptions(toggles);
-        for (const [dKey, reasonMap] of Object.entries(currentDisabled)) {
-            if (reasonMap[toggles[dKey]]) {
-                const dim = catalog.dimensions.find(d => d.key === dKey);
-                if (dim) {
-                    const validOpt = dim.options.find(o => !reasonMap[o.value]);
-                    if (validOpt) toggles[dKey] = validOpt.value;
-                }
-            }
-        }
+        toggles = stabilizeToggleState(nextToggles);
 
         const newKey = buildCaseKey(toggles);
         activeCase = newKey;
@@ -793,7 +765,14 @@ export function createSimulationStore() {
 
         applyCaseParams(composeCaseParams(toggles));
         baseCaseSignature = buildCaseSignature();
-        loadPreRunCase(newKey);
+        if (activeMode === 'benchmark') {
+            loadPreRunCase(newKey);
+        } else {
+            preRunLoadToken += 1;
+            preRunData = null;
+            preRunLoading = false;
+            preRunContinuationAvailable = false;
+        }
     }
 
     function handleParamEdit() {
@@ -803,6 +782,7 @@ export function createSimulationStore() {
         baseCaseSignature = '';
         preRunData = null;
         preRunWarning = '';
+        preRunContinuationAvailable = false;
     }
 
     function handleAnalyticalSolutionModeChange(mode: 'waterflood' | 'depletion') {
@@ -891,13 +871,25 @@ export function createSimulationStore() {
         producerI = Number(resolved.producerI) || nx - 1;
         producerJ = Number(resolved.producerJ) || 0;
         resetModelAndVisualizationState(true, false);
+        modelNeedsReinit = true;
+        modelReinitNotice = '';
     }
 
     async function loadPreRunCase(key: string) {
+        if (activeMode !== 'benchmark') {
+            preRunLoadToken += 1;
+            preRunData = null;
+            preRunLoading = false;
+            preRunWarning = '';
+            preRunContinuationAvailable = false;
+            return;
+        }
+
         const requestToken = ++preRunLoadToken;
         preRunLoading = true;
         preRunData = null;
         preRunWarning = '';
+        preRunContinuationAvailable = false;
         try {
             const url = `${import.meta.env.BASE_URL}cases/prerun/${key}.json.gz`;
             const resp = await fetch(url, { cache: 'no-store' });
@@ -991,7 +983,7 @@ export function createSimulationStore() {
             });
             runCompleted = true;
             preRunContinuationAvailable = true;
-            runtimeWarning = 'Pre-run case loaded. Click Run to re-initialize and simulate from scratch.';
+            runtimeWarning = 'Benchmark pre-run loaded for visualization (charts/3D). Run will re-initialize and start from step 0.';
             vizRevision += 1;
         } catch (e) {
             console.error('Failed to load pre-run data:', e);
@@ -1007,8 +999,150 @@ export function createSimulationStore() {
     }
 
     // ===== Public API =====
+    const scenarioSelection = {
+        get activeMode() { return activeMode; },
+        get activeCase() { return activeCase; },
+        get isModified() { return isModified; },
+        get toggles() { return toggles; },
+        set toggles(v) { toggles = v; },
+        get disabledOptions() { return disabledOptions; },
+        get preRunData() { return preRunData; },
+        get preRunLoading() { return preRunLoading; },
+        get preRunWarning() { return preRunWarning; },
+        get preRunContinuationAvailable() { return preRunContinuationAvailable; },
+        handleModeChange,
+        handleToggleChange,
+        handleParamEdit,
+        resolveCustomSubCase,
+    };
+
+    const parameterState = {
+        get nx() { return nx; }, set nx(v) { nx = v; },
+        get ny() { return ny; }, set ny(v) { ny = v; },
+        get nz() { return nz; }, set nz(v) { nz = v; },
+        get cellDx() { return cellDx; }, set cellDx(v) { cellDx = v; },
+        get cellDy() { return cellDy; }, set cellDy(v) { cellDy = v; },
+        get cellDz() { return cellDz; }, set cellDz(v) { cellDz = v; },
+        get delta_t_days() { return delta_t_days; }, set delta_t_days(v) { delta_t_days = v; },
+        get steps() { return steps; }, set steps(v) { steps = v; },
+        get initialPressure() { return initialPressure; }, set initialPressure(v) { initialPressure = v; },
+        get initialSaturation() { return initialSaturation; }, set initialSaturation(v) { initialSaturation = v; },
+        get reservoirPorosity() { return reservoirPorosity; }, set reservoirPorosity(v) { reservoirPorosity = v; },
+        get mu_w() { return mu_w; }, set mu_w(v) { mu_w = v; },
+        get mu_o() { return mu_o; }, set mu_o(v) { mu_o = v; },
+        get c_o() { return c_o; }, set c_o(v) { c_o = v; },
+        get c_w() { return c_w; }, set c_w(v) { c_w = v; },
+        get rock_compressibility() { return rock_compressibility; }, set rock_compressibility(v) { rock_compressibility = v; },
+        get depth_reference() { return depth_reference; }, set depth_reference(v) { depth_reference = v; },
+        get volume_expansion_o() { return volume_expansion_o; }, set volume_expansion_o(v) { volume_expansion_o = v; },
+        get volume_expansion_w() { return volume_expansion_w; }, set volume_expansion_w(v) { volume_expansion_w = v; },
+        get rho_w() { return rho_w; }, set rho_w(v) { rho_w = v; },
+        get rho_o() { return rho_o; }, set rho_o(v) { rho_o = v; },
+        get permMode() { return permMode; }, set permMode(v) { permMode = v; },
+        get uniformPermX() { return uniformPermX; }, set uniformPermX(v) { uniformPermX = v; },
+        get uniformPermY() { return uniformPermY; }, set uniformPermY(v) { uniformPermY = v; },
+        get uniformPermZ() { return uniformPermZ; }, set uniformPermZ(v) { uniformPermZ = v; },
+        get minPerm() { return minPerm; }, set minPerm(v) { minPerm = v; },
+        get maxPerm() { return maxPerm; }, set maxPerm(v) { maxPerm = v; },
+        get useRandomSeed() { return useRandomSeed; }, set useRandomSeed(v) { useRandomSeed = v; },
+        get randomSeed() { return randomSeed; }, set randomSeed(v) { randomSeed = v; },
+        get layerPermsX() { return layerPermsX; }, set layerPermsX(v) { layerPermsX = v; },
+        get layerPermsY() { return layerPermsY; }, set layerPermsY(v) { layerPermsY = v; },
+        get layerPermsZ() { return layerPermsZ; }, set layerPermsZ(v) { layerPermsZ = v; },
+        get s_wc() { return s_wc; }, set s_wc(v) { s_wc = v; },
+        get s_or() { return s_or; }, set s_or(v) { s_or = v; },
+        get n_w() { return n_w; }, set n_w(v) { n_w = v; },
+        get n_o() { return n_o; }, set n_o(v) { n_o = v; },
+        get k_rw_max() { return k_rw_max; }, set k_rw_max(v) { k_rw_max = v; },
+        get k_ro_max() { return k_ro_max; }, set k_ro_max(v) { k_ro_max = v; },
+        get well_radius() { return well_radius; }, set well_radius(v) { well_radius = v; },
+        get well_skin() { return well_skin; }, set well_skin(v) { well_skin = v; },
+        get injectorBhp() { return injectorBhp; }, set injectorBhp(v) { injectorBhp = v; },
+        get producerBhp() { return producerBhp; }, set producerBhp(v) { producerBhp = v; },
+        get injectorControlMode() { return injectorControlMode; }, set injectorControlMode(v) { injectorControlMode = v; },
+        get producerControlMode() { return producerControlMode; }, set producerControlMode(v) { producerControlMode = v; },
+        get injectorEnabled() { return injectorEnabled; }, set injectorEnabled(v) { injectorEnabled = v; },
+        get targetInjectorRate() { return targetInjectorRate; }, set targetInjectorRate(v) { targetInjectorRate = v; },
+        get targetProducerRate() { return targetProducerRate; }, set targetProducerRate(v) { targetProducerRate = v; },
+        get injectorI() { return injectorI; }, set injectorI(v) { injectorI = v; },
+        get injectorJ() { return injectorJ; }, set injectorJ(v) { injectorJ = v; },
+        get producerI() { return producerI; }, set producerI(v) { producerI = v; },
+        get producerJ() { return producerJ; }, set producerJ(v) { producerJ = v; },
+        get max_sat_change_per_step() { return max_sat_change_per_step; }, set max_sat_change_per_step(v) { max_sat_change_per_step = v; },
+        get max_pressure_change_per_step() { return max_pressure_change_per_step; }, set max_pressure_change_per_step(v) { max_pressure_change_per_step = v; },
+        get max_well_rate_change_fraction() { return max_well_rate_change_fraction; }, set max_well_rate_change_fraction(v) { max_well_rate_change_fraction = v; },
+        get gravityEnabled() { return gravityEnabled; }, set gravityEnabled(v) { gravityEnabled = v; },
+        get capillaryEnabled() { return capillaryEnabled; }, set capillaryEnabled(v) { capillaryEnabled = v; },
+        get capillaryPEntry() { return capillaryPEntry; }, set capillaryPEntry(v) { capillaryPEntry = v; },
+        get capillaryLambda() { return capillaryLambda; }, set capillaryLambda(v) { capillaryLambda = v; },
+        get analyticalSolutionMode() { return analyticalSolutionMode; }, set analyticalSolutionMode(v) { analyticalSolutionMode = v; },
+        get analyticalDepletionRateScale() { return analyticalDepletionRateScale; }, set analyticalDepletionRateScale(v) { analyticalDepletionRateScale = v; },
+        get historyInterval() { return userHistoryInterval ?? defaultHistoryInterval; }, set historyInterval(v) { userHistoryInterval = v; },
+        get ooipM3() { return ooipM3; },
+        get poreVolumeM3() { return poreVolumeM3; },
+        get rateControlledWells() { return rateControlledWells; },
+        get validationErrors() { return validationErrors; },
+        get validationWarnings() { return validationWarnings; },
+        get hasValidationErrors() { return hasValidationErrors; },
+        handleAnalyticalSolutionModeChange,
+        handleNzOrPermModeChange,
+    };
+
+    const runtimeState = {
+        get wasmReady() { return wasmReady; },
+        get workerRunning() { return workerRunning; },
+        get runCompleted() { return runCompleted; },
+        get currentRunTotalSteps() { return currentRunTotalSteps; },
+        get currentRunStepsCompleted() { return currentRunStepsCompleted; },
+        get gridStateRaw() { return gridStateRaw; },
+        get wellStateRaw() { return wellStateRaw; },
+        get simTime() { return simTime; },
+        get rateHistory() { return rateHistory; },
+        get analyticalProductionData() { return analyticalProductionData; },
+        set analyticalProductionData(v) { analyticalProductionData = v; },
+        get analyticalMeta() { return analyticalMeta; },
+        set analyticalMeta(v) { analyticalMeta = v; },
+        get runtimeWarning() { return runtimeWarning; },
+        get runtimeError() { return runtimeError; },
+        get solverWarning() { return solverWarning; },
+        get vizRevision() { return vizRevision; },
+        get modelNeedsReinit() { return modelNeedsReinit; },
+        get modelReinitNotice() { return modelReinitNotice; },
+        get history() { return history; },
+        get currentIndex() { return currentIndex; },
+        set currentIndex(v) { currentIndex = v; },
+        get playing() { return playing; },
+        get playSpeed() { return playSpeed; },
+        get profileStats() { return profileStats; },
+        get latestInjectionRate() { return latestInjectionRate; },
+        get avgReservoirPressureSeries() { return avgReservoirPressureSeries; },
+        get avgWaterSaturationSeries() { return avgWaterSaturationSeries; },
+        get replayTime() { return replayTime; },
+        get estimatedRunSeconds() { return estimatedRunSeconds; },
+        get longRunEstimate() { return longRunEstimate; },
+        setupWorker,
+        dispose,
+        initSimulator,
+        runSteps,
+        stepOnce,
+        stopRun,
+        checkConfigDiff,
+        applyHistoryIndex,
+        play,
+        stopPlaying,
+        togglePlay,
+        next,
+        prev,
+    };
+
     // Using getters/setters for $state variables that need bind: in the template
     return {
+        // ----- Domain API (Phase 1) -----
+        scenarioSelection,
+        parameterState,
+        runtimeState,
+
+        // ----- Compatibility shim API (temporary) -----
         // ----- Simulation inputs (read-write for bind:) -----
         get nx() { return nx; }, set nx(v) { nx = v; },
         get ny() { return ny; }, set ny(v) { ny = v; },

@@ -11,7 +11,10 @@
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
 
     // ---------- Store ----------
-    const sim = createSimulationStore();
+    const store = createSimulationStore();
+    const scenario = store.scenarioSelection;
+    const params = store.parameterState;
+    const runtime = store.runtimeState;
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("dark");
@@ -30,7 +33,7 @@
 
     // ---------- Config diff $effect ----------
     $effect(() => {
-        sim.checkConfigDiff();
+        runtime.checkConfigDiff();
     });
 
     // ---------- Theme ----------
@@ -75,17 +78,17 @@
         const savedTheme = localStorage.getItem("ressim-theme");
         if (savedTheme === "light" || savedTheme === "dark") theme = savedTheme;
         document.documentElement.setAttribute("data-theme", theme);
-        sim.setupWorker();
+        runtime.setupWorker();
 
         await loadRateChartModule();
         await loadThreeDViewModule();
         await tick();
 
-        sim.handleModeChange("dep");
+        scenario.handleModeChange("dep");
     });
 
     onDestroy(() => {
-        sim.dispose();
+        runtime.dispose();
     });
 </script>
 
@@ -240,75 +243,75 @@
         <!-- Hidden component for analytical calculations -->
         <FractionalFlow
             rockProps={{
-                s_wc: sim.s_wc,
-                s_or: sim.s_or,
-                n_w: sim.n_w,
-                n_o: sim.n_o,
-                k_rw_max: sim.k_rw_max,
-                k_ro_max: sim.k_ro_max,
+                s_wc: params.s_wc,
+                s_or: params.s_or,
+                n_w: params.n_w,
+                n_o: params.n_o,
+                k_rw_max: params.k_rw_max,
+                k_ro_max: params.k_ro_max,
             }}
-            fluidProps={{ mu_w: sim.mu_w, mu_o: sim.mu_o }}
-            initialSaturation={sim.initialSaturation}
-            timeHistory={sim.rateHistory.map((point) => point.time)}
-            injectionRateSeries={sim.rateHistory.map((point) =>
+            fluidProps={{ mu_w: params.mu_w, mu_o: params.mu_o }}
+            initialSaturation={params.initialSaturation}
+            timeHistory={runtime.rateHistory.map((point) => point.time)}
+            injectionRateSeries={runtime.rateHistory.map((point) =>
                 Number(point.total_injection ?? 0),
             )}
             reservoir={{
-                length: sim.nx * sim.cellDx,
-                area: sim.ny * sim.cellDy * sim.nz * sim.cellDz,
-                porosity: sim.reservoirPorosity,
+                length: params.nx * params.cellDx,
+                area: params.ny * params.cellDy * params.nz * params.cellDz,
+                porosity: params.reservoirPorosity,
             }}
-            scenarioMode={sim.analyticalSolutionMode}
+            scenarioMode={params.analyticalSolutionMode}
             onAnalyticalData={(detail) => {
-                if (sim.analyticalSolutionMode === "waterflood") {
-                    sim.analyticalProductionData = detail.production;
+                if (params.analyticalSolutionMode === "waterflood") {
+                    runtime.analyticalProductionData = detail.production;
                 }
             }}
             onAnalyticalMeta={(detail) => {
-                if (sim.analyticalSolutionMode === "waterflood") {
-                    sim.analyticalMeta = detail;
+                if (params.analyticalSolutionMode === "waterflood") {
+                    runtime.analyticalMeta = detail;
                 }
             }}
         />
 
         <DepletionAnalytical
-            enabled={sim.analyticalSolutionMode === "depletion"}
-            timeHistory={sim.rateHistory.map((point) => point.time)}
+            enabled={params.analyticalSolutionMode === "depletion"}
+            timeHistory={runtime.rateHistory.map((point) => point.time)}
             reservoir={{
-                length: sim.nx * sim.cellDx,
-                area: sim.ny * sim.cellDy * sim.nz * sim.cellDz,
-                porosity: sim.reservoirPorosity,
+                length: params.nx * params.cellDx,
+                area: params.ny * params.cellDy * params.nz * params.cellDz,
+                porosity: params.reservoirPorosity,
             }}
-            initialSaturation={sim.initialSaturation}
-            nz={sim.nz}
-            permMode={sim.permMode}
-            uniformPermX={sim.uniformPermX}
-            uniformPermY={sim.uniformPermY}
-            layerPermsX={sim.layerPermsX}
-            layerPermsY={sim.layerPermsY}
-            cellDx={sim.cellDx}
-            cellDy={sim.cellDy}
-            cellDz={sim.cellDz}
-            wellRadius={sim.well_radius}
-            wellSkin={sim.well_skin}
-            muO={sim.mu_o}
-            sWc={sim.s_wc}
-            sOr={sim.s_or}
-            nO={sim.n_o}
-            c_o={sim.c_o}
-            c_w={sim.c_w}
-            cRock={sim.rock_compressibility}
-            initialPressure={sim.initialPressure}
-            producerBhp={sim.producerBhp}
-            depletionRateScale={sim.analyticalDepletionRateScale}
+            initialSaturation={params.initialSaturation}
+            nz={params.nz}
+            permMode={params.permMode}
+            uniformPermX={params.uniformPermX}
+            uniformPermY={params.uniformPermY}
+            layerPermsX={params.layerPermsX}
+            layerPermsY={params.layerPermsY}
+            cellDx={params.cellDx}
+            cellDy={params.cellDy}
+            cellDz={params.cellDz}
+            wellRadius={params.well_radius}
+            wellSkin={params.well_skin}
+            muO={params.mu_o}
+            sWc={params.s_wc}
+            sOr={params.s_or}
+            nO={params.n_o}
+            c_o={params.c_o}
+            c_w={params.c_w}
+            cRock={params.rock_compressibility}
+            initialPressure={params.initialPressure}
+            producerBhp={params.producerBhp}
+            depletionRateScale={params.analyticalDepletionRateScale}
             onAnalyticalData={(detail) => {
-                if (sim.analyticalSolutionMode === "depletion") {
-                    sim.analyticalProductionData = detail.production;
+                if (params.analyticalSolutionMode === "depletion") {
+                    runtime.analyticalProductionData = detail.production;
                 }
             }}
             onAnalyticalMeta={(detail) => {
-                if (sim.analyticalSolutionMode === "depletion") {
-                    sim.analyticalMeta = detail;
+                if (params.analyticalSolutionMode === "depletion") {
+                    runtime.analyticalMeta = detail;
                 }
             }}
         />
@@ -333,61 +336,62 @@
 
         <!-- Top Bar: category buttons + case selector -->
         <TopBar
-            activeMode={sim.activeMode}
-            isModified={sim.isModified}
-            toggles={sim.toggles}
-            disabledOptions={sim.disabledOptions}
-            onModeChange={sim.handleModeChange}
-            onParamEdit={sim.handleParamEdit}
-            onToggleChange={sim.handleToggleChange}
+            activeMode={scenario.activeMode}
+            isModified={scenario.isModified}
+            toggles={scenario.toggles}
+            disabledOptions={scenario.disabledOptions}
+            onModeChange={scenario.handleModeChange}
+            onParamEdit={scenario.handleParamEdit}
+            onToggleChange={scenario.handleToggleChange}
         />
 
         <!-- Run Controls -->
         <RunControls
-            wasmReady={sim.wasmReady}
-            workerRunning={sim.workerRunning}
-            runCompleted={sim.runCompleted}
-            simTime={sim.simTime}
-            historyLength={sim.history.length}
-            estimatedRunSeconds={sim.estimatedRunSeconds}
-            longRunEstimate={sim.longRunEstimate}
-            canStop={sim.workerRunning}
-            runProgress={sim.workerRunning && sim.currentRunTotalSteps > 0
-                ? `${sim.currentRunStepsCompleted} / ${sim.currentRunTotalSteps}`
+            wasmReady={runtime.wasmReady}
+            workerRunning={runtime.workerRunning}
+            runCompleted={runtime.runCompleted}
+            simTime={runtime.simTime}
+            historyLength={runtime.history.length}
+            estimatedRunSeconds={runtime.estimatedRunSeconds}
+            longRunEstimate={runtime.longRunEstimate}
+            hasValidationErrors={params.hasValidationErrors}
+            canStop={runtime.workerRunning}
+            runProgress={runtime.workerRunning && runtime.currentRunTotalSteps > 0
+                ? `${runtime.currentRunStepsCompleted} / ${runtime.currentRunTotalSteps}`
                 : ""}
             inputsAnchorHref="#inputs-section"
-            bind:steps={sim.steps}
-            bind:historyInterval={sim.historyInterval}
-            onRunSteps={sim.runSteps}
-            onStepOnce={sim.stepOnce}
-            onInitSimulator={sim.initSimulator}
-            onStopRun={sim.stopRun}
-            fieldErrors={sim.validationErrors}
+            bind:steps={params.steps}
+            bind:historyInterval={params.historyInterval}
+            onRunSteps={runtime.runSteps}
+            onStepOnce={runtime.stepOnce}
+            onInitSimulator={runtime.initSimulator}
+            onStopRun={runtime.stopRun}
+            fieldErrors={params.validationErrors}
         />
 
         <!-- Error / Warning banners -->
-        {#if sim.runtimeWarning}
+        {#if runtime.runtimeWarning}
             <div
                 class="rounded-md border border-warning bg-card text-warning p-3 text-xs font-medium"
             >
-                {sim.runtimeWarning}
+                {runtime.runtimeWarning}
             </div>
         {/if}
-        {#if sim.preRunWarning}
+        {#if scenario.preRunWarning}
             <div
                 class="rounded-md border border-warning bg-card text-warning p-3 text-xs font-medium"
             >
-                {sim.preRunWarning}
+                {scenario.preRunWarning}
             </div>
         {/if}
-        {#if sim.runtimeError}
+        {#if runtime.runtimeError}
             <div
                 class="rounded-md border border-destructive bg-card text-destructive p-3 text-xs font-medium"
             >
-                {sim.runtimeError}
+                {runtime.runtimeError}
             </div>
         {/if}
-        {#if sim.preRunLoading}
+        {#if scenario.preRunLoading}
             <div class="text-xs text-muted-foreground text-center mt-2">
                 Loading pre-run case data…
             </div>
@@ -398,16 +402,16 @@
                 <Card class="overflow-hidden">
                     {#if RateChartComponent}
                         <RateChartComponent
-                            rateHistory={sim.rateHistory}
-                            analyticalProductionData={sim.analyticalProductionData}
-                            avgReservoirPressureSeries={sim.avgReservoirPressureSeries}
-                            avgWaterSaturationSeries={sim.avgWaterSaturationSeries}
-                            ooipM3={sim.ooipM3}
-                            poreVolumeM3={sim.poreVolumeM3}
-                            activeMode={sim.activeMode}
-                            activeCase={sim.activeCase}
+                            rateHistory={runtime.rateHistory}
+                            analyticalProductionData={runtime.analyticalProductionData}
+                            avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}
+                            avgWaterSaturationSeries={runtime.avgWaterSaturationSeries}
+                            ooipM3={params.ooipM3}
+                            poreVolumeM3={params.poreVolumeM3}
+                            activeMode={scenario.activeMode}
+                            activeCase={scenario.activeCase}
                             {theme}
-                            analyticalMeta={sim.analyticalMeta}
+                            analyticalMeta={runtime.analyticalMeta}
                             layoutConfig={{}}
                         />
                     {:else}
@@ -422,30 +426,30 @@
                 <Card>
                     <div class="p-4 md:p-5">
                         <SwProfileChart
-                            gridState={sim.gridStateRaw ?? null}
-                            nx={sim.nx}
-                            ny={sim.ny}
-                            nz={sim.nz}
-                            cellDx={sim.cellDx}
-                            cellDy={sim.cellDy}
-                            cellDz={sim.cellDz}
-                            simTime={sim.simTime}
-                            producerJ={sim.producerJ}
-                            initialSaturation={sim.initialSaturation}
-                            injectionRate={sim.latestInjectionRate}
-                            scenarioMode={sim.analyticalSolutionMode}
+                            gridState={runtime.gridStateRaw ?? null}
+                            nx={params.nx}
+                            ny={params.ny}
+                            nz={params.nz}
+                            cellDx={params.cellDx}
+                            cellDy={params.cellDy}
+                            cellDz={params.cellDz}
+                            simTime={runtime.simTime}
+                            producerJ={params.producerJ}
+                            initialSaturation={params.initialSaturation}
+                            injectionRate={runtime.latestInjectionRate}
+                            scenarioMode={params.analyticalSolutionMode}
                             rockProps={{
-                                s_wc: sim.s_wc,
-                                s_or: sim.s_or,
-                                n_w: sim.n_w,
-                                n_o: sim.n_o,
+                                s_wc: params.s_wc,
+                                s_or: params.s_or,
+                                n_w: params.n_w,
+                                n_o: params.n_o,
                             }}
-                            fluidProps={{ mu_w: sim.mu_w, mu_o: sim.mu_o }}
+                            fluidProps={{ mu_w: params.mu_w, mu_o: params.mu_o }}
                         />
                     </div>
                 </Card>
 
-                {#if sim.analyticalSolutionMode === "depletion"}
+                {#if params.analyticalSolutionMode === "depletion"}
                     <div
                         class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
                     >
@@ -453,12 +457,12 @@
                             Depletion Analytical Mode
                         </div>
                         <div class="text-muted-foreground mt-1">
-                            Model: {sim.analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
+                            Model: {runtime.analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
                                 >−t/τ</sup
                             >, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J
                         </div>
                     </div>
-                {:else if sim.analyticalSolutionMode === "waterflood"}
+                {:else if params.analyticalSolutionMode === "waterflood"}
                     <div
                         class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
                     >
@@ -476,26 +480,26 @@
                 <Card>
                     <div class="p-4 md:p-5">
                         {#if ThreeDViewComponent}
-                            {#key `${sim.nx}-${sim.ny}-${sim.nz}-${sim.vizRevision}`}
+                            {#key `${params.nx}-${params.ny}-${params.nz}-${runtime.vizRevision}`}
                                 <ThreeDViewComponent
-                                    nx={sim.nx}
-                                    ny={sim.ny}
-                                    nz={sim.nz}
-                                    cellDx={sim.cellDx}
-                                    cellDy={sim.cellDy}
-                                    cellDz={sim.cellDz}
+                                    nx={params.nx}
+                                    ny={params.ny}
+                                    nz={params.nz}
+                                    cellDx={params.cellDx}
+                                    cellDy={params.cellDy}
+                                    cellDz={params.cellDz}
                                     {theme}
-                                    gridState={sim.gridStateRaw}
+                                    gridState={runtime.gridStateRaw}
                                     bind:showProperty
                                     bind:legendFixedMin
                                     bind:legendFixedMax
-                                    s_wc={sim.s_wc}
-                                    s_or={sim.s_or}
-                                    bind:currentIndex={sim.currentIndex}
-                                    replayTime={sim.replayTime}
-                                    onApplyHistoryIndex={sim.applyHistoryIndex}
-                                    history={sim.history}
-                                    wellState={sim.wellStateRaw}
+                                    s_wc={params.s_wc}
+                                    s_or={params.s_or}
+                                    bind:currentIndex={runtime.currentIndex}
+                                    replayTime={runtime.replayTime}
+                                    onApplyHistoryIndex={runtime.applyHistoryIndex}
+                                    history={runtime.history}
+                                    wellState={runtime.wellStateRaw}
                                 />
                             {/key}
                         {:else}
@@ -529,73 +533,73 @@
 
         <div id="inputs-section" class="mt-4">
             <InputsTab
-                bind:nx={sim.nx}
-                bind:ny={sim.ny}
-                bind:nz={sim.nz}
-                bind:cellDx={sim.cellDx}
-                bind:cellDy={sim.cellDy}
-                bind:cellDz={sim.cellDz}
-                bind:initialPressure={sim.initialPressure}
-                bind:initialSaturation={sim.initialSaturation}
-                bind:reservoirPorosity={sim.reservoirPorosity}
-                bind:mu_w={sim.mu_w}
-                bind:mu_o={sim.mu_o}
-                bind:c_o={sim.c_o}
-                bind:c_w={sim.c_w}
-                bind:rho_w={sim.rho_w}
-                bind:rho_o={sim.rho_o}
-                bind:rock_compressibility={sim.rock_compressibility}
-                bind:depth_reference={sim.depth_reference}
-                bind:volume_expansion_o={sim.volume_expansion_o}
-                bind:volume_expansion_w={sim.volume_expansion_w}
-                bind:gravityEnabled={sim.gravityEnabled}
-                bind:permMode={sim.permMode}
-                bind:uniformPermX={sim.uniformPermX}
-                bind:uniformPermY={sim.uniformPermY}
-                bind:uniformPermZ={sim.uniformPermZ}
-                bind:useRandomSeed={sim.useRandomSeed}
-                bind:randomSeed={sim.randomSeed}
-                bind:minPerm={sim.minPerm}
-                bind:maxPerm={sim.maxPerm}
-                bind:layerPermsX={sim.layerPermsX}
-                bind:layerPermsY={sim.layerPermsY}
-                bind:layerPermsZ={sim.layerPermsZ}
-                bind:s_wc={sim.s_wc}
-                bind:s_or={sim.s_or}
-                bind:n_w={sim.n_w}
-                bind:n_o={sim.n_o}
-                bind:capillaryEnabled={sim.capillaryEnabled}
-                bind:capillaryPEntry={sim.capillaryPEntry}
-                bind:capillaryLambda={sim.capillaryLambda}
-                bind:well_radius={sim.well_radius}
-                bind:well_skin={sim.well_skin}
-                bind:injectorEnabled={sim.injectorEnabled}
-                bind:injectorControlMode={sim.injectorControlMode}
-                bind:producerControlMode={sim.producerControlMode}
-                bind:injectorBhp={sim.injectorBhp}
-                bind:producerBhp={sim.producerBhp}
-                bind:targetInjectorRate={sim.targetInjectorRate}
-                bind:targetProducerRate={sim.targetProducerRate}
-                bind:injectorI={sim.injectorI}
-                bind:injectorJ={sim.injectorJ}
-                bind:producerI={sim.producerI}
-                bind:producerJ={sim.producerJ}
-                bind:delta_t_days={sim.delta_t_days}
-                bind:max_sat_change_per_step={sim.max_sat_change_per_step}
+                bind:nx={params.nx}
+                bind:ny={params.ny}
+                bind:nz={params.nz}
+                bind:cellDx={params.cellDx}
+                bind:cellDy={params.cellDy}
+                bind:cellDz={params.cellDz}
+                bind:initialPressure={params.initialPressure}
+                bind:initialSaturation={params.initialSaturation}
+                bind:reservoirPorosity={params.reservoirPorosity}
+                bind:mu_w={params.mu_w}
+                bind:mu_o={params.mu_o}
+                bind:c_o={params.c_o}
+                bind:c_w={params.c_w}
+                bind:rho_w={params.rho_w}
+                bind:rho_o={params.rho_o}
+                bind:rock_compressibility={params.rock_compressibility}
+                bind:depth_reference={params.depth_reference}
+                bind:volume_expansion_o={params.volume_expansion_o}
+                bind:volume_expansion_w={params.volume_expansion_w}
+                bind:gravityEnabled={params.gravityEnabled}
+                bind:permMode={params.permMode}
+                bind:uniformPermX={params.uniformPermX}
+                bind:uniformPermY={params.uniformPermY}
+                bind:uniformPermZ={params.uniformPermZ}
+                bind:useRandomSeed={params.useRandomSeed}
+                bind:randomSeed={params.randomSeed}
+                bind:minPerm={params.minPerm}
+                bind:maxPerm={params.maxPerm}
+                bind:layerPermsX={params.layerPermsX}
+                bind:layerPermsY={params.layerPermsY}
+                bind:layerPermsZ={params.layerPermsZ}
+                bind:s_wc={params.s_wc}
+                bind:s_or={params.s_or}
+                bind:n_w={params.n_w}
+                bind:n_o={params.n_o}
+                bind:capillaryEnabled={params.capillaryEnabled}
+                bind:capillaryPEntry={params.capillaryPEntry}
+                bind:capillaryLambda={params.capillaryLambda}
+                bind:well_radius={params.well_radius}
+                bind:well_skin={params.well_skin}
+                bind:injectorEnabled={params.injectorEnabled}
+                bind:injectorControlMode={params.injectorControlMode}
+                bind:producerControlMode={params.producerControlMode}
+                bind:injectorBhp={params.injectorBhp}
+                bind:producerBhp={params.producerBhp}
+                bind:targetInjectorRate={params.targetInjectorRate}
+                bind:targetProducerRate={params.targetProducerRate}
+                bind:injectorI={params.injectorI}
+                bind:injectorJ={params.injectorJ}
+                bind:producerI={params.producerI}
+                bind:producerJ={params.producerJ}
+                bind:delta_t_days={params.delta_t_days}
+                bind:max_sat_change_per_step={params.max_sat_change_per_step}
                 bind:max_pressure_change_per_step={
-                    sim.max_pressure_change_per_step
+                    params.max_pressure_change_per_step
                 }
                 bind:max_well_rate_change_fraction={
-                    sim.max_well_rate_change_fraction
+                    params.max_well_rate_change_fraction
                 }
-                bind:analyticalSolutionMode={sim.analyticalSolutionMode}
+                bind:analyticalSolutionMode={params.analyticalSolutionMode}
                 bind:analyticalDepletionRateScale={
-                    sim.analyticalDepletionRateScale
+                    params.analyticalDepletionRateScale
                 }
-                onAnalyticalSolutionModeChange={sim.handleAnalyticalSolutionModeChange}
-                onNzOrPermModeChange={sim.handleNzOrPermModeChange}
-                validationErrors={sim.validationErrors}
-                validationWarnings={sim.validationWarnings}
+                onAnalyticalSolutionModeChange={params.handleAnalyticalSolutionModeChange}
+                onNzOrPermModeChange={params.handleNzOrPermModeChange}
+                validationErrors={params.validationErrors}
+                validationWarnings={params.validationWarnings}
                 readOnly={false}
             />
         </div>
@@ -610,7 +614,7 @@
                         </h4>
                         <pre
                             class="max-h-100 overflow-auto rounded border border-border bg-muted/20 p-2 text-xs">{JSON.stringify(
-                                sim.gridStateRaw,
+                                runtime.gridStateRaw,
                                 null,
                                 2,
                             )}</pre>
@@ -621,7 +625,7 @@
                         </h4>
                         <pre
                             class="max-h-105 overflow-auto rounded border border-border bg-muted p-2 text-xs">{JSON.stringify(
-                                sim.wellStateRaw,
+                                runtime.wellStateRaw,
                                 null,
                                 2,
                             )}</pre>

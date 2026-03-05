@@ -167,6 +167,40 @@ export function getDisabledOptions(toggles: ToggleState): Record<string, Record<
 }
 
 /**
+ * Iteratively repairs a toggle state until no selected option is disabled.
+ * This avoids one-pass repair bugs when rules cascade across dimensions.
+ */
+export function stabilizeToggleState(input: ToggleState): ToggleState {
+    const toggles: ToggleState = { ...input };
+    const maxPasses = Math.max(1, catalog.dimensions.length * 3);
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+        const disabled = getDisabledOptions(toggles);
+        let changed = false;
+
+        for (const dim of catalog.dimensions) {
+            if (!dim.options.length) continue;
+
+            const selected = toggles[dim.key] ?? dim.options[0].value;
+            const reasonMap = disabled[dim.key] ?? {};
+            const selectedIsKnown = dim.options.some((o) => o.value === selected);
+
+            if (selectedIsKnown && !reasonMap[selected]) continue;
+
+            const validOpt = dim.options.find((o) => !reasonMap[o.value]) ?? dim.options[0];
+            if (validOpt && toggles[dim.key] !== validOpt.value) {
+                toggles[dim.key] = validOpt.value;
+                changed = true;
+            }
+        }
+
+        if (!changed) break;
+    }
+
+    return toggles;
+}
+
+/**
  * Generate a default valid toggle state.
  */
 export function getDefaultToggles(mode: CaseMode = 'dep'): ToggleState {
@@ -180,17 +214,5 @@ export function getDefaultToggles(mode: CaseMode = 'dep'): ToggleState {
         }
     }
 
-    // Attempt to clear disabled violations on initial fallback
-    const disabledList = getDisabledOptions(toggles);
-    for (const [dimKey, reasonMap] of Object.entries(disabledList)) {
-        if (reasonMap[toggles[dimKey]]) {
-            const dim = catalog.dimensions.find(d => d.key === dimKey);
-            if (dim) {
-                const validOpt = dim.options.find(o => !reasonMap[o.value]);
-                if (validOpt) toggles[dimKey] = validOpt.value;
-            }
-        }
-    }
-
-    return toggles;
+    return stabilizeToggleState(toggles);
 }
