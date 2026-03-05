@@ -18,6 +18,11 @@ export type ParameterOverrideValue = {
 
 export type ParameterOverrides = Record<string, ParameterOverrideValue>;
 
+export type OverrideResetPlanEntry = {
+    key: string;
+    base: unknown;
+};
+
 export type ParameterOverrideGroupKey =
     | 'grid'
     | 'initial'
@@ -117,6 +122,18 @@ export const FACET_TO_OVERRIDE_GROUPS: Record<string, readonly ParameterOverride
     benchmarkId: [],
 };
 
+export const OVERRIDE_GROUP_TO_SECTION_TARGET: Record<ParameterOverrideGroupKey, CustomizeSectionTarget> = {
+    grid: 'static',
+    initial: 'reservoir',
+    fluids: 'reservoir',
+    permeability: 'reservoir',
+    relperm: 'relcap',
+    wells: 'well',
+    stability: 'timestep',
+    physics: 'reservoir',
+    analytical: 'analytical',
+};
+
 export function getFacetCustomizeSectionTarget(dimensionKey: string): CustomizeSectionTarget {
     return FACET_TO_SECTION_TARGET[dimensionKey] ?? 'shell';
 }
@@ -126,12 +143,36 @@ export function getFacetOverrideGroups(dimensionKey: string): ParameterOverrideG
     return [...groups];
 }
 
+export function getOverrideGroupSectionTarget(groupKey: string): CustomizeSectionTarget {
+    const key = groupKey as ParameterOverrideGroupKey;
+    return OVERRIDE_GROUP_TO_SECTION_TARGET[key] ?? 'shell';
+}
+
 export type BenchmarkProvenance = {
     sourceBenchmarkId: string;
     sourceCaseKey: string;
     sourceLabel: string;
     clonedAtIso: string;
 };
+
+export function buildBenchmarkCloneProvenance(input: {
+    benchmarkId: string | null | undefined;
+    sourceCaseKey: string | null | undefined;
+    sourceLabel: string | null | undefined;
+    nowIso?: string;
+}): BenchmarkProvenance | null {
+    const benchmarkId = input.benchmarkId ?? null;
+    const sourceCaseKey = input.sourceCaseKey ?? null;
+    const sourceLabel = input.sourceLabel ?? null;
+    if (!benchmarkId || !sourceCaseKey || !sourceLabel) return null;
+
+    return {
+        sourceBenchmarkId: benchmarkId,
+        sourceCaseKey,
+        sourceLabel,
+        clonedAtIso: input.nowIso ?? new Date().toISOString(),
+    };
+}
 
 export type AnalyticalStatusLevel = 'reference' | 'approximate' | 'off';
 
@@ -249,6 +290,32 @@ export function groupParameterOverrides(overrides: ParameterOverrides): Paramete
     });
 
     return grouped;
+}
+
+export function buildOverrideResetPlan(input: {
+    groupKeys: readonly string[];
+    groupedOverrides: Record<string, string[]>;
+    overrides: ParameterOverrides;
+}): OverrideResetPlanEntry[] {
+    const { groupKeys, groupedOverrides, overrides } = input;
+    const seen = new Set<string>();
+    const plan: OverrideResetPlanEntry[] = [];
+
+    for (const groupKey of groupKeys) {
+        const keys = groupedOverrides[groupKey] ?? [];
+        for (const key of keys) {
+            if (seen.has(key)) continue;
+            const entry = overrides[key];
+            if (!entry) continue;
+            seen.add(key);
+            plan.push({
+                key,
+                base: entry.base,
+            });
+        }
+    }
+
+    return plan;
 }
 
 export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): AnalyticalStatus {

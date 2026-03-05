@@ -8,10 +8,14 @@
     import SwProfileChart from "./lib/SwProfileChart.svelte";
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";
+    import { catalog } from "./lib/caseCatalog";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
     import {
+        buildBenchmarkCloneProvenance,
+        buildOverrideResetPlan,
         getFacetCustomizeSectionTarget,
         getFacetOverrideGroups,
+        getOverrideGroupSectionTarget,
         type CustomizeSectionTarget,
     } from "./lib/stores/phase2PresetContract";
 
@@ -24,6 +28,7 @@
     let customizeSectionTarget = $state<CustomizeSectionTarget | null>(null);
     let customizeSectionNonce = $state(0);
     let activeCustomizeGroup = $state<string | null>(null);
+    let showChangedFields = $state(false);
 
     function setParamValueByKey(key: string, value: unknown) {
         const nextValue = Array.isArray(value) ? [...value] : value;
@@ -45,34 +50,85 @@
         activeCustomizeGroup = null;
     }
 
-    function handleResetFacet(dimKey: string) {
-        const groups = getFacetOverrideGroups(dimKey);
-        if (!groups.length) return;
+    function handleCustomizeGroup(groupKey: string) {
+        customizeSectionTarget = getOverrideGroupSectionTarget(groupKey);
+        customizeSectionNonce += 1;
+        activeCustomizeGroup = groupKey;
+        const anchor = document.getElementById("inputs-section");
+        if (anchor) {
+            anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }
 
-        const groupOverrides = params.parameterOverrideGroups;
-        const allOverrides = params.parameterOverrides as Record<
-            string,
-            { base: unknown; current: unknown }
-        >;
+    function resetOverrideGroups(groupKeys: string[]) {
+        if (!groupKeys.length) return;
 
-        for (const group of groups) {
-            const keys = groupOverrides[group] ?? [];
-            for (const key of keys) {
-                const entry = allOverrides[key];
-                if (!entry) continue;
-                setParamValueByKey(key, entry.base);
-            }
+        const resetPlan = buildOverrideResetPlan({
+            groupKeys,
+            groupedOverrides: params.parameterOverrideGroups,
+            overrides: params.parameterOverrides,
+        });
+
+        for (const item of resetPlan) {
+            setParamValueByKey(item.key, item.base);
         }
 
-        activeCustomizeGroup = groups[0] ?? activeCustomizeGroup;
+        activeCustomizeGroup = groupKeys[0] ?? activeCustomizeGroup;
 
         queueMicrotask(() => {
             if (params.parameterOverrideCount === 0) {
                 activeCustomizeGroup = null;
+                showChangedFields = false;
                 scenario.handleToggleChange();
             }
         });
     }
+
+    function handleResetFacet(dimKey: string) {
+        const groups = getFacetOverrideGroups(dimKey);
+        resetOverrideGroups(groups);
+    }
+
+    function handleResetGroup(groupKey: string) {
+        resetOverrideGroups([groupKey]);
+    }
+
+    function handleToggleShowChangedFields() {
+        showChangedFields = !showChangedFields;
+    }
+
+    function handleCloneBenchmarkToCustom() {
+        if (scenario.activeMode !== "benchmark") return;
+        if (scenario.isModified) return;
+
+        const benchmarkId = scenario.toggles.benchmarkId ?? null;
+        const benchmarkLabel = benchmarkId
+            ? catalog.benchmarks.find((b) => b.key === benchmarkId)?.label ?? null
+            : null;
+        const provenance = buildBenchmarkCloneProvenance({
+            benchmarkId,
+            sourceCaseKey: scenario.activeCase,
+            sourceLabel: benchmarkLabel,
+        });
+
+        scenario.handleParamEdit();
+        if (provenance && !scenario.benchmarkProvenance) {
+            scenario.setBenchmarkProvenance(provenance);
+        }
+
+        customizeSectionTarget = "shell";
+        customizeSectionNonce += 1;
+        const anchor = document.getElementById("inputs-section");
+        if (anchor) {
+            anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }
+
+    $effect(() => {
+        if (params.parameterOverrideCount === 0 && showChangedFields) {
+            showChangedFields = false;
+        }
+    });
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("dark");
@@ -403,8 +459,10 @@
             onToggleChange={scenario.handleToggleChange}
             onCustomizeFacet={handleCustomizeFacet}
             onResetFacet={handleResetFacet}
+            onCloneBenchmarkToCustom={handleCloneBenchmarkToCustom}
             activeCustomizeGroup={activeCustomizeGroup}
             parameterOverrideGroups={params.parameterOverrideGroups}
+            benchmarkProvenance={scenario.benchmarkProvenance}
         />
 
         <!-- Run Controls -->
@@ -670,6 +728,10 @@
                 customizeSectionTarget={customizeSectionTarget}
                 customizeSectionNonce={customizeSectionNonce}
                 activeCustomizeGroup={activeCustomizeGroup}
+                {showChangedFields}
+                onToggleShowChangedFields={handleToggleShowChangedFields}
+                onCustomizeGroup={handleCustomizeGroup}
+                onResetGroup={handleResetGroup}
                 onDoneCustomize={handleDoneCustomize}
                 readOnly={false}
             />

@@ -26,6 +26,11 @@
     benchmarkProvenance = null,
     parameterOverrideCount = 0,
     parameterOverrideGroups = {},
+    activeCustomizeGroup = null,
+    showChangedFields = false,
+    onToggleShowChangedFields = () => {},
+    onCustomizeGroup = (_groupKey: string) => {},
+    onResetGroup = (_groupKey: string) => {},
     analyticalStatus = {
       level: "off",
       mode: "none",
@@ -36,6 +41,11 @@
     benchmarkProvenance?: BenchmarkProvenance | null;
     parameterOverrideCount?: number;
     parameterOverrideGroups?: Record<string, string[]>;
+    activeCustomizeGroup?: string | null;
+    showChangedFields?: boolean;
+    onToggleShowChangedFields?: () => void;
+    onCustomizeGroup?: (groupKey: string) => void;
+    onResetGroup?: (groupKey: string) => void;
     analyticalStatus?: AnalyticalStatus;
   } = $props();
 
@@ -74,6 +84,19 @@
     if (source === "benchmark") return "Benchmark Preset";
     if (source === "custom") return "Custom";
     return "Unknown";
+  }
+
+  function prettyGroup(groupKey: string): string {
+    if (groupKey === "grid") return "Grid";
+    if (groupKey === "initial") return "Initial";
+    if (groupKey === "fluids") return "Fluids";
+    if (groupKey === "permeability") return "Permeability";
+    if (groupKey === "relperm") return "RelPerm";
+    if (groupKey === "wells") return "Wells";
+    if (groupKey === "stability") return "Stability";
+    if (groupKey === "physics") return "Physics";
+    if (groupKey === "analytical") return "Analytical";
+    return groupKey;
   }
 </script>
 
@@ -129,6 +152,14 @@
           <strong class="ml-1">{nonEmptyGroups.length}</strong>
         </div>
       </div>
+      {#if parameterOverrideCount > 0}
+        <button
+          class="mt-2 rounded border border-border/80 bg-card px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/60"
+          onclick={onToggleShowChangedFields}
+        >
+          {showChangedFields ? "Hide changed fields" : "Show changed fields"}
+        </button>
+      {/if}
       {#if benchmarkProvenance}
         <div class="mt-2 rounded border border-border/70 bg-card px-2 py-1 text-[11px]">
           Cloned from <strong>{benchmarkProvenance.sourceLabel}</strong>
@@ -158,13 +189,55 @@
       <div class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         Changed Fields by Group
       </div>
-      <div class="flex flex-wrap gap-2">
-        {#each nonEmptyGroups as [group, keys]}
-          <span class="rounded-full border border-border bg-card px-2 py-1 text-[11px]">
-            <strong>{group}</strong>: {keys.length}
-          </span>
-        {/each}
-      </div>
+      {#if !showChangedFields}
+        <div class="flex flex-wrap gap-2">
+          {#each nonEmptyGroups as [group, keys]}
+            <span class="rounded-full border border-border bg-card px-2 py-1 text-[11px]">
+              <strong>{prettyGroup(group)}</strong>: {keys.length}
+            </span>
+          {/each}
+        </div>
+      {:else}
+        <div class="space-y-2">
+          {#each nonEmptyGroups as [group, keys]}
+            <div class="rounded-md border border-border/80 bg-card px-2 py-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-[11px] font-medium text-foreground">
+                  {prettyGroup(group)}
+                  <span class="ml-1 text-muted-foreground">({keys.length})</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button
+                    class={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                      activeCustomizeGroup === group
+                        ? "bg-primary/15 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    }`}
+                    onclick={() => onCustomizeGroup(group)}
+                    title={`Customize ${prettyGroup(group)} fields`}
+                  >
+                    Customize
+                  </button>
+                  <button
+                    class="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/60"
+                    onclick={() => onResetGroup(group)}
+                    title={`Reset ${prettyGroup(group)} fields back to preset values`}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+              <div class="mt-1 flex flex-wrap gap-1">
+                {#each keys as key}
+                  <code class="rounded border border-border/80 bg-muted/40 px-1.5 py-0.5 text-[10px]">
+                    {key}
+                  </code>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

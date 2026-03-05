@@ -88,6 +88,10 @@
     customizeSectionTarget = null,
     customizeSectionNonce = 0,
     activeCustomizeGroup = null,
+    showChangedFields = false,
+    onToggleShowChangedFields = () => {},
+    onCustomizeGroup = (_groupKey: string) => {},
+    onResetGroup = (_groupKey: string) => {},
     onDoneCustomize = () => {},
     readOnly = false,
   }: {
@@ -186,6 +190,10 @@
       | null;
     customizeSectionNonce?: number;
     activeCustomizeGroup?: string | null;
+    showChangedFields?: boolean;
+    onToggleShowChangedFields?: () => void;
+    onCustomizeGroup?: (groupKey: string) => void;
+    onResetGroup?: (groupKey: string) => void;
     onDoneCustomize?: () => void;
     readOnly?: boolean;
   } = $props();
@@ -251,6 +259,11 @@
     {benchmarkProvenance}
     {parameterOverrideCount}
     {parameterOverrideGroups}
+    {activeCustomizeGroup}
+    {showChangedFields}
+    {onToggleShowChangedFields}
+    {onCustomizeGroup}
+    {onResetGroup}
     {analyticalStatus}
   />
 </div>

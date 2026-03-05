@@ -320,3 +320,51 @@ Code-level verification anchors used for checklist evidence:
 
 Next active slice:
 P2.2 Preset composer shell UI (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.2 Preset composer shell UI
+
+Implemented in this slice (generated-profile controls + quick actions):
+- `src/lib/ui/PresetCustomizeShell.svelte`
+	- Added `Show changed fields` / `Hide changed fields` control for the generated-profile section.
+	- Added per-group quick actions in shell (`Customize`, `Reset`) when changed fields are expanded.
+	- Added per-group changed-key pills with active customize-group highlighting.
+- `src/App.svelte`
+	- Added shell interaction state (`showChangedFields`) and handlers for per-group customize/reset flows.
+	- Added shared reset helper for override groups and reuse from facet-level reset path.
+	- Wired group customize actions to centralized section-target routing and existing inputs-section focus behavior.
+- `src/lib/ui/InputsTab.svelte`
+	- Wired new shell callback props and state through to `PresetCustomizeShell`.
+- `src/lib/stores/phase2PresetContract.ts`
+	- Added centralized `OVERRIDE_GROUP_TO_SECTION_TARGET` mapping and `getOverrideGroupSectionTarget(...)` helper.
+- `src/lib/stores/phase2PresetContract.test.ts`
+	- Added helper tests for override-group to section-target mapping (including fallback behavior).
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 11 tests).
+
+Next active slice:
+P2.3 Override tracking + changed-field UX (in progress), focusing on dedicated regression and policy tests for changed-field/reset pathways.
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.3 Override tracking + changed-field UX
+
+Implemented in this slice (regression/policy hardening):
+- `src/lib/stores/phase2PresetContract.ts`
+	- Added pure helper `buildOverrideResetPlan(...)` to compute deterministic reset-to-base actions for selected override groups.
+	- Reset plan guarantees stable order, de-duplicates repeated keys across groups, and skips stale/missing override keys.
+- `src/App.svelte`
+	- Refactored group-reset flow to use `buildOverrideResetPlan(...)` so runtime behavior follows the tested contract helper.
+- `src/lib/stores/phase2PresetContract.test.ts`
+	- Added deterministic-order test for `buildParameterOverrides(...)` using explicit tracked-key ordering.
+	- Added grouped reset-plan tests for de-duplication and stale-key filtering behavior.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 14 tests).
+
+Next active slice:
+P2.4 Benchmark clone-to-custom flow (in progress).

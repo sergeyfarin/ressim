@@ -848,6 +848,7 @@ export function createSimulationStore() {
     function handleModeChange(mode: CaseMode) {
         preRunLoadToken += 1;
         isModified = false;
+        benchmarkProvenance = null;
         activeMode = mode;
         toggles = getDefaultToggles(mode);
         baseCaseSignature = '';
@@ -869,6 +870,7 @@ export function createSimulationStore() {
         const newKey = buildCaseKey(toggles);
         activeCase = newKey;
         isModified = false;
+        benchmarkProvenance = null;
         preRunWarning = '';
 
         applyCaseParams(composeCaseParams(toggles));

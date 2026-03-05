@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+    buildBenchmarkCloneProvenance,
+    buildOverrideResetPlan,
     buildBasePresetProfile,
     buildParameterOverrides,
     evaluateAnalyticalStatus,
     getFacetCustomizeSectionTarget,
     getFacetOverrideGroups,
+    getOverrideGroupSectionTarget,
     groupParameterOverrides,
 } from './phase2PresetContract';
 
@@ -39,6 +42,22 @@ describe('phase2PresetContract', () => {
         expect(Object.keys(overrides)).toEqual(['nx', 'gravityEnabled', 'layerPermsX']);
         expect(overrides.nx.base).toBe(10);
         expect(overrides.nx.current).toBe(20);
+    });
+
+    it('preserves tracked-key order when building overrides', () => {
+        const overrides = buildParameterOverrides({
+            currentParams: {
+                a: 2,
+                b: 3,
+            },
+            baseParams: {
+                a: 1,
+                b: 2,
+            },
+            trackedKeys: ['b', 'a'],
+        });
+
+        expect(Object.keys(overrides)).toEqual(['b', 'a']);
     });
 
     it('groups overrides by configured group keys', () => {
@@ -93,5 +112,84 @@ describe('phase2PresetContract', () => {
         expect(getFacetOverrideGroups('rock')).toEqual(['permeability']);
         expect(getFacetOverrideGroups('well')).toEqual(['wells']);
         expect(getFacetOverrideGroups('unknown-dim')).toEqual([]);
+    });
+
+    it('maps override groups to section targets with safe fallback', () => {
+        expect(getOverrideGroupSectionTarget('grid')).toBe('static');
+        expect(getOverrideGroupSectionTarget('wells')).toBe('well');
+        expect(getOverrideGroupSectionTarget('analytical')).toBe('analytical');
+        expect(getOverrideGroupSectionTarget('unknown-group')).toBe('shell');
+    });
+
+    it('builds benchmark clone provenance from benchmark context', () => {
+        const provenance = buildBenchmarkCloneProvenance({
+            benchmarkId: 'bl_case_a_refined',
+            sourceCaseKey: 'bench_bl-case-a-refined',
+            sourceLabel: 'BL Case A Refined',
+            nowIso: '2026-03-05T18:00:00.000Z',
+        });
+
+        expect(provenance).toEqual({
+            sourceBenchmarkId: 'bl_case_a_refined',
+            sourceCaseKey: 'bench_bl-case-a-refined',
+            sourceLabel: 'BL Case A Refined',
+            clonedAtIso: '2026-03-05T18:00:00.000Z',
+        });
+    });
+
+    it('returns null clone provenance when benchmark context is incomplete', () => {
+        expect(buildBenchmarkCloneProvenance({
+            benchmarkId: null,
+            sourceCaseKey: 'bench_x',
+            sourceLabel: 'X',
+        })).toBeNull();
+
+        expect(buildBenchmarkCloneProvenance({
+            benchmarkId: 'bl_case_a_refined',
+            sourceCaseKey: '',
+            sourceLabel: 'X',
+        })).toBeNull();
+
+        expect(buildBenchmarkCloneProvenance({
+            benchmarkId: 'bl_case_a_refined',
+            sourceCaseKey: 'bench_x',
+            sourceLabel: '',
+        })).toBeNull();
+    });
+
+    it('builds deterministic reset plan with de-duplication across groups', () => {
+        const plan = buildOverrideResetPlan({
+            groupKeys: ['fluids', 'grid'],
+            groupedOverrides: {
+                fluids: ['mu_w', 'ny'],
+                grid: ['nx', 'ny'],
+            },
+            overrides: {
+                nx: { base: 10, current: 20 },
+                ny: { base: 1, current: 2 },
+                mu_w: { base: 0.5, current: 0.8 },
+            },
+        });
+
+        expect(plan).toEqual([
+            { key: 'mu_w', base: 0.5 },
+            { key: 'ny', base: 1 },
+            { key: 'nx', base: 10 },
+        ]);
+    });
+
+    it('ignores unknown groups and stale override keys in reset plan', () => {
+        const plan = buildOverrideResetPlan({
+            groupKeys: ['unknown', 'wells'],
+            groupedOverrides: {
+                unknown: ['missing'],
+                wells: ['injectorBhp', 'missing'],
+            },
+            overrides: {
+                injectorBhp: { base: 400, current: 450 },
+            },
+        });
+
+        expect(plan).toEqual([{ key: 'injectorBhp', base: 400 }]);
     });
 });
