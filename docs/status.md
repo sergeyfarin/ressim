@@ -174,3 +174,27 @@ Validation run:
 
 Next active slice:
 P2.1 UX contract + state schema freeze (in progress).
+
+Phase 1 acceptance checklist closure update (2026-03-05)
+Completed in this slice:
+- Closed remaining unchecked Phase 1 acceptance checklist items in `TODO.md` with explicit verification evidence.
+
+Targeted verification commands run:
+- Frontend validation/case tests:
+	- `npm run test -- src/lib/validateInputs.test.ts src/lib/caseCatalog.test.ts src/lib/buildCreatePayload.test.ts`
+	- Result: 3 test files passed, 41 tests passed.
+- Simulator run/step regression tests:
+	- `cargo test adaptive_timestep_produces_multiple_substeps_for_strong_flow`
+	- `cargo test pressure_resolve_on_substep_produces_physical_results`
+	- `cargo test saturation_stays_within_physical_bounds`
+	- Result: all passed.
+- Project compile safety:
+	- `npm run typecheck`
+	- Result: passed (`tsc --noEmit`).
+
+Code-level verification anchors used for checklist evidence:
+- Validation gating wiring in `src/App.svelte` (`hasValidationErrors` passed to `RunControls`).
+- Explicit blocked-run error path and benchmark-only pre-run gating in `src/lib/stores/simulationStore.svelte.ts`.
+
+Next active slice:
+P2.1 UX contract + state schema freeze (in progress).

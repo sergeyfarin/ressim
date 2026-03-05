@@ -30,9 +30,9 @@ Single source of truth: this section is the authoritative tracker for ongoing Ph
 Phase 1 acceptance checklist:
 
 - [x] Store exposes explicit domain objects and App uses them.
-- [ ] No silent behavior regression in run/init/step flow.
-- [ ] Validation gating and error visibility remain unchanged or improved.
-- [ ] Benchmark and non-benchmark case selection behavior remains correct.
+- [x] No silent behavior regression in run/init/step flow. Verified 2026-03-05 with targeted Rust tests: `cargo test adaptive_timestep_produces_multiple_substeps_for_strong_flow`, `cargo test pressure_resolve_on_substep_produces_physical_results`, `cargo test saturation_stays_within_physical_bounds`.
+- [x] Validation gating and error visibility remain unchanged or improved. Verified 2026-03-05 via targeted frontend tests (`npm run test -- src/lib/validateInputs.test.ts src/lib/buildCreatePayload.test.ts`) and wiring checks in `src/App.svelte` + `src/lib/stores/simulationStore.svelte.ts` (run controls disable + explicit blocked-run runtime error).
+- [x] Benchmark and non-benchmark case selection behavior remains correct. Verified 2026-03-05 via `npm run test -- src/lib/caseCatalog.test.ts` plus benchmark-only pre-run gate checks in `src/lib/stores/simulationStore.svelte.ts` (`if (activeMode === 'benchmark') loadPreRunCase(newKey)` and early return in `loadPreRunCase` when mode is non-benchmark).
 - [x] Temporary compatibility shims removed before Phase 1 close.
 
 Interruption resume protocol (mandatory):
