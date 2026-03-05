@@ -1,0 +1,257 @@
+import type { CaseMode, ToggleState } from '../caseCatalog';
+
+export type PresetSource = 'facet' | 'benchmark' | 'custom';
+
+export type BasePresetProfile = {
+    key: string;
+    mode: CaseMode;
+    source: PresetSource;
+    label: string;
+    toggles: ToggleState;
+    benchmarkId: string | null;
+};
+
+export type ParameterOverrideValue = {
+    base: unknown;
+    current: unknown;
+};
+
+export type ParameterOverrides = Record<string, ParameterOverrideValue>;
+
+export type ParameterOverrideGroupKey =
+    | 'grid'
+    | 'initial'
+    | 'fluids'
+    | 'permeability'
+    | 'relperm'
+    | 'wells'
+    | 'stability'
+    | 'physics'
+    | 'analytical';
+
+export const PHASE2_TRACKED_PARAMETER_KEYS = [
+    'nx', 'ny', 'nz',
+    'cellDx', 'cellDy', 'cellDz',
+    'initialPressure', 'initialSaturation', 'reservoirPorosity',
+    'mu_w', 'mu_o', 'c_o', 'c_w',
+    'rock_compressibility', 'depth_reference',
+    'volume_expansion_o', 'volume_expansion_w',
+    'rho_w', 'rho_o',
+    'permMode',
+    'uniformPermX', 'uniformPermY', 'uniformPermZ',
+    'minPerm', 'maxPerm', 'useRandomSeed', 'randomSeed',
+    'layerPermsX', 'layerPermsY', 'layerPermsZ',
+    's_wc', 's_or', 'n_w', 'n_o', 'k_rw_max', 'k_ro_max',
+    'well_radius', 'well_skin',
+    'injectorBhp', 'producerBhp',
+    'injectorControlMode', 'producerControlMode',
+    'injectorEnabled', 'targetInjectorRate', 'targetProducerRate',
+    'injectorI', 'injectorJ', 'producerI', 'producerJ',
+    'max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction',
+    'gravityEnabled', 'capillaryEnabled', 'capillaryPEntry', 'capillaryLambda',
+    'analyticalSolutionMode', 'analyticalDepletionRateScale',
+] as const;
+
+export type TrackedParameterKey = (typeof PHASE2_TRACKED_PARAMETER_KEYS)[number];
+
+export const PHASE2_PARAMETER_GROUPS: Record<ParameterOverrideGroupKey, readonly TrackedParameterKey[]> = {
+    grid: ['nx', 'ny', 'nz', 'cellDx', 'cellDy', 'cellDz'],
+    initial: ['initialPressure', 'initialSaturation', 'reservoirPorosity'],
+    fluids: [
+        'mu_w', 'mu_o', 'c_o', 'c_w',
+        'rock_compressibility', 'depth_reference',
+        'volume_expansion_o', 'volume_expansion_w',
+        'rho_w', 'rho_o',
+    ],
+    permeability: [
+        'permMode',
+        'uniformPermX', 'uniformPermY', 'uniformPermZ',
+        'minPerm', 'maxPerm', 'useRandomSeed', 'randomSeed',
+        'layerPermsX', 'layerPermsY', 'layerPermsZ',
+    ],
+    relperm: ['s_wc', 's_or', 'n_w', 'n_o', 'k_rw_max', 'k_ro_max'],
+    wells: [
+        'well_radius', 'well_skin',
+        'injectorBhp', 'producerBhp',
+        'injectorControlMode', 'producerControlMode',
+        'injectorEnabled', 'targetInjectorRate', 'targetProducerRate',
+        'injectorI', 'injectorJ', 'producerI', 'producerJ',
+    ],
+    stability: ['max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction'],
+    physics: ['gravityEnabled', 'capillaryEnabled', 'capillaryPEntry', 'capillaryLambda'],
+    analytical: ['analyticalSolutionMode', 'analyticalDepletionRateScale'],
+};
+
+export type ParameterOverrideGroups = Record<ParameterOverrideGroupKey, string[]>;
+
+export type BenchmarkProvenance = {
+    sourceBenchmarkId: string;
+    sourceCaseKey: string;
+    sourceLabel: string;
+    clonedAtIso: string;
+};
+
+export type AnalyticalStatusLevel = 'reference' | 'approximate' | 'off';
+
+export type AnalyticalStatusMode = 'waterflood' | 'depletion' | 'none';
+
+export type AnalyticalStatus = {
+    level: AnalyticalStatusLevel;
+    mode: AnalyticalStatusMode;
+    reasons: string[];
+};
+
+export type AnalyticalStatusInput = {
+    activeMode: CaseMode;
+    analyticalMode: AnalyticalStatusMode;
+    injectorEnabled: boolean;
+    gravityEnabled: boolean;
+    capillaryEnabled: boolean;
+    permMode: 'uniform' | 'random' | 'perLayer';
+    toggles: ToggleState;
+};
+
+function toComparableScalar(value: unknown): unknown {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? Number(value) : value;
+    }
+    return value;
+}
+
+function valuesEqual(base: unknown, current: unknown): boolean {
+    if (Array.isArray(base) || Array.isArray(current)) {
+        if (!Array.isArray(base) || !Array.isArray(current)) return false;
+        if (base.length !== current.length) return false;
+        for (let i = 0; i < base.length; i++) {
+            if (!valuesEqual(base[i], current[i])) return false;
+        }
+        return true;
+    }
+
+    return Object.is(toComparableScalar(base), toComparableScalar(current));
+}
+
+export function buildBasePresetProfile(input: {
+    key: string;
+    mode: CaseMode;
+    toggles: ToggleState;
+    isModified: boolean;
+    benchmarkLabel?: string | null;
+}): BasePresetProfile {
+    const { key, mode, toggles, isModified, benchmarkLabel } = input;
+    const isBenchmark = mode === 'benchmark';
+
+    let source: PresetSource = 'facet';
+    if (isBenchmark) source = 'benchmark';
+    if (isModified) source = 'custom';
+
+    const label = isBenchmark
+        ? (benchmarkLabel || 'Benchmark Preset')
+        : `${mode.toUpperCase()} preset`;
+
+    return {
+        key,
+        mode,
+        source,
+        label,
+        toggles: { ...toggles },
+        benchmarkId: isBenchmark ? (toggles.benchmarkId ?? null) : null,
+    };
+}
+
+export function buildParameterOverrides(input: {
+    currentParams: Record<string, unknown>;
+    baseParams: Record<string, unknown>;
+    trackedKeys?: readonly string[];
+}): ParameterOverrides {
+    const { currentParams, baseParams, trackedKeys = PHASE2_TRACKED_PARAMETER_KEYS } = input;
+    const overrides: ParameterOverrides = {};
+
+    for (const key of trackedKeys) {
+        if (!(key in currentParams)) continue;
+        if (!(key in baseParams)) continue;
+
+        const currentValue = currentParams[key];
+        const baseValue = baseParams[key];
+
+        if (!valuesEqual(baseValue, currentValue)) {
+            overrides[key] = {
+                base: baseValue,
+                current: currentValue,
+            };
+        }
+    }
+
+    return overrides;
+}
+
+export function groupParameterOverrides(overrides: ParameterOverrides): ParameterOverrideGroups {
+    const grouped: ParameterOverrideGroups = {
+        grid: [],
+        initial: [],
+        fluids: [],
+        permeability: [],
+        relperm: [],
+        wells: [],
+        stability: [],
+        physics: [],
+        analytical: [],
+    };
+
+    const keys = new Set(Object.keys(overrides));
+
+    (Object.keys(PHASE2_PARAMETER_GROUPS) as ParameterOverrideGroupKey[]).forEach((group) => {
+        PHASE2_PARAMETER_GROUPS[group].forEach((key) => {
+            if (keys.has(key)) grouped[group].push(key);
+        });
+    });
+
+    return grouped;
+}
+
+export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): AnalyticalStatus {
+    const {
+        activeMode,
+        analyticalMode,
+        injectorEnabled,
+        gravityEnabled,
+        capillaryEnabled,
+        permMode,
+        toggles,
+    } = input;
+
+    if (analyticalMode !== 'waterflood' && analyticalMode !== 'depletion') {
+        return {
+            level: 'off',
+            mode: 'none',
+            reasons: ['Analytical overlay is disabled for this scenario.'],
+        };
+    }
+
+    const reasons: string[] = [];
+
+    if (analyticalMode === 'waterflood') {
+        if (!injectorEnabled) reasons.push('Injector is disabled for waterflood analytical assumptions.');
+        if (toggles.geo !== '1d') reasons.push('Reference waterflood analytical comparison expects 1D geometry.');
+        if (toggles.well !== 'e2e') reasons.push('Reference waterflood analytical comparison expects end-to-end wells.');
+    } else {
+        if (injectorEnabled) reasons.push('Injector is enabled for depletion analytical assumptions.');
+        if (!(toggles.geo === '1d' || toggles.well === 'center')) {
+            reasons.push('Reference depletion analytical comparison expects 1D or center-producer assumptions.');
+        }
+    }
+
+    if (permMode !== 'uniform') reasons.push('Permeability is non-uniform, so analytical match is approximate.');
+    if (gravityEnabled) reasons.push('Gravity is enabled, which deviates from reference analytical assumptions.');
+    if (capillaryEnabled) reasons.push('Capillary pressure is enabled, which deviates from reference analytical assumptions.');
+
+    if (activeMode === 'sim') {
+        reasons.push('Simulation mode is exploratory; analytical overlay is treated as approximate guidance.');
+    }
+
+    return {
+        level: reasons.length === 0 ? 'reference' : 'approximate',
+        mode: analyticalMode,
+        reasons,
+    };
+}

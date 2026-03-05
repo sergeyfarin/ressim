@@ -23,6 +23,13 @@ import {
     type SimulationInputs,
     type ValidationState as InputValidationState,
 } from '../validateInputs';
+import {
+    buildBasePresetProfile,
+    buildParameterOverrides,
+    evaluateAnalyticalStatus,
+    groupParameterOverrides,
+    type BenchmarkProvenance,
+} from './phase2PresetContract';
 
 // ---------- Helper utilities (pure, no runes) ----------
 
@@ -204,6 +211,7 @@ export function createSimulationStore() {
     let preRunContinuationAvailable = $state(false);
 
     let toggles = $state<ToggleState>(getDefaultToggles('dep'));
+    let benchmarkProvenance: BenchmarkProvenance | null = $state(null);
 
     // Display data
     let gridStateRaw: GridState | null = $state(null);
@@ -314,7 +322,106 @@ export function createSimulationStore() {
     );
     const longRunEstimate = $derived(estimatedRunSeconds > 10);
 
+    const basePreset = $derived.by(() => {
+        const benchmarkLabel = toggles.benchmarkId
+            ? catalog.benchmarks.find((b) => b.key === toggles.benchmarkId)?.label ?? null
+            : null;
+
+        return buildBasePresetProfile({
+            key: activeCase,
+            mode: activeMode,
+            toggles,
+            isModified,
+            benchmarkLabel,
+        });
+    });
+
+    const parameterOverrides = $derived.by(() => {
+        return buildParameterOverrides({
+            currentParams: buildCurrentParameterSnapshot(),
+            baseParams: composeCaseParams(toggles),
+        });
+    });
+
+    const parameterOverrideGroups = $derived(groupParameterOverrides(parameterOverrides));
+    const parameterOverrideCount = $derived(Object.keys(parameterOverrides).length);
+
+    const analyticalStatus = $derived.by(() => {
+        return evaluateAnalyticalStatus({
+            activeMode,
+            analyticalMode: analyticalSolutionMode,
+            injectorEnabled,
+            gravityEnabled,
+            capillaryEnabled,
+            permMode,
+            toggles,
+        });
+    });
+
     // ===== Internal Helpers =====
+
+    function buildCurrentParameterSnapshot(): Record<string, unknown> {
+        return {
+            nx,
+            ny,
+            nz,
+            cellDx,
+            cellDy,
+            cellDz,
+            initialPressure,
+            initialSaturation,
+            reservoirPorosity,
+            mu_w,
+            mu_o,
+            c_o,
+            c_w,
+            rock_compressibility,
+            depth_reference,
+            volume_expansion_o,
+            volume_expansion_w,
+            rho_w,
+            rho_o,
+            permMode,
+            uniformPermX,
+            uniformPermY,
+            uniformPermZ,
+            minPerm,
+            maxPerm,
+            useRandomSeed,
+            randomSeed,
+            layerPermsX: [...layerPermsX],
+            layerPermsY: [...layerPermsY],
+            layerPermsZ: [...layerPermsZ],
+            s_wc,
+            s_or,
+            n_w,
+            n_o,
+            k_rw_max,
+            k_ro_max,
+            well_radius,
+            well_skin,
+            injectorBhp,
+            producerBhp,
+            injectorControlMode,
+            producerControlMode,
+            injectorEnabled,
+            targetInjectorRate,
+            targetProducerRate,
+            injectorI,
+            injectorJ,
+            producerI,
+            producerJ,
+            max_sat_change_per_step,
+            max_pressure_change_per_step,
+            max_well_rate_change_fraction,
+            gravityEnabled,
+            capillaryEnabled,
+            capillaryPEntry,
+            capillaryLambda,
+            analyticalSolutionMode,
+            analyticalDepletionRateScale,
+        };
+    }
 
     function syncLayerArraysToGrid() {
         layerPermsX = normalizeLayerArray(layerPermsX, uniformPermX, nz);
@@ -786,6 +893,10 @@ export function createSimulationStore() {
         preRunContinuationAvailable = false;
     }
 
+    function setBenchmarkProvenance(provenance: BenchmarkProvenance | null) {
+        benchmarkProvenance = provenance;
+    }
+
     function handleAnalyticalSolutionModeChange(mode: 'waterflood' | 'depletion') {
         analyticalSolutionMode = mode;
         analyticalProductionData = [];
@@ -1004,6 +1115,8 @@ export function createSimulationStore() {
         get activeMode() { return activeMode; },
         get activeCase() { return activeCase; },
         get isModified() { return isModified; },
+        get basePreset() { return basePreset; },
+        get benchmarkProvenance() { return benchmarkProvenance; },
         get toggles() { return toggles; },
         set toggles(v) { toggles = v; },
         get disabledOptions() { return disabledOptions; },
@@ -1015,6 +1128,7 @@ export function createSimulationStore() {
         handleToggleChange,
         handleParamEdit,
         resolveCustomSubCase,
+        setBenchmarkProvenance,
     };
 
     const parameterState = {
@@ -1085,6 +1199,9 @@ export function createSimulationStore() {
         get validationErrors() { return validationErrors; },
         get validationWarnings() { return validationWarnings; },
         get hasValidationErrors() { return hasValidationErrors; },
+        get parameterOverrides() { return parameterOverrides; },
+        get parameterOverrideGroups() { return parameterOverrideGroups; },
+        get parameterOverrideCount() { return parameterOverrideCount; },
         handleAnalyticalSolutionModeChange,
         handleNzOrPermModeChange,
     };
@@ -1121,6 +1238,7 @@ export function createSimulationStore() {
         get replayTime() { return replayTime; },
         get estimatedRunSeconds() { return estimatedRunSeconds; },
         get longRunEstimate() { return longRunEstimate; },
+        get analyticalStatus() { return analyticalStatus; },
         setupWorker,
         dispose,
         initSimulator,

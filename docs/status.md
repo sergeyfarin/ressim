@@ -173,7 +173,29 @@ Validation run:
 - Confirmed deleted artifacts are absent after cleanup.
 
 Next active slice:
-P2.1 UX contract + state schema freeze (in progress).
+P2.2 Preset composer shell UI (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.1 UX contract + state schema freeze
+
+Implementation details:
+- Added Phase 2 contract module: `src/lib/stores/phase2PresetContract.ts`.
+	- Defines frozen schema/types for `basePreset`, `parameterOverrides`, `benchmarkProvenance`, and `analyticalStatus`.
+	- Includes deterministic override grouping and analytical-status evaluator helpers.
+- Integrated contract-derived fields into store API in `src/lib/stores/simulationStore.svelte.ts`.
+	- `scenarioSelection`: `basePreset`, `benchmarkProvenance`, `setBenchmarkProvenance(...)`.
+	- `parameterState`: `parameterOverrides`, `parameterOverrideGroups`, `parameterOverrideCount`.
+	- `runtimeState`: `analyticalStatus`.
+- Added focused unit tests: `src/lib/stores/phase2PresetContract.test.ts`.
+- Added contract documentation: `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts` passed (1 file, 5 tests).
+
+Next active slice:
+P2.2 Preset composer shell UI (in progress).
 
 Phase 1 acceptance checklist closure update (2026-03-05)
 Completed in this slice:
@@ -197,4 +219,4 @@ Code-level verification anchors used for checklist evidence:
 - Explicit blocked-run error path and benchmark-only pre-run gating in `src/lib/stores/simulationStore.svelte.ts`.
 
 Next active slice:
-P2.1 UX contract + state schema freeze (in progress).
+P2.2 Preset composer shell UI (in progress).
