@@ -22,18 +22,18 @@ Single source of truth: this section is the authoritative tracker for ongoing Ph
 - [x] **P1.4 Compatibility shim window** — preserve current top-level store fields as temporary aliases to avoid big-bang breakage.
 - [x] **P1.5 App migration** — move `App.svelte` consumers to domain objects with no behavior change.
 - [x] **P1.6 UI consumer migration** — verified no additional direct store consumers beyond `App.svelte`; no extra migration edits required in this slice.
-- [ ] **P1.7 Domain-scoped dirty/reset behavior (in progress)** — ensure only model-domain edits trigger model stale/reinit paths.
-- [ ] **P1.8 Remove shim fields** — after migration and test pass, remove temporary aliases.
-- [ ] **P1.9 Validation and regression pass** — run targeted tests and type checks for store/app/case selection paths.
-- [ ] **P1.10 Docs and handoff update** — update `docs/status.md` with completed slice, files touched, tests run, and next slice.
+- [x] **P1.7 Domain-scoped dirty/reset behavior** — ensured model-reset key includes `reservoirPorosity`; runtime-only controls remain outside model-reset signature.
+- [x] **P1.8 Remove shim fields** — removed temporary top-level compatibility aliases; store now exposes domain objects only.
+- [x] **P1.9 Validation and regression pass** — completed typecheck + tests + diagnostics after domain migration and shim removal.
+- [x] **P1.10 Docs and handoff update** — `docs/status.md` synchronized with completed slices, validations, and next-step context.
 
 Phase 1 acceptance checklist:
 
-- [ ] Store exposes explicit domain objects and App uses them.
+- [x] Store exposes explicit domain objects and App uses them.
 - [ ] No silent behavior regression in run/init/step flow.
 - [ ] Validation gating and error visibility remain unchanged or improved.
 - [ ] Benchmark and non-benchmark case selection behavior remains correct.
-- [ ] Temporary compatibility shims removed before Phase 1 close.
+- [x] Temporary compatibility shims removed before Phase 1 close.
 
 Interruption resume protocol (mandatory):
 
@@ -131,6 +131,8 @@ Interruption resume protocol (mandatory):
 - [ ] **Worker `typeof` guards → typed WASM interface** — `configureSimulator()` in `sim.worker.ts` uses 12+ `typeof X === 'function'` guards with `/** @type {any} */` casts. Generate proper TS bindings from `wasm-bindgen` or define a typed wrapper.
 - [x] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
 - [ ] **App-store domain wiring regression tests** — add tests that assert `App.svelte` consumes `scenarioSelection` / `parameterState` / `runtimeState` correctly, preventing accidental fallback to flat compatibility fields during Phase 1.
+- [ ] **Model-reset domain key coverage tests** — add unit tests to lock model-reset signature field coverage (e.g., `reservoirPorosity`) and prevent omission regressions.
+- [ ] **Restore lint toolchain availability** — `npm run lint` currently fails with `eslint: not found`; add/install ESLint dependency in dev setup or align lint script with available tooling.
 - [ ] **Selective Chart.js imports** — both `RateChart.svelte` and `FractionalFlow.svelte` register all registerables. Register only needed components to reduce bundle.
 - [ ] **PCG solver allocation reuse** — `solver.rs:38,70` allocates new `DVector`s (`z`, `z_new`) per iteration. Pre-allocate workspace vectors outside the loop.
 - [ ] **Remove redundant `sat_oil` array** — `sat_oil = 1.0 - sat_water` is maintained separately in every cell across `sat_oil: Vec<f64>`. Derive on access or via a helper to halve memory and eliminate sync risk.

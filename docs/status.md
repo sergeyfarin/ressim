@@ -96,3 +96,56 @@ Audit result:
 
 Next active slice:
 P1.7 Domain-scoped dirty/reset behavior.
+
+Phase 1 progress update (2026-03-05)
+Completed slices:
+- P1.7 Domain-scoped dirty/reset behavior
+- P1.8 Remove shim fields
+
+Implementation details:
+- Fixed model-reset domain signature coverage in `src/lib/stores/simulationStore.svelte.ts` by adding `reservoirPorosity` to `buildModelResetKey()`.
+- Removed temporary flat top-level compatibility API from `createSimulationStore()` return shape.
+- Store now exposes domain APIs only: `scenarioSelection`, `parameterState`, `runtimeState`.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test` passed (7 files, 86 tests).
+
+Discovered gap logged in TODO:
+- Add model-reset domain key coverage tests to prevent signature omission regressions.
+
+Next active slice:
+P1.9 Validation and regression pass.
+
+Phase 1 progress update (2026-03-05)
+Completed slice:
+- P1.9 Validation and regression pass
+
+Validation details:
+- `npm run typecheck` passed.
+- `npm run test` passed (7 files, 86 tests).
+- Editor diagnostics check (`get_errors`) returned no errors.
+
+Validation gap discovered:
+- `npm run lint` failed because `eslint` binary is unavailable in the current environment (`sh: 1: eslint: not found`).
+- Logged in TODO as a follow-up tooling item.
+
+Next active slice:
+P1.10 Docs and handoff update.
+
+Phase 1 progress update (2026-03-05)
+Completed slice:
+- P1.10 Docs and handoff update
+
+Phase 1 execution-plan status:
+- P1.1 through P1.10 are complete.
+- Domain API migration is complete (`scenarioSelection`, `parameterState`, `runtimeState`).
+- App has been migrated to domain APIs and compatibility shims were removed.
+
+Phase 1 residual follow-ups (already logged in TODO):
+- Add App-store domain wiring regression tests.
+- Add model-reset domain key coverage tests.
+- Restore lint toolchain availability (`eslint` missing in current environment).
+
+Next recommended workstream:
+Begin Option B shell UI implementation (High Priority Frontend/UX section in TODO).
