@@ -52,11 +52,11 @@ Single source of truth: this section is the authoritative tracker for ongoing Ph
 - [x] **P2.1 UX contract + state schema freeze** — unified contract module and store schema fields landed (`basePreset`, `parameterOverrides`, `benchmarkProvenance`, `analyticalStatus`) with focused tests and docs (`src/lib/stores/phase2PresetContract.ts`, `src/lib/stores/phase2PresetContract.test.ts`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`).
 - [x] **P2.2 Preset composer shell UI** — hybrid flow polished: per-facet `Customize` + `Reset` controls are part of each facet group, active customize selection is highlighted, section-targeted focus/highlight is wired, customize sessions collapse via explicit `OK`, facet mapping is centralized in shared Phase 2 contract helpers, and generated-profile controls now include shell-level `show changed fields` and per-group quick actions.
 - [x] **P2.3 Override tracking + changed-field UX** — shell-level per-group reset-to-preset and "show changed fields" are wired against deterministic base-preset diff, with dedicated contract-level regression tests for deterministic override ordering and grouped reset-plan behavior (including de-duplication and stale-key filtering).
-- [ ] **P2.4 Benchmark clone-to-custom flow (in progress)** — add one-click clone path from benchmark presets to editable custom state with immutable source benchmark metadata.
-- [ ] **P2.5 Analytical eligibility evaluator** — implement `reference | approximate | off` status computation with explicit reasons and warning severity.
-- [ ] **P2.6 Analytical status banner UX** — wire persistent, high-visibility banner and tooltip/details panel for approximation caveats across relevant charts/panels.
-- [ ] **P2.7 Store/App integration hardening** — connect new UI flows to domain APIs (`scenarioSelection`, `parameterState`, `runtimeState`) and remove transitional branching.
-- [ ] **P2.8 Regression + policy tests** — add tests for clone provenance, changed-fields diffing, analytical status modes, and benchmark-only pre-run policy.
+- [x] **P2.4 Benchmark clone-to-custom flow** — added one-click `Clone to Custom` from benchmark presets in shell/top controls, wired provenance creation and display, and enforced immutable lineage per clone session by clearing provenance only on preset/mode changes.
+- [x] **P2.5 Analytical eligibility evaluator** — analytical status now computes `reference | approximate | off` with explicit reason details and severity levels (`none | notice | warning | critical`) plus deterministic summary severity for UI policy.
+- [x] **P2.6 Analytical status banner UX** — wired persistent, high-visibility approximation banner above analytics panels with expandable caveat details and per-reason severity badges/tooltips.
+- [x] **P2.7 Store/App integration hardening** — moved clone/reset UI flows to domain APIs (`scenarioSelection`, `parameterState`), removed App-side transitional assembly logic, and tightened analytical banner contract consumption.
+- [ ] **P2.8 Regression + policy tests (in progress)** — add tests for clone provenance, changed-fields diffing, analytical status modes, and benchmark-only pre-run policy.
 - [ ] **P2.9 Production pre-run validation** — execute end-to-end validation of benchmark prerun fetch/decompression behavior under production hosting assumptions.
 - [ ] **P2.10 Docs + handoff update** — sync `docs/status.md`, capture decision rationale, and record residual follow-ups with verified commands/results.
 
@@ -101,7 +101,7 @@ Interruption resume protocol (mandatory):
 
 - [ ] **Implement Option B shell UI** — consolidate top-level mode/facet selection and editable parameter inputs into one unified "Preset + Customize" surface.
 - [ ] **Benchmark clone flow** — add `Clone to Custom` action that copies all benchmark parameters and stores source benchmark provenance.
-- [ ] **Analytical status banner** — introduce `reference | approximate | off` status with persistent, highly visible warning for approximate overlays.
+- [x] **Analytical status banner** — introduced `reference | approximate | off` status path with persistent, highly visible warning and expandable caveat details for approximate overlays.
 - [x] **Benchmark-only pre-run loading** — remove pre-run fetch/continuation path from non-benchmark modes; keep only for benchmark artifacts. Pre-runs hydrate charts/3D only; running always re-initializes from step 0.
 - [x] **Fix run validation gating** — pass `hasValidationErrors` into run controls and show explicit message when run is blocked by invalid inputs.
 - [x] **Fix custom-subcase mode mapping** — normalize mode aliases (`dep/wf/sim` vs `depletion/waterflood/simulation`) so custom sub-case switching is reliable.
@@ -165,7 +165,7 @@ Interruption resume protocol (mandatory):
 - [ ] **CI pipeline for tests** — GitHub Actions: `cargo test` + `npm test` + `npm run build` on push/PR. Regenerate `benchmark-results.json` and compare.
 - [ ] **Worker `typeof` guards → typed WASM interface** — `configureSimulator()` in `sim.worker.ts` uses 12+ `typeof X === 'function'` guards with `/** @type {any} */` casts. Generate proper TS bindings from `wasm-bindgen` or define a typed wrapper.
 - [x] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
-- [ ] **App-store domain wiring regression tests** — add tests that assert `App.svelte` consumes `scenarioSelection` / `parameterState` / `runtimeState` correctly, preventing accidental fallback to flat compatibility fields during Phase 1.
+- [x] **App-store domain wiring regression tests** — added static wiring checks in `src/lib/appStoreDomainWiring.test.ts` to guard domain-object usage and prevent fallback to App-side transitional logic.
 - [ ] **Model-reset domain key coverage tests** — add unit tests to lock model-reset signature field coverage (e.g., `reservoirPorosity`) and prevent omission regressions.
 - [ ] **Restore lint toolchain availability** — `npm run lint` currently fails with `eslint: not found`; add/install ESLint dependency in dev setup or align lint script with available tooling.
 - [ ] **Selective Chart.js imports** — both `RateChart.svelte` and `FractionalFlow.svelte` register all registerables. Register only needed components to reduce bundle.

@@ -14,8 +14,10 @@
     onToggleChange,
     onCustomizeFacet = (_dimKey: string) => {},
     onResetFacet = (_dimKey: string) => {},
+    onCloneBenchmarkToCustom = () => {},
     activeCustomizeGroup = null,
     parameterOverrideGroups = {},
+    benchmarkProvenance = null,
   } = $props<{
     activeMode: CaseMode;
     isModified?: boolean;
@@ -26,8 +28,15 @@
     onToggleChange: (key: string, value: any) => void;
     onCustomizeFacet?: (dimensionKey: string) => void;
     onResetFacet?: (dimensionKey: string) => void;
+    onCloneBenchmarkToCustom?: () => void;
     activeCustomizeGroup?: string | null;
     parameterOverrideGroups?: Record<string, string[]>;
+    benchmarkProvenance?: {
+      sourceBenchmarkId: string;
+      sourceCaseKey: string;
+      sourceLabel: string;
+      clonedAtIso: string;
+    } | null;
   }>();
 
   let isCollapsed = $state(false);
@@ -206,10 +215,31 @@
     <!-- Benchmark details -->
     {#if activeMode === "benchmark" && activeBenchmark}
       <div
-        class="text-[11px] text-muted-foreground mt-2 border-t border-border/50 pt-2 shrink-0"
+        class="mt-2 border-t border-border/50 pt-2 shrink-0"
       >
-        <strong>{activeBenchmark.label}:</strong>
-        {activeBenchmark.description}
+        <div class="text-[11px] text-muted-foreground">
+          <strong>{activeBenchmark.label}:</strong>
+          {activeBenchmark.description}
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isModified}
+            onclick={onCloneBenchmarkToCustom}
+          >
+            Clone to Custom
+          </Button>
+          {#if benchmarkProvenance}
+            <span class="text-[10px] text-muted-foreground">
+              Cloned source: <strong class="text-foreground">{benchmarkProvenance.sourceLabel}</strong>
+            </span>
+          {:else if isModified}
+            <span class="text-[10px] text-muted-foreground">
+              Customized without clone provenance
+            </span>
+          {/if}
+        </div>
       </div>
     {/if}
   {/if}

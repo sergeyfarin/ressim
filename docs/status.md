@@ -368,3 +368,108 @@ Validation run:
 
 Next active slice:
 P2.4 Benchmark clone-to-custom flow (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.4 Benchmark clone-to-custom flow
+
+Implemented in this slice:
+- `src/lib/ui/TopBar.svelte`
+	- Added one-click benchmark `Clone to Custom` action in benchmark details area.
+	- Added clone provenance status line when lineage exists.
+	- Added explicit fallback note when benchmark is customized without clone provenance.
+- `src/App.svelte`
+	- Added clone handler (`handleCloneBenchmarkToCustom`) that:
+		- creates immutable benchmark provenance metadata,
+		- transitions benchmark preset into editable custom state via `handleParamEdit()`,
+		- preserves first-clone lineage for the session,
+		- scrolls/focuses inputs section for immediate customization.
+- `src/lib/stores/phase2PresetContract.ts`
+	- Added `buildBenchmarkCloneProvenance(...)` helper for deterministic lineage payload construction.
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Enforced clone lineage lifecycle by clearing `benchmarkProvenance` on mode changes and preset/facet toggle changes.
+- `src/lib/stores/phase2PresetContract.test.ts`
+	- Added provenance helper tests for valid benchmark context and incomplete-context null behavior.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 16 tests).
+
+Next active slice:
+P2.5 Analytical eligibility evaluator (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.5 Analytical eligibility evaluator
+
+Implemented in this slice:
+- `src/lib/stores/phase2PresetContract.ts`
+	- Extended analytical status contract with severity-aware fields:
+		- `warningSeverity: 'none' | 'notice' | 'warning' | 'critical'`
+		- `reasonDetails: Array<{ code; message; severity }>`
+	- Refactored `evaluateAnalyticalStatus(...)` to produce deterministic reason codes, messages, and severity levels.
+	- Added highest-severity summarization logic to support policy-driven UI behavior.
+- `src/lib/stores/phase2PresetContract.test.ts`
+	- Added severity-specific evaluator tests for:
+		- reference/no-warning paths,
+		- approximate warning paths,
+		- critical contradiction paths,
+		- off-mode/no-warning summary behavior.
+- `src/lib/ui/InputsTab.svelte`
+	- Updated `analyticalStatus` typing/defaults to match enhanced contract.
+- `src/lib/ui/PresetCustomizeShell.svelte`
+	- Updated `analyticalStatus` typing/defaults and surfaced severity label in shell status chip.
+- `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`
+	- Updated frozen schema docs to include `warningSeverity` and `reasonDetails`.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 18 tests).
+
+Next active slice:
+P2.6 Analytical status banner UX (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.6 Analytical status banner UX
+
+Implemented in this slice:
+- `src/lib/ui/AnalyticalStatusBanner.svelte`
+	- Added a dedicated analytical-status banner component with severity-aware tone (`notice | warning | critical`), persistent status messaging, and an expandable caveat details panel.
+	- Added per-reason severity badges plus reason-code tooltips for faster approximation-cause inspection.
+- `src/App.svelte`
+	- Wired the banner into the main results surface so approximate analytical status is persistently visible above the chart/3D analysis panels.
+- `TODO.md`
+	- Marked `P2.6` complete and advanced `P2.7` to active in-progress slice.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (2 files, 18 tests).
+
+Next active slice:
+P2.7 Store/App integration hardening (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.7 Store/App integration hardening
+
+Implemented in this slice:
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Added domain-level scenario action `cloneActiveBenchmarkToCustom()` so benchmark clone lineage is created/applied by `scenarioSelection` instead of App-side assembly.
+	- Added domain-level parameter action `resetOverrideGroupsToBase(groupKeys)` so grouped override resets are applied through `parameterState` APIs instead of dynamic App-side field mutation.
+- `src/App.svelte`
+	- Removed transitional App-side provenance/diff-plan assembly (`catalog`, `buildBenchmarkCloneProvenance`, `buildOverrideResetPlan`).
+	- Routed clone and grouped reset flows through store domain APIs (`scenario.cloneActiveBenchmarkToCustom()`, `params.resetOverrideGroupsToBase(...)`).
+- `src/lib/ui/AnalyticalStatusBanner.svelte`
+	- Tightened banner input contract to current Phase 2 schema by requiring `reasonDetails` + `reasons` and removing fallback compatibility branching.
+- `src/lib/appStoreDomainWiring.test.ts`
+	- Added regression test coverage that asserts `App.svelte` uses `scenarioSelection`/`parameterState`/`runtimeState` and keeps clone/reset flows domain-driven.
+- `TODO.md`
+	- Marked `P2.7` complete and advanced `P2.8` to active in-progress slice.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (3 files, 21 tests).
+
+Next active slice:
+P2.8 Regression + policy tests (in progress).

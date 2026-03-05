@@ -5,14 +5,12 @@
     import TopBar from "./lib/ui/TopBar.svelte";
     import RunControls from "./lib/ui/RunControls.svelte";
     import InputsTab from "./lib/ui/InputsTab.svelte";
+    import AnalyticalStatusBanner from "./lib/ui/AnalyticalStatusBanner.svelte";
     import SwProfileChart from "./lib/SwProfileChart.svelte";
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";
-    import { catalog } from "./lib/caseCatalog";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
     import {
-        buildBenchmarkCloneProvenance,
-        buildOverrideResetPlan,
         getFacetCustomizeSectionTarget,
         getFacetOverrideGroups,
         getOverrideGroupSectionTarget,
@@ -29,11 +27,6 @@
     let customizeSectionNonce = $state(0);
     let activeCustomizeGroup = $state<string | null>(null);
     let showChangedFields = $state(false);
-
-    function setParamValueByKey(key: string, value: unknown) {
-        const nextValue = Array.isArray(value) ? [...value] : value;
-        (params as any)[key] = nextValue;
-    }
 
     function handleCustomizeFacet(dimKey: string) {
         customizeSectionTarget = getFacetCustomizeSectionTarget(dimKey);
@@ -63,15 +56,8 @@
     function resetOverrideGroups(groupKeys: string[]) {
         if (!groupKeys.length) return;
 
-        const resetPlan = buildOverrideResetPlan({
-            groupKeys,
-            groupedOverrides: params.parameterOverrideGroups,
-            overrides: params.parameterOverrides,
-        });
-
-        for (const item of resetPlan) {
-            setParamValueByKey(item.key, item.base);
-        }
+        const { resetCount } = params.resetOverrideGroupsToBase(groupKeys);
+        if (resetCount === 0) return;
 
         activeCustomizeGroup = groupKeys[0] ?? activeCustomizeGroup;
 
@@ -98,23 +84,8 @@
     }
 
     function handleCloneBenchmarkToCustom() {
-        if (scenario.activeMode !== "benchmark") return;
-        if (scenario.isModified) return;
-
-        const benchmarkId = scenario.toggles.benchmarkId ?? null;
-        const benchmarkLabel = benchmarkId
-            ? catalog.benchmarks.find((b) => b.key === benchmarkId)?.label ?? null
-            : null;
-        const provenance = buildBenchmarkCloneProvenance({
-            benchmarkId,
-            sourceCaseKey: scenario.activeCase,
-            sourceLabel: benchmarkLabel,
-        });
-
-        scenario.handleParamEdit();
-        if (provenance && !scenario.benchmarkProvenance) {
-            scenario.setBenchmarkProvenance(provenance);
-        }
+        const cloned = scenario.cloneActiveBenchmarkToCustom();
+        if (!cloned) return;
 
         customizeSectionTarget = "shell";
         customizeSectionNonce += 1;
@@ -515,6 +486,10 @@
             <div class="text-xs text-muted-foreground text-center mt-2">
                 Loading pre-run case data…
             </div>
+        {/if}
+
+        {#if runtime.analyticalStatus.level === "approximate"}
+            <AnalyticalStatusBanner status={runtime.analyticalStatus} />
         {/if}
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start mt-2">

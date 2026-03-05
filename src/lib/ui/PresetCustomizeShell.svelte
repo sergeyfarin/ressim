@@ -18,6 +18,12 @@
   type AnalyticalStatus = {
     level: "reference" | "approximate" | "off";
     mode: "waterflood" | "depletion" | "none";
+    warningSeverity: "none" | "notice" | "warning" | "critical";
+    reasonDetails: Array<{
+      code: string;
+      message: string;
+      severity: "notice" | "warning" | "critical";
+    }>;
     reasons: string[];
   };
 
@@ -34,6 +40,14 @@
     analyticalStatus = {
       level: "off",
       mode: "none",
+      warningSeverity: "none",
+      reasonDetails: [
+        {
+          code: "analytical-disabled",
+          message: "Analytical overlay is disabled for this scenario.",
+          severity: "notice",
+        },
+      ],
       reasons: ["Analytical overlay is disabled for this scenario."],
     },
   }: {
@@ -174,6 +188,9 @@
       <div class="mt-2">
         <span class="rounded-md border px-2 py-1 text-[11px] font-medium {analyticalTone}">
           {analyticalStatus.level.toUpperCase()} · {analyticalStatus.mode}
+          {#if analyticalStatus.warningSeverity !== "none"}
+            · {analyticalStatus.warningSeverity}
+          {/if}
         </span>
       </div>
       {#if analyticalStatus.reasons.length > 0}

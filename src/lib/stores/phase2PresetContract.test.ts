@@ -84,6 +84,8 @@ describe('phase2PresetContract', () => {
         });
 
         expect(status.level).toBe('reference');
+        expect(status.warningSeverity).toBe('none');
+        expect(status.reasonDetails).toEqual([]);
         expect(status.reasons).toEqual([]);
     });
 
@@ -99,7 +101,48 @@ describe('phase2PresetContract', () => {
         });
 
         expect(status.level).toBe('approximate');
+        expect(status.warningSeverity).toBe('warning');
+        expect(status.reasonDetails.some((r) => r.code === 'sim-mode-exploratory')).toBe(true);
         expect(status.reasons.length).toBeGreaterThan(0);
+    });
+
+    it('returns critical warning severity for contradictory injector assumptions', () => {
+        const status = evaluateAnalyticalStatus({
+            activeMode: 'wf',
+            analyticalMode: 'waterflood',
+            injectorEnabled: false,
+            gravityEnabled: false,
+            capillaryEnabled: false,
+            permMode: 'uniform',
+            toggles: { mode: 'wf', geo: '1d', well: 'e2e' },
+        });
+
+        expect(status.level).toBe('approximate');
+        expect(status.warningSeverity).toBe('critical');
+        expect(status.reasonDetails.some((r) => r.code === 'wf-injector-disabled')).toBe(true);
+    });
+
+    it('returns off status with non-warning severity when analytical mode is none', () => {
+        const status = evaluateAnalyticalStatus({
+            activeMode: 'sim',
+            analyticalMode: 'none',
+            injectorEnabled: true,
+            gravityEnabled: false,
+            capillaryEnabled: false,
+            permMode: 'uniform',
+            toggles: { mode: 'sim', geo: '2dxy', well: 'corner' },
+        });
+
+        expect(status.level).toBe('off');
+        expect(status.mode).toBe('none');
+        expect(status.warningSeverity).toBe('none');
+        expect(status.reasonDetails).toEqual([
+            {
+                code: 'analytical-disabled',
+                message: 'Analytical overlay is disabled for this scenario.',
+                severity: 'notice',
+            },
+        ]);
     });
 
     it('uses centralized facet section mapping with safe fallback', () => {

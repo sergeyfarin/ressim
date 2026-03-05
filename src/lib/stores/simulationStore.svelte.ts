@@ -24,7 +24,9 @@ import {
     type ValidationState as InputValidationState,
 } from '../validateInputs';
 import {
+    buildBenchmarkCloneProvenance,
     buildBasePresetProfile,
+    buildOverrideResetPlan,
     buildParameterOverrides,
     evaluateAnalyticalStatus,
     groupParameterOverrides,
@@ -895,6 +897,27 @@ export function createSimulationStore() {
         preRunContinuationAvailable = false;
     }
 
+    function cloneActiveBenchmarkToCustom(): boolean {
+        if (activeMode !== 'benchmark' || isModified) return false;
+
+        const benchmarkId = toggles.benchmarkId ?? null;
+        const benchmarkLabel = benchmarkId
+            ? catalog.benchmarks.find((b) => b.key === benchmarkId)?.label ?? null
+            : null;
+        const provenance = buildBenchmarkCloneProvenance({
+            benchmarkId,
+            sourceCaseKey: activeCase,
+            sourceLabel: benchmarkLabel,
+        });
+
+        handleParamEdit();
+        if (provenance && !benchmarkProvenance) {
+            benchmarkProvenance = provenance;
+        }
+
+        return true;
+    }
+
     function setBenchmarkProvenance(provenance: BenchmarkProvenance | null) {
         benchmarkProvenance = provenance;
     }
@@ -1129,6 +1152,7 @@ export function createSimulationStore() {
         handleModeChange,
         handleToggleChange,
         handleParamEdit,
+        cloneActiveBenchmarkToCustom,
         resolveCustomSubCase,
         setBenchmarkProvenance,
     };
@@ -1204,6 +1228,24 @@ export function createSimulationStore() {
         get parameterOverrides() { return parameterOverrides; },
         get parameterOverrideGroups() { return parameterOverrideGroups; },
         get parameterOverrideCount() { return parameterOverrideCount; },
+        resetOverrideGroupsToBase(groupKeys: string[]) {
+            if (!Array.isArray(groupKeys) || groupKeys.length === 0) {
+                return { resetCount: 0 };
+            }
+
+            const resetPlan = buildOverrideResetPlan({
+                groupKeys,
+                groupedOverrides: parameterOverrideGroups,
+                overrides: parameterOverrides,
+            });
+
+            for (const item of resetPlan) {
+                const nextValue = Array.isArray(item.base) ? [...item.base] : item.base;
+                (parameterState as Record<string, unknown>)[item.key] = nextValue;
+            }
+
+            return { resetCount: resetPlan.length };
+        },
         handleAnalyticalSolutionModeChange,
         handleNzOrPermModeChange,
     };

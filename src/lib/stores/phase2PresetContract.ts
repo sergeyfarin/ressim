@@ -178,9 +178,21 @@ export type AnalyticalStatusLevel = 'reference' | 'approximate' | 'off';
 
 export type AnalyticalStatusMode = 'waterflood' | 'depletion' | 'none';
 
+export type AnalyticalReasonSeverity = 'notice' | 'warning' | 'critical';
+
+export type AnalyticalStatusWarningSeverity = 'none' | AnalyticalReasonSeverity;
+
+export type AnalyticalStatusReason = {
+    code: string;
+    message: string;
+    severity: AnalyticalReasonSeverity;
+};
+
 export type AnalyticalStatus = {
     level: AnalyticalStatusLevel;
     mode: AnalyticalStatusMode;
+    warningSeverity: AnalyticalStatusWarningSeverity;
+    reasonDetails: AnalyticalStatusReason[];
     reasons: string[];
 };
 
@@ -193,6 +205,27 @@ export type AnalyticalStatusInput = {
     permMode: 'uniform' | 'random' | 'perLayer';
     toggles: ToggleState;
 };
+
+const ANALYTICAL_SEVERITY_RANK: Record<AnalyticalStatusWarningSeverity, number> = {
+    none: 0,
+    notice: 1,
+    warning: 2,
+    critical: 3,
+};
+
+function maxAnalyticalSeverity(
+    reasons: readonly AnalyticalStatusReason[],
+): AnalyticalStatusWarningSeverity {
+    if (!reasons.length) return 'none';
+    let max: AnalyticalStatusWarningSeverity = 'none';
+    for (const reason of reasons) {
+        const severity = reason.severity;
+        if (ANALYTICAL_SEVERITY_RANK[severity] > ANALYTICAL_SEVERITY_RANK[max]) {
+            max = severity;
+        }
+    }
+    return max;
+}
 
 function toComparableScalar(value: unknown): unknown {
     if (typeof value === 'number') {
@@ -330,37 +363,108 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     } = input;
 
     if (analyticalMode !== 'waterflood' && analyticalMode !== 'depletion') {
+        const reasonDetails: AnalyticalStatusReason[] = [
+            {
+                code: 'analytical-disabled',
+                message: 'Analytical overlay is disabled for this scenario.',
+                severity: 'notice',
+            },
+        ];
         return {
             level: 'off',
             mode: 'none',
-            reasons: ['Analytical overlay is disabled for this scenario.'],
+            warningSeverity: 'none',
+            reasonDetails,
+            reasons: reasonDetails.map((r) => r.message),
         };
     }
 
-    const reasons: string[] = [];
+    const reasonDetails: AnalyticalStatusReason[] = [];
+
+    const addReason = (
+        code: string,
+        message: string,
+        severity: AnalyticalReasonSeverity,
+    ) => {
+        reasonDetails.push({ code, message, severity });
+    };
 
     if (analyticalMode === 'waterflood') {
-        if (!injectorEnabled) reasons.push('Injector is disabled for waterflood analytical assumptions.');
-        if (toggles.geo !== '1d') reasons.push('Reference waterflood analytical comparison expects 1D geometry.');
-        if (toggles.well !== 'e2e') reasons.push('Reference waterflood analytical comparison expects end-to-end wells.');
+        if (!injectorEnabled) {
+            addReason(
+                'wf-injector-disabled',
+                'Injector is disabled for waterflood analytical assumptions.',
+                'critical',
+            );
+        }
+        if (toggles.geo !== '1d') {
+            addReason(
+                'wf-geometry-not-1d',
+                'Reference waterflood analytical comparison expects 1D geometry.',
+                'warning',
+            );
+        }
+        if (toggles.well !== 'e2e') {
+            addReason(
+                'wf-well-not-e2e',
+                'Reference waterflood analytical comparison expects end-to-end wells.',
+                'warning',
+            );
+        }
     } else {
-        if (injectorEnabled) reasons.push('Injector is enabled for depletion analytical assumptions.');
+        if (injectorEnabled) {
+            addReason(
+                'dep-injector-enabled',
+                'Injector is enabled for depletion analytical assumptions.',
+                'critical',
+            );
+        }
         if (!(toggles.geo === '1d' || toggles.well === 'center')) {
-            reasons.push('Reference depletion analytical comparison expects 1D or center-producer assumptions.');
+            addReason(
+                'dep-geometry-well-mismatch',
+                'Reference depletion analytical comparison expects 1D or center-producer assumptions.',
+                'warning',
+            );
         }
     }
 
-    if (permMode !== 'uniform') reasons.push('Permeability is non-uniform, so analytical match is approximate.');
-    if (gravityEnabled) reasons.push('Gravity is enabled, which deviates from reference analytical assumptions.');
-    if (capillaryEnabled) reasons.push('Capillary pressure is enabled, which deviates from reference analytical assumptions.');
-
-    if (activeMode === 'sim') {
-        reasons.push('Simulation mode is exploratory; analytical overlay is treated as approximate guidance.');
+    if (permMode !== 'uniform') {
+        addReason(
+            'perm-nonuniform',
+            'Permeability is non-uniform, so analytical match is approximate.',
+            'warning',
+        );
+    }
+    if (gravityEnabled) {
+        addReason(
+            'gravity-enabled',
+            'Gravity is enabled, which deviates from reference analytical assumptions.',
+            'warning',
+        );
+    }
+    if (capillaryEnabled) {
+        addReason(
+            'capillary-enabled',
+            'Capillary pressure is enabled, which deviates from reference analytical assumptions.',
+            'warning',
+        );
     }
 
+    if (activeMode === 'sim') {
+        addReason(
+            'sim-mode-exploratory',
+            'Simulation mode is exploratory; analytical overlay is treated as approximate guidance.',
+            'notice',
+        );
+    }
+
+    const warningSeverity = maxAnalyticalSeverity(reasonDetails);
+
     return {
-        level: reasons.length === 0 ? 'reference' : 'approximate',
+        level: reasonDetails.length === 0 ? 'reference' : 'approximate',
         mode: analyticalMode,
-        reasons,
+        warningSeverity,
+        reasonDetails,
+        reasons: reasonDetails.map((r) => r.message),
     };
 }

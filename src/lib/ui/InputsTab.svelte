@@ -83,6 +83,14 @@
     analyticalStatus = {
       level: "off",
       mode: "none",
+      warningSeverity: "none",
+      reasonDetails: [
+        {
+          code: "analytical-disabled",
+          message: "Analytical overlay is disabled for this scenario.",
+          severity: "notice",
+        },
+      ],
       reasons: ["Analytical overlay is disabled for this scenario."],
     },
     customizeSectionTarget = null,
@@ -177,6 +185,12 @@
     analyticalStatus?: {
       level: "reference" | "approximate" | "off";
       mode: "waterflood" | "depletion" | "none";
+      warningSeverity: "none" | "notice" | "warning" | "critical";
+      reasonDetails: Array<{
+        code: string;
+        message: string;
+        severity: "notice" | "warning" | "critical";
+      }>;
       reasons: string[];
     };
     customizeSectionTarget?:
