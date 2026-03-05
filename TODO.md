@@ -45,6 +45,41 @@ Interruption resume protocol (mandatory):
 
 ---
 
+## Active Execution Plan — Phase 2 (Interruption-Safe)
+
+Single source of truth: this section is the authoritative tracker for ongoing Phase 2 work.
+
+- [ ] **P2.1 UX contract + state schema freeze (in progress)** — define the unified "Preset + Customize" interaction contract and lock the store-facing schema (`basePreset`, `parameterOverrides`, `benchmarkProvenance`, `analyticalStatus`).
+- [ ] **P2.2 Preset composer shell UI** — implement top-of-panel mode/facet composer with clear generated-profile summary and no hidden transitions.
+- [ ] **P2.3 Override tracking + changed-field UX** — add per-group reset-to-preset and "show changed fields" using deterministic diff against base preset.
+- [ ] **P2.4 Benchmark clone-to-custom flow** — add one-click clone path from benchmark presets to editable custom state with immutable source benchmark metadata.
+- [ ] **P2.5 Analytical eligibility evaluator** — implement `reference | approximate | off` status computation with explicit reasons and warning severity.
+- [ ] **P2.6 Analytical status banner UX** — wire persistent, high-visibility banner and tooltip/details panel for approximation caveats across relevant charts/panels.
+- [ ] **P2.7 Store/App integration hardening** — connect new UI flows to domain APIs (`scenarioSelection`, `parameterState`, `runtimeState`) and remove transitional branching.
+- [ ] **P2.8 Regression + policy tests** — add tests for clone provenance, changed-fields diffing, analytical status modes, and benchmark-only pre-run policy.
+- [ ] **P2.9 Production pre-run validation** — execute end-to-end validation of benchmark prerun fetch/decompression behavior under production hosting assumptions.
+- [ ] **P2.10 Docs + handoff update** — sync `docs/status.md`, capture decision rationale, and record residual follow-ups with verified commands/results.
+
+Phase 2 acceptance checklist:
+
+- [ ] Unified Preset + Customize surface is primary path for depletion/waterflood/simulation and benchmark entry.
+- [ ] Benchmark presets can be cloned into custom mode with traceable source metadata.
+- [ ] Analytical overlay remains permissive, with persistent warning and explicit reasons when in approximate mode.
+- [ ] No disabled facet remains selected after any interaction sequence.
+- [ ] Non-benchmark interactions never trigger pre-run fetch.
+- [ ] Run/step invalid-input behavior is explicit and never a silent no-op.
+- [ ] App/store regression tests cover Phase 2 pathways (clone, overrides, analytical status, policy guards).
+
+Interruption resume protocol (mandatory):
+
+- [ ] Keep this Phase 2 section current before ending a work session.
+- [ ] Mark only one active slice at a time by adding `(in progress)` in the item text.
+- [ ] Append each completed slice outcome to `docs/status.md` with tests run and explicit next step.
+- [ ] If interrupted mid-slice, add a short `WIP` note in `docs/status.md` with current file and pending edit.
+- [ ] Do not start a new slice until TODO and status are synchronized.
+
+---
+
 ## High Priority — Physics & Correctness
 
 - [x] **Upstream mobility weighting in pressure equation** — `transmissibility_upstream()` in `step.rs` now uses upstream weighting based on potential difference. Confirmed in code review.
@@ -139,9 +174,9 @@ Interruption resume protocol (mandatory):
 - [ ] **3D view color-only updates** — `buildInstancedGrid()` in `3dview.svelte` recreates all mesh transforms on every state update. Update only colors via `setColorAt()` when grid geometry hasn't changed.
 - [ ] **Pressure-equation neighbor allocation** — `step.rs:429` allocates a new `Vec<(usize,char,usize)>` for each cell's neighbors on every timestep. Use a fixed-size stack array `[(usize,char,usize); 6]` instead.
 - [ ] **Sparse matrix rebuild every sub-step** — `calculate_fluxes()` in `step.rs` rebuilds the full sparse matrix (triplets → CSR) on every sub-step call. For fixed-topology grids, the sparsity pattern could be pre-built, updating only values.
-- [ ] **Remove stale `tmp_heatpump.svelte`** — 135K file in root, appears unrelated to this project.
-- [ ] **Clean up root-level temp scripts** — `fix_frontend_soa.mjs`, `fix_grid_cells_step.mjs`, `fix_grid_cells_tests.mjs`, `refactor_soa.mjs`, `test_hydrate.mjs`, `test_hydration_empty.mjs`, `test_hydration_payload.mjs`, `test_hydration_worker.mjs` are one-off migration/debug scripts. Delete if no longer needed.
-- [ ] **Clean up root-level `.resolved` files** — `frontend_reactivity_review.md.resolved`, `task.md.resolved`, `task2.md.resolved`, `walkthrough.md.resolved` are resolved work artifacts. Delete.
+- [x] **Remove stale `tmp_heatpump.svelte`** — removed root-level legacy artifact on 2026-03-05.
+- [x] **Clean up root-level temp scripts** — removed root-level one-off migration/debug scripts on 2026-03-05 (`fix_frontend_soa.mjs`, `fix_grid_cells_step.mjs`, `fix_grid_cells_tests.mjs`, `refactor_soa.mjs`, `test_hydrate.mjs`, `test_hydration_empty.mjs`, `test_hydration_payload.mjs`, `test_hydration_worker.mjs`).
+- [x] **Clean up root-level `.resolved` files** — verified no root-level `.resolved` artifacts are present as of 2026-03-05.
 
 ---
 

@@ -149,3 +149,28 @@ Phase 1 residual follow-ups (already logged in TODO):
 
 Next recommended workstream:
 Begin Option B shell UI implementation (High Priority Frontend/UX section in TODO).
+
+Phase 2 planning + legacy cleanup update (2026-03-05)
+Completed in this slice:
+- Reviewed the three planning/control documents together:
+	- `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md`
+	- `docs/status.md`
+	- `TODO.md`
+- Confirmed alignment on product direction: Option B remains the Phase 2 driver, analytical overlays stay permissive-with-warning, and benchmark clone-to-custom is mandatory.
+- Cleaned root-level legacy artifacts:
+	- Removed `tmp_heatpump.svelte`.
+	- Removed one-off root scripts: `fix_frontend_soa.mjs`, `fix_grid_cells_step.mjs`, `fix_grid_cells_tests.mjs`, `refactor_soa.mjs`, `test_hydrate.mjs`, `test_hydration_empty.mjs`, `test_hydration_payload.mjs`, `test_hydration_worker.mjs`.
+	- Verified no root-level `.resolved` files are present.
+
+Planning updates applied:
+- Added `Active Execution Plan — Phase 2 (Interruption-Safe)` in `TODO.md` with 10 explicit slices (`P2.1` to `P2.10`).
+- Marked `P2.1 UX contract + state schema freeze` as `(in progress)` to establish deterministic resume state.
+- Added Phase 2 acceptance checklist and a dedicated interruption-resume protocol block.
+- Marked legacy cleanup TODO items complete.
+
+Validation run:
+- Repository had no pre-existing changed files before this slice.
+- Confirmed deleted artifacts are absent after cleanup.
+
+Next active slice:
+P2.1 UX contract + state schema freeze (in progress).
