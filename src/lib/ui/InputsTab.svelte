@@ -5,6 +5,7 @@
   import WellPropertiesPanel from "./WellPropertiesPanel.svelte";
   import TimestepControlsPanel from "./TimestepControlsPanel.svelte";
   import AnalyticalInputsPanel from "./AnalyticalInputsPanel.svelte";
+  import PresetCustomizeShell from "./PresetCustomizeShell.svelte";
 
   // All the same bindings that the sidebar panels used to have
   let {
@@ -73,6 +74,15 @@
     onNzOrPermModeChange = () => {},
     validationErrors = {},
     validationWarnings = [],
+    basePreset = null,
+    benchmarkProvenance = null,
+    parameterOverrideCount = 0,
+    parameterOverrideGroups = {},
+    analyticalStatus = {
+      level: "off",
+      mode: "none",
+      reasons: ["Analytical overlay is disabled for this scenario."],
+    },
     readOnly = false,
   }: {
     nx?: number;
@@ -138,9 +148,40 @@
     onNzOrPermModeChange?: () => void;
     validationErrors?: Record<string, string>;
     validationWarnings?: string[];
+    basePreset?: {
+      key: string;
+      mode: "dep" | "wf" | "sim" | "benchmark";
+      source: "facet" | "benchmark" | "custom";
+      label: string;
+      toggles: Record<string, string>;
+      benchmarkId: string | null;
+    } | null;
+    benchmarkProvenance?: {
+      sourceBenchmarkId: string;
+      sourceCaseKey: string;
+      sourceLabel: string;
+      clonedAtIso: string;
+    } | null;
+    parameterOverrideCount?: number;
+    parameterOverrideGroups?: Record<string, string[]>;
+    analyticalStatus?: {
+      level: "reference" | "approximate" | "off";
+      mode: "waterflood" | "depletion" | "none";
+      reasons: string[];
+    };
     readOnly?: boolean;
   } = $props();
 </script>
+
+<div class="mb-4">
+  <PresetCustomizeShell
+    {basePreset}
+    {benchmarkProvenance}
+    {parameterOverrideCount}
+    {parameterOverrideGroups}
+    {analyticalStatus}
+  />
+</div>
 
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
   <div class="space-y-3">

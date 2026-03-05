@@ -600,6 +600,11 @@
                 onNzOrPermModeChange={params.handleNzOrPermModeChange}
                 validationErrors={params.validationErrors}
                 validationWarnings={params.validationWarnings}
+                basePreset={scenario.basePreset}
+                benchmarkProvenance={scenario.benchmarkProvenance}
+                parameterOverrideCount={params.parameterOverrideCount}
+                parameterOverrideGroups={params.parameterOverrideGroups}
+                analyticalStatus={runtime.analyticalStatus}
                 readOnly={false}
             />
         </div>

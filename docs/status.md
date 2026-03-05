@@ -176,6 +176,31 @@ Next active slice:
 P2.2 Preset composer shell UI (in progress).
 
 Phase 2 progress update (2026-03-05)
+Slice in progress:
+- P2.2 Preset composer shell UI
+
+Implemented in this sub-slice:
+- Added first visible Preset + Customize shell component: `src/lib/ui/PresetCustomizeShell.svelte`.
+- Wired the shell into `src/lib/ui/InputsTab.svelte` above the existing parameter panels.
+- Bound live Phase 2 contract fields from `App` into `InputsTab`:
+	- `basePreset`
+	- `benchmarkProvenance`
+	- `parameterOverrideCount`
+	- `parameterOverrideGroups`
+	- `analyticalStatus`
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts` passed (1 file, 5 tests).
+
+Remaining in current slice:
+- Implement mode/facet composer interactions in the new shell area.
+- Add generated-profile interaction controls (next visible increment).
+
+Next active slice:
+P2.2 Preset composer shell UI (in progress).
+
+Phase 2 progress update (2026-03-05)
 Completed slice:
 - P2.1 UX contract + state schema freeze
 
