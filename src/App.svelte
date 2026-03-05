@@ -236,7 +236,7 @@
     <div class="geo-gradient-overlay"></div>
 
     <!-- Main Content — z-[2] ensures it renders above both layers and gradient overlay -->
-    <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-[2]">
+    <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-2">
         <!-- Hidden component for analytical calculations -->
         <FractionalFlow
             rockProps={{
@@ -609,7 +609,7 @@
                             Grid State (current)
                         </h4>
                         <pre
-                            class="max-h-[400px] overflow-auto rounded border border-border bg-muted/20 p-2 text-xs">{JSON.stringify(
+                            class="max-h-100 overflow-auto rounded border border-border bg-muted/20 p-2 text-xs">{JSON.stringify(
                                 sim.gridStateRaw,
                                 null,
                                 2,

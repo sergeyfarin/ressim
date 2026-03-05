@@ -1,6 +1,13 @@
 # ResSim — Browser-Based 3D Reservoir Simulator
 
-A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with analytical comparisons, and benchmark-based validation — all running entirely in the browser.
+A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with analytical comparisons, and benchmark-based validation - all running entirely in the browser.
+
+## Current Product Direction (2026-03)
+
+- **UI direction locked**: Unified "Preset + Customize" surface (Option B).
+- **Analytical overlays**: permissive for approximate cases, with clearly visible warnings.
+- **Benchmark workflow**: curated benchmark presets with one-click clone to custom scenarios.
+- **Pre-run artifacts**: benchmark-focused; non-benchmark modes are intended to run directly in WASM.
 
 ## Features
 
@@ -32,7 +39,9 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 - **3D property view** (Three.js) — selectable properties: pressure, water/oil saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
 - **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
 - **Sw Profile chart** — cell-index saturation profile compared to analytical flood front.
-- **Scenario catalog (Demo Case Framework)** — Dynamic, JSON-driven orthogonal toggle system. Fast, faceted selection UX via responsive grid `ToggleGroup` cards with tooltips for disabled combinations exploring geometry, rock properties, fluids, and variants.
+- **Scenario catalog (faceted presets)** - JSON-driven orthogonal toggle system for geometry, wells, rock, fluids, and timestep setup.
+- **Preset + Customize workflow** (active refactor) - start from a faceted preset, then refine any parameter in-place.
+- **Benchmark cloning** (planned in current refactor) - clone benchmark presets into editable custom runs while preserving source provenance.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.
@@ -109,7 +118,7 @@ src/
     ├── sim.worker.ts               — WebWorker bridge to WASM simulator
     ├── simulator-types.ts          — TypeScript interfaces for worker payloads
     ├── buildCreatePayload.ts       — payload builder + tests
-    ├── caseCatalog.ts              — 10+ scenario presets with params + pre-run data
+    ├── caseCatalog.ts              — faceted preset catalog + benchmark selectors
     ├── chart-helpers.ts            — chart data/config utilities + tests
     ├── RateChart.svelte            — rate/cumulative/diagnostics charting
     ├── ChartSubPanel.svelte        — reusable collapsible chart panel
@@ -129,7 +138,7 @@ src/
         └── grid.rs                 — grid cell definitions
 scripts/
 ├── export-benchmarks.mjs           — benchmark artifact generation
-├── export-cases.mjs                — pre-run case export
+├── generate-prerun.mjs             — benchmark pre-run generation helper
 └── build-wasm.sh                   — WASM build script
 public/
 └── benchmark-results.json          — generated benchmark summary
@@ -144,8 +153,8 @@ docs/                               — technical reference docs (see below)
 | `UNIT_SYSTEM.md` | Comprehensive unit system reference |
 | `UNIT_REFERENCE.md` | Quick unit lookup card |
 | `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻⁵` constant |
-| `ANALYTICAL_REVIEW.md` (root) | Full audit of analytical vs simulator physics |
-| `CHART_IMPROVEMENTS.md` (root) | Chart architecture & curve reference |
+| `PHYSICS_REVIEW.md` | Physics review notes and implementation status |
+| `FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` | Frontend reactivity, faceted selection, and Option B refactor plan |
 
 ## Physics Summary
 
@@ -175,6 +184,5 @@ docs/                               — technical reference docs (see below)
 | Leverett J-Function capillary scaling | Medium |
 | Capillary hysteresis | Low |
 | Per-cell capillary pressure variation | Low |
-| Relative permeability endpoint scaling (k_rw_max, k_ro_max) | **Done** |
 
 See [TODO.md](TODO.md) for the full list of remaining work items.

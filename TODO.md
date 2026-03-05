@@ -3,6 +3,13 @@
 Consolidated from docs, reviews, action plans, and source code review.  
 Items are grouped by priority.
 
+## Product Direction (Locked: 2026-03-05)
+
+- [x] **Adopt Option B** — Unified "Preset + Customize" surface is the primary product direction.
+- [x] **No migration constraints** — greenfield product (no existing users, no legacy data).
+- [x] **Analytical policy** — permissive analytical overlays with clearly visible warnings for approximate assumptions.
+- [x] **Benchmark workflow** — benchmark presets remain curated references but must support one-click clone into custom mode.
+
 ---
 
 ## High Priority — Physics & Correctness
@@ -24,6 +31,14 @@ Items are grouped by priority.
 
 ## High Priority — Frontend & UX
 
+- [ ] **Implement Option B shell UI** — consolidate top-level mode/facet selection and editable parameter inputs into one unified "Preset + Customize" surface.
+- [ ] **Benchmark clone flow** — add `Clone to Custom` action that copies all benchmark parameters and stores source benchmark provenance.
+- [ ] **Analytical status banner** — introduce `reference | approximate | off` status with persistent, highly visible warning for approximate overlays.
+- [ ] **Benchmark-only pre-run loading** — remove pre-run fetch/continuation path from non-benchmark modes; keep only for benchmark artifacts.
+- [ ] **Fix run validation gating** — pass `hasValidationErrors` into run controls and show explicit message when run is blocked by invalid inputs.
+- [ ] **Stabilize faceted constraints** — replace one-pass toggle auto-fix with iterative constraint stabilization.
+- [ ] **Preserve per-layer edits on Nz change** — resize layer arrays without wiping existing user values.
+
 - [x] **Reactive clamping anti-pattern** — ~20 reactive statements aggressively clamp inputs while user types (e.g., deleting makes `0.` → forces `0.1`). Move validation to `buildCreatePayload` or `onBlur`. (Resolved via Svelte 5 store transition)
 - [x] **Dual config-changed watchers** — two reactive blocks overlap in detecting parameter changes, causing redundant reinitializations. Consolidate into a single `checkConfigDiff()`. (Resolved via Svelte 5 store transition)
 - [ ] **CSV/JSON export of results** — no way to export rate history, grid state snapshots, or saturation profiles for external analysis. Add download buttons via Blob API.
@@ -32,7 +47,7 @@ Items are grouped by priority.
 - [x] Worker silently ignores `add_well` errors — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
 - [x] **FilterCard/ToggleGroup alignment** — unified `FilterCard` to use the more polished `ToggleGroup` internally, including adding a wrapping grid layout for elements > 3.
 - [x] **Double-decompression of Pre-run data** — Vite auto-decompresses `.json.gz` in dev due to headers, while GitHub Pages doesn't. Handled dual path natively in `simulationStore.svelte.ts`.
-- [ ] **End-to-end regression validation for pre-run data** — test whether GitHub Pages serves `.json.gz` correctly with `application/gzip` headers to ensure `DecompressionStream` kicks in as expected on production.
+- [ ] **End-to-end regression validation for benchmark pre-run data** — test whether GitHub Pages serves benchmark `.json.gz` with `application/gzip` headers so `DecompressionStream` behaves correctly in production.
 
 ---
 
