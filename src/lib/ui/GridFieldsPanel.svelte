@@ -1,14 +1,11 @@
 <script lang="ts">
   import GeometryGridQuickEditor from "./GeometryGridQuickEditor.svelte";
-  import { GEOMETRY_GRID_QUICK_EDITOR } from "./geometryGridQuickEditor";
   import type { ModePanelParameterBindings } from "./modePanelTypes";
 
   // Keep this wrapper shared across modes.
   // If Depletion and Waterflood need different geometry toggles or extra inputs,
-  // keep one `GridFieldsPanel` and swap the editor config here by mode instead of
-  // splitting `ScenarioSectionsPanel` again.
-  // Typical next step: pass `activeMode` in, choose a mode-specific editor
-  // definition, and only add inline conditionals here for truly small deltas.
+  // keep those deltas in `GeometryGridQuickEditor.svelte` or pass small mode-aware
+  // props down from here instead of reviving a separate TS control schema.
 
   let {
     params,
@@ -21,9 +18,8 @@
   } = $props();
 </script>
 
-<!-- Shared geometry shell: vary editor definitions here before creating a second grid panel. -->
+<!-- Shared geometry shell: keep geometry-specific control details inside the geometry component. -->
 <GeometryGridQuickEditor
-  editor={GEOMETRY_GRID_QUICK_EDITOR}
   bindings={params}
   fieldErrors={validationErrors}
   {onParamEdit}

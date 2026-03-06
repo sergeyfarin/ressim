@@ -992,3 +992,28 @@ Validation run:
 
 Next active slice:
 R1.8 Regression + policy hardening.
+
+Phase 2 follow-up note (2026-03-06, geometry quick-editor consistency cleanup)
+Follow-up scope:
+- Align the geometry quick-editor with the component-first panel architecture by removing the remaining TS control-schema file.
+
+Implemented in this follow-up:
+- `src/lib/ui/GeometryGridQuickEditor.svelte`
+	- Moved geometry quick-pick definitions and the small matching/error helper logic into the Svelte component so the geometry card owns its own UI details like the other cards.
+- `src/lib/ui/GridFieldsPanel.svelte`
+	- Simplified the wrapper so it delegates directly to `GeometryGridQuickEditor.svelte` without importing a separate control-definition file.
+- `src/lib/ui/modePanelComposition.test.ts`
+- `src/lib/ui/modePanelSchema.test.ts`
+	- Updated the focused tests to assert the component-owned geometry quick-edit approach.
+- Removed `src/lib/ui/geometryGridQuickEditor.ts`
+	- Retired the last remaining TS control-schema file for live card rendering.
+
+Outcome:
+- Geometry quick-edit remains local and typed, but it now follows the same component-owned approach as the rest of the panel cards instead of keeping one leftover TS schema/config file.
+- The codebase no longer mixes a Svelte-first card architecture with a separate TS control-definition layer for the geometry card.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/GeometryGridQuickEditor.svelte`, `src/lib/ui/GridFieldsPanel.svelte`, `src/lib/ui/modePanelSchema.test.ts`, and `src/lib/ui/modePanelComposition.test.ts`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 15 tests).
+- `npm run build` passed.

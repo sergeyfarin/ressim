@@ -51,7 +51,7 @@ describe("Mode panel composition", () => {
 
   it("keeps grid-field quick-edit wiring behind a focused subcomponent", () => {
     expect(gridFieldsPanelSource).toMatch(/import\s+GeometryGridQuickEditor\s+from\s+"\.\/GeometryGridQuickEditor\.svelte"/);
-    expect(gridFieldsPanelSource).toMatch(/GEOMETRY_GRID_QUICK_EDITOR/);
+    expect(gridFieldsPanelSource).not.toMatch(/geometryGridQuickEditor/);
     expect(gridFieldsPanelSource).toMatch(/<GeometryGridQuickEditor/);
   });
 
