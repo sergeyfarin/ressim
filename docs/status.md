@@ -963,3 +963,32 @@ Validation run:
 
 Next active slice:
 R1.7 Remove obsolete shell-era UI leftovers (in progress), starting with unreferenced `DynamicControlsPanel.svelte` and the remaining shell-era panel leftovers.
+
+Phase 2 recovery progress update (2026-03-06, R1.7 shell-era cleanup)
+Completed slice:
+- R1.7 Remove obsolete shell-era UI leftovers
+
+Implemented in this slice:
+- Removed unreferenced shell-era UI files:
+	- `src/lib/ui/DynamicControlsPanel.svelte`
+	- `src/lib/ui/TopBar.svelte`
+	- `src/lib/ui/InputsTab.svelte`
+	- `src/lib/ui/PresetCustomizeShell.svelte`
+- `README.md`
+	- Updated the `src/lib/ui/` architecture summary so it points at the live `ModePanel` / section-panel structure instead of the retired shell components.
+
+ Audit result:
+- `src/App.svelte` no longer carries shell-era UI assumptions; the live app already routes through `ModePanel`, `RunControls`, and the recovered panel stack.
+
+Follow-up cleanup note (2026-03-06, post-R1.7 verification):
+- Verified that `src/lib/ui/TabContainer.svelte` and `src/lib/ui/PermeabilityPanel.svelte` also had no current `src/**` references and still represented retired UI paths.
+- Retired both files after the extra verification pass instead of carrying them forward as follow-up candidates.
+
+Validation run:
+- `get_errors` reported no errors in `src/App.svelte` and `README.md` after the cleanup.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 16 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.8 Regression + policy hardening.

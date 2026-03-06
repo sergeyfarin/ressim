@@ -101,6 +101,7 @@
         {#if isExpanded}
           <div class="section-body" oninput={handleManualFieldEdit} onchange={handleManualFieldEdit}>
             {#if WrappedSectionComponent}
+              <!-- Keep per-mode field differences inside the focused wrapper, e.g. GridFieldsPanel. -->
               <WrappedSectionComponent
                 {params}
                 validationErrors={validationErrors}

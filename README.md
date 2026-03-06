@@ -126,7 +126,7 @@ src/
     ├── FractionalFlow.svelte       — BL analytical computation
     ├── DepletionAnalytical.svelte  — PSS depletion analytical
     ├── 3dview.svelte               — Three.js 3D grid rendering + legend
-    ├── ui/                         — TopBar, RunControls, TabContainer, InputsTab, panels
+    ├── ui/                         — ModePanel, RunControls, warning surfaces, and focused section panels
     ├── components/                 — ToggleGroup, PropertyToggle, etc.
     └── ressim/src/                 — Rust simulator core
         ├── lib.rs                  — WASM API surface
