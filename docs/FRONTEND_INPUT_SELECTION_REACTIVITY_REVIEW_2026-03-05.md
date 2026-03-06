@@ -3,6 +3,11 @@
 Date: 2026-03-05
 Scope: `src/App.svelte`, `src/lib/stores/simulationStore.svelte.ts`, `src/lib/ui/*`, `src/lib/caseCatalog.ts`, `src/lib/catalog.json`
 
+Status note (2026-03-06):
+- This document remains the historical review/rationale that led to the current direction.
+- It is not the authoritative execution tracker anymore. Use `TODO.md` under `Authoritative Recovery Plan — Schema-Driven Composer` for active work.
+- Some implementation details referenced here were superseded by later changes (`ModePanel`, pre-run removal, per-mode catalog schema), but the product rationale still stands.
+
 ## Executive Summary
 
 The frontend architecture is functional, but state/event logic is over-coupled in the store and has a few correctness and UX defects. The biggest issues are:
@@ -276,3 +281,22 @@ Suggested status model:
 - Existing faceted catalog (`src/lib/catalog.json`) is a good base and should be retained.
 - Benchmark entries should remain curated and immutable for reproducibility.
 - Keep the current disabled-reason UX; it is already useful for scientific workflows.
+
+## 2026-03-06 Follow-Up Decisions
+
+1. Use a typed schema-driven UI composition model.
+- Layout, labels, control types, option lists, formatting metadata, and simple parameter patches may come from JSON/TS config.
+- Constraint logic, physical rules, simulator payload transforms, and cross-field behavior must stay in TypeScript.
+
+2. Keep the system permissive by severity, not permissive by silence.
+- Blocking validation errors should disable run/init and show inline field errors plus explicit runtime messaging.
+- Contradictory or non-physical-but-editable states should remain visible/editable but produce prominent warnings.
+- Analytical/reference-model caveats should stay permissive with clearly visible warning badges/banner reasons.
+
+3. Support quick-select plus custom-entry controls.
+- Example: a grid-density control may offer quick picks (`12`, `24`, `48`) plus a `Custom` affordance that reveals a typed numeric input.
+- Example: advanced physics groups such as Corey/SCAL inputs may expose a compact preset choice with an expandable custom parameter section.
+
+4. Migrate the current unified panel incrementally.
+- First restore truthful preset/customize semantics in the live panel.
+- Then move one section (`Geometry + Grid`) to schema-driven rendering before replacing the rest.

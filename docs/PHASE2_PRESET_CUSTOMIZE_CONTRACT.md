@@ -1,7 +1,12 @@
 # Phase 2 Contract: Preset + Customize (P2.1)
 
 Date: 2026-03-05
-Status: frozen for Phase 2 implementation slices
+Status: frozen store-facing contract; UI implementation notes below are historical after the 2026-03-06 schema-driven recovery reset
+
+2026-03-06 note:
+- This document remains the source of truth for the store-facing preset/customize contract.
+- It is not the authoritative UI execution plan anymore. Use `TODO.md` under `Authoritative Recovery Plan — Schema-Driven Composer` for active work.
+- The next UI iteration should consume these fields through a typed schema-driven composer rather than a hardcoded shell-specific surface.
 
 ## Scope
 
@@ -59,4 +64,5 @@ This contract freezes the store-facing schema for Option B (Unified Preset + Cus
 ## Notes
 
 - This slice does not yet implement clone actions or UI rendering for grouped override chips/badges.
-- UI wiring for composer shell and clone buttons is handled in P2.2+.
+- Historical note: earlier Phase 2 slices explored shell-specific UI wiring in `TopBar`/`InputsTab`/`PresetCustomizeShell`.
+- Active direction: keep this contract stable while rebuilding the UI around typed control schema, reusable renderers, explicit warning policy, and quick-select plus custom-entry control patterns.

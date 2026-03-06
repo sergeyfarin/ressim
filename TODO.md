@@ -12,6 +12,40 @@ Items are grouped by priority.
 
 ---
 
+## Authoritative Recovery Plan — Schema-Driven Composer (Interruption-Safe)
+
+Single source of truth: this section is the authoritative tracker for the current frontend recovery/refactor path after the 2026-03-06 UI audit.
+
+- [x] **R0.1 Audit current UI state** — confirmed the current `ModePanel` is an intermediate splice: it is hardcoded, passes `params: any`, and bypasses part of the Phase 2 preset/customize contract (`isModified`, grouped override/reset UX, shell-level provenance/override visibility).
+- [x] **R0.2 Reset docs to an authoritative plan** — updated `TODO.md`, `docs/status.md`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`, and `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` so interruption-safe resume state reflects the schema-driven direction rather than the older shell-only plan.
+- [ ] **R1.1 Restore unified-panel preset/customize semantics (in progress)** — route manual field edits back through domain intent so `isModified`, `basePreset.source`, `parameterOverrides`, and benchmark clone provenance remain truthful in the live UI.
+- [ ] **R1.2 Define typed schema for UI composition** — introduce typed definitions for parameters, controls, sections, presets/facets, simple patches, formatting metadata, and custom-entry affordances. Keep behavior/rules in TypeScript, not JSON strings.
+- [ ] **R1.3 Define warning severity + surfacing policy** — separate `blocking validation`, `non-physical or contradictory`, `approximate/reference-model caveat`, and `advisory` states, with explicit UI surfaces for each.
+- [ ] **R1.4 Migrate Geometry + Grid to schema renderer** — prove the approach on one vertical slice before replacing the whole panel.
+- [ ] **R1.5 Add toggle-plus-custom pattern** — allow curated quick-select options (e.g. `nx = 12 | 24 | 48`) plus a `Custom` affordance that reveals a typed input or advanced parameter sub-panel.
+- [ ] **R1.6 Migrate remaining sections to schema renderer** — reservoir, SCAL, wells, timestep, analytical, and benchmark surfaces.
+- [ ] **R1.7 Remove obsolete shell-era UI leftovers** — retire `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once schema-driven parity is reached.
+- [ ] **R1.8 Regression + policy hardening** — add tests for modified-state transitions, clone provenance, override visibility/reset behavior, warning policy, and schema-driven rendering.
+
+Recovery acceptance checklist:
+
+- [ ] A manual field edit always transitions the current preset into truthful customized state.
+- [ ] Quick presets and custom input can coexist in the same control group without ambiguous precedence.
+- [ ] Control layout/labels/options come from typed schema/config, not hardcoded component wiring.
+- [ ] Constraint rules remain deterministic and code-defined; no string-encoded logic is introduced in JSON.
+- [ ] Warning surfaces are explicit: blocking errors stop run, non-reference states stay permissive with visible rationale.
+- [ ] `TODO.md` and `docs/status.md` are sufficient to resume work after interruption without rereading old chat history.
+
+Interruption resume protocol (mandatory):
+
+- [ ] Keep this recovery section current before ending a work session.
+- [ ] Mark only one active slice at a time by adding `(in progress)` in the item text.
+- [ ] Append each completed slice outcome to `docs/status.md` with files touched, tests run, and the next active slice.
+- [ ] If interrupted mid-slice, add a short `WIP` note in `docs/status.md` naming the file and pending edit.
+- [ ] Do not start a new slice until `TODO.md` and `docs/status.md` are synchronized.
+
+---
+
 ## Active Execution Plan — Phase 1 (Interruption-Safe)
 
 Single source of truth: this section is the authoritative tracker for ongoing Phase 1 work.
@@ -48,6 +82,8 @@ Interruption resume protocol (mandatory):
 ## Active Execution Plan — Phase 2 (Interruption-Safe)
 
 Single source of truth: this section is the authoritative tracker for ongoing Phase 2 work.
+
+Historical note: this section records the earlier shell-oriented Phase 2 slices. It is no longer the authoritative forward plan after the 2026-03-06 UI audit. Use `Authoritative Recovery Plan — Schema-Driven Composer` above for current work.
 
 - [x] **P2.1 UX contract + state schema freeze** — unified contract module and store schema fields landed (`basePreset`, `parameterOverrides`, `benchmarkProvenance`, `analyticalStatus`) with focused tests and docs (`src/lib/stores/phase2PresetContract.ts`, `src/lib/stores/phase2PresetContract.test.ts`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`).
 - [x] **P2.2 Preset composer shell UI** — hybrid flow polished: per-facet `Customize` + `Reset` controls are part of each facet group, active customize selection is highlighted, section-targeted focus/highlight is wired, customize sessions collapse via explicit `OK`, facet mapping is centralized in shared Phase 2 contract helpers, and generated-profile controls now include shell-level `show changed fields` and per-group quick actions.
@@ -100,6 +136,10 @@ Interruption resume protocol (mandatory):
 ## High Priority — Frontend & UX
 
 - [x] **Implement Option B shell UI** — replaced TopBar + InputsTab with unified ModePanel: mode tabs + collapsible sections with nested dimension sub-selectors and expandable inline parameter panels. Removed customize-flow indirection from App.svelte.
+- [ ] **Replace intermediate `ModePanel` with schema-driven composer** — current panel proves the unified layout direction but hardcodes sections/controls and bypasses part of the preset/customize contract.
+- [ ] **Restore truthful customized-state UX in unified panel** — manual edits must drive `isModified`, grouped override visibility, and reset-to-preset semantics through the store contract.
+- [ ] **Support quick-select + custom-entry controls** — curated toggles/selects should be able to reveal typed custom inputs or advanced parameter groups without splitting the mental model.
+- [ ] **Define warning policy by severity** — use blocking validation for invalid runs, visible warnings for contradictory/non-physical inputs, and permissive caveats for approximate analytical/reference assumptions.
 - [ ] **Benchmark clone flow** — add `Clone to Custom` action that copies all benchmark parameters and stores source benchmark provenance.
 - [x] **Analytical status banner** — introduced `reference | approximate | off` status path with persistent, highly visible warning and expandable caveat details for approximate overlays.
 - [x] **Remove pre-run loading pipeline** — benchmark/non-benchmark selections now only apply parameters; no prerun fetch/decompression/hydration path remains.

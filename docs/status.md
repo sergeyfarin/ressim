@@ -524,3 +524,31 @@ Validation run:
 
 Next active slice:
 P2.8 Regression + policy tests (in progress), continuing with additional policy tests over clone/override/analytical flows on top of mode-local catalog rules.
+
+Phase 2 recovery planning update (2026-03-06)
+Completed slice:
+- R0.2 Docs reset + authoritative recovery plan
+
+Audit findings captured in this slice:
+- `src/lib/ui/ModePanel.svelte` is now the primary UI surface, but it is an intermediate implementation:
+	- sections/controls are hardcoded in component code,
+	- the component currently accepts `params: any`,
+	- manual field edits no longer clearly route through the Phase 2 preset/customize intent model.
+- `src/lib/stores/simulationStore.svelte.ts` still maintains valuable contract state (`basePreset`, `parameterOverrides`, grouped reset logic, benchmark provenance, analytical status), so the best next step is to reconnect the UI to that contract rather than discard it.
+- Older planning docs still described the shell-centric path as if it were the live implementation, so resume state was ambiguous.
+
+Planning updates applied:
+- `TODO.md`
+	- Added `Authoritative Recovery Plan — Schema-Driven Composer (Interruption-Safe)`.
+	- Marked the next active slice as `R1.1 Restore unified-panel preset/customize semantics (in progress)`.
+	- Added explicit follow-up slices for typed schema, warning policy, toggle-plus-custom controls, staged migration, and regression hardening.
+- `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`
+	- Clarified that the document remains the store-contract reference, while the previous shell-specific UI description is historical.
+- `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md`
+	- Marked as historical rationale and added 2026-03-06 follow-up decisions for a typed schema-driven UI, code-defined rules, permissive warning policy, and quick-select plus custom-entry controls.
+
+Validation run:
+- No code behavior changed in this slice; no tests were required.
+
+Next active slice:
+R1.1 Restore unified-panel preset/customize semantics (in progress).
