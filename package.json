@@ -6,7 +6,6 @@
   "scripts": {
     "predev": "npm run build:wasm",
     "dev": "vite",
-    "cases:export": "node scripts/generate-prerun.mjs",
     "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview",

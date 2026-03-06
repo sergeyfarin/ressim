@@ -7,7 +7,7 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 - **UI direction locked**: Unified "Preset + Customize" surface (Option B).
 - **Analytical overlays**: permissive for approximate cases, with clearly visible warnings.
 - **Benchmark workflow**: curated benchmark presets with one-click clone to custom scenarios.
-- **Pre-run artifacts**: benchmark-focused; non-benchmark modes are intended to run directly in WASM.
+- **Execution model**: all presets now initialize and run directly in browser-side WASM; there is no pre-run artifact pipeline.
 
 ## Features
 
@@ -41,11 +41,10 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 - **Sw Profile chart** — cell-index saturation profile compared to analytical flood front.
 - **Scenario catalog (faceted presets)** - JSON-driven orthogonal toggle system for geometry, wells, rock, fluids, and timestep setup.
 - **Preset + Customize workflow** (active refactor) - start from a faceted preset, then refine any parameter in-place.
-- **Benchmark cloning** (planned in current refactor) - clone benchmark presets into editable custom runs while preserving source provenance.
+- **Benchmark cloning** - clone benchmark presets into editable custom runs while preserving source provenance.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.
-- **Benchmark results card** — reads from `public/benchmark-results.json`, shows Baseline vs Refined discretization evidence.
 
 ### Validation & Benchmarks
 
@@ -58,7 +57,7 @@ Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 
 Refined discretization (nx=96, dt=0.125d) reduces errors to 3–4%, confirming numerical diffusion as primary mismatch source.
 
-Artifact pipeline: `npm run bench:export` → `public/benchmark-results.json`, consumed by frontend and CI.
+Benchmark validation is maintained in Rust tests and exposed in the app through curated benchmark presets rather than a generated frontend artifact.
 
 ## Unit System
 
@@ -93,7 +92,7 @@ npm run dev        # builds WASM (predev hook), starts Vite dev server
 ### Production Build
 
 ```bash
-npm run build      # runs bench:export → build:wasm → vite build
+npm run build      # runs build:wasm → vite build
 npm run preview    # serve production bundle locally
 ```
 
@@ -133,11 +132,9 @@ src/
         ├── well.rs                 — well model + validation
         └── grid.rs                 — grid cell definitions
 scripts/
-├── export-benchmarks.mjs           — benchmark artifact generation
-├── generate-prerun.mjs             — benchmark pre-run generation helper
 └── build-wasm.sh                   — WASM build script
 public/
-└── benchmark-results.json          — generated benchmark summary
+└── cases/                          — curated preset scenarios
 docs/                               — technical reference docs (see below)
 ```
 

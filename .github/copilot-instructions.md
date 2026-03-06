@@ -26,8 +26,8 @@ ResSim is a browser-based 3D reservoir simulator combining:
    - `lib/sim.worker.js` - Web Worker bridge to keep UI responsive during simulation
 
 3. **Build & CI**
-   - `scripts/export-benchmarks.mjs` - Generate benchmark artifact JSON from Rust tests
-   - `.github/workflows/` - Automated benchmark publishing and distribution builds
+   - `scripts/build-wasm.sh` - Build the Rust/WASM package for Vite consumption
+   - `.github/workflows/` - Automated test and distribution builds
 
 ## Technology Stack
 
@@ -58,12 +58,8 @@ ResSim is a browser-based 3D reservoir simulator combining:
 # Development
 npm run dev                    # Builds WASM then starts Vite dev server
 npm run build:wasm             # Build only WASM package
-npm run build                  # Production build (includes bench:export)
+npm run build                  # Production build
 npm run preview                # Preview production build
-
-# Benchmarks & Artifacts
-npm run bench:export           # Export benchmark JSON from Rust tests
-npm run cases:export           # Export case configurations
 
 # Rust-specific
 cd src/lib/ressim
@@ -74,7 +70,7 @@ cargo check                    # Quick type/syntax check
 
 ### Build Pipeline
 1. `npm run dev` triggers `predev` hook → builds WASM first
-2. `npm run build` generates `public/benchmark-results.json` before bundling
+2. `npm run build` triggers `prebuild` → builds WASM before bundling
 3. WASM output goes to `src/lib/ressim/pkg/` and is imported by JS
 
 ## Coding Conventions
@@ -110,8 +106,8 @@ cargo check                    # Quick type/syntax check
 ### Benchmarking
 - Benchmarks validate physics against analytical Buckley-Leverett solution
 - Implemented as Rust `#[test]` functions in `src/lib/ressim/src/lib.rs`
-- Exported via `scripts/export-benchmarks.mjs` → `public/benchmark-results.json`
-- Frontend displays benchmark results in UI table
+- Run directly with `cargo test benchmark_buckley_leverett -- --nocapture`
+- Benchmark presets in the UI use the same case definitions but execute in browser-side WASM
 
 ### Legend Modes
 - **Fixed**: Property-specific ranges for cross-run comparison
@@ -137,8 +133,7 @@ ressim/
 │   │   ├── RateChart.svelte # Rate charts
 │   │   └── sim.worker.js    # Web Worker bridge
 ├── public/
-│   ├── cases/               # Scenario presets
-│   └── benchmark-results.json  # Generated artifact
+│   └── cases/               # Scenario presets
 ├── docs/                    # Extensive technical documentation
 ├── scripts/                 # Build automation
 ├── package.json
@@ -154,7 +149,7 @@ ressim/
 - Use `--nocapture` flag to see detailed benchmark output
 
 ### Integration
-- Benchmarks are smoke-tested by build process (`npm run bench:export`)
+- Benchmarks are validated through Rust tests plus standard frontend build/test runs
 - Visual validation through UI: load scenarios and verify 3D/chart behavior
 
 ### Known Non-Blocking Warnings
@@ -189,8 +184,8 @@ Primary docs in `docs/` folder:
 ### Updating Benchmarks
 1. Modify test in `src/lib/ressim/src/lib.rs`
 2. Run `cargo test` to verify
-3. Run `npm run bench:export` to regenerate artifact
-4. Rebuild frontend to see updated results
+3. Run `cargo test benchmark_buckley_leverett -- --nocapture` to inspect benchmark metrics
+4. Rebuild frontend if benchmark-facing preset labels or descriptions changed
 
 ## Best Practices
 

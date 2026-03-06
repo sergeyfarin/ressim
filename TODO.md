@@ -218,7 +218,7 @@ Outcome note: `src/lib` now separates `analytical/`, `charts/`, `visualization/`
 
 ## Low Priority — Code Quality & DevOps
 
-- [ ] **CI pipeline for tests** — GitHub Actions: `cargo test` + `npm test` + `npm run build` on push/PR. Regenerate `benchmark-results.json` and compare.
+- [ ] **CI pipeline for tests** — GitHub Actions: `cargo test` + `npm test` + `npm run build` on push/PR.
 - [ ] **Worker `typeof` guards → typed WASM interface** — `configureSimulator()` in `sim.worker.ts` uses 12+ `typeof X === 'function'` guards with `/** @type {any} */` casts. Generate proper TS bindings from `wasm-bindgen` or define a typed wrapper.
 - [x] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
 - [x] **App-store domain wiring regression tests** — added static wiring checks in `src/lib/appStoreDomainWiring.test.ts` to guard domain-object usage and prevent fallback to App-side transitional logic.
