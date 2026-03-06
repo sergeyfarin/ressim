@@ -149,11 +149,11 @@ impl ReservoirSimulator {
     }
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
         let mut time_stepped = 0.0;
-        const MAX_ATTEMPTS: u32 = 10;
-        let mut attempts = 0;
+        const MAX_SUBSTEPS: u32 = 100_000;
+        let mut substeps = 0;
         self.last_solver_warning = String::new();
 
-        while time_stepped < target_dt_days && attempts < MAX_ATTEMPTS {
+        while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;
 
             // Dynamic PI update with latest local saturation/mobility before pressure solve
@@ -196,20 +196,35 @@ impl ReservoirSimulator {
                         self.time_days + time_stepped
                     );
                 }
-
-                attempts += 1;
             } else {
                 // The full remaining timestep is stable
                 actual_dt = remaining_dt;
                 final_p = p_new;
                 final_delta_water_m3 = delta_water_m3;
-                attempts = 0; // Reset attempts on a successful full step
+            }
+
+            if !actual_dt.is_finite() || actual_dt <= 1e-12 {
+                self.last_solver_warning = format!(
+                    "Adaptive timestep collapsed to non-physical dt={} at t={:.6} days",
+                    actual_dt,
+                    self.time_days + time_stepped
+                );
+                break;
             }
 
             // Update saturations and pressure with the adjusted (or full) timestep
             self.update_saturations_and_pressure(&final_p, &final_delta_water_m3, actual_dt);
 
             time_stepped += actual_dt;
+            substeps += 1;
+        }
+
+        if substeps == MAX_SUBSTEPS && time_stepped < target_dt_days {
+            self.last_solver_warning = format!(
+                "Adaptive timestep hit MAX_SUBSTEPS before completing requested dt (advanced {:.6} of {:.6} days)",
+                time_stepped,
+                target_dt_days
+            );
         }
     }
 

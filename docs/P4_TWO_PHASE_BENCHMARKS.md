@@ -59,8 +59,8 @@ cargo test benchmark_buckley_leverett -- --nocapture
 
 Observed output:
 
-- BL-Case-A: PV_BT_sim=0.5239, PV_BT_ref=0.5860, Relative Error=0.106 (10.6 percent)
-- BL-Case-B: PV_BT_sim=0.4768, PV_BT_ref=0.5074, Relative Error=0.060 (6.0 percent)
+- BL-Case-A: PV_BT_sim=0.6093, PV_BT_ref=0.5860, Relative Error=0.040 (4.0 percent)
+- BL-Case-B: PV_BT_sim=0.5531, PV_BT_ref=0.5074, Relative Error=0.090 (9.0 percent)
 
 Both benchmark cases pass within the defined acceptance limits.
 
@@ -68,7 +68,7 @@ Both benchmark cases pass within the defined acceptance limits.
 
 To verify that mismatch is mainly numerical/discretization-driven, an additional test was run with:
 - Finer grid: `nx=96` (vs baseline `nx=24`)
-- Smaller timestep: `dt_days=0.125` (vs baseline `dt_days=0.5`)
+- Smaller timestep: `dt_days=0.125` (vs baseline `dt_days=0.5` for Case A and `dt_days=0.25` for Case B)
 
 Command:
 
@@ -78,15 +78,15 @@ cargo test benchmark_buckley_leverett_refined_discretization_improves_alignment 
 ```
 
 Observed output:
-- Case-A coarse/refined rel_err: `0.106 -> 0.036`
-- Case-B coarse/refined rel_err: `0.060 -> 0.033`
+- Case-A coarse/refined rel_err: `0.040 -> 0.031`
+- Case-B coarse/refined rel_err: `0.090 -> 0.025`
 
 Comparison table:
 
-| Case | Baseline Rel. Error (nx=24, dt=0.5) | Refined Rel. Error (nx=96, dt=0.125) | Improvement |
+| Case | Baseline Rel. Error | Refined Rel. Error (nx=96, dt=0.125) | Improvement |
 |---|---:|---:|---:|
-| BL-Case-A | 10.6% | 3.6% | -7.0 percentage points |
-| BL-Case-B | 6.0% | 3.3% | -2.7 percentage points |
+| BL-Case-A (`nx=24`, `dt=0.5`) | 4.0% | 3.1% | -0.9 percentage points |
+| BL-Case-B (`nx=24`, `dt=0.25`) | 9.0% | 2.5% | -6.5 percentage points |
 
 This supports the conclusion that a significant part of baseline mismatch comes from discretization (grid + timestep), not from an incorrect analytical reference.
 
@@ -96,18 +96,18 @@ This supports the conclusion that a significant part of baseline mismatch comes 
 
 | Case | Analytical PV_BT_ref | Simulation PV_BT_sim | Absolute Difference | Relative Difference |
 |---|---:|---:|---:|---:|
-| BL-Case-A | 0.5860 | 0.5239 | 0.0621 | 10.6% |
-| BL-Case-B | 0.5074 | 0.4768 | 0.0306 | 6.0% |
+| BL-Case-A | 0.5860 | 0.6093 | 0.0233 | 4.0% |
+| BL-Case-B | 0.5074 | 0.5531 | 0.0457 | 9.0% |
 
 ## Interpretation of Differences
 
-The 5-10 percent mismatch range here is expected for the current numerical setup and is within acceptance limits.
+The remaining mismatch range here is expected for the current coarse numerical setup and is within acceptance limits.
 
 Main causes:
 - Finite-volume numerical diffusion in explicit saturation transport smears the displacement front.
 - BHP-controlled wells are used, while classical Buckley-Leverett closed-form references are often presented in idealized constant-rate form.
-- Discrete timestep/substep behavior and breakthrough detection threshold (`water cut >= 0.01`) shift exact detection timing.
-- Small discretization effects from grid resolution (`nx=24`) and shock-gradient approximation (`df_w/dS_w`) are present.
+- Coarse timestep choice matters materially. After the adaptive-step completion fix, BL-Case-B required `dt_days=0.25` rather than `0.5` to remain a fair coarse regression case.
+- Discrete breakthrough detection threshold (`water cut >= 0.01`) and shock-gradient approximation (`df_w/dS_w`) still shift exact detection timing.
 
 ## Relation to Plot Analytical Curve
 

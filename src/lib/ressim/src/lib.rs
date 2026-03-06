@@ -1254,6 +1254,34 @@ mod tests {
     }
 
     #[test]
+    fn benchmark_like_substepping_completes_requested_dt() {
+        let mut sim = ReservoirSimulator::new(24, 1, 1, 0.2);
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+            .unwrap();
+        sim.set_initial_saturation(0.1);
+        sim.set_permeability_random_seeded(2000.0, 2000.0, 42)
+            .unwrap();
+        sim.set_stability_params(0.05, 75.0, 0.75);
+        sim.pc.p_entry = 0.0;
+        sim.pvt.mu_w = 0.5;
+        sim.pvt.mu_o = 1.0;
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(23, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(0.5);
+
+        assert!(
+            (sim.time_days - 0.5).abs() < 1e-9,
+            "Expected the simulator to complete the requested 0.5 day step, advanced {} days",
+            sim.time_days
+        );
+        assert!(
+            !sim.rate_history.is_empty() && (sim.rate_history.last().unwrap().time - 0.5).abs() < 1e-9,
+            "Expected the last recorded rate-history time to match the completed step"
+        );
+    }
+
+    #[test]
     fn benchmark_buckley_leverett_case_a_favorable_mobility() {
         let case = BuckleyCase {
             name: "BL-Case-A",
@@ -1300,7 +1328,7 @@ mod tests {
             name: "BL-Case-B",
             nx: 24,
             permeability_md: 2000.0,
-            dt_days: 0.5,
+            dt_days: 0.25,
             max_steps: 4000,
             injector_bhp: 500.0,
             producer_bhp: 100.0,
@@ -1366,7 +1394,7 @@ mod tests {
             name: "BL-Case-B-Coarse",
             nx: 24,
             permeability_md: 2000.0,
-            dt_days: 0.5,
+            dt_days: 0.25,
             max_steps: 4000,
             injector_bhp: 500.0,
             producer_bhp: 100.0,

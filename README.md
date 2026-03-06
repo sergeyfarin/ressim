@@ -52,10 +52,10 @@ Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 
 | Case | Analytical PV_BT | Simulator PV_BT | Relative Error |
 |------|------------------:|----------------:|---------------:|
-| BL-Case-A (favorable mobility) | 0.586 | 0.524 | 10.6% |
-| BL-Case-B (adverse mobility) | 0.507 | 0.477 | 6.0% |
+| BL-Case-A (favorable mobility) | 0.586 | 0.609 | 4.0% |
+| BL-Case-B (adverse mobility) | 0.507 | 0.553 | 9.0% |
 
-Refined discretization (nx=96, dt=0.125d) reduces errors to 3–4%, confirming numerical diffusion as primary mismatch source.
+Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, confirming that the remaining mismatch is dominated by coarse-grid and coarse-timestep numerical effects.
 
 Benchmark validation is maintained in Rust tests and exposed in the app through curated benchmark presets rather than a generated frontend artifact.
 
