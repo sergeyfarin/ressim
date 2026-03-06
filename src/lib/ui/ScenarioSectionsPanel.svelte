@@ -28,8 +28,13 @@
 
   let expandedSections = $state<Record<string, boolean>>({});
 
+  // Adjust section order or mode-specific visibility in `modePanelSections.ts`.
   const sections = $derived(getModePanelSections(activeMode));
+
+  // Adjust these header chips in `caseCatalog.ts` when a case needs different quick toggles.
   const modeDimensions = $derived(getModeDimensions(activeMode));
+
+  // Point a section key at a different wrapper when a case family needs a different body layout.
   const WRAPPED_SECTION_COMPONENTS = {
     geometry: GridFieldsPanel,
     reservoir: ReservoirFieldsPanel,
@@ -46,7 +51,7 @@
     return modeDimensions.filter((dim) => dimKeys.includes(dim.key));
   }
 
-  // Keep wrapper-based dispatch local so this shared panel stays a section orchestrator.
+  // Keep wrapper-based dispatch local so this file stays a section orchestrator, not a logic-heavy panel.
   function getWrappedSectionComponent(section: ModePanelSectionDefinition) {
     if (section.key === "scal") return null;
     return WRAPPED_SECTION_COMPONENTS[section.key];
@@ -102,6 +107,7 @@
                 {onParamEdit}
               />
             {:else if section.key === "scal"}
+              <!-- Keep small one-off sections inline; extract a wrapper only if case-specific SCAL UX grows. -->
               <RelativeCapillaryPanel
                 bind:s_wc={params.s_wc}
                 bind:s_or={params.s_or}
