@@ -6,8 +6,8 @@
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ModePanel from "./lib/ui/modes/ModePanel.svelte";
     import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
-    import Button from "./lib/components/ui/Button.svelte";
-    import Card from "./lib/components/ui/Card.svelte";
+    import Button from "./lib/ui/controls/Button.svelte";
+    import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
 
     // ---------- Store ----------

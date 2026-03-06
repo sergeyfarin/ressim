@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Button from "../../components/ui/Button.svelte";
-  import Card from "../../components/ui/Card.svelte";
-  import Input from "../../components/ui/Input.svelte";
+  import Button from "../controls/Button.svelte";
+  import Card from "../controls/Card.svelte";
+  import Input from "../controls/Input.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import type { WarningPolicy } from "../../warningPolicy";
 

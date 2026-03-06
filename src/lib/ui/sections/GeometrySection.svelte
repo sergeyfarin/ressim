@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Button from "../../components/ui/Button.svelte";
-  import Input from "../../components/ui/Input.svelte";
+  import Button from "../controls/Button.svelte";
+  import Input from "../controls/Input.svelte";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
   import { panelMutedInsetClass } from "../shared/panelStyles";
 
