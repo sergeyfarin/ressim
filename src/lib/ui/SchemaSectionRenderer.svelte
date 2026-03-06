@@ -15,11 +15,15 @@
     bindings,
     fieldErrors = {},
     onParamEdit = () => {},
+    showHeader = true,
+    hideQuickPickOptions = false,
   }: {
     section: SchemaSectionDefinition<GeometryGridParamKey>;
     bindings: ModePanelParameterBindings;
     fieldErrors?: Record<string, string>;
     onParamEdit?: () => void;
+    showHeader?: boolean;
+    hideQuickPickOptions?: boolean;
   } = $props();
 
   let customOpen = $state<Record<string, boolean>>({});
@@ -76,22 +80,29 @@
 </script>
 
 <div class="schema-section">
-  <div class="schema-header">
-    <div>
-      <h4 class="text-sm font-semibold text-foreground">{section.label}</h4>
-      {#if section.description}
-        <p class="mt-1 text-xs text-muted-foreground">{section.description}</p>
-      {/if}
+  {#if showHeader}
+    <div class="schema-header">
+      <div>
+        <h4 class="text-sm font-semibold text-foreground">{section.label}</h4>
+        {#if section.description}
+          <p class="mt-1 text-xs text-muted-foreground">{section.description}</p>
+        {/if}
+      </div>
+      <div class="schema-summary">
+        <span>{volumeSummary}</span>
+        <span>{extentSummary}</span>
+      </div>
     </div>
-    <div class="schema-summary">
+  {:else}
+    <div class="schema-inline-summary">
       <span>{volumeSummary}</span>
       <span>{extentSummary}</span>
     </div>
-  </div>
+  {/if}
 
   <div class="schema-grid">
     {#each section.controls as control}
-      <div class="control-card">
+      <div class="control-card compact">
         <div class="flex items-start justify-between gap-3">
           <div>
             <div class="text-sm font-medium text-foreground">{control.label}</div>
@@ -106,28 +117,30 @@
 
         {#if control.type === "quick-picks"}
           {@const activeOption = getQuickPickMatch(control, bindings[control.param])}
-          <div class="mt-3 flex flex-wrap gap-2">
-            {#each control.options as option}
+          {#if !hideQuickPickOptions}
+            <div class="mt-3 flex flex-wrap gap-2">
+              {#each control.options as option}
+                <Button
+                  size="sm"
+                  variant={activeOption?.key === option.key ? "default" : "outline"}
+                  onclick={() => applyQuickPick(control, option.key)}
+                >
+                  {option.label}
+                </Button>
+              {/each}
               <Button
                 size="sm"
-                variant={activeOption?.key === option.key ? "default" : "outline"}
-                onclick={() => applyQuickPick(control, option.key)}
+                variant={showCustomInput(control) ? "secondary" : "outline"}
+                onclick={() => openCustom(control.key)}
               >
-                {option.label}
+                Custom
               </Button>
-            {/each}
-            <Button
-              size="sm"
-              variant={showCustomInput(control) ? "secondary" : "outline"}
-              onclick={() => openCustom(control.key)}
-            >
-              Custom
-            </Button>
-          </div>
+            </div>
+          {/if}
 
-          {#if showCustomInput(control)}
+          {#if hideQuickPickOptions || showCustomInput(control)}
             {@const errorMessage = getControlErrorMessage(fieldErrors, control.fieldErrorKeys)}
-            <div class="mt-3 rounded-md border border-border/70 bg-muted/20 p-3">
+            <div class="mt-3 rounded-md border border-border/70 bg-muted/20 p-2.5">
               <label class="flex flex-col gap-1.5">
                 <span class="text-xs font-medium text-foreground">{control.custom.label}</span>
                 <Input
@@ -179,7 +192,7 @@
 
 <style>
   .schema-section {
-    padding: 1rem 1.1rem 1.1rem;
+    padding: 0.9rem 1rem 1rem;
   }
 
   .schema-header {
@@ -204,10 +217,19 @@
     min-width: 160px;
   }
 
+  .schema-inline-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.8rem;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+  }
+
   .schema-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.6rem;
   }
 
   .control-card {
@@ -216,5 +238,9 @@
     background: hsl(var(--card));
     padding: 0.85rem;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .control-card.compact {
+    padding: 0.65rem 0.75rem 0.75rem;
   }
 </style>

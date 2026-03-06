@@ -95,6 +95,10 @@
         ? "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700/70 dark:bg-sky-950/40 dark:text-sky-300"
         : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-950/40 dark:text-emerald-300",
   );
+
+  const shouldShowStatusRow = $derived(
+    !!benchmarkProvenance || Number(params.parameterOverrideCount ?? 0) > 0,
+  );
 </script>
 
 <div class="mode-panel">
@@ -118,22 +122,20 @@
     {/if}
   </div>
 
-  <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-    <span class={`rounded-md border px-2 py-1 font-medium ${sourceTone}`}>
-      {prettySource(basePreset?.source)}
-    </span>
-    <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
-      Base: <strong class="text-foreground">{basePreset?.label || "N/A"}</strong>
-    </span>
-    <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
-      Changed fields: <strong class="text-foreground">{params.parameterOverrideCount ?? 0}</strong>
-    </span>
-    {#if benchmarkProvenance}
-      <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
-        Cloned from <strong class="text-foreground">{benchmarkProvenance.sourceLabel}</strong>
-      </span>
-    {/if}
-  </div>
+  {#if shouldShowStatusRow}
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+      {#if Number(params.parameterOverrideCount ?? 0) > 0}
+        <span class={`rounded-md border px-2 py-1 font-medium ${sourceTone}`}>
+          {params.parameterOverrideCount} changed field{params.parameterOverrideCount === 1 ? "" : "s"}
+        </span>
+      {/if}
+      {#if benchmarkProvenance}
+        <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
+          Cloned from <strong class="text-foreground">{benchmarkProvenance.sourceLabel}</strong>
+        </span>
+      {/if}
+    </div>
+  {/if}
 
   {#if activeMode === "benchmark"}
     <!-- Benchmark mode: single selector + details -->
@@ -233,6 +235,8 @@
                     bindings={params}
                     fieldErrors={validationErrors}
                     {onParamEdit}
+                    showHeader={false}
+                    hideQuickPickOptions={true}
                   />
                 {:else if section.key === "reservoir"}
                   <ReservoirPropertiesPanel

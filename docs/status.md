@@ -623,3 +623,51 @@ Validation run:
 
 Next active slice:
 R1.2 Define typed schema for UI composition (in progress), continuing with migration of the next section(s) and removal of remaining implicit parameter contracts.
+
+Recovery direction adjustment (2026-03-06, later session)
+Completed in this planning slice:
+- Reconsidered the broad schema-driven UI direction before starting the next section migration.
+
+Decision update:
+- Do not continue toward a general JSON/schema-driven definition of the full input surface.
+- Preferred architecture is now mode-specific Svelte components for top-level workflows:
+	- `DepletionPanel.svelte`
+	- `WaterfloodPanel.svelte`
+	- `SimulationPanel.svelte`
+	- `BenchmarkPanel.svelte`
+- Reuse smaller focused subcomponents underneath those mode panels instead of trying to render most of the UI from one schema system.
+- Keep TypeScript in charge of constraint logic, warning policy, and simulator behavior.
+- Keep any config-driven approach narrow and local only where it clearly helps (for example compact quick-pick/custom-entry helpers), not as the primary architecture.
+
+Planning updates applied:
+- `TODO.md`
+	- Renamed the authoritative recovery plan to `Mode-Specific Panels`.
+	- Replaced the broad schema-migration follow-ups with mode-panel extraction and focused subcomponent reuse.
+	- Preserved the existing geometry schema work as an experiment/helper rather than the mandated direction for all sections.
+
+Validation run:
+- No code behavior changed in this planning slice; no tests were required.
+
+Next active slice:
+R1.2 Extract mode-specific top-level panels (in progress).
+
+Phase 2 recovery progress update (2026-03-06)
+Slice in progress:
+- R1.2 Define typed schema for UI composition
+
+Implemented in this sub-slice (ModePanel UI polish before next migration):
+- `src/lib/ui/ModePanel.svelte`
+	- Removed the always-visible low-value preset status strip; it now only appears when there is actual value to show (changed-field count and/or benchmark clone provenance).
+	- Geometry now opens directly into the compact custom editor instead of showing a redundant inner heading and repeated preset context.
+- `src/lib/ui/SchemaSectionRenderer.svelte`
+	- Added `showHeader` and `hideQuickPickOptions` controls so schema-backed sections can be embedded without redundant framing.
+	- Compacted the schema-backed field layout to reduce horizontal sprawl and make the Geometry custom editor feel like an inline override surface rather than a second large panel.
+	- Hid redundant quick-pick buttons in the Geometry body because preset quick-picks already exist in the parent facet selector row.
+
+Validation run:
+- `npm run test -- src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (4 files, 27 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in modified UI files.
+
+Next active slice:
+R1.2 Define typed schema for UI composition (in progress), continuing with migration of the next section(s) and removal of remaining implicit parameter contracts.

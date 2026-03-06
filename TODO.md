@@ -12,27 +12,34 @@ Items are grouped by priority.
 
 ---
 
-## Authoritative Recovery Plan — Schema-Driven Composer (Interruption-Safe)
+## Authoritative Recovery Plan — Mode-Specific Panels (Interruption-Safe)
 
 Single source of truth: this section is the authoritative tracker for the current frontend recovery/refactor path after the 2026-03-06 UI audit.
 
+Direction update (2026-03-06, later session):
+- Do not continue toward a broad JSON/schema-driven control system for the full input surface.
+- Preferred direction is mode-specific Svelte panels (`Depletion`, `Waterflood`, `Simulation`, `Benchmark`) that reuse smaller field/panel subcomponents.
+- Typed config/schema may still be used sparingly for narrow repetitive cases (for example compact quick-pick definitions), but not as the primary UI architecture.
+- Constraint logic, warning policy, and simulator behavior remain code-defined in TypeScript.
+
 - [x] **R0.1 Audit current UI state** — confirmed the current `ModePanel` is an intermediate splice: it is hardcoded, passes `params: any`, and bypasses part of the Phase 2 preset/customize contract (`isModified`, grouped override/reset UX, shell-level provenance/override visibility).
-- [x] **R0.2 Reset docs to an authoritative plan** — updated `TODO.md`, `docs/status.md`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`, and `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` so interruption-safe resume state reflects the schema-driven direction rather than the older shell-only plan.
+- [x] **R0.2 Reset docs to an authoritative plan** — updated `TODO.md`, `docs/status.md`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`, and `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` so interruption-safe resume state reflects the current frontend direction.
 - [x] **R1.1 Restore unified-panel preset/customize semantics** — wired manual field edits in `ModePanel` back through `scenario.handleParamEdit()`, resurfaced base-preset / changed-field / clone provenance state in the live panel, and auto-clear non-benchmark customized state when overrides return to zero.
-- [ ] **R1.2 Define typed schema for UI composition (in progress)** — typed schema definitions now exist for sections, controls, quick-picks, and inline `Custom` entry behavior; `Geometry + Grid` is the first migrated schema-backed section in `ModePanel`, and the shared schema-backed panel path now consumes an explicit `ModePanelParameterBindings` type instead of `params: any`. Continue by expanding the schema/renderer approach to the remaining sections and removing remaining implicit parameter contracts.
+- [ ] **R1.2 Extract mode-specific top-level panels (in progress)** — split the current `ModePanel` into dedicated Svelte components for `Depletion`, `Waterflood`, `Simulation`, and `Benchmark`, while keeping one shared store contract and reusing small field/panel subcomponents.
 - [ ] **R1.3 Define warning severity + surfacing policy** — separate `blocking validation`, `non-physical or contradictory`, `approximate/reference-model caveat`, and `advisory` states, with explicit UI surfaces for each.
-- [ ] **R1.4 Migrate Geometry + Grid to schema renderer** — prove the approach on one vertical slice before replacing the whole panel.
-- [ ] **R1.5 Add toggle-plus-custom pattern** — allow curated quick-select options (e.g. `nx = 12 | 24 | 48`) plus a `Custom` affordance that reveals a typed input or advanced parameter sub-panel.
-- [ ] **R1.6 Migrate remaining sections to schema renderer** — reservoir, SCAL, wells, timestep, analytical, and benchmark surfaces.
-- [ ] **R1.7 Remove obsolete shell-era UI leftovers** — retire `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once schema-driven parity is reached.
-- [ ] **R1.8 Regression + policy hardening** — add tests for modified-state transitions, clone provenance, override visibility/reset behavior, warning policy, and schema-driven rendering.
+- [ ] **R1.4 Keep only narrow config-driven helpers where they help** — preserve typed quick-pick/custom-entry helpers only for local repetitive controls if they genuinely reduce duplication.
+- [ ] **R1.5 Add toggle-plus-custom pattern where useful** — allow curated quick-select options (for example `nx = 12 | 24 | 48`) plus a `Custom` affordance that reveals a typed input or advanced parameter sub-panel.
+- [ ] **R1.6 Refactor mode panels to reuse focused subcomponents** — extract small reusable units for grid fields, timestep fields, SCAL groups, well controls, and benchmark info without forcing everything through one schema renderer.
+- [ ] **R1.7 Remove obsolete shell-era UI leftovers** — retire `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once the new mode panels are stable.
+- [ ] **R1.8 Regression + policy hardening** — add tests for modified-state transitions, clone provenance, override visibility/reset behavior, warning policy, and the final mode-panel flows.
 
 Recovery acceptance checklist:
 
 - [ ] A manual field edit always transitions the current preset into truthful customized state.
 - [ ] Quick presets and custom input can coexist in the same control group without ambiguous precedence.
-- [ ] Control layout/labels/options come from typed schema/config, not hardcoded component wiring.
+- [ ] Top-level mode flows are expressed in dedicated Svelte components, not a broad schema renderer.
 - [ ] Constraint rules remain deterministic and code-defined; no string-encoded logic is introduced in JSON.
+- [ ] Any remaining config-driven helpers stay local and typed rather than becoming a second UI language.
 - [ ] Warning surfaces are explicit: blocking errors stop run, non-reference states stay permissive with visible rationale.
 - [ ] `TODO.md` and `docs/status.md` are sufficient to resume work after interruption without rereading old chat history.
 
@@ -83,7 +90,7 @@ Interruption resume protocol (mandatory):
 
 Single source of truth: this section is the authoritative tracker for ongoing Phase 2 work.
 
-Historical note: this section records the earlier shell-oriented Phase 2 slices. It is no longer the authoritative forward plan after the 2026-03-06 UI audit. Use `Authoritative Recovery Plan — Schema-Driven Composer` above for current work.
+Historical note: this section records the earlier shell-oriented Phase 2 slices. It is no longer the authoritative forward plan after the 2026-03-06 UI audit. Use `Authoritative Recovery Plan — Mode-Specific Panels` above for current work.
 
 - [x] **P2.1 UX contract + state schema freeze** — unified contract module and store schema fields landed (`basePreset`, `parameterOverrides`, `benchmarkProvenance`, `analyticalStatus`) with focused tests and docs (`src/lib/stores/phase2PresetContract.ts`, `src/lib/stores/phase2PresetContract.test.ts`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`).
 - [x] **P2.2 Preset composer shell UI** — hybrid flow polished: per-facet `Customize` + `Reset` controls are part of each facet group, active customize selection is highlighted, section-targeted focus/highlight is wired, customize sessions collapse via explicit `OK`, facet mapping is centralized in shared Phase 2 contract helpers, and generated-profile controls now include shell-level `show changed fields` and per-group quick actions.
@@ -136,7 +143,7 @@ Interruption resume protocol (mandatory):
 ## High Priority — Frontend & UX
 
 - [x] **Implement Option B shell UI** — replaced TopBar + InputsTab with unified ModePanel: mode tabs + collapsible sections with nested dimension sub-selectors and expandable inline parameter panels. Removed customize-flow indirection from App.svelte.
-- [ ] **Replace intermediate `ModePanel` with schema-driven composer** — current panel proves the unified layout direction but hardcodes sections/controls and bypasses part of the preset/customize contract.
+- [ ] **Replace intermediate `ModePanel` with mode-specific top-level panels** — current panel proves the unified layout direction but should evolve into dedicated `Depletion` / `Waterflood` / `Simulation` / `Benchmark` components rather than a broad schema renderer.
 - [ ] **Restore truthful customized-state UX in unified panel** — manual edits must drive `isModified`, grouped override visibility, and reset-to-preset semantics through the store contract.
 - [ ] **Support quick-select + custom-entry controls** — curated toggles/selects should be able to reveal typed custom inputs or advanced parameter groups without splitting the mental model.
 - [ ] **Define warning policy by severity** — use blocking validation for invalid runs, visible warnings for contradictory/non-physical inputs, and permissive caveats for approximate analytical/reference assumptions.
