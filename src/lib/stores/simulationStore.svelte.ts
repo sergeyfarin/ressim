@@ -22,7 +22,9 @@ import {
     validateInputs as validateSimulationInputs,
     type SimulationInputs,
     type ValidationState as InputValidationState,
+    type ValidationWarning,
 } from '../validateInputs';
+import { buildWarningPolicy } from '../warningPolicy';
 import {
     buildBenchmarkCloneProvenance,
     buildBasePresetProfile,
@@ -30,6 +32,7 @@ import {
     buildParameterOverrides,
     evaluateAnalyticalStatus,
     groupParameterOverrides,
+    type AnalyticalStatus,
     type BenchmarkProvenance,
 } from './phase2PresetContract';
 
@@ -287,7 +290,7 @@ export function createSimulationStore() {
         validateSimulationInputs(buildValidationInput()),
     );
     const validationErrors: Record<string, string> = $derived(validationState.errors);
-    const validationWarnings: string[] = $derived(validationState.warnings);
+    const validationWarnings: ValidationWarning[] = $derived(validationState.warnings);
     const hasValidationErrors = $derived(Object.keys(validationErrors).length > 0);
     const estimatedRunSeconds = $derived(
         Math.max(0, (Number(profileStats.avgStepMs || 0) * Number(steps || 0)) / 1000),
@@ -327,6 +330,17 @@ export function createSimulationStore() {
             capillaryEnabled,
             permMode,
             toggles,
+        });
+    });
+
+    const warningPolicy = $derived.by(() => {
+        return buildWarningPolicy({
+            validationErrors,
+            validationWarnings,
+            analyticalStatus: analyticalStatus as AnalyticalStatus,
+            runtimeWarning,
+            solverWarning,
+            modelReinitNotice,
         });
     });
 
@@ -1105,6 +1119,7 @@ export function createSimulationStore() {
         get estimatedRunSeconds() { return estimatedRunSeconds; },
         get longRunEstimate() { return longRunEstimate; },
         get analyticalStatus() { return analyticalStatus; },
+        get warningPolicy() { return warningPolicy; },
         setupWorker,
         dispose,
         initSimulator,

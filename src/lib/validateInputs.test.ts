@@ -219,12 +219,15 @@ describe('validateInputs', () => {
         it('warns when run exceeds 10 years', () => {
             const result = validateInputs(makeValidInputs({ delta_t_days: 100, steps: 40 }));
             expect(result.warnings.length).toBeGreaterThan(0);
-            expect(result.warnings[0]).toMatch(/10 years/);
+            expect(result.warnings[0]?.code).toBe('long-run-duration');
+            expect(result.warnings[0]?.surface).toBe('advisory');
+            expect(result.warnings[0]?.message).toMatch(/10 years/);
         });
 
         it('warns on large max pressure change per step', () => {
             const result = validateInputs(makeValidInputs({ max_pressure_change_per_step: 300 }));
-            expect(result.warnings.some(w => w.match(/ΔP/))).toBe(true);
+            expect(result.warnings.some((warning) => warning.code === 'pressure-step-large')).toBe(true);
+            expect(result.warnings.some((warning) => warning.surface === 'non-physical')).toBe(true);
         });
 
         it('no warnings for moderate settings', () => {

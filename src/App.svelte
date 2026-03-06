@@ -352,7 +352,7 @@
             benchmarkProvenance={scenario.benchmarkProvenance}
             {params}
             validationErrors={params.validationErrors}
-            validationWarnings={params.validationWarnings}
+            warningPolicy={runtime.warningPolicy}
         />
 
         <!-- Run Controls -->
@@ -380,13 +380,6 @@
         />
 
         <!-- Error / Warning banners -->
-        {#if runtime.runtimeWarning}
-            <div
-                class="rounded-md border border-warning bg-card text-warning p-3 text-xs font-medium"
-            >
-                {runtime.runtimeWarning}
-            </div>
-        {/if}
         {#if runtime.runtimeError}
             <div
                 class="rounded-md border border-destructive bg-card text-destructive p-3 text-xs font-medium"

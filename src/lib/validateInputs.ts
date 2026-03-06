@@ -1,6 +1,6 @@
 /**
  * Input validation logic extracted from simulationStore for testability.
- * Returns { errors: Record<string, string>, warnings: string[] }
+ * Returns structured validation state with blocking errors and typed warnings.
  */
 
 export type SimulationInputs = {
@@ -43,12 +43,21 @@ export type SimulationInputs = {
 
 export type ValidationState = {
     errors: Record<string, string>;
-    warnings: string[];
+    warnings: ValidationWarning[];
+};
+
+export type ValidationWarningSurface = 'non-physical' | 'advisory';
+
+export type ValidationWarning = {
+    code: 'long-run-duration' | 'pressure-step-large';
+    message: string;
+    surface: ValidationWarningSurface;
+    fieldKey?: string;
 };
 
 export function validateInputs(input: SimulationInputs): ValidationState {
     const errors: Record<string, string> = {};
-    const warnings: string[] = [];
+    const warnings: ValidationWarning[] = [];
     const numeric = (value: unknown) => Number(value);
     const isFiniteNumber = (value: unknown) => Number.isFinite(numeric(value));
 
@@ -104,10 +113,20 @@ export function validateInputs(input: SimulationInputs): ValidationState {
         errors.producerRate = 'Producer rate must be positive when rate-controlled.';
     }
     if (input.delta_t_days * input.steps > 3650) {
-        warnings.push('Requested run covers more than 10 years; results may require tighter timestep limits.');
+        warnings.push({
+            code: 'long-run-duration',
+            message: 'Requested run covers more than 10 years; results may require tighter timestep limits.',
+            surface: 'advisory',
+            fieldKey: 'steps',
+        });
     }
     if (input.max_pressure_change_per_step > 250) {
-        warnings.push('Large max ΔP per step may reduce numerical robustness.');
+        warnings.push({
+            code: 'pressure-step-large',
+            message: 'Large max ΔP per step may reduce numerical robustness.',
+            surface: 'non-physical',
+            fieldKey: 'max_pressure_change_per_step',
+        });
     }
     return { errors, warnings };
 }

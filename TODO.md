@@ -25,19 +25,20 @@ Direction update (2026-03-06, later session):
 - [x] **R0.1 Audit current UI state** — confirmed the current `ModePanel` is an intermediate splice: it is hardcoded, passes `params: any`, and bypasses part of the Phase 2 preset/customize contract (`isModified`, grouped override/reset UX, shell-level provenance/override visibility).
 - [x] **R0.2 Reset docs to an authoritative plan** — updated `TODO.md`, `docs/status.md`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`, and `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` so interruption-safe resume state reflects the current frontend direction.
 - [x] **R1.1 Restore unified-panel preset/customize semantics** — wired manual field edits in `ModePanel` back through `scenario.handleParamEdit()`, resurfaced base-preset / changed-field / clone provenance state in the live panel, and auto-clear non-benchmark customized state when overrides return to zero.
-- [ ] **R1.2 Extract mode-specific top-level panels (in progress)** — split the current `ModePanel` into dedicated Svelte components for `Depletion`, `Waterflood`, `Simulation`, and `Benchmark`, while keeping one shared store contract and reusing small field/panel subcomponents.
-- [ ] **R1.3 Define warning severity + surfacing policy** — separate `blocking validation`, `non-physical or contradictory`, `approximate/reference-model caveat`, and `advisory` states, with explicit UI surfaces for each.
+- [x] **R1.2 Extract mode-specific top-level panels** — split the current `ModePanel` into dedicated Svelte components for `Depletion`, `Waterflood`, `Simulation`, and `Benchmark`, while keeping one shared store contract and reusing small field/panel subcomponents.
+- [ ] **R1.3 Define warning severity + surfacing policy (in progress)** — separate `blocking validation`, `non-physical or contradictory`, `approximate/reference-model caveat`, and `advisory` states, with explicit UI surfaces for each.
+Resume note for `R1.3`: after the typed warning-policy layer is in place, mirror the same warning classes into `src/lib/ui/RunControls.svelte` so runtime controls stop depending on raw inline warning strings.
 - [ ] **R1.4 Keep only narrow config-driven helpers where they help** — preserve typed quick-pick/custom-entry helpers only for local repetitive controls if they genuinely reduce duplication.
 - [ ] **R1.5 Add toggle-plus-custom pattern where useful** — allow curated quick-select options (for example `nx = 12 | 24 | 48`) plus a `Custom` affordance that reveals a typed input or advanced parameter sub-panel.
 - [ ] **R1.6 Refactor mode panels to reuse focused subcomponents** — extract small reusable units for grid fields, timestep fields, SCAL groups, well controls, and benchmark info without forcing everything through one schema renderer.
-- [ ] **R1.7 Remove obsolete shell-era UI leftovers** — retire `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once the new mode panels are stable.
+- [ ] **R1.7 Remove obsolete shell-era UI leftovers** — retire `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once the new mode panels are stable. While cleaning leftovers perform comprehensive revew of what else can be cleaned and / or refactored. There might be other leftovers not used for anything or illogical pieces or duplications. Could also log follow-up tasks.
 - [ ] **R1.8 Regression + policy hardening** — add tests for modified-state transitions, clone provenance, override visibility/reset behavior, warning policy, and the final mode-panel flows.
 
 Recovery acceptance checklist:
 
 - [ ] A manual field edit always transitions the current preset into truthful customized state.
 - [ ] Quick presets and custom input can coexist in the same control group without ambiguous precedence.
-- [ ] Top-level mode flows are expressed in dedicated Svelte components, not a broad schema renderer.
+- [x] Top-level mode flows are expressed in dedicated Svelte components, not a broad schema renderer.
 - [ ] Constraint rules remain deterministic and code-defined; no string-encoded logic is introduced in JSON.
 - [ ] Any remaining config-driven helpers stay local and typed rather than becoming a second UI language.
 - [ ] Warning surfaces are explicit: blocking errors stop run, non-reference states stay permissive with visible rationale.

@@ -671,3 +671,63 @@ Validation run:
 
 Next active slice:
 R1.2 Define typed schema for UI composition (in progress), continuing with migration of the next section(s) and removal of remaining implicit parameter contracts.
+
+Phase 2 recovery progress update (2026-03-06)
+Completed slice:
+- R1.2 Extract mode-specific top-level panels
+
+Implemented in this slice:
+- `src/lib/ui/ModePanel.svelte`
+	- Reduced the component to a shell responsible for mode tabs, changed/provenance status, validation warnings, and routing into dedicated top-level mode panels.
+- Added dedicated top-level workflow components:
+	- `src/lib/ui/BenchmarkPanel.svelte`
+	- `src/lib/ui/DepletionPanel.svelte`
+	- `src/lib/ui/WaterfloodPanel.svelte`
+	- `src/lib/ui/SimulationPanel.svelte`
+- Added `src/lib/ui/ScenarioSectionsPanel.svelte` to hold the shared non-benchmark section composition while keeping the workflow split explicit at the top level.
+- Added `src/lib/ui/modePanelTypes.ts` so the new panel boundary shares one typed prop contract instead of duplicating inline panel prop shapes.
+- Added `src/lib/ui/modePanelComposition.test.ts` to lock in the new composition boundary and keep the section renderer delegation explicit.
+
+Validation run:
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 11 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in the extracted panel files.
+
+Next active slice:
+R1.3 Define warning severity + surfacing policy (in progress).
+
+Phase 2 recovery progress update (2026-03-06, later)
+Slice in progress:
+- R1.3 Define warning severity + surfacing policy
+
+Implemented in this sub-slice:
+- `src/lib/validateInputs.ts`
+	- Replaced raw warning strings with typed validation warnings carrying `code`, `surface`, `message`, and optional `fieldKey` metadata.
+	- Classified current validation warnings into `advisory` and `non-physical` surfaces instead of leaving them as an untyped list.
+- `src/lib/warningPolicy.ts`
+	- Added a store-facing warning policy builder that groups current issues into four explicit surfaces:
+		- `blockingValidation`
+		- `nonPhysical`
+		- `referenceCaveat`
+		- `advisory`
+	- Aggregates validation errors, typed validation warnings, analytical caveats, solver warnings, runtime warnings, and model reinit notices into one typed summary.
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Added derived `warningPolicy` and exposed it through `runtimeState`.
+- `src/lib/ui/WarningPolicyPanel.svelte`
+	- Added an explicit surface renderer for grouped warning classes.
+- `src/lib/ui/ModePanel.svelte`
+	- Replaced the previous raw validation-warning list with grouped warning surfaces for `blockingValidation`, `nonPhysical`, and `advisory`.
+- `src/App.svelte`
+	- Routed `runtime.warningPolicy` into `ModePanel`.
+	- Removed the now-duplicated raw runtime warning banner.
+
+Reminder logged for next sub-step:
+- Propagate the same warning classes into `src/lib/ui/RunControls.svelte` once the policy model settles, so runtime controls stop relying on raw inline strings.
+
+Validation run:
+- `npm run test -- src/lib/warningPolicy.test.ts src/lib/validateInputs.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/ui/modePanelComposition.test.ts src/lib/stores/phase2PresetContract.test.ts` passed (5 files, 57 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in modified warning-policy files.
+
+Next active slice:
+R1.3 Define warning severity + surfacing policy (in progress), continuing with `RunControls` surfacing and final policy cleanup.

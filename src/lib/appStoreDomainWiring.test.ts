@@ -19,6 +19,7 @@ describe('App store domain wiring', () => {
   it('passes preset-customize domain state into ModePanel', () => {
     expect(appSource).toMatch(/onParamEdit=\{scenario\.handleParamEdit\}/);
     expect(appSource).toMatch(/basePreset=\{scenario\.basePreset\}/);
+    expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
   });
 
   it('avoids transitional App-side contract assembly logic', () => {
