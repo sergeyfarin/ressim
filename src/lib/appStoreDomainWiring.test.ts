@@ -16,6 +16,11 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/scenario\.cloneActiveBenchmarkToCustom\(\)/);
   });
 
+  it('passes preset-customize domain state into ModePanel', () => {
+    expect(appSource).toMatch(/onParamEdit=\{scenario\.handleParamEdit\}/);
+    expect(appSource).toMatch(/basePreset=\{scenario\.basePreset\}/);
+  });
+
   it('avoids transitional App-side contract assembly logic', () => {
     expect(appSource).not.toMatch(/buildBenchmarkCloneProvenance/);
     expect(appSource).not.toMatch(/buildOverrideResetPlan/);

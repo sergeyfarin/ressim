@@ -345,7 +345,9 @@
             toggles={scenario.toggles}
             disabledOptions={scenario.disabledOptions}
             onModeChange={scenario.handleModeChange}
+            onParamEdit={scenario.handleParamEdit}
             onToggleChange={scenario.handleToggleChange}
+            basePreset={scenario.basePreset}
             onCloneBenchmarkToCustom={handleCloneBenchmarkToCustom}
             benchmarkProvenance={scenario.benchmarkProvenance}
             {params}

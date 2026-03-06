@@ -330,6 +330,16 @@ export function createSimulationStore() {
         });
     });
 
+    $effect(() => {
+        if (!isModified) return;
+        if (activeMode === 'benchmark') return;
+        if (benchmarkProvenance) return;
+        if (parameterOverrideCount !== 0) return;
+
+        isModified = false;
+        baseCaseSignature = buildCaseSignature();
+    });
+
     // ===== Internal Helpers =====
 
     function buildCurrentParameterSnapshot(): Record<string, unknown> {

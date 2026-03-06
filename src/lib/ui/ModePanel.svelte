@@ -1,11 +1,11 @@
 <script lang="ts">
   import FilterCard from "./FilterCard.svelte";
-  import StaticPropertiesPanel from "./StaticPropertiesPanel.svelte";
   import ReservoirPropertiesPanel from "./ReservoirPropertiesPanel.svelte";
   import RelativeCapillaryPanel from "./RelativeCapillaryPanel.svelte";
   import WellPropertiesPanel from "./WellPropertiesPanel.svelte";
   import TimestepControlsPanel from "./TimestepControlsPanel.svelte";
   import AnalyticalInputsPanel from "./AnalyticalInputsPanel.svelte";
+  import SchemaSectionRenderer from "./SchemaSectionRenderer.svelte";
   import Button from "../components/ui/Button.svelte";
   import {
     type CaseMode,
@@ -14,23 +14,16 @@
     type Dimension,
     type ToggleState,
   } from "../caseCatalog";
-
-  /**
-   * Maps each panel section to the catalog dimension keys it covers.
-   * Sections with empty dims (e.g. "analytical") always render.
-   */
-  const SECTIONS = [
-    { key: "geometry", label: "Geometry & Grid", dims: ["geo", "grid"] },
-    {
-      key: "reservoir",
-      label: "Reservoir & Rock",
-      dims: ["rock", "fluid", "grav"],
-    },
-    { key: "scal", label: "Relative Perm & Capillary", dims: ["cap"] },
-    { key: "wells", label: "Wells", dims: ["well"] },
-    { key: "timestep", label: "Timestep & Stability", dims: ["dt"] },
-    { key: "analytical", label: "Analytical", dims: [] },
-  ];
+  import type {
+    BasePresetProfile,
+    BenchmarkProvenance,
+  } from "../stores/phase2PresetContract";
+  import {
+    GEOMETRY_GRID_SECTION_SCHEMA,
+    getModePanelSections,
+    type ModePanelParameterBindings,
+    type ModePanelSectionDefinition,
+  } from "./modePanelSchema";
 
   let {
     activeMode = "dep" as CaseMode,
@@ -38,13 +31,10 @@
     toggles = {} as ToggleState,
     disabledOptions = {} as Record<string, Record<string, string>>,
     onModeChange,
+    onParamEdit = () => {},
     onToggleChange,
-    benchmarkProvenance = null as {
-      sourceBenchmarkId: string;
-      sourceCaseKey: string;
-      sourceLabel: string;
-      clonedAtIso: string;
-    } | null,
+    basePreset = null as BasePresetProfile | null,
+    benchmarkProvenance = null as BenchmarkProvenance | null,
     onCloneBenchmarkToCustom = () => {},
     params,
     validationErrors = {} as Record<string, string>,
@@ -55,21 +45,19 @@
     toggles: ToggleState;
     disabledOptions: Record<string, Record<string, string>>;
     onModeChange: (mode: CaseMode) => void;
-    onToggleChange: (key: string, value: any) => void;
-    benchmarkProvenance?: {
-      sourceBenchmarkId: string;
-      sourceCaseKey: string;
-      sourceLabel: string;
-      clonedAtIso: string;
-    } | null;
+    onParamEdit?: () => void;
+    onToggleChange: (key: string, value: string) => void;
+    basePreset?: BasePresetProfile | null;
+    benchmarkProvenance?: BenchmarkProvenance | null;
     onCloneBenchmarkToCustom?: () => void;
-    params: any;
+    params: ModePanelParameterBindings;
     validationErrors?: Record<string, string>;
     validationWarnings?: string[];
   } = $props();
 
   let expandedSections = $state<Record<string, boolean>>({});
 
+  const sections = $derived(getModePanelSections(activeMode));
   const modeDimensions = $derived(getModeDimensions(activeMode));
 
   const activeBenchmark = $derived(
@@ -85,6 +73,28 @@
   function getSectionDims(dimKeys: readonly string[]): Dimension[] {
     return modeDimensions.filter((d) => dimKeys.includes(d.key));
   }
+
+  function sectionHasSchema(section: ModePanelSectionDefinition): boolean {
+    return section.schemaKey === "geometry-grid";
+  }
+
+  function handleManualFieldEdit() {
+    onParamEdit();
+  }
+
+  function prettySource(source: BasePresetProfile["source"] | undefined): string {
+    if (source === "benchmark") return "Benchmark Base";
+    if (source === "custom") return "Customized";
+    return "Facet Preset";
+  }
+
+  const sourceTone = $derived(
+    basePreset?.source === "custom"
+      ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-950/40 dark:text-amber-300"
+      : basePreset?.source === "benchmark"
+        ? "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700/70 dark:bg-sky-950/40 dark:text-sky-300"
+        : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-950/40 dark:text-emerald-300",
+  );
 </script>
 
 <div class="mode-panel">
@@ -104,6 +114,23 @@
         class="ml-2 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
       >
         Customized
+      </span>
+    {/if}
+  </div>
+
+  <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+    <span class={`rounded-md border px-2 py-1 font-medium ${sourceTone}`}>
+      {prettySource(basePreset?.source)}
+    </span>
+    <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
+      Base: <strong class="text-foreground">{basePreset?.label || "N/A"}</strong>
+    </span>
+    <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
+      Changed fields: <strong class="text-foreground">{params.parameterOverrideCount ?? 0}</strong>
+    </span>
+    {#if benchmarkProvenance}
+      <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
+        Cloned from <strong class="text-foreground">{benchmarkProvenance.sourceLabel}</strong>
       </span>
     {/if}
   </div>
@@ -158,7 +185,7 @@
   {:else}
     <!-- Non-benchmark: grouped sections with sub-selectors + inline parameters -->
     <div class="mt-4 space-y-2">
-      {#each SECTIONS as section}
+      {#each sections as section}
         {@const dims = getSectionDims(section.dims)}
         {@const isExpanded = !!expandedSections[section.key]}
         {#if dims.length > 0 || section.dims.length === 0}
@@ -195,17 +222,17 @@
             </div>
 
             {#if isExpanded}
-              <div class="section-body">
-                {#if section.key === "geometry"}
-                  <StaticPropertiesPanel
-                    bind:nx={params.nx}
-                    bind:ny={params.ny}
-                    bind:nz={params.nz}
-                    bind:cellDx={params.cellDx}
-                    bind:cellDy={params.cellDy}
-                    bind:cellDz={params.cellDz}
+              <div
+                class="section-body"
+                oninput={handleManualFieldEdit}
+                onchange={handleManualFieldEdit}
+              >
+                {#if sectionHasSchema(section)}
+                  <SchemaSectionRenderer
+                    section={GEOMETRY_GRID_SECTION_SCHEMA}
+                    bindings={params}
                     fieldErrors={validationErrors}
-                    onNzOrPermModeChange={params.handleNzOrPermModeChange}
+                    {onParamEdit}
                   />
                 {:else if section.key === "reservoir"}
                   <ReservoirPropertiesPanel

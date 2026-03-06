@@ -552,3 +552,74 @@ Validation run:
 
 Next active slice:
 R1.1 Restore unified-panel preset/customize semantics (in progress).
+
+Phase 2 recovery progress update (2026-03-06)
+Completed slice:
+- R1.1 Restore unified-panel preset/customize semantics
+
+Implemented in this slice:
+- `src/lib/ui/ModePanel.svelte`
+	- Added `onParamEdit` passthrough so manual field edits in expanded section bodies route back through domain intent.
+	- Added a lightweight preset/customize summary strip showing current source, base preset label, changed-field count, and benchmark clone provenance.
+- `src/App.svelte`
+	- Passed `scenario.handleParamEdit` and `scenario.basePreset` into `ModePanel` so the live panel consumes the store contract directly.
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Added auto-clear behavior for non-benchmark customized state when override count returns to zero and no clone provenance is active.
+- `src/lib/appStoreDomainWiring.test.ts`
+	- Added regression coverage ensuring `ModePanel` receives `onParamEdit` and `basePreset` from domain APIs.
+
+Validation run:
+- `npm run test -- src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (3 files, 22 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in modified files.
+- `npx svelte-check --tsconfig ./tsconfig.json` still reports the same pre-existing `src/lib/components/ui/Collapsible.svelte` `on:toggle` typing error; no new errors were introduced by this slice.
+
+Next active slice:
+R1.2 Define typed schema for UI composition (in progress).
+
+Phase 2 recovery progress update (2026-03-06)
+Slice in progress:
+- R1.2 Define typed schema for UI composition
+
+Implemented in this sub-slice (Geometry + Grid first migration):
+- `src/lib/ui/modePanelSchema.ts`
+	- Added typed schema definitions for mode-panel sections, schema-backed controls, quick-pick options, inline custom-entry behavior, and change-effect metadata.
+	- Added the first concrete schema: `GEOMETRY_GRID_SECTION_SCHEMA`.
+- `src/lib/ui/SchemaSectionRenderer.svelte`
+	- Added a reusable schema renderer for the first control set (`quick-picks` with inline `Custom` number entry, plus typed numeric controls).
+	- Custom entry stays code-driven for behavior while config/schema stays declarative.
+- `src/lib/ui/ModePanel.svelte`
+	- Replaced the hardcoded `StaticPropertiesPanel` body in the `Geometry + Grid` section with the schema renderer.
+	- Switched section metadata to typed `getModePanelSections(...)` definitions.
+- `src/lib/ui/modePanelSchema.test.ts`
+	- Added focused tests for section metadata, `nx` quick-picks, inline custom-entry behavior metadata, quick-pick matching, and control-level error lookup.
+
+Validation run:
+- `npm run test -- src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (4 files, 27 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in modified schema/renderer files.
+
+Next active slice:
+R1.2 Define typed schema for UI composition (in progress), continuing with parameter typing cleanup and migration of the next section(s) to schema-driven rendering.
+
+Phase 2 recovery progress update (2026-03-06)
+Slice in progress:
+- R1.2 Define typed schema for UI composition
+
+Implemented in this sub-slice (typed parameter bindings cleanup):
+- `src/lib/ui/modePanelSchema.ts`
+	- Added explicit UI-facing parameter types for the schema-backed panel path (`ModePanelParameterBindings`, plus supporting `PermMode`, well-control, and analytical-mode types).
+- `src/lib/ui/SchemaSectionRenderer.svelte`
+	- Replaced the ad hoc geometry binding shape with the shared `ModePanelParameterBindings` type.
+	- Tightened quick-pick patch application to typed geometry/grid parameter keys.
+- `src/lib/ui/ModePanel.svelte`
+	- Replaced `params: any` with `ModePanelParameterBindings`.
+	- Reused store contract types (`BasePresetProfile`, `BenchmarkProvenance`) instead of duplicating local shape definitions.
+
+Validation run:
+- `npm run test -- src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed (4 files, 27 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in modified typing/schema files.
+
+Next active slice:
+R1.2 Define typed schema for UI composition (in progress), continuing with migration of the next section(s) and removal of remaining implicit parameter contracts.
