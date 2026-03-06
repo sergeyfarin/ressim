@@ -21,8 +21,10 @@ The ReServoir SIMulator (ressim) uses **consistent oil-field units throughout** 
 ### Transmissibility
 - **Symbol:** T
 - **Units:** m³/day/bar
-- **Formula:** T = 0.001127 × k[mD] × A[m²] / (L[m] × μ[cP])
+- **Formula:** T = 8.527e-5 × k[mD] × A[m²] × λ[1/cP] / L[m]
 - **Meaning:** Flow rate per unit pressure drop across a block interface
+
+The current Rust implementation defines this as `DARCY_METRIC_FACTOR` in `src/lib/ressim/src/step.rs`. Older `0.001127` references in this repository described a different oilfield-unit convention and were stale.
 
 ### Well Productivity Index (PI)
 - **Symbol:** PI
@@ -113,7 +115,8 @@ ReservoirSimulator::new(nx, ny, nz) {
 ```
 
 Example: 20×10×10 grid = 2000 cells
-- Total volume: (20×100 m) × (10×100 m) × (10×20 m) = 400 × 1000 × 200 m³ = 80 million m³
+- Bulk volume: (20×100 m) × (10×100 m) × (10×20 m) = 2000 × 1000 × 200 m³ = 400 million m³
+- Pore volume at 20% porosity: 80 million m³
 
 ## API Input/Output
 
@@ -147,14 +150,14 @@ Returns array of GridCell objects with current state:
 
 The transmissibility between two cells is computed as:
 
-$$T = 0.001127 \times \frac{k_h \times A}{L} \times \bar{\lambda}$$
+$$T = 8.527 \times 10^{-5} \times \frac{k_h \times A}{L} \times \bar{\lambda}$$
 
 Where:
 - $k_h$ = harmonic mean of permeabilities [mD]
 - $A$ = interface area [m²]
 - $L$ = distance between cell centers [m]
 - $\bar{\lambda}$ = average total mobility [1/cP]
-- **0.001127** = conversion factor for oilfield units
+- **8.527 × 10⁻⁵** = conversion factor used by the current implementation
 
 This factor ensures:
 - Input: k[mD], A[m²], L[m], λ[1/cP]
@@ -222,7 +225,7 @@ If converting between systems:
 
 ## Notes
 
-1. **Transmissibility factor (0.001127):** This empirical factor accounts for the unit conversions from oilfield to SI internally, ensuring the final flow rate is in m³/day when pressure difference is in bar.
+1. **Transmissibility factor (`8.527e-5`):** This is the implementation constant currently used in the Rust solver for transmissibility in the repo's metric/bar/day unit system.
 
 2. **Time in API:** The API accepts time steps in days (`step(delta_t_days)`), which is convenient for users. Internally, all calculations maintain consistency with the oilfield unit system.
 

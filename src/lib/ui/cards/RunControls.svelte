@@ -61,8 +61,7 @@
             type="number"
             min="1"
             class={`w-20 ${Boolean(fieldErrors.steps) ? "border-destructive" : ""}`}
-            bind:value={steps}
-          />
+            bind:value={steps} />
         </div>
         {#if fieldErrors.steps}
           <div class="text-[10px] text-destructive leading-tight">
@@ -77,8 +76,7 @@
           type="number"
           min="1"
           class="w-16"
-          bind:value={historyInterval}
-        />
+          bind:value={historyInterval} />
       </label>
 
       <!-- Action buttons -->
@@ -88,59 +86,45 @@
           variant="default"
           onclick={onRunSteps}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >▶ Run {steps} Steps</Button
-        >
+          >▶ Run {steps} Steps</Button>
 
         <Button
           size="sm"
           variant="outline"
           onclick={onStepOnce}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >Step Once</Button
-        >
+          >Step Once</Button>
 
         <Button
           size="sm"
           variant="destructive"
           onclick={onStopRun}
-          disabled={!canStop}>⏹ Stop</Button
-        >
+          disabled={!canStop}>⏹ Stop</Button>
 
         <Button
           size="sm"
           variant="ghost"
           onclick={onInitSimulator}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >↻ Reinit</Button
-        >
+          >↻ Reinit</Button>
 
         {#if inputsAnchorHref}
           <a
             class="text-primary text-xs self-center underline-offset-4 hover:underline"
-            href={inputsAnchorHref}>Jump to Inputs</a
-          >
+            href={inputsAnchorHref}>Jump to Inputs</a>
         {/if}
       </div>
 
       <!-- Status -->
       <div
-        class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground ml-auto"
-      >
-        <span
-          class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold font-mono transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 {wasmReady
-            ? 'bg-primary text-primary-foreground text-[10px]'
-            : 'bg-destructive text-destructive-foreground text-[10px]'}"
-        >
-          {wasmReady ? "WASM Ready" : "Loading…"}
-        </span>
+        class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground ml-auto">
         <span
           >{continuationStatus ||
             (workerRunning
               ? "⏳ Running"
               : runCompleted
-                ? "✓ Done"
-                : "○ Idle")}</span
-        >
+                ? "✅ Done"
+                : "🟢 Idle")}</span>
         <span>{simTime.toFixed(1)} days</span>
         <span>{historyLength} snapshots</span>
         {#if runProgress}
@@ -161,8 +145,7 @@
           blockingValidation: ["validation"],
           nonPhysical: ["runtime"],
           advisory: ["runtime"],
-        }}
-      />
+        }} />
     {/if}
   </div>
 </Card>

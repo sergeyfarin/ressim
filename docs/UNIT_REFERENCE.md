@@ -17,7 +17,7 @@ VOLUME          → m³ (cubic meter)
 
 ### Transmissibility
 ```
-T [m³/day/bar] = 0.001127 × k[mD] × A[m²] / (L[m] × μ[cP])
+T [m³/day/bar] = 8.527e-5 × k[mD] × A[m²] × λ[1/cP] / L[m]
 ```
 
 ### Well Rate
@@ -29,6 +29,8 @@ Rate [m³/day] = PI [m³/day/bar] × (p_block [bar] - BHP [bar])
 ```
 λ [1/cP] = k_r [dimensionless] / μ [cP]
 ```
+
+Implementation note: older docs in this repo used `0.001127`, which is an imperial-oilfield constant and is not the value used by the current Rust implementation.
 
 ### Fractional Flow
 ```

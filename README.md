@@ -103,7 +103,7 @@ npm test                           # Vitest frontend tests
 cd src/lib/ressim && cargo test    # Rust unit + benchmark tests
 ```
 
-> **Known non-blocking warnings**: DaisyUI `@property` CSS warning, large JS chunk warning.
+> **Known non-blocking warning**: large JS chunk warning during production build.
 > `src/lib/ressim/pkg/simulator.js` is wasm-pack generated — do not convert manually.
 
 ## Project Layout
@@ -138,16 +138,19 @@ public/
 docs/                               — technical reference docs (see below)
 ```
 
-## Key Documentation (in `docs/`)
+## Key Documentation
 
 | Document | Content |
 |----------|---------|
+| `docs/DOCUMENTATION_INDEX.md` | Current map of authoritative vs archival docs |
+| `docs/status.md` | Current snapshot and historical execution log |
 | `P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
 | `UNIT_SYSTEM.md` | Comprehensive unit system reference |
 | `UNIT_REFERENCE.md` | Quick unit lookup card |
 | `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻⁵` constant |
-| `PHYSICS_REVIEW.md` | Physics review notes and implementation status |
-| `FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` | Frontend reactivity, faceted selection, and Option B refactor plan |
+| `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` | Store-facing preset/customize contract |
+| `PHYSICS_REVIEW.md` | Archived physics review note kept for historical context |
+| `FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` | Archived frontend review that led to the current direction |
 
 ## Physics Summary
 

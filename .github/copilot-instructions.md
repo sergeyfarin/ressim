@@ -21,9 +21,11 @@ ResSim is a browser-based 3D reservoir simulator combining:
 
 2. **Frontend** (`src/`)
    - `App.svelte` - Main UI, controls, playback, benchmark display
-   - `lib/3dview.svelte` - Three.js 3D property visualization
-   - `lib/RateChart.svelte` - Production rate charts with analytical comparison
-   - `lib/sim.worker.js` - Web Worker bridge to keep UI responsive during simulation
+   - `lib/visualization/3dview.svelte` - Three.js 3D property visualization
+   - `lib/charts/RateChart.svelte` - Production rate charts with analytical comparison
+   - `lib/workers/sim.worker.ts` - Web Worker bridge to keep UI responsive during simulation
+   - `lib/ui/modes/ModePanel.svelte` - Top-level mode-driven input surface
+   - `lib/ui/sections/ScenarioSectionsPanel.svelte` - Shared scenario section composition
 
 3. **Build & CI**
    - `scripts/build-wasm.sh` - Build the Rust/WASM package for Vite consumption
@@ -40,9 +42,9 @@ ResSim is a browser-based 3D reservoir simulator combining:
 
 ### JavaScript Dependencies (package.json)
 - `svelte` 5.x - Reactive UI framework
-- `vite` 7.x - Build tool
-- `tailwindcss` 4.x + `daisyui` - Styling
-- `three` 0.182.0 - 3D rendering (pinned version)
+- `vite` 8 beta - Build tool
+- `tailwindcss` 4.x - Styling
+- `three` 0.183.2 - 3D rendering (pinned in package.json)
 - `chart.js` 4.x - 2D charting
 
 ## Development Workflow
@@ -86,7 +88,7 @@ cargo check                    # Quick type/syntax check
 - Use Svelte 5 runes syntax (`$state`, `$derived`, `$effect`)
 - Prefer TypeScript-style JSDoc comments for complex props
 - Keep components focused and single-purpose
-- Use Tailwind + DaisyUI classes for styling
+- Use Tailwind-based styling consistent with the existing UI patterns
 - Store simulation state in reactive stores, not component state
 
 ### General Practices
@@ -107,7 +109,8 @@ cargo check                    # Quick type/syntax check
 - Benchmarks validate physics against analytical Buckley-Leverett solution
 - Implemented as Rust `#[test]` functions in `src/lib/ressim/src/lib.rs`
 - Run directly with `cargo test benchmark_buckley_leverett -- --nocapture`
-- Benchmark presets in the UI use the same case definitions but execute in browser-side WASM
+- Benchmark presets in the UI use the same case definitions but execute directly in browser-side WASM
+- There is no benchmark-export or pre-run artifact pipeline in the current repo
 
 ### Legend Modes
 - **Fixed**: Property-specific ranges for cross-run comparison
@@ -121,23 +124,25 @@ ressim/
 │   ├── workflows/           # CI/CD pipelines
 │   └── copilot-instructions.md
 ├── src/
-│   ├── main.js              # Entry point
+│   ├── main.ts              # Entry point
 │   ├── App.svelte           # Main UI
 │   ├── lib/
 │   │   ├── ressim/          # Rust WASM core
 │   │   │   ├── src/         # Rust source modules
 │   │   │   ├── Cargo.toml
 │   │   │   └── pkg/         # Built WASM (gitignored)
-│   │   ├── ui/              # Svelte UI components
-│   │   ├── 3dview.svelte    # 3D visualization
-│   │   ├── RateChart.svelte # Rate charts
-│   │   └── sim.worker.js    # Web Worker bridge
+│   │   ├── analytical/      # Analytical components and helpers
+│   │   ├── catalog/         # Faceted preset catalog data and helpers
+│   │   ├── charts/          # Rate charts and chart helpers
+│   │   ├── ui/              # Mode panels, sections, cards, controls, feedback
+│   │   ├── visualization/   # 3D visualization
+│   │   └── workers/         # Web Worker bridge
 ├── public/
 │   └── cases/               # Scenario presets
 ├── docs/                    # Extensive technical documentation
 ├── scripts/                 # Build automation
 ├── package.json
-├── vite.config.js
+├── vite.config.ts
 └── README.md
 ```
 
@@ -153,7 +158,6 @@ ressim/
 - Visual validation through UI: load scenarios and verify 3D/chart behavior
 
 ### Known Non-Blocking Warnings
-- DaisyUI `@property` CSS compatibility warning
 - Large JS chunk size warning (accepted for current project state)
 
 ## Documentation
@@ -161,8 +165,10 @@ ressim/
 Primary docs in `docs/` folder:
 - `DOCUMENTATION_INDEX.md` - Complete documentation map
 - `P4_TWO_PHASE_BENCHMARKS.md` - Benchmark methodology
-- `P4_SUMMARY.md` - Phase 4 completion report
-- Various CAPILLARY_*.md - Physics implementation details
+- `UNIT_SYSTEM.md` - Current unit system reference
+- `TRANSMISSIBILITY_FACTOR.md` - Current transmissibility constant note
+- `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` - Store-facing preset/customize contract
+- `status.md` - Current snapshot plus historical execution log
 - See `README.md` for quick start and FAQ
 
 ## Common Tasks
@@ -192,6 +198,7 @@ Primary docs in `docs/` folder:
 1. **Minimal Changes**: Only modify files directly related to the task
 2. **Preserve Physics**: Don't change validated benchmark tolerances without justification
 3. **Build Verification**: Always run `npm run dev` and `cargo check` before committing
+   Prefer `npm run typecheck`, `npm test`, and `npm run build` when validating doc or frontend-related changes.
 4. **Documentation**: Update docs for user-facing or API changes
 5. **Dependencies**: Avoid adding new dependencies unless essential; use existing libraries
 6. **Worker Safety**: Ensure worker-posted state snapshots remain serializable
@@ -199,14 +206,14 @@ Primary docs in `docs/` folder:
 
 ## Known Constraints
 
-- Three.js version pinned to 0.182.0 (breaking changes in newer versions)
+- Three.js version pinned in `package.json`; avoid casual upgrades because visualization behavior is version-sensitive
 - WASM build requires `wasm32-unknown-unknown` target
 - Worker communication must use structured cloning (no functions/classes)
 - Grid size impacts performance (current sweet spot: 20x20x10 for demos)
 
 ## Roadmap Context
 
-From `TODO_2026.md`:
+From `TODO.md`:
 - **Completed**: P0-P4 phases including two-phase benchmarks
 - **Near-term**: Consider 3-phase extension (oil/water/gas)
 - **Nice-to-Have**: Aquifer coupling, ensemble runs, uncertainty analysis
