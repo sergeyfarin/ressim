@@ -377,6 +377,7 @@
             onInitSimulator={runtime.initSimulator}
             onStopRun={runtime.stopRun}
             fieldErrors={params.validationErrors}
+            warningPolicy={runtime.warningPolicy}
         />
 
         <!-- Error / Warning banners -->
@@ -388,8 +389,8 @@
             </div>
         {/if}
 
-        {#if runtime.analyticalStatus.level === "approximate"}
-            <AnalyticalStatusBanner status={runtime.analyticalStatus} />
+        {#if runtime.warningPolicy.referenceCaveat.items.length > 0}
+            <AnalyticalStatusBanner policy={runtime.warningPolicy} />
         {/if}
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start mt-2">

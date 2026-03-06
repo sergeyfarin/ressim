@@ -341,6 +341,8 @@ export function createSimulationStore() {
             runtimeWarning,
             solverWarning,
             modelReinitNotice,
+            longRunEstimate,
+            estimatedRunSeconds,
         });
     });
 

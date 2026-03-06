@@ -2,6 +2,8 @@
   import Card from "../components/ui/Card.svelte";
   import Input from "../components/ui/Input.svelte";
   import Button from "../components/ui/Button.svelte";
+  import WarningPolicyPanel from "./WarningPolicyPanel.svelte";
+  import type { WarningPolicy } from "../warningPolicy";
 
   let {
     wasmReady = false,
@@ -13,8 +15,7 @@
     longRunEstimate = false,
     canStop = false,
     hasValidationErrors = false,
-    solverWarning = "",
-    modelReinitNotice = "",
+    warningPolicy = undefined,
     continuationStatus = "",
     runProgress = "",
     inputsAnchorHref = "",
@@ -35,8 +36,7 @@
     longRunEstimate?: boolean;
     canStop?: boolean;
     hasValidationErrors?: boolean;
-    solverWarning?: string;
-    modelReinitNotice?: string;
+    warningPolicy?: WarningPolicy;
     continuationStatus?: string;
     runProgress?: string;
     inputsAnchorHref?: string;
@@ -153,17 +153,16 @@
       <div class="text-xs text-primary mt-1">{continuationStatus}</div>
     {/if}
 
-    <!-- Warnings / notices -->
-    {#if modelReinitNotice}
-      <div class="text-xs text-destructive mt-1">⚠ {modelReinitNotice}</div>
-    {/if}
-    {#if solverWarning}
-      <div class="text-xs text-destructive mt-1">⚠ {solverWarning}</div>
-    {/if}
-    {#if longRunEstimate}
-      <div class="text-xs text-muted-foreground mt-1">
-        Estimated: {estimatedRunSeconds.toFixed(1)}s — you can stop at any time
-      </div>
+    {#if warningPolicy}
+      <WarningPolicyPanel
+        policy={warningPolicy}
+        groups={["blockingValidation", "nonPhysical", "advisory"]}
+        groupSources={{
+          blockingValidation: ["validation"],
+          nonPhysical: ["runtime"],
+          advisory: ["runtime"],
+        }}
+      />
     {/if}
   </div>
 </Card>

@@ -117,6 +117,11 @@
     <WarningPolicyPanel
       policy={warningPolicy}
       groups={["blockingValidation", "nonPhysical", "advisory"]}
+      groupSources={{
+        blockingValidation: ["validation"],
+        nonPhysical: ["validation"],
+        advisory: ["validation"],
+      }}
     />
   {/if}
 </div>

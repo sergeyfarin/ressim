@@ -1,5 +1,11 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import type {
+    AnalyticalStatus,
+    BasePresetProfile,
+    BenchmarkProvenance,
+  } from "../stores/phase2PresetContract";
+  import type { ValidationWarning } from "../validateInputs";
   import Button from "../components/ui/Button.svelte";
   import StaticPropertiesPanel from "./StaticPropertiesPanel.svelte";
   import ReservoirPropertiesPanel from "./ReservoirPropertiesPanel.svelte";
@@ -165,34 +171,12 @@
     onAnalyticalSolutionModeChange?: (mode: "waterflood" | "depletion") => void;
     onNzOrPermModeChange?: () => void;
     validationErrors?: Record<string, string>;
-    validationWarnings?: string[];
-    basePreset?: {
-      key: string;
-      mode: "dep" | "wf" | "sim" | "benchmark";
-      source: "facet" | "benchmark" | "custom";
-      label: string;
-      toggles: Record<string, string>;
-      benchmarkId: string | null;
-    } | null;
-    benchmarkProvenance?: {
-      sourceBenchmarkId: string;
-      sourceCaseKey: string;
-      sourceLabel: string;
-      clonedAtIso: string;
-    } | null;
+    validationWarnings?: ValidationWarning[];
+    basePreset?: BasePresetProfile | null;
+    benchmarkProvenance?: BenchmarkProvenance | null;
     parameterOverrideCount?: number;
     parameterOverrideGroups?: Record<string, string[]>;
-    analyticalStatus?: {
-      level: "reference" | "approximate" | "off";
-      mode: "waterflood" | "depletion" | "none";
-      warningSeverity: "none" | "notice" | "warning" | "critical";
-      reasonDetails: Array<{
-        code: string;
-        message: string;
-        severity: "notice" | "warning" | "critical";
-      }>;
-      reasons: string[];
-    };
+    analyticalStatus?: AnalyticalStatus;
     customizeSectionTarget?:
       | "shell"
       | "static"
@@ -426,7 +410,7 @@
   >
     <div class="p-3 text-xs">
       {#each validationWarnings as warning}
-        <div class="text-warning font-medium">⚠ {warning}</div>
+        <div class="text-warning font-medium">⚠ {warning.message}</div>
       {/each}
     </div>
   </div>

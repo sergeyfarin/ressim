@@ -14,6 +14,10 @@ export type WarningPolicyTone = "destructive" | "warning" | "info";
 
 export type WarningPolicySource = "validation" | "runtime" | "analytical";
 
+export type WarningPolicyGroupSources = Partial<
+  Record<WarningPolicyGroupKey, WarningPolicySource[]>
+>;
+
 export type WarningPolicyItem = {
   id: string;
   code: string;
@@ -46,6 +50,8 @@ export type WarningPolicyInput = {
   runtimeWarning?: string;
   solverWarning?: string;
   modelReinitNotice?: string;
+  longRunEstimate?: boolean;
+  estimatedRunSeconds?: number;
 };
 
 const GROUP_META: Record<WarningPolicyGroupKey, Omit<WarningPolicyGroup, "items">> = {
@@ -98,6 +104,43 @@ function analyticalReasonToPolicyItem(
     message: reason.message,
     source: "analytical",
   };
+}
+
+function cloneGroupWithItems(
+  group: WarningPolicyGroup,
+  items: WarningPolicyItem[],
+): WarningPolicyGroup {
+  return {
+    ...group,
+    items,
+  };
+}
+
+export function getWarningPolicyGroup(
+  policy: WarningPolicy,
+  key: WarningPolicyGroupKey,
+  sources?: WarningPolicySource[],
+): WarningPolicyGroup {
+  const group = policy[key];
+  if (!sources?.length) {
+    return cloneGroupWithItems(group, [...group.items]);
+  }
+
+  const allowedSources = new Set(sources);
+  return cloneGroupWithItems(
+    group,
+    group.items.filter((item) => allowedSources.has(item.source)),
+  );
+}
+
+export function getWarningPolicyGroups(
+  policy: WarningPolicy,
+  keys: WarningPolicyGroupKey[],
+  groupSources: WarningPolicyGroupSources = {},
+): WarningPolicyGroup[] {
+  return keys
+    .map((key) => getWarningPolicyGroup(policy, key, groupSources[key]))
+    .filter((group) => group.items.length > 0);
 }
 
 export function buildWarningPolicy(input: WarningPolicyInput): WarningPolicy {
@@ -156,6 +199,19 @@ export function buildWarningPolicy(input: WarningPolicyInput): WarningPolicy {
       id: "runtime:model-reinit",
       code: "model-reinit",
       message: input.modelReinitNotice,
+      source: "runtime",
+    });
+  }
+
+  if (input.longRunEstimate) {
+    const seconds = Number(input.estimatedRunSeconds ?? 0);
+    pushUniqueItem(advisory, {
+      id: "runtime:long-run-estimate",
+      code: "long-run-estimate",
+      message:
+        seconds > 0
+          ? `Estimated run: ${seconds.toFixed(1)}s. You can stop at any time.`
+          : "Estimated run is long enough that you may want to stop early if results are already clear.",
       source: "runtime",
     });
   }

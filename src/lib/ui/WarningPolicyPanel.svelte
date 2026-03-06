@@ -3,21 +3,32 @@
     WarningPolicy,
     WarningPolicyGroup,
     WarningPolicyGroupKey,
+    WarningPolicyGroupSources,
+    WarningPolicySource,
   } from "../warningPolicy";
+  import { getWarningPolicyGroups } from "../warningPolicy";
 
   let {
     policy,
     groups = ["blockingValidation", "nonPhysical", "advisory"],
+    groupSources = {},
   }: {
     policy: WarningPolicy;
     groups?: WarningPolicyGroupKey[];
+    groupSources?: WarningPolicyGroupSources;
   } = $props();
 
   const visibleGroups = $derived(
-    groups
-      .map((key) => policy[key])
-      .filter((group): group is WarningPolicyGroup => group.items.length > 0),
+    getWarningPolicyGroups(policy, groups, groupSources).filter(
+      (group): group is WarningPolicyGroup => group.items.length > 0,
+    ),
   );
+
+  function sourceLabel(source: WarningPolicySource): string {
+    if (source === "validation") return "Validation";
+    if (source === "runtime") return "Runtime";
+    return "Analytical";
+  }
 
   function toneClass(group: WarningPolicyGroup): string {
     if (group.tone === "destructive") {
@@ -49,7 +60,12 @@
         <ul class="mt-2 space-y-1.5 text-xs">
           {#each group.items as item}
             <li class="rounded border border-current/20 bg-card/70 px-2.5 py-2">
-              {item.message}
+              <div class="flex flex-wrap items-start gap-2">
+                <span class="rounded border border-current/25 bg-card/85 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-85">
+                  {sourceLabel(item.source)}
+                </span>
+                <span class="flex-1">{item.message}</span>
+              </div>
             </li>
           {/each}
         </ul>

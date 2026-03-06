@@ -731,3 +731,39 @@ Validation run:
 
 Next active slice:
 R1.3 Define warning severity + surfacing policy (in progress), continuing with `RunControls` surfacing and final policy cleanup.
+
+Phase 2 recovery progress update (2026-03-06, later still)
+Slice in progress:
+- R1.3 Define warning severity + surfacing policy
+
+Implemented in this sub-slice:
+- `src/lib/warningPolicy.ts`
+	- Added filtered warning-group selectors so different UI surfaces can consume one shared warning model without duplicating runtime vs validation messages.
+	- Moved long-run estimate messaging into the centralized advisory warning path.
+- `src/lib/ui/WarningPolicyPanel.svelte`
+	- Added per-group source filtering and source labels so one shared renderer can serve mode inputs, runtime controls, and analytical caveat surfaces.
+- `src/lib/ui/ModePanel.svelte`
+	- Restricted the mode-panel warning surface to validation-origin warnings, avoiding duplication with runtime controls.
+- `src/lib/ui/RunControls.svelte`
+	- Replaced raw `solverWarning` / `modelReinitNotice` rendering with the shared warning-policy surface.
+	- Run controls now show blocking validation via the same common system instead of depending on disconnected inline warning props.
+- `src/lib/ui/AnalyticalStatusBanner.svelte`
+	- Reworked the analytical caveat surface to wrap the shared warning policy instead of carrying a separate analytical-warning presentation model.
+- `src/App.svelte`
+	- Routed `runtime.warningPolicy` into `RunControls` and the analytical caveat banner.
+
+Audit result:
+- Live warning surfaces are now centralized on `warningPolicy`.
+- Remaining warning islands are legacy shell-era components that are no longer on the active app path:
+	- `src/lib/ui/InputsTab.svelte`
+	- `src/lib/ui/PresetCustomizeShell.svelte`
+	- `src/lib/ui/DynamicControlsPanel.svelte`
+- Those should be cleaned or retired under the tail of `R1.3` / `R1.7`, rather than introducing another warning model beside the shared one.
+
+Validation run:
+- `npm run test -- src/lib/warningPolicy.test.ts src/lib/warningPolicyFilters.test.ts src/lib/validateInputs.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/ui/modePanelComposition.test.ts` passed (6 files, 59 tests).
+- `npx vite build` passed.
+- `get_errors` reported no errors in modified warning-centralization files.
+
+Next active slice:
+R1.3 Define warning severity + surfacing policy (in progress), continuing with cleanup of remaining legacy warning islands and any final shared-warning API simplification.

@@ -22,6 +22,11 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
   });
 
+  it('routes the centralized warning policy into runtime warning surfaces', () => {
+    expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
+    expect(appSource).toMatch(/<AnalyticalStatusBanner policy=\{runtime\.warningPolicy\} \/>/);
+  });
+
   it('avoids transitional App-side contract assembly logic', () => {
     expect(appSource).not.toMatch(/buildBenchmarkCloneProvenance/);
     expect(appSource).not.toMatch(/buildOverrideResetPlan/);

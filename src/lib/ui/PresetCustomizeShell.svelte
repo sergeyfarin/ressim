@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { AnalyticalStatus } from "../stores/phase2PresetContract";
+
   type BasePreset = {
     key: string;
     mode: "dep" | "wf" | "sim" | "benchmark";
@@ -13,18 +15,6 @@
     sourceCaseKey: string;
     sourceLabel: string;
     clonedAtIso: string;
-  };
-
-  type AnalyticalStatus = {
-    level: "reference" | "approximate" | "off";
-    mode: "waterflood" | "depletion" | "none";
-    warningSeverity: "none" | "notice" | "warning" | "critical";
-    reasonDetails: Array<{
-      code: string;
-      message: string;
-      severity: "notice" | "warning" | "critical";
-    }>;
-    reasons: string[];
   };
 
   let {
