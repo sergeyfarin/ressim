@@ -1,6 +1,7 @@
 <script lang="ts">
   import Button from "../components/ui/Button.svelte";
   import type { CaseMode } from "../caseCatalog";
+  import { shouldShowModePanelStatusRow } from "../stores/phase2PresetContract";
   import BenchmarkPanel from "./BenchmarkPanel.svelte";
   import DepletionPanel from "./DepletionPanel.svelte";
   import SimulationPanel from "./SimulationPanel.svelte";
@@ -33,7 +34,10 @@
   );
 
   const shouldShowStatusRow = $derived(
-    !!benchmarkProvenance || Number(params.parameterOverrideCount ?? 0) > 0,
+    shouldShowModePanelStatusRow({
+      benchmarkProvenance,
+      parameterOverrideCount: Number(params.parameterOverrideCount ?? 0),
+    }),
   );
 </script>
 

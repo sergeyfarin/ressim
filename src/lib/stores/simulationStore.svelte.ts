@@ -32,6 +32,8 @@ import {
     buildParameterOverrides,
     evaluateAnalyticalStatus,
     groupParameterOverrides,
+    shouldAllowBenchmarkClone,
+    shouldAutoClearModifiedState,
     type AnalyticalStatus,
     type BenchmarkProvenance,
 } from './phase2PresetContract';
@@ -347,10 +349,12 @@ export function createSimulationStore() {
     });
 
     $effect(() => {
-        if (!isModified) return;
-        if (activeMode === 'benchmark') return;
-        if (benchmarkProvenance) return;
-        if (parameterOverrideCount !== 0) return;
+        if (!shouldAutoClearModifiedState({
+            isModified,
+            activeMode,
+            benchmarkProvenance,
+            parameterOverrideCount,
+        })) return;
 
         isModified = false;
         baseCaseSignature = buildCaseSignature();
@@ -863,7 +867,7 @@ export function createSimulationStore() {
     }
 
     function cloneActiveBenchmarkToCustom(): boolean {
-        if (activeMode !== 'benchmark' || isModified) return false;
+        if (!shouldAllowBenchmarkClone({ activeMode, isModified })) return false;
 
         const benchmarkId = toggles.benchmarkId ?? null;
         const benchmarkLabel = benchmarkId

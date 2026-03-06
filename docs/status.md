@@ -1017,3 +1017,43 @@ Validation run:
 - `npm run typecheck` passed.
 - `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelHelpers.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 15 tests).
 - `npm run build` passed.
+
+Phase 2 recovery progress update (2026-03-06, R1.8 regression and policy hardening)
+Completed slice:
+- R1.8 Regression + policy hardening
+
+Implemented in this slice:
+- `src/lib/stores/phase2PresetContract.ts`
+	- Added shared policy helpers for:
+		- modified-state auto-clear eligibility
+		- benchmark clone-to-custom eligibility
+		- mode-panel status-row visibility
+- `src/lib/stores/phase2PresetContract.test.ts`
+	- Added behavior tests for those shared policy helpers.
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Switched modified-state auto-clear and benchmark clone eligibility logic to the shared policy helpers.
+- `src/lib/stores/simulationStorePolicyWiring.test.ts`
+	- Added store wiring guards so the live store continues to use the shared policy helpers.
+- `src/lib/ui/ModePanel.svelte`
+	- Switched status-row visibility to the shared policy helper.
+- `src/lib/ui/modePanelFlows.test.ts`
+	- Added flow guards for final mode-panel surfaces: status row, clone messaging, and validation-warning surfacing.
+- Existing warning-policy and composition/helper tests were kept in the focused validation slice:
+	- `src/lib/warningPolicy.test.ts`
+	- `src/lib/warningPolicyFilters.test.ts`
+	- `src/lib/ui/modePanelComposition.test.ts`
+	- `src/lib/ui/modePanelHelpers.test.ts`
+	- `src/lib/appStoreDomainWiring.test.ts`
+
+Outcome:
+- The recovered panel architecture now has explicit regression coverage for the policy rules that had previously only lived as inline conditions.
+- Modified-state transitions, clone provenance eligibility, override visibility policy, warning-policy grouping/filtering, and final mode-panel flow surfaces now have focused tests or wiring guards.
+
+Validation run:
+- `get_errors` reported no errors in the touched policy, store, and UI files.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/stores/phase2PresetContract.test.ts src/lib/stores/simulationStorePolicyWiring.test.ts src/lib/warningPolicy.test.ts src/lib/warningPolicyFilters.test.ts src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelHelpers.test.ts src/lib/ui/modePanelFlows.test.ts src/lib/appStoreDomainWiring.test.ts` passed (8 files, 41 tests).
+- `npm run build` passed.
+
+Next active slice:
+Authoritative recovery plan complete. Continue with backlog items outside `R1.x` unless a new recovery slice is opened.

@@ -110,7 +110,7 @@
           class="bg-muted/50 border-b border-border text-muted-foreground px-2"
         >
           <tr>
-            <th class="font-medium p-2 w-[80px]">Well</th>
+            <th class="font-medium p-2 w-20">Well</th>
             <th class="font-medium p-2">Control Mode</th>
             <th class="font-medium p-2">Target BHP (bar)</th>
             <th class="font-medium p-2">Target Rate (m³/d)</th>

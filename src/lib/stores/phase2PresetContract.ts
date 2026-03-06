@@ -174,6 +174,32 @@ export function buildBenchmarkCloneProvenance(input: {
     };
 }
 
+export function shouldAutoClearModifiedState(input: {
+    isModified: boolean;
+    activeMode: CaseMode;
+    benchmarkProvenance: BenchmarkProvenance | null;
+    parameterOverrideCount: number;
+}): boolean {
+    if (!input.isModified) return false;
+    if (input.activeMode === 'benchmark') return false;
+    if (input.benchmarkProvenance) return false;
+    return Number(input.parameterOverrideCount) === 0;
+}
+
+export function shouldAllowBenchmarkClone(input: {
+    activeMode: CaseMode;
+    isModified: boolean;
+}): boolean {
+    return input.activeMode === 'benchmark' && !input.isModified;
+}
+
+export function shouldShowModePanelStatusRow(input: {
+    benchmarkProvenance: BenchmarkProvenance | null;
+    parameterOverrideCount: number;
+}): boolean {
+    return !!input.benchmarkProvenance || Number(input.parameterOverrideCount) > 0;
+}
+
 export type AnalyticalStatusLevel = 'reference' | 'approximate' | 'off';
 
 export type AnalyticalStatusMode = 'waterflood' | 'depletion' | 'none';

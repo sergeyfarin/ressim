@@ -15,8 +15,8 @@
 <div
     class="shadow-sm overflow-hidden shrink-0 {wrap
         ? options.length === 4
-            ? 'grid grid-cols-2 rounded-md border border-border bg-border gap-[1px]'
-            : 'grid grid-cols-3 rounded-md border border-border bg-border gap-[1px]'
+            ? 'grid grid-cols-2 rounded-md border border-border bg-border gap-px'
+            : 'grid grid-cols-3 rounded-md border border-border bg-border gap-px'
         : 'inline-flex rounded-md border border-border'}"
 >
     {#each options as option, index}

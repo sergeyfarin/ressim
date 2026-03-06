@@ -9,6 +9,9 @@ import {
     getFacetOverrideGroups,
     getOverrideGroupSectionTarget,
     groupParameterOverrides,
+    shouldAllowBenchmarkClone,
+    shouldAutoClearModifiedState,
+    shouldShowModePanelStatusRow,
 } from './phase2PresetContract';
 
 describe('phase2PresetContract', () => {
@@ -198,6 +201,69 @@ describe('phase2PresetContract', () => {
             sourceCaseKey: 'bench_x',
             sourceLabel: '',
         })).toBeNull();
+    });
+
+    it('auto-clears modified state only for non-benchmark cases with no provenance and no overrides', () => {
+        expect(shouldAutoClearModifiedState({
+            isModified: true,
+            activeMode: 'dep',
+            benchmarkProvenance: null,
+            parameterOverrideCount: 0,
+        })).toBe(true);
+
+        expect(shouldAutoClearModifiedState({
+            isModified: true,
+            activeMode: 'benchmark',
+            benchmarkProvenance: null,
+            parameterOverrideCount: 0,
+        })).toBe(false);
+
+        expect(shouldAutoClearModifiedState({
+            isModified: true,
+            activeMode: 'dep',
+            benchmarkProvenance: {
+                sourceBenchmarkId: 'bl_case_a_refined',
+                sourceCaseKey: 'bench_bl-case-a-refined',
+                sourceLabel: 'BL Case A Refined',
+                clonedAtIso: '2026-03-06T20:00:00.000Z',
+            },
+            parameterOverrideCount: 0,
+        })).toBe(false);
+
+        expect(shouldAutoClearModifiedState({
+            isModified: true,
+            activeMode: 'dep',
+            benchmarkProvenance: null,
+            parameterOverrideCount: 2,
+        })).toBe(false);
+    });
+
+    it('only allows clone-to-custom from unmodified benchmark mode', () => {
+        expect(shouldAllowBenchmarkClone({ activeMode: 'benchmark', isModified: false })).toBe(true);
+        expect(shouldAllowBenchmarkClone({ activeMode: 'benchmark', isModified: true })).toBe(false);
+        expect(shouldAllowBenchmarkClone({ activeMode: 'dep', isModified: false })).toBe(false);
+    });
+
+    it('shows mode-panel status row for provenance or tracked overrides', () => {
+        expect(shouldShowModePanelStatusRow({
+            benchmarkProvenance: null,
+            parameterOverrideCount: 0,
+        })).toBe(false);
+
+        expect(shouldShowModePanelStatusRow({
+            benchmarkProvenance: null,
+            parameterOverrideCount: 1,
+        })).toBe(true);
+
+        expect(shouldShowModePanelStatusRow({
+            benchmarkProvenance: {
+                sourceBenchmarkId: 'bl_case_a_refined',
+                sourceCaseKey: 'bench_bl-case-a-refined',
+                sourceLabel: 'BL Case A Refined',
+                clonedAtIso: '2026-03-06T20:00:00.000Z',
+            },
+            parameterOverrideCount: 0,
+        })).toBe(true);
     });
 
     it('builds deterministic reset plan with de-duplication across groups', () => {
