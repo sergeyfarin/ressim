@@ -1,13 +1,13 @@
-# Transmissibility Factor: `8.527e-5` in the Current Implementation
+# Transmissibility Factor: `8.5269888e-3` in the Current Implementation
 
 ## Overview
-The current Rust solver uses **`DARCY_METRIC_FACTOR = 8.527e-5`** when computing transmissibility between grid cells.
+The current Rust solver uses **`DARCY_METRIC_FACTOR = 8.5269888e-3`** when computing transmissibility between grid cells.
 
 This document is intentionally implementation-focused. Its purpose is to describe the value the repository currently uses and to prevent confusion with the older `0.001127` documentation that was left behind from a different unit-system convention.
 
 ## Transmissibility Formula
 
-$$T = 8.527 \times 10^{-5} \times \frac{k_h \times A}{L} \times \bar{\lambda}$$
+$$T = 8.5269888 \times 10^{-3} \times \frac{k_h \times A}{L} \times \bar{\lambda}$$
 
 Where:
 - **T** = Transmissibility [m³/day/bar]
@@ -15,7 +15,7 @@ Where:
 - **A** = Interface area [m²]
 - **L** = Distance between cell centers [m]
 - **λ̄** = Average total mobility [1/cP]
-- **8.527e-5** = Unit conversion factor used by the current solver [dimensionless]
+- **8.5269888e-3** = Unit conversion factor used by the current solver [dimensionless]
 
 ## Source of Truth
 
@@ -23,7 +23,7 @@ The authoritative definition lives in `src/lib/ressim/src/step.rs`:
 
 ```rust
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
-const DARCY_METRIC_FACTOR: f64 = 8.527e-5;
+const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 ```
 
 If the solver constant changes, this document and `docs/UNIT_SYSTEM.md` should be updated in the same change.
@@ -63,15 +63,15 @@ Given:
 
 Then:
 
-$$T = 8.527 \times 10^{-5} \times \frac{100 \times 10000}{100} \times 2.0$$
+$$T = 8.5269888 \times 10^{-3} \times \frac{100 \times 10000}{100} \times 2.0$$
 
-$$T = 1.7054 \; [m^3/day/bar]$$
+$$T = 170.539776 \; [m^3/day/bar]$$
 
-That means a `1 bar` pressure drop would produce about `1.7054 m³/day` across that connection in the current implementation.
+That means a `1 bar` pressure drop would produce about `170.54 m³/day` across that connection in the current implementation.
 
 ## Maintenance Note
 
-The important cleanup in this repository is not just the numeric change from `0.001127` to `8.527e-5`; it is the removal of mixed unit-system explanations. Future edits should keep this document aligned with the exact constant and wording in `step.rs`.
+The important cleanup in this repository is not just the numeric change from `0.001127` to `8.5269888e-3`; it is the removal of mixed unit-system explanations. Future edits should keep this document aligned with the exact constant and wording in `step.rs`.
 
 ## Usage in Code
 
@@ -87,7 +87,7 @@ fn transmissibility(&self, c1: &GridCell, c2: &GridCell, dim: char) -> f64 {
     let mob_avg = (self.total_mobility(c1) + self.total_mobility(c2)) / 2.0;
     
     // Transmissibility [m³/day/bar]
-    8.527e-5 * k_h * area / dist * mob_avg
+    8.5269888e-3 * k_h * area / dist * mob_avg
 }
 ```
 

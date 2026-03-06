@@ -3,7 +3,7 @@
 - Authoritative active-work tracker: `TODO.md` under `Authoritative Recovery Plan — Mode-Specific Panels`
 - Runtime model: all scenarios run directly in browser-side WASM; the old benchmark export and `public/cases/prerun/` pipeline are gone
 - Current doc map: `docs/DOCUMENTATION_INDEX.md`
-- Current unit-system docs now align on the implementation constant `8.527e-5`
+- Current unit-system docs now align on the implementation constant `8.5269888e-3`
 
 ## Historical Execution Log
 

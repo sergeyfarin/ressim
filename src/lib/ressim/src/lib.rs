@@ -12,7 +12,7 @@
 // Saturation: dimensionless [0, 1]
 //
 // CONVERSION FACTORS USED:
-// - Transmissibility calculation includes conversion from mD·bar·m³/day to flow units
+// - Transmissibility / PI use a metric Darcy factor that converts mD·m²/(m·cP) to m³/day/bar
 // - All calculations maintain consistency in these base units with no hidden conversions
 
 use rand::rngs::StdRng;
@@ -1483,6 +1483,50 @@ mod tests {
         let pi_high_sw = sim.wells[0].productivity_index;
 
         assert!(pi_high_sw > pi_low_sw);
+    }
+
+    #[test]
+    fn well_productivity_index_matches_metric_unit_conversion() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+            .unwrap();
+        sim.set_fluid_properties(2.0, 0.5).unwrap();
+        sim.set_initial_saturation(0.1);
+
+        let id = sim.idx(0, 0, 0);
+        let well_radius = 0.1;
+        let skin = 0.0;
+
+        let pi = sim
+            .calculate_well_productivity_index(id, well_radius, skin)
+            .expect("PI should calculate for a valid isotropic cell");
+
+        let kx = sim.perm_x[id];
+        let ky = sim.perm_y[id];
+        let k_avg = (kx * ky).sqrt();
+        let ratio = kx / ky;
+        let r_eq = 0.28
+            * ((ratio.sqrt() * sim.dx.powi(2) + (1.0 / ratio).sqrt() * sim.dy.powi(2)).sqrt())
+            / (ratio.powf(0.25) + (1.0 / ratio).powf(0.25));
+        let denom = (r_eq / well_radius).ln() + skin;
+        let total_mobility = 1.0 / sim.pvt.mu_o;
+
+        // 1 mD = 9.8692e-16 m², 1/cP = 1000/(Pa·s), 1 bar = 1e5 Pa, 1 day = 86400 s
+        let expected_darcy_metric_factor = 9.8692e-16 * 1e3 * 1e5 * 86400.0;
+        let expected_pi = expected_darcy_metric_factor
+            * 2.0
+            * std::f64::consts::PI
+            * k_avg
+            * sim.dz
+            * total_mobility
+            / denom;
+
+        assert!(
+            (pi - expected_pi).abs() / expected_pi < 1e-9,
+            "PI mismatch: got {}, expected {}",
+            pi,
+            expected_pi
+        );
     }
 
     #[test]

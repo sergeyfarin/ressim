@@ -168,7 +168,7 @@
 
         // Oil PI [m³/(day·bar)]
         // DARCY_METRIC_FACTOR converts mD·m / cP → m³/(day·bar)
-        const DARCY_METRIC_FACTOR = 8.527e-5;
+        const DARCY_METRIC_FACTOR = 8.5269888e-3;
         let J_oil_total = 0;
 
         for (let k = 0; k < nz; k++) {

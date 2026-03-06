@@ -7,8 +7,8 @@ use crate::{ReservoirSimulator, TimePointRates, Well};
 
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
 /// Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
-/// Factor = 9.8692e-16 × 86400 / 1e-3 / 1e5 = 8.527e-5
-const DARCY_METRIC_FACTOR: f64 = 8.527e-5;
+/// Factor = 9.8692e-16 × 1e3 × 1e5 × 86400 = 8.5269888e-3
+const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 pub(crate) enum WellControlDecision {
     Disabled,
@@ -77,9 +77,9 @@ impl ReservoirSimulator {
 
         // Peaceman's well index formula for metric/bar units (m³, bar, day)
         // PI = C * 2π * k_avg * h * total_mobility / (ln(r_eq/r_w) + skin)
-        // Constant 8.527e-5 converts from mD·m²/(m·cP) to m³/day/bar
+        // Constant 8.5269888e-3 converts from mD·m²/(m·cP) to m³/day/bar
         // Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
-        // Factor = 9.8692e-16 * 86400 / 1e-3 / 1e5 = 8.527e-5
+        // Factor = 9.8692e-16 * 1e3 * 1e5 * 86400 = 8.5269888e-3
         Ok(
             (DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility)
                 / denom,

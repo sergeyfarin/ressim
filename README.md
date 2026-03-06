@@ -71,7 +71,7 @@ All quantities use **oil-field metric units**:
 | Permeability | mD |
 | Viscosity | cP |
 | Compressibility | 1/bar |
-| Transmissibility factor | `8.527×10⁻⁵` (DARCY_METRIC_FACTOR) |
+| Transmissibility factor | `8.527×10⁻³` (DARCY_METRIC_FACTOR) |
 
 ## Quick Start
 
@@ -147,7 +147,7 @@ docs/                               — technical reference docs (see below)
 | `P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
 | `UNIT_SYSTEM.md` | Comprehensive unit system reference |
 | `UNIT_REFERENCE.md` | Quick unit lookup card |
-| `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻⁵` constant |
+| `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻³` constant |
 | `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` | Store-facing preset/customize contract |
 | `PHYSICS_REVIEW.md` | Archived physics review note kept for historical context |
 | `FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` | Archived frontend review that led to the current direction |

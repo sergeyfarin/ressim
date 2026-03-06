@@ -17,7 +17,7 @@ VOLUME          → m³ (cubic meter)
 
 ### Transmissibility
 ```
-T [m³/day/bar] = 8.527e-5 × k[mD] × A[m²] × λ[1/cP] / L[m]
+T [m³/day/bar] = 8.5269888e-3 × k[mD] × A[m²] × λ[1/cP] / L[m]
 ```
 
 ### Well Rate
