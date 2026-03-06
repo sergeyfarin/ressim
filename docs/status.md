@@ -932,3 +932,34 @@ Validation run:
 
 Next active slice:
 R1.6 Refactor mode panels to reuse focused subcomponents (in progress), deciding whether to wrap the SCAL branch or close with a final section-dispatch cleanup.
+
+Phase 2 recovery progress update (2026-03-06, R1.6 final section-dispatch cleanup)
+Completed slice:
+- R1.6 Refactor mode panels to reuse focused subcomponents
+
+Implemented in this closing sub-slice:
+- `src/lib/ui/ScenarioSectionsPanel.svelte`
+	- Replaced the remaining long per-section wrapper branch chain with one local `WRAPPED_SECTION_COMPONENTS` map plus `getWrappedSectionComponent()` so extracted section-body wrappers are dispatched through a single explicit path.
+	- Kept `RelativeCapillaryPanel` as the single intentional direct branch instead of adding a wrapper just for symmetry.
+- `src/lib/ui/ReservoirFieldsPanel.svelte`
+- `src/lib/ui/WellsFieldsPanel.svelte`
+- `src/lib/ui/TimestepFieldsPanel.svelte`
+- `src/lib/ui/AnalyticalFieldsPanel.svelte`
+	- Normalized the wrapper prop surface so the shared scenario compositor can pass the same local dispatch contract into each extracted section-body component.
+- `src/lib/ui/modePanelComposition.test.ts`
+	- Updated the composition contract to assert the wrapper-component dispatch map and the direct SCAL exception.
+- `TODO.md`
+	- Marked `R1.6` complete, advanced the next active slice to `R1.7`, and recorded that the tracker docs are now interruption-safe for the recovered panel architecture.
+
+Outcome:
+- `ScenarioSectionsPanel.svelte` is now a true section orchestrator: extracted section bodies flow through one small local dispatch mechanism, and the one remaining inline SCAL branch is an intentional exception rather than leftover branch sprawl.
+- `R1.6` is complete without reintroducing a generic renderer or adding wrappers that do not materially simplify the code.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/ScenarioSectionsPanel.svelte`, `src/lib/ui/ReservoirFieldsPanel.svelte`, `src/lib/ui/WellsFieldsPanel.svelte`, `src/lib/ui/TimestepFieldsPanel.svelte`, `src/lib/ui/AnalyticalFieldsPanel.svelte`, and `src/lib/ui/modePanelComposition.test.ts`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 16 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.7 Remove obsolete shell-era UI leftovers (in progress), starting with unreferenced `DynamicControlsPanel.svelte` and the remaining shell-era panel leftovers.

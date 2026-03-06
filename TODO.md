@@ -32,9 +32,9 @@ Outcome note for `R1.3`: live warning surfaces now flow through shared `warningP
 Outcome note for `R1.4`: the former generic `modePanelSchema` / `SchemaSectionRenderer` path was reduced to explicit `modePanelSections` metadata plus a local `GeometryGridQuickEditor` helper used only for the geometry-grid quick-edit case, so the app no longer carries a second broad schema-rendering direction.
 - [x] **R1.5 Add toggle-plus-custom pattern where useful** — allow curated quick-select options (for example `nx = 12 | 24 | 48`) plus a `Custom` affordance that reveals a typed input or advanced parameter sub-panel.
 Outcome note for `R1.5`: the live geometry-grid section now exposes preset toggles plus `Custom` entry for `nx`, `ny`, `nz`, `cellDx`, `cellDy`, and `cellDz` through the local `GeometryGridQuickEditor`, so quick presets and exact manual values coexist in one explicit control group without reintroducing a broad schema system.
-- [ ] **R1.6 Refactor mode panels to reuse focused subcomponents (in progress)** — extract small reusable units for grid fields, timestep fields, SCAL groups, well controls, and benchmark info without forcing everything through one schema renderer.
-Resume note for `R1.6`: `GridFieldsPanel.svelte`, `ReservoirFieldsPanel.svelte`, `WellsFieldsPanel.svelte`, `TimestepFieldsPanel.svelte`, and `AnalyticalFieldsPanel.svelte` now own the geometry-grid, reservoir, wells, timestep, and analytical section-body wiring, so `ScenarioSectionsPanel.svelte` is mostly down to section dispatch plus the direct SCAL branch. Next focused follow-up is deciding whether `RelativeCapillaryPanel` deserves the same wrapper treatment or whether `R1.6` should close with a final section-dispatch cleanup pass instead.
-- [ ] **R1.7 Remove obsolete shell-era UI leftovers** — retire `DynamicControlsPanel.svelte`, `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once the new mode panels are stable. While cleaning leftovers perform a comprehensive review of what else can be cleaned or refactored. There might be other leftovers not used for anything or illogical duplications. Could also log follow-up tasks.
+- [x] **R1.6 Refactor mode panels to reuse focused subcomponents** — extract small reusable units for grid fields, timestep fields, SCAL groups, well controls, and benchmark info without forcing everything through one schema renderer.
+Outcome note for `R1.6`: `GridFieldsPanel.svelte`, `ReservoirFieldsPanel.svelte`, `WellsFieldsPanel.svelte`, `TimestepFieldsPanel.svelte`, and `AnalyticalFieldsPanel.svelte` now own the extracted section-body wiring, while `ScenarioSectionsPanel.svelte` uses one local wrapper-component dispatch map and leaves `RelativeCapillaryPanel` as the single intentional direct branch. The shared compositor is now focused on section selection/layout instead of dense per-section prop plumbing.
+- [ ] **R1.7 Remove obsolete shell-era UI leftovers (in progress)** — retire `DynamicControlsPanel.svelte`, `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once the new mode panels are stable. While cleaning leftovers perform a comprehensive review of what else can be cleaned or refactored. There might be other leftovers not used for anything or illogical duplications. Could also log follow-up tasks.
 - [ ] **R1.8 Regression + policy hardening** — add tests for modified-state transitions, clone provenance, override visibility/reset behavior, warning policy, and the final mode-panel flows.
 
 Recovery acceptance checklist:
@@ -45,7 +45,7 @@ Recovery acceptance checklist:
 - [ ] Constraint rules remain deterministic and code-defined; no string-encoded logic is introduced in JSON.
 - [x] Any remaining config-driven helpers stay local and typed rather than becoming a second UI language.
 - [ ] Warning surfaces are explicit: blocking errors stop run, non-reference states stay permissive with visible rationale.
-- [ ] `TODO.md` and `docs/status.md` are sufficient to resume work after interruption without rereading old chat history.
+- [x] `TODO.md` and `docs/status.md` are sufficient to resume work after interruption without rereading old chat history.
 
 Interruption resume protocol (mandatory):
 
