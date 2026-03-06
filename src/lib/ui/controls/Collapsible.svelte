@@ -1,5 +1,10 @@
 <script lang="ts">
-    import type { HTMLAttributes } from "svelte/elements";
+    import type { SvelteHTMLElements } from "svelte/elements";
+
+    type Props = SvelteHTMLElements['details'] & {
+    hasError?: boolean;
+};
+
     let {
         title,
         open = false,
@@ -7,7 +12,7 @@
         children,
         class: className,
         ...rest
-    }: HTMLAttributes<HTMLDetailsElement> & {
+    }: Props & {
         title: string;
         open?: boolean;
         hasError?: boolean;
