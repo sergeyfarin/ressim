@@ -172,6 +172,8 @@ Interruption resume protocol (mandatory):
 - [x] Worker silently ignores `add_well` errors — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
 - [x] **FilterCard/ToggleGroup alignment** — unified `FilterCard` to use the more polished `ToggleGroup` internally, including adding a wrapping grid layout for elements > 3.
 - [x] **Organize `src/lib/ui` by role** — split the UI layer into `modes`, `sections`, `controls`, `cards`, `feedback`, and `shared`, removed wrapper-only section panels, and aligned repeated panel/table shells to shared helpers so cards and collapsible sections keep a more consistent look.
+- [x] **Organize broader `src/lib` by domain and trim thin wrappers** — move scattered chart/analytical/3D/worker files out of the `src/lib` root, keep related tests close to their domains, and fold back any pass-through UI component that does not add logic or clarity.
+Outcome note: `src/lib` now separates `analytical/`, `charts/`, `visualization/`, and `workers/` from the remaining shared types/store/catalog modules at the root. The chart helpers and their tests now live with the chart components, `simulationStore.svelte.ts` points at `workers/sim.worker.ts`, and the wrapper-only `src/lib/ui/modes/ScenarioModePanel.svelte` was removed so `ModePanel.svelte` binds `sections/ScenarioSectionsPanel.svelte` directly.
 - [x] **Retire pre-run decompression path** — removed `.json.gz` pre-run loader and related DecompressionStream fallback from `simulationStore.svelte.ts`.
 - [x] **End-to-end regression validation for benchmark pre-run data** — no longer applicable after pre-run pipeline removal.
 

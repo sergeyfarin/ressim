@@ -5,8 +5,8 @@
   import { shouldShowModePanelStatusRow } from "../../stores/phase2PresetContract";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import type { ModePanelProps } from "../modePanelTypes";
+  import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
   import BenchmarkPanel from "./BenchmarkPanel.svelte";
-  import ScenarioModePanel from "./ScenarioModePanel.svelte";
 
   let {
     activeMode = "dep",
@@ -87,7 +87,7 @@
         {onCloneBenchmarkToCustom}
       />
     {:else}
-      <ScenarioModePanel
+      <ScenarioSectionsPanel
         activeMode={activeMode}
         {toggles}
         {disabledOptions}

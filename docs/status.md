@@ -1115,3 +1115,49 @@ Validation run:
 
 Next active slice:
 - Keep backlog focus on behavior gaps rather than more structural churn; the clearest remaining UI follow-up is still the higher-level product item for explicit per-mode top-level flows if that architecture is still desired.
+
+Lib structure organization follow-up (2026-03-06, broader `src/lib` domain cleanup and wrapper rollback)
+Completed slice:
+- Reorganize the wider `src/lib` surface by domain and fold back thin wrappers that did not add logic.
+
+Implemented in this slice:
+- `src/lib/analytical/FractionalFlow.svelte`
+- `src/lib/analytical/DepletionAnalytical.svelte`
+- `src/lib/analytical/fractionalFlow.ts`
+- `src/lib/analytical/fractionalFlow.test.ts`
+	- Moved analytical components and helper logic into an `analytical/` domain folder.
+- `src/lib/charts/RateChart.svelte`
+- `src/lib/charts/ChartSubPanel.svelte`
+- `src/lib/charts/SwProfileChart.svelte`
+- `src/lib/charts/chart-helpers.ts`
+- `src/lib/charts/chart-helpers.test.ts`
+- `src/lib/charts/ratechart-usage.test.ts`
+- `src/lib/charts/no-direct-chart-datasets-access.test.ts`
+	- Grouped chart components, chart-only helpers, and chart architecture tests together under `charts/`.
+- `src/lib/visualization/3dview.svelte`
+	- Moved the Three.js grid view into `visualization/`.
+- `src/lib/workers/sim.worker.ts`
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Moved the worker entry into `workers/` and updated runtime worker wiring.
+- `src/lib/ui/modes/ModePanel.svelte`
+- `src/lib/ui/modePanelComposition.test.ts`
+- `src/lib/ui/modePanelTypes.ts`
+	- Removed wrapper-only `src/lib/ui/modes/ScenarioModePanel.svelte` and bound `ScenarioSectionsPanel.svelte` directly from `ModePanel.svelte`.
+- `src/App.svelte`
+- `README.md`
+- `TODO.md`
+	- Updated app imports, project layout docs, and tracker state to reflect the live `src/lib` organization.
+
+Outcome:
+- `src/lib` is no longer a flat mix of analytical, charting, worker, and 3D view files at the root; those concerns now live in domain folders while shared types, store modules, validation, and catalog helpers remain easy to find.
+- The previous `ui` refactor was trimmed back where it went too far: `ScenarioModePanel.svelte` no longer exists because it was only forwarding props without adding logic or clarity.
+- Related tests now live near their chart/analytical domains, which makes future cleanup safer and lowers the chance of stale path assertions during refactors.
+
+Validation run:
+- `get_errors` reported no errors in the touched app/chart/visualization/worker files after path and type fixes.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/charts/chart-helpers.test.ts src/lib/charts/ratechart-usage.test.ts src/lib/charts/no-direct-chart-datasets-access.test.ts src/lib/analytical/fractionalFlow.test.ts src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelFlows.test.ts src/lib/ui/modePanelHelpers.test.ts src/lib/appStoreDomainWiring.test.ts` passed (8 files, 62 tests).
+- `npm run build` passed.
+
+Next active slice:
+- Keep future `src/lib` cleanup focused on true domain boundaries or duplication, not on adding more pass-through wrapper files.

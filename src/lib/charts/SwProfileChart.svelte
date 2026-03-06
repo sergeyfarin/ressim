@@ -6,7 +6,7 @@
         externalTooltipHandler,
     } from "./chart-helpers";
 
-    import type { GridState } from "./simulator-types";
+    import type { GridState } from "../simulator-types";
     let {
         gridState = null,
         nx = 1,

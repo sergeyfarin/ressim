@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Disallow direct indexing / iteration over `chart.data.datasets` in source files
-const repoRoot = path.resolve(__dirname, '..', '..');
+const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
 function listSourceFiles(dir: string): string[] {
   const out: string[] = [];

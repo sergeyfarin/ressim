@@ -1,5 +1,5 @@
-import init, { ReservoirSimulator } from './ressim/pkg/simulator.js';
-import type { SimulatorCreatePayload, WorkerRunPayload } from './simulator-types';
+import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
+import type { SimulatorCreatePayload, WorkerRunPayload } from '../simulator-types';
 
 let wasmReady = false;
 let simulator: ReservoirSimulator | null = null;

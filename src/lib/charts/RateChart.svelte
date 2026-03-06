@@ -4,8 +4,8 @@
     import type {
         RateHistoryPoint,
         AnalyticalProductionPoint,
-    } from "./simulator-types";
-    import ToggleGroup from "./ui/controls/ToggleGroup.svelte";
+    } from "../simulator-types";
+    import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
 
     let {
         rateHistory = [],
@@ -829,7 +829,7 @@
         allowLogToggle={true}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left, right) => {
+        onGutterMeasure={(left: number, right: number) => {
             nativeGutters = { ...nativeGutters, rates: { left, right } };
         }}
     />
@@ -846,7 +846,7 @@
         logScale={false}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left, right) => {
+        onGutterMeasure={(left: number, right: number) => {
             nativeGutters = { ...nativeGutters, cumulative: { left, right } };
         }}
     />
@@ -863,7 +863,7 @@
         logScale={false}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left, right) => {
+        onGutterMeasure={(left: number, right: number) => {
             nativeGutters = { ...nativeGutters, diagnostics: { left, right } };
         }}
     />

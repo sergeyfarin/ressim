@@ -1,11 +1,11 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
-    import FractionalFlow from "./lib/FractionalFlow.svelte";
-    import DepletionAnalytical from "./lib/DepletionAnalytical.svelte";
+    import FractionalFlow from "./lib/analytical/FractionalFlow.svelte";
+    import DepletionAnalytical from "./lib/analytical/DepletionAnalytical.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
-    import AnalyticalStatusBanner from "./lib/ui/feedback/AnalyticalStatusBanner.svelte";
+    import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ModePanel from "./lib/ui/modes/ModePanel.svelte";
-    import SwProfileChart from "./lib/SwProfileChart.svelte";
+    import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -28,9 +28,9 @@
     let legendFixedMin = $state(0);
     let legendFixedMax = $state(1);
 
-    type ThreeDViewComponentType = typeof import("./lib/3dview.svelte").default;
+    type ThreeDViewComponentType = typeof import("./lib/visualization/3dview.svelte").default;
     type RateChartComponentType =
-        typeof import("./lib/RateChart.svelte").default;
+        typeof import("./lib/charts/RateChart.svelte").default;
     let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
     let RateChartComponent = $state<RateChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
@@ -57,7 +57,7 @@
     // ---------- Lazy module loading ----------
     async function loadRateChartModule() {
         try {
-            const rateChartModule = await import("./lib/RateChart.svelte");
+            const rateChartModule = await import("./lib/charts/RateChart.svelte");
             RateChartComponent = rateChartModule.default;
         } catch (error) {
             console.error("Failed to load rate chart module:", error);
@@ -68,7 +68,7 @@
         if (ThreeDViewComponent || loadingThreeDView) return;
         loadingThreeDView = true;
         try {
-            const threeDModule = await import("./lib/3dview.svelte");
+            const threeDModule = await import("./lib/visualization/3dview.svelte");
             ThreeDViewComponent = threeDModule.default;
         } catch (error) {
             console.error("Failed to load 3D view module:", error);
@@ -390,7 +390,11 @@
         {/if}
 
         {#if runtime.warningPolicy.referenceCaveat.items.length > 0}
-            <AnalyticalStatusBanner policy={runtime.warningPolicy} />
+            <WarningPolicyPanel
+                policy={runtime.warningPolicy}
+                groups={["referenceCaveat"]}
+                groupSources={{ referenceCaveat: ["analytical"] }}
+            />
         {/if}
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start mt-2">

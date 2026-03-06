@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-const rateChartPath = path.join(__dirname, '..', 'lib', 'RateChart.svelte');
-const subPanelPath = path.join(__dirname, '..', 'lib', 'ChartSubPanel.svelte');
+const rateChartPath = path.join(__dirname, 'RateChart.svelte');
+const subPanelPath = path.join(__dirname, 'ChartSubPanel.svelte');
 const rateChartSrc = fs.readFileSync(rateChartPath, 'utf8');
 const subPanelSrc = fs.readFileSync(subPanelPath, 'utf8');
 

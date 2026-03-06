@@ -115,19 +115,15 @@ src/
 ├── app.css                         — global styles
 ├── main.ts                         — app entry point
 └── lib/
-    ├── sim.worker.ts               — WebWorker bridge to WASM simulator
+    ├── analytical/                 — analytical Svelte components + Buckley-Leverett helper logic/tests
+    ├── charts/                     — RateChart, ChartSubPanel, SwProfileChart, and chart helpers/tests
+    ├── visualization/              — Three.js 3D grid rendering + legend
+    ├── workers/                    — Web Worker bridge to the WASM simulator
     ├── simulator-types.ts          — TypeScript interfaces for worker payloads
     ├── buildCreatePayload.ts       — payload builder + tests
     ├── caseCatalog.ts              — faceted preset catalog + benchmark selectors
-    ├── chart-helpers.ts            — chart data/config utilities + tests
-    ├── RateChart.svelte            — rate/cumulative/diagnostics charting
-    ├── ChartSubPanel.svelte        — reusable collapsible chart panel
-    ├── SwProfileChart.svelte       — 1D saturation profile chart
-    ├── FractionalFlow.svelte       — BL analytical computation
-    ├── DepletionAnalytical.svelte  — PSS depletion analytical
-    ├── 3dview.svelte               — Three.js 3D grid rendering + legend
-    ├── ui/                         — ModePanel, RunControls, warning surfaces, and focused section panels
-    ├── components/                 — ToggleGroup, PropertyToggle, etc.
+    ├── ui/                         — mode panels, feedback surfaces, controls, cards, and focused section panels
+    ├── components/ui/              — primitive UI controls (`Button`, `Card`, `Input`, `Select`, `Collapsible`)
     └── ressim/src/                 — Rust simulator core
         ├── lib.rs                  — WASM API surface
         ├── step.rs                 — IMPES timestep logic

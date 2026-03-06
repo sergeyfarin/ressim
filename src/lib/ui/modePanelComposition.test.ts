@@ -5,13 +5,6 @@ import { describe, expect, it } from "vitest";
 const modePanelPath = path.join(__dirname, "modes", "ModePanel.svelte");
 const modePanelSource = fs.readFileSync(modePanelPath, "utf8");
 
-const scenarioModePanelPath = path.join(
-  __dirname,
-  "modes",
-  "ScenarioModePanel.svelte",
-);
-const scenarioModePanelSource = fs.readFileSync(scenarioModePanelPath, "utf8");
-
 const scenarioSectionsPath = path.join(
   __dirname,
   "sections",
@@ -25,12 +18,10 @@ const geometrySectionSource = fs.readFileSync(geometrySectionPath, "utf8");
 describe("Mode panel composition", () => {
   it("routes each top-level mode through a dedicated component", () => {
     expect(modePanelSource).toMatch(/import\s+BenchmarkPanel\s+from\s+"\.\/BenchmarkPanel\.svelte"/);
-    expect(modePanelSource).toMatch(/import\s+ScenarioModePanel\s+from\s+"\.\/ScenarioModePanel\.svelte"/);
+    expect(modePanelSource).toMatch(/import\s+ScenarioSectionsPanel\s+from\s+"\.\.\/sections\/ScenarioSectionsPanel\.svelte"/);
     expect(modePanelSource).toMatch(/activeMode === "benchmark"[\s\S]*<BenchmarkPanel/);
-    expect(modePanelSource).toMatch(/<ScenarioModePanel/);
-    expect(modePanelSource).not.toMatch(/DepletionPanel|WaterfloodPanel|SimulationPanel/);
-    expect(scenarioModePanelSource).toMatch(/<ScenarioSectionsPanel/);
-    expect(scenarioModePanelSource).toMatch(/\{activeMode\}/);
+    expect(modePanelSource).toMatch(/<ScenarioSectionsPanel/);
+    expect(modePanelSource).not.toMatch(/ScenarioModePanel|DepletionPanel|WaterfloodPanel|SimulationPanel/);
   });
 
   it("keeps the shared scenario renderer focused on section composition", () => {

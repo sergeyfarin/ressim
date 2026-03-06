@@ -686,7 +686,7 @@ export function createSimulationStore() {
 
     function setupWorker() {
         simWorker = new Worker(
-            new URL('../sim.worker.ts', import.meta.url),
+            new URL('../workers/sim.worker.ts', import.meta.url),
             { type: 'module' },
         );
         simWorker.onmessage = handleWorkerMessage;

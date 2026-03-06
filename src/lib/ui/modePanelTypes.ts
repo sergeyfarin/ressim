@@ -104,11 +104,6 @@ export type ScenarioModePanelProps = {
   validationErrors?: Record<string, string>;
 };
 
-export type ScenarioModePanelContentProps = Omit<
-  ScenarioModePanelProps,
-  "activeMode"
->;
-
 export type BenchmarkModePanelProps = {
   toggles: ToggleState;
   disabledOptions: Record<string, Record<string, string>>;

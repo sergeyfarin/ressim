@@ -28,8 +28,8 @@
         SimulatorSnapshot,
         WellState,
         WellStateEntry,
-    } from "./";
-    import ToggleGroup from "./ui/controls/ToggleGroup.svelte";
+    } from "../";
+    import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
 
     type HistoryEntry = SimulatorSnapshot;
 
