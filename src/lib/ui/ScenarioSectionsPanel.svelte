@@ -1,20 +1,19 @@
 <script lang="ts">
   import FilterCard from "./FilterCard.svelte";
-  import ReservoirPropertiesPanel from "./ReservoirPropertiesPanel.svelte";
   import RelativeCapillaryPanel from "./RelativeCapillaryPanel.svelte";
-  import WellPropertiesPanel from "./WellPropertiesPanel.svelte";
-  import TimestepControlsPanel from "./TimestepControlsPanel.svelte";
-  import AnalyticalInputsPanel from "./AnalyticalInputsPanel.svelte";
-  import SchemaSectionRenderer from "./SchemaSectionRenderer.svelte";
+  import ReservoirFieldsPanel from "./ReservoirFieldsPanel.svelte";
+  import AnalyticalFieldsPanel from "./AnalyticalFieldsPanel.svelte";
+  import GridFieldsPanel from "./GridFieldsPanel.svelte";
+  import TimestepFieldsPanel from "./TimestepFieldsPanel.svelte";
+  import WellsFieldsPanel from "./WellsFieldsPanel.svelte";
   import {
     getModeDimensions,
     type Dimension,
   } from "../caseCatalog";
   import {
-    GEOMETRY_GRID_SECTION_SCHEMA,
     getModePanelSections,
     type ModePanelSectionDefinition,
-  } from "./modePanelSchema";
+  } from "./modePanelSections";
   import type { ScenarioModePanelProps } from "./modePanelTypes";
 
   let {
@@ -31,6 +30,13 @@
 
   const sections = $derived(getModePanelSections(activeMode));
   const modeDimensions = $derived(getModeDimensions(activeMode));
+  const WRAPPED_SECTION_COMPONENTS = {
+    geometry: GridFieldsPanel,
+    reservoir: ReservoirFieldsPanel,
+    wells: WellsFieldsPanel,
+    timestep: TimestepFieldsPanel,
+    analytical: AnalyticalFieldsPanel,
+  } as const;
 
   function toggleSection(key: string) {
     expandedSections = { ...expandedSections, [key]: !expandedSections[key] };
@@ -40,8 +46,10 @@
     return modeDimensions.filter((dim) => dimKeys.includes(dim.key));
   }
 
-  function sectionHasSchema(section: ModePanelSectionDefinition): boolean {
-    return section.schemaKey === "geometry-grid";
+  // Keep wrapper-based dispatch local so this shared panel stays a section orchestrator.
+  function getWrappedSectionComponent(section: ModePanelSectionDefinition) {
+    if (section.key === "scal") return null;
+    return WRAPPED_SECTION_COMPONENTS[section.key];
   }
 
   function handleManualFieldEdit() {
@@ -53,6 +61,7 @@
   {#each sections as section}
     {@const dims = getSectionDims(section.dims)}
     {@const isExpanded = !!expandedSections[section.key]}
+    {@const WrappedSectionComponent = getWrappedSectionComponent(section)}
     {#if dims.length > 0 || section.dims.length === 0}
       <div class="section-card">
         <div class="section-header">
@@ -86,45 +95,11 @@
 
         {#if isExpanded}
           <div class="section-body" oninput={handleManualFieldEdit} onchange={handleManualFieldEdit}>
-            {#if sectionHasSchema(section)}
-              <SchemaSectionRenderer
-                section={GEOMETRY_GRID_SECTION_SCHEMA}
-                bindings={params}
-                fieldErrors={validationErrors}
+            {#if WrappedSectionComponent}
+              <WrappedSectionComponent
+                {params}
+                validationErrors={validationErrors}
                 {onParamEdit}
-                showHeader={false}
-                hideQuickPickOptions={true}
-              />
-            {:else if section.key === "reservoir"}
-              <ReservoirPropertiesPanel
-                bind:initialPressure={params.initialPressure}
-                bind:initialSaturation={params.initialSaturation}
-                bind:reservoirPorosity={params.reservoirPorosity}
-                bind:mu_w={params.mu_w}
-                bind:mu_o={params.mu_o}
-                bind:c_o={params.c_o}
-                bind:c_w={params.c_w}
-                bind:rho_w={params.rho_w}
-                bind:rho_o={params.rho_o}
-                bind:rock_compressibility={params.rock_compressibility}
-                bind:depth_reference={params.depth_reference}
-                bind:volume_expansion_o={params.volume_expansion_o}
-                bind:volume_expansion_w={params.volume_expansion_w}
-                bind:gravityEnabled={params.gravityEnabled}
-                bind:permMode={params.permMode}
-                bind:uniformPermX={params.uniformPermX}
-                bind:uniformPermY={params.uniformPermY}
-                bind:uniformPermZ={params.uniformPermZ}
-                bind:useRandomSeed={params.useRandomSeed}
-                bind:randomSeed={params.randomSeed}
-                bind:minPerm={params.minPerm}
-                bind:maxPerm={params.maxPerm}
-                bind:nz={params.nz}
-                bind:layerPermsX={params.layerPermsX}
-                bind:layerPermsY={params.layerPermsY}
-                bind:layerPermsZ={params.layerPermsZ}
-                onNzOrPermModeChange={params.handleNzOrPermModeChange}
-                fieldErrors={validationErrors}
               />
             {:else if section.key === "scal"}
               <RelativeCapillaryPanel
@@ -138,39 +113,6 @@
                 bind:capillaryPEntry={params.capillaryPEntry}
                 bind:capillaryLambda={params.capillaryLambda}
                 fieldErrors={validationErrors}
-              />
-            {:else if section.key === "wells"}
-              <WellPropertiesPanel
-                bind:well_radius={params.well_radius}
-                bind:well_skin={params.well_skin}
-                bind:nx={params.nx}
-                bind:ny={params.ny}
-                bind:injectorEnabled={params.injectorEnabled}
-                bind:injectorControlMode={params.injectorControlMode}
-                bind:producerControlMode={params.producerControlMode}
-                bind:injectorBhp={params.injectorBhp}
-                bind:producerBhp={params.producerBhp}
-                bind:targetInjectorRate={params.targetInjectorRate}
-                bind:targetProducerRate={params.targetProducerRate}
-                bind:injectorI={params.injectorI}
-                bind:injectorJ={params.injectorJ}
-                bind:producerI={params.producerI}
-                bind:producerJ={params.producerJ}
-                fieldErrors={validationErrors}
-              />
-            {:else if section.key === "timestep"}
-              <TimestepControlsPanel
-                bind:delta_t_days={params.delta_t_days}
-                bind:max_sat_change_per_step={params.max_sat_change_per_step}
-                bind:max_pressure_change_per_step={params.max_pressure_change_per_step}
-                bind:max_well_rate_change_fraction={params.max_well_rate_change_fraction}
-                fieldErrors={validationErrors}
-              />
-            {:else if section.key === "analytical"}
-              <AnalyticalInputsPanel
-                bind:analyticalSolutionMode={params.analyticalSolutionMode}
-                bind:analyticalDepletionRateScale={params.analyticalDepletionRateScale}
-                onAnalyticalSolutionModeChange={params.handleAnalyticalSolutionModeChange}
               />
             {/if}
           </div>

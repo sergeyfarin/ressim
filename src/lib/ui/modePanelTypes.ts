@@ -4,7 +4,77 @@ import type {
   BenchmarkProvenance,
 } from "../stores/phase2PresetContract";
 import type { WarningPolicy } from "../warningPolicy";
-import type { ModePanelParameterBindings } from "./modePanelSchema";
+
+export type PermMode = "uniform" | "random" | "perLayer";
+
+export type WellControlMode = "rate" | "pressure";
+
+export type AnalyticalSolutionMode = "waterflood" | "depletion";
+
+export type ModePanelParameterBindings = {
+  nx: number;
+  ny: number;
+  nz: number;
+  cellDx: number;
+  cellDy: number;
+  cellDz: number;
+  initialPressure: number;
+  initialSaturation: number;
+  reservoirPorosity: number;
+  mu_w: number;
+  mu_o: number;
+  c_o: number;
+  c_w: number;
+  rho_w: number;
+  rho_o: number;
+  rock_compressibility: number;
+  depth_reference: number;
+  volume_expansion_o: number;
+  volume_expansion_w: number;
+  gravityEnabled: boolean;
+  permMode: PermMode;
+  uniformPermX: number;
+  uniformPermY: number;
+  uniformPermZ: number;
+  useRandomSeed: boolean;
+  randomSeed: number;
+  minPerm: number;
+  maxPerm: number;
+  layerPermsX: number[];
+  layerPermsY: number[];
+  layerPermsZ: number[];
+  s_wc: number;
+  s_or: number;
+  n_w: number;
+  n_o: number;
+  k_rw_max: number;
+  k_ro_max: number;
+  capillaryEnabled: boolean;
+  capillaryPEntry: number;
+  capillaryLambda: number;
+  well_radius: number;
+  well_skin: number;
+  injectorEnabled: boolean;
+  injectorControlMode: WellControlMode;
+  producerControlMode: WellControlMode;
+  injectorBhp: number;
+  producerBhp: number;
+  targetInjectorRate: number;
+  targetProducerRate: number;
+  injectorI: number;
+  injectorJ: number;
+  producerI: number;
+  producerJ: number;
+  delta_t_days: number;
+  max_sat_change_per_step: number;
+  max_pressure_change_per_step: number;
+  max_well_rate_change_fraction: number;
+  analyticalSolutionMode: AnalyticalSolutionMode;
+  analyticalDepletionRateScale: number;
+  parameterOverrideCount: number;
+  handleNzOrPermModeChange: () => void;
+  handleAnalyticalSolutionModeChange: (mode: AnalyticalSolutionMode) => void;
+};
 
 export type ScenarioMode = Exclude<CaseMode, "benchmark">;
 

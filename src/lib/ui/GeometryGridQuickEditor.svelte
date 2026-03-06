@@ -1,24 +1,26 @@
 <script lang="ts">
   import Input from "../components/ui/Input.svelte";
   import Button from "../components/ui/Button.svelte";
+  import type { ModePanelParameterBindings } from "./modePanelTypes";
   import {
-    getControlErrorMessage,
-    getQuickPickMatch,
-    type ControlDefinition,
+    getGeometryGridControlErrorMessage,
+    getGeometryGridQuickPickMatch,
+    type GeometryGridChangeBehavior,
     type GeometryGridParamKey,
-    type ModePanelParameterBindings,
-    type SchemaSectionDefinition,
-  } from "./modePanelSchema";
+    type GeometryGridQuickEditorDefinition,
+    type GeometryGridQuickPickControl,
+    isGeometryGridQuickPickControl,
+  } from "./geometryGridQuickEditor";
 
   let {
-    section,
+    editor,
     bindings,
     fieldErrors = {},
     onParamEdit = () => {},
     showHeader = true,
     hideQuickPickOptions = false,
   }: {
-    section: SchemaSectionDefinition<GeometryGridParamKey>;
+    editor: GeometryGridQuickEditorDefinition;
     bindings: ModePanelParameterBindings;
     fieldErrors?: Record<string, string>;
     onParamEdit?: () => void;
@@ -28,42 +30,40 @@
 
   let customOpen = $state<Record<string, boolean>>({});
 
-  const volumeSummary = $derived(
-    `${bindings.nx}x${bindings.ny}x${bindings.nz} cells`,
-  );
+  const volumeSummary = $derived(`${bindings.nx}x${bindings.ny}x${bindings.nz} cells`);
 
   const extentSummary = $derived(
     `${(bindings.nx * bindings.cellDx).toFixed(1)} x ${(bindings.ny * bindings.cellDy).toFixed(1)} x ${(bindings.nz * bindings.cellDz).toFixed(1)} m`,
   );
 
+  function applyChangeBehavior(behavior: GeometryGridChangeBehavior | undefined) {
+    if (behavior === "sync-layer-arrays") {
+      bindings.handleNzOrPermModeChange();
+    }
+  }
+
   function setNumberParam(
     key: GeometryGridParamKey,
     rawValue: string | number,
     integer = false,
+    changeBehavior?: GeometryGridChangeBehavior,
   ) {
     const parsed = integer ? parseInt(String(rawValue), 10) : Number(rawValue);
     if (!Number.isFinite(parsed)) return;
 
     bindings[key] = parsed;
-    if (key === "nz") {
-      bindings.handleNzOrPermModeChange();
-    }
+    applyChangeBehavior(changeBehavior);
     onParamEdit();
   }
 
-  function applyQuickPick(
-    control: Extract<ControlDefinition<GeometryGridParamKey>, { type: "quick-picks" }>,
-    optionKey: string,
-  ) {
+  function applyQuickPick(control: GeometryGridQuickPickControl, optionKey: string) {
     const option = control.options.find((entry) => entry.key === optionKey);
     if (!option) return;
 
     for (const [patchKey, patchValue] of Object.entries(option.patch)) {
       bindings[patchKey as GeometryGridParamKey] = patchValue as number;
     }
-    if (control.param === "nz") {
-      bindings.handleNzOrPermModeChange();
-    }
+    applyChangeBehavior(control.custom.changeBehavior);
     customOpen = { ...customOpen, [control.key]: false };
     onParamEdit();
   }
@@ -72,36 +72,37 @@
     customOpen = { ...customOpen, [controlKey]: true };
   }
 
-  function showCustomInput(
-    control: Extract<ControlDefinition<GeometryGridParamKey>, { type: "quick-picks" }>,
-  ): boolean {
-    return customOpen[control.key] || getQuickPickMatch(control, bindings[control.param]) === null;
+  function showCustomInput(control: GeometryGridQuickPickControl): boolean {
+    return (
+      customOpen[control.key] ||
+      getGeometryGridQuickPickMatch(control, bindings[control.param]) === null
+    );
   }
 </script>
 
-<div class="schema-section">
+<div class="quick-editor-section">
   {#if showHeader}
-    <div class="schema-header">
+    <div class="quick-editor-header">
       <div>
-        <h4 class="text-sm font-semibold text-foreground">{section.label}</h4>
-        {#if section.description}
-          <p class="mt-1 text-xs text-muted-foreground">{section.description}</p>
+        <h4 class="text-sm font-semibold text-foreground">{editor.label}</h4>
+        {#if editor.description}
+          <p class="mt-1 text-xs text-muted-foreground">{editor.description}</p>
         {/if}
       </div>
-      <div class="schema-summary">
+      <div class="quick-editor-summary">
         <span>{volumeSummary}</span>
         <span>{extentSummary}</span>
       </div>
     </div>
   {:else}
-    <div class="schema-inline-summary">
+    <div class="quick-editor-inline-summary">
       <span>{volumeSummary}</span>
       <span>{extentSummary}</span>
     </div>
   {/if}
 
-  <div class="schema-grid">
-    {#each section.controls as control}
+  <div class="quick-editor-grid">
+    {#each editor.controls as control}
       <div class="control-card compact">
         <div class="flex items-start justify-between gap-3">
           <div>
@@ -111,12 +112,14 @@
             {/if}
           </div>
           {#if control.type === "number" && control.unit}
-            <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{control.unit}</span>
+            <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+              >{control.unit}</span
+            >
           {/if}
         </div>
 
-        {#if control.type === "quick-picks"}
-          {@const activeOption = getQuickPickMatch(control, bindings[control.param])}
+        {#if isGeometryGridQuickPickControl(control)}
+          {@const activeOption = getGeometryGridQuickPickMatch(control, bindings[control.param])}
           {#if !hideQuickPickOptions}
             <div class="mt-3 flex flex-wrap gap-2">
               {#each control.options as option}
@@ -139,7 +142,10 @@
           {/if}
 
           {#if hideQuickPickOptions || showCustomInput(control)}
-            {@const errorMessage = getControlErrorMessage(fieldErrors, control.fieldErrorKeys)}
+            {@const errorMessage = getGeometryGridControlErrorMessage(
+              fieldErrors,
+              control.fieldErrorKeys,
+            )}
             <div class="mt-3 rounded-md border border-border/70 bg-muted/20 p-2.5">
               <label class="flex flex-col gap-1.5">
                 <span class="text-xs font-medium text-foreground">{control.custom.label}</span>
@@ -155,6 +161,7 @@
                       control.param,
                       (event.currentTarget as HTMLInputElement).value,
                       control.custom.integer,
+                      control.custom.changeBehavior,
                     )}
                 />
                 {#if errorMessage}
@@ -164,7 +171,10 @@
             </div>
           {/if}
         {:else}
-          {@const errorMessage = getControlErrorMessage(fieldErrors, control.fieldErrorKeys)}
+          {@const errorMessage = getGeometryGridControlErrorMessage(
+            fieldErrors,
+            control.fieldErrorKeys,
+          )}
           <label class="mt-3 flex flex-col gap-1.5">
             <Input
               type="number"
@@ -178,6 +188,7 @@
                   control.param,
                   (event.currentTarget as HTMLInputElement).value,
                   control.integer,
+                  control.changeBehavior,
                 )}
             />
             {#if errorMessage}
@@ -191,11 +202,11 @@
 </div>
 
 <style>
-  .schema-section {
+  .quick-editor-section {
     padding: 0.9rem 1rem 1rem;
   }
 
-  .schema-header {
+  .quick-editor-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -204,7 +215,7 @@
     flex-wrap: wrap;
   }
 
-  .schema-summary {
+  .quick-editor-summary {
     display: inline-flex;
     flex-direction: column;
     gap: 0.2rem;
@@ -217,7 +228,7 @@
     min-width: 160px;
   }
 
-  .schema-inline-summary {
+  .quick-editor-inline-summary {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem 1rem;
@@ -226,7 +237,7 @@
     color: hsl(var(--muted-foreground));
   }
 
-  .schema-grid {
+  .quick-editor-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 0.6rem;

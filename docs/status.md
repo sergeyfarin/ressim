@@ -767,3 +767,168 @@ Validation run:
 
 Next active slice:
 R1.3 Define warning severity + surfacing policy (in progress), continuing with cleanup of remaining legacy warning islands and any final shared-warning API simplification.
+
+Phase 2 recovery progress update (2026-03-06, warning policy closure)
+Completed slice:
+- R1.3 Define warning severity + surfacing policy
+
+Implemented in this closing sub-slice:
+- `src/lib/ui/InputsTab.svelte`
+	- Replaced remaining legacy raw validation-warning typing with shared `ValidationWarning` and shared Phase 2 analytical/provenance contract types.
+	- Updated legacy warning rendering to consume structured warning messages.
+- `src/lib/ui/PresetCustomizeShell.svelte`
+	- Reused the shared `AnalyticalStatus` contract instead of keeping a local duplicate warning-related type.
+- `TODO.md`
+	- Marked `R1.3` complete and moved the last warning-specific dead code (`src/lib/ui/DynamicControlsPanel.svelte`) into the shell-era retirement slice `R1.7`.
+
+Audit result:
+- Live warning handling is now centralized through shared `warningPolicy` surfaces in `src/lib/ui/ModePanel.svelte`, `src/lib/ui/RunControls.svelte`, and `src/lib/ui/AnalyticalStatusBanner.svelte`.
+- `src/lib/ui/DynamicControlsPanel.svelte` is no longer referenced from `src/**`, so it should be removed with the rest of the shell-era leftovers instead of being migrated.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/InputsTab.svelte`, `src/lib/ui/PresetCustomizeShell.svelte`, `src/lib/ui/RunControls.svelte`, `src/lib/ui/AnalyticalStatusBanner.svelte`, `src/lib/warningPolicy.ts`, and `src/App.svelte`.
+- `npm run test -- src/lib/validateInputs.test.ts src/lib/warningPolicy.test.ts src/lib/warningPolicyFilters.test.ts src/lib/appStoreDomainWiring.test.ts` passed (4 files, 42 tests).
+- `npm run build` passed.
+- `npm run typecheck` is still blocked by unrelated pre-existing errors in `src/lib/ui/modePanelSchema.test.ts` (`ControlDefinition<GeometryGridParamKey>` missing `options` / `custom` in that test's assumptions); no new type errors were introduced in the warning-policy files checked above.
+
+Next active slice:
+R1.4 Keep only narrow config-driven helpers where they help (in progress).
+
+Phase 2 recovery progress update (2026-03-06, narrow helper cleanup)
+Completed slice:
+- R1.4 Keep only narrow config-driven helpers where they help
+
+Implemented in this slice:
+- `src/lib/ui/modePanelSections.ts`
+	- Split shared mode-section metadata out of the old schema module so section composition stays explicit and independent from quick-edit helper definitions.
+- `src/lib/ui/geometryGridQuickEditor.ts`
+	- Replaced the generic schema/control model with a geometry-grid-only typed quick-edit helper for the current local repetitive case.
+- `src/lib/ui/GeometryGridQuickEditor.svelte`
+	- Renamed the old generic renderer to an explicit geometry-grid quick editor and kept `nz` layer-sync behavior local to that helper.
+- `src/lib/ui/ScenarioSectionsPanel.svelte`
+	- Switched the geometry section to the local `GeometryGridQuickEditor` while leaving the other section bodies as normal Svelte components.
+- `src/lib/ui/modePanelTypes.ts`
+	- Moved panel binding and control-mode types into the shared mode-panel type contract instead of leaving them inside a pseudo-schema module.
+- `src/lib/ui/modePanelSchema.test.ts`
+	- Updated the helper tests to the new local helper modules and fixed the narrowing issue that had been blocking project typecheck.
+- Deleted obsolete generic-helper files:
+	- `src/lib/ui/modePanelSchema.ts`
+	- `src/lib/ui/SchemaSectionRenderer.svelte`
+
+Outcome:
+- The app no longer carries a general-looking schema-rendering path beside the mode-specific Svelte panel architecture.
+- Remaining config-driven behavior is now intentionally narrow and local to the geometry-grid quick editor.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/GeometryGridQuickEditor.svelte`, `src/lib/ui/ScenarioSectionsPanel.svelte`, `src/lib/ui/modePanelTypes.ts`, `src/lib/ui/geometryGridQuickEditor.ts`, `src/lib/ui/modePanelSections.ts`, and `src/lib/ui/modePanelSchema.test.ts`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelSchema.test.ts src/lib/ui/modePanelComposition.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 12 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.5 Add toggle-plus-custom pattern where useful (in progress).
+
+Phase 2 recovery progress update (2026-03-06, toggle-plus-custom expansion)
+Completed slice:
+- R1.5 Add toggle-plus-custom pattern where useful
+
+Implemented in this slice:
+- `src/lib/ui/geometryGridQuickEditor.ts`
+	- Expanded the local geometry-grid helper so `ny`, `nz`, `cellDx`, `cellDy`, and `cellDz` now use the same toggle-plus-custom definition shape as `nx`.
+	- Added curated preset values for layer counts and cell sizes while keeping explicit custom entry metadata local to the geometry helper.
+- `src/lib/ui/ScenarioSectionsPanel.svelte`
+	- Stopped hiding the geometry quick-pick buttons in the live expanded section so the preset-toggle plus custom-entry pairing is visible in the actual mode-panel flow.
+- `src/lib/ui/modePanelSchema.test.ts`
+	- Added coverage for the additional geometry toggle-plus-custom controls, including `nz` layer-sync behavior and cell-size preset definitions.
+
+Outcome:
+- The live geometry-grid section now presents quick presets and exact custom entry in the same control group for all of its grid-shape fields.
+- The toggle-plus-custom pattern remains intentionally local to `GeometryGridQuickEditor` instead of becoming a new broad rendering system.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/geometryGridQuickEditor.ts`, `src/lib/ui/ScenarioSectionsPanel.svelte`, `src/lib/ui/modePanelSchema.test.ts`, and `src/lib/ui/GeometryGridQuickEditor.svelte`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelSchema.test.ts src/lib/ui/modePanelComposition.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 13 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.6 Refactor mode panels to reuse focused subcomponents (in progress).
+
+Phase 2 recovery progress update (2026-03-06, R1.6 grid-fields extraction)
+Slice in progress:
+- R1.6 Refactor mode panels to reuse focused subcomponents
+
+Implemented in this sub-slice:
+- `src/lib/ui/GridFieldsPanel.svelte`
+	- Added a focused geometry/grid section-body component that owns the `GeometryGridQuickEditor` plus local helper-config wiring.
+- `src/lib/ui/ScenarioSectionsPanel.svelte`
+	- Replaced the direct geometry quick-editor/config usage with `GridFieldsPanel`, reducing branch-specific knowledge in the shared section compositor.
+- `src/lib/ui/modePanelComposition.test.ts`
+	- Updated the composition contract to assert that `ScenarioSectionsPanel.svelte` renders `GridFieldsPanel` and that the geometry quick-editor wiring lives behind that subcomponent boundary.
+
+Outcome:
+- `ScenarioSectionsPanel.svelte` is now a little closer to a pure section orchestrator instead of also managing geometry-helper details.
+- The geometry-grid quick-edit implementation remains local, but its panel boundary is now explicit and easier to replace or extend as `R1.6` continues.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/GridFieldsPanel.svelte`, `src/lib/ui/ScenarioSectionsPanel.svelte`, and `src/lib/ui/modePanelComposition.test.ts`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 14 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.6 Refactor mode panels to reuse focused subcomponents (in progress), continuing with the next section-body extraction.
+
+Phase 2 recovery progress update (2026-03-06, R1.6 timestep and wells extraction)
+Slice in progress:
+- R1.6 Refactor mode panels to reuse focused subcomponents
+
+Implemented in this sub-slice:
+- `src/lib/ui/TimestepFieldsPanel.svelte`
+	- Added a focused timestep section-body component that owns the `TimestepControlsPanel` binding pass-through.
+- `src/lib/ui/WellsFieldsPanel.svelte`
+	- Added a focused wells section-body component that owns the `WellPropertiesPanel` binding pass-through.
+- `src/lib/ui/ScenarioSectionsPanel.svelte`
+	- Replaced the dense inline timestep and wells branches with `TimestepFieldsPanel` and `WellsFieldsPanel`.
+- `src/lib/ui/modePanelComposition.test.ts`
+	- Extended the composition contract to assert that timestep and wells wiring now live behind focused section-body components.
+
+Outcome:
+- `ScenarioSectionsPanel.svelte` now only orchestrates section choice and high-level section layout for geometry, wells, and timestep instead of carrying their dense prop-binding details inline.
+- The next `R1.6` step can focus on another branch (`reservoir` or `analytical`) rather than reworking the same extracted paths again.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/TimestepFieldsPanel.svelte`, `src/lib/ui/WellsFieldsPanel.svelte`, `src/lib/ui/ScenarioSectionsPanel.svelte`, and `src/lib/ui/modePanelComposition.test.ts`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 15 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.6 Refactor mode panels to reuse focused subcomponents (in progress), continuing with reservoir or analytical section-body extraction.
+
+Phase 2 recovery progress update (2026-03-06, R1.6 reservoir and analytical extraction)
+Slice in progress:
+- R1.6 Refactor mode panels to reuse focused subcomponents
+
+Implemented in this sub-slice:
+- `src/lib/ui/ReservoirFieldsPanel.svelte`
+	- Added a focused reservoir section-body component that owns the `ReservoirPropertiesPanel` binding pass-through.
+- `src/lib/ui/AnalyticalFieldsPanel.svelte`
+	- Added a focused analytical section-body component that owns the `AnalyticalInputsPanel` binding pass-through.
+- `src/lib/ui/ScenarioSectionsPanel.svelte`
+	- Replaced the dense inline reservoir and analytical branches with `ReservoirFieldsPanel` and `AnalyticalFieldsPanel`.
+- `src/lib/ui/modePanelComposition.test.ts`
+	- Extended the composition contract to assert that reservoir and analytical wiring now live behind focused section-body components.
+
+Outcome:
+- `ScenarioSectionsPanel.svelte` now delegates every branch except SCAL to focused section-body components, keeping the shared compositor centered on section selection and layout.
+- The remaining `R1.6` decision is whether the direct `RelativeCapillaryPanel` branch is already narrow enough to keep as-is or should be wrapped for consistency before closing the slice.
+
+Validation run:
+- `get_errors` reported no errors in `src/lib/ui/ReservoirFieldsPanel.svelte`, `src/lib/ui/AnalyticalFieldsPanel.svelte`, `src/lib/ui/ScenarioSectionsPanel.svelte`, and `src/lib/ui/modePanelComposition.test.ts`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 16 tests).
+- `npm run build` passed.
+
+Next active slice:
+R1.6 Refactor mode panels to reuse focused subcomponents (in progress), deciding whether to wrap the SCAL branch or close with a final section-dispatch cleanup.
