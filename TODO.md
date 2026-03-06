@@ -32,7 +32,7 @@ Phase 1 acceptance checklist:
 - [x] Store exposes explicit domain objects and App uses them.
 - [x] No silent behavior regression in run/init/step flow. Verified 2026-03-05 with targeted Rust tests: `cargo test adaptive_timestep_produces_multiple_substeps_for_strong_flow`, `cargo test pressure_resolve_on_substep_produces_physical_results`, `cargo test saturation_stays_within_physical_bounds`.
 - [x] Validation gating and error visibility remain unchanged or improved. Verified 2026-03-05 via targeted frontend tests (`npm run test -- src/lib/validateInputs.test.ts src/lib/buildCreatePayload.test.ts`) and wiring checks in `src/App.svelte` + `src/lib/stores/simulationStore.svelte.ts` (run controls disable + explicit blocked-run runtime error).
-- [x] Benchmark and non-benchmark case selection behavior remains correct. Verified 2026-03-05 via `npm run test -- src/lib/caseCatalog.test.ts` plus benchmark-only pre-run gate checks in `src/lib/stores/simulationStore.svelte.ts` (`if (activeMode === 'benchmark') loadPreRunCase(newKey)` and early return in `loadPreRunCase` when mode is non-benchmark).
+- [x] Benchmark and non-benchmark case selection behavior remains correct. Verified 2026-03-05 via `npm run test -- src/lib/caseCatalog.test.ts`. Note: benchmark pre-run gate checks were later superseded by complete pre-run pipeline removal.
 - [x] Temporary compatibility shims removed before Phase 1 close.
 
 Interruption resume protocol (mandatory):
@@ -56,17 +56,17 @@ Single source of truth: this section is the authoritative tracker for ongoing Ph
 - [x] **P2.5 Analytical eligibility evaluator** — analytical status now computes `reference | approximate | off` with explicit reason details and severity levels (`none | notice | warning | critical`) plus deterministic summary severity for UI policy.
 - [x] **P2.6 Analytical status banner UX** — wired persistent, high-visibility approximation banner above analytics panels with expandable caveat details and per-reason severity badges/tooltips.
 - [x] **P2.7 Store/App integration hardening** — moved clone/reset UI flows to domain APIs (`scenarioSelection`, `parameterState`), removed App-side transitional assembly logic, and tightened analytical banner contract consumption.
-- [ ] **P2.8 Regression + policy tests (in progress)** — add tests for clone provenance, changed-fields diffing, analytical status modes, and benchmark-only pre-run policy.
-- [ ] **P2.9 Production pre-run validation** — execute end-to-end validation of benchmark prerun fetch/decompression behavior under production hosting assumptions.
+- [ ] **P2.8 Regression + policy tests (in progress)** — add tests for clone provenance, changed-fields diffing, analytical status modes, benchmark selection/run policy after pre-run removal, and validate the per-mode catalog schema migration.
+- [x] **P2.9 Remove pre-run loading pipeline** — removed benchmark pre-run fetch/decompression/hydration path; benchmark selection now only applies case parameters and runs always start from fresh init.
 - [ ] **P2.10 Docs + handoff update** — sync `docs/status.md`, capture decision rationale, and record residual follow-ups with verified commands/results.
 
 Phase 2 acceptance checklist:
 
-- [ ] Unified Preset + Customize surface is primary path for depletion/waterflood/simulation and benchmark entry.
+- [x] Unified Preset + Customize surface is primary path for depletion/waterflood/simulation and benchmark entry.
 - [ ] Benchmark presets can be cloned into custom mode with traceable source metadata.
 - [ ] Analytical overlay remains permissive, with persistent warning and explicit reasons when in approximate mode.
 - [ ] No disabled facet remains selected after any interaction sequence.
-- [ ] Non-benchmark interactions never trigger pre-run fetch.
+- [x] No scenario interaction triggers pre-run fetch (pipeline removed).
 - [ ] Run/step invalid-input behavior is explicit and never a silent no-op.
 - [ ] App/store regression tests cover Phase 2 pathways (clone, overrides, analytical status, policy guards).
 
@@ -99,10 +99,10 @@ Interruption resume protocol (mandatory):
 
 ## High Priority — Frontend & UX
 
-- [ ] **Implement Option B shell UI** — consolidate top-level mode/facet selection and editable parameter inputs into one unified "Preset + Customize" surface.
+- [x] **Implement Option B shell UI** — replaced TopBar + InputsTab with unified ModePanel: mode tabs + collapsible sections with nested dimension sub-selectors and expandable inline parameter panels. Removed customize-flow indirection from App.svelte.
 - [ ] **Benchmark clone flow** — add `Clone to Custom` action that copies all benchmark parameters and stores source benchmark provenance.
 - [x] **Analytical status banner** — introduced `reference | approximate | off` status path with persistent, highly visible warning and expandable caveat details for approximate overlays.
-- [x] **Benchmark-only pre-run loading** — remove pre-run fetch/continuation path from non-benchmark modes; keep only for benchmark artifacts. Pre-runs hydrate charts/3D only; running always re-initializes from step 0.
+- [x] **Remove pre-run loading pipeline** — benchmark/non-benchmark selections now only apply parameters; no prerun fetch/decompression/hydration path remains.
 - [x] **Fix run validation gating** — pass `hasValidationErrors` into run controls and show explicit message when run is blocked by invalid inputs.
 - [x] **Fix custom-subcase mode mapping** — normalize mode aliases (`dep/wf/sim` vs `depletion/waterflood/simulation`) so custom sub-case switching is reliable.
 - [x] **Stabilize faceted constraints** — replace one-pass toggle auto-fix with iterative constraint stabilization.
@@ -118,8 +118,8 @@ Interruption resume protocol (mandatory):
 - [x] **History memory optimization** — each snapshot stores the full grid array. For large grids (e.g., 20×20×10 = 4000 cells, 300 steps), this consumes significant memory. Consider delta compression or reduced snapshot frequency.Reduced snapshots were implemented but not consistently used, missing in parts of the code across preloaded cases generation, UX, etc.
 - [x] Worker silently ignores `add_well` errors — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
 - [x] **FilterCard/ToggleGroup alignment** — unified `FilterCard` to use the more polished `ToggleGroup` internally, including adding a wrapping grid layout for elements > 3.
-- [x] **Double-decompression of Pre-run data** — Vite auto-decompresses `.json.gz` in dev due to headers, while GitHub Pages doesn't. Handled dual path natively in `simulationStore.svelte.ts`.
-- [ ] **End-to-end regression validation for benchmark pre-run data** — test whether GitHub Pages serves benchmark `.json.gz` with `application/gzip` headers so `DecompressionStream` behaves correctly in production.
+- [x] **Retire pre-run decompression path** — removed `.json.gz` pre-run loader and related DecompressionStream fallback from `simulationStore.svelte.ts`.
+- [x] **End-to-end regression validation for benchmark pre-run data** — no longer applicable after pre-run pipeline removal.
 
 ---
 

@@ -473,3 +473,54 @@ Validation run:
 
 Next active slice:
 P2.8 Regression + policy tests (in progress).
+
+Phase 2 progress update (2026-03-05)
+Completed slice:
+- P2.9 Remove pre-run loading pipeline
+
+Implemented in this slice:
+- `src/lib/stores/simulationStore.svelte.ts`
+	- Removed benchmark pre-run state (`preRunData`, `preRunLoading`, `preRunWarning`, `preRunLoadToken`, `preRunContinuationAvailable`).
+	- Removed `loadPreRunCase(...)` fetch/decompression/hydration path and related runtime branching.
+	- Simplified mode/toggle/param-edit flows so selection only applies parameters and marks model state.
+	- Removed pre-run fields from `scenarioSelection` API surface.
+- `src/App.svelte`
+	- Removed pre-run warning/loading UI banners.
+- `src/lib/caseCatalog.ts`
+	- Updated `buildCaseKey(...)` doc comment to remove pre-run artifact wording.
+- `src/lib/ui/InputsTab.svelte`
+	- Updated stale read-only helper text that referenced pre-run viewing.
+- `src/lib/simulator-types.ts`
+	- Removed stale pre-run hydration comment.
+- `TODO.md`
+	- Marked `P2.9` complete and retired obsolete pre-run validation/decompression follow-up items.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts src/lib/caseCatalog.test.ts` passed.
+
+Next active slice:
+P2.8 Regression + policy tests (in progress), now scoped to clone/override/analytical policy checks without pre-run pathways.
+
+Phase 2 progress update (2026-03-05)
+Slice in progress:
+- P2.8 Regression + policy tests
+
+Implemented in this sub-slice (catalog schema refactor):
+- `src/lib/catalog.json`
+	- Restructured from flat `dimensions`/`disabilityRules` to `modes.{dep|wf|sim|benchmark}` with per-mode `baseParams`, `dimensions`, and `disabilityRules`.
+- `src/lib/caseCatalog.ts`
+	- Updated schema types and added mode helpers (`normalizeMode`, `getModeCatalog`, `getModeDimensions`).
+	- Refactored `composeCaseParams`, `buildCaseKey`, `getDisabledOptions`, `stabilizeToggleState`, and `getDefaultToggles` to use mode-local dimensions/rules.
+	- Preserved deterministic case-key prefix format (`mode-<mode>_...`) for non-benchmark cases.
+- `src/lib/ui/TopBar.svelte`
+	- Switched active facet rendering to mode-local dimensions via `getModeDimensions(activeMode)`.
+- `src/lib/caseCatalog.test.ts`
+	- Updated schema shape assertion for `catalog.modes`.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/caseCatalog.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/stores/phase2PresetContract.test.ts` passed (3 files, 21 tests).
+
+Next active slice:
+P2.8 Regression + policy tests (in progress), continuing with additional policy tests over clone/override/analytical flows on top of mode-local catalog rules.

@@ -2,20 +2,13 @@
     import { onMount, onDestroy, tick } from "svelte";
     import FractionalFlow from "./lib/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/DepletionAnalytical.svelte";
-    import TopBar from "./lib/ui/TopBar.svelte";
+    import ModePanel from "./lib/ui/ModePanel.svelte";
     import RunControls from "./lib/ui/RunControls.svelte";
-    import InputsTab from "./lib/ui/InputsTab.svelte";
     import AnalyticalStatusBanner from "./lib/ui/AnalyticalStatusBanner.svelte";
     import SwProfileChart from "./lib/SwProfileChart.svelte";
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
-    import {
-        getFacetCustomizeSectionTarget,
-        getFacetOverrideGroups,
-        getOverrideGroupSectionTarget,
-        type CustomizeSectionTarget,
-    } from "./lib/stores/phase2PresetContract";
 
     // ---------- Store ----------
     const store = createSimulationStore();
@@ -23,83 +16,9 @@
     const params = store.parameterState;
     const runtime = store.runtimeState;
 
-    let customizeSectionTarget = $state<CustomizeSectionTarget | null>(null);
-    let customizeSectionNonce = $state(0);
-    let activeCustomizeGroup = $state<string | null>(null);
-    let showChangedFields = $state(false);
-
-    function handleCustomizeFacet(dimKey: string) {
-        customizeSectionTarget = getFacetCustomizeSectionTarget(dimKey);
-        customizeSectionNonce += 1;
-        const groups = getFacetOverrideGroups(dimKey);
-        activeCustomizeGroup = groups.length > 0 ? groups[0] : null;
-        const anchor = document.getElementById("inputs-section");
-        if (anchor) {
-            anchor.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-    }
-
-    function handleDoneCustomize() {
-        activeCustomizeGroup = null;
-    }
-
-    function handleCustomizeGroup(groupKey: string) {
-        customizeSectionTarget = getOverrideGroupSectionTarget(groupKey);
-        customizeSectionNonce += 1;
-        activeCustomizeGroup = groupKey;
-        const anchor = document.getElementById("inputs-section");
-        if (anchor) {
-            anchor.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-    }
-
-    function resetOverrideGroups(groupKeys: string[]) {
-        if (!groupKeys.length) return;
-
-        const { resetCount } = params.resetOverrideGroupsToBase(groupKeys);
-        if (resetCount === 0) return;
-
-        activeCustomizeGroup = groupKeys[0] ?? activeCustomizeGroup;
-
-        queueMicrotask(() => {
-            if (params.parameterOverrideCount === 0) {
-                activeCustomizeGroup = null;
-                showChangedFields = false;
-                scenario.handleToggleChange();
-            }
-        });
-    }
-
-    function handleResetFacet(dimKey: string) {
-        const groups = getFacetOverrideGroups(dimKey);
-        resetOverrideGroups(groups);
-    }
-
-    function handleResetGroup(groupKey: string) {
-        resetOverrideGroups([groupKey]);
-    }
-
-    function handleToggleShowChangedFields() {
-        showChangedFields = !showChangedFields;
-    }
-
     function handleCloneBenchmarkToCustom() {
-        const cloned = scenario.cloneActiveBenchmarkToCustom();
-        if (!cloned) return;
-
-        customizeSectionTarget = "shell";
-        customizeSectionNonce += 1;
-        const anchor = document.getElementById("inputs-section");
-        if (anchor) {
-            anchor.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+        scenario.cloneActiveBenchmarkToCustom();
     }
-
-    $effect(() => {
-        if (params.parameterOverrideCount === 0 && showChangedFields) {
-            showChangedFields = false;
-        }
-    });
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("dark");
@@ -419,21 +338,19 @@
             </Button>
         </header>
 
-        <!-- Top Bar: category buttons + case selector -->
-        <TopBar
+        <!-- Mode Panel: mode tabs + grouped dimension selectors + inline parameter panels -->
+        <ModePanel
             activeMode={scenario.activeMode}
             isModified={scenario.isModified}
             toggles={scenario.toggles}
             disabledOptions={scenario.disabledOptions}
             onModeChange={scenario.handleModeChange}
-            onParamEdit={scenario.handleParamEdit}
             onToggleChange={scenario.handleToggleChange}
-            onCustomizeFacet={handleCustomizeFacet}
-            onResetFacet={handleResetFacet}
             onCloneBenchmarkToCustom={handleCloneBenchmarkToCustom}
-            activeCustomizeGroup={activeCustomizeGroup}
-            parameterOverrideGroups={params.parameterOverrideGroups}
             benchmarkProvenance={scenario.benchmarkProvenance}
+            {params}
+            validationErrors={params.validationErrors}
+            validationWarnings={params.validationWarnings}
         />
 
         <!-- Run Controls -->
@@ -450,7 +367,7 @@
             runProgress={runtime.workerRunning && runtime.currentRunTotalSteps > 0
                 ? `${runtime.currentRunStepsCompleted} / ${runtime.currentRunTotalSteps}`
                 : ""}
-            inputsAnchorHref="#inputs-section"
+            inputsAnchorHref=""
             bind:steps={params.steps}
             bind:historyInterval={params.historyInterval}
             onRunSteps={runtime.runSteps}
@@ -468,23 +385,11 @@
                 {runtime.runtimeWarning}
             </div>
         {/if}
-        {#if scenario.preRunWarning}
-            <div
-                class="rounded-md border border-warning bg-card text-warning p-3 text-xs font-medium"
-            >
-                {scenario.preRunWarning}
-            </div>
-        {/if}
         {#if runtime.runtimeError}
             <div
                 class="rounded-md border border-destructive bg-card text-destructive p-3 text-xs font-medium"
             >
                 {runtime.runtimeError}
-            </div>
-        {/if}
-        {#if scenario.preRunLoading}
-            <div class="text-xs text-muted-foreground text-center mt-2">
-                Loading pre-run case data…
             </div>
         {/if}
 
@@ -624,92 +529,6 @@
                     </div>
                 </Card>
             </div>
-        </div>
-
-        <div id="inputs-section" class="mt-4">
-            <InputsTab
-                bind:nx={params.nx}
-                bind:ny={params.ny}
-                bind:nz={params.nz}
-                bind:cellDx={params.cellDx}
-                bind:cellDy={params.cellDy}
-                bind:cellDz={params.cellDz}
-                bind:initialPressure={params.initialPressure}
-                bind:initialSaturation={params.initialSaturation}
-                bind:reservoirPorosity={params.reservoirPorosity}
-                bind:mu_w={params.mu_w}
-                bind:mu_o={params.mu_o}
-                bind:c_o={params.c_o}
-                bind:c_w={params.c_w}
-                bind:rho_w={params.rho_w}
-                bind:rho_o={params.rho_o}
-                bind:rock_compressibility={params.rock_compressibility}
-                bind:depth_reference={params.depth_reference}
-                bind:volume_expansion_o={params.volume_expansion_o}
-                bind:volume_expansion_w={params.volume_expansion_w}
-                bind:gravityEnabled={params.gravityEnabled}
-                bind:permMode={params.permMode}
-                bind:uniformPermX={params.uniformPermX}
-                bind:uniformPermY={params.uniformPermY}
-                bind:uniformPermZ={params.uniformPermZ}
-                bind:useRandomSeed={params.useRandomSeed}
-                bind:randomSeed={params.randomSeed}
-                bind:minPerm={params.minPerm}
-                bind:maxPerm={params.maxPerm}
-                bind:layerPermsX={params.layerPermsX}
-                bind:layerPermsY={params.layerPermsY}
-                bind:layerPermsZ={params.layerPermsZ}
-                bind:s_wc={params.s_wc}
-                bind:s_or={params.s_or}
-                bind:n_w={params.n_w}
-                bind:n_o={params.n_o}
-                bind:capillaryEnabled={params.capillaryEnabled}
-                bind:capillaryPEntry={params.capillaryPEntry}
-                bind:capillaryLambda={params.capillaryLambda}
-                bind:well_radius={params.well_radius}
-                bind:well_skin={params.well_skin}
-                bind:injectorEnabled={params.injectorEnabled}
-                bind:injectorControlMode={params.injectorControlMode}
-                bind:producerControlMode={params.producerControlMode}
-                bind:injectorBhp={params.injectorBhp}
-                bind:producerBhp={params.producerBhp}
-                bind:targetInjectorRate={params.targetInjectorRate}
-                bind:targetProducerRate={params.targetProducerRate}
-                bind:injectorI={params.injectorI}
-                bind:injectorJ={params.injectorJ}
-                bind:producerI={params.producerI}
-                bind:producerJ={params.producerJ}
-                bind:delta_t_days={params.delta_t_days}
-                bind:max_sat_change_per_step={params.max_sat_change_per_step}
-                bind:max_pressure_change_per_step={
-                    params.max_pressure_change_per_step
-                }
-                bind:max_well_rate_change_fraction={
-                    params.max_well_rate_change_fraction
-                }
-                bind:analyticalSolutionMode={params.analyticalSolutionMode}
-                bind:analyticalDepletionRateScale={
-                    params.analyticalDepletionRateScale
-                }
-                onAnalyticalSolutionModeChange={params.handleAnalyticalSolutionModeChange}
-                onNzOrPermModeChange={params.handleNzOrPermModeChange}
-                validationErrors={params.validationErrors}
-                validationWarnings={params.validationWarnings}
-                basePreset={scenario.basePreset}
-                benchmarkProvenance={scenario.benchmarkProvenance}
-                parameterOverrideCount={params.parameterOverrideCount}
-                parameterOverrideGroups={params.parameterOverrideGroups}
-                analyticalStatus={runtime.analyticalStatus}
-                customizeSectionTarget={customizeSectionTarget}
-                customizeSectionNonce={customizeSectionNonce}
-                activeCustomizeGroup={activeCustomizeGroup}
-                {showChangedFields}
-                onToggleShowChangedFields={handleToggleShowChangedFields}
-                onCustomizeGroup={handleCustomizeGroup}
-                onResetGroup={handleResetGroup}
-                onDoneCustomize={handleDoneCustomize}
-                readOnly={false}
-            />
         </div>
 
         <!-- Debug State -->

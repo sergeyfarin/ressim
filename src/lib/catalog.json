@@ -8,20 +8,20 @@
         "reservoirPorosity": 0.2,
         "well_radius": 0.1,
         "skin_factor": 0,
-        "c_r": 1e-6,
+        "c_r": 0.000001,
         "initialPressure": 300,
         "mu_w": 0.5,
-        "mu_o": 1.0,
-        "c_w": 3e-6,
-        "c_o": 1e-5,
+        "mu_o": 1,
+        "c_w": 0.000003,
+        "c_o": 0.00001,
         "rho_w": 1000,
         "rho_o": 800,
         "s_wc": 0.1,
         "s_or": 0.1,
         "n_w": 2,
         "n_o": 2,
-        "k_rw_max": 1.0,
-        "k_ro_max": 1.0,
+        "k_rw_max": 1,
+        "k_ro_max": 1,
         "permMode": "uniform",
         "uniformPermX": 200,
         "uniformPermY": 200,
@@ -51,7 +51,7 @@
         "maxPerm": 500,
         "seed": 42,
         "capillaryEnabled": false,
-        "capillaryPEntry": 1.0,
+        "capillaryPEntry": 1,
         "capillaryLambda": 2.5,
         "gravityEnabled": false,
         "injectorControlMode": "pressure",
@@ -60,448 +60,1098 @@
         "producerBhp": 100,
         "max_sat_change_per_step": 0.1,
         "steps": 30,
-        "delta_t_days": 1.0,
+        "delta_t_days": 1,
         "injectorEnabled": false,
         "analyticalSolutionMode": "none",
         "useCapillaryGravity": false
     },
-    "dimensions": [
-        {
-            "key": "mode",
-            "label": "Mode",
-            "options": [
+    "modes": {
+        "dep": {
+            "baseParams": {
+                "injectorEnabled": false,
+                "analyticalSolutionMode": "depletion",
+                "steps": 36,
+                "delta_t_days": 0.5
+            },
+            "dimensions": [
                 {
-                    "value": "dep",
-                    "label": "Depletion",
-                    "params": {
-                        "injectorEnabled": false,
-                        "analyticalSolutionMode": "depletion",
-                        "steps": 36,
-                        "delta_t_days": 0.5
-                    }
+                    "key": "geo",
+                    "label": "Geometry",
+                    "options": [
+                        {
+                            "value": "1d",
+                            "label": "1D",
+                            "params": {
+                                "nx": 48,
+                                "ny": 1,
+                                "nz": 1,
+                                "cellDx": 10,
+                                "cellDy": 10,
+                                "cellDz": 5
+                            }
+                        },
+                        {
+                            "value": "2dxz",
+                            "label": "2D X-Z (Cross Section)",
+                            "params": {
+                                "nx": 21,
+                                "ny": 1,
+                                "nz": 5,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 5
+                            }
+                        },
+                        {
+                            "value": "2dxy",
+                            "label": "2D X-Y (Areal)",
+                            "params": {
+                                "nx": 21,
+                                "ny": 21,
+                                "nz": 1,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 10
+                            }
+                        },
+                        {
+                            "value": "3d",
+                            "label": "3D",
+                            "params": {
+                                "nx": 11,
+                                "ny": 11,
+                                "nz": 5,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 5
+                            }
+                        }
+                    ]
                 },
                 {
-                    "value": "wf",
-                    "label": "Waterflood",
-                    "params": {
-                        "injectorEnabled": true,
-                        "analyticalSolutionMode": "waterflood",
-                        "steps": 50,
-                        "delta_t_days": 0.5
-                    }
+                    "key": "well",
+                    "label": "Well Position",
+                    "options": [
+                        {
+                            "value": "e2e",
+                            "label": "End-to-End"
+                        },
+                        {
+                            "value": "corner",
+                            "label": "Corner"
+                        },
+                        {
+                            "value": "center",
+                            "label": "Center"
+                        },
+                        {
+                            "value": "offctr",
+                            "label": "Off-Center"
+                        }
+                    ]
                 },
                 {
-                    "value": "sim",
-                    "label": "Simulation",
-                    "params": {
-                        "injectorEnabled": true,
-                        "analyticalSolutionMode": "none",
-                        "steps": 30,
-                        "delta_t_days": 0.5
-                    }
+                    "key": "rock",
+                    "label": "Rock",
+                    "options": [
+                        {
+                            "value": "uni",
+                            "label": "Uniform",
+                            "params": {
+                                "permMode": "uniform",
+                                "uniformPermX": 200
+                            }
+                        },
+                        {
+                            "value": "layer",
+                            "label": "Layered",
+                            "params": {
+                                "permMode": "perLayer",
+                                "layerPermsX": [
+                                    50,
+                                    200,
+                                    10,
+                                    400,
+                                    50
+                                ]
+                            }
+                        },
+                        {
+                            "value": "rand",
+                            "label": "Random",
+                            "params": {
+                                "permMode": "random",
+                                "minPerm": 10,
+                                "maxPerm": 500
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "grav",
+                    "label": "Gravity",
+                    "options": [
+                        {
+                            "value": "off",
+                            "label": "Off",
+                            "params": {
+                                "gravityEnabled": false
+                            }
+                        },
+                        {
+                            "value": "on",
+                            "label": "On",
+                            "params": {
+                                "gravityEnabled": true,
+                                "useCapillaryGravity": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "cap",
+                    "label": "Capillary",
+                    "options": [
+                        {
+                            "value": "off",
+                            "label": "Off",
+                            "params": {
+                                "capillaryEnabled": false
+                            }
+                        },
+                        {
+                            "value": "on",
+                            "label": "On",
+                            "params": {
+                                "capillaryEnabled": true,
+                                "capillaryPEntry": 0.5,
+                                "useCapillaryGravity": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "fluid",
+                    "label": "Fluids",
+                    "options": [
+                        {
+                            "value": "std",
+                            "label": "Standard"
+                        },
+                        {
+                            "value": "heavy",
+                            "label": "Heavy Oil",
+                            "params": {
+                                "mu_o": 10
+                            }
+                        },
+                        {
+                            "value": "light",
+                            "label": "Light Oil",
+                            "params": {
+                                "mu_o": 0.3
+                            }
+                        },
+                        {
+                            "value": "hicomp",
+                            "label": "High Comp",
+                            "params": {
+                                "c_o": 0.00005
+                            }
+                        },
+                        {
+                            "value": "locomp",
+                            "label": "Low Comp",
+                            "params": {
+                                "c_o": 0.000001
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "grid",
+                    "label": "Grid Density",
+                    "options": [
+                        {
+                            "value": "12",
+                            "label": "12 cells",
+                            "params": {
+                                "nx": 12
+                            }
+                        },
+                        {
+                            "value": "24",
+                            "label": "24 cells",
+                            "params": {
+                                "nx": 24
+                            }
+                        },
+                        {
+                            "value": "48",
+                            "label": "48 cells",
+                            "params": {
+                                "nx": 48
+                            }
+                        },
+                        {
+                            "value": "96",
+                            "label": "96 cells",
+                            "params": {
+                                "nx": 96
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "dt",
+                    "label": "Timestep",
+                    "options": [
+                        {
+                            "value": "5d",
+                            "label": "5 days",
+                            "params": {
+                                "delta_t_days": 5,
+                                "steps": 10
+                            }
+                        },
+                        {
+                            "value": "1d",
+                            "label": "1 day",
+                            "params": {
+                                "delta_t_days": 1,
+                                "steps": 50
+                            }
+                        },
+                        {
+                            "value": "05d",
+                            "label": "0.5 days",
+                            "params": {
+                                "delta_t_days": 0.5,
+                                "steps": 50
+                            }
+                        },
+                        {
+                            "value": "025d",
+                            "label": "0.25 days",
+                            "params": {
+                                "delta_t_days": 0.25,
+                                "steps": 100
+                            }
+                        }
+                    ]
                 }
-            ]
-        },
-        {
-            "key": "geo",
-            "label": "Geometry",
-            "options": [
+            ],
+            "disabilityRules": [
                 {
-                    "value": "1d",
-                    "label": "1D",
-                    "params": {
-                        "nx": 48,
-                        "ny": 1,
-                        "nz": 1,
-                        "cellDx": 10,
-                        "cellDy": 10,
-                        "cellDz": 5
-                    }
-                },
-                {
-                    "value": "2dxz",
-                    "label": "2D X-Z (Cross Section)",
-                    "params": {
-                        "nx": 21,
-                        "ny": 1,
-                        "nz": 5,
-                        "cellDx": 20,
-                        "cellDy": 20,
-                        "cellDz": 5
-                    }
-                },
-                {
-                    "value": "2dxy",
-                    "label": "2D X-Y (Areal)",
-                    "params": {
-                        "nx": 21,
-                        "ny": 21,
-                        "nz": 1,
-                        "cellDx": 20,
-                        "cellDy": 20,
-                        "cellDz": 10
-                    }
-                },
-                {
-                    "value": "3d",
-                    "label": "3D",
-                    "params": {
-                        "nx": 11,
-                        "ny": 11,
-                        "nz": 5,
-                        "cellDx": 20,
-                        "cellDy": 20,
-                        "cellDz": 5
-                    }
-                }
-            ]
-        },
-        {
-            "key": "well",
-            "label": "Well Position",
-            "options": [
-                {
-                    "value": "e2e",
-                    "label": "End-to-End"
-                },
-                {
-                    "value": "corner",
-                    "label": "Corner"
-                },
-                {
-                    "value": "center",
-                    "label": "Center"
-                },
-                {
-                    "value": "offctr",
-                    "label": "Off-Center"
-                }
-            ]
-        },
-        {
-            "key": "rock",
-            "label": "Rock",
-            "options": [
-                {
-                    "value": "uni",
-                    "label": "Uniform",
-                    "params": {
-                        "permMode": "uniform",
-                        "uniformPermX": 200
-                    }
-                },
-                {
-                    "value": "layer",
-                    "label": "Layered",
-                    "params": {
-                        "permMode": "perLayer",
-                        "layerPermsX": [
-                            50,
-                            200,
-                            10,
-                            400,
-                            50
+                    "when": {
+                        "geo": "1d"
+                    },
+                    "disable": {
+                        "grav": [
+                            "on"
+                        ],
+                        "rock": [
+                            "layer"
+                        ],
+                        "well": [
+                            "center",
+                            "offctr"
                         ]
                     }
                 },
                 {
-                    "value": "rand",
-                    "label": "Random",
-                    "params": {
-                        "permMode": "random",
-                        "minPerm": 10,
-                        "maxPerm": 500
+                    "when": {
+                        "geo": "2dxz"
+                    },
+                    "disable": {
+                        "well": [
+                            "corner",
+                            "center",
+                            "offctr"
+                        ]
+                    },
+                    "note": "2D XZ implies side-to-side flooding"
+                },
+                {
+                    "when": {},
+                    "disable": {
+                        "well": [
+                            "e2e"
+                        ],
+                        "geo": [
+                            "2dxz"
+                        ]
                     }
+                },
+                {
+                    "when": {
+                        "rock": "uni"
+                    },
+                    "disable": {},
+                    "note": "Always allowed"
+                },
+                {
+                    "when": {
+                        "geo": [
+                            "2dxz",
+                            "2dxy",
+                            "3d"
+                        ]
+                    },
+                    "disable": {
+                        "grid": [
+                            "12",
+                            "24",
+                            "48",
+                            "96"
+                        ],
+                        "dt": [
+                            "5d",
+                            "1d",
+                            "025d"
+                        ]
+                    },
+                    "note": "Pragmatic limits: run varying grid/dt only on 1D"
                 }
             ]
         },
-        {
-            "key": "grav",
-            "label": "Gravity",
-            "options": [
+        "wf": {
+            "baseParams": {
+                "injectorEnabled": true,
+                "analyticalSolutionMode": "waterflood",
+                "steps": 50,
+                "delta_t_days": 0.5
+            },
+            "dimensions": [
                 {
-                    "value": "off",
-                    "label": "Off",
-                    "params": {
-                        "gravityEnabled": false
+                    "key": "geo",
+                    "label": "Geometry",
+                    "options": [
+                        {
+                            "value": "1d",
+                            "label": "1D",
+                            "params": {
+                                "nx": 48,
+                                "ny": 1,
+                                "nz": 1,
+                                "cellDx": 10,
+                                "cellDy": 10,
+                                "cellDz": 5
+                            }
+                        },
+                        {
+                            "value": "2dxz",
+                            "label": "2D X-Z (Cross Section)",
+                            "params": {
+                                "nx": 21,
+                                "ny": 1,
+                                "nz": 5,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 5
+                            }
+                        },
+                        {
+                            "value": "2dxy",
+                            "label": "2D X-Y (Areal)",
+                            "params": {
+                                "nx": 21,
+                                "ny": 21,
+                                "nz": 1,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 10
+                            }
+                        },
+                        {
+                            "value": "3d",
+                            "label": "3D",
+                            "params": {
+                                "nx": 11,
+                                "ny": 11,
+                                "nz": 5,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 5
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "well",
+                    "label": "Well Position",
+                    "options": [
+                        {
+                            "value": "e2e",
+                            "label": "End-to-End"
+                        },
+                        {
+                            "value": "corner",
+                            "label": "Corner"
+                        },
+                        {
+                            "value": "center",
+                            "label": "Center"
+                        },
+                        {
+                            "value": "offctr",
+                            "label": "Off-Center"
+                        }
+                    ]
+                },
+                {
+                    "key": "rock",
+                    "label": "Rock",
+                    "options": [
+                        {
+                            "value": "uni",
+                            "label": "Uniform",
+                            "params": {
+                                "permMode": "uniform",
+                                "uniformPermX": 200
+                            }
+                        },
+                        {
+                            "value": "layer",
+                            "label": "Layered",
+                            "params": {
+                                "permMode": "perLayer",
+                                "layerPermsX": [
+                                    50,
+                                    200,
+                                    10,
+                                    400,
+                                    50
+                                ]
+                            }
+                        },
+                        {
+                            "value": "rand",
+                            "label": "Random",
+                            "params": {
+                                "permMode": "random",
+                                "minPerm": 10,
+                                "maxPerm": 500
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "grav",
+                    "label": "Gravity",
+                    "options": [
+                        {
+                            "value": "off",
+                            "label": "Off",
+                            "params": {
+                                "gravityEnabled": false
+                            }
+                        },
+                        {
+                            "value": "on",
+                            "label": "On",
+                            "params": {
+                                "gravityEnabled": true,
+                                "useCapillaryGravity": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "cap",
+                    "label": "Capillary",
+                    "options": [
+                        {
+                            "value": "off",
+                            "label": "Off",
+                            "params": {
+                                "capillaryEnabled": false
+                            }
+                        },
+                        {
+                            "value": "on",
+                            "label": "On",
+                            "params": {
+                                "capillaryEnabled": true,
+                                "capillaryPEntry": 0.5,
+                                "useCapillaryGravity": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "fluid",
+                    "label": "Fluids",
+                    "options": [
+                        {
+                            "value": "std",
+                            "label": "Standard"
+                        },
+                        {
+                            "value": "heavy",
+                            "label": "Heavy Oil",
+                            "params": {
+                                "mu_o": 10
+                            }
+                        },
+                        {
+                            "value": "light",
+                            "label": "Light Oil",
+                            "params": {
+                                "mu_o": 0.3
+                            }
+                        },
+                        {
+                            "value": "hicomp",
+                            "label": "High Comp",
+                            "params": {
+                                "c_o": 0.00005
+                            }
+                        },
+                        {
+                            "value": "locomp",
+                            "label": "Low Comp",
+                            "params": {
+                                "c_o": 0.000001
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "grid",
+                    "label": "Grid Density",
+                    "options": [
+                        {
+                            "value": "12",
+                            "label": "12 cells",
+                            "params": {
+                                "nx": 12
+                            }
+                        },
+                        {
+                            "value": "24",
+                            "label": "24 cells",
+                            "params": {
+                                "nx": 24
+                            }
+                        },
+                        {
+                            "value": "48",
+                            "label": "48 cells",
+                            "params": {
+                                "nx": 48
+                            }
+                        },
+                        {
+                            "value": "96",
+                            "label": "96 cells",
+                            "params": {
+                                "nx": 96
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "dt",
+                    "label": "Timestep",
+                    "options": [
+                        {
+                            "value": "5d",
+                            "label": "5 days",
+                            "params": {
+                                "delta_t_days": 5,
+                                "steps": 10
+                            }
+                        },
+                        {
+                            "value": "1d",
+                            "label": "1 day",
+                            "params": {
+                                "delta_t_days": 1,
+                                "steps": 50
+                            }
+                        },
+                        {
+                            "value": "05d",
+                            "label": "0.5 days",
+                            "params": {
+                                "delta_t_days": 0.5,
+                                "steps": 50
+                            }
+                        },
+                        {
+                            "value": "025d",
+                            "label": "0.25 days",
+                            "params": {
+                                "delta_t_days": 0.25,
+                                "steps": 100
+                            }
+                        }
+                    ]
+                }
+            ],
+            "disabilityRules": [
+                {
+                    "when": {
+                        "geo": "1d"
+                    },
+                    "disable": {
+                        "grav": [
+                            "on"
+                        ],
+                        "rock": [
+                            "layer"
+                        ],
+                        "well": [
+                            "center",
+                            "offctr"
+                        ]
                     }
                 },
                 {
-                    "value": "on",
-                    "label": "On",
-                    "params": {
-                        "gravityEnabled": true,
-                        "useCapillaryGravity": true
+                    "when": {
+                        "geo": "2dxz"
+                    },
+                    "disable": {
+                        "well": [
+                            "corner",
+                            "center",
+                            "offctr"
+                        ]
+                    },
+                    "note": "2D XZ implies side-to-side flooding"
+                },
+                {
+                    "when": {},
+                    "disable": {
+                        "geo": [
+                            "2dxy",
+                            "3d"
+                        ]
+                    },
+                    "reason": "Use Simulation for areal/3D flooding"
+                },
+                {
+                    "when": {
+                        "geo": "1d"
+                    },
+                    "disable": {
+                        "well": [
+                            "corner",
+                            "center",
+                            "offctr"
+                        ]
                     }
+                },
+                {
+                    "when": {
+                        "rock": "uni"
+                    },
+                    "disable": {},
+                    "note": "Always allowed"
+                },
+                {
+                    "when": {
+                        "geo": [
+                            "2dxz",
+                            "2dxy",
+                            "3d"
+                        ]
+                    },
+                    "disable": {
+                        "grid": [
+                            "12",
+                            "24",
+                            "48",
+                            "96"
+                        ],
+                        "dt": [
+                            "5d",
+                            "1d",
+                            "025d"
+                        ]
+                    },
+                    "note": "Pragmatic limits: run varying grid/dt only on 1D"
                 }
             ]
         },
-        {
-            "key": "cap",
-            "label": "Capillary",
-            "options": [
+        "sim": {
+            "baseParams": {
+                "injectorEnabled": true,
+                "analyticalSolutionMode": "none",
+                "steps": 30,
+                "delta_t_days": 0.5
+            },
+            "dimensions": [
                 {
-                    "value": "off",
-                    "label": "Off",
-                    "params": {
-                        "capillaryEnabled": false
+                    "key": "geo",
+                    "label": "Geometry",
+                    "options": [
+                        {
+                            "value": "1d",
+                            "label": "1D",
+                            "params": {
+                                "nx": 48,
+                                "ny": 1,
+                                "nz": 1,
+                                "cellDx": 10,
+                                "cellDy": 10,
+                                "cellDz": 5
+                            }
+                        },
+                        {
+                            "value": "2dxz",
+                            "label": "2D X-Z (Cross Section)",
+                            "params": {
+                                "nx": 21,
+                                "ny": 1,
+                                "nz": 5,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 5
+                            }
+                        },
+                        {
+                            "value": "2dxy",
+                            "label": "2D X-Y (Areal)",
+                            "params": {
+                                "nx": 21,
+                                "ny": 21,
+                                "nz": 1,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 10
+                            }
+                        },
+                        {
+                            "value": "3d",
+                            "label": "3D",
+                            "params": {
+                                "nx": 11,
+                                "ny": 11,
+                                "nz": 5,
+                                "cellDx": 20,
+                                "cellDy": 20,
+                                "cellDz": 5
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "well",
+                    "label": "Well Position",
+                    "options": [
+                        {
+                            "value": "e2e",
+                            "label": "End-to-End"
+                        },
+                        {
+                            "value": "corner",
+                            "label": "Corner"
+                        },
+                        {
+                            "value": "center",
+                            "label": "Center"
+                        },
+                        {
+                            "value": "offctr",
+                            "label": "Off-Center"
+                        }
+                    ]
+                },
+                {
+                    "key": "rock",
+                    "label": "Rock",
+                    "options": [
+                        {
+                            "value": "uni",
+                            "label": "Uniform",
+                            "params": {
+                                "permMode": "uniform",
+                                "uniformPermX": 200
+                            }
+                        },
+                        {
+                            "value": "layer",
+                            "label": "Layered",
+                            "params": {
+                                "permMode": "perLayer",
+                                "layerPermsX": [
+                                    50,
+                                    200,
+                                    10,
+                                    400,
+                                    50
+                                ]
+                            }
+                        },
+                        {
+                            "value": "rand",
+                            "label": "Random",
+                            "params": {
+                                "permMode": "random",
+                                "minPerm": 10,
+                                "maxPerm": 500
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "grav",
+                    "label": "Gravity",
+                    "options": [
+                        {
+                            "value": "off",
+                            "label": "Off",
+                            "params": {
+                                "gravityEnabled": false
+                            }
+                        },
+                        {
+                            "value": "on",
+                            "label": "On",
+                            "params": {
+                                "gravityEnabled": true,
+                                "useCapillaryGravity": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "cap",
+                    "label": "Capillary",
+                    "options": [
+                        {
+                            "value": "off",
+                            "label": "Off",
+                            "params": {
+                                "capillaryEnabled": false
+                            }
+                        },
+                        {
+                            "value": "on",
+                            "label": "On",
+                            "params": {
+                                "capillaryEnabled": true,
+                                "capillaryPEntry": 0.5,
+                                "useCapillaryGravity": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "fluid",
+                    "label": "Fluids",
+                    "options": [
+                        {
+                            "value": "std",
+                            "label": "Standard"
+                        },
+                        {
+                            "value": "heavy",
+                            "label": "Heavy Oil",
+                            "params": {
+                                "mu_o": 10
+                            }
+                        },
+                        {
+                            "value": "light",
+                            "label": "Light Oil",
+                            "params": {
+                                "mu_o": 0.3
+                            }
+                        },
+                        {
+                            "value": "hicomp",
+                            "label": "High Comp",
+                            "params": {
+                                "c_o": 0.00005
+                            }
+                        },
+                        {
+                            "value": "locomp",
+                            "label": "Low Comp",
+                            "params": {
+                                "c_o": 0.000001
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "grid",
+                    "label": "Grid Density",
+                    "options": [
+                        {
+                            "value": "12",
+                            "label": "12 cells",
+                            "params": {
+                                "nx": 12
+                            }
+                        },
+                        {
+                            "value": "24",
+                            "label": "24 cells",
+                            "params": {
+                                "nx": 24
+                            }
+                        },
+                        {
+                            "value": "48",
+                            "label": "48 cells",
+                            "params": {
+                                "nx": 48
+                            }
+                        },
+                        {
+                            "value": "96",
+                            "label": "96 cells",
+                            "params": {
+                                "nx": 96
+                            }
+                        }
+                    ]
+                },
+                {
+                    "key": "dt",
+                    "label": "Timestep",
+                    "options": [
+                        {
+                            "value": "5d",
+                            "label": "5 days",
+                            "params": {
+                                "delta_t_days": 5,
+                                "steps": 10
+                            }
+                        },
+                        {
+                            "value": "1d",
+                            "label": "1 day",
+                            "params": {
+                                "delta_t_days": 1,
+                                "steps": 50
+                            }
+                        },
+                        {
+                            "value": "05d",
+                            "label": "0.5 days",
+                            "params": {
+                                "delta_t_days": 0.5,
+                                "steps": 50
+                            }
+                        },
+                        {
+                            "value": "025d",
+                            "label": "0.25 days",
+                            "params": {
+                                "delta_t_days": 0.25,
+                                "steps": 100
+                            }
+                        }
+                    ]
+                }
+            ],
+            "disabilityRules": [
+                {
+                    "when": {
+                        "geo": "1d"
+                    },
+                    "disable": {
+                        "grav": [
+                            "on"
+                        ],
+                        "rock": [
+                            "layer"
+                        ],
+                        "well": [
+                            "center",
+                            "offctr"
+                        ]
                     }
                 },
                 {
-                    "value": "on",
-                    "label": "On",
-                    "params": {
-                        "capillaryEnabled": true,
-                        "capillaryPEntry": 0.5,
-                        "useCapillaryGravity": true
-                    }
+                    "when": {
+                        "geo": "2dxz"
+                    },
+                    "disable": {
+                        "well": [
+                            "corner",
+                            "center",
+                            "offctr"
+                        ]
+                    },
+                    "note": "2D XZ implies side-to-side flooding"
+                },
+                {
+                    "when": {
+                        "geo": "1d"
+                    },
+                    "disable": {}
+                },
+                {
+                    "when": {
+                        "rock": "uni"
+                    },
+                    "disable": {},
+                    "note": "Always allowed"
+                },
+                {
+                    "when": {
+                        "geo": [
+                            "2dxz",
+                            "2dxy",
+                            "3d"
+                        ]
+                    },
+                    "disable": {
+                        "grid": [
+                            "12",
+                            "24",
+                            "48",
+                            "96"
+                        ],
+                        "dt": [
+                            "5d",
+                            "1d",
+                            "025d"
+                        ]
+                    },
+                    "note": "Pragmatic limits: run varying grid/dt only on 1D"
                 }
             ]
         },
-        {
-            "key": "fluid",
-            "label": "Fluids",
-            "options": [
+        "benchmark": {
+            "baseParams": {},
+            "dimensions": [
                 {
-                    "value": "std",
-                    "label": "Standard"
-                },
-                {
-                    "value": "heavy",
-                    "label": "Heavy Oil",
-                    "params": {
-                        "mu_o": 10.0
-                    }
-                },
-                {
-                    "value": "light",
-                    "label": "Light Oil",
-                    "params": {
-                        "mu_o": 0.3
-                    }
-                },
-                {
-                    "value": "hicomp",
-                    "label": "High Comp",
-                    "params": {
-                        "c_o": 5e-5
-                    }
-                },
-                {
-                    "value": "locomp",
-                    "label": "Low Comp",
-                    "params": {
-                        "c_o": 1e-6
-                    }
+                    "key": "benchmarkId",
+                    "label": "Benchmark Case",
+                    "options": [
+                        {
+                            "value": "spe_bl_a",
+                            "label": "SPE BL Case A"
+                        },
+                        {
+                            "value": "spe_bl_b",
+                            "label": "SPE BL Case B"
+                        },
+                        {
+                            "value": "dietz_sq_center",
+                            "label": "Dietz Square Center"
+                        },
+                        {
+                            "value": "dietz_sq_corner",
+                            "label": "Dietz Square Corner"
+                        },
+                        {
+                            "value": "fetkovich_exp",
+                            "label": "Fetkovich Exponential"
+                        }
+                    ]
                 }
-            ]
-        },
-        {
-            "key": "grid",
-            "label": "Grid Density",
-            "options": [
-                {
-                    "value": "12",
-                    "label": "12 cells",
-                    "params": {
-                        "nx": 12
-                    }
-                },
-                {
-                    "value": "24",
-                    "label": "24 cells",
-                    "params": {
-                        "nx": 24
-                    }
-                },
-                {
-                    "value": "48",
-                    "label": "48 cells",
-                    "params": {
-                        "nx": 48
-                    }
-                },
-                {
-                    "value": "96",
-                    "label": "96 cells",
-                    "params": {
-                        "nx": 96
-                    }
-                }
-            ]
-        },
-        {
-            "key": "dt",
-            "label": "Timestep",
-            "options": [
-                {
-                    "value": "5d",
-                    "label": "5 days",
-                    "params": {
-                        "delta_t_days": 5.0,
-                        "steps": 10
-                    }
-                },
-                {
-                    "value": "1d",
-                    "label": "1 day",
-                    "params": {
-                        "delta_t_days": 1.0,
-                        "steps": 50
-                    }
-                },
-                {
-                    "value": "05d",
-                    "label": "0.5 days",
-                    "params": {
-                        "delta_t_days": 0.5,
-                        "steps": 50
-                    }
-                },
-                {
-                    "value": "025d",
-                    "label": "0.25 days",
-                    "params": {
-                        "delta_t_days": 0.25,
-                        "steps": 100
-                    }
-                }
-            ]
-        },
-        {
-            "key": "benchmarkId",
-            "label": "Benchmark Case",
-            "options": [
-                {
-                    "value": "spe_bl_a",
-                    "label": "SPE BL Case A"
-                },
-                {
-                    "value": "spe_bl_b",
-                    "label": "SPE BL Case B"
-                },
-                {
-                    "value": "dietz_sq_center",
-                    "label": "Dietz Square Center"
-                },
-                {
-                    "value": "dietz_sq_corner",
-                    "label": "Dietz Square Corner"
-                },
-                {
-                    "value": "fetkovich_exp",
-                    "label": "Fetkovich Exponential"
-                }
-            ]
+            ],
+            "disabilityRules": []
         }
-    ],
-    "disabilityRules": [
-        {
-            "when": {
-                "geo": "1d"
-            },
-            "disable": {
-                "grav": [
-                    "on"
-                ],
-                "rock": [
-                    "layer"
-                ],
-                "well": [
-                    "center",
-                    "offctr"
-                ]
-            }
-        },
-        {
-            "when": {
-                "geo": "2dxz"
-            },
-            "disable": {
-                "well": [
-                    "corner",
-                    "center",
-                    "offctr"
-                ]
-            },
-            "note": "2D XZ implies side-to-side flooding"
-        },
-        {
-            "when": {
-                "mode": "wf"
-            },
-            "disable": {
-                "geo": [
-                    "2dxy",
-                    "3d"
-                ]
-            },
-            "reason": "Use Simulation for areal/3D flooding"
-        },
-        {
-            "when": {
-                "mode": "wf",
-                "geo": "1d"
-            },
-            "disable": {
-                "well": [
-                    "corner",
-                    "center",
-                    "offctr"
-                ]
-            }
-        },
-        {
-            "when": {
-                "mode": "dep"
-            },
-            "disable": {
-                "well": [
-                    "e2e"
-                ],
-                "geo": [
-                    "2dxz"
-                ]
-            }
-        },
-        {
-            "when": {
-                "mode": "sim",
-                "geo": "1d"
-            },
-            "disable": {}
-        },
-        {
-            "when": {
-                "rock": "uni"
-            },
-            "disable": {},
-            "note": "Always allowed"
-        },
-        {
-            "when": {
-                "geo": [
-                    "2dxz",
-                    "2dxy",
-                    "3d"
-                ]
-            },
-            "disable": {
-                "grid": [
-                    "12",
-                    "24",
-                    "48",
-                    "96"
-                ],
-                "dt": [
-                    "5d",
-                    "1d",
-                    "025d"
-                ]
-            },
-            "note": "Pragmatic limits: run varying grid/dt only on 1D"
-        }
-    ],
+    },
     "benchmarks": [
         {
             "key": "spe_bl_a",
@@ -522,17 +1172,17 @@
                 "producerControlMode": "pressure",
                 "producerBhp": 1000,
                 "mu_w": 0.5,
-                "mu_o": 1.0,
+                "mu_o": 1,
                 "n_w": 2,
                 "n_o": 2,
-                "s_wc": 0.0,
-                "s_or": 0.0,
-                "k_rw_max": 1.0,
-                "k_ro_max": 1.0,
+                "s_wc": 0,
+                "s_or": 0,
+                "k_rw_max": 1,
+                "k_ro_max": 1,
                 "permMode": "uniform",
                 "uniformPermX": 2000,
                 "steps": 100,
-                "delta_t_days": 1.0,
+                "delta_t_days": 1,
                 "gravityEnabled": false,
                 "capillaryEnabled": false,
                 "injectorI": 0,
@@ -570,7 +1220,7 @@
                 "permMode": "uniform",
                 "uniformPermX": 2000,
                 "steps": 100,
-                "delta_t_days": 1.0,
+                "delta_t_days": 1,
                 "gravityEnabled": false,
                 "capillaryEnabled": false,
                 "injectorI": 0,
@@ -599,7 +1249,7 @@
                 "permMode": "uniform",
                 "uniformPermX": 50,
                 "steps": 50,
-                "delta_t_days": 1.0,
+                "delta_t_days": 1,
                 "producerI": 10,
                 "producerJ": 10
             }
@@ -624,7 +1274,7 @@
                 "permMode": "uniform",
                 "uniformPermX": 50,
                 "steps": 50,
-                "delta_t_days": 1.0,
+                "delta_t_days": 1,
                 "producerI": 0,
                 "producerJ": 0
             }
@@ -649,7 +1299,7 @@
                 "permMode": "uniform",
                 "uniformPermX": 20,
                 "steps": 100,
-                "delta_t_days": 5.0,
+                "delta_t_days": 5,
                 "producerI": 47,
                 "producerJ": 0
             }

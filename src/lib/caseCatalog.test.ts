@@ -4,7 +4,8 @@ import { catalog, buildCaseKey, getDefaultToggles, getDisabledOptions } from './
 describe('caseCatalog Dynamic Catalog', () => {
   it('has a valid catalog loaded', () => {
     expect(catalog.version).toBeDefined();
-    expect(catalog.dimensions.length).toBeGreaterThan(0);
+    expect(Object.keys(catalog.modes).length).toBeGreaterThan(0);
+    expect(catalog.modes.dep.dimensions.length).toBeGreaterThan(0);
   });
 
   it('generates a case key deterministically', () => {

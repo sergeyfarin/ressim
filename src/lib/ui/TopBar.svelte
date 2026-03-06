@@ -1,7 +1,12 @@
 <script lang="ts">
   import Button from "../components/ui/Button.svelte";
   import FilterCard from "./FilterCard.svelte";
-  import { type CaseMode, catalog, type ToggleState } from "../caseCatalog";
+  import {
+    type CaseMode,
+    catalog,
+    getModeDimensions,
+    type ToggleState,
+  } from "../caseCatalog";
   import { getFacetOverrideGroups } from "../stores/phase2PresetContract";
 
   let {
@@ -57,19 +62,7 @@
       : null,
   );
 
-  const activeModeDimensions = $derived(
-    catalog.dimensions.filter((dim) => {
-      // Benchmark mode only shows benchmarks picker
-      if (activeMode === "benchmark" && dim.key !== "benchmarkId") return false;
-      if (dim.key === "benchmarkId" && activeMode !== "benchmark") return false;
-      // Dimensions shouldn't include 'mode', it's handled via the top bar tabs
-      if (dim.key === "mode") return false;
-
-      // Filter out options that belong to disabled options globally if they are totally disabled?
-      // Not globally, keep the dimension card even if some are disabled.
-      return true;
-    }),
-  );
+  const activeModeDimensions = $derived(getModeDimensions(activeMode));
 
   function groupsForFacet(dimKey: string): string[] {
     return getFacetOverrideGroups(dimKey);

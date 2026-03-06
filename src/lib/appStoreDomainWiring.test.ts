@@ -12,9 +12,8 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/const\s+runtime\s*=\s*store\.runtimeState\s*;/);
   });
 
-  it('routes clone and override-reset flows via domain APIs', () => {
+  it('routes clone flow via domain API', () => {
     expect(appSource).toMatch(/scenario\.cloneActiveBenchmarkToCustom\(\)/);
-    expect(appSource).toMatch(/params\.resetOverrideGroupsToBase\(groupKeys\)/);
   });
 
   it('avoids transitional App-side contract assembly logic', () => {

@@ -30,17 +30,35 @@ export type BenchmarkEntry = {
     params: Record<string, any>;
 };
 
+export type ModeCatalog = {
+    baseParams: Record<string, any>;
+    dimensions: Dimension[];
+    disabilityRules: DisabilityRule[];
+};
+
 export type CatalogSchema = {
     version: number;
     defaults: Record<string, any>;
-    dimensions: Dimension[];
-    disabilityRules: DisabilityRule[];
+    modes: Record<CaseMode, ModeCatalog>;
     benchmarks: BenchmarkEntry[];
 };
 
 export const catalog: CatalogSchema = catalogDataRaw as unknown as CatalogSchema;
 
 export type ToggleState = Record<string, string>;
+
+function normalizeMode(mode: string | undefined): CaseMode {
+    if (mode === 'wf' || mode === 'sim' || mode === 'benchmark') return mode;
+    return 'dep';
+}
+
+export function getModeCatalog(mode: string | undefined): ModeCatalog {
+    return catalog.modes[normalizeMode(mode)] ?? catalog.modes.dep;
+}
+
+export function getModeDimensions(mode: string | undefined): Dimension[] {
+    return getModeCatalog(mode).dimensions;
+}
 
 // --- Helper Functions ---
 
@@ -83,16 +101,19 @@ export function computeWellPositions(params: Record<string, any>, geo: string, w
  * Composes the final physical parameters by overlaying defaults, all active dimension params, and derived well positions.
  */
 export function composeCaseParams(toggles: ToggleState): Record<string, any> {
-    if (toggles.mode === 'benchmark') {
+    const mode = normalizeMode(toggles.mode);
+
+    if (mode === 'benchmark') {
         const bench = catalog.benchmarks.find(b => b.key === toggles.benchmarkId);
         if (bench) return { ...catalog.defaults, ...bench.params };
         return catalog.defaults;
     }
 
-    let params = { ...catalog.defaults };
+    const modeCatalog = getModeCatalog(mode);
+    let params = { ...catalog.defaults, ...modeCatalog.baseParams };
 
     // Overlay order strictly follows JSON dimension order
-    for (const dim of catalog.dimensions) {
+    for (const dim of modeCatalog.dimensions) {
         const val = toggles[dim.key];
         if (val) {
             const opt = dim.options.find(o => o.value === val);
@@ -107,17 +128,22 @@ export function composeCaseParams(toggles: ToggleState): Record<string, any> {
 }
 
 /**
- * Builds the deterministic key used to find the pre-run file.
+ * Builds a deterministic key for identifying the selected scenario.
  */
 export function buildCaseKey(toggles: ToggleState): string {
-    if (toggles.mode === 'benchmark') {
+    const mode = normalizeMode(toggles.mode);
+
+    if (mode === 'benchmark') {
         return `bench_${toggles.benchmarkId.replace(/_/g, '-')}`;
     }
 
-    // Always use the dimensions in the order defined in catalog
-    return catalog.dimensions
-        .filter(d => d.key !== 'benchmarkId')
+    const modeCatalog = getModeCatalog(mode);
+
+    // Keep mode prefix stable while using mode-local dimension order.
+    return [`mode-${mode}`]
+        .concat(modeCatalog.dimensions
         .map(d => `${d.key}-${toggles[d.key] || d.options[0].value}`)
+        )
         .join('_');
 }
 
@@ -126,13 +152,20 @@ export function buildCaseKey(toggles: ToggleState): string {
  * Structure: { [dimensionKey]: { [optionValue]: "Reason string" } }
  */
 export function getDisabledOptions(toggles: ToggleState): Record<string, Record<string, string>> {
-    const disabled: Record<string, Record<string, string>> = {};
+    const mode = normalizeMode(toggles.mode);
+    if (mode === 'benchmark') return {};
 
-    for (const rule of catalog.disabilityRules) {
+    const modeCatalog = getModeCatalog(mode);
+    const disabled: Record<string, Record<string, string>> = {};
+    const dimensionDefaults = Object.fromEntries(
+        modeCatalog.dimensions.map((dim) => [dim.key, dim.options[0]?.value]),
+    );
+
+    for (const rule of modeCatalog.disabilityRules) {
         // Check if `when` condition is met
         let conditionMet = true;
         for (const [key, expectedValue] of Object.entries(rule.when)) {
-            const actualValue = toggles[key] || catalog.dimensions.find(d => d.key === key)?.options[0].value;
+            const actualValue = toggles[key] || dimensionDefaults[key];
             if (Array.isArray(expectedValue)) {
                 if (!expectedValue.includes(actualValue as string)) {
                     conditionMet = false;
@@ -172,13 +205,14 @@ export function getDisabledOptions(toggles: ToggleState): Record<string, Record<
  */
 export function stabilizeToggleState(input: ToggleState): ToggleState {
     const toggles: ToggleState = { ...input };
-    const maxPasses = Math.max(1, catalog.dimensions.length * 3);
+    const modeCatalog = getModeCatalog(toggles.mode);
+    const maxPasses = Math.max(1, modeCatalog.dimensions.length * 3);
 
     for (let pass = 0; pass < maxPasses; pass++) {
         const disabled = getDisabledOptions(toggles);
         let changed = false;
 
-        for (const dim of catalog.dimensions) {
+        for (const dim of modeCatalog.dimensions) {
             if (!dim.options.length) continue;
 
             const selected = toggles[dim.key] ?? dim.options[0].value;
@@ -204,14 +238,11 @@ export function stabilizeToggleState(input: ToggleState): ToggleState {
  * Generate a default valid toggle state.
  */
 export function getDefaultToggles(mode: CaseMode = 'dep'): ToggleState {
-    const toggles: ToggleState = {};
-    for (const dim of catalog.dimensions) {
-        if (dim.key === 'mode') {
-            toggles[dim.key] = mode;
-        } else {
-            const defaultOpt = dim.options.find(o => o.default);
-            toggles[dim.key] = (defaultOpt ?? dim.options[0]).value;
-        }
+    const resolvedMode = normalizeMode(mode);
+    const toggles: ToggleState = { mode: resolvedMode };
+    for (const dim of getModeDimensions(resolvedMode)) {
+        const defaultOpt = dim.options.find(o => o.default);
+        toggles[dim.key] = (defaultOpt ?? dim.options[0]).value;
     }
 
     return stabilizeToggleState(toggles);

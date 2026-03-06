@@ -47,31 +47,6 @@ function parseLayerValues(value: unknown): number[] {
         .filter((v) => Number.isFinite(v) && v > 0);
 }
 
-function normalizeRateHistory(raw: unknown): RateHistoryPoint[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.map((entry: Record<string, unknown>, idx: number) => {
-        const point = entry && typeof entry === 'object' ? entry : {};
-        const fallbackTime = idx > 0 ? idx : 0;
-        const numeric = (value: unknown, fallback = 0) => {
-            const next = Number(value);
-            return Number.isFinite(next) ? next : fallback;
-        };
-        return {
-            ...point,
-            time: numeric(point.time, fallbackTime),
-            total_production_oil: numeric(point.total_production_oil),
-            total_production_liquid: numeric(point.total_production_liquid),
-            total_production_liquid_reservoir: numeric(point.total_production_liquid_reservoir),
-            total_injection: numeric(point.total_injection),
-            total_injection_reservoir: numeric(point.total_injection_reservoir),
-            material_balance_error_m3: numeric(point.material_balance_error_m3),
-            avg_reservoir_pressure: numeric(point.avg_reservoir_pressure),
-            avg_pressure: numeric(point.avg_pressure),
-            avg_water_saturation: numeric(point.avg_water_saturation),
-        };
-    });
-}
-
 function normalizeLayerArray(values: number[], fallback: number, length: number): number[] {
     return Array.from({ length }, (_, i) => {
         const value = Number(values[i]);
@@ -206,11 +181,6 @@ export function createSimulationStore() {
     let activeMode = $state<CaseMode>('dep');
     let activeCase = $state('');
     let isModified = $state(false);
-    let preRunData: any = $state(null);
-    let preRunLoading = $state(false);
-    let preRunWarning = $state('');
-    let preRunLoadToken = $state(0);
-    let preRunContinuationAvailable = $state(false);
 
     let toggles = $state<ToggleState>(getDefaultToggles('dep'));
     let benchmarkProvenance: BenchmarkProvenance | null = $state(null);
@@ -731,10 +701,6 @@ export function createSimulationStore() {
         if (!customSubCase) return false;
         const nextSignature = buildCaseSignature();
         if (nextSignature === baseCaseSignature) return false;
-        preRunLoadToken += 1;
-        preRunData = null;
-        preRunWarning = '';
-        preRunContinuationAvailable = false;
         activeCase = customSubCase.key;
         baseCaseSignature = nextSignature;
         return true;
@@ -767,7 +733,6 @@ export function createSimulationStore() {
         modelReinitNotice = '';
         runtimeError = '';
         runtimeWarning = '';
-        preRunContinuationAvailable = false;
         if (switchedToCustomSubCase) {
             runtimeWarning = 'Preset modified. Reinitialized as a custom sub-case.';
         }
@@ -781,14 +746,6 @@ export function createSimulationStore() {
     }
 
     function runSimulationBatch(batchSteps: number, batchHistoryInterval: number) {
-        // Pre-run payloads hydrate visualization only; always re-init before running.
-        if (preRunContinuationAvailable) {
-            preRunContinuationAvailable = false;
-            runtimeWarning = '';
-            const initialized = initSimulator({ silent: true });
-            if (!initialized) return;
-        }
-
         // If model inputs changed, create a fresh simulator first, then run this batch.
         if (modelNeedsReinit) {
             const initialized = initSimulator({ silent: true });
@@ -848,18 +805,13 @@ export function createSimulationStore() {
     // ===== Case Navigation =====
 
     function handleModeChange(mode: CaseMode) {
-        preRunLoadToken += 1;
         isModified = false;
         benchmarkProvenance = null;
         activeMode = mode;
         toggles = getDefaultToggles(mode);
         baseCaseSignature = '';
-        preRunData = null;
-        preRunWarning = '';
-        preRunLoading = false;
-        preRunContinuationAvailable = false;
 
-        handleToggleChange(); // applies defaults and pre-runs
+        handleToggleChange();
     }
 
     function handleToggleChange(dimKey?: string, value?: string) {
@@ -873,28 +825,15 @@ export function createSimulationStore() {
         activeCase = newKey;
         isModified = false;
         benchmarkProvenance = null;
-        preRunWarning = '';
 
         applyCaseParams(composeCaseParams(toggles));
         baseCaseSignature = buildCaseSignature();
-        if (activeMode === 'benchmark') {
-            loadPreRunCase(newKey);
-        } else {
-            preRunLoadToken += 1;
-            preRunData = null;
-            preRunLoading = false;
-            preRunContinuationAvailable = false;
-        }
     }
 
     function handleParamEdit() {
         if (isModified) return;
-        preRunLoadToken += 1;
         isModified = true;
         baseCaseSignature = '';
-        preRunData = null;
-        preRunWarning = '';
-        preRunContinuationAvailable = false;
     }
 
     function cloneActiveBenchmarkToCustom(): boolean {
@@ -1012,129 +951,6 @@ export function createSimulationStore() {
         modelReinitNotice = '';
     }
 
-    async function loadPreRunCase(key: string) {
-        if (activeMode !== 'benchmark') {
-            preRunLoadToken += 1;
-            preRunData = null;
-            preRunLoading = false;
-            preRunWarning = '';
-            preRunContinuationAvailable = false;
-            return;
-        }
-
-        const requestToken = ++preRunLoadToken;
-        preRunLoading = true;
-        preRunData = null;
-        preRunWarning = '';
-        preRunContinuationAvailable = false;
-        try {
-            const url = `${import.meta.env.BASE_URL}cases/prerun/${key}.json.gz`;
-            const resp = await fetch(url, { cache: 'no-store' });
-            if (requestToken !== preRunLoadToken || key !== activeCase || isModified) return;
-            if (!resp.ok) { preRunData = null; return; }
-
-            let data;
-            const fallbackResp = resp.clone();
-            try {
-                // Try native JSON parse. If the server sent Content-Encoding: gzip,
-                // the browser automatically decompresses it for us.
-                data = await resp.json();
-            } catch (e) {
-                // If the data is raw gzip bytes (e.g. GitHub pages application/gzip),
-                // manual decompression via DecompressionStream is required
-                const ds = new DecompressionStream("gzip");
-                const readable = fallbackResp.body!.pipeThrough(ds);
-                const decoder = new Response(readable);
-                data = await decoder.json();
-            }
-
-            if (requestToken !== preRunLoadToken || key !== activeCase || isModified) return;
-            preRunData = data;
-
-            const expectedCellCount = Math.max(1, Number(nx) * Number(ny) * Number(nz));
-            const loadedHistory = Array.isArray(data.history) ? data.history : [];
-            const loadedFinalGrid: GridState | null = data.finalGrid ? (data.finalGrid as GridState) : null;
-            const validHistoryEntries: HistoryEntry[] = [];
-            let historyHasMismatches = false;
-            for (let i = 0; i < loadedHistory.length; i++) {
-                const entry = loadedHistory[i];
-                if (!entry.grid || (entry.grid.pressure && entry.grid.pressure.length === expectedCellCount)) {
-                    // Derive sat_oil from sat_water if missing
-                    const grid = entry.grid ?? null;
-                    if (grid && grid.sat_water && !grid.sat_oil) {
-                        grid.sat_oil = grid.sat_water.map((sw: number) => 1 - sw);
-                    }
-                    validHistoryEntries.push({
-                        time: Number(entry.time ?? 0),
-                        grid,
-                        wells: Array.isArray(entry.wells) ? entry.wells : [],
-                        rateHistory: [],
-                        solverWarning: '',
-                        recordHistory: false,
-                    } as HistoryEntry);
-                } else {
-                    historyHasMismatches = true;
-                }
-            }
-            const finalGridMatches = Boolean(
-                loadedFinalGrid && loadedFinalGrid.pressure && loadedFinalGrid.pressure.length === expectedCellCount,
-            );
-            // Derive sat_oil for final grid too
-            if (loadedFinalGrid && loadedFinalGrid.sat_water && !loadedFinalGrid.sat_oil) {
-                (loadedFinalGrid as any).sat_oil = Array.from(loadedFinalGrid.sat_water).map((sw: any) => 1 - sw);
-            }
-
-            history = validHistoryEntries;
-            currentIndex = validHistoryEntries.length - 1;
-
-            const selectedHistoryEntry = currentIndex >= 0 ? validHistoryEntries[currentIndex] : null;
-            const selectedHistoryGrid = selectedHistoryEntry?.grid ?? null;
-
-            if (selectedHistoryGrid && selectedHistoryGrid.pressure && selectedHistoryGrid.pressure.length === expectedCellCount) {
-                gridStateRaw = selectedHistoryGrid;
-                wellStateRaw = selectedHistoryEntry?.wells ?? data.finalWells ?? null;
-                simTime = Number(selectedHistoryEntry?.time ?? data.simTime ?? 0);
-            } else if (finalGridMatches) {
-                gridStateRaw = loadedFinalGrid;
-                wellStateRaw = data.finalWells ?? null;
-                simTime = Number(data.simTime ?? 0);
-            } else {
-                gridStateRaw = null;
-                wellStateRaw = data.finalWells ?? null;
-                simTime = Number(data.simTime ?? 0);
-                preRunWarning = `Pre-run data grid size mismatch for selected case (${nx}×${ny}×${nz}, expected ${expectedCellCount} cells). Re-export case data.`;
-            }
-
-            if (!preRunWarning && historyHasMismatches) {
-                preRunWarning = `Some pre-run history snapshots do not match selected grid size (${nx}×${ny}×${nz}); only valid snapshots were loaded.`;
-            }
-
-            rateHistory = normalizeRateHistory(data.rateHistory);
-            rateHistory.forEach((point) => {
-                if (point.total_production_liquid_reservoir === undefined)
-                    point.total_production_liquid_reservoir = point.total_production_liquid || 0;
-                if (point.total_injection_reservoir === undefined)
-                    point.total_injection_reservoir = point.total_injection || 0;
-                if (point.material_balance_error_m3 === undefined)
-                    point.material_balance_error_m3 = 0;
-            });
-            runCompleted = true;
-            preRunContinuationAvailable = true;
-            runtimeWarning = 'Benchmark pre-run loaded for visualization (charts/3D). Run will re-initialize and start from step 0.';
-            vizRevision += 1;
-        } catch (e) {
-            console.error('Failed to load pre-run data:', e);
-            if (requestToken === preRunLoadToken) {
-                preRunData = null;
-                preRunWarning = 'Failed to load pre-run data for this case.';
-            }
-        } finally {
-            if (requestToken === preRunLoadToken) {
-                preRunLoading = false;
-            }
-        }
-    }
-
     // ===== Public API =====
     const scenarioSelection = {
         get activeMode() { return activeMode; },
@@ -1145,10 +961,6 @@ export function createSimulationStore() {
         get toggles() { return toggles; },
         set toggles(v) { toggles = v; },
         get disabledOptions() { return disabledOptions; },
-        get preRunData() { return preRunData; },
-        get preRunLoading() { return preRunLoading; },
-        get preRunWarning() { return preRunWarning; },
-        get preRunContinuationAvailable() { return preRunContinuationAvailable; },
         handleModeChange,
         handleToggleChange,
         handleParamEdit,

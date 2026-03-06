@@ -98,8 +98,6 @@ export interface WorkerRunPayload {
   rateHistory?: RateHistory[];
 }
 
-/** Payload for pre-run hydration */
-
 // --- Simulator runtime / output shapes ---
 
 export interface GridState {

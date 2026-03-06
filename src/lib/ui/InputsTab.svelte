@@ -434,7 +434,7 @@
 
 {#if readOnly}
   <div class="mt-3 text-xs text-muted-foreground text-center">
-    Viewing pre-run case parameters. Use a facet-level
+    Viewing locked preset parameters. Use a facet-level
     <strong class="text-foreground">Customize</strong>
     action to edit.
   </div>
