@@ -1,3 +1,53 @@
+Selective root-lib audit follow-up (2026-03-06)
+Completed in this slice:
+- Moved the faceted preset catalog files into `src/lib/catalog/`:
+	- `src/lib/catalog/caseCatalog.ts`
+	- `src/lib/catalog/catalog.json`
+	- `src/lib/catalog/caseCatalog.test.ts`
+- Updated imports in mode-panel UI, store, and contract modules to reference the new catalog path.
+- Updated current docs (`README.md`, `TODO.md`, `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md`) to reflect the new location.
+
+Audit decision:
+- No obsolete root-level shared modules were found.
+- Kept `src/lib/simulator-types.ts`, `src/lib/buildCreatePayload.ts`, `src/lib/validateInputs.ts`, `src/lib/warningPolicy.ts`, and `src/lib/create-payload-type.d.ts` at the root because they are cross-cutting types/contracts used across stores, workers, and UI rather than belonging to a single domain folder.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/catalog/caseCatalog.test.ts src/lib/appStoreDomainWiring.test.ts src/lib/ui/modePanelHelpers.test.ts src/lib/stores/phase2PresetContract.test.ts` passed (4 files, 31 tests).
+
+Next active slice:
+- None. Future root-lib cleanup should only move modules when the data/file pair clearly forms its own domain, as the catalog now does.
+
+Selective TypeScript adapter follow-up (2026-03-06)
+Completed in this slice:
+- Removed tiny single-use barrel `src/lib/index.ts`, which only re-exported `src/lib/simulator-types.ts`.
+- Updated `src/lib/visualization/3dview.svelte` to import `GridState`, `SimulatorSnapshot`, `WellState`, and `WellStateEntry` directly from `src/lib/simulator-types.ts`.
+
+Audit decision:
+- Kept `src/lib/create-payload-type.d.ts`; it is a compile-time contract assertion, not a runtime adapter.
+
+Validation run:
+- `npm run typecheck` passed.
+
+Next active slice:
+- None. Use the same rule for future TS cleanup: remove only barrels/adapters with a single consumer and no semantic value.
+
+Selective thin-wrapper follow-up (2026-03-06)
+Completed in this slice:
+- Removed single-use adapter `src/lib/ui/feedback/AnalyticalStatusBanner.svelte`; it only filtered `referenceCaveat` warnings into `WarningPolicyPanel`.
+- Updated `src/App.svelte` to render `WarningPolicyPanel` directly for analytical-only caveats.
+- Updated `src/lib/appStoreDomainWiring.test.ts` to guard the direct warning-surface wiring.
+
+Audit decision:
+- Kept `src/lib/ui/controls/FilterCard.svelte` and `src/lib/ui/cards/BenchmarkResultsCard.svelte`; they still encapsulate reusable structure and styling rather than acting as pure pass-through wrappers.
+
+Validation run:
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/appStoreDomainWiring.test.ts` passed (1 file, 5 tests).
+
+Next active slice:
+- None. Reuse the same selective wrapper-collapse criterion if future UI cleanup resumes.
+
 Phase 1 implementation has started and is now in code with a solid first slice complete.
 
 Completed in this Phase 1 slice

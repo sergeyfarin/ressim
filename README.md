@@ -121,7 +121,7 @@ src/
     ├── workers/                    — Web Worker bridge to the WASM simulator
     ├── simulator-types.ts          — TypeScript interfaces for worker payloads
     ├── buildCreatePayload.ts       — payload builder + tests
-    ├── caseCatalog.ts              — faceted preset catalog + benchmark selectors
+    ├── catalog/                    — faceted preset catalog data, loader logic, and tests
     ├── ui/                         — mode panels, feedback surfaces, controls, cards, and focused section panels
     ├── components/ui/              — primitive UI controls (`Button`, `Card`, `Input`, `Select`, `Collapsible`)
     └── ressim/src/                 — Rust simulator core

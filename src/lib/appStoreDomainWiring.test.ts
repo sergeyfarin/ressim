@@ -32,6 +32,6 @@ describe('App store domain wiring', () => {
   it('avoids transitional App-side contract assembly logic', () => {
     expect(appSource).not.toMatch(/buildBenchmarkCloneProvenance/);
     expect(appSource).not.toMatch(/buildOverrideResetPlan/);
-    expect(appSource).not.toMatch(/import\s*\{\s*catalog\s*\}\s*from\s*"\.\/lib\/caseCatalog"/);
+    expect(appSource).not.toMatch(/import\s*\{\s*catalog\s*\}\s*from\s*"\.\/lib\/catalog\/caseCatalog"/);
   });
 });

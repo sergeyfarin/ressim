@@ -2,7 +2,7 @@
   import {
     getModeDimensions,
     type Dimension,
-  } from "../../caseCatalog";
+  } from "../../catalog/caseCatalog";
   import FilterCard from "../controls/FilterCard.svelte";
   import {
     getModePanelSections,
@@ -30,7 +30,7 @@
   // Adjust section order or mode-specific visibility in `modePanelSections.ts`.
   const sections = $derived(getModePanelSections(activeMode));
 
-  // Adjust these header chips in `caseCatalog.ts` when a case needs different quick toggles.
+  // Adjust these header chips in `catalog/caseCatalog.ts` when a case needs different quick toggles.
   const modeDimensions = $derived(getModeDimensions(activeMode));
 
   function toggleSection(key: string) {

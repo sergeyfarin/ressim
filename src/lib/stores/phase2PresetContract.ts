@@ -1,4 +1,4 @@
-import type { CaseMode, ToggleState } from '../caseCatalog';
+import type { CaseMode, ToggleState } from '../catalog/caseCatalog';
 
 export type PresetSource = 'facet' | 'benchmark' | 'custom';
 

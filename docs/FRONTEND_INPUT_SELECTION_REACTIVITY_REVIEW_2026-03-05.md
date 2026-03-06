@@ -1,7 +1,7 @@
 # Frontend Review: Input Selection, Reactivity, and Event Logic
 
 Date: 2026-03-05
-Scope: `src/App.svelte`, `src/lib/stores/simulationStore.svelte.ts`, `src/lib/ui/*`, `src/lib/caseCatalog.ts`, `src/lib/catalog.json`
+Scope: `src/App.svelte`, `src/lib/stores/simulationStore.svelte.ts`, `src/lib/ui/*`, `src/lib/catalog/caseCatalog.ts`, `src/lib/catalog/catalog.json`
 
 Status note (2026-03-06):
 - This document remains the historical review/rationale that led to the current direction.
@@ -42,7 +42,7 @@ Decision update from user:
 
 - Evidence:
   - Mapping keys are `depletion | waterflood | simulation`: `src/lib/stores/simulationStore.svelte.ts:106`
-  - Active mode values are `dep | wf | sim | benchmark`: `src/lib/caseCatalog.ts:4`
+  - Active mode values are `dep | wf | sim | benchmark`: `src/lib/catalog/caseCatalog.ts:4`
   - Lookup is direct lowercase match: `src/lib/stores/simulationStore.svelte.ts:638`
 - Impact:
   - `resolveCustomSubCase(activeMode)` returns `null` for `dep/wf/sim`, so intended custom sub-case transition likely never occurs.
@@ -53,7 +53,7 @@ Decision update from user:
 
 - Evidence:
   - In `handleToggleChange`, disabled options are computed once and fixed once: `src/lib/stores/simulationStore.svelte.ts:777`
-  - Rule dependencies can cascade (`mode` changes can invalidate `geo`, then `geo` can invalidate `well`): `src/lib/catalog.json:430`, `src/lib/catalog.json:442`
+  - Rule dependencies can cascade (`mode` changes can invalidate `geo`, then `geo` can invalidate `well`): `src/lib/catalog/catalog.json:430`, `src/lib/catalog/catalog.json:442`
 - Impact:
   - State can remain internally inconsistent with rules, depending on selection order.
 - Recommendation:
@@ -278,7 +278,7 @@ Suggested status model:
 
 ## Notes
 
-- Existing faceted catalog (`src/lib/catalog.json`) is a good base and should be retained.
+- Existing faceted catalog (`src/lib/catalog/catalog.json`) is a good base and should be retained.
 - Benchmark entries should remain curated and immutable for reproducibility.
 - Keep the current disabled-reason UX; it is already useful for scientific workflows.
 

@@ -16,7 +16,7 @@ import {
     stabilizeToggleState,
     type CaseMode,
     type ToggleState
-} from '../caseCatalog';
+} from '../catalog/caseCatalog';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
 import {
     validateInputs as validateSimulationInputs,

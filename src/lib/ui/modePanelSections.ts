@@ -1,4 +1,4 @@
-import type { CaseMode } from "../caseCatalog";
+import type { CaseMode } from "../catalog/caseCatalog";
 
 export type ModePanelSectionKey =
   | "geometry"

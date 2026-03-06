@@ -1,7 +1,7 @@
 <script lang="ts">
   import Button from "../../components/ui/Button.svelte";
   import Card from "../../components/ui/Card.svelte";
-  import type { CaseMode } from "../../caseCatalog";
+  import type { CaseMode } from "../../catalog/caseCatalog";
   import { shouldShowModePanelStatusRow } from "../../stores/phase2PresetContract";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import type { ModePanelProps } from "../modePanelTypes";
