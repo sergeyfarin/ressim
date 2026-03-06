@@ -794,6 +794,56 @@ mod tests {
         reference_breakthrough_pv: f64,
     }
 
+    fn buckley_case_a(
+        name: &'static str,
+        nx: usize,
+        dt_days: f64,
+        max_steps: usize,
+    ) -> BuckleyCase {
+        BuckleyCase {
+            name,
+            nx,
+            permeability_md: 2000.0,
+            dt_days,
+            max_steps,
+            injector_bhp: 500.0,
+            producer_bhp: 100.0,
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2.0,
+            n_o: 2.0,
+            mu_w: 0.5,
+            mu_o: 1.0,
+            breakthrough_watercut: 0.01,
+            rel_tol_breakthrough_pv: 0.25,
+        }
+    }
+
+    fn buckley_case_b(
+        name: &'static str,
+        nx: usize,
+        dt_days: f64,
+        max_steps: usize,
+    ) -> BuckleyCase {
+        BuckleyCase {
+            name,
+            nx,
+            permeability_md: 2000.0,
+            dt_days,
+            max_steps,
+            injector_bhp: 500.0,
+            producer_bhp: 100.0,
+            s_wc: 0.15,
+            s_or: 0.15,
+            n_w: 2.2,
+            n_o: 2.0,
+            mu_w: 0.6,
+            mu_o: 1.4,
+            breakthrough_watercut: 0.01,
+            rel_tol_breakthrough_pv: 0.30,
+        }
+    }
+
     fn err_contains(result: Result<(), String>, expected: &str) {
         match result {
             Ok(()) => panic!("Expected error containing '{}', got Ok(())", expected),
@@ -1283,23 +1333,7 @@ mod tests {
 
     #[test]
     fn benchmark_buckley_leverett_case_a_favorable_mobility() {
-        let case = BuckleyCase {
-            name: "BL-Case-A",
-            nx: 24,
-            permeability_md: 2000.0,
-            dt_days: 0.5,
-            max_steps: 4000,
-            injector_bhp: 500.0,
-            producer_bhp: 100.0,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.0,
-            n_o: 2.0,
-            mu_w: 0.5,
-            mu_o: 1.0,
-            breakthrough_watercut: 0.01,
-            rel_tol_breakthrough_pv: 0.25,
-        };
+        let case = buckley_case_a("BL-Case-A", 24, 0.5, 4000);
 
         let metrics = run_buckley_case(&case);
         let rel_err = ((metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
@@ -1324,23 +1358,7 @@ mod tests {
 
     #[test]
     fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
-        let case = BuckleyCase {
-            name: "BL-Case-B",
-            nx: 24,
-            permeability_md: 2000.0,
-            dt_days: 0.25,
-            max_steps: 4000,
-            injector_bhp: 500.0,
-            producer_bhp: 100.0,
-            s_wc: 0.15,
-            s_or: 0.15,
-            n_w: 2.2,
-            n_o: 2.0,
-            mu_w: 0.6,
-            mu_o: 1.4,
-            breakthrough_watercut: 0.01,
-            rel_tol_breakthrough_pv: 0.30,
-        };
+        let case = buckley_case_b("BL-Case-B", 24, 0.25, 4000);
 
         let metrics = run_buckley_case(&case);
         let rel_err = ((metrics.breakthrough_pv - metrics.reference_breakthrough_pv)
@@ -1365,55 +1383,11 @@ mod tests {
 
     #[test]
     fn benchmark_buckley_leverett_refined_discretization_improves_alignment() {
-        let coarse_a = BuckleyCase {
-            name: "BL-Case-A-Coarse",
-            nx: 24,
-            permeability_md: 2000.0,
-            dt_days: 0.5,
-            max_steps: 4000,
-            injector_bhp: 500.0,
-            producer_bhp: 100.0,
-            s_wc: 0.1,
-            s_or: 0.1,
-            n_w: 2.0,
-            n_o: 2.0,
-            mu_w: 0.5,
-            mu_o: 1.0,
-            breakthrough_watercut: 0.01,
-            rel_tol_breakthrough_pv: 0.25,
-        };
-        let refined_a = BuckleyCase {
-            name: "BL-Case-A-Refined",
-            nx: 96,
-            dt_days: 0.125,
-            max_steps: 20000,
-            ..coarse_a
-        };
+        let coarse_a = buckley_case_a("BL-Case-A-Coarse", 24, 0.5, 4000);
+        let refined_a = buckley_case_a("BL-Case-A-Refined", 96, 0.125, 20000);
 
-        let coarse_b = BuckleyCase {
-            name: "BL-Case-B-Coarse",
-            nx: 24,
-            permeability_md: 2000.0,
-            dt_days: 0.25,
-            max_steps: 4000,
-            injector_bhp: 500.0,
-            producer_bhp: 100.0,
-            s_wc: 0.15,
-            s_or: 0.15,
-            n_w: 2.2,
-            n_o: 2.0,
-            mu_w: 0.6,
-            mu_o: 1.4,
-            breakthrough_watercut: 0.01,
-            rel_tol_breakthrough_pv: 0.30,
-        };
-        let refined_b = BuckleyCase {
-            name: "BL-Case-B-Refined",
-            nx: 96,
-            dt_days: 0.125,
-            max_steps: 20000,
-            ..coarse_b
-        };
+        let coarse_b = buckley_case_b("BL-Case-B-Coarse", 24, 0.25, 4000);
+        let refined_b = buckley_case_b("BL-Case-B-Refined", 96, 0.125, 20000);
 
         let metrics_coarse_a = run_buckley_case(&coarse_a);
         let metrics_refined_a = run_buckley_case(&refined_a);
@@ -1469,6 +1443,57 @@ mod tests {
             "Refined discretization should not worsen Case-B alignment: coarse={:.3}, refined={:.3}",
             rel_err_coarse_b,
             rel_err_refined_b
+        );
+    }
+
+    #[test]
+    fn benchmark_buckley_leverett_smaller_dt_improves_coarse_alignment() {
+        let case_a_dt_050 = buckley_case_a("BL-Case-A-Coarse-dt0.50", 24, 0.5, 4000);
+        let case_a_dt_025 = buckley_case_a("BL-Case-A-Coarse-dt0.25", 24, 0.25, 8000);
+        let metrics_a_dt_050 = run_buckley_case(&case_a_dt_050);
+        let metrics_a_dt_025 = run_buckley_case(&case_a_dt_025);
+        let rel_err_a_dt_050 = ((metrics_a_dt_050.breakthrough_pv
+            - metrics_a_dt_050.reference_breakthrough_pv)
+            / metrics_a_dt_050.reference_breakthrough_pv)
+            .abs();
+        let rel_err_a_dt_025 = ((metrics_a_dt_025.breakthrough_pv
+            - metrics_a_dt_025.reference_breakthrough_pv)
+            / metrics_a_dt_025.reference_breakthrough_pv)
+            .abs();
+
+        let case_b_dt_050 = buckley_case_b("BL-Case-B-Coarse-dt0.50", 24, 0.5, 4000);
+        let case_b_dt_025 = buckley_case_b("BL-Case-B-Coarse-dt0.25", 24, 0.25, 4000);
+        let metrics_b_dt_050 = run_buckley_case(&case_b_dt_050);
+        let metrics_b_dt_025 = run_buckley_case(&case_b_dt_025);
+        let rel_err_b_dt_050 = ((metrics_b_dt_050.breakthrough_pv
+            - metrics_b_dt_050.reference_breakthrough_pv)
+            / metrics_b_dt_050.reference_breakthrough_pv)
+            .abs();
+        let rel_err_b_dt_025 = ((metrics_b_dt_025.breakthrough_pv
+            - metrics_b_dt_025.reference_breakthrough_pv)
+            / metrics_b_dt_025.reference_breakthrough_pv)
+            .abs();
+
+        println!(
+            "Case-A coarse dt sweep rel_err: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
+            rel_err_a_dt_050, rel_err_a_dt_025
+        );
+        println!(
+            "Case-B coarse dt sweep rel_err: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
+            rel_err_b_dt_050, rel_err_b_dt_025
+        );
+
+        assert!(
+            rel_err_a_dt_025 + 1e-9 < rel_err_a_dt_050,
+            "Smaller dt should improve Case-A coarse alignment: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
+            rel_err_a_dt_050,
+            rel_err_a_dt_025
+        );
+        assert!(
+            rel_err_b_dt_025 + 1e-9 < rel_err_b_dt_050,
+            "Smaller dt should improve Case-B coarse alignment: dt=0.50 -> {:.3}, dt=0.25 -> {:.3}",
+            rel_err_b_dt_050,
+            rel_err_b_dt_025
         );
     }
 
