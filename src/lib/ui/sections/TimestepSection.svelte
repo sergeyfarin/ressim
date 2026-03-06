@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Collapsible from "../../components/ui/Collapsible.svelte";
-  import Input from "../../components/ui/Input.svelte";
+  import Collapsible from "../controls/Collapsible.svelte";
+  import Input from "../controls/Input.svelte";
   import {
     panelBodyClass,
     panelTableClass,
