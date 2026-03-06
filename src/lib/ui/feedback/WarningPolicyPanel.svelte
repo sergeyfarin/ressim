@@ -5,8 +5,8 @@
     WarningPolicyGroupKey,
     WarningPolicyGroupSources,
     WarningPolicySource,
-  } from "../warningPolicy";
-  import { getWarningPolicyGroups } from "../warningPolicy";
+  } from "../../warningPolicy";
+  import { getWarningPolicyGroups } from "../../warningPolicy";
 
   let {
     policy,

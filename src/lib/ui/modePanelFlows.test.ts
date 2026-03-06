@@ -2,10 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-const modePanelPath = path.join(__dirname, 'ModePanel.svelte');
+const modePanelPath = path.join(__dirname, 'modes', 'ModePanel.svelte');
 const modePanelSource = fs.readFileSync(modePanelPath, 'utf8');
 
-const benchmarkPanelPath = path.join(__dirname, 'BenchmarkPanel.svelte');
+const benchmarkPanelPath = path.join(__dirname, 'modes', 'BenchmarkPanel.svelte');
 const benchmarkPanelSource = fs.readFileSync(benchmarkPanelPath, 'utf8');
 
 describe('mode panel flows', () => {

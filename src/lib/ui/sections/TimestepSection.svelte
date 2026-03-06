@@ -1,6 +1,12 @@
 <script lang="ts">
-  import Collapsible from "../components/ui/Collapsible.svelte";
-  import Input from "../components/ui/Input.svelte";
+  import Collapsible from "../../components/ui/Collapsible.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import {
+    panelBodyClass,
+    panelTableClass,
+    panelTableHeadClass,
+    panelTableShellClass,
+  } from "../shared/panelStyles";
 
   let {
     delta_t_days = $bindable(0.25),
@@ -31,18 +37,16 @@
 </script>
 
 <Collapsible title="Timestep Controls" {hasError}>
-  <div class="space-y-3 p-4 md:p-5">
+  <div class={panelBodyClass}>
     <div class="flex justify-between items-center mb-2">
       <p class="text-xs font-medium text-muted-foreground">
         Adjust timestep and run-size settings.
       </p>
       <p class="text-xs text-muted-foreground font-medium">{groupSummary}</p>
     </div>
-    <div class="overflow-x-auto rounded-md border border-border mt-2">
-      <table class="compact-table w-full text-left">
-        <thead
-          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-        >
+    <div class={`${panelTableShellClass} mt-2`}>
+      <table class={panelTableClass}>
+        <thead class={panelTableHeadClass}>
           <tr>
             <th class="font-medium p-2">Δt (Days)</th>
             <th class="font-medium p-2">Max ΔS</th>

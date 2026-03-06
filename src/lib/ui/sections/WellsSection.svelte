@@ -1,7 +1,13 @@
 <script lang="ts">
-  import Collapsible from "../components/ui/Collapsible.svelte";
-  import Input from "../components/ui/Input.svelte";
-  import Select from "../components/ui/Select.svelte";
+  import Collapsible from "../../components/ui/Collapsible.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import Select from "../../components/ui/Select.svelte";
+  import {
+    panelBodyClass,
+    panelTableClass,
+    panelTableHeadClass,
+    panelTableShellClass,
+  } from "../shared/panelStyles";
 
   let {
     well_radius = $bindable(0.1),
@@ -61,7 +67,7 @@
 </script>
 
 <Collapsible title="Well Controls" {hasError}>
-  <div class="space-y-3 p-4 md:p-5">
+  <div class={panelBodyClass}>
     <div class="flex justify-between items-center mb-2">
       <p class="text-xs font-medium text-muted-foreground">
         Well geometry and XY wellhead locations across all layers.
@@ -104,11 +110,9 @@
       >
     </label>
 
-    <div class="overflow-x-auto rounded-md border border-border">
-      <table class="compact-table w-full text-left">
-        <thead
-          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-        >
+    <div class={panelTableShellClass}>
+      <table class={panelTableClass}>
+        <thead class={panelTableHeadClass}>
           <tr>
             <th class="font-medium p-2 w-20">Well</th>
             <th class="font-medium p-2">Control Mode</th>

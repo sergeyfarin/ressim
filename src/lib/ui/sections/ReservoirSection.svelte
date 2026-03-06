@@ -1,7 +1,13 @@
 <script lang="ts">
-  import Collapsible from "../components/ui/Collapsible.svelte";
-  import Input from "../components/ui/Input.svelte";
-  import Select from "../components/ui/Select.svelte";
+  import Collapsible from "../../components/ui/Collapsible.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import Select from "../../components/ui/Select.svelte";
+  import {
+    panelBodyClass,
+    panelTableClass,
+    panelTableHeadClass,
+    panelTableShellClass,
+  } from "../shared/panelStyles";
 
   let {
     initialPressure = $bindable(300),
@@ -84,7 +90,7 @@
 </script>
 
 <Collapsible title="Reservoir Properties" {hasError}>
-  <div class="space-y-3 p-4 md:p-5">
+  <div class={panelBodyClass}>
     <div class="flex justify-between items-center mb-2">
       <p class="text-xs font-medium text-muted-foreground"></p>
       <p class="text-xs font-medium text-muted-foreground">
@@ -155,11 +161,9 @@
       </label>
     </div>
 
-    <div class="overflow-x-auto rounded-md border border-border mt-2 mb-2">
-      <table class="compact-table w-full text-left">
-        <thead
-          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-        >
+    <div class={`${panelTableShellClass} mt-2 mb-2`}>
+      <table class={panelTableClass}>
+        <thead class={panelTableHeadClass}>
           <tr>
             <th class="font-medium p-2">Phase</th>
             <th class="font-medium p-2">Viscosity (cP)</th>
@@ -407,11 +411,9 @@
           </label>
         </div>
       {:else}
-        <div class="overflow-x-auto rounded-md border border-border">
-          <table class="compact-table w-full text-left">
-            <thead
-              class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-            >
+        <div class={panelTableShellClass}>
+          <table class={panelTableClass}>
+            <thead class={panelTableHeadClass}>
               <tr>
                 <th class="font-medium p-2">Layer</th>
                 <th class="font-medium p-2">kX (mD)</th>

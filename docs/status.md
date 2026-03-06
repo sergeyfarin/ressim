@@ -1057,3 +1057,61 @@ Validation run:
 
 Next active slice:
 Authoritative recovery plan complete. Continue with backlog items outside `R1.x` unless a new recovery slice is opened.
+
+UI structure refactor follow-up (2026-03-06, `src/lib/ui` organization and shared card cleanup)
+Completed slice:
+- Reorganize `src/lib/ui` into role-based folders and remove wrapper-only section components.
+
+Implemented in this slice:
+- `src/lib/ui/modes/ModePanel.svelte`
+- `src/lib/ui/modes/BenchmarkPanel.svelte`
+- `src/lib/ui/modes/ScenarioModePanel.svelte`
+	- Moved mode-level composition into `modes/` and replaced the old one-file-per-scenario-mode wrappers with a single `ScenarioModePanel` that delegates to `sections/ScenarioSectionsPanel.svelte`.
+- `src/lib/ui/sections/ScenarioSectionsPanel.svelte`
+- `src/lib/ui/sections/GeometrySection.svelte`
+- `src/lib/ui/sections/ReservoirSection.svelte`
+- `src/lib/ui/sections/WellsSection.svelte`
+- `src/lib/ui/sections/TimestepSection.svelte`
+- `src/lib/ui/sections/AnalyticalSection.svelte`
+- `src/lib/ui/sections/RelativeCapillarySection.svelte`
+	- Reorganized section components under `sections/` and bound them directly from the section compositor instead of routing through `*FieldsPanel` wrappers.
+- `src/lib/ui/controls/FilterCard.svelte`
+- `src/lib/ui/controls/ToggleGroup.svelte`
+- `src/lib/ui/cards/RunControls.svelte`
+- `src/lib/ui/cards/BenchmarkResultsCard.svelte`
+- `src/lib/ui/feedback/AnalyticalStatusBanner.svelte`
+- `src/lib/ui/feedback/WarningPolicyPanel.svelte`
+- `src/lib/ui/shared/panelStyles.ts`
+	- Moved reusable UI building blocks into role folders and centralized repeated panel/table class strings.
+- `src/App.svelte`
+- `src/lib/3dview.svelte`
+- `src/lib/RateChart.svelte`
+	- Updated imports to the new folder structure.
+- `src/lib/ui/modePanelComposition.test.ts`
+- `src/lib/ui/modePanelFlows.test.ts`
+- `src/lib/ui/modePanelHelpers.test.ts`
+	- Updated path-sensitive tests to assert the new structure.
+- Removed obsolete wrapper and leftover files:
+	- `src/lib/ui/AnalyticalFieldsPanel.svelte`
+	- `src/lib/ui/DepletionPanel.svelte`
+	- `src/lib/ui/GridFieldsPanel.svelte`
+	- `src/lib/ui/ReservoirFieldsPanel.svelte`
+	- `src/lib/ui/SimulationPanel.svelte`
+	- `src/lib/ui/StaticPropertiesPanel.svelte`
+	- `src/lib/ui/TimestepFieldsPanel.svelte`
+	- `src/lib/ui/WaterfloodPanel.svelte`
+	- `src/lib/ui/WellsFieldsPanel.svelte`
+
+Outcome:
+- `src/lib/ui` is no longer a flat directory of mixed roles; entry points, sections, controls, cards, feedback surfaces, and shared style helpers are now separated cleanly.
+- `ModePanel` now reuses the common `Card` primitive instead of defining its own outer card shell, and repeated collapsible body/table styling is centralized in `src/lib/ui/shared/panelStyles.ts`.
+- The live section compositor is simpler to navigate because the wrapper-only `*FieldsPanel` layer is gone.
+
+Validation run:
+- `get_errors` reported no errors in the touched `src/lib/ui/` tree, `src/App.svelte`, `src/lib/RateChart.svelte`, and `src/lib/3dview.svelte`.
+- `npm run typecheck` passed.
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelHelpers.test.ts src/lib/ui/modePanelFlows.test.ts src/lib/appStoreDomainWiring.test.ts` passed (4 files, 17 tests).
+- `npm run build` passed.
+
+Next active slice:
+- Keep backlog focus on behavior gaps rather than more structural churn; the clearest remaining UI follow-up is still the higher-level product item for explicit per-mode top-level flows if that architecture is still desired.

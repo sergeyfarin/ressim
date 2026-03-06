@@ -1,8 +1,8 @@
 <script lang="ts">
-  import Button from "../components/ui/Button.svelte";
-  import FilterCard from "./FilterCard.svelte";
-  import { catalog, getModeDimensions } from "../caseCatalog";
-  import type { BenchmarkModePanelProps } from "./modePanelTypes";
+  import Button from "../../components/ui/Button.svelte";
+  import { catalog, getModeDimensions } from "../../caseCatalog";
+  import FilterCard from "../controls/FilterCard.svelte";
+  import type { BenchmarkModePanelProps } from "../modePanelTypes";
 
   let {
     toggles,

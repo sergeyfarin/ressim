@@ -3,7 +3,7 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { MODE_PANEL_SECTIONS, getModePanelSections } from './modePanelSections';
 
-const geometryEditorPath = path.join(__dirname, 'GeometryGridQuickEditor.svelte');
+const geometryEditorPath = path.join(__dirname, 'sections', 'GeometrySection.svelte');
 const geometryEditorSource = fs.readFileSync(geometryEditorPath, 'utf8');
 
 describe('mode panel helpers', () => {

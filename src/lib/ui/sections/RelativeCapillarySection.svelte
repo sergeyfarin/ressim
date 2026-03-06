@@ -1,6 +1,13 @@
 <script lang="ts">
-  import Collapsible from "../components/ui/Collapsible.svelte";
-  import Input from "../components/ui/Input.svelte";
+  import Collapsible from "../../components/ui/Collapsible.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import {
+    panelBodyClass,
+    panelInsetCardClass,
+    panelTableClass,
+    panelTableHeadClass,
+    panelTableShellClass,
+  } from "../shared/panelStyles";
 
   let {
     s_wc = $bindable(0.2),
@@ -163,16 +170,14 @@
 </script>
 
 <Collapsible title="Relative Permeability + Capillary" {hasError}>
-  <div class="space-y-3 p-4 md:p-5">
+  <div class={panelBodyClass}>
     <div class="text-[11px] text-muted-foreground font-medium mb-2">
       {groupSummary}
     </div>
 
-    <div class="overflow-x-auto rounded-md border border-border">
-      <table class="compact-table w-full text-left">
-        <thead
-          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-        >
+    <div class={panelTableShellClass}>
+      <table class={panelTableClass}>
+        <thead class={panelTableHeadClass}>
           <tr>
             <th class="font-medium p-2">Phase</th>
             <th class="font-medium p-2">Endpoint Sat. (S)</th>
@@ -272,14 +277,9 @@
       >
     </label>
 
-    <div
-      class="overflow-x-auto rounded-md border border-border mb-2"
-      class:opacity-50={!capillaryEnabled}
-    >
-      <table class="compact-table w-full text-left">
-        <thead
-          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-        >
+    <div class={`${panelTableShellClass} mb-2`} class:opacity-50={!capillaryEnabled}>
+      <table class={panelTableClass}>
+        <thead class={panelTableHeadClass}>
           <tr>
             <th class="font-medium p-2">P_entry (bar)</th>
             <th class="font-medium p-2">Lambda</th>
@@ -313,7 +313,7 @@
     </div>
 
     <div class="grid grid-cols-1 gap-2">
-      <div class="rounded-md border border-border p-2">
+      <div class={panelInsetCardClass}>
         <div class="mb-1 text-[11px] text-muted-foreground font-medium">
           Relative Permeability Curves
         </div>
@@ -333,7 +333,7 @@
         </svg>
       </div>
 
-      <div class="rounded-md border border-border p-2">
+      <div class={panelInsetCardClass}>
         <div class="mb-1 text-[11px] text-muted-foreground font-medium">
           Capillary Pressure Curve
         </div>

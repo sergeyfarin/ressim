@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Card from "../components/ui/Card.svelte";
-  import Input from "../components/ui/Input.svelte";
-  import Button from "../components/ui/Button.svelte";
-  import WarningPolicyPanel from "./WarningPolicyPanel.svelte";
-  import type { WarningPolicy } from "../warningPolicy";
+  import Button from "../../components/ui/Button.svelte";
+  import Card from "../../components/ui/Card.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
+  import type { WarningPolicy } from "../../warningPolicy";
 
   let {
     wasmReady = false,

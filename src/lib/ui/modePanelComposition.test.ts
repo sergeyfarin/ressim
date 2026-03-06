@@ -2,70 +2,60 @@ import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
 
-const modePanelPath = path.join(__dirname, "ModePanel.svelte");
+const modePanelPath = path.join(__dirname, "modes", "ModePanel.svelte");
 const modePanelSource = fs.readFileSync(modePanelPath, "utf8");
 
-const scenarioSectionsPath = path.join(__dirname, "ScenarioSectionsPanel.svelte");
+const scenarioModePanelPath = path.join(
+  __dirname,
+  "modes",
+  "ScenarioModePanel.svelte",
+);
+const scenarioModePanelSource = fs.readFileSync(scenarioModePanelPath, "utf8");
+
+const scenarioSectionsPath = path.join(
+  __dirname,
+  "sections",
+  "ScenarioSectionsPanel.svelte",
+);
 const scenarioSectionsSource = fs.readFileSync(scenarioSectionsPath, "utf8");
 
-const gridFieldsPanelPath = path.join(__dirname, "GridFieldsPanel.svelte");
-const gridFieldsPanelSource = fs.readFileSync(gridFieldsPanelPath, "utf8");
-
-const timestepFieldsPanelPath = path.join(__dirname, "TimestepFieldsPanel.svelte");
-const timestepFieldsPanelSource = fs.readFileSync(timestepFieldsPanelPath, "utf8");
-
-const wellsFieldsPanelPath = path.join(__dirname, "WellsFieldsPanel.svelte");
-const wellsFieldsPanelSource = fs.readFileSync(wellsFieldsPanelPath, "utf8");
-
-const reservoirFieldsPanelPath = path.join(__dirname, "ReservoirFieldsPanel.svelte");
-const reservoirFieldsPanelSource = fs.readFileSync(reservoirFieldsPanelPath, "utf8");
-
-const analyticalFieldsPanelPath = path.join(__dirname, "AnalyticalFieldsPanel.svelte");
-const analyticalFieldsPanelSource = fs.readFileSync(analyticalFieldsPanelPath, "utf8");
+const geometrySectionPath = path.join(__dirname, "sections", "GeometrySection.svelte");
+const geometrySectionSource = fs.readFileSync(geometrySectionPath, "utf8");
 
 describe("Mode panel composition", () => {
   it("routes each top-level mode through a dedicated component", () => {
     expect(modePanelSource).toMatch(/import\s+BenchmarkPanel\s+from\s+"\.\/BenchmarkPanel\.svelte"/);
-    expect(modePanelSource).toMatch(/import\s+DepletionPanel\s+from\s+"\.\/DepletionPanel\.svelte"/);
-    expect(modePanelSource).toMatch(/import\s+WaterfloodPanel\s+from\s+"\.\/WaterfloodPanel\.svelte"/);
-    expect(modePanelSource).toMatch(/import\s+SimulationPanel\s+from\s+"\.\/SimulationPanel\.svelte"/);
+    expect(modePanelSource).toMatch(/import\s+ScenarioModePanel\s+from\s+"\.\/ScenarioModePanel\.svelte"/);
     expect(modePanelSource).toMatch(/activeMode === "benchmark"[\s\S]*<BenchmarkPanel/);
-    expect(modePanelSource).toMatch(/activeMode === "dep"[\s\S]*<DepletionPanel/);
-    expect(modePanelSource).toMatch(/activeMode === "wf"[\s\S]*<WaterfloodPanel/);
-    expect(modePanelSource).toMatch(/<SimulationPanel/);
+    expect(modePanelSource).toMatch(/<ScenarioModePanel/);
+    expect(modePanelSource).not.toMatch(/DepletionPanel|WaterfloodPanel|SimulationPanel/);
+    expect(scenarioModePanelSource).toMatch(/<ScenarioSectionsPanel/);
+    expect(scenarioModePanelSource).toMatch(/\{activeMode\}/);
   });
 
   it("keeps the shared scenario renderer focused on section composition", () => {
     expect(scenarioSectionsSource).toMatch(/getModePanelSections\(activeMode\)/);
-    expect(scenarioSectionsSource).toMatch(/const WRAPPED_SECTION_COMPONENTS =/);
-    expect(scenarioSectionsSource).toMatch(/geometry:\s*GridFieldsPanel/);
-    expect(scenarioSectionsSource).toMatch(/reservoir:\s*ReservoirFieldsPanel/);
-    expect(scenarioSectionsSource).toMatch(/wells:\s*WellsFieldsPanel/);
-    expect(scenarioSectionsSource).toMatch(/timestep:\s*TimestepFieldsPanel/);
-    expect(scenarioSectionsSource).toMatch(/analytical:\s*AnalyticalFieldsPanel/);
-    expect(scenarioSectionsSource).toMatch(/getWrappedSectionComponent\(section\)/);
-    expect(scenarioSectionsSource).toMatch(/<WrappedSectionComponent/);
-    expect(scenarioSectionsSource).toMatch(/<RelativeCapillaryPanel/);
+    expect(scenarioSectionsSource).toMatch(/<GeometrySection/);
+    expect(scenarioSectionsSource).toMatch(/<ReservoirSection/);
+    expect(scenarioSectionsSource).toMatch(/<WellsSection/);
+    expect(scenarioSectionsSource).toMatch(/<TimestepSection/);
+    expect(scenarioSectionsSource).toMatch(/<AnalyticalSection/);
+    expect(scenarioSectionsSource).toMatch(/<RelativeCapillarySection/);
+    expect(scenarioSectionsSource).toMatch(/section.key === "geometry"/);
     expect(scenarioSectionsSource).toMatch(/section.key === "scal"/);
   });
 
-  it("keeps grid-field quick-edit wiring behind a focused subcomponent", () => {
-    expect(gridFieldsPanelSource).toMatch(/import\s+GeometryGridQuickEditor\s+from\s+"\.\/GeometryGridQuickEditor\.svelte"/);
-    expect(gridFieldsPanelSource).not.toMatch(/geometryGridQuickEditor/);
-    expect(gridFieldsPanelSource).toMatch(/<GeometryGridQuickEditor/);
+  it("keeps geometry quick-edit wiring behind a focused section component", () => {
+    expect(geometrySectionSource).toMatch(/const GEOMETRY_GRID_CONTROLS/);
+    expect(geometrySectionSource).not.toMatch(/geometryGridQuickEditor/);
+    expect(geometrySectionSource).toMatch(/function getQuickPickMatch/);
   });
 
-  it("keeps timestep and wells wiring behind focused section-body components", () => {
-    expect(timestepFieldsPanelSource).toMatch(/import\s+TimestepControlsPanel\s+from\s+"\.\/TimestepControlsPanel\.svelte"/);
-    expect(timestepFieldsPanelSource).toMatch(/<TimestepControlsPanel/);
-    expect(wellsFieldsPanelSource).toMatch(/import\s+WellPropertiesPanel\s+from\s+"\.\/WellPropertiesPanel\.svelte"/);
-    expect(wellsFieldsPanelSource).toMatch(/<WellPropertiesPanel/);
-  });
-
-  it("keeps reservoir and analytical wiring behind focused section-body components", () => {
-    expect(reservoirFieldsPanelSource).toMatch(/import\s+ReservoirPropertiesPanel\s+from\s+"\.\/ReservoirPropertiesPanel\.svelte"/);
-    expect(reservoirFieldsPanelSource).toMatch(/<ReservoirPropertiesPanel/);
-    expect(analyticalFieldsPanelSource).toMatch(/import\s+AnalyticalInputsPanel\s+from\s+"\.\/AnalyticalInputsPanel\.svelte"/);
-    expect(analyticalFieldsPanelSource).toMatch(/<AnalyticalInputsPanel/);
+  it("binds section components directly instead of routing through wrapper-only field panels", () => {
+    expect(scenarioSectionsSource).toMatch(/bind:well_radius=\{params\.well_radius\}/);
+    expect(scenarioSectionsSource).toMatch(/bind:delta_t_days=\{params\.delta_t_days\}/);
+    expect(scenarioSectionsSource).toMatch(/bind:initialPressure=\{params\.initialPressure\}/);
+    expect(scenarioSectionsSource).toMatch(/bind:analyticalSolutionMode=\{params\.analyticalSolutionMode\}/);
+    expect(scenarioSectionsSource).not.toMatch(/GridFieldsPanel|ReservoirFieldsPanel|WellsFieldsPanel|TimestepFieldsPanel|AnalyticalFieldsPanel/);
   });
 });

@@ -1,5 +1,11 @@
 <script lang="ts">
-  import Card from "../components/ui/Card.svelte";
+  import Card from "../../components/ui/Card.svelte";
+  import {
+    panelBodyClass,
+    panelTableClass,
+    panelTableHeadClass,
+    panelTableShellClass,
+  } from "../shared/panelStyles";
 
   type BenchmarkMode = "baseline" | "refined";
 
@@ -36,7 +42,7 @@
 </script>
 
 <Card>
-  <div class="p-4 md:p-5 space-y-3">
+  <div class={panelBodyClass}>
     <div>
       <h3 class="text-base font-semibold leading-none tracking-tight">
         P4-1 Benchmark Results
@@ -81,11 +87,9 @@
     <div class="text-[11px] text-muted-foreground">
       Showing: {benchmarkModeLabel[selectedBenchmarkMode]}
     </div>
-    <div class="overflow-x-auto rounded-md border border-border mt-1">
-      <table class="compact-table w-full text-left">
-        <thead
-          class="bg-muted/50 border-b border-border text-muted-foreground px-2"
-        >
+    <div class={`${panelTableShellClass} mt-1`}>
+      <table class={panelTableClass}>
+        <thead class={panelTableHeadClass}>
           <tr>
             <th class="font-medium p-2">Case</th>
             <th class="font-medium p-2">PV_BT_sim</th>

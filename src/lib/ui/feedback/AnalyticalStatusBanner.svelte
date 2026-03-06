@@ -1,6 +1,6 @@
 <script lang="ts">
   import WarningPolicyPanel from "./WarningPolicyPanel.svelte";
-  import type { WarningPolicy } from "../warningPolicy";
+  import type { WarningPolicy } from "../../warningPolicy";
 
   let {
     policy,

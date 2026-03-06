@@ -5,7 +5,7 @@
         RateHistoryPoint,
         AnalyticalProductionPoint,
     } from "./simulator-types";
-    import ToggleGroup from "./ui/ToggleGroup.svelte";
+    import ToggleGroup from "./ui/controls/ToggleGroup.svelte";
 
     let {
         rateHistory = [],

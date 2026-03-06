@@ -1,7 +1,8 @@
 <script lang="ts">
-  import Collapsible from "../components/ui/Collapsible.svelte";
-  import Select from "../components/ui/Select.svelte";
-  import Input from "../components/ui/Input.svelte";
+  import Collapsible from "../../components/ui/Collapsible.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import Select from "../../components/ui/Select.svelte";
+  import { panelBodyClass } from "../shared/panelStyles";
 
   let {
     analyticalSolutionMode = $bindable<"waterflood" | "depletion">(
@@ -26,7 +27,7 @@
 </script>
 
 <Collapsible title="Analytical Inputs">
-  <div class="space-y-3 p-4 md:p-5">
+  <div class={panelBodyClass}>
     <div class="text-xs opacity-70 mb-2">{summary}</div>
     <div class="grid grid-cols-2 gap-2 items-end mb-2">
       <label class="flex flex-col gap-1.5">

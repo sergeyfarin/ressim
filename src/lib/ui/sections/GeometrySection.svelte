@@ -1,7 +1,8 @@
 <script lang="ts">
-  import Input from "../components/ui/Input.svelte";
-  import Button from "../components/ui/Button.svelte";
-  import type { ModePanelParameterBindings } from "./modePanelTypes";
+  import Button from "../../components/ui/Button.svelte";
+  import Input from "../../components/ui/Input.svelte";
+  import type { ModePanelParameterBindings } from "../modePanelTypes";
+  import { panelMutedInsetClass } from "../shared/panelStyles";
 
   type GeometryGridParamKey =
     | "nx"
@@ -292,7 +293,7 @@
 
         {#if hideQuickPickOptions || showCustomInput(control)}
           {@const errorMessage = getControlErrorMessage(control.fieldErrorKeys)}
-          <div class="mt-3 rounded-md border border-border/70 bg-muted/20 p-2.5">
+          <div class={`${panelMutedInsetClass} mt-3`}>
             <label class="flex flex-col gap-1.5">
               <span class="text-xs font-medium text-foreground">{control.customLabel}</span>
               <Input

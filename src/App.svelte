@@ -2,9 +2,9 @@
     import { onMount, onDestroy, tick } from "svelte";
     import FractionalFlow from "./lib/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/DepletionAnalytical.svelte";
-    import ModePanel from "./lib/ui/ModePanel.svelte";
-    import RunControls from "./lib/ui/RunControls.svelte";
-    import AnalyticalStatusBanner from "./lib/ui/AnalyticalStatusBanner.svelte";
+    import RunControls from "./lib/ui/cards/RunControls.svelte";
+    import AnalyticalStatusBanner from "./lib/ui/feedback/AnalyticalStatusBanner.svelte";
+    import ModePanel from "./lib/ui/modes/ModePanel.svelte";
     import SwProfileChart from "./lib/SwProfileChart.svelte";
     import Button from "./lib/components/ui/Button.svelte";
     import Card from "./lib/components/ui/Card.svelte";

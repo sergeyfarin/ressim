@@ -1,19 +1,20 @@
 <script lang="ts">
-  import ScenarioSectionsPanel from "./ScenarioSectionsPanel.svelte";
-  import type { ScenarioModePanelContentProps } from "./modePanelTypes";
+  import type { ScenarioModePanelProps } from "../modePanelTypes";
+  import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
 
   let {
+    activeMode,
     toggles,
     disabledOptions,
     onToggleChange,
     onParamEdit = () => {},
     params,
     validationErrors = {},
-  }: ScenarioModePanelContentProps = $props();
+  }: ScenarioModePanelProps = $props();
 </script>
 
 <ScenarioSectionsPanel
-  activeMode="wf"
+  {activeMode}
   {toggles}
   {disabledOptions}
   {onToggleChange}
