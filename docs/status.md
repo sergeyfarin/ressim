@@ -591,7 +591,7 @@ Implemented in this sub-slice (Geometry + Grid first migration):
 - `src/lib/ui/ModePanel.svelte`
 	- Replaced the hardcoded `StaticPropertiesPanel` body in the `Geometry + Grid` section with the schema renderer.
 	- Switched section metadata to typed `getModePanelSections(...)` definitions.
-- `src/lib/ui/modePanelSchema.test.ts`
+- `src/lib/ui/modePanelHelpers.test.ts`
 	- Added focused tests for section metadata, `nx` quick-picks, inline custom-entry behavior metadata, quick-pick matching, and control-level error lookup.
 
 Validation run:
@@ -1013,7 +1013,7 @@ Outcome:
 - The codebase no longer mixes a Svelte-first card architecture with a separate TS control-definition layer for the geometry card.
 
 Validation run:
-- `get_errors` reported no errors in `src/lib/ui/GeometryGridQuickEditor.svelte`, `src/lib/ui/GridFieldsPanel.svelte`, `src/lib/ui/modePanelSchema.test.ts`, and `src/lib/ui/modePanelComposition.test.ts`.
+- `get_errors` reported no errors in `src/lib/ui/GeometryGridQuickEditor.svelte`, `src/lib/ui/GridFieldsPanel.svelte`, `src/lib/ui/modePanelHelpers.test.ts`, and `src/lib/ui/modePanelComposition.test.ts`.
 - `npm run typecheck` passed.
-- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelSchema.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 15 tests).
+- `npm run test -- src/lib/ui/modePanelComposition.test.ts src/lib/ui/modePanelHelpers.test.ts src/lib/appStoreDomainWiring.test.ts` passed (3 files, 15 tests).
 - `npm run build` passed.
