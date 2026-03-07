@@ -181,21 +181,21 @@ function buildPresetSourceLabel(entry: PresetEntry): string {
 
 function buildPresetReferencePolicySummary(entry: PresetEntry): string {
     if (entry.category === 'exploration') {
-        return 'Curated exploratory starter case. It is editable immediately and becomes part of the custom workflow as you tune parameters.';
+        return 'Curated exploratory starter case. Base inputs stay locked until you choose Customize, then the case becomes part of the writable custom workflow.';
     }
-    return 'Curated starter case from the internal library. It is editable immediately and transitions into the custom workflow on first input edit.';
+    return 'Curated starter case from the internal library. Base inputs stay locked until you choose Customize, then the case becomes part of the writable custom workflow.';
 }
 
 function buildPresetProvenanceSummary(entry: PresetEntry): string {
     if (entry.category === 'exploration') {
-        return `Curated exploratory starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked reference case.`;
+        return `Curated exploratory starter maintained by the app team. ${entry.description} This entry is intended as a curated starting point rather than a literature reference.`;
     }
 
-    return `Curated internal starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked reference case.`;
+    return `Curated internal starter maintained by the app team. ${entry.description} This entry is intended as a curated starting point rather than a literature reference.`;
 }
 
 function buildPresetSensitivitySummary(): string {
-    return 'No locked library sensitivity run set is defined for this starter case.';
+    return 'No library sensitivity run set is exposed for this curated case.';
 }
 
 function resolveActivationModeForFamily(family: ProductFamily): PresetMode {

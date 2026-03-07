@@ -1234,15 +1234,15 @@ export function createSimulationStore() {
         if (!shouldAllowReferenceClone({
             activeMode,
             isModified,
-            hasReferenceLibraryCase: Boolean(activeReferenceBenchmarkFamily),
+            hasReferenceLibraryCase: Boolean(activeNavigationLibraryEntry),
         })) return false;
 
         const benchmarkId = activeReferenceBenchmarkFamily?.key ?? toggles.benchmarkId ?? null;
-        const benchmarkLabel = activeLibraryEntry?.label
+        const benchmarkLabel = activeNavigationLibraryEntry?.label
             ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
         const provenance = buildReferenceCloneProvenance({
             benchmarkId,
-            sourceCaseKey: activeLibraryEntry?.key ?? activeCase,
+            sourceCaseKey: activeNavigationLibraryEntry?.key ?? activeCase,
             sourceLabel: benchmarkLabel,
         });
 

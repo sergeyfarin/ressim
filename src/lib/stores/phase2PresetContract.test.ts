@@ -182,18 +182,18 @@ describe('phase2PresetContract', () => {
         expect(navigation.activeSource).toBe('custom');
     });
 
-    it('builds editable starter policy for non-reference library cases', () => {
+    it('locks non-reference library cases behind customize just like reference cases', () => {
         const policy = buildScenarioEditabilityPolicy({
             activeMode: 'wf',
             caseSource: 'case-library',
         });
 
         expect(policy).toEqual({
-            kind: 'library-starter',
-            allowDirectInputEditing: true,
+            kind: 'library-reference',
+            allowDirectInputEditing: false,
             allowSensitivitySelection: false,
-            allowCustomizeAction: false,
-            transitionsToCustomOnEdit: true,
+            allowCustomizeAction: true,
+            transitionsToCustomOnEdit: false,
         });
     });
 
@@ -400,12 +400,18 @@ describe('phase2PresetContract', () => {
         });
     });
 
-    it('returns null clone provenance when benchmark context is incomplete', () => {
+    it('returns curated clone provenance without benchmark context and rejects missing source metadata', () => {
         expect(buildReferenceCloneProvenance({
             benchmarkId: null,
-            sourceCaseKey: 'bench_x',
-            sourceLabel: 'X',
-        })).toBeNull();
+            sourceCaseKey: 'baseline_waterflood',
+            sourceLabel: 'Baseline Waterflood',
+            nowIso: '2026-03-05T18:30:00.000Z',
+        })).toEqual({
+            sourceBenchmarkId: null,
+            sourceCaseKey: 'baseline_waterflood',
+            sourceLabel: 'Baseline Waterflood',
+            clonedAtIso: '2026-03-05T18:30:00.000Z',
+        });
 
         expect(buildReferenceCloneProvenance({
             benchmarkId: 'bl_case_a_refined',

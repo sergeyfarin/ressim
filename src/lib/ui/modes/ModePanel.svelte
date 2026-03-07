@@ -117,7 +117,11 @@
     };
   });
 
-  const showReferencePanel = $derived(Boolean(activeLibraryEntry?.benchmarkFamilyKey));
+  const showReferencePanel = $derived(Boolean(
+    activeSource === "case-library"
+    && activeLibraryEntry
+    && !activeLibraryEntry.editabilityPolicy.allowDirectInputEditing,
+  ));
   const activeReferenceCaseKey = $derived(
     navigationState?.activeLibraryCaseKey ?? null,
   );
@@ -239,10 +243,10 @@
 
     const fixedSettingsItems = [
       activeLibraryEntry.editabilityPolicy.kind === "library-reference"
-        ? "Base inputs stay locked; only approved sensitivity selectors remain editable until you choose Customize."
-        : activeLibraryEntry.editabilityPolicy.kind === "library-starter"
-          ? "This starter stays editable immediately and transitions into custom workflow on first direct input edit."
-          : "This case is already in a writable custom state.",
+        ? activeLibraryEntry.sensitivityAxes.length > 0
+          ? "Base inputs stay locked; only approved sensitivity selectors remain editable until you choose Customize."
+          : "Base inputs stay locked until you choose Customize."
+        : "This case is already in a writable custom state.",
     ];
 
     if (activeLibraryEntry.runPolicy) {
@@ -399,7 +403,7 @@
                     {#if activeSource === "custom"}
                       Writable family-local scenario state is active. Choose any curated case above to restore library guidance.
                     {:else if navigationState.editabilityPolicy.allowCustomizeAction}
-                      Seed the active reference case into a writable custom scenario for direct edits.
+                      Seed the active library case into a writable custom scenario for direct edits.
                     {:else}
                       Switch this family into writable direct editing without leaving the case list.
                     {/if}

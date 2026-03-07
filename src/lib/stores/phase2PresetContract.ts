@@ -17,7 +17,6 @@ export type LibraryCaseGroup =
 
 export type ScenarioEditabilityPolicyKind =
     | 'library-reference'
-    | 'library-starter'
     | 'custom-editable';
 
 export type ScenarioEditabilityPolicy = {
@@ -129,22 +128,13 @@ export function buildScenarioEditabilityPolicy(input: {
         };
     }
 
-    if (input.activeLibraryGroup === 'literature-reference' || input.activeLibraryGroup === 'internal-reference') {
-        return {
-            kind: 'library-reference',
-            allowDirectInputEditing: false,
-            allowSensitivitySelection: true,
-            allowCustomizeAction: true,
-            transitionsToCustomOnEdit: false,
-        };
-    }
-
     return {
-        kind: 'library-starter',
-        allowDirectInputEditing: true,
-        allowSensitivitySelection: false,
-        allowCustomizeAction: false,
-        transitionsToCustomOnEdit: true,
+        kind: 'library-reference',
+        allowDirectInputEditing: false,
+        allowSensitivitySelection: input.activeLibraryGroup === 'literature-reference'
+            || input.activeLibraryGroup === 'internal-reference',
+        allowCustomizeAction: true,
+        transitionsToCustomOnEdit: false,
     };
 }
 
@@ -365,7 +355,7 @@ export function getOverrideGroupSectionTarget(groupKey: string): CustomizeSectio
 }
 
 export type ReferenceProvenance = {
-    sourceBenchmarkId: string;
+    sourceBenchmarkId: string | null;
     sourceCaseKey: string;
     sourceLabel: string;
     clonedAtIso: string;
@@ -380,7 +370,7 @@ export function buildReferenceCloneProvenance(input: {
     const benchmarkId = input.benchmarkId ?? null;
     const sourceCaseKey = input.sourceCaseKey ?? null;
     const sourceLabel = input.sourceLabel ?? null;
-    if (!benchmarkId || !sourceCaseKey || !sourceLabel) return null;
+    if (!sourceCaseKey || !sourceLabel) return null;
 
     return {
         sourceBenchmarkId: benchmarkId,

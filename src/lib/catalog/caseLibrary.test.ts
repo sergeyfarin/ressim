@@ -60,7 +60,7 @@ describe('caseLibrary adapter', () => {
         expect(fetkovich?.sensitivityAxes).toEqual([]);
     });
 
-    it('normalizes curated starters separately from literature references', () => {
+    it('normalizes curated starters as locked library cases with customize handoff', () => {
         const baseline = getCaseLibraryEntry('baseline_waterflood');
         const homogeneous = getCaseLibraryEntry('bl_aligned_homogeneous');
 
@@ -76,10 +76,10 @@ describe('caseLibrary adapter', () => {
                 presetKey: 'baseline_waterflood',
             },
             editabilityPolicy: {
-                kind: 'library-starter',
-                allowDirectInputEditing: true,
+                kind: 'library-reference',
+                allowDirectInputEditing: false,
                 allowSensitivitySelection: false,
-                allowCustomizeAction: false,
+                allowCustomizeAction: true,
             },
         });
         expect(homogeneous).toMatchObject({
@@ -87,7 +87,7 @@ describe('caseLibrary adapter', () => {
             group: 'curated-starter',
             sourceLabel: 'Curated internal starter',
         });
-        expect(baseline?.provenanceSummary).toContain('starting point rather than a locked reference case');
+        expect(baseline?.provenanceSummary).toContain('curated starting point rather than a literature reference');
         expect(baseline?.sensitivityAxes).toEqual([]);
     });
 

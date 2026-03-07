@@ -229,11 +229,9 @@
         const caseLabel = scenario.activeLibraryEntry?.label
             ?? (navigation.activeSource === "custom" ? `${familyLabel} Custom` : "Curated family case");
 
-        const executionMode = navigation.editabilityPolicy.kind === "library-reference"
-            ? "Locked reference workflow"
-            : navigation.editabilityPolicy.kind === "library-starter"
-                ? "Editable starter workflow"
-                : "Writable custom workflow";
+        const executionMode = navigation.activeSource === "case-library"
+            ? "Locked library workflow"
+            : "Writable custom workflow";
 
         const provenanceSummary = navigation.activeSource === "custom"
             ? scenario.referenceProvenance
