@@ -33,21 +33,32 @@
     type ThreeDViewComponentType = typeof import("./lib/visualization/3dview.svelte").default;
     type RateChartComponentType =
         typeof import("./lib/charts/RateChart.svelte").default;
+    type BenchmarkChartComponentType =
+        typeof import("./lib/charts/BenchmarkChart.svelte").default;
     let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
     let RateChartComponent = $state<RateChartComponentType | null>(null);
+    let BenchmarkChartComponent = $state<BenchmarkChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
+    const activeBenchmarkFamily = $derived(
+        getBenchmarkFamily(scenario.toggles.benchmarkId),
+    );
+    const activeBenchmarkResults = $derived.by(() => {
+        const benchmarkId = scenario.toggles.benchmarkId ?? null;
+        if (!benchmarkId) return [];
+        return runtime.benchmarkRunResults.filter((result) => result.familyKey === benchmarkId);
+    });
     const activeBenchmarkBaseResult = $derived.by(() => {
         if (scenario.activeMode !== "benchmark") return null;
         const benchmarkId = scenario.toggles.benchmarkId ?? null;
         if (!benchmarkId) return null;
-        return runtime.benchmarkRunResults.find((result) => (
+        return activeBenchmarkResults.find((result) => (
             result.familyKey === benchmarkId && result.variantKey === null
         )) ?? null;
     });
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (scenario.activeMode === "benchmark") {
             return getBenchmarkRateChartLayoutConfig({
-                family: getBenchmarkFamily(scenario.toggles.benchmarkId),
+                family: activeBenchmarkFamily,
                 referencePolicy: activeBenchmarkBaseResult?.referencePolicy ?? null,
             });
         }
@@ -84,6 +95,15 @@
         }
     }
 
+    async function loadBenchmarkChartModule() {
+        try {
+            const benchmarkChartModule = await import("./lib/charts/BenchmarkChart.svelte");
+            BenchmarkChartComponent = benchmarkChartModule.default;
+        } catch (error) {
+            console.error("Failed to load benchmark chart module:", error);
+        }
+    }
+
     async function loadThreeDViewModule() {
         if (ThreeDViewComponent || loadingThreeDView) return;
         loadingThreeDView = true;
@@ -105,6 +125,7 @@
         runtime.setupWorker();
 
         await loadRateChartModule();
+        await loadBenchmarkChartModule();
         await loadThreeDViewModule();
         await tick();
 
@@ -427,7 +448,14 @@
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start mt-2">
             <div class="space-y-4">
                 <Card class="overflow-hidden">
-                    {#if RateChartComponent}
+                    {#if scenario.activeMode === "benchmark" && activeBenchmarkResults.length > 0 && BenchmarkChartComponent}
+                        <BenchmarkChartComponent
+                            results={activeBenchmarkResults}
+                            family={activeBenchmarkFamily}
+                            layoutConfig={activeRateChartLayoutConfig}
+                            {theme}
+                        />
+                    {:else if RateChartComponent}
                         <RateChartComponent
                             rateHistory={runtime.rateHistory}
                             analyticalProductionData={runtime.analyticalProductionData}

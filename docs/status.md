@@ -162,6 +162,15 @@ Goal:
 Key outcome:
 - benchmark results can be compared visually across a base run, axis variants, and reference traces without overloading one generic single-run chart contract
 
+Status:
+- completed on 2026-03-07
+- added `src/lib/charts/BenchmarkChart.svelte` as a benchmark-specific comparison container layered on top of the shared `ChartSubPanel.svelte` primitive
+- added `src/lib/charts/benchmarkComparisonModel.ts` to translate stored benchmark results into base-plus-variant overlay panels and family-appropriate reference traces
+- `src/App.svelte` now switches benchmark mode to the comparison chart when stored results exist for the active benchmark family instead of reusing the live single-run runtime arrays
+- BL benchmark overlays now compare water cut, recovery, and pressure across stored runs while carrying a shared analytical reference trace where applicable
+- depletion benchmark overlays now compare oil rate, recovery/cumulative behavior, and pressure against an analytical depletion reference trace
+- focused regression coverage now exercises the overlay model in `src/lib/charts/benchmarkComparisonModel.test.ts`
+
 ### B8. Benchmark UI workflow
 
 Goal:
@@ -188,7 +197,7 @@ Key outcome:
 
 ## Next Action After Review
 
-- Next active implementation slice is `B7`:
-  - add multi-run benchmark overlay plumbing on top of the new benchmark-specific panel defaults
-  - keep benchmark x-axis and panel policy driven by family/reference metadata while introducing per-run overlay grouping
-  - only after that refine the benchmark selection workflow further in the UI
+- Next active implementation slice is `B8`:
+  - refine benchmark execution selection now that stored multi-run overlays exist
+  - keep benchmark mode clearly distinct from the generic scenario builder while reducing inline action-button sprawl
+  - preserve benchmark-to-custom cloning and explicit reference semantics while revisiting the deferred table-style selector idea

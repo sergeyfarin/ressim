@@ -54,6 +54,11 @@ describe('ChartSubPanel architecture checks', () => {
     expect(/visibleCurves/.test(subPanelSrc)).toBe(true);
   });
 
+  it('recreates the chart when the curve schema changes', () => {
+    expect(/mountedChartSchemaSignature/.test(subPanelSrc)).toBe(true);
+    expect(/chart\.data\.datasets\.length\s*!==\s*curves\.length/.test(subPanelSrc)).toBe(true);
+  });
+
   it('contains axis bounds logic', () => {
     expect(/applyPositiveAxisBounds/.test(subPanelSrc)).toBe(true);
   });

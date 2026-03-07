@@ -16,7 +16,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 ## Active Slice
 
 - [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- [ ] **B7. Update chart/data plumbing for multi-case overlays (next)** — extend the benchmark chart path from benchmark-specific single-run defaults to readable multi-run comparison overlays.
+- [ ] **B8. Update benchmark UI workflow (next)** — refine benchmark execution selection now that benchmark charts can compare stored runs directly.
 
 ## Detailed Implementation Plan
 
@@ -150,7 +150,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - updated `src/lib/charts/ChartSubPanel.svelte` to reset curve visibility when a benchmark layout swaps the active curve set
     - added coverage for benchmark chart defaults in `src/lib/charts/benchmarkChartConfig.test.ts`
 
-- [ ] **B7. Update chart/data plumbing for multi-case overlays**
+- [x] **B7. Update chart/data plumbing for multi-case overlays**
   - Refactor chart inputs so benchmark views can render multiple runs and one reference together.
   - Decide whether to extend the current rate chart stack or add a benchmark-specific chart container on top of shared lower-level chart primitives.
   - Keep x-axis policy benchmark-aware:
@@ -159,6 +159,12 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Add benchmark legend/group controls if needed for toggling cases and quantities.
   - Acceptance:
     - chart plumbing is no longer hard-wired to one simulation run + one analytical series only
+  - Outcome:
+    - added a benchmark-specific comparison chart container in `src/lib/charts/BenchmarkChart.svelte` instead of stretching the single-run `RateChart.svelte` contract further
+    - added a pure overlay data builder in `src/lib/charts/benchmarkComparisonModel.ts` that converts stored benchmark results into benchmark-family-specific multi-run panels plus analytical reference traces
+    - benchmark mode in `src/App.svelte` now routes to the comparison chart whenever stored results exist for the active benchmark family, while non-benchmark and pre-run benchmark views still use the single-run chart path
+    - BL overlays now compare base plus variants on breakthrough, recovery, and pressure panels with benchmark-aware x-axis options, and depletion overlays now compare oil-rate, recovery/cumulative, and pressure traces against analytical depletion reference
+    - added focused regression coverage in `src/lib/charts/benchmarkComparisonModel.test.ts`
 
 - [ ] **B8. Update benchmark UI workflow**
   - Benchmark mode should let the user select:

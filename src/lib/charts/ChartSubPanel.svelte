@@ -57,6 +57,19 @@
     let chart = $state<Chart<"line", XYPoint[], number> | null>(null);
     let visibleCurves = $state<boolean[]>([]);
     let curveSignature = $state("");
+    let chartSchemaSignature = $derived.by(() => JSON.stringify({
+        curves: curves.map((curve) => ({
+            label: curve.label,
+            yAxisID: curve.yAxisID,
+            borderWidth: curve.borderWidth ?? 2,
+            borderDash: curve.borderDash ?? [],
+        })),
+        scales: Object.entries(cleanScaleConfigs).map(([axisId, cfg]) => ({
+            axisId,
+            title: cfg?.title?.text ?? "",
+        })),
+    }));
+    let mountedChartSchemaSignature = $state("");
 
     // Extract custom metadata (_dynamicTitle, _fraction, _auto) from scale configs
     // so Chart.js doesn't try to resolve them as scriptable options
@@ -114,13 +127,16 @@
         }
     });
 
-    // FIX #1: Recreate chart when expanding
+    // Recreate the Chart.js instance when the dataset/axis schema changes.
     $effect(() => {
+        const schemaSignature = chartSchemaSignature;
         if (expanded) {
             tick().then(() => {
-                if (expanded && !chart && chartCanvas) {
-                    destroyChart(); // ensure no stale chart
+                if (!expanded || !chartCanvas) return;
+                if (!chart || mountedChartSchemaSignature !== schemaSignature) {
+                    destroyChart();
                     createChart();
+                    mountedChartSchemaSignature = schemaSignature;
                 }
             });
         }
@@ -143,6 +159,22 @@
 
     function updateChart() {
         if (!chart || !seriesData) return;
+
+        const datasetSchemaMismatch =
+            chart.data.datasets.length !== curves.length ||
+            curves.some((curve, idx) => {
+                const dataset = getLineDataset(chart, idx);
+                return (
+                    !dataset
+                    || getDatasetLabel(chart, idx) !== curve.label
+                    || dataset.yAxisID !== curve.yAxisID
+                );
+            });
+        if (datasetSchemaMismatch) {
+            destroyChart();
+            createChart();
+            return;
+        }
 
         for (let idx = 0; idx < curves.length; idx++) {
             // Unwrap array and inner points so Chart.js can safely append internal tracking without triggering Proxies
