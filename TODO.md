@@ -16,7 +16,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 ## Active Slice
 
 - [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- [ ] **B3. Introduce generated sensitivity variants without duplicating full cases (next)** — build BL sensitivity ownership on top of the now-aligned Rust-parity base families.
+- [ ] **B4. Build benchmark execution/result model for multi-run comparison (next)** — execute the generated family + variant suite through a stable benchmark-runner contract.
 
 ## Detailed Implementation Plan
 
@@ -57,16 +57,13 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - the worker now applies authored uniform permeability values, fixing a live runtime drift that would otherwise have broken benchmark parity
     - wasm-backed regression now checks analytical breakthrough-PV alignment against the declared family tolerance
 
-- [ ] **B3. Introduce generated sensitivity variants without duplicating full cases**
+- [x] **B3. Introduce generated sensitivity variants without duplicating full cases**
   - Do not clone full JSON payloads for every benchmark variant.
   - Represent sensitivity variants as deltas from a benchmark family base case.
   - First supported BL axes:
     - grid refinement
     - timestep refinement
-    - 1d vs. 2d (vertical) vs. 2d (horizontal) vs. 3d while keeping the same analytical
-    - curated heterogeneity variants (2d vertical) - while keeping the same average so that single analytical solution still applies, but different simulation results
-    - fluid propetries variants (making physical sense) - those would also have different analytical solutions
-    - other suggestions
+    - curated heterogeneity variants
   - For each axis, define:
     - allowed variant set
     - comparison meaning
@@ -74,6 +71,14 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Acceptance:
     - one base family definition can generate the initial BL sensitivity suite
     - no N-way duplicated case payloads for each variant
+  - Outcome:
+    - BL sensitivity variants now resolve from generated deltas in `src/lib/catalog/benchmarkCases.ts` instead of duplicated source JSON payloads
+    - the initial generated suite covers grid refinement, timestep refinement, and curated seeded heterogeneity variants for both refined BL families
+    - heterogeneous variants now carry explicit numerical-reference-required metadata instead of silently reusing the homogeneous analytical contract
+  - Retained extension candidates for later slices:
+    - 1d vs. 2d (vertical) vs. 2d (horizontal) vs. 3d while keeping the same analytical where justified
+    - fluid property variants where the comparison contract explicitly handles variant-specific analytical solutions
+    - additional axes only after B4/B5 make their comparison semantics explicit in the runner and UI
 
 - [ ] **B4. Build benchmark execution/result model for multi-run comparison**
   - Add a benchmark-runner path that can execute one benchmark family plus selected variants serially in the worker/store.

@@ -5,7 +5,12 @@ import {
     getBenchmarkDimensionOptions,
     getBenchmarkEntry,
     getBenchmarkFamily,
+    getBenchmarkSensitivityAxisLabel,
+    getBenchmarkVariant,
+    getBenchmarkVariantsForFamily,
+    benchmarkVariants,
     type BenchmarkEntry,
+    type BenchmarkVariant,
 } from './benchmarkCases';
 import {
     getPresetEntry,
@@ -47,11 +52,13 @@ export type CatalogSchema = {
     defaults: Record<string, any>;
     modes: Record<CaseMode, ModeCatalog>;
     benchmarks: BenchmarkEntry[];
+    benchmarkVariants: BenchmarkVariant[];
     presets: PresetEntry[];
 };
 
-type CatalogSourceSchema = Omit<CatalogSchema, 'benchmarks' | 'presets'> & {
+type CatalogSourceSchema = Omit<CatalogSchema, 'benchmarks' | 'benchmarkVariants' | 'presets'> & {
     benchmarks?: BenchmarkEntry[];
+    benchmarkVariants?: BenchmarkVariant[];
     presets?: PresetEntry[];
 };
 
@@ -71,10 +78,22 @@ export const catalog: CatalogSchema = {
         },
     },
     benchmarks: benchmarkCases,
+    benchmarkVariants,
     presets: presetCases,
 };
 
-export { benchmarkCases, benchmarkFamilies, getBenchmarkEntry, getBenchmarkFamily, presetCases, getPresetEntry };
+export {
+    benchmarkCases,
+    benchmarkFamilies,
+    benchmarkVariants,
+    getBenchmarkEntry,
+    getBenchmarkFamily,
+    getBenchmarkVariant,
+    getBenchmarkVariantsForFamily,
+    getBenchmarkSensitivityAxisLabel,
+    presetCases,
+    getPresetEntry,
+};
 
 export type ToggleState = Record<string, string>;
 

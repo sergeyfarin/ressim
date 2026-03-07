@@ -1,6 +1,12 @@
 <script lang="ts">
   import Button from "../controls/Button.svelte";
-  import { getBenchmarkEntry, getModeDimensions } from "../../catalog/caseCatalog";
+  import {
+    getBenchmarkEntry,
+    getBenchmarkFamily,
+    getBenchmarkSensitivityAxisLabel,
+    getBenchmarkVariantsForFamily,
+    getModeDimensions,
+  } from "../../catalog/caseCatalog";
   import FilterCard from "../controls/FilterCard.svelte";
   import type { BenchmarkModePanelProps } from "../modePanelTypes";
 
@@ -17,6 +23,22 @@
   const activeBenchmark = $derived(
     getBenchmarkEntry(toggles.benchmarkId),
   );
+  const activeFamily = $derived(
+    getBenchmarkFamily(toggles.benchmarkId),
+  );
+  const generatedVariants = $derived(
+    activeFamily ? getBenchmarkVariantsForFamily(activeFamily.key) : [],
+  );
+  const sensitivitySummary = $derived.by(() => {
+    if (!generatedVariants.length) return null;
+
+    const orderedAxes: string[] = [];
+    for (const axis of generatedVariants.map((variant) => variant.axis)) {
+      if (!orderedAxes.includes(axis)) orderedAxes.push(axis);
+    }
+
+    return orderedAxes.map((axis) => getBenchmarkSensitivityAxisLabel(axis as any)).join(", ");
+  });
 </script>
 
 <div class="space-y-3">
@@ -41,6 +63,12 @@
         <strong>{activeBenchmark.label}:</strong>
         {activeBenchmark.description}
       </div>
+      {#if generatedVariants.length > 0}
+        <div class="mt-2 text-[10px] text-muted-foreground">
+          Generated sensitivity suite: <strong class="text-foreground">{generatedVariants.length}</strong>
+          variants across {sensitivitySummary}.
+        </div>
+      {/if}
       <div class="mt-2 flex flex-wrap items-center gap-2">
         <Button
           size="sm"

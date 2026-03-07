@@ -4,10 +4,14 @@ import { describe, it, expect } from 'vitest';
 import {
   benchmarkCases,
   benchmarkFamilies,
+  benchmarkVariants,
   buildCaseKey,
   catalog,
   getBenchmarkEntry,
   getBenchmarkFamily,
+  getBenchmarkSensitivityAxisLabel,
+  getBenchmarkVariant,
+  getBenchmarkVariantsForFamily,
   getDefaultToggles,
   getDisabledOptions,
   getPresetEntry,
@@ -69,6 +73,32 @@ describe('caseCatalog Dynamic Catalog', () => {
       'fetkovich_exp',
     ]);
     expect(catalog.benchmarks).toEqual(benchmarkCases);
+  });
+
+  it('generates BL sensitivity variants from family deltas without duplicating source cases', () => {
+    const caseAVariants = getBenchmarkVariantsForFamily('bl_case_a_refined');
+    const caseBVariants = getBenchmarkVariantsForFamily('bl_case_b_refined');
+    const depletionVariants = getBenchmarkVariantsForFamily('dietz_sq_center');
+
+    expect(benchmarkVariants).toHaveLength(12);
+    expect(caseAVariants.map((variant) => variant.variantKey)).toEqual([
+      'grid_24',
+      'grid_48',
+      'dt_0_25',
+      'dt_0_50',
+      'heterogeneity_mild_random',
+      'heterogeneity_strong_random',
+    ]);
+    expect(caseBVariants).toHaveLength(6);
+    expect(depletionVariants).toEqual([]);
+    expect(catalog.benchmarkVariants).toEqual(benchmarkVariants);
+    expect(benchmarkCases.map((entry) => entry.key)).toEqual([
+      'bl_case_a_refined',
+      'bl_case_b_refined',
+      'dietz_sq_center',
+      'dietz_sq_corner',
+      'fetkovich_exp',
+    ]);
   });
 
   it('builds named preset registry from source definitions only', () => {
@@ -169,6 +199,63 @@ describe('caseCatalog Dynamic Catalog', () => {
     expect(dietz?.breakthroughCriterion ?? null).toBeNull();
     expect(dietz?.comparisonMetric ?? null).toBeNull();
     expect(dietz?.baseCase.key).toBe('dietz_sq_center');
+  });
+
+  it('resolves generated BL variants with axis-specific reference policy', () => {
+    const grid24 = getBenchmarkVariant('bl_case_a_refined__grid_24');
+    const dt050 = getBenchmarkVariant('bl_case_a_refined__dt_0_50');
+    const heterogeneity = getBenchmarkVariant('bl_case_b_refined__heterogeneity_mild_random');
+
+    expect(getBenchmarkSensitivityAxisLabel('grid-refinement')).toBe('Grid refinement');
+    expect(getBenchmarkSensitivityAxisLabel('timestep-refinement')).toBe('Timestep refinement');
+    expect(getBenchmarkSensitivityAxisLabel('heterogeneity')).toBe('Heterogeneity');
+
+    expect(grid24).toMatchObject({
+      familyKey: 'bl_case_a_refined',
+      variantKey: 'grid_24',
+      axis: 'grid-refinement',
+      analyticalValidity: 'same-reference',
+      params: {
+        nx: 24,
+        producerI: 23,
+        injectorControlMode: 'pressure',
+        producerControlMode: 'pressure',
+      },
+      reference: {
+        kind: 'analytical',
+        source: 'buckley-leverett-shock-reference',
+      },
+    });
+
+    expect(dt050).toMatchObject({
+      axis: 'timestep-refinement',
+      params: {
+        delta_t_days: 0.5,
+        steps: 60,
+      },
+      analyticalValidity: 'same-reference',
+    });
+
+    expect(heterogeneity).toMatchObject({
+      familyKey: 'bl_case_b_refined',
+      axis: 'heterogeneity',
+      analyticalValidity: 'numerical-reference-required',
+      reference: {
+        kind: 'numerical-refined',
+        source: 'bl_case_b_refined:refined-numerical-reference',
+      },
+      comparisonMetric: {
+        kind: 'breakthrough-pv-relative-error',
+        target: 'numerical-reference',
+        tolerance: 0.30,
+      },
+      params: {
+        permMode: 'random',
+        minPerm: 1500,
+        maxPerm: 2500,
+        useRandomSeed: true,
+      },
+    });
   });
 
   it('derives benchmark runtime entries from family base cases without duplicating params', () => {

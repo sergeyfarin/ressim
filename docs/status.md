@@ -9,10 +9,14 @@
   - refined BL source cases now use Rust-parity pressure-controlled semantics instead of the old rate-controlled frontend variant
   - benchmark-family metadata now records the breakthrough criterion and accepted breakthrough-PV comparison tolerance
   - the worker now applies authored uniform permeability values instead of silently leaving constructor defaults in place
-- The remaining benchmark mismatch is semantic, not architectural:
-  - BL base-family semantics now match the Rust benchmark builders for the authored refined cases
-  - the next semantic step is generated sensitivity ownership and multi-run benchmark execution, not another base-case source split
-- The next workstream is benchmark modernization: generated sensitivities, multi-run comparison, benchmark-specific charts, and explicit reference policy.
+- B3 is now implemented for the Buckley-Leverett registry layer:
+  - BL sensitivity variants are generated from family deltas in `src/lib/catalog/benchmarkCases.ts` instead of duplicated case payloads
+  - the initial generated suite covers grid refinement, timestep refinement, and curated seeded heterogeneity variants
+  - heterogeneity variants now carry an explicit numerical-reference requirement in their generated metadata
+- The remaining benchmark mismatch is workflow-related, not source-definition-related:
+  - BL base families and their initial generated variants now come from one registry contract
+  - the next step is executing and comparing those generated variants as a multi-run benchmark workflow
+- The next workstream is benchmark modernization: multi-run comparison, explicit reference handling in the runner/UI, and benchmark-specific charts.
 
 ## Legacy Cleanup
 
@@ -81,6 +85,12 @@ Initial axes:
 Key outcome:
 - one family definition can produce base and sensitivity runs deterministically
 
+Status:
+- completed on 2026-03-07
+- BL sensitivity variants now resolve from delta-based generation in `src/lib/catalog/benchmarkCases.ts`
+- the initial generated suite covers grid refinement, timestep refinement, and curated seeded heterogeneity variants
+- heterogeneous generated variants now declare numerical-reference-required comparison metadata instead of silently inheriting the homogeneous analytical contract
+
 ### B4. Multi-run benchmark execution model
 
 Goal:
@@ -142,7 +152,7 @@ Key outcome:
 
 ## Next Action After Review
 
-- Next active implementation slice is `B2`:
-  - align BL base families to exact Rust semantics
-  - keep benchmark-family schema stable while changing the underlying BL base-case semantics
-  - only then implement sensitivities and chart restructuring on top of that base
+- Next active implementation slice is `B4`:
+  - build the multi-run benchmark execution/result model on top of the generated family + variant registry
+  - keep source ownership in the registry while moving comparison workflow into the worker/store path
+  - only then wire benchmark-specific chart restructuring on top of stable multi-run results
