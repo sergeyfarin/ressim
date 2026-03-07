@@ -18,7 +18,14 @@
     onToggleChange,
     basePreset = null,
     benchmarkProvenance = null,
+    benchmarkSweepRunning = false,
+    benchmarkSweepProgressLabel = "",
+    benchmarkSweepError = "",
+    benchmarkRunResults = [],
     onCloneBenchmarkToCustom = () => {},
+    onRunBenchmarkBase = () => {},
+    onRunBenchmarkSensitivityAxis = () => {},
+    onStopBenchmarkSweep = () => {},
     params,
     validationErrors = {},
     warningPolicy = undefined,
@@ -83,8 +90,15 @@
         {disabledOptions}
         {isModified}
         {benchmarkProvenance}
+        {benchmarkSweepRunning}
+        {benchmarkSweepProgressLabel}
+        {benchmarkSweepError}
+        {benchmarkRunResults}
         {onToggleChange}
         {onCloneBenchmarkToCustom}
+        {onRunBenchmarkBase}
+        {onRunBenchmarkSensitivityAxis}
+        {onStopBenchmarkSweep}
       />
     {:else}
       <ScenarioSectionsPanel

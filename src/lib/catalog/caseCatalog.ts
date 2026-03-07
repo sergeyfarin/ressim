@@ -10,6 +10,7 @@ import {
     getBenchmarkVariantsForFamily,
     benchmarkVariants,
     type BenchmarkEntry,
+    type BenchmarkSensitivityAxisKey,
     type BenchmarkVariant,
 } from './benchmarkCases';
 import {
@@ -94,6 +95,8 @@ export {
     presetCases,
     getPresetEntry,
 };
+
+export type { BenchmarkSensitivityAxisKey };
 
 export type ToggleState = Record<string, string>;
 

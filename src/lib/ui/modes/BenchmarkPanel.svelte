@@ -7,6 +7,7 @@
     getBenchmarkVariantsForFamily,
     getModeDimensions,
   } from "../../catalog/caseCatalog";
+  import type { BenchmarkSensitivityAxisKey } from "../../catalog/caseCatalog";
   import FilterCard from "../controls/FilterCard.svelte";
   import type { BenchmarkModePanelProps } from "../modePanelTypes";
 
@@ -15,9 +16,20 @@
     disabledOptions,
     isModified = false,
     benchmarkProvenance = null,
+    benchmarkSweepRunning = false,
+    benchmarkSweepProgressLabel = "",
+    benchmarkSweepError = "",
+    benchmarkRunResults = [],
     onToggleChange,
     onCloneBenchmarkToCustom = () => {},
+    onRunBenchmarkBase = () => {},
+    onRunBenchmarkSensitivityAxis = () => {},
+    onStopBenchmarkSweep = () => {},
   }: BenchmarkModePanelProps = $props();
+
+  function formatNullableMetric(value: number | null | undefined, digits = 3) {
+    return Number.isFinite(value) ? Number(value).toFixed(digits) : "n/a";
+  }
 
   const modeDimensions = $derived(getModeDimensions("benchmark"));
   const activeBenchmark = $derived(
@@ -38,6 +50,18 @@
     }
 
     return orderedAxes.map((axis) => getBenchmarkSensitivityAxisLabel(axis as any)).join(", ");
+  });
+  const sensitivityAxes = $derived.by(() => {
+    const orderedAxes: BenchmarkSensitivityAxisKey[] = [];
+    for (const variant of generatedVariants) {
+      if (!orderedAxes.includes(variant.axis)) orderedAxes.push(variant.axis);
+    }
+
+    return orderedAxes.map((axis) => ({
+      axis,
+      label: getBenchmarkSensitivityAxisLabel(axis),
+      count: generatedVariants.filter((variant) => variant.axis === axis).length,
+    }));
   });
 </script>
 
@@ -72,8 +96,46 @@
       <div class="mt-2 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
+          disabled={!activeBenchmark || isModified || benchmarkSweepRunning}
+          onclick={onRunBenchmarkBase}
+        >
+          Run Base
+        </Button>
+        {#each sensitivityAxes as sensitivityAxis}
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!activeBenchmark || isModified || benchmarkSweepRunning}
+            onclick={() => onRunBenchmarkSensitivityAxis(sensitivityAxis.axis)}
+          >
+            Run {sensitivityAxis.label}
+          </Button>
+        {/each}
+        {#if benchmarkSweepRunning}
+          <Button
+            size="sm"
+            variant="outline"
+            onclick={onStopBenchmarkSweep}
+          >
+            Stop Sweep
+          </Button>
+        {/if}
+      </div>
+      {#if benchmarkSweepProgressLabel}
+        <div class="mt-2 text-[10px] text-muted-foreground">
+          {benchmarkSweepProgressLabel}
+        </div>
+      {/if}
+      {#if benchmarkSweepError}
+        <div class="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
+          {benchmarkSweepError}
+        </div>
+      {/if}
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
           variant="outline"
-          disabled={isModified}
+          disabled={isModified || benchmarkSweepRunning}
           onclick={onCloneBenchmarkToCustom}
         >
           Clone to Custom
@@ -88,6 +150,28 @@
           </span>
         {/if}
       </div>
+      {#if benchmarkRunResults.length > 0}
+        <div class="mt-3 space-y-2 border-t border-border/50 pt-2">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Stored Benchmark Results
+          </div>
+          <div class="space-y-2">
+            {#each benchmarkRunResults as result}
+              <div class="rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-[10px]">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <strong class="text-foreground">{result.label}</strong>
+                  <span class="text-muted-foreground">
+                    Breakthrough PVI: {formatNullableMetric(result.breakthroughPvi)}
+                  </span>
+                </div>
+                <div class="mt-1 text-muted-foreground">
+                  {result.referenceComparison.summary}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

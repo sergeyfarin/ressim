@@ -1,8 +1,9 @@
-import type { CaseMode, ToggleState } from "../catalog/caseCatalog";
+import type { BenchmarkSensitivityAxisKey, CaseMode, ToggleState } from "../catalog/caseCatalog";
 import type {
   BasePresetProfile,
   BenchmarkProvenance,
 } from "../stores/phase2PresetContract";
+import type { BenchmarkRunResult } from "../benchmarkRunModel";
 import type { WarningPolicy } from "../warningPolicy";
 
 export type PermMode = "uniform" | "random" | "perLayer";
@@ -88,7 +89,14 @@ export type ModePanelProps = {
   onToggleChange: (key: string, value: string) => void;
   basePreset?: BasePresetProfile | null;
   benchmarkProvenance?: BenchmarkProvenance | null;
+  benchmarkSweepRunning?: boolean;
+  benchmarkSweepProgressLabel?: string;
+  benchmarkSweepError?: string;
+  benchmarkRunResults?: BenchmarkRunResult[];
   onCloneBenchmarkToCustom?: () => void;
+  onRunBenchmarkBase?: () => void;
+  onRunBenchmarkSensitivityAxis?: (axis: BenchmarkSensitivityAxisKey) => void;
+  onStopBenchmarkSweep?: () => void;
   params: ModePanelParameterBindings;
   validationErrors?: Record<string, string>;
   warningPolicy?: WarningPolicy;
@@ -109,6 +117,13 @@ export type BenchmarkModePanelProps = {
   disabledOptions: Record<string, Record<string, string>>;
   isModified?: boolean;
   benchmarkProvenance?: BenchmarkProvenance | null;
+  benchmarkSweepRunning?: boolean;
+  benchmarkSweepProgressLabel?: string;
+  benchmarkSweepError?: string;
+  benchmarkRunResults?: BenchmarkRunResult[];
   onToggleChange: (key: string, value: string) => void;
   onCloneBenchmarkToCustom?: () => void;
+  onRunBenchmarkBase?: () => void;
+  onRunBenchmarkSensitivityAxis?: (axis: BenchmarkSensitivityAxisKey) => void;
+  onStopBenchmarkSweep?: () => void;
 };

@@ -351,6 +351,13 @@
             basePreset={scenario.basePreset}
             onCloneBenchmarkToCustom={handleCloneBenchmarkToCustom}
             benchmarkProvenance={scenario.benchmarkProvenance}
+            benchmarkSweepRunning={runtime.benchmarkSweepRunning}
+            benchmarkSweepProgressLabel={runtime.benchmarkSweepProgressLabel}
+            benchmarkSweepError={runtime.benchmarkSweepError}
+            benchmarkRunResults={runtime.benchmarkRunResults}
+            onRunBenchmarkBase={runtime.runActiveBenchmarkBase}
+            onRunBenchmarkSensitivityAxis={runtime.runActiveBenchmarkSensitivityAxis}
+            onStopBenchmarkSweep={runtime.stopRun}
             {params}
             validationErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}

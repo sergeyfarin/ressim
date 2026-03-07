@@ -13,10 +13,14 @@
   - BL sensitivity variants are generated from family deltas in `src/lib/catalog/benchmarkCases.ts` instead of duplicated case payloads
   - the initial generated suite covers grid refinement, timestep refinement, and curated seeded heterogeneity variants
   - heterogeneity variants now carry an explicit numerical-reference requirement in their generated metadata
-- The remaining benchmark mismatch is workflow-related, not source-definition-related:
-  - BL base families and their initial generated variants now come from one registry contract
-  - the next step is executing and comparing those generated variants as a multi-run benchmark workflow
-- The next workstream is benchmark modernization: multi-run comparison, explicit reference handling in the runner/UI, and benchmark-specific charts.
+- B4 is now implemented for the benchmark runner path:
+  - benchmark families can execute as base-only or base-plus-variants serial sweeps through the existing worker/store path
+  - normalized benchmark results now record breakthrough, water-cut, pressure, recovery, and reference-comparison outputs per run
+  - benchmark mode now surfaces sweep progress, cancellation, and stored-result summaries without reintroducing duplicated benchmark payloads
+- The remaining benchmark mismatch is reference-policy and presentation-related, not runner-ownership-related:
+  - BL base families and their generated variants now share one registry plus one execution/result contract
+  - the next step is making reference meaning explicit in the runner/UI for analytical versus numerical comparisons
+- The next workstream is benchmark modernization: explicit reference handling, benchmark-specific charts, and multi-case overlay plumbing.
 
 ## Legacy Cleanup
 
@@ -99,6 +103,12 @@ Goal:
 Key outcome:
 - benchmark charts and summaries consume a stable multi-run result model
 
+Status:
+- completed on 2026-03-07
+- implementation now lives in `src/lib/benchmarkRunModel.ts` plus the benchmark-runner path in `src/lib/stores/simulationStore.svelte.ts`
+- benchmark mode can now run the selected base family alone or sweep the generated family variants serially through the existing worker
+- normalized results now capture breakthrough PVI/time, water-cut series, pressure series, recovery series, and resolved reference-comparison summaries per run
+
 ### B5. Explicit reference policy
 
 Goal:
@@ -152,7 +162,7 @@ Key outcome:
 
 ## Next Action After Review
 
-- Next active implementation slice is `B4`:
-  - build the multi-run benchmark execution/result model on top of the generated family + variant registry
-  - keep source ownership in the registry while moving comparison workflow into the worker/store path
-  - only then wire benchmark-specific chart restructuring on top of stable multi-run results
+- Next active implementation slice is `B5`:
+  - make analytical-versus-numerical reference handling explicit in the runner/UI output contract
+  - keep the new multi-run result model stable while refining what each family means by “reference”
+  - only then wire benchmark-specific chart restructuring and multi-case overlays on top of that explicit comparison contract

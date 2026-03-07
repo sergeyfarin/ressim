@@ -16,4 +16,10 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/shouldAllowBenchmarkClone/);
     expect(storeSource).toMatch(/function cloneActiveBenchmarkToCustom\(\): boolean/);
   });
+
+  it('wires benchmark sweep actions and normalized benchmark results through the store', () => {
+    expect(storeSource).toMatch(/buildBenchmarkRunSpecs/);
+    expect(storeSource).toMatch(/runActiveBenchmarkSensitivityAxis/);
+    expect(storeSource).toMatch(/benchmarkRunResults/);
+  });
 });

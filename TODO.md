@@ -16,7 +16,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 ## Active Slice
 
 - [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- [ ] **B4. Build benchmark execution/result model for multi-run comparison (next)** — execute the generated family + variant suite through a stable benchmark-runner contract.
+- [ ] **B5. Make benchmark reference handling explicit (next)** — refine benchmark comparison meaning now that the runner/result model exists.
 
 ## Detailed Implementation Plan
 
@@ -80,7 +80,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - fluid property variants where the comparison contract explicitly handles variant-specific analytical solutions
     - additional axes only after B4/B5 make their comparison semantics explicit in the runner and UI
 
-- [ ] **B4. Build benchmark execution/result model for multi-run comparison**
+- [x] **B4. Build benchmark execution/result model for multi-run comparison**
   - Add a benchmark-runner path that can execute one benchmark family plus selected variants serially in the worker/store.
   - Define a normalized result model per run:
     - `caseKey`
@@ -98,6 +98,10 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Acceptance:
     - benchmark mode can run base-only or base-plus-variants deterministically
     - results can be consumed by charts without special-case ad hoc plumbing
+  - Outcome:
+    - added a pure benchmark result-model layer in `src/lib/benchmarkRunModel.ts` that normalizes rate history, breakthrough, water-cut, pressure, recovery, and reference-comparison outputs per run
+    - the simulation store now runs benchmark families serially through the existing worker, storing normalized results with sweep progress and cancellation support
+    - benchmark mode now exposes `Run Base` plus axis-specific sensitivity actions and a stored-results summary without introducing duplicated benchmark payload ownership
 
 - [ ] **B5. Make benchmark reference handling explicit**
   - For homogeneous BL families:
@@ -152,6 +156,11 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - comparison/reference mode when applicable
   - Keep benchmark mode distinct from the faceted scenario builder mental model.
   - Preserve one-click clone into custom scenario from any selected base benchmark or variant.
+  - Deferred refinement to revisit after B5-B7:
+    - evaluate a compact table-style selector for benchmark execution
+    - possible direction: first row is the default single base case, later rows are sensitivity groups such as grid refinement or timestep refinement, and columns represent the available cases/variants inside that row
+    - user flow to evaluate: select one row or row+cells first, then run from a single button below instead of exposing many action buttons inline
+    - requires a deliberate UI pass before implementation; do not lock this in until the reference/comparison workflow is clearer
   - Acceptance:
     - benchmark mode is clearly for verification/comparison
     - custom scenario mode remains clearly for ad hoc modeling
