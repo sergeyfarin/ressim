@@ -12,8 +12,9 @@ Primary review source:
 
 ## Resume State
 
-- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete; `F3` has compact run/result disclosure, selected-sensitivity output fixes, a table-first Results review surface, and a shared heading/chip/microcopy typography scale on the main app surfaces; and `F4` now has grouped chart-metric toggles, focused comparison-curve alignment, and shared panel/x-axis selection helpers across the live and reference-comparison chart shells.
-- Next slice: continue `F4` by adding compact output-summary cards/lists above or beside the charts, then return to any remaining `F3` selected-review copy cleanup if the Results card still feels too talkative.
+- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete; `F3` has compact run/result disclosure, selected-sensitivity output fixes, a table-first Results review surface, and a shared heading/chip/microcopy typography scale on the main app surfaces; and `F4` now has grouped chart-metric toggles, focused comparison-curve alignment, shared panel/x-axis selection helpers, and compact summary cards above both live and reference-comparison charts.
+- Next slice: continue `F4` by consolidating more of the chart-shell header and expansion-state wiring now that panel selection and summary cards are shared, then return to any remaining `F3` selected-review copy cleanup if the Results card still feels too talkative.
+- Latest UI cleanup: the inputs shell no longer needs a separate `Case Library` / `Custom` toggle; `Custom` now sits as the final selectable case inside each family library so the first decision stays family-first.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -206,13 +207,13 @@ These slices are ordered for safe migration. The goal is to change architecture 
 - [x] Replace the old benchmark panel split with one Inputs-region workflow.
 - Inputs-region responsibilities:
   - family selector
-  - source selector (`Case Library` / `Custom`)
+  - family-local case library with inline `Custom` entry at the end of the list
   - library group switch or grouped list
   - case disclosure panel with citation/source, fixed settings, sensitivities, and reference policy
   - `Customize` action
   - existing parameter sections, honoring editability policy
 - Current progress inside `F1.5`:
-  - the temporary source-status chip has been replaced with a real family-local `Case Library` / `Custom` selector in `ModePanel`
+  - the separate `Case Library` / `Custom` toggle has been pruned from `ModePanel`; `Custom` now appears as the final selectable case within each family-local library list
   - source switching now performs real actions: starter cases transition into custom editing, reference cases use the existing seeded-customize flow, and custom runs can restore back to a curated family case
   - the inputs-surface prop contract between `App`, `ModePanel`, and `BenchmarkPanel` now uses `reference*` naming instead of `benchmark*` naming
   - user-facing inputs copy now says `Seeded from` / `Customize` instead of `Clone to Custom` where the flow is library-to-custom seeding
@@ -398,6 +399,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
     - reference-comparison charts now build curves only for the focused comparison set (`selected`, `base`, and any explicit compared cases) instead of carrying hidden extra case curves with mismatched visibility defaults
     - live and reference-comparison chart layout configs now share stable curve-key selection alongside legacy label-based overrides, creating a cleaner path for deeper panel-selection consolidation in later F4 slices
     - `RateChart` and `ReferenceComparisonChart` now share extracted helper logic for x-axis option filtering, x-axis/log-scale coercion, and panel curve selection, so future panel-shell changes can land in one place instead of two nearly-identical Svelte files
+    - both chart shells now render the same compact summary-card strip above the panels, with live-run and focused-comparison metrics built from one shared output-summary contract instead of ad hoc chart-local text blocks
     - focused validation for the initial F4 slice passed (`22/22` across reference-comparison model, reference chart config, grouped chart toggle usage, and output terminology checks)
   - Acceptance:
     - chart behavior feels consistent regardless of run type

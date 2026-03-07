@@ -1,5 +1,6 @@
 <script lang="ts">
     import ChartSubPanel from "./ChartSubPanel.svelte";
+    import OutputSummaryStrip from "./OutputSummaryStrip.svelte";
     import type { CurveConfig } from "./ChartSubPanel.svelte";
     import {
         coerceChartAxisState,
@@ -20,6 +21,7 @@
         RateHistoryPoint,
         AnalyticalProductionPoint,
     } from "../simulator-types";
+    import { buildLiveOutputSummaryItems } from "./outputSummary";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
 
     let {
@@ -918,6 +920,20 @@
     const ratePanelSupportsNormalization = $derived(
         ratesCurves.some((curve) => curve.label.includes("Rate")),
     );
+    const summaryItems = $derived.by(() => {
+        return buildLiveOutputSummaryItems({
+            activeMode,
+            activeCase,
+            timeValues,
+            pviSeries: cumulatives.pvi,
+            oilRateSeries: oilProd,
+            waterCutSeries: waterCutSim,
+            cumulativeOilSeries: cumulatives.cumOil,
+            recoverySeries: recoveryFactor,
+            pressureSeries: avgPressure,
+            mismatchSummary,
+        });
+    });
 
     let xAxisOptions = $derived.by(() => {
         return getConfiguredXAxisOptions(
@@ -940,42 +956,45 @@
 </script>
 
 <div class="flex flex-col">
-    <!-- X-axis controls at top -->
     <div
-        class="flex flex-col sm:flex-row sm:items-center gap-2 px-4 pt-4 md:px-5 md:pt-5 pb-2 border-b border-border/50"
+        class="flex flex-col gap-3 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
     >
-        <div class="flex items-center gap-2 overflow-x-auto">
-            <span
-                class="ui-section-kicker opacity-50 shrink-0"
-                >X-axis</span
-            >
-            <ToggleGroup
-                options={xAxisOptions}
-                bind:value={xAxisMode}
-                onChange={(val) => setXAxisMode(val as RateChartXAxisMode)}
-            />
-        </div>
+        <OutputSummaryStrip items={summaryItems} />
 
-        <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
-            {#if ratePanelSupportsNormalization && analyticalMeta?.q0 && analyticalMeta.q0 > 0}
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div class="flex items-center gap-2 overflow-x-auto">
                 <span
                     class="ui-section-kicker opacity-50 shrink-0"
-                    >Y-axis</span
+                    >X-axis</span
                 >
-                <label
-                    class="flex items-center gap-1.5 cursor-pointer select-none"
-                >
-                    <input
-                        type="checkbox"
-                        bind:checked={normalizeRates}
-                        class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
-                    />
+                <ToggleGroup
+                    options={xAxisOptions}
+                    bind:value={xAxisMode}
+                    onChange={(val) => setXAxisMode(val as RateChartXAxisMode)}
+                />
+            </div>
+
+            <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
+                {#if ratePanelSupportsNormalization && analyticalMeta?.q0 && analyticalMeta.q0 > 0}
                     <span
-                        class="ui-support-copy whitespace-nowrap"
-                        >Normalize Rates (q/q₀)</span
+                        class="ui-section-kicker opacity-50 shrink-0"
+                        >Y-axis</span
                     >
-                </label>
-            {/if}
+                    <label
+                        class="flex items-center gap-1.5 cursor-pointer select-none"
+                    >
+                        <input
+                            type="checkbox"
+                            bind:checked={normalizeRates}
+                            class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                        />
+                        <span
+                            class="ui-support-copy whitespace-nowrap"
+                            >Normalize Rates (q/q₀)</span
+                        >
+                    </label>
+                {/if}
+            </div>
         </div>
     </div>
 

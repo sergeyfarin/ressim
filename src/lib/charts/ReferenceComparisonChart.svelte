@@ -1,5 +1,6 @@
 <script lang="ts">
     import ChartSubPanel from './ChartSubPanel.svelte';
+    import OutputSummaryStrip from './OutputSummaryStrip.svelte';
     import ToggleGroup from '../ui/controls/ToggleGroup.svelte';
     import type { BenchmarkFamily } from '../catalog/benchmarkCases';
     import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -16,6 +17,7 @@
         RateChartScalePreset,
         RateChartXAxisMode,
     } from './rateChartLayoutConfig';
+    import { buildReferenceComparisonSummaryItems } from './outputSummary';
     import { buildReferenceComparisonModel } from './referenceComparisonModel';
 
     let {
@@ -205,11 +207,18 @@
         curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
         scalePreset: 'pressure',
     }));
+    const summaryItems = $derived.by(() => (
+        buildReferenceComparisonSummaryItems({
+            family,
+            results,
+            primaryResultKey,
+        })
+    ));
 </script>
 
 <div class="flex flex-col">
     <div
-        class="flex flex-col gap-2 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
+        class="flex flex-col gap-3 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="ui-section-kicker opacity-50">
@@ -224,6 +233,7 @@
                 Focused review keeps the selected case and its reference context visible by default.
             </div>
         {/if}
+        <OutputSummaryStrip items={summaryItems} />
         <div class="flex items-center gap-2 overflow-x-auto">
             <span class="ui-section-kicker shrink-0 opacity-50">X-axis</span>
             <ToggleGroup

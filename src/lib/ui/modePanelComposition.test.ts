@@ -34,6 +34,8 @@ describe("Mode panel composition", () => {
 
   it("uses the family-local Case Library as the only reference entry selector in the inputs shell", () => {
     expect(modePanelSource).toMatch(/Case Library/);
+    expect(modePanelSource).toMatch(/handleCustomCaseSelect/);
+    expect(modePanelSource).toMatch(/Writable branch/);
     expect(modePanelSource).toMatch(/onActivateLibraryEntry\(entry.key\)/);
     expect(modePanelSource).not.toMatch(/FilterCard|getModeDimensions|showLegacyReferenceSelector/);
   });

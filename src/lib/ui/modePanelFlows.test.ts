@@ -16,10 +16,9 @@ describe('mode panel flows', () => {
   it('surfaces current library identity and a grouped family-local case-library selector in the mode panel', () => {
     expect(modePanelSource).toMatch(/Inputs/);
     expect(modePanelSource).toMatch(/Type Curves/);
-    expect(modePanelSource).toMatch(/Source/);
     expect(modePanelSource).toMatch(/Case Library/);
     expect(modePanelSource).toMatch(/Custom/);
-    expect(modePanelSource).toMatch(/handleSourceSelect/);
+    expect(modePanelSource).toMatch(/handleCustomCaseSelect/);
     expect(modePanelSource).toMatch(/Library Context/);
     expect(modePanelSource).toMatch(/Case Disclosure/);
     expect(modePanelSource).toMatch(/Citation \/ Source/);
@@ -30,6 +29,8 @@ describe('mode panel flows', () => {
     expect(modePanelSource).toMatch(/Case Library/);
     expect(modePanelSource).toMatch(/Literature References/);
     expect(modePanelSource).toMatch(/Curated Starters/);
+    expect(modePanelSource).toMatch(/Writable branch/);
+    expect(modePanelSource).toMatch(/Select <strong class="text-foreground">Custom<\/strong> at the end of the list/);
     expect(modePanelSource).toMatch(/onActivateLibraryEntry\(entry\.key\)/);
     expect(modePanelSource).toMatch(/handleFamilySelect/);
     expect(modePanelSource).toMatch(/variant=\{activeFamily === family \? "default" : "outline"\}/);

@@ -149,35 +149,15 @@
     onModeChange("dep");
   }
 
-  function handleSourceSelect(source: "case-library" | "custom") {
-    if (!navigationState || source === activeSource) return;
+  function handleCustomCaseSelect() {
+    if (!navigationState || activeSource === "custom") return;
 
-    if (source === "custom") {
-      if (navigationState.editabilityPolicy.allowCustomizeAction) {
-        onCloneReferenceToCustom();
-        return;
-      }
-
-      onParamEdit();
+    if (navigationState.editabilityPolicy.allowCustomizeAction) {
+      onCloneReferenceToCustom();
       return;
     }
 
-    const restoredEntry = referenceProvenance?.sourceCaseKey
-      ? getCaseLibraryEntry(referenceProvenance.sourceCaseKey)
-      : getCaseLibraryEntry(basePreset?.key ?? null);
-
-    if (restoredEntry) {
-      onActivateLibraryEntry(restoredEntry.key);
-      return;
-    }
-
-    const familyDefaultEntry = familyDefaultEntries[activeFamily as keyof typeof familyDefaultEntries] ?? null;
-    if (familyDefaultEntry) {
-      onActivateLibraryEntry(familyDefaultEntry.key);
-      return;
-    }
-
-    handleFamilySelect(activeFamily as keyof typeof FAMILY_LABELS);
+    onParamEdit();
   }
 
   const librarySelectorSections = $derived.by(() => {
@@ -234,7 +214,7 @@
         sourceItems,
         fixedSettingsItems: [
           "Inputs are unlocked for direct editing.",
-          "Returning to Case Library restores a curated case for this family when one is available.",
+          "Select any curated case below to restore library guidance for this family.",
         ],
         sensitivityItems: [
           "No locked library sensitivity policy applies while custom is active.",
@@ -304,11 +284,8 @@
   });
 </script>
 
-<Card class="p-3 md:p-4">
+<Card class="p-0">
   <div class="rounded-md border border-border/70 bg-muted/10 p-3">
-    <div class="ui-panel-kicker">
-      Inputs
-    </div>
     <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
       <div class="space-y-1">
         <div class="ui-card-title">
@@ -347,35 +324,6 @@
         </Button>
       {/each}
     </div>
-
-    <div class="mt-3 rounded-md border border-border/60 bg-background/80 p-3">
-      <div class="ui-panel-kicker">
-        Source
-      </div>
-      <div class="mt-2 flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant={activeSource === "case-library" ? "default" : "outline"}
-          onclick={() => handleSourceSelect("case-library")}
-        >
-          Case Library
-        </Button>
-        <Button
-          size="sm"
-          variant={activeSource === "custom" ? "default" : "outline"}
-          onclick={() => handleSourceSelect("custom")}
-        >
-          Custom
-        </Button>
-      </div>
-      <div class="ui-microcopy mt-2">
-        {#if activeSource === "case-library"}
-          Curated family cases keep provenance, reference guidance, and allowed sensitivities attached to the active selection.
-        {:else}
-          Custom keeps the current family inputs unlocked. Switch back to Case Library to restore a curated family case.
-        {/if}
-      </div>
-    </div>
   </div>
 
   {#if shouldShowStatusRow}
@@ -395,51 +343,8 @@
 
   {#if navigationState}
     <div class="mt-3 rounded-md border border-border/70 bg-muted/10 p-3">
-      <div class="ui-panel-kicker">
-        Library Context
-      </div>
-
-      {#if activeSource === "case-library" && activeLibraryEntry}
-        <div class="mt-2 space-y-1">
-          <div class="text-foreground">
-            <strong>{activeLibraryEntry.label}</strong>
-          </div>
-          {#if navigationState.sourceLabel}
-            <div class="text-muted-foreground">
-              Source: <strong class="text-foreground">{navigationState.sourceLabel}</strong>
-            </div>
-          {/if}
-          {#if navigationState.referenceSourceLabel}
-            <div class="text-muted-foreground">
-              Reference: <strong class="text-foreground">{navigationState.referenceSourceLabel}</strong>
-            </div>
-          {/if}
-          {#if navigationState.provenanceSummary}
-            <div class="ui-microcopy">
-              {navigationState.provenanceSummary}
-            </div>
-          {/if}
-        </div>
-      {:else if !isModified && activeSource === "case-library"}
-        <div class="ui-microcopy mt-2">
-          Current facet combination is not mapped to a curated library case yet.
-        </div>
-      {:else if activeSource === "custom"}
-        <div class="ui-microcopy mt-2 space-y-1">
-          <div>Custom inputs are active for this family.</div>
-          {#if referenceProvenance}
-            <div>
-              Seeded from <strong class="text-foreground">{referenceProvenance.sourceLabel}</strong>.
-            </div>
-          {/if}
-        </div>
-      {/if}
-
-      {#if activeSource === "case-library" && librarySelectorSections.length > 0}
+      {#if librarySelectorSections.length > 0 || navigationState}
         <div class="mt-3 border-t border-border/50 pt-3">
-          <div class="ui-panel-kicker">
-            Case Library
-          </div>
           <div class="mt-3 space-y-3">
             {#each librarySelectorSections as section}
               <div class="space-y-2">
@@ -470,71 +375,43 @@
                 </div>
               </div>
             {/each}
-          </div>
-        </div>
-      {/if}
 
-      {#if caseDisclosure}
-        <div class="mt-3 border-t border-border/50 pt-3">
-          <div class="ui-panel-kicker">
-            Case Disclosure
-          </div>
-          <div class="mt-2 rounded-md border border-border/70 bg-background/80 p-3">
-            <div class="ui-support-copy text-foreground">
-              <strong>{caseDisclosure.title}</strong>
-            </div>
-            <div class="ui-microcopy mt-1">
-              {caseDisclosure.description}
-            </div>
-
-            <div class="mt-3 grid gap-3 xl:grid-cols-2">
-              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="ui-subsection-kicker">
-                  Citation / Source
-                </div>
-                <div class="ui-microcopy mt-2 space-y-1">
-                  {#each caseDisclosure.sourceItems as item}
-                    <div>{item}</div>
-                  {/each}
-                </div>
+            <div class="space-y-2 border-t border-border/50 pt-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="ui-subsection-kicker text-foreground">{FAMILY_LABELS[activeFamily as keyof typeof FAMILY_LABELS] ?? activeFamily}</span>
+                <span class="ui-microcopy">Writable branch</span>
               </div>
-
-              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="ui-subsection-kicker">
-                  Fixed Settings
-                </div>
-                <div class="ui-microcopy mt-2 space-y-1">
-                  {#each caseDisclosure.fixedSettingsItems as item}
-                    <div>{item}</div>
-                  {/each}
-                </div>
-              </div>
-
-              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="ui-subsection-kicker">
-                  Allowed Sensitivities
-                </div>
-                <div class="ui-microcopy mt-2 space-y-1">
-                  {#each caseDisclosure.sensitivityItems as item}
-                    <div>{item}</div>
-                  {/each}
-                </div>
-              </div>
-
-              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="ui-subsection-kicker">
-                  Reference Guidance
-                </div>
-                <div class="ui-microcopy mt-2 space-y-1">
-                  {#each caseDisclosure.referencePolicyItems as item}
-                    <div>{item}</div>
-                  {/each}
-                </div>
+              <div class="grid gap-2 md:grid-cols-2">
+                <button
+                  type="button"
+                  class={`rounded-md border px-3 py-2 text-left transition-colors ${activeSource === "custom"
+                    ? "border-primary/60 bg-primary/10"
+                    : "border-border/70 bg-background hover:bg-muted/30"}`}
+                  onclick={handleCustomCaseSelect}
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <strong class="font-semibold text-foreground">Custom</strong>
+                    {#if activeSource === "custom"}
+                      <span class="ui-microcopy text-primary">Active</span>
+                    {/if}
+                  </div>
+                  <div class="ui-microcopy mt-1">
+                    {#if activeSource === "custom"}
+                      Writable family-local scenario state is active. Choose any curated case above to restore library guidance.
+                    {:else if navigationState.editabilityPolicy.allowCustomizeAction}
+                      Seed the active reference case into a writable custom scenario for direct edits.
+                    {:else}
+                      Switch this family into writable direct editing without leaving the case list.
+                    {/if}
+                  </div>
+                </button>
               </div>
             </div>
           </div>
         </div>
       {/if}
+
+      
     </div>
   {/if}
 
