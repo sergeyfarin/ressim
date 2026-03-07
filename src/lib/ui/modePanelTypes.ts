@@ -1,22 +1,21 @@
 import type { CaseMode, ToggleState } from "../catalog/caseCatalog";
 import type {
   BasePresetProfile,
-  BenchmarkProvenance,
   ComparisonSelection,
   LibraryCaseGroup,
   ProductFamily,
+  ReferenceProvenance,
   ScenarioEditabilityPolicy,
   ScenarioNavigationState,
   ScenarioSource,
 } from "../stores/phase2PresetContract";
 import type { WarningPolicy } from "../warningPolicy";
 
-export type ReferenceProvenance = BenchmarkProvenance;
-
 export type {
   ComparisonSelection,
   LibraryCaseGroup,
   ProductFamily,
+  ReferenceProvenance,
   ScenarioEditabilityPolicy,
   ScenarioNavigationState,
   ScenarioSource,

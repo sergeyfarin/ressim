@@ -368,19 +368,19 @@ export function getOverrideGroupSectionTarget(groupKey: string): CustomizeSectio
     return OVERRIDE_GROUP_TO_SECTION_TARGET[key] ?? 'shell';
 }
 
-export type BenchmarkProvenance = {
+export type ReferenceProvenance = {
     sourceBenchmarkId: string;
     sourceCaseKey: string;
     sourceLabel: string;
     clonedAtIso: string;
 };
 
-export function buildBenchmarkCloneProvenance(input: {
+export function buildReferenceCloneProvenance(input: {
     benchmarkId: string | null | undefined;
     sourceCaseKey: string | null | undefined;
     sourceLabel: string | null | undefined;
     nowIso?: string;
-}): BenchmarkProvenance | null {
+}): ReferenceProvenance | null {
     const benchmarkId = input.benchmarkId ?? null;
     const sourceCaseKey = input.sourceCaseKey ?? null;
     const sourceLabel = input.sourceLabel ?? null;
@@ -397,16 +397,16 @@ export function buildBenchmarkCloneProvenance(input: {
 export function shouldAutoClearModifiedState(input: {
     isModified: boolean;
     activeMode: CaseMode;
-    benchmarkProvenance: BenchmarkProvenance | null;
+    referenceProvenance: ReferenceProvenance | null;
     parameterOverrideCount: number;
 }): boolean {
     if (!input.isModified) return false;
     if (input.activeMode === 'benchmark') return false;
-    if (input.benchmarkProvenance) return false;
+    if (input.referenceProvenance) return false;
     return Number(input.parameterOverrideCount) === 0;
 }
 
-export function shouldAllowBenchmarkClone(input: {
+export function shouldAllowReferenceClone(input: {
     activeMode: CaseMode;
     isModified: boolean;
     hasReferenceLibraryCase?: boolean;
@@ -415,10 +415,10 @@ export function shouldAllowBenchmarkClone(input: {
 }
 
 export function shouldShowModePanelStatusRow(input: {
-    benchmarkProvenance: BenchmarkProvenance | null;
+    referenceProvenance: ReferenceProvenance | null;
     parameterOverrideCount: number;
 }): boolean {
-    return !!input.benchmarkProvenance || Number(input.parameterOverrideCount) > 0;
+    return !!input.referenceProvenance || Number(input.parameterOverrideCount) > 0;
 }
 
 export type AnalyticalStatusLevel = 'reference' | 'approximate' | 'off';

@@ -13,7 +13,7 @@ Primary review source:
 ## Resume State
 
 - Status: `F1.4`, `F1.5`, and `F1.7` are complete and validated; the family-local `Case Library` owns reference entry, `Type Curves` stays selected for Fetkovich-driven state, and the remaining benchmark-named inputs wrapper has been absorbed into `ModePanel`.
-- Next slice: continue `F1.9` by pruning benchmark-prefixed compatibility names that still remain in shared contracts and UI-facing types after the store/runtime cleanup.
+- Next slice: continue `F1.9` by pruning legacy `benchmark` mode compatibility from shared catalog/store mode contracts now that runtime state and shared reference contracts are reference-first.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -305,6 +305,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 - Current progress inside `F1.9`:
   - authoritative docs now describe family-owned benchmark/reference workflows instead of a separate benchmark mode
   - the store now uses `reference*` runtime state and actions as the only public surface; benchmark-prefixed store aliases have been removed
+  - shared provenance helpers and UI-facing types now use `ReferenceProvenance`, `buildReferenceCloneProvenance(...)`, and `shouldAllowReferenceClone(...)` instead of benchmark-prefixed compatibility names
 - Retire or repurpose:
   - benchmark top-level mode selectors
   - benchmark-only UI props/types

@@ -36,7 +36,7 @@
 
   const shouldShowStatusRow = $derived(
     shouldShowModePanelStatusRow({
-      benchmarkProvenance: referenceProvenance,
+      referenceProvenance,
       parameterOverrideCount: Number(params.parameterOverrideCount ?? 0),
     }),
   );

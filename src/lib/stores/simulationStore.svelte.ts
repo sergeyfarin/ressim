@@ -40,7 +40,7 @@ import {
 } from '../validateInputs';
 import { buildWarningPolicy } from '../warningPolicy';
 import {
-    buildBenchmarkCloneProvenance,
+    buildReferenceCloneProvenance,
     buildBasePresetProfile,
     buildComparisonSelection,
     buildScenarioNavigationState,
@@ -48,10 +48,10 @@ import {
     buildParameterOverrides,
     evaluateAnalyticalStatus,
     groupParameterOverrides,
-    shouldAllowBenchmarkClone,
+    shouldAllowReferenceClone,
     shouldAutoClearModifiedState,
     type AnalyticalStatus,
-    type BenchmarkProvenance as ReferenceProvenance,
+    type ReferenceProvenance,
     type ComparisonSelection,
 } from './phase2PresetContract';
 
@@ -437,7 +437,7 @@ export function createSimulationStore() {
         if (!shouldAutoClearModifiedState({
             isModified,
             activeMode,
-            benchmarkProvenance: referenceProvenance,
+            referenceProvenance,
             parameterOverrideCount,
         })) return;
 
@@ -1232,7 +1232,7 @@ export function createSimulationStore() {
     }
 
     function cloneActiveReferenceToCustom(): boolean {
-        if (!shouldAllowBenchmarkClone({
+        if (!shouldAllowReferenceClone({
             activeMode,
             isModified,
             hasReferenceLibraryCase: Boolean(activeReferenceBenchmarkFamily),
@@ -1241,7 +1241,7 @@ export function createSimulationStore() {
         const benchmarkId = activeReferenceBenchmarkFamily?.key ?? toggles.benchmarkId ?? null;
         const benchmarkLabel = activeLibraryEntry?.label
             ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
-        const provenance = buildBenchmarkCloneProvenance({
+        const provenance = buildReferenceCloneProvenance({
             benchmarkId,
             sourceCaseKey: activeLibraryEntry?.key ?? activeCase,
             sourceLabel: benchmarkLabel,

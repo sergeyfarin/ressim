@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    buildBenchmarkCloneProvenance,
+    buildReferenceCloneProvenance,
     buildComparisonSelection,
     buildOverrideResetPlan,
     buildBasePresetProfile,
@@ -14,7 +14,7 @@ import {
     groupParameterOverrides,
     resolveProductFamily,
     resolveScenarioSource,
-    shouldAllowBenchmarkClone,
+    shouldAllowReferenceClone,
     shouldAutoClearModifiedState,
     shouldShowModePanelStatusRow,
 } from './phase2PresetContract';
@@ -385,7 +385,7 @@ describe('phase2PresetContract', () => {
     });
 
     it('builds benchmark clone provenance from benchmark context', () => {
-        const provenance = buildBenchmarkCloneProvenance({
+        const provenance = buildReferenceCloneProvenance({
             benchmarkId: 'bl_case_a_refined',
             sourceCaseKey: 'bench_bl-case-a-refined',
             sourceLabel: 'BL Case A Refined',
@@ -401,19 +401,19 @@ describe('phase2PresetContract', () => {
     });
 
     it('returns null clone provenance when benchmark context is incomplete', () => {
-        expect(buildBenchmarkCloneProvenance({
+        expect(buildReferenceCloneProvenance({
             benchmarkId: null,
             sourceCaseKey: 'bench_x',
             sourceLabel: 'X',
         })).toBeNull();
 
-        expect(buildBenchmarkCloneProvenance({
+        expect(buildReferenceCloneProvenance({
             benchmarkId: 'bl_case_a_refined',
             sourceCaseKey: '',
             sourceLabel: 'X',
         })).toBeNull();
 
-        expect(buildBenchmarkCloneProvenance({
+        expect(buildReferenceCloneProvenance({
             benchmarkId: 'bl_case_a_refined',
             sourceCaseKey: 'bench_x',
             sourceLabel: '',
@@ -424,21 +424,21 @@ describe('phase2PresetContract', () => {
         expect(shouldAutoClearModifiedState({
             isModified: true,
             activeMode: 'dep',
-            benchmarkProvenance: null,
+            referenceProvenance: null,
             parameterOverrideCount: 0,
         })).toBe(true);
 
         expect(shouldAutoClearModifiedState({
             isModified: true,
             activeMode: 'benchmark',
-            benchmarkProvenance: null,
+            referenceProvenance: null,
             parameterOverrideCount: 0,
         })).toBe(false);
 
         expect(shouldAutoClearModifiedState({
             isModified: true,
             activeMode: 'dep',
-            benchmarkProvenance: {
+            referenceProvenance: {
                 sourceBenchmarkId: 'bl_case_a_refined',
                 sourceCaseKey: 'bench_bl-case-a-refined',
                 sourceLabel: 'BL Case A Refined',
@@ -450,31 +450,31 @@ describe('phase2PresetContract', () => {
         expect(shouldAutoClearModifiedState({
             isModified: true,
             activeMode: 'dep',
-            benchmarkProvenance: null,
+            referenceProvenance: null,
             parameterOverrideCount: 2,
         })).toBe(false);
     });
 
     it('only allows clone-to-custom from unmodified reference-capable state', () => {
-        expect(shouldAllowBenchmarkClone({ activeMode: 'benchmark', isModified: false })).toBe(true);
-        expect(shouldAllowBenchmarkClone({ activeMode: 'benchmark', isModified: true })).toBe(false);
-        expect(shouldAllowBenchmarkClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
-        expect(shouldAllowBenchmarkClone({ activeMode: 'dep', isModified: false })).toBe(false);
+        expect(shouldAllowReferenceClone({ activeMode: 'benchmark', isModified: false })).toBe(true);
+        expect(shouldAllowReferenceClone({ activeMode: 'benchmark', isModified: true })).toBe(false);
+        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
+        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false })).toBe(false);
     });
 
     it('shows mode-panel status row for provenance or tracked overrides', () => {
         expect(shouldShowModePanelStatusRow({
-            benchmarkProvenance: null,
+            referenceProvenance: null,
             parameterOverrideCount: 0,
         })).toBe(false);
 
         expect(shouldShowModePanelStatusRow({
-            benchmarkProvenance: null,
+            referenceProvenance: null,
             parameterOverrideCount: 1,
         })).toBe(true);
 
         expect(shouldShowModePanelStatusRow({
-            benchmarkProvenance: {
+            referenceProvenance: {
                 sourceBenchmarkId: 'bl_case_a_refined',
                 sourceCaseKey: 'bench_bl-case-a-refined',
                 sourceLabel: 'BL Case A Refined',

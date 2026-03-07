@@ -9,13 +9,13 @@ describe('simulation store policy wiring', () => {
   it('uses the shared auto-clear policy for modified-state reset behavior', () => {
     expect(storeSource).toMatch(/shouldAutoClearModifiedState/);
     expect(storeSource).toMatch(/referenceProvenance/);
-    expect(storeSource).toMatch(/benchmarkProvenance: referenceProvenance/);
+    expect(storeSource).toMatch(/referenceProvenance,\s*parameterOverrideCount/);
     expect(storeSource).toMatch(/parameterOverrideCount/);
     expect(storeSource).not.toMatch(/get benchmarkProvenance\(\)/);
   });
 
   it('uses the shared clone policy for benchmark clone-to-custom flow', () => {
-    expect(storeSource).toMatch(/shouldAllowBenchmarkClone/);
+    expect(storeSource).toMatch(/shouldAllowReferenceClone/);
     expect(storeSource).toMatch(/function cloneActiveReferenceToCustom\(\): boolean/);
     expect(storeSource).toMatch(/hasReferenceLibraryCase: Boolean\(activeReferenceBenchmarkFamily\)/);
     expect(storeSource).not.toMatch(/cloneActiveBenchmarkToCustom:/);
