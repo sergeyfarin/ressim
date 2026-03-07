@@ -42,6 +42,17 @@ export type BenchmarkReferenceDefinition = {
     source: string;
 };
 
+export type BenchmarkBreakthroughCriterion = {
+    kind: 'watercut-threshold';
+    value: number;
+};
+
+export type BenchmarkComparisonMetric = {
+    kind: 'breakthrough-pv-relative-error';
+    target: 'analytical-reference' | 'numerical-reference';
+    tolerance: number;
+};
+
 export type BenchmarkDisplayDefaults = {
     xAxis: BenchmarkXAxisKey;
     panels: BenchmarkPanelKey[];
@@ -59,6 +70,8 @@ type BenchmarkFamilyDefinition = {
     scenarioClass: BenchmarkScenarioClass;
     sensitivityAxes: BenchmarkSensitivityAxisKey[];
     reference: BenchmarkReferenceDefinition;
+    breakthroughCriterion?: BenchmarkBreakthroughCriterion;
+    comparisonMetric?: BenchmarkComparisonMetric;
     displayDefaults: BenchmarkDisplayDefaults;
     stylePolicy: BenchmarkStylePolicy;
     runPolicy: BenchmarkRunPolicy;
@@ -123,6 +136,15 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
             kind: 'analytical',
             source: 'buckley-leverett-shock-reference',
         },
+        breakthroughCriterion: {
+            kind: 'watercut-threshold',
+            value: 0.01,
+        },
+        comparisonMetric: {
+            kind: 'breakthrough-pv-relative-error',
+            target: 'analytical-reference',
+            tolerance: 0.25,
+        },
         displayDefaults: {
             xAxis: 'pvi',
             panels: ['watercut-breakthrough', 'recovery', 'pressure'],
@@ -142,6 +164,15 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
         reference: {
             kind: 'analytical',
             source: 'buckley-leverett-shock-reference',
+        },
+        breakthroughCriterion: {
+            kind: 'watercut-threshold',
+            value: 0.01,
+        },
+        comparisonMetric: {
+            kind: 'breakthrough-pv-relative-error',
+            target: 'analytical-reference',
+            tolerance: 0.30,
         },
         displayDefaults: {
             xAxis: 'pvi',

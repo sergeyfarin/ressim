@@ -16,7 +16,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 ## Active Slice
 
 - [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- [ ] **B2. Align BL benchmark base cases to exact Rust semantics (next)** — replace remaining rate-controlled BL benchmark semantics with exact Rust benchmark parity.
+- [ ] **B3. Introduce generated sensitivity variants without duplicating full cases (next)** — build BL sensitivity ownership on top of the now-aligned Rust-parity base families.
 
 ## Detailed Implementation Plan
 
@@ -43,7 +43,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - selector options, family metadata, and runtime benchmark entries now resolve from the same registry contract
     - benchmark payloads now resolve from `src`-owned source files without duplicating parameter blobs in the registry
 
-- [ ] **B2. Align BL benchmark base cases to exact Rust semantics**
+- [x] **B2. Align BL benchmark base cases to exact Rust semantics**
   - Repoint frontend BL benchmark families to the same physical setup used by the validated Rust builders.
   - Keep physical semantics separate from user-facing run horizon.
   - Replace any remaining rate-controlled BL benchmark semantics with pressure-controlled Rust parity for benchmark families.
@@ -51,6 +51,11 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Acceptance:
     - BL base family matches the Rust benchmark definitions field-for-field where physically relevant
     - frontend benchmark runtime can be described as the same experiment as the Rust benchmark
+  - Outcome:
+    - refined BL benchmark source files now use pressure-controlled Rust-parity settings while keeping the practical 240-step UI horizon
+    - benchmark-family metadata now records `watercut >= 1%` breakthrough detection and tolerated breakthrough-PV relative error
+    - the worker now applies authored uniform permeability values, fixing a live runtime drift that would otherwise have broken benchmark parity
+    - wasm-backed regression now checks analytical breakthrough-PV alignment against the declared family tolerance
 
 - [ ] **B3. Introduce generated sensitivity variants without duplicating full cases**
   - Do not clone full JSON payloads for every benchmark variant.
@@ -58,7 +63,10 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - First supported BL axes:
     - grid refinement
     - timestep refinement
-    - curated heterogeneity variants
+    - 1d vs. 2d (vertical) vs. 2d (horizontal) vs. 3d while keeping the same analytical
+    - curated heterogeneity variants (2d vertical) - while keeping the same average so that single analytical solution still applies, but different simulation results
+    - fluid propetries variants (making physical sense) - those would also have different analytical solutions
+    - other suggestions
   - For each axis, define:
     - allowed variant set
     - comparison meaning

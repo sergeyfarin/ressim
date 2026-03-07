@@ -5,10 +5,14 @@
 - Benchmark-family schema and ownership are now implemented in code:
   - family metadata, selector options, and runtime benchmark entries resolve from one registry contract
   - benchmark parameter payloads now come from source JSON files under `src/lib/catalog/benchmark-case-data/`, not from `public/` imports or duplicated blobs
+- B2 is now implemented for the Buckley-Leverett base families:
+  - refined BL source cases now use Rust-parity pressure-controlled semantics instead of the old rate-controlled frontend variant
+  - benchmark-family metadata now records the breakthrough criterion and accepted breakthrough-PV comparison tolerance
+  - the worker now applies authored uniform permeability values instead of silently leaving constructor defaults in place
 - The remaining benchmark mismatch is semantic, not architectural:
-  - frontend/public BL benchmark presets still reflect short-horizon rate-controlled definitions
-  - validated Rust BL benchmarks are pressure-controlled and should become the benchmark-family physical reference
-- The next workstream is benchmark modernization: exact benchmark-family semantics, generated sensitivities, benchmark-specific charts, and explicit reference policy.
+  - BL base-family semantics now match the Rust benchmark builders for the authored refined cases
+  - the next semantic step is generated sensitivity ownership and multi-run benchmark execution, not another base-case source split
+- The next workstream is benchmark modernization: generated sensitivities, multi-run comparison, benchmark-specific charts, and explicit reference policy.
 
 ## Legacy Cleanup
 
@@ -57,6 +61,12 @@ Goal:
 
 Key outcome:
 - frontend BL benchmark means the same experiment as the validated Rust benchmark
+
+Status:
+- completed on 2026-03-07
+- refined BL benchmark source files now use pressure-controlled Rust-parity settings
+- benchmark-family metadata now records `watercut >= 1%` breakthrough detection and accepted breakthrough-PV relative-error tolerance
+- wasm-backed runtime regression now checks breakthrough-PV alignment against the declared analytical reference and tolerance
 
 ### B3. Generate sensitivity variants from base families
 

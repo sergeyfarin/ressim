@@ -128,6 +128,15 @@ describe('caseCatalog Dynamic Catalog', () => {
         kind: 'analytical',
         source: 'buckley-leverett-shock-reference',
       },
+      breakthroughCriterion: {
+        kind: 'watercut-threshold',
+        value: 0.01,
+      },
+      comparisonMetric: {
+        kind: 'breakthrough-pv-relative-error',
+        target: 'analytical-reference',
+        tolerance: 0.25,
+      },
       displayDefaults: {
         xAxis: 'pvi',
         panels: ['watercut-breakthrough', 'recovery', 'pressure'],
@@ -157,6 +166,8 @@ describe('caseCatalog Dynamic Catalog', () => {
       runPolicy: 'compare-to-reference',
       sensitivityAxes: [],
     });
+    expect(dietz?.breakthroughCriterion ?? null).toBeNull();
+    expect(dietz?.comparisonMetric ?? null).toBeNull();
     expect(dietz?.baseCase.key).toBe('dietz_sq_center');
   });
 
