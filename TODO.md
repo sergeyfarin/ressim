@@ -1,262 +1,177 @@
-# TODO — ResSim Active Work Plan
+# TODO — ResSim Frontend Execution Plan
 
-This file is the live plan for the next major workstream. Legacy Phase 1 / Phase 2 recovery notes and completed execution logs were removed from this tracker to keep it interruption-safe and reviewable.
+This file is the live execution tracker for the next frontend workstream. It replaces the benchmark-only backlog now that benchmark modernization is complete and the main remaining work is product/workflow coherence.
 
-## Proposed Direction (2026-03-07, pending review)
+## Current Objective (2026-03-07)
 
-- [x] **Single benchmark source of truth** — benchmark physics definitions must exist in one logical place only; UI selectors, tests, and benchmark execution must resolve from that single source and never duplicate parameter payloads.
-- [x] **Benchmark mode becomes a benchmark-family runner** — benchmark mode should support a base benchmark plus meaningful sensitivity variants, not only one static case launch.
-- [x] **Buckley-Leverett base semantics match Rust** — BL benchmark families should use the exact validated Rust benchmark semantics as the physical reference point.
-- [x] **Buckley-Leverett default x-axis is PVI** — benchmark charts for BL should default to pore volumes injected rather than time.
-- [x] **Benchmark charts are benchmark-specific** — chart content should depend on benchmark family and reference type, not reuse the same generic curve set blindly.
-- [x] **Depletion charts stay depletion-focused** — depletion benchmark views should emphasize oil rate, cumulative oil, and pressure/decline diagnostics, without default injection/water-cut clutter.
-- [x] **Sensitivity axes must be meaningful** — BL benchmark sensitivities should initially support grid refinement, timestep refinement, and curated heterogeneity variants only where the comparison remains interpretable.
-- [x] **Reference policy is explicit** — homogeneous BL variants compare against analytical Buckley-Leverett reference; heterogeneous BL variants compare against a refined numerical reference, not directly against analytical equality.
+Make ResSim feel like one deliberate scientific application instead of several adjacent tools. The next workstream is about workflow clarity, warning consistency, benchmark discoverability, compact inputs, unified outputs, and a more disciplined visual design.
 
-## Active Slice
+Primary review source:
 
-- [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- Benchmark modernization slice `B10` completed on 2026-03-07. No further benchmark-specific slice is active in this tracker.
+- `docs/FRONTEND_UI_AUDIT_2026-03-07.md`
 
-## Detailed Implementation Plan
+## Resume State
 
-- [x] **B1. Define benchmark-family schema and ownership**
-  - Introduce a single benchmark registry contract that separates:
-    - base physical definition
-    - derived sensitivity definitions
+- Status: review complete, execution plan rewritten, implementation not started.
+- Next slice: `F1` product workflow and information architecture.
+- Reviewed F1 direction:
+  - explicit page regions: `Inputs`, `Run`, `Outputs`
+  - `Outputs` owns comparison from day one
+  - reviewed family direction: `Waterflood`, `Depletion Analysis`, `Type Curves`, `Scenario Builder`
+- After `F1`: `F2` warning/label normalization and `F3` benchmark disclosure should proceed before layout polish.
+- Constraint: preserve completed benchmark-modernization behavior unless `F1` explicitly decides to reposition benchmark mode in the product.
+
+## Active Workstream
+
+- [ ] **F1. Decide the product workflow and information architecture**
+  - Replace the current benchmark top-level mode with explicit product families:
+    - `Waterflood`
+    - `Depletion Analysis`
+    - `Type Curves`
+    - `Scenario Builder`
+  - Keep family labels short in navigation and use explanatory subtitles inside the `Inputs` region.
+  - Define the canonical page structure:
+    - inputs
+    - run + warnings
+    - outputs
+  - `Outputs` must own comparison and sensitivity review from day one rather than using a separate comparison/benchmark destination.
+  - Move current benchmark/reference families into their owning product families:
+    - Buckley-Leverett reference families into `Waterflood`
+    - Dietz-style fully analytical depletion references into `Depletion Analysis`
+    - Fetkovich into `Type Curves` as the seed case for future type-curve workflows
+  - Decide the input source model.
+    - Current recommendation: replace separate `Presets` and `Reference Cases` with one library-style source plus `Custom`
+    - Reason: many curated cases are not true literature references, so calling everything a reference risks weakening trust
+    - Recommended library grouping inside the source selector:
+      - literature references
+      - internal reference / validation cases
+      - curated starting cases
+    - If `Reference Cases` is retained as the source label, only true reference cases should live there
+  - Replace `Clone to Custom` with an in-family `Customize` action:
+    - when a library/reference case is active, ordinary edits stay locked
+    - only allowed sensitivity toggles remain available
+    - pressing `Customize` switches the same family into `Custom` while carrying provenance and seeded parameters
+  - Add a concrete reference-case narrative for users:
+    - where the case comes from
+    - what settings are fixed
+    - what sensitivities are allowed
+    - what reference policy applies
+    - when to stay in the library flow versus when to switch to custom
+  - Prevent `Scenario Builder` from becoming a junk drawer:
+    - define explicit entry criteria for what belongs there
+    - explain in the UI why a case is routed there when it is not supported inside `Waterflood`, `Depletion Analysis`, or `Type Curves`
+  - Acceptance:
+    - a user can tell where to build scenarios, where to validate them, and where to inspect results without guessing
+    - the workflow no longer depends on hidden mental-model jumps between tabs/modes
+    - the app no longer needs a separate benchmark top-level mode to express verification workflows
+    - the source model uses truthful names for literature references versus curated internal cases
+
+- [ ] **F2. Unify warnings, labels, and terminology**
+  - Keep one warning-policy data model, but redesign the UI around one canonical warning surface plus section-local status/error indicators.
+  - Normalize vocabulary across the app:
+    - mode names
+    - run actions
+    - benchmark actions
+    - analytical/reference language
+    - result summaries
+  - Rename ambiguous labels such as `Analytical Model` if the control actually selects a reference/solution mode.
+  - Standardize text sizing and hierarchy across section headers, field labels, badges, and microcopy.
+  - Acceptance:
+    - warnings read as one system instead of three related surfaces
+    - labels describe user intent rather than implementation details
+
+- [ ] **F3. Expose benchmark settings and reference policy clearly**
+  - Add benchmark case disclosure cards or compact spec tables showing:
+    - grid/model size
+    - key fluid/rock settings
+    - well controls
+    - timestep/horizon
     - reference policy
-    - display defaults
-    - run policy
-  - Required metadata for each benchmark family:
-    - `familyKey`, `label`, `description`
-    - `scenarioClass` (`buckley-leverett`, `depletion`, later others)
-    - `baseCase`
-    - `sensitivityAxes`
-    - `referenceKind` (`analytical`, `numerical-refined`)
-    - `referenceCaseKey` or `referenceGenerator`
-    - `defaultXAxis`
-    - `defaultPanels`
-    - `stylePolicy`
-    - `runPolicy` (`single`, `sweep`, `compare-to-reference`)
-  - Outcome:
-    - implemented a benchmark-family registry layered over source benchmark case files under `src/lib/catalog/benchmark-case-data/`
-    - selector options, family metadata, and runtime benchmark entries now resolve from the same registry contract
-    - benchmark payloads now resolve from `src`-owned source files without duplicating parameter blobs in the registry
-
-- [x] **B2. Align BL benchmark base cases to exact Rust semantics**
-  - Repoint frontend BL benchmark families to the same physical setup used by the validated Rust builders.
-  - Keep physical semantics separate from user-facing run horizon.
-  - Replace any remaining rate-controlled BL benchmark semantics with pressure-controlled Rust parity for benchmark families.
-  - Record breakthrough criterion and accepted comparison metric in the benchmark metadata.
+    - variant deltas for sensitivities
+  - Replace text-heavy stored benchmark result cards with a compact compare surface.
+  - Make it obvious which outputs belong to the base case versus selected sensitivity variants.
   - Acceptance:
-    - BL base family matches the Rust benchmark definitions field-for-field where physically relevant
-    - frontend benchmark runtime can be described as the same experiment as the Rust benchmark
-  - Outcome:
-    - refined BL benchmark source files now use pressure-controlled Rust-parity settings while keeping the practical 240-step UI horizon
-    - benchmark-family metadata now records `watercut >= 1%` breakthrough detection and tolerated breakthrough-PV relative error
-    - the worker now applies authored uniform permeability values, fixing a live runtime drift that would otherwise have broken benchmark parity
-    - wasm-backed regression now checks analytical breakthrough-PV alignment against the declared family tolerance
+    - users can answer “what is this benchmark actually running?” before pressing run
+    - stored results remain readable when several variants exist
 
-- [x] **B3. Introduce generated sensitivity variants without duplicating full cases**
-  - Do not clone full JSON payloads for every benchmark variant.
-  - Represent sensitivity variants as deltas from a benchmark family base case.
-  - First supported BL axes:
-    - grid refinement
-    - timestep refinement
-    - curated heterogeneity variants
-  - For each axis, define:
-    - allowed variant set
-    - comparison meaning
-    - whether analytical comparison remains valid
+- [ ] **F4. Unify chart and output architecture**
+  - Remove duplicated top-level interaction/state scaffolding between `RateChart` and `BenchmarkChart` where practical.
+  - Keep one interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and benchmark comparisons.
+  - Add compact output-summary cards/lists that sit above or beside charts instead of burying comparison data in long text blocks.
   - Acceptance:
-    - one base family definition can generate the initial BL sensitivity suite
-    - no N-way duplicated case payloads for each variant
-  - Outcome:
-    - BL sensitivity variants now resolve from generated deltas in `src/lib/catalog/benchmarkCases.ts` instead of duplicated source JSON payloads
-    - the initial generated suite covers grid refinement, timestep refinement, and curated seeded heterogeneity variants for both refined BL families
-    - heterogeneous variants now carry explicit numerical-reference-required metadata instead of silently reusing the homogeneous analytical contract
-  - Retained extension candidates for later slices:
-    - 1d vs. 2d (vertical) vs. 2d (horizontal) vs. 3d while keeping the same analytical where justified
-    - fluid property variants where the comparison contract explicitly handles variant-specific analytical solutions
-    - additional axes only after B4/B5 make their comparison semantics explicit in the runner and UI
+    - chart behavior feels consistent regardless of run type
+    - future output features do not require parallel implementation in multiple chart shells
 
-- [x] **B4. Build benchmark execution/result model for multi-run comparison**
-  - Add a benchmark-runner path that can execute one benchmark family plus selected variants serially in the worker/store.
-  - Define a normalized result model per run:
-    - `caseKey`
-    - `familyKey`
-    - `variantKey`
-    - `variantLabel`
-    - `rateHistory`
-    - `breakthroughPvi`
-    - `breakthroughTime`
-    - `watercutSeries`
-    - `pressureSeries`
-    - `recoverySeries`
-    - `referenceComparison`
-  - Include progress and cancellation for multi-run benchmark sweeps.
+- [ ] **F5. Add multi-case comparison beyond charts**
+  - Add case selection/switching for the 3D view when multiple benchmark or sensitivity runs exist.
+  - Extend comparison awareness to other output surfaces where it adds value:
+    - saturation profile
+    - compact summary cards
+    - key diagnostics
+  - Synchronize the selected case across summary, chart, and 3D inspection where appropriate.
   - Acceptance:
-    - benchmark mode can run base-only or base-plus-variants deterministically
-    - results can be consumed by charts without special-case ad hoc plumbing
-  - Outcome:
-    - added a pure benchmark result-model layer in `src/lib/benchmarkRunModel.ts` that normalizes rate history, breakthrough, water-cut, pressure, recovery, and reference-comparison outputs per run
-    - the simulation store now runs benchmark families serially through the existing worker, storing normalized results with sweep progress and cancellation support
-    - benchmark mode now exposes `Run Base` plus axis-specific sensitivity actions and a stored-results summary without introducing duplicated benchmark payload ownership
+    - sensitivity studies can be inspected spatially, not only in charts
+    - output surfaces stay synchronized around one selected comparison case
 
-- [x] **B5. Make benchmark reference handling explicit**
-  - For homogeneous BL families:
-    - preserve analytical Buckley-Leverett overlay and benchmark breakthrough comparison
-  - For heterogeneous BL families:
-    - compare against a refined numerical reference run
-    - clearly label that analytical overlay is no longer the primary truth metric
-  - For depletion families:
-    - keep depletion analytical comparison where applicable
-  - Add benchmark-level comparison outputs:
-    - breakthrough shift
-    - recovery difference at selected PVI/time landmarks
-    - error summary against the applicable reference
+- [ ] **F6. Compact the input layout and reduce page height**
+  - Reduce default section padding and vertical spacing.
+  - Convert overly tall input groups into compact flowing cards/subcards where possible.
+  - Revisit table-heavy sections and keep tables only where they clearly outperform compact forms.
+  - Tighten margins and whitespace across the shell without making the UI cramped.
   - Acceptance:
-    - each benchmark family declares what “reference” means
-    - benchmark charts and summaries do not imply analytical validity where it no longer applies
-  - Outcome:
-    - benchmark run results now carry an explicit `referencePolicy` contract plus scenario-specific comparison outputs in `src/lib/benchmarkRunModel.ts`
-    - homogeneous BL runs now identify analytical Buckley-Leverett as the primary truth source and report breakthrough/recovery deltas against that reference
-    - heterogeneous BL runs now identify refined numerical reference as the primary truth source and no longer imply analytical equality in the benchmark summaries
-    - depletion benchmark runs now identify analytical depletion reference explicitly and report trend-focused diagnostics such as final oil-rate error, recovery delta, and pressure delta
+    - common scenario editing takes materially less scrolling on desktop
+    - dense scientific inputs still remain legible and editable
 
-- [x] **B6. Redesign benchmark chart composition and defaults**
-  - Introduce benchmark-family-specific panel layouts instead of one generic chart bundle.
-  - Proposed BL default panels:
-    - water cut vs PVI with breakthrough markers
-    - recovery / cumulative oil vs PVI
-    - pressure diagnostics in a separate panel
-    - optional rate panel only when it adds diagnostic value
-  - Proposed depletion default panels:
-    - oil rate vs time or dimensionless time
-    - cumulative oil / recovery
-    - average pressure / decline diagnostics
-  - Curve-style policy:
-    - color identifies case/variant
-    - line style identifies quantity or reference type
-    - avoid mixing pressure and water cut in one primary panel by default
+- [ ] **F7. Redesign light/dark themes and remove visual noise**
+  - Replace near-black dark surfaces and flat-white light surfaces with more deliberate working themes.
+  - Remove or significantly soften the reservoir-layer page background treatment.
+  - Improve panel contrast, content focus, and overall data-first visual balance.
   - Acceptance:
-    - BL charts default to breakthrough-centric reading
-    - depletion charts do not surface irrelevant waterflood curves by default
-    - multi-case benchmark overlays remain readable without ambiguous legends
-  - Outcome:
-    - added shared chart layout typing in `src/lib/charts/rateChartLayoutConfig.ts` so presets and benchmarks use the same chart-layout contract
-    - added benchmark-specific layout selection in `src/lib/charts/benchmarkChartConfig.ts`, driven by benchmark family and explicit reference policy
-    - refactored `src/lib/charts/RateChart.svelte` to honor layout-defined panel titles, curve subsets, scale presets, x-axis options, and log-scale policy
-    - updated `src/lib/charts/ChartSubPanel.svelte` to reset curve visibility when a benchmark layout swaps the active curve set
-    - added coverage for benchmark chart defaults in `src/lib/charts/benchmarkChartConfig.test.ts`
+    - both themes feel designed for sustained technical use
+    - decorative background treatment no longer competes with data surfaces
 
-- [x] **B7. Update chart/data plumbing for multi-case overlays**
-  - Refactor chart inputs so benchmark views can render multiple runs and one reference together.
-  - Decide whether to extend the current rate chart stack or add a benchmark-specific chart container on top of shared lower-level chart primitives.
-  - Keep x-axis policy benchmark-aware:
-    - BL default `PVI`
-    - depletion default `time` or `tD` where meaningful
-  - Add benchmark legend/group controls if needed for toggling cases and quantities.
+- [ ] **F8. Finish the faceted selection product surface**
+  - Audit every depletion, waterflood, and simulation facet against actual supported user workflows.
+  - For each currently surfaced option, choose one:
+    - fully support it
+    - hide it
+    - present it with an explicit reason and path to the right mode/workflow
+  - Make the mode split and facet constraints readable from the UI itself, not only from code rules.
   - Acceptance:
-    - chart plumbing is no longer hard-wired to one simulation run + one analytical series only
-  - Outcome:
-    - added a benchmark-specific comparison chart container in `src/lib/charts/BenchmarkChart.svelte` instead of stretching the single-run `RateChart.svelte` contract further
-    - added a pure overlay data builder in `src/lib/charts/benchmarkComparisonModel.ts` that converts stored benchmark results into benchmark-family-specific multi-run panels plus analytical reference traces
-    - benchmark mode in `src/App.svelte` now routes to the comparison chart whenever stored results exist for the active benchmark family, while non-benchmark and pre-run benchmark views still use the single-run chart path
-    - BL overlays now compare base plus variants on breakthrough, recovery, and pressure panels with benchmark-aware x-axis options, and depletion overlays now compare oil-rate, recovery/cumulative, and pressure traces against analytical depletion reference
-    - added focused regression coverage in `src/lib/charts/benchmarkComparisonModel.test.ts`
+    - the catalog surface no longer looks broader than the product actually is
+    - users understand why an option is unavailable and what to use instead
 
-- [x] **B8. Update benchmark UI workflow**
-  - Benchmark mode should let the user select:
-    - benchmark family
-    - enabled sensitivity axes / variants
-    - comparison/reference mode when applicable
-  - Keep benchmark mode distinct from the faceted scenario builder mental model.
-  - Preserve one-click clone into custom scenario from any selected base benchmark or variant.
-  - Deferred refinement to revisit after B5-B7:
-    - evaluate a compact table-style selector for benchmark execution
-    - possible direction: first row is the default single base case, later rows are sensitivity groups such as grid refinement or timestep refinement, and columns represent the available cases/variants inside that row
-    - user flow to evaluate: select one row or row+cells first, then run from a single button below instead of exposing many action buttons inline
-    - requires a deliberate UI pass before implementation; do not lock this in until the reference/comparison workflow is clearer
+- [ ] **F9. Refresh README and docs after the UI pass**
+  - Update README, benchmark guide, docs index, and status docs after F1-F8 land.
+  - Ensure the docs describe the final workflow and terminology, not transitional states.
   - Acceptance:
-    - benchmark mode is clearly for verification/comparison
-    - custom scenario mode remains clearly for ad hoc modeling
-  - Outcome:
-    - benchmark mode now uses a single execution-selector surface in `src/lib/ui/modes/BenchmarkPanel.svelte` instead of separate inline action buttons for base and each axis
-    - the selector now supports base-only runs or per-variant selection within a chosen sensitivity axis before dispatching a single run action
-    - the store now exposes `runActiveBenchmarkSelection()` so the UI can submit an explicit selected-variant set without reintroducing duplicated payload ownership
-    - stored benchmark result cards in benchmark mode are now scoped to the active family, keeping the workflow focused on the selected comparison set
+    - product docs match the live UI and current mental model
 
-- [x] **B9. Add regression tests for parity, sweeps, and chart defaults**
-  - Add tests for:
-    - benchmark family registry integrity
-    - Rust/frontend BL semantic parity
-    - variant generation without payload duplication
-    - reference-policy gating for heterogeneous families
-    - chart default x-axis/panel selection by benchmark family
-  - Acceptance:
-    - future benchmark edits cannot silently drift from the benchmark contract
-  - Outcome:
-    - extended `src/lib/benchmarkRunModel.test.ts` to cover explicit selected-variant benchmark sweep construction without reintroducing unselected variants
-    - extended `src/lib/charts/benchmarkComparisonModel.test.ts` to cover theme-aware analytical reference styling in addition to the existing overlay contract tests
-    - extended `src/lib/ui/modePanelFlows.test.ts` and `src/lib/appStoreDomainWiring.test.ts` to lock the new benchmark execution-selector workflow and app wiring
-    - retained runtime parity and chart-default protection through `src/lib/catalog/benchmarkPresetRuntime.test.ts`, `src/lib/catalog/caseCatalog.test.ts`, and `src/lib/charts/benchmarkChartConfig.test.ts`
+## Whole-Workstream Acceptance Criteria
 
-- [x] **B10. Refresh docs and benchmark guidance**
-  - Update benchmark docs to explain:
-    - exact benchmark semantics
-    - sensitivity meaning
-    - default x-axis and panel rationale
-    - analytical vs numerical reference policy
-  - Keep `TODO.md` and `docs/status.md` synchronized after each implementation slice.
-  - Acceptance:
-    - user-facing and developer-facing docs describe the same benchmark system
-  - Outcome:
-    - added `docs/BENCHMARK_MODE_GUIDE.md` as the authoritative benchmark workflow and contract guide
-    - updated `README.md` to describe the current benchmark-family runner, selected-variant execution flow, and benchmark-specific chart defaults
-    - updated `docs/P4_TWO_PHASE_BENCHMARKS.md` to distinguish Rust-parity homogeneous BL benchmarks from heterogeneous comparison variants and to describe the current benchmark-mode interpretation
-    - updated `docs/DOCUMENTATION_INDEX.md` and tracker docs so the benchmark documentation set points to the current authoritative pages
+- [ ] Inputs, run/warnings, outputs, and comparison review are visibly separated and easy to navigate.
+- [ ] Warning handling reads as one system and points users back to the right input region.
+- [ ] Benchmark cases expose their settings and reference policy clearly.
+- [ ] Sensitivity studies can be inspected in charts, summaries, and 3D views.
+- [ ] Labels and terminology are consistent across the app.
+- [ ] Input panels are materially more compact without losing readability.
+- [ ] Light and dark themes both feel intentional and data-first.
+- [ ] Faceted selection truthfully represents what each mode is meant to do.
+- [ ] `Scenario Builder` is positioned as an intentional exploratory workflow, not as a dump zone for unsupported cases.
 
-## Important Design Notes To Keep In Scope
+## Completed Context
 
-- [ ] **Do not let benchmark location drive architecture** — the correct home is whichever place can own the single source cleanly; duplication is the real problem, not whether the file sits in `public/cases` or near the benchmark registry module.
-- [ ] **Do not equate exact physics parity with long UI horizon** — the benchmark physics definition and the user-facing display horizon should be separate knobs.
-- [ ] **Do not compare heterogeneous BL directly to analytical as if it were still a strict reference** — heterogeneous variants need a refined numerical reference path.
-- [ ] **Do not overload one chart with unrelated units just to save space** — pressure should be separated from water-cut-first breakthrough reading unless a specific combined diagnostic panel proves clearer.
-- [ ] **Do not duplicate variants as copy-pasted cases** — sensitivity definitions should be generated from base-family metadata and deltas.
+- [x] Benchmark modernization `B1` through `B10` completed on 2026-03-07.
+- [x] Benchmark registry, explicit reference policy, selected-variant sweeps, benchmark-specific chart defaults, and benchmark docs are now baseline capabilities.
 
-## Acceptance Criteria For The Whole Workstream
+## Deferred / Later
 
-- [ ] There is exactly one benchmark definition source for each benchmark family.
-- [ ] Frontend BL benchmark families represent the same physical experiment as the validated Rust BL benchmarks.
-- [ ] Benchmark mode can run base case plus meaningful sensitivities without duplicating full case payloads.
-- [ ] BL charts default to breakthrough-centric panels and `PVI` x-axis.
-- [ ] Depletion charts default to depletion-relevant curves only.
-- [ ] Heterogeneous BL comparisons use explicit numerical-reference policy.
-- [ ] Benchmark legends, colors, and line styles remain readable for multi-case overlays.
-- [ ] Clone-to-custom provenance still works from benchmark mode.
-- [ ] Tests protect benchmark semantics, sweep generation, and chart defaults.
-
-## Deferred / Separate Backlog
-
-- [ ] Keep this section reserved for future cross-workstream items that are not part of the current benchmark-modernization objective.
-
-## Retained Long-Term Options
-
-These are intentionally kept as non-active options. They remain good future directions, but they should not compete with the current benchmark-modernization workstream.
-
-### Important Later
-
-These still fit the product direction well and are likely to matter after the benchmark system stabilizes.
-
-#### Simulation and physics expansion
-
-- [ ] Well schedule support — time-varying BHP/rate changes and workover-style control changes.
-- [ ] Three-phase flow — phased oil/water/gas extension once the benchmark framework is stable.
-- [ ] Aquifer boundary conditions — Carter-Tracy or Fetkovich-style influx support.
+- [ ] Well schedule support.
+- [ ] Three-phase flow.
+- [ ] Aquifer boundary conditions.
 - [ ] Per-cell or per-layer porosity variation.
 - [ ] Per-cell initial water saturation / transition-zone initialization.
-- [ ] Additional published benchmark families beyond BL/depletion.
+- [ ] Additional published benchmark families beyond Buckley-Leverett and depletion.
 
 #### Benchmark and comparison tooling
 
