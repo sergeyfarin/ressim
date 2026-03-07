@@ -11,6 +11,8 @@ import {
     catalog,
     buildCaseKey,
     composeCaseParams,
+    getCaseLibraryEntry,
+    resolveCaseLibraryEntryFromScenario,
     getBenchmarkEntry,
     getBenchmarkFamily,
     getBenchmarkVariantsForFamily,
@@ -212,6 +214,7 @@ export function createSimulationStore() {
     let toggles = $state<ToggleState>(getDefaultToggles('dep'));
     let benchmarkProvenance: BenchmarkProvenance | null = $state(null);
     let activeComparisonSelection = $state<ComparisonSelection>(buildComparisonSelection());
+    let explicitLibraryEntryKey: string | null = $state(null);
 
     // Display data
     let gridStateRaw: GridState | null = $state(null);
@@ -329,35 +332,59 @@ export function createSimulationStore() {
     );
     const longRunEstimate = $derived(estimatedRunSeconds > 10);
 
+    const activeLibraryEntry = $derived.by(() => {
+        if (isModified) return null;
+
+        if (explicitLibraryEntryKey) {
+            return getCaseLibraryEntry(explicitLibraryEntryKey);
+        }
+
+        return resolveCaseLibraryEntryFromScenario({
+            activeMode,
+            benchmarkId: toggles.benchmarkId ?? null,
+            scenarioParams: activeMode === 'benchmark' ? null : composeCaseParams(toggles),
+        });
+    });
+
+    const activeReferenceBenchmarkFamily = $derived.by(() => {
+        const benchmarkFamilyKey = activeLibraryEntry?.benchmarkFamilyKey ?? null;
+        return benchmarkFamilyKey ? getBenchmarkFamily(benchmarkFamilyKey) : null;
+    });
+
     const basePreset = $derived.by(() => {
-        const benchmarkFamily = toggles.benchmarkId
-            ? getBenchmarkFamily(toggles.benchmarkId)
-            : null;
-        const benchmarkLabel = toggles.benchmarkId
-            ? getBenchmarkEntry(toggles.benchmarkId)?.label ?? null
-            : null;
+        const benchmarkId = activeReferenceBenchmarkFamily?.key
+            ?? (activeMode === 'benchmark' ? (toggles.benchmarkId ?? null) : null);
+        const benchmarkLabel = activeLibraryEntry?.label
+            ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
 
         return buildBasePresetProfile({
             key: activeCase,
             mode: activeMode,
             toggles,
             isModified,
+            benchmarkId,
             benchmarkLabel,
-            benchmarkScenarioClass: benchmarkFamily?.scenarioClass ?? null,
+            benchmarkScenarioClass: activeReferenceBenchmarkFamily?.scenarioClass ?? null,
+            activeLibraryCaseKey: activeLibraryEntry?.key ?? null,
+            activeLibraryGroup: activeLibraryEntry?.group ?? null,
         });
     });
 
     const navigationState = $derived.by(() => {
-        const benchmarkFamily = toggles.benchmarkId
-            ? getBenchmarkFamily(toggles.benchmarkId)
-            : null;
+        const benchmarkId = activeReferenceBenchmarkFamily?.key
+            ?? (activeMode === 'benchmark' ? (toggles.benchmarkId ?? null) : null);
 
         return buildScenarioNavigationState({
             activeMode,
             isModified,
             activeCaseKey: activeCase,
-            benchmarkId: toggles.benchmarkId ?? null,
-            benchmarkScenarioClass: benchmarkFamily?.scenarioClass ?? null,
+            activeLibraryCaseKey: activeLibraryEntry?.key ?? null,
+            activeLibraryGroup: activeLibraryEntry?.group ?? null,
+            sourceLabel: activeLibraryEntry?.sourceLabel ?? null,
+            referenceSourceLabel: activeLibraryEntry?.referenceSourceLabel ?? null,
+            provenanceSummary: activeLibraryEntry?.provenanceSummary ?? null,
+            benchmarkId,
+            benchmarkScenarioClass: activeReferenceBenchmarkFamily?.scenarioClass ?? null,
             activeComparisonSelection,
         });
     });
@@ -581,9 +608,7 @@ export function createSimulationStore() {
     }
 
     function restoreActiveBenchmarkBaseDisplay() {
-        if (activeMode !== 'benchmark') return;
-
-        const family = getBenchmarkFamily(toggles.benchmarkId);
+        const family = activeReferenceBenchmarkFamily;
         if (!family) return;
 
         applyCaseParams(family.baseCase.params);
@@ -630,7 +655,7 @@ export function createSimulationStore() {
         modelReinitNotice = '';
         pendingAutoReinit = false;
         runtimeError = '';
-        runtimeWarning = `Running benchmark ${benchmarkRunsCompleted + 1} of ${benchmarkTotalRuns}: ${nextSpec.label}`;
+        runtimeWarning = `Running reference case ${benchmarkRunsCompleted + 1} of ${benchmarkTotalRuns}: ${nextSpec.label}`;
         currentRunTotalSteps = nextSpec.steps;
         currentRunStepsCompleted = 0;
         runCompleted = false;
@@ -652,8 +677,8 @@ export function createSimulationStore() {
     }
 
     function runBenchmarkSpecs(specs: BenchmarkRunSpec[]): boolean {
-        if (activeMode !== 'benchmark') {
-            runtimeError = 'Benchmark runner is only available in benchmark mode.';
+        if (!activeReferenceBenchmarkFamily) {
+            runtimeError = 'Reference runner is only available when a library reference case is active.';
             return false;
         }
         if (!wasmReady || !simWorker) {
@@ -662,7 +687,7 @@ export function createSimulationStore() {
         }
         if (workerRunning || benchmarkSweepRunning) return false;
         if (!Array.isArray(specs) || specs.length === 0) {
-            runtimeError = 'No benchmark runs are available for the selected family.';
+            runtimeError = 'No reference runs are available for the selected family.';
             return false;
         }
 
@@ -676,18 +701,18 @@ export function createSimulationStore() {
     }
 
     function runActiveBenchmarkBase(): boolean {
-        const family = getBenchmarkFamily(toggles.benchmarkId);
+        const family = activeReferenceBenchmarkFamily;
         if (!family) {
-            runtimeError = 'Select a benchmark family before running the benchmark runner.';
+            runtimeError = 'Select a reference case before running the reference runner.';
             return false;
         }
         return runBenchmarkSpecs(buildBenchmarkRunSpecs(family));
     }
 
     function runActiveBenchmarkSensitivityAxis(axis: BenchmarkSensitivityAxisKey): boolean {
-        const family = getBenchmarkFamily(toggles.benchmarkId);
+        const family = activeReferenceBenchmarkFamily;
         if (!family) {
-            runtimeError = 'Select a benchmark family before running a sensitivity benchmark.';
+            runtimeError = 'Select a reference case before running a sensitivity reference sweep.';
             return false;
         }
 
@@ -695,7 +720,7 @@ export function createSimulationStore() {
             (variant) => variant.axis === axis,
         );
         if (variants.length === 0) {
-            runtimeError = `No ${axis} variants are available for the selected benchmark family.`;
+            runtimeError = `No ${axis} variants are available for the selected reference family.`;
             return false;
         }
 
@@ -705,9 +730,9 @@ export function createSimulationStore() {
     }
 
     function runActiveBenchmarkSelection(variantKeys: string[] = []): boolean {
-        const family = getBenchmarkFamily(toggles.benchmarkId);
+        const family = activeReferenceBenchmarkFamily;
         if (!family) {
-            runtimeError = 'Select a benchmark family before running the benchmark runner.';
+            runtimeError = 'Select a reference case before running the reference runner.';
             return false;
         }
 
@@ -723,7 +748,7 @@ export function createSimulationStore() {
             .filter((variant): variant is NonNullable<typeof variant> => Boolean(variant));
 
         if (selectedVariants.length === 0) {
-            runtimeError = 'Select at least one benchmark sensitivity variant before running the benchmark runner.';
+            runtimeError = 'Select at least one sensitivity variant before running the reference runner.';
             return false;
         }
 
@@ -1106,7 +1131,7 @@ export function createSimulationStore() {
 
     function handleModeChange(mode: CaseMode) {
         if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
-            runtimeWarning = 'Stop the benchmark runner before switching modes.';
+            runtimeWarning = 'Stop the reference runner before switching modes.';
             return;
         }
 
@@ -1114,6 +1139,7 @@ export function createSimulationStore() {
         benchmarkProvenance = null;
         activeMode = mode;
         toggles = getDefaultToggles(mode);
+        explicitLibraryEntryKey = null;
         activeComparisonSelection = buildComparisonSelection();
         baseCaseSignature = '';
         clearBenchmarkRunnerState(true);
@@ -1123,7 +1149,7 @@ export function createSimulationStore() {
 
     function handleToggleChange(dimKey?: string, value?: string) {
         if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
-            runtimeWarning = 'Stop the benchmark runner before changing the benchmark selection.';
+            runtimeWarning = 'Stop the reference runner before changing the active case selection.';
             return;
         }
 
@@ -1135,6 +1161,7 @@ export function createSimulationStore() {
 
         const newKey = buildCaseKey(toggles);
         activeCase = newKey;
+        explicitLibraryEntryKey = null;
         isModified = false;
         benchmarkProvenance = null;
         activeComparisonSelection = buildComparisonSelection();
@@ -1150,16 +1177,64 @@ export function createSimulationStore() {
         baseCaseSignature = '';
     }
 
-    function cloneActiveBenchmarkToCustom(): boolean {
-        if (!shouldAllowBenchmarkClone({ activeMode, isModified })) return false;
+    function resolveOwningModeForLibraryEntry(entryKey: string): CaseMode | null {
+        const entry = getCaseLibraryEntry(entryKey);
+        if (!entry) return null;
 
-        const benchmarkId = toggles.benchmarkId ?? null;
-        const benchmarkLabel = benchmarkId
-            ? getBenchmarkEntry(benchmarkId)?.label ?? null
-            : null;
+        if (entry.entryKind === 'preset') {
+            return entry.activation.activeMode;
+        }
+
+        if (entry.family === 'waterflood') return 'wf';
+        if (entry.family === 'scenario-builder') return 'sim';
+        return 'dep';
+    }
+
+    function activateLibraryEntry(entryKey: string): boolean {
+        const entry = getCaseLibraryEntry(entryKey);
+        if (!entry) {
+            runtimeError = 'Selected library case could not be resolved.';
+            return false;
+        }
+        if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
+            runtimeWarning = 'Stop the reference runner before changing the active library case.';
+            return false;
+        }
+
+        const nextMode = resolveOwningModeForLibraryEntry(entryKey);
+        if (!nextMode) {
+            runtimeError = 'Selected library case could not be mapped to a scenario mode.';
+            return false;
+        }
+
+        isModified = false;
+        benchmarkProvenance = null;
+        activeMode = nextMode;
+        toggles = getDefaultToggles(nextMode);
+        explicitLibraryEntryKey = entry.key;
+        activeCase = entry.key;
+        activeComparisonSelection = buildComparisonSelection();
+        baseCaseSignature = '';
+        clearBenchmarkRunnerState(true);
+
+        applyCaseParams(entry.params);
+        baseCaseSignature = buildCaseSignature();
+        return true;
+    }
+
+    function cloneActiveBenchmarkToCustom(): boolean {
+        if (!shouldAllowBenchmarkClone({
+            activeMode,
+            isModified,
+            hasReferenceLibraryCase: Boolean(activeReferenceBenchmarkFamily),
+        })) return false;
+
+        const benchmarkId = activeReferenceBenchmarkFamily?.key ?? toggles.benchmarkId ?? null;
+        const benchmarkLabel = activeLibraryEntry?.label
+            ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
         const provenance = buildBenchmarkCloneProvenance({
             benchmarkId,
-            sourceCaseKey: activeCase,
+            sourceCaseKey: activeLibraryEntry?.key ?? activeCase,
             sourceLabel: benchmarkLabel,
         });
 
@@ -1272,22 +1347,32 @@ export function createSimulationStore() {
         get activeSource() { return navigationState.activeSource; },
         get activeLibraryCaseKey() { return navigationState.activeLibraryCaseKey; },
         get activeLibraryGroup() { return navigationState.activeLibraryGroup; },
+        get sourceLabel() { return navigationState.sourceLabel; },
+        get referenceSourceLabel() { return navigationState.referenceSourceLabel; },
+        get provenanceSummary() { return navigationState.provenanceSummary; },
         get activeComparisonSelection() { return activeComparisonSelection; },
         get editabilityPolicy() { return navigationState.editabilityPolicy; },
         get navigationState() { return navigationState; },
+        get activeLibraryEntry() { return activeLibraryEntry; },
+        get activeReferenceBenchmarkFamily() { return activeReferenceBenchmarkFamily; },
+        get activeReferenceFamily() { return activeReferenceBenchmarkFamily; },
         get activeCase() { return activeCase; },
         get isModified() { return isModified; },
         get basePreset() { return basePreset; },
         get benchmarkProvenance() { return benchmarkProvenance; },
+        get referenceProvenance() { return benchmarkProvenance; },
         get toggles() { return toggles; },
         set toggles(v) { toggles = v; },
         get disabledOptions() { return disabledOptions; },
         handleModeChange,
         handleToggleChange,
         handleParamEdit,
+        activateLibraryEntry,
         cloneActiveBenchmarkToCustom,
+        cloneActiveReferenceToCustom: cloneActiveBenchmarkToCustom,
         resolveCustomSubCase,
         setBenchmarkProvenance,
+        setReferenceProvenance: setBenchmarkProvenance,
         setComparisonSelection(selection: Partial<ComparisonSelection>) {
             activeComparisonSelection = buildComparisonSelection(selection);
         },
@@ -1393,11 +1478,17 @@ export function createSimulationStore() {
         get currentRunTotalSteps() { return currentRunTotalSteps; },
         get currentRunStepsCompleted() { return currentRunStepsCompleted; },
         get benchmarkSweepRunning() { return benchmarkSweepRunning; },
+        get referenceSweepRunning() { return benchmarkSweepRunning; },
         get benchmarkSweepError() { return benchmarkSweepError; },
+        get referenceSweepError() { return benchmarkSweepError; },
         get benchmarkTotalRuns() { return benchmarkTotalRuns; },
+        get referenceTotalRuns() { return benchmarkTotalRuns; },
         get benchmarkRunsCompleted() { return benchmarkRunsCompleted; },
+        get referenceRunsCompleted() { return benchmarkRunsCompleted; },
         get benchmarkSweepProgressLabel() { return benchmarkSweepProgressLabel; },
+        get referenceSweepProgressLabel() { return benchmarkSweepProgressLabel; },
         get benchmarkRunResults() { return benchmarkRunResults; },
+        get referenceRunResults() { return benchmarkRunResults; },
         get gridStateRaw() { return gridStateRaw; },
         get wellStateRaw() { return wellStateRaw; },
         get simTime() { return simTime; },
@@ -1431,8 +1522,11 @@ export function createSimulationStore() {
         initSimulator,
         runSteps,
         runActiveBenchmarkBase,
+        runActiveReferenceBase: runActiveBenchmarkBase,
         runActiveBenchmarkSensitivityAxis,
+        runActiveReferenceSensitivityAxis: runActiveBenchmarkSensitivityAxis,
         runActiveBenchmarkSelection,
+        runActiveReferenceSelection: runActiveBenchmarkSelection,
         stepOnce,
         stopRun,
         checkConfigDiff,

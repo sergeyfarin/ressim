@@ -110,6 +110,7 @@ export type ModePanelProps = {
   benchmarkSweepError?: string;
   benchmarkRunResults?: BenchmarkRunResult[];
   onCloneBenchmarkToCustom?: () => void;
+  onActivateLibraryEntry?: (entryKey: string) => void;
   onRunBenchmarkSelection?: (variantKeys: string[]) => void;
   onStopBenchmarkSweep?: () => void;
   params: ModePanelParameterBindings;

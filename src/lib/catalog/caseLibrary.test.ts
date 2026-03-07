@@ -20,9 +20,10 @@ describe('caseLibrary adapter', () => {
         expect(caseA).toMatchObject({
             entryKind: 'benchmark-family',
             family: 'waterflood',
-            group: 'literature-reference',
+            group: 'internal-reference',
             caseSource: 'case-library',
-            sourceLabel: 'Buckley-Leverett analytical shock reference',
+            sourceLabel: 'Internal Rust-parity validation family',
+            referenceSourceLabel: 'Buckley-Leverett analytical shock reference',
             benchmarkFamilyKey: 'bl_case_a_refined',
             activation: {
                 activeMode: 'benchmark',
@@ -36,6 +37,7 @@ describe('caseLibrary adapter', () => {
                 allowCustomizeAction: true,
             },
         });
+        expect(caseA?.provenanceSummary).toContain('Homogeneous Rust-parity Buckley-Leverett base family');
         expect(caseA?.sensitivityAxes.map((axis) => axis.key)).toEqual([
             'grid-refinement',
             'timestep-refinement',
@@ -49,10 +51,12 @@ describe('caseLibrary adapter', () => {
         expect(fetkovich).toMatchObject({
             family: 'type-curves',
             group: 'literature-reference',
-            sourceLabel: 'Fetkovich decline-curve reference',
+            sourceLabel: 'Literature analytical reference',
+            referenceSourceLabel: 'Fetkovich decline-curve reference',
             benchmarkFamilyKey: 'fetkovich_exp',
             runPolicy: 'compare-to-reference',
         });
+        expect(fetkovich?.provenanceSummary).toContain('Fetkovich exponential decline behavior');
         expect(fetkovich?.sensitivityAxes).toEqual([]);
     });
 
@@ -65,6 +69,7 @@ describe('caseLibrary adapter', () => {
             family: 'scenario-builder',
             group: 'curated-starter',
             sourceLabel: 'Curated exploratory starter',
+            referenceSourceLabel: null,
             activation: {
                 activeMode: 'sim',
                 benchmarkId: null,
@@ -82,12 +87,13 @@ describe('caseLibrary adapter', () => {
             group: 'curated-starter',
             sourceLabel: 'Curated internal starter',
         });
+        expect(baseline?.provenanceSummary).toContain('starting point rather than a locked validation case');
         expect(baseline?.sensitivityAxes).toEqual([]);
     });
 
     it('filters the unified library by family and group for future inputs-region selectors', () => {
         expect(getCaseLibraryGroupsForFamily('waterflood')).toEqual([
-            'literature-reference',
+            'internal-reference',
             'curated-starter',
         ]);
 
@@ -98,6 +104,23 @@ describe('caseLibrary adapter', () => {
             'depletion_1d_clean',
             'depletion_2d_radial_clean',
             'depletion_corner_producer',
+        ]);
+    });
+
+    it('returns internal validation families separately from literature references', () => {
+        expect(
+            getCaseLibraryEntriesForFamilyAndGroup('waterflood', 'internal-reference')
+                .map((entry) => entry.key),
+        ).toEqual([
+            'bl_case_a_refined',
+            'bl_case_b_refined',
+        ]);
+
+        expect(
+            getCaseLibraryEntriesForFamilyAndGroup('type-curves', 'literature-reference')
+                .map((entry) => entry.key),
+        ).toEqual([
+            'fetkovich_exp',
         ]);
     });
 

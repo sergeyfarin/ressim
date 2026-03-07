@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: `F1.1` compatibility-layer contracts are complete and validated; `F1.2` unified case-library adapter is in progress.
-- Next slice: finish the unified case-library adapter and validate catalog-facing tests before moving to `F1.3`.
+- Status: `F1.1` compatibility-layer contracts are complete and validated; `F1.2` unified case-library adapter and current-shell selector bridge are in place; `F1.3` runtime generalization is active and now classifies family-owned reference cases correctly outside the legacy benchmark tab.
+- Next slice: finish any remaining `F1.3` runtime cleanup that still depends on legacy `benchmark*` naming, then return to `F1.2`/`F1.4` shell consolidation to remove the duplicated benchmark-panel versus family-local selector entry surfaces.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -113,6 +113,18 @@ These slices are ordered for safe migration. The goal is to change architecture 
 #### F1.2 Build A Unified Case-Library Catalog Layer
 
 - [~] Introduce a case-library adapter instead of exposing separate preset and benchmark ownership to the UI shell.
+- Current progress inside `F1.2`:
+  - unified `caseLibrary` adapter exists and is re-exported through `caseCatalog`
+  - Buckley-Leverett refined families are now classified as `internal-reference`
+  - Dietz and Fetkovich references remain classified as `literature-reference`
+  - adapter entries now carry richer provenance text alongside short source labels and reference-source labels
+  - current store selection state now threads `group`, `sourceLabel`, `referenceSourceLabel`, and `provenanceSummary` from resolved library entries where available
+  - non-benchmark selection now resolves exact curated preset matches via case-library metadata instead of treating facet keys as library ids
+- Remaining `F1.2` tasks before shell migration:
+  - decide which curated starters remain in the library versus being dropped or reworded
+  - remove remaining app/panel assumptions that benchmark/reference cases only live behind the legacy benchmark tab
+  - replace the temporary depletion-tab hosting of type-curve references with dedicated family navigation in `F1.4` / `F1.5`
+  - consolidate the now-duplicated benchmark-panel and family-local library-selector reference entry surfaces during `F1.4`
 - The adapter should normalize:
   - family ownership
   - library group (`literature-reference`, `internal-reference`, `curated-starter`)
@@ -138,7 +150,16 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.3 Generalize The Reference Runner In The Store
 
-- [ ] Remove benchmark-mode gating from execution logic while preserving the normalized benchmark result model.
+- [~] Remove benchmark-mode gating from execution logic while preserving the normalized benchmark result model.
+- Current progress inside `F1.3`:
+  - store runner and Customize gating now resolve reference capability from the active library entry instead of only from `activeMode === 'benchmark'`
+  - store now exposes an explicit `activateLibraryEntry(...)` path so future family-local library selectors can activate BL, Dietz, and Fetkovich without depending on the benchmark tab
+  - output/result selection now follows the active reference family rather than `activeMode === 'benchmark'`
+  - shared navigation/base-profile editability now classifies family-owned literature/internal references as locked reference cases even outside the legacy benchmark tab
+  - runtime warnings and empty-state messaging now describe the active reference runner/case flow instead of assuming the benchmark tab is the only entry path
+  - store/runtime now expose reference-oriented aliases for active family, provenance, sweep state, run results, and execution actions so new callers no longer need benchmark-prefixed APIs
+- New follow-up gap discovered during `F1.3`:
+  - legacy benchmark-prefixed prop names remain in `ModePanel` / `BenchmarkPanel` and the benchmark chart module contract; defer renaming those UI-facing compatibility surfaces to `F1.4` / `F1.5` while the benchmark panel still exists
 - Migrate current runner behavior from “benchmark mode only” to “reference-capable library cases inside owning families.”
 - Preserve and reuse:
   - benchmark run specs
@@ -159,10 +180,19 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.4 Replace The Top-Level Shell
 
-- [ ] Replace the current mode-tab shell with a family-first `Inputs / Run / Outputs` shell.
+- [~] Replace the current mode-tab shell with a family-first `Inputs / Run / Outputs` shell.
 - Remove benchmark as a top-level tab.
 - Add family subtitles and source selectors in `Inputs`.
 - Keep the current detailed section components alive during the first shell pass instead of redesigning them at the same time.
+- Current progress inside `F1.4`:
+  - `ModePanel` now exposes family-first navigation and no longer shows `Benchmarks` as a top-level tab
+  - the case-library selector is now scoped to the active family instead of the old depletion-plus-type-curves bridge
+  - reference-family cases now route through the existing benchmark panel inside their owning family instead of requiring a separate top-level destination
+  - `App` now labels explicit `Inputs`, `Run`, and `Outputs` regions in the current shell
+- Remaining `F1.4` tasks:
+  - replace the temporary source-status chip with a true family-local source selector
+  - remove the remaining benchmark-prefixed prop names from `ModePanel` / `BenchmarkPanel` once the panel contract is collapsed
+  - decide whether the reference execution panel stays embedded in `Inputs` or moves partly into the future `Run` region during `F1.5` / `F1.6`
 - Primary files:
   - `src/App.svelte`
   - `src/lib/ui/modes/ModePanel.svelte`

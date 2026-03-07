@@ -12,8 +12,10 @@ import {
   getBenchmarkSensitivityAxisLabel,
   getBenchmarkVariant,
   getBenchmarkVariantsForFamily,
+  resolveCaseLibraryEntryFromScenario,
   getDefaultToggles,
   getDisabledOptions,
+  composeCaseParams,
   getPresetEntry,
   presetCases,
 } from './caseCatalog';
@@ -138,6 +140,30 @@ describe('caseCatalog Dynamic Catalog', () => {
       category: 'exploration',
     });
     expect(baseline?.layoutConfig ?? null).toBeNull();
+  });
+
+  it('resolves exact non-benchmark scenario params back to real library preset entries', () => {
+    const cornerProducer = getPresetEntry('depletion_corner_producer');
+    const baseline = getPresetEntry('baseline_waterflood');
+
+    expect(resolveCaseLibraryEntryFromScenario({
+      activeMode: 'dep',
+      scenarioParams: { ...catalog.defaults, ...cornerProducer!.params },
+    })?.key).toBe('depletion_corner_producer');
+
+    expect(resolveCaseLibraryEntryFromScenario({
+      activeMode: 'sim',
+      scenarioParams: { ...catalog.defaults, ...baseline!.params },
+    })?.key).toBe('baseline_waterflood');
+  });
+
+  it('does not fabricate a library entry for unmatched non-benchmark facet scenarios', () => {
+    const toggles = getDefaultToggles('dep');
+
+    expect(resolveCaseLibraryEntryFromScenario({
+      activeMode: 'dep',
+      scenarioParams: composeCaseParams(toggles),
+    })).toBeNull();
   });
 
   it('defines benchmark families with explicit ownership metadata', () => {

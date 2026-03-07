@@ -66,6 +66,11 @@ describe('phase2PresetContract', () => {
             activeMode: 'benchmark',
             isModified: false,
             activeCaseKey: 'bench_bl-case-a-refined',
+            activeLibraryCaseKey: 'bl_case_a_refined',
+            activeLibraryGroup: 'internal-reference',
+            sourceLabel: 'Internal Rust-parity validation family',
+            referenceSourceLabel: 'Buckley-Leverett analytical shock reference',
+            provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case.',
             benchmarkId: 'bl_case_a_refined',
             benchmarkScenarioClass: 'buckley-leverett',
             activeComparisonSelection: {
@@ -78,7 +83,10 @@ describe('phase2PresetContract', () => {
             activeFamily: 'waterflood',
             activeSource: 'case-library',
             activeLibraryCaseKey: 'bl_case_a_refined',
-            activeLibraryGroup: 'literature-reference',
+            activeLibraryGroup: 'internal-reference',
+            sourceLabel: 'Internal Rust-parity validation family',
+            referenceSourceLabel: 'Buckley-Leverett analytical shock reference',
+            provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case.',
             editabilityPolicy: {
                 kind: 'library-reference',
                 allowDirectInputEditing: false,
@@ -89,6 +97,51 @@ describe('phase2PresetContract', () => {
         expect(navigation.activeComparisonSelection).toEqual({
             primaryResultKey: 'base',
             comparedResultKeys: ['grid_48'],
+        });
+    });
+
+    it('clears threaded library metadata when navigation becomes custom', () => {
+        const navigation = buildScenarioNavigationState({
+            activeMode: 'benchmark',
+            isModified: true,
+            activeLibraryCaseKey: 'bl_case_a_refined',
+            activeLibraryGroup: 'internal-reference',
+            sourceLabel: 'Internal Rust-parity validation family',
+            referenceSourceLabel: 'Buckley-Leverett analytical shock reference',
+            provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case.',
+            benchmarkId: 'bl_case_a_refined',
+            benchmarkScenarioClass: 'buckley-leverett',
+        });
+
+        expect(navigation).toMatchObject({
+            activeSource: 'custom',
+            activeLibraryCaseKey: null,
+            activeLibraryGroup: null,
+            sourceLabel: null,
+            referenceSourceLabel: null,
+            provenanceSummary: null,
+        });
+    });
+
+    it('preserves explicit null library metadata for unresolved non-benchmark selections', () => {
+        const navigation = buildScenarioNavigationState({
+            activeMode: 'dep',
+            isModified: false,
+            activeCaseKey: 'mode-dep_geo-1d_well-e2e',
+            activeLibraryCaseKey: null,
+            activeLibraryGroup: null,
+            sourceLabel: null,
+            referenceSourceLabel: null,
+            provenanceSummary: null,
+        });
+
+        expect(navigation).toMatchObject({
+            activeSource: 'case-library',
+            activeLibraryCaseKey: null,
+            activeLibraryGroup: null,
+            sourceLabel: null,
+            referenceSourceLabel: null,
+            provenanceSummary: null,
         });
     });
 
@@ -105,6 +158,43 @@ describe('phase2PresetContract', () => {
             allowCustomizeAction: false,
             transitionsToCustomOnEdit: true,
         });
+    });
+
+    it('treats non-benchmark reference library cases as locked reference flows', () => {
+        const policy = buildScenarioEditabilityPolicy({
+            activeMode: 'dep',
+            caseSource: 'case-library',
+            activeLibraryGroup: 'literature-reference',
+        });
+
+        expect(policy).toEqual({
+            kind: 'library-reference',
+            allowDirectInputEditing: false,
+            allowSensitivitySelection: true,
+            allowCustomizeAction: true,
+            transitionsToCustomOnEdit: false,
+        });
+    });
+
+    it('builds reference base profiles from family-owned library references outside benchmark mode', () => {
+        const profile = buildBasePresetProfile({
+            key: 'dietz_sq_center',
+            mode: 'dep',
+            toggles: { mode: 'dep', geo: '1d', well: 'e2e' },
+            isModified: false,
+            benchmarkId: 'dietz_sq_center',
+            benchmarkLabel: 'Dietz Square Center',
+            benchmarkScenarioClass: 'depletion',
+            activeLibraryCaseKey: 'dietz_sq_center',
+            activeLibraryGroup: 'literature-reference',
+        });
+
+        expect(profile.source).toBe('benchmark');
+        expect(profile.label).toBe('Dietz Square Center');
+        expect(profile.benchmarkId).toBe('dietz_sq_center');
+        expect(profile.editabilityPolicy.kind).toBe('library-reference');
+        expect(profile.libraryCaseKey).toBe('dietz_sq_center');
+        expect(profile.libraryCaseGroup).toBe('literature-reference');
     });
 
     it('normalizes comparison selection keys', () => {
@@ -328,9 +418,10 @@ describe('phase2PresetContract', () => {
         })).toBe(false);
     });
 
-    it('only allows clone-to-custom from unmodified benchmark mode', () => {
+    it('only allows clone-to-custom from unmodified reference-capable state', () => {
         expect(shouldAllowBenchmarkClone({ activeMode: 'benchmark', isModified: false })).toBe(true);
         expect(shouldAllowBenchmarkClone({ activeMode: 'benchmark', isModified: true })).toBe(false);
+        expect(shouldAllowBenchmarkClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
         expect(shouldAllowBenchmarkClone({ activeMode: 'dep', isModified: false })).toBe(false);
     });
 

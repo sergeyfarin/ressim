@@ -9,7 +9,6 @@
     import { getBenchmarkRateChartLayoutConfig } from "./lib/charts/benchmarkChartConfig";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
-    import { getBenchmarkFamily, getPresetEntry } from "./lib/catalog/caseCatalog";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
 
     // ---------- Store ----------
@@ -18,8 +17,8 @@
     const params = store.parameterState;
     const runtime = store.runtimeState;
 
-    function handleCloneBenchmarkToCustom() {
-        scenario.cloneActiveBenchmarkToCustom();
+    function handleCloneReferenceToCustom() {
+        scenario.cloneActiveReferenceToCustom();
     }
 
     // ---------- UI-only state ----------
@@ -39,31 +38,28 @@
     let RateChartComponent = $state<RateChartComponentType | null>(null);
     let BenchmarkChartComponent = $state<BenchmarkChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
-    const activeBenchmarkFamily = $derived(
-        getBenchmarkFamily(scenario.toggles.benchmarkId),
-    );
-    const activeBenchmarkResults = $derived.by(() => {
-        const benchmarkId = scenario.toggles.benchmarkId ?? null;
-        if (!benchmarkId) return [];
-        return runtime.benchmarkRunResults.filter((result) => result.familyKey === benchmarkId);
+    const activeReferenceFamily = $derived(scenario.activeReferenceFamily);
+    const activeReferenceResults = $derived.by(() => {
+        const familyKey = scenario.activeReferenceFamily?.key ?? null;
+        if (!familyKey) return [];
+        return runtime.referenceRunResults.filter((result) => result.familyKey === familyKey);
     });
-    const activeBenchmarkBaseResult = $derived.by(() => {
-        if (scenario.activeMode !== "benchmark") return null;
-        const benchmarkId = scenario.toggles.benchmarkId ?? null;
-        if (!benchmarkId) return null;
-        return activeBenchmarkResults.find((result) => (
-            result.familyKey === benchmarkId && result.variantKey === null
+    const activeReferenceBaseResult = $derived.by(() => {
+        const familyKey = scenario.activeReferenceFamily?.key ?? null;
+        if (!familyKey) return null;
+        return activeReferenceResults.find((result) => (
+            result.familyKey === familyKey && result.variantKey === null
         )) ?? null;
     });
     const activeRateChartLayoutConfig = $derived.by(() => {
-        if (scenario.activeMode === "benchmark") {
+        if (activeReferenceFamily) {
             return getBenchmarkRateChartLayoutConfig({
-                family: activeBenchmarkFamily,
-                referencePolicy: activeBenchmarkBaseResult?.referencePolicy ?? null,
+                family: activeReferenceFamily,
+                referencePolicy: activeReferenceBaseResult?.referencePolicy ?? null,
             });
         }
 
-        return getPresetEntry(scenario.activeCase)?.layoutConfig ?? {};
+        return scenario.activeLibraryEntry?.layoutConfig ?? {};
     });
 
     // ---------- Config diff $effect ----------
@@ -379,9 +375,18 @@
             </Button>
         </header>
 
-        <!-- Mode Panel: mode tabs + grouped dimension selectors + inline parameter panels -->
+        <section class="space-y-2">
+            <div>
+                <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Inputs
+                </div>
+                <div class="text-sm text-muted-foreground">
+                    Family selection, case-library context, and editable scenario inputs.
+                </div>
+            </div>
         <ModePanel
             activeMode={scenario.activeMode}
+            navigationState={scenario.navigationState}
             isModified={scenario.isModified}
             toggles={scenario.toggles}
             disabledOptions={scenario.disabledOptions}
@@ -389,20 +394,30 @@
             onParamEdit={scenario.handleParamEdit}
             onToggleChange={scenario.handleToggleChange}
             basePreset={scenario.basePreset}
-            onCloneBenchmarkToCustom={handleCloneBenchmarkToCustom}
-            benchmarkProvenance={scenario.benchmarkProvenance}
-            benchmarkSweepRunning={runtime.benchmarkSweepRunning}
-            benchmarkSweepProgressLabel={runtime.benchmarkSweepProgressLabel}
-            benchmarkSweepError={runtime.benchmarkSweepError}
-            benchmarkRunResults={runtime.benchmarkRunResults}
-            onRunBenchmarkSelection={runtime.runActiveBenchmarkSelection}
+            onActivateLibraryEntry={scenario.activateLibraryEntry}
+            onCloneBenchmarkToCustom={handleCloneReferenceToCustom}
+            benchmarkProvenance={scenario.referenceProvenance}
+            benchmarkSweepRunning={runtime.referenceSweepRunning}
+            benchmarkSweepProgressLabel={runtime.referenceSweepProgressLabel}
+            benchmarkSweepError={runtime.referenceSweepError}
+            benchmarkRunResults={runtime.referenceRunResults}
+            onRunBenchmarkSelection={runtime.runActiveReferenceSelection}
             onStopBenchmarkSweep={runtime.stopRun}
             {params}
             validationErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
         />
+        </section>
 
-        <!-- Run Controls -->
+        <section class="space-y-2">
+        <div>
+            <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Run
+            </div>
+            <div class="text-sm text-muted-foreground">
+                Execution controls, validation status, and runtime warnings.
+            </div>
+        </div>
         <RunControls
             wasmReady={runtime.wasmReady}
             workerRunning={runtime.workerRunning}
@@ -426,6 +441,7 @@
             fieldErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
         />
+        </section>
 
         <!-- Error / Warning banners -->
         {#if runtime.runtimeError}
@@ -444,13 +460,23 @@
             />
         {/if}
 
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start mt-2">
+        <section class="space-y-2 mt-2">
+            <div>
+                <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Outputs
+                </div>
+                <div class="text-sm text-muted-foreground">
+                    Charts, profiles, 3D state, and comparison views for the active family.
+                </div>
+            </div>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
             <div class="space-y-4">
                 <Card class="overflow-hidden">
-                    {#if scenario.activeMode === "benchmark" && activeBenchmarkResults.length > 0 && BenchmarkChartComponent}
+                    {#if activeReferenceFamily && activeReferenceResults.length > 0 && BenchmarkChartComponent}
                         <BenchmarkChartComponent
-                            results={activeBenchmarkResults}
-                            family={activeBenchmarkFamily}
+                            results={activeReferenceResults}
+                            family={activeReferenceFamily}
                             layoutConfig={activeRateChartLayoutConfig}
                             {theme}
                         />
@@ -584,6 +610,7 @@
                 </Card>
             </div>
         </div>
+        </section>
 
         <!-- Debug State -->
         {#if showDebugState}

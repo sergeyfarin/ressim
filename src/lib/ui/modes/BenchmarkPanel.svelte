@@ -13,6 +13,7 @@
   import type { BenchmarkModePanelProps } from "../modePanelTypes";
 
   let {
+    navigationState = undefined,
     toggles,
     disabledOptions,
     isModified = false,
@@ -38,11 +39,15 @@
   }
 
   const modeDimensions = $derived(getModeDimensions("benchmark"));
+  const activeReferenceKey = $derived(
+    navigationState?.activeLibraryCaseKey ?? toggles.benchmarkId ?? null,
+  );
+  const showLegacyBenchmarkSelector = $derived(Boolean(toggles.benchmarkId));
   const activeBenchmark = $derived(
-    getBenchmarkEntry(toggles.benchmarkId),
+    getBenchmarkEntry(activeReferenceKey),
   );
   const activeFamily = $derived(
-    getBenchmarkFamily(toggles.benchmarkId),
+    getBenchmarkFamily(activeReferenceKey),
   );
   const generatedVariants = $derived(
     activeFamily ? getBenchmarkVariantsForFamily(activeFamily.key) : [],
@@ -160,20 +165,22 @@
 </script>
 
 <div class="space-y-3">
-  {#each modeDimensions as dim}
-    <FilterCard
-      label={dim.label}
-      options={dim.options.map((option) => option.value)}
-      customLabels={dim.options.reduce(
-        (acc, option) => ({ ...acc, [option.value]: option.label }),
-        {},
-      )}
-      selected={toggles[dim.key]}
-      disabled={Object.keys(disabledOptions[dim.key] || {})}
-      disabledReasons={disabledOptions[dim.key] || {}}
-      onchange={(value) => onToggleChange(dim.key, value)}
-    />
-  {/each}
+  {#if showLegacyBenchmarkSelector}
+    {#each modeDimensions as dim}
+      <FilterCard
+        label={dim.label}
+        options={dim.options.map((option) => option.value)}
+        customLabels={dim.options.reduce(
+          (acc, option) => ({ ...acc, [option.value]: option.label }),
+          {},
+        )}
+        selected={toggles[dim.key]}
+        disabled={Object.keys(disabledOptions[dim.key] || {})}
+        disabledReasons={disabledOptions[dim.key] || {}}
+        onchange={(value) => onToggleChange(dim.key, value)}
+      />
+    {/each}
+  {/if}
 
   {#if activeBenchmark}
     <div class="border-t border-border/50 pt-2">
@@ -204,7 +211,7 @@
               <span>1 run</span>
             </div>
             <div class="mt-1 text-[10px] opacity-80">
-              Run only the benchmark family base case with its primary reference policy.
+              Run only the active reference-family base case with its primary reference policy.
             </div>
           </button>
 
@@ -306,7 +313,7 @@
       {#if activeBenchmarkResults.length > 0}
         <div class="mt-3 space-y-2 border-t border-border/50 pt-2">
           <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Stored Benchmark Results
+            Stored Reference Results
           </div>
           <div class="space-y-2">
             {#each activeBenchmarkResults as result}

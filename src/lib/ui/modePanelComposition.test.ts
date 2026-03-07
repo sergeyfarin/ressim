@@ -16,10 +16,13 @@ const geometrySectionPath = path.join(__dirname, "sections", "GeometrySection.sv
 const geometrySectionSource = fs.readFileSync(geometrySectionPath, "utf8");
 
 describe("Mode panel composition", () => {
-  it("routes each top-level mode through a dedicated component", () => {
+  it("keeps the benchmark panel as an internal reference workflow instead of a top-level shell tab", () => {
     expect(modePanelSource).toMatch(/import\s+BenchmarkPanel\s+from\s+"\.\/BenchmarkPanel\.svelte"/);
     expect(modePanelSource).toMatch(/import\s+ScenarioSectionsPanel\s+from\s+"\.\.\/sections\/ScenarioSectionsPanel\.svelte"/);
-    expect(modePanelSource).toMatch(/activeMode === "benchmark"[\s\S]*<BenchmarkPanel/);
+    expect(modePanelSource).toMatch(/const FAMILY_LABELS =/);
+    expect(modePanelSource).toMatch(/handleFamilySelect/);
+    expect(modePanelSource).not.toMatch(/\[\["dep", "Depletion"\], \["wf", "Waterflood"\], \["sim", "Simulation"\], \["benchmark", "Benchmarks"\]\]/);
+    expect(modePanelSource).toMatch(/showReferencePanel[\s\S]*<BenchmarkPanel/);
     expect(modePanelSource).toMatch(/<ScenarioSectionsPanel/);
     expect(modePanelSource).not.toMatch(/ScenarioModePanel|DepletionPanel|WaterfloodPanel|SimulationPanel/);
   });

@@ -132,6 +132,47 @@ export function getModeDimensions(mode: string | undefined): Dimension[] {
     return getModeCatalog(mode).dimensions;
 }
 
+function buildComparableValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((entry) => buildComparableValue(entry));
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.keys(value as Record<string, unknown>)
+            .sort()
+            .reduce<Record<string, unknown>>((acc, key) => {
+                acc[key] = buildComparableValue((value as Record<string, unknown>)[key]);
+                return acc;
+            }, {});
+    }
+
+    return value;
+}
+
+function areScenarioParamsEquivalent(left: Record<string, any>, right: Record<string, any>): boolean {
+    return JSON.stringify(buildComparableValue(left)) === JSON.stringify(buildComparableValue(right));
+}
+
+export function resolveCaseLibraryEntryFromScenario(input: {
+    activeMode: CaseMode;
+    benchmarkId?: string | null;
+    scenarioParams?: Record<string, any> | null;
+}): CaseLibraryEntry | null {
+    if (input.activeMode === 'benchmark') {
+        return getCaseLibraryEntry(input.benchmarkId ?? null);
+    }
+
+    if (!input.scenarioParams) return null;
+
+    return caseLibraryEntries.find((entry) => {
+        if (entry.entryKind !== 'preset') return false;
+        if (entry.activation.activeMode !== input.activeMode) return false;
+
+        const entryParams = { ...catalog.defaults, ...entry.params };
+        return areScenarioParamsEquivalent(entryParams, input.scenarioParams ?? {});
+    }) ?? null;
+}
+
 // --- Helper Functions ---
 
 /**

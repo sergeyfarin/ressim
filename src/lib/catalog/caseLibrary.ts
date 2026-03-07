@@ -53,6 +53,8 @@ export type CaseLibraryEntry = {
     description: string;
     params: Record<string, any>;
     sourceLabel: string;
+    referenceSourceLabel: string | null;
+    provenanceSummary: string;
     referencePolicySummary: string;
     sensitivitySummary: string;
     sensitivityAxes: CaseLibrarySensitivityAxis[];
@@ -87,6 +89,40 @@ const BENCHMARK_SOURCE_LABELS: Record<string, string> = {
     'fetkovich-decline-reference': 'Fetkovich decline-curve reference',
 };
 
+type BenchmarkProvenanceMetadata = {
+    group: LibraryCaseGroup;
+    sourceLabel: string;
+    provenanceSummary: string;
+};
+
+const BENCHMARK_PROVENANCE_METADATA: Record<string, BenchmarkProvenanceMetadata> = {
+    bl_case_a_refined: {
+        group: 'internal-reference',
+        sourceLabel: 'Internal Rust-parity validation family',
+        provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case. Homogeneous runs compare against the analytical Buckley-Leverett shock reference, while heterogeneity variants fall back to a refined numerical reference.',
+    },
+    bl_case_b_refined: {
+        group: 'internal-reference',
+        sourceLabel: 'Internal Rust-parity validation family',
+        provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case. Homogeneous runs compare against the analytical Buckley-Leverett shock reference, while heterogeneity variants fall back to a refined numerical reference.',
+    },
+    dietz_sq_center: {
+        group: 'literature-reference',
+        sourceLabel: 'Literature analytical reference',
+        provenanceSummary: 'Locked analytical depletion reference based on the Dietz shape-factor literature for a square drainage area with a centered producer.',
+    },
+    dietz_sq_corner: {
+        group: 'literature-reference',
+        sourceLabel: 'Literature analytical reference',
+        provenanceSummary: 'Locked analytical depletion reference based on the Dietz shape-factor literature for a square drainage area with a corner producer.',
+    },
+    fetkovich_exp: {
+        group: 'literature-reference',
+        sourceLabel: 'Literature analytical reference',
+        provenanceSummary: 'Locked analytical depletion reference based on Fetkovich exponential decline behavior. This case is the seed reference for the future type-curves workflow.',
+    },
+};
+
 function buildBenchmarkSensitivityAxes(family: BenchmarkFamily): CaseLibrarySensitivityAxis[] {
     return family.sensitivityAxes.map((axis) => {
         const variants = getBenchmarkVariantsForFamily(family.key)
@@ -106,16 +142,28 @@ function buildBenchmarkSourceLabel(family: BenchmarkFamily): string {
     return BENCHMARK_SOURCE_LABELS[family.reference.source] ?? family.reference.source;
 }
 
+function getBenchmarkProvenanceMetadata(family: BenchmarkFamily): BenchmarkProvenanceMetadata {
+    return BENCHMARK_PROVENANCE_METADATA[family.key] ?? {
+        group: 'literature-reference',
+        sourceLabel: 'Reference case',
+        provenanceSummary: `Locked reference case aligned to ${family.reference.source}.`,
+    };
+}
+
 function buildBenchmarkReferencePolicySummary(
+    group: LibraryCaseGroup,
     family: BenchmarkFamily,
-    sourceLabel: string,
+    referenceSourceLabel: string,
     sensitivityAxes: CaseLibrarySensitivityAxis[],
 ): string {
+    const caseLabel = group === 'internal-reference'
+        ? 'Locked internal validation case.'
+        : 'Locked literature reference case.';
     const sensitivityClause = sensitivityAxes.length > 0
         ? `Allowed library sensitivities: ${sensitivityAxes.map((axis) => axis.label).join(', ')}.`
         : 'No library sensitivity sweep is exposed for this reference case.';
 
-    return `Locked literature reference case. Runs compare directly against the ${sourceLabel}. ${sensitivityClause} Use Customize to branch into a writable custom scenario when you need to edit fixed inputs.`;
+    return `${caseLabel} Runs compare directly against the ${referenceSourceLabel}. ${sensitivityClause} Use Customize to branch into a writable custom scenario when you need to edit fixed inputs.`;
 }
 
 function buildPresetFamily(entry: PresetEntry): ProductFamily {
@@ -138,13 +186,22 @@ function buildPresetReferencePolicySummary(entry: PresetEntry): string {
     return 'Curated starter case from the internal library. It is editable immediately and transitions into the custom workflow on first input edit.';
 }
 
+function buildPresetProvenanceSummary(entry: PresetEntry): string {
+    if (entry.category === 'exploration') {
+        return `Curated exploratory starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked validation case.`;
+    }
+
+    return `Curated internal starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked validation case.`;
+}
+
 function buildPresetSensitivitySummary(): string {
     return 'No locked library sensitivity sweep is defined for this starter case.';
 }
 
 function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
     const sensitivityAxes = buildBenchmarkSensitivityAxes(family);
-    const sourceLabel = buildBenchmarkSourceLabel(family);
+    const referenceSourceLabel = buildBenchmarkSourceLabel(family);
+    const provenance = getBenchmarkProvenanceMetadata(family);
 
     return {
         key: family.key,
@@ -154,7 +211,7 @@ function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
             benchmarkScenarioClass: family.scenarioClass,
             benchmarkId: family.key,
         }),
-        group: 'literature-reference',
+        group: provenance.group,
         caseSource: CASE_LIBRARY_SOURCE,
         activation: {
             activeMode: 'benchmark',
@@ -164,8 +221,15 @@ function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
         label: family.label,
         description: family.description,
         params: family.baseCase.params,
-        sourceLabel,
-        referencePolicySummary: buildBenchmarkReferencePolicySummary(family, sourceLabel, sensitivityAxes),
+        sourceLabel: provenance.sourceLabel,
+        referenceSourceLabel,
+        provenanceSummary: provenance.provenanceSummary,
+        referencePolicySummary: buildBenchmarkReferencePolicySummary(
+            provenance.group,
+            family,
+            referenceSourceLabel,
+            sensitivityAxes,
+        ),
         sensitivitySummary: sensitivityAxes.length > 0
             ? `Available sensitivities: ${sensitivityAxes.map((axis) => axis.label).join(', ')}.`
             : 'No library sensitivities available.',
@@ -202,6 +266,8 @@ function buildPresetLibraryEntry(entry: PresetEntry): CaseLibraryEntry {
         description: entry.description,
         params: entry.params,
         sourceLabel: buildPresetSourceLabel(entry),
+        referenceSourceLabel: null,
+        provenanceSummary: buildPresetProvenanceSummary(entry),
         referencePolicySummary: buildPresetReferencePolicySummary(entry),
         sensitivitySummary: buildPresetSensitivitySummary(),
         sensitivityAxes: [],

@@ -38,6 +38,9 @@ export type ScenarioNavigationState = {
     activeSource: ScenarioSource;
     activeLibraryCaseKey: string | null;
     activeLibraryGroup: LibraryCaseGroup | null;
+    sourceLabel: string | null;
+    referenceSourceLabel: string | null;
+    provenanceSummary: string | null;
     activeComparisonSelection: ComparisonSelection;
     editabilityPolicy: ScenarioEditabilityPolicy;
 };
@@ -110,6 +113,7 @@ export function resolveLibraryCaseGroup(input: {
 export function buildScenarioEditabilityPolicy(input: {
     activeMode: CaseMode;
     caseSource: ScenarioSource;
+    activeLibraryGroup?: LibraryCaseGroup | null;
 }): ScenarioEditabilityPolicy {
     if (input.caseSource === 'custom') {
         return {
@@ -121,7 +125,11 @@ export function buildScenarioEditabilityPolicy(input: {
         };
     }
 
-    if (input.activeMode === 'benchmark') {
+    if (
+        input.activeMode === 'benchmark'
+        || input.activeLibraryGroup === 'literature-reference'
+        || input.activeLibraryGroup === 'internal-reference'
+    ) {
         return {
             kind: 'library-reference',
             allowDirectInputEditing: false,
@@ -159,10 +167,21 @@ export function buildScenarioNavigationState(input: {
     activeMode: CaseMode;
     isModified: boolean;
     activeCaseKey?: string | null;
+    activeLibraryCaseKey?: string | null;
+    activeLibraryGroup?: LibraryCaseGroup | null;
+    sourceLabel?: string | null;
+    referenceSourceLabel?: string | null;
+    provenanceSummary?: string | null;
     benchmarkId?: string | null;
     benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
     activeComparisonSelection?: ComparisonSelection;
 }): ScenarioNavigationState {
+    const hasResolvedLibraryCaseKey = Object.prototype.hasOwnProperty.call(input, 'activeLibraryCaseKey');
+    const hasResolvedLibraryGroup = Object.prototype.hasOwnProperty.call(input, 'activeLibraryGroup');
+    const hasSourceLabel = Object.prototype.hasOwnProperty.call(input, 'sourceLabel');
+    const hasReferenceSourceLabel = Object.prototype.hasOwnProperty.call(input, 'referenceSourceLabel');
+    const hasProvenanceSummary = Object.prototype.hasOwnProperty.call(input, 'provenanceSummary');
+
     const activeFamily = resolveProductFamily({
         activeMode: input.activeMode,
         benchmarkScenarioClass: input.benchmarkScenarioClass ?? null,
@@ -171,25 +190,39 @@ export function buildScenarioNavigationState(input: {
     const activeSource = resolveScenarioSource({
         isModified: input.isModified,
     });
+    const activeLibraryCaseKey = activeSource === 'custom'
+        ? null
+        : hasResolvedLibraryCaseKey
+            ? input.activeLibraryCaseKey ?? null
+            : resolveLibraryCaseKey({
+                activeMode: input.activeMode,
+                caseKey: input.activeCaseKey ?? null,
+                benchmarkId: input.benchmarkId ?? null,
+                caseSource: activeSource,
+            });
+    const activeLibraryGroup = activeSource === 'custom'
+        ? null
+        : hasResolvedLibraryGroup
+            ? input.activeLibraryGroup ?? null
+            : resolveLibraryCaseGroup({
+                activeMode: input.activeMode,
+                benchmarkId: input.benchmarkId ?? null,
+                caseSource: activeSource,
+            });
 
     return {
         activeFamily,
         activeSource,
-        activeLibraryCaseKey: resolveLibraryCaseKey({
-            activeMode: input.activeMode,
-            caseKey: input.activeCaseKey ?? null,
-            benchmarkId: input.benchmarkId ?? null,
-            caseSource: activeSource,
-        }),
-        activeLibraryGroup: resolveLibraryCaseGroup({
-            activeMode: input.activeMode,
-            benchmarkId: input.benchmarkId ?? null,
-            caseSource: activeSource,
-        }),
+        activeLibraryCaseKey,
+        activeLibraryGroup,
+        sourceLabel: activeSource === 'custom' ? null : hasSourceLabel ? input.sourceLabel ?? null : null,
+        referenceSourceLabel: activeSource === 'custom' ? null : hasReferenceSourceLabel ? input.referenceSourceLabel ?? null : null,
+        provenanceSummary: activeSource === 'custom' ? null : hasProvenanceSummary ? input.provenanceSummary ?? null : null,
         activeComparisonSelection: buildComparisonSelection(input.activeComparisonSelection),
         editabilityPolicy: buildScenarioEditabilityPolicy({
             activeMode: input.activeMode,
             caseSource: activeSource,
+            activeLibraryGroup,
         }),
     };
 }
@@ -372,8 +405,9 @@ export function shouldAutoClearModifiedState(input: {
 export function shouldAllowBenchmarkClone(input: {
     activeMode: CaseMode;
     isModified: boolean;
+    hasReferenceLibraryCase?: boolean;
 }): boolean {
-    return input.activeMode === 'benchmark' && !input.isModified;
+    return (input.activeMode === 'benchmark' || input.hasReferenceLibraryCase === true) && !input.isModified;
 }
 
 export function shouldShowModePanelStatusRow(input: {
@@ -461,25 +495,42 @@ export function buildBasePresetProfile(input: {
     mode: CaseMode;
     toggles: ToggleState;
     isModified: boolean;
+    benchmarkId?: string | null;
     benchmarkLabel?: string | null;
     benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
+    activeLibraryCaseKey?: string | null;
+    activeLibraryGroup?: LibraryCaseGroup | null;
 }): BasePresetProfile {
-    const { key, mode, toggles, isModified, benchmarkLabel, benchmarkScenarioClass } = input;
-    const isBenchmark = mode === 'benchmark';
+    const {
+        key,
+        mode,
+        toggles,
+        isModified,
+        benchmarkId,
+        benchmarkLabel,
+        benchmarkScenarioClass,
+        activeLibraryCaseKey,
+        activeLibraryGroup,
+    } = input;
+    const isReferenceLibraryCase = mode === 'benchmark'
+        || activeLibraryGroup === 'literature-reference'
+        || activeLibraryGroup === 'internal-reference';
 
     let source: PresetSource = 'facet';
-    if (isBenchmark) source = 'benchmark';
+    if (isReferenceLibraryCase) source = 'benchmark';
     if (isModified) source = 'custom';
 
-    const label = isBenchmark
-        ? (benchmarkLabel || 'Benchmark Preset')
+    const label = isReferenceLibraryCase
+        ? (benchmarkLabel || 'Reference Preset')
         : `${mode.toUpperCase()} preset`;
 
     const navigationState = buildScenarioNavigationState({
         activeMode: mode,
         isModified,
         activeCaseKey: key,
-        benchmarkId: isBenchmark ? (toggles.benchmarkId ?? null) : null,
+        activeLibraryCaseKey,
+        activeLibraryGroup,
+        benchmarkId: benchmarkId ?? null,
         benchmarkScenarioClass: benchmarkScenarioClass ?? null,
     });
 
@@ -489,7 +540,7 @@ export function buildBasePresetProfile(input: {
         source,
         label,
         toggles: { ...toggles },
-        benchmarkId: isBenchmark ? (toggles.benchmarkId ?? null) : null,
+        benchmarkId: isReferenceLibraryCase ? (benchmarkId ?? null) : null,
         family: navigationState.activeFamily,
         caseSource: navigationState.activeSource,
         libraryCaseKey: navigationState.activeLibraryCaseKey,
