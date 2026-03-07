@@ -40,6 +40,8 @@ import { buildWarningPolicy } from '../warningPolicy';
 import {
     buildBenchmarkCloneProvenance,
     buildBasePresetProfile,
+    buildComparisonSelection,
+    buildScenarioNavigationState,
     buildOverrideResetPlan,
     buildParameterOverrides,
     evaluateAnalyticalStatus,
@@ -48,6 +50,7 @@ import {
     shouldAutoClearModifiedState,
     type AnalyticalStatus,
     type BenchmarkProvenance,
+    type ComparisonSelection,
 } from './phase2PresetContract';
 
 // ---------- Helper utilities (pure, no runes) ----------
@@ -208,6 +211,7 @@ export function createSimulationStore() {
 
     let toggles = $state<ToggleState>(getDefaultToggles('dep'));
     let benchmarkProvenance: BenchmarkProvenance | null = $state(null);
+    let activeComparisonSelection = $state<ComparisonSelection>(buildComparisonSelection());
 
     // Display data
     let gridStateRaw: GridState | null = $state(null);
@@ -326,6 +330,9 @@ export function createSimulationStore() {
     const longRunEstimate = $derived(estimatedRunSeconds > 10);
 
     const basePreset = $derived.by(() => {
+        const benchmarkFamily = toggles.benchmarkId
+            ? getBenchmarkFamily(toggles.benchmarkId)
+            : null;
         const benchmarkLabel = toggles.benchmarkId
             ? getBenchmarkEntry(toggles.benchmarkId)?.label ?? null
             : null;
@@ -336,6 +343,22 @@ export function createSimulationStore() {
             toggles,
             isModified,
             benchmarkLabel,
+            benchmarkScenarioClass: benchmarkFamily?.scenarioClass ?? null,
+        });
+    });
+
+    const navigationState = $derived.by(() => {
+        const benchmarkFamily = toggles.benchmarkId
+            ? getBenchmarkFamily(toggles.benchmarkId)
+            : null;
+
+        return buildScenarioNavigationState({
+            activeMode,
+            isModified,
+            activeCaseKey: activeCase,
+            benchmarkId: toggles.benchmarkId ?? null,
+            benchmarkScenarioClass: benchmarkFamily?.scenarioClass ?? null,
+            activeComparisonSelection,
         });
     });
 
@@ -1091,6 +1114,7 @@ export function createSimulationStore() {
         benchmarkProvenance = null;
         activeMode = mode;
         toggles = getDefaultToggles(mode);
+        activeComparisonSelection = buildComparisonSelection();
         baseCaseSignature = '';
         clearBenchmarkRunnerState(true);
 
@@ -1113,6 +1137,7 @@ export function createSimulationStore() {
         activeCase = newKey;
         isModified = false;
         benchmarkProvenance = null;
+        activeComparisonSelection = buildComparisonSelection();
         clearBenchmarkRunnerState(true);
 
         applyCaseParams(composeCaseParams(toggles));
@@ -1243,6 +1268,13 @@ export function createSimulationStore() {
     // ===== Public API =====
     const scenarioSelection = {
         get activeMode() { return activeMode; },
+        get activeFamily() { return navigationState.activeFamily; },
+        get activeSource() { return navigationState.activeSource; },
+        get activeLibraryCaseKey() { return navigationState.activeLibraryCaseKey; },
+        get activeLibraryGroup() { return navigationState.activeLibraryGroup; },
+        get activeComparisonSelection() { return activeComparisonSelection; },
+        get editabilityPolicy() { return navigationState.editabilityPolicy; },
+        get navigationState() { return navigationState; },
         get activeCase() { return activeCase; },
         get isModified() { return isModified; },
         get basePreset() { return basePreset; },
@@ -1256,6 +1288,9 @@ export function createSimulationStore() {
         cloneActiveBenchmarkToCustom,
         resolveCustomSubCase,
         setBenchmarkProvenance,
+        setComparisonSelection(selection: Partial<ComparisonSelection>) {
+            activeComparisonSelection = buildComparisonSelection(selection);
+        },
     };
 
     const parameterState = {

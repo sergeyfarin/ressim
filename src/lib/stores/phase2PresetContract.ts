@@ -2,6 +2,46 @@ import type { CaseMode, ToggleState } from '../catalog/caseCatalog';
 
 export type PresetSource = 'facet' | 'benchmark' | 'custom';
 
+export type ProductFamily =
+    | 'waterflood'
+    | 'depletion-analysis'
+    | 'type-curves'
+    | 'scenario-builder';
+
+export type ScenarioSource = 'case-library' | 'custom';
+
+export type LibraryCaseGroup =
+    | 'literature-reference'
+    | 'internal-reference'
+    | 'curated-starter';
+
+export type ScenarioEditabilityPolicyKind =
+    | 'library-reference'
+    | 'library-starter'
+    | 'custom-editable';
+
+export type ScenarioEditabilityPolicy = {
+    kind: ScenarioEditabilityPolicyKind;
+    allowDirectInputEditing: boolean;
+    allowSensitivitySelection: boolean;
+    allowCustomizeAction: boolean;
+    transitionsToCustomOnEdit: boolean;
+};
+
+export type ComparisonSelection = {
+    primaryResultKey: string | null;
+    comparedResultKeys: string[];
+};
+
+export type ScenarioNavigationState = {
+    activeFamily: ProductFamily;
+    activeSource: ScenarioSource;
+    activeLibraryCaseKey: string | null;
+    activeLibraryGroup: LibraryCaseGroup | null;
+    activeComparisonSelection: ComparisonSelection;
+    editabilityPolicy: ScenarioEditabilityPolicy;
+};
+
 export type BasePresetProfile = {
     key: string;
     mode: CaseMode;
@@ -9,7 +49,150 @@ export type BasePresetProfile = {
     label: string;
     toggles: ToggleState;
     benchmarkId: string | null;
+    family: ProductFamily;
+    caseSource: ScenarioSource;
+    libraryCaseKey: string | null;
+    libraryCaseGroup: LibraryCaseGroup | null;
+    editabilityPolicy: ScenarioEditabilityPolicy;
 };
+
+function isFetkovichBenchmarkCase(benchmarkId: string | null | undefined): boolean {
+    return benchmarkId === 'fetkovich_exp';
+}
+
+export function resolveProductFamily(input: {
+    activeMode: CaseMode;
+    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
+    benchmarkId?: string | null;
+}): ProductFamily {
+    if (input.activeMode === 'wf') return 'waterflood';
+    if (input.activeMode === 'sim') return 'scenario-builder';
+    if (input.activeMode === 'dep') return 'depletion-analysis';
+
+    if (input.benchmarkScenarioClass === 'buckley-leverett') {
+        return 'waterflood';
+    }
+    if (isFetkovichBenchmarkCase(input.benchmarkId ?? null)) {
+        return 'type-curves';
+    }
+    return 'depletion-analysis';
+}
+
+export function resolveScenarioSource(input: {
+    isModified: boolean;
+}): ScenarioSource {
+    return input.isModified ? 'custom' : 'case-library';
+}
+
+export function resolveLibraryCaseKey(input: {
+    activeMode: CaseMode;
+    caseKey: string | null | undefined;
+    benchmarkId?: string | null;
+    caseSource: ScenarioSource;
+}): string | null {
+    if (input.caseSource === 'custom') return null;
+    if (input.activeMode === 'benchmark') return input.benchmarkId ?? null;
+    return input.caseKey ?? null;
+}
+
+export function resolveLibraryCaseGroup(input: {
+    activeMode: CaseMode;
+    benchmarkId?: string | null;
+    caseSource: ScenarioSource;
+}): LibraryCaseGroup | null {
+    if (input.caseSource === 'custom') return null;
+    if (input.activeMode === 'benchmark') {
+        return 'literature-reference';
+    }
+    return 'curated-starter';
+}
+
+export function buildScenarioEditabilityPolicy(input: {
+    activeMode: CaseMode;
+    caseSource: ScenarioSource;
+}): ScenarioEditabilityPolicy {
+    if (input.caseSource === 'custom') {
+        return {
+            kind: 'custom-editable',
+            allowDirectInputEditing: true,
+            allowSensitivitySelection: false,
+            allowCustomizeAction: false,
+            transitionsToCustomOnEdit: false,
+        };
+    }
+
+    if (input.activeMode === 'benchmark') {
+        return {
+            kind: 'library-reference',
+            allowDirectInputEditing: false,
+            allowSensitivitySelection: true,
+            allowCustomizeAction: true,
+            transitionsToCustomOnEdit: false,
+        };
+    }
+
+    return {
+        kind: 'library-starter',
+        allowDirectInputEditing: true,
+        allowSensitivitySelection: false,
+        allowCustomizeAction: false,
+        transitionsToCustomOnEdit: true,
+    };
+}
+
+export function buildComparisonSelection(
+    input: Partial<ComparisonSelection> = {},
+): ComparisonSelection {
+    const comparedResultKeys = Array.isArray(input.comparedResultKeys)
+        ? [...new Set(input.comparedResultKeys.filter((key): key is string => typeof key === 'string' && key.length > 0))]
+        : [];
+
+    return {
+        primaryResultKey: typeof input.primaryResultKey === 'string' && input.primaryResultKey.length > 0
+            ? input.primaryResultKey
+            : null,
+        comparedResultKeys,
+    };
+}
+
+export function buildScenarioNavigationState(input: {
+    activeMode: CaseMode;
+    isModified: boolean;
+    activeCaseKey?: string | null;
+    benchmarkId?: string | null;
+    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
+    activeComparisonSelection?: ComparisonSelection;
+}): ScenarioNavigationState {
+    const activeFamily = resolveProductFamily({
+        activeMode: input.activeMode,
+        benchmarkScenarioClass: input.benchmarkScenarioClass ?? null,
+        benchmarkId: input.benchmarkId ?? null,
+    });
+    const activeSource = resolveScenarioSource({
+        isModified: input.isModified,
+    });
+
+    return {
+        activeFamily,
+        activeSource,
+        activeLibraryCaseKey: resolveLibraryCaseKey({
+            activeMode: input.activeMode,
+            caseKey: input.activeCaseKey ?? null,
+            benchmarkId: input.benchmarkId ?? null,
+            caseSource: activeSource,
+        }),
+        activeLibraryGroup: resolveLibraryCaseGroup({
+            activeMode: input.activeMode,
+            benchmarkId: input.benchmarkId ?? null,
+            caseSource: activeSource,
+        }),
+        activeComparisonSelection: buildComparisonSelection(input.activeComparisonSelection),
+        editabilityPolicy: buildScenarioEditabilityPolicy({
+            activeMode: input.activeMode,
+            caseSource: activeSource,
+        }),
+    };
+}
 
 export type ParameterOverrideValue = {
     base: unknown;
@@ -279,8 +462,9 @@ export function buildBasePresetProfile(input: {
     toggles: ToggleState;
     isModified: boolean;
     benchmarkLabel?: string | null;
+    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
 }): BasePresetProfile {
-    const { key, mode, toggles, isModified, benchmarkLabel } = input;
+    const { key, mode, toggles, isModified, benchmarkLabel, benchmarkScenarioClass } = input;
     const isBenchmark = mode === 'benchmark';
 
     let source: PresetSource = 'facet';
@@ -291,6 +475,14 @@ export function buildBasePresetProfile(input: {
         ? (benchmarkLabel || 'Benchmark Preset')
         : `${mode.toUpperCase()} preset`;
 
+    const navigationState = buildScenarioNavigationState({
+        activeMode: mode,
+        isModified,
+        activeCaseKey: key,
+        benchmarkId: isBenchmark ? (toggles.benchmarkId ?? null) : null,
+        benchmarkScenarioClass: benchmarkScenarioClass ?? null,
+    });
+
     return {
         key,
         mode,
@@ -298,6 +490,11 @@ export function buildBasePresetProfile(input: {
         label,
         toggles: { ...toggles },
         benchmarkId: isBenchmark ? (toggles.benchmarkId ?? null) : null,
+        family: navigationState.activeFamily,
+        caseSource: navigationState.activeSource,
+        libraryCaseKey: navigationState.activeLibraryCaseKey,
+        libraryCaseGroup: navigationState.activeLibraryGroup,
+        editabilityPolicy: navigationState.editabilityPolicy,
     };
 }
 

@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: review complete, execution plan rewritten, implementation not started.
-- Next slice: `F1` product workflow and information architecture.
+- Status: review complete, execution plan rewritten, `F1.1` compatibility-layer implementation in progress.
+- Next slice: finish validation for `F1.1` navigation/source contracts before moving to `F1.2`.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -65,6 +65,218 @@ Primary review source:
     - the workflow no longer depends on hidden mental-model jumps between tabs/modes
     - the app no longer needs a separate benchmark top-level mode to express verification workflows
     - the source model uses truthful names for literature references versus curated internal cases
+
+### F1 Implementation Plan
+
+These slices are ordered for safe migration. The goal is to change architecture once, keep benchmark-result logic intact, and avoid half-migrated shell states.
+
+#### F1.0 Lock Architecture Decisions
+
+- [ ] Finalize the F1 product contract before code changes:
+  - top-level families: `Waterflood`, `Depletion Analysis`, `Type Curves`, `Scenario Builder`
+  - page regions: `Inputs`, `Run`, `Outputs`
+  - `Outputs` owns comparison from day one
+  - source model recommendation: `Case Library` + `Custom`
+  - library grouping inside `Case Library`:
+    - literature references
+    - internal reference / validation cases
+    - curated starters
+  - `Customize` replaces `Clone to Custom`
+  - locked/reference cases stay read-only except for approved sensitivity controls
+- Primary files to update after sign-off:
+  - `TODO.md`
+  - `README.md`
+  - `docs/FRONTEND_UI_AUDIT_2026-03-07.md`
+- Acceptance:
+  - no unresolved naming or workflow ambiguity remains before store/UI migration begins
+
+#### F1.1 Introduce New Navigation And Source Contracts
+
+- [~] Add explicit navigation/source state contracts before changing components.
+- New store concepts:
+  - `activeFamily`
+  - `activeSource`
+  - `activeLibraryCaseKey`
+  - `activeLibraryGroup`
+  - `activeComparisonSelection`
+  - `editabilityPolicy`
+- Replace the current overloaded `activeMode` / benchmark-only flow gradually rather than all at once.
+- Keep temporary compatibility shims while the shell migrates.
+- Primary files:
+  - `src/lib/ui/modePanelTypes.ts`
+  - `src/lib/stores/phase2PresetContract.ts`
+  - `src/lib/stores/simulationStore.svelte.ts`
+- Acceptance:
+  - the store can represent family, source, library case, and custom state independently
+  - no component needs `benchmark` as a top-level mode to understand reference workflows
+
+#### F1.2 Build A Unified Case-Library Catalog Layer
+
+- [ ] Introduce a case-library adapter instead of exposing separate preset and benchmark ownership to the UI shell.
+- The adapter should normalize:
+  - family ownership
+  - library group (`literature-reference`, `internal-reference`, `curated-starter`)
+  - editability policy
+  - citation/source label
+  - reference policy summary
+  - sensitivity availability
+- Re-home current content:
+  - BL benchmark families -> `Waterflood`
+  - Dietz reference families -> `Depletion Analysis`
+  - Fetkovich -> `Type Curves`
+  - exploratory presets -> `Scenario Builder`
+  - decide explicitly which existing preset entries survive as curated starters versus being dropped
+- Primary files:
+  - `src/lib/catalog/caseCatalog.ts`
+  - new case-library module under `src/lib/catalog/`
+  - `src/lib/catalog/presetCases.ts`
+  - `src/lib/catalog/benchmarkCases.ts`
+  - `src/lib/catalog/caseCatalog.test.ts`
+- Acceptance:
+  - the UI can query one library API instead of deciding between presets and benchmarks itself
+  - every library case carries a truthful provenance/source classification
+
+#### F1.3 Generalize The Reference Runner In The Store
+
+- [ ] Remove benchmark-mode gating from execution logic while preserving the normalized benchmark result model.
+- Migrate current runner behavior from “benchmark mode only” to “reference-capable library cases inside owning families.”
+- Preserve and reuse:
+  - benchmark run specs
+  - normalized comparison results
+  - analytical/numerical reference policy logic
+- Add store rules for:
+  - read-only library/reference selection
+  - `Customize` handoff into family-local custom state
+  - family-aware result filtering in outputs
+- Primary files:
+  - `src/lib/stores/simulationStore.svelte.ts`
+  - `src/lib/benchmarkRunModel.ts`
+  - `src/lib/stores/simulationStorePolicyWiring.test.ts`
+  - `src/lib/appStoreDomainWiring.test.ts`
+- Acceptance:
+  - BL, Dietz, and Fetkovich reference cases can execute without a benchmark top-level mode
+  - `Customize` can seed custom state from a library case while preserving provenance
+
+#### F1.4 Replace The Top-Level Shell
+
+- [ ] Replace the current mode-tab shell with a family-first `Inputs / Run / Outputs` shell.
+- Remove benchmark as a top-level tab.
+- Add family subtitles and source selectors in `Inputs`.
+- Keep the current detailed section components alive during the first shell pass instead of redesigning them at the same time.
+- Primary files:
+  - `src/App.svelte`
+  - `src/lib/ui/modes/ModePanel.svelte`
+  - `src/lib/ui/modePanelComposition.test.ts`
+  - `src/lib/ui/modePanelFlows.test.ts`
+- Acceptance:
+  - navigation is family-first and source-aware
+  - page regions are explicit even before compact-layout work starts
+
+#### F1.5 Build The Inputs Region Around Case Library And Custom
+
+- [ ] Replace the old benchmark panel split with one Inputs-region workflow.
+- Inputs-region responsibilities:
+  - family selector
+  - source selector (`Case Library` / `Custom`)
+  - library group switch or grouped list
+  - case disclosure panel with citation/source, fixed settings, sensitivities, and reference policy
+  - `Customize` action
+  - existing parameter sections, honoring editability policy
+- Locked behavior:
+  - library/reference cases show fixed inputs as read-only
+  - only approved sensitivity selectors stay editable
+  - `Customize` unlocks the case by switching source to `Custom`
+- Primary files:
+  - `src/lib/ui/modes/ModePanel.svelte`
+  - replace or retire `src/lib/ui/modes/BenchmarkPanel.svelte`
+  - `src/lib/ui/sections/ScenarioSectionsPanel.svelte`
+  - `src/lib/ui/modePanelTypes.ts`
+- Acceptance:
+  - the user can select, inspect, and customize a library case without leaving the owning family
+
+#### F1.6 Rebuild The Run Region As The Canonical Execution Surface
+
+- [ ] Pull run controls, warnings, and “what will run” summary into one explicit Run region.
+- Run region should show:
+  - validation/runtime/reference warnings
+  - run buttons and progress
+  - run manifest describing the active family, source, case, and sensitivity selection
+  - explicit reference/comparison policy summary for library/reference runs
+- Primary files:
+  - `src/App.svelte`
+  - `src/lib/ui/cards/RunControls.svelte`
+  - `src/lib/ui/feedback/WarningPolicyPanel.svelte`
+  - `src/lib/warningPolicy.ts`
+- Acceptance:
+  - the user can understand exactly what will execute and what it will be compared against before running
+
+#### F1.7 Make Outputs The Single Home For Comparison
+
+- [ ] Reorganize outputs so comparison is no longer treated as a separate benchmark-mode concept.
+- Outputs responsibilities:
+  - compact result summary
+  - case/run comparison selector
+  - charts
+  - 3D view
+  - supporting diagnostics/profile views
+- Keep the existing comparison model and benchmark chart plumbing where possible, but mount it under Outputs rather than benchmark mode.
+- Primary files:
+  - `src/App.svelte`
+  - `src/lib/charts/RateChart.svelte`
+  - `src/lib/charts/BenchmarkChart.svelte`
+  - `src/lib/charts/benchmarkComparisonModel.ts`
+  - `src/lib/visualization/3dview.svelte`
+- Acceptance:
+  - outputs can render single-run, reference-vs-simulation, and sensitivity comparisons from one region
+
+#### F1.8 Define And Enforce Scenario Builder Boundaries
+
+- [ ] Explicitly define what belongs in `Scenario Builder`.
+- Immediate requirement:
+  - do not use it as a silent fallback for unsupported workflows
+  - if a user is redirected there, explain why
+- Later requirement:
+  - reduce the number of cases that need that redirection at all
+- Primary files:
+  - `src/lib/catalog/catalog.json`
+  - `src/lib/catalog/caseCatalog.ts`
+  - `src/lib/ui/modes/ModePanel.svelte`
+  - docs after F1 completes
+- Acceptance:
+  - `Scenario Builder` reads as intentional exploratory modeling, not as a catch-all bucket
+
+#### F1.9 Remove Legacy Benchmark-Mode Plumbing And Refresh Tests
+
+- [ ] After the new shell and store paths are stable, remove legacy benchmark-mode-only code and tests.
+- Retire or repurpose:
+  - benchmark top-level mode selectors
+  - benchmark-only UI props/types
+  - benchmark-only store guards
+  - docs phrased around a separate benchmark mode
+- Primary files:
+  - `src/lib/ui/modes/ModePanel.svelte`
+  - `src/lib/ui/modePanelTypes.ts`
+  - `src/lib/stores/simulationStore.svelte.ts`
+  - `README.md`
+  - `docs/BENCHMARK_MODE_GUIDE.md`
+  - test files under `src/lib/ui/`, `src/lib/catalog/`, and store wiring tests
+- Acceptance:
+  - no live code path depends on `benchmark` as a top-level mode
+  - tests protect the new family/source/output architecture
+
+### F1 Cutover Strategy
+
+- [ ] Keep the current result-model and comparison math intact while migrating the shell.
+- [ ] Migrate contracts first, then catalog/library, then store runner, then shell, then outputs, then cleanup.
+- [ ] Do not combine F1 shell migration with F6 visual compaction in the same implementation slice.
+- [ ] Do not rename every label in the same slice as the state-model migration; keep F2 separate.
+
+### F1 Risks To Watch During Implementation
+
+- [ ] `Type Curves` may be thin initially; the shell must frame it as an analytical family, not a fully broad product area.
+- [ ] If `Case Library` is adopted, the UI must visually distinguish literature references from curated starters.
+- [ ] Existing mode-based tests will break in large numbers unless migrated slice-by-slice.
+- [ ] The 3D/output comparison experience must not regress while comparison ownership moves into `Outputs`.
 
 - [ ] **F2. Unify warnings, labels, and terminology**
   - Keep one warning-policy data model, but redesign the UI around one canonical warning surface plus section-local status/error indicators.

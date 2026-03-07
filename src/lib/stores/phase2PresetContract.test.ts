@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildBenchmarkCloneProvenance,
+    buildComparisonSelection,
     buildOverrideResetPlan,
     buildBasePresetProfile,
     buildParameterOverrides,
+    buildScenarioEditabilityPolicy,
+    buildScenarioNavigationState,
     evaluateAnalyticalStatus,
     getFacetCustomizeSectionTarget,
     getFacetOverrideGroups,
     getOverrideGroupSectionTarget,
     groupParameterOverrides,
+    resolveProductFamily,
+    resolveScenarioSource,
     shouldAllowBenchmarkClone,
     shouldAutoClearModifiedState,
     shouldShowModePanelStatusRow,
@@ -25,6 +30,91 @@ describe('phase2PresetContract', () => {
 
         expect(profile.source).toBe('custom');
         expect(profile.mode).toBe('dep');
+        expect(profile.family).toBe('depletion-analysis');
+        expect(profile.caseSource).toBe('custom');
+        expect(profile.libraryCaseKey).toBeNull();
+        expect(profile.editabilityPolicy.kind).toBe('custom-editable');
+    });
+
+    it('maps benchmark families into compatibility product families', () => {
+        expect(resolveProductFamily({
+            activeMode: 'benchmark',
+            benchmarkScenarioClass: 'buckley-leverett',
+            benchmarkId: 'bl_case_a_refined',
+        })).toBe('waterflood');
+
+        expect(resolveProductFamily({
+            activeMode: 'benchmark',
+            benchmarkScenarioClass: 'depletion',
+            benchmarkId: 'dietz_sq_center',
+        })).toBe('depletion-analysis');
+
+        expect(resolveProductFamily({
+            activeMode: 'benchmark',
+            benchmarkScenarioClass: 'depletion',
+            benchmarkId: 'fetkovich_exp',
+        })).toBe('type-curves');
+    });
+
+    it('derives scenario source from modified state', () => {
+        expect(resolveScenarioSource({ isModified: false })).toBe('case-library');
+        expect(resolveScenarioSource({ isModified: true })).toBe('custom');
+    });
+
+    it('builds compatibility navigation state for benchmark references', () => {
+        const navigation = buildScenarioNavigationState({
+            activeMode: 'benchmark',
+            isModified: false,
+            activeCaseKey: 'bench_bl-case-a-refined',
+            benchmarkId: 'bl_case_a_refined',
+            benchmarkScenarioClass: 'buckley-leverett',
+            activeComparisonSelection: {
+                primaryResultKey: 'base',
+                comparedResultKeys: ['grid_48'],
+            },
+        });
+
+        expect(navigation).toMatchObject({
+            activeFamily: 'waterflood',
+            activeSource: 'case-library',
+            activeLibraryCaseKey: 'bl_case_a_refined',
+            activeLibraryGroup: 'literature-reference',
+            editabilityPolicy: {
+                kind: 'library-reference',
+                allowDirectInputEditing: false,
+                allowSensitivitySelection: true,
+                allowCustomizeAction: true,
+            },
+        });
+        expect(navigation.activeComparisonSelection).toEqual({
+            primaryResultKey: 'base',
+            comparedResultKeys: ['grid_48'],
+        });
+    });
+
+    it('builds editable starter policy for non-benchmark library cases', () => {
+        const policy = buildScenarioEditabilityPolicy({
+            activeMode: 'wf',
+            caseSource: 'case-library',
+        });
+
+        expect(policy).toEqual({
+            kind: 'library-starter',
+            allowDirectInputEditing: true,
+            allowSensitivitySelection: false,
+            allowCustomizeAction: false,
+            transitionsToCustomOnEdit: true,
+        });
+    });
+
+    it('normalizes comparison selection keys', () => {
+        expect(buildComparisonSelection({
+            primaryResultKey: '',
+            comparedResultKeys: ['run-a', 'run-a', '', 'run-b'],
+        })).toEqual({
+            primaryResultKey: null,
+            comparedResultKeys: ['run-a', 'run-b'],
+        });
     });
 
     it('detects scalar and array overrides', () => {

@@ -2,9 +2,24 @@ import type { CaseMode, ToggleState } from "../catalog/caseCatalog";
 import type {
   BasePresetProfile,
   BenchmarkProvenance,
+  ComparisonSelection,
+  LibraryCaseGroup,
+  ProductFamily,
+  ScenarioEditabilityPolicy,
+  ScenarioNavigationState,
+  ScenarioSource,
 } from "../stores/phase2PresetContract";
 import type { BenchmarkRunResult } from "../benchmarkRunModel";
 import type { WarningPolicy } from "../warningPolicy";
+
+export type {
+  ComparisonSelection,
+  LibraryCaseGroup,
+  ProductFamily,
+  ScenarioEditabilityPolicy,
+  ScenarioNavigationState,
+  ScenarioSource,
+};
 
 export type PermMode = "uniform" | "random" | "perLayer";
 
@@ -81,6 +96,7 @@ export type ScenarioMode = Exclude<CaseMode, "benchmark">;
 
 export type ModePanelProps = {
   activeMode: CaseMode;
+  navigationState?: ScenarioNavigationState;
   isModified?: boolean;
   toggles: ToggleState;
   disabledOptions: Record<string, Record<string, string>>;
@@ -103,6 +119,7 @@ export type ModePanelProps = {
 
 export type ScenarioModePanelProps = {
   activeMode: ScenarioMode;
+  navigationState?: ScenarioNavigationState;
   toggles: ToggleState;
   disabledOptions: Record<string, Record<string, string>>;
   onToggleChange: (key: string, value: string) => void;
@@ -112,6 +129,7 @@ export type ScenarioModePanelProps = {
 };
 
 export type BenchmarkModePanelProps = {
+  navigationState?: ScenarioNavigationState;
   toggles: ToggleState;
   disabledOptions: Record<string, Record<string, string>>;
   isModified?: boolean;

@@ -22,4 +22,12 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/runActiveBenchmarkSelection/);
     expect(storeSource).toMatch(/benchmarkRunResults/);
   });
+
+  it('exposes compatibility navigation state alongside legacy mode state', () => {
+    expect(storeSource).toMatch(/buildScenarioNavigationState/);
+    expect(storeSource).toMatch(/get activeFamily\(\) \{ return navigationState\.activeFamily; \}/);
+    expect(storeSource).toMatch(/get activeSource\(\) \{ return navigationState\.activeSource; \}/);
+    expect(storeSource).toMatch(/get navigationState\(\) \{ return navigationState; \}/);
+    expect(storeSource).toMatch(/setComparisonSelection\(selection: Partial<ComparisonSelection>\)/);
+  });
 });
