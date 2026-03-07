@@ -8,7 +8,7 @@ function toXAxisMode(value: BenchmarkFamily['displayDefaults']['xAxis']): RateCh
     return 'time';
 }
 
-export function getBenchmarkRateChartLayoutConfig(input: {
+export function getReferenceRateChartLayoutConfig(input: {
     family: BenchmarkFamily | null | undefined;
     referencePolicy?: BenchmarkReferencePolicy | null;
 }): RateChartLayoutConfig {

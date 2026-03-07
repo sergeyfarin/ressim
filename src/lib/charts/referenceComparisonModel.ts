@@ -7,17 +7,17 @@ import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutCon
 
 export type XYPoint = { x: number; y: number | null };
 
-export type BenchmarkOverlayPanel = {
+export type ReferenceComparisonPanel = {
     curves: CurveConfig[];
     series: XYPoint[][];
 };
 
-export type BenchmarkOverlayModel = {
+export type ReferenceComparisonModel = {
     orderedResults: BenchmarkRunResult[];
-    panels: Record<RateChartPanelKey, BenchmarkOverlayPanel>;
+    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>;
 };
 
-export type BenchmarkOverlayTheme = 'dark' | 'light';
+export type ReferenceComparisonTheme = 'dark' | 'light';
 
 type DerivedRunSeries = {
     time: number[];
@@ -56,7 +56,7 @@ const CASE_COLORS = [
     '#65a30d',
 ];
 
-function getReferenceColor(theme: BenchmarkOverlayTheme): string {
+function getReferenceColor(theme: ReferenceComparisonTheme): string {
     return theme === 'dark' ? '#f8fafc' : '#0f172a';
 }
 
@@ -285,7 +285,7 @@ function buildDepletionReference(
 }
 
 function appendSeries(
-    panel: BenchmarkOverlayPanel,
+    panel: ReferenceComparisonPanel,
     curve: CurveConfig,
     xValues: Array<number | null>,
     yValues: Array<number | null>,
@@ -294,16 +294,24 @@ function appendSeries(
     panel.series.push(toXYSeries(xValues, yValues));
 }
 
-export function buildBenchmarkComparisonModel(input: {
+export function buildReferenceComparisonModel(input: {
     family: BenchmarkFamily | null | undefined;
     results: BenchmarkRunResult[];
     xAxisMode: RateChartXAxisMode;
-    theme?: BenchmarkOverlayTheme;
-}): BenchmarkOverlayModel {
+    theme?: ReferenceComparisonTheme;
+    primaryResultKey?: string | null;
+    comparedResultKeys?: string[];
+}): ReferenceComparisonModel {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
-    const panels: Record<RateChartPanelKey, BenchmarkOverlayPanel> = {
+    const comparedResultKeys = new Set(
+        Array.isArray(input.comparedResultKeys)
+            ? input.comparedResultKeys.filter((key): key is string => typeof key === 'string' && key.length > 0)
+            : [],
+    );
+    const hasFocusedSelection = typeof input.primaryResultKey === 'string' && input.primaryResultKey.length > 0;
+    const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
         rates: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
         diagnostics: { curves: [], series: [] },
@@ -316,12 +324,23 @@ export function buildBenchmarkComparisonModel(input: {
     const derivedByKey = new Map<string, DerivedRunSeries>(
         orderedResults.map((result) => [result.key, buildDerivedRunSeries(result)]),
     );
+    const baseResult = getBaseResult(orderedResults);
+    const baseResultKey = baseResult?.key ?? null;
+
+    function isResultVisibleByDefault(result: BenchmarkRunResult): boolean {
+        if (!hasFocusedSelection) return true;
+        if (result.key === input.primaryResultKey) return true;
+        if (comparedResultKeys.has(result.key)) return true;
+        if (baseResultKey && result.key === baseResultKey) return true;
+        return false;
+    }
 
     orderedResults.forEach((result, index) => {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
         const color = CASE_COLORS[index % CASE_COLORS.length];
         const xValues = buildXAxisValues(derived, input.xAxisMode);
+        const defaultVisible = isResultVisibleByDefault(result);
 
         if (family.scenarioClass === 'buckley-leverett') {
             appendSeries(
@@ -331,6 +350,7 @@ export function buildBenchmarkComparisonModel(input: {
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
+                    defaultVisible,
                 },
                 xValues,
                 derived.waterCut,
@@ -355,6 +375,7 @@ export function buildBenchmarkComparisonModel(input: {
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y1',
+                    defaultVisible,
                 },
                 xValues,
                 derived.recovery,
@@ -379,6 +400,7 @@ export function buildBenchmarkComparisonModel(input: {
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
+                    defaultVisible,
                 },
                 xValues,
                 derived.pressure,
@@ -393,6 +415,7 @@ export function buildBenchmarkComparisonModel(input: {
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
+                defaultVisible,
             },
             xValues,
             derived.oilRate,
@@ -404,6 +427,7 @@ export function buildBenchmarkComparisonModel(input: {
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y1',
+                defaultVisible,
             },
             xValues,
             derived.recovery,
@@ -428,13 +452,13 @@ export function buildBenchmarkComparisonModel(input: {
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
+                defaultVisible,
             },
             xValues,
             derived.pressure,
         );
     });
 
-    const baseResult = getBaseResult(orderedResults);
     if (!baseResult) {
         return { orderedResults, panels };
     }

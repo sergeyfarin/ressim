@@ -350,6 +350,13 @@ export function createSimulationStore() {
         const benchmarkFamilyKey = activeLibraryEntry?.benchmarkFamilyKey ?? null;
         return benchmarkFamilyKey ? getBenchmarkFamily(benchmarkFamilyKey) : null;
     });
+    const activeNavigationLibraryEntry = $derived.by(() => {
+        if (activeLibraryEntry) return activeLibraryEntry;
+        if (benchmarkProvenance?.sourceCaseKey) {
+            return getCaseLibraryEntry(benchmarkProvenance.sourceCaseKey);
+        }
+        return null;
+    });
 
     const basePreset = $derived.by(() => {
         const benchmarkId = activeReferenceBenchmarkFamily?.key
@@ -366,6 +373,7 @@ export function createSimulationStore() {
             benchmarkLabel,
             benchmarkScenarioClass: activeReferenceBenchmarkFamily?.scenarioClass ?? null,
             activeLibraryCaseKey: activeLibraryEntry?.key ?? null,
+            activeLibraryFamily: activeNavigationLibraryEntry?.family ?? null,
             activeLibraryGroup: activeLibraryEntry?.group ?? null,
         });
     });
@@ -379,6 +387,7 @@ export function createSimulationStore() {
             isModified,
             activeCaseKey: activeCase,
             activeLibraryCaseKey: activeLibraryEntry?.key ?? null,
+            activeLibraryFamily: activeNavigationLibraryEntry?.family ?? null,
             activeLibraryGroup: activeLibraryEntry?.group ?? null,
             sourceLabel: activeLibraryEntry?.sourceLabel ?? null,
             referenceSourceLabel: activeLibraryEntry?.referenceSourceLabel ?? null,

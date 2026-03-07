@@ -3,7 +3,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from '../catalog/caseCatalog';
 import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
-import { buildBenchmarkComparisonModel } from './benchmarkComparisonModel';
+import { buildReferenceComparisonModel } from './referenceComparisonModel';
 
 function buildSyntheticWaterfloodRateHistory(
     params: Record<string, any>,
@@ -92,7 +92,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
     }));
 }
 
-describe('benchmarkComparisonModel', () => {
+describe('referenceComparisonModel', () => {
     it('builds BL overlay panels with base-first ordering and analytical references', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
@@ -123,7 +123,7 @@ describe('benchmarkComparisonModel', () => {
             rateHistory: buildSyntheticWaterfloodRateHistory(gridVariantSpec.params, reference.breakthroughPvi * 1.08, 0.03),
         });
 
-        const model = buildBenchmarkComparisonModel({
+        const model = buildReferenceComparisonModel({
             family,
             results: [gridVariantResult, baseResult],
             xAxisMode: 'pvi',
@@ -151,7 +151,7 @@ describe('benchmarkComparisonModel', () => {
             rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
         });
 
-        const model = buildBenchmarkComparisonModel({
+        const model = buildReferenceComparisonModel({
             family,
             results: [result],
             xAxisMode: 'tD',
@@ -189,13 +189,13 @@ describe('benchmarkComparisonModel', () => {
             rateHistory: buildSyntheticWaterfloodRateHistory(baseSpec.params, reference.breakthroughPvi, 0),
         });
 
-        const darkModel = buildBenchmarkComparisonModel({
+        const darkModel = buildReferenceComparisonModel({
             family,
             results: [baseResult],
             xAxisMode: 'pvi',
             theme: 'dark',
         });
-        const lightModel = buildBenchmarkComparisonModel({
+        const lightModel = buildReferenceComparisonModel({
             family,
             results: [baseResult],
             xAxisMode: 'pvi',
@@ -207,5 +207,57 @@ describe('benchmarkComparisonModel', () => {
 
         expect(darkReferenceCurve?.color).toBe('#f8fafc');
         expect(lightReferenceCurve?.color).toBe('#0f172a');
+    });
+
+    it('defaults chart visibility to the selected result plus base/reference context when a comparison focus is active', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
+        const specs = buildBenchmarkRunSpecs(family!, [variants[0], variants[1]]);
+
+        const reference = computeWelgeMetrics(
+            {
+                s_wc: Number(specs[0].params.s_wc),
+                s_or: Number(specs[0].params.s_or),
+                n_w: Number(specs[0].params.n_w),
+                n_o: Number(specs[0].params.n_o),
+                k_rw_max: Number(specs[0].params.k_rw_max),
+                k_ro_max: Number(specs[0].params.k_ro_max),
+            },
+            {
+                mu_w: Number(specs[0].params.mu_w),
+                mu_o: Number(specs[0].params.mu_o),
+            },
+            Number(specs[0].params.initialSaturation),
+        );
+
+        const [baseSpec, firstVariantSpec, secondVariantSpec] = specs;
+        const baseResult = buildBenchmarkRunResult({
+            spec: baseSpec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(baseSpec.params, reference.breakthroughPvi, 0),
+        });
+        const firstVariantResult = buildBenchmarkRunResult({
+            spec: firstVariantSpec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(firstVariantSpec.params, reference.breakthroughPvi * 1.04, 0.02),
+        });
+        const secondVariantResult = buildBenchmarkRunResult({
+            spec: secondVariantSpec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(secondVariantSpec.params, reference.breakthroughPvi * 1.09, 0.04),
+        });
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [baseResult, firstVariantResult, secondVariantResult],
+            xAxisMode: 'pvi',
+            primaryResultKey: secondVariantResult.key,
+            comparedResultKeys: [baseResult.key],
+        });
+
+        const selectedCurve = model.panels.rates.curves.find((curve) => curve.label === `${secondVariantResult.label} Water Cut`);
+        const baseCurve = model.panels.rates.curves.find((curve) => curve.label === `${baseResult.label} Water Cut`);
+        const hiddenCurve = model.panels.rates.curves.find((curve) => curve.label === `${firstVariantResult.label} Water Cut`);
+
+        expect(selectedCurve?.defaultVisible).toBe(true);
+        expect(baseCurve?.defaultVisible).toBe(true);
+        expect(hiddenCurve?.defaultVisible).toBe(false);
     });
 });

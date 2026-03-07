@@ -6,7 +6,6 @@
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import type { ModePanelProps } from "../modePanelTypes";
   import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
-  import BenchmarkPanel from "./BenchmarkPanel.svelte";
 
   let {
     activeMode = "dep",
@@ -18,15 +17,10 @@
     onParamEdit = () => {},
     onToggleChange,
     basePreset = null,
-    benchmarkProvenance = null,
-    benchmarkSweepRunning = false,
-    benchmarkSweepProgressLabel = "",
-    benchmarkSweepError = "",
-    benchmarkRunResults = [],
-    onCloneBenchmarkToCustom = () => {},
+    referenceProvenance = null,
+    referenceSweepRunning = false,
+    onCloneReferenceToCustom = () => {},
     onActivateLibraryEntry = () => {},
-    onRunBenchmarkSelection = () => {},
-    onStopBenchmarkSweep = () => {},
     params,
     validationErrors = {},
     warningPolicy = undefined,
@@ -42,10 +36,12 @@
 
   const shouldShowStatusRow = $derived(
     shouldShowModePanelStatusRow({
-      benchmarkProvenance,
+      benchmarkProvenance: referenceProvenance,
       parameterOverrideCount: Number(params.parameterOverrideCount ?? 0),
     }),
   );
+
+  const activeSource = $derived(navigationState?.activeSource ?? "case-library");
 
   const activeLibraryEntry = $derived(
     navigationState?.activeLibraryCaseKey
@@ -71,6 +67,28 @@
     "literature-reference": "Literature References",
     "internal-reference": "Internal References",
     "curated-starter": "Curated Starters",
+  } as const;
+
+  const RUN_POLICY_LABELS = {
+    single: "Single locked reference execution",
+    sweep: "Library sensitivity sweep",
+    "compare-to-reference": "Reference-comparison execution",
+  } as const;
+
+  const X_AXIS_LABELS = {
+    time: "time",
+    pvi: "pore volume injected",
+    tD: "dimensionless time",
+  } as const;
+
+  const PANEL_LABELS = {
+    "watercut-breakthrough": "watercut breakthrough",
+    recovery: "recovery",
+    pressure: "pressure",
+    rates: "rates",
+    "oil-rate": "oil rate",
+    "cumulative-oil": "cumulative oil",
+    "decline-diagnostics": "decline diagnostics",
   } as const;
 
   const activeFamily = $derived(
@@ -102,6 +120,19 @@
   const showReferencePanel = $derived(
     Boolean(activeLibraryEntry?.benchmarkFamilyKey) || activeMode === "benchmark",
   );
+  const activeReferenceCaseKey = $derived(
+    navigationState?.activeLibraryCaseKey ?? null,
+  );
+
+  const scenarioPanelMode = $derived(
+    activeMode === "benchmark"
+      ? (activeFamily === "waterflood"
+        ? "wf"
+        : activeFamily === "scenario-builder"
+          ? "sim"
+          : "dep")
+      : activeMode,
+  );
 
   function handleFamilySelect(family: keyof typeof FAMILY_LABELS) {
     if (family === "waterflood") {
@@ -126,6 +157,37 @@
     }
 
     onModeChange("dep");
+  }
+
+  function handleSourceSelect(source: "case-library" | "custom") {
+    if (!navigationState || source === activeSource) return;
+
+    if (source === "custom") {
+      if (navigationState.editabilityPolicy.allowCustomizeAction) {
+        onCloneReferenceToCustom();
+        return;
+      }
+
+      onParamEdit();
+      return;
+    }
+
+    const restoredEntry = referenceProvenance?.sourceCaseKey
+      ? getCaseLibraryEntry(referenceProvenance.sourceCaseKey)
+      : getCaseLibraryEntry(basePreset?.key ?? null);
+
+    if (restoredEntry) {
+      onActivateLibraryEntry(restoredEntry.key);
+      return;
+    }
+
+    const familyDefaultEntry = familyDefaultEntries[activeFamily as keyof typeof familyDefaultEntries] ?? null;
+    if (familyDefaultEntry) {
+      onActivateLibraryEntry(familyDefaultEntry.key);
+      return;
+    }
+
+    handleFamilySelect(activeFamily as keyof typeof FAMILY_LABELS);
   }
 
   const librarySelectorSections = $derived.by(() => {
@@ -159,6 +221,97 @@
 
     return sections;
   });
+
+  function formatTolerancePercent(value: number | null | undefined): string | null {
+    if (!Number.isFinite(value)) return null;
+    return `${(Number(value) * 100).toFixed(1)}%`;
+  }
+
+  const caseDisclosure = $derived.by(() => {
+    if (activeSource === "custom") {
+      const familyLabel = FAMILY_LABELS[activeFamily as keyof typeof FAMILY_LABELS] ?? activeFamily;
+      const sourceItems = [
+        "Custom inputs are active for this family.",
+      ];
+
+      if (referenceProvenance?.sourceLabel) {
+        sourceItems.push(`Seeded from ${referenceProvenance.sourceLabel}.`);
+      }
+
+      return {
+        title: `${familyLabel} Custom`,
+        description: "Writable family-local scenario state. Curated case constraints no longer lock the input surface while custom is active.",
+        sourceItems,
+        fixedSettingsItems: [
+          "Inputs are unlocked for direct editing.",
+          "Returning to Case Library restores a curated case for this family when one is available.",
+        ],
+        sensitivityItems: [
+          "No locked library sensitivity policy applies while custom is active.",
+        ],
+        referencePolicyItems: [
+          "Reference comparison policy now depends on whichever curated case you restore or activate next.",
+        ],
+      };
+    }
+
+    if (!activeLibraryEntry) return null;
+
+    const sourceItems = [
+      `Catalog source: ${activeLibraryEntry.sourceLabel}.`,
+      `Library group: ${GROUP_LABELS[activeLibraryEntry.group]}.`,
+      activeLibraryEntry.provenanceSummary,
+    ];
+
+    if (activeLibraryEntry.referenceSourceLabel) {
+      sourceItems.splice(1, 0, `Reference basis: ${activeLibraryEntry.referenceSourceLabel}.`);
+    }
+
+    const fixedSettingsItems = [
+      activeLibraryEntry.editabilityPolicy.kind === "library-reference"
+        ? "Base inputs stay locked; only approved sensitivity selectors remain editable until you choose Customize."
+        : activeLibraryEntry.editabilityPolicy.kind === "library-starter"
+          ? "This starter stays editable immediately and transitions into custom workflow on first direct input edit."
+          : "This case is already in a writable custom state.",
+    ];
+
+    if (activeLibraryEntry.runPolicy) {
+      fixedSettingsItems.push(`Execution policy: ${RUN_POLICY_LABELS[activeLibraryEntry.runPolicy]}.`);
+    }
+
+    if (activeLibraryEntry.displayDefaults) {
+      const panelLabels = activeLibraryEntry.displayDefaults.panels
+        .map((panel) => PANEL_LABELS[panel as keyof typeof PANEL_LABELS] ?? panel)
+        .join(", ");
+      fixedSettingsItems.push(
+        `Default outputs use ${X_AXIS_LABELS[activeLibraryEntry.displayDefaults.xAxis]} on the x-axis and emphasize ${panelLabels}.`,
+      );
+    }
+
+    const sensitivityItems = [activeLibraryEntry.sensitivitySummary];
+    if (activeLibraryEntry.sensitivityAxes.length > 0) {
+      sensitivityItems.push(
+        `Available axes: ${activeLibraryEntry.sensitivityAxes.map((axis) => `${axis.label} (${axis.variantCount})`).join(", ")}.`,
+      );
+    }
+
+    const referencePolicyItems = [activeLibraryEntry.referencePolicySummary];
+    if (activeLibraryEntry.comparisonMetric) {
+      const tolerance = formatTolerancePercent(activeLibraryEntry.comparisonMetric.tolerance);
+      referencePolicyItems.push(
+        `Primary comparison metric: breakthrough PVI relative error against ${activeLibraryEntry.comparisonMetric.target === "analytical-reference" ? "the analytical reference" : "the numerical reference"}${tolerance ? ` with a ${tolerance} tolerance target` : ""}.`,
+      );
+    }
+
+    return {
+      title: activeLibraryEntry.label,
+      description: activeLibraryEntry.description,
+      sourceItems,
+      fixedSettingsItems,
+      sensitivityItems,
+      referencePolicyItems,
+    };
+  });
 </script>
 
 <Card class="p-3 md:p-4">
@@ -177,10 +330,7 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 text-[10px]">
-        <span class={`rounded-md border px-2 py-1 font-medium ${sourceTone}`}>
-          {navigationState?.activeSource === "custom" ? "Custom" : "Case Library"}
-        </span>
-        {#if navigationState?.activeLibraryGroup}
+        {#if navigationState?.activeLibraryGroup && activeSource === "case-library"}
           <span class="rounded-md border border-border/70 bg-background px-2 py-1 text-muted-foreground">
             {GROUP_LABELS[navigationState.activeLibraryGroup]}
           </span>
@@ -199,13 +349,42 @@
       {#each Object.entries(FAMILY_LABELS) as [family, label]}
         <Button
           size="sm"
-          variant={activeFamily === family && !isModified ? "default" : "outline"}
+          variant={activeFamily === family ? "default" : "outline"}
           class="justify-start"
           onclick={() => handleFamilySelect(family as keyof typeof FAMILY_LABELS)}
         >
           {label}
         </Button>
       {/each}
+    </div>
+
+    <div class="mt-3 rounded-md border border-border/60 bg-background/80 p-3">
+      <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Source
+      </div>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant={activeSource === "case-library" ? "default" : "outline"}
+          onclick={() => handleSourceSelect("case-library")}
+        >
+          Case Library
+        </Button>
+        <Button
+          size="sm"
+          variant={activeSource === "custom" ? "default" : "outline"}
+          onclick={() => handleSourceSelect("custom")}
+        >
+          Custom
+        </Button>
+      </div>
+      <div class="mt-2 text-[10px] text-muted-foreground">
+        {#if activeSource === "case-library"}
+          Curated family cases keep provenance, reference policy, and allowed sensitivities attached to the active selection.
+        {:else}
+          Custom keeps the current family inputs unlocked. Switch back to Case Library to restore a curated family case.
+        {/if}
+      </div>
     </div>
   </div>
 
@@ -216,9 +395,9 @@
           {params.parameterOverrideCount} changed field{params.parameterOverrideCount === 1 ? "" : "s"}
         </span>
       {/if}
-      {#if benchmarkProvenance}
+      {#if referenceProvenance}
         <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
-          Cloned from <strong class="text-foreground">{benchmarkProvenance.sourceLabel}</strong>
+          Seeded from <strong class="text-foreground">{referenceProvenance.sourceLabel}</strong>
         </span>
       {/if}
     </div>
@@ -230,7 +409,7 @@
         Library Context
       </div>
 
-      {#if activeLibraryEntry}
+      {#if activeSource === "case-library" && activeLibraryEntry}
         <div class="mt-2 space-y-1 text-[11px]">
           <div class="text-foreground">
             <strong>{activeLibraryEntry.label}</strong>
@@ -251,13 +430,22 @@
             </div>
           {/if}
         </div>
-      {:else if !isModified && navigationState.activeSource === "case-library"}
+      {:else if !isModified && activeSource === "case-library"}
         <div class="mt-2 text-[10px] text-muted-foreground">
           Current facet combination is not mapped to a curated library case yet.
         </div>
+      {:else if activeSource === "custom"}
+        <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+          <div>Custom inputs are active for this family.</div>
+          {#if referenceProvenance}
+            <div>
+              Seeded from <strong class="text-foreground">{referenceProvenance.sourceLabel}</strong>.
+            </div>
+          {/if}
+        </div>
       {/if}
 
-      {#if librarySelectorSections.length > 0}
+      {#if activeSource === "case-library" && librarySelectorSections.length > 0}
         <div class="mt-3 border-t border-border/50 pt-3">
           <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Case Library
@@ -295,29 +483,99 @@
           </div>
         </div>
       {/if}
+
+      {#if caseDisclosure}
+        <div class="mt-3 border-t border-border/50 pt-3">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Case Disclosure
+          </div>
+          <div class="mt-2 rounded-md border border-border/70 bg-background/80 p-3">
+            <div class="text-[11px] text-foreground">
+              <strong>{caseDisclosure.title}</strong>
+            </div>
+            <div class="mt-1 text-[10px] text-muted-foreground">
+              {caseDisclosure.description}
+            </div>
+
+            <div class="mt-3 grid gap-3 xl:grid-cols-2">
+              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
+                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Citation / Source
+                </div>
+                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                  {#each caseDisclosure.sourceItems as item}
+                    <div>{item}</div>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
+                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Fixed Settings
+                </div>
+                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                  {#each caseDisclosure.fixedSettingsItems as item}
+                    <div>{item}</div>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
+                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Allowed Sensitivities
+                </div>
+                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                  {#each caseDisclosure.sensitivityItems as item}
+                    <div>{item}</div>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="rounded-md border border-border/60 bg-muted/10 p-3">
+                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Reference Policy
+                </div>
+                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                  {#each caseDisclosure.referencePolicyItems as item}
+                    <div>{item}</div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 
   <div class="mt-4">
     {#if showReferencePanel}
-      <BenchmarkPanel
-        {navigationState}
-        {toggles}
-        {disabledOptions}
-        {isModified}
-        {benchmarkProvenance}
-        {benchmarkSweepRunning}
-        {benchmarkSweepProgressLabel}
-        {benchmarkSweepError}
-        {benchmarkRunResults}
-        {onToggleChange}
-        {onCloneBenchmarkToCustom}
-        {onRunBenchmarkSelection}
-        {onStopBenchmarkSweep}
-      />
+      {#if activeReferenceCaseKey}
+        <div class="space-y-3 border-t border-border/50 pt-2">
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isModified || referenceSweepRunning}
+              onclick={onCloneReferenceToCustom}
+            >
+              Customize
+            </Button>
+            {#if referenceProvenance}
+              <span class="text-[10px] text-muted-foreground">
+                Seeded source: <strong class="text-foreground">{referenceProvenance.sourceLabel}</strong>
+              </span>
+            {:else if isModified}
+              <span class="text-[10px] text-muted-foreground">
+                Customized without source provenance
+              </span>
+            {/if}
+          </div>
+        </div>
+      {/if}
     {:else}
       <ScenarioSectionsPanel
-        activeMode={activeMode}
+        activeMode={scenarioPanelMode}
         {toggles}
         {disabledOptions}
         {onToggleChange}

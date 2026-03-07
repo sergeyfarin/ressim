@@ -46,6 +46,7 @@
     export let history: HistoryEntry[] = [];
     export let currentIndex: number = -1;
     export let wellState: WellState | null = null;
+    export let sourceLabel: string = "Live runtime";
     export let legendFixedMin: number = 0;
     export let legendFixedMax: number = 1;
     export let s_wc: number = 0.1;
@@ -652,8 +653,12 @@
     }
 
     // Trigger on well state changes
-    $: if (scene && wellState) {
-        updateWellVisualization(wellState ?? []);
+    $: if (scene) {
+        history;
+        history.length;
+        currentIndex;
+        wellState;
+        updateWellVisualization(getActiveWellState());
     }
 
     function getActiveGrid(): GridState | null {
@@ -685,6 +690,19 @@
         }
 
         return null;
+    }
+
+    function getActiveWellState(): WellState {
+        if (
+            history.length > 0 &&
+            currentIndex >= 0 &&
+            currentIndex < history.length &&
+            Array.isArray(history[currentIndex]?.wells)
+        ) {
+            return history[currentIndex]?.wells ?? [];
+        }
+
+        return Array.isArray(wellState) ? wellState : [];
     }
 
     function initThree(): void {
@@ -1228,6 +1246,19 @@
 </script>
 
 <div style="display:flex; flex-direction:column;">
+    <div class="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+        <div>
+            <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Spatial View
+            </div>
+            <div class="text-xs text-muted-foreground">
+                Inspecting {sourceLabel} in the active playback window.
+            </div>
+        </div>
+        <div class="rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+            {sourceLabel}
+        </div>
+    </div>
     <div class="flex items-center gap-4 w-full px-1">
         <input
             type="range"

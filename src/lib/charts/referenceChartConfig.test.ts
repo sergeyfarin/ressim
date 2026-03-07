@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { getBenchmarkFamily } from '../catalog/caseCatalog';
-import { getBenchmarkRateChartLayoutConfig } from './benchmarkChartConfig';
+import { getReferenceRateChartLayoutConfig } from './referenceChartConfig';
 
-describe('benchmarkChartConfig', () => {
+describe('referenceChartConfig', () => {
     it('builds breakthrough-centric BL chart defaults with PVI x-axis', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
-        const config = getBenchmarkRateChartLayoutConfig({
+        const config = getReferenceRateChartLayoutConfig({
             family,
             referencePolicy: {
                 scenarioClass: 'buckley-leverett',
@@ -42,7 +42,7 @@ describe('benchmarkChartConfig', () => {
 
     it('drops analytical BL overlay from primary panel defaults when numerical reference is primary', () => {
         const family = getBenchmarkFamily('bl_case_b_refined');
-        const config = getBenchmarkRateChartLayoutConfig({
+        const config = getReferenceRateChartLayoutConfig({
             family,
             referencePolicy: {
                 scenarioClass: 'buckley-leverett',
@@ -62,8 +62,8 @@ describe('benchmarkChartConfig', () => {
     it('builds depletion-focused chart defaults and log-time Fetkovich preference', () => {
         const dietz = getBenchmarkFamily('dietz_sq_center');
         const fetkovich = getBenchmarkFamily('fetkovich_exp');
-        const dietzConfig = getBenchmarkRateChartLayoutConfig({ family: dietz });
-        const fetkovichConfig = getBenchmarkRateChartLayoutConfig({ family: fetkovich });
+        const dietzConfig = getReferenceRateChartLayoutConfig({ family: dietz });
+        const fetkovichConfig = getReferenceRateChartLayoutConfig({ family: fetkovich });
 
         expect(dietzConfig).toMatchObject({
             rateChart: {

@@ -54,6 +54,13 @@ describe('phase2PresetContract', () => {
             benchmarkScenarioClass: 'depletion',
             benchmarkId: 'fetkovich_exp',
         })).toBe('type-curves');
+
+        expect(resolveProductFamily({
+            activeMode: 'dep',
+            activeLibraryFamily: 'type-curves',
+            benchmarkScenarioClass: 'depletion',
+            benchmarkId: 'fetkovich_exp',
+        })).toBe('type-curves');
     });
 
     it('derives scenario source from modified state', () => {
@@ -143,6 +150,36 @@ describe('phase2PresetContract', () => {
             referenceSourceLabel: null,
             provenanceSummary: null,
         });
+    });
+
+    it('keeps type-curve library entries in the type-curves family even when they use depletion transport mode', () => {
+        const navigation = buildScenarioNavigationState({
+            activeMode: 'dep',
+            isModified: false,
+            activeCaseKey: 'fetkovich_exp',
+            activeLibraryCaseKey: 'fetkovich_exp',
+            activeLibraryFamily: 'type-curves',
+            activeLibraryGroup: 'literature-reference',
+            benchmarkId: 'fetkovich_exp',
+            benchmarkScenarioClass: 'depletion',
+        });
+
+        expect(navigation.activeFamily).toBe('type-curves');
+        expect(navigation.editabilityPolicy.kind).toBe('library-reference');
+    });
+
+    it('preserves the owning family for custom state seeded from a type-curves reference', () => {
+        const navigation = buildScenarioNavigationState({
+            activeMode: 'dep',
+            isModified: true,
+            activeCaseKey: 'fetkovich_exp',
+            activeLibraryFamily: 'type-curves',
+            benchmarkId: 'fetkovich_exp',
+            benchmarkScenarioClass: 'depletion',
+        });
+
+        expect(navigation.activeFamily).toBe('type-curves');
+        expect(navigation.activeSource).toBe('custom');
     });
 
     it('builds editable starter policy for non-benchmark library cases', () => {

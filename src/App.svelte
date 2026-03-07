@@ -2,11 +2,13 @@
     import { onMount, onDestroy, tick } from "svelte";
     import FractionalFlow from "./lib/analytical/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/analytical/DepletionAnalytical.svelte";
+    import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
+    import ReferenceResultsCard from "./lib/ui/cards/ReferenceResultsCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ModePanel from "./lib/ui/modes/ModePanel.svelte";
     import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
-    import { getBenchmarkRateChartLayoutConfig } from "./lib/charts/benchmarkChartConfig";
+    import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -32,18 +34,25 @@
     type ThreeDViewComponentType = typeof import("./lib/visualization/3dview.svelte").default;
     type RateChartComponentType =
         typeof import("./lib/charts/RateChart.svelte").default;
-    type BenchmarkChartComponentType =
-        typeof import("./lib/charts/BenchmarkChart.svelte").default;
+    type ReferenceComparisonChartComponentType =
+        typeof import("./lib/charts/ReferenceComparisonChart.svelte").default;
     let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
     let RateChartComponent = $state<RateChartComponentType | null>(null);
-    let BenchmarkChartComponent = $state<BenchmarkChartComponentType | null>(null);
+    let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
+    const FAMILY_LABELS = {
+        waterflood: "Waterflood",
+        "depletion-analysis": "Depletion Analysis",
+        "type-curves": "Type Curves",
+        "scenario-builder": "Scenario Builder",
+    } as const;
     const activeReferenceFamily = $derived(scenario.activeReferenceFamily);
     const activeReferenceResults = $derived.by(() => {
         const familyKey = scenario.activeReferenceFamily?.key ?? null;
         if (!familyKey) return [];
         return runtime.referenceRunResults.filter((result) => result.familyKey === familyKey);
     });
+    const activeComparisonSelection = $derived(scenario.activeComparisonSelection);
     const activeReferenceBaseResult = $derived.by(() => {
         const familyKey = scenario.activeReferenceFamily?.key ?? null;
         if (!familyKey) return null;
@@ -51,15 +60,171 @@
             result.familyKey === familyKey && result.variantKey === null
         )) ?? null;
     });
+    const activePrimaryComparisonResultKey = $derived.by(() => {
+        const primaryResultKey = activeComparisonSelection.primaryResultKey;
+        if (!primaryResultKey) return null;
+        return activeReferenceResults.some((result) => result.key === primaryResultKey)
+            ? primaryResultKey
+            : null;
+    });
+    const activeComparedResultKeys = $derived.by(() => {
+        const availableResultKeys = new Set(activeReferenceResults.map((result) => result.key));
+        return activeComparisonSelection.comparedResultKeys.filter((key) => availableResultKeys.has(key));
+    });
+    const activeSelectedReferenceResult = $derived.by(() => {
+        if (!activePrimaryComparisonResultKey) return null;
+        return activeReferenceResults.find((result) => result.key === activePrimaryComparisonResultKey) ?? null;
+    });
+    const outputProfileGridState = $derived.by(() => (
+        activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null
+    ));
+    const outputProfileSimTime = $derived.by(() => (
+        activeSelectedReferenceResult?.finalSnapshot?.time
+        ?? Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.time ?? runtime.simTime)
+    ));
+    const outputProfileInjectionRate = $derived.by(() => (
+        Math.max(0, Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.total_injection ?? runtime.latestInjectionRate ?? 0))
+    ));
+    const outputProfileScenarioMode = $derived.by(() => (
+        activeSelectedReferenceResult?.scenarioClass === "depletion" ? "depletion" : params.analyticalSolutionMode
+    ));
+    const outputProfileSourceLabel = $derived.by(() => (
+        activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
+    ));
+    const outputProfileProducerJ = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.producerJ ?? params.producerJ)
+    ));
+    const outputProfileInitialSaturation = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.initialSaturation ?? params.initialSaturation)
+    ));
+    const outputProfileRockProps = $derived.by(() => ({
+        s_wc: Number(activeSelectedReferenceResult?.params.s_wc ?? params.s_wc),
+        s_or: Number(activeSelectedReferenceResult?.params.s_or ?? params.s_or),
+        n_w: Number(activeSelectedReferenceResult?.params.n_w ?? params.n_w),
+        n_o: Number(activeSelectedReferenceResult?.params.n_o ?? params.n_o),
+    }));
+    const outputProfileFluidProps = $derived.by(() => ({
+        mu_w: Number(activeSelectedReferenceResult?.params.mu_w ?? params.mu_w),
+        mu_o: Number(activeSelectedReferenceResult?.params.mu_o ?? params.mu_o),
+    }));
+    const output3DHistory = $derived.by(() => (
+        activeSelectedReferenceResult?.history ?? runtime.history
+    ));
+    const output3DCurrentIndex = $derived.by(() => {
+        if (output3DHistory.length === 0) return -1;
+        return Math.max(0, Math.min(runtime.currentIndex, output3DHistory.length - 1));
+    });
+    const output3DGridState = $derived.by(() => (
+        activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null
+    ));
+    const output3DWellState = $derived.by(() => (
+        activeSelectedReferenceResult?.finalSnapshot?.wells ?? runtime.wellStateRaw ?? null
+    ));
+    const output3DReplayTime = $derived.by(() => {
+        if (
+            output3DHistory.length > 0
+            && output3DCurrentIndex >= 0
+            && output3DCurrentIndex < output3DHistory.length
+        ) {
+            return output3DHistory[output3DCurrentIndex]?.time ?? null;
+        }
+
+        return activeSelectedReferenceResult?.finalSnapshot?.time ?? runtime.replayTime;
+    });
+    const output3DSourceLabel = $derived.by(() => (
+        activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
+    ));
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (activeReferenceFamily) {
-            return getBenchmarkRateChartLayoutConfig({
+            return getReferenceRateChartLayoutConfig({
                 family: activeReferenceFamily,
                 referencePolicy: activeReferenceBaseResult?.referencePolicy ?? null,
             });
         }
 
         return scenario.activeLibraryEntry?.layoutConfig ?? {};
+    });
+
+    function handleSelectComparisonResult(resultKey: string) {
+        const baseResultKey = activeReferenceBaseResult?.key ?? null;
+        scenario.setComparisonSelection({
+            primaryResultKey: resultKey,
+            comparedResultKeys: baseResultKey && baseResultKey !== resultKey ? [baseResultKey] : [],
+        });
+    }
+
+    function clearComparisonSelection() {
+        scenario.setComparisonSelection({
+            primaryResultKey: null,
+            comparedResultKeys: [],
+        });
+    }
+
+    function handleApplyOutputHistoryIndex(index: number) {
+        if (activeSelectedReferenceResult) {
+            runtime.currentIndex = index;
+            return;
+        }
+
+        runtime.applyHistoryIndex(index);
+    }
+
+    $effect(() => {
+        const hasActiveResults = activeReferenceResults.length > 0;
+        if (!hasActiveResults) {
+            if (activeComparisonSelection.primaryResultKey || activeComparisonSelection.comparedResultKeys.length > 0) {
+                clearComparisonSelection();
+            }
+            return;
+        }
+
+        if (!activeComparisonSelection.primaryResultKey) return;
+        if (activePrimaryComparisonResultKey) return;
+
+        clearComparisonSelection();
+    });
+
+    const activeRunManifest = $derived.by(() => {
+        const navigation = scenario.navigationState;
+        if (!navigation) return null;
+
+        const familyLabel = FAMILY_LABELS[navigation.activeFamily] ?? navigation.activeFamily;
+        const sourceLabel = navigation.activeSource === "custom" ? "Custom" : "Case Library";
+        const caseLabel = scenario.activeLibraryEntry?.label
+            ?? (navigation.activeSource === "custom" ? `${familyLabel} Custom` : "Curated family case");
+
+        const executionMode = navigation.editabilityPolicy.kind === "library-reference"
+            ? "Locked reference workflow"
+            : navigation.editabilityPolicy.kind === "library-starter"
+                ? "Editable starter workflow"
+                : "Writable custom workflow";
+
+        const provenanceSummary = navigation.activeSource === "custom"
+            ? scenario.referenceProvenance
+                ? `Seeded from ${scenario.referenceProvenance.sourceLabel}.`
+                : "Direct custom editing is active for this family."
+            : scenario.activeLibraryEntry?.provenanceSummary
+                ?? null;
+
+        const sensitivitySummary = scenario.activeLibraryEntry?.sensitivitySummary
+            ?? (navigation.activeSource === "custom"
+                ? "No locked library sensitivity policy applies while custom is active."
+                : "No library sensitivities are available for the current case.");
+
+        const referencePolicySummary = scenario.activeLibraryEntry?.referencePolicySummary
+            ?? (navigation.activeSource === "custom"
+                ? "Reference policy is determined by the curated case you restore or activate next."
+                : "Reference policy summary is not available for the current case.");
+
+        return {
+            familyLabel,
+            sourceLabel,
+            caseLabel,
+            executionMode,
+            provenanceSummary,
+            sensitivitySummary,
+            referencePolicySummary,
+        };
     });
 
     // ---------- Config diff $effect ----------
@@ -91,12 +256,12 @@
         }
     }
 
-    async function loadBenchmarkChartModule() {
+    async function loadReferenceComparisonChartModule() {
         try {
-            const benchmarkChartModule = await import("./lib/charts/BenchmarkChart.svelte");
-            BenchmarkChartComponent = benchmarkChartModule.default;
+            const comparisonChartModule = await import("./lib/charts/ReferenceComparisonChart.svelte");
+            ReferenceComparisonChartComponent = comparisonChartModule.default;
         } catch (error) {
-            console.error("Failed to load benchmark chart module:", error);
+            console.error("Failed to load comparison chart module:", error);
         }
     }
 
@@ -121,7 +286,7 @@
         runtime.setupWorker();
 
         await loadRateChartModule();
-        await loadBenchmarkChartModule();
+        await loadReferenceComparisonChartModule();
         await loadThreeDViewModule();
         await tick();
 
@@ -395,14 +560,9 @@
             onToggleChange={scenario.handleToggleChange}
             basePreset={scenario.basePreset}
             onActivateLibraryEntry={scenario.activateLibraryEntry}
-            onCloneBenchmarkToCustom={handleCloneReferenceToCustom}
-            benchmarkProvenance={scenario.referenceProvenance}
-            benchmarkSweepRunning={runtime.referenceSweepRunning}
-            benchmarkSweepProgressLabel={runtime.referenceSweepProgressLabel}
-            benchmarkSweepError={runtime.referenceSweepError}
-            benchmarkRunResults={runtime.referenceRunResults}
-            onRunBenchmarkSelection={runtime.runActiveReferenceSelection}
-            onStopBenchmarkSweep={runtime.stopRun}
+            onCloneReferenceToCustom={handleCloneReferenceToCustom}
+            referenceProvenance={scenario.referenceProvenance}
+            referenceSweepRunning={runtime.referenceSweepRunning}
             {params}
             validationErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
@@ -441,6 +601,56 @@
             fieldErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
         />
+        <ReferenceExecutionCard
+            referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
+            isModified={scenario.isModified}
+            referenceSweepRunning={runtime.referenceSweepRunning}
+            onRunReferenceSelection={runtime.runActiveReferenceSelection}
+            onStopReferenceSweep={runtime.stopRun}
+        />
+        {#if activeRunManifest}
+            <Card>
+                <div class="p-3 md:p-4 space-y-3">
+                    <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Run Manifest
+                    </div>
+
+                    <div class="grid gap-3 xl:grid-cols-2">
+                        <div class="rounded-md border border-border/70 bg-muted/10 p-3 text-[10px] text-muted-foreground">
+                            <div class="font-semibold uppercase tracking-[0.14em]">Active Case</div>
+                            <div class="mt-2">Family: <strong class="text-foreground">{activeRunManifest.familyLabel}</strong></div>
+                            <div>Source: <strong class="text-foreground">{activeRunManifest.sourceLabel}</strong></div>
+                            <div>Case: <strong class="text-foreground">{activeRunManifest.caseLabel}</strong></div>
+                            <div class="mt-1">Execution mode: {activeRunManifest.executionMode}.</div>
+                            {#if activeRunManifest.provenanceSummary}
+                                <div class="mt-1">{activeRunManifest.provenanceSummary}</div>
+                            {/if}
+                        </div>
+
+                        <div class="rounded-md border border-border/70 bg-muted/10 p-3 text-[10px] text-muted-foreground">
+                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Policy</div>
+                            <div class="mt-2">{activeRunManifest.referencePolicySummary}</div>
+                            <div class="mt-2 font-semibold uppercase tracking-[0.14em]">Allowed Sensitivities</div>
+                            <div class="mt-2">{activeRunManifest.sensitivitySummary}</div>
+                        </div>
+                    </div>
+
+                    {#if runtime.referenceSweepProgressLabel || runtime.referenceSweepError}
+                        <div class="rounded-md border border-border/70 bg-background/80 p-3 text-[10px] text-muted-foreground">
+                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Sweep Status</div>
+                            {#if runtime.referenceSweepProgressLabel}
+                                <div class="mt-2">{runtime.referenceSweepProgressLabel}</div>
+                            {/if}
+                            {#if runtime.referenceSweepError}
+                                <div class="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive">
+                                    {runtime.referenceSweepError}
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+            </Card>
+        {/if}
         </section>
 
         <!-- Error / Warning banners -->
@@ -472,12 +682,22 @@
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
             <div class="space-y-4">
+                <ReferenceResultsCard
+                    family={activeReferenceFamily}
+                    results={activeReferenceResults}
+                    selectedResultKey={activePrimaryComparisonResultKey}
+                    onSelectResult={handleSelectComparisonResult}
+                    onClearSelection={clearComparisonSelection}
+                />
+
                 <Card class="overflow-hidden">
-                    {#if activeReferenceFamily && activeReferenceResults.length > 0 && BenchmarkChartComponent}
-                        <BenchmarkChartComponent
+                    {#if activeReferenceFamily && activeReferenceResults.length > 0 && ReferenceComparisonChartComponent}
+                        <ReferenceComparisonChartComponent
                             results={activeReferenceResults}
                             family={activeReferenceFamily}
                             layoutConfig={activeRateChartLayoutConfig}
+                            primaryResultKey={activePrimaryComparisonResultKey}
+                            comparedResultKeys={activeComparedResultKeys}
                             {theme}
                         />
                     {:else if RateChartComponent}
@@ -506,25 +726,21 @@
                 <Card>
                     <div class="p-4 md:p-5">
                         <SwProfileChart
-                            gridState={runtime.gridStateRaw ?? null}
+                            gridState={outputProfileGridState}
                             nx={params.nx}
                             ny={params.ny}
                             nz={params.nz}
                             cellDx={params.cellDx}
                             cellDy={params.cellDy}
                             cellDz={params.cellDz}
-                            simTime={runtime.simTime}
-                            producerJ={params.producerJ}
-                            initialSaturation={params.initialSaturation}
-                            injectionRate={runtime.latestInjectionRate}
-                            scenarioMode={params.analyticalSolutionMode}
-                            rockProps={{
-                                s_wc: params.s_wc,
-                                s_or: params.s_or,
-                                n_w: params.n_w,
-                                n_o: params.n_o,
-                            }}
-                            fluidProps={{ mu_w: params.mu_w, mu_o: params.mu_o }}
+                            simTime={outputProfileSimTime}
+                            producerJ={outputProfileProducerJ}
+                            initialSaturation={outputProfileInitialSaturation}
+                            injectionRate={outputProfileInjectionRate}
+                            scenarioMode={outputProfileScenarioMode}
+                            sourceLabel={outputProfileSourceLabel}
+                            rockProps={outputProfileRockProps}
+                            fluidProps={outputProfileFluidProps}
                         />
                     </div>
                 </Card>
@@ -560,7 +776,7 @@
                 <Card>
                     <div class="p-4 md:p-5">
                         {#if ThreeDViewComponent}
-                            {#key `${params.nx}-${params.ny}-${params.nz}-${runtime.vizRevision}`}
+                            {#key `${params.nx}-${params.ny}-${params.nz}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
                                 <ThreeDViewComponent
                                     nx={params.nx}
                                     ny={params.ny}
@@ -569,17 +785,18 @@
                                     cellDy={params.cellDy}
                                     cellDz={params.cellDz}
                                     {theme}
-                                    gridState={runtime.gridStateRaw}
+                                    sourceLabel={output3DSourceLabel}
+                                    gridState={output3DGridState}
                                     bind:showProperty
                                     bind:legendFixedMin
                                     bind:legendFixedMax
                                     s_wc={params.s_wc}
                                     s_or={params.s_or}
-                                    bind:currentIndex={runtime.currentIndex}
-                                    replayTime={runtime.replayTime}
-                                    onApplyHistoryIndex={runtime.applyHistoryIndex}
-                                    history={runtime.history}
-                                    wellState={runtime.wellStateRaw}
+                                    currentIndex={output3DCurrentIndex}
+                                    replayTime={output3DReplayTime}
+                                    onApplyHistoryIndex={handleApplyOutputHistoryIndex}
+                                    history={output3DHistory}
+                                    wellState={output3DWellState}
                                 />
                             {/key}
                         {:else}

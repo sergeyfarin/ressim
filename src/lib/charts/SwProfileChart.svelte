@@ -20,6 +20,7 @@
         initialSaturation = 0.3,
         injectionRate = 0,
         scenarioMode = "waterflood",
+        sourceLabel = "Live runtime",
         rockProps,
         fluidProps,
     }: {
@@ -35,6 +36,7 @@
         initialSaturation?: number;
         injectionRate?: number;
         scenarioMode?: "waterflood" | "depletion";
+        sourceLabel?: string;
         rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
         fluidProps: { mu_w: number; mu_o: number };
     } = $props();
@@ -287,8 +289,11 @@
                     Sw Profile Along Injector-Producer Axis
                 </h3>
                 <p class="text-xs opacity-70">
-                    Current snapshot vs analytical flood-front profile (k = 0
-                    plane).
+                    {#if scenarioMode === "waterflood"}
+                        {sourceLabel} snapshot vs analytical flood-front profile (k = 0 plane).
+                    {:else}
+                        {sourceLabel} snapshot along the k = 0 plane. Analytical flood-front overlay is only available for waterflood cases.
+                    {/if}
                 </p>
             </div>
             <label class="form-control ml-auto w-44">

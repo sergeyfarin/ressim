@@ -9,8 +9,9 @@ import type {
   ScenarioNavigationState,
   ScenarioSource,
 } from "../stores/phase2PresetContract";
-import type { BenchmarkRunResult } from "../benchmarkRunModel";
 import type { WarningPolicy } from "../warningPolicy";
+
+export type ReferenceProvenance = BenchmarkProvenance;
 
 export type {
   ComparisonSelection,
@@ -104,15 +105,10 @@ export type ModePanelProps = {
   onParamEdit?: () => void;
   onToggleChange: (key: string, value: string) => void;
   basePreset?: BasePresetProfile | null;
-  benchmarkProvenance?: BenchmarkProvenance | null;
-  benchmarkSweepRunning?: boolean;
-  benchmarkSweepProgressLabel?: string;
-  benchmarkSweepError?: string;
-  benchmarkRunResults?: BenchmarkRunResult[];
-  onCloneBenchmarkToCustom?: () => void;
+  referenceProvenance?: ReferenceProvenance | null;
+  referenceSweepRunning?: boolean;
+  onCloneReferenceToCustom?: () => void;
   onActivateLibraryEntry?: (entryKey: string) => void;
-  onRunBenchmarkSelection?: (variantKeys: string[]) => void;
-  onStopBenchmarkSweep?: () => void;
   params: ModePanelParameterBindings;
   validationErrors?: Record<string, string>;
   warningPolicy?: WarningPolicy;
@@ -129,18 +125,3 @@ export type ScenarioModePanelProps = {
   validationErrors?: Record<string, string>;
 };
 
-export type BenchmarkModePanelProps = {
-  navigationState?: ScenarioNavigationState;
-  toggles: ToggleState;
-  disabledOptions: Record<string, Record<string, string>>;
-  isModified?: boolean;
-  benchmarkProvenance?: BenchmarkProvenance | null;
-  benchmarkSweepRunning?: boolean;
-  benchmarkSweepProgressLabel?: string;
-  benchmarkSweepError?: string;
-  benchmarkRunResults?: BenchmarkRunResult[];
-  onToggleChange: (key: string, value: string) => void;
-  onCloneBenchmarkToCustom?: () => void;
-  onRunBenchmarkSelection?: (variantKeys: string[]) => void;
-  onStopBenchmarkSweep?: () => void;
-};

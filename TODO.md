@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: `F1.1` compatibility-layer contracts are complete and validated; `F1.2` unified case-library adapter and current-shell selector bridge are in place; `F1.3` runtime generalization is active and now classifies family-owned reference cases correctly outside the legacy benchmark tab.
-- Next slice: finish any remaining `F1.3` runtime cleanup that still depends on legacy `benchmark*` naming, then return to `F1.2`/`F1.4` shell consolidation to remove the duplicated benchmark-panel versus family-local selector entry surfaces.
+- Status: `F1.4`, `F1.5`, and `F1.7` are complete and validated; the family-local `Case Library` owns reference entry, `Type Curves` stays selected for Fetkovich-driven state, and the remaining benchmark-named inputs wrapper has been absorbed into `ModePanel`.
+- Next slice: move into `F1.9` cleanup for the remaining benchmark-mode-only plumbing, tests, and docs phrasing.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -180,7 +180,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.4 Replace The Top-Level Shell
 
-- [~] Replace the current mode-tab shell with a family-first `Inputs / Run / Outputs` shell.
+- [x] Replace the current mode-tab shell with a family-first `Inputs / Run / Outputs` shell.
 - Remove benchmark as a top-level tab.
 - Add family subtitles and source selectors in `Inputs`.
 - Keep the current detailed section components alive during the first shell pass instead of redesigning them at the same time.
@@ -189,10 +189,9 @@ These slices are ordered for safe migration. The goal is to change architecture 
   - the case-library selector is now scoped to the active family instead of the old depletion-plus-type-curves bridge
   - reference-family cases now route through the existing benchmark panel inside their owning family instead of requiring a separate top-level destination
   - `App` now labels explicit `Inputs`, `Run`, and `Outputs` regions in the current shell
+  - the legacy reference selector has been removed from `BenchmarkPanel`; the family-local `Case Library` now owns reference entry as the single inputs-side selector
 - Remaining `F1.4` tasks:
-  - replace the temporary source-status chip with a true family-local source selector
-  - remove the remaining benchmark-prefixed prop names from `ModePanel` / `BenchmarkPanel` once the panel contract is collapsed
-  - decide whether the reference execution panel stays embedded in `Inputs` or moves partly into the future `Run` region during `F1.5` / `F1.6`
+  - none; the next cleanup continues in `F1.5`
 - Primary files:
   - `src/App.svelte`
   - `src/lib/ui/modes/ModePanel.svelte`
@@ -204,7 +203,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.5 Build The Inputs Region Around Case Library And Custom
 
-- [ ] Replace the old benchmark panel split with one Inputs-region workflow.
+- [x] Replace the old benchmark panel split with one Inputs-region workflow.
 - Inputs-region responsibilities:
   - family selector
   - source selector (`Case Library` / `Custom`)
@@ -212,6 +211,16 @@ These slices are ordered for safe migration. The goal is to change architecture 
   - case disclosure panel with citation/source, fixed settings, sensitivities, and reference policy
   - `Customize` action
   - existing parameter sections, honoring editability policy
+- Current progress inside `F1.5`:
+  - the temporary source-status chip has been replaced with a real family-local `Case Library` / `Custom` selector in `ModePanel`
+  - source switching now performs real actions: starter cases transition into custom editing, reference cases use the existing seeded-customize flow, and custom runs can restore back to a curated family case
+  - the inputs-surface prop contract between `App`, `ModePanel`, and `BenchmarkPanel` now uses `reference*` naming instead of `benchmark*` naming
+  - user-facing inputs copy now says `Seeded from` / `Customize` instead of `Clone to Custom` where the flow is library-to-custom seeding
+  - the inputs region now includes a richer case disclosure block covering citation/source, fixed-settings behavior, allowed sensitivities, and reference policy for the active family case
+  - grouped library sections remain the default browsing model; no dedicated group switch will be added at the current catalog size, and the next escalation path is lightweight group filter chips only if family libraries grow materially
+  - the remaining benchmark-named inputs wrapper has been absorbed into `ModePanel`, leaving the family-local `Case Library` as the single inputs-side reference surface
+- Remaining `F1.5` tasks:
+  - none; the next cleanup continues in `F1.9`
 - Locked behavior:
   - library/reference cases show fixed inputs as read-only
   - only approved sensitivity selectors stay editable
@@ -226,12 +235,19 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.6 Rebuild The Run Region As The Canonical Execution Surface
 
-- [ ] Pull run controls, warnings, and “what will run” summary into one explicit Run region.
+- [x] Pull run controls, warnings, and “what will run” summary into one explicit Run region.
 - Run region should show:
   - validation/runtime/reference warnings
   - run buttons and progress
   - run manifest describing the active family, source, case, and sensitivity selection
   - explicit reference/comparison policy summary for library/reference runs
+- Current progress inside `F1.6`:
+  - the `Run` region now includes a run manifest driven by active family/source/case metadata rather than only generic simulator controls
+  - reference policy, allowed sensitivities, and seeded/custom provenance are now summarized beside the run controls instead of living only inside the inputs disclosure flow
+  - reference sweep progress and sweep-specific errors now surface in the `Run` region rather than only inside the inputs-side reference panel
+  - the execution-set selector itself now lives in a dedicated run-region reference execution card instead of the inputs-side reference panel
+- Remaining `F1.6` tasks:
+  - none; the next comparison-ownership move continues in `F1.7`
 - Primary files:
   - `src/App.svelte`
   - `src/lib/ui/cards/RunControls.svelte`
@@ -242,7 +258,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.7 Make Outputs The Single Home For Comparison
 
-- [ ] Reorganize outputs so comparison is no longer treated as a separate benchmark-mode concept.
+- [x] Reorganize outputs so comparison is no longer treated as a separate benchmark-mode concept.
 - Outputs responsibilities:
   - compact result summary
   - case/run comparison selector
@@ -250,12 +266,21 @@ These slices are ordered for safe migration. The goal is to change architecture 
   - 3D view
   - supporting diagnostics/profile views
 - Keep the existing comparison model and benchmark chart plumbing where possible, but mount it under Outputs rather than benchmark mode.
+- Current progress inside `F1.7`:
+  - stored reference result cards have moved out of the inputs-side reference panel and into an outputs-side summary card beside the comparison charts
+  - the inputs-side reference panel no longer owns stored comparison history, so `ModePanel` no longer needs the `referenceRunResults` compatibility prop thread
+  - the outputs-side summary card now owns the active comparison-case focus and drives chart defaults through the existing `activeComparisonSelection` store contract
+  - the saturation-profile surface now follows the selected comparison case when one is focused, using stored reference snapshots and case-specific rock/fluid settings instead of always showing only the live runtime state
+  - the 3D view now follows the selected comparison case as well, including stored history playback, well overlays, and source labeling instead of always reflecting only the live runtime state
+  - the remaining benchmark-named output chart/config/model surfaces have been renamed to reference-comparison equivalents, so outputs no longer present benchmark-specific naming at the chart shell level
 - Primary files:
   - `src/App.svelte`
   - `src/lib/charts/RateChart.svelte`
   - `src/lib/charts/BenchmarkChart.svelte`
   - `src/lib/charts/benchmarkComparisonModel.ts`
   - `src/lib/visualization/3dview.svelte`
+- Remaining `F1.7` tasks:
+  - none; the next cleanup returns to `F1.4` / `F1.5`
 - Acceptance:
   - outputs can render single-run, reference-vs-simulation, and sensitivity comparisons from one region
 

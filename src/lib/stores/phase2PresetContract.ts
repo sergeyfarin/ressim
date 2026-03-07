@@ -65,9 +65,11 @@ function isFetkovichBenchmarkCase(benchmarkId: string | null | undefined): boole
 
 export function resolveProductFamily(input: {
     activeMode: CaseMode;
+    activeLibraryFamily?: ProductFamily | null;
     benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
     benchmarkId?: string | null;
 }): ProductFamily {
+    if (input.activeLibraryFamily) return input.activeLibraryFamily;
     if (input.activeMode === 'wf') return 'waterflood';
     if (input.activeMode === 'sim') return 'scenario-builder';
     if (input.activeMode === 'dep') return 'depletion-analysis';
@@ -168,6 +170,7 @@ export function buildScenarioNavigationState(input: {
     isModified: boolean;
     activeCaseKey?: string | null;
     activeLibraryCaseKey?: string | null;
+    activeLibraryFamily?: ProductFamily | null;
     activeLibraryGroup?: LibraryCaseGroup | null;
     sourceLabel?: string | null;
     referenceSourceLabel?: string | null;
@@ -184,6 +187,7 @@ export function buildScenarioNavigationState(input: {
 
     const activeFamily = resolveProductFamily({
         activeMode: input.activeMode,
+        activeLibraryFamily: input.activeLibraryFamily ?? null,
         benchmarkScenarioClass: input.benchmarkScenarioClass ?? null,
         benchmarkId: input.benchmarkId ?? null,
     });

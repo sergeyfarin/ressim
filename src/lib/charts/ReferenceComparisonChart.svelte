@@ -9,18 +9,22 @@
         RateChartScalePreset,
         RateChartXAxisMode,
     } from './rateChartLayoutConfig';
-    import { buildBenchmarkComparisonModel } from './benchmarkComparisonModel';
+    import { buildReferenceComparisonModel } from './referenceComparisonModel';
 
     let {
         results = [],
         family = null,
         layoutConfig = {},
         theme = 'dark',
+        primaryResultKey = null,
+        comparedResultKeys = [],
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
         layoutConfig?: RateChartLayoutConfig;
         theme?: 'dark' | 'light';
+        primaryResultKey?: string | null;
+        comparedResultKeys?: string[];
     } = $props();
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
@@ -48,11 +52,13 @@
     });
 
     const overlayModel = $derived(
-        buildBenchmarkComparisonModel({
+        buildReferenceComparisonModel({
             family,
             results,
             xAxisMode,
             theme,
+            primaryResultKey,
+            comparedResultKeys,
         }),
     );
 
@@ -185,12 +191,17 @@
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="text-[11px] uppercase tracking-wide opacity-50">
-                Benchmark Comparison
+                Stored Run Comparison
             </div>
             <div class="text-[11px] text-muted-foreground">
                 {overlayModel.orderedResults.length} stored run(s)
             </div>
         </div>
+        {#if primaryResultKey}
+            <div class="text-[11px] text-muted-foreground">
+                Focused comparison keeps the selected case and its comparison context visible by default.
+            </div>
+        {/if}
         <div class="flex items-center gap-2 overflow-x-auto">
             <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0">X-axis</span>
             <ToggleGroup
@@ -204,7 +215,7 @@
     </div>
 
     <ChartSubPanel
-        panelId="benchmark-rates"
+        panelId="comparison-rates"
         title={ratesPanel.title}
         bind:expanded={ratesExpanded}
         curves={ratesPanel.curves}
@@ -221,7 +232,7 @@
     />
 
     <ChartSubPanel
-        panelId="benchmark-cumulative"
+        panelId="comparison-cumulative"
         title={cumulativePanel.title}
         bind:expanded={cumulativeExpanded}
         curves={cumulativePanel.curves}
@@ -237,7 +248,7 @@
     />
 
     <ChartSubPanel
-        panelId="benchmark-diagnostics"
+        panelId="comparison-diagnostics"
         title={diagnosticsPanel.title}
         bind:expanded={diagnosticsExpanded}
         curves={diagnosticsPanel.curves}

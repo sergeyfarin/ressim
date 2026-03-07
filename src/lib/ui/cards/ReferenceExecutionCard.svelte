@@ -1,54 +1,31 @@
 <script lang="ts">
   import Button from "../controls/Button.svelte";
+  import Card from "../controls/Card.svelte";
   import {
-    getBenchmarkEntry,
     getBenchmarkFamily,
     getBenchmarkSensitivityAxisLabel,
     getBenchmarkVariantsForFamily,
-    getModeDimensions,
   } from "../../catalog/caseCatalog";
   import type { BenchmarkSensitivityAxisKey } from "../../catalog/caseCatalog";
   import type { BenchmarkVariant } from "../../catalog/benchmarkCases";
-  import FilterCard from "../controls/FilterCard.svelte";
-  import type { BenchmarkModePanelProps } from "../modePanelTypes";
 
   let {
-    navigationState = undefined,
-    toggles,
-    disabledOptions,
+    referenceFamilyKey = null,
     isModified = false,
-    benchmarkProvenance = null,
-    benchmarkSweepRunning = false,
-    benchmarkSweepProgressLabel = "",
-    benchmarkSweepError = "",
-    benchmarkRunResults = [],
-    onToggleChange,
-    onCloneBenchmarkToCustom = () => {},
-    onRunBenchmarkSelection = () => {},
-    onStopBenchmarkSweep = () => {},
-  }: BenchmarkModePanelProps = $props();
+    referenceSweepRunning = false,
+    onRunReferenceSelection = () => {},
+    onStopReferenceSweep = () => {},
+  }: {
+    referenceFamilyKey?: string | null;
+    isModified?: boolean;
+    referenceSweepRunning?: boolean;
+    onRunReferenceSelection?: (variantKeys: string[]) => void;
+    onStopReferenceSweep?: () => void;
+  } = $props();
 
-  type BenchmarkExecutionRow = "base" | BenchmarkSensitivityAxisKey;
+  type ReferenceExecutionRow = "base" | BenchmarkSensitivityAxisKey;
 
-  function formatNullableMetric(value: number | null | undefined, digits = 3) {
-    return Number.isFinite(value) ? Number(value).toFixed(digits) : "n/a";
-  }
-
-  function formatPercent(value: number | null | undefined, digits = 1) {
-    return Number.isFinite(value) ? `${(Number(value) * 100).toFixed(digits)}%` : "n/a";
-  }
-
-  const modeDimensions = $derived(getModeDimensions("benchmark"));
-  const activeReferenceKey = $derived(
-    navigationState?.activeLibraryCaseKey ?? toggles.benchmarkId ?? null,
-  );
-  const showLegacyBenchmarkSelector = $derived(Boolean(toggles.benchmarkId));
-  const activeBenchmark = $derived(
-    getBenchmarkEntry(activeReferenceKey),
-  );
-  const activeFamily = $derived(
-    getBenchmarkFamily(activeReferenceKey),
-  );
+  const activeFamily = $derived(getBenchmarkFamily(referenceFamilyKey));
   const generatedVariants = $derived(
     activeFamily ? getBenchmarkVariantsForFamily(activeFamily.key) : [],
   );
@@ -81,12 +58,8 @@
     }
     return grouped;
   });
-  const activeBenchmarkResults = $derived.by(() => {
-    if (!activeFamily) return benchmarkRunResults;
-    return benchmarkRunResults.filter((result) => result.familyKey === activeFamily.key);
-  });
 
-  let selectedExecutionRow = $state<BenchmarkExecutionRow>("base");
+  let selectedExecutionRow = $state<ReferenceExecutionRow>("base");
   let selectedVariantKeys = $state<string[]>([]);
   let selectionSignature = $state("");
 
@@ -110,7 +83,7 @@
     return variantsByAxis[axis] ?? [];
   }
 
-  function selectExecutionRow(row: BenchmarkExecutionRow) {
+  function selectExecutionRow(row: ReferenceExecutionRow) {
     selectedExecutionRow = row;
     if (row === "base") {
       selectedVariantKeys = [];
@@ -149,14 +122,14 @@
     return `Run ${selectedAxisVariants.length} ${activeAxisSelectionLabel} Variant${selectedAxisVariants.length === 1 ? "" : "s"}`;
   });
   const runSelectionDisabled = $derived(
-    !activeBenchmark
+    !activeFamily
       || isModified
-      || benchmarkSweepRunning
+      || referenceSweepRunning
       || (selectedExecutionRow !== "base" && selectedAxisVariants.length === 0),
   );
 
-  function runSelectedBenchmarkSet() {
-    onRunBenchmarkSelection(
+  function runSelectedReferenceSet() {
+    onRunReferenceSelection(
       selectedExecutionRow === "base"
         ? []
         : selectedAxisVariants.map((variant) => variant.variantKey),
@@ -164,37 +137,26 @@
   }
 </script>
 
-<div class="space-y-3">
-  {#if showLegacyBenchmarkSelector}
-    {#each modeDimensions as dim}
-      <FilterCard
-        label={dim.label}
-        options={dim.options.map((option) => option.value)}
-        customLabels={dim.options.reduce(
-          (acc, option) => ({ ...acc, [option.value]: option.label }),
-          {},
-        )}
-        selected={toggles[dim.key]}
-        disabled={Object.keys(disabledOptions[dim.key] || {})}
-        disabledReasons={disabledOptions[dim.key] || {}}
-        onchange={(value) => onToggleChange(dim.key, value)}
-      />
-    {/each}
-  {/if}
-
-  {#if activeBenchmark}
-    <div class="border-t border-border/50 pt-2">
-      <div class="text-[11px] text-muted-foreground">
-        <strong>{activeBenchmark.label}:</strong>
-        {activeBenchmark.description}
-      </div>
-      {#if generatedVariants.length > 0}
-        <div class="mt-2 text-[10px] text-muted-foreground">
-          Generated sensitivity suite: <strong class="text-foreground">{generatedVariants.length}</strong>
-          variants across {sensitivitySummary}.
+{#if activeFamily}
+  <Card>
+    <div class="p-3 md:p-4 space-y-3">
+      <div>
+        <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          Reference Execution
         </div>
-      {/if}
-      <div class="mt-3 rounded-md border border-border/70 bg-muted/10 p-3">
+        <div class="mt-2 text-[11px] text-muted-foreground">
+          <strong>{activeFamily.label}:</strong>
+          {activeFamily.description}
+        </div>
+        {#if generatedVariants.length > 0}
+          <div class="mt-2 text-[10px] text-muted-foreground">
+            Generated sensitivity suite: <strong class="text-foreground">{generatedVariants.length}</strong>
+            variants across {sensitivitySummary}.
+          </div>
+        {/if}
+      </div>
+
+      <div class="rounded-md border border-border/70 bg-muted/10 p-3">
         <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Execution Set
         </div>
@@ -247,7 +209,7 @@
                     <input
                       type="checkbox"
                       checked={selectedExecutionRow === sensitivityAxis.axis && selectedVariantKeys.includes(variant.variantKey)}
-                      disabled={isModified || benchmarkSweepRunning}
+                      disabled={isModified || referenceSweepRunning}
                       onchange={() => toggleVariantSelection(sensitivityAxis.axis, variant.variantKey)}
                       class="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
                     />
@@ -263,15 +225,15 @@
           <Button
             size="sm"
             disabled={runSelectionDisabled}
-            onclick={runSelectedBenchmarkSet}
+            onclick={runSelectedReferenceSet}
           >
             {runButtonLabel}
           </Button>
-          {#if benchmarkSweepRunning}
+          {#if referenceSweepRunning}
             <Button
               size="sm"
               variant="outline"
-              onclick={onStopBenchmarkSweep}
+              onclick={onStopReferenceSweep}
             >
               Stop Sweep
             </Button>
@@ -281,80 +243,6 @@
           </span>
         </div>
       </div>
-      {#if benchmarkSweepProgressLabel}
-        <div class="mt-2 text-[10px] text-muted-foreground">
-          {benchmarkSweepProgressLabel}
-        </div>
-      {/if}
-      {#if benchmarkSweepError}
-        <div class="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
-          {benchmarkSweepError}
-        </div>
-      {/if}
-      <div class="mt-2 flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={isModified || benchmarkSweepRunning}
-          onclick={onCloneBenchmarkToCustom}
-        >
-          Clone to Custom
-        </Button>
-        {#if benchmarkProvenance}
-          <span class="text-[10px] text-muted-foreground">
-            Cloned source: <strong class="text-foreground">{benchmarkProvenance.sourceLabel}</strong>
-          </span>
-        {:else if isModified}
-          <span class="text-[10px] text-muted-foreground">
-            Customized without clone provenance
-          </span>
-        {/if}
-      </div>
-      {#if activeBenchmarkResults.length > 0}
-        <div class="mt-3 space-y-2 border-t border-border/50 pt-2">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Stored Reference Results
-          </div>
-          <div class="space-y-2">
-            {#each activeBenchmarkResults as result}
-              <div class="rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-[10px]">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <strong class="text-foreground">{result.label}</strong>
-                  <span class="text-muted-foreground">
-                    Breakthrough PVI: {formatNullableMetric(result.breakthroughPvi)}
-                  </span>
-                </div>
-                <div class="mt-1 text-muted-foreground">
-                  Reference: <strong class="text-foreground">{result.referencePolicy.referenceLabel}</strong>
-                </div>
-                <div class="mt-1 text-muted-foreground">
-                  Policy: {result.referencePolicy.summary}
-                </div>
-                <div class="mt-1 text-muted-foreground">
-                  {result.referenceComparison.summary}
-                </div>
-                <div class="mt-1 text-muted-foreground">
-                  {result.comparisonOutputs.errorSummary}
-                </div>
-                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
-                  {#if result.comparisonOutputs.breakthroughShiftPvi !== null}
-                    <span>BT shift: <strong class="text-foreground">{formatNullableMetric(result.comparisonOutputs.breakthroughShiftPvi)}</strong></span>
-                  {/if}
-                  {#if result.comparisonOutputs.recoveryDifferenceAtFinalCoordinate !== null}
-                    <span>Recovery delta: <strong class="text-foreground">{formatPercent(result.comparisonOutputs.recoveryDifferenceAtFinalCoordinate)}</strong></span>
-                  {/if}
-                  {#if result.comparisonOutputs.oilRateRelativeErrorAtFinalTime !== null}
-                    <span>Final oil-rate error: <strong class="text-foreground">{formatPercent(result.comparisonOutputs.oilRateRelativeErrorAtFinalTime)}</strong></span>
-                  {/if}
-                  {#if result.comparisonOutputs.pressureDifferenceAtFinalTime !== null}
-                    <span>Final pressure delta: <strong class="text-foreground">{formatNullableMetric(result.comparisonOutputs.pressureDifferenceAtFinalTime)}</strong> bar</span>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
     </div>
-  {/if}
-</div>
+  </Card>
+{/if}
