@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is now in progress with the first terminology pass landed across warning surfaces, run controls, reference-run copy, and the analytical/reference selector labels.
-- Next slice: continue `F2` by normalizing the remaining terminology drift in benchmark-facing docs/help text, residual catalog labels, and any still-visible internal terminology that leaks through advanced diagnostics or reference metadata.
+- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete across live app surfaces, metadata, and current markdown docs.
+- Next slice: move to `F3` and improve benchmark case disclosure so reference guidance, fixed settings, and variant deltas are clearer before and after a run.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -358,6 +358,8 @@ These slices are ordered for safe migration. The goal is to change architecture 
     - the analytical selector now presents `Reference Inputs` and `Reference Solution`, matching the actual user task
     - outputs now use output-review and reference-solution wording across stored-result summaries, comparison-chart labels, saturation-profile overlays, and output empty states
     - inputs disclosure and reference-status messaging now use `Reference source`, `Primary review metric`, and reference-guidance wording instead of analytical-first or sweep-era phrasing
+    - case-library provenance, run-summary headings, preset descriptions, and advanced reference diagnostics now use reference-guidance and reference-solution wording instead of validation-family, truth-source, or analytical-match phrasing
+    - README and current authoritative docs now use `Reference Solution`, `Reference Guidance`, and `Run Set` wording instead of analytical-first or benchmark-mode surface labels
     - focused validation for the terminology slices passed (`31/31` for the warning/run pass, `23/23` for the output/chart pass, `53/53` for the inputs/disclosure pass)
   - Acceptance:
     - warnings read as one system instead of three related surfaces

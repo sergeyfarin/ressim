@@ -11,10 +11,10 @@ describe('referenceChartConfig', () => {
                 scenarioClass: 'buckley-leverett',
                 referenceKind: 'analytical',
                 referenceSource: 'buckley-leverett-shock-reference',
-                referenceLabel: 'Analytical Buckley-Leverett shock reference',
-                primaryTruthLabel: 'Analytical breakthrough-PV comparison',
+                referenceLabel: 'Buckley-Leverett reference solution',
+                primaryTruthLabel: 'Reference arrival-PVI comparison',
                 analyticalOverlayRole: 'primary',
-                summary: 'Analytical Buckley-Leverett reference is the primary truth source for this run.',
+                summary: 'The Buckley-Leverett reference solution is the primary review baseline for this run.',
             },
         });
 
@@ -48,10 +48,10 @@ describe('referenceChartConfig', () => {
                 scenarioClass: 'buckley-leverett',
                 referenceKind: 'numerical-refined',
                 referenceSource: 'bl_case_b_refined:refined-numerical-reference',
-                referenceLabel: 'Refined numerical benchmark reference',
-                primaryTruthLabel: 'Refined numerical breakthrough-PV comparison',
+                referenceLabel: 'Refined numerical reference',
+                primaryTruthLabel: 'Refined numerical arrival-PVI comparison',
                 analyticalOverlayRole: 'secondary',
-                summary: 'A refined numerical benchmark run is the primary truth source; analytical overlay is not a strict equality test here.',
+                summary: 'A refined numerical reference is the primary review baseline; the reference-solution overlay is contextual rather than an equality target.',
             },
         });
 

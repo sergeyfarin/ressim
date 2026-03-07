@@ -1002,7 +1002,7 @@
     <!-- Error stats -->
     {#if mismatchSummary.pointsCompared > 0}
         <div class="text-[11px] opacity-60 px-4 md:px-5 pb-4 md:pb-5 pt-2">
-            Analytical: {mismatchSummary.pointsCompared} pts · MAE: {mismatchSummary.mae.toFixed(
+            Reference Solution: {mismatchSummary.pointsCompared} pts · MAE: {mismatchSummary.mae.toFixed(
                 3,
             )} · RMSE: {mismatchSummary.rmse.toFixed(3)} · MAPE: {mismatchSummary.mape.toFixed(
                 2,

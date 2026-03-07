@@ -109,7 +109,7 @@ describe('benchmarkRunModel', () => {
         expect(specs.every((spec) => spec.familyKey === 'bl_case_b_refined')).toBe(true);
     });
 
-    it('scores analytical breakthrough comparison for homogeneous BL runs', () => {
+    it('scores reference-solution arrival comparison for homogeneous BL runs', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);
 
@@ -135,7 +135,7 @@ describe('benchmarkRunModel', () => {
         });
 
         expect(result.breakthroughPvi).toBeCloseTo(reference.breakthroughPvi, 6);
-        expect(result.referencePolicy.referenceLabel).toContain('Analytical Buckley-Leverett');
+        expect(result.referencePolicy.referenceLabel).toContain('Buckley-Leverett reference solution');
         expect(result.referencePolicy.analyticalOverlayRole).toBe('primary');
         expect(result.referenceComparison.status).toBe('within-tolerance');
         expect(result.referenceComparison.referenceKind).toBe('analytical');
@@ -161,7 +161,7 @@ describe('benchmarkRunModel', () => {
         const resolved = resolveBenchmarkReferenceComparisons([baseResult, heterogeneityResult]);
         const resolvedHeterogeneity = resolved.find((result) => result.variantKey === 'heterogeneity_strong_random');
 
-        expect(resolvedHeterogeneity?.referencePolicy.referenceLabel).toContain('Refined numerical');
+        expect(resolvedHeterogeneity?.referencePolicy.referenceLabel).toContain('Refined numerical reference');
         expect(resolvedHeterogeneity?.referencePolicy.analyticalOverlayRole).toBe('secondary');
         expect(resolvedHeterogeneity?.referenceComparison.referenceKind).toBe('numerical-refined');
         expect(resolvedHeterogeneity?.referenceComparison.referenceValue).toBeCloseTo(1.0, 6);
@@ -169,7 +169,7 @@ describe('benchmarkRunModel', () => {
         expect(resolvedHeterogeneity?.comparisonOutputs.breakthroughShiftPvi).toBeCloseTo(0.5, 6);
     });
 
-    it('keeps depletion benchmarks on an explicit analytical reference policy with trend diagnostics', () => {
+    it('keeps depletion references on an explicit reference-solution policy with trend diagnostics', () => {
         const family = getBenchmarkFamily('dietz_sq_center');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);
         const result = buildBenchmarkRunResult({
@@ -178,7 +178,7 @@ describe('benchmarkRunModel', () => {
         });
 
         expect(result.scenarioClass).toBe('depletion');
-        expect(result.referencePolicy.referenceLabel).toContain('Analytical depletion');
+        expect(result.referencePolicy.referenceLabel).toContain('Depletion reference solution');
         expect(result.referencePolicy.analyticalOverlayRole).toBe('primary');
         expect(result.referenceComparison.status).toBe('not-applicable');
         expect(result.comparisonOutputs.oilRateRelativeErrorAtFinalTime).toBeCloseTo(0, 6);

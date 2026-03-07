@@ -165,7 +165,7 @@ const sourcePresetDefinitions: SourcePresetDefinition[] = [
         "category": "depletion",
         "mode": "dep",
         "label": "Clean 1D Depletion",
-        "description": "Sw=Swc, no capillary — ideal for analytical match",
+        "description": "Sw=Swc, no capillary — aligned with the reference solution assumptions",
         "params": {
             "mu_w": 0.5,
             "mu_o": 1,
@@ -225,7 +225,7 @@ const sourcePresetDefinitions: SourcePresetDefinition[] = [
         "category": "depletion",
         "mode": "dep",
         "label": "Clean 2D Radial Depletion",
-        "description": "Center producer, Sw=Swc, no capillary — radial analytical match",
+        "description": "Center producer, Sw=Swc, no capillary — aligned with the radial reference solution",
         "params": {
             "mu_w": 0.5,
             "mu_o": 1,
@@ -529,7 +529,7 @@ const sourcePresetDefinitions: SourcePresetDefinition[] = [
         "category": "waterflood",
         "mode": "wf",
         "label": "BL Unfavorable Mobility",
-        "description": "High oil viscosity (M≈17) — early breakthrough",
+        "description": "High oil viscosity (M≈17) — early water-cut rise",
         "params": {
             "mu_w": 0.3,
             "mu_o": 5,

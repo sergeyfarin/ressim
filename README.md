@@ -1,11 +1,11 @@
 # ResSim — Browser-Based 3D Reservoir Simulator
 
-A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with analytical comparisons, and benchmark-based validation - all running entirely in the browser.
+A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with reference-solution comparisons, and benchmark-based validation - all running entirely in the browser.
 
 ## Current Product Direction (2026-03)
 
 - **UI direction locked**: Unified "Preset + Customize" surface (Option B).
-- **Analytical overlays**: permissive for approximate cases, with clearly visible warnings.
+- **Reference-solution overlays**: permissive for approximate cases, with clearly visible warnings.
 - **Benchmark workflow**: family-owned reference runner with explicit base or sensitivity-axis execution, stored comparison results, and in-place `Customize` handoff.
 - **Execution model**: all presets now initialize and run directly in browser-side WASM; there is no pre-run artifact pipeline.
 
@@ -24,12 +24,12 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 - **PCG solver convergence** warning surfaced in the UI.
 - **Modular Rust layout**: `lib.rs` (WASM API), `step.rs`, `solver.rs`, `relperm.rs`, `capillary.rs`, `well.rs`, `grid.rs`.
 
-### Analytical Comparisons
+### Reference Solutions and Comparisons
 
-- **Buckley-Leverett** fractional-flow analytical curve for waterflood cases.
+- **Buckley-Leverett** fractional-flow reference solution for waterflood cases.
   - Welge tangent construction, Sw profile, post-breakthrough outlet Sw via bisection.
   - Breakthrough via cumulative PVI tracking.
-- **Depletion decline** — PSS exponential decline `q(t) = q₀·exp(−t/τ)` with Dietz shape-factor PI.
+- **Depletion decline** — PSS reference solution `q(t) = q₀·exp(−t/τ)` with Dietz shape-factor PI.
   - 1D slab and 2D radial drainage geometry support.
   - Per-layer PI summation for multi-layer cases.
 - Mismatch metrics: MAE, RMSE, MAPE displayed in the rate chart.
@@ -38,7 +38,7 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 
 - **3D property view** (Three.js) — selectable properties: pressure, water/oil saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
 - **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
-- **Sw Profile chart** — cell-index saturation profile compared to analytical flood front.
+- **Sw Profile chart** — cell-index saturation profile compared to the reference flood front.
 - **Scenario catalog (faceted presets)** - JSON-driven orthogonal toggle system for geometry, wells, rock, fluids, and timestep setup.
 - **Preset + Customize workflow** (active refactor) - start from a faceted preset, then refine any parameter in-place.
 - **Benchmark workflows** - select a benchmark/reference family inside its owning product family, run the base case or an explicit subset of one sensitivity axis, and compare stored results in the shared Outputs region.
@@ -64,9 +64,9 @@ Current benchmark-workflow behavior:
 
 - benchmark definitions come from one frontend family registry rather than duplicated case payloads
 - benchmark/reference cases are entered from the owning family's `Case Library`, not from a separate benchmark tab
-- homogeneous Buckley-Leverett runs use analytical Buckley-Leverett as the primary reference, while heterogeneity variants switch to refined numerical reference as the primary truth source
+- homogeneous Buckley-Leverett runs use the Buckley-Leverett reference solution as the primary review baseline, while heterogeneity variants switch to a refined numerical reference
 - Buckley-Leverett comparison charts default to breakthrough, recovery, and pressure panels on a `PVI` x-axis
-- depletion comparison charts default to oil-rate, cumulative/recovery, and pressure panels with analytical depletion overlays
+- depletion comparison charts default to oil-rate, cumulative/recovery, and pressure panels with depletion reference-solution overlays
 - the Run region executes either the base family or an explicit set of variants within one selected sensitivity axis
 
 ## Unit System
@@ -152,7 +152,7 @@ docs/                               — technical reference docs (see below)
 
 | Document | Content |
 |----------|---------|
-| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark registry, workflow, reference policy, and chart behavior |
+| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark registry, workflow, reference guidance, and chart behavior |
 | `docs/DOCUMENTATION_INDEX.md` | Current map of authoritative docs |
 | `P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
 | `UNIT_SYSTEM.md` | Comprehensive unit system reference |

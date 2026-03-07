@@ -103,7 +103,7 @@ const EMPTY_COMPARISON_OUTPUTS: BenchmarkComparisonOutputs = {
     oilRateRelativeErrorAtFinalTime: null,
     cumulativeOilRelativeErrorAtFinalTime: null,
     pressureDifferenceAtFinalTime: null,
-    errorSummary: 'Reference diagnostics are not available yet.',
+    errorSummary: 'Reference review details are not available yet.',
 };
 
 function toFiniteNumber(value: unknown, fallback: number): number {
@@ -144,10 +144,10 @@ function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy 
             scenarioClass: spec.scenarioClass,
             referenceKind: spec.reference.kind,
             referenceSource: spec.reference.source,
-            referenceLabel: 'Analytical Buckley-Leverett shock reference',
-            primaryTruthLabel: 'Analytical breakthrough-PV comparison',
+            referenceLabel: 'Buckley-Leverett reference solution',
+            primaryTruthLabel: 'Reference arrival-PVI comparison',
             analyticalOverlayRole: 'primary',
-            summary: 'Analytical Buckley-Leverett reference is the primary truth source for this run.',
+            summary: 'The Buckley-Leverett reference solution is the primary review baseline for this run.',
         };
     }
 
@@ -156,10 +156,10 @@ function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy 
             scenarioClass: spec.scenarioClass,
             referenceKind: spec.reference.kind,
             referenceSource: spec.reference.source,
-            referenceLabel: 'Refined numerical benchmark reference',
-            primaryTruthLabel: 'Refined numerical breakthrough-PV comparison',
+            referenceLabel: 'Refined numerical reference',
+            primaryTruthLabel: 'Refined numerical arrival-PVI comparison',
             analyticalOverlayRole: 'secondary',
-            summary: 'A refined numerical benchmark run is the primary truth source; analytical overlay is not a strict equality test here.',
+            summary: 'A refined numerical reference is the primary review baseline; the reference-solution overlay is contextual rather than an equality target.',
         };
     }
 
@@ -167,10 +167,10 @@ function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy 
         scenarioClass: spec.scenarioClass,
         referenceKind: spec.reference.kind,
         referenceSource: spec.reference.source,
-        referenceLabel: 'Analytical depletion reference',
-        primaryTruthLabel: 'Analytical depletion trend comparison',
+        referenceLabel: 'Depletion reference solution',
+        primaryTruthLabel: 'Reference trend comparison',
         analyticalOverlayRole: 'primary',
-        summary: 'Analytical depletion reference is the primary truth source for decline, cumulative oil, and pressure diagnostics.',
+        summary: 'The depletion reference solution is the primary review baseline for decline, cumulative oil, and pressure diagnostics.',
     };
 }
 
@@ -384,7 +384,7 @@ function buildDepletionAnalyticalDiagnostics(input: {
             referenceValue: null,
             relativeError: null,
             tolerance: null,
-            summary: 'Analytical depletion reference is descriptive and trend-based for this benchmark family.',
+            summary: 'The depletion reference solution is descriptive and trend-based for this reference family.',
         },
         comparisonOutputs: {
             referenceCoordinateLabel: 'Final simulated time',
@@ -430,13 +430,13 @@ function buildPendingNumericalDiagnostics(spec: BenchmarkRunSpec, breakthroughPv
             referenceValue: null,
             relativeError: null,
             tolerance: spec.comparisonMetric?.tolerance ?? null,
-            summary: 'Waiting for a refined numerical reference run before scoring this benchmark variant.',
+            summary: 'Waiting for the refined numerical reference run before scoring this reference variant.',
         },
         comparisonOutputs: {
             ...EMPTY_COMPARISON_OUTPUTS,
             referenceCoordinateLabel: 'Reference breakthrough PVI',
             finalCoordinateLabel: 'Shared final PVI',
-            errorSummary: 'Reference diagnostics will be populated after the refined numerical reference run completes.',
+            errorSummary: 'Reference review details will populate after the refined numerical reference run completes.',
         },
     };
 }
@@ -461,7 +461,7 @@ function buildComparisonStatus(input: {
             referenceValue,
             relativeError: null,
             tolerance: null,
-            summary: 'Reference declared, but no scored comparison metric is configured.',
+            summary: 'Reference declared, but no scored review metric is configured.',
         };
     }
 
@@ -475,7 +475,7 @@ function buildComparisonStatus(input: {
             referenceValue,
             relativeError: null,
             tolerance: metric.tolerance,
-            summary: 'Reference comparison is pending because the benchmark metric is not yet measurable.',
+            summary: 'Reference comparison is pending because the review metric is not yet measurable.',
         };
     }
 
@@ -522,7 +522,7 @@ export function buildBenchmarkRunSpecs(
             reference: family.reference,
             comparisonMetric: family.comparisonMetric ?? null,
             breakthroughCriterion: family.breakthroughCriterion ?? null,
-            comparisonMeaning: 'Base benchmark run for the selected benchmark family.',
+            comparisonMeaning: 'Base reference run for the selected family.',
         },
         ...variants.map((variant) => {
             const steps = Math.max(1, Math.round(toFiniteNumber(variant.params.steps, baseSteps)));

@@ -47,9 +47,12 @@ describe('ui terminology copy', () => {
     expect(modePanelSource).toMatch(/Single locked reference run/);
     expect(modePanelSource).toMatch(/Library sensitivity run set/);
     expect(modePanelSource).toMatch(/Reference review run/);
+    expect(modePanelSource).toMatch(/Reference Guidance/);
     expect(modePanelSectionsSource).toMatch(/label: "Reference Solution"/);
     expect(caseLibrarySource).toMatch(/No library sensitivity run set is exposed for this reference case/);
     expect(caseLibrarySource).toMatch(/No locked library sensitivity run set is defined for this starter case/);
+    expect(caseLibrarySource).toMatch(/Internal Rust-parity reference family/);
+    expect(caseLibrarySource).toMatch(/Literature reference solution/);
     expect(modePanelSource).not.toMatch(/Reference basis:/);
     expect(modePanelSource).not.toMatch(/Primary comparison metric:/);
   });

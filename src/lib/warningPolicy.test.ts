@@ -63,18 +63,18 @@ describe("warningPolicy", () => {
         reasonDetails: [
           {
             code: "sim-mode-exploratory",
-            message: "Simulation mode is exploratory; analytical overlay is approximate guidance.",
+            message: "Scenario Builder is exploratory; the reference solution is treated as approximate guidance.",
             severity: "notice",
           },
           {
             code: "gravity-enabled",
-            message: "Gravity is enabled, so analytical match is approximate.",
+            message: "Gravity is enabled, which deviates from the reference solution assumptions.",
             severity: "warning",
           },
         ],
         reasons: [
-          "Simulation mode is exploratory; analytical overlay is approximate guidance.",
-          "Gravity is enabled, so analytical match is approximate.",
+          "Scenario Builder is exploratory; the reference solution is treated as approximate guidance.",
+          "Gravity is enabled, which deviates from the reference solution assumptions.",
         ],
       },
     });

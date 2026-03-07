@@ -22,8 +22,8 @@ describe('caseLibrary adapter', () => {
             family: 'waterflood',
             group: 'internal-reference',
             caseSource: 'case-library',
-            sourceLabel: 'Internal Rust-parity validation family',
-            referenceSourceLabel: 'Buckley-Leverett analytical shock reference',
+            sourceLabel: 'Internal Rust-parity reference family',
+            referenceSourceLabel: 'Buckley-Leverett reference solution',
             benchmarkFamilyKey: 'bl_case_a_refined',
             activation: {
                 activeMode: 'wf',
@@ -37,7 +37,7 @@ describe('caseLibrary adapter', () => {
                 allowCustomizeAction: true,
             },
         });
-        expect(caseA?.provenanceSummary).toContain('Homogeneous Rust-parity Buckley-Leverett base family');
+        expect(caseA?.provenanceSummary).toContain('Homogeneous Rust-parity Buckley-Leverett family');
         expect(caseA?.sensitivityAxes.map((axis) => axis.key)).toEqual([
             'grid-refinement',
             'timestep-refinement',
@@ -45,14 +45,14 @@ describe('caseLibrary adapter', () => {
         ]);
     });
 
-    it('routes Fetkovich into the type-curves family while keeping literature-reference policy', () => {
+    it('routes Fetkovich into the type-curves family while keeping literature reference guidance', () => {
         const fetkovich = getCaseLibraryEntry('fetkovich_exp');
 
         expect(fetkovich).toMatchObject({
             family: 'type-curves',
             group: 'literature-reference',
-            sourceLabel: 'Literature analytical reference',
-            referenceSourceLabel: 'Fetkovich decline-curve reference',
+            sourceLabel: 'Literature reference solution',
+            referenceSourceLabel: 'Fetkovich reference solution',
             benchmarkFamilyKey: 'fetkovich_exp',
             runPolicy: 'compare-to-reference',
         });
@@ -87,7 +87,7 @@ describe('caseLibrary adapter', () => {
             group: 'curated-starter',
             sourceLabel: 'Curated internal starter',
         });
-        expect(baseline?.provenanceSummary).toContain('starting point rather than a locked validation case');
+        expect(baseline?.provenanceSummary).toContain('starting point rather than a locked reference case');
         expect(baseline?.sensitivityAxes).toEqual([]);
     });
 

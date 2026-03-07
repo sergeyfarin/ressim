@@ -34,7 +34,7 @@ Those pieces now have solid local implementations, but they do not yet form one 
 
 - The mode-panel architecture is materially cleaner than the older shell-style setup.
 - Warning policy data is centralized in `src/lib/warningPolicy.ts` instead of being hand-built in multiple components.
-- Benchmark definitions, reference policy, and chart defaults are much more explicit than before.
+- Benchmark definitions, reference guidance, and chart defaults are much more explicit than before.
 - The section/component split under `src/lib/ui/` is reasonable and gives a good base for a dedicated design pass.
 - The faceted catalog is structured enough to support a more truthful product surface once constraints are clarified.
 
@@ -44,10 +44,10 @@ Those pieces now have solid local implementations, but they do not yet form one 
 
 Evidence:
 
-- Benchmarks remain a separate top-level mode in `src/lib/ui/modes/ModePanel.svelte`.
-- Benchmark mode focuses on family selection and execution-set selection in `src/lib/ui/modes/BenchmarkPanel.svelte`, but it does not expose the actual benchmark inputs in a readable case-summary form.
-- The current benchmark UI still promotes `Clone to Custom`, which shifts the user out of the comparison workflow instead of strengthening the comparison workflow itself.
-- Multi-run benchmark comparison exists in charts, but not in the 3D view or other output surfaces. `src/App.svelte` routes benchmark results into `BenchmarkChart`, while `ThreeDViewComponent` still receives only the single live runtime grid/history path.
+- Benchmark/reference workflows are now family-owned in `src/lib/ui/modes/ModePanel.svelte`, but the overall run-and-compare journey still spans several separate surfaces.
+- The current reference workflow focuses on family selection and run-set selection, but it still benefits from denser case disclosure and clearer pre-run variant summaries.
+- The current reference UI still promotes `Customize`, which can shift users out of the comparison flow instead of strengthening it.
+- Multi-run reference comparison now exists in charts and selected-case 3D inspection, but compact comparison summaries and broader output parity still need more work.
 
 Impact:
 
@@ -59,14 +59,14 @@ Recommendation:
 
 - Make an explicit product decision about whether benchmarks stay separate or become embedded verification flows within depletion/waterflood.
 - Replace mode-switching escape hatches with a clearer run-and-compare workflow.
-- Add benchmark case disclosure cards that show key settings, reference policy, and variant deltas before execution.
+- Add benchmark case disclosure cards that show key settings, reference guidance, and variant deltas before execution.
 
 ### 2. Warning policy is unified in data but not unified in user experience
 
 Evidence:
 
 - `src/lib/warningPolicy.ts` centralizes warning construction, which is the right model.
-- Warning surfaces are still split across the mode panel, run controls, and a separate analytical reference-caveat banner in `src/App.svelte`.
+- Warning surfaces are still split across the mode panel, run controls, and a separate reference-caveat banner in `src/App.svelte`.
 - This means the same warning system appears in multiple places with different scopes and no single “you must address this here” experience.
 
 Impact:
@@ -84,7 +84,7 @@ Recommendation:
 
 Evidence:
 
-- `src/lib/charts/RateChart.svelte` and `src/lib/charts/BenchmarkChart.svelte` both maintain local x-axis state, panel expansion state, and gutter alignment logic.
+- `src/lib/charts/RateChart.svelte` and `src/lib/charts/ReferenceComparisonChart.svelte` both maintain local x-axis state, panel expansion state, and gutter alignment logic.
 - Both charts implement similar cross-panel coordination, but through separate component-local state instead of a shared comparison/chart shell.
 
 Impact:
@@ -159,9 +159,9 @@ Recommendation:
 
 Evidence:
 
-- `Analytical Model` in `src/lib/ui/sections/AnalyticalSection.svelte` is ambiguous because it actually chooses a reference/solution mode.
+- Historical labels like `Analytical Model` in `src/lib/ui/sections/AnalyticalSection.svelte` showed how implementation wording leaked into a reference/solution choice.
 - Typography and label sizing vary across section components.
-- Terms like “Simulation”, “Benchmarks”, “Analytical Inputs”, “Clone to Custom”, and “Stored Benchmark Results” are individually understandable but do not form one vocabulary system.
+- Terms like “Case Library”, “Reference Solution”, “Reference Guidance”, “Customize”, and “Reference Run Results” need to stay consistent across the product and its docs.
 
 Impact:
 
@@ -186,7 +186,7 @@ Recommendation:
 
 1. Warnings are still not unified enough: confirmed.
 2. Chart logic across different sections still has duplicated top-level behavior: confirmed.
-3. `Copy/Clone to Custom` is probably over-promoted and should be re-justified: confirmed.
+3. The `Customize` handoff is probably still over-promoted and should be re-justified: confirmed.
 4. Benchmark settings are not disclosed well enough before or after run: confirmed.
 5. Benchmarks being separate from depletion/waterflood is a product-design question that should be resolved explicitly: confirmed.
 6. Depletion/waterflood faceted selection is not complete in product terms even where the catalog structure exists: confirmed.

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const referenceResultsSource = fs.readFileSync(path.join(__dirname, '..', 'ui', 'cards', 'ReferenceResultsCard.svelte'), 'utf8');
 const comparisonChartSource = fs.readFileSync(path.join(__dirname, 'ReferenceComparisonChart.svelte'), 'utf8');
+const rateChartSource = fs.readFileSync(path.join(__dirname, 'RateChart.svelte'), 'utf8');
 const swProfileSource = fs.readFileSync(path.join(__dirname, 'SwProfileChart.svelte'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', '..', 'App.svelte'), 'utf8');
 
@@ -31,6 +32,8 @@ describe('output terminology copy', () => {
     expect(appSource).toMatch(/Depletion Reference Solution/);
     expect(appSource).toMatch(/Waterflood Reference Solution/);
     expect(appSource).toMatch(/Reference solution: Buckley-Leverett fractional flow/);
+    expect(rateChartSource).toMatch(/Reference Solution: \{mismatchSummary\.pointsCompared\} pts/);
+    expect(rateChartSource).not.toMatch(/Analytical: \{mismatchSummary\.pointsCompared\} pts/);
     expect(swProfileSource).toMatch(/Reference Front Profile/);
     expect(swProfileSource).toMatch(/reference flood-front profile/);
     expect(swProfileSource).toMatch(/Reference front is near cell/);

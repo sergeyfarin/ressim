@@ -628,7 +628,7 @@
                         </div>
 
                         <div class="rounded-md border border-border/70 bg-muted/10 p-3 text-[10px] text-muted-foreground">
-                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Policy</div>
+                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Guidance</div>
                             <div class="mt-2">{activeRunManifest.referencePolicySummary}</div>
                             <div class="mt-2 font-semibold uppercase tracking-[0.14em]">Allowed Sensitivities</div>
                             <div class="mt-2">{activeRunManifest.sensitivitySummary}</div>

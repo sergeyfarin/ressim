@@ -25,7 +25,7 @@ describe('mode panel flows', () => {
     expect(modePanelSource).toMatch(/Citation \/ Source/);
     expect(modePanelSource).toMatch(/Fixed Settings/);
     expect(modePanelSource).toMatch(/Allowed Sensitivities/);
-    expect(modePanelSource).toMatch(/Reference Policy/);
+    expect(modePanelSource).toMatch(/Reference Guidance/);
     expect(modePanelSource).toMatch(/Current facet combination is not mapped to a curated library case yet\./);
     expect(modePanelSource).toMatch(/Case Library/);
     expect(modePanelSource).toMatch(/Literature References/);

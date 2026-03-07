@@ -266,7 +266,7 @@
     ];
 
     if (activeLibraryEntry.runPolicy) {
-      fixedSettingsItems.push(`Execution policy: ${RUN_POLICY_LABELS[activeLibraryEntry.runPolicy]}.`);
+      fixedSettingsItems.push(`Run approach: ${RUN_POLICY_LABELS[activeLibraryEntry.runPolicy]}.`);
     }
 
     if (activeLibraryEntry.displayDefaults) {
@@ -370,7 +370,7 @@
       </div>
       <div class="mt-2 text-[10px] text-muted-foreground">
         {#if activeSource === "case-library"}
-          Curated family cases keep provenance, reference policy, and allowed sensitivities attached to the active selection.
+          Curated family cases keep provenance, reference guidance, and allowed sensitivities attached to the active selection.
         {:else}
           Custom keeps the current family inputs unlocked. Switch back to Case Library to restore a curated family case.
         {/if}
@@ -523,7 +523,7 @@
 
               <div class="rounded-md border border-border/60 bg-muted/10 p-3">
                 <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Reference Policy
+                  Reference Guidance
                 </div>
                 <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
                   {#each caseDisclosure.referencePolicyItems as item}

@@ -9,7 +9,7 @@ Use this file to decide which documents describe the current repository state.
 | `README.md` | Product overview, quick start, project layout, current feature summary |
 | `TODO.md` | Active roadmap and the authoritative execution tracker for current frontend recovery work |
 | `docs/FRONTEND_UI_AUDIT_2026-03-07.md` | Current frontend/product audit covering workflow, warnings, charts, visualization, labels, and layout priorities |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark-family registry, family-owned reference workflow, reference policy, and chart behavior |
+| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark-family registry, family-owned reference workflow, reference guidance, and chart behavior |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Two-phase Buckley-Leverett benchmark methodology and accepted tolerances |
 | `docs/UNIT_SYSTEM.md` | Unit conventions used by the current implementation |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |

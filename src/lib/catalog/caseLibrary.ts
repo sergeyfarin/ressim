@@ -84,9 +84,9 @@ const GROUP_SORT_ORDER: Record<LibraryCaseGroup, number> = {
 };
 
 const BENCHMARK_SOURCE_LABELS: Record<string, string> = {
-    'buckley-leverett-shock-reference': 'Buckley-Leverett analytical shock reference',
-    'dietz-shape-factor-reference': 'Dietz (1965) shape-factor reference',
-    'fetkovich-decline-reference': 'Fetkovich decline-curve reference',
+    'buckley-leverett-shock-reference': 'Buckley-Leverett reference solution',
+    'dietz-shape-factor-reference': 'Dietz (1965) reference solution',
+    'fetkovich-decline-reference': 'Fetkovich reference solution',
 };
 
 type BenchmarkProvenanceMetadata = {
@@ -98,28 +98,28 @@ type BenchmarkProvenanceMetadata = {
 const BENCHMARK_PROVENANCE_METADATA: Record<string, BenchmarkProvenanceMetadata> = {
     bl_case_a_refined: {
         group: 'internal-reference',
-        sourceLabel: 'Internal Rust-parity validation family',
-        provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case. Homogeneous runs compare against the analytical Buckley-Leverett shock reference, while heterogeneity variants fall back to a refined numerical reference.',
+        sourceLabel: 'Internal Rust-parity reference family',
+        provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett family maintained as an internal reference family. Homogeneous runs compare against the Buckley-Leverett reference solution, while heterogeneity variants fall back to a refined numerical reference.',
     },
     bl_case_b_refined: {
         group: 'internal-reference',
-        sourceLabel: 'Internal Rust-parity validation family',
-        provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett base family maintained as an internal validation case. Homogeneous runs compare against the analytical Buckley-Leverett shock reference, while heterogeneity variants fall back to a refined numerical reference.',
+        sourceLabel: 'Internal Rust-parity reference family',
+        provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett family maintained as an internal reference family. Homogeneous runs compare against the Buckley-Leverett reference solution, while heterogeneity variants fall back to a refined numerical reference.',
     },
     dietz_sq_center: {
         group: 'literature-reference',
-        sourceLabel: 'Literature analytical reference',
-        provenanceSummary: 'Locked analytical depletion reference based on the Dietz shape-factor literature for a square drainage area with a centered producer.',
+        sourceLabel: 'Literature reference solution',
+        provenanceSummary: 'Locked depletion reference solution based on the Dietz shape-factor literature for a square drainage area with a centered producer.',
     },
     dietz_sq_corner: {
         group: 'literature-reference',
-        sourceLabel: 'Literature analytical reference',
-        provenanceSummary: 'Locked analytical depletion reference based on the Dietz shape-factor literature for a square drainage area with a corner producer.',
+        sourceLabel: 'Literature reference solution',
+        provenanceSummary: 'Locked depletion reference solution based on the Dietz shape-factor literature for a square drainage area with a corner producer.',
     },
     fetkovich_exp: {
         group: 'literature-reference',
-        sourceLabel: 'Literature analytical reference',
-        provenanceSummary: 'Locked analytical depletion reference based on Fetkovich exponential decline behavior. This case is the seed reference for the future type-curves workflow.',
+        sourceLabel: 'Literature reference solution',
+        provenanceSummary: 'Locked reference solution based on Fetkovich exponential decline behavior. This case is the seed reference for the future type-curves workflow.',
     },
 };
 
@@ -145,8 +145,8 @@ function buildBenchmarkSourceLabel(family: BenchmarkFamily): string {
 function getBenchmarkProvenanceMetadata(family: BenchmarkFamily): BenchmarkProvenanceMetadata {
     return BENCHMARK_PROVENANCE_METADATA[family.key] ?? {
         group: 'literature-reference',
-        sourceLabel: 'Reference case',
-        provenanceSummary: `Locked reference case aligned to ${family.reference.source}.`,
+        sourceLabel: 'Reference family',
+        provenanceSummary: `Locked reference family aligned to ${family.reference.source}.`,
     };
 }
 
@@ -157,13 +157,13 @@ function buildBenchmarkReferencePolicySummary(
     sensitivityAxes: CaseLibrarySensitivityAxis[],
 ): string {
     const caseLabel = group === 'internal-reference'
-        ? 'Locked internal validation case.'
+        ? 'Locked internal reference family.'
         : 'Locked literature reference case.';
     const sensitivityClause = sensitivityAxes.length > 0
         ? `Allowed library sensitivities: ${sensitivityAxes.map((axis) => axis.label).join(', ')}.`
         : 'No library sensitivity run set is exposed for this reference case.';
 
-    return `${caseLabel} Runs compare directly against the ${referenceSourceLabel}. ${sensitivityClause} Use Customize to branch into a writable custom scenario when you need to edit fixed inputs.`;
+    return `${caseLabel} Runs compare against the ${referenceSourceLabel}. ${sensitivityClause} Use Customize to branch into a writable custom scenario when you need to edit fixed inputs.`;
 }
 
 function buildPresetFamily(entry: PresetEntry): ProductFamily {
@@ -188,10 +188,10 @@ function buildPresetReferencePolicySummary(entry: PresetEntry): string {
 
 function buildPresetProvenanceSummary(entry: PresetEntry): string {
     if (entry.category === 'exploration') {
-        return `Curated exploratory starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked validation case.`;
+        return `Curated exploratory starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked reference case.`;
     }
 
-    return `Curated internal starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked validation case.`;
+    return `Curated internal starter maintained by the app team. ${entry.description} This entry is intended as a starting point rather than a locked reference case.`;
 }
 
 function buildPresetSensitivitySummary(): string {

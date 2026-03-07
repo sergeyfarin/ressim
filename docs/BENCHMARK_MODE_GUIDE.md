@@ -1,7 +1,7 @@
 # Benchmark Workflow Guide
 
 Date: 2026-03-07
-Status: authoritative guide for the current benchmark registry, execution workflow, reference policy, and chart behavior
+Status: authoritative guide for the current benchmark registry, execution workflow, reference guidance, and chart behavior
 
 This page describes the benchmark system that the current frontend code and regression suite enforce. Use it together with `docs/P4_TWO_PHASE_BENCHMARKS.md`:
 
@@ -36,10 +36,10 @@ A benchmark family owns:
 
 The current family inventory is:
 
-| Scenario class | Family keys | Reference policy | Sensitivity support |
+| Scenario class | Family keys | Reference guidance | Sensitivity support |
 |---|---|---|---|
-| Buckley-Leverett | `bl_case_a_refined`, `bl_case_b_refined` | Analytical Buckley-Leverett shock reference for homogeneous runs; refined numerical reference for heterogeneity variants | Grid refinement, timestep refinement, heterogeneity |
-| Depletion | `dietz_sq_center`, `dietz_sq_corner`, `fetkovich_exp` | Analytical depletion reference | No generated sensitivity axes yet |
+| Buckley-Leverett | `bl_case_a_refined`, `bl_case_b_refined` | Buckley-Leverett reference solution for homogeneous runs; refined numerical reference for heterogeneity variants | Grid refinement, timestep refinement, heterogeneity |
+| Depletion | `dietz_sq_center`, `dietz_sq_corner`, `fetkovich_exp` | Depletion reference solution | No generated sensitivity axes yet |
 
 The Buckley-Leverett base families are aligned to the validated Rust benchmark semantics. That means the benchmark family is not just a UI preset label; it is intended to describe the same physical experiment as the benchmarked Rust case where parity is claimed.
 
@@ -47,23 +47,23 @@ The Buckley-Leverett base families are aligned to the validated Rust benchmark s
 
 The current Buckley-Leverett families generate variants from deltas rather than duplicated full payloads.
 
-- `grid-refinement`: keeps the same physical model and analytical reference while changing spatial resolution
+- `grid-refinement`: keeps the same physical model and Buckley-Leverett reference solution while changing spatial resolution
 - `timestep-refinement`: keeps the same physical model and horizon while changing timestep size
-- `heterogeneity`: introduces seeded permeability variation and switches the primary truth source to a refined numerical reference
+- `heterogeneity`: introduces seeded permeability variation and switches the primary review baseline to a refined numerical reference
 
 Important interpretation rule:
 
-- homogeneous base, grid, and timestep runs can be judged against the analytical Buckley-Leverett reference as the primary truth source
-- heterogeneous Buckley-Leverett variants should not be described as strict analytical-equality benchmarks; analytical traces may still appear as secondary context, but the primary comparison is numerical-reference-based
+- homogeneous base, grid, and timestep runs can be judged against the Buckley-Leverett reference solution as the primary review baseline
+- heterogeneous Buckley-Leverett variants should not be described as strict reference-solution-equality benchmarks; the Buckley-Leverett trace may still appear as secondary context, but the primary comparison is numerical-reference-based
 
 ## Execution workflow in the UI
 
-Benchmark/reference workflows now live inside the owning product families rather than in a separate top-level benchmark mode.
+Benchmark/reference workflows now live inside the owning product families rather than in a separate top-level benchmark destination.
 
 The current workflow is:
 
 1. Select the owning family in `Inputs`, then choose a benchmark/reference case from `Case Library`.
-2. In the `Run` region's `Execution Set`, choose either `Base case` or one sensitivity axis.
+2. In the `Run` region's `Run Set`, choose either `Base case` or one sensitivity axis.
 3. If an axis is selected, keep all variants checked or reduce the run to an explicit subset within that axis.
 4. Run the selection through one button (`Run Base` or the axis-specific variant count label).
 5. Review stored benchmark/reference results scoped to the active family in `Outputs`.
@@ -75,23 +75,23 @@ Current workflow constraints:
 - base execution submits no variant keys; axis execution submits only the explicitly selected variant keys
 - stored result cards are filtered to the active family so the workflow stays focused on one comparison set at a time
 
-## Reference policy and result semantics
+## Reference guidance and result semantics
 
 Each stored benchmark run exposes explicit reference metadata instead of a generic summary string.
 
 Benchmark results include:
 
-- `referencePolicy`: what the primary truth source is for the run
+- `referencePolicy`: what the primary review baseline is for the run
 - `referenceComparison`: the current status of the benchmark metric against that reference
 - `comparisonOutputs`: scenario-appropriate diagnostics such as breakthrough shift, recovery delta, final oil-rate error, cumulative oil error, or pressure delta
 
-The current reference policy behavior is:
+The current reference guidance behavior is:
 
-- homogeneous Buckley-Leverett runs: analytical Buckley-Leverett is primary, analytical overlay is primary
-- heterogeneous Buckley-Leverett runs: refined numerical reference is primary, analytical overlay is secondary
-- depletion runs: analytical depletion reference is primary
+- homogeneous Buckley-Leverett runs: the Buckley-Leverett reference solution is primary
+- heterogeneous Buckley-Leverett runs: the refined numerical reference is primary, while the Buckley-Leverett trace remains secondary context
+- depletion runs: the depletion reference solution is primary
 
-This policy is surfaced in benchmark summary cards and drives chart defaults and overlay composition.
+This guidance is surfaced in benchmark summary cards and drives chart defaults and overlay composition.
 
 ## Chart defaults and comparison behavior
 
@@ -106,7 +106,7 @@ The benchmark workflow no longer reuses one generic single-run chart contract fo
   - `Recovery`
   - `Pressure`
 - no log-scale toggle by default
-- comparison chart overlays stored base-plus-variant runs and keeps the analytical Buckley-Leverett trace as shared context; for heterogeneous variants that trace is secondary context rather than the primary truth metric
+- comparison chart overlays stored base-plus-variant runs and keeps the Buckley-Leverett reference-solution trace as shared context; for heterogeneous variants that trace is secondary context rather than the primary review metric
 
 The reading order is intentionally breakthrough-first: water cut and average water saturation, then recovery/cumulative behavior, then pressure.
 
@@ -118,7 +118,7 @@ The reading order is intentionally breakthrough-first: water cut and average wat
   - `Oil Rate`
   - `Cumulative Oil / Recovery`
   - `Pressure / Decline`
-- analytical depletion traces remain primary reference overlays
+- depletion reference-solution traces remain the primary overlays
 
 ### Shared style policy
 

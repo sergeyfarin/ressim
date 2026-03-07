@@ -88,11 +88,11 @@ Comparison table:
 | BL-Case-A (`nx=24`, `dt=0.5`) | 4.0% | 3.1% | -0.9 percentage points |
 | BL-Case-B (`nx=24`, `dt=0.25`) | 9.0% | 2.5% | -6.5 percentage points |
 
-This supports the conclusion that a significant part of baseline mismatch comes from discretization (grid + timestep), not from an incorrect analytical reference.
+This supports the conclusion that a significant part of baseline mismatch comes from discretization (grid + timestep), not from an incorrect reference solution.
 
-### Analytical vs Simulation Summary
+### Reference-Solution vs Simulation Summary
 
-`PV_BT_ref` in the table above is the analytical Buckley-Leverett reference (published theory basis), not another simulation.
+`PV_BT_ref` in the table above is the Buckley-Leverett reference solution (published theory basis), not another simulation.
 
 | Case | Analytical PV_BT_ref | Simulation PV_BT_sim | Absolute Difference | Relative Difference |
 |---|---:|---:|---:|---:|
@@ -116,7 +116,7 @@ The plot analytical curve (and MAE/RMSE/MAPE shown in the rate chart) compares t
 - Benchmark table in this page: breakthrough PV comparison against analytical Buckley-Leverett shock reference.
 - Plot metrics in UI: time-series mismatch metrics between simulator rates and analytical rate curve for the current run settings.
 
-Both are analytical comparisons, but they evaluate different observables (breakthrough PV versus full rate-time trajectory).
+Both are reference-solution comparisons, but they evaluate different observables (breakthrough PV versus full rate-time trajectory).
 
 Frontend alignment note:
 - `src/lib/FractionalFlow.svelte` was updated to use a tighter Buckley-Leverett shock search and derivative-matching inversion, consistent with the benchmark reference method.
@@ -126,10 +126,10 @@ Frontend alignment note:
 ## User-Facing Surface
 
 - README includes a Model Validation Benchmarks (P4-1) section with tolerance policy and a link to this page.
-- Chart-level analytical mismatch metrics (MAE/RMSE/MAPE) remain visible in the rate chart panel for quick run-time comparison.
-- Benchmark mode now exposes Buckley-Leverett families through the frontend benchmark registry rather than through duplicated preset payloads.
-- Benchmark execution now uses the `Execution Set` workflow: base only, or an explicit subset of variants within one selected sensitivity axis.
-- Stored benchmark results now feed benchmark-specific comparison charts instead of relying on one live single-run chart path.
+- Chart-level reference-solution mismatch metrics (MAE/RMSE/MAPE) remain visible in the rate chart panel for quick run-time comparison.
+- The family-owned reference workflow now exposes Buckley-Leverett families through the frontend benchmark registry rather than through duplicated preset payloads.
+- Benchmark execution now uses the `Run Set` workflow: base only, or an explicit subset of variants within one selected sensitivity axis.
+- Stored reference-run results now feed benchmark-specific comparison charts instead of relying on one live single-run chart path.
 - There is no generated frontend benchmark artifact; benchmark evidence is kept in Rust tests and scenario presets.
 
 ## Current Frontend Benchmark Interpretation
@@ -137,14 +137,14 @@ Frontend alignment note:
 The browser benchmark surface now distinguishes between benchmark families and benchmark variants.
 
 - `bl_case_a_refined` and `bl_case_b_refined` are the homogeneous Rust-parity Buckley-Leverett base families.
-- Grid-refinement and timestep-refinement variants preserve the same analytical Buckley-Leverett reference contract as the base family.
-- Heterogeneity variants are still useful benchmark comparison runs, but their primary truth source is a refined numerical reference rather than strict analytical equality.
+- Grid-refinement and timestep-refinement variants preserve the same Buckley-Leverett reference-solution contract as the base family.
+- Heterogeneity variants are still useful benchmark comparison runs, but their primary review baseline is a refined numerical reference rather than strict reference-solution equality.
 
-The chart defaults in benchmark mode now reflect that interpretation:
+The chart defaults in the family-owned reference workflow now reflect that interpretation:
 
 - Buckley-Leverett charts default to `PVI` on the x-axis.
 - The primary panels are breakthrough, recovery, and pressure.
-- Multi-run overlays compare stored base-plus-variant results and keep the analytical Buckley-Leverett trace as shared context; for heterogeneous variants that trace is secondary context rather than the primary truth metric.
+- Multi-run overlays compare stored base-plus-variant results and keep the Buckley-Leverett reference-solution trace as shared context; for heterogeneous variants that trace is secondary context rather than the primary review metric.
 
 For the broader benchmark workflow and UI contract, see `docs/BENCHMARK_MODE_GUIDE.md`.
 
