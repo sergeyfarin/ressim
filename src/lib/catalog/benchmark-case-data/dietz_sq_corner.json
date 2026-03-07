@@ -1,10 +1,10 @@
 {
-  "key": "dietz_sq_center",
+  "key": "dietz_sq_corner",
   "category": "depletion",
   "benchmark": true,
-  "benchmarkOrder": 3,
-  "label": "Dietz Square Center",
-  "description": "Shape factor C_A ≈ 30.88 (Dietz, 1965)",
+  "benchmarkOrder": 4,
+  "label": "Dietz Square Corner",
+  "description": "Shape factor C_A ≈ 0.56 (Dietz, 1965)",
   "params": {
     "mode": "benchmark",
     "analyticalSolutionMode": "depletion",
@@ -22,7 +22,7 @@
     "uniformPermX": 50,
     "steps": 50,
     "delta_t_days": 1,
-    "producerI": 10,
-    "producerJ": 10
+    "producerI": 0,
+    "producerJ": 0
   }
 }

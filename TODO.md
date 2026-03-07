@@ -15,11 +15,12 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 
 ## Active Slice
 
-- [ ] **B0. Plan review and objective sign-off (in progress)** — review the detailed benchmark-modernization objective, chart policy, and sensitivity scope before code implementation starts.
+- [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
+- [ ] **B2. Align BL benchmark base cases to exact Rust semantics (next)** — replace remaining rate-controlled BL benchmark semantics with exact Rust benchmark parity.
 
 ## Detailed Implementation Plan
 
-- [ ] **B1. Define benchmark-family schema and ownership**
+- [x] **B1. Define benchmark-family schema and ownership**
   - Introduce a single benchmark registry contract that separates:
     - base physical definition
     - derived sensitivity definitions
@@ -37,10 +38,10 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - `defaultPanels`
     - `stylePolicy`
     - `runPolicy` (`single`, `sweep`, `compare-to-reference`)
-  - Acceptance:
-    - one authoritative benchmark registry
-    - no duplicated benchmark parameter blobs across selector config and runtime config
-    - benchmark UI reads selector options from the same registry used for execution
+  - Outcome:
+    - implemented a benchmark-family registry layered over source benchmark case files under `src/lib/catalog/benchmark-case-data/`
+    - selector options, family metadata, and runtime benchmark entries now resolve from the same registry contract
+    - benchmark payloads now resolve from `src`-owned source files without duplicating parameter blobs in the registry
 
 - [ ] **B2. Align BL benchmark base cases to exact Rust semantics**
   - Repoint frontend BL benchmark families to the same physical setup used by the validated Rust builders.

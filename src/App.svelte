@@ -8,6 +8,7 @@
     import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
+    import { getPresetEntry } from "./lib/catalog/caseCatalog";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
 
     // ---------- Store ----------
@@ -412,7 +413,7 @@
                             activeCase={scenario.activeCase}
                             {theme}
                             analyticalMeta={runtime.analyticalMeta}
-                            layoutConfig={{}}
+                            layoutConfig={getPresetEntry(scenario.activeCase)?.layoutConfig ?? {}}
                         />
                     {:else}
                         <div

@@ -1,6 +1,10 @@
 ## Current Snapshot (2026-03-07)
 
 - Benchmark presets now resolve from a single frontend benchmark registry instead of duplicated catalog payloads.
+- Legacy named scenario cases now resolve from a typed frontend preset registry in `src/lib/catalog/presetCases.ts`; the old `public/cases` manifest/artifact bundle has been removed from the app source path.
+- Benchmark-family schema and ownership are now implemented in code:
+  - family metadata, selector options, and runtime benchmark entries resolve from one registry contract
+  - benchmark parameter payloads now come from source JSON files under `src/lib/catalog/benchmark-case-data/`, not from `public/` imports or duplicated blobs
 - The remaining benchmark mismatch is semantic, not architectural:
   - frontend/public BL benchmark presets still reflect short-horizon rate-controlled definitions
   - validated Rust BL benchmarks are pressure-controlled and should become the benchmark-family physical reference
@@ -40,6 +44,11 @@ Goal:
 
 Key outcome:
 - benchmark selector data and benchmark execution data come from the same source
+
+Status:
+- completed on 2026-03-07
+- implementation lives in `src/lib/catalog/benchmarkCases.ts` and is re-exported through `src/lib/catalog/caseCatalog.ts`
+- current BL families already declare intended sensitivity axes, reference kind, display defaults, style policy, and run policy metadata
 
 ### B2. Align BL families to exact Rust semantics
 
@@ -123,7 +132,7 @@ Key outcome:
 
 ## Next Action After Review
 
-- If the plan is accepted, start with `B1` and `B2` first:
-  - lock the benchmark-family schema
+- Next active implementation slice is `B2`:
   - align BL base families to exact Rust semantics
+  - keep benchmark-family schema stable while changing the underlying BL base-case semantics
   - only then implement sensitivities and chart restructuring on top of that base

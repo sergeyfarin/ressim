@@ -1,10 +1,17 @@
 import catalogDataRaw from './catalog.json';
 import {
     benchmarkCases,
+    benchmarkFamilies,
     getBenchmarkDimensionOptions,
     getBenchmarkEntry,
+    getBenchmarkFamily,
     type BenchmarkEntry,
 } from './benchmarkCases';
+import {
+    getPresetEntry,
+    presetCases,
+    type PresetEntry,
+} from './presetCases';
 
 // --- Type Definitions ---
 export type CaseMode = 'dep' | 'wf' | 'sim' | 'benchmark';
@@ -40,9 +47,15 @@ export type CatalogSchema = {
     defaults: Record<string, any>;
     modes: Record<CaseMode, ModeCatalog>;
     benchmarks: BenchmarkEntry[];
+    presets: PresetEntry[];
 };
 
-const rawCatalog = catalogDataRaw as unknown as CatalogSchema;
+type CatalogSourceSchema = Omit<CatalogSchema, 'benchmarks' | 'presets'> & {
+    benchmarks?: BenchmarkEntry[];
+    presets?: PresetEntry[];
+};
+
+const rawCatalog = catalogDataRaw as unknown as CatalogSourceSchema;
 
 export const catalog: CatalogSchema = {
     ...rawCatalog,
@@ -58,9 +71,10 @@ export const catalog: CatalogSchema = {
         },
     },
     benchmarks: benchmarkCases,
+    presets: presetCases,
 };
 
-export { benchmarkCases, getBenchmarkEntry };
+export { benchmarkCases, benchmarkFamilies, getBenchmarkEntry, getBenchmarkFamily, presetCases, getPresetEntry };
 
 export type ToggleState = Record<string, string>;
 
