@@ -289,33 +289,6 @@
 </script>
 
 <Card class="p-0">
-  <div class="rounded-md border border-border/70 bg-muted/10 p-3">
-    <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="space-y-1">
-        <div class="ui-card-title">
-          {FAMILY_LABELS[activeFamily as keyof typeof FAMILY_LABELS] ?? activeFamily}
-        </div>
-        <div class="ui-support-copy max-w-2xl">
-          {FAMILY_SUBTITLES[activeFamily as keyof typeof FAMILY_SUBTITLES] ?? "Family-first inputs shell in progress."}
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2">
-        {#if navigationState?.activeLibraryGroup && activeSource === "case-library"}
-          <span class="ui-chip border border-border/70 bg-background text-muted-foreground">
-            {GROUP_LABELS[navigationState.activeLibraryGroup]}
-          </span>
-        {/if}
-        {#if isModified}
-          <span
-            class="ui-chip border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
-          >
-            Customized
-          </span>
-        {/if}
-      </div>
-    </div>
-
     <div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
       {#each Object.entries(FAMILY_LABELS) as [family, label]}
         <Button
@@ -328,7 +301,7 @@
         </Button>
       {/each}
     </div>
-  </div>
+  
 
   {#if shouldShowStatusRow}
     <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -347,6 +320,13 @@
 
   {#if navigationState}
     <div class="mt-3 rounded-md border border-border/70 bg-muted/10 p-3">
+      <div class="space-y-1">
+        <div class="ui-card-title">Case Library</div>
+        <div class="ui-support-copy max-w-3xl">
+          Select <strong class="text-foreground">Custom</strong> at the end of the list to branch the active library case into a writable family-local scenario.
+        </div>
+      </div>
+
       {#if librarySelectorSections.length > 0 || navigationState}
         <div class="mt-3 border-t border-border/50 pt-3">
           <div class="mt-3 space-y-3">
@@ -415,7 +395,7 @@
         </div>
       {/if}
 
-      
+
     </div>
   {/if}
 
