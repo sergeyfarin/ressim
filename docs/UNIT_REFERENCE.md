@@ -171,11 +171,11 @@ When setting up a simulation:
 2. **IMPES method:** Implicit pressure, explicit saturation
 3. **Upwind scheme:** Flux evaluation for saturation stability
 4. **Corey model:** Standard relative permeability correlation
-5. **No gravity:** Vertical equilibrium assumed or negligible
-6. **No capillary pressure:** Only pressure difference drives flow
+5. **Gravity:** Optional toggle with phase-density-weighted hydrostatic head
+6. **Capillary pressure:** Optional Brooks-Corey capillary model
 
 ## Documentation Files
 
 - `UNIT_SYSTEM.md` - Comprehensive unit documentation
-- `PHYSICS_REVIEW.md` - Physics model analysis
-- `UNIT_SYSTEM_CHANGES.md` - Change log from refactoring
+- `P4_TWO_PHASE_BENCHMARKS.md` - Current benchmark methodology and validation context
+- `TRANSMISSIBILITY_FACTOR.md` - Current transmissibility conversion note

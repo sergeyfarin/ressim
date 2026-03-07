@@ -6,7 +6,7 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 
 - **UI direction locked**: Unified "Preset + Customize" surface (Option B).
 - **Analytical overlays**: permissive for approximate cases, with clearly visible warnings.
-- **Benchmark workflow**: benchmark-family runner with explicit base or sensitivity-axis execution, stored comparison results, and clone-to-custom handoff.
+- **Benchmark workflow**: family-owned reference runner with explicit base or sensitivity-axis execution, stored comparison results, and in-place `Customize` handoff.
 - **Execution model**: all presets now initialize and run directly in browser-side WASM; there is no pre-run artifact pipeline.
 
 ## Features
@@ -41,8 +41,8 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 - **Sw Profile chart** — cell-index saturation profile compared to analytical flood front.
 - **Scenario catalog (faceted presets)** - JSON-driven orthogonal toggle system for geometry, wells, rock, fluids, and timestep setup.
 - **Preset + Customize workflow** (active refactor) - start from a faceted preset, then refine any parameter in-place.
-- **Benchmark mode** - select a benchmark family, run the base case or an explicit subset of one sensitivity axis, and compare stored results in one benchmark-specific view.
-- **Benchmark cloning** - clone benchmark families into editable custom runs while preserving source provenance.
+- **Benchmark workflows** - select a benchmark/reference family inside its owning product family, run the base case or an explicit subset of one sensitivity axis, and compare stored results in the shared Outputs region.
+- **Reference-to-custom handoff** - customize benchmark/reference families into editable custom runs while preserving source provenance.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.
@@ -60,13 +60,14 @@ Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, co
 
 Benchmark validation is maintained in Rust tests and exposed in the app through curated benchmark presets rather than a generated frontend artifact.
 
-Current benchmark-mode behavior:
+Current benchmark-workflow behavior:
 
 - benchmark definitions come from one frontend family registry rather than duplicated case payloads
+- benchmark/reference cases are entered from the owning family's `Case Library`, not from a separate benchmark tab
 - homogeneous Buckley-Leverett runs use analytical Buckley-Leverett as the primary reference, while heterogeneity variants switch to refined numerical reference as the primary truth source
-- Buckley-Leverett benchmark charts default to breakthrough, recovery, and pressure panels on a `PVI` x-axis
-- depletion benchmark charts default to oil-rate, cumulative/recovery, and pressure panels with analytical depletion overlays
-- the benchmark UI runs either the base family or an explicit set of variants within one selected sensitivity axis
+- Buckley-Leverett comparison charts default to breakthrough, recovery, and pressure panels on a `PVI` x-axis
+- depletion comparison charts default to oil-rate, cumulative/recovery, and pressure panels with analytical depletion overlays
+- the Run region executes either the base family or an explicit set of variants within one selected sensitivity axis
 
 ## Unit System
 
@@ -152,15 +153,12 @@ docs/                               — technical reference docs (see below)
 | Document | Content |
 |----------|---------|
 | `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark registry, workflow, reference policy, and chart behavior |
-| `docs/DOCUMENTATION_INDEX.md` | Current map of authoritative vs archival docs |
-| `docs/status.md` | Current snapshot and historical execution log |
+| `docs/DOCUMENTATION_INDEX.md` | Current map of authoritative docs |
 | `P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
 | `UNIT_SYSTEM.md` | Comprehensive unit system reference |
 | `UNIT_REFERENCE.md` | Quick unit lookup card |
 | `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻³` constant |
 | `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` | Store-facing preset/customize contract |
-| `PHYSICS_REVIEW.md` | Archived physics review note kept for historical context |
-| `FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` | Archived frontend review that led to the current direction |
 
 ## Physics Summary
 

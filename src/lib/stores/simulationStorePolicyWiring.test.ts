@@ -8,15 +8,17 @@ const storeSource = fs.readFileSync(storePath, 'utf8');
 describe('simulation store policy wiring', () => {
   it('uses the shared auto-clear policy for modified-state reset behavior', () => {
     expect(storeSource).toMatch(/shouldAutoClearModifiedState/);
-    expect(storeSource).toMatch(/benchmarkProvenance/);
+    expect(storeSource).toMatch(/referenceProvenance/);
+    expect(storeSource).toMatch(/benchmarkProvenance: referenceProvenance/);
     expect(storeSource).toMatch(/parameterOverrideCount/);
+    expect(storeSource).not.toMatch(/get benchmarkProvenance\(\)/);
   });
 
   it('uses the shared clone policy for benchmark clone-to-custom flow', () => {
     expect(storeSource).toMatch(/shouldAllowBenchmarkClone/);
-    expect(storeSource).toMatch(/function cloneActiveBenchmarkToCustom\(\): boolean/);
+    expect(storeSource).toMatch(/function cloneActiveReferenceToCustom\(\): boolean/);
     expect(storeSource).toMatch(/hasReferenceLibraryCase: Boolean\(activeReferenceBenchmarkFamily\)/);
-    expect(storeSource).toMatch(/cloneActiveReferenceToCustom: cloneActiveBenchmarkToCustom/);
+    expect(storeSource).not.toMatch(/cloneActiveBenchmarkToCustom:/);
   });
 
   it('derives reference metadata from the active library entry instead of the legacy benchmark tab alone', () => {
@@ -27,11 +29,12 @@ describe('simulation store policy wiring', () => {
 
   it('wires benchmark sweep actions and normalized benchmark results through the store', () => {
     expect(storeSource).toMatch(/buildBenchmarkRunSpecs/);
-    expect(storeSource).toMatch(/runActiveBenchmarkSelection/);
-    expect(storeSource).toMatch(/benchmarkRunResults/);
+    expect(storeSource).toMatch(/function runActiveReferenceSelection\(variantKeys: string\[\] = \[\]\): boolean/);
+    expect(storeSource).toMatch(/referenceRunResults/);
     expect(storeSource).toMatch(/activeReferenceBenchmarkFamily/);
-    expect(storeSource).toMatch(/get referenceRunResults\(\) \{ return benchmarkRunResults; \}/);
-    expect(storeSource).toMatch(/runActiveReferenceSelection: runActiveBenchmarkSelection/);
+    expect(storeSource).toMatch(/get referenceRunResults\(\) \{ return referenceRunResults; \}/);
+    expect(storeSource).not.toMatch(/get benchmarkRunResults\(\)/);
+    expect(storeSource).not.toMatch(/runActiveBenchmarkSelection:/);
     expect(storeSource).toMatch(/function activateLibraryEntry\(entryKey: string\): boolean/);
     expect(storeSource).toMatch(/explicitLibraryEntryKey/);
   });

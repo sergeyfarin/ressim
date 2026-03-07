@@ -13,7 +13,7 @@ Primary review source:
 ## Resume State
 
 - Status: `F1.4`, `F1.5`, and `F1.7` are complete and validated; the family-local `Case Library` owns reference entry, `Type Curves` stays selected for Fetkovich-driven state, and the remaining benchmark-named inputs wrapper has been absorbed into `ModePanel`.
-- Next slice: move into `F1.9` cleanup for the remaining benchmark-mode-only plumbing, tests, and docs phrasing.
+- Next slice: continue `F1.9` by pruning benchmark-prefixed compatibility names that still remain in shared contracts and UI-facing types after the store/runtime cleanup.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -227,7 +227,6 @@ These slices are ordered for safe migration. The goal is to change architecture 
   - `Customize` unlocks the case by switching source to `Custom`
 - Primary files:
   - `src/lib/ui/modes/ModePanel.svelte`
-  - replace or retire `src/lib/ui/modes/BenchmarkPanel.svelte`
   - `src/lib/ui/sections/ScenarioSectionsPanel.svelte`
   - `src/lib/ui/modePanelTypes.ts`
 - Acceptance:
@@ -276,8 +275,8 @@ These slices are ordered for safe migration. The goal is to change architecture 
 - Primary files:
   - `src/App.svelte`
   - `src/lib/charts/RateChart.svelte`
-  - `src/lib/charts/BenchmarkChart.svelte`
-  - `src/lib/charts/benchmarkComparisonModel.ts`
+  - `src/lib/charts/ReferenceComparisonChart.svelte`
+  - `src/lib/charts/referenceComparisonModel.ts`
   - `src/lib/visualization/3dview.svelte`
 - Remaining `F1.7` tasks:
   - none; the next cleanup returns to `F1.4` / `F1.5`
@@ -303,6 +302,9 @@ These slices are ordered for safe migration. The goal is to change architecture 
 #### F1.9 Remove Legacy Benchmark-Mode Plumbing And Refresh Tests
 
 - [ ] After the new shell and store paths are stable, remove legacy benchmark-mode-only code and tests.
+- Current progress inside `F1.9`:
+  - authoritative docs now describe family-owned benchmark/reference workflows instead of a separate benchmark mode
+  - the store now uses `reference*` runtime state and actions as the only public surface; benchmark-prefixed store aliases have been removed
 - Retire or repurpose:
   - benchmark top-level mode selectors
   - benchmark-only UI props/types
@@ -409,7 +411,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
     - users understand why an option is unavailable and what to use instead
 
 - [ ] **F9. Refresh README and docs after the UI pass**
-  - Update README, benchmark guide, docs index, and status docs after F1-F8 land.
+  - Update README, benchmark guide, docs index, and the remaining current docs after F1-F8 land.
   - Ensure the docs describe the final workflow and terminology, not transitional states.
   - Acceptance:
     - product docs match the live UI and current mental model
@@ -507,3 +509,8 @@ These were removed from the retained list because they were duplicates or too va
 - [x] General scenario import/export — replaced by structured scenario export/import.
 - [x] Cross-section / slice viewer improvements — replaced by the more specific slice-viewer item.
 - [x] Additional published benchmark families beyond the current BL/depletion scope — retained once, in the physics/benchmark expansion group.
+
+## Documentation Hygiene
+
+- [x] Historical review docs and completed execution-history docs were pruned on 2026-03-07.
+- [x] Long-term improvements worth retaining were kept in this tracker under `Deferred / Later`, `Nice To Have Only`, and the current `F1`-`F9` workstream items.

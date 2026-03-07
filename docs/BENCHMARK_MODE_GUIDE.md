@@ -1,11 +1,11 @@
-# Benchmark Mode Guide
+# Benchmark Workflow Guide
 
 Date: 2026-03-07
 Status: authoritative guide for the current benchmark registry, execution workflow, reference policy, and chart behavior
 
 This page describes the benchmark system that the current frontend code and regression suite enforce. Use it together with `docs/P4_TWO_PHASE_BENCHMARKS.md`:
 
-- this page explains how benchmark mode is organized and how the UI behaves
+- this page explains how family-owned benchmark/reference workflows are organized and how the UI behaves
 - `docs/P4_TWO_PHASE_BENCHMARKS.md` remains the reference for Buckley-Leverett breakthrough methodology and acceptance tolerances
 
 ## Source of truth
@@ -15,10 +15,10 @@ The benchmark system is intentionally split by responsibility, with one logical 
 - benchmark family definitions and generated variants live in `src/lib/catalog/benchmarkCases.ts`
 - benchmark selector wiring and catalog exports live in `src/lib/catalog/caseCatalog.ts`
 - normalized benchmark run specs and stored results live in `src/lib/benchmarkRunModel.ts`
-- benchmark-specific chart defaults live in `src/lib/charts/benchmarkChartConfig.ts`
-- benchmark comparison overlays live in `src/lib/charts/benchmarkComparisonModel.ts` and `src/lib/charts/BenchmarkChart.svelte`
-- benchmark mode workflow UI lives in `src/lib/ui/modes/BenchmarkPanel.svelte`
-- benchmark execution dispatch lives in `src/lib/stores/simulationStore.svelte.ts` through `runActiveBenchmarkSelection()`
+- benchmark-specific chart defaults live in `src/lib/charts/referenceChartConfig.ts`
+- benchmark comparison overlays live in `src/lib/charts/referenceComparisonModel.ts` and `src/lib/charts/ReferenceComparisonChart.svelte`
+- family-owned benchmark/reference workflow UI lives in `src/lib/ui/modes/ModePanel.svelte` and `src/App.svelte`
+- benchmark execution dispatch lives in `src/lib/stores/simulationStore.svelte.ts` through `runActiveReferenceSelection()`
 
 There is no generated benchmark artifact pipeline. Benchmarks execute directly in browser-side WASM, and the authoritative validation evidence remains the Rust and frontend regression suites.
 
@@ -58,16 +58,16 @@ Important interpretation rule:
 
 ## Execution workflow in the UI
 
-Benchmark mode is a benchmark-family runner and comparison surface, not a generic preset launcher.
+Benchmark/reference workflows now live inside the owning product families rather than in a separate top-level benchmark mode.
 
 The current workflow is:
 
-1. Select a benchmark family.
-2. In `Execution Set`, choose either `Base case` or one sensitivity axis.
+1. Select the owning family in `Inputs`, then choose a benchmark/reference case from `Case Library`.
+2. In the `Run` region's `Execution Set`, choose either `Base case` or one sensitivity axis.
 3. If an axis is selected, keep all variants checked or reduce the run to an explicit subset within that axis.
 4. Run the selection through one button (`Run Base` or the axis-specific variant count label).
-5. Review stored benchmark results scoped to the active family.
-6. Optionally clone the selected benchmark into custom mode for ad hoc editing.
+5. Review stored benchmark/reference results scoped to the active family in `Outputs`.
+6. Optionally press `Customize` to seed the same family into editable custom state.
 
 Current workflow constraints:
 
@@ -95,7 +95,7 @@ This policy is surfaced in benchmark summary cards and drives chart defaults and
 
 ## Chart defaults and comparison behavior
 
-Benchmark mode no longer reuses one generic single-run chart contract for every family.
+The benchmark workflow no longer reuses one generic single-run chart contract for every family.
 
 ### Buckley-Leverett defaults
 
@@ -134,8 +134,8 @@ The benchmark system is protected at multiple layers:
 - frontend Rust-parity regression: `src/lib/catalog/benchmarkPresetRuntime.test.ts`
 - benchmark family and catalog integrity: `src/lib/catalog/caseCatalog.test.ts`
 - benchmark run/result contract: `src/lib/benchmarkRunModel.test.ts`
-- benchmark chart default policy: `src/lib/charts/benchmarkChartConfig.test.ts`
-- benchmark multi-run overlay behavior: `src/lib/charts/benchmarkComparisonModel.test.ts`
+- benchmark chart default policy: `src/lib/charts/referenceChartConfig.test.ts`
+- benchmark multi-run overlay behavior: `src/lib/charts/referenceComparisonModel.test.ts`
 - benchmark workflow wiring: `src/lib/ui/modePanelFlows.test.ts` and `src/lib/appStoreDomainWiring.test.ts`
 
 If benchmark documentation and benchmark behavior diverge, update the documentation rather than relying on historical descriptions.

@@ -29,8 +29,8 @@ import {
     buildBenchmarkRunResult,
     buildBenchmarkRunSpecs,
     resolveBenchmarkReferenceComparisons,
-    type BenchmarkRunResult,
-    type BenchmarkRunSpec,
+    type BenchmarkRunResult as ReferenceRunResult,
+    type BenchmarkRunSpec as ReferenceRunSpec,
 } from '../benchmarkRunModel';
 import {
     validateInputs as validateSimulationInputs,
@@ -51,7 +51,7 @@ import {
     shouldAllowBenchmarkClone,
     shouldAutoClearModifiedState,
     type AnalyticalStatus,
-    type BenchmarkProvenance,
+    type BenchmarkProvenance as ReferenceProvenance,
     type ComparisonSelection,
 } from './phase2PresetContract';
 
@@ -198,13 +198,13 @@ export function createSimulationStore() {
     let workerRunning = $state(false);
     let currentRunTotalSteps = $state(0);
     let currentRunStepsCompleted = $state(0);
-    let benchmarkSweepRunning = $state(false);
-    let benchmarkSweepError = $state('');
-    let benchmarkTotalRuns = $state(0);
-    let benchmarkRunsCompleted = $state(0);
-    let benchmarkRunQueue = $state<BenchmarkRunSpec[]>([]);
-    let activeBenchmarkRunSpec: BenchmarkRunSpec | null = $state(null);
-    let benchmarkRunResults = $state<BenchmarkRunResult[]>([]);
+    let referenceSweepRunning = $state(false);
+    let referenceSweepError = $state('');
+    let referenceTotalRuns = $state(0);
+    let referenceRunsCompleted = $state(0);
+    let referenceRunQueue = $state<ReferenceRunSpec[]>([]);
+    let activeReferenceRunSpec: ReferenceRunSpec | null = $state(null);
+    let referenceRunResults = $state<ReferenceRunResult[]>([]);
 
     // Navigation State
     let activeMode = $state<CaseMode>('dep');
@@ -212,7 +212,7 @@ export function createSimulationStore() {
     let isModified = $state(false);
 
     let toggles = $state<ToggleState>(getDefaultToggles('dep'));
-    let benchmarkProvenance: BenchmarkProvenance | null = $state(null);
+    let referenceProvenance: ReferenceProvenance | null = $state(null);
     let activeComparisonSelection = $state<ComparisonSelection>(buildComparisonSelection());
     let explicitLibraryEntryKey: string | null = $state(null);
 
@@ -280,12 +280,12 @@ export function createSimulationStore() {
             ? history[currentIndex].time
             : null,
     );
-    const benchmarkSweepProgressLabel = $derived.by(() => {
-        if (benchmarkTotalRuns <= 0) return '';
-        if (activeBenchmarkRunSpec) {
-            return `${benchmarkRunsCompleted + 1} / ${benchmarkTotalRuns} running ${activeBenchmarkRunSpec.label}`;
+    const referenceSweepProgressLabel = $derived.by(() => {
+        if (referenceTotalRuns <= 0) return '';
+        if (activeReferenceRunSpec) {
+            return `${referenceRunsCompleted + 1} / ${referenceTotalRuns} running ${activeReferenceRunSpec.label}`;
         }
-        return `${benchmarkRunsCompleted} / ${benchmarkTotalRuns} completed`;
+        return `${referenceRunsCompleted} / ${referenceTotalRuns} completed`;
     });
 
     const disabledOptions = $derived(getDisabledOptions(toggles));
@@ -352,8 +352,8 @@ export function createSimulationStore() {
     });
     const activeNavigationLibraryEntry = $derived.by(() => {
         if (activeLibraryEntry) return activeLibraryEntry;
-        if (benchmarkProvenance?.sourceCaseKey) {
-            return getCaseLibraryEntry(benchmarkProvenance.sourceCaseKey);
+        if (referenceProvenance?.sourceCaseKey) {
+            return getCaseLibraryEntry(referenceProvenance.sourceCaseKey);
         }
         return null;
     });
@@ -437,7 +437,7 @@ export function createSimulationStore() {
         if (!shouldAutoClearModifiedState({
             isModified,
             activeMode,
-            benchmarkProvenance,
+            benchmarkProvenance: referenceProvenance,
             parameterOverrideCount,
         })) return;
 
@@ -576,15 +576,15 @@ export function createSimulationStore() {
         });
     }
 
-    function clearBenchmarkRunnerState(clearResults = true) {
-        benchmarkSweepRunning = false;
-        benchmarkSweepError = '';
-        benchmarkTotalRuns = 0;
-        benchmarkRunsCompleted = 0;
-        benchmarkRunQueue = [];
-        activeBenchmarkRunSpec = null;
+    function clearReferenceRunnerState(clearResults = true) {
+        referenceSweepRunning = false;
+        referenceSweepError = '';
+        referenceTotalRuns = 0;
+        referenceRunsCompleted = 0;
+        referenceRunQueue = [];
+        activeReferenceRunSpec = null;
         if (clearResults) {
-            benchmarkRunResults = [];
+            referenceRunResults = [];
         }
     }
 
@@ -600,7 +600,7 @@ export function createSimulationStore() {
         return history.length > 0 ? history[history.length - 1] : null;
     }
 
-    function hydrateRuntimeFromBenchmarkResult(result: BenchmarkRunResult) {
+    function hydrateRuntimeFromReferenceResult(result: ReferenceRunResult) {
         stopPlaying();
         history = result.history ?? [];
         currentIndex = history.length > 0 ? history.length - 1 : -1;
@@ -616,55 +616,55 @@ export function createSimulationStore() {
         }
     }
 
-    function restoreActiveBenchmarkBaseDisplay() {
+    function restoreActiveReferenceBaseDisplay() {
         const family = activeReferenceBenchmarkFamily;
         if (!family) return;
 
         applyCaseParams(family.baseCase.params);
 
-        const baseResult = benchmarkRunResults.find(
+        const baseResult = referenceRunResults.find(
             (result) => result.familyKey === family.key && result.variantKey === null,
         );
         if (baseResult) {
-            hydrateRuntimeFromBenchmarkResult(baseResult);
+            hydrateRuntimeFromReferenceResult(baseResult);
         }
     }
 
-    function finalizeActiveBenchmarkRun() {
-        if (!activeBenchmarkRunSpec) return null;
+    function finalizeActiveReferenceRun() {
+        if (!activeReferenceRunSpec) return null;
 
         const result = buildBenchmarkRunResult({
-            spec: activeBenchmarkRunSpec,
+            spec: activeReferenceRunSpec,
             rateHistory,
             history,
             finalSnapshot: captureCurrentFinalSnapshot(),
         });
 
-        benchmarkRunResults = resolveBenchmarkReferenceComparisons([
-            ...benchmarkRunResults,
+        referenceRunResults = resolveBenchmarkReferenceComparisons([
+            ...referenceRunResults,
             result,
         ]);
-        benchmarkRunsCompleted += 1;
-        activeBenchmarkRunSpec = null;
+        referenceRunsCompleted += 1;
+        activeReferenceRunSpec = null;
         return result;
     }
 
-    function startQueuedBenchmarkRun(): boolean {
+    function startQueuedReferenceRun(): boolean {
         if (!simWorker) return false;
 
-        const [nextSpec, ...remaining] = benchmarkRunQueue;
+        const [nextSpec, ...remaining] = referenceRunQueue;
         if (!nextSpec) return false;
 
-        benchmarkRunQueue = remaining;
-        activeBenchmarkRunSpec = nextSpec;
-        benchmarkSweepError = '';
+        referenceRunQueue = remaining;
+        activeReferenceRunSpec = nextSpec;
+        referenceSweepError = '';
 
         applyCaseParams(nextSpec.params);
         modelNeedsReinit = false;
         modelReinitNotice = '';
         pendingAutoReinit = false;
         runtimeError = '';
-        runtimeWarning = `Running reference case ${benchmarkRunsCompleted + 1} of ${benchmarkTotalRuns}: ${nextSpec.label}`;
+        runtimeWarning = `Running reference case ${referenceRunsCompleted + 1} of ${referenceTotalRuns}: ${nextSpec.label}`;
         currentRunTotalSteps = nextSpec.steps;
         currentRunStepsCompleted = 0;
         runCompleted = false;
@@ -685,7 +685,7 @@ export function createSimulationStore() {
         return true;
     }
 
-    function runBenchmarkSpecs(specs: BenchmarkRunSpec[]): boolean {
+    function runReferenceSpecs(specs: ReferenceRunSpec[]): boolean {
         if (!activeReferenceBenchmarkFamily) {
             runtimeError = 'Reference runner is only available when a library reference case is active.';
             return false;
@@ -694,31 +694,31 @@ export function createSimulationStore() {
             runtimeError = 'WASM not ready yet.';
             return false;
         }
-        if (workerRunning || benchmarkSweepRunning) return false;
+        if (workerRunning || referenceSweepRunning) return false;
         if (!Array.isArray(specs) || specs.length === 0) {
             runtimeError = 'No reference runs are available for the selected family.';
             return false;
         }
 
-        clearBenchmarkRunnerState(true);
-        benchmarkSweepRunning = true;
-        benchmarkTotalRuns = specs.length;
-        benchmarkRunQueue = [...specs];
+        clearReferenceRunnerState(true);
+        referenceSweepRunning = true;
+        referenceTotalRuns = specs.length;
+        referenceRunQueue = [...specs];
         runtimeError = '';
         runtimeWarning = '';
-        return startQueuedBenchmarkRun();
+        return startQueuedReferenceRun();
     }
 
-    function runActiveBenchmarkBase(): boolean {
+    function runActiveReferenceBase(): boolean {
         const family = activeReferenceBenchmarkFamily;
         if (!family) {
             runtimeError = 'Select a reference case before running the reference runner.';
             return false;
         }
-        return runBenchmarkSpecs(buildBenchmarkRunSpecs(family));
+        return runReferenceSpecs(buildBenchmarkRunSpecs(family));
     }
 
-    function runActiveBenchmarkSensitivityAxis(axis: BenchmarkSensitivityAxisKey): boolean {
+    function runActiveReferenceSensitivityAxis(axis: BenchmarkSensitivityAxisKey): boolean {
         const family = activeReferenceBenchmarkFamily;
         if (!family) {
             runtimeError = 'Select a reference case before running a sensitivity reference sweep.';
@@ -733,12 +733,12 @@ export function createSimulationStore() {
             return false;
         }
 
-        return runBenchmarkSpecs(
+        return runReferenceSpecs(
             buildBenchmarkRunSpecs(family, variants),
         );
     }
 
-    function runActiveBenchmarkSelection(variantKeys: string[] = []): boolean {
+    function runActiveReferenceSelection(variantKeys: string[] = []): boolean {
         const family = activeReferenceBenchmarkFamily;
         if (!family) {
             runtimeError = 'Select a reference case before running the reference runner.';
@@ -746,7 +746,7 @@ export function createSimulationStore() {
         }
 
         if (!Array.isArray(variantKeys) || variantKeys.length === 0) {
-            return runActiveBenchmarkBase();
+            return runActiveReferenceBase();
         }
 
         const variantMap = new Map(
@@ -761,7 +761,7 @@ export function createSimulationStore() {
             return false;
         }
 
-        return runBenchmarkSpecs(buildBenchmarkRunSpecs(family, selectedVariants));
+        return runReferenceSpecs(buildBenchmarkRunSpecs(family, selectedVariants));
     }
 
     // ===== Playback Controls =====
@@ -914,14 +914,14 @@ export function createSimulationStore() {
             currentRunStepsCompleted = 0;
             updateProfileStats(message.profile, profileStats.renderApplyMs);
             applyHistoryIndex(history.length - 1);
-            if (benchmarkSweepRunning && activeBenchmarkRunSpec) {
-                finalizeActiveBenchmarkRun();
-                if (benchmarkRunQueue.length > 0) {
-                    startQueuedBenchmarkRun();
+            if (referenceSweepRunning && activeReferenceRunSpec) {
+                finalizeActiveReferenceRun();
+                if (referenceRunQueue.length > 0) {
+                    startQueuedReferenceRun();
                 } else {
-                    benchmarkSweepRunning = false;
-                    restoreActiveBenchmarkBaseDisplay();
-                    runtimeWarning = `Benchmark runner completed ${benchmarkRunResults.length} run(s).`;
+                    referenceSweepRunning = false;
+                    restoreActiveReferenceBaseDisplay();
+                    runtimeWarning = `Reference runner completed ${referenceRunResults.length} run(s).`;
                 }
                 return;
             }
@@ -937,17 +937,17 @@ export function createSimulationStore() {
         if (message.type === 'stopped') {
             workerRunning = false;
             runCompleted = true;
-            if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
-                benchmarkSweepRunning = false;
-                benchmarkRunQueue = [];
-                activeBenchmarkRunSpec = null;
+            if (referenceSweepRunning || activeReferenceRunSpec) {
+                referenceSweepRunning = false;
+                referenceRunQueue = [];
+                activeReferenceRunSpec = null;
                 currentRunTotalSteps = 0;
                 currentRunStepsCompleted = 0;
                 if ('profile' in message && message.profile) {
                     updateProfileStats(message.profile, profileStats.renderApplyMs);
                 }
-                restoreActiveBenchmarkBaseDisplay();
-                runtimeWarning = `Benchmark runner stopped after ${benchmarkRunsCompleted} completed run(s).`;
+                restoreActiveReferenceBaseDisplay();
+                runtimeWarning = `Reference runner stopped after ${referenceRunsCompleted} completed run(s).`;
                 return;
             }
             if (pendingAutoReinit) {
@@ -977,12 +977,12 @@ export function createSimulationStore() {
             workerRunning = false;
             console.error('Simulation worker error:', message.message);
             runtimeError = String(message.message ?? 'Simulation error');
-            if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
-                benchmarkSweepError = runtimeError;
-                benchmarkSweepRunning = false;
-                benchmarkRunQueue = [];
-                activeBenchmarkRunSpec = null;
-                restoreActiveBenchmarkBaseDisplay();
+            if (referenceSweepRunning || activeReferenceRunSpec) {
+                referenceSweepError = runtimeError;
+                referenceSweepRunning = false;
+                referenceRunQueue = [];
+                activeReferenceRunSpec = null;
+                restoreActiveReferenceBaseDisplay();
             }
             if (pendingAutoReinit) pendingAutoReinit = false;
         }
@@ -1139,25 +1139,25 @@ export function createSimulationStore() {
     // ===== Case Navigation =====
 
     function handleModeChange(mode: CaseMode) {
-        if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
+        if (referenceSweepRunning || activeReferenceRunSpec) {
             runtimeWarning = 'Stop the reference runner before switching modes.';
             return;
         }
 
         isModified = false;
-        benchmarkProvenance = null;
+        referenceProvenance = null;
         activeMode = mode;
         toggles = getDefaultToggles(mode);
         explicitLibraryEntryKey = null;
         activeComparisonSelection = buildComparisonSelection();
         baseCaseSignature = '';
-        clearBenchmarkRunnerState(true);
+        clearReferenceRunnerState(true);
 
         handleToggleChange();
     }
 
     function handleToggleChange(dimKey?: string, value?: string) {
-        if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
+        if (referenceSweepRunning || activeReferenceRunSpec) {
             runtimeWarning = 'Stop the reference runner before changing the active case selection.';
             return;
         }
@@ -1172,9 +1172,9 @@ export function createSimulationStore() {
         activeCase = newKey;
         explicitLibraryEntryKey = null;
         isModified = false;
-        benchmarkProvenance = null;
+        referenceProvenance = null;
         activeComparisonSelection = buildComparisonSelection();
-        clearBenchmarkRunnerState(true);
+        clearReferenceRunnerState(true);
 
         applyCaseParams(composeCaseParams(toggles));
         baseCaseSignature = buildCaseSignature();
@@ -1205,7 +1205,7 @@ export function createSimulationStore() {
             runtimeError = 'Selected library case could not be resolved.';
             return false;
         }
-        if (benchmarkSweepRunning || activeBenchmarkRunSpec) {
+        if (referenceSweepRunning || activeReferenceRunSpec) {
             runtimeWarning = 'Stop the reference runner before changing the active library case.';
             return false;
         }
@@ -1217,21 +1217,21 @@ export function createSimulationStore() {
         }
 
         isModified = false;
-        benchmarkProvenance = null;
+        referenceProvenance = null;
         activeMode = nextMode;
         toggles = getDefaultToggles(nextMode);
         explicitLibraryEntryKey = entry.key;
         activeCase = entry.key;
         activeComparisonSelection = buildComparisonSelection();
         baseCaseSignature = '';
-        clearBenchmarkRunnerState(true);
+        clearReferenceRunnerState(true);
 
         applyCaseParams(entry.params);
         baseCaseSignature = buildCaseSignature();
         return true;
     }
 
-    function cloneActiveBenchmarkToCustom(): boolean {
+    function cloneActiveReferenceToCustom(): boolean {
         if (!shouldAllowBenchmarkClone({
             activeMode,
             isModified,
@@ -1248,15 +1248,15 @@ export function createSimulationStore() {
         });
 
         handleParamEdit();
-        if (provenance && !benchmarkProvenance) {
-            benchmarkProvenance = provenance;
+        if (provenance && !referenceProvenance) {
+            referenceProvenance = provenance;
         }
 
         return true;
     }
 
-    function setBenchmarkProvenance(provenance: BenchmarkProvenance | null) {
-        benchmarkProvenance = provenance;
+    function setReferenceProvenance(provenance: ReferenceProvenance | null) {
+        referenceProvenance = provenance;
     }
 
     function handleAnalyticalSolutionModeChange(mode: 'waterflood' | 'depletion') {
@@ -1368,8 +1368,7 @@ export function createSimulationStore() {
         get activeCase() { return activeCase; },
         get isModified() { return isModified; },
         get basePreset() { return basePreset; },
-        get benchmarkProvenance() { return benchmarkProvenance; },
-        get referenceProvenance() { return benchmarkProvenance; },
+        get referenceProvenance() { return referenceProvenance; },
         get toggles() { return toggles; },
         set toggles(v) { toggles = v; },
         get disabledOptions() { return disabledOptions; },
@@ -1377,11 +1376,9 @@ export function createSimulationStore() {
         handleToggleChange,
         handleParamEdit,
         activateLibraryEntry,
-        cloneActiveBenchmarkToCustom,
-        cloneActiveReferenceToCustom: cloneActiveBenchmarkToCustom,
+        cloneActiveReferenceToCustom,
         resolveCustomSubCase,
-        setBenchmarkProvenance,
-        setReferenceProvenance: setBenchmarkProvenance,
+        setReferenceProvenance,
         setComparisonSelection(selection: Partial<ComparisonSelection>) {
             activeComparisonSelection = buildComparisonSelection(selection);
         },
@@ -1486,18 +1483,12 @@ export function createSimulationStore() {
         get runCompleted() { return runCompleted; },
         get currentRunTotalSteps() { return currentRunTotalSteps; },
         get currentRunStepsCompleted() { return currentRunStepsCompleted; },
-        get benchmarkSweepRunning() { return benchmarkSweepRunning; },
-        get referenceSweepRunning() { return benchmarkSweepRunning; },
-        get benchmarkSweepError() { return benchmarkSweepError; },
-        get referenceSweepError() { return benchmarkSweepError; },
-        get benchmarkTotalRuns() { return benchmarkTotalRuns; },
-        get referenceTotalRuns() { return benchmarkTotalRuns; },
-        get benchmarkRunsCompleted() { return benchmarkRunsCompleted; },
-        get referenceRunsCompleted() { return benchmarkRunsCompleted; },
-        get benchmarkSweepProgressLabel() { return benchmarkSweepProgressLabel; },
-        get referenceSweepProgressLabel() { return benchmarkSweepProgressLabel; },
-        get benchmarkRunResults() { return benchmarkRunResults; },
-        get referenceRunResults() { return benchmarkRunResults; },
+        get referenceSweepRunning() { return referenceSweepRunning; },
+        get referenceSweepError() { return referenceSweepError; },
+        get referenceTotalRuns() { return referenceTotalRuns; },
+        get referenceRunsCompleted() { return referenceRunsCompleted; },
+        get referenceSweepProgressLabel() { return referenceSweepProgressLabel; },
+        get referenceRunResults() { return referenceRunResults; },
         get gridStateRaw() { return gridStateRaw; },
         get wellStateRaw() { return wellStateRaw; },
         get simTime() { return simTime; },
@@ -1530,12 +1521,9 @@ export function createSimulationStore() {
         dispose,
         initSimulator,
         runSteps,
-        runActiveBenchmarkBase,
-        runActiveReferenceBase: runActiveBenchmarkBase,
-        runActiveBenchmarkSensitivityAxis,
-        runActiveReferenceSensitivityAxis: runActiveBenchmarkSensitivityAxis,
-        runActiveBenchmarkSelection,
-        runActiveReferenceSelection: runActiveBenchmarkSelection,
+        runActiveReferenceBase,
+        runActiveReferenceSensitivityAxis,
+        runActiveReferenceSelection,
         stepOnce,
         stopRun,
         checkConfigDiff,

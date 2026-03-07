@@ -168,7 +168,6 @@ Primary docs in `docs/` folder:
 - `UNIT_SYSTEM.md` - Current unit system reference
 - `TRANSMISSIBILITY_FACTOR.md` - Current transmissibility constant note
 - `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` - Store-facing preset/customize contract
-- `status.md` - Current snapshot plus historical execution log
 - See `README.md` for quick start and FAQ
 
 ## Common Tasks
