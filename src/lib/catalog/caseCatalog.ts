@@ -18,6 +18,16 @@ import {
     presetCases,
     type PresetEntry,
 } from './presetCases';
+import {
+    caseLibraryEntries,
+    getCaseLibraryEntries,
+    getCaseLibraryEntriesForFamily,
+    getCaseLibraryEntriesForFamilyAndGroup,
+    getCaseLibraryEntriesForGroup,
+    getCaseLibraryEntry,
+    getCaseLibraryGroupsForFamily,
+    type CaseLibraryEntry,
+} from './caseLibrary';
 
 // --- Type Definitions ---
 export type CaseMode = 'dep' | 'wf' | 'sim' | 'benchmark';
@@ -55,9 +65,10 @@ export type CatalogSchema = {
     benchmarks: BenchmarkEntry[];
     benchmarkVariants: BenchmarkVariant[];
     presets: PresetEntry[];
+    caseLibrary: CaseLibraryEntry[];
 };
 
-type CatalogSourceSchema = Omit<CatalogSchema, 'benchmarks' | 'benchmarkVariants' | 'presets'> & {
+type CatalogSourceSchema = Omit<CatalogSchema, 'benchmarks' | 'benchmarkVariants' | 'presets' | 'caseLibrary'> & {
     benchmarks?: BenchmarkEntry[];
     benchmarkVariants?: BenchmarkVariant[];
     presets?: PresetEntry[];
@@ -81,6 +92,7 @@ export const catalog: CatalogSchema = {
     benchmarks: benchmarkCases,
     benchmarkVariants,
     presets: presetCases,
+    caseLibrary: caseLibraryEntries,
 };
 
 export {
@@ -94,6 +106,13 @@ export {
     getBenchmarkSensitivityAxisLabel,
     presetCases,
     getPresetEntry,
+    caseLibraryEntries,
+    getCaseLibraryEntry,
+    getCaseLibraryEntries,
+    getCaseLibraryEntriesForFamily,
+    getCaseLibraryEntriesForGroup,
+    getCaseLibraryEntriesForFamilyAndGroup,
+    getCaseLibraryGroupsForFamily,
 };
 
 export type { BenchmarkSensitivityAxisKey };

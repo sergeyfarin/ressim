@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: review complete, execution plan rewritten, `F1.1` compatibility-layer implementation in progress.
-- Next slice: finish validation for `F1.1` navigation/source contracts before moving to `F1.2`.
+- Status: `F1.1` compatibility-layer contracts are complete and validated; `F1.2` unified case-library adapter is in progress.
+- Next slice: finish the unified case-library adapter and validate catalog-facing tests before moving to `F1.3`.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -92,7 +92,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.1 Introduce New Navigation And Source Contracts
 
-- [~] Add explicit navigation/source state contracts before changing components.
+- [x] Add explicit navigation/source state contracts before changing components.
 - New store concepts:
   - `activeFamily`
   - `activeSource`
@@ -112,7 +112,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.2 Build A Unified Case-Library Catalog Layer
 
-- [ ] Introduce a case-library adapter instead of exposing separate preset and benchmark ownership to the UI shell.
+- [~] Introduce a case-library adapter instead of exposing separate preset and benchmark ownership to the UI shell.
 - The adapter should normalize:
   - family ownership
   - library group (`literature-reference`, `internal-reference`, `curated-starter`)
