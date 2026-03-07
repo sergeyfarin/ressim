@@ -93,7 +93,7 @@ const sourcePresetDefinitions: SourcePresetDefinition[] = [
                     "Water Cut (Sim)": {
                         "disabled": true
                     },
-                    "Water Cut (Analytical)": {
+                    "Water Cut (Reference Solution)": {
                         "disabled": true
                     }
                 }

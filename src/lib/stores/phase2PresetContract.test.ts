@@ -38,19 +38,19 @@ describe('phase2PresetContract', () => {
 
     it('maps benchmark families into compatibility product families', () => {
         expect(resolveProductFamily({
-            activeMode: 'benchmark',
+            activeMode: 'dep',
             benchmarkScenarioClass: 'buckley-leverett',
             benchmarkId: 'bl_case_a_refined',
         })).toBe('waterflood');
 
         expect(resolveProductFamily({
-            activeMode: 'benchmark',
+            activeMode: 'dep',
             benchmarkScenarioClass: 'depletion',
             benchmarkId: 'dietz_sq_center',
         })).toBe('depletion-analysis');
 
         expect(resolveProductFamily({
-            activeMode: 'benchmark',
+            activeMode: 'dep',
             benchmarkScenarioClass: 'depletion',
             benchmarkId: 'fetkovich_exp',
         })).toBe('type-curves');
@@ -70,7 +70,7 @@ describe('phase2PresetContract', () => {
 
     it('builds compatibility navigation state for benchmark references', () => {
         const navigation = buildScenarioNavigationState({
-            activeMode: 'benchmark',
+            activeMode: 'wf',
             isModified: false,
             activeCaseKey: 'bench_bl-case-a-refined',
             activeLibraryCaseKey: 'bl_case_a_refined',
@@ -109,7 +109,7 @@ describe('phase2PresetContract', () => {
 
     it('clears threaded library metadata when navigation becomes custom', () => {
         const navigation = buildScenarioNavigationState({
-            activeMode: 'benchmark',
+            activeMode: 'wf',
             isModified: true,
             activeLibraryCaseKey: 'bl_case_a_refined',
             activeLibraryGroup: 'internal-reference',
@@ -182,7 +182,7 @@ describe('phase2PresetContract', () => {
         expect(navigation.activeSource).toBe('custom');
     });
 
-    it('builds editable starter policy for non-benchmark library cases', () => {
+    it('builds editable starter policy for non-reference library cases', () => {
         const policy = buildScenarioEditabilityPolicy({
             activeMode: 'wf',
             caseSource: 'case-library',
@@ -197,7 +197,7 @@ describe('phase2PresetContract', () => {
         });
     });
 
-    it('treats non-benchmark reference library cases as locked reference flows', () => {
+    it('treats reference library cases as locked reference flows', () => {
         const policy = buildScenarioEditabilityPolicy({
             activeMode: 'dep',
             caseSource: 'case-library',
@@ -226,7 +226,7 @@ describe('phase2PresetContract', () => {
             activeLibraryGroup: 'literature-reference',
         });
 
-        expect(profile.source).toBe('benchmark');
+        expect(profile.source).toBe('reference');
         expect(profile.label).toBe('Dietz Square Center');
         expect(profile.benchmarkId).toBe('dietz_sq_center');
         expect(profile.editabilityPolicy.kind).toBe('library-reference');
@@ -359,7 +359,7 @@ describe('phase2PresetContract', () => {
         expect(status.reasonDetails).toEqual([
             {
                 code: 'analytical-disabled',
-                message: 'Analytical overlay is disabled for this scenario.',
+                message: 'Reference solution guidance is disabled for this scenario.',
                 severity: 'notice',
             },
         ]);
@@ -420,20 +420,13 @@ describe('phase2PresetContract', () => {
         })).toBeNull();
     });
 
-    it('auto-clears modified state only for non-benchmark cases with no provenance and no overrides', () => {
+    it('auto-clears modified state only when there is no seeded reference provenance and no overrides', () => {
         expect(shouldAutoClearModifiedState({
             isModified: true,
             activeMode: 'dep',
             referenceProvenance: null,
             parameterOverrideCount: 0,
         })).toBe(true);
-
-        expect(shouldAutoClearModifiedState({
-            isModified: true,
-            activeMode: 'benchmark',
-            referenceProvenance: null,
-            parameterOverrideCount: 0,
-        })).toBe(false);
 
         expect(shouldAutoClearModifiedState({
             isModified: true,
@@ -456,8 +449,8 @@ describe('phase2PresetContract', () => {
     });
 
     it('only allows clone-to-custom from unmodified reference-capable state', () => {
-        expect(shouldAllowReferenceClone({ activeMode: 'benchmark', isModified: false })).toBe(true);
-        expect(shouldAllowReferenceClone({ activeMode: 'benchmark', isModified: true })).toBe(false);
+        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
+        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: true, hasReferenceLibraryCase: true })).toBe(false);
         expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
         expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false })).toBe(false);
     });

@@ -29,7 +29,7 @@
   const sourceTone = $derived(
     basePreset?.source === "custom"
       ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-950/40 dark:text-amber-300"
-      : basePreset?.source === "benchmark"
+      : basePreset?.source === "reference"
         ? "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-700/70 dark:bg-sky-950/40 dark:text-sky-300"
         : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-950/40 dark:text-emerald-300",
   );
@@ -70,9 +70,9 @@
   } as const;
 
   const RUN_POLICY_LABELS = {
-    single: "Single locked reference execution",
-    sweep: "Library sensitivity sweep",
-    "compare-to-reference": "Reference-comparison execution",
+    single: "Single locked reference run",
+    sweep: "Library sensitivity run set",
+    "compare-to-reference": "Reference review run",
   } as const;
 
   const X_AXIS_LABELS = {
@@ -117,22 +117,12 @@
     };
   });
 
-  const showReferencePanel = $derived(
-    Boolean(activeLibraryEntry?.benchmarkFamilyKey) || activeMode === "benchmark",
-  );
+  const showReferencePanel = $derived(Boolean(activeLibraryEntry?.benchmarkFamilyKey));
   const activeReferenceCaseKey = $derived(
     navigationState?.activeLibraryCaseKey ?? null,
   );
 
-  const scenarioPanelMode = $derived(
-    activeMode === "benchmark"
-      ? (activeFamily === "waterflood"
-        ? "wf"
-        : activeFamily === "scenario-builder"
-          ? "sim"
-          : "dep")
-      : activeMode,
-  );
+  const scenarioPanelMode = $derived(activeMode);
 
   function handleFamilySelect(family: keyof typeof FAMILY_LABELS) {
     if (family === "waterflood") {
@@ -250,7 +240,7 @@
           "No locked library sensitivity policy applies while custom is active.",
         ],
         referencePolicyItems: [
-          "Reference comparison policy now depends on whichever curated case you restore or activate next.",
+          "Reference guidance now depends on whichever curated case you restore or activate next.",
         ],
       };
     }
@@ -264,7 +254,7 @@
     ];
 
     if (activeLibraryEntry.referenceSourceLabel) {
-      sourceItems.splice(1, 0, `Reference basis: ${activeLibraryEntry.referenceSourceLabel}.`);
+      sourceItems.splice(1, 0, `Reference source: ${activeLibraryEntry.referenceSourceLabel}.`);
     }
 
     const fixedSettingsItems = [
@@ -299,7 +289,7 @@
     if (activeLibraryEntry.comparisonMetric) {
       const tolerance = formatTolerancePercent(activeLibraryEntry.comparisonMetric.tolerance);
       referencePolicyItems.push(
-        `Primary comparison metric: breakthrough PVI relative error against ${activeLibraryEntry.comparisonMetric.target === "analytical-reference" ? "the analytical reference" : "the numerical reference"}${tolerance ? ` with a ${tolerance} tolerance target` : ""}.`,
+        `Primary review metric: breakthrough PVI relative error against ${activeLibraryEntry.comparisonMetric.target === "analytical-reference" ? "the reference solution" : "the refined numerical reference"}${tolerance ? ` with a ${tolerance} tolerance target` : ""}.`,
       );
     }
 

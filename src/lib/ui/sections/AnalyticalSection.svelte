@@ -21,17 +21,17 @@
   );
   const summary = $derived(
     analyticalSolutionMode === "depletion"
-      ? `Mode=${modeLabel} · Rate scale=${analyticalDepletionRateScale.toFixed(2)}`
-      : `Mode=${modeLabel}`,
+      ? `Reference=${modeLabel} · Rate scale=${analyticalDepletionRateScale.toFixed(2)}`
+      : `Reference=${modeLabel}`,
   );
 </script>
 
-<Collapsible title="Analytical Inputs">
+<Collapsible title="Reference Inputs">
   <div class={panelBodyClass}>
     <div class="text-xs opacity-70 mb-2">{summary}</div>
     <div class="grid grid-cols-2 gap-2 items-end mb-2">
       <label class="flex flex-col gap-1.5">
-        <span class="text-xs font-medium">Analytical Model</span>
+        <span class="text-xs font-medium">Reference Solution</span>
         <Select
           class="w-full"
           bind:value={analyticalSolutionMode}

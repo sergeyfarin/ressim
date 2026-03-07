@@ -105,7 +105,7 @@
   }
 
   const activeAxisSelectionLabel = $derived.by(() => {
-    if (selectedExecutionRow === "base") return "Base only";
+    if (selectedExecutionRow === "base") return "Base case";
     return getBenchmarkSensitivityAxisLabel(selectedExecutionRow);
   });
   const selectedAxisVariants = $derived.by(() => (
@@ -114,10 +114,10 @@
       : getAxisVariants(selectedExecutionRow).filter((variant) => selectedVariantKeys.includes(variant.variantKey))
   ));
   const runButtonLabel = $derived.by(() => {
-    if (selectedExecutionRow === "base") return "Run Base";
-    if (selectedAxisVariants.length === 0) return `Run ${activeAxisSelectionLabel}`;
+    if (selectedExecutionRow === "base") return "Run Base Case";
+    if (selectedAxisVariants.length === 0) return `Run ${activeAxisSelectionLabel} Set`;
     if (selectedAxisVariants.length === getAxisVariants(selectedExecutionRow).length) {
-      return `Run ${activeAxisSelectionLabel}`;
+      return `Run ${activeAxisSelectionLabel} Set`;
     }
     return `Run ${selectedAxisVariants.length} ${activeAxisSelectionLabel} Variant${selectedAxisVariants.length === 1 ? "" : "s"}`;
   });
@@ -142,7 +142,7 @@
     <div class="p-3 md:p-4 space-y-3">
       <div>
         <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Reference Execution
+          Reference Runs
         </div>
         <div class="mt-2 text-[11px] text-muted-foreground">
           <strong>{activeFamily.label}:</strong>
@@ -158,7 +158,7 @@
 
       <div class="rounded-md border border-border/70 bg-muted/10 p-3">
         <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Execution Set
+          Run Set
         </div>
         <div class="mt-2 space-y-2">
           <button
@@ -173,7 +173,7 @@
               <span>1 run</span>
             </div>
             <div class="mt-1 text-[10px] opacity-80">
-              Run only the active reference-family base case with its primary reference policy.
+              Run only the active library reference base case with its primary reference solution.
             </div>
           </button>
 
@@ -194,8 +194,8 @@
                 </div>
                 <div class="mt-1 text-[10px] text-muted-foreground">
                   {selectedExecutionRow === sensitivityAxis.axis
-                    ? "Select the variants to run in this axis."
-                    : `Click to stage the ${sensitivityAxis.label.toLowerCase()} set.`}
+                    ? "Select the variants to include in this run set."
+                    : `Click to stage the ${sensitivityAxis.label.toLowerCase()} run set.`}
                 </div>
               </button>
 
@@ -235,11 +235,11 @@
               variant="outline"
               onclick={onStopReferenceSweep}
             >
-              Stop Sweep
+              Stop Reference Runs
             </Button>
           {/if}
           <span class="text-[10px] text-muted-foreground">
-            Selected: <strong class="text-foreground">{activeAxisSelectionLabel}</strong>{#if selectedExecutionRow !== "base"} ({selectedAxisVariants.length} variant{selectedAxisVariants.length === 1 ? "" : "s"}){/if}
+            Selected run set: <strong class="text-foreground">{activeAxisSelectionLabel}</strong>{#if selectedExecutionRow !== "base"} ({selectedAxisVariants.length} variant{selectedAxisVariants.length === 1 ? "" : "s"}){/if}
           </span>
         </div>
       </div>

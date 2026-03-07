@@ -26,7 +26,7 @@ describe('caseLibrary adapter', () => {
             referenceSourceLabel: 'Buckley-Leverett analytical shock reference',
             benchmarkFamilyKey: 'bl_case_a_refined',
             activation: {
-                activeMode: 'benchmark',
+                activeMode: 'wf',
                 benchmarkId: 'bl_case_a_refined',
                 presetKey: null,
             },

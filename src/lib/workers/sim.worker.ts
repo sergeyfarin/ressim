@@ -36,10 +36,10 @@ function formatWorkerError(error: unknown): string {
     return `${raw}. Ensure permeability and fluid properties are positive and physically reasonable.`;
   }
   if (lower.includes('initialized')) {
-    return `${raw}. Reinitialize the simulator and retry.`;
+    return `${raw}. Reset the model and retry.`;
   }
 
-  return `${raw}. Try reducing timestep or reinitializing with validated inputs.`;
+  return `${raw}. Try reducing timestep or resetting the model after validating inputs.`;
 }
 
 function post(type: string, payload: Record<string, any> = {}): void {

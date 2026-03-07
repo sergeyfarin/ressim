@@ -40,7 +40,7 @@ describe('referenceChartConfig', () => {
         });
     });
 
-    it('drops analytical BL overlay from primary panel defaults when numerical reference is primary', () => {
+    it('drops the reference-solution BL overlay from primary panel defaults when numerical reference is primary', () => {
         const family = getBenchmarkFamily('bl_case_b_refined');
         const config = getReferenceRateChartLayoutConfig({
             family,

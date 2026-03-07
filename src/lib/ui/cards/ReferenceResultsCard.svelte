@@ -66,15 +66,15 @@
       <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Stored Reference Results
+            Reference Run Results
           </div>
           <div class="mt-2 text-[11px] text-muted-foreground">
             <strong>{family.label}:</strong>
-            {orderedResults.length} stored run{orderedResults.length === 1 ? "" : "s"} ready for output-side comparison.
+            {orderedResults.length} stored run{orderedResults.length === 1 ? "" : "s"} ready for output review.
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
             <span>
-              Chart focus: <strong class="text-foreground">{selectedResult?.label ?? "All runs"}</strong>
+              Output focus: <strong class="text-foreground">{selectedResult?.label ?? "All runs"}</strong>
             </span>
             {#if selectedResult}
               <button
@@ -89,7 +89,7 @@
         </div>
         {#if baseResult}
           <div class="rounded-md border border-border/70 bg-muted/10 px-3 py-2 text-[10px] text-muted-foreground lg:max-w-xs">
-            <div class="font-semibold uppercase tracking-[0.14em]">Base Reference</div>
+            <div class="font-semibold uppercase tracking-[0.14em]">Base Case</div>
             <div class="mt-1 text-foreground">{baseResult.label}</div>
             <div class="mt-1">{baseResult.referencePolicy.referenceLabel}</div>
           </div>
@@ -112,7 +112,7 @@
                   {result.variantKey === null ? "Base case" : `Variant: ${result.variantLabel ?? result.variantKey}`}
                 </div>
                 <div class="mt-2 inline-flex rounded-md border border-border/70 bg-background/80 px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                  {selectedResultKey === result.key ? "Focused in charts" : "Focus in charts"}
+                  {selectedResultKey === result.key ? "Focused in outputs" : "Focus in outputs"}
                 </div>
               </div>
               <span class={`rounded-md border px-2 py-1 font-medium ${comparisonStatusTone(result.referenceComparison.status)}`}>

@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: `F1.4`, `F1.5`, and `F1.7` are complete and validated; the family-local `Case Library` owns reference entry, `Type Curves` stays selected for Fetkovich-driven state, and the remaining benchmark-named inputs wrapper has been absorbed into `ModePanel`.
-- Next slice: continue `F1.9` by pruning legacy `benchmark` mode compatibility from shared catalog/store mode contracts now that runtime state and shared reference contracts are reference-first.
+- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is now in progress with the first terminology pass landed across warning surfaces, run controls, reference-run copy, and the analytical/reference selector labels.
+- Next slice: continue `F2` by normalizing the remaining terminology drift in benchmark-facing docs/help text, residual catalog labels, and any still-visible internal terminology that leaks through advanced diagnostics or reference metadata.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -301,17 +301,22 @@ These slices are ordered for safe migration. The goal is to change architecture 
 
 #### F1.9 Remove Legacy Benchmark-Mode Plumbing And Refresh Tests
 
-- [ ] After the new shell and store paths are stable, remove legacy benchmark-mode-only code and tests.
+- [x] After the new shell and store paths are stable, remove legacy benchmark-mode-only code and tests.
 - Current progress inside `F1.9`:
   - authoritative docs now describe family-owned benchmark/reference workflows instead of a separate benchmark mode
   - the store now uses `reference*` runtime state and actions as the only public surface; benchmark-prefixed store aliases have been removed
   - shared provenance helpers and UI-facing types now use `ReferenceProvenance`, `buildReferenceCloneProvenance(...)`, and `shouldAllowReferenceClone(...)` instead of benchmark-prefixed compatibility names
+  - shared catalog/store contracts now activate reference families through their owning family modes, and `PresetSource` now distinguishes `reference` from `facet` and `custom` without a benchmark-mode compatibility branch
+  - focused validation passed for catalog, contract, store wiring, and mode-panel flows after the benchmark-mode removal slice (`74/74`)
 - Retire or repurpose:
   - benchmark top-level mode selectors
   - benchmark-only UI props/types
   - benchmark-only store guards
   - docs phrased around a separate benchmark mode
 - Primary files:
+  - `src/lib/catalog/caseCatalog.ts`
+  - `src/lib/catalog/caseLibrary.ts`
+  - `src/lib/stores/phase2PresetContract.ts`
   - `src/lib/ui/modes/ModePanel.svelte`
   - `src/lib/ui/modePanelTypes.ts`
   - `src/lib/stores/simulationStore.svelte.ts`
@@ -336,7 +341,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 - [ ] Existing mode-based tests will break in large numbers unless migrated slice-by-slice.
 - [ ] The 3D/output comparison experience must not regress while comparison ownership moves into `Outputs`.
 
-- [ ] **F2. Unify warnings, labels, and terminology**
+- [~] **F2. Unify warnings, labels, and terminology**
   - Keep one warning-policy data model, but redesign the UI around one canonical warning surface plus section-local status/error indicators.
   - Normalize vocabulary across the app:
     - mode names
@@ -346,6 +351,14 @@ These slices are ordered for safe migration. The goal is to change architecture 
     - result summaries
   - Rename ambiguous labels such as `Analytical Model` if the control actually selects a reference/solution mode.
   - Standardize text sizing and hierarchy across section headers, field labels, badges, and microcopy.
+  - Current progress inside `F2`:
+    - warning groups now read as one user-facing system: `Action Required`, `Reliability Cautions`, `Reference Limits`, and `Run Notes`
+    - warning-source badges now map to `Inputs`, `Run`, and `Reference` instead of implementation-first labels
+    - run controls and reference execution copy now use `Run`, `Reset Model`, and `Run Set` wording instead of `Reinit`, `Execution Set`, or reference-runner phrasing
+    - the analytical selector now presents `Reference Inputs` and `Reference Solution`, matching the actual user task
+    - outputs now use output-review and reference-solution wording across stored-result summaries, comparison-chart labels, saturation-profile overlays, and output empty states
+    - inputs disclosure and reference-status messaging now use `Reference source`, `Primary review metric`, and reference-guidance wording instead of analytical-first or sweep-era phrasing
+    - focused validation for the terminology slices passed (`31/31` for the warning/run pass, `23/23` for the output/chart pass, `53/53` for the inputs/disclosure pass)
   - Acceptance:
     - warnings read as one system instead of three related surfaces
     - labels describe user intent rather than implementation details

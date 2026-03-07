@@ -92,7 +92,7 @@ export type ModePanelParameterBindings = {
   handleAnalyticalSolutionModeChange: (mode: AnalyticalSolutionMode) => void;
 };
 
-export type ScenarioMode = Exclude<CaseMode, "benchmark">;
+export type ScenarioMode = CaseMode;
 
 export type ModePanelProps = {
   activeMode: CaseMode;

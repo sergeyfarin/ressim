@@ -31,7 +31,7 @@ export function getReferenceRateChartLayoutConfig(input: {
                     rates: {
                         title: 'Breakthrough',
                         curveLabels: analyticalOverlayPrimary
-                            ? ['Water Cut (Sim)', 'Water Cut (Analytical)', 'Avg Water Sat']
+                            ? ['Water Cut (Sim)', 'Water Cut (Reference Solution)', 'Avg Water Sat']
                             : ['Water Cut (Sim)', 'Avg Water Sat'],
                         scalePreset: 'breakthrough',
                         allowLogToggle: false,
@@ -39,7 +39,7 @@ export function getReferenceRateChartLayoutConfig(input: {
                     cumulative: {
                         title: 'Recovery',
                         curveLabels: analyticalOverlayPrimary
-                            ? ['Recovery Factor', 'Cum Oil', 'Cum Oil (Analytical)', 'Cum Injection']
+                            ? ['Recovery Factor', 'Cum Oil', 'Cum Oil (Reference Solution)', 'Cum Injection']
                             : ['Recovery Factor', 'Cum Oil', 'Cum Injection'],
                         scalePreset: 'cumulative',
                     },
@@ -70,18 +70,18 @@ export function getReferenceRateChartLayoutConfig(input: {
             panels: {
                 rates: {
                     title: 'Oil Rate',
-                    curveLabels: ['Oil Rate', 'Oil Rate (Analytical)', 'Oil Rate Error'],
+                    curveLabels: ['Oil Rate', 'Oil Rate (Reference Solution)', 'Oil Rate Error'],
                     scalePreset: 'rates',
                     allowLogToggle: true,
                 },
                 cumulative: {
                     title: 'Cumulative Oil / Recovery',
-                    curveLabels: ['Cum Oil', 'Cum Oil (Analytical)', 'Recovery Factor'],
+                    curveLabels: ['Cum Oil', 'Cum Oil (Reference Solution)', 'Recovery Factor'],
                     scalePreset: 'cumulative',
                 },
                 diagnostics: {
                     title: 'Pressure / Decline',
-                    curveLabels: ['Avg Pressure', 'Avg Pressure (Analytical)'],
+                    curveLabels: ['Avg Pressure', 'Avg Pressure (Reference Solution)'],
                     scalePreset: 'pressure',
                 },
             },

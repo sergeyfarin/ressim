@@ -37,8 +37,8 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/const activeRunManifest = \$derived\.by/);
     expect(appSource).toMatch(/scenario\.activeLibraryEntry\?\.referencePolicySummary/);
     expect(appSource).toMatch(/scenario\.referenceProvenance/);
-    expect(appSource).toMatch(/Run Manifest/);
-    expect(appSource).toMatch(/Reference Sweep Status/);
+    expect(appSource).toMatch(/Run Summary/);
+    expect(appSource).toMatch(/Reference Run Status/);
   });
 
   it('uses resolved library metadata for non-benchmark layout config', () => {

@@ -38,7 +38,7 @@ export const MODE_PANEL_SECTIONS: readonly ModePanelSectionDefinition[] = [
   { key: "scal", label: "Relative Perm & Capillary", dims: ["cap"] },
   { key: "wells", label: "Wells", dims: ["well"] },
   { key: "timestep", label: "Timestep & Stability", dims: ["dt"] },
-  { key: "analytical", label: "Analytical", dims: [] },
+  { key: "analytical", label: "Reference Solution", dims: [] },
 ] as const;
 
 export function getModePanelSections(

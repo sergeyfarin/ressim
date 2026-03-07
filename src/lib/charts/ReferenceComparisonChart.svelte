@@ -191,7 +191,7 @@
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="text-[11px] uppercase tracking-wide opacity-50">
-                Stored Run Comparison
+                Output Comparison
             </div>
             <div class="text-[11px] text-muted-foreground">
                 {overlayModel.orderedResults.length} stored run(s)
@@ -199,7 +199,7 @@
         </div>
         {#if primaryResultKey}
             <div class="text-[11px] text-muted-foreground">
-                Focused comparison keeps the selected case and its comparison context visible by default.
+                Focused review keeps the selected case and its reference context visible by default.
             </div>
         {/if}
         <div class="flex items-center gap-2 overflow-x-auto">

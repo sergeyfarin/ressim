@@ -2,7 +2,6 @@ import catalogDataRaw from './catalog.json';
 import {
     benchmarkCases,
     benchmarkFamilies,
-    getBenchmarkDimensionOptions,
     getBenchmarkEntry,
     getBenchmarkFamily,
     getBenchmarkSensitivityAxisLabel,
@@ -30,7 +29,8 @@ import {
 } from './caseLibrary';
 
 // --- Type Definitions ---
-export type CaseMode = 'dep' | 'wf' | 'sim' | 'benchmark';
+export type CaseMode = 'dep' | 'wf' | 'sim';
+type CatalogModeKey = CaseMode | 'benchmark';
 
 export type DimensionOption = {
     value: string;
@@ -68,7 +68,8 @@ export type CatalogSchema = {
     caseLibrary: CaseLibraryEntry[];
 };
 
-type CatalogSourceSchema = Omit<CatalogSchema, 'benchmarks' | 'benchmarkVariants' | 'presets' | 'caseLibrary'> & {
+type CatalogSourceSchema = Omit<CatalogSchema, 'modes' | 'benchmarks' | 'benchmarkVariants' | 'presets' | 'caseLibrary'> & {
+    modes: Record<CatalogModeKey, ModeCatalog>;
     benchmarks?: BenchmarkEntry[];
     benchmarkVariants?: BenchmarkVariant[];
     presets?: PresetEntry[];
@@ -79,15 +80,9 @@ const rawCatalog = catalogDataRaw as unknown as CatalogSourceSchema;
 export const catalog: CatalogSchema = {
     ...rawCatalog,
     modes: {
-        ...rawCatalog.modes,
-        benchmark: {
-            ...rawCatalog.modes.benchmark,
-            dimensions: rawCatalog.modes.benchmark.dimensions.map((dimension) => (
-                dimension.key === 'benchmarkId'
-                    ? { ...dimension, options: getBenchmarkDimensionOptions() }
-                    : dimension
-            )),
-        },
+        dep: rawCatalog.modes.dep,
+        wf: rawCatalog.modes.wf,
+        sim: rawCatalog.modes.sim,
     },
     benchmarks: benchmarkCases,
     benchmarkVariants,
@@ -120,7 +115,7 @@ export type { BenchmarkSensitivityAxisKey };
 export type ToggleState = Record<string, string>;
 
 function normalizeMode(mode: string | undefined): CaseMode {
-    if (mode === 'wf' || mode === 'sim' || mode === 'benchmark') return mode;
+    if (mode === 'wf' || mode === 'sim') return mode;
     return 'dep';
 }
 
@@ -158,7 +153,7 @@ export function resolveCaseLibraryEntryFromScenario(input: {
     benchmarkId?: string | null;
     scenarioParams?: Record<string, any> | null;
 }): CaseLibraryEntry | null {
-    if (input.activeMode === 'benchmark') {
+    if (input.benchmarkId) {
         return getCaseLibraryEntry(input.benchmarkId ?? null);
     }
 
@@ -216,12 +211,6 @@ export function computeWellPositions(params: Record<string, any>, geo: string, w
 export function composeCaseParams(toggles: ToggleState): Record<string, any> {
     const mode = normalizeMode(toggles.mode);
 
-    if (mode === 'benchmark') {
-        const bench = getBenchmarkEntry(toggles.benchmarkId);
-        if (bench) return { ...catalog.defaults, ...bench.params };
-        return catalog.defaults;
-    }
-
     const modeCatalog = getModeCatalog(mode);
     let params = { ...catalog.defaults, ...modeCatalog.baseParams };
 
@@ -246,10 +235,6 @@ export function composeCaseParams(toggles: ToggleState): Record<string, any> {
 export function buildCaseKey(toggles: ToggleState): string {
     const mode = normalizeMode(toggles.mode);
 
-    if (mode === 'benchmark') {
-        return `bench_${toggles.benchmarkId.replace(/_/g, '-')}`;
-    }
-
     const modeCatalog = getModeCatalog(mode);
 
     // Keep mode prefix stable while using mode-local dimension order.
@@ -266,7 +251,6 @@ export function buildCaseKey(toggles: ToggleState): string {
  */
 export function getDisabledOptions(toggles: ToggleState): Record<string, Record<string, string>> {
     const mode = normalizeMode(toggles.mode);
-    if (mode === 'benchmark') return {};
 
     const modeCatalog = getModeCatalog(mode);
     const disabled: Record<string, Record<string, string>> = {};

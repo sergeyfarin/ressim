@@ -57,26 +57,26 @@ export type WarningPolicyInput = {
 const GROUP_META: Record<WarningPolicyGroupKey, Omit<WarningPolicyGroup, "items">> = {
   blockingValidation: {
     key: "blockingValidation",
-    title: "Blocking Validation",
-    description: "These inputs must be fixed before init or run can proceed.",
+    title: "Action Required",
+    description: "Resolve these inputs before initializing or running.",
     tone: "destructive",
   },
   nonPhysical: {
     key: "nonPhysical",
-    title: "Non-Physical / Contradictory",
-    description: "Editable states that can undermine physical or numerical reliability.",
+    title: "Reliability Cautions",
+    description: "These settings can undermine physical realism or solver stability.",
     tone: "warning",
   },
   referenceCaveat: {
     key: "referenceCaveat",
-    title: "Reference-Model Caveat",
-    description: "Analytical overlay remains permissive but is no longer a strict reference match.",
+    title: "Reference Limits",
+    description: "Reference guidance is still shown, but this case is no longer a strict match.",
     tone: "info",
   },
   advisory: {
     key: "advisory",
-    title: "Advisory",
-    description: "Operational notices and softer guidance that should stay visible.",
+    title: "Run Notes",
+    description: "Operational notices about resets, runtime changes, and long runs.",
     tone: "info",
   },
 };

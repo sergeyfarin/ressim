@@ -27,7 +27,7 @@ import {
 
 export type CaseLibraryEntryKind = 'benchmark-family' | 'preset';
 
-export type CaseLibraryActivationMode = PresetMode | 'benchmark';
+export type CaseLibraryActivationMode = PresetMode;
 
 export type CaseLibraryActivation = {
     activeMode: CaseLibraryActivationMode;
@@ -161,7 +161,7 @@ function buildBenchmarkReferencePolicySummary(
         : 'Locked literature reference case.';
     const sensitivityClause = sensitivityAxes.length > 0
         ? `Allowed library sensitivities: ${sensitivityAxes.map((axis) => axis.label).join(', ')}.`
-        : 'No library sensitivity sweep is exposed for this reference case.';
+        : 'No library sensitivity run set is exposed for this reference case.';
 
     return `${caseLabel} Runs compare directly against the ${referenceSourceLabel}. ${sensitivityClause} Use Customize to branch into a writable custom scenario when you need to edit fixed inputs.`;
 }
@@ -195,26 +195,34 @@ function buildPresetProvenanceSummary(entry: PresetEntry): string {
 }
 
 function buildPresetSensitivitySummary(): string {
-    return 'No locked library sensitivity sweep is defined for this starter case.';
+    return 'No locked library sensitivity run set is defined for this starter case.';
+}
+
+function resolveActivationModeForFamily(family: ProductFamily): PresetMode {
+    if (family === 'waterflood') return 'wf';
+    if (family === 'scenario-builder') return 'sim';
+    return 'dep';
 }
 
 function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
     const sensitivityAxes = buildBenchmarkSensitivityAxes(family);
     const referenceSourceLabel = buildBenchmarkSourceLabel(family);
     const provenance = getBenchmarkProvenanceMetadata(family);
+    const productFamily = resolveProductFamily({
+        activeMode: 'dep',
+        benchmarkScenarioClass: family.scenarioClass,
+        benchmarkId: family.key,
+    });
+    const activationMode = resolveActivationModeForFamily(productFamily);
 
     return {
         key: family.key,
         entryKind: 'benchmark-family',
-        family: resolveProductFamily({
-            activeMode: 'benchmark',
-            benchmarkScenarioClass: family.scenarioClass,
-            benchmarkId: family.key,
-        }),
+        family: productFamily,
         group: provenance.group,
         caseSource: CASE_LIBRARY_SOURCE,
         activation: {
-            activeMode: 'benchmark',
+            activeMode: activationMode,
             benchmarkId: family.key,
             presetKey: null,
         },
@@ -235,8 +243,9 @@ function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
             : 'No library sensitivities available.',
         sensitivityAxes,
         editabilityPolicy: buildScenarioEditabilityPolicy({
-            activeMode: 'benchmark',
+            activeMode: activationMode,
             caseSource: CASE_LIBRARY_SOURCE,
+            activeLibraryGroup: provenance.group,
         }),
         benchmarkFamilyKey: family.key,
         benchmarkReference: family.reference,

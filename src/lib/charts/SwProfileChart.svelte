@@ -84,7 +84,7 @@
                         pointRadius: 0,
                     },
                     {
-                        label: "Analytical Front Profile",
+                        label: "Reference Front Profile",
                         data: [],
                         borderColor: "#16a34a",
                         borderWidth: 2,
@@ -290,9 +290,9 @@
                 </h3>
                 <p class="text-xs opacity-70">
                     {#if scenarioMode === "waterflood"}
-                        {sourceLabel} snapshot vs analytical flood-front profile (k = 0 plane).
+                        {sourceLabel} snapshot vs reference flood-front profile (k = 0 plane).
                     {:else}
-                        {sourceLabel} snapshot along the k = 0 plane. Analytical flood-front overlay is only available for waterflood cases.
+                        {sourceLabel} snapshot along the k = 0 plane. Reference flood-front overlay is only available for waterflood cases.
                     {/if}
                 </p>
             </div>
@@ -315,7 +315,7 @@
 
         {#if frontCellIndex !== null}
             <div class="mt-2 text-xs opacity-80">
-                Analytical front is near cell i ≈ {frontCellIndex} at t = {simTime.toFixed(
+                Reference front is near cell i ≈ {frontCellIndex} at t = {simTime.toFixed(
                     2,
                 )} days.
             </div>

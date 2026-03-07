@@ -342,7 +342,7 @@ export function createSimulationStore() {
         return resolveCaseLibraryEntryFromScenario({
             activeMode,
             benchmarkId: toggles.benchmarkId ?? null,
-            scenarioParams: activeMode === 'benchmark' ? null : composeCaseParams(toggles),
+            scenarioParams: composeCaseParams(toggles),
         });
     });
 
@@ -360,7 +360,7 @@ export function createSimulationStore() {
 
     const basePreset = $derived.by(() => {
         const benchmarkId = activeReferenceBenchmarkFamily?.key
-            ?? (activeMode === 'benchmark' ? (toggles.benchmarkId ?? null) : null);
+            ?? null;
         const benchmarkLabel = activeLibraryEntry?.label
             ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
 
@@ -380,7 +380,7 @@ export function createSimulationStore() {
 
     const navigationState = $derived.by(() => {
         const benchmarkId = activeReferenceBenchmarkFamily?.key
-            ?? (activeMode === 'benchmark' ? (toggles.benchmarkId ?? null) : null);
+            ?? null;
 
         return buildScenarioNavigationState({
             activeMode,
@@ -687,7 +687,7 @@ export function createSimulationStore() {
 
     function runReferenceSpecs(specs: ReferenceRunSpec[]): boolean {
         if (!activeReferenceBenchmarkFamily) {
-            runtimeError = 'Reference runner is only available when a library reference case is active.';
+            runtimeError = 'Reference runs are only available when a library reference case is active.';
             return false;
         }
         if (!wasmReady || !simWorker) {
@@ -712,7 +712,7 @@ export function createSimulationStore() {
     function runActiveReferenceBase(): boolean {
         const family = activeReferenceBenchmarkFamily;
         if (!family) {
-            runtimeError = 'Select a reference case before running the reference runner.';
+            runtimeError = 'Select a library reference before running the reference set.';
             return false;
         }
         return runReferenceSpecs(buildBenchmarkRunSpecs(family));
@@ -721,7 +721,7 @@ export function createSimulationStore() {
     function runActiveReferenceSensitivityAxis(axis: BenchmarkSensitivityAxisKey): boolean {
         const family = activeReferenceBenchmarkFamily;
         if (!family) {
-            runtimeError = 'Select a reference case before running a sensitivity reference sweep.';
+            runtimeError = 'Select a library reference before running a sensitivity set.';
             return false;
         }
 
@@ -741,7 +741,7 @@ export function createSimulationStore() {
     function runActiveReferenceSelection(variantKeys: string[] = []): boolean {
         const family = activeReferenceBenchmarkFamily;
         if (!family) {
-            runtimeError = 'Select a reference case before running the reference runner.';
+            runtimeError = 'Select a library reference before running the reference set.';
             return false;
         }
 
@@ -757,7 +757,7 @@ export function createSimulationStore() {
             .filter((variant): variant is NonNullable<typeof variant> => Boolean(variant));
 
         if (selectedVariants.length === 0) {
-            runtimeError = 'Select at least one sensitivity variant before running the reference runner.';
+            runtimeError = 'Select at least one sensitivity variant before running the reference set.';
             return false;
         }
 
@@ -846,7 +846,7 @@ export function createSimulationStore() {
         runtimeError = '';
         if (showReinitNotice) {
             modelNeedsReinit = true;
-            modelReinitNotice = 'Model reinit required due to input changes';
+            modelReinitNotice = 'Model reset required after input changes.';
         }
         vizRevision += 1;
     }
@@ -921,7 +921,7 @@ export function createSimulationStore() {
                 } else {
                     referenceSweepRunning = false;
                     restoreActiveReferenceBaseDisplay();
-                    runtimeWarning = `Reference runner completed ${referenceRunResults.length} run(s).`;
+                    runtimeWarning = `Reference run set completed ${referenceRunResults.length} run(s).`;
                 }
                 return;
             }
@@ -929,7 +929,7 @@ export function createSimulationStore() {
                 pendingAutoReinit = false;
                 const reinitialized = initSimulator({ silent: true });
                 runtimeWarning = reinitialized
-                    ? 'Config changed. Reservoir reinitialized at step 0.'
+                    ? 'Inputs changed. Model reset to step 0.'
                     : runtimeWarning;
             }
             return;
@@ -947,14 +947,14 @@ export function createSimulationStore() {
                     updateProfileStats(message.profile, profileStats.renderApplyMs);
                 }
                 restoreActiveReferenceBaseDisplay();
-                runtimeWarning = `Reference runner stopped after ${referenceRunsCompleted} completed run(s).`;
+                runtimeWarning = `Reference run set stopped after ${referenceRunsCompleted} completed run(s).`;
                 return;
             }
             if (pendingAutoReinit) {
                 pendingAutoReinit = false;
                 const reinitialized = initSimulator({ silent: true });
                 runtimeWarning = reinitialized
-                    ? 'Config changed during run. Reinitialized at step 0.'
+                    ? 'Inputs changed during the run. Model reset to step 0.'
                     : runtimeWarning;
                 return;
             }
@@ -1000,7 +1000,7 @@ export function createSimulationStore() {
         };
         simWorker.onmessageerror = () => {
             workerRunning = false;
-            runtimeError = 'Worker message deserialization failed. Reinitialize and retry.';
+            runtimeError = 'Worker message deserialization failed. Reset the model and retry.';
         };
         simWorker.postMessage({ type: 'init' });
     }
@@ -1022,7 +1022,6 @@ export function createSimulationStore() {
             raw === 'dep' || raw === 'depletion' ? 'dep'
                 : raw === 'wf' || raw === 'waterflood' ? 'wf'
                     : raw === 'sim' || raw === 'simulation' ? 'sim'
-                        : raw === 'benchmark' ? 'benchmark'
                             : null;
         if (!normalizedMode) return null;
         return CUSTOM_SUBCASE_BY_MODE[normalizedMode] ?? null;
@@ -1068,7 +1067,7 @@ export function createSimulationStore() {
         runtimeError = '';
         runtimeWarning = '';
         if (switchedToCustomSubCase) {
-            runtimeWarning = 'Preset modified. Reinitialized as a custom sub-case.';
+            runtimeWarning = 'Library case modified. Reset as a custom case.';
         }
         vizRevision += 1;
         const payload = buildCreatePayload();
@@ -1125,11 +1124,11 @@ export function createSimulationStore() {
             resetSimulationState({ clearErrors: true, clearWarnings: false, resetProfile: true, bumpViz: true });
             if (workerRunning) {
                 pendingAutoReinit = true;
-                runtimeWarning = 'Config changed during run. Stopping and reinitializing…';
+                runtimeWarning = 'Inputs changed during the run. Stopping and resetting…';
                 stopRun();
             } else {
                 const reinitialized = initSimulator({ silent: true });
-                runtimeWarning = reinitialized ? 'Config changed. Reservoir reinitialized at step 0.' : runtimeWarning;
+                runtimeWarning = reinitialized ? 'Inputs changed. Model reset to step 0.' : runtimeWarning;
             }
             return;
         }
@@ -1140,7 +1139,7 @@ export function createSimulationStore() {
 
     function handleModeChange(mode: CaseMode) {
         if (referenceSweepRunning || activeReferenceRunSpec) {
-            runtimeWarning = 'Stop the reference runner before switching modes.';
+            runtimeWarning = 'Stop reference runs before switching families.';
             return;
         }
 
@@ -1158,7 +1157,7 @@ export function createSimulationStore() {
 
     function handleToggleChange(dimKey?: string, value?: string) {
         if (referenceSweepRunning || activeReferenceRunSpec) {
-            runtimeWarning = 'Stop the reference runner before changing the active case selection.';
+            runtimeWarning = 'Stop reference runs before changing the active case.';
             return;
         }
 
@@ -1206,7 +1205,7 @@ export function createSimulationStore() {
             return false;
         }
         if (referenceSweepRunning || activeReferenceRunSpec) {
-            runtimeWarning = 'Stop the reference runner before changing the active library case.';
+            runtimeWarning = 'Stop reference runs before changing the active library case.';
             return false;
         }
 

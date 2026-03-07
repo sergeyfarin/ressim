@@ -30,8 +30,8 @@ describe("warningPolicy filters", () => {
       ],
       analyticalStatus: referenceStatus,
       solverWarning: "Pressure solve stalled; check timestep limits.",
-      runtimeWarning: "Config changed during run. Reservoir reinitialized at step 0.",
-      modelReinitNotice: "Model reinit required due to input changes",
+      runtimeWarning: "Inputs changed during the run. Model reset to step 0.",
+      modelReinitNotice: "Model reset required after input changes.",
       longRunEstimate: true,
       estimatedRunSeconds: 18.2,
     });

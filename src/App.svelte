@@ -213,8 +213,8 @@
 
         const referencePolicySummary = scenario.activeLibraryEntry?.referencePolicySummary
             ?? (navigation.activeSource === "custom"
-                ? "Reference policy is determined by the curated case you restore or activate next."
-                : "Reference policy summary is not available for the current case.");
+                ? "Reference guidance depends on the curated case you restore or activate next."
+                : "Reference guidance summary is not available for the current case.");
 
         return {
             familyLabel,
@@ -575,7 +575,7 @@
                 Run
             </div>
             <div class="text-sm text-muted-foreground">
-                Execution controls, validation status, and runtime warnings.
+                Run actions, validation status, and run notices.
             </div>
         </div>
         <RunControls
@@ -612,7 +612,7 @@
             <Card>
                 <div class="p-3 md:p-4 space-y-3">
                     <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                        Run Manifest
+                        Run Summary
                     </div>
 
                     <div class="grid gap-3 xl:grid-cols-2">
@@ -621,7 +621,7 @@
                             <div class="mt-2">Family: <strong class="text-foreground">{activeRunManifest.familyLabel}</strong></div>
                             <div>Source: <strong class="text-foreground">{activeRunManifest.sourceLabel}</strong></div>
                             <div>Case: <strong class="text-foreground">{activeRunManifest.caseLabel}</strong></div>
-                            <div class="mt-1">Execution mode: {activeRunManifest.executionMode}.</div>
+                            <div class="mt-1">Run mode: {activeRunManifest.executionMode}.</div>
                             {#if activeRunManifest.provenanceSummary}
                                 <div class="mt-1">{activeRunManifest.provenanceSummary}</div>
                             {/if}
@@ -637,7 +637,7 @@
 
                     {#if runtime.referenceSweepProgressLabel || runtime.referenceSweepError}
                         <div class="rounded-md border border-border/70 bg-background/80 p-3 text-[10px] text-muted-foreground">
-                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Sweep Status</div>
+                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Run Status</div>
                             {#if runtime.referenceSweepProgressLabel}
                                 <div class="mt-2">{runtime.referenceSweepProgressLabel}</div>
                             {/if}
@@ -718,7 +718,7 @@
                         <div
                             class="p-4 md:p-5 text-sm text-muted-foreground w-full text-center"
                         >
-                            Loading rate chart…
+                            Loading output chart…
                         </div>
                     {/if}
                 </Card>
@@ -750,10 +750,10 @@
                         class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
                     >
                         <div class="font-semibold text-foreground">
-                            Depletion Analytical Mode
+                            Depletion Reference Solution
                         </div>
                         <div class="text-muted-foreground mt-1">
-                            Model: {runtime.analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
+                            Reference solution: {runtime.analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
                                 >−t/τ</sup
                             >, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J
                         </div>
@@ -763,10 +763,10 @@
                         class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
                     >
                         <div class="font-semibold text-foreground">
-                            Waterflood Analytical Mode
+                            Waterflood Reference Solution
                         </div>
                         <div class="text-muted-foreground mt-1">
-                            Model: Buckley-Leverett Fractional Flow
+                            Reference solution: Buckley-Leverett fractional flow
                         </div>
                     </div>
                 {/if}
@@ -810,7 +810,7 @@
                                             class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary"
                                         ></div>
                                         <span class="text-sm font-medium"
-                                            >Loading...</span
+                                            >Loading 3D output...</span
                                         >
                                     </div>
                                 {:else}
@@ -818,7 +818,7 @@
                                         size="sm"
                                         variant="default"
                                         onclick={loadThreeDViewModule}
-                                        >Load 3D view</Button
+                                        >Open 3D View</Button
                                     >
                                 {/if}
                             </div>

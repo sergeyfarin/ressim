@@ -203,11 +203,11 @@ function buildBuckleyLeverettReference(
     ));
 
     return {
-        rates: { label: 'Analytical Water Cut', values: waterCut },
+        rates: { label: 'Reference Solution Water Cut', values: waterCut },
         cumulative: {
-            recoveryLabel: 'Analytical Recovery',
+            recoveryLabel: 'Reference Solution Recovery',
             recoveryValues: recovery,
-            cumulativeLabel: 'Analytical Cum Oil',
+            cumulativeLabel: 'Reference Solution Cum Oil',
             cumulativeValues: analyticalProduction.map((point) => point.cumulativeOil),
         },
         diagnostics: null,
@@ -258,19 +258,19 @@ function buildDepletionReference(
 
     return {
         rates: {
-            label: 'Analytical Oil Rate',
+            label: 'Reference Solution Oil Rate',
             values: analyticalResult.production.map((point) => point.oilRate),
         },
         cumulative: {
-            recoveryLabel: 'Analytical Recovery',
+            recoveryLabel: 'Reference Solution Recovery',
             recoveryValues: analyticalResult.production.map((point) => (
                 ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
             )),
-            cumulativeLabel: 'Analytical Cum Oil',
+            cumulativeLabel: 'Reference Solution Cum Oil',
             cumulativeValues: analyticalResult.production.map((point) => point.cumulativeOil),
         },
         diagnostics: {
-            label: 'Analytical Avg Pressure',
+            label: 'Reference Solution Avg Pressure',
             values: analyticalResult.production.map((point) => point.avgPressure),
         },
         xValues: buildXAxisValues(

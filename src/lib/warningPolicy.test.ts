@@ -11,7 +11,7 @@ const referenceStatus: AnalyticalStatus = {
 };
 
 describe("warningPolicy", () => {
-  it("groups blocking validation, non-physical, and advisory items separately", () => {
+  it("groups action-required, reliability, and run-note items separately", () => {
     const policy = buildWarningPolicy({
       validationErrors: {
         nx: "Nx must be an integer >= 1.",
@@ -31,11 +31,15 @@ describe("warningPolicy", () => {
         },
       ],
       analyticalStatus: referenceStatus,
-      runtimeWarning: "Config changed during run. Reservoir reinitialized at step 0.",
+      runtimeWarning: "Inputs changed during the run. Model reset to step 0.",
       solverWarning: "Pressure solve stalled; check timestep limits.",
-      modelReinitNotice: "Model reinit required due to input changes",
+      modelReinitNotice: "Model reset required after input changes.",
     });
 
+    expect(policy.blockingValidation.title).toBe("Action Required");
+    expect(policy.nonPhysical.title).toBe("Reliability Cautions");
+    expect(policy.referenceCaveat.title).toBe("Reference Limits");
+    expect(policy.advisory.title).toBe("Run Notes");
     expect(policy.blockingValidation.items).toHaveLength(1);
     expect(policy.nonPhysical.items.map((item) => item.code)).toEqual([
       "pressure-step-large",
@@ -48,7 +52,7 @@ describe("warningPolicy", () => {
     ]);
   });
 
-  it("surfaces analytical approximation reasons as reference-model caveats", () => {
+  it("surfaces analytical approximation reasons as reference-limit items", () => {
     const policy = buildWarningPolicy({
       validationErrors: {},
       validationWarnings: [],

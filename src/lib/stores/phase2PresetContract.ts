@@ -1,6 +1,6 @@
 import type { CaseMode, ToggleState } from '../catalog/caseCatalog';
 
-export type PresetSource = 'facet' | 'benchmark' | 'custom';
+export type PresetSource = 'facet' | 'reference' | 'custom';
 
 export type ProductFamily =
     | 'waterflood'
@@ -70,16 +70,17 @@ export function resolveProductFamily(input: {
     benchmarkId?: string | null;
 }): ProductFamily {
     if (input.activeLibraryFamily) return input.activeLibraryFamily;
-    if (input.activeMode === 'wf') return 'waterflood';
-    if (input.activeMode === 'sim') return 'scenario-builder';
-    if (input.activeMode === 'dep') return 'depletion-analysis';
-
     if (input.benchmarkScenarioClass === 'buckley-leverett') {
         return 'waterflood';
     }
     if (isFetkovichBenchmarkCase(input.benchmarkId ?? null)) {
         return 'type-curves';
     }
+    if (input.benchmarkScenarioClass === 'depletion') {
+        return 'depletion-analysis';
+    }
+    if (input.activeMode === 'wf') return 'waterflood';
+    if (input.activeMode === 'sim') return 'scenario-builder';
     return 'depletion-analysis';
 }
 
@@ -90,23 +91,24 @@ export function resolveScenarioSource(input: {
 }
 
 export function resolveLibraryCaseKey(input: {
-    activeMode: CaseMode;
     caseKey: string | null | undefined;
     benchmarkId?: string | null;
     caseSource: ScenarioSource;
 }): string | null {
     if (input.caseSource === 'custom') return null;
-    if (input.activeMode === 'benchmark') return input.benchmarkId ?? null;
+    if (input.benchmarkId) return input.benchmarkId ?? null;
     return input.caseKey ?? null;
 }
 
 export function resolveLibraryCaseGroup(input: {
-    activeMode: CaseMode;
     benchmarkId?: string | null;
     caseSource: ScenarioSource;
 }): LibraryCaseGroup | null {
     if (input.caseSource === 'custom') return null;
-    if (input.activeMode === 'benchmark') {
+    if (input.benchmarkId === 'bl_case_a_refined' || input.benchmarkId === 'bl_case_b_refined') {
+        return 'internal-reference';
+    }
+    if (input.benchmarkId) {
         return 'literature-reference';
     }
     return 'curated-starter';
@@ -127,11 +129,7 @@ export function buildScenarioEditabilityPolicy(input: {
         };
     }
 
-    if (
-        input.activeMode === 'benchmark'
-        || input.activeLibraryGroup === 'literature-reference'
-        || input.activeLibraryGroup === 'internal-reference'
-    ) {
+    if (input.activeLibraryGroup === 'literature-reference' || input.activeLibraryGroup === 'internal-reference') {
         return {
             kind: 'library-reference',
             allowDirectInputEditing: false,
@@ -199,7 +197,6 @@ export function buildScenarioNavigationState(input: {
         : hasResolvedLibraryCaseKey
             ? input.activeLibraryCaseKey ?? null
             : resolveLibraryCaseKey({
-                activeMode: input.activeMode,
                 caseKey: input.activeCaseKey ?? null,
                 benchmarkId: input.benchmarkId ?? null,
                 caseSource: activeSource,
@@ -209,7 +206,6 @@ export function buildScenarioNavigationState(input: {
         : hasResolvedLibraryGroup
             ? input.activeLibraryGroup ?? null
             : resolveLibraryCaseGroup({
-                activeMode: input.activeMode,
                 benchmarkId: input.benchmarkId ?? null,
                 caseSource: activeSource,
             });
@@ -401,7 +397,6 @@ export function shouldAutoClearModifiedState(input: {
     parameterOverrideCount: number;
 }): boolean {
     if (!input.isModified) return false;
-    if (input.activeMode === 'benchmark') return false;
     if (input.referenceProvenance) return false;
     return Number(input.parameterOverrideCount) === 0;
 }
@@ -411,7 +406,7 @@ export function shouldAllowReferenceClone(input: {
     isModified: boolean;
     hasReferenceLibraryCase?: boolean;
 }): boolean {
-    return (input.activeMode === 'benchmark' || input.hasReferenceLibraryCase === true) && !input.isModified;
+    return input.hasReferenceLibraryCase === true && !input.isModified;
 }
 
 export function shouldShowModePanelStatusRow(input: {
@@ -516,12 +511,11 @@ export function buildBasePresetProfile(input: {
         activeLibraryCaseKey,
         activeLibraryGroup,
     } = input;
-    const isReferenceLibraryCase = mode === 'benchmark'
-        || activeLibraryGroup === 'literature-reference'
+    const isReferenceLibraryCase = activeLibraryGroup === 'literature-reference'
         || activeLibraryGroup === 'internal-reference';
 
     let source: PresetSource = 'facet';
-    if (isReferenceLibraryCase) source = 'benchmark';
+    if (isReferenceLibraryCase) source = 'reference';
     if (isModified) source = 'custom';
 
     const label = isReferenceLibraryCase
@@ -644,7 +638,7 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
         const reasonDetails: AnalyticalStatusReason[] = [
             {
                 code: 'analytical-disabled',
-                message: 'Analytical overlay is disabled for this scenario.',
+                message: 'Reference solution guidance is disabled for this scenario.',
                 severity: 'notice',
             },
         ];
@@ -671,21 +665,21 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
         if (!injectorEnabled) {
             addReason(
                 'wf-injector-disabled',
-                'Injector is disabled for waterflood analytical assumptions.',
+                'Injector is disabled, so the waterflood reference solution assumptions do not hold.',
                 'critical',
             );
         }
         if (toggles.geo !== '1d') {
             addReason(
                 'wf-geometry-not-1d',
-                'Reference waterflood analytical comparison expects 1D geometry.',
+                'The waterflood reference solution expects 1D geometry.',
                 'warning',
             );
         }
         if (toggles.well !== 'e2e') {
             addReason(
                 'wf-well-not-e2e',
-                'Reference waterflood analytical comparison expects end-to-end wells.',
+                'The waterflood reference solution expects end-to-end wells.',
                 'warning',
             );
         }
@@ -693,14 +687,14 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
         if (injectorEnabled) {
             addReason(
                 'dep-injector-enabled',
-                'Injector is enabled for depletion analytical assumptions.',
+                'Injector is enabled, so the depletion reference solution assumptions do not hold.',
                 'critical',
             );
         }
         if (!(toggles.geo === '1d' || toggles.well === 'center')) {
             addReason(
                 'dep-geometry-well-mismatch',
-                'Reference depletion analytical comparison expects 1D or center-producer assumptions.',
+                'The depletion reference solution expects 1D or center-producer assumptions.',
                 'warning',
             );
         }
@@ -709,21 +703,21 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     if (permMode !== 'uniform') {
         addReason(
             'perm-nonuniform',
-            'Permeability is non-uniform, so analytical match is approximate.',
+            'Permeability is non-uniform, so the reference solution becomes approximate.',
             'warning',
         );
     }
     if (gravityEnabled) {
         addReason(
             'gravity-enabled',
-            'Gravity is enabled, which deviates from reference analytical assumptions.',
+            'Gravity is enabled, which deviates from the reference solution assumptions.',
             'warning',
         );
     }
     if (capillaryEnabled) {
         addReason(
             'capillary-enabled',
-            'Capillary pressure is enabled, which deviates from reference analytical assumptions.',
+            'Capillary pressure is enabled, which deviates from the reference solution assumptions.',
             'warning',
         );
     }
@@ -731,7 +725,7 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     if (activeMode === 'sim') {
         addReason(
             'sim-mode-exploratory',
-            'Simulation mode is exploratory; analytical overlay is treated as approximate guidance.',
+            'Scenario Builder is exploratory; the reference solution is treated as approximate guidance.',
             'notice',
         );
     }

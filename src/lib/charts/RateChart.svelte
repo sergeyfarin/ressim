@@ -503,7 +503,7 @@
     const baseRatesCurves: CurveConfig[] = [
         { label: "Oil Rate", color: "#16a34a", borderWidth: 2.5, yAxisID: "y" },
         {
-            label: "Oil Rate (Analytical)",
+            label: "Oil Rate (Reference Solution)",
             color: "#15803d",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -516,7 +516,7 @@
             yAxisID: "y",
         },
         {
-            label: "Water Rate (Analytical)",
+            label: "Water Rate (Reference Solution)",
             color: "#3b82f6",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -548,7 +548,7 @@
     const baseCumulativeCurves: CurveConfig[] = [
         { label: "Cum Oil", color: "#0f5132", borderWidth: 2.5, yAxisID: "y" },
         {
-            label: "Cum Oil (Analytical)",
+            label: "Cum Oil (Reference Solution)",
             color: "#0f5132",
             borderWidth: 2,
             borderDash: [8, 4],
@@ -577,7 +577,7 @@
             yAxisID: "y",
         },
         {
-            label: "Avg Pressure (Analytical)",
+            label: "Avg Pressure (Reference Solution)",
             color: "#f97316",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -598,7 +598,7 @@
             defaultVisible: false,
         },
         {
-            label: "WOR (Analytical)",
+            label: "WOR (Reference Solution)",
             color: "#d97706",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -619,7 +619,7 @@
             defaultVisible: false,
         },
         {
-            label: "Water Cut (Analytical)",
+            label: "Water Cut (Reference Solution)",
             color: "#1d4ed8",
             borderWidth: 2,
             borderDash: [6, 4],

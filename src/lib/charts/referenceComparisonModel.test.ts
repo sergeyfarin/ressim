@@ -93,7 +93,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
 }
 
 describe('referenceComparisonModel', () => {
-    it('builds BL overlay panels with base-first ordering and analytical references', () => {
+    it('builds BL overlay panels with base-first ordering and reference-solution curves', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
         const [baseSpec, gridVariantSpec] = buildBenchmarkRunSpecs(family!, [variants[0]]);
@@ -134,16 +134,16 @@ describe('referenceComparisonModel', () => {
             expect.arrayContaining([
                 `${baseResult.label} Water Cut`,
                 `${gridVariantResult.label} Water Cut`,
-                'Analytical Water Cut',
+                'Reference Solution Water Cut',
             ]),
         );
         expect(model.panels.cumulative.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining(['Analytical Recovery']),
+            expect.arrayContaining(['Reference Solution Recovery']),
         );
         expect(model.panels.diagnostics.curves).toHaveLength(2);
     });
 
-    it('builds depletion overlay panels with analytical oil-rate and pressure references', () => {
+    it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {
         const family = getBenchmarkFamily('dietz_sq_center');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);
         const result = buildBenchmarkRunResult({
@@ -158,15 +158,15 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.rates.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining([`${result.label} Oil Rate`, 'Analytical Oil Rate']),
+            expect.arrayContaining([`${result.label} Oil Rate`, 'Reference Solution Oil Rate']),
         );
         expect(model.panels.diagnostics.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining([`${result.label} Avg Pressure`, 'Analytical Avg Pressure']),
+            expect.arrayContaining([`${result.label} Avg Pressure`, 'Reference Solution Avg Pressure']),
         );
         expect(model.panels.rates.series.at(-1)?.at(-1)?.x).toBeGreaterThan(0);
     });
 
-    it('uses theme-aware analytical reference colors so overlays stay visible in both themes', () => {
+    it('uses theme-aware reference-solution colors so overlays stay visible in both themes', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);
         const reference = computeWelgeMetrics(
@@ -202,8 +202,8 @@ describe('referenceComparisonModel', () => {
             theme: 'light',
         });
 
-        const darkReferenceCurve = darkModel.panels.rates.curves.find((curve) => curve.label === 'Analytical Water Cut');
-        const lightReferenceCurve = lightModel.panels.rates.curves.find((curve) => curve.label === 'Analytical Water Cut');
+        const darkReferenceCurve = darkModel.panels.rates.curves.find((curve) => curve.label === 'Reference Solution Water Cut');
+        const lightReferenceCurve = lightModel.panels.rates.curves.find((curve) => curve.label === 'Reference Solution Water Cut');
 
         expect(darkReferenceCurve?.color).toBe('#f8fafc');
         expect(lightReferenceCurve?.color).toBe('#0f172a');

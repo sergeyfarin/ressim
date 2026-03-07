@@ -25,9 +25,9 @@
   );
 
   function sourceLabel(source: WarningPolicySource): string {
-    if (source === "validation") return "Validation";
-    if (source === "runtime") return "Runtime";
-    return "Analytical";
+    if (source === "validation") return "Inputs";
+    if (source === "runtime") return "Run";
+    return "Reference";
   }
 
   function toneClass(group: WarningPolicyGroup): string {

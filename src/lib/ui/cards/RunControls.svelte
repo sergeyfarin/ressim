@@ -86,32 +86,32 @@
           variant="default"
           onclick={onRunSteps}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >▶ Run {steps} Steps</Button>
+          >Run {steps} Step{Number(steps) === 1 ? "" : "s"}</Button>
 
         <Button
           size="sm"
           variant="outline"
           onclick={onStepOnce}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >Step Once</Button>
+          >Advance 1 Step</Button>
 
         <Button
           size="sm"
           variant="destructive"
           onclick={onStopRun}
-          disabled={!canStop}>⏹ Stop</Button>
+          disabled={!canStop}>Stop Run</Button>
 
         <Button
           size="sm"
           variant="ghost"
           onclick={onInitSimulator}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >↻ Reinit</Button>
+          >Reset Model</Button>
 
         {#if inputsAnchorHref}
           <a
             class="text-primary text-xs self-center underline-offset-4 hover:underline"
-            href={inputsAnchorHref}>Jump to Inputs</a>
+            href={inputsAnchorHref}>Review Inputs</a>
         {/if}
       </div>
 
@@ -121,10 +121,10 @@
         <span
           >{continuationStatus ||
             (workerRunning
-              ? "⏳ Running"
+              ? "Running"
               : runCompleted
-                ? "✅ Done"
-                : "🟢 Idle")}</span>
+                ? "Complete"
+                : "Ready")}</span>
         <span>{simTime.toFixed(1)} days</span>
         <span>{historyLength} snapshots</span>
         {#if runProgress}
