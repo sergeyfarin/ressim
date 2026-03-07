@@ -30,6 +30,9 @@ export function getReferenceRateChartLayoutConfig(input: {
                 panels: {
                     rates: {
                         title: 'Breakthrough',
+                        curveKeys: analyticalOverlayPrimary
+                            ? ['water-cut-sim', 'water-cut-reference', 'avg-water-sat']
+                            : ['water-cut-sim', 'avg-water-sat'],
                         curveLabels: analyticalOverlayPrimary
                             ? ['Water Cut (Sim)', 'Water Cut (Reference Solution)', 'Avg Water Sat']
                             : ['Water Cut (Sim)', 'Avg Water Sat'],
@@ -38,6 +41,9 @@ export function getReferenceRateChartLayoutConfig(input: {
                     },
                     cumulative: {
                         title: 'Recovery',
+                        curveKeys: analyticalOverlayPrimary
+                            ? ['recovery-factor', 'cum-oil-sim', 'cum-oil-reference', 'cum-injection']
+                            : ['recovery-factor', 'cum-oil-sim', 'cum-injection'],
                         curveLabels: analyticalOverlayPrimary
                             ? ['Recovery Factor', 'Cum Oil', 'Cum Oil (Reference Solution)', 'Cum Injection']
                             : ['Recovery Factor', 'Cum Oil', 'Cum Injection'],
@@ -45,6 +51,7 @@ export function getReferenceRateChartLayoutConfig(input: {
                     },
                     diagnostics: {
                         title: 'Pressure',
+                        curveKeys: ['avg-pressure-sim'],
                         curveLabels: ['Avg Pressure'],
                         scalePreset: 'pressure',
                     },
@@ -70,17 +77,20 @@ export function getReferenceRateChartLayoutConfig(input: {
             panels: {
                 rates: {
                     title: 'Oil Rate',
+                    curveKeys: ['oil-rate-sim', 'oil-rate-reference', 'oil-rate-error'],
                     curveLabels: ['Oil Rate', 'Oil Rate (Reference Solution)', 'Oil Rate Error'],
                     scalePreset: 'rates',
                     allowLogToggle: true,
                 },
                 cumulative: {
                     title: 'Cumulative Oil / Recovery',
+                    curveKeys: ['cum-oil-sim', 'cum-oil-reference', 'recovery-factor'],
                     curveLabels: ['Cum Oil', 'Cum Oil (Reference Solution)', 'Recovery Factor'],
                     scalePreset: 'cumulative',
                 },
                 diagnostics: {
                     title: 'Pressure / Decline',
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
                     curveLabels: ['Avg Pressure', 'Avg Pressure (Reference Solution)'],
                     scalePreset: 'pressure',
                 },

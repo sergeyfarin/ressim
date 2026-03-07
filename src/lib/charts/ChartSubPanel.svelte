@@ -15,6 +15,8 @@
     /** Panel configuration passed from parent */
     export interface CurveConfig {
         label: string;
+        curveKey?: string;
+        toggleLabel?: string;
         color: string;
         borderWidth?: number;
         borderDash?: number[];
@@ -55,7 +57,18 @@
 
     let chartCanvas = $state<HTMLCanvasElement | null>(null);
     let chart = $state<Chart<"line", XYPoint[], number> | null>(null);
-    let visibleCurves = $state<boolean[]>([]);
+    type CurveToggleGroup = {
+        key: string;
+        label: string;
+        indices: number[];
+        disabled: boolean;
+        color: string;
+        borderDash?: number[];
+        borderWidth: number;
+        defaultVisible: boolean;
+    };
+
+    let visibleCurveGroups = $state<Record<string, boolean>>({});
     let curveSignature = $state("");
     let chartSchemaSignature = $derived.by(() => JSON.stringify({
         curves: curves.map((curve) => ({
@@ -91,28 +104,68 @@
     let scaleMeta = $derived(scaleDerived.meta);
     let cleanScaleConfigs = $derived(scaleDerived.clean);
 
-    // Initialize visibility from curve defaults
+    const curveToggleGroups = $derived.by(() => {
+        const groups: CurveToggleGroup[] = [];
+        const groupByKey = new Map<string, CurveToggleGroup>();
+
+        curves.forEach((curve, idx) => {
+            const groupKey = curve.curveKey ?? curve.label;
+            const visibleByDefault = curve.defaultVisible !== false && !curve.disabled;
+
+            if (!groupByKey.has(groupKey)) {
+                const nextGroup: CurveToggleGroup = {
+                    key: groupKey,
+                    label: curve.toggleLabel ?? curve.label,
+                    indices: [idx],
+                    disabled: Boolean(curve.disabled),
+                    color: curve.color,
+                    borderDash: curve.borderDash ? [...curve.borderDash] : undefined,
+                    borderWidth: curve.borderWidth ?? 2,
+                    defaultVisible: visibleByDefault,
+                };
+                groupByKey.set(groupKey, nextGroup);
+                groups.push(nextGroup);
+                return;
+            }
+
+            const existing = groupByKey.get(groupKey)!;
+            existing.indices.push(idx);
+            existing.disabled = existing.disabled && Boolean(curve.disabled);
+            existing.defaultVisible = existing.defaultVisible || visibleByDefault;
+        });
+
+        return groups;
+    });
+
+    function isCurveVisible(idx: number): boolean {
+        const groupKey = curves[idx]?.curveKey ?? curves[idx]?.label ?? String(idx);
+        return !curves[idx]?.disabled && (visibleCurveGroups[groupKey] ?? true);
+    }
+
+    // Initialize visibility from grouped curve defaults
     $effect(() => {
         const nextSignature = JSON.stringify(
-            curves.map((curve) => [
-                curve.label,
-                curve.defaultVisible !== false,
-                curve.disabled ?? false,
+            curveToggleGroups.map((group) => [
+                group.key,
+                group.label,
+                group.defaultVisible,
+                group.disabled,
             ]),
         );
         if (
-            curves.length > 0 &&
-            (visibleCurves.length !== curves.length || curveSignature !== nextSignature)
+            curveToggleGroups.length > 0 && curveSignature !== nextSignature
         ) {
             curveSignature = nextSignature;
-            visibleCurves = curves.map((c) => c.defaultVisible !== false);
+            visibleCurveGroups = Object.fromEntries(
+                curveToggleGroups.map((group) => [group.key, group.defaultVisible]),
+            );
         }
     });
 
     $effect(() => {
         // Explicitly track dependencies that should trigger a chart update
         const _data = seriesData;
-        const _visible = visibleCurves;
+        const _visible = visibleCurveGroups;
         const _log = logScale;
         const _scale = scaleConfigs;
         if (chart && seriesData) {
@@ -142,8 +195,11 @@
         }
     });
 
-    function toggleCurve(idx: number) {
-        visibleCurves = visibleCurves.map((v, i) => (i === idx ? !v : v));
+    function toggleCurveGroup(groupKey: string) {
+        visibleCurveGroups = {
+            ...visibleCurveGroups,
+            [groupKey]: !(visibleCurveGroups[groupKey] ?? true),
+        };
         updateChart();
     }
 
@@ -193,14 +249,14 @@
                 lineDataset.pointHitRadius = 8;
             }
 
-            const visible = visibleCurves[idx] ?? true;
+            const visible = isCurveVisible(idx);
             chart.setDatasetVisibility(idx, visible);
         }
 
         // Update axis visibility based on visible curves
         const activeAxisIds = new Set(
-            visibleCurves
-                .map((visible, idx) => (visible ? curves[idx]?.yAxisID : null))
+            curves
+                .map((curve, idx) => (isCurveVisible(idx) ? curve?.yAxisID : null))
                 .filter((id): id is string => Boolean(id)),
         );
 
@@ -255,9 +311,7 @@
             const meta = scaleMeta[axisId];
             if (meta && typeof meta._dynamicTitle === "function") {
                 const visibleLabels = curves
-                    .filter(
-                        (c, idx) => visibleCurves[idx] && c.yAxisID === axisId,
-                    )
+                    .filter((c, idx) => isCurveVisible(idx) && c.yAxisID === axisId)
                     .map((c) => c.label);
                 const newTitle = meta._dynamicTitle(visibleLabels);
                 if (config.title && newTitle) config.title.text = newTitle;
@@ -320,7 +374,7 @@
     function collectAxisValues(axisId: string): number[] {
         const values: number[] = [];
         for (let idx = 0; idx < curves.length; idx++) {
-            if (!visibleCurves[idx] || curves[idx]?.yAxisID !== axisId)
+            if (!isCurveVisible(idx) || curves[idx]?.yAxisID !== axisId)
                 continue;
             const data = seriesData[idx] ?? [];
             for (const point of data) {
@@ -354,19 +408,6 @@
             return;
         }
         // Otherwise, allow Chart.js to natively auto-pad both max and min ceilings!
-    }
-
-    function getCurveColor(idx: number): string {
-        return curves[idx]?.color ?? "#888";
-    }
-
-    function getCurveDash(idx: number): string {
-        const dash = curves[idx]?.borderDash;
-        return Array.isArray(dash) ? dash.join(", ") : "";
-    }
-
-    function getCurveBorderWidth(idx: number): number {
-        return curves[idx]?.borderWidth ?? 2;
     }
 
     function createChart() {
@@ -562,24 +603,24 @@
                         </div>
                     {/if}
 
-                    <!-- Curve toggles with visible border and ✕/+ indicators -->
-                    {#each curves as curve, idx}
+                    <!-- Metric-group toggles keep compared cases aligned within the same family -->
+                    {#each curveToggleGroups as group}
                         <button
                             type="button"
-                            disabled={curve.disabled}
+                            disabled={group.disabled}
                             class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all
-                        {visibleCurves[idx]
+                        {(visibleCurveGroups[group.key] ?? true)
                                 ? 'bg-muted border-2 border-primary/30 opacity-100 shadow-sm'
                                 : 'bg-transparent border border-dashed border-border opacity-50'}
-                        {!curve.disabled
+                        {!group.disabled
                                 ? 'cursor-pointer hover:opacity-75'
                                 : 'disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale'}"
-                            onclick={() => toggleCurve(idx)}
-                            title={curve.disabled
+                            onclick={() => toggleCurveGroup(group.key)}
+                            title={group.disabled
                                 ? "Curve disabled for this case"
-                                : visibleCurves[idx]
-                                  ? `Hide ${curve.label}`
-                                  : `Show ${curve.label}`}
+                                : (visibleCurveGroups[group.key] ?? true)
+                                  ? `Hide ${group.label}`
+                                  : `Show ${group.label}`}
                         >
                             <svg
                                 width="14"
@@ -592,17 +633,17 @@
                                     y1="1.5"
                                     x2="14"
                                     y2="1.5"
-                                    stroke={getCurveColor(idx)}
-                                    stroke-width={getCurveBorderWidth(idx)}
-                                    stroke-dasharray={getCurveDash(idx)}
+                                    stroke={group.color}
+                                    stroke-width={group.borderWidth}
+                                    stroke-dasharray={Array.isArray(group.borderDash) ? group.borderDash.join(', ') : ''}
                                 />
                             </svg>
-                            <span>{curve.label}</span>
+                            <span>{group.label}</span>
                             <span
-                                class="opacity-60 ml-0.5 {visibleCurves[idx]
+                                class="opacity-60 ml-0.5 {(visibleCurveGroups[group.key] ?? true)
                                     ? 'text-[9px]'
                                     : 'text-[14px]'}"
-                                >{visibleCurves[idx] ? "✕" : "+"}</span
+                                >{(visibleCurveGroups[group.key] ?? true) ? "✕" : "+"}</span
                             >
                         </button>
                     {/each}

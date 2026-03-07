@@ -4,8 +4,12 @@ import path from 'path';
 
 const rateChartPath = path.join(__dirname, 'RateChart.svelte');
 const subPanelPath = path.join(__dirname, 'ChartSubPanel.svelte');
+const referenceComparisonChartPath = path.join(__dirname, 'ReferenceComparisonChart.svelte');
+const chartPanelSelectionPath = path.join(__dirname, 'chartPanelSelection.ts');
 const rateChartSrc = fs.readFileSync(rateChartPath, 'utf8');
 const subPanelSrc = fs.readFileSync(subPanelPath, 'utf8');
+const referenceComparisonChartSrc = fs.readFileSync(referenceComparisonChartPath, 'utf8');
+const chartPanelSelectionSrc = fs.readFileSync(chartPanelSelectionPath, 'utf8');
 
 describe('RateChart architecture checks', () => {
   it('imports and uses ChartSubPanel', () => {
@@ -30,6 +34,16 @@ describe('RateChart architecture checks', () => {
     expect(/xAxisMode/.test(rateChartSrc)).toBe(true);
   });
 
+  it('uses shared panel-selection helpers instead of duplicating shell logic', () => {
+    expect(/chartPanelSelection/.test(rateChartSrc)).toBe(true);
+    expect(/getConfiguredXAxisOptions/.test(rateChartSrc)).toBe(true);
+    expect(/resolveChartPanelDefinition/.test(rateChartSrc)).toBe(true);
+    expect(/chartPanelSelection/.test(referenceComparisonChartSrc)).toBe(true);
+    expect(/getConfiguredXAxisOptions/.test(referenceComparisonChartSrc)).toBe(true);
+    expect(/resolveChartPanelDefinition/.test(referenceComparisonChartSrc)).toBe(true);
+    expect(/coerceChartAxisState/.test(chartPanelSelectionSrc)).toBe(true);
+  });
+
   it('computes error stats (MAE, RMSE, MAPE)', () => {
     expect(/mismatchSummary/.test(rateChartSrc)).toBe(true);
   });
@@ -49,9 +63,10 @@ describe('ChartSubPanel architecture checks', () => {
     expect(/new\s+Chart\(ctx/.test(subPanelSrc)).toBe(true);
   });
 
-  it('has per-curve toggle UI', () => {
-    expect(/toggleCurve/.test(subPanelSrc)).toBe(true);
-    expect(/visibleCurves/.test(subPanelSrc)).toBe(true);
+  it('has grouped curve toggle UI', () => {
+    expect(/toggleCurveGroup/.test(subPanelSrc)).toBe(true);
+    expect(/curveToggleGroups/.test(subPanelSrc)).toBe(true);
+    expect(/visibleCurveGroups/.test(subPanelSrc)).toBe(true);
   });
 
   it('recreates the chart when the curve schema changes', () => {

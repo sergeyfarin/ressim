@@ -38,6 +38,7 @@ describe('referenceChartConfig', () => {
                 },
             },
         });
+        expect(config.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'water-cut-reference', 'avg-water-sat']);
     });
 
     it('drops the reference-solution BL overlay from primary panel defaults when numerical reference is primary', () => {
@@ -55,8 +56,8 @@ describe('referenceChartConfig', () => {
             },
         });
 
-        expect(config.rateChart?.panels?.rates?.curveLabels).toEqual(['Water Cut (Sim)', 'Avg Water Sat']);
-        expect(config.rateChart?.panels?.cumulative?.curveLabels).toEqual(['Recovery Factor', 'Cum Oil', 'Cum Injection']);
+        expect(config.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim', 'avg-water-sat']);
+        expect(config.rateChart?.panels?.cumulative?.curveKeys).toEqual(['recovery-factor', 'cum-oil-sim', 'cum-injection']);
     });
 
     it('builds depletion-focused chart defaults and log-time Fetkovich preference', () => {
@@ -77,5 +78,6 @@ describe('referenceChartConfig', () => {
         });
         expect(fetkovichConfig.rateChart?.xAxisMode).toBe('logTime');
         expect(fetkovichConfig.rateChart?.logScale).toBe(true);
+        expect(dietzConfig.rateChart?.panels?.rates?.curveKeys).toEqual(['oil-rate-sim', 'oil-rate-reference', 'oil-rate-error']);
     });
 });

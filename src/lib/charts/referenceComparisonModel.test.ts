@@ -258,6 +258,25 @@ describe('referenceComparisonModel', () => {
 
         expect(selectedCurve?.defaultVisible).toBe(true);
         expect(baseCurve?.defaultVisible).toBe(true);
-        expect(hiddenCurve?.defaultVisible).toBe(false);
+        expect(hiddenCurve).toBeUndefined();
+    });
+
+    it('assigns shared metric keys so compared cases stay aligned within the same family', () => {
+        const family = getBenchmarkFamily('dietz_sq_center');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const result = buildBenchmarkRunResult({
+            spec: baseSpec,
+            rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
+        });
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.rates.curves.find((curve) => curve.label === `${result.label} Oil Rate`)?.curveKey).toBe('oil-rate-sim');
+        expect(model.panels.cumulative.curves.find((curve) => curve.label === `${result.label} Recovery`)?.curveKey).toBe('recovery-factor');
+        expect(model.panels.diagnostics.curves.find((curve) => curve.label === `${result.label} Avg Pressure`)?.curveKey).toBe('avg-pressure-sim');
     });
 });

@@ -3,6 +3,13 @@
     import ToggleGroup from '../ui/controls/ToggleGroup.svelte';
     import type { BenchmarkFamily } from '../catalog/benchmarkCases';
     import type { BenchmarkRunResult } from '../benchmarkRunModel';
+    import {
+        coerceChartAxisState,
+        getConfiguredXAxisOptions,
+        resolveChartPanelDefinition,
+        type ChartPanelEntry,
+        type ChartXAxisOption,
+    } from './chartPanelSelection';
     import type {
         RateChartLayoutConfig,
         RateChartPanelKey,
@@ -128,7 +135,7 @@
         return rateScales;
     }
 
-    const allXAxisOptions = $derived([
+    const allXAxisOptions = $derived<ChartXAxisOption[]>([
         { value: 'time', label: 'Time' },
         { value: 'tD', label: 'tD', title: 'Dimensionless Time (t/τ)' },
         { value: 'pvi', label: 'PVI', title: 'PV Injected' },
@@ -139,48 +146,63 @@
     ]);
 
     const xAxisOptions = $derived.by(() => {
-        const configured = layoutConfig?.rateChart?.xAxisOptions;
-        if (!Array.isArray(configured) || configured.length === 0) return allXAxisOptions;
-        const allowed = new Set(configured);
-        return allXAxisOptions.filter((option) => allowed.has(option.value as RateChartXAxisMode));
+        return getConfiguredXAxisOptions(
+            allXAxisOptions,
+            layoutConfig?.rateChart?.xAxisOptions,
+        );
     });
 
     $effect(() => {
-        const allowedModes = xAxisOptions.map((option) => option.value as RateChartXAxisMode);
-        if (!allowedModes.includes(xAxisMode) && allowedModes.length > 0) {
-            xAxisMode = allowedModes[0];
-        }
-        if (layoutConfig?.rateChart?.allowLogScale === false && logScale) {
-            logScale = false;
-        }
+        const nextAxisState = coerceChartAxisState({
+            xAxisMode,
+            xAxisOptions,
+            logScale,
+            allowLogScale: layoutConfig?.rateChart?.allowLogScale,
+        });
+
+        if (nextAxisState.xAxisMode !== xAxisMode) xAxisMode = nextAxisState.xAxisMode;
+        if (nextAxisState.logScale !== logScale) logScale = nextAxisState.logScale;
     });
+
+    function buildPanelEntries(panelKey: RateChartPanelKey): Array<ChartPanelEntry<(typeof overlayModel.panels)[RateChartPanelKey]['curves'][number], (typeof overlayModel.panels)[RateChartPanelKey]['series'][number]>> {
+        return overlayModel.panels[panelKey].curves.map((curve, idx) => ({
+            curve,
+            series: overlayModel.panels[panelKey].series[idx] ?? [],
+        }));
+    }
 
     function resolvePanelDefinition(panelKey: RateChartPanelKey, fallback: {
         title: string;
+        curveKeys?: string[];
         scalePreset: RateChartScalePreset;
         allowLogToggle?: boolean;
     }) {
-        const override = layoutConfig?.rateChart?.panels?.[panelKey];
-        return {
-            title: override?.title ?? fallback.title,
-            scales: getScalePresetConfig(override?.scalePreset ?? fallback.scalePreset),
-            allowLogToggle: override?.allowLogToggle ?? fallback.allowLogToggle ?? false,
-            curves: overlayModel.panels[panelKey].curves,
-            series: overlayModel.panels[panelKey].series,
-        };
+        return resolveChartPanelDefinition({
+            override: layoutConfig?.rateChart?.panels?.[panelKey],
+            fallback,
+            entries: buildPanelEntries(panelKey),
+            getScalePresetConfig,
+        });
     }
 
     const ratesPanel = $derived(resolvePanelDefinition('rates', {
         title: family?.scenarioClass === 'buckley-leverett' ? 'Breakthrough' : 'Oil Rate',
+        curveKeys: family?.scenarioClass === 'buckley-leverett'
+            ? ['water-cut-sim', 'water-cut-reference', 'avg-water-sat']
+            : ['oil-rate-sim', 'oil-rate-reference'],
         scalePreset: family?.scenarioClass === 'buckley-leverett' ? 'breakthrough' : 'rates',
         allowLogToggle: family?.scenarioClass === 'depletion',
     }));
     const cumulativePanel = $derived(resolvePanelDefinition('cumulative', {
         title: family?.scenarioClass === 'buckley-leverett' ? 'Recovery' : 'Cumulative Oil / Recovery',
+        curveKeys: family?.scenarioClass === 'buckley-leverett'
+            ? ['recovery-factor', 'cum-oil-sim', 'cum-oil-reference', 'cum-injection']
+            : ['recovery-factor', 'cum-oil-sim', 'cum-oil-reference'],
         scalePreset: 'cumulative',
     }));
     const diagnosticsPanel = $derived(resolvePanelDefinition('diagnostics', {
         title: family?.scenarioClass === 'buckley-leverett' ? 'Pressure' : 'Pressure / Decline',
+        curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
         scalePreset: 'pressure',
     }));
 </script>
@@ -190,20 +212,20 @@
         class="flex flex-col gap-2 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="text-[11px] uppercase tracking-wide opacity-50">
+            <div class="ui-section-kicker opacity-50">
                 Output Comparison
             </div>
-            <div class="text-[11px] text-muted-foreground">
+            <div class="ui-support-copy">
                 {overlayModel.orderedResults.length} stored run(s)
             </div>
         </div>
         {#if primaryResultKey}
-            <div class="text-[11px] text-muted-foreground">
+            <div class="ui-support-copy">
                 Focused review keeps the selected case and its reference context visible by default.
             </div>
         {/if}
         <div class="flex items-center gap-2 overflow-x-auto">
-            <span class="text-[11px] uppercase tracking-wide opacity-50 shrink-0">X-axis</span>
+            <span class="ui-section-kicker shrink-0 opacity-50">X-axis</span>
             <ToggleGroup
                 options={xAxisOptions}
                 bind:value={xAxisMode}

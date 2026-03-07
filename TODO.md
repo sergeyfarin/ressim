@@ -12,8 +12,8 @@ Primary review source:
 
 ## Resume State
 
-- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete across live app surfaces, metadata, and current markdown docs.
-- Next slice: move to `F3` and improve benchmark case disclosure so reference guidance, fixed settings, and variant deltas are clearer before and after a run.
+- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete; `F3` has compact run/result disclosure, selected-sensitivity output fixes, a table-first Results review surface, and a shared heading/chip/microcopy typography scale on the main app surfaces; and `F4` now has grouped chart-metric toggles, focused comparison-curve alignment, and shared panel/x-axis selection helpers across the live and reference-comparison chart shells.
+- Next slice: continue `F4` by adding compact output-summary cards/lists above or beside the charts, then return to any remaining `F3` selected-review copy cleanup if the Results card still feels too talkative.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
@@ -341,7 +341,7 @@ These slices are ordered for safe migration. The goal is to change architecture 
 - [ ] Existing mode-based tests will break in large numbers unless migrated slice-by-slice.
 - [ ] The 3D/output comparison experience must not regress while comparison ownership moves into `Outputs`.
 
-- [~] **F2. Unify warnings, labels, and terminology**
+- [x] **F2. Unify warnings, labels, and terminology**
   - Keep one warning-policy data model, but redesign the UI around one canonical warning surface plus section-local status/error indicators.
   - Normalize vocabulary across the app:
     - mode names
@@ -360,21 +360,31 @@ These slices are ordered for safe migration. The goal is to change architecture 
     - inputs disclosure and reference-status messaging now use `Reference source`, `Primary review metric`, and reference-guidance wording instead of analytical-first or sweep-era phrasing
     - case-library provenance, run-summary headings, preset descriptions, and advanced reference diagnostics now use reference-guidance and reference-solution wording instead of validation-family, truth-source, or analytical-match phrasing
     - README and current authoritative docs now use `Reference Solution`, `Reference Guidance`, and `Run Set` wording instead of analytical-first or benchmark-mode surface labels
-    - focused validation for the terminology slices passed (`31/31` for the warning/run pass, `23/23` for the output/chart pass, `53/53` for the inputs/disclosure pass)
+    - focused validation for the terminology slices passed (`31/31` for the warning/run pass, `23/23` for the output/chart pass, `53/53` for the inputs/disclosure pass), and the final markdown docs sweep cleared the remaining authoritative-doc wording residue
   - Acceptance:
     - warnings read as one system instead of three related surfaces
     - labels describe user intent rather than implementation details
 
-- [ ] **F3. Expose benchmark settings and reference policy clearly**
+- [~] **F3. Expose benchmark settings and reference guidance clearly**
   - Add benchmark case disclosure cards or compact spec tables showing:
     - grid/model size
     - key fluid/rock settings
     - well controls
     - timestep/horizon
-    - reference policy
+    - reference guidance
     - variant deltas for sensitivities
   - Replace text-heavy stored benchmark result cards with a compact compare surface.
   - Make it obvious which outputs belong to the base case versus selected sensitivity variants.
+  - Current progress inside `F3`:
+    - the Run-region reference execution card now includes a compact `Case Snapshot` and `Reference Guidance` block for the active family before execution
+    - sensitivity variants in the Run-region selector now show `Change from base` summaries instead of only labels
+    - the Results-region reference summary now uses a master-detail layout so sensitivity runs no longer repeat the same base-case information in separate cards
+    - stored reference-run results in Results now keep one selected-result detail panel with explicit run-spec and variant-delta context instead of repeating full spec blocks for every run
+    - 3D and saturation-profile outputs now read the selected sensitivity case dimensions and cell sizes instead of always reusing the live input dimensions
+    - the page-level outputs header now reads `Results`, and the app now uses a shared IBM Plex Sans/Mono typography baseline to reduce font-face inconsistency across body text and controls
+    - the Results-region reference summary has now been tightened again into a compact run table with varied-input, breakthrough PVI, breakthrough time, and delta-vs-reference columns, and the run-spec block has been removed from Results so that setup detail stays upstream in Inputs/Run
+    - shared semantic typography utilities now standardize section kickers, panel kickers, support copy, microcopy, and chips across the app shell, case-library flow, warning surface, comparison chart headers, and 3D inspector chrome instead of relying on repeated one-off `10px`/`11px` classes
+    - focused validation for the current F3 disclosure slices passed (`20/20` for the first disclosure slice, `21/21` for the Results/3D/typography follow-up, `17/17` for the compact-table Results follow-up, `16/16` for the semantic typography utility rollout)
   - Acceptance:
     - users can answer “what is this benchmark actually running?” before pressing run
     - stored results remain readable when several variants exist
@@ -383,6 +393,12 @@ These slices are ordered for safe migration. The goal is to change architecture 
   - Remove duplicated top-level interaction/state scaffolding between `RateChart` and `BenchmarkChart` where practical.
   - Keep one interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and benchmark comparisons.
   - Add compact output-summary cards/lists that sit above or beside charts instead of burying comparison data in long text blocks.
+  - Current progress inside `F4`:
+    - chart legend/toggle behavior now groups curves by shared metric keys instead of exposing one toggle per individual case curve, so visible metrics stay aligned across compared waterflood cases, depletion cases, and similar family-local result sets
+    - reference-comparison charts now build curves only for the focused comparison set (`selected`, `base`, and any explicit compared cases) instead of carrying hidden extra case curves with mismatched visibility defaults
+    - live and reference-comparison chart layout configs now share stable curve-key selection alongside legacy label-based overrides, creating a cleaner path for deeper panel-selection consolidation in later F4 slices
+    - `RateChart` and `ReferenceComparisonChart` now share extracted helper logic for x-axis option filtering, x-axis/log-scale coercion, and panel curve selection, so future panel-shell changes can land in one place instead of two nearly-identical Svelte files
+    - focused validation for the initial F4 slice passed (`22/22` across reference-comparison model, reference chart config, grouped chart toggle usage, and output terminology checks)
   - Acceptance:
     - chart behavior feels consistent regardless of run type
     - future output features do not require parallel implementation in multiple chart shells

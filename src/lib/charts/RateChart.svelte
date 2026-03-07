@@ -1,6 +1,15 @@
 <script lang="ts">
     import ChartSubPanel from "./ChartSubPanel.svelte";
     import type { CurveConfig } from "./ChartSubPanel.svelte";
+    import {
+        coerceChartAxisState,
+        getConfiguredXAxisOptions,
+        resolveChartPanelDefinition,
+        type ChartPanelDefinition,
+        type ChartPanelEntry,
+        type ChartPanelFallback,
+        type ChartXAxisOption,
+    } from "./chartPanelSelection";
     import type {
         RateChartLayoutConfig,
         RateChartPanelKey,
@@ -41,13 +50,7 @@
 
     // --- X-axis state (shared across all panels) ---
     type XYPoint = { x: number; y: number | null };
-    type PanelDefinition = {
-        title: string;
-        curves: CurveConfig[];
-        series: XYPoint[][];
-        scales: Record<string, any>;
-        allowLogToggle: boolean;
-    };
+    type PanelDefinition = ChartPanelDefinition<CurveConfig, XYPoint[]>;
 
     let xAxisMode = $state<RateChartXAxisMode>("time");
     let logScale = $state(false);
@@ -501,9 +504,11 @@
     }
 
     const baseRatesCurves: CurveConfig[] = [
-        { label: "Oil Rate", color: "#16a34a", borderWidth: 2.5, yAxisID: "y" },
+        { label: "Oil Rate", curveKey: "oil-rate-sim", toggleLabel: "Oil Rate", color: "#16a34a", borderWidth: 2.5, yAxisID: "y" },
         {
             label: "Oil Rate (Reference Solution)",
+            curveKey: "oil-rate-reference",
+            toggleLabel: "Reference Solution Oil Rate",
             color: "#15803d",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -511,12 +516,16 @@
         },
         {
             label: "Water Rate",
+            curveKey: "water-rate-sim",
+            toggleLabel: "Water Rate",
             color: "#1e3a8a",
             borderWidth: 2.5,
             yAxisID: "y",
         },
         {
             label: "Water Rate (Reference Solution)",
+            curveKey: "water-rate-reference",
+            toggleLabel: "Reference Solution Water Rate",
             color: "#3b82f6",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -524,12 +533,16 @@
         },
         {
             label: "Injection Rate",
+            curveKey: "injection-rate",
+            toggleLabel: "Injection Rate",
             color: "#06b6d4",
             borderWidth: 2.5,
             yAxisID: "y",
         },
         {
             label: "Liquid Rate",
+            curveKey: "liquid-rate",
+            toggleLabel: "Liquid Rate",
             color: "#2563eb",
             borderWidth: 2,
             yAxisID: "y",
@@ -537,6 +550,8 @@
         },
         {
             label: "Oil Rate Error",
+            curveKey: "oil-rate-error",
+            toggleLabel: "Oil Rate Error",
             color: "#15803d",
             borderWidth: 1.3,
             borderDash: [2, 4],
@@ -546,9 +561,11 @@
     ];
 
     const baseCumulativeCurves: CurveConfig[] = [
-        { label: "Cum Oil", color: "#0f5132", borderWidth: 2.5, yAxisID: "y" },
+        { label: "Cum Oil", curveKey: "cum-oil-sim", toggleLabel: "Cum Oil", color: "#0f5132", borderWidth: 2.5, yAxisID: "y" },
         {
             label: "Cum Oil (Reference Solution)",
+            curveKey: "cum-oil-reference",
+            toggleLabel: "Reference Solution Cum Oil",
             color: "#0f5132",
             borderWidth: 2,
             borderDash: [8, 4],
@@ -556,13 +573,17 @@
         },
         {
             label: "Cum Injection",
+            curveKey: "cum-injection",
+            toggleLabel: "Cum Injection",
             color: "#06b6d4",
             borderWidth: 2,
             yAxisID: "y",
         },
-        { label: "Cum Water", color: "#1e3a8a", borderWidth: 2, yAxisID: "y" },
+        { label: "Cum Water", curveKey: "cum-water", toggleLabel: "Cum Water", color: "#1e3a8a", borderWidth: 2, yAxisID: "y" },
         {
             label: "Recovery Factor",
+            curveKey: "recovery-factor",
+            toggleLabel: "Recovery Factor",
             color: "#22c55e",
             borderWidth: 2,
             yAxisID: "y1",
@@ -572,12 +593,16 @@
     const baseDiagnosticsCurves: CurveConfig[] = [
         {
             label: "Avg Pressure",
+            curveKey: "avg-pressure-sim",
+            toggleLabel: "Avg Pressure",
             color: "#dc2626",
             borderWidth: 2,
             yAxisID: "y",
         },
         {
             label: "Avg Pressure (Reference Solution)",
+            curveKey: "avg-pressure-reference",
+            toggleLabel: "Reference Solution Avg Pressure",
             color: "#f97316",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -585,6 +610,8 @@
         },
         {
             label: "VRR",
+            curveKey: "vrr",
+            toggleLabel: "VRR",
             color: "#7c3aed",
             borderWidth: 2.5,
             yAxisID: "y1",
@@ -592,6 +619,8 @@
         },
         {
             label: "WOR (Sim)",
+            curveKey: "wor-sim",
+            toggleLabel: "WOR",
             color: "#d97706",
             borderWidth: 2.3,
             yAxisID: "y1",
@@ -599,6 +628,8 @@
         },
         {
             label: "WOR (Reference Solution)",
+            curveKey: "wor-reference",
+            toggleLabel: "Reference Solution WOR",
             color: "#d97706",
             borderWidth: 2,
             borderDash: [5, 5],
@@ -607,12 +638,16 @@
         },
         {
             label: "Avg Water Sat",
+            curveKey: "avg-water-sat",
+            toggleLabel: "Avg Water Sat",
             color: "#1d4ed8",
             borderWidth: 2,
             yAxisID: "y1",
         },
         {
             label: "Water Cut (Sim)",
+            curveKey: "water-cut-sim",
+            toggleLabel: "Water Cut",
             color: "#2563eb",
             borderWidth: 2.3,
             yAxisID: "y1",
@@ -620,6 +655,8 @@
         },
         {
             label: "Water Cut (Reference Solution)",
+            curveKey: "water-cut-reference",
+            toggleLabel: "Reference Solution Water Cut",
             color: "#1d4ed8",
             borderWidth: 2,
             borderDash: [6, 4],
@@ -628,6 +665,8 @@
         },
         {
             label: "MB Error",
+            curveKey: "mb-error",
+            toggleLabel: "MB Error",
             color: "#ef4444",
             borderWidth: 1.5,
             borderDash: [3, 3],
@@ -772,7 +811,7 @@
             ticks: { count: 6 },
         },
     };
-    let allXAxisOptions = $derived([
+    let allXAxisOptions = $derived<ChartXAxisOption[]>([
         { value: "time", label: "Time" },
         {
             value: "tD",
@@ -809,8 +848,8 @@
         return ratesScales;
     }
 
-    const curveRegistry = $derived.by(() => {
-        const entries = [
+    const curveRegistry = $derived.by((): Array<ChartPanelEntry<CurveConfig, XYPoint[]>> => {
+        return [
             ...baseRatesCurves.map((curve, idx) => ({
                 curve,
                 series: rateCurveSeries[idx] ?? [],
@@ -824,37 +863,29 @@
                 series: diagnosticsCurveSeries[idx] ?? [],
             })),
         ];
-
-        return new Map(entries.map((entry) => [entry.curve.label, entry]));
     });
 
     function buildPanelDefinition(
         panelKey: RateChartPanelKey,
-        input: {
-            title: string;
-            curveLabels: string[];
-            scalePreset: RateChartScalePreset;
-            allowLogToggle?: boolean;
-        },
+        input: ChartPanelFallback,
     ): PanelDefinition {
-        const override = layoutConfig?.rateChart?.panels?.[panelKey];
-        const curveLabels = override?.curveLabels ?? input.curveLabels;
-        const selectedEntries = curveLabels
-            .map((label) => curveRegistry.get(label))
-            .filter((entry): entry is { curve: CurveConfig; series: XYPoint[] } => Boolean(entry));
+        const panelDefinition = resolveChartPanelDefinition({
+            override: layoutConfig?.rateChart?.panels?.[panelKey],
+            fallback: input,
+            entries: curveRegistry,
+            getScalePresetConfig,
+        });
 
         return {
-            title: override?.title ?? input.title,
-            curves: applyCurveLayout(selectedEntries.map((entry) => entry.curve)),
-            series: selectedEntries.map((entry) => entry.series),
-            scales: getScalePresetConfig(override?.scalePreset ?? input.scalePreset),
-            allowLogToggle: override?.allowLogToggle ?? input.allowLogToggle ?? false,
+            ...panelDefinition,
+            curves: applyCurveLayout(panelDefinition.curves),
         };
     }
 
     let ratesPanel = $derived(
         buildPanelDefinition("rates", {
             title: "Rates",
+            curveKeys: baseRatesCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseRatesCurves.map((curve) => curve.label),
             scalePreset: "rates",
             allowLogToggle: true,
@@ -863,6 +894,7 @@
     let cumulativePanel = $derived(
         buildPanelDefinition("cumulative", {
             title: "Cumulative",
+            curveKeys: baseCumulativeCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseCumulativeCurves.map((curve) => curve.label),
             scalePreset: "cumulative",
         }),
@@ -870,6 +902,7 @@
     let diagnosticsPanel = $derived(
         buildPanelDefinition("diagnostics", {
             title: "Diagnostics",
+            curveKeys: baseDiagnosticsCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseDiagnosticsCurves.map((curve) => curve.label),
             scalePreset: "diagnostics",
         }),
@@ -887,23 +920,22 @@
     );
 
     let xAxisOptions = $derived.by(() => {
-        const configured = layoutConfig?.rateChart?.xAxisOptions;
-        if (!Array.isArray(configured) || configured.length === 0) return allXAxisOptions;
-
-        const allowed = new Set(configured);
-        return allXAxisOptions.filter((option) =>
-            allowed.has(option.value as RateChartXAxisMode),
+        return getConfiguredXAxisOptions(
+            allXAxisOptions,
+            layoutConfig?.rateChart?.xAxisOptions,
         );
     });
 
     $effect(() => {
-        const allowedModes = xAxisOptions.map((option) => option.value as RateChartXAxisMode);
-        if (!allowedModes.includes(xAxisMode) && allowedModes.length > 0) {
-            xAxisMode = allowedModes[0];
-        }
-        if (layoutConfig?.rateChart?.allowLogScale === false && logScale) {
-            logScale = false;
-        }
+        const nextAxisState = coerceChartAxisState({
+            xAxisMode,
+            xAxisOptions,
+            logScale,
+            allowLogScale: layoutConfig?.rateChart?.allowLogScale,
+        });
+
+        if (nextAxisState.xAxisMode !== xAxisMode) xAxisMode = nextAxisState.xAxisMode;
+        if (nextAxisState.logScale !== logScale) logScale = nextAxisState.logScale;
     });
 </script>
 
@@ -914,7 +946,7 @@
     >
         <div class="flex items-center gap-2 overflow-x-auto">
             <span
-                class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
+                class="ui-section-kicker opacity-50 shrink-0"
                 >X-axis</span
             >
             <ToggleGroup
@@ -927,7 +959,7 @@
         <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
             {#if ratePanelSupportsNormalization && analyticalMeta?.q0 && analyticalMeta.q0 > 0}
                 <span
-                    class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
+                    class="ui-section-kicker opacity-50 shrink-0"
                     >Y-axis</span
                 >
                 <label
@@ -939,7 +971,7 @@
                         class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
                     />
                     <span
-                        class="text-xs text-muted-foreground whitespace-nowrap"
+                        class="ui-support-copy whitespace-nowrap"
                         >Normalize Rates (q/q₀)</span
                     >
                 </label>
@@ -1001,7 +1033,7 @@
 
     <!-- Error stats -->
     {#if mismatchSummary.pointsCompared > 0}
-        <div class="text-[11px] opacity-60 px-4 md:px-5 pb-4 md:pb-5 pt-2">
+        <div class="ui-support-copy px-4 pb-4 pt-2 opacity-60 md:px-5 md:pb-5">
             Reference Solution: {mismatchSummary.pointsCompared} pts · MAE: {mismatchSummary.mae.toFixed(
                 3,
             )} · RMSE: {mismatchSummary.rmse.toFixed(3)} · MAPE: {mismatchSummary.mape.toFixed(

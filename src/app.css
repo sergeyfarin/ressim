@@ -1,8 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-sans: 'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -114,6 +115,83 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .ui-section-kicker {
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-muted-foreground);
+  }
+
+  .ui-panel-kicker {
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-muted-foreground);
+  }
+
+  .ui-subsection-kicker {
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-muted-foreground);
+  }
+
+  .ui-card-title {
+    font-size: 14px;
+    line-height: 1.35;
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+
+  .ui-support-copy {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-muted-foreground);
+  }
+
+  .ui-microcopy {
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--color-muted-foreground);
+  }
+
+  .ui-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: var(--radius-md);
+    padding: 0.25rem 0.5rem;
+    font-size: 10px;
+    line-height: 1.1;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
+  .ui-chip-caps {
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
 }
 
@@ -203,7 +281,7 @@ body {
 
 /* ── Compact Tables (for Input Panels) ── */
 .compact-table {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 .compact-table th,

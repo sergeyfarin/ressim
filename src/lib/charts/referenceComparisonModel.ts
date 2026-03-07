@@ -335,18 +335,24 @@ export function buildReferenceComparisonModel(input: {
         return false;
     }
 
-    orderedResults.forEach((result, index) => {
+    const visibleResults = hasFocusedSelection
+        ? orderedResults.filter((result) => isResultVisibleByDefault(result))
+        : orderedResults;
+
+    visibleResults.forEach((result, index) => {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
         const color = CASE_COLORS[index % CASE_COLORS.length];
         const xValues = buildXAxisValues(derived, input.xAxisMode);
-        const defaultVisible = isResultVisibleByDefault(result);
+        const defaultVisible = true;
 
         if (family.scenarioClass === 'buckley-leverett') {
             appendSeries(
                 panels.rates,
                 {
                     label: `${result.label} Water Cut`,
+                    curveKey: 'water-cut-sim',
+                    toggleLabel: 'Water Cut',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -359,6 +365,8 @@ export function buildReferenceComparisonModel(input: {
                 panels.rates,
                 {
                     label: `${result.label} Avg Water Sat`,
+                    curveKey: 'avg-water-sat',
+                    toggleLabel: 'Avg Water Sat',
                     color,
                     borderWidth: 1.6,
                     borderDash: [2, 4],
@@ -372,6 +380,8 @@ export function buildReferenceComparisonModel(input: {
                 panels.cumulative,
                 {
                     label: `${result.label} Recovery`,
+                    curveKey: 'recovery-factor',
+                    toggleLabel: 'Recovery Factor',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y1',
@@ -384,6 +394,8 @@ export function buildReferenceComparisonModel(input: {
                 panels.cumulative,
                 {
                     label: `${result.label} Cum Oil`,
+                    curveKey: 'cum-oil-sim',
+                    toggleLabel: 'Cum Oil',
                     color,
                     borderWidth: 1.4,
                     borderDash: [5, 4],
@@ -394,9 +406,26 @@ export function buildReferenceComparisonModel(input: {
                 derived.cumulativeOil,
             );
             appendSeries(
+                panels.cumulative,
+                {
+                    label: `${result.label} Cum Injection`,
+                    curveKey: 'cum-injection',
+                    toggleLabel: 'Cum Injection',
+                    color,
+                    borderWidth: 1.2,
+                    borderDash: [3, 3],
+                    yAxisID: 'y',
+                    defaultVisible: false,
+                },
+                xValues,
+                derived.cumulativeInjection,
+            );
+            appendSeries(
                 panels.diagnostics,
                 {
                     label: `${result.label} Avg Pressure`,
+                    curveKey: 'avg-pressure-sim',
+                    toggleLabel: 'Avg Pressure',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -412,6 +441,8 @@ export function buildReferenceComparisonModel(input: {
             panels.rates,
             {
                 label: `${result.label} Oil Rate`,
+                curveKey: 'oil-rate-sim',
+                toggleLabel: 'Oil Rate',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
@@ -424,6 +455,8 @@ export function buildReferenceComparisonModel(input: {
             panels.cumulative,
             {
                 label: `${result.label} Recovery`,
+                curveKey: 'recovery-factor',
+                toggleLabel: 'Recovery Factor',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y1',
@@ -436,6 +469,8 @@ export function buildReferenceComparisonModel(input: {
             panels.cumulative,
             {
                 label: `${result.label} Cum Oil`,
+                curveKey: 'cum-oil-sim',
+                toggleLabel: 'Cum Oil',
                 color,
                 borderWidth: 1.4,
                 borderDash: [5, 4],
@@ -449,6 +484,8 @@ export function buildReferenceComparisonModel(input: {
             panels.diagnostics,
             {
                 label: `${result.label} Avg Pressure`,
+                curveKey: 'avg-pressure-sim',
+                toggleLabel: 'Avg Pressure',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
@@ -477,6 +514,8 @@ export function buildReferenceComparisonModel(input: {
             panels.rates,
             {
                 label: referenceOverlay.rates.label,
+                curveKey: family.scenarioClass === 'buckley-leverett' ? 'water-cut-reference' : 'oil-rate-reference',
+                toggleLabel: referenceOverlay.rates.label,
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],
@@ -492,6 +531,8 @@ export function buildReferenceComparisonModel(input: {
             panels.cumulative,
             {
                 label: referenceOverlay.cumulative.recoveryLabel,
+                curveKey: 'recovery-factor',
+                toggleLabel: 'Recovery Factor',
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],
@@ -504,6 +545,8 @@ export function buildReferenceComparisonModel(input: {
             panels.cumulative,
             {
                 label: referenceOverlay.cumulative.cumulativeLabel,
+                curveKey: 'cum-oil-reference',
+                toggleLabel: referenceOverlay.cumulative.cumulativeLabel,
                 color: referenceColor,
                 borderWidth: 1.4,
                 borderDash: [3, 5],
@@ -520,6 +563,8 @@ export function buildReferenceComparisonModel(input: {
             panels.diagnostics,
             {
                 label: referenceOverlay.diagnostics.label,
+                curveKey: 'avg-pressure-reference',
+                toggleLabel: referenceOverlay.diagnostics.label,
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],

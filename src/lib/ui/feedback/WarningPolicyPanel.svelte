@@ -47,12 +47,12 @@
       <section class={`warning-group ${toneClass(group)}`}>
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <div class="text-[11px] font-semibold uppercase tracking-wide">
+            <div class="ui-section-kicker">
               {group.title}
             </div>
-            <p class="mt-1 text-xs opacity-90">{group.description}</p>
+            <p class="ui-support-copy mt-1 opacity-90">{group.description}</p>
           </div>
-          <span class="rounded border border-current/35 bg-card/75 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide">
+          <span class="ui-chip ui-chip-caps rounded border border-current/35 bg-card/75">
             {group.items.length} item{group.items.length === 1 ? "" : "s"}
           </span>
         </div>
@@ -61,7 +61,7 @@
           {#each group.items as item}
             <li class="rounded border border-current/20 bg-card/70 px-2.5 py-2">
               <div class="flex flex-wrap items-start gap-2">
-                <span class="rounded border border-current/25 bg-card/85 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-85">
+                <span class="ui-chip ui-chip-caps rounded border border-current/25 bg-card/85 px-1.5 py-0.5 opacity-85">
                   {sourceLabel(item.source)}
                 </span>
                 <span class="flex-1">{item.message}</span>

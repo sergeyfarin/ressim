@@ -78,6 +78,24 @@
     const outputProfileGridState = $derived.by(() => (
         activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null
     ));
+    const outputProfileNx = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.nx ?? params.nx)
+    ));
+    const outputProfileNy = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.ny ?? params.ny)
+    ));
+    const outputProfileNz = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.nz ?? params.nz)
+    ));
+    const outputProfileCellDx = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx)
+    ));
+    const outputProfileCellDy = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy)
+    ));
+    const outputProfileCellDz = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz)
+    ));
     const outputProfileSimTime = $derived.by(() => (
         activeSelectedReferenceResult?.finalSnapshot?.time
         ?? Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.time ?? runtime.simTime)
@@ -109,6 +127,24 @@
     }));
     const output3DHistory = $derived.by(() => (
         activeSelectedReferenceResult?.history ?? runtime.history
+    ));
+    const output3DNx = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.nx ?? params.nx)
+    ));
+    const output3DNy = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.ny ?? params.ny)
+    ));
+    const output3DNz = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.nz ?? params.nz)
+    ));
+    const output3DCellDx = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx)
+    ));
+    const output3DCellDy = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy)
+    ));
+    const output3DCellDz = $derived.by(() => (
+        Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz)
     ));
     const output3DCurrentIndex = $derived.by(() => {
         if (output3DHistory.length === 0) return -1;
@@ -541,14 +577,7 @@
         </header>
 
         <section class="space-y-2">
-            <div>
-                <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Inputs
-                </div>
-                <div class="text-sm text-muted-foreground">
-                    Family selection, case-library context, and editable scenario inputs.
-                </div>
-            </div>
+           
         <ModePanel
             activeMode={scenario.activeMode}
             navigationState={scenario.navigationState}
@@ -571,10 +600,10 @@
 
         <section class="space-y-2">
         <div>
-            <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <div class="ui-section-kicker">
                 Run
             </div>
-            <div class="text-sm text-muted-foreground">
+            <div class="ui-support-copy">
                 Run actions, validation status, and run notices.
             </div>
         </div>
@@ -611,13 +640,13 @@
         {#if activeRunManifest}
             <Card>
                 <div class="p-3 md:p-4 space-y-3">
-                    <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <div class="ui-panel-kicker">
                         Run Summary
                     </div>
 
                     <div class="grid gap-3 xl:grid-cols-2">
-                        <div class="rounded-md border border-border/70 bg-muted/10 p-3 text-[10px] text-muted-foreground">
-                            <div class="font-semibold uppercase tracking-[0.14em]">Active Case</div>
+                        <div class="ui-microcopy rounded-md border border-border/70 bg-muted/10 p-3">
+                            <div class="ui-subsection-kicker">Active Case</div>
                             <div class="mt-2">Family: <strong class="text-foreground">{activeRunManifest.familyLabel}</strong></div>
                             <div>Source: <strong class="text-foreground">{activeRunManifest.sourceLabel}</strong></div>
                             <div>Case: <strong class="text-foreground">{activeRunManifest.caseLabel}</strong></div>
@@ -627,17 +656,17 @@
                             {/if}
                         </div>
 
-                        <div class="rounded-md border border-border/70 bg-muted/10 p-3 text-[10px] text-muted-foreground">
-                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Guidance</div>
+                        <div class="ui-microcopy rounded-md border border-border/70 bg-muted/10 p-3">
+                            <div class="ui-subsection-kicker">Reference Guidance</div>
                             <div class="mt-2">{activeRunManifest.referencePolicySummary}</div>
-                            <div class="mt-2 font-semibold uppercase tracking-[0.14em]">Allowed Sensitivities</div>
+                            <div class="ui-subsection-kicker mt-2">Allowed Sensitivities</div>
                             <div class="mt-2">{activeRunManifest.sensitivitySummary}</div>
                         </div>
                     </div>
 
                     {#if runtime.referenceSweepProgressLabel || runtime.referenceSweepError}
-                        <div class="rounded-md border border-border/70 bg-background/80 p-3 text-[10px] text-muted-foreground">
-                            <div class="font-semibold uppercase tracking-[0.14em]">Reference Run Status</div>
+                        <div class="ui-microcopy rounded-md border border-border/70 bg-background/80 p-3">
+                            <div class="ui-subsection-kicker">Reference Run Status</div>
                             {#if runtime.referenceSweepProgressLabel}
                                 <div class="mt-2">{runtime.referenceSweepProgressLabel}</div>
                             {/if}
@@ -672,11 +701,8 @@
 
         <section class="space-y-2 mt-2">
             <div>
-                <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Outputs
-                </div>
-                <div class="text-sm text-muted-foreground">
-                    Charts, profiles, 3D state, and comparison views for the active family.
+                <div class="ui-section-kicker">
+                    Results
                 </div>
             </div>
 
@@ -727,12 +753,12 @@
                     <div class="p-4 md:p-5">
                         <SwProfileChart
                             gridState={outputProfileGridState}
-                            nx={params.nx}
-                            ny={params.ny}
-                            nz={params.nz}
-                            cellDx={params.cellDx}
-                            cellDy={params.cellDy}
-                            cellDz={params.cellDz}
+                            nx={outputProfileNx}
+                            ny={outputProfileNy}
+                            nz={outputProfileNz}
+                            cellDx={outputProfileCellDx}
+                            cellDy={outputProfileCellDy}
+                            cellDz={outputProfileCellDz}
                             simTime={outputProfileSimTime}
                             producerJ={outputProfileProducerJ}
                             initialSaturation={outputProfileInitialSaturation}
@@ -776,22 +802,22 @@
                 <Card>
                     <div class="p-4 md:p-5">
                         {#if ThreeDViewComponent}
-                            {#key `${params.nx}-${params.ny}-${params.nz}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
+                            {#key `${output3DNx}-${output3DNy}-${output3DNz}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
                                 <ThreeDViewComponent
-                                    nx={params.nx}
-                                    ny={params.ny}
-                                    nz={params.nz}
-                                    cellDx={params.cellDx}
-                                    cellDy={params.cellDy}
-                                    cellDz={params.cellDz}
+                                    nx={output3DNx}
+                                    ny={output3DNy}
+                                    nz={output3DNz}
+                                    cellDx={output3DCellDx}
+                                    cellDy={output3DCellDy}
+                                    cellDz={output3DCellDz}
                                     {theme}
                                     sourceLabel={output3DSourceLabel}
                                     gridState={output3DGridState}
                                     bind:showProperty
                                     bind:legendFixedMin
                                     bind:legendFixedMax
-                                    s_wc={params.s_wc}
-                                    s_or={params.s_or}
+                                    s_wc={outputProfileRockProps.s_wc}
+                                    s_or={outputProfileRockProps.s_or}
                                     currentIndex={output3DCurrentIndex}
                                     replayTime={output3DReplayTime}
                                     onApplyHistoryIndex={handleApplyOutputHistoryIndex}

@@ -1248,14 +1248,14 @@
 <div style="display:flex; flex-direction:column;">
     <div class="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
         <div>
-            <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <div class="ui-section-kicker">
                 Spatial View
             </div>
-            <div class="text-xs text-muted-foreground">
+            <div class="ui-support-copy">
                 Inspecting {sourceLabel} in the active playback window.
             </div>
         </div>
-        <div class="rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+        <div class="ui-chip border border-border/70 bg-background text-muted-foreground">
             {sourceLabel}
         </div>
     </div>
@@ -1309,7 +1309,7 @@
 
             <div class="flex items-center gap-1.5">
                 <span
-                    class="label-text text-[10px] text-muted-foreground uppercase tracking-wide"
+                    class="label-text ui-panel-kicker"
                     >Min</span
                 >
                 <div
@@ -1324,7 +1324,7 @@
                     />
                     <button
                         type="button"
-                        class="inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted text-[10px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                        class="ui-chip inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted px-0 transition-colors hover:bg-accent hover:text-accent-foreground"
                         onclick={applyModelLegendMin}>Auto</button
                     >
                 </div>
@@ -1332,7 +1332,7 @@
 
             <div class="flex items-center gap-1.5">
                 <span
-                    class="label-text text-[10px] text-muted-foreground uppercase tracking-wide"
+                    class="label-text ui-panel-kicker"
                     >Max</span
                 >
                 <div
@@ -1347,7 +1347,7 @@
                     />
                     <button
                         type="button"
-                        class="inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted text-[10px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                        class="ui-chip inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted px-0 transition-colors hover:bg-accent hover:text-accent-foreground"
                         onclick={applyModelLegendMax}>Auto</button
                     >
                 </div>

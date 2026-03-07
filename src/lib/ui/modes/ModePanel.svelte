@@ -306,28 +306,28 @@
 
 <Card class="p-3 md:p-4">
   <div class="rounded-md border border-border/70 bg-muted/10 p-3">
-    <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <div class="ui-panel-kicker">
       Inputs
     </div>
     <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
       <div class="space-y-1">
-        <div class="text-sm font-semibold text-foreground">
+        <div class="ui-card-title">
           {FAMILY_LABELS[activeFamily as keyof typeof FAMILY_LABELS] ?? activeFamily}
         </div>
-        <div class="max-w-2xl text-[11px] text-muted-foreground">
+        <div class="ui-support-copy max-w-2xl">
           {FAMILY_SUBTITLES[activeFamily as keyof typeof FAMILY_SUBTITLES] ?? "Family-first inputs shell in progress."}
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2 text-[10px]">
+      <div class="flex flex-wrap items-center gap-2">
         {#if navigationState?.activeLibraryGroup && activeSource === "case-library"}
-          <span class="rounded-md border border-border/70 bg-background px-2 py-1 text-muted-foreground">
+          <span class="ui-chip border border-border/70 bg-background text-muted-foreground">
             {GROUP_LABELS[navigationState.activeLibraryGroup]}
           </span>
         {/if}
         {#if isModified}
           <span
-            class="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 font-medium text-amber-700 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+            class="ui-chip border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
           >
             Customized
           </span>
@@ -349,7 +349,7 @@
     </div>
 
     <div class="mt-3 rounded-md border border-border/60 bg-background/80 p-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <div class="ui-panel-kicker">
         Source
       </div>
       <div class="mt-2 flex flex-wrap gap-2">
@@ -368,7 +368,7 @@
           Custom
         </Button>
       </div>
-      <div class="mt-2 text-[10px] text-muted-foreground">
+      <div class="ui-microcopy mt-2">
         {#if activeSource === "case-library"}
           Curated family cases keep provenance, reference guidance, and allowed sensitivities attached to the active selection.
         {:else}
@@ -379,14 +379,14 @@
   </div>
 
   {#if shouldShowStatusRow}
-    <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+    <div class="mt-3 flex flex-wrap items-center gap-2">
       {#if Number(params.parameterOverrideCount ?? 0) > 0}
-        <span class={`rounded-md border px-2 py-1 font-medium ${sourceTone}`}>
+        <span class={`ui-chip ${sourceTone}`}>
           {params.parameterOverrideCount} changed field{params.parameterOverrideCount === 1 ? "" : "s"}
         </span>
       {/if}
       {#if referenceProvenance}
-        <span class="rounded-md border border-border/70 bg-muted/25 px-2 py-1 text-muted-foreground">
+        <span class="ui-chip border border-border/70 bg-muted/25 text-muted-foreground">
           Seeded from <strong class="text-foreground">{referenceProvenance.sourceLabel}</strong>
         </span>
       {/if}
@@ -395,12 +395,12 @@
 
   {#if navigationState}
     <div class="mt-3 rounded-md border border-border/70 bg-muted/10 p-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <div class="ui-panel-kicker">
         Library Context
       </div>
 
       {#if activeSource === "case-library" && activeLibraryEntry}
-        <div class="mt-2 space-y-1 text-[11px]">
+        <div class="mt-2 space-y-1">
           <div class="text-foreground">
             <strong>{activeLibraryEntry.label}</strong>
           </div>
@@ -415,17 +415,17 @@
             </div>
           {/if}
           {#if navigationState.provenanceSummary}
-            <div class="text-[10px] text-muted-foreground">
+            <div class="ui-microcopy">
               {navigationState.provenanceSummary}
             </div>
           {/if}
         </div>
       {:else if !isModified && activeSource === "case-library"}
-        <div class="mt-2 text-[10px] text-muted-foreground">
+        <div class="ui-microcopy mt-2">
           Current facet combination is not mapped to a curated library case yet.
         </div>
       {:else if activeSource === "custom"}
-        <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+        <div class="ui-microcopy mt-2 space-y-1">
           <div>Custom inputs are active for this family.</div>
           {#if referenceProvenance}
             <div>
@@ -437,15 +437,15 @@
 
       {#if activeSource === "case-library" && librarySelectorSections.length > 0}
         <div class="mt-3 border-t border-border/50 pt-3">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <div class="ui-panel-kicker">
             Case Library
           </div>
           <div class="mt-3 space-y-3">
             {#each librarySelectorSections as section}
               <div class="space-y-2">
-                <div class="flex flex-wrap items-center justify-between gap-2 text-[10px]">
-                  <span class="font-semibold uppercase tracking-[0.14em] text-foreground">{section.familyLabel}</span>
-                  <span class="text-muted-foreground">{section.groupLabel}</span>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="ui-subsection-kicker text-foreground">{section.familyLabel}</span>
+                  <span class="ui-microcopy">{section.groupLabel}</span>
                 </div>
                 <div class="grid gap-2 md:grid-cols-2">
                   {#each section.entries as entry}
@@ -456,13 +456,13 @@
                         : "border-border/70 bg-background hover:bg-muted/30"}`}
                       onclick={() => onActivateLibraryEntry(entry.key)}
                     >
-                      <div class="flex items-center justify-between gap-2 text-[11px]">
+                      <div class="flex items-center justify-between gap-2">
                         <strong class="font-semibold text-foreground">{entry.label}</strong>
                         {#if navigationState.activeLibraryCaseKey === entry.key}
-                          <span class="text-[10px] text-primary">Active</span>
+                          <span class="ui-microcopy text-primary">Active</span>
                         {/if}
                       </div>
-                      <div class="mt-1 text-[10px] text-muted-foreground">
+                      <div class="ui-microcopy mt-1">
                         {entry.description}
                       </div>
                     </button>
@@ -476,23 +476,23 @@
 
       {#if caseDisclosure}
         <div class="mt-3 border-t border-border/50 pt-3">
-          <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <div class="ui-panel-kicker">
             Case Disclosure
           </div>
           <div class="mt-2 rounded-md border border-border/70 bg-background/80 p-3">
-            <div class="text-[11px] text-foreground">
+            <div class="ui-support-copy text-foreground">
               <strong>{caseDisclosure.title}</strong>
             </div>
-            <div class="mt-1 text-[10px] text-muted-foreground">
+            <div class="ui-microcopy mt-1">
               {caseDisclosure.description}
             </div>
 
             <div class="mt-3 grid gap-3 xl:grid-cols-2">
               <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <div class="ui-subsection-kicker">
                   Citation / Source
                 </div>
-                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                <div class="ui-microcopy mt-2 space-y-1">
                   {#each caseDisclosure.sourceItems as item}
                     <div>{item}</div>
                   {/each}
@@ -500,10 +500,10 @@
               </div>
 
               <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <div class="ui-subsection-kicker">
                   Fixed Settings
                 </div>
-                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                <div class="ui-microcopy mt-2 space-y-1">
                   {#each caseDisclosure.fixedSettingsItems as item}
                     <div>{item}</div>
                   {/each}
@@ -511,10 +511,10 @@
               </div>
 
               <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <div class="ui-subsection-kicker">
                   Allowed Sensitivities
                 </div>
-                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                <div class="ui-microcopy mt-2 space-y-1">
                   {#each caseDisclosure.sensitivityItems as item}
                     <div>{item}</div>
                   {/each}
@@ -522,10 +522,10 @@
               </div>
 
               <div class="rounded-md border border-border/60 bg-muted/10 p-3">
-                <div class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <div class="ui-subsection-kicker">
                   Reference Guidance
                 </div>
-                <div class="mt-2 space-y-1 text-[10px] text-muted-foreground">
+                <div class="ui-microcopy mt-2 space-y-1">
                   {#each caseDisclosure.referencePolicyItems as item}
                     <div>{item}</div>
                   {/each}
@@ -552,11 +552,11 @@
               Customize
             </Button>
             {#if referenceProvenance}
-              <span class="text-[10px] text-muted-foreground">
+              <span class="ui-microcopy">
                 Seeded source: <strong class="text-foreground">{referenceProvenance.sourceLabel}</strong>
               </span>
             {:else if isModified}
-              <span class="text-[10px] text-muted-foreground">
+              <span class="ui-microcopy">
                 Customized without source provenance
               </span>
             {/if}

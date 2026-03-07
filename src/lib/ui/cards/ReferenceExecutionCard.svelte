@@ -2,6 +2,11 @@
   import Button from "../controls/Button.svelte";
   import Card from "../controls/Card.svelte";
   import {
+    buildBenchmarkCaseSnapshot,
+    buildBenchmarkReferenceGuidance,
+    buildBenchmarkVariantDeltaSummary,
+  } from "../../benchmarkDisclosure";
+  import {
     getBenchmarkFamily,
     getBenchmarkSensitivityAxisLabel,
     getBenchmarkVariantsForFamily,
@@ -29,6 +34,27 @@
   const generatedVariants = $derived(
     activeFamily ? getBenchmarkVariantsForFamily(activeFamily.key) : [],
   );
+  const baseCaseSnapshot = $derived.by(() => (
+    activeFamily ? buildBenchmarkCaseSnapshot(activeFamily.baseCase.params) : null
+  ));
+  const referenceGuidance = $derived.by(() => (
+    activeFamily
+      ? buildBenchmarkReferenceGuidance({
+        scenarioClass: activeFamily.scenarioClass,
+        referenceKind: activeFamily.reference.kind,
+        comparisonMetric: activeFamily.comparisonMetric ?? null,
+        displayDefaults: activeFamily.displayDefaults ?? null,
+        runPolicy: activeFamily.runPolicy ?? null,
+      })
+      : null
+  ));
+  const variantDeltaSummaryByKey = $derived.by(() => {
+    const summaryByKey = new Map<string, string>();
+    for (const variant of generatedVariants) {
+      summaryByKey.set(variant.variantKey, buildBenchmarkVariantDeltaSummary(variant.paramsDelta));
+    }
+    return summaryByKey;
+  });
   const sensitivitySummary = $derived.by(() => {
     if (!generatedVariants.length) return null;
 
@@ -141,29 +167,48 @@
   <Card>
     <div class="p-3 md:p-4 space-y-3">
       <div>
-        <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <div class="ui-panel-kicker">
           Reference Runs
         </div>
-        <div class="mt-2 text-[11px] text-muted-foreground">
+        <div class="ui-support-copy mt-2">
           <strong>{activeFamily.label}:</strong>
           {activeFamily.description}
         </div>
         {#if generatedVariants.length > 0}
-          <div class="mt-2 text-[10px] text-muted-foreground">
+          <div class="ui-microcopy mt-2">
             Generated sensitivity suite: <strong class="text-foreground">{generatedVariants.length}</strong>
             variants across {sensitivitySummary}.
           </div>
         {/if}
       </div>
 
+      {#if baseCaseSnapshot && referenceGuidance}
+        <div class="grid gap-2 xl:grid-cols-2">
+          <div class="ui-microcopy rounded-md border border-border/70 bg-muted/10 p-3">
+            <div class="ui-subsection-kicker">Case Snapshot</div>
+            <div class="mt-2">Grid: <strong class="text-foreground">{baseCaseSnapshot.grid}</strong></div>
+            <div class="mt-1">Horizon: <strong class="text-foreground">{baseCaseSnapshot.horizon}</strong></div>
+            <div class="mt-1">Controls: <strong class="text-foreground">{baseCaseSnapshot.controls}</strong></div>
+            <div class="mt-1">Reservoir: <strong class="text-foreground">{baseCaseSnapshot.reservoir}</strong></div>
+          </div>
+          <div class="ui-microcopy rounded-md border border-border/70 bg-muted/10 p-3">
+            <div class="ui-subsection-kicker">Reference Guidance</div>
+            <div class="mt-2">{referenceGuidance.reference}</div>
+            <div class="mt-1">{referenceGuidance.metric}</div>
+            <div class="mt-1">{referenceGuidance.outputs}</div>
+            <div class="mt-1">{referenceGuidance.runApproach}</div>
+          </div>
+        </div>
+      {/if}
+
       <div class="rounded-md border border-border/70 bg-muted/10 p-3">
-        <div class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <div class="ui-panel-kicker">
           Run Set
         </div>
         <div class="mt-2 space-y-2">
           <button
             type="button"
-            class={`w-full rounded-md border px-3 py-2 text-left text-[11px] transition-colors ${selectedExecutionRow === "base"
+            class={`w-full rounded-md border px-3 py-2 text-left transition-colors ${selectedExecutionRow === "base"
               ? "border-primary/60 bg-primary/10 text-foreground"
               : "border-border/70 bg-background text-muted-foreground hover:bg-muted/30"}`}
             onclick={() => selectExecutionRow("base")}
@@ -172,7 +217,7 @@
               <strong class="font-semibold">Base case</strong>
               <span>1 run</span>
             </div>
-            <div class="mt-1 text-[10px] opacity-80">
+            <div class="ui-microcopy mt-1 opacity-80">
               Run only the active library reference base case with its primary reference solution.
             </div>
           </button>
@@ -188,11 +233,11 @@
                 class="w-full text-left"
                 onclick={() => selectExecutionRow(sensitivityAxis.axis)}
               >
-                <div class="flex items-center justify-between gap-2 text-[11px]">
+                <div class="flex items-center justify-between gap-2">
                   <strong class="font-semibold text-foreground">{sensitivityAxis.label}</strong>
-                  <span class="text-muted-foreground">{selectedExecutionRow === sensitivityAxis.axis ? selectedAxisVariants.length : sensitivityAxis.count} / {sensitivityAxis.count}</span>
+                  <span class="ui-support-copy">{selectedExecutionRow === sensitivityAxis.axis ? selectedAxisVariants.length : sensitivityAxis.count} / {sensitivityAxis.count}</span>
                 </div>
-                <div class="mt-1 text-[10px] text-muted-foreground">
+                <div class="ui-microcopy mt-1">
                   {selectedExecutionRow === sensitivityAxis.axis
                     ? "Select the variants to include in this run set."
                     : `Click to stage the ${sensitivityAxis.label.toLowerCase()} run set.`}
@@ -202,7 +247,7 @@
               <div class="mt-2 flex flex-wrap gap-2">
                 {#each getAxisVariants(sensitivityAxis.axis) as variant}
                   <label
-                    class={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] transition-colors ${selectedExecutionRow === sensitivityAxis.axis && selectedVariantKeys.includes(variant.variantKey)
+                    class={`ui-chip items-start rounded-md border transition-colors ${selectedExecutionRow === sensitivityAxis.axis && selectedVariantKeys.includes(variant.variantKey)
                       ? "border-primary/60 bg-background text-foreground"
                       : "border-border/70 bg-muted/20 text-muted-foreground"}`}
                   >
@@ -213,7 +258,10 @@
                       onchange={() => toggleVariantSelection(sensitivityAxis.axis, variant.variantKey)}
                       class="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
                     />
-                    <span>{variant.label}</span>
+                    <span class="flex flex-col">
+                      <span>{variant.label}</span>
+                      <span class="ui-microcopy opacity-70">Change from base: {variantDeltaSummaryByKey.get(variant.variantKey) ?? variant.description}</span>
+                    </span>
                   </label>
                 {/each}
               </div>
@@ -238,7 +286,7 @@
               Stop Reference Runs
             </Button>
           {/if}
-          <span class="text-[10px] text-muted-foreground">
+          <span class="ui-microcopy">
             Selected run set: <strong class="text-foreground">{activeAxisSelectionLabel}</strong>{#if selectedExecutionRow !== "base"} ({selectedAxisVariants.length} variant{selectedAxisVariants.length === 1 ? "" : "s"}){/if}
           </span>
         </div>

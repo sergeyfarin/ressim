@@ -59,13 +59,16 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/getReferenceRateChartLayoutConfig/);
     expect(appSource).toMatch(/ReferenceComparisonChartComponent/);
     expect(appSource).toMatch(/activeReferenceFamily && activeReferenceResults.length > 0 && ReferenceComparisonChartComponent/);
+    expect(appSource).toMatch(/Results/);
   });
 
   it('extends outputs-owned comparison focus into the saturation-profile surface', () => {
     expect(appSource).toMatch(/const activeSelectedReferenceResult = \$derived\.by/);
     expect(appSource).toMatch(/const outputProfileGridState = \$derived\.by/);
+    expect(appSource).toMatch(/const outputProfileNx = \$derived\.by/);
     expect(appSource).toMatch(/const outputProfileScenarioMode = \$derived\.by/);
     expect(appSource).toMatch(/gridState=\{outputProfileGridState\}/);
+    expect(appSource).toMatch(/nx=\{outputProfileNx\}/);
     expect(appSource).toMatch(/simTime=\{outputProfileSimTime\}/);
     expect(appSource).toMatch(/sourceLabel=\{outputProfileSourceLabel\}/);
     expect(appSource).toMatch(/rockProps=\{outputProfileRockProps\}/);
@@ -74,12 +77,15 @@ describe('App store domain wiring', () => {
 
   it('extends outputs-owned comparison focus into the 3D surface', () => {
     expect(appSource).toMatch(/const output3DHistory = \$derived\.by/);
+    expect(appSource).toMatch(/const output3DNx = \$derived\.by/);
     expect(appSource).toMatch(/const output3DCurrentIndex = \$derived\.by/);
     expect(appSource).toMatch(/const output3DReplayTime = \$derived\.by/);
     expect(appSource).toMatch(/const output3DSourceLabel = \$derived\.by/);
     expect(appSource).toMatch(/function handleApplyOutputHistoryIndex\(index: number\)/);
     expect(appSource).toMatch(/sourceLabel=\{output3DSourceLabel\}/);
     expect(appSource).toMatch(/gridState=\{output3DGridState\}/);
+    expect(appSource).toMatch(/nx=\{output3DNx\}/);
+    expect(appSource).toMatch(/cellDx=\{output3DCellDx\}/);
     expect(appSource).toMatch(/currentIndex=\{output3DCurrentIndex\}/);
     expect(appSource).toMatch(/replayTime=\{output3DReplayTime\}/);
     expect(appSource).toMatch(/onApplyHistoryIndex=\{handleApplyOutputHistoryIndex\}/);

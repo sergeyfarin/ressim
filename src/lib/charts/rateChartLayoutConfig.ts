@@ -18,6 +18,7 @@ export type RateChartCurveOverride = {
 
 export type RateChartPanelLayout = {
     title?: string;
+    curveKeys?: string[];
     curveLabels?: string[];
     scalePreset?: RateChartScalePreset;
     allowLogToggle?: boolean;

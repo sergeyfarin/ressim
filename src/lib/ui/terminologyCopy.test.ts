@@ -26,6 +26,9 @@ describe('ui terminology copy', () => {
     expect(referenceExecutionSource).toMatch(/Run Base Case/);
     expect(referenceExecutionSource).toMatch(/Stop Reference Runs/);
     expect(referenceExecutionSource).toMatch(/Selected run set:/);
+    expect(referenceExecutionSource).toMatch(/Case Snapshot/);
+    expect(referenceExecutionSource).toMatch(/Reference Guidance/);
+    expect(referenceExecutionSource).toMatch(/Change from base:/);
     expect(referenceExecutionSource).not.toMatch(/Reference Execution/);
     expect(referenceExecutionSource).not.toMatch(/Execution Set/);
   });

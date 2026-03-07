@@ -13,8 +13,14 @@ describe('output terminology copy', () => {
     expect(referenceResultsSource).toMatch(/Reference Run Results/);
     expect(referenceResultsSource).toMatch(/ready for output review/);
     expect(referenceResultsSource).toMatch(/Output focus:/);
-    expect(referenceResultsSource).toMatch(/Base Case/);
-    expect(referenceResultsSource).toMatch(/Focused in outputs/);
+    expect(referenceResultsSource).toMatch(/Run Table/);
+    expect(referenceResultsSource).toMatch(/Varied input/);
+    expect(referenceResultsSource).toMatch(/BT PVI/);
+    expect(referenceResultsSource).toMatch(/BT Time \(d\)/);
+    expect(referenceResultsSource).toMatch(/Delta vs reference/);
+    expect(referenceResultsSource).toMatch(/Selected Review/);
+    expect(referenceResultsSource).toMatch(/Change from base:/);
+    expect(referenceResultsSource).toMatch(/Show base case/);
     expect(referenceResultsSource).not.toMatch(/Stored Reference Results/);
     expect(referenceResultsSource).not.toMatch(/Base Reference/);
   });
@@ -23,6 +29,8 @@ describe('output terminology copy', () => {
     expect(comparisonChartSource).toMatch(/Output Comparison/);
     expect(comparisonChartSource).toMatch(/Focused review keeps the selected case and its reference context visible by default/);
     expect(comparisonChartSource).not.toMatch(/Stored Run Comparison/);
+    expect(appSource).toMatch(/Results/);
+    expect(appSource).not.toMatch(/Outputs/);
     expect(appSource).toMatch(/Loading output chart…/);
     expect(appSource).toMatch(/Loading 3D output\.\.\./);
     expect(appSource).toMatch(/Open 3D View/);
