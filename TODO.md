@@ -1,257 +1,272 @@
-# TODO — ResSim Remaining Work Items
+# TODO — ResSim Active Work Plan
 
-Consolidated from docs, reviews, action plans, and source code review.  
-Items are grouped by priority.
+This file is the live plan for the next major workstream. Legacy Phase 1 / Phase 2 recovery notes and completed execution logs were removed from this tracker to keep it interruption-safe and reviewable.
 
-## Product Direction (Locked: 2026-03-05)
+## Proposed Direction (2026-03-07, pending review)
 
-- [x] **Adopt Option B** — Unified "Preset + Customize" surface is the primary product direction.
-- [x] **No migration constraints** — greenfield product (no existing users, no legacy data).
-- [x] **Analytical policy** — permissive analytical overlays with clearly visible warnings for approximate assumptions.
-- [x] **Benchmark workflow** — benchmark presets remain curated references but must support one-click clone into custom mode.
+- [x] **Single benchmark source of truth** — benchmark physics definitions must exist in one logical place only; UI selectors, tests, and benchmark execution must resolve from that single source and never duplicate parameter payloads.
+- [x] **Benchmark mode becomes a benchmark-family runner** — benchmark mode should support a base benchmark plus meaningful sensitivity variants, not only one static case launch.
+- [x] **Buckley-Leverett base semantics match Rust** — BL benchmark families should use the exact validated Rust benchmark semantics as the physical reference point.
+- [x] **Buckley-Leverett default x-axis is PVI** — benchmark charts for BL should default to pore volumes injected rather than time.
+- [x] **Benchmark charts are benchmark-specific** — chart content should depend on benchmark family and reference type, not reuse the same generic curve set blindly.
+- [x] **Depletion charts stay depletion-focused** — depletion benchmark views should emphasize oil rate, cumulative oil, and pressure/decline diagnostics, without default injection/water-cut clutter.
+- [x] **Sensitivity axes must be meaningful** — BL benchmark sensitivities should initially support grid refinement, timestep refinement, and curated heterogeneity variants only where the comparison remains interpretable.
+- [x] **Reference policy is explicit** — homogeneous BL variants compare against analytical Buckley-Leverett reference; heterogeneous BL variants compare against a refined numerical reference, not directly against analytical equality.
 
----
+## Active Slice
 
-## Authoritative Recovery Plan — Mode-Specific Panels (Interruption-Safe)
+- [ ] **B0. Plan review and objective sign-off (in progress)** — review the detailed benchmark-modernization objective, chart policy, and sensitivity scope before code implementation starts.
 
-Single source of truth: this section is the authoritative tracker for the current frontend recovery/refactor path after the 2026-03-06 UI audit.
+## Detailed Implementation Plan
 
-Direction update (2026-03-06, later session):
-- Do not continue toward a broad JSON/schema-driven control system for the full input surface.
-- Preferred direction is mode-specific Svelte panels (`Depletion`, `Waterflood`, `Simulation`, `Benchmark`) that reuse smaller field/panel subcomponents.
-- Typed config/schema may still be used sparingly for narrow repetitive cases (for example compact quick-pick definitions), but not as the primary UI architecture.
-- Constraint logic, warning policy, and simulator behavior remain code-defined in TypeScript.
+- [ ] **B1. Define benchmark-family schema and ownership**
+  - Introduce a single benchmark registry contract that separates:
+    - base physical definition
+    - derived sensitivity definitions
+    - reference policy
+    - display defaults
+    - run policy
+  - Required metadata for each benchmark family:
+    - `familyKey`, `label`, `description`
+    - `scenarioClass` (`buckley-leverett`, `depletion`, later others)
+    - `baseCase`
+    - `sensitivityAxes`
+    - `referenceKind` (`analytical`, `numerical-refined`)
+    - `referenceCaseKey` or `referenceGenerator`
+    - `defaultXAxis`
+    - `defaultPanels`
+    - `stylePolicy`
+    - `runPolicy` (`single`, `sweep`, `compare-to-reference`)
+  - Acceptance:
+    - one authoritative benchmark registry
+    - no duplicated benchmark parameter blobs across selector config and runtime config
+    - benchmark UI reads selector options from the same registry used for execution
 
-- [x] **R0.1 Audit current UI state** — confirmed the current `ModePanel` is an intermediate splice: it is hardcoded, passes `params: any`, and bypasses part of the Phase 2 preset/customize contract (`isModified`, grouped override/reset UX, shell-level provenance/override visibility).
-- [x] **R0.2 Reset docs to an authoritative plan** — updated `TODO.md`, `docs/status.md`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`, and `docs/FRONTEND_INPUT_SELECTION_REACTIVITY_REVIEW_2026-03-05.md` so interruption-safe resume state reflects the current frontend direction.
-- [x] **R1.1 Restore unified-panel preset/customize semantics** — wired manual field edits in `ModePanel` back through `scenario.handleParamEdit()`, resurfaced base-preset / changed-field / clone provenance state in the live panel, and auto-clear non-benchmark customized state when overrides return to zero.
-- [x] **R1.2 Extract mode-specific top-level panels** — split the current `ModePanel` into dedicated Svelte components for `Depletion`, `Waterflood`, `Simulation`, and `Benchmark`, while keeping one shared store contract and reusing small field/panel subcomponents.
-- [x] **R1.3 Define warning severity + surfacing policy** — separate `blocking validation`, `non-physical or contradictory`, `approximate/reference-model caveat`, and `advisory` states, with explicit UI surfaces for each.
-Outcome note for `R1.3`: live warning surfaces now flow through shared `warningPolicy` in `ModePanel`, `RunControls`, and the analytical caveat banner. Legacy shell-era `InputsTab.svelte` and `PresetCustomizeShell.svelte` were aligned to the shared warning/analytical contracts, and the only remaining warning-specific leftover is unreferenced `src/lib/ui/DynamicControlsPanel.svelte`, which should be retired under `R1.7` instead of migrated.
-- [x] **R1.4 Keep only narrow config-driven helpers where they help** — preserve typed quick-pick/custom-entry helpers only for local repetitive controls if they genuinely reduce duplication.
-Outcome note for `R1.4`: the former generic `modePanelSchema` / `SchemaSectionRenderer` path was reduced to explicit `modePanelSections` metadata plus a local `GeometryGridQuickEditor.svelte` implementation used only for the geometry-grid quick-edit case, so the app no longer carries a second broad schema-rendering direction.
-- [x] **R1.5 Add toggle-plus-custom pattern where useful** — allow curated quick-select options (for example `nx = 12 | 24 | 48`) plus a `Custom` affordance that reveals a typed input or advanced parameter sub-panel.
-Outcome note for `R1.5`: the live geometry-grid section now exposes preset toggles plus `Custom` entry for `nx`, `ny`, `nz`, `cellDx`, `cellDy`, and `cellDz` through local quick-pick definitions owned by `GeometryGridQuickEditor.svelte`, so quick presets and exact manual values coexist in one explicit control group without reintroducing a broad schema system.
-- [x] **R1.6 Refactor mode panels to reuse focused subcomponents** — extract small reusable units for grid fields, timestep fields, SCAL groups, well controls, and benchmark info without forcing everything through one schema renderer.
-Outcome note for `R1.6`: the live `ui/` surface is now organized by role under `modes/`, `sections/`, `controls/`, `cards/`, `feedback/`, and `shared/`. `ScenarioSectionsPanel.svelte` now binds the focused section components directly (`GeometrySection`, `ReservoirSection`, `WellsSection`, `TimestepSection`, `AnalyticalSection`, `RelativeCapillarySection`) instead of routing through wrapper-only `*FieldsPanel` components, while shared panel/table classes live in `src/lib/ui/shared/panelStyles.ts`.
-- [x] **R1.7 Remove obsolete shell-era UI leftovers** — retire `DynamicControlsPanel.svelte`, `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, and any stale App-side assumptions once the new mode panels are stable. While cleaning leftovers perform a comprehensive review of what else can be cleaned or refactored. There might be other leftovers not used for anything or illogical duplications. Could also log follow-up tasks.
-Outcome note for `R1.7`: removed unreferenced shell-era `DynamicControlsPanel.svelte`, `TopBar.svelte`, `InputsTab.svelte`, `PresetCustomizeShell.svelte`, `TabContainer.svelte`, `PermeabilityPanel.svelte`, later removed wrapper-only `GridFieldsPanel.svelte`, `ReservoirFieldsPanel.svelte`, `WellsFieldsPanel.svelte`, `TimestepFieldsPanel.svelte`, `AnalyticalFieldsPanel.svelte`, and the unused `StaticPropertiesPanel.svelte`, and updated `README.md` so the UI architecture summary reflects the live mode-panel structure instead of the retired shell. `App.svelte` no longer depends on shell-era assumptions.
-- [x] **R1.8 Regression + policy hardening** — add tests for modified-state transitions, clone provenance, override visibility/reset behavior, warning policy, and the final mode-panel flows.
-Outcome note for `R1.8`: added focused regression coverage for the recovered preset/customize and warning-policy paths. Shared policy helpers now harden modified-state auto-clear rules, benchmark clone eligibility, and mode-panel status-row visibility; tests cover those helper behaviors, store wiring, warning-policy grouping/filters, and the final mode-panel flow surfaces.
+- [ ] **B2. Align BL benchmark base cases to exact Rust semantics**
+  - Repoint frontend BL benchmark families to the same physical setup used by the validated Rust builders.
+  - Keep physical semantics separate from user-facing run horizon.
+  - Replace any remaining rate-controlled BL benchmark semantics with pressure-controlled Rust parity for benchmark families.
+  - Record breakthrough criterion and accepted comparison metric in the benchmark metadata.
+  - Acceptance:
+    - BL base family matches the Rust benchmark definitions field-for-field where physically relevant
+    - frontend benchmark runtime can be described as the same experiment as the Rust benchmark
 
-Recovery acceptance checklist:
+- [ ] **B3. Introduce generated sensitivity variants without duplicating full cases**
+  - Do not clone full JSON payloads for every benchmark variant.
+  - Represent sensitivity variants as deltas from a benchmark family base case.
+  - First supported BL axes:
+    - grid refinement
+    - timestep refinement
+    - curated heterogeneity variants
+  - For each axis, define:
+    - allowed variant set
+    - comparison meaning
+    - whether analytical comparison remains valid
+  - Acceptance:
+    - one base family definition can generate the initial BL sensitivity suite
+    - no N-way duplicated case payloads for each variant
 
-- [ ] A manual field edit always transitions the current preset into truthful customized state.
-- [x] Quick presets and custom input can coexist in the same control group without ambiguous precedence.
-- [x] Top-level mode flows are expressed in dedicated Svelte components, not a broad schema renderer.
-- [ ] Constraint rules remain deterministic and code-defined; no string-encoded logic is introduced in JSON.
-- [x] Any remaining config-driven helpers stay local and typed rather than becoming a second UI language.
-- [ ] Warning surfaces are explicit: blocking errors stop run, non-reference states stay permissive with visible rationale.
-- [x] `TODO.md` and `docs/status.md` are sufficient to resume work after interruption without rereading old chat history.
+- [ ] **B4. Build benchmark execution/result model for multi-run comparison**
+  - Add a benchmark-runner path that can execute one benchmark family plus selected variants serially in the worker/store.
+  - Define a normalized result model per run:
+    - `caseKey`
+    - `familyKey`
+    - `variantKey`
+    - `variantLabel`
+    - `rateHistory`
+    - `breakthroughPvi`
+    - `breakthroughTime`
+    - `watercutSeries`
+    - `pressureSeries`
+    - `recoverySeries`
+    - `referenceComparison`
+  - Include progress and cancellation for multi-run benchmark sweeps.
+  - Acceptance:
+    - benchmark mode can run base-only or base-plus-variants deterministically
+    - results can be consumed by charts without special-case ad hoc plumbing
 
-Interruption resume protocol (mandatory):
+- [ ] **B5. Make benchmark reference handling explicit**
+  - For homogeneous BL families:
+    - preserve analytical Buckley-Leverett overlay and benchmark breakthrough comparison
+  - For heterogeneous BL families:
+    - compare against a refined numerical reference run
+    - clearly label that analytical overlay is no longer the primary truth metric
+  - For depletion families:
+    - keep depletion analytical comparison where applicable
+  - Add benchmark-level comparison outputs:
+    - breakthrough shift
+    - recovery difference at selected PVI/time landmarks
+    - error summary against the applicable reference
+  - Acceptance:
+    - each benchmark family declares what “reference” means
+    - benchmark charts and summaries do not imply analytical validity where it no longer applies
 
-- [ ] Keep this recovery section current before ending a work session.
-- [ ] Mark only one active slice at a time by adding `(in progress)` in the item text.
-- [ ] Append each completed slice outcome to `docs/status.md` with files touched, tests run, and the next active slice.
-- [ ] If interrupted mid-slice, add a short `WIP` note in `docs/status.md` naming the file and pending edit.
-- [ ] Do not start a new slice until `TODO.md` and `docs/status.md` are synchronized.
+- [ ] **B6. Redesign benchmark chart composition and defaults**
+  - Introduce benchmark-family-specific panel layouts instead of one generic chart bundle.
+  - Proposed BL default panels:
+    - water cut vs PVI with breakthrough markers
+    - recovery / cumulative oil vs PVI
+    - pressure diagnostics in a separate panel
+    - optional rate panel only when it adds diagnostic value
+  - Proposed depletion default panels:
+    - oil rate vs time or dimensionless time
+    - cumulative oil / recovery
+    - average pressure / decline diagnostics
+  - Curve-style policy:
+    - color identifies case/variant
+    - line style identifies quantity or reference type
+    - avoid mixing pressure and water cut in one primary panel by default
+  - Acceptance:
+    - BL charts default to breakthrough-centric reading
+    - depletion charts do not surface irrelevant waterflood curves by default
+    - multi-case benchmark overlays remain readable without ambiguous legends
 
----
+- [ ] **B7. Update chart/data plumbing for multi-case overlays**
+  - Refactor chart inputs so benchmark views can render multiple runs and one reference together.
+  - Decide whether to extend the current rate chart stack or add a benchmark-specific chart container on top of shared lower-level chart primitives.
+  - Keep x-axis policy benchmark-aware:
+    - BL default `PVI`
+    - depletion default `time` or `tD` where meaningful
+  - Add benchmark legend/group controls if needed for toggling cases and quantities.
+  - Acceptance:
+    - chart plumbing is no longer hard-wired to one simulation run + one analytical series only
 
-## Active Execution Plan — Phase 1 (Interruption-Safe)
+- [ ] **B8. Update benchmark UI workflow**
+  - Benchmark mode should let the user select:
+    - benchmark family
+    - enabled sensitivity axes / variants
+    - comparison/reference mode when applicable
+  - Keep benchmark mode distinct from the faceted scenario builder mental model.
+  - Preserve one-click clone into custom scenario from any selected base benchmark or variant.
+  - Acceptance:
+    - benchmark mode is clearly for verification/comparison
+    - custom scenario mode remains clearly for ad hoc modeling
 
-Single source of truth: this section is the authoritative tracker for ongoing Phase 1 work.
+- [ ] **B9. Add regression tests for parity, sweeps, and chart defaults**
+  - Add tests for:
+    - benchmark family registry integrity
+    - Rust/frontend BL semantic parity
+    - variant generation without payload duplication
+    - reference-policy gating for heterogeneous families
+    - chart default x-axis/panel selection by benchmark family
+  - Acceptance:
+    - future benchmark edits cannot silently drift from the benchmark contract
 
-- [x] **P1.1 Validation centralization** — store uses shared `validateInputs.ts` implementation.
-- [x] **P1.2 Explicit model-reset diff domain** — model reset key narrowed to structural/model domain.
-- [x] **P1.3 Store state domain split (API layer)** — introduce explicit `scenarioSelection`, `parameterState`, `runtimeState` in store return shape.
-- [x] **P1.4 Compatibility shim window** — preserve current top-level store fields as temporary aliases to avoid big-bang breakage.
-- [x] **P1.5 App migration** — move `App.svelte` consumers to domain objects with no behavior change.
-- [x] **P1.6 UI consumer migration** — verified no additional direct store consumers beyond `App.svelte`; no extra migration edits required in this slice.
-- [x] **P1.7 Domain-scoped dirty/reset behavior** — ensured model-reset key includes `reservoirPorosity`; runtime-only controls remain outside model-reset signature.
-- [x] **P1.8 Remove shim fields** — removed temporary top-level compatibility aliases; store now exposes domain objects only.
-- [x] **P1.9 Validation and regression pass** — completed typecheck + tests + diagnostics after domain migration and shim removal.
-- [x] **P1.10 Docs and handoff update** — `docs/status.md` synchronized with completed slices, validations, and next-step context.
+- [ ] **B10. Refresh docs and benchmark guidance**
+  - Update benchmark docs to explain:
+    - exact benchmark semantics
+    - sensitivity meaning
+    - default x-axis and panel rationale
+    - analytical vs numerical reference policy
+  - Keep `TODO.md` and `docs/status.md` synchronized after each implementation slice.
+  - Acceptance:
+    - user-facing and developer-facing docs describe the same benchmark system
 
-Phase 1 acceptance checklist:
+## Important Design Notes To Keep In Scope
 
-- [x] Store exposes explicit domain objects and App uses them.
-- [x] No silent behavior regression in run/init/step flow. Verified 2026-03-05 with targeted Rust tests: `cargo test adaptive_timestep_produces_multiple_substeps_for_strong_flow`, `cargo test pressure_resolve_on_substep_produces_physical_results`, `cargo test saturation_stays_within_physical_bounds`.
-- [x] Validation gating and error visibility remain unchanged or improved. Verified 2026-03-05 via targeted frontend tests (`npm run test -- src/lib/validateInputs.test.ts src/lib/buildCreatePayload.test.ts`) and wiring checks in `src/App.svelte` + `src/lib/stores/simulationStore.svelte.ts` (run controls disable + explicit blocked-run runtime error).
-- [x] Benchmark and non-benchmark case selection behavior remains correct. Verified 2026-03-05 via `npm run test -- src/lib/catalog/caseCatalog.test.ts`. Note: benchmark pre-run gate checks were later superseded by complete pre-run pipeline removal.
-- [x] Temporary compatibility shims removed before Phase 1 close.
+- [ ] **Do not let benchmark location drive architecture** — the correct home is whichever place can own the single source cleanly; duplication is the real problem, not whether the file sits in `public/cases` or near the benchmark registry module.
+- [ ] **Do not equate exact physics parity with long UI horizon** — the benchmark physics definition and the user-facing display horizon should be separate knobs.
+- [ ] **Do not compare heterogeneous BL directly to analytical as if it were still a strict reference** — heterogeneous variants need a refined numerical reference path.
+- [ ] **Do not overload one chart with unrelated units just to save space** — pressure should be separated from water-cut-first breakthrough reading unless a specific combined diagnostic panel proves clearer.
+- [ ] **Do not duplicate variants as copy-pasted cases** — sensitivity definitions should be generated from base-family metadata and deltas.
 
-Interruption resume protocol (mandatory):
+## Acceptance Criteria For The Whole Workstream
 
-- [ ] Keep this Phase 1 section current before ending a work session.
-- [ ] Mark only one active slice at a time by adding `(in progress)` in the item text.
-- [ ] Append each completed slice outcome to `docs/status.md` with tests run and explicit next step.
-- [ ] If interrupted mid-slice, add a short `WIP` note in `docs/status.md` with current file and pending edit.
-- [ ] Do not start a new slice until TODO and status are synchronized.
+- [ ] There is exactly one benchmark definition source for each benchmark family.
+- [ ] Frontend BL benchmark families represent the same physical experiment as the validated Rust BL benchmarks.
+- [ ] Benchmark mode can run base case plus meaningful sensitivities without duplicating full case payloads.
+- [ ] BL charts default to breakthrough-centric panels and `PVI` x-axis.
+- [ ] Depletion charts default to depletion-relevant curves only.
+- [ ] Heterogeneous BL comparisons use explicit numerical-reference policy.
+- [ ] Benchmark legends, colors, and line styles remain readable for multi-case overlays.
+- [ ] Clone-to-custom provenance still works from benchmark mode.
+- [ ] Tests protect benchmark semantics, sweep generation, and chart defaults.
 
----
+## Deferred / Separate Backlog
 
-## Active Execution Plan — Phase 2 (Interruption-Safe)
+- [ ] Keep this section reserved for future cross-workstream items that are not part of the current benchmark-modernization objective.
 
-Single source of truth: this section is the authoritative tracker for ongoing Phase 2 work.
+## Retained Long-Term Options
 
-Historical note: this section records the earlier shell-oriented Phase 2 slices. It is no longer the authoritative forward plan after the 2026-03-06 UI audit. Use `Authoritative Recovery Plan — Mode-Specific Panels` above for current work.
+These are intentionally kept as non-active options. They remain good future directions, but they should not compete with the current benchmark-modernization workstream.
 
-- [x] **P2.1 UX contract + state schema freeze** — unified contract module and store schema fields landed (`basePreset`, `parameterOverrides`, `benchmarkProvenance`, `analyticalStatus`) with focused tests and docs (`src/lib/stores/phase2PresetContract.ts`, `src/lib/stores/phase2PresetContract.test.ts`, `docs/PHASE2_PRESET_CUSTOMIZE_CONTRACT.md`).
-- [x] **P2.2 Preset composer shell UI** — hybrid flow polished: per-facet `Customize` + `Reset` controls are part of each facet group, active customize selection is highlighted, section-targeted focus/highlight is wired, customize sessions collapse via explicit `OK`, facet mapping is centralized in shared Phase 2 contract helpers, and generated-profile controls now include shell-level `show changed fields` and per-group quick actions.
-- [x] **P2.3 Override tracking + changed-field UX** — shell-level per-group reset-to-preset and "show changed fields" are wired against deterministic base-preset diff, with dedicated contract-level regression tests for deterministic override ordering and grouped reset-plan behavior (including de-duplication and stale-key filtering).
-- [x] **P2.4 Benchmark clone-to-custom flow** — added one-click `Clone to Custom` from benchmark presets in shell/top controls, wired provenance creation and display, and enforced immutable lineage per clone session by clearing provenance only on preset/mode changes.
-- [x] **P2.5 Analytical eligibility evaluator** — analytical status now computes `reference | approximate | off` with explicit reason details and severity levels (`none | notice | warning | critical`) plus deterministic summary severity for UI policy.
-- [x] **P2.6 Analytical status banner UX** — wired persistent, high-visibility approximation banner above analytics panels with expandable caveat details and per-reason severity badges/tooltips.
-- [x] **P2.7 Store/App integration hardening** — moved clone/reset UI flows to domain APIs (`scenarioSelection`, `parameterState`), removed App-side transitional assembly logic, and tightened analytical banner contract consumption.
-- [ ] **P2.8 Regression + policy tests (in progress)** — add tests for clone provenance, changed-fields diffing, analytical status modes, benchmark selection/run policy after pre-run removal, and validate the per-mode catalog schema migration.
-- [x] **P2.9 Remove pre-run loading pipeline** — removed benchmark pre-run fetch/decompression/hydration path; benchmark selection now only applies case parameters and runs always start from fresh init.
-- [ ] **P2.10 Docs + handoff update** — sync `docs/status.md`, capture decision rationale, and record residual follow-ups with verified commands/results.
+### Important Later
 
-Phase 2 acceptance checklist:
+These still fit the product direction well and are likely to matter after the benchmark system stabilizes.
 
-- [x] Unified Preset + Customize surface is primary path for depletion/waterflood/simulation and benchmark entry.
-- [ ] Benchmark presets can be cloned into custom mode with traceable source metadata.
-- [ ] Analytical overlay remains permissive, with persistent warning and explicit reasons when in approximate mode.
-- [ ] No disabled facet remains selected after any interaction sequence.
-- [x] No scenario interaction triggers pre-run fetch (pipeline removed).
-- [ ] Run/step invalid-input behavior is explicit and never a silent no-op.
-- [ ] App/store regression tests cover Phase 2 pathways (clone, overrides, analytical status, policy guards).
+#### Simulation and physics expansion
 
-Interruption resume protocol (mandatory):
+- [ ] Well schedule support — time-varying BHP/rate changes and workover-style control changes.
+- [ ] Three-phase flow — phased oil/water/gas extension once the benchmark framework is stable.
+- [ ] Aquifer boundary conditions — Carter-Tracy or Fetkovich-style influx support.
+- [ ] Per-cell or per-layer porosity variation.
+- [ ] Per-cell initial water saturation / transition-zone initialization.
+- [ ] Additional published benchmark families beyond BL/depletion.
 
-- [ ] Keep this Phase 2 section current before ending a work session.
-- [ ] Mark only one active slice at a time by adding `(in progress)` in the item text.
-- [ ] Append each completed slice outcome to `docs/status.md` with tests run and explicit next step.
-- [ ] If interrupted mid-slice, add a short `WIP` note in `docs/status.md` with current file and pending edit.
-- [ ] Do not start a new slice until TODO and status are synchronized.
+#### Benchmark and comparison tooling
 
----
+- [ ] Grid-convergence study preset family.
+- [ ] A/B run comparison overlays.
+- [ ] Relative error (%) diagnostic curves.
+- [ ] Uncertainty and sensitivity batch runner beyond curated benchmark sensitivities.
 
-## High Priority — Physics & Correctness
+#### Visualization and charting
 
-- [x] **Upstream mobility weighting in pressure equation** — `transmissibility_upstream()` in `step.rs` now uses upstream weighting based on potential difference. Confirmed in code review.
-- [x] **Re-solve pressure on IMPES sub-step** — when `stable_dt_factor < 1.0`, pressure is now re-solved with the reduced dt via a second `calculate_fluxes(actual_dt)` call instead of reusing the pressure from the full `remaining_dt`.
-- [x] **Material-balance error uses inconsistent volume basis** — Fixed to compute true cumulative missing material by accurately comparing effective mass changes after saturation bounds clamping strictly in reservoir volume conditions.
-- [x] **Capillary pressure cap at `S_w ≤ S_wc`** — Replaced the arbitrary 1000 bar cap with a scaled heuristic bound (`20 * p_entry`), resolving the non-physical "capillary sponge" artifact where suction overpowered gravity.
-- [ ] **Leverett J-Function scaling for Capillary Pressure** — Long term enhancement. Applying the J-Function allows $P_c$ to bound naturally based on local permeability and porosity, dynamically tightening the cap for variable rock properties and modeling real rock capillary transitions more rigorously than constant heuristics.
-- [x] **Relative permeability endpoint scaling** — `k_rw_max` and `k_ro_max` multipliers natively supported and routed natively up into the front-end configuration inputs and Analytical plot lines `FractionalFlow.svelte`.
-- [x] **Gravity head uses total density, not phase-density split** — gravity should act per-phase via phase potentials. Acceptable for weak gravity but incorrect for strong density contrast.
-  - *Note: Phase-potential formulation significantly improved numeric stability for high-flow test cases over IMPES total velocity.*
-- [x] **`maxRecoverable` naming** — `DepletionAnalytical.svelte` names `q0 × tau` as `maxRecoverable`; this is total expelled volume from compressible depletion, not recoverable oil. Rename to `totalExpelledVolume` or similar.
-- [x] **`loadState` is broken** — `lib.rs:662-694`: `_grid_state` parameter is accepted but completely ignored; pressure/saturation arrays are never restored from it. Contains dead code (`if false {…}`) and a `TODO impl restore` comment. State hydration is incomplete.
-- [x] **`so_new` redundantly clamped** — `step.rs:721` computes `so_new = (1.0 - sw_new).clamp(0.0, 1.0)` but `sw_new` is already clamped to `[s_wc, 1-s_or]`, so `so_new` is inherently in `[s_or, 1-s_wc]`. The `clamp` is misleading (suggests it could be out of range).
-- [x] **`grid.rs` is empty** — the file exists and is imported via `mod grid` but contains no code (1 byte). Either populate it (e.g., move `GridCell` equivalent, `pore_volume_m3`, `idx`) or remove the empty module.
+- [ ] Sw profile plot evolution and tighter integration with benchmark mode.
+- [ ] Cross-section / slice viewer for i/j/k inspection in the 3D view.
+- [ ] Summary statistics panel for OOIP, pore volume, RF, average pressure, average saturation, water cut, and VRR.
 
----
+#### Scenario and reporting workflow
 
-## High Priority — Frontend & UX
+- [ ] Structured scenario export/import.
+- [ ] CSV/JSON export of results and benchmark summaries.
 
-- [x] **Implement Option B shell UI** — replaced TopBar + InputsTab with unified ModePanel: mode tabs + collapsible sections with nested dimension sub-selectors and expandable inline parameter panels. Removed customize-flow indirection from App.svelte.
-- [ ] **Replace intermediate `ModePanel` with mode-specific top-level panels** — current panel proves the unified layout direction but should evolve into dedicated `Depletion` / `Waterflood` / `Simulation` / `Benchmark` components rather than a broad schema renderer.
-- [ ] **Restore truthful customized-state UX in unified panel** — manual edits must drive `isModified`, grouped override visibility, and reset-to-preset semantics through the store contract.
-- [ ] **Support quick-select + custom-entry controls** — curated toggles/selects should be able to reveal typed custom inputs or advanced parameter groups without splitting the mental model.
-- [ ] **Define warning policy by severity** — use blocking validation for invalid runs, visible warnings for contradictory/non-physical inputs, and permissive caveats for approximate analytical/reference assumptions.
-- [ ] **Benchmark clone flow** — add `Clone to Custom` action that copies all benchmark parameters and stores source benchmark provenance.
-- [x] **Analytical status banner** — introduced `reference | approximate | off` status path with persistent, highly visible warning and expandable caveat details for approximate overlays.
-- [x] **Remove pre-run loading pipeline** — benchmark/non-benchmark selections now only apply parameters; no prerun fetch/decompression/hydration path remains.
-- [x] **Fix run validation gating** — pass `hasValidationErrors` into run controls and show explicit message when run is blocked by invalid inputs.
-- [x] **Fix custom-subcase mode mapping** — normalize mode aliases (`dep/wf/sim` vs `depletion/waterflood/simulation`) so custom sub-case switching is reliable.
-- [x] **Stabilize faceted constraints** — replace one-pass toggle auto-fix with iterative constraint stabilization.
-- [x] **Preserve per-layer edits on Nz change** — resize layer arrays without wiping existing user values.
-- [x] **Fix stale simulator reuse after case geometry changes** — 2D/3D runs could execute on previous 1D simulator instance; runs now force reinit when model is stale before sending run payload.
-- [x] **Use single-source validation in store** — `simulationStore` now consumes `validateInputs.ts` instead of duplicating rules.
-- [x] **Model-domain config diff tracking** — config diff signature now tracks model-reset domain explicitly via `buildModelResetKey`.
+#### Wells and advanced reservoir modeling
 
-- [x] **Reactive clamping anti-pattern** — ~20 reactive statements aggressively clamp inputs while user types (e.g., deleting makes `0.` → forces `0.1`). Move validation to `buildCreatePayload` or `onBlur`. (Resolved via Svelte 5 store transition)
-- [x] **Dual config-changed watchers** — two reactive blocks overlap in detecting parameter changes, causing redundant reinitializations. Consolidate into a single `checkConfigDiff()`. (Resolved via Svelte 5 store transition)
-- [ ] **CSV/JSON export of results** — no way to export rate history, grid state snapshots, or saturation profiles for external analysis. Add download buttons via Blob API.
-- [x] **Inline validation error highlighting** — validation errors exist but aren't shown inline on the offending input fields. Highlight with red borders and inline messages.
-- [x] **History memory optimization** — each snapshot stores the full grid array. For large grids (e.g., 20×20×10 = 4000 cells, 300 steps), this consumes significant memory. Consider delta compression or reduced snapshot frequency.Reduced snapshots were implemented but not consistently used, missing in parts of the code across preloaded cases generation, UX, etc.
-- [x] Worker silently ignores `add_well` errors — `sim.worker.ts:191-196` calls `simulator.add_well()` which returns `Result` but the worker doesn't check the return value. If grid indices or well params are invalid, the well is silently not added.
-- [x] **FilterCard/ToggleGroup alignment** — unified `FilterCard` to use the more polished `ToggleGroup` internally, including adding a wrapping grid layout for elements > 3.
-- [x] **Organize `src/lib/ui` by role** — split the UI layer into `modes`, `sections`, `controls`, `cards`, `feedback`, and `shared`, removed wrapper-only section panels, and aligned repeated panel/table shells to shared helpers so cards and collapsible sections keep a more consistent look.
-- [x] **Organize broader `src/lib` by domain and trim thin wrappers** — move scattered chart/analytical/3D/worker files out of the `src/lib` root, keep related tests close to their domains, and fold back any pass-through UI component that does not add logic or clarity.
-Outcome note: `src/lib` now separates `analytical/`, `charts/`, `visualization/`, and `workers/` from the remaining shared modules. The chart helpers and their tests now live with the chart components, `simulationStore.svelte.ts` points at `workers/sim.worker.ts`, and the wrapper-only `src/lib/ui/modes/ScenarioModePanel.svelte` was removed so `ModePanel.svelte` binds `sections/ScenarioSectionsPanel.svelte` directly. Later selective passes also removed single-use `src/lib/ui/feedback/AnalyticalStatusBanner.svelte`, with `src/App.svelte` now rendering `WarningPolicyPanel` directly for analytical-only caveats while keeping reusable structural shells like `FilterCard.svelte` intact, removed tiny barrel `src/lib/index.ts` so `src/lib/visualization/3dview.svelte` imports shared simulator types directly from `src/lib/simulator-types.ts`, and moved the faceted preset catalog into `src/lib/catalog/`. Remaining root modules (`simulator-types.ts`, `buildCreatePayload.ts`, `validateInputs.ts`, `warningPolicy.ts`, and `create-payload-type.d.ts`) are still required shared utilities/contracts rather than obsolete leftovers.
-- [x] **Retire pre-run decompression path** — removed `.json.gz` pre-run loader and related DecompressionStream fallback from `simulationStore.svelte.ts`.
-- [x] **End-to-end regression validation for benchmark pre-run data** — no longer applicable after pre-run pipeline removal.
+- [ ] Multi-well patterns such as 5-spot, line-drive, and custom placements.
+- [ ] Non-uniform cell sizes and local grid refinement.
 
----
+#### Analytical and diagnostic expansion
 
-## Medium Priority — Simulation Improvements
+- [ ] Areal sweep efficiency charting.
+- [ ] Depletion analytical calibration against additional published references.
 
-- [ ] **Per-cell porosity variation** — porosity is already user-editable but uniform. Add per-layer or per-cell porosity input (uniform/per-layer modes, similar to permeability).
-- [ ] **Per-cell initial water saturation** — enable water-oil contact / transition zone initialization with per-layer `S_w₀`.
-- [ ] **Aquifer boundary conditions** — Carter-Tracy or Fetkovich aquifer influx model. Currently all boundaries are no-flow.
-- [ ] **Acceptance tests for worker snapshots** — end-to-end parity tests between worker state snapshots and direct simulator state.
-- [ ] **Expand physics regression benchmarks** — add at least one 3D gravity-drainage case and one heterogeneous 2D case beyond current 1D BL-only benchmarks.
-- [ ] **Grid-convergence study preset** — auto-run same scenario at nx = 12, 24, 48, 96; overlay breakthrough PVI and recovery curves.
-- [ ] **Benchmark trend tracking across commits** — baseline drift dashboard or CI report comparing benchmark values over time.
-- [ ] **Calibrate depletion analytical model** — validate against published radial-flow references for center-producer depletion cases.
-- [ ] **Full Dietz shape-factor table** — add output for additional boundary geometries and anisotropic grids beyond current 1D slab and 2D center cases.
-- [ ] **Additional published benchmarks** — search for 2-phase immiscible verification cases in:
-  - SPE Comparative Solution Projects (extract 2-phase subsets from SPE1/SPE5/SPE9)
-  - Dake, "Fundamentals of Reservoir Engineering" — worked examples Ch. 5-10
-  - Craft, Hawkins & Terry, "Applied Petroleum Reservoir Engineering" — depletion cases
-  - Craig, "The Reservoir Engineering Aspects of Waterflooding" — areal sweep factors
-  - MRST (MATLAB Reservoir Simulation Toolbox) verification tutorials
-  - ECLIPSE/CMG published benchmarks (reservoir engineering textbook appendices)
-  - ResearchGate papers tagged "reservoir simulation verification" or "immiscible displacement"
-  - McEwen (1961) — single-phase slightly compressible radial flow analytical solution
+### Nice To Have Only
 
----
+These are still reasonable ideas, but they are less central to the current product direction and should stay behind the important-later group.
 
-## Medium Priority — Frontend Improvements
+#### Tooling and process
 
-- [ ] **Cross-section / slice viewer** — add i/j/k slice selector to 3D view to inspect interior cells.
-- [ ] **Sync x-axis range across chart panels** — zoom one panel → zoom all (requires Chart.js plugin coordination).
-- [ ] **SwProfileChart legend consistency** — make legend pills match ChartSubPanel style.
-- [ ] **Make SwProfile as 3D viz sub-card** — it shows spatial information similar to the 3D view.
-- [ ] **Structured scenario export/import (JSON)** — allow saving/loading custom parameter configurations.
-- [ ] **A/B run comparison** — store previous run's rate history, overlay as dashed series.
-- [ ] **Relative error (%) curve in charts** — add percentage error between simulator and analytical.
-- [ ] **Responsive layout on narrow screens** — 3D canvas + rate chart don't adapt gracefully on mobile.
-- [ ] **Well schedule support** — time-varying BHP or rate changes (workover schedule).
+- [ ] Benchmark trend tracking across commits or CI runs.
 
----
+#### Visualization and comparison UX
 
-## Low Priority — Code Quality & DevOps
+- [ ] Comparative visualization mode for side-by-side scenarios or delta views.
+- [ ] Multi-chart synchronized zoom/pan.
+- [ ] Responsive/mobile chart and 3D layout improvements.
+- [ ] Phase relative permeability / capillary curve visualization.
 
-- [ ] **CI pipeline for tests** — GitHub Actions: `cargo test` + `npm test` + `npm run build` on push/PR.
-- [ ] **Worker `typeof` guards → typed WASM interface** — `configureSimulator()` in `sim.worker.ts` uses 12+ `typeof X === 'function'` guards with `/** @type {any} */` casts. Generate proper TS bindings from `wasm-bindgen` or define a typed wrapper.
-- [x] **Frontend unit tests** — expand Vitest coverage for `FractionalFlow` analytical, `validateInputs()` edge cases. Currently only `buildCreatePayload`, `caseCatalog`, and `chart-helpers` have tests.
-- [x] **App-store domain wiring regression tests** — added static wiring checks in `src/lib/appStoreDomainWiring.test.ts` to guard domain-object usage and prevent fallback to App-side transitional logic.
-- [ ] **Model-reset domain key coverage tests** — add unit tests to lock model-reset signature field coverage (e.g., `reservoirPorosity`) and prevent omission regressions.
-- [ ] **Restore lint toolchain availability** — `npm run lint` currently fails with `eslint: not found`; add/install ESLint dependency in dev setup or align lint script with available tooling.
-- [ ] **Selective Chart.js imports** — both `RateChart.svelte` and `FractionalFlow.svelte` register all registerables. Register only needed components to reduce bundle.
-- [ ] **PCG solver allocation reuse** — `solver.rs:38,70` allocates new `DVector`s (`z`, `z_new`) per iteration. Pre-allocate workspace vectors outside the loop.
-- [ ] **Remove redundant `sat_oil` array** — `sat_oil = 1.0 - sat_water` is maintained separately in every cell across `sat_oil: Vec<f64>`. Derive on access or via a helper to halve memory and eliminate sync risk.
-- [ ] **3D view color-only updates** — `buildInstancedGrid()` in `3dview.svelte` recreates all mesh transforms on every state update. Update only colors via `setColorAt()` when grid geometry hasn't changed.
-- [ ] **Pressure-equation neighbor allocation** — `step.rs:429` allocates a new `Vec<(usize,char,usize)>` for each cell's neighbors on every timestep. Use a fixed-size stack array `[(usize,char,usize); 6]` instead.
-- [ ] **Sparse matrix rebuild every sub-step** — `calculate_fluxes()` in `step.rs` rebuilds the full sparse matrix (triplets → CSR) on every sub-step call. For fixed-topology grids, the sparsity pattern could be pre-built, updating only values.
-- [x] **Remove stale `tmp_heatpump.svelte`** — removed root-level legacy artifact on 2026-03-05.
-- [x] **Clean up root-level temp scripts** — removed root-level one-off migration/debug scripts on 2026-03-05 (`fix_frontend_soa.mjs`, `fix_grid_cells_step.mjs`, `fix_grid_cells_tests.mjs`, `refactor_soa.mjs`, `test_hydrate.mjs`, `test_hydration_empty.mjs`, `test_hydration_payload.mjs`, `test_hydration_worker.mjs`).
-- [x] **Clean up root-level `.resolved` files** — verified no root-level `.resolved` artifacts are present as of 2026-03-05.
+#### Scenario workflow and reporting
 
----
+- [ ] Report export for plots and key metrics.
+- [ ] Undo/redo for parameter changes.
 
-## Long-Horizon / Nice-to-Have
+#### Advanced modeling extensions
 
-- [ ] **Three-phase flow (oil/water/gas)** — phased API + UI rollout.
-- [ ] **Horizontal / deviated well model** — generalized Peaceman PI.
-- [ ] **Non-uniform cell sizes** — variable dx/dy/dz for local grid refinement.
-- [ ] **Capillary hysteresis** — two-curve (drainage/imbibition) model.
-- [ ] **Per-cell capillary pressure** — spatially varying P_entry and lambda.
-- [ ] **Uncertainty/sensitivity batch runner** — seeded permeability ensembles.
-- [ ] **Comparative visualization mode** — side-by-side scenarios / delta maps.
-- [ ] **Report export** — plots + key metrics snapshot as PDF or HTML.
-- [ ] **Sensitivity tornado chart** — parameter sensitivity analysis on RF.
-- [ ] **Undo/redo for parameter changes**.
-- [ ] **Multi-well patterns** — 5-spot, line-drive, custom placement.
-- [ ] **Fetkovich type-curve overlay** — standard decline curve templates.
-- [ ] **Areal sweep efficiency chart** — 2D waterflood diagnostic.
-- [ ] **Phase relative permeability curve visualization** — interactive kr/Sw and Pc/Sw curves.
-- [ ] **Summary statistics panel** — live OOIP, pore volume, RF, avg pressure, avg Sw, water cut, VRR.
-- [ ] **Deterministic worker cancellation checkpoints** — persisted partial-state checkpoint metadata.
-- [ ] **Multi-chart synchronized zoom/pan** — Chart.js plugin coordination.
+- [ ] Horizontal or deviated well model with generalized Peaceman PI.
+- [ ] Per-cell capillary pressure variation and capillary hysteresis.
+
+#### Analytical overlay expansion
+
+- [ ] Fetkovich type-curve overlay expansion.
+
+### Dropped From Retained Options
+
+These were removed from the retained list because they were duplicates or too vague to justify separate tracking right now.
+
+- [x] Make the Sw profile a more explicit companion to the spatial 3D view — folded into Sw profile integration work.
+- [x] Three-phase flow and broader physics extensions — replaced by the more specific three-phase flow item.
+- [x] CSV/JSON export of results — folded into the more specific scenario/results export item.
+- [x] General scenario import/export — replaced by structured scenario export/import.
+- [x] Cross-section / slice viewer improvements — replaced by the more specific slice-viewer item.
+- [x] Additional published benchmark families beyond the current BL/depletion scope — retained once, in the physics/benchmark expansion group.
