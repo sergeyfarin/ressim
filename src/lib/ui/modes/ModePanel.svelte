@@ -23,8 +23,7 @@
     benchmarkSweepError = "",
     benchmarkRunResults = [],
     onCloneBenchmarkToCustom = () => {},
-    onRunBenchmarkBase = () => {},
-    onRunBenchmarkSensitivityAxis = () => {},
+    onRunBenchmarkSelection = () => {},
     onStopBenchmarkSweep = () => {},
     params,
     validationErrors = {},
@@ -96,8 +95,7 @@
         {benchmarkRunResults}
         {onToggleChange}
         {onCloneBenchmarkToCustom}
-        {onRunBenchmarkBase}
-        {onRunBenchmarkSensitivityAxis}
+        {onRunBenchmarkSelection}
         {onStopBenchmarkSweep}
       />
     {:else}

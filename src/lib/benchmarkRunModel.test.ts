@@ -90,6 +90,25 @@ describe('benchmarkRunModel', () => {
         });
     });
 
+    it('builds deterministic base-plus-selected-variant specs without reintroducing unselected variants', () => {
+        const family = getBenchmarkFamily('bl_case_b_refined');
+        const variants = getBenchmarkVariantsForFamily('bl_case_b_refined');
+        const selected = [
+            variants.find((variant) => variant.variantKey === 'heterogeneity_mild_random')!,
+            variants.find((variant) => variant.variantKey === 'dt_0_25')!,
+        ];
+
+        const specs = buildBenchmarkRunSpecs(family!, selected);
+
+        expect(specs.map((spec) => spec.variantKey)).toEqual([
+            null,
+            'heterogeneity_mild_random',
+            'dt_0_25',
+        ]);
+        expect(specs).toHaveLength(3);
+        expect(specs.every((spec) => spec.familyKey === 'bl_case_b_refined')).toBe(true);
+    });
+
     it('scores analytical breakthrough comparison for homogeneous BL runs', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);

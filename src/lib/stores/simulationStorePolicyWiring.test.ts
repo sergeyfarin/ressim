@@ -19,7 +19,7 @@ describe('simulation store policy wiring', () => {
 
   it('wires benchmark sweep actions and normalized benchmark results through the store', () => {
     expect(storeSource).toMatch(/buildBenchmarkRunSpecs/);
-    expect(storeSource).toMatch(/runActiveBenchmarkSensitivityAxis/);
+    expect(storeSource).toMatch(/runActiveBenchmarkSelection/);
     expect(storeSource).toMatch(/benchmarkRunResults/);
   });
 });

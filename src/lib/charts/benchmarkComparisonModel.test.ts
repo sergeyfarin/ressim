@@ -165,4 +165,47 @@ describe('benchmarkComparisonModel', () => {
         );
         expect(model.panels.rates.series.at(-1)?.at(-1)?.x).toBeGreaterThan(0);
     });
+
+    it('uses theme-aware analytical reference colors so overlays stay visible in both themes', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const reference = computeWelgeMetrics(
+            {
+                s_wc: Number(baseSpec.params.s_wc),
+                s_or: Number(baseSpec.params.s_or),
+                n_w: Number(baseSpec.params.n_w),
+                n_o: Number(baseSpec.params.n_o),
+                k_rw_max: Number(baseSpec.params.k_rw_max),
+                k_ro_max: Number(baseSpec.params.k_ro_max),
+            },
+            {
+                mu_w: Number(baseSpec.params.mu_w),
+                mu_o: Number(baseSpec.params.mu_o),
+            },
+            Number(baseSpec.params.initialSaturation),
+        );
+        const baseResult = buildBenchmarkRunResult({
+            spec: baseSpec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(baseSpec.params, reference.breakthroughPvi, 0),
+        });
+
+        const darkModel = buildBenchmarkComparisonModel({
+            family,
+            results: [baseResult],
+            xAxisMode: 'pvi',
+            theme: 'dark',
+        });
+        const lightModel = buildBenchmarkComparisonModel({
+            family,
+            results: [baseResult],
+            xAxisMode: 'pvi',
+            theme: 'light',
+        });
+
+        const darkReferenceCurve = darkModel.panels.rates.curves.find((curve) => curve.label === 'Analytical Water Cut');
+        const lightReferenceCurve = lightModel.panels.rates.curves.find((curve) => curve.label === 'Analytical Water Cut');
+
+        expect(darkReferenceCurve?.color).toBe('#f8fafc');
+        expect(lightReferenceCurve?.color).toBe('#0f172a');
+    });
 });

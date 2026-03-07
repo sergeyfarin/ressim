@@ -179,13 +179,42 @@ Goal:
 Key outcome:
 - benchmark mode becomes a comparison tool rather than only a preset launcher
 
-### B9. Regression coverage and docs
+Status:
+- completed on 2026-03-07
+- benchmark mode now uses a single execution-set selector in `src/lib/ui/modes/BenchmarkPanel.svelte` instead of one button per run action
+- the selector now supports base-only execution or explicit per-variant picks within a selected sensitivity axis before dispatching a run
+- `src/lib/stores/simulationStore.svelte.ts` now exposes `runActiveBenchmarkSelection()` so the UI can submit an explicit selected-variant set while still reusing the normalized benchmark-runner path
+- benchmark result cards in the benchmark panel are now scoped to the active family, which keeps the workflow aligned with the currently selected comparison set
+
+### B9. Regression coverage
 
 Goal:
-- lock benchmark semantics, sensitivity generation, reference policy, and chart defaults with tests and synchronized docs
+- lock benchmark semantics, sensitivity generation, reference policy, and chart defaults with tests
 
 Key outcome:
 - future benchmark edits cannot drift silently
+
+Status:
+- completed on 2026-03-07
+- the benchmark regression suite now covers explicit selected-variant sweep construction in `src/lib/benchmarkRunModel.test.ts`
+- the benchmark workflow UI contract is now protected by `src/lib/ui/modePanelFlows.test.ts` and `src/lib/appStoreDomainWiring.test.ts`
+- benchmark chart defaults and multi-run overlay behavior remain covered by `src/lib/charts/benchmarkChartConfig.test.ts` and `src/lib/charts/benchmarkComparisonModel.test.ts`
+- runtime Rust-parity coverage remains enforced in `src/lib/catalog/benchmarkPresetRuntime.test.ts`
+
+### B10. Benchmark docs refresh
+
+Goal:
+- document the benchmark registry, sensitivity workflow, explicit reference policy, and benchmark-specific chart behavior now that the implementation and regression surface are stable
+
+Key outcome:
+- user-facing and developer-facing benchmark docs describe the same system the code and tests now enforce
+
+Status:
+- completed on 2026-03-07
+- added `docs/BENCHMARK_MODE_GUIDE.md` as the authoritative guide for benchmark families, execution workflow, reference policy, and benchmark-specific chart behavior
+- updated `README.md` so the product overview now matches the current benchmark-family runner and selected-variant execution flow
+- updated `docs/P4_TWO_PHASE_BENCHMARKS.md` to explain how the current frontend distinguishes homogeneous analytical BL benchmarks from heterogeneous numerical-reference comparison variants
+- updated `docs/DOCUMENTATION_INDEX.md` so the benchmark documentation set now points to the authoritative workflow guide and the separate Buckley-Leverett methodology page
 
 ## Risks / Design Constraints
 
@@ -197,7 +226,5 @@ Key outcome:
 
 ## Next Action After Review
 
-- Next active implementation slice is `B8`:
-  - refine benchmark execution selection now that stored multi-run overlays exist
-  - keep benchmark mode clearly distinct from the generic scenario builder while reducing inline action-button sprawl
-  - preserve benchmark-to-custom cloning and explicit reference semantics while revisiting the deferred table-style selector idea
+- Benchmark modernization slices `B1` through `B10` are complete.
+- Future benchmark work should start from a new reviewed slice instead of extending this completed modernization sequence.

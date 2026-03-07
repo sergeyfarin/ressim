@@ -16,7 +16,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 ## Active Slice
 
 - [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- [ ] **B8. Update benchmark UI workflow (next)** — refine benchmark execution selection now that benchmark charts can compare stored runs directly.
+- Benchmark modernization slice `B10` completed on 2026-03-07. No further benchmark-specific slice is active in this tracker.
 
 ## Detailed Implementation Plan
 
@@ -166,7 +166,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - BL overlays now compare base plus variants on breakthrough, recovery, and pressure panels with benchmark-aware x-axis options, and depletion overlays now compare oil-rate, recovery/cumulative, and pressure traces against analytical depletion reference
     - added focused regression coverage in `src/lib/charts/benchmarkComparisonModel.test.ts`
 
-- [ ] **B8. Update benchmark UI workflow**
+- [x] **B8. Update benchmark UI workflow**
   - Benchmark mode should let the user select:
     - benchmark family
     - enabled sensitivity axes / variants
@@ -181,8 +181,13 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Acceptance:
     - benchmark mode is clearly for verification/comparison
     - custom scenario mode remains clearly for ad hoc modeling
+  - Outcome:
+    - benchmark mode now uses a single execution-selector surface in `src/lib/ui/modes/BenchmarkPanel.svelte` instead of separate inline action buttons for base and each axis
+    - the selector now supports base-only runs or per-variant selection within a chosen sensitivity axis before dispatching a single run action
+    - the store now exposes `runActiveBenchmarkSelection()` so the UI can submit an explicit selected-variant set without reintroducing duplicated payload ownership
+    - stored benchmark result cards in benchmark mode are now scoped to the active family, keeping the workflow focused on the selected comparison set
 
-- [ ] **B9. Add regression tests for parity, sweeps, and chart defaults**
+- [x] **B9. Add regression tests for parity, sweeps, and chart defaults**
   - Add tests for:
     - benchmark family registry integrity
     - Rust/frontend BL semantic parity
@@ -191,8 +196,13 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - chart default x-axis/panel selection by benchmark family
   - Acceptance:
     - future benchmark edits cannot silently drift from the benchmark contract
+  - Outcome:
+    - extended `src/lib/benchmarkRunModel.test.ts` to cover explicit selected-variant benchmark sweep construction without reintroducing unselected variants
+    - extended `src/lib/charts/benchmarkComparisonModel.test.ts` to cover theme-aware analytical reference styling in addition to the existing overlay contract tests
+    - extended `src/lib/ui/modePanelFlows.test.ts` and `src/lib/appStoreDomainWiring.test.ts` to lock the new benchmark execution-selector workflow and app wiring
+    - retained runtime parity and chart-default protection through `src/lib/catalog/benchmarkPresetRuntime.test.ts`, `src/lib/catalog/caseCatalog.test.ts`, and `src/lib/charts/benchmarkChartConfig.test.ts`
 
-- [ ] **B10. Refresh docs and benchmark guidance**
+- [x] **B10. Refresh docs and benchmark guidance**
   - Update benchmark docs to explain:
     - exact benchmark semantics
     - sensitivity meaning
@@ -201,6 +211,11 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Keep `TODO.md` and `docs/status.md` synchronized after each implementation slice.
   - Acceptance:
     - user-facing and developer-facing docs describe the same benchmark system
+  - Outcome:
+    - added `docs/BENCHMARK_MODE_GUIDE.md` as the authoritative benchmark workflow and contract guide
+    - updated `README.md` to describe the current benchmark-family runner, selected-variant execution flow, and benchmark-specific chart defaults
+    - updated `docs/P4_TWO_PHASE_BENCHMARKS.md` to distinguish Rust-parity homogeneous BL benchmarks from heterogeneous comparison variants and to describe the current benchmark-mode interpretation
+    - updated `docs/DOCUMENTATION_INDEX.md` and tracker docs so the benchmark documentation set points to the current authoritative pages
 
 ## Important Design Notes To Keep In Scope
 

@@ -681,6 +681,32 @@ export function createSimulationStore() {
         );
     }
 
+    function runActiveBenchmarkSelection(variantKeys: string[] = []): boolean {
+        const family = getBenchmarkFamily(toggles.benchmarkId);
+        if (!family) {
+            runtimeError = 'Select a benchmark family before running the benchmark runner.';
+            return false;
+        }
+
+        if (!Array.isArray(variantKeys) || variantKeys.length === 0) {
+            return runActiveBenchmarkBase();
+        }
+
+        const variantMap = new Map(
+            getBenchmarkVariantsForFamily(family.key).map((variant) => [variant.variantKey, variant]),
+        );
+        const selectedVariants = variantKeys
+            .map((variantKey) => variantMap.get(variantKey) ?? null)
+            .filter((variant): variant is NonNullable<typeof variant> => Boolean(variant));
+
+        if (selectedVariants.length === 0) {
+            runtimeError = 'Select at least one benchmark sensitivity variant before running the benchmark runner.';
+            return false;
+        }
+
+        return runBenchmarkSpecs(buildBenchmarkRunSpecs(family, selectedVariants));
+    }
+
     // ===== Playback Controls =====
 
     function stopPlaying() {
@@ -1371,6 +1397,7 @@ export function createSimulationStore() {
         runSteps,
         runActiveBenchmarkBase,
         runActiveBenchmarkSensitivityAxis,
+        runActiveBenchmarkSelection,
         stepOnce,
         stopRun,
         checkConfigDiff,

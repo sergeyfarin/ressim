@@ -395,8 +395,7 @@
             benchmarkSweepProgressLabel={runtime.benchmarkSweepProgressLabel}
             benchmarkSweepError={runtime.benchmarkSweepError}
             benchmarkRunResults={runtime.benchmarkRunResults}
-            onRunBenchmarkBase={runtime.runActiveBenchmarkBase}
-            onRunBenchmarkSensitivityAxis={runtime.runActiveBenchmarkSensitivityAxis}
+            onRunBenchmarkSelection={runtime.runActiveBenchmarkSelection}
             onStopBenchmarkSweep={runtime.stopRun}
             {params}
             validationErrors={params.validationErrors}

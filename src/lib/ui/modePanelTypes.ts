@@ -1,4 +1,4 @@
-import type { BenchmarkSensitivityAxisKey, CaseMode, ToggleState } from "../catalog/caseCatalog";
+import type { CaseMode, ToggleState } from "../catalog/caseCatalog";
 import type {
   BasePresetProfile,
   BenchmarkProvenance,
@@ -94,8 +94,7 @@ export type ModePanelProps = {
   benchmarkSweepError?: string;
   benchmarkRunResults?: BenchmarkRunResult[];
   onCloneBenchmarkToCustom?: () => void;
-  onRunBenchmarkBase?: () => void;
-  onRunBenchmarkSensitivityAxis?: (axis: BenchmarkSensitivityAxisKey) => void;
+  onRunBenchmarkSelection?: (variantKeys: string[]) => void;
   onStopBenchmarkSweep?: () => void;
   params: ModePanelParameterBindings;
   validationErrors?: Record<string, string>;
@@ -123,7 +122,6 @@ export type BenchmarkModePanelProps = {
   benchmarkRunResults?: BenchmarkRunResult[];
   onToggleChange: (key: string, value: string) => void;
   onCloneBenchmarkToCustom?: () => void;
-  onRunBenchmarkBase?: () => void;
-  onRunBenchmarkSensitivityAxis?: (axis: BenchmarkSensitivityAxisKey) => void;
+  onRunBenchmarkSelection?: (variantKeys: string[]) => void;
   onStopBenchmarkSweep?: () => void;
 };

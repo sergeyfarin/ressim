@@ -22,6 +22,10 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
   });
 
+  it('routes benchmark execution selection through the runtime domain API', () => {
+    expect(appSource).toMatch(/onRunBenchmarkSelection=\{runtime\.runActiveBenchmarkSelection\}/);
+  });
+
   it('routes the centralized warning policy into runtime warning surfaces', () => {
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
     expect(appSource).toMatch(/<WarningPolicyPanel/);

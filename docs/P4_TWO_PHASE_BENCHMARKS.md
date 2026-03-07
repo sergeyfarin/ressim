@@ -127,8 +127,26 @@ Frontend alignment note:
 
 - README includes a Model Validation Benchmarks (P4-1) section with tolerance policy and a link to this page.
 - Chart-level analytical mismatch metrics (MAE/RMSE/MAPE) remain visible in the rate chart panel for quick run-time comparison.
-- Benchmark presets remain selectable from the unified mode panel and can be cloned into editable custom scenarios.
+- Benchmark mode now exposes Buckley-Leverett families through the frontend benchmark registry rather than through duplicated preset payloads.
+- Benchmark execution now uses the `Execution Set` workflow: base only, or an explicit subset of variants within one selected sensitivity axis.
+- Stored benchmark results now feed benchmark-specific comparison charts instead of relying on one live single-run chart path.
 - There is no generated frontend benchmark artifact; benchmark evidence is kept in Rust tests and scenario presets.
+
+## Current Frontend Benchmark Interpretation
+
+The browser benchmark surface now distinguishes between benchmark families and benchmark variants.
+
+- `bl_case_a_refined` and `bl_case_b_refined` are the homogeneous Rust-parity Buckley-Leverett base families.
+- Grid-refinement and timestep-refinement variants preserve the same analytical Buckley-Leverett reference contract as the base family.
+- Heterogeneity variants are still useful benchmark comparison runs, but their primary truth source is a refined numerical reference rather than strict analytical equality.
+
+The chart defaults in benchmark mode now reflect that interpretation:
+
+- Buckley-Leverett charts default to `PVI` on the x-axis.
+- The primary panels are breakthrough, recovery, and pressure.
+- Multi-run overlays compare stored base-plus-variant results and keep the analytical Buckley-Leverett trace as shared context; for heterogeneous variants that trace is secondary context rather than the primary truth metric.
+
+For the broader benchmark workflow and UI contract, see `docs/BENCHMARK_MODE_GUIDE.md`.
 
 ## Regression Execution (P4-5)
 

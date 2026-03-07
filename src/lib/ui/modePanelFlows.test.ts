@@ -18,9 +18,23 @@ describe('mode panel flows', () => {
 
   it('keeps benchmark clone flow explicit in the benchmark panel', () => {
     expect(benchmarkPanelSource).toMatch(/Clone to Custom/);
-    expect(benchmarkPanelSource).toMatch(/disabled=\{isModified\}/);
+    expect(benchmarkPanelSource).toMatch(/disabled=\{isModified \|\| benchmarkSweepRunning\}/);
     expect(benchmarkPanelSource).toMatch(/Cloned source: <strong class="text-foreground">\{benchmarkProvenance\.sourceLabel\}<\/strong>/);
     expect(benchmarkPanelSource).toMatch(/Customized without clone provenance/);
+  });
+  
+  it('uses a single execution-set selector for benchmark runs instead of one button per axis', () => {
+    expect(benchmarkPanelSource).toMatch(/Execution Set/);
+    expect(benchmarkPanelSource).toMatch(/selectedExecutionRow/);
+    expect(benchmarkPanelSource).toMatch(/selectedVariantKeys/);
+    expect(benchmarkPanelSource).toMatch(/onRunBenchmarkSelection/);
+    expect(benchmarkPanelSource).toMatch(/type="checkbox"/);
+    expect(benchmarkPanelSource).toMatch(/Run Base/);
+  });
+  
+  it('scopes stored benchmark result cards to the active family', () => {
+    expect(benchmarkPanelSource).toMatch(/activeBenchmarkResults/);
+    expect(benchmarkPanelSource).toMatch(/result\.familyKey === activeFamily\.key/);
   });
 
   it('keeps validation warnings scoped to the mode panel warning surface', () => {
