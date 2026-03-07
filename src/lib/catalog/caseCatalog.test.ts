@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { catalog, buildCaseKey, getDefaultToggles, getDisabledOptions } from './caseCatalog';
+import {
+  benchmarkCases,
+  buildCaseKey,
+  catalog,
+  getBenchmarkEntry,
+  getDefaultToggles,
+  getDisabledOptions,
+} from './caseCatalog';
 
 describe('caseCatalog Dynamic Catalog', () => {
   it('has a valid catalog loaded', () => {
@@ -36,8 +43,8 @@ describe('caseCatalog Dynamic Catalog', () => {
       fs.readFileSync(path.join(repoRoot, 'public/cases/bl_case_b_refined.json'), 'utf8'),
     );
 
-    const catalogCaseA = catalog.benchmarks.find((entry) => entry.key === 'bl_case_a_refined');
-    const catalogCaseB = catalog.benchmarks.find((entry) => entry.key === 'bl_case_b_refined');
+    const catalogCaseA = getBenchmarkEntry('bl_case_a_refined');
+    const catalogCaseB = getBenchmarkEntry('bl_case_b_refined');
 
     expect(catalogCaseA).toBeDefined();
     expect(catalogCaseB).toBeDefined();
@@ -47,5 +54,16 @@ describe('caseCatalog Dynamic Catalog', () => {
     expect(catalogCaseB?.description).toBe(caseB.description);
     expect(catalogCaseA?.params).toEqual(caseA.params);
     expect(catalogCaseB?.params).toEqual(caseB.params);
+  });
+
+  it('builds benchmark registry from public case files only', () => {
+    expect(benchmarkCases.map((entry) => entry.key)).toEqual([
+      'bl_case_a_refined',
+      'bl_case_b_refined',
+      'dietz_sq_center',
+      'dietz_sq_corner',
+      'fetkovich_exp',
+    ]);
+    expect(catalog.benchmarks).toEqual(benchmarkCases);
   });
 });

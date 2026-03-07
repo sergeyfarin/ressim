@@ -11,6 +11,7 @@ import {
     catalog,
     buildCaseKey,
     composeCaseParams,
+    getBenchmarkEntry,
     getDefaultToggles,
     getDisabledOptions,
     stabilizeToggleState,
@@ -301,7 +302,7 @@ export function createSimulationStore() {
 
     const basePreset = $derived.by(() => {
         const benchmarkLabel = toggles.benchmarkId
-            ? catalog.benchmarks.find((b) => b.key === toggles.benchmarkId)?.label ?? null
+            ? getBenchmarkEntry(toggles.benchmarkId)?.label ?? null
             : null;
 
         return buildBasePresetProfile({
@@ -871,7 +872,7 @@ export function createSimulationStore() {
 
         const benchmarkId = toggles.benchmarkId ?? null;
         const benchmarkLabel = benchmarkId
-            ? catalog.benchmarks.find((b) => b.key === benchmarkId)?.label ?? null
+            ? getBenchmarkEntry(benchmarkId)?.label ?? null
             : null;
         const provenance = buildBenchmarkCloneProvenance({
             benchmarkId,

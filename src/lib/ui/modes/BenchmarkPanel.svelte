@@ -1,6 +1,6 @@
 <script lang="ts">
   import Button from "../controls/Button.svelte";
-  import { catalog, getModeDimensions } from "../../catalog/caseCatalog";
+  import { getBenchmarkEntry, getModeDimensions } from "../../catalog/caseCatalog";
   import FilterCard from "../controls/FilterCard.svelte";
   import type { BenchmarkModePanelProps } from "../modePanelTypes";
 
@@ -15,8 +15,7 @@
 
   const modeDimensions = $derived(getModeDimensions("benchmark"));
   const activeBenchmark = $derived(
-    catalog.benchmarks.find((benchmark) => benchmark.key === toggles.benchmarkId) ??
-      null,
+    getBenchmarkEntry(toggles.benchmarkId),
   );
 </script>
 

@@ -1,6 +1,8 @@
 {
   "key": "bl_case_b_refined",
   "category": "waterflood",
+  "benchmark": true,
+  "benchmarkOrder": 2,
   "label": "BL Case B — Refined",
   "description": "Benchmark-grade 96-cell case B with validated 0.125 day timestep",
   "params": {

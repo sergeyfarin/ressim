@@ -1,0 +1,28 @@
+{
+  "key": "fetkovich_exp",
+  "category": "depletion",
+  "benchmark": true,
+  "benchmarkOrder": 5,
+  "label": "Fetkovich Exponential",
+  "description": "Constant BHP exponential decline",
+  "params": {
+    "mode": "benchmark",
+    "analyticalSolutionMode": "depletion",
+    "nx": 48,
+    "ny": 1,
+    "nz": 1,
+    "cellDx": 10,
+    "cellDy": 10,
+    "cellDz": 10,
+    "injectorEnabled": false,
+    "producerControlMode": "pressure",
+    "producerBhp": 50,
+    "initialPressure": 1500,
+    "permMode": "uniform",
+    "uniformPermX": 20,
+    "steps": 100,
+    "delta_t_days": 5,
+    "producerI": 47,
+    "producerJ": 0
+  }
+}

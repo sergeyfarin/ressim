@@ -1,4 +1,10 @@
 import catalogDataRaw from './catalog.json';
+import {
+    benchmarkCases,
+    getBenchmarkDimensionOptions,
+    getBenchmarkEntry,
+    type BenchmarkEntry,
+} from './benchmarkCases';
 
 // --- Type Definitions ---
 export type CaseMode = 'dep' | 'wf' | 'sim' | 'benchmark';
@@ -23,13 +29,6 @@ export type DisabilityRule = {
     reason?: string;
 };
 
-export type BenchmarkEntry = {
-    key: string;
-    label: string;
-    description: string;
-    params: Record<string, any>;
-};
-
 export type ModeCatalog = {
     baseParams: Record<string, any>;
     dimensions: Dimension[];
@@ -43,7 +42,25 @@ export type CatalogSchema = {
     benchmarks: BenchmarkEntry[];
 };
 
-export const catalog: CatalogSchema = catalogDataRaw as unknown as CatalogSchema;
+const rawCatalog = catalogDataRaw as unknown as CatalogSchema;
+
+export const catalog: CatalogSchema = {
+    ...rawCatalog,
+    modes: {
+        ...rawCatalog.modes,
+        benchmark: {
+            ...rawCatalog.modes.benchmark,
+            dimensions: rawCatalog.modes.benchmark.dimensions.map((dimension) => (
+                dimension.key === 'benchmarkId'
+                    ? { ...dimension, options: getBenchmarkDimensionOptions() }
+                    : dimension
+            )),
+        },
+    },
+    benchmarks: benchmarkCases,
+};
+
+export { benchmarkCases, getBenchmarkEntry };
 
 export type ToggleState = Record<string, string>;
 
@@ -104,7 +121,7 @@ export function composeCaseParams(toggles: ToggleState): Record<string, any> {
     const mode = normalizeMode(toggles.mode);
 
     if (mode === 'benchmark') {
-        const bench = catalog.benchmarks.find(b => b.key === toggles.benchmarkId);
+        const bench = getBenchmarkEntry(toggles.benchmarkId);
         if (bench) return { ...catalog.defaults, ...bench.params };
         return catalog.defaults;
     }

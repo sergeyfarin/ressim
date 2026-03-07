@@ -1,0 +1,28 @@
+{
+  "key": "dietz_sq_center",
+  "category": "depletion",
+  "benchmark": true,
+  "benchmarkOrder": 3,
+  "label": "Dietz Square Center",
+  "description": "Shape factor C_A ≈ 30.88 (Dietz, 1965)",
+  "params": {
+    "mode": "benchmark",
+    "analyticalSolutionMode": "depletion",
+    "nx": 21,
+    "ny": 21,
+    "nz": 1,
+    "cellDx": 20,
+    "cellDy": 20,
+    "cellDz": 10,
+    "injectorEnabled": false,
+    "producerControlMode": "pressure",
+    "producerBhp": 100,
+    "initialPressure": 300,
+    "permMode": "uniform",
+    "uniformPermX": 50,
+    "steps": 50,
+    "delta_t_days": 1,
+    "producerI": 10,
+    "producerJ": 10
+  }
+}
