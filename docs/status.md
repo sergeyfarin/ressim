@@ -17,10 +17,14 @@
   - benchmark families can execute as base-only or base-plus-variants serial sweeps through the existing worker/store path
   - normalized benchmark results now record breakthrough, water-cut, pressure, recovery, and reference-comparison outputs per run
   - benchmark mode now surfaces sweep progress, cancellation, and stored-result summaries without reintroducing duplicated benchmark payloads
-- The remaining benchmark mismatch is reference-policy and presentation-related, not runner-ownership-related:
-  - BL base families and their generated variants now share one registry plus one execution/result contract
-  - the next step is making reference meaning explicit in the runner/UI for analytical versus numerical comparisons
-- The next workstream is benchmark modernization: explicit reference handling, benchmark-specific charts, and multi-case overlay plumbing.
+- B5 is now implemented for explicit reference handling:
+  - benchmark run results now carry an explicit reference-policy contract instead of relying on an ambiguous generic summary string
+  - homogeneous BL runs identify analytical Buckley-Leverett as the primary truth source, while heterogeneous BL runs identify refined numerical reference as primary and only secondary analytical context
+  - depletion runs identify analytical depletion reference explicitly and report trend-based diagnostics rather than pretending a breakthrough-style metric applies
+- The remaining benchmark mismatch is presentation-related, not reference-contract-related:
+  - BL and depletion benchmark runs now expose what “reference” means directly in the result contract and benchmark summary UI
+  - the next step is using that explicit contract to drive benchmark-specific chart composition and defaults
+- The next workstream is benchmark modernization: benchmark-specific charts, multi-case overlay plumbing, and the later benchmark UI workflow pass.
 
 ## Legacy Cleanup
 
@@ -122,6 +126,12 @@ Policy:
 Key outcome:
 - the UI no longer implies analytical equivalence where that claim is no longer valid
 
+Status:
+- completed on 2026-03-07
+- benchmark run results now expose `referencePolicy`, `referenceComparison`, and scenario-specific comparison outputs in `src/lib/benchmarkRunModel.ts`
+- benchmark summary cards now show reference label, policy summary, and scenario-appropriate diagnostics for analytical BL, numerical BL, and depletion cases
+- heterogeneous BL benchmark summaries no longer imply that analytical overlay remains the primary truth metric
+
 ### B6. Benchmark-specific charts and defaults
 
 Goal:
@@ -136,7 +146,23 @@ Styling policy:
 - line style identifies quantity or reference type
 - pressure and water-cut-first reading stay separate by default
 
-### B7. Benchmark UI workflow
+Status:
+- completed on 2026-03-07
+- benchmark chart layout now uses a shared typed contract in `src/lib/charts/rateChartLayoutConfig.ts`
+- benchmark mode now derives chart defaults from family metadata plus explicit reference policy in `src/lib/charts/benchmarkChartConfig.ts`
+- BL benchmark charts now default to breakthrough/recovery/pressure panels with benchmark-aware x-axis options instead of the generic rates/cumulative/diagnostics bundle
+- depletion benchmark charts now default to oil-rate, cumulative/recovery, and pressure panels without surfacing irrelevant waterflood curves by default
+- the reusable chart sub-panel now resets curve visibility when benchmark layouts swap curve sets, preventing stale toggle state across panel remaps
+
+### B7. Multi-run benchmark overlays
+
+Goal:
+- extend benchmark charts from benchmark-specific single-run defaults to readable multi-run comparison overlays
+
+Key outcome:
+- benchmark results can be compared visually across a base run, axis variants, and reference traces without overloading one generic single-run chart contract
+
+### B8. Benchmark UI workflow
 
 Goal:
 - expose family selection, enabled sensitivities, and comparison/reference behavior without collapsing benchmark mode into the generic scenario builder
@@ -144,7 +170,7 @@ Goal:
 Key outcome:
 - benchmark mode becomes a comparison tool rather than only a preset launcher
 
-### B8. Regression coverage and docs
+### B9. Regression coverage and docs
 
 Goal:
 - lock benchmark semantics, sensitivity generation, reference policy, and chart defaults with tests and synchronized docs
@@ -162,7 +188,7 @@ Key outcome:
 
 ## Next Action After Review
 
-- Next active implementation slice is `B5`:
-  - make analytical-versus-numerical reference handling explicit in the runner/UI output contract
-  - keep the new multi-run result model stable while refining what each family means by “reference”
-  - only then wire benchmark-specific chart restructuring and multi-case overlays on top of that explicit comparison contract
+- Next active implementation slice is `B7`:
+  - add multi-run benchmark overlay plumbing on top of the new benchmark-specific panel defaults
+  - keep benchmark x-axis and panel policy driven by family/reference metadata while introducing per-run overlay grouping
+  - only after that refine the benchmark selection workflow further in the UI

@@ -31,6 +31,10 @@
     return Number.isFinite(value) ? Number(value).toFixed(digits) : "n/a";
   }
 
+  function formatPercent(value: number | null | undefined, digits = 1) {
+    return Number.isFinite(value) ? `${(Number(value) * 100).toFixed(digits)}%` : "n/a";
+  }
+
   const modeDimensions = $derived(getModeDimensions("benchmark"));
   const activeBenchmark = $derived(
     getBenchmarkEntry(toggles.benchmarkId),
@@ -165,7 +169,30 @@
                   </span>
                 </div>
                 <div class="mt-1 text-muted-foreground">
+                  Reference: <strong class="text-foreground">{result.referencePolicy.referenceLabel}</strong>
+                </div>
+                <div class="mt-1 text-muted-foreground">
+                  Policy: {result.referencePolicy.summary}
+                </div>
+                <div class="mt-1 text-muted-foreground">
                   {result.referenceComparison.summary}
+                </div>
+                <div class="mt-1 text-muted-foreground">
+                  {result.comparisonOutputs.errorSummary}
+                </div>
+                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
+                  {#if result.comparisonOutputs.breakthroughShiftPvi !== null}
+                    <span>BT shift: <strong class="text-foreground">{formatNullableMetric(result.comparisonOutputs.breakthroughShiftPvi)}</strong></span>
+                  {/if}
+                  {#if result.comparisonOutputs.recoveryDifferenceAtFinalCoordinate !== null}
+                    <span>Recovery delta: <strong class="text-foreground">{formatPercent(result.comparisonOutputs.recoveryDifferenceAtFinalCoordinate)}</strong></span>
+                  {/if}
+                  {#if result.comparisonOutputs.oilRateRelativeErrorAtFinalTime !== null}
+                    <span>Final oil-rate error: <strong class="text-foreground">{formatPercent(result.comparisonOutputs.oilRateRelativeErrorAtFinalTime)}</strong></span>
+                  {/if}
+                  {#if result.comparisonOutputs.pressureDifferenceAtFinalTime !== null}
+                    <span>Final pressure delta: <strong class="text-foreground">{formatNullableMetric(result.comparisonOutputs.pressureDifferenceAtFinalTime)}</strong> bar</span>
+                  {/if}
                 </div>
               </div>
             {/each}

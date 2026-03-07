@@ -1,21 +1,12 @@
+import type { RateChartCurveOverride, RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
+
 export type PresetCategory = 'depletion' | 'waterflood' | 'exploration';
 
 export type PresetMode = 'dep' | 'wf' | 'sim';
 
-export type PresetLayoutCurveOverride = {
-    disabled?: boolean;
-};
+export type PresetLayoutCurveOverride = RateChartCurveOverride;
 
-export type PresetLayoutConfig = {
-    rateChart?: {
-        logScale?: boolean;
-        xAxisMode?: string;
-        ratesExpanded?: boolean;
-        cumulativeExpanded?: boolean;
-        diagnosticsExpanded?: boolean;
-        curves?: Record<string, PresetLayoutCurveOverride>;
-    };
-};
+export type PresetLayoutConfig = RateChartLayoutConfig;
 
 type SourcePresetDefinition = {
     key: string;

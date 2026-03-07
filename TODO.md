@@ -16,7 +16,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
 ## Active Slice
 
 - [x] **B0. Plan review and objective sign-off** — user approved proceeding with implementation starting from B1.
-- [ ] **B5. Make benchmark reference handling explicit (next)** — refine benchmark comparison meaning now that the runner/result model exists.
+- [ ] **B7. Update chart/data plumbing for multi-case overlays (next)** — extend the benchmark chart path from benchmark-specific single-run defaults to readable multi-run comparison overlays.
 
 ## Detailed Implementation Plan
 
@@ -103,7 +103,7 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - the simulation store now runs benchmark families serially through the existing worker, storing normalized results with sweep progress and cancellation support
     - benchmark mode now exposes `Run Base` plus axis-specific sensitivity actions and a stored-results summary without introducing duplicated benchmark payload ownership
 
-- [ ] **B5. Make benchmark reference handling explicit**
+- [x] **B5. Make benchmark reference handling explicit**
   - For homogeneous BL families:
     - preserve analytical Buckley-Leverett overlay and benchmark breakthrough comparison
   - For heterogeneous BL families:
@@ -118,8 +118,13 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
   - Acceptance:
     - each benchmark family declares what “reference” means
     - benchmark charts and summaries do not imply analytical validity where it no longer applies
+  - Outcome:
+    - benchmark run results now carry an explicit `referencePolicy` contract plus scenario-specific comparison outputs in `src/lib/benchmarkRunModel.ts`
+    - homogeneous BL runs now identify analytical Buckley-Leverett as the primary truth source and report breakthrough/recovery deltas against that reference
+    - heterogeneous BL runs now identify refined numerical reference as the primary truth source and no longer imply analytical equality in the benchmark summaries
+    - depletion benchmark runs now identify analytical depletion reference explicitly and report trend-focused diagnostics such as final oil-rate error, recovery delta, and pressure delta
 
-- [ ] **B6. Redesign benchmark chart composition and defaults**
+- [x] **B6. Redesign benchmark chart composition and defaults**
   - Introduce benchmark-family-specific panel layouts instead of one generic chart bundle.
   - Proposed BL default panels:
     - water cut vs PVI with breakthrough markers
@@ -138,6 +143,12 @@ This file is the live plan for the next major workstream. Legacy Phase 1 / Phase
     - BL charts default to breakthrough-centric reading
     - depletion charts do not surface irrelevant waterflood curves by default
     - multi-case benchmark overlays remain readable without ambiguous legends
+  - Outcome:
+    - added shared chart layout typing in `src/lib/charts/rateChartLayoutConfig.ts` so presets and benchmarks use the same chart-layout contract
+    - added benchmark-specific layout selection in `src/lib/charts/benchmarkChartConfig.ts`, driven by benchmark family and explicit reference policy
+    - refactored `src/lib/charts/RateChart.svelte` to honor layout-defined panel titles, curve subsets, scale presets, x-axis options, and log-scale policy
+    - updated `src/lib/charts/ChartSubPanel.svelte` to reset curve visibility when a benchmark layout swaps the active curve set
+    - added coverage for benchmark chart defaults in `src/lib/charts/benchmarkChartConfig.test.ts`
 
 - [ ] **B7. Update chart/data plumbing for multi-case overlays**
   - Refactor chart inputs so benchmark views can render multiple runs and one reference together.

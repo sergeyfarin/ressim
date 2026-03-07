@@ -56,6 +56,7 @@
     let chartCanvas = $state<HTMLCanvasElement | null>(null);
     let chart = $state<Chart<"line", XYPoint[], number> | null>(null);
     let visibleCurves = $state<boolean[]>([]);
+    let curveSignature = $state("");
 
     // Extract custom metadata (_dynamicTitle, _fraction, _auto) from scale configs
     // so Chart.js doesn't try to resolve them as scriptable options
@@ -79,7 +80,18 @@
 
     // Initialize visibility from curve defaults
     $effect(() => {
-        if (curves.length > 0 && visibleCurves.length !== curves.length) {
+        const nextSignature = JSON.stringify(
+            curves.map((curve) => [
+                curve.label,
+                curve.defaultVisible !== false,
+                curve.disabled ?? false,
+            ]),
+        );
+        if (
+            curves.length > 0 &&
+            (visibleCurves.length !== curves.length || curveSignature !== nextSignature)
+        ) {
+            curveSignature = nextSignature;
             visibleCurves = curves.map((c) => c.defaultVisible !== false);
         }
     });

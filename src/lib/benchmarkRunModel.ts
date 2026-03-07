@@ -1,4 +1,5 @@
-import { computeWelgeMetrics } from './analytical/fractionalFlow';
+import { calculateDepletionAnalyticalProduction } from './analytical/depletionAnalytical';
+import { calculateAnalyticalProduction, computeWelgeMetrics } from './analytical/fractionalFlow';
 import { buildCreatePayloadFromState } from './buildCreatePayload';
 import type {
     BenchmarkBreakthroughCriterion,
@@ -13,6 +14,7 @@ export type BenchmarkRunSpec = {
     key: string;
     caseKey: string;
     familyKey: string;
+    scenarioClass: BenchmarkFamily['scenarioClass'];
     variantKey: string | null;
     variantLabel: string | null;
     label: string;
@@ -45,10 +47,33 @@ export type BenchmarkReferenceComparison = {
     summary: string;
 };
 
+export type BenchmarkReferencePolicy = {
+    scenarioClass: BenchmarkFamily['scenarioClass'];
+    referenceKind: BenchmarkReferenceDefinition['kind'];
+    referenceSource: string;
+    referenceLabel: string;
+    primaryTruthLabel: string;
+    analyticalOverlayRole: 'primary' | 'secondary' | 'not-applicable';
+    summary: string;
+};
+
+export type BenchmarkComparisonOutputs = {
+    referenceCoordinateLabel: string | null;
+    finalCoordinateLabel: string | null;
+    breakthroughShiftPvi: number | null;
+    recoveryDifferenceAtReferenceCoordinate: number | null;
+    recoveryDifferenceAtFinalCoordinate: number | null;
+    oilRateRelativeErrorAtFinalTime: number | null;
+    cumulativeOilRelativeErrorAtFinalTime: number | null;
+    pressureDifferenceAtFinalTime: number | null;
+    errorSummary: string;
+};
+
 export type BenchmarkRunResult = {
     key: string;
     caseKey: string;
     familyKey: string;
+    scenarioClass: BenchmarkFamily['scenarioClass'];
     variantKey: string | null;
     variantLabel: string | null;
     label: string;
@@ -63,8 +88,22 @@ export type BenchmarkRunResult = {
     pressureSeries: Array<number | null>;
     recoverySeries: Array<number | null>;
     pviSeries: Array<number | null>;
+    referencePolicy: BenchmarkReferencePolicy;
     referenceComparison: BenchmarkReferenceComparison;
+    comparisonOutputs: BenchmarkComparisonOutputs;
     comparisonMeaning: string;
+};
+
+const EMPTY_COMPARISON_OUTPUTS: BenchmarkComparisonOutputs = {
+    referenceCoordinateLabel: null,
+    finalCoordinateLabel: null,
+    breakthroughShiftPvi: null,
+    recoveryDifferenceAtReferenceCoordinate: null,
+    recoveryDifferenceAtFinalCoordinate: null,
+    oilRateRelativeErrorAtFinalTime: null,
+    cumulativeOilRelativeErrorAtFinalTime: null,
+    pressureDifferenceAtFinalTime: null,
+    errorSummary: 'Reference diagnostics are not available yet.',
 };
 
 function toFiniteNumber(value: unknown, fallback: number): number {
@@ -86,6 +125,320 @@ function getOoip(params: Record<string, any>): number {
     const poreVolume = getPoreVolume(params);
     const initialSaturation = toFiniteNumber(params.initialSaturation, 0.3);
     return poreVolume * Math.max(0, 1 - initialSaturation);
+}
+
+function formatPercent(value: number | null | undefined, digits = 1): string {
+    if (!Number.isFinite(value)) return 'n/a';
+    return `${(Number(value) * 100).toFixed(digits)}%`;
+}
+
+function formatSignedNumber(value: number | null | undefined, digits = 3): string {
+    if (!Number.isFinite(value)) return 'n/a';
+    const numeric = Number(value);
+    return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}`;
+}
+
+function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy {
+    if (spec.scenarioClass === 'buckley-leverett' && spec.reference.kind === 'analytical') {
+        return {
+            scenarioClass: spec.scenarioClass,
+            referenceKind: spec.reference.kind,
+            referenceSource: spec.reference.source,
+            referenceLabel: 'Analytical Buckley-Leverett shock reference',
+            primaryTruthLabel: 'Analytical breakthrough-PV comparison',
+            analyticalOverlayRole: 'primary',
+            summary: 'Analytical Buckley-Leverett reference is the primary truth source for this run.',
+        };
+    }
+
+    if (spec.scenarioClass === 'buckley-leverett' && spec.reference.kind === 'numerical-refined') {
+        return {
+            scenarioClass: spec.scenarioClass,
+            referenceKind: spec.reference.kind,
+            referenceSource: spec.reference.source,
+            referenceLabel: 'Refined numerical benchmark reference',
+            primaryTruthLabel: 'Refined numerical breakthrough-PV comparison',
+            analyticalOverlayRole: 'secondary',
+            summary: 'A refined numerical benchmark run is the primary truth source; analytical overlay is not a strict equality test here.',
+        };
+    }
+
+    return {
+        scenarioClass: spec.scenarioClass,
+        referenceKind: spec.reference.kind,
+        referenceSource: spec.reference.source,
+        referenceLabel: 'Analytical depletion reference',
+        primaryTruthLabel: 'Analytical depletion trend comparison',
+        analyticalOverlayRole: 'primary',
+        summary: 'Analytical depletion reference is the primary truth source for decline, cumulative oil, and pressure diagnostics.',
+    };
+}
+
+function interpolateSeriesValue(
+    xValues: Array<number | null>,
+    yValues: Array<number | null>,
+    target: number | null,
+): number | null {
+    if (!Number.isFinite(target)) return null;
+
+    let previousIndex = -1;
+    for (let index = 0; index < xValues.length; index += 1) {
+        const x = xValues[index];
+        const y = yValues[index];
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        if (x === target) return Number(y);
+        if ((x as number) > (target as number)) {
+            if (previousIndex < 0) return Number(y);
+            const x0 = Number(xValues[previousIndex]);
+            const y0 = Number(yValues[previousIndex]);
+            const x1 = Number(x);
+            const y1 = Number(y);
+            if (Math.abs(x1 - x0) <= 1e-12) return y1;
+            const fraction = ((target as number) - x0) / (x1 - x0);
+            return y0 + fraction * (y1 - y0);
+        }
+        previousIndex = index;
+    }
+
+    return previousIndex >= 0 && Number.isFinite(yValues[previousIndex])
+        ? Number(yValues[previousIndex])
+        : null;
+}
+
+function safeRelativeError(measured: number | null, reference: number | null): number | null {
+    if (!Number.isFinite(measured) || !Number.isFinite(reference) || Math.abs(reference as number) <= 1e-12) {
+        return null;
+    }
+    return Math.abs(((measured as number) - (reference as number)) / (reference as number));
+}
+
+function buildBuckleyLeverettAnalyticalDiagnostics(input: {
+    spec: BenchmarkRunSpec;
+    rateHistory: RateHistoryPoint[];
+    pviSeries: Array<number | null>;
+    recoverySeries: Array<number | null>;
+    breakthroughPvi: number | null;
+    poreVolume: number;
+}): {
+    referenceComparison: BenchmarkReferenceComparison;
+    comparisonOutputs: BenchmarkComparisonOutputs;
+} {
+    const { spec, rateHistory, pviSeries, recoverySeries, breakthroughPvi, poreVolume } = input;
+    const reference = computeWelgeMetrics(
+        {
+            s_wc: toFiniteNumber(spec.params.s_wc, 0.1),
+            s_or: toFiniteNumber(spec.params.s_or, 0.1),
+            n_w: toFiniteNumber(spec.params.n_w, 2),
+            n_o: toFiniteNumber(spec.params.n_o, 2),
+            k_rw_max: toFiniteNumber(spec.params.k_rw_max, 1),
+            k_ro_max: toFiniteNumber(spec.params.k_ro_max, 1),
+        },
+        {
+            mu_w: toFiniteNumber(spec.params.mu_w, 0.5),
+            mu_o: toFiniteNumber(spec.params.mu_o, 1),
+        },
+        toFiniteNumber(spec.params.initialSaturation, toFiniteNumber(spec.params.s_wc, 0.1)),
+    );
+
+    const analyticalProduction = calculateAnalyticalProduction(
+        {
+            s_wc: toFiniteNumber(spec.params.s_wc, 0.1),
+            s_or: toFiniteNumber(spec.params.s_or, 0.1),
+            n_w: toFiniteNumber(spec.params.n_w, 2),
+            n_o: toFiniteNumber(spec.params.n_o, 2),
+            k_rw_max: toFiniteNumber(spec.params.k_rw_max, 1),
+            k_ro_max: toFiniteNumber(spec.params.k_ro_max, 1),
+        },
+        {
+            mu_w: toFiniteNumber(spec.params.mu_w, 0.5),
+            mu_o: toFiniteNumber(spec.params.mu_o, 1),
+        },
+        toFiniteNumber(spec.params.initialSaturation, toFiniteNumber(spec.params.s_wc, 0.1)),
+        rateHistory.map((point) => toFiniteNumber(point.time, 0)),
+        rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
+        poreVolume,
+    );
+    const ooip = getOoip(spec.params);
+    const analyticalRecoverySeries = analyticalProduction.map((point) => (
+        ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
+    ));
+    const referenceBreakthroughRecovery = interpolateSeriesValue(
+        pviSeries,
+        recoverySeries,
+        reference.breakthroughPvi,
+    );
+    const analyticalBreakthroughRecovery = interpolateSeriesValue(
+        pviSeries,
+        analyticalRecoverySeries,
+        reference.breakthroughPvi,
+    );
+    const finalPvi = pviSeries.at(-1) ?? null;
+    const simFinalRecovery = interpolateSeriesValue(pviSeries, recoverySeries, finalPvi);
+    const analyticalFinalRecovery = interpolateSeriesValue(pviSeries, analyticalRecoverySeries, finalPvi);
+    const breakthroughShiftPvi = Number.isFinite(breakthroughPvi) ? (breakthroughPvi as number) - reference.breakthroughPvi : null;
+
+    return {
+        referenceComparison: buildComparisonStatus({
+            measuredValue: breakthroughPvi,
+            referenceValue: reference.breakthroughPvi,
+            tolerance: spec.comparisonMetric?.tolerance ?? null,
+            referenceKind: spec.reference.kind,
+            referenceSource: spec.reference.source,
+            metric: spec.comparisonMetric,
+        }),
+        comparisonOutputs: {
+            referenceCoordinateLabel: 'Reference breakthrough PVI',
+            finalCoordinateLabel: 'Final simulated PVI',
+            breakthroughShiftPvi,
+            recoveryDifferenceAtReferenceCoordinate: (
+                Number.isFinite(referenceBreakthroughRecovery) && Number.isFinite(analyticalBreakthroughRecovery)
+                    ? (referenceBreakthroughRecovery as number) - (analyticalBreakthroughRecovery as number)
+                    : null
+            ),
+            recoveryDifferenceAtFinalCoordinate: (
+                Number.isFinite(simFinalRecovery) && Number.isFinite(analyticalFinalRecovery)
+                    ? (simFinalRecovery as number) - (analyticalFinalRecovery as number)
+                    : null
+            ),
+            oilRateRelativeErrorAtFinalTime: safeRelativeError(
+                Math.max(0, Math.abs(toFiniteNumber(rateHistory.at(-1)?.total_production_oil, 0))),
+                analyticalProduction.at(-1)?.oilRate ?? null,
+            ),
+            cumulativeOilRelativeErrorAtFinalTime: safeRelativeError(
+                Number.isFinite(simFinalRecovery) ? simFinalRecovery : null,
+                Number.isFinite(analyticalFinalRecovery) ? analyticalFinalRecovery : null,
+            ),
+            pressureDifferenceAtFinalTime: null,
+            errorSummary: `Breakthrough shift ${formatSignedNumber(breakthroughShiftPvi)} PVI; final recovery delta ${formatSignedNumber(
+                Number.isFinite(simFinalRecovery) && Number.isFinite(analyticalFinalRecovery)
+                    ? (simFinalRecovery as number) - (analyticalFinalRecovery as number)
+                    : null,
+            )}.`,
+        },
+    };
+}
+
+function buildDepletionAnalyticalDiagnostics(input: {
+    spec: BenchmarkRunSpec;
+    rateHistory: RateHistoryPoint[];
+    recoverySeries: Array<number | null>;
+    pressureSeries: Array<number | null>;
+}): {
+    referenceComparison: BenchmarkReferenceComparison;
+    comparisonOutputs: BenchmarkComparisonOutputs;
+} {
+    const { spec, rateHistory, recoverySeries, pressureSeries } = input;
+    const depletionReference = calculateDepletionAnalyticalProduction({
+        reservoir: {
+            length: toFiniteNumber(spec.params.nx, 1) * toFiniteNumber(spec.params.cellDx, 10),
+            area: toFiniteNumber(spec.params.ny, 1)
+                * toFiniteNumber(spec.params.cellDy, 10)
+                * toFiniteNumber(spec.params.nz, 1)
+                * toFiniteNumber(spec.params.cellDz, 1),
+            porosity: toFiniteNumber(spec.params.reservoirPorosity ?? spec.params.porosity, 0.2),
+        },
+        timeHistory: rateHistory.map((point) => toFiniteNumber(point.time, 0)),
+        initialSaturation: toFiniteNumber(spec.params.initialSaturation, 0.3),
+        nz: toFiniteNumber(spec.params.nz, 1),
+        permMode: String(spec.params.permMode ?? 'uniform'),
+        uniformPermX: toFiniteNumber(spec.params.uniformPermX, 100),
+        uniformPermY: toFiniteNumber(spec.params.uniformPermY ?? spec.params.uniformPermX, 100),
+        layerPermsX: Array.isArray(spec.params.layerPermsX) ? spec.params.layerPermsX.map(Number) : [],
+        layerPermsY: Array.isArray(spec.params.layerPermsY) ? spec.params.layerPermsY.map(Number) : [],
+        cellDx: toFiniteNumber(spec.params.cellDx, 10),
+        cellDy: toFiniteNumber(spec.params.cellDy, 10),
+        cellDz: toFiniteNumber(spec.params.cellDz, 1),
+        wellRadius: toFiniteNumber(spec.params.well_radius, 0.1),
+        wellSkin: toFiniteNumber(spec.params.well_skin, 0),
+        muO: toFiniteNumber(spec.params.mu_o, 1),
+        sWc: toFiniteNumber(spec.params.s_wc, 0.1),
+        sOr: toFiniteNumber(spec.params.s_or, 0.1),
+        nO: toFiniteNumber(spec.params.n_o, 2),
+        c_o: toFiniteNumber(spec.params.c_o, 1e-5),
+        c_w: toFiniteNumber(spec.params.c_w, 3e-6),
+        cRock: toFiniteNumber(spec.params.rock_compressibility, 1e-6),
+        initialPressure: toFiniteNumber(spec.params.initialPressure, 300),
+        producerBhp: toFiniteNumber(spec.params.producerBhp, 100),
+        depletionRateScale: toFiniteNumber(spec.params.analyticalDepletionRateScale, 1),
+    });
+
+    const ooip = getOoip(spec.params);
+    const analyticalRecoverySeries = depletionReference.production.map((point) => (
+        ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
+    ));
+    const finalTime = rateHistory.at(-1)?.time ?? null;
+    const simFinalRecovery = recoverySeries.at(-1) ?? null;
+    const analyticalFinalRecovery = analyticalRecoverySeries.at(-1) ?? null;
+    const simFinalOilRate = Math.max(0, Math.abs(toFiniteNumber(rateHistory.at(-1)?.total_production_oil, 0)));
+    const analyticalFinalOilRate = depletionReference.production.at(-1)?.oilRate ?? null;
+    const simFinalPressure = pressureSeries.at(-1) ?? null;
+    const analyticalFinalPressure = depletionReference.production.at(-1)?.avgPressure ?? null;
+
+    return {
+        referenceComparison: {
+            status: 'not-applicable',
+            referenceKind: spec.reference.kind,
+            referenceSource: spec.reference.source,
+            metricKind: null,
+            measuredValue: null,
+            referenceValue: null,
+            relativeError: null,
+            tolerance: null,
+            summary: 'Analytical depletion reference is descriptive and trend-based for this benchmark family.',
+        },
+        comparisonOutputs: {
+            referenceCoordinateLabel: 'Final simulated time',
+            finalCoordinateLabel: Number.isFinite(finalTime) ? `t = ${Number(finalTime).toFixed(2)} d` : 'Final simulated time',
+            breakthroughShiftPvi: null,
+            recoveryDifferenceAtReferenceCoordinate: null,
+            recoveryDifferenceAtFinalCoordinate: (
+                Number.isFinite(simFinalRecovery) && Number.isFinite(analyticalFinalRecovery)
+                    ? (simFinalRecovery as number) - (analyticalFinalRecovery as number)
+                    : null
+            ),
+            oilRateRelativeErrorAtFinalTime: safeRelativeError(simFinalOilRate, analyticalFinalOilRate),
+            cumulativeOilRelativeErrorAtFinalTime: safeRelativeError(simFinalRecovery, analyticalFinalRecovery),
+            pressureDifferenceAtFinalTime: (
+                Number.isFinite(simFinalPressure) && Number.isFinite(analyticalFinalPressure)
+                    ? (simFinalPressure as number) - (analyticalFinalPressure as number)
+                    : null
+            ),
+            errorSummary: `Final oil-rate error ${formatPercent(safeRelativeError(simFinalOilRate, analyticalFinalOilRate))}; final recovery delta ${formatSignedNumber(
+                Number.isFinite(simFinalRecovery) && Number.isFinite(analyticalFinalRecovery)
+                    ? (simFinalRecovery as number) - (analyticalFinalRecovery as number)
+                    : null,
+            )}; pressure delta ${formatSignedNumber(
+                Number.isFinite(simFinalPressure) && Number.isFinite(analyticalFinalPressure)
+                    ? (simFinalPressure as number) - (analyticalFinalPressure as number)
+                    : null,
+            )} bar.`,
+        },
+    };
+}
+
+function buildPendingNumericalDiagnostics(spec: BenchmarkRunSpec, breakthroughPvi: number | null): {
+    referenceComparison: BenchmarkReferenceComparison;
+    comparisonOutputs: BenchmarkComparisonOutputs;
+} {
+    return {
+        referenceComparison: {
+            status: 'pending-reference',
+            referenceKind: spec.reference.kind,
+            referenceSource: spec.reference.source,
+            metricKind: spec.comparisonMetric?.kind ?? null,
+            measuredValue: breakthroughPvi,
+            referenceValue: null,
+            relativeError: null,
+            tolerance: spec.comparisonMetric?.tolerance ?? null,
+            summary: 'Waiting for a refined numerical reference run before scoring this benchmark variant.',
+        },
+        comparisonOutputs: {
+            ...EMPTY_COMPARISON_OUTPUTS,
+            referenceCoordinateLabel: 'Reference breakthrough PVI',
+            finalCoordinateLabel: 'Shared final PVI',
+            errorSummary: 'Reference diagnostics will be populated after the refined numerical reference run completes.',
+        },
+    };
 }
 
 function buildComparisonStatus(input: {
@@ -144,47 +497,6 @@ function buildComparisonStatus(input: {
     };
 }
 
-function buildInitialReferenceComparison(spec: BenchmarkRunSpec, breakthroughPvi: number | null): BenchmarkReferenceComparison {
-    if (spec.reference.kind === 'analytical') {
-        const reference = computeWelgeMetrics(
-            {
-                s_wc: toFiniteNumber(spec.params.s_wc, 0.1),
-                s_or: toFiniteNumber(spec.params.s_or, 0.1),
-                n_w: toFiniteNumber(spec.params.n_w, 2),
-                n_o: toFiniteNumber(spec.params.n_o, 2),
-                k_rw_max: toFiniteNumber(spec.params.k_rw_max, 1),
-                k_ro_max: toFiniteNumber(spec.params.k_ro_max, 1),
-            },
-            {
-                mu_w: toFiniteNumber(spec.params.mu_w, 0.5),
-                mu_o: toFiniteNumber(spec.params.mu_o, 1),
-            },
-            toFiniteNumber(spec.params.initialSaturation, toFiniteNumber(spec.params.s_wc, 0.1)),
-        );
-
-        return buildComparisonStatus({
-            measuredValue: breakthroughPvi,
-            referenceValue: reference.breakthroughPvi,
-            tolerance: spec.comparisonMetric?.tolerance ?? null,
-            referenceKind: spec.reference.kind,
-            referenceSource: spec.reference.source,
-            metric: spec.comparisonMetric,
-        });
-    }
-
-    return {
-        status: 'pending-reference',
-        referenceKind: spec.reference.kind,
-        referenceSource: spec.reference.source,
-        metricKind: spec.comparisonMetric?.kind ?? null,
-        measuredValue: breakthroughPvi,
-        referenceValue: null,
-        relativeError: null,
-        tolerance: spec.comparisonMetric?.tolerance ?? null,
-        summary: 'Waiting for a numerical reference run to resolve the benchmark comparison.',
-    };
-}
-
 export function buildBenchmarkRunSpecs(
     family: BenchmarkFamily,
     variants: BenchmarkVariant[] = [],
@@ -198,6 +510,7 @@ export function buildBenchmarkRunSpecs(
             key: family.baseCase.key,
             caseKey: family.baseCase.key,
             familyKey: family.key,
+            scenarioClass: family.scenarioClass,
             variantKey: null,
             variantLabel: null,
             label: family.label,
@@ -219,6 +532,7 @@ export function buildBenchmarkRunSpecs(
                 key: variant.key,
                 caseKey: variant.key,
                 familyKey: family.key,
+                scenarioClass: family.scenarioClass,
                 variantKey: variant.variantKey,
                 variantLabel: variant.label,
                 label: variant.label,
@@ -259,6 +573,7 @@ export function buildBenchmarkRunResult(input: {
     const watercutThreshold = spec.breakthroughCriterion?.value ?? 0.01;
     const poreVolume = getPoreVolume(spec.params);
     const ooip = getOoip(spec.params);
+    const referencePolicy = buildReferencePolicy(spec);
 
     let cumulativeInjection = 0;
     let cumulativeOil = 0;
@@ -304,10 +619,29 @@ export function buildBenchmarkRunResult(input: {
         }
     }
 
+    const referenceDetails = spec.scenarioClass === 'buckley-leverett'
+        ? (spec.reference.kind === 'analytical'
+            ? buildBuckleyLeverettAnalyticalDiagnostics({
+                spec,
+                rateHistory,
+                pviSeries,
+                recoverySeries,
+                breakthroughPvi,
+                poreVolume,
+            })
+            : buildPendingNumericalDiagnostics(spec, breakthroughPvi))
+        : buildDepletionAnalyticalDiagnostics({
+            spec,
+            rateHistory,
+            recoverySeries,
+            pressureSeries,
+        });
+
     return {
         key: spec.key,
         caseKey: spec.caseKey,
         familyKey: spec.familyKey,
+        scenarioClass: spec.scenarioClass,
         variantKey: spec.variantKey,
         variantLabel: spec.variantLabel,
         label: spec.label,
@@ -322,7 +656,9 @@ export function buildBenchmarkRunResult(input: {
         pressureSeries,
         recoverySeries,
         pviSeries,
-        referenceComparison: buildInitialReferenceComparison(spec, breakthroughPvi),
+        referencePolicy,
+        referenceComparison: referenceDetails.referenceComparison,
+        comparisonOutputs: referenceDetails.comparisonOutputs,
         comparisonMeaning: spec.comparisonMeaning,
     };
 }
@@ -343,22 +679,76 @@ export function resolveBenchmarkReferenceComparisons(results: BenchmarkRunResult
         const numericalReference = numericalReferenceMap.get(result.referenceComparison.referenceSource ?? '');
         if (!numericalReference) return result;
 
+        const referenceBreakthroughShift = (
+            Number.isFinite(result.breakthroughPvi) && Number.isFinite(numericalReference.breakthroughPvi)
+                ? (result.breakthroughPvi as number) - (numericalReference.breakthroughPvi as number)
+                : null
+        );
+        const referenceRecovery = interpolateSeriesValue(
+            numericalReference.pviSeries,
+            numericalReference.recoverySeries,
+            numericalReference.breakthroughPvi,
+        );
+        const resultRecoveryAtReference = interpolateSeriesValue(
+            result.pviSeries,
+            result.recoverySeries,
+            numericalReference.breakthroughPvi,
+        );
+        const sharedFinalPvi = Math.min(
+            Number(result.pviSeries.at(-1) ?? 0),
+            Number(numericalReference.pviSeries.at(-1) ?? 0),
+        );
+        const resultRecoveryAtSharedFinalPvi = interpolateSeriesValue(
+            result.pviSeries,
+            result.recoverySeries,
+            sharedFinalPvi,
+        );
+        const referenceRecoveryAtSharedFinalPvi = interpolateSeriesValue(
+            numericalReference.pviSeries,
+            numericalReference.recoverySeries,
+            sharedFinalPvi,
+        );
+        const updatedReferenceComparison = buildComparisonStatus({
+            measuredValue: result.breakthroughPvi,
+            referenceValue: numericalReference.breakthroughPvi,
+            tolerance: result.referenceComparison.tolerance,
+            referenceKind: 'numerical-refined',
+            referenceSource: result.referenceComparison.referenceSource ?? numericalReference.key,
+            metric: result.referenceComparison.metricKind
+                ? {
+                    kind: result.referenceComparison.metricKind,
+                    target: 'numerical-reference',
+                    tolerance: result.referenceComparison.tolerance ?? 0,
+                }
+                : null,
+        });
+
         return {
             ...result,
-            referenceComparison: buildComparisonStatus({
-                measuredValue: result.breakthroughPvi,
-                referenceValue: numericalReference.breakthroughPvi,
-                tolerance: result.referenceComparison.tolerance,
-                referenceKind: 'numerical-refined',
-                referenceSource: result.referenceComparison.referenceSource ?? numericalReference.key,
-                metric: result.referenceComparison.metricKind
-                    ? {
-                        kind: result.referenceComparison.metricKind,
-                        target: 'numerical-reference',
-                        tolerance: result.referenceComparison.tolerance ?? 0,
-                    }
-                    : null,
-            }),
+            referenceComparison: updatedReferenceComparison,
+            comparisonOutputs: {
+                referenceCoordinateLabel: 'Reference breakthrough PVI',
+                finalCoordinateLabel: 'Shared final PVI',
+                breakthroughShiftPvi: referenceBreakthroughShift,
+                recoveryDifferenceAtReferenceCoordinate: (
+                    Number.isFinite(resultRecoveryAtReference) && Number.isFinite(referenceRecovery)
+                        ? (resultRecoveryAtReference as number) - (referenceRecovery as number)
+                        : null
+                ),
+                recoveryDifferenceAtFinalCoordinate: (
+                    Number.isFinite(resultRecoveryAtSharedFinalPvi) && Number.isFinite(referenceRecoveryAtSharedFinalPvi)
+                        ? (resultRecoveryAtSharedFinalPvi as number) - (referenceRecoveryAtSharedFinalPvi as number)
+                        : null
+                ),
+                oilRateRelativeErrorAtFinalTime: null,
+                cumulativeOilRelativeErrorAtFinalTime: null,
+                pressureDifferenceAtFinalTime: null,
+                errorSummary: `Breakthrough shift ${formatSignedNumber(referenceBreakthroughShift)} PVI; recovery delta at shared final PVI ${formatSignedNumber(
+                    Number.isFinite(resultRecoveryAtSharedFinalPvi) && Number.isFinite(referenceRecoveryAtSharedFinalPvi)
+                        ? (resultRecoveryAtSharedFinalPvi as number) - (referenceRecoveryAtSharedFinalPvi as number)
+                        : null,
+                )}; ${updatedReferenceComparison.summary}`,
+            },
         };
     });
 }

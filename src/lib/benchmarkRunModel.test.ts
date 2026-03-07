@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { calculateDepletionAnalyticalProduction } from './analytical/depletionAnalytical';
 import { computeWelgeMetrics } from './analytical/fractionalFlow';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from './catalog/caseCatalog';
 import {
@@ -25,6 +26,48 @@ function buildSyntheticRateHistory(params: Record<string, any>, breakthroughPvi:
             avg_reservoir_pressure: 250,
         },
     ];
+}
+
+function buildDepletionReferenceRateHistory(params: Record<string, any>) {
+    const timeHistory = [5, 10, 20];
+    const reference = calculateDepletionAnalyticalProduction({
+        reservoir: {
+            length: Number(params.nx) * Number(params.cellDx),
+            area: Number(params.ny) * Number(params.cellDy) * Number(params.nz) * Number(params.cellDz),
+            porosity: Number(params.reservoirPorosity ?? 0.2),
+        },
+        timeHistory,
+        initialSaturation: Number(params.initialSaturation ?? 0.3),
+        nz: Number(params.nz),
+        permMode: String(params.permMode ?? 'uniform'),
+        uniformPermX: Number(params.uniformPermX ?? 100),
+        uniformPermY: Number(params.uniformPermY ?? params.uniformPermX ?? 100),
+        layerPermsX: Array.isArray(params.layerPermsX) ? params.layerPermsX.map(Number) : [],
+        layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
+        cellDx: Number(params.cellDx),
+        cellDy: Number(params.cellDy),
+        cellDz: Number(params.cellDz),
+        wellRadius: Number(params.well_radius ?? 0.1),
+        wellSkin: Number(params.well_skin ?? 0),
+        muO: Number(params.mu_o ?? 1),
+        sWc: Number(params.s_wc ?? 0.1),
+        sOr: Number(params.s_or ?? 0.1),
+        nO: Number(params.n_o ?? 2),
+        c_o: Number(params.c_o ?? 1e-5),
+        c_w: Number(params.c_w ?? 3e-6),
+        cRock: Number(params.rock_compressibility ?? 1e-6),
+        initialPressure: Number(params.initialPressure),
+        producerBhp: Number(params.producerBhp),
+        depletionRateScale: Number(params.analyticalDepletionRateScale ?? 1),
+    });
+
+    return reference.production.map((point) => ({
+        time: point.time,
+        total_injection: 0,
+        total_production_liquid: point.oilRate,
+        total_production_oil: point.oilRate,
+        avg_reservoir_pressure: point.avgPressure,
+    }));
 }
 
 describe('benchmarkRunModel', () => {
@@ -73,8 +116,11 @@ describe('benchmarkRunModel', () => {
         });
 
         expect(result.breakthroughPvi).toBeCloseTo(reference.breakthroughPvi, 6);
+        expect(result.referencePolicy.referenceLabel).toContain('Analytical Buckley-Leverett');
+        expect(result.referencePolicy.analyticalOverlayRole).toBe('primary');
         expect(result.referenceComparison.status).toBe('within-tolerance');
         expect(result.referenceComparison.referenceKind).toBe('analytical');
+        expect(result.comparisonOutputs.breakthroughShiftPvi).toBeCloseTo(0, 6);
     });
 
     it('resolves numerical-reference comparisons for heterogeneous BL variants from the base run', () => {
@@ -96,8 +142,28 @@ describe('benchmarkRunModel', () => {
         const resolved = resolveBenchmarkReferenceComparisons([baseResult, heterogeneityResult]);
         const resolvedHeterogeneity = resolved.find((result) => result.variantKey === 'heterogeneity_strong_random');
 
+        expect(resolvedHeterogeneity?.referencePolicy.referenceLabel).toContain('Refined numerical');
+        expect(resolvedHeterogeneity?.referencePolicy.analyticalOverlayRole).toBe('secondary');
         expect(resolvedHeterogeneity?.referenceComparison.referenceKind).toBe('numerical-refined');
         expect(resolvedHeterogeneity?.referenceComparison.referenceValue).toBeCloseTo(1.0, 6);
         expect(resolvedHeterogeneity?.referenceComparison.status).toBe('outside-tolerance');
+        expect(resolvedHeterogeneity?.comparisonOutputs.breakthroughShiftPvi).toBeCloseTo(0.5, 6);
+    });
+
+    it('keeps depletion benchmarks on an explicit analytical reference policy with trend diagnostics', () => {
+        const family = getBenchmarkFamily('dietz_sq_center');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const result = buildBenchmarkRunResult({
+            spec: baseSpec,
+            rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
+        });
+
+        expect(result.scenarioClass).toBe('depletion');
+        expect(result.referencePolicy.referenceLabel).toContain('Analytical depletion');
+        expect(result.referencePolicy.analyticalOverlayRole).toBe('primary');
+        expect(result.referenceComparison.status).toBe('not-applicable');
+        expect(result.comparisonOutputs.oilRateRelativeErrorAtFinalTime).toBeCloseTo(0, 6);
+        expect(result.comparisonOutputs.cumulativeOilRelativeErrorAtFinalTime).toBeGreaterThanOrEqual(0);
+        expect(result.comparisonOutputs.cumulativeOilRelativeErrorAtFinalTime).toBeLessThan(1);
     });
 });

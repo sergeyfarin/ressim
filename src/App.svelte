@@ -6,9 +6,10 @@
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ModePanel from "./lib/ui/modes/ModePanel.svelte";
     import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
+    import { getBenchmarkRateChartLayoutConfig } from "./lib/charts/benchmarkChartConfig";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
-    import { getPresetEntry } from "./lib/catalog/caseCatalog";
+    import { getBenchmarkFamily, getPresetEntry } from "./lib/catalog/caseCatalog";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
 
     // ---------- Store ----------
@@ -35,6 +36,24 @@
     let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
     let RateChartComponent = $state<RateChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
+    const activeBenchmarkBaseResult = $derived.by(() => {
+        if (scenario.activeMode !== "benchmark") return null;
+        const benchmarkId = scenario.toggles.benchmarkId ?? null;
+        if (!benchmarkId) return null;
+        return runtime.benchmarkRunResults.find((result) => (
+            result.familyKey === benchmarkId && result.variantKey === null
+        )) ?? null;
+    });
+    const activeRateChartLayoutConfig = $derived.by(() => {
+        if (scenario.activeMode === "benchmark") {
+            return getBenchmarkRateChartLayoutConfig({
+                family: getBenchmarkFamily(scenario.toggles.benchmarkId),
+                referencePolicy: activeBenchmarkBaseResult?.referencePolicy ?? null,
+            });
+        }
+
+        return getPresetEntry(scenario.activeCase)?.layoutConfig ?? {};
+    });
 
     // ---------- Config diff $effect ----------
     $effect(() => {
@@ -420,7 +439,7 @@
                             activeCase={scenario.activeCase}
                             {theme}
                             analyticalMeta={runtime.analyticalMeta}
-                            layoutConfig={getPresetEntry(scenario.activeCase)?.layoutConfig ?? {}}
+                            layoutConfig={activeRateChartLayoutConfig}
                         />
                     {:else}
                         <div

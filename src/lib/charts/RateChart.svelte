@@ -2,6 +2,12 @@
     import ChartSubPanel from "./ChartSubPanel.svelte";
     import type { CurveConfig } from "./ChartSubPanel.svelte";
     import type {
+        RateChartLayoutConfig,
+        RateChartPanelKey,
+        RateChartScalePreset,
+        RateChartXAxisMode,
+    } from "./rateChartLayoutConfig";
+    import type {
         RateHistoryPoint,
         AnalyticalProductionPoint,
     } from "../simulator-types";
@@ -30,21 +36,20 @@
         activeCase?: string;
         theme?: "dark" | "light";
         analyticalMeta?: any;
-        layoutConfig?: any;
+        layoutConfig?: RateChartLayoutConfig;
     } = $props();
 
     // --- X-axis state (shared across all panels) ---
-    type XAxisMode =
-        | "time"
-        | "tD"
-        | "logTime"
-        | "pvi"
-        | "pvp"
-        | "cumLiquid"
-        | "cumInjection";
     type XYPoint = { x: number; y: number | null };
+    type PanelDefinition = {
+        title: string;
+        curves: CurveConfig[];
+        series: XYPoint[][];
+        scales: Record<string, any>;
+        allowLogToggle: boolean;
+    };
 
-    let xAxisMode = $state<XAxisMode>("time");
+    let xAxisMode = $state<RateChartXAxisMode>("time");
     let logScale = $state(false);
     let normalizeRates = $state(false);
 
@@ -455,7 +460,7 @@
         return timeValues;
     });
 
-    function setXAxisMode(mode: XAxisMode) {
+    function setXAxisMode(mode: RateChartXAxisMode) {
         if (mode === "pvi" && !pviAvailable) return;
         if (mode === "pvp" && !pvpAvailable) return;
         if (mode === "tD" && (!analyticalMeta?.tau || analyticalMeta.tau <= 0))
@@ -631,12 +636,8 @@
         },
     ];
 
-    let ratesCurves = $derived(applyCurveLayout(baseRatesCurves));
-    let cumulativeCurves = $derived(applyCurveLayout(baseCumulativeCurves));
-    let diagnosticsCurves = $derived(applyCurveLayout(baseDiagnosticsCurves));
-
     // --- Build XY series for each panel ---
-    let ratesSeries = $derived([
+    let rateCurveSeries = $derived([
         toXYSeries(xValues, normOilProd),
         toXYSeries(xValues, normAnalyticalOilProd),
         toXYSeries(xValues, normWaterProd),
@@ -646,7 +647,7 @@
         toXYSeries(xValues, normOilRateAbsError),
     ]);
 
-    let cumulativeSeries = $derived([
+    let cumulativeCurveSeries = $derived([
         toXYSeries(xValues, cumulatives.cumOil),
         toXYSeries(xValues, analyticalCumOil as Array<number | null>),
         toXYSeries(xValues, cumulatives.cumInj),
@@ -654,7 +655,7 @@
         toXYSeries(xValues, recoveryFactor as Array<number | null>),
     ]);
 
-    let diagnosticsSeries = $derived([
+    let diagnosticsCurveSeries = $derived([
         toXYSeries(xValues, avgPressure as Array<number | null>),
         toXYSeries(xValues, analyticalAvgPressure as Array<number | null>),
         toXYSeries(xValues, vrrData as Array<number | null>),
@@ -682,6 +683,20 @@
             ticks: { count: 6 },
         },
     });
+    const breakthroughScales = {
+        y1: {
+            type: "linear",
+            display: true,
+            position: "right",
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: "Water Cut / Saturation" },
+            grid: { drawOnChartArea: false },
+            ticks: { count: 6 },
+            _fraction: true,
+        },
+    };
     const cumulativeScales = {
         y: {
             type: "linear",
@@ -703,6 +718,17 @@
             grid: { drawOnChartArea: false },
             ticks: { count: 6 },
             _fraction: true,
+        },
+    };
+    const pressureScales = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            alignToPixels: true,
+            title: { display: true, text: "Pressure (bar)" },
+            ticks: { count: 6 },
+            _auto: true,
         },
     };
     const diagnosticsScales = {
@@ -746,7 +772,7 @@
             ticks: { count: 6 },
         },
     };
-    let xAxisOptions = $derived([
+    let allXAxisOptions = $derived([
         { value: "time", label: "Time" },
         {
             value: "tD",
@@ -774,6 +800,111 @@
         },
         { value: "logTime", label: "Log Time", title: "Log Time (Fetkovich)" },
     ]);
+
+    function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
+        if (scalePreset === "breakthrough") return breakthroughScales;
+        if (scalePreset === "pressure") return pressureScales;
+        if (scalePreset === "cumulative") return cumulativeScales;
+        if (scalePreset === "diagnostics") return diagnosticsScales;
+        return ratesScales;
+    }
+
+    const curveRegistry = $derived.by(() => {
+        const entries = [
+            ...baseRatesCurves.map((curve, idx) => ({
+                curve,
+                series: rateCurveSeries[idx] ?? [],
+            })),
+            ...baseCumulativeCurves.map((curve, idx) => ({
+                curve,
+                series: cumulativeCurveSeries[idx] ?? [],
+            })),
+            ...baseDiagnosticsCurves.map((curve, idx) => ({
+                curve,
+                series: diagnosticsCurveSeries[idx] ?? [],
+            })),
+        ];
+
+        return new Map(entries.map((entry) => [entry.curve.label, entry]));
+    });
+
+    function buildPanelDefinition(
+        panelKey: RateChartPanelKey,
+        input: {
+            title: string;
+            curveLabels: string[];
+            scalePreset: RateChartScalePreset;
+            allowLogToggle?: boolean;
+        },
+    ): PanelDefinition {
+        const override = layoutConfig?.rateChart?.panels?.[panelKey];
+        const curveLabels = override?.curveLabels ?? input.curveLabels;
+        const selectedEntries = curveLabels
+            .map((label) => curveRegistry.get(label))
+            .filter((entry): entry is { curve: CurveConfig; series: XYPoint[] } => Boolean(entry));
+
+        return {
+            title: override?.title ?? input.title,
+            curves: applyCurveLayout(selectedEntries.map((entry) => entry.curve)),
+            series: selectedEntries.map((entry) => entry.series),
+            scales: getScalePresetConfig(override?.scalePreset ?? input.scalePreset),
+            allowLogToggle: override?.allowLogToggle ?? input.allowLogToggle ?? false,
+        };
+    }
+
+    let ratesPanel = $derived(
+        buildPanelDefinition("rates", {
+            title: "Rates",
+            curveLabels: baseRatesCurves.map((curve) => curve.label),
+            scalePreset: "rates",
+            allowLogToggle: true,
+        }),
+    );
+    let cumulativePanel = $derived(
+        buildPanelDefinition("cumulative", {
+            title: "Cumulative",
+            curveLabels: baseCumulativeCurves.map((curve) => curve.label),
+            scalePreset: "cumulative",
+        }),
+    );
+    let diagnosticsPanel = $derived(
+        buildPanelDefinition("diagnostics", {
+            title: "Diagnostics",
+            curveLabels: baseDiagnosticsCurves.map((curve) => curve.label),
+            scalePreset: "diagnostics",
+        }),
+    );
+
+    let ratesCurves = $derived(ratesPanel.curves);
+    let cumulativeCurves = $derived(cumulativePanel.curves);
+    let diagnosticsCurves = $derived(diagnosticsPanel.curves);
+    let ratesSeries = $derived(ratesPanel.series);
+    let cumulativeSeries = $derived(cumulativePanel.series);
+    let diagnosticsSeries = $derived(diagnosticsPanel.series);
+
+    const ratePanelSupportsNormalization = $derived(
+        ratesCurves.some((curve) => curve.label.includes("Rate")),
+    );
+
+    let xAxisOptions = $derived.by(() => {
+        const configured = layoutConfig?.rateChart?.xAxisOptions;
+        if (!Array.isArray(configured) || configured.length === 0) return allXAxisOptions;
+
+        const allowed = new Set(configured);
+        return allXAxisOptions.filter((option) =>
+            allowed.has(option.value as RateChartXAxisMode),
+        );
+    });
+
+    $effect(() => {
+        const allowedModes = xAxisOptions.map((option) => option.value as RateChartXAxisMode);
+        if (!allowedModes.includes(xAxisMode) && allowedModes.length > 0) {
+            xAxisMode = allowedModes[0];
+        }
+        if (layoutConfig?.rateChart?.allowLogScale === false && logScale) {
+            logScale = false;
+        }
+    });
 </script>
 
 <div class="flex flex-col">
@@ -789,12 +920,12 @@
             <ToggleGroup
                 options={xAxisOptions}
                 bind:value={xAxisMode}
-                onChange={(val) => setXAxisMode(val as XAxisMode)}
+                onChange={(val) => setXAxisMode(val as RateChartXAxisMode)}
             />
         </div>
 
         <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
-            {#if analyticalMeta?.q0 && analyticalMeta.q0 > 0}
+            {#if ratePanelSupportsNormalization && analyticalMeta?.q0 && analyticalMeta.q0 > 0}
                 <span
                     class="text-[11px] uppercase tracking-wide opacity-50 shrink-0"
                     >Y-axis</span
@@ -819,14 +950,14 @@
     <!-- Rates panel -->
     <ChartSubPanel
         panelId="rates"
-        title="Rates"
+        title={ratesPanel.title}
         bind:expanded={ratesExpanded}
         curves={ratesCurves}
         seriesData={ratesSeries}
-        scaleConfigs={ratesScales}
+        scaleConfigs={ratesPanel.scales}
         {theme}
         bind:logScale
-        allowLogToggle={true}
+        allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? ratesPanel.allowLogToggle}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -837,11 +968,11 @@
     <!-- Cumulative panel -->
     <ChartSubPanel
         panelId="cumulative"
-        title="Cumulative"
+        title={cumulativePanel.title}
         bind:expanded={cumulativeExpanded}
         curves={cumulativeCurves}
         seriesData={cumulativeSeries}
-        scaleConfigs={cumulativeScales}
+        scaleConfigs={cumulativePanel.scales}
         {theme}
         logScale={false}
         targetLeftGutter={maxLeftGutter}
@@ -854,11 +985,11 @@
     <!-- Diagnostics panel -->
     <ChartSubPanel
         panelId="diagnostics"
-        title="Diagnostics"
+        title={diagnosticsPanel.title}
         bind:expanded={diagnosticsExpanded}
         curves={diagnosticsCurves}
         seriesData={diagnosticsSeries}
-        scaleConfigs={diagnosticsScales}
+        scaleConfigs={diagnosticsPanel.scales}
         {theme}
         logScale={false}
         targetLeftGutter={maxLeftGutter}
