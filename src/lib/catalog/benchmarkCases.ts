@@ -19,6 +19,7 @@ export type BenchmarkScenarioClass = 'buckley-leverett' | 'depletion';
 
 export type BenchmarkSensitivityAxisKey =
     | 'grid-refinement'
+    | '2d-grid-refinement'
     | 'timestep-refinement'
     | 'heterogeneity';
 
@@ -123,6 +124,7 @@ export type BenchmarkDimensionOption = {
 
 const BENCHMARK_SENSITIVITY_AXIS_LABELS: Record<BenchmarkSensitivityAxisKey, string> = {
     'grid-refinement': 'Grid refinement',
+    '2d-grid-refinement': '2D grid refinement',
     'timestep-refinement': 'Timestep refinement',
     heterogeneity: 'Heterogeneity',
 };
@@ -195,6 +197,7 @@ function buildBuckleyVariantTemplates(
             paramsDelta: {
                 nx: 24,
                 producerI: 23,
+                cellDx: 10 * 96 / 24,
             },
             comparisonMeaning: 'Measure breakthrough-PV discretization error against the same analytical shock reference.',
             analyticalValidity: 'same-reference',
@@ -207,6 +210,31 @@ function buildBuckleyVariantTemplates(
             paramsDelta: {
                 nx: 48,
                 producerI: 47,
+                cellDx: 10 * 96 / 48,
+            },
+            comparisonMeaning: 'Measure convergence toward the same analytical shock reference as the grid is refined.',
+            analyticalValidity: 'same-reference',
+        },
+        {
+            variantKey: 'grid_2',
+            axis: '2d-grid-refinement',
+            label: 'Grid 2 cells',
+            description: '2 layers.',
+            paramsDelta: {
+                ny: 2,
+                cellDy: 10 / 2,
+            },
+            comparisonMeaning: 'Measure breakthrough-PV discretization error against the same analytical shock reference.',
+            analyticalValidity: 'same-reference',
+        },
+        {
+            variantKey: 'grid_3',
+            axis: '2d-grid-refinement',
+            label: 'Grid 10 cells',
+            description: '10 layers.',
+            paramsDelta: {
+                ny: 10,
+                cellDy: 10 / 10,
             },
             comparisonMeaning: 'Measure convergence toward the same analytical shock reference as the grid is refined.',
             analyticalValidity: 'same-reference',
@@ -259,8 +287,8 @@ function buildBuckleyVariantTemplates(
             description: 'Seeded random permeability with the same target mean permeability and stronger contrast.',
             paramsDelta: {
                 permMode: 'random',
-                minPerm: 1000,
-                maxPerm: 3000,
+                minPerm: 10,
+                maxPerm: 10000,
                 useRandomSeed: true,
                 randomSeed: familyKey === 'bl_case_a_refined' ? 4301 : 4302,
             },
@@ -277,7 +305,7 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
         key: 'bl_case_a_refined',
         baseCaseKey: 'bl_case_a_refined',
         scenarioClass: 'buckley-leverett',
-        sensitivityAxes: ['grid-refinement', 'timestep-refinement', 'heterogeneity'],
+        sensitivityAxes: ['grid-refinement', '2d-grid-refinement', 'timestep-refinement', 'heterogeneity'],
         reference: {
             kind: 'analytical',
             source: 'buckley-leverett-shock-reference',
@@ -306,7 +334,7 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
         key: 'bl_case_b_refined',
         baseCaseKey: 'bl_case_b_refined',
         scenarioClass: 'buckley-leverett',
-        sensitivityAxes: ['grid-refinement', 'timestep-refinement', 'heterogeneity'],
+        sensitivityAxes: ['grid-refinement', '2d-grid-refinement', 'timestep-refinement', 'heterogeneity'],
         reference: {
             kind: 'analytical',
             source: 'buckley-leverett-shock-reference',

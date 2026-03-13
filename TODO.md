@@ -15,6 +15,7 @@ Primary review source:
 - Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete; `F3` has compact run/result disclosure, selected-sensitivity output fixes, a table-first Results review surface, and a shared heading/chip/microcopy typography scale on the main app surfaces; and `F4` now has grouped chart-metric toggles, focused comparison-curve alignment, shared panel/x-axis selection helpers, and compact summary cards above both live and reference-comparison charts.
 - Next slice: continue `F4` by consolidating more of the chart-shell header and expansion-state wiring now that panel selection and summary cards are shared, then return to any remaining `F3` selected-review copy cleanup if the Results card still feels too talkative.
 - Latest UI cleanup: the inputs shell no longer needs a separate `Case Library` / `Custom` toggle; `Custom` now sits as the final selectable case inside each family library so the first decision stays family-first. Curated library cases now stay locked in the same inputs flow as benchmark/reference cases and only open for direct editing through `Customize`.
+- Latest benchmark fix: the Buckley-Leverett refined grid-sensitivity catalog no longer includes a duplicate-base grid variant; the reference chart now receives distinct coarse/intermediate grid runs for BL Case A/B sensitivity review.
 - Reviewed F1 direction:
   - explicit page regions: `Inputs`, `Run`, `Outputs`
   - `Outputs` owns comparison from day one
