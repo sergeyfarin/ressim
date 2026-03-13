@@ -67,10 +67,6 @@
             ? primaryResultKey
             : null;
     });
-    const activeComparedResultKeys = $derived.by(() => {
-        const availableResultKeys = new Set(activeReferenceResults.map((result) => result.key));
-        return activeComparisonSelection.comparedResultKeys.filter((key) => availableResultKeys.has(key));
-    });
     const activeSelectedReferenceResult = $derived.by(() => {
         if (!activePrimaryComparisonResultKey) return null;
         return activeReferenceResults.find((result) => result.key === activePrimaryComparisonResultKey) ?? null;
@@ -182,10 +178,9 @@
     });
 
     function handleSelectComparisonResult(resultKey: string) {
-        const baseResultKey = activeReferenceBaseResult?.key ?? null;
         scenario.setComparisonSelection({
             primaryResultKey: resultKey,
-            comparedResultKeys: baseResultKey && baseResultKey !== resultKey ? [baseResultKey] : [],
+            comparedResultKeys: [],
         });
     }
 
@@ -546,8 +541,6 @@
                             results={activeReferenceResults}
                             family={activeReferenceFamily}
                             layoutConfig={activeRateChartLayoutConfig}
-                            primaryResultKey={activePrimaryComparisonResultKey}
-                            comparedResultKeys={activeComparedResultKeys}
                             {theme}
                         />
                     {:else if RateChartComponent}
@@ -573,53 +566,9 @@
                     {/if}
                 </Card>
 
-                <Card>
-                    <div class="p-4 md:p-5">
-                        <SwProfileChart
-                            gridState={outputProfileGridState}
-                            nx={outputProfileNx}
-                            ny={outputProfileNy}
-                            nz={outputProfileNz}
-                            cellDx={outputProfileCellDx}
-                            cellDy={outputProfileCellDy}
-                            cellDz={outputProfileCellDz}
-                            simTime={outputProfileSimTime}
-                            producerJ={outputProfileProducerJ}
-                            initialSaturation={outputProfileInitialSaturation}
-                            injectionRate={outputProfileInjectionRate}
-                            scenarioMode={outputProfileScenarioMode}
-                            sourceLabel={outputProfileSourceLabel}
-                            rockProps={outputProfileRockProps}
-                            fluidProps={outputProfileFluidProps}
-                        />
-                    </div>
-                </Card>
+                
 
-                {#if params.analyticalSolutionMode === "depletion"}
-                    <div
-                        class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
-                    >
-                        <div class="font-semibold text-foreground">
-                            Depletion Reference Solution
-                        </div>
-                        <div class="text-muted-foreground mt-1">
-                            Reference solution: {runtime.analyticalMeta.shapeLabel || "PSS"} — q(t)&nbsp;=&nbsp;J·ΔP·e<sup
-                                >−t/τ</sup
-                            >, τ&nbsp;=&nbsp;V<sub>p</sub>·c<sub>t</sub>/J
-                        </div>
-                    </div>
-                {:else if params.analyticalSolutionMode === "waterflood"}
-                    <div
-                        class="rounded-md border border-border bg-card p-3 text-xs shadow-sm"
-                    >
-                        <div class="font-semibold text-foreground">
-                            Waterflood Reference Solution
-                        </div>
-                        <div class="text-muted-foreground mt-1">
-                            Reference solution: Buckley-Leverett fractional flow
-                        </div>
-                    </div>
-                {/if}
+                
             </div>
 
             <div class="space-y-4">
@@ -674,6 +623,25 @@
                             </div>
                         {/if}
                     </div>
+                    <!-- <div class="p-4 md:p-5">
+                        <SwProfileChart
+                            gridState={outputProfileGridState}
+                            nx={outputProfileNx}
+                            ny={outputProfileNy}
+                            nz={outputProfileNz}
+                            cellDx={outputProfileCellDx}
+                            cellDy={outputProfileCellDy}
+                            cellDz={outputProfileCellDz}
+                            simTime={outputProfileSimTime}
+                            producerJ={outputProfileProducerJ}
+                            initialSaturation={outputProfileInitialSaturation}
+                            injectionRate={outputProfileInjectionRate}
+                            scenarioMode={outputProfileScenarioMode}
+                            sourceLabel={outputProfileSourceLabel}
+                            rockProps={outputProfileRockProps}
+                            fluidProps={outputProfileFluidProps}
+                        />
+                    </div> -->
                 </Card>
             </div>
         </div>

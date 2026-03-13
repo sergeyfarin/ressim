@@ -37,7 +37,6 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/const activeRunManifest = \$derived\.by/);
     expect(appSource).toMatch(/scenario\.activeLibraryEntry\?\.referencePolicySummary/);
     expect(appSource).toMatch(/scenario\.referenceProvenance/);
-    expect(appSource).toMatch(/Run Summary/);
     expect(appSource).toMatch(/Reference Run Status/);
   });
 
@@ -53,8 +52,8 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/selectedResultKey=\{activePrimaryComparisonResultKey\}/);
     expect(appSource).toMatch(/onSelectResult=\{handleSelectComparisonResult\}/);
     expect(appSource).toMatch(/scenario\.setComparisonSelection\(/);
-    expect(appSource).toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
-    expect(appSource).toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);
+    expect(appSource).not.toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
+    expect(appSource).not.toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);
     expect(appSource).toMatch(/scenario\.activeReferenceFamily\?\.key/);
     expect(appSource).toMatch(/getReferenceRateChartLayoutConfig/);
     expect(appSource).toMatch(/ReferenceComparisonChartComponent/);

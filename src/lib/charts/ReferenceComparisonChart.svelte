@@ -18,22 +18,21 @@
         RateChartXAxisMode,
     } from './rateChartLayoutConfig';
     import { buildReferenceComparisonSummaryItems } from './outputSummary';
-    import { buildReferenceComparisonModel } from './referenceComparisonModel';
+    import {
+        buildReferenceComparisonModel,
+        getReferenceComparisonCaseColor,
+    } from './referenceComparisonModel';
 
     let {
         results = [],
         family = null,
         layoutConfig = {},
         theme = 'dark',
-        primaryResultKey = null,
-        comparedResultKeys = [],
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
         layoutConfig?: RateChartLayoutConfig;
         theme?: 'dark' | 'light';
-        primaryResultKey?: string | null;
-        comparedResultKeys?: string[];
     } = $props();
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
@@ -41,6 +40,8 @@
     let ratesExpanded = $state(true);
     let cumulativeExpanded = $state(true);
     let diagnosticsExpanded = $state(false);
+    let visibleCaseKeys = $state<Record<string, boolean>>({});
+    let caseSelectorSignature = $state('');
 
     let nativeGutters = $state<Record<string, { left: number; right: number }>>({});
     let maxLeftGutter = $derived(
@@ -66,10 +67,23 @@
             results,
             xAxisMode,
             theme,
-            primaryResultKey,
-            comparedResultKeys,
         }),
     );
+    const visibleResults = $derived.by(() => {
+        return overlayModel.orderedResults.filter((result) => visibleCaseKeys[result.key] ?? true);
+    });
+
+    $effect(() => {
+        const orderedCaseKeys = overlayModel.orderedResults.map((result) => result.key);
+        const nextSignature = orderedCaseKeys.join('|');
+        if (caseSelectorSignature === nextSignature) return;
+
+        const previousVisibility = visibleCaseKeys;
+        caseSelectorSignature = nextSignature;
+        visibleCaseKeys = Object.fromEntries(
+            orderedCaseKeys.map((key) => [key, previousVisibility[key] ?? true]),
+        );
+    });
 
     const breakthroughScales = {
         y: {
@@ -167,10 +181,19 @@
     });
 
     function buildPanelEntries(panelKey: RateChartPanelKey): Array<ChartPanelEntry<(typeof overlayModel.panels)[RateChartPanelKey]['curves'][number], (typeof overlayModel.panels)[RateChartPanelKey]['series'][number]>> {
-        return overlayModel.panels[panelKey].curves.map((curve, idx) => ({
-            curve,
-            series: overlayModel.panels[panelKey].series[idx] ?? [],
-        }));
+        return overlayModel.panels[panelKey].curves
+            .map((curve, idx) => ({
+                curve,
+                series: overlayModel.panels[panelKey].series[idx] ?? [],
+            }))
+            .filter((entry) => !entry.curve.caseKey || (visibleCaseKeys[entry.curve.caseKey] ?? true));
+    }
+
+    function toggleCaseVisibility(resultKey: string) {
+        visibleCaseKeys = {
+            ...visibleCaseKeys,
+            [resultKey]: !(visibleCaseKeys[resultKey] ?? true),
+        };
     }
 
     function resolvePanelDefinition(panelKey: RateChartPanelKey, fallback: {
@@ -210,8 +233,7 @@
     const summaryItems = $derived.by(() => (
         buildReferenceComparisonSummaryItems({
             family,
-            results,
-            primaryResultKey,
+            results: visibleResults,
         })
     ));
 </script>
@@ -225,15 +247,42 @@
                 Output Comparison
             </div>
             <div class="ui-support-copy">
-                {overlayModel.orderedResults.length} stored run(s)
+                {visibleResults.length} of {overlayModel.orderedResults.length} stored run(s) shown
             </div>
         </div>
-        {#if primaryResultKey}
+        {#if overlayModel.orderedResults.length > 1}
             <div class="ui-support-copy">
-                Focused review keeps the selected case and its reference context visible by default.
+                Charts keep their own case selectors. Run Table selection updates the profile and 3D outputs.
             </div>
         {/if}
         <OutputSummaryStrip items={summaryItems} />
+        {#if overlayModel.orderedResults.length > 1}
+            <div class="flex items-center gap-2 overflow-x-auto">
+                <span class="ui-section-kicker shrink-0 opacity-50">Cases</span>
+                {#each overlayModel.orderedResults as result, index}
+                    <button
+                        type="button"
+                        class={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${(visibleCaseKeys[result.key] ?? true)
+                            ? 'border-primary/40 bg-muted/25 text-foreground'
+                            : 'border-border/70 bg-transparent text-muted-foreground opacity-60 hover:opacity-90'}`}
+                        onclick={() => toggleCaseVisibility(result.key)}
+                        title={`${(visibleCaseKeys[result.key] ?? true) ? 'Hide' : 'Show'} ${result.label}`}
+                    >
+                        <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
+                            <line
+                                x1="0"
+                                y1="1.5"
+                                x2="14"
+                                y2="1.5"
+                                stroke={getReferenceComparisonCaseColor(index)}
+                                stroke-width={result.variantKey === null ? 2.8 : 2.2}
+                            />
+                        </svg>
+                        <span>{result.label}</span>
+                    </button>
+                {/each}
+            </div>
+        {/if}
         <div class="flex items-center gap-2 overflow-x-auto">
             <span class="ui-section-kicker shrink-0 opacity-50">X-axis</span>
             <ToggleGroup

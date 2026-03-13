@@ -209,7 +209,7 @@ describe('referenceComparisonModel', () => {
         expect(lightReferenceCurve?.color).toBe('#0f172a');
     });
 
-    it('defaults chart visibility to the selected result plus base/reference context when a comparison focus is active', () => {
+    it('attaches case keys to simulated curves so charts can toggle runs independently of run-table focus', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
         const specs = buildBenchmarkRunSpecs(family!, [variants[0], variants[1]]);
@@ -248,17 +248,15 @@ describe('referenceComparisonModel', () => {
             family,
             results: [baseResult, firstVariantResult, secondVariantResult],
             xAxisMode: 'pvi',
-            primaryResultKey: secondVariantResult.key,
-            comparedResultKeys: [baseResult.key],
         });
 
-        const selectedCurve = model.panels.rates.curves.find((curve) => curve.label === `${secondVariantResult.label} Water Cut`);
-        const baseCurve = model.panels.rates.curves.find((curve) => curve.label === `${baseResult.label} Water Cut`);
-        const hiddenCurve = model.panels.rates.curves.find((curve) => curve.label === `${firstVariantResult.label} Water Cut`);
+        const waterCutCurves = model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-sim');
 
-        expect(selectedCurve?.defaultVisible).toBe(true);
-        expect(baseCurve?.defaultVisible).toBe(true);
-        expect(hiddenCurve).toBeUndefined();
+        expect(waterCutCurves.map((curve) => curve.caseKey)).toEqual([
+            baseResult.key,
+            firstVariantResult.key,
+            secondVariantResult.key,
+        ]);
     });
 
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {

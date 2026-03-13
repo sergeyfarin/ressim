@@ -126,7 +126,7 @@
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <span>
-              Output focus: <strong class="text-foreground">{focusedResult?.label ?? "All runs"}</strong>
+              Visualization focus: <strong class="text-foreground">{focusedResult?.label ?? "All runs"}</strong>
             </span>
             {#if selectedResult}
               <button
@@ -138,6 +138,9 @@
               </button>
             {/if}
           </div>
+          <div class="ui-microcopy mt-2">
+            Selecting a run updates the profile and 3D outputs. Charts keep their own case selectors.
+          </div>
         </div>
       </div>
 
@@ -145,7 +148,7 @@
         <div class="ui-subsection-kicker">Run Table</div>
 
         <div class="mt-2 overflow-x-auto">
-          <table class="compact-table w-full min-w-[46rem] text-left text-[10px] text-muted-foreground">
+          <table class="compact-table w-full min-w-184 text-left text-[10px] text-muted-foreground">
             <thead>
               <tr class="border-b border-border/60 text-[9px] uppercase tracking-[0.12em]">
                 <th class="px-2 py-2 font-semibold">Run</th>

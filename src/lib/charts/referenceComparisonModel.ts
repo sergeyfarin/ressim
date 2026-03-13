@@ -56,6 +56,10 @@ const CASE_COLORS = [
     '#65a30d',
 ];
 
+export function getReferenceComparisonCaseColor(index: number): string {
+    return CASE_COLORS[index % CASE_COLORS.length];
+}
+
 function getReferenceColor(theme: ReferenceComparisonTheme): string {
     return theme === 'dark' ? '#f8fafc' : '#0f172a';
 }
@@ -299,18 +303,10 @@ export function buildReferenceComparisonModel(input: {
     results: BenchmarkRunResult[];
     xAxisMode: RateChartXAxisMode;
     theme?: ReferenceComparisonTheme;
-    primaryResultKey?: string | null;
-    comparedResultKeys?: string[];
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
-    const comparedResultKeys = new Set(
-        Array.isArray(input.comparedResultKeys)
-            ? input.comparedResultKeys.filter((key): key is string => typeof key === 'string' && key.length > 0)
-            : [],
-    );
-    const hasFocusedSelection = typeof input.primaryResultKey === 'string' && input.primaryResultKey.length > 0;
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
         rates: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
@@ -325,24 +321,11 @@ export function buildReferenceComparisonModel(input: {
         orderedResults.map((result) => [result.key, buildDerivedRunSeries(result)]),
     );
     const baseResult = getBaseResult(orderedResults);
-    const baseResultKey = baseResult?.key ?? null;
 
-    function isResultVisibleByDefault(result: BenchmarkRunResult): boolean {
-        if (!hasFocusedSelection) return true;
-        if (result.key === input.primaryResultKey) return true;
-        if (comparedResultKeys.has(result.key)) return true;
-        if (baseResultKey && result.key === baseResultKey) return true;
-        return false;
-    }
-
-    const visibleResults = hasFocusedSelection
-        ? orderedResults.filter((result) => isResultVisibleByDefault(result))
-        : orderedResults;
-
-    visibleResults.forEach((result, index) => {
+    orderedResults.forEach((result, index) => {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
-        const color = CASE_COLORS[index % CASE_COLORS.length];
+        const color = getReferenceComparisonCaseColor(index);
         const xValues = buildXAxisValues(derived, input.xAxisMode);
         const defaultVisible = true;
 
@@ -352,6 +335,7 @@ export function buildReferenceComparisonModel(input: {
                 {
                     label: `${result.label} Water Cut`,
                     curveKey: 'water-cut-sim',
+                    caseKey: result.key,
                     toggleLabel: 'Water Cut',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
@@ -366,6 +350,7 @@ export function buildReferenceComparisonModel(input: {
                 {
                     label: `${result.label} Avg Water Sat`,
                     curveKey: 'avg-water-sat',
+                    caseKey: result.key,
                     toggleLabel: 'Avg Water Sat',
                     color,
                     borderWidth: 1.6,
@@ -381,6 +366,7 @@ export function buildReferenceComparisonModel(input: {
                 {
                     label: `${result.label} Recovery`,
                     curveKey: 'recovery-factor',
+                    caseKey: result.key,
                     toggleLabel: 'Recovery Factor',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
@@ -395,6 +381,7 @@ export function buildReferenceComparisonModel(input: {
                 {
                     label: `${result.label} Cum Oil`,
                     curveKey: 'cum-oil-sim',
+                    caseKey: result.key,
                     toggleLabel: 'Cum Oil',
                     color,
                     borderWidth: 1.4,
@@ -410,6 +397,7 @@ export function buildReferenceComparisonModel(input: {
                 {
                     label: `${result.label} Cum Injection`,
                     curveKey: 'cum-injection',
+                    caseKey: result.key,
                     toggleLabel: 'Cum Injection',
                     color,
                     borderWidth: 1.2,
@@ -425,6 +413,7 @@ export function buildReferenceComparisonModel(input: {
                 {
                     label: `${result.label} Avg Pressure`,
                     curveKey: 'avg-pressure-sim',
+                    caseKey: result.key,
                     toggleLabel: 'Avg Pressure',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
@@ -442,6 +431,7 @@ export function buildReferenceComparisonModel(input: {
             {
                 label: `${result.label} Oil Rate`,
                 curveKey: 'oil-rate-sim',
+                caseKey: result.key,
                 toggleLabel: 'Oil Rate',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
@@ -456,6 +446,7 @@ export function buildReferenceComparisonModel(input: {
             {
                 label: `${result.label} Recovery`,
                 curveKey: 'recovery-factor',
+                caseKey: result.key,
                 toggleLabel: 'Recovery Factor',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
@@ -470,6 +461,7 @@ export function buildReferenceComparisonModel(input: {
             {
                 label: `${result.label} Cum Oil`,
                 curveKey: 'cum-oil-sim',
+                caseKey: result.key,
                 toggleLabel: 'Cum Oil',
                 color,
                 borderWidth: 1.4,
@@ -485,6 +477,7 @@ export function buildReferenceComparisonModel(input: {
             {
                 label: `${result.label} Avg Pressure`,
                 curveKey: 'avg-pressure-sim',
+                caseKey: result.key,
                 toggleLabel: 'Avg Pressure',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
