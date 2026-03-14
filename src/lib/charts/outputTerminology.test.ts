@@ -13,7 +13,8 @@ describe('output terminology copy', () => {
   it('uses output-review wording in the reference results summary card', () => {
     expect(referenceResultsSource).toMatch(/Reference Run Results/);
     expect(referenceResultsSource).toMatch(/ready for output review/);
-    expect(referenceResultsSource).toMatch(/Output focus:/);
+    expect(referenceResultsSource).toMatch(/Visualization focus:/);
+    expect(referenceResultsSource).toMatch(/Selecting a run updates the profile and 3D outputs/);
     expect(referenceResultsSource).toMatch(/Run Table/);
     expect(referenceResultsSource).toMatch(/Varied input/);
     expect(referenceResultsSource).toMatch(/BT PVI/);
@@ -28,7 +29,9 @@ describe('output terminology copy', () => {
 
   it('uses output-comparison wording in the comparison chart shell and app empty states', () => {
     expect(comparisonChartSource).toMatch(/Output Comparison/);
-    expect(comparisonChartSource).toMatch(/Focused review keeps the selected case and its reference context visible by default/);
+    expect(comparisonChartSource).toMatch(/Charts keep their own case selectors/);
+    expect(comparisonChartSource).toMatch(/Run Table selection updates the profile and 3D outputs/);
+    expect(comparisonChartSource).toMatch(/Cases/);
     expect(outputSummarySource).toMatch(/Focused Run/);
     expect(outputSummarySource).toMatch(/Primary Review/);
     expect(comparisonChartSource).not.toMatch(/Stored Run Comparison/);

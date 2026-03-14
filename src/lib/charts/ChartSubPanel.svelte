@@ -16,6 +16,7 @@
     export interface CurveConfig {
         label: string;
         curveKey?: string;
+        caseKey?: string;
         toggleLabel?: string;
         color: string;
         borderWidth?: number;

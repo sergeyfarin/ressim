@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
-import { getBenchmarkEntry, getBenchmarkFamily } from './caseCatalog';
+import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
+import { buildReferenceComparisonModel } from '../charts/referenceComparisonModel';
+import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './caseCatalog';
 
 type BenchmarkParams = Record<string, unknown>;
 
@@ -142,6 +144,96 @@ function measureBreakthroughPvi(params: BenchmarkParams, watercutThreshold = 0.0
   return null;
 }
 
+function runBenchmarkSpec(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
+  const params = spec.params;
+  const nx = Number(params.nx);
+  const ny = Number(params.ny);
+  const nz = Number(params.nz);
+  const dtDays = Number(spec.deltaTDays);
+  const steps = Number(spec.steps);
+
+  const simulator = new ReservoirSimulator(nx, ny, nz, Number(params.reservoirPorosity ?? 0.2));
+  simulator.setCellDimensions(
+    Number(params.cellDx ?? 10),
+    Number(params.cellDy ?? 10),
+    Number(params.cellDz ?? 1),
+  );
+  simulator.setRelPermProps(
+    Number(params.s_wc ?? 0.1),
+    Number(params.s_or ?? 0.1),
+    Number(params.n_w ?? 2),
+    Number(params.n_o ?? 2),
+    Number(params.k_rw_max ?? 1),
+    Number(params.k_ro_max ?? 1),
+  );
+  simulator.setInitialPressure(Number(params.initialPressure ?? 300));
+  simulator.setInitialSaturation(Number(params.initialSaturation ?? 0.3));
+  simulator.setFluidProperties(Number(params.mu_o ?? 1), Number(params.mu_w ?? 0.5));
+  simulator.setFluidCompressibilities(Number(params.c_o ?? 1e-5), Number(params.c_w ?? 3e-6));
+  simulator.setRockProperties(
+    Number(params.rock_compressibility ?? 1e-6),
+    Number(params.depth_reference ?? 0),
+    Number(params.volume_expansion_o ?? 1),
+    Number(params.volume_expansion_w ?? 1),
+  );
+  simulator.setFluidDensities(Number(params.rho_o ?? 800), Number(params.rho_w ?? 1000));
+  simulator.setCapillaryParams(
+    Number(params.capillaryEnabled ?? false) ? Number(params.capillaryPEntry ?? 0) : 0,
+    Number(params.capillaryLambda ?? 2),
+  );
+  simulator.setGravityEnabled(Boolean(params.gravityEnabled ?? false));
+  applyPermeability(simulator, params);
+  simulator.setStabilityParams(
+    Number(params.max_sat_change_per_step ?? 0.05),
+    Number(params.max_pressure_change_per_step ?? 75),
+    Number(params.max_well_rate_change_fraction ?? 0.75),
+  );
+  simulator.setWellControlModes(
+    String(params.injectorControlMode ?? 'pressure'),
+    String(params.producerControlMode ?? 'pressure'),
+  );
+  simulator.setTargetWellRates(
+    Number(params.targetInjectorRate ?? 0),
+    Number(params.targetProducerRate ?? 0),
+  );
+  simulator.setWellBhpLimits(
+    Math.min(Number(params.producerBhp ?? 100), Number(params.injectorBhp ?? 500)),
+    Math.max(Number(params.producerBhp ?? 100), Number(params.injectorBhp ?? 500)),
+  );
+
+  for (let k = 0; k < nz; k += 1) {
+    simulator.add_well(
+      Number(params.injectorI ?? 0),
+      Number(params.injectorJ ?? 0),
+      k,
+      Number(params.injectorBhp ?? 500),
+      Number(params.well_radius ?? 0.1),
+      Number(params.well_skin ?? 0),
+      true,
+    );
+    simulator.add_well(
+      Number(params.producerI ?? nx - 1),
+      Number(params.producerJ ?? 0),
+      k,
+      Number(params.producerBhp ?? 100),
+      Number(params.well_radius ?? 0.1),
+      Number(params.well_skin ?? 0),
+      false,
+    );
+  }
+
+  for (let step = 0; step < steps; step += 1) {
+    simulator.step(dtDays);
+  }
+
+  const result = buildBenchmarkRunResult({
+    spec,
+    rateHistory: simulator.getRateHistory(),
+  });
+  simulator.free();
+  return result;
+}
+
 describe('frontend benchmark preset runtime coverage', () => {
   it('keeps refined BL presets aligned with their declared Rust-parity breakthrough PV metric', async () => {
     await ensureWasmReady();
@@ -182,5 +274,38 @@ describe('frontend benchmark preset runtime coverage', () => {
 
       expect(relativeError).toBeLessThanOrEqual(family?.comparisonMetric?.tolerance ?? 0.3);
     }
+  });
+
+  it('builds distinct BL Case A comparison series for selected sensitivity variants', async () => {
+    await ensureWasmReady();
+
+    const family = getBenchmarkFamily('bl_case_a_refined');
+    const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
+    const selectedVariants = [
+      variants.find((variant) => variant.variantKey === 'grid_24'),
+      variants.find((variant) => variant.variantKey === 'grid_48'),
+    ].filter((variant): variant is NonNullable<typeof variant> => Boolean(variant));
+
+    expect(family).not.toBeNull();
+    expect(selectedVariants).toHaveLength(2);
+
+    const results = buildBenchmarkRunSpecs(family!, selectedVariants).map(runBenchmarkSpec);
+    const model = buildReferenceComparisonModel({
+      family,
+      results,
+      xAxisMode: 'pvi',
+    });
+
+    const waterCutSeries = model.panels.rates.curves
+      .map((curve, index) => ({ curve, series: model.panels.rates.series[index] ?? [] }))
+      .filter((entry) => entry.curve.curveKey === 'water-cut-sim');
+
+    expect(waterCutSeries).toHaveLength(3);
+
+    const distinctSeries = new Set(
+      waterCutSeries.map((entry) => JSON.stringify(entry.series.map((point) => [point.x, point.y]))),
+    );
+
+    expect(distinctSeries.size).toBe(3);
   });
 });
