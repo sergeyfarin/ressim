@@ -166,6 +166,31 @@ const DIETZ_BASE_PARAMS: Record<string, unknown> = {
     capillaryLambda: 2,
 };
 
+/**
+ * Full param set for Fetkovich exponential decline cases.
+ * 1D slab geometry, high initial pressure, low permeability — drives exponential decline.
+ * Peaceman r_eq ≈ 1.98 m for this grid (cellDx=cellDy=10 m), so skin = -2 is the safe minimum
+ * (ln(r_eq/r_w) ≈ 2.99; denom = 2.99 + skin must remain positive for the simulator).
+ */
+const FETKOVICH_BASE_PARAMS: Record<string, unknown> = {
+    ...DIETZ_BASE_PARAMS,
+    nx: 48,
+    ny: 1,
+    nz: 1,
+    cellDx: 10,
+    cellDy: 10,
+    cellDz: 10,
+    uniformPermX: 20,
+    uniformPermY: 20,
+    uniformPermZ: 2,
+    producerBhp: 50,
+    initialPressure: 1500,
+    steps: 100,
+    delta_t_days: 5,
+    producerI: 47,
+    producerJ: 0,
+};
+
 // ─── Chart presets ────────────────────────────────────────────────────────────
 
 export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
@@ -297,14 +322,14 @@ function buildGridRefinementSensitivity(): ScenarioSensitivity {
             {
                 key: 'grid_24',
                 label: '24 cells (coarse)',
-                description: 'Coarse 24-cell 1D grid. Large numerical diffusion expected — early watercut and smeared front.',
+                description: 'Coarse 24-cell grid — large numerical diffusion, smeared front.',
                 paramPatch: { nx: 24, producerI: 23, cellDx: 40 },
                 affectsAnalytical: false,
             },
             {
                 key: 'grid_48',
                 label: '48 cells (medium)',
-                description: 'Intermediate 48-cell 1D grid. Reduced numerical diffusion compared to 24 cells.',
+                description: 'Intermediate 48-cell grid — reduced numerical diffusion.',
                 paramPatch: { nx: 48, producerI: 47, cellDx: 20 },
                 affectsAnalytical: false,
             },
@@ -327,7 +352,7 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'wf_bl_case_a',
         label: 'BL Case A',
-        description: 'Buckley-Leverett 1D waterflood with favorable mobility ratio (M ≈ 2, mu_o=1 cp). Compare numerical solution to the BL analytical shock.',
+        description: '1D waterflood, M ≈ 2 (μ_o = 1 cp). Numerical solution converges to the BL shock as grid is refined. — Buckley & Leverett (1942)',
         scenarioClass: 'waterflood',
         chartPreset: 'waterflood',
         params: { ...BL_A_BASE_PARAMS },
@@ -337,7 +362,7 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'wf_bl_case_b',
         label: 'BL Case B',
-        description: 'Buckley-Leverett 1D waterflood with mild unfavorable mobility (mu_o=1.4, mu_w=0.6). Earlier breakthrough than Case A.',
+        description: '1D waterflood, mild unfavorable mobility (μ_o = 1.4 cp). Earlier breakthrough than Case A. — Buckley & Leverett (1942)',
         scenarioClass: 'waterflood',
         chartPreset: 'waterflood',
         params: {
@@ -355,35 +380,146 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'wf_mobility_study',
         label: 'Mobility Study',
-        description: 'Waterflood with three oil viscosity values. Both the simulation and the analytical fractional flow solution change across variants — see all three curves on one chart.',
+        description: 'Mobility ratio M = μ_w/μ_o shifts the fractional flow curve, controlling breakthrough timing and recovery. — Craig (1971)',
         scenarioClass: 'waterflood',
         chartPreset: 'waterflood',
         params: { ...BL_A_BASE_PARAMS },
         sensitivity: {
             key: 'mobility',
-            label: 'Oil viscosity (mu_o)',
-            description: 'Vary oil viscosity to explore how mobility ratio affects breakthrough, watercut shape, and ultimate recovery. The analytical BL solution updates for each variant.',
+            label: 'Oil viscosity (μ_o)',
+            description: 'Vary oil viscosity to explore how mobility ratio affects breakthrough, watercut shape, and recovery. Both simulation and analytical update.',
             variants: [
                 {
                     key: 'mu_favorable',
-                    label: 'mu_o = 0.5 cp (M ≈ 1)',
-                    description: 'Near-unit mobility ratio — sharp, piston-like displacement. Both simulation and analytical update.',
+                    label: 'μ_o = 0.5 cp (M ≈ 1)',
+                    description: 'Near-unit mobility ratio — sharp, piston-like displacement.',
                     paramPatch: { mu_o: 0.5 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'mu_unit',
-                    label: 'mu_o = 1.0 cp (M ≈ 2)',
+                    label: 'μ_o = 1.0 cp (M ≈ 2)',
                     description: 'Standard BL Case A mobility — matches the base case exactly.',
                     paramPatch: {},
                     affectsAnalytical: true,
                 },
                 {
                     key: 'mu_unfavorable',
-                    label: 'mu_o = 5.0 cp (M ≈ 10)',
-                    description: 'Strongly unfavorable — very early breakthrough, poor recovery. Both simulation and analytical update.',
+                    label: 'μ_o = 5.0 cp (M ≈ 10)',
+                    description: 'Strongly unfavorable — very early breakthrough, poor recovery.',
                     paramPatch: { mu_o: 5.0 },
                     affectsAnalytical: true,
+                },
+            ],
+        },
+    },
+
+    {
+        key: 'wf_corey_exponent',
+        label: 'Corey n_o',
+        description: 'The Corey exponent controls the curvature of k_ro, shifting both breakthrough timing and ultimate recovery. — Corey (1954)',
+        scenarioClass: 'waterflood',
+        chartPreset: 'waterflood',
+        params: { ...BL_A_BASE_PARAMS },
+        sensitivity: {
+            key: 'corey_no',
+            label: 'Oil Corey exponent (n_o)',
+            description: 'n_o determines the shape of the oil relative permeability curve. Both simulation and analytical solution update.',
+            variants: [
+                {
+                    key: 'no_15',
+                    label: 'n_o = 1.5 (near-linear)',
+                    description: 'Near-linear k_ro — oil transmits readily at intermediate saturations.',
+                    paramPatch: { n_o: 1.5 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'no_20',
+                    label: 'n_o = 2.0 (base)',
+                    description: 'Standard Corey exponent — matches the base case exactly.',
+                    paramPatch: {},
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'no_35',
+                    label: 'n_o = 3.5 (convex)',
+                    description: 'Strongly convex k_ro — oil permeability collapses quickly, earlier breakthrough.',
+                    paramPatch: { n_o: 3.5 },
+                    affectsAnalytical: true,
+                },
+            ],
+        },
+    },
+
+    {
+        key: 'wf_residual_oil',
+        label: 'Residual Oil',
+        description: 'S_or sets the ceiling on waterflood recovery. "The residual oil saturation is the most important variable affecting recovery efficiency." — Craig (1971)',
+        scenarioClass: 'waterflood',
+        chartPreset: 'waterflood',
+        params: { ...BL_A_BASE_PARAMS, s_or: 0.15 },
+        sensitivity: {
+            key: 'sor',
+            label: 'Residual oil saturation (S_or)',
+            description: 'S_or directly sets the maximum recovery factor RF = (1 − S_wc − S_or) / (1 − S_wc). Both simulation and analytical update.',
+            variants: [
+                {
+                    key: 'sor_low',
+                    label: 'S_or = 0.05 (low trapping)',
+                    description: 'Low residual trapping — high recovery ceiling.',
+                    paramPatch: { s_or: 0.05 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'sor_mid',
+                    label: 'S_or = 0.15 (base)',
+                    description: 'Moderate residual oil — base case.',
+                    paramPatch: {},
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'sor_high',
+                    label: 'S_or = 0.30 (high trapping)',
+                    description: 'High residual trapping — poor recovery ceiling, typical of tight carbonates.',
+                    paramPatch: { s_or: 0.30 },
+                    affectsAnalytical: true,
+                },
+            ],
+        },
+    },
+
+    {
+        key: 'wf_capillary',
+        label: 'Capillary',
+        description: 'Capillary entry pressure diffuses the sharp BL shock front. Analytical reference stays sharp; deviation shows capillary spreading. — Rapoport & Leas (1953)',
+        scenarioClass: 'waterflood',
+        chartPreset: 'waterflood',
+        params: { ...BL_A_BASE_PARAMS },
+        sensitivity: {
+            key: 'capillary',
+            label: 'Capillary entry pressure (P_e)',
+            description: 'Capillary pressure smears the saturation shock into a transition zone. The analytical BL reference remains sharp — deviation quantifies capillary dispersion.',
+            variants: [
+                {
+                    key: 'cap_off',
+                    label: 'P_e = 0 (disabled)',
+                    description: 'No capillary pressure — sharp BL shock, analytical and simulation agree.',
+                    paramPatch: {},
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'cap_mild',
+                    label: 'P_e = 0.3 bar (mild)',
+                    description: 'Mild capillary entry pressure — slight front spreading.',
+                    paramPatch: { capillaryEnabled: true, capillaryPEntry: 0.3, capillaryLambda: 2 },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'cap_strong',
+                    label: 'P_e = 1.5 bar (strong)',
+                    description: 'Stronger capillary entry pressure — broad transition zone, front significantly smeared.',
+                    paramPatch: { capillaryEnabled: true, capillaryPEntry: 1.5, capillaryLambda: 2 },
+                    affectsAnalytical: false,
                 },
             ],
         },
@@ -394,7 +530,7 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'dep_dietz_center',
         label: 'Dietz Center',
-        description: 'Pressure depletion in a 21×21 square reservoir with central producer. Shape factor C_A ≈ 30.88 (Dietz, 1965).',
+        description: 'Square reservoir, central producer, C_A ≈ 30.88. "Well location and drainage area shape determine the shape factor." — Dietz (1965)',
         scenarioClass: 'depletion',
         chartPreset: 'depletion',
         params: {
@@ -407,7 +543,7 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'dep_dietz_corner',
         label: 'Dietz Corner',
-        description: 'Pressure depletion in a 21×21 square reservoir with corner producer. Shape factor C_A ≈ 0.56 (Dietz, 1965).',
+        description: 'Square reservoir, corner producer, C_A ≈ 0.56. "Well location and drainage area shape determine the shape factor." — Dietz (1965)',
         scenarioClass: 'depletion',
         chartPreset: 'depletion',
         params: {
@@ -420,37 +556,122 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'dep_fetkovich',
         label: 'Fetkovich Decline',
-        description: 'Constant BHP exponential decline in a 1D reservoir with high initial pressure. Rate vs time follows the Fetkovich exponential type curve.',
+        description: 'Constant-BHP exponential decline. "At long producing times, all finite-reservoir wells exhibit exponential decline." — Fetkovich (1971)',
         scenarioClass: 'depletion',
         chartPreset: 'fetkovich',
-        params: {
-            ...DIETZ_BASE_PARAMS,
-            // Override grid for 1D Fetkovich geometry
-            nx: 48,
-            ny: 1,
-            nz: 1,
-            cellDx: 10,
-            cellDy: 10,
-            cellDz: 10,
-            // Low permeability and high initial pressure drive exponential decline
-            uniformPermX: 20,
-            uniformPermY: 20,
-            uniformPermZ: 2,
-            producerBhp: 50,
-            initialPressure: 1500,
-            steps: 100,
-            delta_t_days: 5,
-            // Corner producer in 1D
-            producerI: 47,
-            producerJ: 0,
+        params: { ...FETKOVICH_BASE_PARAMS },
+    },
+
+    {
+        key: 'dep_skin',
+        label: 'Skin',
+        description: 'Skin modifies the near-wellbore pressure drop, scaling the productivity index and the decline rate. — Hawkins (1956)',
+        scenarioClass: 'depletion',
+        chartPreset: 'fetkovich',
+        params: { ...FETKOVICH_BASE_PARAMS },
+        sensitivity: {
+            key: 'skin',
+            label: 'Skin factor (s)',
+            description: 'Positive skin represents formation damage; negative skin represents stimulation. Both analytical and simulation update.',
+            variants: [
+                {
+                    key: 'skin_neg',
+                    label: 's = −2 (stimulated)',
+                    description: 'Mild stimulation (e.g. acid job) — PI ≈ 3× base, faster decline.',
+                    paramPatch: { well_skin: -2 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'skin_zero',
+                    label: 's = 0 (clean)',
+                    description: 'No damage or stimulation — base case.',
+                    paramPatch: {},
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'skin_pos',
+                    label: 's = +5 (damaged)',
+                    description: 'Moderate formation damage (fines, mud filtrate) — reduced PI, slower decline.',
+                    paramPatch: { well_skin: 5 },
+                    affectsAnalytical: true,
+                },
+            ],
         },
     },
 
-    // TODO: additional scenarios to add in future iterations
-    // - wf_bl_case_a_capillary: BL Case A with mild capillary pressure sensitivity
-    // - wf_bl_case_a_timestep: BL Case A with timestep refinement (dt = 0.25 / 0.5 / 1.0 days)
-    // - wf_bl_layered: BL Case A with mild vs strong layered heterogeneity
-    // - dep_dietz_center_perforations: Dietz center with partial perforation sensitivity
+    {
+        key: 'dep_permeability',
+        label: 'Permeability',
+        description: 'Permeability controls the productivity index and hence the decline time constant τ = V_p · c_t / PI. — Fetkovich (1971)',
+        scenarioClass: 'depletion',
+        chartPreset: 'fetkovich',
+        params: { ...FETKOVICH_BASE_PARAMS },
+        sensitivity: {
+            key: 'permeability',
+            label: 'Absolute permeability (k)',
+            description: 'PI is proportional to k; τ is inversely proportional. Higher k → faster, steeper decline. Both analytical and simulation update.',
+            variants: [
+                {
+                    key: 'perm_tight',
+                    label: 'k = 5 mD (tight)',
+                    description: 'Tight reservoir — low PI, slow decline, long-lived production.',
+                    paramPatch: { uniformPermX: 5, uniformPermY: 5, uniformPermZ: 0.5 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'perm_base',
+                    label: 'k = 20 mD (base)',
+                    description: 'Base Fetkovich permeability — matches the reference decline curve.',
+                    paramPatch: {},
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'perm_good',
+                    label: 'k = 100 mD (good)',
+                    description: 'Good reservoir — high PI, rapid initial rate, steep decline.',
+                    paramPatch: { uniformPermX: 100, uniformPermY: 100, uniformPermZ: 10 },
+                    affectsAnalytical: true,
+                },
+            ],
+        },
+    },
+
+    {
+        key: 'dep_compressibility',
+        label: 'Compressibility',
+        description: 'Total compressibility governs reservoir storage — higher c_t extends the decline time constant τ = V_p · c_t / PI. — Craft & Hawkins (1959)',
+        scenarioClass: 'depletion',
+        chartPreset: 'fetkovich',
+        params: { ...FETKOVICH_BASE_PARAMS },
+        sensitivity: {
+            key: 'compressibility',
+            label: 'Oil compressibility (c_o)',
+            description: 'c_o dominates total compressibility c_t for undersaturated oil. Higher c_t stores more energy and lengthens the decline. Both analytical and simulation update.',
+            variants: [
+                {
+                    key: 'ct_low',
+                    label: 'c_o = 5×10⁻⁶ bar⁻¹ (stiff)',
+                    description: 'Stiff undersaturated oil — low storage, fast decline.',
+                    paramPatch: { c_o: 5e-6 },
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'ct_base',
+                    label: 'c_o = 1×10⁻⁵ bar⁻¹ (base)',
+                    description: 'Typical black oil compressibility — base case.',
+                    paramPatch: {},
+                    affectsAnalytical: true,
+                },
+                {
+                    key: 'ct_high',
+                    label: 'c_o = 5×10⁻⁵ bar⁻¹ (volatile)',
+                    description: 'High compressibility (near bubble point or volatile oil) — large storage, extended decline.',
+                    paramPatch: { c_o: 5e-5 },
+                    affectsAnalytical: true,
+                },
+            ],
+        },
+    },
 ];
 
 // ─── Lookup helpers ───────────────────────────────────────────────────────────

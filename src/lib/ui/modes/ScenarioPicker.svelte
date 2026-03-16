@@ -86,16 +86,32 @@
 
 <Card class="p-0">
   <!-- ── Scenario selector row ── -->
-  <div class="flex flex-wrap gap-2 p-3">
-    {#each SCENARIOS as scenario}
-      <Button
-        size="sm"
-        variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-        onclick={() => handleSelectScenario(scenario.key)}
-      >
-        {scenario.label}
-      </Button>
-    {/each}
+  <div class="flex flex-wrap items-start gap-2 p-3">
+    <!-- Waterflood group -->
+    <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
+      {#each SCENARIOS.filter((s) => s.scenarioClass === "waterflood") as scenario}
+        <Button
+          size="sm"
+          variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
+          onclick={() => handleSelectScenario(scenario.key)}
+        >
+          {scenario.label}
+        </Button>
+      {/each}
+    </div>
+    <!-- Depletion group -->
+    <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
+      {#each SCENARIOS.filter((s) => s.scenarioClass === "depletion") as scenario}
+        <Button
+          size="sm"
+          variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
+          onclick={() => handleSelectScenario(scenario.key)}
+        >
+          {scenario.label}
+        </Button>
+      {/each}
+    </div>
+    <!-- Custom -->
     <Button
       size="sm"
       variant={isCustom ? "default" : "outline"}

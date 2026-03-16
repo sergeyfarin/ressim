@@ -62,7 +62,7 @@
     --secondary: #f4f4f5;
     --secondary-foreground: #18181b;
     --muted: #f4f4f5;
-    --muted-foreground: #71717a;
+    --muted-foreground: #52525b;
     --accent: #f4f4f5;
     --accent-foreground: #18181b;
     --destructive: #ef4444;
@@ -80,19 +80,19 @@
   }
 
   [data-theme="dark"] {
-    --background: #09090b;
+    --background: #18181b;
     --foreground: #fafafa;
-    --card: #09090b;
+    --card: #1e1e21;
     --card-foreground: #fafafa;
-    --popover: #09090b;
+    --popover: #28282c;
     --popover-foreground: #fafafa;
     --primary: #3b82f6;
     --primary-foreground: #ffffff;
-    --secondary: #27272a;
+    --secondary: #2f2f35;
     --secondary-foreground: #fafafa;
     --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --accent: #27272a;
+    --muted-foreground: #b4b4bc;
+    --accent: #2f2f35;
     --accent-foreground: #fafafa;
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
@@ -102,8 +102,8 @@
     --warning-foreground: #000000;
     --info: #0ea5e9;
     --info-foreground: #000000;
-    --border: #27272a;
-    --input: #27272a;
+    --border: #3a3a40;
+    --input: #2a2a30;
     --ring: #d4d4d8;
   }
 }
@@ -238,7 +238,7 @@ body {
 }
 
 [data-theme="dark"] body {
-  background: linear-gradient(to bottom, #1a1a1a 0%, #161616 50%, #121212 100%);
+  background: linear-gradient(to bottom, #252529 0%, #202024 50%, #1b1b1f 100%);
 }
 
 /* ── Geological layers wrapper ── */
