@@ -38,17 +38,13 @@
     let loadingThreeDView = $state(false);
     const activeReferenceFamily = $derived(scenario.activeScenarioAsFamily ?? scenario.activeReferenceFamily);
     const activeReferenceResults = $derived.by(() => {
-        const familyKey = scenario.activeReferenceFamily?.key ?? null;
+        const familyKey = activeReferenceFamily?.key ?? null;
         if (!familyKey) return [];
         return runtime.referenceRunResults.filter((result) => result.familyKey === familyKey);
     });
     const activeComparisonSelection = $derived(scenario.activeComparisonSelection);
     const activeReferenceBaseResult = $derived.by(() => {
-        const familyKey = scenario.activeReferenceFamily?.key ?? null;
-        if (!familyKey) return null;
-        return activeReferenceResults.find((result) => (
-            result.familyKey === familyKey && result.variantKey === null
-        )) ?? null;
+        return activeReferenceResults.find((result) => result.variantKey === null) ?? null;
     });
     const activePrimaryComparisonResultKey = $derived.by(() => {
         const primaryResultKey = activeComparisonSelection.primaryResultKey;
@@ -416,16 +412,13 @@
             runCompleted={runtime.runCompleted}
             simTime={runtime.simTime}
             historyLength={runtime.history.length}
-            estimatedRunSeconds={runtime.estimatedRunSeconds}
-            longRunEstimate={runtime.longRunEstimate}
             hasValidationErrors={params.hasValidationErrors}
-            canStop={runtime.workerRunning || runtime.referenceSweepRunning}
+            numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
             runProgress={runtime.referenceSweepRunning
                 ? runtime.referenceSweepProgressLabel
                 : runtime.workerRunning && runtime.currentRunTotalSteps > 0
-                    ? `${runtime.currentRunStepsCompleted} / ${runtime.currentRunTotalSteps}`
+                    ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
                     : ""}
-            inputsAnchorHref=""
             bind:steps={params.steps}
             onRunSteps={handleRun}
             onInitSimulator={runtime.initSimulator}
@@ -434,11 +427,9 @@
             warningPolicy={runtime.warningPolicy}
         />
         {#if runtime.referenceSweepError}
-            <Card>
-                <div class="ui-microcopy rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive">
-                    {runtime.referenceSweepError}
-                </div>
-            </Card>
+            <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {runtime.referenceSweepError}
+            </div>
         {/if}
         </section>
 

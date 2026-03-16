@@ -289,9 +289,12 @@ export function createSimulationStore() {
     const referenceSweepProgressLabel = $derived.by(() => {
         if (referenceTotalRuns <= 0) return '';
         if (activeReferenceRunSpec) {
-            return `${referenceRunsCompleted + 1} / ${referenceTotalRuns} running ${activeReferenceRunSpec.label}`;
+            const stepPart = currentRunTotalSteps > 0
+                ? ` — ${currentRunStepsCompleted}/${currentRunTotalSteps} steps`
+                : '';
+            return `Case ${referenceRunsCompleted + 1}/${referenceTotalRuns}${stepPart}`;
         }
-        return `${referenceRunsCompleted} / ${referenceTotalRuns} completed`;
+        return `${referenceRunsCompleted}/${referenceTotalRuns} done`;
     });
 
     const disabledOptions = $derived(getDisabledOptions(toggles));
@@ -1433,26 +1436,6 @@ export function createSimulationStore() {
         const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
 
         const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
-
-        // Base case always included.
-        specs.push({
-            key: `${scenarioKey}__base`,
-            caseKey: scenarioKey,
-            familyKey: scenarioKey,
-            scenarioClass,
-            variantKey: null,
-            variantLabel: null,
-            label: scenario.label,
-            description: scenario.description,
-            params: { ...baseParams },
-            steps: Number(baseParams.steps ?? 240),
-            deltaTDays: Number(baseParams.delta_t_days ?? 0.125),
-            historyInterval: 1,
-            reference: analyticalRef,
-            comparisonMetric: null,
-            breakthroughCriterion: null,
-            comparisonMeaning: '',
-        });
 
         for (const variantKey of variantKeys) {
             const variant = scenario.sensitivity?.variants.find((v) => v.key === variantKey);

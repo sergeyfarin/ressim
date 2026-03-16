@@ -11,15 +11,11 @@
     runCompleted = false,
     simTime = 0,
     historyLength = 0,
-    estimatedRunSeconds = 0,
-    longRunEstimate = false,
-    canStop = false,
     hasValidationErrors = false,
     warningPolicy = undefined,
-    continuationStatus = "",
     runProgress = "",
-    inputsAnchorHref = "",
     steps = $bindable(20),
+    numSensitivities = 0,
     onRunSteps = () => {},
     onInitSimulator = () => {},
     onStopRun = () => {},
@@ -30,29 +26,65 @@
     runCompleted?: boolean;
     simTime?: number;
     historyLength?: number;
-    estimatedRunSeconds?: number;
-    longRunEstimate?: boolean;
-    canStop?: boolean;
     hasValidationErrors?: boolean;
     warningPolicy?: WarningPolicy;
-    continuationStatus?: string;
     runProgress?: string;
-    inputsAnchorHref?: string;
     steps?: number;
+    numSensitivities?: number;
     onRunSteps?: () => void;
     onInitSimulator?: () => void;
     onStopRun?: () => void;
     fieldErrors?: Record<string, string>;
   } = $props();
+
+  const runLabel = $derived(
+    numSensitivities > 0
+      ? `Run ${numSensitivities} Sensitivit${numSensitivities === 1 ? "y" : "ies"}`
+      : "Run Case"
+  );
+
+  const statusText = $derived(
+    workerRunning
+      ? runProgress || "Running"
+      : runCompleted
+        ? "Complete"
+        : "Ready"
+  );
 </script>
 
 <Card>
-  <div class="p-3 md:p-4">
-    <div class="flex flex-wrap items-center gap-3">
+  <div class="p-3 md:p-4 space-y-2">
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Reset leftmost -->
+      <Button
+        size="sm"
+        variant="ghost"
+        onclick={onInitSimulator}
+        disabled={!wasmReady || workerRunning || hasValidationErrors}
+        >Reset</Button>
+
+      <div class="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
+
+      <!-- Primary run button -->
+      <Button
+        size="sm"
+        variant="default"
+        onclick={onRunSteps}
+        disabled={!wasmReady || workerRunning || hasValidationErrors}
+        >{runLabel}</Button>
+
+      <Button
+        size="sm"
+        variant="destructive"
+        onclick={onStopRun}
+        disabled={!workerRunning}>Stop</Button>
+
+      <div class="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
+
       <!-- Steps input -->
       <label class="flex flex-col items-start gap-1">
         <div class="flex items-center gap-2">
-          <span class="text-xs font-medium whitespace-nowrap">Steps:</span>
+          <span class="text-xs font-medium text-muted-foreground whitespace-nowrap">Steps:</span>
           <Input
             type="number"
             min="1"
@@ -60,69 +92,25 @@
             bind:value={steps} />
         </div>
         {#if fieldErrors.steps}
-          <div class="text-[10px] text-destructive leading-tight">
-            {fieldErrors.steps}
-          </div>
+          <div class="text-[10px] text-destructive leading-tight">{fieldErrors.steps}</div>
         {/if}
       </label>
 
-      <!-- Action buttons -->
-      <div class="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="default"
-          onclick={onRunSteps}
-          disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >Run {steps} Step{Number(steps) === 1 ? "" : "s"}</Button>
-
-        <Button
-          size="sm"
-          variant="destructive"
-          onclick={onStopRun}
-          disabled={!canStop}>Stop Run</Button>
-
-        <Button
-          size="sm"
-          variant="ghost"
-          onclick={onInitSimulator}
-          disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >Reset Model</Button>
-
-        {#if inputsAnchorHref}
-          <a
-            class="text-primary text-xs self-center underline-offset-4 hover:underline"
-            href={inputsAnchorHref}>Review Inputs</a>
-        {/if}
-      </div>
-
-      <!-- Status -->
-      <div
-        class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground ml-auto">
-        <span
-          >{continuationStatus ||
-            (workerRunning
-              ? "Running"
-              : runCompleted
-                ? "Complete"
-                : "Ready")}</span>
-        <span>{simTime.toFixed(1)} days</span>
-        <span>{historyLength} snapshots</span>
-        {#if runProgress}
-          <span class="text-primary font-medium">{runProgress}</span>
-        {/if}
+      <!-- Inline status -->
+      <div class="flex items-center gap-3 text-xs text-muted-foreground ml-auto">
+        <span class={workerRunning ? "text-primary font-medium" : ""}>{statusText}</span>
+        <span class="opacity-60">·</span>
+        <span>{simTime.toFixed(1)} d</span>
+        <span class="opacity-60">·</span>
+        <span>{historyLength} snap</span>
       </div>
     </div>
-
-    {#if continuationStatus}
-      <div class="text-xs text-primary mt-1">{continuationStatus}</div>
-    {/if}
 
     {#if warningPolicy}
       <WarningPolicyPanel
         policy={warningPolicy}
-        groups={["blockingValidation", "nonPhysical", "advisory"]}
+        groups={["nonPhysical", "advisory"]}
         groupSources={{
-          blockingValidation: ["validation"],
           nonPhysical: ["runtime"],
           advisory: ["runtime"],
         }} />
