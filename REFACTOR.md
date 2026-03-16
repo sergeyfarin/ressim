@@ -23,7 +23,7 @@ Replace the overcomplicated "case library with editability policies" paradigm wi
 | 3 — Store wiring | ✅ Done | New state + actions in store public API; run button routes sweep vs single |
 | 4 — Store simplification | 🔲 Todo | Remove ScenarioNavigationState + phase2PresetContract |
 | 5 — Wire App.svelte | ✅ Done | ScenarioPicker wired, activeReferenceFamily uses activeScenarioAsFamily |
-| 6 — Simplify RunControls | 🔲 Todo | Remove single-step, render-every |
+| 6 — Simplify RunControls | ✅ Done | Removed "Advance 1 Step" + "Render Every N" |
 | 7 — Delete old files | 🔲 Todo | After all new wiring confirmed working |
 
 ---

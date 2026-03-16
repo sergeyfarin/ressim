@@ -379,7 +379,6 @@ export function createSimulationStore() {
             benchmarkLabel,
             benchmarkScenarioClass: activeReferenceBenchmarkFamily?.scenarioClass ?? null,
             activeLibraryCaseKey: activeLibraryEntry?.key ?? null,
-            activeLibraryFamily: activeNavigationLibraryEntry?.family ?? null,
             activeLibraryGroup: activeLibraryEntry?.group ?? null,
         });
     });

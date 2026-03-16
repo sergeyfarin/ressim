@@ -20,9 +20,7 @@
     runProgress = "",
     inputsAnchorHref = "",
     steps = $bindable(20),
-    historyInterval = $bindable(1),
     onRunSteps = () => {},
-    onStepOnce = () => {},
     onInitSimulator = () => {},
     onStopRun = () => {},
     fieldErrors = {},
@@ -41,9 +39,7 @@
     runProgress?: string;
     inputsAnchorHref?: string;
     steps?: number;
-    historyInterval?: number;
     onRunSteps?: () => void;
-    onStepOnce?: () => void;
     onInitSimulator?: () => void;
     onStopRun?: () => void;
     fieldErrors?: Record<string, string>;
@@ -70,15 +66,6 @@
         {/if}
       </label>
 
-      <label class="flex items-center gap-2">
-        <span class="text-xs font-medium whitespace-nowrap">Render Every:</span>
-        <Input
-          type="number"
-          min="1"
-          class="w-16"
-          bind:value={historyInterval} />
-      </label>
-
       <!-- Action buttons -->
       <div class="flex flex-wrap gap-2">
         <Button
@@ -87,13 +74,6 @@
           onclick={onRunSteps}
           disabled={!wasmReady || workerRunning || hasValidationErrors}
           >Run {steps} Step{Number(steps) === 1 ? "" : "s"}</Button>
-
-        <Button
-          size="sm"
-          variant="outline"
-          onclick={onStepOnce}
-          disabled={!wasmReady || workerRunning || hasValidationErrors}
-          >Advance 1 Step</Button>
 
         <Button
           size="sm"

@@ -427,9 +427,7 @@
                     : ""}
             inputsAnchorHref=""
             bind:steps={params.steps}
-            bind:historyInterval={params.historyInterval}
             onRunSteps={handleRun}
-            onStepOnce={runtime.stepOnce}
             onInitSimulator={runtime.initSimulator}
             onStopRun={runtime.stopRun}
             fieldErrors={params.validationErrors}
