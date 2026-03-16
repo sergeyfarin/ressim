@@ -2,13 +2,13 @@
     import { onMount, onDestroy, tick } from "svelte";
     import FractionalFlow from "./lib/analytical/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/analytical/DepletionAnalytical.svelte";
-    import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import ReferenceResultsCard from "./lib/ui/cards/ReferenceResultsCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
-    import ModePanel from "./lib/ui/modes/ModePanel.svelte";
+    import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
+    import { getChartPreset } from "./lib/catalog/scenarios";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -18,10 +18,6 @@
     const scenario = store.scenarioSelection;
     const params = store.parameterState;
     const runtime = store.runtimeState;
-
-    function handleCloneReferenceToCustom() {
-        scenario.cloneActiveReferenceToCustom();
-    }
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("dark");
@@ -40,13 +36,7 @@
     let RateChartComponent = $state<RateChartComponentType | null>(null);
     let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
-    const FAMILY_LABELS = {
-        waterflood: "Waterflood",
-        "depletion-analysis": "Depletion Analysis",
-        "type-curves": "Type Curves",
-        "scenario-builder": "Scenario Builder",
-    } as const;
-    const activeReferenceFamily = $derived(scenario.activeReferenceFamily);
+    const activeReferenceFamily = $derived(scenario.activeScenarioAsFamily ?? scenario.activeReferenceFamily);
     const activeReferenceResults = $derived.by(() => {
         const familyKey = scenario.activeReferenceFamily?.key ?? null;
         if (!familyKey) return [];
@@ -167,15 +157,26 @@
         activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
     ));
     const activeRateChartLayoutConfig = $derived.by(() => {
+        if (scenario.activeScenarioObject) {
+            return getChartPreset(scenario.activeScenarioObject.chartPreset);
+        }
         if (activeReferenceFamily) {
             return getReferenceRateChartLayoutConfig({
                 family: activeReferenceFamily,
                 referencePolicy: activeReferenceBaseResult?.referencePolicy ?? null,
             });
         }
-
         return scenario.activeLibraryEntry?.layoutConfig ?? {};
     });
+
+    function handleRun() {
+        const scenarioKey = scenario.activeScenarioKey;
+        if (scenarioKey && !scenario.isCustomMode && scenario.activeVariantKeys.length > 0) {
+            runtime.runScenarioSweep(scenarioKey, scenario.activeVariantKeys);
+        } else {
+            runtime.runSteps();
+        }
+    }
 
     function handleSelectComparisonResult(resultKey: string) {
         scenario.setComparisonSelection({
@@ -215,46 +216,6 @@
         clearComparisonSelection();
     });
 
-    const activeRunManifest = $derived.by(() => {
-        const navigation = scenario.navigationState;
-        if (!navigation) return null;
-
-        const familyLabel = FAMILY_LABELS[navigation.activeFamily] ?? navigation.activeFamily;
-        const sourceLabel = navigation.activeSource === "custom" ? "Custom" : "Case Library";
-        const caseLabel = scenario.activeLibraryEntry?.label
-            ?? (navigation.activeSource === "custom" ? `${familyLabel} Custom` : "Curated family case");
-
-        const executionMode = navigation.activeSource === "case-library"
-            ? "Locked library workflow"
-            : "Writable custom workflow";
-
-        const provenanceSummary = navigation.activeSource === "custom"
-            ? scenario.referenceProvenance
-                ? `Seeded from ${scenario.referenceProvenance.sourceLabel}.`
-                : "Direct custom editing is active for this family."
-            : scenario.activeLibraryEntry?.provenanceSummary
-                ?? null;
-
-        const sensitivitySummary = scenario.activeLibraryEntry?.sensitivitySummary
-            ?? (navigation.activeSource === "custom"
-                ? "No locked library sensitivity policy applies while custom is active."
-                : "No library sensitivities are available for the current case.");
-
-        const referencePolicySummary = scenario.activeLibraryEntry?.referencePolicySummary
-            ?? (navigation.activeSource === "custom"
-                ? "Reference guidance depends on the curated case you restore or activate next."
-                : "Reference guidance summary is not available for the current case.");
-
-        return {
-            familyLabel,
-            sourceLabel,
-            caseLabel,
-            executionMode,
-            provenanceSummary,
-            sensitivitySummary,
-            referencePolicySummary,
-        };
-    });
 
     // ---------- Config diff $effect ----------
     $effect(() => {
@@ -319,7 +280,7 @@
         await loadThreeDViewModule();
         await tick();
 
-        scenario.handleModeChange("dep");
+        scenario.selectScenario("wf_bl_case_a");
     });
 
     onDestroy(() => {
@@ -430,73 +391,55 @@
         </header>
 
         <section class="space-y-2">
-           
-        <ModePanel
+        <ScenarioPicker
+            activeScenarioKey={scenario.activeScenarioKey}
+            activeVariantKeys={scenario.activeVariantKeys}
+            isCustom={scenario.isCustomMode}
             activeMode={scenario.activeMode}
-            navigationState={scenario.navigationState}
-            isModified={scenario.isModified}
+            {params}
             toggles={scenario.toggles}
             disabledOptions={scenario.disabledOptions}
-            onModeChange={scenario.handleModeChange}
-            onParamEdit={scenario.handleParamEdit}
-            onToggleChange={scenario.handleToggleChange}
-            basePreset={scenario.basePreset}
-            onActivateLibraryEntry={scenario.activateLibraryEntry}
-            onCloneReferenceToCustom={handleCloneReferenceToCustom}
-            referenceProvenance={scenario.referenceProvenance}
-            referenceSweepRunning={runtime.referenceSweepRunning}
-            {params}
             validationErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
+            onSelectScenario={scenario.selectScenario}
+            onToggleVariant={scenario.toggleScenarioVariant}
+            onEnterCustomMode={scenario.enterCustomMode}
+            onToggleChange={scenario.handleToggleChange}
+            onParamEdit={scenario.handleParamEdit}
         />
         </section>
 
         <section class="space-y-2">
         <RunControls
             wasmReady={runtime.wasmReady}
-            workerRunning={runtime.workerRunning}
+            workerRunning={runtime.workerRunning || runtime.referenceSweepRunning}
             runCompleted={runtime.runCompleted}
             simTime={runtime.simTime}
             historyLength={runtime.history.length}
             estimatedRunSeconds={runtime.estimatedRunSeconds}
             longRunEstimate={runtime.longRunEstimate}
             hasValidationErrors={params.hasValidationErrors}
-            canStop={runtime.workerRunning}
-            runProgress={runtime.workerRunning && runtime.currentRunTotalSteps > 0
-                ? `${runtime.currentRunStepsCompleted} / ${runtime.currentRunTotalSteps}`
-                : ""}
+            canStop={runtime.workerRunning || runtime.referenceSweepRunning}
+            runProgress={runtime.referenceSweepRunning
+                ? runtime.referenceSweepProgressLabel
+                : runtime.workerRunning && runtime.currentRunTotalSteps > 0
+                    ? `${runtime.currentRunStepsCompleted} / ${runtime.currentRunTotalSteps}`
+                    : ""}
             inputsAnchorHref=""
             bind:steps={params.steps}
             bind:historyInterval={params.historyInterval}
-            onRunSteps={runtime.runSteps}
+            onRunSteps={handleRun}
             onStepOnce={runtime.stepOnce}
             onInitSimulator={runtime.initSimulator}
             onStopRun={runtime.stopRun}
             fieldErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
         />
-        <ReferenceExecutionCard
-            referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
-            isModified={scenario.isModified}
-            referenceSweepRunning={runtime.referenceSweepRunning}
-            onRunReferenceSelection={runtime.runActiveReferenceSelection}
-            onStopReferenceSweep={runtime.stopRun}
-        />
-        {#if activeRunManifest}
+        {#if runtime.referenceSweepError}
             <Card>
-                    {#if runtime.referenceSweepProgressLabel || runtime.referenceSweepError}
-                        <div class="ui-microcopy rounded-md border border-border/70 bg-background/80 p-3">
-                            <div class="ui-subsection-kicker">Reference Run Status</div>
-                            {#if runtime.referenceSweepProgressLabel}
-                                <div class="mt-2">{runtime.referenceSweepProgressLabel}</div>
-                            {/if}
-                            {#if runtime.referenceSweepError}
-                                <div class="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive">
-                                    {runtime.referenceSweepError}
-                                </div>
-                            {/if}
-                        </div>
-                    {/if}
+                <div class="ui-microcopy rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive">
+                    {runtime.referenceSweepError}
+                </div>
             </Card>
         {/if}
         </section>

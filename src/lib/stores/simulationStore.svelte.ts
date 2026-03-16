@@ -39,6 +39,7 @@ import {
     type ValidationWarning,
 } from '../validateInputs';
 import { buildWarningPolicy } from '../warningPolicy';
+import { getScenario, getScenarioWithVariantParams } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
@@ -215,6 +216,11 @@ export function createSimulationStore() {
     let referenceProvenance: ReferenceProvenance | null = $state(null);
     let activeComparisonSelection = $state<ComparisonSelection>(buildComparisonSelection());
     let explicitLibraryEntryKey: string | null = $state(null);
+
+    // ── New scenario-picker state ─────────────────────────────────────────────
+    let activeScenarioKey: string | null = $state(null);
+    let activeVariantKeys: string[] = $state([]);
+    let isCustomMode = $state(false);
 
     // Display data
     let gridStateRaw: GridState | null = $state(null);
@@ -418,6 +424,34 @@ export function createSimulationStore() {
             permMode,
             toggles,
         });
+    });
+
+    const activeScenarioObject = $derived(getScenario(activeScenarioKey));
+
+    // Builds a BenchmarkFamily-compatible object from the active scenario so
+    // the existing ReferenceComparisonChart can render sensitivity sweep results.
+    const activeScenarioAsFamily = $derived.by((): import('../catalog/benchmarkCases').BenchmarkFamily | null => {
+        const sc = activeScenarioObject;
+        if (!sc || isCustomMode) return null;
+        const scenarioClass = sc.scenarioClass === 'waterflood' ? 'buckley-leverett' as const : 'depletion' as const;
+        return {
+            key: sc.key,
+            baseCaseKey: sc.key,
+            scenarioClass,
+            sensitivityAxes: [],
+            reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
+            displayDefaults: {
+                xAxis: (sc.scenarioClass === 'waterflood' ? 'pvi' : 'time') as import('../catalog/benchmarkCases').BenchmarkXAxisKey,
+                panels: (sc.scenarioClass === 'waterflood'
+                    ? ['watercut-breakthrough', 'recovery', 'pressure']
+                    : ['oil-rate', 'cumulative-oil', 'decline-diagnostics']) as import('../catalog/benchmarkCases').BenchmarkPanelKey[],
+            },
+            stylePolicy: { colorBy: 'case' as const, lineStyleBy: 'quantity-or-reference' as const, separatePressurePanel: true },
+            runPolicy: 'compare-to-reference' as const,
+            label: sc.label,
+            description: sc.description,
+            baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
+        };
     });
 
     const warningPolicy = $derived.by(() => {
@@ -1348,6 +1382,127 @@ export function createSimulationStore() {
         modelReinitNotice = '';
     }
 
+    // ===== New Scenario-Picker Actions =====
+
+    function selectScenario(key: string) {
+        const scenario = getScenario(key);
+        if (!scenario) return;
+        if (referenceSweepRunning || activeReferenceRunSpec) return;
+
+        activeScenarioKey = key;
+        isCustomMode = false;
+        isModified = false;
+        referenceProvenance = null;
+        activeComparisonSelection = buildComparisonSelection();
+        clearReferenceRunnerState(true);
+
+        // Pre-select all variants so the user sees the full sensitivity by default.
+        activeVariantKeys = scenario.sensitivity?.variants.map((v) => v.key) ?? [];
+
+        const nextMode: CaseMode = scenario.scenarioClass === 'waterflood' ? 'wf' : 'dep';
+        activeMode = nextMode;
+        toggles = getDefaultToggles(nextMode);
+        explicitLibraryEntryKey = null;
+        activeCase = key;
+
+        applyCaseParams(scenario.params);
+        baseCaseSignature = buildCaseSignature();
+    }
+
+    function toggleScenarioVariant(variantKey: string) {
+        activeVariantKeys = activeVariantKeys.includes(variantKey)
+            ? activeVariantKeys.filter((k) => k !== variantKey)
+            : [...activeVariantKeys, variantKey];
+    }
+
+    function enterCustomMode() {
+        isCustomMode = true;
+        handleParamEdit();
+    }
+
+    function buildScenarioSweepSpecs(
+        scenarioKey: string,
+        variantKeys: string[],
+    ): import('../benchmarkRunModel').BenchmarkRunSpec[] {
+        const scenario = getScenario(scenarioKey);
+        if (!scenario) return [];
+
+        const scenarioClass = scenario.scenarioClass === 'waterflood'
+            ? 'buckley-leverett' as const
+            : 'depletion' as const;
+        const baseParams = scenario.params;
+        const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
+
+        const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
+
+        // Base case always included.
+        specs.push({
+            key: `${scenarioKey}__base`,
+            caseKey: scenarioKey,
+            familyKey: scenarioKey,
+            scenarioClass,
+            variantKey: null,
+            variantLabel: null,
+            label: scenario.label,
+            description: scenario.description,
+            params: { ...baseParams },
+            steps: Number(baseParams.steps ?? 240),
+            deltaTDays: Number(baseParams.delta_t_days ?? 0.125),
+            historyInterval: 1,
+            reference: analyticalRef,
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: '',
+        });
+
+        for (const variantKey of variantKeys) {
+            const variant = scenario.sensitivity?.variants.find((v) => v.key === variantKey);
+            if (!variant) continue;
+            const variantParams = getScenarioWithVariantParams(scenarioKey, variantKey);
+            specs.push({
+                key: `${scenarioKey}__${variantKey}`,
+                caseKey: scenarioKey,
+                familyKey: scenarioKey,
+                scenarioClass,
+                variantKey,
+                variantLabel: variant.label,
+                label: `${scenario.label} — ${variant.label}`,
+                description: variant.description,
+                params: variantParams,
+                steps: Number(variantParams.steps ?? baseParams.steps ?? 240),
+                deltaTDays: Number(variantParams.delta_t_days ?? baseParams.delta_t_days ?? 0.125),
+                historyInterval: 1,
+                reference: analyticalRef,
+                comparisonMetric: null,
+                breakthroughCriterion: null,
+                comparisonMeaning: variant.description,
+            });
+        }
+
+        return specs;
+    }
+
+    function runScenarioSweep(scenarioKey: string, variantKeys: string[]): boolean {
+        if (!wasmReady || !simWorker) {
+            runtimeError = 'WASM not ready yet.';
+            return false;
+        }
+        if (workerRunning || referenceSweepRunning) return false;
+
+        const specs = buildScenarioSweepSpecs(scenarioKey, variantKeys);
+        if (specs.length === 0) return false;
+
+        // Temporarily make the sweep system aware of the active scenario family
+        // so result display works with the existing chart machinery.
+        clearReferenceRunnerState(true);
+        referenceSweepRunning = true;
+        referenceTotalRuns = specs.length;
+        referenceRunQueue = [...specs];
+        runtimeError = '';
+        runtimeWarning = '';
+        return startQueuedReferenceRun();
+    }
+
     // ===== Public API =====
     const scenarioSelection = {
         get activeMode() { return activeMode; },
@@ -1381,6 +1536,15 @@ export function createSimulationStore() {
         setComparisonSelection(selection: Partial<ComparisonSelection>) {
             activeComparisonSelection = buildComparisonSelection(selection);
         },
+        // ── New scenario-picker API ──
+        get activeScenarioKey() { return activeScenarioKey; },
+        get activeVariantKeys() { return activeVariantKeys; },
+        get isCustomMode() { return isCustomMode; },
+        get activeScenarioObject() { return activeScenarioObject; },
+        get activeScenarioAsFamily() { return activeScenarioAsFamily; },
+        selectScenario,
+        toggleScenarioVariant,
+        enterCustomMode,
     };
 
     const parameterState = {
@@ -1523,6 +1687,7 @@ export function createSimulationStore() {
         runActiveReferenceBase,
         runActiveReferenceSensitivityAxis,
         runActiveReferenceSelection,
+        runScenarioSweep,
         stepOnce,
         stopRun,
         checkConfigDiff,
