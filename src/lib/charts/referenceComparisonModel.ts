@@ -303,6 +303,10 @@ export function buildReferenceComparisonModel(input: {
     results: BenchmarkRunResult[];
     xAxisMode: RateChartXAxisMode;
     theme?: ReferenceComparisonTheme;
+    /** True when the active sensitivity variants change parameters that feed the
+     *  analytical solution (e.g. viscosity → fractional flow). Each result then
+     *  gets its own analytical curve. False (default) → one shared reference. */
+    analyticalPerVariant?: boolean;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results);
@@ -498,74 +502,124 @@ export function buildReferenceComparisonModel(input: {
         return { orderedResults, panels };
     }
 
-    const referenceOverlay = family.scenarioClass === 'buckley-leverett'
-        ? buildBuckleyLeverettReference(baseResult, baseDerived, input.xAxisMode)
-        : buildDepletionReference(baseResult, baseDerived, input.xAxisMode);
+    if (family.scenarioClass === 'buckley-leverett') {
+        const allSameAnalytical = !input.analyticalPerVariant;
 
-    if (referenceOverlay.rates) {
-        appendSeries(
-            panels.rates,
-            {
-                label: referenceOverlay.rates.label,
-                curveKey: family.scenarioClass === 'buckley-leverett' ? 'water-cut-reference' : 'oil-rate-reference',
-                toggleLabel: referenceOverlay.rates.label,
+        if (allSameAnalytical) {
+            // Shared reference — one curve for all (analytical is grid/timestep-independent).
+            const refOverlay = buildBuckleyLeverettReference(baseResult, baseDerived, input.xAxisMode);
+            if (refOverlay.rates) {
+                appendSeries(panels.rates, {
+                    label: 'Reference Solution Water Cut',
+                    curveKey: 'water-cut-reference',
+                    toggleLabel: 'Reference Solution Water Cut',
+                    color: referenceColor,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.rates.values);
+            }
+            if (refOverlay.cumulative) {
+                appendSeries(panels.cumulative, {
+                    label: 'Reference Solution Recovery',
+                    curveKey: 'recovery-factor',
+                    toggleLabel: 'Reference Solution Recovery',
+                    color: referenceColor,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y1',
+                }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                appendSeries(panels.cumulative, {
+                    label: 'Reference Solution Cum Oil',
+                    curveKey: 'cum-oil-reference',
+                    toggleLabel: 'Reference Solution Cum Oil',
+                    color: referenceColor,
+                    borderWidth: 1.4,
+                    borderDash: [3, 5],
+                    yAxisID: 'y',
+                    defaultVisible: false,
+                }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
+            }
+        } else {
+            // Per-result analytical — viscosity/rel-perm differ so each result gets
+            // its own analytical curve in the same color as its simulation (dashed).
+            orderedResults.forEach((result, index) => {
+                const derived = derivedByKey.get(result.key);
+                if (!derived) return;
+                const color = getReferenceComparisonCaseColor(index);
+                const refOverlay = buildBuckleyLeverettReference(result, derived, input.xAxisMode);
+                if (refOverlay.rates) {
+                    appendSeries(panels.rates, {
+                        label: `${result.label} — Reference`,
+                        curveKey: 'water-cut-reference',
+                        caseKey: result.key,
+                        toggleLabel: 'Reference Water Cut',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.rates.values);
+                }
+                if (refOverlay.cumulative) {
+                    appendSeries(panels.cumulative, {
+                        label: `${result.label} — Reference Recovery`,
+                        curveKey: 'recovery-factor',
+                        caseKey: result.key,
+                        toggleLabel: 'Reference Recovery',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y1',
+                    }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                }
+            });
+        }
+    } else {
+        // Depletion: single shared reference from base result.
+        const refOverlay = buildDepletionReference(baseResult, baseDerived, input.xAxisMode);
+        if (refOverlay.rates) {
+            appendSeries(panels.rates, {
+                label: refOverlay.rates.label,
+                curveKey: 'oil-rate-reference',
+                toggleLabel: refOverlay.rates.label,
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            },
-            referenceOverlay.xValues,
-            referenceOverlay.rates.values,
-        );
-    }
-
-    if (referenceOverlay.cumulative) {
-        appendSeries(
-            panels.cumulative,
-            {
-                label: referenceOverlay.cumulative.recoveryLabel,
+            }, refOverlay.xValues, refOverlay.rates.values);
+        }
+        if (refOverlay.cumulative) {
+            appendSeries(panels.cumulative, {
+                label: refOverlay.cumulative.recoveryLabel,
                 curveKey: 'recovery-factor',
-                toggleLabel: 'Recovery Factor',
+                toggleLabel: 'Reference Solution Recovery',
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y1',
-            },
-            referenceOverlay.xValues,
-            referenceOverlay.cumulative.recoveryValues,
-        );
-        appendSeries(
-            panels.cumulative,
-            {
-                label: referenceOverlay.cumulative.cumulativeLabel,
+            }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+            appendSeries(panels.cumulative, {
+                label: refOverlay.cumulative.cumulativeLabel,
                 curveKey: 'cum-oil-reference',
-                toggleLabel: referenceOverlay.cumulative.cumulativeLabel,
+                toggleLabel: refOverlay.cumulative.cumulativeLabel,
                 color: referenceColor,
                 borderWidth: 1.4,
                 borderDash: [3, 5],
                 yAxisID: 'y',
                 defaultVisible: false,
-            },
-            referenceOverlay.xValues,
-            referenceOverlay.cumulative.cumulativeValues,
-        );
-    }
-
-    if (referenceOverlay.diagnostics) {
-        appendSeries(
-            panels.diagnostics,
-            {
-                label: referenceOverlay.diagnostics.label,
+            }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
+        }
+        if (refOverlay.diagnostics) {
+            appendSeries(panels.diagnostics, {
+                label: refOverlay.diagnostics.label,
                 curveKey: 'avg-pressure-reference',
-                toggleLabel: referenceOverlay.diagnostics.label,
+                toggleLabel: refOverlay.diagnostics.label,
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            },
-            referenceOverlay.xValues,
-            referenceOverlay.diagnostics.values,
-        );
+            }, refOverlay.xValues, refOverlay.diagnostics.values);
+        }
     }
 
     return { orderedResults, panels };

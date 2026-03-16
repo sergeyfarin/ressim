@@ -28,11 +28,13 @@
         family = null,
         layoutConfig = {},
         theme = 'dark',
+        analyticalPerVariant = false,
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
         layoutConfig?: RateChartLayoutConfig;
         theme?: 'dark' | 'light';
+        analyticalPerVariant?: boolean;
     } = $props();
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
@@ -67,6 +69,7 @@
             results,
             xAxisMode,
             theme,
+            analyticalPerVariant,
         }),
     );
     const visibleResults = $derived.by(() => {

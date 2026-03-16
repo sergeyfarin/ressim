@@ -37,6 +37,15 @@
     let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
     const activeReferenceFamily = $derived(scenario.activeScenarioAsFamily ?? scenario.activeReferenceFamily);
+    // True when any active sensitivity variant is declared to affect the analytical solution.
+    // Drives per-result vs shared analytical curve rendering in the comparison chart.
+    const analyticalPerVariant = $derived.by(() => {
+        const sc = scenario.activeScenarioObject;
+        if (!sc?.sensitivity) return false;
+        return sc.sensitivity.variants
+            .filter((v) => scenario.activeVariantKeys.includes(v.key))
+            .some((v) => v.affectsAnalytical);
+    });
     const activeReferenceResults = $derived.by(() => {
         const familyKey = activeReferenceFamily?.key ?? null;
         if (!familyKey) return [];
@@ -473,6 +482,7 @@
                             results={activeReferenceResults}
                             family={activeReferenceFamily}
                             layoutConfig={activeRateChartLayoutConfig}
+                            {analyticalPerVariant}
                             {theme}
                         />
                     {:else if RateChartComponent}
