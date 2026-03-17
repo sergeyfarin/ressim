@@ -3,7 +3,6 @@
   import Input from "../controls/Input.svelte";
   import Select from "../controls/Select.svelte";
   import {
-    panelBodyClass,
     panelTableClass,
     panelTableHeadClass,
     panelTableShellClass,
@@ -90,15 +89,10 @@
 </script>
 
 <Collapsible title="Reservoir Properties" {hasError}>
-  <div class={panelBodyClass}>
-    <div class="flex justify-between items-center mb-2">
-      <p class="text-xs font-medium text-muted-foreground"></p>
-      <p class="text-xs font-medium text-muted-foreground">
-        {groupSummary}
-      </p>
-    </div>
+  <div class="space-y-2 p-3">
+    <p class="text-[11px] text-muted-foreground">{groupSummary}</p>
 
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+    <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
       <label class="flex flex-col gap-1.5">
         <span class="text-[11px] font-medium">Pressure (bar)</span>
         <Input
@@ -161,7 +155,7 @@
       </label>
     </div>
 
-    <div class={`${panelTableShellClass} mt-2 mb-2`}>
+    <div class={panelTableShellClass}>
       <table class={panelTableClass}>
         <thead class={panelTableHeadClass}>
           <tr>
@@ -303,7 +297,7 @@
       </table>
     </div>
 
-    <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
+    <label class="flex items-center gap-2 cursor-pointer">
       <input
         type="checkbox"
         class="h-4 w-4 rounded border-input text-primary accent-primary"
@@ -312,7 +306,7 @@
       <span class="text-sm font-medium leading-none">Enable Gravity</span>
     </label>
 
-    <label class="flex flex-col gap-1.5 mt-2">
+    <label class="flex flex-col gap-1.5">
       <span class="text-xs font-medium">Permeability Mode</span>
       <Select
         class="w-full"
@@ -325,7 +319,7 @@
       </Select>
     </label>
 
-    <div class="mt-2">
+    <div>
       {#if permMode === "uniform"}
         <div class="grid grid-cols-3 gap-2">
           <label class="flex flex-col gap-1.5">

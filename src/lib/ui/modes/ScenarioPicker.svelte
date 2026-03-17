@@ -124,8 +124,13 @@
   {#if !isCustom && activeScenario}
     <!-- ── Concise parameter summary ── -->
     <div class="border-t border-border/50 px-3 py-2">
-      <p class="ui-microcopy text-muted-foreground">{activeScenario.description}</p>
-      <p class="ui-microcopy mt-1 font-mono text-muted-foreground/70">
+      <div class="flex items-start justify-between gap-2">
+        <p class="ui-microcopy text-muted-foreground">{activeScenario.description}</p>
+        <Button size="sm" variant="ghost" onclick={handleEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
+          Customize →
+        </Button>
+      </div>
+      <p class="ui-microcopy mt-0.5 font-mono text-muted-foreground/70">
         {formatParamSummary(activeScenario)}
       </p>
     </div>
@@ -162,12 +167,6 @@
       </div>
     {/if}
 
-    <!-- ── Customize action ── -->
-    <div class="border-t border-border/50 px-3 py-2">
-      <Button size="sm" variant="outline" onclick={handleEnterCustomMode}>
-        Customize →
-      </Button>
-    </div>
   {/if}
 
   {#if isCustom}

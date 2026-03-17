@@ -3,7 +3,6 @@
   import Input from "../controls/Input.svelte";
   import Select from "../controls/Select.svelte";
   import {
-    panelBodyClass,
     panelTableClass,
     panelTableHeadClass,
     panelTableShellClass,
@@ -67,15 +66,10 @@
 </script>
 
 <Collapsible title="Well Controls" {hasError}>
-  <div class={panelBodyClass}>
-    <div class="flex justify-between items-center mb-2">
-      <p class="text-xs font-medium text-muted-foreground">
-        Well geometry and XY wellhead locations across all layers.
-      </p>
-      <p class="text-xs text-muted-foreground font-medium">{groupSummary}</p>
-    </div>
+  <div class="space-y-2 p-3">
+    <p class="text-[11px] text-muted-foreground">{groupSummary}</p>
 
-    <div class="grid grid-cols-2 gap-2 mt-2">
+    <div class="grid grid-cols-2 gap-2">
       <label class="flex flex-col gap-1.5">
         <span class="text-xs font-medium">Well Radius (m)</span>
         <Input
@@ -97,17 +91,15 @@
       </label>
     </div>
 
-    <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
+    <label class="flex items-center gap-2 cursor-pointer">
       <input
         type="checkbox"
         class="h-4 w-4 rounded border-input text-primary accent-primary"
         bind:checked={injectorEnabled}
       />
-      <span class="text-sm font-medium leading-none"
-        >Enable Injector <span class="text-muted-foreground font-normal"
-          >(disable for depletion case)</span
-        ></span
-      >
+      <span class="text-sm font-medium leading-none">
+        Enable Injector <span class="text-muted-foreground font-normal">(disable for depletion)</span>
+      </span>
     </label>
 
     <div class={panelTableShellClass}>

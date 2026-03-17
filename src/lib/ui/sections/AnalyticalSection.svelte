@@ -2,7 +2,6 @@
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
   import Select from "../controls/Select.svelte";
-  import { panelBodyClass } from "../shared/panelStyles";
 
   let {
     analyticalSolutionMode = $bindable<"waterflood" | "depletion">(
@@ -16,20 +15,11 @@
     onAnalyticalSolutionModeChange?: (mode: "waterflood" | "depletion") => void;
   } = $props();
 
-  const modeLabel = $derived(
-    analyticalSolutionMode === "depletion" ? "Depletion" : "Buckley-Leverett",
-  );
-  const summary = $derived(
-    analyticalSolutionMode === "depletion"
-      ? `Reference=${modeLabel} · Rate scale=${analyticalDepletionRateScale.toFixed(2)}`
-      : `Reference=${modeLabel}`,
-  );
 </script>
 
 <Collapsible title="Reference Inputs">
-  <div class={panelBodyClass}>
-    <div class="text-xs opacity-70 mb-2">{summary}</div>
-    <div class="grid grid-cols-2 gap-2 items-end mb-2">
+  <div class="space-y-2 p-3">
+    <div class="grid grid-cols-2 gap-2 items-end">
       <label class="flex flex-col gap-1.5">
         <span class="text-xs font-medium">Reference Solution</span>
         <Select
@@ -57,7 +47,7 @@
     </div>
 
     {#if analyticalSolutionMode === "depletion"}
-      <div class="text-[11px] text-muted-foreground mt-2">
+      <div class="text-[11px] text-muted-foreground">
         Pseudo-steady-state depletion: q(t)&nbsp;=&nbsp;J_oil·ΔP·exp(−t/τ),
         τ&nbsp;=&nbsp;V_pore·c_t/J_oil. J_oil is computed from the Peaceman well
         model using reservoir/well parameters. Rate scale multiplies J_oil for

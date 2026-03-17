@@ -2,7 +2,6 @@
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
   import {
-    panelBodyClass,
     panelInsetCardClass,
     panelTableClass,
     panelTableHeadClass,
@@ -170,10 +169,8 @@
 </script>
 
 <Collapsible title="Relative Permeability + Capillary" {hasError}>
-  <div class={panelBodyClass}>
-    <div class="text-[11px] text-muted-foreground font-medium mb-2">
-      {groupSummary}
-    </div>
+  <div class="space-y-2 p-3">
+    <p class="text-[11px] text-muted-foreground">{groupSummary}</p>
 
     <div class={panelTableShellClass}>
       <table class={panelTableClass}>
@@ -266,18 +263,16 @@
       </div>
     {/if}
 
-    <label class="flex items-center gap-2 cursor-pointer mt-3 mb-2">
+    <label class="flex items-center gap-2 cursor-pointer">
       <input
         type="checkbox"
         class="h-4 w-4 rounded border-input text-primary accent-primary"
         bind:checked={capillaryEnabled}
       />
-      <span class="text-sm font-medium leading-none"
-        >Enable Capillary Pressure</span
-      >
+      <span class="text-sm font-medium leading-none">Enable Capillary Pressure</span>
     </label>
 
-    <div class={`${panelTableShellClass} mb-2`} class:opacity-50={!capillaryEnabled}>
+    <div class={panelTableShellClass} class:opacity-50={!capillaryEnabled}>
       <table class={panelTableClass}>
         <thead class={panelTableHeadClass}>
           <tr>

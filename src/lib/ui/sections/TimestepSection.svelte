@@ -2,7 +2,6 @@
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
   import {
-    panelBodyClass,
     panelTableClass,
     panelTableHeadClass,
     panelTableShellClass,
@@ -37,14 +36,9 @@
 </script>
 
 <Collapsible title="Timestep Controls" {hasError}>
-  <div class={panelBodyClass}>
-    <div class="flex justify-between items-center mb-2">
-      <p class="text-xs font-medium text-muted-foreground">
-        Adjust timestep and run-size settings.
-      </p>
-      <p class="text-xs text-muted-foreground font-medium">{groupSummary}</p>
-    </div>
-    <div class={`${panelTableShellClass} mt-2`}>
+  <div class="space-y-2 p-3">
+    <p class="text-[11px] text-muted-foreground">{groupSummary}</p>
+    <div class={panelTableShellClass}>
       <table class={panelTableClass}>
         <thead class={panelTableHeadClass}>
           <tr>
