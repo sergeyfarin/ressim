@@ -3,6 +3,7 @@
     import FractionalFlow from "./lib/analytical/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/analytical/DepletionAnalytical.svelte";
     import ReferenceResultsCard from "./lib/ui/cards/ReferenceResultsCard.svelte";
+    import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
@@ -161,6 +162,12 @@
     const output3DSourceLabel = $derived.by(() => (
         activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
     ));
+    const activeRunManifest = $derived.by(() => ({
+        referencePolicySummary: scenario.activeLibraryEntry?.referencePolicySummary ?? null,
+        referenceProvenance: scenario.referenceProvenance,
+        referenceFamily: scenario.activeReferenceFamily ?? null,
+    }));
+
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (scenario.activeScenarioObject) {
             return getChartPreset(scenario.activeScenarioObject.chartPreset);
@@ -406,9 +413,15 @@
             disabledOptions={scenario.disabledOptions}
             validationErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
+            basePreset={scenario.basePreset}
+            navigationState={scenario.navigationState}
+            referenceProvenance={scenario.referenceProvenance}
+            referenceSweepRunning={runtime.referenceSweepRunning}
             onSelectScenario={scenario.selectScenario}
             onToggleVariant={scenario.toggleScenarioVariant}
             onEnterCustomMode={scenario.enterCustomMode}
+            onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}
+            onActivateLibraryEntry={scenario.activateLibraryEntry}
             onToggleChange={scenario.handleToggleChange}
             onParamEdit={scenario.handleParamEdit}
         />
@@ -438,6 +451,19 @@
         {#if runtime.referenceSweepError}
             <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {runtime.referenceSweepError}
+            </div>
+        {/if}
+
+        {#if scenario.activeReferenceFamily?.key}
+            <div class="space-y-1">
+                <div class="ui-section-kicker">Reference Run Status</div>
+                <ReferenceExecutionCard
+                    referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
+                    isModified={scenario.isModified}
+                    referenceSweepRunning={runtime.referenceSweepRunning}
+                    onRunReferenceSelection={runtime.runActiveReferenceSelection}
+                    onStopReferenceSweep={runtime.stopReferenceSweep}
+                />
             </div>
         {/if}
         </section>

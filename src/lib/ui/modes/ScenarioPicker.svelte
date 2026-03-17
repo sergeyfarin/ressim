@@ -7,6 +7,11 @@
   import type { CaseMode, ToggleState } from "../../catalog/caseCatalog";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
   import type { WarningPolicy } from "../../warningPolicy";
+  import type {
+    BasePresetProfile,
+    ScenarioNavigationState,
+    ReferenceProvenance,
+  } from "../../stores/phase2PresetContract";
 
   let {
     activeScenarioKey = null,
@@ -18,9 +23,15 @@
     disabledOptions,
     validationErrors = {},
     warningPolicy = undefined,
+    basePreset = null,
+    navigationState = null,
+    referenceProvenance = null,
+    referenceSweepRunning = false,
     onSelectScenario = () => {},
     onToggleVariant = () => {},
     onEnterCustomMode = () => {},
+    onCloneReferenceToCustom = () => {},
+    onActivateLibraryEntry = () => false,
     onToggleChange = () => {},
     onParamEdit = () => {},
   }: {
@@ -33,9 +44,15 @@
     disabledOptions: Record<string, Record<string, string>>;
     validationErrors?: Record<string, string>;
     warningPolicy?: WarningPolicy;
+    basePreset?: BasePresetProfile | null;
+    navigationState?: ScenarioNavigationState | null;
+    referenceProvenance?: ReferenceProvenance | null;
+    referenceSweepRunning?: boolean;
     onSelectScenario?: (key: string) => void;
     onToggleVariant?: (variantKey: string) => void;
     onEnterCustomMode?: () => void;
+    onCloneReferenceToCustom?: () => void;
+    onActivateLibraryEntry?: (entryKey: string) => boolean;
     onToggleChange?: (key: string, value: string) => void;
     onParamEdit?: () => void;
   } = $props();

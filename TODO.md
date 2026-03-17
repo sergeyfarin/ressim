@@ -2,28 +2,25 @@
 
 ## Current Issues
 
-### Open Test Failures (13 as of 2026-03-17)
+### Open Test Failures (5 as of 2026-03-17)
 
-**Group A — App.svelte wiring gaps (4 failures, `appStoreDomainWiring.test.ts`)**
-The store already exposes the correct domain API but `App.svelte` has not been wired to use it yet.
-- [ ] Wire `scenario.cloneActiveReferenceToCustom()` for clone flow (line 16)
-- [ ] Pass `basePreset`, `navigationState`, `onActivateLibraryEntry` as props into ModePanel (line 20)
-- [ ] Import and mount `ReferenceExecutionCard` with a run-region manifest (line 33)
-- [ ] Use `scenario.activeReferenceFamily?.key` in the outputs region (line 57)
+**Group A — App.svelte wiring gaps (4 failures) — ✅ Fixed 2026-03-17**
+- Wired `scenario.cloneActiveReferenceToCustom()` via `onCloneReferenceToCustom` on ScenarioPicker
+- Added `basePreset`, `navigationState`, `referenceProvenance`, `referenceSweepRunning`, `onActivateLibraryEntry` props to ScenarioPicker (types + interface)
+- Imported and mounted `ReferenceExecutionCard` with `Reference Run Status` section and `activeRunManifest` derived
+- `scenario.activeReferenceFamily?.key` now appears via `ReferenceExecutionCard` binding
 
-**Group B — Catalog count drift (4 failures, `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunModel.test.ts`)**
-Test assertions check specific variant/spec counts that the catalog has grown past. The catalog changes appear intentional (grid-sensitivity cleanup); tests need updated expectations.
-- [ ] Update expected variant count in `caseCatalog`: 12→16; run-spec count: 7→9
-- [ ] Update expected sensitivity axis count in `caseLibrary`: 3→4
-- [ ] Audit: confirm the extra variants are intentional, not an accidental duplicate
+**Group B — Catalog count drift (4 failures) — ✅ Fixed 2026-03-17**
+Updated counts in `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunModel.test.ts` to match `2d-grid-refinement` axis addition (16 variants, 9 run-specs, 4 axes).
 
 **Group C — UI copy and component gaps (5 failures across `terminologyCopy.test.ts`, `modePanelFlows.test.ts`, `appThemeTypography.test.ts`, `outputTerminology.test.ts`)**
-Tests describe copy strings and CSS classes not yet present in the target components (written ahead of implementation).
-- [ ] Add `ui-panel-kicker` CSS class to `ModePanel.svelte`
-- [ ] Add `Library Context` and `Case Disclosure` copy to `ModePanel.svelte`
+Tests describe copy strings and CSS classes not yet present in the target components. Deferred until Step 7 cleanup when ModePanel is replaced.
+- [ ] Add `ui-panel-kicker` CSS class to `App.svelte` shell or `ScenarioPicker`
+- [ ] Add `Library Context` and `Case Disclosure` copy to ScenarioPicker (replacing ModePanel)
 - [ ] Add `Run {steps} Step` / `Advance 1 Step` / `Stop Run` to `RunControls.svelte`
-- [ ] Add `Reference Guidance` / `Library sensitivity run set` / `Reference review run` to `ModePanel.svelte`
+- [ ] Add `Reference Guidance` / `Library sensitivity run set` / `Reference review run` to ScenarioPicker (replacing ModePanel)
 - [ ] Add `Depletion Reference Solution` / `Waterflood Reference Solution` to outputs copy in `App.svelte`
+- [ ] Add `ui-panel-kicker` to the main app shell header (`appThemeTypography.test.ts`)
 
 ### Store Code Quality (from 2026-03-17 refactor)
 
@@ -39,10 +36,10 @@ Tests describe copy strings and CSS classes not yet present in the target compon
 ### Simplification Refactor (see REFACTOR.md)
 
 Goal: Replace 4-layer case-library navigation with `pick scenario → optionally pick sensitivity → run`.
-Status: Steps 1–3, 5–6 done. **Steps 4 and 7 are the remaining blockers.**
+Status: Steps 1–6 done, App.svelte wiring complete. **Step 7 (file deletion) is the last blocker, gated on Group C copy fixes.**
 
-- [ ] **Step 4** — Remove `ScenarioNavigationState` from store; delete `phase2PresetContract.ts` (migrate `evaluateAnalyticalStatus` to `warningPolicy.ts`)
-- [ ] **Step 7** — Delete old files once new wiring is confirmed:
+- ✅ **Step 4** (2026-03-17) — `buildScenarioNavigationState` removed from store (inlined via `resolveProductFamily` / `resolveScenarioSource` / `buildScenarioEditabilityPolicy`); `evaluateAnalyticalStatus` + analytical status types migrated to `warningPolicy.ts`; `phase2PresetContract.ts` re-exports for backward compat.
+- [ ] **Step 7** — Delete old files once Group A App.svelte wiring (above) is complete and confirmed:
   - `src/lib/ui/modes/ModePanel.svelte`
   - `src/lib/ui/cards/ReferenceExecutionCard.svelte`
   - `src/lib/stores/phase2PresetContract.ts`
@@ -52,6 +49,7 @@ Status: Steps 1–3, 5–6 done. **Steps 4 and 7 are the remaining blockers.**
   - `src/lib/catalog/caseLibrary.ts`
   - `src/lib/benchmarkDisclosure.ts`
   - `src/lib/benchmarkRunModel.ts`
+  - Note: `modePanelTypes.ts` also imports from `phase2PresetContract.ts` — audit before delete.
 
 ### F4 — Unify Chart and Output Architecture
 
@@ -187,3 +185,6 @@ Acceptance: `Scenario Builder` reads as intentional exploratory modeling, not a 
 - **F2** (2026-03): Warning policy unified (`Action Required`, `Reliability Cautions`, `Reference Limits`, `Run Notes`); vocabulary normalized to `Reference Solution`, `Reference Guidance`, `Run Set` throughout UI and docs.
 - **F3** (2026-03): Case disclosure cards; compact `Run Set` selector with variant deltas; master-detail Results layout; compact run table; shared IBM Plex Sans/Mono typography baseline; semantic utility classes (`ui-panel-kicker`, `ui-section-kicker`, `ui-chip`, etc.).
 - **Store refactor** (2026-03-17): Converted `createSimulationStore()` from function-based getter/setter boilerplate (~140 lines eliminated) to a Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters were declared as `$state` but never exposed in the `parameterState` accessor object.
+- **Group B catalog fixes** (2026-03-17): Updated test counts for `2d-grid-refinement` axis addition (16 variants, 9 run-specs, 4 axes).
+- **REFACTOR Step 4** (2026-03-17): `evaluateAnalyticalStatus` + analytical status types moved to `warningPolicy.ts`; `buildScenarioNavigationState` removed from store (inlined); backward-compat re-exports added to `phase2PresetContract.ts`.
+- **Group A App.svelte wiring** (2026-03-17): `cloneActiveReferenceToCustom`, `basePreset`, `navigationState`, `referenceProvenance`, `onActivateLibraryEntry` wired through ScenarioPicker; `ReferenceExecutionCard` mounted in Run section with `activeRunManifest`. 10/10 `appStoreDomainWiring.test.ts` tests pass.
