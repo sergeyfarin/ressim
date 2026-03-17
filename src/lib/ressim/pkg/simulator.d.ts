@@ -28,6 +28,10 @@ export class ReservoirSimulator {
     getLastSolverWarning(): string;
     getPressures(): Float64Array;
     getRateHistory(): any;
+    /**
+     * Get gas saturation array (zeros when running in 2-phase mode)
+     */
+    getSatGas(): Float64Array;
     getSatOil(): Float64Array;
     getSatWater(): Float64Array;
     getWellState(): any;
@@ -47,7 +51,19 @@ export class ReservoirSimulator {
     setFluidCompressibilities(c_o: number, c_w: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
     setFluidProperties(mu_o: number, mu_w: number): void;
+    /**
+     * Set gas fluid properties for three-phase mode
+     */
+    setGasFluidProperties(mu_g: number, c_g: number, rho_g: number): void;
+    /**
+     * Set gas-oil capillary pressure parameters (Brooks-Corey form)
+     */
+    setGasOilCapillaryParams(p_entry: number, lambda: number): void;
     setGravityEnabled(enabled: boolean): void;
+    /**
+     * Set initial gas saturation for all grid cells (three-phase mode)
+     */
+    setInitialGasSaturation(sat_gas: number): void;
     /**
      * Set initial pressure for all grid cells
      */
@@ -60,6 +76,10 @@ export class ReservoirSimulator {
      * Set initial water saturation per z-layer
      */
     setInitialSaturationPerLayer(sw: Float64Array): void;
+    /**
+     * Set injected fluid type for three-phase mode: "water" or "gas"
+     */
+    setInjectedFluid(fluid: string): void;
     setInjectorEnabled(enabled: boolean): void;
     /**
      * Set permeability per layer
@@ -84,6 +104,14 @@ export class ReservoirSimulator {
      */
     setStabilityParams(max_sat_change_per_step: number, max_pressure_change_per_step: number, max_well_rate_change_fraction: number): void;
     setTargetWellRates(injector_rate_m3_day: number, producer_rate_m3_day: number): void;
+    /**
+     * Enable or disable the three-phase simulation mode
+     */
+    setThreePhaseModeEnabled(enabled: boolean): void;
+    /**
+     * Set three-phase relative permeability parameters (Stone II model)
+     */
+    setThreePhaseRelPermProps(s_wc: number, s_or: number, s_gc: number, s_gr: number, n_w: number, n_o: number, n_g: number, k_rw_max: number, k_ro_max: number, k_rg_max: number): void;
     setWellBhpLimits(bhp_min: number, bhp_max: number): void;
     setWellControlModes(injector_mode: string, producer_mode: string): void;
     /**
@@ -110,6 +138,7 @@ export interface InitOutput {
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
+    readonly reservoirsimulator_getSatGas: (a: number) => [number, number];
     readonly reservoirsimulator_getSatOil: (a: number) => [number, number];
     readonly reservoirsimulator_getSatWater: (a: number) => [number, number];
     readonly reservoirsimulator_getWellState: (a: number) => any;
@@ -121,10 +150,14 @@ export interface InitOutput {
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setGasFluidProperties: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly reservoirsimulator_setGasOilCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
+    readonly reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setInjectedFluid: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInjectorEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
@@ -134,6 +167,8 @@ export interface InitOutput {
     readonly reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
     readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setThreePhaseModeEnabled: (a: number, b: number) => void;
+    readonly reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number];
     readonly reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly reservoirsimulator_step: (a: number, b: number) => void;

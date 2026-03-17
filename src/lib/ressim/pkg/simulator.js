@@ -88,6 +88,16 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
+     * Get gas saturation array (zeros when running in 2-phase mode)
+     * @returns {Float64Array}
+     */
+    getSatGas() {
+        const ret = wasm.reservoirsimulator_getSatGas(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * @returns {Float64Array}
      */
     getSatOil() {
@@ -199,10 +209,40 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * Set gas fluid properties for three-phase mode
+     * @param {number} mu_g
+     * @param {number} c_g
+     * @param {number} rho_g
+     */
+    setGasFluidProperties(mu_g, c_g, rho_g) {
+        const ret = wasm.reservoirsimulator_setGasFluidProperties(this.__wbg_ptr, mu_g, c_g, rho_g);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Set gas-oil capillary pressure parameters (Brooks-Corey form)
+     * @param {number} p_entry
+     * @param {number} lambda
+     */
+    setGasOilCapillaryParams(p_entry, lambda) {
+        const ret = wasm.reservoirsimulator_setGasOilCapillaryParams(this.__wbg_ptr, p_entry, lambda);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {boolean} enabled
      */
     setGravityEnabled(enabled) {
         wasm.reservoirsimulator_setGravityEnabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * Set initial gas saturation for all grid cells (three-phase mode)
+     * @param {number} sat_gas
+     */
+    setInitialGasSaturation(sat_gas) {
+        wasm.reservoirsimulator_setInitialGasSaturation(this.__wbg_ptr, sat_gas);
     }
     /**
      * Set initial pressure for all grid cells
@@ -226,6 +266,18 @@ export class ReservoirSimulator {
         const ptr0 = passArrayF64ToWasm0(sw, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.reservoirsimulator_setInitialSaturationPerLayer(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Set injected fluid type for three-phase mode: "water" or "gas"
+     * @param {string} fluid
+     */
+    setInjectedFluid(fluid) {
+        const ptr0 = passStringToWasm0(fluid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setInjectedFluid(this.__wbg_ptr, ptr0, len0);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -325,6 +377,32 @@ export class ReservoirSimulator {
      */
     setTargetWellRates(injector_rate_m3_day, producer_rate_m3_day) {
         const ret = wasm.reservoirsimulator_setTargetWellRates(this.__wbg_ptr, injector_rate_m3_day, producer_rate_m3_day);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Enable or disable the three-phase simulation mode
+     * @param {boolean} enabled
+     */
+    setThreePhaseModeEnabled(enabled) {
+        wasm.reservoirsimulator_setThreePhaseModeEnabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * Set three-phase relative permeability parameters (Stone II model)
+     * @param {number} s_wc
+     * @param {number} s_or
+     * @param {number} s_gc
+     * @param {number} s_gr
+     * @param {number} n_w
+     * @param {number} n_o
+     * @param {number} n_g
+     * @param {number} k_rw_max
+     * @param {number} k_ro_max
+     * @param {number} k_rg_max
+     */
+    setThreePhaseRelPermProps(s_wc, s_or, s_gc, s_gr, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max) {
+        const ret = wasm.reservoirsimulator_setThreePhaseRelPermProps(this.__wbg_ptr, s_wc, s_or, s_gc, s_gr, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
