@@ -1,7 +1,22 @@
 Out of Scope (Noted, Not Planned)
-Store getter/setter boilerplate in simulationStore.svelte.ts (1691 lines) — functional, out-of-scope for this pass
 analyticalSolutionMode sync logic — low risk, deferred
 Record<string, any> in benchmark/catalog code — acceptable for dynamic catalog structures
+
+## Issues Found During Store Refactor (2026-03-17)
+
+These were discovered while refactoring `simulationStore.svelte.ts` from the getter/setter pattern to a class.
+
+- [x] **Store getter/setter boilerplate** — 140+ lines of `get foo() { return foo; }, set foo(v) { foo = v; }` boilerplate eliminated by converting to a Svelte 5 class. `parameterState`, `scenarioSelection`, `runtimeState` now return `this`.
+
+- [ ] **BUG: Three-phase parameters not exposed in `parameterState`** — `s_gc`, `s_gr`, `n_g`, `k_rg_max`, `pcogEnabled`, `pcogPEntry`, `pcogLambda`, `mu_g`, `c_g`, `rho_g`, `threePhaseModeEnabled`, `injectedFluid`, `initialGasSaturation` were declared as `$state` but never added to the `parameterState` accessor object (likely added in the three-phase feature commit and the boilerplate was never updated). UI components bound to `params.xxx` for these fields were silently reading `undefined`. Fixed automatically by the class refactor — all `$state` fields are now uniformly accessible.
+
+- [ ] **FRAGILE: `applyCaseParams` uses `||` fallback for numeric params** — expressions like `injectorBhp = Number(resolved.injectorBhp) || 400` silently fall back to the default when a param is explicitly set to `0`. For BHP and rate values this is unlikely but possible. Should use `Number.isFinite(v) ? v : default` pattern. Affects: `injectorBhp`, `producerBhp`, `targetInjectorRate`, `targetProducerRate`, and any other numeric param where 0 is a valid physical value.
+
+- [ ] **SMELL: `activeReferenceFamily` is a dead alias** — `scenarioSelection` exposed both `activeReferenceBenchmarkFamily` and `activeReferenceFamily` returning the same value. Kept for now as `get activeReferenceFamily()` on the class but should audit callers and consolidate to one name.
+
+- [ ] **OPTIMIZATION: `simWorker` and `playTimer` are `$state` unnecessarily** — neither is read in any reactive expression or template; making them `$state` adds signal overhead for no benefit. Should be plain class fields (`simWorker: Worker | null = null`).
+
+- [ ] **SMELL: Redundant `Number()` / `Boolean()` casts in `buildModelResetKey()`** — all fields are already correctly typed `$state` variables; wrapping every value in `Number(this.nx)` etc. is cargo-cult defensive coding. Can be removed.
 
 
 # TODO — ResSim Frontend Execution Plan
