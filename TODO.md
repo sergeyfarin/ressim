@@ -2,6 +2,50 @@ Out of Scope (Noted, Not Planned)
 analyticalSolutionMode sync logic — low risk, deferred
 Record<string, any> in benchmark/catalog code — acceptable for dynamic catalog structures
 
+## Pre-existing Test Failures Analysis (2026-03-17)
+
+13 failures across 8 test files. All pre-date the store refactor. Grouped by root cause:
+
+### A — App.svelte wiring gaps (4 failures in `appStoreDomainWiring.test.ts`)
+
+Tests describe a **target state that hasn't been implemented** in `App.svelte`. The store contract and store-side APIs exist, but App.svelte hasn't been wired up to them yet.
+
+- [ ] `scenario.cloneActiveReferenceToCustom()` — clone flow not routed via domain API in App.svelte (line 16)
+- [ ] `basePreset={scenario.basePreset}` / `navigationState` / `onActivateLibraryEntry` — preset-customize domain state not passed into `ModePanel` (line 20–21)
+- [ ] `import ReferenceExecutionCard` / `onRunReferenceSelection` / `activeRunManifest` — run-region manifest and `ReferenceExecutionCard` not present in App.svelte (line 33)
+- [ ] `scenario.activeReferenceFamily?.key` — reference family key not used in outputs region (line 57)
+
+**Fix direction:** Wire App.svelte to match the domain API the store already exposes. These are F1.4–F1.6 acceptance tests. Likely most of the real implementation work is in App.svelte restructuring.
+
+---
+
+### B — Catalog count drift (4 failures across `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunModel.test.ts`)
+
+Tests assert **specific variant/spec counts** that have drifted from the current catalog state. The catalog was extended (grid-sensitivity cleanup per resume notes) but test expectations weren't updated.
+
+- [ ] `caseCatalog.test.ts` "generates BL sensitivity variants" — expects 12 variants, got 16 (line 85)
+- [ ] `caseCatalog.test.ts` "defines benchmark families with explicit ownership metadata" — shape mismatch on `bl_case_a_refined` (line 181)
+- [ ] `caseLibrary.test.ts` "normalizes BL references into waterflood library entries" — expects 3 sensitivity axes, got 4 (line 41)
+- [ ] `benchmarkRunModel.test.ts` "builds deterministic base-plus-variant run specs for BL families" — expects 7 run specs, got 9 (line 81)
+
+**Fix direction:** Either (a) update the test expectations to match the current catalog (if the catalog changes were intentional), or (b) audit whether the catalog added variants it shouldn't have. The resume note "the BL refined grid-sensitivity catalog no longer includes a duplicate-base grid variant" suggests the catalog change was intentional — test counts just weren't updated.
+
+---
+
+### C — UI copy and component gaps (5 failures across `terminologyCopy.test.ts`, `modePanelFlows.test.ts`, `appThemeTypography.test.ts`, `outputTerminology.test.ts`)
+
+Tests describe **copy strings, CSS class names, and component features** that don't exist yet in the target UI files. These are tests written ahead of implementation.
+
+- [ ] `appThemeTypography.test.ts` — `ui-panel-kicker` CSS class missing from `ModePanel.svelte` (line 37). Tied to the semantic typography utility rollout (F3 typography slice).
+- [ ] `modePanelFlows.test.ts` — `Library Context` and `Case Disclosure` copy missing from `ModePanel.svelte` (line 22–23). Tied to F1.5 case disclosure block.
+- [ ] `terminologyCopy.test.ts` — `Run {steps} Step` / `Advance 1 Step` / `Stop Run` missing from `RunControls.svelte` (line 15–17). Tied to F2 run-controls copy normalization.
+- [ ] `terminologyCopy.test.ts` — `Reference Guidance` / `Library sensitivity run set` / `Reference review run` missing from `ModePanel.svelte` (line 51–53). Tied to F2/F3 reference-guidance copy.
+- [ ] `outputTerminology.test.ts` — `Depletion Reference Solution` / `Waterflood Reference Solution` missing from App.svelte (line 46–47). Tied to F2 output terminology in the reference comparison surface.
+
+**Fix direction:** Implement the missing copy/classes in the target components. Each failure maps to an F2 or F3 slice that is marked complete in the resume notes but apparently wasn't fully applied to these specific files.
+
+---
+
 ## Issues Found During Store Refactor (2026-03-17)
 
 These were discovered while refactoring `simulationStore.svelte.ts` from the getter/setter pattern to a class.
