@@ -38,20 +38,21 @@ import {
     type ValidationState as InputValidationState,
     type ValidationWarning,
 } from '../validateInputs';
-import { buildWarningPolicy } from '../warningPolicy';
+import { buildWarningPolicy, evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
 import { getScenario, getScenarioWithVariantParams } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
     buildComparisonSelection,
-    buildScenarioNavigationState,
     buildOverrideResetPlan,
     buildParameterOverrides,
-    evaluateAnalyticalStatus,
     groupParameterOverrides,
     shouldAllowReferenceClone,
     shouldAutoClearModifiedState,
-    type AnalyticalStatus,
+    resolveProductFamily,
+    resolveScenarioSource,
+    buildScenarioEditabilityPolicy,
+    type ScenarioNavigationState,
     type ReferenceProvenance,
     type ComparisonSelection,
 } from './phase2PresetContract';
@@ -393,23 +394,31 @@ class SimulationStoreImpl {
         });
     });
 
-    navigationState = $derived.by(() => {
+    navigationState = $derived.by((): ScenarioNavigationState => {
         const benchmarkId = this.activeReferenceBenchmarkFamily?.key ?? null;
+        const activeSource = resolveScenarioSource({ isModified: this.isModified });
+        const activeLibraryGroup = activeSource === 'custom' ? null : (this.activeLibraryEntry?.group ?? null);
 
-        return buildScenarioNavigationState({
-            activeMode: this.activeMode,
-            isModified: this.isModified,
-            activeCaseKey: this.activeCase,
-            activeLibraryCaseKey: this.activeLibraryEntry?.key ?? null,
-            activeLibraryFamily: this.activeNavigationLibraryEntry?.family ?? null,
-            activeLibraryGroup: this.activeLibraryEntry?.group ?? null,
-            sourceLabel: this.activeLibraryEntry?.sourceLabel ?? null,
-            referenceSourceLabel: this.activeLibraryEntry?.referenceSourceLabel ?? null,
-            provenanceSummary: this.activeLibraryEntry?.provenanceSummary ?? null,
-            benchmarkId,
-            benchmarkScenarioClass: this.activeReferenceBenchmarkFamily?.scenarioClass ?? null,
-            activeComparisonSelection: this.activeComparisonSelection,
-        });
+        return {
+            activeFamily: resolveProductFamily({
+                activeMode: this.activeMode,
+                activeLibraryFamily: this.activeNavigationLibraryEntry?.family ?? null,
+                benchmarkScenarioClass: this.activeReferenceBenchmarkFamily?.scenarioClass ?? null,
+                benchmarkId,
+            }),
+            activeSource,
+            activeLibraryCaseKey: activeSource === 'custom' ? null : (this.activeLibraryEntry?.key ?? null),
+            activeLibraryGroup,
+            sourceLabel: activeSource === 'custom' ? null : (this.activeLibraryEntry?.sourceLabel ?? null),
+            referenceSourceLabel: activeSource === 'custom' ? null : (this.activeLibraryEntry?.referenceSourceLabel ?? null),
+            provenanceSummary: activeSource === 'custom' ? null : (this.activeLibraryEntry?.provenanceSummary ?? null),
+            activeComparisonSelection: buildComparisonSelection(this.activeComparisonSelection),
+            editabilityPolicy: buildScenarioEditabilityPolicy({
+                activeMode: this.activeMode,
+                caseSource: activeSource,
+                activeLibraryGroup,
+            }),
+        };
     });
 
     parameterOverrides = $derived.by(() => {

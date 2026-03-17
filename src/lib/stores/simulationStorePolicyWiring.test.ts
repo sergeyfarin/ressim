@@ -40,7 +40,9 @@ describe('simulation store policy wiring', () => {
   });
 
   it('exposes compatibility navigation state alongside legacy mode state', () => {
-    expect(storeSource).toMatch(/buildScenarioNavigationState/);
+    expect(storeSource).not.toMatch(/buildScenarioNavigationState/);
+    expect(storeSource).toMatch(/resolveProductFamily/);
+    expect(storeSource).toMatch(/resolveScenarioSource/);
     expect(storeSource).toMatch(/resolveCaseLibraryEntryFromScenario/);
     expect(storeSource).toMatch(/get activeFamily\(\) \{ return this\.navigationState\.activeFamily; \}/);
     expect(storeSource).toMatch(/get activeSource\(\) \{ return this\.navigationState\.activeSource; \}/);

@@ -82,16 +82,18 @@ describe('caseCatalog Dynamic Catalog', () => {
     const caseBVariants = getBenchmarkVariantsForFamily('bl_case_b_refined');
     const depletionVariants = getBenchmarkVariantsForFamily('dietz_sq_center');
 
-    expect(benchmarkVariants).toHaveLength(12);
+    expect(benchmarkVariants).toHaveLength(16);
     expect(caseAVariants.map((variant) => variant.variantKey)).toEqual([
       'grid_24',
       'grid_48',
+      'grid_2',
+      'grid_3',
       'dt_0_25',
       'dt_0_50',
       'heterogeneity_mild_random',
       'heterogeneity_strong_random',
     ]);
-    expect(caseBVariants).toHaveLength(6);
+    expect(caseBVariants).toHaveLength(8);
     expect(depletionVariants).toEqual([]);
     expect(catalog.benchmarkVariants).toEqual(benchmarkVariants);
     expect(benchmarkCases.map((entry) => entry.key)).toEqual([
@@ -203,7 +205,7 @@ describe('caseCatalog Dynamic Catalog', () => {
         separatePressurePanel: true,
       },
       runPolicy: 'compare-to-reference',
-      sensitivityAxes: ['grid-refinement', 'timestep-refinement', 'heterogeneity'],
+      sensitivityAxes: ['grid-refinement', '2d-grid-refinement', 'timestep-refinement', 'heterogeneity'],
     });
     expect(caseA?.baseCase.key).toBe('bl_case_a_refined');
     expect(caseA?.label).toBe(caseA?.baseCase.label);

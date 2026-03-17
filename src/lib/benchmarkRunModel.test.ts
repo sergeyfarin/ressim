@@ -78,7 +78,7 @@ describe('benchmarkRunModel', () => {
         expect(family).not.toBeNull();
         const specs = buildBenchmarkRunSpecs(family!, variants);
 
-        expect(specs).toHaveLength(7);
+        expect(specs).toHaveLength(9);
         expect(specs[0]).toMatchObject({
             familyKey: 'bl_case_a_refined',
             variantKey: null,

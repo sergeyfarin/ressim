@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildWarningPolicy } from "./warningPolicy";
-import type { AnalyticalStatus } from "./stores/phase2PresetContract";
+import type { AnalyticalStatus } from "./warningPolicy";
 
 const referenceStatus: AnalyticalStatus = {
   level: "reference",

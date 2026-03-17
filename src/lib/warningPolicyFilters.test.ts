@@ -4,7 +4,7 @@ import {
   getWarningPolicyGroup,
   getWarningPolicyGroups,
 } from "./warningPolicy";
-import type { AnalyticalStatus } from "./stores/phase2PresetContract";
+import type { AnalyticalStatus } from "./warningPolicy";
 
 const referenceStatus: AnalyticalStatus = {
   level: "reference",

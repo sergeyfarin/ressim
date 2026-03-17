@@ -40,6 +40,7 @@ describe('caseLibrary adapter', () => {
         expect(caseA?.provenanceSummary).toContain('Homogeneous Rust-parity Buckley-Leverett family');
         expect(caseA?.sensitivityAxes.map((axis) => axis.key)).toEqual([
             'grid-refinement',
+            '2d-grid-refinement',
             'timestep-refinement',
             'heterogeneity',
         ]);

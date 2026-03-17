@@ -1,7 +1,4 @@
-import type {
-  AnalyticalStatus,
-  AnalyticalStatusReason,
-} from "./stores/phase2PresetContract";
+import type { CaseMode, ToggleState } from "./catalog/caseCatalog";
 import type { ValidationWarning } from "./validateInputs";
 
 export type WarningPolicyGroupKey =
@@ -142,6 +139,181 @@ export function getWarningPolicyGroups(
     .map((key) => getWarningPolicyGroup(policy, key, groupSources[key]))
     .filter((group) => group.items.length > 0);
 }
+
+// ---------- Analytical Status ----------
+
+export type AnalyticalStatusLevel = 'reference' | 'approximate' | 'off';
+
+export type AnalyticalStatusMode = 'waterflood' | 'depletion' | 'none';
+
+export type AnalyticalReasonSeverity = 'notice' | 'warning' | 'critical';
+
+export type AnalyticalStatusWarningSeverity = 'none' | AnalyticalReasonSeverity;
+
+export type AnalyticalStatusReason = {
+  code: string;
+  message: string;
+  severity: AnalyticalReasonSeverity;
+};
+
+export type AnalyticalStatus = {
+  level: AnalyticalStatusLevel;
+  mode: AnalyticalStatusMode;
+  warningSeverity: AnalyticalStatusWarningSeverity;
+  reasonDetails: AnalyticalStatusReason[];
+  reasons: string[];
+};
+
+export type AnalyticalStatusInput = {
+  activeMode: CaseMode;
+  analyticalMode: AnalyticalStatusMode;
+  injectorEnabled: boolean;
+  gravityEnabled: boolean;
+  capillaryEnabled: boolean;
+  permMode: 'uniform' | 'random' | 'perLayer';
+  toggles: ToggleState;
+};
+
+const ANALYTICAL_SEVERITY_RANK: Record<AnalyticalStatusWarningSeverity, number> = {
+  none: 0,
+  notice: 1,
+  warning: 2,
+  critical: 3,
+};
+
+function maxAnalyticalSeverity(
+  reasons: readonly AnalyticalStatusReason[],
+): AnalyticalStatusWarningSeverity {
+  if (!reasons.length) return 'none';
+  let max: AnalyticalStatusWarningSeverity = 'none';
+  for (const reason of reasons) {
+    const severity = reason.severity;
+    if (ANALYTICAL_SEVERITY_RANK[severity] > ANALYTICAL_SEVERITY_RANK[max]) {
+      max = severity;
+    }
+  }
+  return max;
+}
+
+export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): AnalyticalStatus {
+  const {
+    activeMode,
+    analyticalMode,
+    injectorEnabled,
+    gravityEnabled,
+    capillaryEnabled,
+    permMode,
+    toggles,
+  } = input;
+
+  if (analyticalMode !== 'waterflood' && analyticalMode !== 'depletion') {
+    const reasonDetails: AnalyticalStatusReason[] = [
+      {
+        code: 'analytical-disabled',
+        message: 'Reference solution guidance is disabled for this scenario.',
+        severity: 'notice',
+      },
+    ];
+    return {
+      level: 'off',
+      mode: 'none',
+      warningSeverity: 'none',
+      reasonDetails,
+      reasons: reasonDetails.map((r) => r.message),
+    };
+  }
+
+  const reasonDetails: AnalyticalStatusReason[] = [];
+
+  const addReason = (
+    code: string,
+    message: string,
+    severity: AnalyticalReasonSeverity,
+  ) => {
+    reasonDetails.push({ code, message, severity });
+  };
+
+  if (analyticalMode === 'waterflood') {
+    if (!injectorEnabled) {
+      addReason(
+        'wf-injector-disabled',
+        'Injector is disabled, so the waterflood reference solution assumptions do not hold.',
+        'critical',
+      );
+    }
+    if (toggles.geo !== '1d') {
+      addReason(
+        'wf-geometry-not-1d',
+        'The waterflood reference solution expects 1D geometry.',
+        'warning',
+      );
+    }
+    if (toggles.well !== 'e2e') {
+      addReason(
+        'wf-well-not-e2e',
+        'The waterflood reference solution expects end-to-end wells.',
+        'warning',
+      );
+    }
+  } else {
+    if (injectorEnabled) {
+      addReason(
+        'dep-injector-enabled',
+        'Injector is enabled, so the depletion reference solution assumptions do not hold.',
+        'critical',
+      );
+    }
+    if (!(toggles.geo === '1d' || toggles.well === 'center')) {
+      addReason(
+        'dep-geometry-well-mismatch',
+        'The depletion reference solution expects 1D or center-producer assumptions.',
+        'warning',
+      );
+    }
+  }
+
+  if (permMode !== 'uniform') {
+    addReason(
+      'perm-nonuniform',
+      'Permeability is non-uniform, so the reference solution becomes approximate.',
+      'warning',
+    );
+  }
+  if (gravityEnabled) {
+    addReason(
+      'gravity-enabled',
+      'Gravity is enabled, which deviates from the reference solution assumptions.',
+      'warning',
+    );
+  }
+  if (capillaryEnabled) {
+    addReason(
+      'capillary-enabled',
+      'Capillary pressure is enabled, which deviates from the reference solution assumptions.',
+      'warning',
+    );
+  }
+
+  if (activeMode === 'sim') {
+    addReason(
+      'sim-mode-exploratory',
+      'Scenario Builder is exploratory; the reference solution is treated as approximate guidance.',
+      'notice',
+    );
+  }
+
+  const warningSeverity = maxAnalyticalSeverity(reasonDetails);
+
+  return {
+    level: reasonDetails.length === 0 ? 'reference' : 'approximate',
+    mode: analyticalMode,
+    warningSeverity,
+    reasonDetails,
+    reasons: reasonDetails.map((r) => r.message),
+  };
+}
+
+// ---------- Warning Policy ----------
 
 export function buildWarningPolicy(input: WarningPolicyInput): WarningPolicy {
   const blockingValidation = createEmptyGroup("blockingValidation");
