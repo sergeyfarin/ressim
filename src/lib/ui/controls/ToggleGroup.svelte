@@ -1,15 +1,22 @@
 <script lang="ts">
     type OptionValue = string | number;
 
-    export let options: Array<{
+    let {
+        options = [],
+        value = $bindable(),
+        onChange = () => {},
+        wrap = false,
+    }: {
+        options?: Array<{
+            value: OptionValue;
+            label: string;
+            title?: string;
+            disabled?: boolean;
+        }>;
         value: OptionValue;
-        label: string;
-        title?: string;
-        disabled?: boolean;
-    }> = [];
-    export let value: OptionValue;
-    export let onChange: (val: OptionValue) => void = () => {};
-    export let wrap: boolean = false;
+        onChange?: (val: OptionValue) => void;
+        wrap?: boolean;
+    } = $props();
 </script>
 
 <div

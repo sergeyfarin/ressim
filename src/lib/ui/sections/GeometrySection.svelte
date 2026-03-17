@@ -207,7 +207,8 @@
 
     bindings[control.param] = parsed;
     applyChangeBehavior(control.changeBehavior);
-    onParamEdit();
+    // onParamEdit() is intentionally omitted here: the oninput DOM event bubbles up
+    // to ScenarioSectionsPanel's wrapper div which calls onParamEdit already.
   }
 
   function applyQuickPick(control: GeometryGridQuickPickControl, optionKey: string) {

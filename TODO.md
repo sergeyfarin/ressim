@@ -1,3 +1,9 @@
+Out of Scope (Noted, Not Planned)
+Store getter/setter boilerplate in simulationStore.svelte.ts (1691 lines) — functional, out-of-scope for this pass
+analyticalSolutionMode sync logic — low risk, deferred
+Record<string, any> in benchmark/catalog code — acceptable for dynamic catalog structures
+
+
 # TODO — ResSim Frontend Execution Plan
 
 This file is the live execution tracker for the next frontend workstream. It replaces the benchmark-only backlog now that benchmark modernization is complete and the main remaining work is product/workflow coherence.

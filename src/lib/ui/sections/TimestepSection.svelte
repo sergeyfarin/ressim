@@ -1,11 +1,7 @@
 <script lang="ts">
   import Collapsible from "../controls/Collapsible.svelte";
-  import Input from "../controls/Input.svelte";
-  import {
-    panelTableClass,
-    panelTableHeadClass,
-    panelTableShellClass,
-  } from "../shared/panelStyles";
+  import PanelTable from "../controls/PanelTable.svelte";
+  import ValidatedInput from "../controls/ValidatedInput.svelte";
 
   let {
     delta_t_days = $bindable(0.25),
@@ -38,77 +34,21 @@
 <Collapsible title="Timestep Controls" {hasError}>
   <div class="space-y-2 p-3">
     <p class="text-[11px] text-muted-foreground">{groupSummary}</p>
-    <div class={panelTableShellClass}>
-      <table class={panelTableClass}>
-        <thead class={panelTableHeadClass}>
-          <tr>
-            <th class="font-medium p-2">Δt (Days)</th>
-            <th class="font-medium p-2">Max ΔS</th>
-            <th class="font-medium p-2">Max ΔP (bar)</th>
-            <th class="font-medium p-2">Max ΔRate (Rel)</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
-          <tr>
-            <td class="p-2 align-top"
-              ><Input
-                type="number"
-                step="0.1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.deltaT) ? "border-destructive" : ""}`}
-                bind:value={delta_t_days}
-              />
-              {#if fieldErrors.deltaT}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.deltaT}
-                </div>
-              {/if}
-            </td>
-            <td class="p-2 align-top"
-              ><Input
-                type="number"
-                min="0.01"
-                max="1"
-                step="0.01"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.max_sat_change_per_step) ? "border-destructive" : ""}`}
-                bind:value={max_sat_change_per_step}
-              />
-              {#if fieldErrors.max_sat_change_per_step}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.max_sat_change_per_step}
-                </div>
-              {/if}
-            </td>
-            <td class="p-2 align-top"
-              ><Input
-                type="number"
-                min="1"
-                step="1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.max_pressure_change_per_step) ? "border-destructive" : ""}`}
-                bind:value={max_pressure_change_per_step}
-              />
-              {#if fieldErrors.max_pressure_change_per_step}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.max_pressure_change_per_step}
-                </div>
-              {/if}
-            </td>
-            <td class="p-2 align-top"
-              ><Input
-                type="number"
-                min="0.01"
-                step="0.05"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.max_well_rate_change_fraction) ? "border-destructive" : ""}`}
-                bind:value={max_well_rate_change_fraction}
-              />
-              {#if fieldErrors.max_well_rate_change_fraction}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.max_well_rate_change_fraction}
-                </div>
-              {/if}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <PanelTable columns={["Δt (Days)", "Max ΔS", "Max ΔP (bar)", "Max ΔRate (Rel)"]}>
+      <tr>
+        <td class="p-2 align-top">
+          <ValidatedInput type="number" step="0.1" class="w-full h-7 px-2" bind:value={delta_t_days} error={fieldErrors.deltaT} />
+        </td>
+        <td class="p-2 align-top">
+          <ValidatedInput type="number" min="0.01" max="1" step="0.01" class="w-full h-7 px-2" bind:value={max_sat_change_per_step} error={fieldErrors.max_sat_change_per_step} />
+        </td>
+        <td class="p-2 align-top">
+          <ValidatedInput type="number" min="1" step="1" class="w-full h-7 px-2" bind:value={max_pressure_change_per_step} error={fieldErrors.max_pressure_change_per_step} />
+        </td>
+        <td class="p-2 align-top">
+          <ValidatedInput type="number" min="0.01" step="0.05" class="w-full h-7 px-2" bind:value={max_well_rate_change_fraction} error={fieldErrors.max_well_rate_change_fraction} />
+        </td>
+      </tr>
+    </PanelTable>
   </div>
 </Collapsible>

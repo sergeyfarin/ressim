@@ -1,5 +1,3 @@
-import type { CaseMode } from "../catalog/caseCatalog";
-
 export type ModePanelSectionKey =
   | "geometry"
   | "reservoir"
@@ -41,8 +39,6 @@ export const MODE_PANEL_SECTIONS: readonly ModePanelSectionDefinition[] = [
   { key: "analytical", label: "Reference Solution", dims: [] },
 ] as const;
 
-export function getModePanelSections(
-  _mode: CaseMode,
-): readonly ModePanelSectionDefinition[] {
+export function getModePanelSections(): readonly ModePanelSectionDefinition[] {
   return MODE_PANEL_SECTIONS;
 }

@@ -26,7 +26,7 @@
   }: ScenarioModePanelProps = $props();
 
   // Adjust section order or mode-specific visibility in `modePanelSections.ts`.
-  const sections = $derived(getModePanelSections(activeMode));
+  const sections = $derived(getModePanelSections());
 
   // Adjust these header chips in `catalog/caseCatalog.ts` when a case needs different quick toggles.
   const modeDimensions = $derived(getModeDimensions(activeMode));
@@ -35,9 +35,6 @@
     return modeDimensions.filter((dim) => dimKeys.includes(dim.key));
   }
 
-  function handleManualFieldEdit() {
-    onParamEdit();
-  }
 </script>
 
 <div class="space-y-1.5 px-2 py-2">
@@ -63,7 +60,7 @@
             {/each}
           </div>
         {/if}
-        <div oninput={handleManualFieldEdit} onchange={handleManualFieldEdit}>
+        <div oninput={onParamEdit} onchange={onParamEdit}>
           {#if section.key === "geometry"}
             <GeometrySection
               bindings={params}

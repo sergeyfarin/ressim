@@ -46,7 +46,7 @@ describe("Mode panel composition", () => {
   });
 
   it("keeps the shared scenario renderer focused on section composition", () => {
-    expect(scenarioSectionsSource).toMatch(/getModePanelSections\(activeMode\)/);
+    expect(scenarioSectionsSource).toMatch(/getModePanelSections\(\)/);
     expect(scenarioSectionsSource).toMatch(/<GeometrySection/);
     expect(scenarioSectionsSource).toMatch(/<ReservoirSection/);
     expect(scenarioSectionsSource).toMatch(/<WellsSection/);

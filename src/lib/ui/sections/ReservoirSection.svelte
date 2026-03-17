@@ -2,11 +2,8 @@
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
   import Select from "../controls/Select.svelte";
-  import {
-    panelTableClass,
-    panelTableHeadClass,
-    panelTableShellClass,
-  } from "../shared/panelStyles";
+  import PanelTable from "../controls/PanelTable.svelte";
+  import ValidatedInput from "../controls/ValidatedInput.svelte";
 
   let {
     initialPressure = $bindable(300),
@@ -104,19 +101,7 @@
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-[11px] font-medium">Water Saturation</span>
-        <Input
-          type="number"
-          min="0"
-          max="1"
-          step="0.05"
-          class={`w-full h-8 ${Boolean(fieldErrors.initialSaturation) ? "border-destructive" : ""}`}
-          bind:value={initialSaturation}
-        />
-        {#if fieldErrors.initialSaturation}
-          <div class="text-[10px] text-destructive leading-tight mt-0.5">
-            {fieldErrors.initialSaturation}
-          </div>
-        {/if}
+        <ValidatedInput type="number" min="0" max="1" step="0.05" class="w-full h-8" bind:value={initialSaturation} error={fieldErrors.initialSaturation} />
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-[11px] font-medium">Porosity</span>
@@ -140,53 +125,18 @@
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-[11px] font-medium">Rock Compress. (1/bar)</span>
-        <Input
-          type="number"
-          min="0"
-          step="1e-6"
-          class={`w-full h-8 ${Boolean(fieldErrors.rock_compressibility) ? "border-destructive" : ""}`}
-          bind:value={rock_compressibility}
-        />
-        {#if fieldErrors.rock_compressibility}
-          <div class="text-[10px] text-destructive leading-tight mt-0.5">
-            {fieldErrors.rock_compressibility}
-          </div>
-        {/if}
+        <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-8" bind:value={rock_compressibility} error={fieldErrors.rock_compressibility} />
       </label>
     </div>
 
-    <div class={panelTableShellClass}>
-      <table class={panelTableClass}>
-        <thead class={panelTableHeadClass}>
-          <tr>
-            <th class="font-medium p-2">Phase</th>
-            <th class="font-medium p-2">Viscosity (cP)</th>
-            <th class="font-medium p-2">Density (kg/m³)</th>
-            <th class="font-medium p-2">Compress. (1/bar)</th>
-            <th class="font-medium p-2">Vol Exp Factor</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
+    <PanelTable columns={["Phase", "Viscosity (cP)", "Density (kg/m³)", "Compress. (1/bar)", "Vol Exp Factor"]}>
           <tr>
             <td
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >Water</td
             >
-            <td class="p-2 align-top text-center"
-              ><Input
-                type="number"
-                min="0.1"
-                step="0.1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.mu_w) ? "border-destructive" : ""}`}
-                bind:value={mu_w}
-              />
-              {#if fieldErrors.mu_w}
-                <div
-                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
-                >
-                  {fieldErrors.mu_w}
-                </div>
-              {/if}
+            <td class="p-2 align-top text-center">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2" bind:value={mu_w} error={fieldErrors.mu_w} />
             </td>
             <td class="p-2"
               ><Input
@@ -197,37 +147,11 @@
                 bind:value={rho_w}
               /></td
             >
-            <td class="p-2 align-top text-center"
-              ><Input
-                type="number"
-                min="0"
-                step="1e-6"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.c_w) ? "border-destructive" : ""}`}
-                bind:value={c_w}
-              />
-              {#if fieldErrors.c_w}
-                <div
-                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
-                >
-                  {fieldErrors.c_w}
-                </div>
-              {/if}
+            <td class="p-2 align-top text-center">
+              <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2" bind:value={c_w} error={fieldErrors.c_w} />
             </td>
-            <td class="p-2 align-top text-center"
-              ><Input
-                type="number"
-                min="0.1"
-                step="0.1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.volume_expansion_w) ? "border-destructive" : ""}`}
-                bind:value={volume_expansion_w}
-              />
-              {#if fieldErrors.volume_expansion_w}
-                <div
-                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
-                >
-                  {fieldErrors.volume_expansion_w}
-                </div>
-              {/if}
+            <td class="p-2 align-top text-center">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2" bind:value={volume_expansion_w} error={fieldErrors.volume_expansion_w} />
             </td>
           </tr>
           <tr>
@@ -235,21 +159,8 @@
               class="font-semibold text-center align-middle p-2 border-r border-border bg-muted/20"
               >Oil</td
             >
-            <td class="p-2 align-top text-center"
-              ><Input
-                type="number"
-                min="0.1"
-                step="0.1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.mu_o) ? "border-destructive" : ""}`}
-                bind:value={mu_o}
-              />
-              {#if fieldErrors.mu_o}
-                <div
-                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
-                >
-                  {fieldErrors.mu_o}
-                </div>
-              {/if}
+            <td class="p-2 align-top text-center">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2" bind:value={mu_o} error={fieldErrors.mu_o} />
             </td>
             <td class="p-2"
               ><Input
@@ -260,42 +171,14 @@
                 bind:value={rho_o}
               /></td
             >
-            <td class="p-2 align-top text-center"
-              ><Input
-                type="number"
-                min="0"
-                step="1e-6"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.c_o) ? "border-destructive" : ""}`}
-                bind:value={c_o}
-              />
-              {#if fieldErrors.c_o}
-                <div
-                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
-                >
-                  {fieldErrors.c_o}
-                </div>
-              {/if}
+            <td class="p-2 align-top text-center">
+              <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2" bind:value={c_o} error={fieldErrors.c_o} />
             </td>
-            <td class="p-2 align-top text-center"
-              ><Input
-                type="number"
-                min="0.1"
-                step="0.1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.volume_expansion_o) ? "border-destructive" : ""}`}
-                bind:value={volume_expansion_o}
-              />
-              {#if fieldErrors.volume_expansion_o}
-                <div
-                  class="text-[10px] text-destructive mt-1 leading-tight text-left"
-                >
-                  {fieldErrors.volume_expansion_o}
-                </div>
-              {/if}
+            <td class="p-2 align-top text-center">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2" bind:value={volume_expansion_o} error={fieldErrors.volume_expansion_o} />
             </td>
           </tr>
-        </tbody>
-      </table>
-    </div>
+    </PanelTable>
 
     <label class="flex items-center gap-2 cursor-pointer">
       <input
@@ -377,45 +260,15 @@
         <div class="grid grid-cols-2 gap-2">
           <label class="flex flex-col gap-1.5">
             <span class="text-xs font-medium">Min Permeability (mD)</span>
-            <Input
-              type="number"
-              min="1"
-              class={`w-full ${Boolean(fieldErrors.permBounds) ? "border-destructive" : ""}`}
-              bind:value={minPerm}
-            />
-            {#if fieldErrors.permBounds}
-              <div class="text-[10px] text-destructive leading-tight mt-0.5">
-                {fieldErrors.permBounds}
-              </div>
-            {/if}
+            <ValidatedInput type="number" min="1" class="w-full" bind:value={minPerm} error={fieldErrors.permBounds} />
           </label>
           <label class="flex flex-col gap-1.5">
             <span class="text-xs font-medium">Max Permeability (mD)</span>
-            <Input
-              type="number"
-              min="1"
-              class={`w-full ${Boolean(fieldErrors.permBounds) ? "border-destructive" : ""}`}
-              bind:value={maxPerm}
-            />
-            {#if fieldErrors.permBounds}
-              <div class="text-[10px] text-destructive leading-tight mt-0.5">
-                {fieldErrors.permBounds}
-              </div>
-            {/if}
+            <ValidatedInput type="number" min="1" class="w-full" bind:value={maxPerm} error={fieldErrors.permBounds} />
           </label>
         </div>
       {:else}
-        <div class={panelTableShellClass}>
-          <table class={panelTableClass}>
-            <thead class={panelTableHeadClass}>
-              <tr>
-                <th class="font-medium p-2">Layer</th>
-                <th class="font-medium p-2">kX (mD)</th>
-                <th class="font-medium p-2">kY (mD)</th>
-                <th class="font-medium p-2">kZ (mD)</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-border">
+        <PanelTable columns={["Layer", "kX (mD)", "kY (mD)", "kZ (mD)"]}>
               {#each Array.from({ length: nz }) as _, i}
                 <tr>
                   <td
@@ -448,9 +301,7 @@
                   >
                 </tr>
               {/each}
-            </tbody>
-          </table>
-        </div>
+        </PanelTable>
       {/if}
     </div>
   </div>

@@ -75,13 +75,6 @@
     return [gridStr, fluidStr, permStr, wellStr].join("  ·  ");
   }
 
-  function handleSelectScenario(key: string) {
-    onSelectScenario(key);
-  }
-
-  function handleEnterCustomMode() {
-    onEnterCustomMode();
-  }
 </script>
 
 <Card class="p-0">
@@ -93,7 +86,7 @@
         <Button
           size="sm"
           variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-          onclick={() => handleSelectScenario(scenario.key)}
+          onclick={() => onSelectScenario(scenario.key)}
         >
           {scenario.label}
         </Button>
@@ -105,7 +98,7 @@
         <Button
           size="sm"
           variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-          onclick={() => handleSelectScenario(scenario.key)}
+          onclick={() => onSelectScenario(scenario.key)}
         >
           {scenario.label}
         </Button>
@@ -115,7 +108,7 @@
     <Button
       size="sm"
       variant={isCustom ? "default" : "outline"}
-      onclick={handleEnterCustomMode}
+      onclick={onEnterCustomMode}
     >
       Custom
     </Button>
@@ -126,7 +119,7 @@
     <div class="border-t border-border/50 px-3 py-2">
       <div class="flex items-start justify-between gap-2">
         <p class="ui-microcopy text-muted-foreground">{activeScenario.description}</p>
-        <Button size="sm" variant="ghost" onclick={handleEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
+        <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
           Customize →
         </Button>
       </div>

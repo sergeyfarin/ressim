@@ -92,8 +92,6 @@ export type ModePanelParameterBindings = {
   handleAnalyticalSolutionModeChange: (mode: AnalyticalSolutionMode) => void;
 };
 
-export type ScenarioMode = CaseMode;
-
 export type ModePanelProps = {
   activeMode: CaseMode;
   navigationState?: ScenarioNavigationState;
@@ -114,7 +112,7 @@ export type ModePanelProps = {
 };
 
 export type ScenarioModePanelProps = {
-  activeMode: ScenarioMode;
+  activeMode: CaseMode;
   navigationState?: ScenarioNavigationState;
   toggles: ToggleState;
   disabledOptions: Record<string, Record<string, string>>;

@@ -2,11 +2,8 @@
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
   import Select from "../controls/Select.svelte";
-  import {
-    panelTableClass,
-    panelTableHeadClass,
-    panelTableShellClass,
-  } from "../shared/panelStyles";
+  import PanelTable from "../controls/PanelTable.svelte";
+  import ValidatedInput from "../controls/ValidatedInput.svelte";
 
   let {
     well_radius = $bindable(0.1),
@@ -72,18 +69,7 @@
     <div class="grid grid-cols-2 gap-2">
       <label class="flex flex-col gap-1.5">
         <span class="text-xs font-medium">Well Radius (m)</span>
-        <Input
-          type="number"
-          min="0.01"
-          step="0.01"
-          class={`w-full ${Boolean(fieldErrors.wellRadius) ? "border-destructive" : ""}`}
-          bind:value={well_radius}
-        />
-        {#if fieldErrors.wellRadius}
-          <div class="text-[10px] text-destructive leading-tight mt-0.5">
-            {fieldErrors.wellRadius}
-          </div>
-        {/if}
+        <ValidatedInput type="number" min="0.01" step="0.01" class="w-full" bind:value={well_radius} error={fieldErrors.wellRadius} />
       </label>
       <label class="flex flex-col gap-1.5">
         <span class="text-xs font-medium">Skin</span>
@@ -102,18 +88,7 @@
       </span>
     </label>
 
-    <div class={panelTableShellClass}>
-      <table class={panelTableClass}>
-        <thead class={panelTableHeadClass}>
-          <tr>
-            <th class="font-medium p-2 w-20">Well</th>
-            <th class="font-medium p-2">Control Mode</th>
-            <th class="font-medium p-2">Target BHP (bar)</th>
-            <th class="font-medium p-2">Target Rate (m³/d)</th>
-            <th class="font-medium p-2">Loc (i, j)</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
+    <PanelTable columns={["Well", "Control Mode", "Target BHP (bar)", "Target Rate (m³/d)", "Loc (i, j)"]}>
           <tr>
             <td
               class={`font-semibold align-middle text-center p-2 border-r border-border bg-muted/20 ${!injectorEnabled ? "opacity-40" : ""}`}
@@ -129,35 +104,26 @@
                 <option value="rate">Rate</option>
               </Select>
             </td>
-            <td class="p-2 align-top"
-              ><Input
+            <td class="p-2 align-top">
+              <ValidatedInput
                 type="number"
                 step="1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
+                class="w-full h-7 px-2"
                 bind:value={injectorBhp}
                 disabled={injectorControlMode === "rate" || !injectorEnabled}
+                error={injectorControlMode === "pressure" ? fieldErrors.wellPressureOrder : undefined}
               />
-              {#if fieldErrors.wellPressureOrder && injectorControlMode === "pressure"}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.wellPressureOrder}
-                </div>
-              {/if}
             </td>
-            <td class="p-2 align-top"
-              ><Input
+            <td class="p-2 align-top">
+              <ValidatedInput
                 type="number"
                 min="0"
                 step="1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.injectorRate) ? "border-destructive" : ""}`}
+                class="w-full h-7 px-2"
                 bind:value={targetInjectorRate}
-                disabled={injectorControlMode === "pressure" ||
-                  !injectorEnabled}
+                disabled={injectorControlMode === "pressure" || !injectorEnabled}
+                error={injectorControlMode === "rate" ? fieldErrors.injectorRate : undefined}
               />
-              {#if fieldErrors.injectorRate && injectorControlMode === "rate"}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.injectorRate}
-                </div>
-              {/if}
             </td>
             <td class="p-2 align-top">
               <div class="flex items-center gap-1">
@@ -204,34 +170,26 @@
                 <option value="rate">Rate</option>
               </Select>
             </td>
-            <td class="p-2 align-top"
-              ><Input
+            <td class="p-2 align-top">
+              <ValidatedInput
                 type="number"
                 step="1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.wellPressureOrder) ? "border-destructive" : ""}`}
+                class="w-full h-7 px-2"
                 bind:value={producerBhp}
                 disabled={producerControlMode === "rate"}
+                error={producerControlMode === "pressure" ? fieldErrors.wellPressureOrder : undefined}
               />
-              {#if fieldErrors.wellPressureOrder && producerControlMode === "pressure"}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.wellPressureOrder}
-                </div>
-              {/if}
             </td>
-            <td class="p-2 align-top"
-              ><Input
+            <td class="p-2 align-top">
+              <ValidatedInput
                 type="number"
                 min="0"
                 step="1"
-                class={`w-full h-7 px-2 ${Boolean(fieldErrors.producerRate) ? "border-destructive" : ""}`}
+                class="w-full h-7 px-2"
                 bind:value={targetProducerRate}
                 disabled={producerControlMode === "pressure"}
+                error={producerControlMode === "rate" ? fieldErrors.producerRate : undefined}
               />
-              {#if fieldErrors.producerRate && producerControlMode === "rate"}
-                <div class="text-[10px] text-destructive mt-1 leading-tight">
-                  {fieldErrors.producerRate}
-                </div>
-              {/if}
             </td>
             <td class="p-2 align-top">
               <div class="flex items-center gap-1">
@@ -262,9 +220,7 @@
               {/if}
             </td>
           </tr>
-        </tbody>
-      </table>
-    </div>
+    </PanelTable>
 
     <div class="text-[11px] mt-2 flex justify-between">
       <div>

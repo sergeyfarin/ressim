@@ -1,12 +1,9 @@
 <script lang="ts">
   import Collapsible from "../controls/Collapsible.svelte";
   import Input from "../controls/Input.svelte";
-  import {
-    panelInsetCardClass,
-    panelTableClass,
-    panelTableHeadClass,
-    panelTableShellClass,
-  } from "../shared/panelStyles";
+  import ValidatedInput from "../controls/ValidatedInput.svelte";
+  import { panelInsetCardClass } from "../shared/panelStyles";
+  import PanelTable from "../controls/PanelTable.svelte";
 
   let {
     s_wc = $bindable(0.2),
@@ -155,34 +152,23 @@
     ),
   );
   const relPermSummary = $derived(
-    `S_wc=${s_wc.toFixed(2)}, S_or=${s_or.toFixed(2)}, n_w=${n_w.toFixed(1)}, n_o=${n_o.toFixed(1)}`,
+    `S_wc=${safeSwc.toFixed(2)}, S_or=${safeSor.toFixed(2)}, n_w=${safeNw.toFixed(1)}, n_o=${safeNo.toFixed(1)}`,
   );
   const capSummary = $derived(
     capillaryEnabled
-      ? `Pc on (P_entry=${capillaryPEntry.toFixed(1)} bar, λ=${capillaryLambda.toFixed(1)})`
+      ? `Pc on (P_entry=${safePEntry.toFixed(1)} bar, λ=${safeLambda.toFixed(1)})`
       : "Pc off",
   );
   const groupSummary = $derived(`${relPermSummary} · ${capSummary}`);
-  const hasError = $derived(
-    Object.keys(fieldErrors).some((key) => key.includes("saturationEndpoints")),
-  );
+  // validateInputs only emits "saturationEndpoints" for this section
+  const hasError = $derived(fieldErrors.saturationEndpoints !== undefined);
 </script>
 
 <Collapsible title="Relative Permeability + Capillary" {hasError}>
   <div class="space-y-2 p-3">
     <p class="text-[11px] text-muted-foreground">{groupSummary}</p>
 
-    <div class={panelTableShellClass}>
-      <table class={panelTableClass}>
-        <thead class={panelTableHeadClass}>
-          <tr>
-            <th class="font-medium p-2">Phase</th>
-            <th class="font-medium p-2">Endpoint Sat. (S)</th>
-            <th class="font-medium p-2">Corey Exponent (n)</th>
-            <th class="font-medium p-2">Max Multiplier</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
+    <PanelTable columns={["Phase", "Endpoint Sat. (S)", "Corey Exponent (n)", "Max Multiplier"]}>
           <tr>
             <td
               class="font-semibold align-middle p-2 border-r border-border bg-muted/20"
@@ -253,9 +239,7 @@
               /></td
             >
           </tr>
-        </tbody>
-      </table>
-    </div>
+    </PanelTable>
 
     {#if fieldErrors.saturationEndpoints}
       <div class="text-[10px] text-destructive leading-tight">
@@ -272,15 +256,7 @@
       <span class="text-sm font-medium leading-none">Enable Capillary Pressure</span>
     </label>
 
-    <div class={panelTableShellClass} class:opacity-50={!capillaryEnabled}>
-      <table class={panelTableClass}>
-        <thead class={panelTableHeadClass}>
-          <tr>
-            <th class="font-medium p-2">P_entry (bar)</th>
-            <th class="font-medium p-2">Lambda</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
+    <PanelTable columns={["P_entry (bar)", "Lambda"]} class={!capillaryEnabled ? "opacity-50" : ""}>
           <tr>
             <td class="p-2"
               ><Input
@@ -303,9 +279,7 @@
               /></td
             >
           </tr>
-        </tbody>
-      </table>
-    </div>
+    </PanelTable>
 
     <div class="grid grid-cols-1 gap-2">
       <div class={panelInsetCardClass}>
