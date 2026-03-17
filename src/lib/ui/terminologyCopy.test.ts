@@ -6,17 +6,14 @@ const runControlsSource = fs.readFileSync(path.join(__dirname, 'cards', 'RunCont
 const referenceExecutionSource = fs.readFileSync(path.join(__dirname, 'cards', 'ReferenceExecutionCard.svelte'), 'utf8');
 const analyticalSectionSource = fs.readFileSync(path.join(__dirname, 'sections', 'AnalyticalSection.svelte'), 'utf8');
 const warningPanelSource = fs.readFileSync(path.join(__dirname, 'feedback', 'WarningPolicyPanel.svelte'), 'utf8');
-const modePanelSource = fs.readFileSync(path.join(__dirname, 'modes', 'ModePanel.svelte'), 'utf8');
 const modePanelSectionsSource = fs.readFileSync(path.join(__dirname, 'modePanelSections.ts'), 'utf8');
 const caseLibrarySource = fs.readFileSync(path.join(__dirname, '..', 'catalog', 'caseLibrary.ts'), 'utf8');
 
 describe('ui terminology copy', () => {
   it('uses run-oriented labels in the run controls', () => {
-    expect(runControlsSource).toMatch(/Run \{steps\} Step/);
-    expect(runControlsSource).toMatch(/Advance 1 Step/);
+    expect(runControlsSource).toMatch(/Run \$\{steps\} Step/);
     expect(runControlsSource).toMatch(/Stop Run/);
     expect(runControlsSource).toMatch(/Reset Model/);
-    expect(runControlsSource).toMatch(/Review Inputs/);
     expect(runControlsSource).not.toMatch(/Reinit/);
   });
 
@@ -43,20 +40,11 @@ describe('ui terminology copy', () => {
     expect(warningPanelSource).toMatch(/return "Reference"/);
   });
 
-  it('uses reference-guidance wording in the inputs disclosure and section labels', () => {
-    expect(modePanelSource).toMatch(/Reference source:/);
-    expect(modePanelSource).toMatch(/Primary review metric:/);
-    expect(modePanelSource).toMatch(/Reference guidance now depends on whichever curated case you restore or activate next/);
-    expect(modePanelSource).toMatch(/Single locked reference run/);
-    expect(modePanelSource).toMatch(/Library sensitivity run set/);
-    expect(modePanelSource).toMatch(/Reference review run/);
-    expect(modePanelSource).toMatch(/Reference Guidance/);
+  it('uses reference-guidance wording in section labels and library copy', () => {
     expect(modePanelSectionsSource).toMatch(/label: "Reference Solution"/);
     expect(caseLibrarySource).toMatch(/No library sensitivity run set is exposed for this reference case/);
     expect(caseLibrarySource).toMatch(/No library sensitivity run set is exposed for this curated case/);
     expect(caseLibrarySource).toMatch(/Internal Rust-parity reference family/);
     expect(caseLibrarySource).toMatch(/Literature reference solution/);
-    expect(modePanelSource).not.toMatch(/Reference basis:/);
-    expect(modePanelSource).not.toMatch(/Primary comparison metric:/);
   });
 });

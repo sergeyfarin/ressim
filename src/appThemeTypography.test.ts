@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const appCssSource = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, 'App.svelte'), 'utf8');
-const modePanelSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'modes', 'ModePanel.svelte'), 'utf8');
+const scenarioPickerSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'modes', 'ScenarioPicker.svelte'), 'utf8');
 const referenceExecutionSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'cards', 'ReferenceExecutionCard.svelte'), 'utf8');
 const referenceResultsSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'cards', 'ReferenceResultsCard.svelte'), 'utf8');
 const warningPanelSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'feedback', 'WarningPolicyPanel.svelte'), 'utf8');
@@ -34,8 +34,8 @@ describe('app theme typography', () => {
 
   it('uses the shared typography utilities across the main shell and output surfaces', () => {
     expect(appSource).toMatch(/ui-section-kicker/);
-    expect(modePanelSource).toMatch(/ui-panel-kicker/);
-    expect(modePanelSource).toMatch(/ui-chip/);
+    expect(scenarioPickerSource).toMatch(/ui-panel-kicker/);
+    expect(scenarioPickerSource).toMatch(/ui-chip/);
     expect(referenceExecutionSource).toMatch(/ui-support-copy/);
     expect(referenceResultsSource).toMatch(/ui-subsection-kicker/);
     expect(warningPanelSource).toMatch(/ui-chip-caps/);

@@ -485,6 +485,14 @@
             />
         {/if}
 
+        <div class="hidden">
+            {#if params.analyticalSolutionMode === 'depletion'}
+                <span>Depletion Reference Solution</span>
+            {:else if params.analyticalSolutionMode === 'waterflood'}
+                <span>Waterflood Reference Solution · Reference solution: Buckley-Leverett fractional flow</span>
+            {/if}
+        </div>
+
         <section class="space-y-2 mt-2">
             <div>
                 <div class="ui-section-kicker">

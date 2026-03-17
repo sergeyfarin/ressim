@@ -40,7 +40,7 @@
   const runLabel = $derived(
     numSensitivities > 0
       ? `Run ${numSensitivities} Sensitivit${numSensitivities === 1 ? "y" : "ies"}`
-      : "Run Case"
+      : `Run ${steps} Step${steps !== 1 ? "s" : ""}`
   );
 
   const statusText = $derived(
@@ -61,7 +61,7 @@
         variant="ghost"
         onclick={onInitSimulator}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
-        >Reset</Button>
+        >Reset Model</Button>
 
       <div class="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
 
@@ -77,7 +77,7 @@
         size="sm"
         variant="destructive"
         onclick={onStopRun}
-        disabled={!workerRunning}>Stop</Button>
+        disabled={!workerRunning}>Stop Run</Button>
 
       <div class="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
 

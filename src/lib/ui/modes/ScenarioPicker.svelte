@@ -96,7 +96,9 @@
 
 <Card class="p-0">
   <!-- ── Scenario selector row ── -->
-  <div class="flex flex-wrap items-start gap-2 p-3">
+  <div class="p-3 space-y-2">
+    <div class="ui-panel-kicker text-muted-foreground">Scenario</div>
+    <div class="flex flex-wrap items-start gap-2">
     <!-- Waterflood group -->
     <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
       {#each SCENARIOS.filter((s) => s.scenarioClass === "waterflood") as scenario}
@@ -143,6 +145,7 @@
     >
       Custom
     </Button>
+    </div>
   </div>
 
   {#if !isCustom && activeScenario}
