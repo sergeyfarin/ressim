@@ -167,7 +167,7 @@ When setting up a simulation:
 
 ## Physics Notes
 
-1. **Two-phase only:** Oil + Water, no gas phase (S_w + S_o = 1.0)
+1. **Default two-phase mode:** Oil + Water (S_w + S_o = 1.0). Three-phase mode (Oil/Water/Gas) also supported when `threePhaseModeEnabled = true` (S_w + S_o + S_g = 1.0).
 2. **IMPES method:** Implicit pressure, explicit saturation
 3. **Upwind scheme:** Flux evaluation for saturation stability
 4. **Corey model:** Standard relative permeability correlation
@@ -177,5 +177,5 @@ When setting up a simulation:
 ## Documentation Files
 
 - `UNIT_SYSTEM.md` - Comprehensive unit documentation
-- `P4_TWO_PHASE_BENCHMARKS.md` - Current benchmark methodology and validation context
+- `P4_TWO_PHASE_BENCHMARKS.md` - Buckley-Leverett benchmark methodology and acceptance tolerances
 - `TRANSMISSIBILITY_FACTOR.md` - Current transmissibility conversion note

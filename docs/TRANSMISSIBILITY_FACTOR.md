@@ -75,6 +75,8 @@ The important cleanup in this repository is not just the numeric change from `0.
 
 ## Usage in Code
 
+> **Illustrative outline** — actual signature and implementation details are in `src/lib/ressim/src/step.rs`.
+
 ```rust
 fn transmissibility(&self, c1: &GridCell, c2: &GridCell, dim: char) -> f64 {
     // Get permeabilities [mD], area [m²], distance [m]

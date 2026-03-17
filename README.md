@@ -1,21 +1,23 @@
 # ResSim — Browser-Based 3D Reservoir Simulator
 
-A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with reference-solution comparisons, and benchmark-based validation - all running entirely in the browser.
+A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with reference-solution comparisons, and benchmark-based validation — all running entirely in the browser.
 
-## Current Product Direction (2026-03)
+## Current State (2026-03)
 
-- **UI direction locked**: Unified "Preset + Customize" surface (Option B).
-- **Reference-solution overlays**: permissive for approximate cases, with clearly visible warnings.
-- **Benchmark workflow**: family-owned reference runner with explicit base or sensitivity-axis execution, stored comparison results, and in-place `Customize` handoff.
-- **Execution model**: all presets now initialize and run directly in browser-side WASM; there is no pre-run artifact pipeline.
+- **Active simplification refactor**: replacing the 4-layer "case library + editability policies" navigation with a simple `pick scenario → optionally pick sensitivity → run` flow. New model: `src/lib/catalog/scenarios.ts` + `ScenarioPicker.svelte` (see `REFACTOR.md` — steps 4 and 7 pending).
+- **Reference-solution overlays**: permissive for approximate cases, with clearly visible caveats.
+- **Three-phase support** (experimental): oil/water/gas simulation via Stone II relative permeability; no analytical reference solution.
+- **Execution model**: all scenarios initialize and run directly in browser-side WASM; no pre-run artifact pipeline.
 
 ## Features
 
 ### Simulation Engine (Rust → WASM)
 
 - **IMPES solver** — implicit pressure, explicit saturation on a 3D Cartesian grid.
-- **Corey relative permeability** model with configurable endpoints (`S_wc`, `S_or`) and exponents (`n_w`, `n_o`).
-- **Brooks-Corey capillary pressure** — optional toggle, `P_entry` and `lambda` parameters.
+- **Two-phase oil/water** flow with Corey relative permeability and optional Brooks-Corey capillary pressure.
+- **Three-phase oil/water/gas** flow (experimental): Stone II k_ro, Corey k_rg, oil-gas capillary pressure, explicit gas saturation transport, CFL check extended to gas.
+- **Corey relative permeability** — configurable endpoints (`S_wc`, `S_or`, `S_gc`, `S_gr`) and exponents (`n_w`, `n_o`, `n_g`).
+- **Brooks-Corey capillary pressure** — optional oil-water and oil-gas curves with physical caps.
 - **Gravity** — configurable toggle with phase-density-weighted hydrostatic head.
 - **Permeability modes**: uniform, random (optional deterministic seed), per-layer CSV input.
 - **User-editable porosity**, initial water saturation, and rock compressibility.
@@ -36,13 +38,12 @@ A two-phase (oil/water) IMPES reservoir simulator built with **Rust/WASM** (phys
 
 ### Visualization & UI
 
-- **3D property view** (Three.js) — selectable properties: pressure, water/oil saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
+- **3D property view** (Three.js) — selectable properties: pressure, water/oil/gas saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
 - **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
 - **Sw Profile chart** — cell-index saturation profile compared to the reference flood front.
-- **Scenario catalog (faceted presets)** - JSON-driven orthogonal toggle system for geometry, wells, rock, fluids, and timestep setup.
-- **Preset + Customize workflow** (active refactor) - start from a faceted preset, then refine any parameter in-place.
-- **Benchmark workflows** - select a benchmark/reference family inside its owning product family, run the base case or an explicit subset of one sensitivity axis, and compare stored results in the shared Outputs region.
-- **Reference-to-custom handoff** - customize benchmark/reference families into editable custom runs while preserving source provenance.
+- **Scenario picker** (active refactor) — 7 predefined benchmark/reference scenarios plus custom mode. Each scenario is a complete self-contained parameter set with optional sensitivity variants.
+- **Sensitivity sweeps** — run one simulation per variant; stored results feed comparison charts.
+- **Reference-to-custom handoff** — start from any scenario and switch to custom editing while preserving source provenance.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.
@@ -58,16 +59,16 @@ Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 
 Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, confirming that the remaining mismatch is dominated by coarse-grid and coarse-timestep numerical effects.
 
-Benchmark validation is maintained in Rust tests and exposed in the app through curated benchmark presets rather than a generated frontend artifact.
+Current benchmark scenarios (`src/lib/catalog/scenarios.ts`):
 
-Current benchmark-workflow behavior:
-
-- benchmark definitions come from one frontend family registry rather than duplicated case payloads
-- benchmark/reference cases are entered from the owning family's `Case Library`, not from a separate benchmark tab
-- homogeneous Buckley-Leverett runs use the Buckley-Leverett reference solution as the primary review baseline, while heterogeneity variants switch to a refined numerical reference
-- Buckley-Leverett comparison charts default to breakthrough, recovery, and pressure panels on a `PVI` x-axis
-- depletion comparison charts default to oil-rate, cumulative/recovery, and pressure panels with depletion reference-solution overlays
-- the Run region executes either the base family or an explicit set of variants within one selected sensitivity axis
+| Key | Class | Sensitivity |
+|-----|-------|-------------|
+| `wf_bl_case_a` | Waterflood | Grid refinement (24/48/96 cells) |
+| `wf_bl_case_b` | Waterflood | Grid refinement (24/48/96 cells) |
+| `wf_mobility_study` | Waterflood | Oil viscosity (0.5/1.0/5.0 cP) |
+| `dep_dietz_center` | Depletion | None |
+| `dep_dietz_corner` | Depletion | None |
+| `dep_fetkovich` | Depletion | None |
 
 ## Unit System
 
@@ -130,15 +131,15 @@ src/
     ├── workers/                    — Web Worker bridge to the WASM simulator
     ├── simulator-types.ts          — TypeScript interfaces for worker payloads
     ├── buildCreatePayload.ts       — payload builder + tests
-    ├── catalog/                    — faceted preset catalog data, loader logic, and tests
-    ├── ui/                         — mode panels, feedback surfaces, controls, cards, and focused section panels
-    ├── components/ui/              — primitive UI controls (`Button`, `Card`, `Input`, `Select`, `Collapsible`)
+    ├── catalog/                    — scenarios.ts (new) + legacy catalog code (being removed, see REFACTOR.md)
+    ├── ui/                         — ScenarioPicker, feedback surfaces, controls, cards, and section panels
+    ├── components/ui/              — primitive UI controls (Button, Card, Input, Select, Collapsible)
     └── ressim/src/                 — Rust simulator core
         ├── lib.rs                  — WASM API surface
-        ├── step.rs                 — IMPES timestep logic
+        ├── step.rs                 — IMPES timestep logic (2-phase and 3-phase)
         ├── solver.rs               — PCG pressure solver
-        ├── relperm.rs              — Corey relative permeability
-        ├── capillary.rs            — Brooks-Corey capillary pressure
+        ├── relperm.rs              — Corey rel-perm (2-phase) + Stone II (3-phase)
+        ├── capillary.rs            — Brooks-Corey capillary pressure (oil-water + oil-gas)
         ├── well.rs                 — well model + validation
         └── grid.rs                 — grid cell definitions
 scripts/
@@ -152,13 +153,15 @@ docs/                               — technical reference docs (see below)
 
 | Document | Content |
 |----------|---------|
-| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark registry, workflow, reference guidance, and chart behavior |
-| `docs/DOCUMENTATION_INDEX.md` | Current map of authoritative docs |
-| `P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
-| `UNIT_SYSTEM.md` | Comprehensive unit system reference |
-| `UNIT_REFERENCE.md` | Quick unit lookup card |
-| `TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻³` constant |
-| `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` | Store-facing preset/customize contract |
+| `docs/DOCUMENTATION_INDEX.md` | Map of authoritative docs |
+| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark scenario reference guidance and chart defaults |
+| `docs/P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
+| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase (Stone II) architecture and parameter reference |
+| `docs/UNIT_SYSTEM.md` | Comprehensive unit system reference |
+| `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
+| `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻³` constant |
+| `REFACTOR.md` | Active simplification refactor working document |
+| `TODO.md` | Prioritized work items and product roadmap |
 
 ## Physics Summary
 
@@ -167,21 +170,21 @@ docs/                               — technical reference docs (see below)
 | Feature | Details |
 |---------|---------|
 | Two-phase oil/water flow | IMPES pressure-saturation splitting |
-| Corey relative permeability | Configurable S_wc, S_or, n_w, n_o, k_rw_max, k_ro_max |
-| Brooks-Corey capillary pressure | Optional, P_entry + lambda (with scaled physical caps) |
-| Gravity segregation | Optional toggle, ρ·g·Δz head |
-| Peaceman well model | Rate or BHP control, dynamic PI |
+| Three-phase oil/water/gas flow | Stone II k_ro, Corey k_rg, oil-gas Pc, explicit gas transport (experimental) |
+| Corey relative permeability | S_wc, S_or, S_gc, S_gr; exponents n_w, n_o, n_g; maximums k_rw_max, k_ro_max, k_rg_max |
+| Brooks-Corey capillary pressure | Oil-water (optional) and oil-gas (optional, 3-phase only) |
+| Gravity segregation | Optional toggle, ρ·g·Δz head per phase |
+| Peaceman well model | Rate or BHP control, dynamic PI per timestep |
 | Well BHP constraints | Auto-switch rate→BHP if limit violated |
 | Material balance tracking | Per-timestep MB error |
 | PCG solver with convergence warning | Max 1000 iterations, residual check |
-| Saturation-weighted compressibility | Per-cell c_t = ϕ(c_o·S_o + c_w·S_w) + c_r |
-| Injection of 100% water | Injector flag controls fluid composition |
+| Saturation-weighted compressibility | Per-cell c_t = ϕ(c_o·S_o + c_w·S_w + c_g·S_g) + c_r |
+| Water or gas injection | Injector flag + `injectedFluid` parameter (`"water"` or `"gas"`) |
 
-### Not Implemented
+### Not Implemented / Deferred
 
 | Feature | Priority |
 |---------|----------|
-| Three-phase flow (oil/water/gas) | Long-term |
 | Aquifer boundary conditions | Medium |
 | Horizontal / deviated wells | Medium |
 | Non-uniform cell sizes | Medium |
@@ -189,4 +192,4 @@ docs/                               — technical reference docs (see below)
 | Capillary hysteresis | Low |
 | Per-cell capillary pressure variation | Low |
 
-See [TODO.md](TODO.md) for the full list of remaining work items.
+See [TODO.md](TODO.md) for the full work backlog and product roadmap.

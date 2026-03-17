@@ -1,465 +1,189 @@
-Out of Scope (Noted, Not Planned)
-analyticalSolutionMode sync logic — low risk, deferred
-Record<string, any> in benchmark/catalog code — acceptable for dynamic catalog structures
+# ResSim — TODO
 
-## Pre-existing Test Failures Analysis (2026-03-17)
+## Current Issues
 
-13 failures across 8 test files. All pre-date the store refactor. Grouped by root cause:
+### Open Test Failures (13 as of 2026-03-17)
 
-### A — App.svelte wiring gaps (4 failures in `appStoreDomainWiring.test.ts`)
+**Group A — App.svelte wiring gaps (4 failures, `appStoreDomainWiring.test.ts`)**
+The store already exposes the correct domain API but `App.svelte` has not been wired to use it yet.
+- [ ] Wire `scenario.cloneActiveReferenceToCustom()` for clone flow (line 16)
+- [ ] Pass `basePreset`, `navigationState`, `onActivateLibraryEntry` as props into ModePanel (line 20)
+- [ ] Import and mount `ReferenceExecutionCard` with a run-region manifest (line 33)
+- [ ] Use `scenario.activeReferenceFamily?.key` in the outputs region (line 57)
 
-Tests describe a **target state that hasn't been implemented** in `App.svelte`. The store contract and store-side APIs exist, but App.svelte hasn't been wired up to them yet.
+**Group B — Catalog count drift (4 failures, `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunModel.test.ts`)**
+Test assertions check specific variant/spec counts that the catalog has grown past. The catalog changes appear intentional (grid-sensitivity cleanup); tests need updated expectations.
+- [ ] Update expected variant count in `caseCatalog`: 12→16; run-spec count: 7→9
+- [ ] Update expected sensitivity axis count in `caseLibrary`: 3→4
+- [ ] Audit: confirm the extra variants are intentional, not an accidental duplicate
 
-- [ ] `scenario.cloneActiveReferenceToCustom()` — clone flow not routed via domain API in App.svelte (line 16)
-- [ ] `basePreset={scenario.basePreset}` / `navigationState` / `onActivateLibraryEntry` — preset-customize domain state not passed into `ModePanel` (line 20–21)
-- [ ] `import ReferenceExecutionCard` / `onRunReferenceSelection` / `activeRunManifest` — run-region manifest and `ReferenceExecutionCard` not present in App.svelte (line 33)
-- [ ] `scenario.activeReferenceFamily?.key` — reference family key not used in outputs region (line 57)
+**Group C — UI copy and component gaps (5 failures across `terminologyCopy.test.ts`, `modePanelFlows.test.ts`, `appThemeTypography.test.ts`, `outputTerminology.test.ts`)**
+Tests describe copy strings and CSS classes not yet present in the target components (written ahead of implementation).
+- [ ] Add `ui-panel-kicker` CSS class to `ModePanel.svelte`
+- [ ] Add `Library Context` and `Case Disclosure` copy to `ModePanel.svelte`
+- [ ] Add `Run {steps} Step` / `Advance 1 Step` / `Stop Run` to `RunControls.svelte`
+- [ ] Add `Reference Guidance` / `Library sensitivity run set` / `Reference review run` to `ModePanel.svelte`
+- [ ] Add `Depletion Reference Solution` / `Waterflood Reference Solution` to outputs copy in `App.svelte`
 
-**Fix direction:** Wire App.svelte to match the domain API the store already exposes. These are F1.4–F1.6 acceptance tests. Likely most of the real implementation work is in App.svelte restructuring.
+### Store Code Quality (from 2026-03-17 refactor)
 
----
-
-### B — Catalog count drift (4 failures across `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunModel.test.ts`)
-
-Tests assert **specific variant/spec counts** that have drifted from the current catalog state. The catalog was extended (grid-sensitivity cleanup per resume notes) but test expectations weren't updated.
-
-- [ ] `caseCatalog.test.ts` "generates BL sensitivity variants" — expects 12 variants, got 16 (line 85)
-- [ ] `caseCatalog.test.ts` "defines benchmark families with explicit ownership metadata" — shape mismatch on `bl_case_a_refined` (line 181)
-- [ ] `caseLibrary.test.ts` "normalizes BL references into waterflood library entries" — expects 3 sensitivity axes, got 4 (line 41)
-- [ ] `benchmarkRunModel.test.ts` "builds deterministic base-plus-variant run specs for BL families" — expects 7 run specs, got 9 (line 81)
-
-**Fix direction:** Either (a) update the test expectations to match the current catalog (if the catalog changes were intentional), or (b) audit whether the catalog added variants it shouldn't have. The resume note "the BL refined grid-sensitivity catalog no longer includes a duplicate-base grid variant" suggests the catalog change was intentional — test counts just weren't updated.
-
----
-
-### C — UI copy and component gaps (5 failures across `terminologyCopy.test.ts`, `modePanelFlows.test.ts`, `appThemeTypography.test.ts`, `outputTerminology.test.ts`)
-
-Tests describe **copy strings, CSS class names, and component features** that don't exist yet in the target UI files. These are tests written ahead of implementation.
-
-- [ ] `appThemeTypography.test.ts` — `ui-panel-kicker` CSS class missing from `ModePanel.svelte` (line 37). Tied to the semantic typography utility rollout (F3 typography slice).
-- [ ] `modePanelFlows.test.ts` — `Library Context` and `Case Disclosure` copy missing from `ModePanel.svelte` (line 22–23). Tied to F1.5 case disclosure block.
-- [ ] `terminologyCopy.test.ts` — `Run {steps} Step` / `Advance 1 Step` / `Stop Run` missing from `RunControls.svelte` (line 15–17). Tied to F2 run-controls copy normalization.
-- [ ] `terminologyCopy.test.ts` — `Reference Guidance` / `Library sensitivity run set` / `Reference review run` missing from `ModePanel.svelte` (line 51–53). Tied to F2/F3 reference-guidance copy.
-- [ ] `outputTerminology.test.ts` — `Depletion Reference Solution` / `Waterflood Reference Solution` missing from App.svelte (line 46–47). Tied to F2 output terminology in the reference comparison surface.
-
-**Fix direction:** Implement the missing copy/classes in the target components. Each failure maps to an F2 or F3 slice that is marked complete in the resume notes but apparently wasn't fully applied to these specific files.
+- [ ] **FRAGILE: `applyCaseParams` `||` fallback** — `|| 400` pattern silently ignores zero values for BHP/rate params. Replace with `Number.isFinite(v) ? v : default` pattern.
+- [ ] **SMELL: `activeReferenceFamily` dead alias** — `get activeReferenceFamily()` and `activeReferenceBenchmarkFamily` return the same value. Consolidate to one name; audit callers.
+- [ ] **OPTIMIZATION: `simWorker` and `playTimer` are `$state` unnecessarily** — neither is read in a reactive expression. Change to plain class fields.
+- [ ] **SMELL: Redundant casts in `buildModelResetKey()`** — `Number(this.nx)` on already-typed `$state` fields. Remove.
 
 ---
 
-## Issues Found During Store Refactor (2026-03-17)
+## Active Work
 
-These were discovered while refactoring `simulationStore.svelte.ts` from the getter/setter pattern to a class.
+### Simplification Refactor (see REFACTOR.md)
 
-- [x] **Store getter/setter boilerplate** — 140+ lines of `get foo() { return foo; }, set foo(v) { foo = v; }` boilerplate eliminated by converting to a Svelte 5 class. `parameterState`, `scenarioSelection`, `runtimeState` now return `this`.
+Goal: Replace 4-layer case-library navigation with `pick scenario → optionally pick sensitivity → run`.
+Status: Steps 1–3, 5–6 done. **Steps 4 and 7 are the remaining blockers.**
 
-- [ ] **BUG: Three-phase parameters not exposed in `parameterState`** — `s_gc`, `s_gr`, `n_g`, `k_rg_max`, `pcogEnabled`, `pcogPEntry`, `pcogLambda`, `mu_g`, `c_g`, `rho_g`, `threePhaseModeEnabled`, `injectedFluid`, `initialGasSaturation` were declared as `$state` but never added to the `parameterState` accessor object (likely added in the three-phase feature commit and the boilerplate was never updated). UI components bound to `params.xxx` for these fields were silently reading `undefined`. Fixed automatically by the class refactor — all `$state` fields are now uniformly accessible.
-
-- [ ] **FRAGILE: `applyCaseParams` uses `||` fallback for numeric params** — expressions like `injectorBhp = Number(resolved.injectorBhp) || 400` silently fall back to the default when a param is explicitly set to `0`. For BHP and rate values this is unlikely but possible. Should use `Number.isFinite(v) ? v : default` pattern. Affects: `injectorBhp`, `producerBhp`, `targetInjectorRate`, `targetProducerRate`, and any other numeric param where 0 is a valid physical value.
-
-- [ ] **SMELL: `activeReferenceFamily` is a dead alias** — `scenarioSelection` exposed both `activeReferenceBenchmarkFamily` and `activeReferenceFamily` returning the same value. Kept for now as `get activeReferenceFamily()` on the class but should audit callers and consolidate to one name.
-
-- [ ] **OPTIMIZATION: `simWorker` and `playTimer` are `$state` unnecessarily** — neither is read in any reactive expression or template; making them `$state` adds signal overhead for no benefit. Should be plain class fields (`simWorker: Worker | null = null`).
-
-- [ ] **SMELL: Redundant `Number()` / `Boolean()` casts in `buildModelResetKey()`** — all fields are already correctly typed `$state` variables; wrapping every value in `Number(this.nx)` etc. is cargo-cult defensive coding. Can be removed.
-
-
-# TODO — ResSim Frontend Execution Plan
-
-This file is the live execution tracker for the next frontend workstream. It replaces the benchmark-only backlog now that benchmark modernization is complete and the main remaining work is product/workflow coherence.
-
-## Current Objective (2026-03-07)
-
-Make ResSim feel like one deliberate scientific application instead of several adjacent tools. The next workstream is about workflow clarity, warning consistency, benchmark discoverability, compact inputs, unified outputs, and a more disciplined visual design.
-
-Primary review source:
-
-- `docs/FRONTEND_UI_AUDIT_2026-03-07.md`
-
-## Resume State
-
-- Status: `F1.4`, `F1.5`, `F1.7`, and `F1.9` are complete and validated; `F2` is complete; `F3` has compact run/result disclosure, selected-sensitivity output fixes, a table-first Results review surface, and a shared heading/chip/microcopy typography scale on the main app surfaces; and `F4` now has grouped chart-metric toggles, focused comparison-curve alignment, shared panel/x-axis selection helpers, and compact summary cards above both live and reference-comparison charts.
-- Next slice: continue `F4` by consolidating more of the chart-shell header and expansion-state wiring now that panel selection and summary cards are shared, then return to any remaining `F3` selected-review copy cleanup if the Results card still feels too talkative.
-- Latest UI cleanup: the inputs shell no longer needs a separate `Case Library` / `Custom` toggle; `Custom` now sits as the final selectable case inside each family library so the first decision stays family-first. Curated library cases now stay locked in the same inputs flow as benchmark/reference cases and only open for direct editing through `Customize`.
-- Latest benchmark fix: the Buckley-Leverett refined grid-sensitivity catalog no longer includes a duplicate-base grid variant; the reference chart now receives distinct coarse/intermediate grid runs for BL Case A/B sensitivity review.
-- Latest outputs fix: Run Table selection now drives the profile and 3D surfaces only, while reference-comparison charts keep their own case selectors so sensitivity curves stay visible and user-controlled inside the chart shell.
-- Reviewed F1 direction:
-  - explicit page regions: `Inputs`, `Run`, `Outputs`
-  - `Outputs` owns comparison from day one
-  - reviewed family direction: `Waterflood`, `Depletion Analysis`, `Type Curves`, `Scenario Builder`
-- After `F1`: `F2` warning/label normalization and `F3` benchmark disclosure should proceed before layout polish.
-- Constraint: preserve completed benchmark-modernization behavior unless `F1` explicitly decides to reposition benchmark mode in the product.
-
-## Active Workstream
-
-- [ ] **F1. Decide the product workflow and information architecture**
-
-  - Define the canonical page structure:
-    - inputs
-    - run + warnings
-    - outputs
-  - `Outputs` must own comparison and sensitivity review from day one rather than using a separate comparison/benchmark destination.
-
-
-#### F1.4 Replace The Top-Level Shell
-
-- [x] Replace the current mode-tab shell with a family-first `Inputs / Run / Outputs` shell.
-- Current progress inside `F1.4`:
-  - the case-library selector is now scoped to the active family instead of the old depletion-plus-type-curves bridge
-  - reference-family cases now route through the existing benchmark panel inside their owning family instead of requiring a separate top-level destination
-  - `App` now labels explicit `Inputs`, `Run`, and `Outputs` regions in the current shell
-  - the legacy reference selector has been removed from `BenchmarkPanel`; the family-local `Case Library` now owns reference entry as the single inputs-side selector
-- Remaining `F1.4` tasks:
-  - none; the next cleanup continues in `F1.5`
-- Primary files:
-  - `src/App.svelte`
+- [ ] **Step 4** — Remove `ScenarioNavigationState` from store; delete `phase2PresetContract.ts` (migrate `evaluateAnalyticalStatus` to `warningPolicy.ts`)
+- [ ] **Step 7** — Delete old files once new wiring is confirmed:
   - `src/lib/ui/modes/ModePanel.svelte`
-  - `src/lib/ui/modePanelComposition.test.ts`
-  - `src/lib/ui/modePanelFlows.test.ts`
-- Acceptance:
-  - navigation is family-first and source-aware
-  - page regions are explicit even before compact-layout work starts
-
-#### F1.5 Build The Inputs Region Around Case Library And Custom
-
-- [x] Replace the old benchmark panel split with one Inputs-region workflow.
-- Inputs-region responsibilities:
-  - library group switch or grouped list
-  - case disclosure panel with citation/source, fixed settings, sensitivities, and reference policy
-  - `Customize` action
-  - existing parameter sections, honoring editability policy
-- Current progress inside `F1.5`:
-  - the separate `Case Library` / `Custom` toggle has been pruned from `ModePanel`; `Custom` now appears as the final selectable case within each family-local library list
-  - source switching now performs real actions: starter cases transition into custom editing, reference cases use the existing seeded-customize flow, and custom runs can restore back to a curated family case
-  - the inputs-surface prop contract between `App`, `ModePanel`, and `BenchmarkPanel` now uses `reference*` naming instead of `benchmark*` naming
-  - user-facing inputs copy now says `Seeded from` / `Customize` instead of `Clone to Custom` where the flow is library-to-custom seeding
-  - the inputs region now includes a richer case disclosure block covering citation/source, fixed-settings behavior, allowed sensitivities, and reference policy for the active family case
-  - grouped library sections remain the default browsing model; no dedicated group switch will be added at the current catalog size, and the next escalation path is lightweight group filter chips only if family libraries grow materially
-  - the remaining benchmark-named inputs wrapper has been absorbed into `ModePanel`, leaving the family-local `Case Library` as the single inputs-side reference surface
-- Remaining `F1.5` tasks:
-  - none; the next cleanup continues in `F1.9`
-- Locked behavior:
-  - library/reference cases show fixed inputs as read-only
-  - only approved sensitivity selectors stay editable
-  - `Customize` unlocks the case by switching source to `Custom`
-- Primary files:
-  - `src/lib/ui/modes/ModePanel.svelte`
-  - `src/lib/ui/sections/ScenarioSectionsPanel.svelte`
-  - `src/lib/ui/modePanelTypes.ts`
-- Acceptance:
-  - the user can select, inspect, and customize a library case without leaving the owning family
-
-#### F1.6 Rebuild The Run Region As The Canonical Execution Surface
-
-- [x] Pull run controls, warnings, and “what will run” summary into one explicit Run region.
-- Run region should show:
-  - validation/runtime/reference warnings
-  - run buttons and progress
-  - run manifest describing the active family, source, case, and sensitivity selection
-  - explicit reference/comparison policy summary for library/reference runs
-- Current progress inside `F1.6`:
-  - the `Run` region now includes a run manifest driven by active family/source/case metadata rather than only generic simulator controls
-  - reference policy, allowed sensitivities, and seeded/custom provenance are now summarized beside the run controls instead of living only inside the inputs disclosure flow
-  - reference sweep progress and sweep-specific errors now surface in the `Run` region rather than only inside the inputs-side reference panel
-  - the execution-set selector itself now lives in a dedicated run-region reference execution card instead of the inputs-side reference panel
-- Remaining `F1.6` tasks:
-  - none; the next comparison-ownership move continues in `F1.7`
-- Primary files:
-  - `src/App.svelte`
-  - `src/lib/ui/cards/RunControls.svelte`
-  - `src/lib/ui/feedback/WarningPolicyPanel.svelte`
-  - `src/lib/warningPolicy.ts`
-- Acceptance:
-  - the user can understand exactly what will execute and what it will be compared against before running
-
-#### F1.7 Make Outputs The Single Home For Comparison
-
-- [x] Reorganize outputs so comparison is no longer treated as a separate benchmark-mode concept.
-- Outputs responsibilities:
-  - compact result summary
-  - case/run comparison selector
-  - charts
-  - 3D view
-  - supporting diagnostics/profile views
-- Keep the existing comparison model and benchmark chart plumbing where possible, but mount it under Outputs rather than benchmark mode.
-- Current progress inside `F1.7`:
-  - stored reference result cards have moved out of the inputs-side reference panel and into an outputs-side summary card beside the comparison charts
-  - the inputs-side reference panel no longer owns stored comparison history, so `ModePanel` no longer needs the `referenceRunResults` compatibility prop thread
-  - the outputs-side summary card now owns the active comparison-case focus and drives chart defaults through the existing `activeComparisonSelection` store contract
-  - the saturation-profile surface now follows the selected comparison case when one is focused, using stored reference snapshots and case-specific rock/fluid settings instead of always showing only the live runtime state
-  - the 3D view now follows the selected comparison case as well, including stored history playback, well overlays, and source labeling instead of always reflecting only the live runtime state
-  - the remaining benchmark-named output chart/config/model surfaces have been renamed to reference-comparison equivalents, so outputs no longer present benchmark-specific naming at the chart shell level
-- Primary files:
-  - `src/App.svelte`
-  - `src/lib/charts/RateChart.svelte`
-  - `src/lib/charts/ReferenceComparisonChart.svelte`
-  - `src/lib/charts/referenceComparisonModel.ts`
-  - `src/lib/visualization/3dview.svelte`
-- Remaining `F1.7` tasks:
-  - none; the next cleanup returns to `F1.4` / `F1.5`
-- Acceptance:
-  - outputs can render single-run, reference-vs-simulation, and sensitivity comparisons from one region
-
-#### F1.8 Define And Enforce Scenario Builder Boundaries
-
-- [ ] Explicitly define what belongs in `Scenario Builder`.
-- Immediate requirement:
-  - do not use it as a silent fallback for unsupported workflows
-  - if a user is redirected there, explain why
-- Later requirement:
-  - reduce the number of cases that need that redirection at all
-- Primary files:
-  - `src/lib/catalog/catalog.json`
-  - `src/lib/catalog/caseCatalog.ts`
-  - `src/lib/ui/modes/ModePanel.svelte`
-  - docs after F1 completes
-- Acceptance:
-  - `Scenario Builder` reads as intentional exploratory modeling, not as a catch-all bucket
-
-#### F1.9 Remove Legacy Benchmark-Mode Plumbing And Refresh Tests
-
-- [x] After the new shell and store paths are stable, remove legacy benchmark-mode-only code and tests.
-- Current progress inside `F1.9`:
-  - authoritative docs now describe family-owned benchmark/reference workflows instead of a separate benchmark mode
-  - the store now uses `reference*` runtime state and actions as the only public surface; benchmark-prefixed store aliases have been removed
-  - shared provenance helpers and UI-facing types now use `ReferenceProvenance`, `buildReferenceCloneProvenance(...)`, and `shouldAllowReferenceClone(...)` instead of benchmark-prefixed compatibility names
-  - shared catalog/store contracts now activate reference families through their owning family modes, and `PresetSource` now distinguishes `reference` from `facet` and `custom` without a benchmark-mode compatibility branch
-  - focused validation passed for catalog, contract, store wiring, and mode-panel flows after the benchmark-mode removal slice (`74/74`)
-- Retire or repurpose:
-  - benchmark top-level mode selectors
-  - benchmark-only UI props/types
-  - benchmark-only store guards
-  - docs phrased around a separate benchmark mode
-- Primary files:
+  - `src/lib/ui/cards/ReferenceExecutionCard.svelte`
+  - `src/lib/stores/phase2PresetContract.ts`
+  - `src/lib/catalog/presetCases.ts`
+  - `src/lib/catalog/benchmarkCases.ts`
   - `src/lib/catalog/caseCatalog.ts`
   - `src/lib/catalog/caseLibrary.ts`
-  - `src/lib/stores/phase2PresetContract.ts`
-  - `src/lib/ui/modes/ModePanel.svelte`
-  - `src/lib/ui/modePanelTypes.ts`
-  - `src/lib/stores/simulationStore.svelte.ts`
-  - `README.md`
-  - `docs/BENCHMARK_MODE_GUIDE.md`
-  - test files under `src/lib/ui/`, `src/lib/catalog/`, and store wiring tests
-- Acceptance:
-  - no live code path depends on `benchmark` as a top-level mode
-  - tests protect the new family/source/output architecture
+  - `src/lib/benchmarkDisclosure.ts`
+  - `src/lib/benchmarkRunModel.ts`
 
-### F1 Cutover Strategy
+### F4 — Unify Chart and Output Architecture
 
-- [ ] Keep the current result-model and comparison math intact while migrating the shell.
-- [ ] Migrate contracts first, then catalog/library, then store runner, then shell, then outputs, then cleanup.
-- [ ] Do not combine F1 shell migration with F6 visual compaction in the same implementation slice.
-- [ ] Do not rename every label in the same slice as the state-model migration; keep F2 separate.
+Goal: One consistent interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and reference comparisons.
 
-### F1 Risks To Watch During Implementation
+Progress so far:
+- Chart legends group by metric key instead of per-case curve
+- Reference-comparison charts build curves only for the focused comparison set
+- Shared x-axis/log-scale helpers and panel curve selection extracted
+- Compact summary cards rendered above panels from one shared output-summary contract
 
-- [ ] `Type Curves` may be thin initially; the shell must frame it as an analytical family, not a fully broad product area.
-- [ ] If `Case Library` is adopted, the UI must visually distinguish literature references from curated starters.
-- [ ] Existing mode-based tests will break in large numbers unless migrated slice-by-slice.
-- [ ] The 3D/output comparison experience must not regress while comparison ownership moves into `Outputs`.
+Remaining:
+- [ ] Consolidate remaining chart-shell header and expansion-state wiring
+- [ ] Finish shared panel/x-axis selection across both chart types
+- [ ] Resolve any remaining Results card verbosity (F3 copy cleanup)
 
-- [x] **F2. Unify warnings, labels, and terminology**
-  - Keep one warning-policy data model, but redesign the UI around one canonical warning surface plus section-local status/error indicators.
-  - Normalize vocabulary across the app:
-    - mode names
-    - run actions
-    - benchmark actions
-    - analytical/reference language
-    - result summaries
-  - Rename ambiguous labels such as `Analytical Model` if the control actually selects a reference/solution mode.
-  - Standardize text sizing and hierarchy across section headers, field labels, badges, and microcopy.
-  - Current progress inside `F2`:
-    - warning groups now read as one user-facing system: `Action Required`, `Reliability Cautions`, `Reference Limits`, and `Run Notes`
-    - warning-source badges now map to `Inputs`, `Run`, and `Reference` instead of implementation-first labels
-    - run controls and reference execution copy now use `Run`, `Reset Model`, and `Run Set` wording instead of `Reinit`, `Execution Set`, or reference-runner phrasing
-    - the analytical selector now presents `Reference Inputs` and `Reference Solution`, matching the actual user task
-    - outputs now use output-review and reference-solution wording across stored-result summaries, comparison-chart labels, saturation-profile overlays, and output empty states
-    - inputs disclosure and reference-status messaging now use `Reference source`, `Primary review metric`, and reference-guidance wording instead of analytical-first or sweep-era phrasing
-    - case-library provenance, run-summary headings, preset descriptions, and advanced reference diagnostics now use reference-guidance and reference-solution wording instead of validation-family, truth-source, or analytical-match phrasing
-    - README and current authoritative docs now use `Reference Solution`, `Reference Guidance`, and `Run Set` wording instead of analytical-first or benchmark-mode surface labels
-    - focused validation for the terminology slices passed (`31/31` for the warning/run pass, `23/23` for the output/chart pass, `53/53` for the inputs/disclosure pass), and the final markdown docs sweep cleared the remaining authoritative-doc wording residue
-  - Acceptance:
-    - warnings read as one system instead of three related surfaces
-    - labels describe user intent rather than implementation details
+Acceptance:
+- Chart behavior feels consistent regardless of run type
+- Future output features do not require parallel implementation in both chart shells
 
-- [~] **F3. Expose benchmark settings and reference guidance clearly**
-  - Add benchmark case disclosure cards or compact spec tables showing:
-    - grid/model size
-    - key fluid/rock settings
-    - well controls
-    - timestep/horizon
-    - reference guidance
-    - variant deltas for sensitivities
-  - Replace text-heavy stored benchmark result cards with a compact compare surface.
-  - Make it obvious which outputs belong to the base case versus selected sensitivity variants.
-  - Current progress inside `F3`:
-    - the Run-region reference execution card now includes a compact `Case Snapshot` and `Reference Guidance` block for the active family before execution
-    - sensitivity variants in the Run-region selector now show `Change from base` summaries instead of only labels
-    - the Results-region reference summary now uses a master-detail layout so sensitivity runs no longer repeat the same base-case information in separate cards
-    - stored reference-run results in Results now keep one selected-result detail panel with explicit run-spec and variant-delta context instead of repeating full spec blocks for every run
-    - 3D and saturation-profile outputs now read the selected sensitivity case dimensions and cell sizes instead of always reusing the live input dimensions
-    - the page-level outputs header now reads `Results`, and the app now uses a shared IBM Plex Sans/Mono typography baseline to reduce font-face inconsistency across body text and controls
-    - the Results-region reference summary has now been tightened again into a compact run table with varied-input, breakthrough PVI, breakthrough time, and delta-vs-reference columns, and the run-spec block has been removed from Results so that setup detail stays upstream in Inputs/Run
-    - shared semantic typography utilities now standardize section kickers, panel kickers, support copy, microcopy, and chips across the app shell, case-library flow, warning surface, comparison chart headers, and 3D inspector chrome instead of relying on repeated one-off `10px`/`11px` classes
-    - focused validation for the current F3 disclosure slices passed (`20/20` for the first disclosure slice, `21/21` for the Results/3D/typography follow-up, `17/17` for the compact-table Results follow-up, `16/16` for the semantic typography utility rollout)
-  - Acceptance:
-    - users can answer “what is this benchmark actually running?” before pressing run
-    - stored results remain readable when several variants exist
+Primary files: `src/lib/charts/RateChart.svelte`, `src/lib/charts/ReferenceComparisonChart.svelte`, `src/lib/charts/referenceComparisonModel.ts`
 
-- [ ] **F4. Unify chart and output architecture**
-  - Remove duplicated top-level interaction/state scaffolding between `RateChart` and `BenchmarkChart` where practical.
-  - Keep one interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and benchmark comparisons.
-  - Add compact output-summary cards/lists that sit above or beside charts instead of burying comparison data in long text blocks.
-  - Current progress inside `F4`:
-    - chart legend/toggle behavior now groups curves by shared metric keys instead of exposing one toggle per individual case curve, so visible metrics stay aligned across compared waterflood cases, depletion cases, and similar family-local result sets
-    - reference-comparison charts now build curves only for the focused comparison set (`selected`, `base`, and any explicit compared cases) instead of carrying hidden extra case curves with mismatched visibility defaults
-    - live and reference-comparison chart layout configs now share stable curve-key selection alongside legacy label-based overrides, creating a cleaner path for deeper panel-selection consolidation in later F4 slices
-    - `RateChart` and `ReferenceComparisonChart` now share extracted helper logic for x-axis option filtering, x-axis/log-scale coercion, and panel curve selection, so future panel-shell changes can land in one place instead of two nearly-identical Svelte files
-    - both chart shells now render the same compact summary-card strip above the panels, with live-run and focused-comparison metrics built from one shared output-summary contract instead of ad hoc chart-local text blocks
-    - focused validation for the initial F4 slice passed (`22/22` across reference-comparison model, reference chart config, grouped chart toggle usage, and output terminology checks)
-  - Acceptance:
-    - chart behavior feels consistent regardless of run type
-    - future output features do not require parallel implementation in multiple chart shells
+---
 
-- [ ] **F5. Add multi-case comparison beyond charts**
-  - Add case selection/switching for the 3D view when multiple benchmark or sensitivity runs exist.
-  - Extend comparison awareness to other output surfaces where it adds value:
-    - saturation profile
-    - compact summary cards
-    - key diagnostics
-  - Synchronize the selected case across summary, chart, and 3D inspection where appropriate.
-  - Acceptance:
-    - sensitivity studies can be inspected spatially, not only in charts
-    - output surfaces stay synchronized around one selected comparison case
+## Product Roadmap
 
-- [ ] **F6. Compact the input layout and reduce page height**
-  - Reduce default section padding and vertical spacing.
-  - Convert overly tall input groups into compact flowing cards/subcards where possible.
-  - Revisit table-heavy sections and keep tables only where they clearly outperform compact forms.
-  - Tighten margins and whitespace across the shell without making the UI cramped.
-  - Acceptance:
-    - common scenario editing takes materially less scrolling on desktop
-    - dense scientific inputs still remain legible and editable
+### F5 — Multi-Case Comparison Beyond Charts
 
-- [ ] **F7. Redesign light/dark themes and remove visual noise**
-  - Replace near-black dark surfaces and flat-white light surfaces with more deliberate working themes.
-  - Remove or significantly soften the reservoir-layer page background treatment.
-  - Improve panel contrast, content focus, and overall data-first visual balance.
-  - Acceptance:
-    - both themes feel designed for sustained technical use
-    - decorative background treatment no longer competes with data surfaces
+- [ ] Case selection/switching for the 3D view across sensitivity runs
+- [ ] Comparison awareness in saturation profile and compact summary cards
+- [ ] Synchronized selected case across summary, chart, and 3D inspection
 
-- [ ] **F8. Finish the faceted selection product surface**
-  - Audit every depletion, waterflood, and simulation facet against actual supported user workflows.
-  - For each currently surfaced option, choose one:
-    - fully support it
-    - hide it
-    - present it with an explicit reason and path to the right mode/workflow
-  - Make the mode split and facet constraints readable from the UI itself, not only from code rules.
-  - Acceptance:
-    - the catalog surface no longer looks broader than the product actually is
-    - users understand why an option is unavailable and what to use instead
+Acceptance: sensitivity studies can be inspected spatially, not only in charts
 
-- [ ] **F9. Refresh README and docs after the UI pass**
-  - Update README, benchmark guide, docs index, and the remaining current docs after F1-F8 land.
-  - Ensure the docs describe the final workflow and terminology, not transitional states.
-  - Acceptance:
-    - product docs match the live UI and current mental model
+---
 
-## Whole-Workstream Acceptance Criteria
+### F6 — Compact Input Layout
 
-- [ ] Inputs, run/warnings, outputs, and comparison review are visibly separated and easy to navigate.
-- [ ] Warning handling reads as one system and points users back to the right input region.
-- [ ] Benchmark cases expose their settings and reference policy clearly.
-- [ ] Sensitivity studies can be inspected in charts, summaries, and 3D views.
-- [ ] Labels and terminology are consistent across the app.
-- [ ] Input panels are materially more compact without losing readability.
-- [ ] Light and dark themes both feel intentional and data-first.
-- [ ] Faceted selection truthfully represents what each mode is meant to do.
-- [ ] `Scenario Builder` is positioned as an intentional exploratory workflow, not as a dump zone for unsupported cases.
+- [ ] Reduce default section padding and vertical spacing
+- [ ] Convert overly tall input groups into compact flowing cards where possible
+- [ ] Keep tables only where the user is genuinely working in a tabular model
+- [ ] Tighten margins and whitespace without making the UI cramped
 
-## Completed Context
+Acceptance: common scenario editing takes materially less scrolling on desktop; dense scientific inputs remain legible
 
-- [x] Benchmark modernization `B1` through `B10` completed on 2026-03-07.
-- [x] Benchmark registry, explicit reference policy, selected-variant sweeps, benchmark-specific chart defaults, and benchmark docs are now baseline capabilities.
+---
+
+### F7 — Redesign Themes
+
+- [ ] Replace near-black dark / flat-white light surfaces with deliberate working themes
+- [ ] Remove or significantly soften the reservoir-layer page background treatment
+- [ ] Improve panel contrast, content focus, and data-first visual balance
+
+Acceptance: both themes feel designed for sustained technical use; decorative background no longer competes with data surfaces
+
+---
+
+### F8 — Scenario Builder Boundaries
+
+- [ ] Explicitly define what belongs in Scenario Builder; do not use it as a silent fallback
+- [ ] If a user is redirected there, explain why
+- [ ] Reduce the number of cases that need redirection at all
+- [ ] Make mode split and facet constraints readable from the UI itself
+
+Acceptance: `Scenario Builder` reads as intentional exploratory modeling, not a catch-all bucket
+
+---
+
+### F9 — Refresh Docs After UI Pass
+
+- [ ] Update README, benchmark guide, docs index, and remaining docs after F1-F8 land
+- [ ] Ensure docs describe the final workflow and terminology, not transitional states
+
+---
 
 ## Deferred / Later
 
-- [ ] Well schedule support.
-- [ ] Three-phase flow.
-- [ ] Aquifer boundary conditions.
-- [ ] Per-cell or per-layer porosity variation.
-- [ ] Per-cell initial water saturation / transition-zone initialization.
-- [ ] Additional published benchmark families beyond Buckley-Leverett and depletion.
+### Physics Extensions
 
-#### Benchmark and comparison tooling
+- [ ] Well schedule support
+- [ ] Aquifer boundary conditions
+- [ ] Per-cell or per-layer porosity variation
+- [ ] Per-cell initial water saturation / transition-zone initialization
+- [ ] Additional published benchmark families beyond Buckley-Leverett and depletion
 
-- [ ] Grid-convergence study preset family.
-- [ ] A/B run comparison overlays.
-- [ ] Relative error (%) diagnostic curves.
-- [ ] Uncertainty and sensitivity batch runner beyond curated benchmark sensitivities.
+### Benchmark and Comparison Tooling
 
-#### Visualization and charting
+- [ ] Grid-convergence study preset family
+- [ ] A/B run comparison overlays
+- [ ] Relative error (%) diagnostic curves
+- [ ] Uncertainty and sensitivity batch runner beyond curated benchmark sensitivities
 
-- [ ] Sw profile plot evolution and tighter integration with benchmark mode.
-- [ ] Cross-section / slice viewer for i/j/k inspection in the 3D view.
-- [ ] Summary statistics panel for OOIP, pore volume, RF, average pressure, average saturation, water cut, and VRR.
+### Visualization and Charting
 
-#### Scenario and reporting workflow
+- [ ] Sw profile plot evolution and tighter 3D companion integration
+- [ ] Cross-section / slice viewer for i/j/k inspection in the 3D view
+- [ ] Summary statistics panel (OOIP, pore volume, RF, average pressure/saturation, water cut, VRR)
 
-- [ ] Structured scenario export/import.
-- [ ] CSV/JSON export of results and benchmark summaries.
+### Scenario and Reporting
 
-#### Wells and advanced reservoir modeling
+- [ ] Structured scenario export/import
+- [ ] CSV/JSON export of results and benchmark summaries
 
-- [ ] Multi-well patterns such as 5-spot, line-drive, and custom placements.
-- [ ] Non-uniform cell sizes and local grid refinement.
+### Wells and Advanced Reservoir Modeling
 
-#### Analytical and diagnostic expansion
+- [ ] Multi-well patterns (5-spot, line-drive, custom placements)
+- [ ] Non-uniform cell sizes and local grid refinement
 
-- [ ] Areal sweep efficiency charting.
-- [ ] Depletion analytical calibration against additional published references.
+### Analytical and Diagnostic Expansion
+
+- [ ] Areal sweep efficiency charting
+- [ ] Depletion analytical calibration against additional published references
 
 ### Nice To Have Only
 
-These are still reasonable ideas, but they are less central to the current product direction and should stay behind the important-later group.
+- [ ] Benchmark trend tracking across CI runs
+- [ ] Comparative visualization: side-by-side scenarios or delta views
+- [ ] Multi-chart synchronized zoom/pan
+- [ ] Responsive/mobile chart and 3D layout improvements
+- [ ] Phase relative permeability / capillary curve visualization
+- [ ] Report export for plots and key metrics
+- [ ] Undo/redo for parameter changes
+- [ ] Horizontal or deviated well model with generalized Peaceman PI
+- [ ] Per-cell capillary pressure variation and capillary hysteresis
+- [ ] Fetkovich type-curve overlay expansion
 
-#### Tooling and process
+---
 
-- [ ] Benchmark trend tracking across commits or CI runs.
+## Completed
 
-#### Visualization and comparison UX
-
-- [ ] Comparative visualization mode for side-by-side scenarios or delta views.
-- [ ] Multi-chart synchronized zoom/pan.
-- [ ] Responsive/mobile chart and 3D layout improvements.
-- [ ] Phase relative permeability / capillary curve visualization.
-
-#### Scenario workflow and reporting
-
-- [ ] Report export for plots and key metrics.
-- [ ] Undo/redo for parameter changes.
-
-#### Advanced modeling extensions
-
-- [ ] Horizontal or deviated well model with generalized Peaceman PI.
-- [ ] Per-cell capillary pressure variation and capillary hysteresis.
-
-#### Analytical overlay expansion
-
-- [ ] Fetkovich type-curve overlay expansion.
-
-### Dropped From Retained Options
-
-These were removed from the retained list because they were duplicates or too vague to justify separate tracking right now.
-
-- [x] Make the Sw profile a more explicit companion to the spatial 3D view — folded into Sw profile integration work.
-- [x] Three-phase flow and broader physics extensions — replaced by the more specific three-phase flow item.
-- [x] CSV/JSON export of results — folded into the more specific scenario/results export item.
-- [x] General scenario import/export — replaced by structured scenario export/import.
-- [x] Cross-section / slice viewer improvements — replaced by the more specific slice-viewer item.
-- [x] Additional published benchmark families beyond the current BL/depletion scope — retained once, in the physics/benchmark expansion group.
-
-## Documentation Hygiene
-
-- [x] Historical review docs and completed execution-history docs were pruned on 2026-03-07.
-- [x] Long-term improvements worth retaining were kept in this tracker under `Deferred / Later`, `Nice To Have Only`, and the current `F1`-`F9` workstream items.
+- **B1–B10** (2026-03-07): Benchmark modernization — family registry, explicit reference policy, sensitivity sweeps, benchmark-specific chart defaults, benchmark docs.
+- **F1** (2026-03): Unified `Inputs / Run / Outputs` shell; family-first navigation; case library; reference execution card in Run region; comparison moved to Outputs; legacy benchmark-mode plumbing removed.
+- **F2** (2026-03): Warning policy unified (`Action Required`, `Reliability Cautions`, `Reference Limits`, `Run Notes`); vocabulary normalized to `Reference Solution`, `Reference Guidance`, `Run Set` throughout UI and docs.
+- **F3** (2026-03): Case disclosure cards; compact `Run Set` selector with variant deltas; master-detail Results layout; compact run table; shared IBM Plex Sans/Mono typography baseline; semantic utility classes (`ui-panel-kicker`, `ui-section-kicker`, `ui-chip`, etc.).
+- **Store refactor** (2026-03-17): Converted `createSimulationStore()` from function-based getter/setter boilerplate (~140 lines eliminated) to a Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters were declared as `$state` but never exposed in the `parameterState` accessor object.

@@ -127,9 +127,9 @@ Frontend alignment note:
 
 - README includes a Model Validation Benchmarks (P4-1) section with tolerance policy and a link to this page.
 - Chart-level reference-solution mismatch metrics (MAE/RMSE/MAPE) remain visible in the rate chart panel for quick run-time comparison.
-- The family-owned reference workflow now exposes Buckley-Leverett families through the frontend benchmark registry rather than through duplicated preset payloads.
-- Benchmark execution now uses the `Run Set` workflow: base only, or an explicit subset of variants within one selected sensitivity axis.
-- Stored reference-run results now feed benchmark-specific comparison charts instead of relying on one live single-run chart path.
+- Buckley-Leverett scenarios are defined in `src/lib/catalog/scenarios.ts` as `wf_bl_case_a` and `wf_bl_case_b`; each scenario is a complete self-contained parameter set.
+- Benchmark execution uses the sensitivity sweep workflow: run base only, or select sensitivity variants (grid refinement, viscosity) for a sweep.
+- Stored reference-run results feed benchmark-specific comparison charts.
 - There is no generated frontend benchmark artifact; benchmark evidence is kept in Rust tests and scenario presets.
 
 ## Current Frontend Benchmark Interpretation

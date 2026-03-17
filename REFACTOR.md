@@ -2,6 +2,8 @@
 
 > Use this file to track progress, note issues, and pick up work after session breaks.
 
+> **Current status (2026-03-17):** Steps 1, 2, 3, 5, 6 are done. **Steps 4 and 7 are the remaining blockers.** The old architecture files still exist in the repo alongside the new model. Delete this file when both steps are complete.
+
 ---
 
 ## Goal

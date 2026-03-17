@@ -24,7 +24,7 @@ ResSim is a browser-based 3D reservoir simulator combining:
    - `lib/visualization/3dview.svelte` - Three.js 3D property visualization
    - `lib/charts/RateChart.svelte` - Production rate charts with analytical comparison
    - `lib/workers/sim.worker.ts` - Web Worker bridge to keep UI responsive during simulation
-   - `lib/ui/modes/ModePanel.svelte` - Top-level mode-driven input surface
+   - `lib/ui/modes/ScenarioPicker.svelte` - Primary scenario selection surface (replaces ModePanel.svelte, which is being removed)
    - `lib/ui/sections/ScenarioSectionsPanel.svelte` - Shared scenario section composition
 
 3. **Build & CI**
@@ -164,11 +164,11 @@ ressim/
 
 Primary docs in `docs/` folder:
 - `DOCUMENTATION_INDEX.md` - Complete documentation map
-- `P4_TWO_PHASE_BENCHMARKS.md` - Benchmark methodology
+- `P4_TWO_PHASE_BENCHMARKS.md` - Buckley-Leverett benchmark methodology
 - `UNIT_SYSTEM.md` - Current unit system reference
-- `TRANSMISSIBILITY_FACTOR.md` - Current transmissibility constant note
-- `PHASE2_PRESET_CUSTOMIZE_CONTRACT.md` - Store-facing preset/customize contract
-- See `README.md` for quick start and FAQ
+- `TRANSMISSIBILITY_FACTOR.md` - Transmissibility constant derivation
+- `THREE_PHASE_IMPLEMENTATION_NOTES.md` - Three-phase (Stone II) architecture
+- See `README.md` for quick start and feature summary
 
 ## Common Tasks
 
@@ -213,8 +213,10 @@ Primary docs in `docs/` folder:
 ## Roadmap Context
 
 From `TODO.md`:
-- **Completed**: P0-P4 phases including two-phase benchmarks
-- **Near-term**: Consider 3-phase extension (oil/water/gas)
-- **Nice-to-Have**: Aquifer coupling, ensemble runs, uncertainty analysis
+- **Completed**: P0-P4 phases, benchmark modernization (B1-B10), F1-F3 UI workstream, store class refactor
+- **Implemented**: Three-phase (oil/water/gas) simulation via Stone II relative permeability (experimental, no analytical reference)
+- **Active**: Simplification refactor (ScenarioPicker replacing case-library navigation, REFACTOR.md steps 4+7 pending); F4 chart unification
+- **Roadmap**: F5 multi-case spatial comparison, F6 compact inputs, F7 themes, F8 scenario builder, F9 docs refresh
+- **Nice-to-Have**: Aquifer coupling, ensemble runs, uncertainty analysis, horizontal wells
 
 When implementing features, align with roadmap priorities and preserve existing validated functionality.

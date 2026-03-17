@@ -1,7 +1,7 @@
 # Benchmark Workflow Guide
 
-Date: 2026-03-07
-Status: authoritative guide for the current benchmark registry, execution workflow, reference guidance, and chart behavior
+Date: 2026-03-07; updated 2026-03-17
+Status: **Reference guidance, sensitivity policy, and chart defaults remain current.** The "Source of truth" and "Execution workflow" sections below reference pre-simplification architecture (old `caseCatalog.ts` / `ModePanel.svelte` model) and will be rewritten after REFACTOR.md step 7 completes.
 
 This page describes the benchmark system that the current frontend code and regression suite enforce. Use it together with `docs/P4_TWO_PHASE_BENCHMARKS.md`:
 
@@ -9,6 +9,8 @@ This page describes the benchmark system that the current frontend code and regr
 - `docs/P4_TWO_PHASE_BENCHMARKS.md` remains the reference for Buckley-Leverett breakthrough methodology and acceptance tolerances
 
 ## Source of truth
+
+> **Note (2026-03-17):** The files listed below are being replaced by `src/lib/catalog/scenarios.ts` (scenario definitions + sensitivity variants) and `src/lib/ui/modes/ScenarioPicker.svelte` (selection UI). This section will be rewritten when REFACTOR.md step 7 completes. The physics, reference-guidance, sensitivity-policy, and chart-defaults sections above and below remain current.
 
 The benchmark system is intentionally split by responsibility, with one logical owner for each concern:
 
