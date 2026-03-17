@@ -29,9 +29,16 @@ mod solver;
 mod step;
 mod well;
 
-pub use capillary::CapillaryPressure;
-pub use relperm::RockFluidProps;
+pub use capillary::{CapillaryPressure, GasOilCapillaryPressure};
+pub use relperm::{RockFluidProps, RockFluidPropsThreePhase};
 pub use well::{TimePointRates, Well, WellRates};
+
+/// Which fluid the injector injects in three-phase mode.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub enum InjectedFluid {
+    Water,
+    Gas,
+}
 
 // Utility to log panics to the browser console
 #[wasm_bindgen(start)]
@@ -118,6 +125,24 @@ pub struct ReservoirSimulator {
     b_o: f64,
     b_w: f64,
     rate_history: Vec<TimePointRates>,
+
+    // ── Three-phase additions (inactive when three_phase_mode = false) ────────
+    /// Gas saturation per cell (all zeros in 2-phase mode)
+    pub(crate) sat_gas: Vec<f64>,
+    /// Three-phase SCAL (Stone II). None while running in 2-phase mode.
+    pub(crate) scal_3p: Option<RockFluidPropsThreePhase>,
+    /// Gas-oil capillary pressure curve. None while disabled or 2-phase mode.
+    pub(crate) pc_og: Option<GasOilCapillaryPressure>,
+    /// Enable three-phase equations in step.rs
+    pub(crate) three_phase_mode: bool,
+    /// Which fluid is injected (only relevant when three_phase_mode = true)
+    pub(crate) injected_fluid: InjectedFluid,
+    /// Gas viscosity [cP]
+    pub(crate) mu_g: f64,
+    /// Gas compressibility [1/bar]
+    pub(crate) c_g: f64,
+    /// Gas density [kg/m³]
+    pub(crate) rho_g: f64,
 }
 
 #[wasm_bindgen]
@@ -135,6 +160,7 @@ impl ReservoirSimulator {
         let pressure = vec![300.0; n];
         let sat_water = vec![0.3; n];
         let sat_oil = vec![0.7; n];
+        let sat_gas = vec![0.0; n];
         ReservoirSimulator {
             nx,
             ny,
@@ -149,6 +175,7 @@ impl ReservoirSimulator {
             pressure,
             sat_water,
             sat_oil,
+            sat_gas,
             wells: Vec::new(),
             time_days: 0.0, // simulation time in days
             pvt: FluidProperties::default_pvt(),
@@ -175,6 +202,14 @@ impl ReservoirSimulator {
             cumulative_injection_m3: 0.0,
             cumulative_production_m3: 0.0,
             cumulative_mb_error_m3: 0.0,
+            // Three-phase (disabled by default)
+            scal_3p: None,
+            pc_og: None,
+            three_phase_mode: false,
+            injected_fluid: InjectedFluid::Gas,
+            mu_g: 0.02,
+            c_g: 1e-4,
+            rho_g: 10.0,
         }
     }
 
@@ -719,6 +754,106 @@ impl ReservoirSimulator {
             self.cumulative_production_m3 = last.total_production_liquid_reservoir;
         }
 
+        Ok(())
+    }
+
+    /// Set initial gas saturation for all grid cells (three-phase mode)
+    #[wasm_bindgen(js_name = setInitialGasSaturation)]
+    pub fn set_initial_gas_saturation(&mut self, sat_gas: f64) {
+        let n = self.nx * self.ny * self.nz;
+        let sg = sat_gas.clamp(0.0, 1.0);
+        for i in 0..n {
+            let sw = self.sat_water[i];
+            let sg_clamped = sg.min(1.0 - sw);
+            self.sat_gas[i] = sg_clamped;
+            self.sat_oil[i] = (1.0 - sw - sg_clamped).max(0.0);
+        }
+    }
+
+    /// Get gas saturation array (zeros when running in 2-phase mode)
+    #[wasm_bindgen(js_name = getSatGas)]
+    pub fn get_sat_gas(&self) -> Vec<f64> {
+        self.sat_gas.clone()
+    }
+
+    /// Enable or disable the three-phase simulation mode
+    #[wasm_bindgen(js_name = setThreePhaseModeEnabled)]
+    pub fn set_three_phase_mode_enabled(&mut self, enabled: bool) {
+        self.three_phase_mode = enabled;
+    }
+
+    /// Set three-phase relative permeability parameters (Stone II model)
+    #[wasm_bindgen(js_name = setThreePhaseRelPermProps)]
+    pub fn set_three_phase_rel_perm_props(
+        &mut self,
+        s_wc: f64,
+        s_or: f64,
+        s_gc: f64,
+        s_gr: f64,
+        n_w: f64,
+        n_o: f64,
+        n_g: f64,
+        k_rw_max: f64,
+        k_ro_max: f64,
+        k_rg_max: f64,
+    ) -> Result<(), String> {
+        if s_wc + s_or + s_gc + s_gr >= 1.0 {
+            return Err(format!(
+                "Invalid saturation endpoints: S_wc + S_or + S_gc + S_gr must be < 1.0, got {}",
+                s_wc + s_or + s_gc + s_gr
+            ));
+        }
+        if n_w <= 0.0 || n_o <= 0.0 || n_g <= 0.0 {
+            return Err(format!(
+                "Corey exponents must be positive, got n_w={}, n_o={}, n_g={}",
+                n_w, n_o, n_g
+            ));
+        }
+        self.scal_3p = Some(RockFluidPropsThreePhase {
+            s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max, s_gc, s_gr, n_g, k_rg_max,
+        });
+        Ok(())
+    }
+
+    /// Set gas-oil capillary pressure parameters (Brooks-Corey form)
+    #[wasm_bindgen(js_name = setGasOilCapillaryParams)]
+    pub fn set_gas_oil_capillary_params(&mut self, p_entry: f64, lambda: f64) -> Result<(), String> {
+        if p_entry < 0.0 {
+            return Err(format!("Gas-oil capillary entry pressure must be non-negative, got {}", p_entry));
+        }
+        if lambda <= 0.0 {
+            return Err(format!("Gas-oil capillary lambda must be positive, got {}", lambda));
+        }
+        self.pc_og = Some(GasOilCapillaryPressure { p_entry, lambda });
+        Ok(())
+    }
+
+    /// Set gas fluid properties for three-phase mode
+    #[wasm_bindgen(js_name = setGasFluidProperties)]
+    pub fn set_gas_fluid_properties(&mut self, mu_g: f64, c_g: f64, rho_g: f64) -> Result<(), String> {
+        if mu_g <= 0.0 {
+            return Err(format!("Gas viscosity must be positive, got {}", mu_g));
+        }
+        if c_g < 0.0 {
+            return Err(format!("Gas compressibility must be non-negative, got {}", c_g));
+        }
+        if rho_g <= 0.0 {
+            return Err(format!("Gas density must be positive, got {}", rho_g));
+        }
+        self.mu_g = mu_g;
+        self.c_g = c_g;
+        self.rho_g = rho_g;
+        Ok(())
+    }
+
+    /// Set injected fluid type for three-phase mode: "water" or "gas"
+    #[wasm_bindgen(js_name = setInjectedFluid)]
+    pub fn set_injected_fluid(&mut self, fluid: &str) -> Result<(), String> {
+        self.injected_fluid = match fluid.to_ascii_lowercase().as_str() {
+            "water" => InjectedFluid::Water,
+            "gas" => InjectedFluid::Gas,
+            other => return Err(format!("Unknown injected fluid '{}'; expected 'water' or 'gas'", other)),
+        };
         Ok(())
     }
 
@@ -1608,5 +1743,292 @@ mod tests {
         let expected_q = well.productivity_index * (pressure - 80.0);
         assert!((q - expected_q).abs() < 1e-9);
         assert!(q < 500.0);
+    }
+
+    // ── Three-phase tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn three_phase_relperm_k_ro_stone2_endpoints() {
+        use crate::relperm::RockFluidPropsThreePhase;
+
+        let rock = RockFluidPropsThreePhase {
+            s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
+            s_gc: 0.05, s_gr: 0.05, n_g: 1.5, k_rg_max: 0.7,
+        };
+
+        // At connate water with no free gas → k_ro should equal k_ro_max
+        let kro_at_swc = rock.k_ro_stone2(rock.s_wc, 0.0);
+        assert!(
+            (kro_at_swc - rock.k_ro_max).abs() < 1e-10,
+            "k_ro_stone2(Swc, 0) should equal k_ro_max ({}) but got {}",
+            rock.k_ro_max, kro_at_swc
+        );
+
+        // At connate water, gas fills remaining mobile pore volume → k_ro = 0
+        let sg_max = 1.0 - rock.s_wc - rock.s_gr;
+        let kro_max_gas = rock.k_ro_stone2(rock.s_wc, sg_max);
+        assert!(
+            kro_max_gas < 1e-9,
+            "k_ro_stone2(Swc, sg_max) should be ~0 but got {}",
+            kro_max_gas
+        );
+
+        // At fully flooded water (1-Sor), no gas → k_ro = 0
+        let kro_at_max_water = rock.k_ro_stone2(1.0 - rock.s_or, 0.0);
+        assert!(
+            kro_at_max_water < 1e-9,
+            "k_ro_stone2(1-Sor, 0) should be ~0 but got {}",
+            kro_at_max_water
+        );
+
+        // k_ro must stay in [0, k_ro_max] across the entire saturation triangle
+        for i in 0..=20 {
+            let sw = rock.s_wc + i as f64 * (1.0 - rock.s_wc - rock.s_or) / 20.0;
+            for j in 0..=20 {
+                let sg = j as f64 * (1.0 - rock.s_wc - rock.s_gr) / 20.0;
+                if sw + sg <= 1.0 {
+                    let kro = rock.k_ro_stone2(sw, sg);
+                    assert!(
+                        kro >= -1e-10,
+                        "k_ro_stone2 negative at sw={:.3}, sg={:.3}: {}",
+                        sw, sg, kro
+                    );
+                    assert!(
+                        kro <= rock.k_ro_max + 1e-10,
+                        "k_ro_stone2 exceeds k_ro_max at sw={:.3}, sg={:.3}: {}",
+                        sw, sg, kro
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn three_phase_relperm_k_rg_endpoints_and_monotonicity() {
+        use crate::relperm::RockFluidPropsThreePhase;
+
+        let rock = RockFluidPropsThreePhase {
+            s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
+            s_gc: 0.05, s_gr: 0.05, n_g: 2.0, k_rg_max: 0.7,
+        };
+
+        // Below and at critical gas saturation → k_rg = 0
+        assert_eq!(rock.k_rg(0.0), 0.0);
+        assert_eq!(rock.k_rg(rock.s_gc * 0.5), 0.0);
+        assert!(rock.k_rg(rock.s_gc) < 1e-10, "k_rg(Sgc) = {}", rock.k_rg(rock.s_gc));
+
+        // At maximum mobile gas saturation (Sg = 1 - Swc - Sgr) → k_rg = k_rg_max
+        let sg_at_kmax = 1.0 - rock.s_wc - rock.s_gr;
+        let krg_at_max = rock.k_rg(sg_at_kmax);
+        assert!(
+            (krg_at_max - rock.k_rg_max).abs() < 1e-10,
+            "k_rg at max gas sat should be k_rg_max ({}) but got {}",
+            rock.k_rg_max, krg_at_max
+        );
+
+        // k_rg is monotonically non-decreasing from Sgc to sg_at_kmax
+        let mut prev_krg = 0.0;
+        let n = 50;
+        for i in 0..=n {
+            let sg = rock.s_gc + i as f64 * (sg_at_kmax - rock.s_gc) / n as f64;
+            let krg = rock.k_rg(sg);
+            assert!(
+                krg >= prev_krg - 1e-12,
+                "k_rg not monotone at sg={:.4}: {} < prev {}",
+                sg, krg, prev_krg
+            );
+            prev_krg = krg;
+        }
+    }
+
+    #[test]
+    fn three_phase_relperm_stone2_reduces_to_two_phase_at_zero_gas() {
+        use crate::relperm::RockFluidPropsThreePhase;
+
+        let rock = RockFluidPropsThreePhase {
+            s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
+            s_gc: 0.05, s_gr: 0.05, n_g: 1.5, k_rg_max: 0.7,
+        };
+
+        // When Sg = 0, Stone II must collapse exactly to the oil-water k_ro curve:
+        //   Stone II at Sg=0: kro_g→k_ro_max, krg→0
+        //   => k_ro = k_ro_max * [(kro_w/k_ro_max + krw)(1 + 0) − krw] = kro_w
+        let sw_vals = [0.10, 0.20, 0.30, 0.50, 0.70, 0.85, 0.90];
+        for &sw in &sw_vals {
+            let kro_stone2 = rock.k_ro_stone2(sw, 0.0);
+            let kro_ow = rock.k_ro_water(sw);
+            assert!(
+                (kro_stone2 - kro_ow).abs() < 1e-10,
+                "Stone II at Sg=0 does not match k_ro_water at sw={}: stone2={}, k_ro_w={}",
+                sw, kro_stone2, kro_ow
+            );
+        }
+    }
+
+    /// Build a minimal 3-phase simulator with gas injection for physics tests.
+    fn make_3phase_gas_injection_sim(nx: usize) -> ReservoirSimulator {
+        let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.10, 0.10, 0.05, 0.05,
+            2.0, 2.0, 1.5,
+            0.8, 0.9, 0.7,
+        ).unwrap();
+        sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_initial_saturation(0.10);
+        sim.pc.p_entry = 0.0;
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(nx - 1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim
+    }
+
+    #[test]
+    fn three_phase_saturation_sum_equals_one() {
+        let mut sim = make_3phase_gas_injection_sim(8);
+
+        for _ in 0..30 {
+            sim.step(1.0);
+        }
+
+        let n = sim.nx * sim.ny * sim.nz;
+        for i in 0..n {
+            let sw = sim.sat_water[i];
+            let so = sim.sat_oil[i];
+            let sg = sim.sat_gas[i];
+            let sum = sw + so + sg;
+            assert!(
+                (sum - 1.0).abs() < 1e-8,
+                "sw+so+sg != 1 at cell {}: sw={:.6}, so={:.6}, sg={:.6}, sum={:.9}",
+                i, sw, so, sg, sum
+            );
+            assert!(sw >= -1e-9, "Sw negative at cell {}: {}", i, sw);
+            assert!(so >= -1e-9, "So negative at cell {}: {}", i, so);
+            assert!(sg >= -1e-9, "Sg negative at cell {}: {}", i, sg);
+        }
+    }
+
+    #[test]
+    fn three_phase_gas_injection_increases_avg_gas_saturation() {
+        let mut sim = make_3phase_gas_injection_sim(5);
+
+        let n = sim.nx * sim.ny * sim.nz;
+        let avg_sg_initial: f64 = sim.sat_gas.iter().sum::<f64>() / n as f64;
+        assert_eq!(avg_sg_initial, 0.0, "Initial gas saturation should be zero");
+
+        for _ in 0..50 {
+            sim.step(2.0);
+        }
+
+        let avg_sg_final: f64 = sim.sat_gas.iter().sum::<f64>() / n as f64;
+        assert!(
+            avg_sg_final > 0.01,
+            "Gas saturation should increase during gas injection, avg_sg={:.6}",
+            avg_sg_final
+        );
+    }
+
+    #[test]
+    fn three_phase_rate_history_records_gas_production() {
+        let mut sim = make_3phase_gas_injection_sim(5);
+
+        for _ in 0..20 {
+            sim.step(2.0);
+        }
+
+        let last = sim.rate_history.last().expect("rate history should have entries");
+        assert!(
+            last.total_production_gas.is_finite(),
+            "total_production_gas should be finite, got {}",
+            last.total_production_gas
+        );
+
+        let total_gas_produced: f64 = sim.rate_history.iter()
+            .map(|r| r.total_production_gas.max(0.0))
+            .sum();
+        assert!(
+            total_gas_produced > 0.0,
+            "Expected positive cumulative gas production after gas injection"
+        );
+    }
+
+    #[test]
+    fn three_phase_mode_disabled_sat_gas_stays_zero() {
+        // In the default 2-phase mode, sat_gas must remain all zeros and sw+so=1.
+        let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(4, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        for _ in 0..20 {
+            sim.step(1.0);
+        }
+
+        for (i, &sg) in sim.sat_gas.iter().enumerate() {
+            assert_eq!(sg, 0.0, "sat_gas[{}] should be zero in 2-phase mode, got {}", i, sg);
+        }
+        for i in 0..sim.nx * sim.ny * sim.nz {
+            assert!(
+                (sim.sat_water[i] + sim.sat_oil[i] - 1.0).abs() < 1e-8,
+                "2-phase sw+so != 1 at cell {}",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_3phase_relperm_params() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+
+        // Endpoint sum >= 1.0 must be rejected
+        err_contains(
+            sim.set_three_phase_rel_perm_props(0.4, 0.3, 0.2, 0.2, 2.0, 2.0, 1.5, 1.0, 1.0, 0.7),
+            "must be < 1.0",
+        );
+
+        // Zero Corey exponent for water
+        err_contains(
+            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.0, 2.0, 1.5, 1.0, 1.0, 0.7),
+            "must be positive",
+        );
+
+        // Zero Corey exponent for gas
+        err_contains(
+            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 2.0, 2.0, 0.0, 1.0, 1.0, 0.7),
+            "must be positive",
+        );
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_gas_fluid_properties() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+
+        err_contains(sim.set_gas_fluid_properties(0.0, 1e-4, 10.0), "must be positive");
+        err_contains(sim.set_gas_fluid_properties(-0.01, 1e-4, 10.0), "must be positive");
+        err_contains(sim.set_gas_fluid_properties(0.02, -1e-4, 10.0), "non-negative");
+        err_contains(sim.set_gas_fluid_properties(0.02, 1e-4, 0.0), "must be positive");
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_injected_fluid_string() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+
+        err_contains(sim.set_injected_fluid("steam"), "Unknown injected fluid");
+        err_contains(sim.set_injected_fluid(""), "Unknown injected fluid");
+
+        // Valid strings must succeed
+        assert!(sim.set_injected_fluid("water").is_ok());
+        assert!(sim.set_injected_fluid("gas").is_ok());
+    }
+
+    #[test]
+    fn api_contract_rejects_invalid_gas_oil_capillary_params() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+
+        err_contains(sim.set_gas_oil_capillary_params(-1.0, 2.0), "non-negative");
+        err_contains(sim.set_gas_oil_capillary_params(5.0, 0.0), "positive");
+
+        // Valid parameters must succeed
+        assert!(sim.set_gas_oil_capillary_params(0.0, 2.0).is_ok());
+        assert!(sim.set_gas_oil_capillary_params(5.0, 1.5).is_ok());
     }
 }

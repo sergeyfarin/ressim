@@ -52,10 +52,14 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
   }
 
   const extractStart = performance.now();
+  const getSatGas = (simulator as unknown as Record<string, unknown>).getSatGas;
   const grid = {
     pressure: simulator.getPressures(),
     sat_water: simulator.getSatWater(),
     sat_oil: simulator.getSatOil(),
+    sat_gas: typeof getSatGas === 'function'
+      ? (getSatGas as () => Float64Array).call(simulator)
+      : new Float64Array(simulator.getPressures().length),
   };
   const wells = simulator.getWellState();
   const time = simulator.get_time();
@@ -126,6 +130,35 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     setGravityEnabled.call(simulator, Boolean(payload.gravityEnabled));
   }
   simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o, payload.k_rw_max ?? 1.0, payload.k_ro_max ?? 1.0);
+
+  // Three-phase setup (only when enabled)
+  if (payload.threePhaseModeEnabled) {
+    const call3p = (name: string, ...args: unknown[]) => {
+      const fn = (simulator as unknown as Record<string, unknown>)[name];
+      if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown).call(simulator, ...args);
+    };
+
+    call3p('setThreePhaseModeEnabled', true);
+    call3p(
+      'setThreePhaseRelPermProps',
+      payload.s_wc, payload.s_or,
+      payload.s_gc ?? 0.05, payload.s_gr ?? 0.05,
+      payload.n_w, payload.n_o, payload.n_g ?? 1.5,
+      payload.k_rw_max ?? 1.0, payload.k_ro_max ?? 1.0, payload.k_rg_max ?? 1.0,
+    );
+    call3p(
+      'setGasFluidProperties',
+      payload.mu_g ?? 0.02, payload.c_g ?? 1e-4, payload.rho_g ?? 10.0,
+    );
+    if (payload.pcogEnabled) {
+      call3p('setGasOilCapillaryParams', payload.pcogPEntry ?? 0, payload.pcogLambda ?? 2);
+    }
+    call3p('setInjectedFluid', payload.injectedFluid ?? 'gas');
+    if ((payload.initialGasSaturation ?? 0) > 0) {
+      call3p('setInitialGasSaturation', payload.initialGasSaturation);
+    }
+  }
+
   simulator.setStabilityParams(
     payload.max_sat_change_per_step,
     payload.max_pressure_change_per_step,

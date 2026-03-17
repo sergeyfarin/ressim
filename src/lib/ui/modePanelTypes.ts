@@ -90,6 +90,20 @@ export type ModePanelParameterBindings = {
   parameterOverrideCount: number;
   handleNzOrPermModeChange: () => void;
   handleAnalyticalSolutionModeChange: (mode: AnalyticalSolutionMode) => void;
+  // Three-phase
+  s_gc: number;
+  s_gr: number;
+  n_g: number;
+  k_rg_max: number;
+  pcogEnabled: boolean;
+  pcogPEntry: number;
+  pcogLambda: number;
+  mu_g: number;
+  c_g: number;
+  rho_g: number;
+  threePhaseModeEnabled: boolean;
+  injectedFluid: 'water' | 'gas';
+  initialGasSaturation: number;
 };
 
 export type ModePanelProps = {

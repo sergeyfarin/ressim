@@ -54,6 +54,7 @@
     "depletion-analysis": "Depletion Analysis",
     "type-curves": "Type Curves",
     "scenario-builder": "Scenario Builder",
+    "3phase": "Three-Phase Flow",
   } as const;
 
   const FAMILY_SUBTITLES = {
@@ -97,7 +98,9 @@
         ? "waterflood"
         : activeMode === "sim"
           ? "scenario-builder"
-          : "depletion-analysis"),
+          : activeMode === "3p"
+            ? "3phase"
+            : "depletion-analysis"),
   );
 
   const familyDefaultEntries = $derived.by(() => {
@@ -114,6 +117,7 @@
       "depletion-analysis": resolveDefault("depletion-analysis"),
       "type-curves": resolveDefault("type-curves", "fetkovich_exp"),
       "scenario-builder": resolveDefault("scenario-builder"),
+      "3phase": null,
     };
   });
 
@@ -141,6 +145,11 @@
 
     if (family === "depletion-analysis") {
       onModeChange("dep");
+      return;
+    }
+
+    if (family === "3phase") {
+      onModeChange("3p");
       return;
     }
 

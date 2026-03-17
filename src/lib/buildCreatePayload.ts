@@ -146,5 +146,20 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     injectorJ,
     producerI,
     producerJ,
+
+    // Three-phase
+    s_gc:    toClamped(state.s_gc,    0, 1,    0.05),
+    s_gr:    toClamped(state.s_gr,    0, 1,    0.05),
+    n_g:     toMin(state.n_g,         0.01,    1.5),
+    k_rg_max: toClamped(state.k_rg_max, 0.01, 1, 1.0),
+    pcogEnabled: Boolean(state.pcogEnabled ?? false),
+    pcogPEntry:  toMin(state.pcogPEntry, 0, 0),
+    pcogLambda:  toMin(state.pcogLambda, 0, 2),
+    mu_g:  toMin(state.mu_g,  0.001, 0.02),
+    c_g:   toMin(state.c_g,   0,     1e-4),
+    rho_g: toMin(state.rho_g, 0.1,   10.0),
+    threePhaseModeEnabled: Boolean(state.threePhaseModeEnabled ?? false),
+    injectedFluid: (state.injectedFluid ?? 'gas') as 'water' | 'gas',
+    initialGasSaturation: toClamped(state.initialGasSaturation, 0, 1, 0),
   }
 }

@@ -30,6 +30,13 @@ export type SimulationInputs = {
     producerJ: number;
     s_wc: number;
     s_or: number;
+    // Three-phase (optional)
+    s_gc?: number;
+    s_gr?: number;
+    n_g?: number;
+    mu_g?: number;
+    c_g?: number;
+    threePhaseModeEnabled?: boolean;
     minPerm: number;
     maxPerm: number;
     injectorEnabled: boolean;
@@ -98,7 +105,24 @@ export function validateInputs(input: SimulationInputs): ValidationState {
         errors.wellIndexRange = 'Well indices must lie within the grid bounds.';
     }
 
-    if (input.s_wc + input.s_or >= 1) errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
+    if (input.threePhaseModeEnabled) {
+        const s_gc = input.s_gc ?? 0;
+        const s_gr = input.s_gr ?? 0;
+        if (input.s_wc + input.s_or + s_gc + s_gr >= 1) {
+            errors.saturationEndpoints = 'S_wc + S_or + S_gc + S_gr must be < 1.';
+        }
+        if (typeof input.n_g === 'number' && input.n_g <= 0) {
+            errors.n_g = 'Gas Corey exponent must be positive.';
+        }
+        if (typeof input.mu_g === 'number' && input.mu_g <= 0) {
+            errors.mu_g = 'Gas viscosity must be positive.';
+        }
+        if (typeof input.c_g === 'number' && input.c_g < 0) {
+            errors.c_g = 'Gas compressibility must be non-negative.';
+        }
+    } else {
+        if (input.s_wc + input.s_or >= 1) errors.saturationEndpoints = 'S_wc + S_or must be < 1.';
+    }
     if (input.minPerm > input.maxPerm) errors.permBounds = 'Min perm must not exceed max perm.';
     if (input.injectorEnabled && input.injectorI === input.producerI && input.injectorJ === input.producerJ) {
         errors.wellOverlap = 'Injector and producer cannot share the same i/j location.';

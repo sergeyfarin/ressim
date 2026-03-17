@@ -104,6 +104,20 @@
         </Button>
       {/each}
     </div>
+    <!-- Three-phase group (only shown when activeMode === '3p') -->
+    {#if activeMode === "3p"}
+      <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
+        {#each SCENARIOS.filter((s) => s.scenarioClass === "3phase") as scenario}
+          <Button
+            size="sm"
+            variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
+            onclick={() => onSelectScenario(scenario.key)}
+          >
+            {scenario.label}
+          </Button>
+        {/each}
+      </div>
+    {/if}
     <!-- Custom -->
     <Button
       size="sm"

@@ -71,6 +71,25 @@ export interface SimulatorCreatePayload {
   bhpMin?: number;
   bhpMax?: number;
 
+  // ── Three-phase SCAL ────────────────────────────────────────────────────────
+  s_gc?: number;
+  s_gr?: number;
+  n_g?: number;
+  k_rg_max?: number;
+  // Gas-oil capillary pressure
+  pcogEnabled?: boolean;
+  pcogPEntry?: number;
+  pcogLambda?: number;
+  // Gas fluid properties
+  mu_g?: number;
+  c_g?: number;
+  rho_g?: number;
+  // Three-phase mode flags
+  threePhaseModeEnabled?: boolean;
+  injectedFluid?: 'water' | 'gas';
+  // Initial gas saturation
+  initialGasSaturation?: number;
+
   // wells / controls
   well_radius: number;
   well_skin: number;
@@ -104,6 +123,7 @@ export interface GridState {
   pressure: Float64Array;
   sat_water: Float64Array;
   sat_oil: Float64Array;
+  sat_gas: Float64Array;
 }
 
 export interface WellStateEntry {
@@ -129,6 +149,8 @@ export interface RateHistoryPoint {
   avg_reservoir_pressure?: number;
   avg_pressure?: number;
   avg_water_saturation?: number;
+  total_production_gas?: number;
+  avg_gas_saturation?: number;
   // additional fields produced by the simulator may exist
   [key: string]: unknown;
 }

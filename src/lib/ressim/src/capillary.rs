@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::relperm::RockFluidPropsThreePhase;
 use crate::RockFluidProps;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -47,6 +48,42 @@ impl CapillaryPressure {
         // Brooks-Corey capillary pressure: P_c = P_entry * (S_eff)^(-1/lambda)
         let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
 
+        pc.clamp(0.0, pc_max)
+    }
+}
+
+/// Oil-gas capillary pressure: P_cog(S_g) = P_oil − P_gas.
+/// Higher S_g → lower P_cog (oil drains, gas fills larger pores).
+/// Same Brooks-Corey form as `CapillaryPressure` but parameterised on S_g.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct GasOilCapillaryPressure {
+    /// Entry pressure [bar]
+    pub p_entry: f64,
+    /// Brooks-Corey exponent (lambda) [dimensionless]
+    pub lambda: f64,
+}
+
+impl GasOilCapillaryPressure {
+    /// P_cog(S_g): capillary pressure [bar] as a function of gas saturation.
+    /// S_g_eff = (S_g − S_gc) / (1 − S_wc − S_gc − S_gr)
+    pub fn capillary_pressure_og(&self, s_g: f64, rock: &RockFluidPropsThreePhase) -> f64 {
+        let denom = 1.0 - rock.s_wc - rock.s_gc - rock.s_gr;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = ((s_g - rock.s_gc) / denom).clamp(0.0, 1.0);
+
+        if s_eff >= 1.0 {
+            return 0.0; // At maximum gas saturation, capillary pressure is zero
+        }
+
+        let pc_max = self.p_entry * 20.0;
+
+        if s_eff <= 0.0 {
+            return pc_max;
+        }
+
+        let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
         pc.clamp(0.0, pc_max)
     }
 }

@@ -29,7 +29,7 @@ import {
 } from './caseLibrary';
 
 // --- Type Definitions ---
-export type CaseMode = 'dep' | 'wf' | 'sim';
+export type CaseMode = 'dep' | 'wf' | 'sim' | '3p';
 type CatalogModeKey = CaseMode | 'benchmark';
 
 export type DimensionOption = {
@@ -61,7 +61,7 @@ export type ModeCatalog = {
 export type CatalogSchema = {
     version: number;
     defaults: Record<string, any>;
-    modes: Record<CaseMode, ModeCatalog>;
+    modes: Record<CaseMode, ModeCatalog> & Partial<Record<string, ModeCatalog>>;
     benchmarks: BenchmarkEntry[];
     benchmarkVariants: BenchmarkVariant[];
     presets: PresetEntry[];
@@ -83,6 +83,8 @@ export const catalog: CatalogSchema = {
         dep: rawCatalog.modes.dep,
         wf: rawCatalog.modes.wf,
         sim: rawCatalog.modes.sim,
+        // Three-phase mode reuses the sim base params; scenarios are added separately
+        '3p': rawCatalog.modes['3p'] ?? rawCatalog.modes.sim,
     },
     benchmarks: benchmarkCases,
     benchmarkVariants,
@@ -115,7 +117,7 @@ export type { BenchmarkSensitivityAxisKey };
 export type ToggleState = Record<string, string>;
 
 function normalizeMode(mode: string | undefined): CaseMode {
-    if (mode === 'wf' || mode === 'sim') return mode;
+    if (mode === 'wf' || mode === 'sim' || mode === '3p') return mode;
     return 'dep';
 }
 

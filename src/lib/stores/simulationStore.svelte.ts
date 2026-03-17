@@ -192,6 +192,21 @@ export function createSimulationStore() {
     let capillaryPEntry = $state(5.0);
     let capillaryLambda = $state(2.0);
 
+    // Three-phase
+    let s_gc = $state(0.05);
+    let s_gr = $state(0.05);
+    let n_g = $state(1.5);
+    let k_rg_max = $state(1.0);
+    let pcogEnabled = $state(false);
+    let pcogPEntry = $state(3.0);
+    let pcogLambda = $state(2.0);
+    let mu_g = $state(0.02);
+    let c_g = $state(1e-4);
+    let rho_g = $state(10.0);
+    let threePhaseModeEnabled = $state(false);
+    let injectedFluid = $state<'water' | 'gas'>('gas');
+    let initialGasSaturation = $state(0.0);
+
     // ===== Simulation Output / Runtime State =====
     let wasmReady = $state(false);
     let simWorker: Worker | null = $state(null);
@@ -319,6 +334,7 @@ export function createSimulationStore() {
             injectorI, injectorJ,
             producerI, producerJ,
             s_wc, s_or,
+            s_gc, s_gr, n_g, mu_g, c_g, threePhaseModeEnabled,
             minPerm, maxPerm,
             injectorEnabled,
             injectorControlMode,
@@ -543,6 +559,19 @@ export function createSimulationStore() {
             capillaryLambda,
             analyticalSolutionMode,
             analyticalDepletionRateScale,
+            s_gc,
+            s_gr,
+            n_g,
+            k_rg_max,
+            pcogEnabled,
+            pcogPEntry,
+            pcogLambda,
+            mu_g,
+            c_g,
+            rho_g,
+            threePhaseModeEnabled,
+            injectedFluid,
+            initialGasSaturation,
         };
     }
 
@@ -568,6 +597,10 @@ export function createSimulationStore() {
             injectorEnabled, targetInjectorRate, targetProducerRate,
             injectorI, injectorJ, producerI, producerJ,
             uniformPermX, uniformPermY, uniformPermZ,
+            s_gc, s_gr, n_g, k_rg_max,
+            pcogEnabled, pcogPEntry, pcogLambda,
+            mu_g, c_g, rho_g,
+            threePhaseModeEnabled, injectedFluid, initialGasSaturation,
         });
     }
 
@@ -599,6 +632,11 @@ export function createSimulationStore() {
             targetInjectorRate: Number(targetInjectorRate), targetProducerRate: Number(targetProducerRate),
             injectorI: Number(injectorI), injectorJ: Number(injectorJ),
             producerI: Number(producerI), producerJ: Number(producerJ),
+            threePhaseModeEnabled: Boolean(threePhaseModeEnabled),
+            s_gc: Number(s_gc), s_gr: Number(s_gr), n_g: Number(n_g), k_rg_max: Number(k_rg_max),
+            mu_g: Number(mu_g), c_g: Number(c_g), rho_g: Number(rho_g),
+            pcogEnabled: Boolean(pcogEnabled), pcogPEntry: Number(pcogPEntry), pcogLambda: Number(pcogLambda),
+            injectedFluid, initialGasSaturation: Number(initialGasSaturation),
         });
     }
 
@@ -1348,6 +1386,20 @@ export function createSimulationStore() {
         capillaryPEntry = Number(resolved.capillaryPEntry) || 0;
         capillaryLambda = Number(resolved.capillaryLambda) || 2;
         injectorEnabled = resolved.injectorEnabled !== false;
+        // Three-phase
+        threePhaseModeEnabled = Boolean(resolved.threePhaseModeEnabled);
+        if (resolved.s_gc !== undefined) s_gc = Number(resolved.s_gc);
+        if (resolved.s_gr !== undefined) s_gr = Number(resolved.s_gr);
+        if (resolved.n_g !== undefined) n_g = Number(resolved.n_g);
+        if (resolved.k_rg_max !== undefined) k_rg_max = Number(resolved.k_rg_max);
+        if (resolved.mu_g !== undefined) mu_g = Number(resolved.mu_g);
+        if (resolved.c_g !== undefined) c_g = Number(resolved.c_g);
+        if (resolved.rho_g !== undefined) rho_g = Number(resolved.rho_g);
+        if (resolved.pcogEnabled !== undefined) pcogEnabled = Boolean(resolved.pcogEnabled);
+        if (resolved.pcogPEntry !== undefined) pcogPEntry = Number(resolved.pcogPEntry);
+        if (resolved.pcogLambda !== undefined) pcogLambda = Number(resolved.pcogLambda);
+        if (resolved.injectedFluid === 'water' || resolved.injectedFluid === 'gas') injectedFluid = resolved.injectedFluid;
+        if (resolved.initialGasSaturation !== undefined) initialGasSaturation = Number(resolved.initialGasSaturation);
 
         // Sync analyticalSolutionMode using the actual resolved parameters
         if (resolved.analyticalSolutionMode === 'waterflood' || resolved.analyticalSolutionMode === 'depletion') {

@@ -9,6 +9,7 @@
   } from "../modePanelSections";
   import type { ScenarioModePanelProps } from "../modePanelTypes";
   import AnalyticalSection from "./AnalyticalSection.svelte";
+  import GasFluidSection from "./GasFluidSection.svelte";
   import GeometrySection from "./GeometrySection.svelte";
   import RelativeCapillarySection from "./RelativeCapillarySection.svelte";
   import ReservoirSection from "./ReservoirSection.svelte";
@@ -40,7 +41,7 @@
 <div class="space-y-1.5 px-2 py-2">
   {#each sections as section}
     {@const dims = getSectionDims(section.dims)}
-    {#if dims.length > 0 || section.dims.length === 0}
+    {#if (dims.length > 0 || section.dims.length === 0) && (section.key !== "gasfluid" || activeMode === "3p") && (section.key !== "analytical" || activeMode !== "3p")}
       <div>
         {#if dims.length > 0}
           <div class="flex flex-wrap items-center gap-1.5 px-1 pb-1" role="group">
@@ -142,6 +143,21 @@
               bind:capillaryEnabled={params.capillaryEnabled}
               bind:capillaryPEntry={params.capillaryPEntry}
               bind:capillaryLambda={params.capillaryLambda}
+              fieldErrors={validationErrors}
+            />
+          {:else if section.key === "gasfluid"}
+            <GasFluidSection
+              bind:s_gc={params.s_gc}
+              bind:s_gr={params.s_gr}
+              bind:n_g={params.n_g}
+              bind:k_rg_max={params.k_rg_max}
+              bind:mu_g={params.mu_g}
+              bind:c_g={params.c_g}
+              bind:rho_g={params.rho_g}
+              bind:pcogEnabled={params.pcogEnabled}
+              bind:pcogPEntry={params.pcogPEntry}
+              bind:pcogLambda={params.pcogLambda}
+              bind:injectedFluid={params.injectedFluid}
               fieldErrors={validationErrors}
             />
           {/if}

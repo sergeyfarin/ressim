@@ -21,6 +21,12 @@ pub struct TimePointRates {
     pub avg_reservoir_pressure: f64,
     /// Average water saturation
     pub avg_water_saturation: f64,
+    /// Total gas produced [m³/day] (non-zero only in three-phase mode)
+    #[serde(default)]
+    pub total_production_gas: f64,
+    /// Average gas saturation (non-zero only in three-phase mode)
+    #[serde(default)]
+    pub avg_gas_saturation: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

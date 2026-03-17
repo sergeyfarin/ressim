@@ -2,6 +2,7 @@ export type ModePanelSectionKey =
   | "geometry"
   | "reservoir"
   | "scal"
+  | "gasfluid"
   | "wells"
   | "timestep"
   | "analytical";
@@ -34,6 +35,7 @@ export const MODE_PANEL_SECTIONS: readonly ModePanelSectionDefinition[] = [
     dims: ["rock", "fluid", "grav"],
   },
   { key: "scal", label: "Relative Perm & Capillary", dims: ["cap"] },
+  { key: "gasfluid", label: "Gas Phase", dims: [] },
   { key: "wells", label: "Wells", dims: ["well"] },
   { key: "timestep", label: "Timestep & Stability", dims: ["dt"] },
   { key: "analytical", label: "Reference Solution", dims: [] },
