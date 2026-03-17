@@ -79,5 +79,5 @@ jobs:
             ressim-dist-latest.tar.gz
             dist-build-meta.json
           generate_release_notes: false
-          make_latest: false
+          make_latest: true
           overwrite_files: true
