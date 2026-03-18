@@ -124,6 +124,66 @@ Acceptance: `Scenario Builder` reads as intentional exploratory modeling, not a 
 
 ## Deferred / Later
 
+### Physics — Correctness Issues (3-Phase)
+
+These are confirmed physics or data-model bugs. Gravity-off / viscous-dominated runs are
+unlikely to be affected; gravity-drainage and capillary-equilibrium studies are.
+
+- [ ] **Gas-oil capillary pressure direction (capillary.rs `GasOilCapillaryPressure`)**
+  — Current: `P_cog` is parameterised on `S_g_eff` via `s_eff^(-1/λ)`, making Pc *decrease*
+  as Sg increases.  Physical requirement: gas is non-wetting, so Pc = P_gas − P_oil must
+  *increase* with Sg (gas fills progressively smaller pores).
+  Fix: parameterise on `S_o_eff = (So − Sorg) / (1 − Swc − Sorg)` — requires the new `Sorg`
+  parameter below.
+
+- [ ] **Stone II missing `Sorg` parameter (relperm.rs `RockFluidPropsThreePhase`)**
+  — `k_ro_gas` uses `s_gr` (residual *gas* after water-imbibition) as the terminal oil
+  saturation in a gas flood.  These are distinct rock properties.  Add `s_org` (residual oil
+  to gas, typically > `s_or`) and wire it through `k_ro_gas`, `capillary_pressure_og`, and
+  the UI parameter set.
+
+- [ ] **3-phase material-balance diagnostic tracks water only (step.rs `update_saturations_and_pressure`)**
+  — `actual_change_m3` accumulates `(ΔSw) × Vp` but ignores gas and oil changes in 3-phase
+  mode.  `cumulative_mb_error_m3` therefore reflects only the water imbalance.  Add parallel
+  accumulators for gas and oil so all three phases are covered by the mass-balance check.
+
+### Physics — Known Limitations (Black-Oil Model)
+
+These are intentional simplifications documented here for clarity. They are not bugs, but
+must be understood when interpreting results.
+
+- [ ] **No bubble-point pressure / dissolved-gas tracking**
+  — The simulator is an *immiscible* black-oil model: oil and gas do not exchange mass
+  across phases.  When reservoir pressure falls below bubble-point, dissolved gas should
+  liberate from oil (gas comes out of solution), dramatically increasing gas saturation and
+  altering fluid mobilities.  Without Rs(P) and Bo(P) correlations, depletion scenarios that
+  cross the bubble point are physically incorrect.  Adding this requires: pressure-dependent
+  Rs (solution GOR), Bo, Bg, μ_o(P), μ_g(P), and a per-cell bubble-point tracking flag.
+  This transforms the model from immiscible to a full black-oil PVT model.
+
+- [ ] **Constant gas compressibility (no real-gas z-factor / Bg(P))**
+  — All phases use a fixed linear compressibility (`c_g`, `c_o`, `c_w`).  For gas,
+  compressibility is strongly pressure-dependent: `c_g ≈ 1/P` for an ideal gas and deviates
+  further via the z-factor at high pressure.  The current model overestimates gas
+  compressibility at high pressure and underestimates it at low pressure.  Gas formation
+  volume factor `Bg(P) = zT/P` (at standard conditions) should replace the constant-c model.
+  Impact: most significant in depletion scenarios with large pressure swings.
+
+- [ ] **Constant fluid viscosity and density (no PVT table)**
+  — `μ_o`, `μ_g`, `μ_w`, `ρ_o`, `ρ_g`, `ρ_w` are all fixed.  Real fluids vary significantly
+  with pressure.  For viscous-force-dominated waterflooding at moderate pressure the error is
+  small; for gas injection at varying reservoir pressure, viscosity and density errors compound
+  with the compressibility issue above.  Add pressure-tabulated PVT properties (Bo, Rs, μ_o,
+  Bg, μ_g) to unlock physically credible depletion and gas-injection scenarios.
+
+- [ ] **3-phase classification: immiscible, not compositional**
+  — The simulator correctly tracks three mobile phases (water, oil, gas) with Stone II kr and
+  separate phase potentials, so it is a true three-phase flow simulator.  However, it is
+  *not* compositional: there is no phase equilibrium, no K-value flash, no component
+  partitioning between oil and gas.  Oil cannot evaporate into gas; gas cannot dissolve into
+  oil.  This is the correct scope for a black-oil model but should be stated clearly in
+  documentation so users do not expect EOS behaviour.
+
 ### Physics Extensions
 
 - [ ] Well schedule support

@@ -52,8 +52,16 @@ impl CapillaryPressure {
     }
 }
 
-/// Oil-gas capillary pressure: P_cog(S_g) = P_oil − P_gas.
-/// Higher S_g → lower P_cog (oil drains, gas fills larger pores).
+/// Oil-gas capillary pressure: P_cog(S_g) = P_gas − P_oil (gas is non-wetting).
+/// Used in step.rs as: P_gas = P_oil + P_cog, consistent with standard black-oil convention.
+///
+/// **Known limitation**: parameterised on S_g_eff so P_cog *decreases* with increasing S_g.
+/// Physically, for a non-wetting gas phase, P_cog should *increase* with S_g as gas displaces
+/// oil into progressively smaller pores. The correct approach is to parameterise on S_o_eff
+/// (oil saturation) and requires a separate residual-oil-to-gas saturation parameter (Sorg).
+/// For viscous-dominated flow with gravity disabled this error is negligible; for gravity-drainage
+/// or capillary-equilibrium studies, fix before use.
+///
 /// Same Brooks-Corey form as `CapillaryPressure` but parameterised on S_g.
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct GasOilCapillaryPressure {

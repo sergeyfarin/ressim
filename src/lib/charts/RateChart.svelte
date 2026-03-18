@@ -23,6 +23,8 @@
     } from "../simulator-types";
     import { buildLiveOutputSummaryItems } from "./outputSummary";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
+    import { computeCombinedSweep } from "../analytical/sweepEfficiency";
+    import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
 
     let {
         rateHistory = [],
@@ -36,6 +38,10 @@
         theme = "dark",
         analyticalMeta,
         layoutConfig,
+        rockProps,
+        fluidProps,
+        layerPermeabilities = [],
+        layerThickness = 1,
     }: {
         rateHistory?: RateHistoryPoint[];
         analyticalProductionData?: AnalyticalProductionPoint[];
@@ -48,6 +54,10 @@
         theme?: "dark" | "light";
         analyticalMeta?: any;
         layoutConfig?: RateChartLayoutConfig;
+        rockProps?: RockProps;
+        fluidProps?: FluidProps;
+        layerPermeabilities?: number[];
+        layerThickness?: number;
     } = $props();
 
     // --- X-axis state (shared across all panels) ---
@@ -62,6 +72,7 @@
     let ratesExpanded = $state(true);
     let cumulativeExpanded = $state(false);
     let diagnosticsExpanded = $state(false);
+    let sweepExpanded = $state(true);
 
     // --- Panel alignment state ---
     let nativeGutters = $state<Record<string, { left: number; right: number }>>(
@@ -920,6 +931,63 @@
     const ratePanelSupportsNormalization = $derived(
         ratesCurves.some((curve) => curve.label.includes("Rate")),
     );
+
+    // --- Sweep efficiency panel (waterflood only, fixed PVI x-axis) ---
+    const sweepScales = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: "Sweep Efficiency" },
+            ticks: { count: 6 },
+        },
+    };
+    const sweepData = $derived.by(() => {
+        if ((activeMode !== "waterflood" && activeMode !== "wf") || !rockProps || !fluidProps) return null;
+        const perms = layerPermeabilities.length > 0 ? layerPermeabilities : [100];
+        const sweep = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, 3.0);
+        const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
+        const toXY = (ys: number[]) => pviValues.map((x, i) => ({ x, y: ys[i] ?? null }));
+        return {
+            curves: [
+                {
+                    label: "Areal (E_A)",
+                    curveKey: "sweep-areal",
+                    toggleLabel: "Areal (E_A)",
+                    color: "#2563eb",
+                    borderWidth: 2,
+                    yAxisID: "y",
+                } as CurveConfig,
+                {
+                    label: "Vertical (E_V)",
+                    curveKey: "sweep-vertical",
+                    toggleLabel: "Vertical (E_V)",
+                    color: "#16a34a",
+                    borderWidth: 1.6,
+                    borderDash: [4, 4],
+                    yAxisID: "y",
+                    defaultVisible: false,
+                } as CurveConfig,
+                {
+                    label: "Combined (E_vol)",
+                    curveKey: "sweep-combined",
+                    toggleLabel: "Combined (E_vol)",
+                    color: "#dc2626",
+                    borderWidth: 2,
+                    borderDash: [8, 3],
+                    yAxisID: "y",
+                } as CurveConfig,
+            ],
+            series: [
+                toXY(sweep.arealSweep.curve.map((p) => p.efficiency)),
+                toXY(sweep.verticalSweep.curve.map((p) => p.efficiency)),
+                toXY(sweep.combined.map((p) => p.efficiency)),
+            ],
+        };
+    });
     const summaryItems = $derived.by(() => {
         return buildLiveOutputSummaryItems({
             activeMode,
@@ -1049,6 +1117,25 @@
             nativeGutters = { ...nativeGutters, diagnostics: { left, right } };
         }}
     />
+
+    <!-- Sweep efficiency panel (waterflood only) -->
+    {#if sweepData}
+        <ChartSubPanel
+            panelId="sweep"
+            title="Sweep Efficiency"
+            bind:expanded={sweepExpanded}
+            curves={sweepData.curves}
+            seriesData={sweepData.series}
+            scaleConfigs={sweepScales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, sweep: { left, right } };
+            }}
+        />
+    {/if}
 
     <!-- Error stats -->
     {#if mismatchSummary.pointsCompared > 0}

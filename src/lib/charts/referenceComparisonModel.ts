@@ -1,5 +1,7 @@
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
+import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './ChartSubPanel.svelte';
@@ -15,6 +17,7 @@ export type ReferenceComparisonPanel = {
 export type ReferenceComparisonModel = {
     orderedResults: BenchmarkRunResult[];
     panels: Record<RateChartPanelKey, ReferenceComparisonPanel>;
+    sweepPanel: ReferenceComparisonPanel | null;
 };
 
 export type ReferenceComparisonTheme = 'dark' | 'light';
@@ -298,6 +301,135 @@ function appendSeries(
     panel.series.push(toXYSeries(xValues, yValues));
 }
 
+function extractRockProps(params: Record<string, any>): RockProps {
+    return {
+        s_wc: toFiniteNumber(params.s_wc, 0.1),
+        s_or: toFiniteNumber(params.s_or, 0.1),
+        n_w: toFiniteNumber(params.n_w, 2),
+        n_o: toFiniteNumber(params.n_o, 2),
+        k_rw_max: toFiniteNumber(params.k_rw_max, 1),
+        k_ro_max: toFiniteNumber(params.k_ro_max, 1),
+    };
+}
+
+function extractFluidProps(params: Record<string, any>): FluidProps {
+    return {
+        mu_w: toFiniteNumber(params.mu_w, 0.5),
+        mu_o: toFiniteNumber(params.mu_o, 1),
+    };
+}
+
+function getLayerPermeabilities(params: Record<string, any>): number[] {
+    const nz = toFiniteNumber(params.nz, 1);
+    if (String(params.permMode) === 'perLayer'
+        && Array.isArray(params.layerPermsX)
+        && params.layerPermsX.length > 1) {
+        return params.layerPermsX.map(Number);
+    }
+    if (nz > 1) {
+        return Array.from({ length: nz }, () => toFiniteNumber(params.uniformPermX, 100));
+    }
+    return [toFiniteNumber(params.uniformPermX, 100)];
+}
+
+function buildSweepPanel(input: {
+    orderedResults: BenchmarkRunResult[];
+    theme: ReferenceComparisonTheme;
+    analyticalPerVariant: boolean;
+}): ReferenceComparisonPanel {
+    const panel: ReferenceComparisonPanel = { curves: [], series: [] };
+    const referenceColor = getReferenceColor(input.theme);
+    const pviMax = 3.0;
+
+    if (input.analyticalPerVariant) {
+        input.orderedResults.forEach((result, index) => {
+            const color = getReferenceComparisonCaseColor(index);
+            const rock = extractRockProps(result.params);
+            const fluid = extractFluidProps(result.params);
+            const perms = getLayerPermeabilities(result.params);
+            const thickness = toFiniteNumber(result.params.cellDz, 1);
+            const sweep = computeCombinedSweep(rock, fluid, perms, thickness, pviMax);
+            const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
+            const isBase = result.variantKey === null;
+
+            appendSeries(panel, {
+                label: `${result.label} E_A`,
+                curveKey: 'sweep-areal',
+                caseKey: result.key,
+                toggleLabel: 'Areal (E_A)',
+                color,
+                borderWidth: isBase ? 2.2 : 1.8,
+                yAxisID: 'y',
+            }, pviValues, sweep.arealSweep.curve.map((p) => p.efficiency));
+
+            appendSeries(panel, {
+                label: `${result.label} E_V`,
+                curveKey: 'sweep-vertical',
+                caseKey: result.key,
+                toggleLabel: 'Vertical (E_V)',
+                color,
+                borderWidth: isBase ? 1.8 : 1.4,
+                borderDash: [4, 4],
+                yAxisID: 'y',
+                defaultVisible: false,
+            }, pviValues, sweep.verticalSweep.curve.map((p) => p.efficiency));
+
+            appendSeries(panel, {
+                label: `${result.label} E_vol`,
+                curveKey: 'sweep-combined',
+                caseKey: result.key,
+                toggleLabel: 'Combined (E_vol)',
+                color,
+                borderWidth: isBase ? 2.2 : 1.8,
+                borderDash: [8, 3],
+                yAxisID: 'y',
+            }, pviValues, sweep.combined.map((p) => p.efficiency));
+        });
+    } else {
+        const baseResult = getBaseResult(input.orderedResults);
+        if (!baseResult) return panel;
+
+        const rock = extractRockProps(baseResult.params);
+        const fluid = extractFluidProps(baseResult.params);
+        const perms = getLayerPermeabilities(baseResult.params);
+        const thickness = toFiniteNumber(baseResult.params.cellDz, 1);
+        const sweep = computeCombinedSweep(rock, fluid, perms, thickness, pviMax);
+        const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
+
+        appendSeries(panel, {
+            label: 'Areal (E_A)',
+            curveKey: 'sweep-areal',
+            toggleLabel: 'Areal (E_A)',
+            color: referenceColor,
+            borderWidth: 2,
+            yAxisID: 'y',
+        }, pviValues, sweep.arealSweep.curve.map((p) => p.efficiency));
+
+        appendSeries(panel, {
+            label: 'Vertical (E_V)',
+            curveKey: 'sweep-vertical',
+            toggleLabel: 'Vertical (E_V)',
+            color: referenceColor,
+            borderWidth: 1.6,
+            borderDash: [4, 4],
+            yAxisID: 'y',
+            defaultVisible: false,
+        }, pviValues, sweep.verticalSweep.curve.map((p) => p.efficiency));
+
+        appendSeries(panel, {
+            label: 'Combined (E_vol)',
+            curveKey: 'sweep-combined',
+            toggleLabel: 'Combined (E_vol)',
+            color: referenceColor,
+            borderWidth: 2,
+            borderDash: [8, 3],
+            yAxisID: 'y',
+        }, pviValues, sweep.combined.map((p) => p.efficiency));
+    }
+
+    return panel;
+}
+
 export function buildReferenceComparisonModel(input: {
     family: BenchmarkFamily | null | undefined;
     results: BenchmarkRunResult[];
@@ -318,7 +450,7 @@ export function buildReferenceComparisonModel(input: {
     };
 
     if (!family || orderedResults.length === 0) {
-        return { orderedResults, panels };
+        return { orderedResults, panels, sweepPanel: null };
     }
 
     const derivedByKey = new Map<string, DerivedRunSeries>(
@@ -494,12 +626,12 @@ export function buildReferenceComparisonModel(input: {
     });
 
     if (!baseResult) {
-        return { orderedResults, panels };
+        return { orderedResults, panels, sweepPanel: null };
     }
 
     const baseDerived = derivedByKey.get(baseResult.key);
     if (!baseDerived) {
-        return { orderedResults, panels };
+        return { orderedResults, panels, sweepPanel: null };
     }
 
     if (family.scenarioClass === 'buckley-leverett') {
@@ -622,5 +754,13 @@ export function buildReferenceComparisonModel(input: {
         }
     }
 
-    return { orderedResults, panels };
+    const sweepPanel = family.scenarioClass === 'buckley-leverett'
+        ? buildSweepPanel({
+            orderedResults,
+            theme: input.theme ?? 'dark',
+            analyticalPerVariant: input.analyticalPerVariant ?? false,
+        })
+        : null;
+
+    return { orderedResults, panels, sweepPanel };
 }

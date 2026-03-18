@@ -42,6 +42,7 @@
     let ratesExpanded = $state(true);
     let cumulativeExpanded = $state(true);
     let diagnosticsExpanded = $state(false);
+    let sweepExpanded = $state(true);
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
 
@@ -133,6 +134,18 @@
             grid: { drawOnChartArea: false },
             ticks: { count: 6 },
             _fraction: true,
+        },
+    };
+    const sweepScales = {
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: 'Sweep Efficiency' },
+            ticks: { count: 6 },
         },
     };
     const pressureScales = {
@@ -239,6 +252,16 @@
             results: visibleResults,
         })
     ));
+
+    const sweepPanelEntries = $derived.by(() => {
+        const sp = overlayModel.sweepPanel;
+        if (!sp) return null;
+        return sp.curves
+            .map((curve, idx) => ({ curve, series: sp.series[idx] ?? [] }))
+            .filter((entry) => !entry.curve.caseKey || (visibleCaseKeys[entry.curve.caseKey] ?? true));
+    });
+    const sweepPanelCurves = $derived(sweepPanelEntries?.map((e) => e.curve) ?? []);
+    const sweepPanelSeries = $derived(sweepPanelEntries?.map((e) => e.series) ?? []);
 </script>
 
 <div class="flex flex-col">
@@ -346,4 +369,22 @@
             nativeGutters = { ...nativeGutters, diagnostics: { left, right } };
         }}
     />
+
+    {#if family?.scenarioClass === 'buckley-leverett' && sweepPanelCurves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-sweep"
+            title="Sweep Efficiency"
+            bind:expanded={sweepExpanded}
+            curves={sweepPanelCurves}
+            seriesData={sweepPanelSeries}
+            scaleConfigs={sweepScales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, sweep: { left, right } };
+            }}
+        />
+    {/if}
 </div>

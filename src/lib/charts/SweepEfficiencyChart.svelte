@@ -29,13 +29,18 @@
     } = $props();
 
     let chartCanvas = $state<HTMLCanvasElement | null>(null);
-    let chart = $state<Chart<"line", Array<number | null>, string> | null>(null);
+    let chart: Chart<"line", Array<number | null>, string> | null = null;
     let sweepResult = $state<CombinedSweepResult | null>(null);
 
     $effect(() => {
         if (rockProps && fluidProps) {
             const perms = layerPermeabilities.length > 0 ? layerPermeabilities : [100];
             sweepResult = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, pviMax);
+        }
+    });
+
+    $effect(() => {
+        if (sweepResult) {
             updateChart();
         }
     });
