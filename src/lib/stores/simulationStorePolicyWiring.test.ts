@@ -22,7 +22,7 @@ describe('simulation store policy wiring', () => {
   });
 
   it('derives reference metadata from the active library entry instead of the legacy benchmark tab alone', () => {
-    expect(storeSource).toMatch(/benchmarkId = this\.activeReferenceBenchmarkFamily\?\.key/);
+    expect(storeSource).toMatch(/benchmarkId = this\.activeReferenceFamily\?\.key/);
     expect(storeSource).toMatch(/activeLibraryEntry\?\.group/);
     expect(storeSource).toMatch(/activeLibraryEntry\?\.label/);
   });
@@ -31,7 +31,7 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/buildBenchmarkRunSpecs/);
     expect(storeSource).toMatch(/runActiveReferenceSelection\(variantKeys: string\[\] = \[\]\): boolean/);
     expect(storeSource).toMatch(/referenceRunResults/);
-    expect(storeSource).toMatch(/activeReferenceBenchmarkFamily/);
+    expect(storeSource).toMatch(/activeReferenceFamily/);
     expect(storeSource).toMatch(/referenceRunResults = \$state/);
     expect(storeSource).not.toMatch(/get benchmarkRunResults\(\)/);
     expect(storeSource).not.toMatch(/runActiveBenchmarkSelection:/);

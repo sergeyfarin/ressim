@@ -17,10 +17,10 @@ describe('App store domain wiring', () => {
   });
 
   it('passes preset-customize domain state into ModePanel', () => {
-    expect(appSource).toMatch(/onParamEdit=\{scenario\.handleParamEdit\}/);
+    expect(appSource).toMatch(/onParamEdit=\{\(\) =\> scenario\.handleParamEdit\(\)\}/);
     expect(appSource).toMatch(/basePreset=\{scenario\.basePreset\}/);
     expect(appSource).toMatch(/navigationState=\{scenario\.navigationState\}/);
-    expect(appSource).toMatch(/onActivateLibraryEntry=\{scenario\.activateLibraryEntry\}/);
+    expect(appSource).toMatch(/onActivateLibraryEntry=\{\(key\) =\> scenario\.activateLibraryEntry\(key\)\}/);
     expect(appSource).toMatch(/referenceProvenance=\{scenario\.referenceProvenance\}/);
     expect(appSource).toMatch(/referenceSweepRunning=\{runtime\.referenceSweepRunning\}/);
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
@@ -33,7 +33,7 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/import ReferenceExecutionCard from "\.\/lib\/ui\/cards\/ReferenceExecutionCard\.svelte"/);
     expect(appSource).toMatch(/<ReferenceExecutionCard/);
     expect(appSource).toMatch(/referenceFamilyKey=\{scenario\.activeReferenceFamily\?\.key \?\? null\}/);
-    expect(appSource).toMatch(/onRunReferenceSelection=\{runtime\.runActiveReferenceSelection\}/);
+    expect(appSource).toMatch(/onRunReferenceSelection=\{\(keys\) =\> runtime\.runActiveReferenceSelection\(keys\)\}/);
     expect(appSource).toMatch(/const activeRunManifest = \$derived\.by/);
     expect(appSource).toMatch(/scenario\.activeLibraryEntry\?\.referencePolicySummary/);
     expect(appSource).toMatch(/scenario\.referenceProvenance/);

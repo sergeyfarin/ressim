@@ -363,7 +363,7 @@ class SimulationStoreImpl {
         });
     });
 
-    activeReferenceBenchmarkFamily = $derived.by(() => {
+    activeReferenceFamily = $derived.by(() => {
         const benchmarkFamilyKey = this.activeLibraryEntry?.benchmarkFamilyKey ?? null;
         return benchmarkFamilyKey ? getBenchmarkFamily(benchmarkFamilyKey) : null;
     });
@@ -377,7 +377,7 @@ class SimulationStoreImpl {
     });
 
     basePreset = $derived.by(() => {
-        const benchmarkId = this.activeReferenceBenchmarkFamily?.key ?? null;
+        const benchmarkId = this.activeReferenceFamily?.key ?? null;
         const benchmarkLabel = this.activeLibraryEntry?.label
             ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
 
@@ -388,14 +388,14 @@ class SimulationStoreImpl {
             isModified: this.isModified,
             benchmarkId,
             benchmarkLabel,
-            benchmarkScenarioClass: this.activeReferenceBenchmarkFamily?.scenarioClass ?? null,
+            benchmarkScenarioClass: this.activeReferenceFamily?.scenarioClass ?? null,
             activeLibraryCaseKey: this.activeLibraryEntry?.key ?? null,
             activeLibraryGroup: this.activeLibraryEntry?.group ?? null,
         });
     });
 
     navigationState = $derived.by((): ScenarioNavigationState => {
-        const benchmarkId = this.activeReferenceBenchmarkFamily?.key ?? null;
+        const benchmarkId = this.activeReferenceFamily?.key ?? null;
         const activeSource = resolveScenarioSource({ isModified: this.isModified });
         const activeLibraryGroup = activeSource === 'custom' ? null : (this.activeLibraryEntry?.group ?? null);
 
@@ -403,7 +403,7 @@ class SimulationStoreImpl {
             activeFamily: resolveProductFamily({
                 activeMode: this.activeMode,
                 activeLibraryFamily: this.activeNavigationLibraryEntry?.family ?? null,
-                benchmarkScenarioClass: this.activeReferenceBenchmarkFamily?.scenarioClass ?? null,
+                benchmarkScenarioClass: this.activeReferenceFamily?.scenarioClass ?? null,
                 benchmarkId,
             }),
             activeSource,
@@ -756,7 +756,7 @@ class SimulationStoreImpl {
     }
 
     restoreActiveReferenceBaseDisplay() {
-        const family = this.activeReferenceBenchmarkFamily;
+        const family = this.activeReferenceFamily;
         if (!family) return;
 
         this.applyCaseParams(family.baseCase.params);
@@ -825,7 +825,7 @@ class SimulationStoreImpl {
     }
 
     runReferenceSpecs(specs: ReferenceRunSpec[]): boolean {
-        if (!this.activeReferenceBenchmarkFamily) {
+        if (!this.activeReferenceFamily) {
             this.runtimeError = 'Reference runs are only available when a library reference case is active.';
             return false;
         }
@@ -849,7 +849,7 @@ class SimulationStoreImpl {
     }
 
     runActiveReferenceBase(): boolean {
-        const family = this.activeReferenceBenchmarkFamily;
+        const family = this.activeReferenceFamily;
         if (!family) {
             this.runtimeError = 'Select a library reference before running the reference set.';
             return false;
@@ -858,7 +858,7 @@ class SimulationStoreImpl {
     }
 
     runActiveReferenceSensitivityAxis(axis: BenchmarkSensitivityAxisKey): boolean {
-        const family = this.activeReferenceBenchmarkFamily;
+        const family = this.activeReferenceFamily;
         if (!family) {
             this.runtimeError = 'Select a library reference before running a sensitivity set.';
             return false;
@@ -876,7 +876,7 @@ class SimulationStoreImpl {
     }
 
     runActiveReferenceSelection(variantKeys: string[] = []): boolean {
-        const family = this.activeReferenceBenchmarkFamily;
+        const family = this.activeReferenceFamily;
         if (!family) {
             this.runtimeError = 'Select a library reference before running the reference set.';
             return false;
@@ -1380,7 +1380,7 @@ class SimulationStoreImpl {
             hasReferenceLibraryCase: Boolean(this.activeNavigationLibraryEntry),
         })) return false;
 
-        const benchmarkId = this.activeReferenceBenchmarkFamily?.key ?? this.toggles.benchmarkId ?? null;
+        const benchmarkId = this.activeReferenceFamily?.key ?? this.toggles.benchmarkId ?? null;
         const benchmarkLabel = this.activeNavigationLibraryEntry?.label
             ?? (benchmarkId ? getBenchmarkEntry(benchmarkId)?.label ?? null : null);
         const provenance = buildReferenceCloneProvenance({
@@ -1642,8 +1642,6 @@ class SimulationStoreImpl {
     get historyInterval() { return this.userHistoryInterval ?? this.defaultHistoryInterval; }
     set historyInterval(v: number | null) { this.userHistoryInterval = v; }
 
-    // activeReferenceFamily is an alias kept for backwards compatibility
-    get activeReferenceFamily() { return this.activeReferenceBenchmarkFamily; }
 
     // Navigation state delegation getters — flatten navigationState properties for direct access
     get activeFamily() { return this.navigationState.activeFamily; }

@@ -417,13 +417,13 @@
             navigationState={scenario.navigationState}
             referenceProvenance={scenario.referenceProvenance}
             referenceSweepRunning={runtime.referenceSweepRunning}
-            onSelectScenario={scenario.selectScenario}
-            onToggleVariant={scenario.toggleScenarioVariant}
-            onEnterCustomMode={scenario.enterCustomMode}
+            onSelectScenario={(key) => scenario.selectScenario(key)}
+            onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
+            onEnterCustomMode={() => scenario.enterCustomMode()}
             onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}
-            onActivateLibraryEntry={scenario.activateLibraryEntry}
-            onToggleChange={scenario.handleToggleChange}
-            onParamEdit={scenario.handleParamEdit}
+            onActivateLibraryEntry={(key) => scenario.activateLibraryEntry(key)}
+            onToggleChange={(dimKey, value) => scenario.handleToggleChange(dimKey, value)}
+            onParamEdit={() => scenario.handleParamEdit()}
         />
         </section>
 
@@ -443,8 +443,8 @@
                     : ""}
             bind:steps={params.steps}
             onRunSteps={handleRun}
-            onInitSimulator={runtime.initSimulator}
-            onStopRun={runtime.stopRun}
+            onInitSimulator={() => runtime.initSimulator()}
+            onStopRun={() => runtime.stopRun()}
             fieldErrors={params.validationErrors}
             warningPolicy={runtime.warningPolicy}
         />
@@ -461,8 +461,8 @@
                     referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
                     isModified={scenario.isModified}
                     referenceSweepRunning={runtime.referenceSweepRunning}
-                    onRunReferenceSelection={runtime.runActiveReferenceSelection}
-                    onStopReferenceSweep={runtime.stopReferenceSweep}
+                    onRunReferenceSelection={(keys) => runtime.runActiveReferenceSelection(keys)}
+                    onStopReferenceSweep={() => runtime.stopRun()}
                 />
             </div>
         {/if}
