@@ -22,9 +22,9 @@ Updated counts in `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunMod
 ### Store Code Quality (from 2026-03-17 refactor)
 
 - [ ] **FRAGILE: `applyCaseParams` `||` fallback** — `|| 400` pattern silently ignores zero values for BHP/rate params. Replace with `Number.isFinite(v) ? v : default` pattern.
-- [ ] **SMELL: `activeReferenceFamily` dead alias** — `get activeReferenceFamily()` and `activeReferenceBenchmarkFamily` return the same value. Consolidate to one name; audit callers.
+- [✅] **SMELL: `activeReferenceFamily` dead alias** — `get activeReferenceFamily()` and `activeReferenceBenchmarkFamily` return the same value. Consolidate to one name; audit callers.
 - [ ] **OPTIMIZATION: `simWorker` and `playTimer` are `$state` unnecessarily** — neither is read in a reactive expression. Change to plain class fields.
-- [ ] **SMELL: Redundant casts in `buildModelResetKey()`** — `Number(this.nx)` on already-typed `$state` fields. Remove.
+- [✅] **SMELL: Redundant casts in `buildModelResetKey()`** — `Number(this.nx)` on already-typed `$state` fields. Removed `Number()` wrappers from `runSimulationBatch` / `runSteps` (`delta_t_days`, `steps`, `userHistoryInterval`). `buildModelResetKey` itself was already clean.
 
 ---
 

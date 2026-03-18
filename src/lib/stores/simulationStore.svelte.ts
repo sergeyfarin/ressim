@@ -1239,7 +1239,7 @@ class SimulationStoreImpl {
             type: 'run',
             payload: {
                 steps: batchSteps,
-                deltaTDays: Number(this.delta_t_days),
+                deltaTDays: this.delta_t_days,
                 historyInterval: batchHistoryInterval,
                 chunkYieldInterval: 1,
             },
@@ -1249,8 +1249,8 @@ class SimulationStoreImpl {
     stepOnce() { this.runSimulationBatch(1, 1); }
     runSteps() {
         this.runSimulationBatch(
-            Number(this.steps),
-            Number(this.userHistoryInterval ?? this.defaultHistoryInterval),
+            this.steps,
+            this.userHistoryInterval ?? this.defaultHistoryInterval,
         );
     }
     stopRun() { if (this.simWorker) this.simWorker.postMessage({ type: 'stop' }); }
