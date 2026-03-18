@@ -217,7 +217,7 @@ class SimulationStoreImpl {
     // ===== $state: Simulation Output / Runtime =====
 
     wasmReady = $state(false);
-    simWorker: Worker | null = $state(null);
+    simWorker: Worker | null = null;
     runCompleted = $state(false);
     workerRunning = $state(false);
     currentRunTotalSteps = $state(0);
@@ -255,7 +255,7 @@ class SimulationStoreImpl {
     currentIndex = $state(-1);
     playing = $state(false);
     playSpeed = $state(2);
-    playTimer: ReturnType<typeof setInterval> | null = $state(null);
+    playTimer: ReturnType<typeof setInterval> | null = null;
     userHistoryInterval = $state<number | null>(null);
 
     // Profile
