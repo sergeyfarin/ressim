@@ -157,7 +157,8 @@ Acceptance: `Scenario Builder` reads as intentional exploratory modeling, not a 
 
 ### Analytical and Diagnostic Expansion
 
-- [ ] Areal sweep efficiency charting
+- [ ] Areal sweep efficiency analytical solutions, cases and charting
+- [ ] Vertical sweep efficiency analytical solutions, cases and charting
 - [ ] Depletion analytical calibration against additional published references
 
 ### Nice To Have Only

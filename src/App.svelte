@@ -8,6 +8,7 @@
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import SwProfileChart from "./lib/charts/SwProfileChart.svelte";
+    import SweepEfficiencyChart from "./lib/charts/SweepEfficiencyChart.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset } from "./lib/catalog/scenarios";
     import Button from "./lib/ui/controls/Button.svelte";
@@ -619,6 +620,25 @@
                         />
                     </div> -->
                 </Card>
+
+                <SweepEfficiencyChart
+                    rockProps={{
+                        s_wc: params.s_wc,
+                        s_or: params.s_or,
+                        n_w: params.n_w,
+                        n_o: params.n_o,
+                        k_rw_max: params.k_rw_max,
+                        k_ro_max: params.k_ro_max,
+                    }}
+                    fluidProps={{ mu_w: params.mu_w, mu_o: params.mu_o }}
+                    layerPermeabilities={params.permMode === 'perLayer' && params.layerPermsX.length > 1
+                        ? params.layerPermsX
+                        : params.nz > 1
+                            ? Array.from({ length: params.nz }, () => params.uniformPermX)
+                            : [params.uniformPermX]}
+                    layerThickness={params.cellDz}
+                    sourceLabel={scenario.sourceLabel ?? ''}
+                />
             </div>
         </div>
         </section>
