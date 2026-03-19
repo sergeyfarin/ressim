@@ -7,9 +7,9 @@ export type RateChartXAxisMode =
     | 'cumLiquid'
     | 'cumInjection';
 
-export type RateChartPanelKey = 'rates' | 'cumulative' | 'diagnostics';
+export type RateChartPanelKey = 'rates' | 'recovery' | 'cumulative' | 'diagnostics';
 
-export type RateChartScalePreset = 'rates' | 'cumulative' | 'diagnostics' | 'breakthrough' | 'pressure';
+export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'recovery';
 
 export type RateChartCurveOverride = {
     disabled?: boolean;
@@ -30,6 +30,7 @@ export type RateChartConfig = {
     xAxisMode?: RateChartXAxisMode;
     xAxisOptions?: RateChartXAxisMode[];
     ratesExpanded?: boolean;
+    recoveryExpanded?: boolean;
     cumulativeExpanded?: boolean;
     diagnosticsExpanded?: boolean;
     panels?: Partial<Record<RateChartPanelKey, RateChartPanelLayout>>;

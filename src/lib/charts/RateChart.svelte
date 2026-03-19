@@ -78,6 +78,7 @@
 
     // --- Panel expand/collapse state ---
     let ratesExpanded = $state(true);
+    let recoveryExpanded = $state(true);
     let cumulativeExpanded = $state(false);
     let diagnosticsExpanded = $state(false);
     let sweepRFExpanded = $state(true);
@@ -127,6 +128,8 @@
                         xAxisMode = conf.xAxisMode;
                     if (conf.ratesExpanded !== undefined)
                         ratesExpanded = conf.ratesExpanded;
+                    if (conf.recoveryExpanded !== undefined)
+                        recoveryExpanded = conf.recoveryExpanded;
                     if (conf.cumulativeExpanded !== undefined)
                         cumulativeExpanded = conf.cumulativeExpanded;
                     if (conf.diagnosticsExpanded !== undefined)
@@ -308,6 +311,11 @@
     let recoveryFactor = $derived(
         cumulatives.cumOil.map((c) =>
             ooipM3 > 1e-12 ? Math.max(0, Math.min(1, c / ooipM3)) : null,
+        ),
+    );
+    let analyticalRecoveryFactor = $derived(
+        analyticalCumOil.map((c) =>
+            c == null ? null : (ooipM3 > 1e-12 ? Math.max(0, Math.min(1, c / ooipM3)) : null),
         ),
     );
 
@@ -527,15 +535,17 @@
         });
     }
 
-    const baseRatesCurves: CurveConfig[] = [
+    let neutralColor = $derived(theme === "dark" ? "#f8fafc" : "#0f172a");
+
+    let baseRatesCurves = $derived.by((): CurveConfig[] => [
         { label: "Oil Rate", curveKey: "oil-rate-sim", toggleLabel: "Oil Rate", color: "#16a34a", borderWidth: 2.5, yAxisID: "y" },
         {
             label: "Oil Rate (Reference Solution)",
             curveKey: "oil-rate-reference",
             toggleLabel: "Reference Solution Oil Rate",
-            color: "#15803d",
+            color: neutralColor,
             borderWidth: 2,
-            borderDash: [5, 5],
+            borderDash: [7, 4],
             yAxisID: "y",
         },
         {
@@ -550,9 +560,9 @@
             label: "Water Rate (Reference Solution)",
             curveKey: "water-rate-reference",
             toggleLabel: "Reference Solution Water Rate",
-            color: "#3b82f6",
+            color: neutralColor,
             borderWidth: 2,
-            borderDash: [5, 5],
+            borderDash: [7, 4],
             yAxisID: "y",
         },
         {
@@ -572,27 +582,17 @@
             yAxisID: "y",
             defaultVisible: false,
         },
-        {
-            label: "Oil Rate Error",
-            curveKey: "oil-rate-error",
-            toggleLabel: "Oil Rate Error",
-            color: "#15803d",
-            borderWidth: 1.3,
-            borderDash: [2, 4],
-            yAxisID: "y",
-            defaultVisible: false,
-        },
-    ];
+    ]);
 
-    const baseCumulativeCurves: CurveConfig[] = [
+    let baseCumulativeCurves = $derived.by((): CurveConfig[] => [
         { label: "Cum Oil", curveKey: "cum-oil-sim", toggleLabel: "Cum Oil", color: "#0f5132", borderWidth: 2.5, yAxisID: "y" },
         {
             label: "Cum Oil (Reference Solution)",
             curveKey: "cum-oil-reference",
             toggleLabel: "Reference Solution Cum Oil",
-            color: "#0f5132",
+            color: neutralColor,
             borderWidth: 2,
-            borderDash: [8, 4],
+            borderDash: [7, 4],
             yAxisID: "y",
         },
         {
@@ -601,6 +601,7 @@
             toggleLabel: "Cum Injection",
             color: "#06b6d4",
             borderWidth: 2,
+            borderDash: [3, 4],
             yAxisID: "y",
         },
         { label: "Cum Water", curveKey: "cum-water", toggleLabel: "Cum Water", color: "#1e3a8a", borderWidth: 2, yAxisID: "y" },
@@ -611,10 +612,28 @@
             color: "#22c55e",
             borderWidth: 2,
             yAxisID: "y1",
+            defaultVisible: false,
         },
-    ];
+        {
+            label: "Recovery Factor (Primary)",
+            curveKey: "recovery-factor-primary",
+            toggleLabel: "Recovery Factor",
+            color: "#22c55e",
+            borderWidth: 2.2,
+            yAxisID: "y",
+        },
+        {
+            label: "Recovery Factor (Reference)",
+            curveKey: "recovery-factor-reference",
+            toggleLabel: "Reference Solution RF",
+            color: neutralColor,
+            borderWidth: 2,
+            borderDash: [7, 4],
+            yAxisID: "y",
+        },
+    ]);
 
-    const baseDiagnosticsCurves: CurveConfig[] = [
+    let baseDiagnosticsCurves = $derived.by((): CurveConfig[] => [
         {
             label: "Avg Pressure",
             curveKey: "avg-pressure-sim",
@@ -627,9 +646,9 @@
             label: "Avg Pressure (Reference Solution)",
             curveKey: "avg-pressure-reference",
             toggleLabel: "Reference Solution Avg Pressure",
-            color: "#f97316",
+            color: neutralColor,
             borderWidth: 2,
-            borderDash: [5, 5],
+            borderDash: [7, 4],
             yAxisID: "y",
         },
         {
@@ -654,9 +673,9 @@
             label: "WOR (Reference Solution)",
             curveKey: "wor-reference",
             toggleLabel: "Reference Solution WOR",
-            color: "#d97706",
+            color: neutralColor,
             borderWidth: 2,
-            borderDash: [5, 5],
+            borderDash: [7, 4],
             yAxisID: "y1",
             defaultVisible: false,
         },
@@ -666,7 +685,9 @@
             toggleLabel: "Avg Water Sat",
             color: "#1d4ed8",
             borderWidth: 2,
+            borderDash: [3, 4],
             yAxisID: "y1",
+            defaultVisible: false,
         },
         {
             label: "Water Cut (Sim)",
@@ -681,9 +702,9 @@
             label: "Water Cut (Reference Solution)",
             curveKey: "water-cut-reference",
             toggleLabel: "Reference Solution Water Cut",
-            color: "#1d4ed8",
+            color: neutralColor,
             borderWidth: 2,
-            borderDash: [6, 4],
+            borderDash: [7, 4],
             yAxisID: "y1",
             defaultVisible: false,
         },
@@ -697,7 +718,7 @@
             yAxisID: "y2",
             defaultVisible: false,
         },
-    ];
+    ]);
 
     // --- Build XY series for each panel ---
     let rateCurveSeries = $derived([
@@ -707,7 +728,6 @@
         toXYSeries(xValues, normAnalyticalWaterRate),
         toXYSeries(xValues, normInjection),
         toXYSeries(xValues, normLiquidProd),
-        toXYSeries(xValues, normOilRateAbsError),
     ]);
 
     let cumulativeCurveSeries = $derived([
@@ -716,6 +736,8 @@
         toXYSeries(xValues, cumulatives.cumInj),
         toXYSeries(xValues, cumulatives.cumWater),
         toXYSeries(xValues, recoveryFactor as Array<number | null>),
+        toXYSeries(xValues, recoveryFactor as Array<number | null>),
+        toXYSeries(xValues, analyticalRecoveryFactor as Array<number | null>),
     ]);
 
     let diagnosticsCurveSeries = $derived([
@@ -729,6 +751,31 @@
         toXYSeries(xValues, waterCutAnalytical as Array<number | null>),
         toXYSeries(xValues, mbError as Array<number | null>),
     ]);
+
+    const recoveryScales = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: "Recovery Factor" },
+            ticks: { count: 6 },
+            _fraction: true,
+        },
+    };
+    const cumulativeVolumesScales = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            min: 0,
+            alignToPixels: true,
+            title: { display: true, text: "Cumulative (m³)" },
+            ticks: { count: 6 },
+        },
+    };
 
     let ratesScales = $derived({
         y: {
@@ -868,6 +915,8 @@
         if (scalePreset === "breakthrough") return breakthroughScales;
         if (scalePreset === "pressure") return pressureScales;
         if (scalePreset === "cumulative") return cumulativeScales;
+        if (scalePreset === "cumulative_volumes") return cumulativeVolumesScales;
+        if (scalePreset === "recovery") return recoveryScales;
         if (scalePreset === "diagnostics") return diagnosticsScales;
         return ratesScales;
     }
@@ -915,12 +964,18 @@
             allowLogToggle: true,
         }),
     );
+    let recoveryPanel = $derived(
+        buildPanelDefinition("recovery", {
+            title: "Recovery Factor",
+            curveKeys: ["recovery-factor-primary", "recovery-factor-reference"],
+            scalePreset: "recovery",
+        }),
+    );
     let cumulativePanel = $derived(
         buildPanelDefinition("cumulative", {
-            title: "Cumulative",
-            curveKeys: baseCumulativeCurves.map((curve) => curve.curveKey ?? curve.label),
-            curveLabels: baseCumulativeCurves.map((curve) => curve.label),
-            scalePreset: "cumulative",
+            title: "Cum Oil",
+            curveKeys: ["cum-oil-sim", "cum-oil-reference", "cum-injection"],
+            scalePreset: "cumulative_volumes",
         }),
     );
     let diagnosticsPanel = $derived(
@@ -933,9 +988,11 @@
     );
 
     let ratesCurves = $derived(ratesPanel.curves);
+    let recoveryCurves = $derived(recoveryPanel.curves);
     let cumulativeCurves = $derived(cumulativePanel.curves);
     let diagnosticsCurves = $derived(diagnosticsPanel.curves);
     let ratesSeries = $derived(ratesPanel.series);
+    let recoverySeries = $derived(recoveryPanel.series);
     let cumulativeSeries = $derived(cumulativePanel.series);
     let diagnosticsSeries = $derived(diagnosticsPanel.series);
 
@@ -1224,6 +1281,23 @@
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
             nativeGutters = { ...nativeGutters, rates: { left, right } };
+        }}
+    />
+
+    <!-- Recovery Factor panel -->
+    <ChartSubPanel
+        panelId="recovery"
+        title={recoveryPanel.title}
+        bind:expanded={recoveryExpanded}
+        curves={recoveryCurves}
+        seriesData={recoverySeries}
+        scaleConfigs={recoveryPanel.scales}
+        {theme}
+        logScale={false}
+        targetLeftGutter={maxLeftGutter}
+        targetRightGutter={maxRightGutter}
+        onGutterMeasure={(left: number, right: number) => {
+            nativeGutters = { ...nativeGutters, recovery: { left, right } };
         }}
     />
 

@@ -29,18 +29,23 @@
         layoutConfig = {},
         theme = 'dark',
         analyticalPerVariant = false,
+        previewBaseParams = undefined,
+        previewScenarioClass = undefined,
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
         layoutConfig?: RateChartLayoutConfig;
         theme?: 'dark' | 'light';
         analyticalPerVariant?: boolean;
+        previewBaseParams?: Record<string, any>;
+        previewScenarioClass?: string;
     } = $props();
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
     let logScale = $state(false);
     let ratesExpanded = $state(true);
-    let cumulativeExpanded = $state(true);
+    let recoveryExpanded = $state(true);
+    let cumulativeExpanded = $state(false);
     let diagnosticsExpanded = $state(false);
     let sweepExpanded = $state(true);
     let visibleCaseKeys = $state<Record<string, boolean>>({});
@@ -61,8 +66,17 @@
         if (config.xAxisMode !== undefined) xAxisMode = config.xAxisMode;
         if (config.logScale !== undefined) logScale = config.logScale;
         if (config.ratesExpanded !== undefined) ratesExpanded = config.ratesExpanded;
+        if (config.recoveryExpanded !== undefined) recoveryExpanded = config.recoveryExpanded;
         if (config.cumulativeExpanded !== undefined) cumulativeExpanded = config.cumulativeExpanded;
         if (config.diagnosticsExpanded !== undefined) diagnosticsExpanded = config.diagnosticsExpanded;
+    });
+
+    const isPreviewMode = $derived(results.length === 0 && Boolean(previewBaseParams));
+
+    $effect(() => {
+        if (isPreviewMode && (previewScenarioClass === 'buckley-leverett' || previewScenarioClass === 'waterflood')) {
+            xAxisMode = 'pvi';
+        }
     });
 
     const overlayModel = $derived(
@@ -72,6 +86,8 @@
             xAxisMode,
             theme,
             analyticalPerVariant,
+            previewBaseParams,
+            previewScenarioClass,
         }),
     );
     const visibleResults = $derived.by(() => {
@@ -141,6 +157,30 @@
             _fraction: true,
         },
     };
+    const recoveryScales = {
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: 'Recovery Factor' },
+            ticks: { count: 6 },
+            _fraction: true,
+        },
+    };
+    const cumulativeVolumesScales = {
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            min: 0,
+            alignToPixels: true,
+            title: { display: true, text: 'Cumulative (m³)' },
+            ticks: { count: 6 },
+        },
+    };
     const sweepScales = {
         y: {
             type: 'linear',
@@ -168,6 +208,8 @@
     function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
         if (scalePreset === 'breakthrough') return breakthroughScales;
         if (scalePreset === 'pressure') return pressureScales;
+        if (scalePreset === 'recovery') return recoveryScales;
+        if (scalePreset === 'cumulative_volumes') return cumulativeVolumesScales;
         if (scalePreset === 'cumulative') return cumulativeScales;
         return rateScales;
     }
@@ -234,20 +276,25 @@
     const ratesPanel = $derived(resolvePanelDefinition('rates', {
         title: family?.scenarioClass === 'buckley-leverett' ? 'Breakthrough' : 'Oil Rate',
         curveKeys: family?.scenarioClass === 'buckley-leverett'
-            ? ['water-cut-sim', 'water-cut-reference', 'avg-water-sat']
+            ? ['water-cut-sim', 'water-cut-reference']
             : ['oil-rate-sim', 'oil-rate-reference'],
         scalePreset: family?.scenarioClass === 'buckley-leverett' ? 'breakthrough' : 'rates',
         allowLogToggle: family?.scenarioClass === 'depletion',
     }));
+    const recoveryPanel = $derived(resolvePanelDefinition('recovery', {
+        title: 'Recovery Factor',
+        curveKeys: ['recovery-factor'],
+        scalePreset: 'recovery',
+    }));
     const cumulativePanel = $derived(resolvePanelDefinition('cumulative', {
-        title: family?.scenarioClass === 'buckley-leverett' ? 'Recovery' : 'Cumulative Oil / Recovery',
+        title: 'Cum Oil',
         curveKeys: family?.scenarioClass === 'buckley-leverett'
-            ? ['recovery-factor', 'cum-oil-sim', 'cum-oil-reference', 'cum-injection']
-            : ['recovery-factor', 'cum-oil-sim', 'cum-oil-reference'],
-        scalePreset: 'cumulative',
+            ? ['cum-oil-sim', 'cum-oil-reference', 'cum-injection']
+            : ['cum-oil-sim', 'cum-oil-reference'],
+        scalePreset: 'cumulative_volumes',
     }));
     const diagnosticsPanel = $derived(resolvePanelDefinition('diagnostics', {
-        title: family?.scenarioClass === 'buckley-leverett' ? 'Pressure' : 'Pressure / Decline',
+        title: 'Pressure',
         curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
         scalePreset: 'pressure',
     }));
@@ -345,6 +392,22 @@
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
             nativeGutters = { ...nativeGutters, rates: { left, right } };
+        }}
+    />
+
+    <ChartSubPanel
+        panelId="comparison-recovery"
+        title={recoveryPanel.title}
+        bind:expanded={recoveryExpanded}
+        curves={recoveryPanel.curves}
+        seriesData={recoveryPanel.series}
+        scaleConfigs={recoveryPanel.scales}
+        {theme}
+        logScale={false}
+        targetLeftGutter={maxLeftGutter}
+        targetRightGutter={maxRightGutter}
+        onGutterMeasure={(left: number, right: number) => {
+            nativeGutters = { ...nativeGutters, recovery: { left, right } };
         }}
     />
 

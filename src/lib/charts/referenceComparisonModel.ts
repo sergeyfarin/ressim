@@ -348,6 +348,152 @@ const SWEEP_DASH_AREAL    = [7, 4]  as number[];  // medium dash — E_A
 const SWEEP_DASH_VERTICAL = [3, 4]  as number[];  // short dash  — E_V
 const SWEEP_DASH_COMBINED = [12, 4] as number[];  // long dash   — E_vol
 
+function buildAnalyticalPreviewPanels(
+    previewParams: Record<string, any>,
+    xAxisMode: RateChartXAxisMode,
+    scenarioClass: string,
+    theme: ReferenceComparisonTheme,
+): Record<RateChartPanelKey, ReferenceComparisonPanel> {
+    const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
+        rates: { curves: [], series: [] },
+        recovery: { curves: [], series: [] },
+        cumulative: { curves: [], series: [] },
+        diagnostics: { curves: [], series: [] },
+    };
+    const neutralColor = getReferenceColor(theme);
+
+    if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
+        const N = 150;
+        const pviMax = 3.0;
+        const pviValues = Array.from({ length: N }, (_, i) => (i / (N - 1)) * pviMax);
+        const injRates = new Array(N).fill(1);
+        const ooip = 1; // poreVolume = 1, so RF = cumOil
+        let analyticalProduction: Array<{ oilRate: number; waterRate: number; cumulativeOil: number }>;
+        try {
+            analyticalProduction = calculateAnalyticalProduction(
+                extractRockProps(previewParams),
+                extractFluidProps(previewParams),
+                toFiniteNumber(previewParams.initialSaturation, toFiniteNumber(previewParams.s_wc, 0.1)),
+                pviValues,
+                injRates,
+                1, // poreVolume = 1 → time = PVI
+            );
+        } catch {
+            return panels;
+        }
+        const waterCut = analyticalProduction.map((pt) => {
+            const total = Math.max(0, pt.oilRate + pt.waterRate);
+            return total > 1e-12 ? pt.waterRate / total : 0;
+        });
+        const recovery = analyticalProduction.map((pt) =>
+            Math.max(0, Math.min(1, pt.cumulativeOil / ooip)),
+        );
+        appendSeries(panels.rates, {
+            label: 'Analytical Water Cut',
+            curveKey: 'water-cut-reference',
+            toggleLabel: 'Analytical Water Cut',
+            color: neutralColor,
+            borderWidth: 2,
+            borderDash: [7, 4],
+            yAxisID: 'y',
+        }, pviValues, waterCut);
+        appendSeries(panels.recovery, {
+            label: 'Analytical Recovery Factor',
+            curveKey: 'recovery-factor',
+            toggleLabel: 'Analytical Recovery Factor',
+            color: neutralColor,
+            borderWidth: 2,
+            borderDash: [7, 4],
+            yAxisID: 'y',
+        }, pviValues, recovery);
+        return panels;
+    }
+
+    if (scenarioClass === 'depletion') {
+        const steps = toFiniteNumber(previewParams.steps, 200);
+        const dt = toFiniteNumber(previewParams.delta_t_days, 5);
+        const timeHistory = Array.from({ length: steps }, (_, i) => (i + 1) * dt);
+        let analyticalResult: ReturnType<typeof calculateDepletionAnalyticalProduction>;
+        try {
+            analyticalResult = calculateDepletionAnalyticalProduction({
+                reservoir: {
+                    length: toFiniteNumber(previewParams.nx, 1) * toFiniteNumber(previewParams.cellDx, 10),
+                    area: toFiniteNumber(previewParams.ny, 1)
+                        * toFiniteNumber(previewParams.cellDy, 10)
+                        * toFiniteNumber(previewParams.nz, 1)
+                        * toFiniteNumber(previewParams.cellDz, 1),
+                    porosity: toFiniteNumber(previewParams.reservoirPorosity ?? previewParams.porosity, 0.2),
+                },
+                timeHistory,
+                initialSaturation: toFiniteNumber(previewParams.initialSaturation, 0.3),
+                nz: toFiniteNumber(previewParams.nz, 1),
+                permMode: String(previewParams.permMode ?? 'uniform'),
+                uniformPermX: toFiniteNumber(previewParams.uniformPermX, 100),
+                uniformPermY: toFiniteNumber(previewParams.uniformPermY ?? previewParams.uniformPermX, 100),
+                layerPermsX: Array.isArray(previewParams.layerPermsX) ? previewParams.layerPermsX.map(Number) : [],
+                layerPermsY: Array.isArray(previewParams.layerPermsY) ? previewParams.layerPermsY.map(Number) : [],
+                cellDx: toFiniteNumber(previewParams.cellDx, 10),
+                cellDy: toFiniteNumber(previewParams.cellDy, 10),
+                cellDz: toFiniteNumber(previewParams.cellDz, 1),
+                wellRadius: toFiniteNumber(previewParams.well_radius, 0.1),
+                wellSkin: toFiniteNumber(previewParams.well_skin, 0),
+                muO: toFiniteNumber(previewParams.mu_o, 1),
+                sWc: toFiniteNumber(previewParams.s_wc, 0.1),
+                sOr: toFiniteNumber(previewParams.s_or, 0.1),
+                nO: toFiniteNumber(previewParams.n_o, 2),
+                c_o: toFiniteNumber(previewParams.c_o, 1e-5),
+                c_w: toFiniteNumber(previewParams.c_w, 3e-6),
+                cRock: toFiniteNumber(previewParams.rock_compressibility, 1e-6),
+                initialPressure: toFiniteNumber(previewParams.initialPressure, 300),
+                producerBhp: toFiniteNumber(previewParams.producerBhp, 100),
+                depletionRateScale: toFiniteNumber(previewParams.analyticalDepletionRateScale, 1),
+            });
+        } catch {
+            return panels;
+        }
+        const ooip = getOoip(previewParams);
+        const tau = analyticalResult.meta.tau ?? null;
+        const xMode = xAxisMode === 'logTime' ? 'logTime' : xAxisMode === 'tD' ? 'tD' : 'time';
+        const xValues = analyticalResult.production.map((pt) => {
+            if (xMode === 'logTime') return pt.time > 0 ? Math.log10(pt.time) : null;
+            if (xMode === 'tD' && Number.isFinite(tau) && (tau as number) > 0) return pt.time / (tau as number);
+            return pt.time;
+        });
+        appendSeries(panels.rates, {
+            label: 'Analytical Oil Rate',
+            curveKey: 'oil-rate-reference',
+            toggleLabel: 'Analytical Oil Rate',
+            color: neutralColor,
+            borderWidth: 2,
+            borderDash: [7, 4],
+            yAxisID: 'y',
+        }, xValues, analyticalResult.production.map((pt) => pt.oilRate));
+        appendSeries(panels.recovery, {
+            label: 'Analytical Recovery Factor',
+            curveKey: 'recovery-factor',
+            toggleLabel: 'Analytical Recovery Factor',
+            color: neutralColor,
+            borderWidth: 2,
+            borderDash: [7, 4],
+            yAxisID: 'y',
+        }, xValues, analyticalResult.production.map((pt) => (
+            ooip > 1e-12 ? Math.max(0, Math.min(1, pt.cumulativeOil / ooip)) : null
+        )));
+        appendSeries(panels.diagnostics, {
+            label: 'Analytical Avg Pressure',
+            curveKey: 'avg-pressure-reference',
+            toggleLabel: 'Analytical Avg Pressure',
+            color: neutralColor,
+            borderWidth: 2,
+            borderDash: [7, 4],
+            yAxisID: 'y',
+        }, xValues, analyticalResult.production.map((pt) => pt.avgPressure));
+        return panels;
+    }
+
+    return panels;
+}
+
 function buildSweepPanel(input: {
     orderedResults: BenchmarkRunResult[];
     theme: ReferenceComparisonTheme;
@@ -456,17 +602,30 @@ export function buildReferenceComparisonModel(input: {
      *  analytical solution (e.g. viscosity → fractional flow). Each result then
      *  gets its own analytical curve. False (default) → one shared reference. */
     analyticalPerVariant?: boolean;
+    /** When provided and no results exist yet, render an analytical-only preview. */
+    previewBaseParams?: Record<string, any>;
+    previewScenarioClass?: string;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
         rates: { curves: [], series: [] },
+        recovery: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
         diagnostics: { curves: [], series: [] },
     };
 
     if (!family || orderedResults.length === 0) {
+        if (orderedResults.length === 0 && input.previewBaseParams && input.previewScenarioClass) {
+            const previewPanels = buildAnalyticalPreviewPanels(
+                input.previewBaseParams,
+                input.xAxisMode,
+                input.previewScenarioClass,
+                input.theme ?? 'dark',
+            );
+            return { orderedResults, panels: previewPanels, sweepPanel: null };
+        }
         return { orderedResults, panels, sweepPanel: null };
     }
 
@@ -515,7 +674,7 @@ export function buildReferenceComparisonModel(input: {
                 derived.avgWaterSat,
             );
             appendSeries(
-                panels.cumulative,
+                panels.recovery,
                 {
                     label: `${result.label} Recovery`,
                     curveKey: 'recovery-factor',
@@ -523,7 +682,7 @@ export function buildReferenceComparisonModel(input: {
                     toggleLabel: 'Recovery Factor',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
-                    yAxisID: 'y1',
+                    yAxisID: 'y',
                     defaultVisible,
                 },
                 xValues,
@@ -595,7 +754,7 @@ export function buildReferenceComparisonModel(input: {
             derived.oilRate,
         );
         appendSeries(
-            panels.cumulative,
+            panels.recovery,
             {
                 label: `${result.label} Recovery`,
                 curveKey: 'recovery-factor',
@@ -603,7 +762,7 @@ export function buildReferenceComparisonModel(input: {
                 toggleLabel: 'Recovery Factor',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
-                yAxisID: 'y1',
+                yAxisID: 'y',
                 defaultVisible,
             },
             xValues,
@@ -669,14 +828,14 @@ export function buildReferenceComparisonModel(input: {
                 }, refOverlay.xValues, refOverlay.rates.values);
             }
             if (refOverlay.cumulative) {
-                appendSeries(panels.cumulative, {
+                appendSeries(panels.recovery, {
                     label: 'Reference Solution Recovery',
                     curveKey: 'recovery-factor',
                     toggleLabel: 'Reference Solution Recovery',
                     color: referenceColor,
                     borderWidth: 2,
                     borderDash: [7, 4],
-                    yAxisID: 'y1',
+                    yAxisID: 'y',
                 }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
                 appendSeries(panels.cumulative, {
                     label: 'Reference Solution Cum Oil',
@@ -710,7 +869,7 @@ export function buildReferenceComparisonModel(input: {
                     }, refOverlay.xValues, refOverlay.rates.values);
                 }
                 if (refOverlay.cumulative) {
-                    appendSeries(panels.cumulative, {
+                    appendSeries(panels.recovery, {
                         label: `${result.label} — Reference Recovery`,
                         curveKey: 'recovery-factor',
                         caseKey: result.key,
@@ -718,7 +877,7 @@ export function buildReferenceComparisonModel(input: {
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
-                        yAxisID: 'y1',
+                        yAxisID: 'y',
                     }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
                 }
             });
@@ -738,14 +897,14 @@ export function buildReferenceComparisonModel(input: {
             }, refOverlay.xValues, refOverlay.rates.values);
         }
         if (refOverlay.cumulative) {
-            appendSeries(panels.cumulative, {
+            appendSeries(panels.recovery, {
                 label: refOverlay.cumulative.recoveryLabel,
                 curveKey: 'recovery-factor',
                 toggleLabel: 'Reference Solution Recovery',
                 color: referenceColor,
                 borderWidth: 2,
                 borderDash: [7, 4],
-                yAxisID: 'y1',
+                yAxisID: 'y',
             }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
             appendSeries(panels.cumulative, {
                 label: refOverlay.cumulative.cumulativeLabel,

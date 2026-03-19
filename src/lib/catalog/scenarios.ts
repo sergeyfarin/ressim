@@ -95,8 +95,8 @@ export type Scenario = {
 
 export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
     /**
-     * Standard waterflood view: PVI x-axis, breakthrough watercut + recovery + pressure panels.
-     * Analytical overlay shown alongside simulation curves.
+     * 1D Buckley-Leverett waterflood: PVI x-axis, one variable per panel.
+     * Rates → water cut  |  Recovery → RF  |  Cum Oil (collapsed)  |  Pressure (collapsed)
      */
     waterflood: {
         rateChart: {
@@ -105,26 +105,29 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
             allowLogScale: false,
             logScale: false,
             ratesExpanded: true,
-            cumulativeExpanded: true,
+            recoveryExpanded: true,
+            cumulativeExpanded: false,
             diagnosticsExpanded: false,
             panels: {
                 rates: {
                     title: 'Breakthrough',
-                    curveKeys: ['water-cut-sim', 'water-cut-reference', 'avg-water-sat'],
-                    curveLabels: ['Water Cut (Sim)', 'Water Cut (Ref)', 'Avg Water Sat'],
+                    curveKeys: ['water-cut-sim', 'water-cut-reference'],
                     scalePreset: 'breakthrough',
                     allowLogToggle: false,
                 },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+                    scalePreset: 'recovery',
+                },
                 cumulative: {
-                    title: 'Recovery',
-                    curveKeys: ['recovery-factor', 'cum-oil-sim', 'cum-oil-reference', 'cum-injection'],
-                    curveLabels: ['Recovery Factor', 'Cum Oil', 'Cum Oil (Ref)', 'Cum Injection'],
-                    scalePreset: 'cumulative',
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim', 'cum-injection'],
+                    scalePreset: 'cumulative_volumes',
                 },
                 diagnostics: {
                     title: 'Pressure',
                     curveKeys: ['avg-pressure-sim'],
-                    curveLabels: ['Avg Pressure'],
                     scalePreset: 'pressure',
                 },
             },
@@ -132,36 +135,79 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
     },
 
     /**
-     * Standard depletion view: time x-axis, oil rate + cumulative oil + pressure panels.
+     * Sweep efficiency scenarios: all standard panels collapsed — the sweep-specific panels
+     * (RF sweep, E_A, E_V, E_vol) are the primary display when showSweepPanel is active.
+     */
+    sweep: {
+        rateChart: {
+            xAxisMode: 'pvi',
+            xAxisOptions: ['pvi', 'time'],
+            allowLogScale: false,
+            logScale: false,
+            ratesExpanded: false,
+            recoveryExpanded: false,
+            cumulativeExpanded: false,
+            diagnosticsExpanded: false,
+            panels: {
+                rates: {
+                    title: 'Breakthrough (1D BL)',
+                    curveKeys: ['water-cut-sim', 'water-cut-reference'],
+                    scalePreset: 'breakthrough',
+                    allowLogToggle: false,
+                },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+                    scalePreset: 'recovery',
+                },
+                cumulative: {
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim'],
+                    scalePreset: 'cumulative_volumes',
+                },
+                diagnostics: {
+                    title: 'Pressure',
+                    curveKeys: ['avg-pressure-sim'],
+                    scalePreset: 'pressure',
+                },
+            },
+        },
+    },
+
+    /**
+     * Oil depletion (PSS/transient): time x-axis, oil rate + RF + pressure panels.
      * Analytical reference solution shown alongside simulation.
      */
-    depletion: {
+    oil_depletion: {
         rateChart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'tD', 'logTime'],
             allowLogScale: true,
             logScale: false,
             ratesExpanded: true,
-            cumulativeExpanded: true,
+            recoveryExpanded: true,
+            cumulativeExpanded: false,
             diagnosticsExpanded: true,
             panels: {
                 rates: {
                     title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim', 'oil-rate-reference', 'oil-rate-error'],
-                    curveLabels: ['Oil Rate', 'Oil Rate (Ref)', 'Oil Rate Error'],
+                    curveKeys: ['oil-rate-sim', 'oil-rate-reference'],
                     scalePreset: 'rates',
                     allowLogToggle: true,
                 },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+                    scalePreset: 'recovery',
+                },
                 cumulative: {
-                    title: 'Cumulative Oil / Recovery',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference', 'recovery-factor'],
-                    curveLabels: ['Cum Oil', 'Cum Oil (Ref)', 'Recovery Factor'],
-                    scalePreset: 'cumulative',
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
+                    scalePreset: 'cumulative_volumes',
                 },
                 diagnostics: {
-                    title: 'Pressure / Decline',
+                    title: 'Pressure',
                     curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
-                    curveLabels: ['Avg Pressure', 'Avg Pressure (Ref)'],
                     scalePreset: 'pressure',
                 },
             },
@@ -169,8 +215,8 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
     },
 
     /**
-     * Fetkovich-specific: log-time x-axis by default, log-scale rates.
-     * Exponential decline is most visible on log-time axes.
+     * Fetkovich exponential decline: log-time x-axis, log-scale rates.
+     * Same panel structure as oil_depletion.
      */
     fetkovich: {
         rateChart: {
@@ -179,26 +225,69 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
             allowLogScale: true,
             logScale: true,
             ratesExpanded: true,
-            cumulativeExpanded: true,
+            recoveryExpanded: true,
+            cumulativeExpanded: false,
             diagnosticsExpanded: true,
             panels: {
                 rates: {
                     title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim', 'oil-rate-reference', 'oil-rate-error'],
-                    curveLabels: ['Oil Rate', 'Oil Rate (Ref)', 'Oil Rate Error'],
+                    curveKeys: ['oil-rate-sim', 'oil-rate-reference'],
                     scalePreset: 'rates',
                     allowLogToggle: true,
                 },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+                    scalePreset: 'recovery',
+                },
                 cumulative: {
-                    title: 'Cumulative Oil / Recovery',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference', 'recovery-factor'],
-                    curveLabels: ['Cum Oil', 'Cum Oil (Ref)', 'Recovery Factor'],
-                    scalePreset: 'cumulative',
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
+                    scalePreset: 'cumulative_volumes',
                 },
                 diagnostics: {
-                    title: 'Pressure / Decline',
+                    title: 'Pressure',
                     curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
-                    curveLabels: ['Avg Pressure', 'Avg Pressure (Ref)'],
+                    scalePreset: 'pressure',
+                },
+            },
+        },
+    },
+
+    /**
+     * Gas-domain scenarios: no validated analytical reference yet.
+     * Same panel structure as oil_depletion but without analytical reference curves.
+     */
+    gas: {
+        rateChart: {
+            xAxisMode: 'time',
+            xAxisOptions: ['time', 'logTime'],
+            allowLogScale: true,
+            logScale: false,
+            ratesExpanded: true,
+            recoveryExpanded: true,
+            cumulativeExpanded: false,
+            diagnosticsExpanded: true,
+            panels: {
+                rates: {
+                    title: 'Oil Rate',
+                    curveKeys: ['oil-rate-sim'],
+                    scalePreset: 'rates',
+                    allowLogToggle: true,
+                },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary'],
+                    scalePreset: 'recovery',
+                },
+                cumulative: {
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim'],
+                    scalePreset: 'cumulative_volumes',
+                },
+                diagnostics: {
+                    title: 'Pressure',
+                    curveKeys: ['avg-pressure-sim'],
                     scalePreset: 'pressure',
                 },
             },
@@ -223,8 +312,8 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'wf_bl1d',
         label: '1D Waterflood',
-        description: '1D Buckley-Leverett waterflood. Viscous-dominated displacement; no gravity or capillary pressure. Numerical solution converges to the analytical shock as grid is refined. — Buckley & Leverett (1942)',
-        analyticalMethodSummary: 'Analytical overlay uses the Buckley-Leverett fractional-flow solution with Welge shock construction to predict breakthrough and recovery.',
+        description: 'Viscous-dominated 1D displacement — no gravity or capillary pressure. The numerical shock front sharpens toward the analytical solution as grid resolution increases.',
+        analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction — predicts breakthrough timing and post-breakthrough recovery, independent of grid resolution.',
         analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
         domain: 'waterflood',
@@ -451,12 +540,12 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'sweep_areal',
         label: 'Areal Sweep (XY)',
-        description: 'Five-spot areal sweep efficiency. E_A at breakthrough depends strongly on end-point mobility ratio. E_A(BT) ≈ 0.70 at M = 1, drops sharply for unfavourable M > 1. — Craig (1971)',
-        analyticalMethodSummary: 'Analytical overlay uses Craig five-spot areal sweep correlations; random areal heterogeneity variants keep that curve as baseline context and read the extra penalty from simulation.',
+        description: 'Five-spot pattern flood in 2D (XY). Areal sweep E_A at breakthrough is strongly controlled by end-point mobility ratio: E_A(BT) ≈ 0.70 at M = 1, dropping sharply for unfavourable M > 1.',
+        analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous pattern. Heterogeneous variants show the additional sweep penalty on top of this baseline.',
         analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
         scenarioClass: 'waterflood',
         domain: 'sweep',
-        chartPreset: 'waterflood',
+        chartPreset: 'sweep',
         defaultSensitivityDimensionKey: 'mobility',
         params: {
             analyticalSolutionMode: 'waterflood',
@@ -621,12 +710,12 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'sweep_vertical',
         label: 'Vertical Sweep (XZ)',
-        description: 'Dykstra-Parsons vertical sweep efficiency for non-communicating layers. Higher V_DP → more heterogeneity → earlier breakthrough in fast layers → lower E_V. — Dykstra & Parsons (1950)',
-        analyticalMethodSummary: 'Analytical overlay uses the Dykstra-Parsons non-communicating layered sweep model, paired with Buckley-Leverett displacement efficiency.',
+        description: 'Non-communicating layered reservoir (XZ). Higher permeability contrast V_DP causes earlier breakthrough in faster layers, reducing vertical sweep E_V.',
+        analyticalMethodSummary: 'Dykstra-Parsons layered model with BL displacement — predicts per-layer breakthrough and combined E_V for the active layer permeabilities.',
         analyticalMethodReference: 'Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
         domain: 'sweep',
-        chartPreset: 'waterflood',
+        chartPreset: 'sweep',
         defaultSensitivityDimensionKey: 'heterogeneity',
         params: {
             analyticalSolutionMode: 'waterflood',
@@ -764,12 +853,12 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'sweep_combined',
         label: 'Combined Sweep (3D)',
-        description: 'Volumetric sweep E_vol = E_A × E_V in a 3D flood. Use the interaction axis to isolate mobility-versus-layering effects, and the penalty-buildup axis to add full-field heterogeneity without exploding the case count. — Craig (1971), Dykstra & Parsons (1950)',
-        analyticalMethodSummary: 'Analytical overlay uses the current factorized sweep model: Craig areal sweep, Dykstra-Parsons vertical sweep, and Buckley-Leverett recovery linked through the local-PVI approximation.',
+        description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Interaction and penalty-buildup dimensions isolate mobility-only, layering-only, and compounded sweep losses.',
+        analyticalMethodSummary: 'Factorized sweep model: Craig areal × Dykstra-Parsons vertical × BL displacement, linked via the local-PVI approximation.',
         analyticalMethodReference: 'Craig (1971); Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
         domain: 'sweep',
-        chartPreset: 'waterflood',
+        chartPreset: 'sweep',
         defaultSensitivityDimensionKey: 'interaction_core',
         params: {
             analyticalSolutionMode: 'waterflood',
@@ -947,12 +1036,12 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'dep_pss',
         label: 'Pressure Depletion',
-        description: 'Pseudo-steady-state depletion of a bounded square reservoir. Well location determines the Dietz shape factor C_A, which sets the characteristic decline time. — Dietz (1965)',
-        analyticalMethodSummary: 'Analytical overlay uses the Dietz pseudo-steady-state bounded-drainage model, with well position represented through the drainage shape factor.',
+        description: 'Bounded square reservoir under pseudo-steady-state. Well position sets the Dietz shape factor C_A (centre C_A ≈ 30.88 vs corner C_A ≈ 0.56), controlling the rate of pressure decline.',
+        analyticalMethodSummary: 'PSS productivity-index model — predicts exponential rate and pressure decline for the active well location, skin, and permeability.',
         analyticalMethodReference: 'Dietz (1965); standard pseudo-steady-state productivity-index formulation.',
         scenarioClass: 'depletion',
         domain: 'depletion',
-        chartPreset: 'depletion',
+        chartPreset: 'oil_depletion',
         defaultSensitivityDimensionKey: 'shape_factor',
         params: {
             analyticalSolutionMode: 'depletion',
@@ -1127,8 +1216,8 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'dep_decline',
         label: 'Rate Decline',
-        description: 'Constant-BHP exponential decline. Fetkovich showed that all finite-reservoir wells exhibit exponential decline at long producing times. PI controls rate; c_t controls duration. — Fetkovich (1971)',
-        analyticalMethodSummary: 'Analytical overlay uses a Fetkovich-style exponential decline reference for constant-BHP production from a finite reservoir.',
+        description: 'Constant-BHP production from a finite reservoir. PI sets the initial rate level; total compressibility c_t sets the decline duration. Displayed on log-time axes to reveal the exponential trend.',
+        analyticalMethodSummary: 'Fetkovich exponential decline — rate and recovery reference curves for constant-BHP depletion, updated for active skin and permeability.',
         analyticalMethodReference: 'Fetkovich (1971).',
         scenarioClass: 'depletion',
         domain: 'depletion',
@@ -1270,12 +1359,12 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'gas_injection',
         label: 'Gas Injection',
-        description: 'Gas injector displacing oil in a 1D homogeneous reservoir. No initial free gas. Experimental — no analytical reference solution. Known physics issues: see TODO.md.',
-        analyticalMethodSummary: 'This scenario is currently simulation-only. No analytical overlay is shown while the three-phase gas-injection model remains under validation.',
+        description: 'Gas injector displacing oil in a 1D homogeneous reservoir; no initial free gas. Experimental — known three-phase physics issues (see TODO.md).',
+        analyticalMethodSummary: 'Simulation-only — no analytical overlay while the three-phase gas-injection model remains under validation.',
         analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
         scenarioClass: '3phase',
         domain: 'gas',
-        chartPreset: 'depletion',
+        chartPreset: 'gas',
         params: {
             analyticalSolutionMode: 'waterflood',
             nx: 20, ny: 1, nz: 1,
@@ -1321,12 +1410,12 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'gas_drive',
         label: 'Solution Gas Drive',
-        description: 'Pressure depletion with initial free gas — models a reservoir already below bubble point. Experimental — no analytical reference solution. Known physics issues: see TODO.md.',
-        analyticalMethodSummary: 'This scenario is currently simulation-only. No analytical overlay is shown while three-phase depletion physics remains experimental.',
+        description: 'Pressure depletion with initial free gas — models a reservoir already below bubble point. Experimental — known three-phase physics issues (see TODO.md).',
+        analyticalMethodSummary: 'Simulation-only — no analytical overlay while three-phase depletion physics remains experimental.',
         analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
         scenarioClass: '3phase',
         domain: 'gas',
-        chartPreset: 'depletion',
+        chartPreset: 'gas',
         params: {
             analyticalSolutionMode: 'depletion',
             nx: 20, ny: 1, nz: 1,

@@ -555,13 +555,15 @@
                 />
 
                 <Card class="overflow-hidden">
-                    {#if activeReferenceFamily && activeReferenceResults.length > 0 && ReferenceComparisonChartComponent}
+                    {#if activeReferenceFamily && ReferenceComparisonChartComponent}
                         <ReferenceComparisonChartComponent
                             results={activeReferenceResults}
                             family={activeReferenceFamily}
                             layoutConfig={activeRateChartLayoutConfig}
                             {analyticalPerVariant}
                             {theme}
+                            previewBaseParams={activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
+                            previewScenarioClass={activeReferenceFamily.scenarioClass}
                         />
                     {:else if RateChartComponent}
                         <RateChartComponent

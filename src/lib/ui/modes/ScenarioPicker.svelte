@@ -166,20 +166,22 @@
     <div class="border-t border-border/50 px-3 py-2">
       <div class="flex items-start justify-between gap-2">
         <div class="space-y-1">
-          <p class="ui-microcopy text-muted-foreground">{activeScenario.description}</p>
-          <p class="ui-microcopy text-muted-foreground/80">
-            <span class="font-medium text-foreground/85">Analytical method:</span>
-            {activeScenario.analyticalMethodSummary}
-            <span class="text-muted-foreground/70"> Ref: {activeScenario.analyticalMethodReference}</span>
-          </p>
-        </div>
-        <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
-          Customize →
-        </Button>
-      </div>
-      <p class="ui-microcopy mt-0.5 font-mono text-muted-foreground/70">
+        <p class="ui-microcopy mt-0.5 font-mono text-muted-foreground/70">
         {formatParamSummary(activeScenario)}
       </p>
+          <p class="ui-microcopy text-foreground">{activeScenario.description}</p>
+          <p class="ui-microcopy text-foreground">
+          <span class="text-foreground font-semibold">Analytical:</span>
+            {activeScenario.analyticalMethodSummary}
+            <span class="text-foreground"> Ref: {activeScenario.analyticalMethodReference}</span>
+          </p>
+        </div>
+        
+      </div>
+      
+      <!-- <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
+          Customize →
+        </Button> -->
     </div>
 
     <!-- ── Sensitivity panel ── -->
@@ -188,20 +190,17 @@
 
         <!-- Dimension selector — only shown when there are multiple dimensions -->
         {#if activeScenario.sensitivities.length > 1}
+          <p class="ui-subsection-kicker text-muted-foreground">Sensitivities</p>
           <div class="flex flex-wrap items-center gap-2">
-            <span class="ui-subsection-kicker text-muted-foreground">Sensitivy sets:</span>
+            
             {#each activeScenario.sensitivities as dim}
-              <button
-                type="button"
-                class={`ui-chip cursor-pointer transition-colors ${
-                  activeDimension?.key === dim.key
-                    ? "border-primary/70 bg-primary/15 text-foreground font-medium"
-                    : "border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                }`}
+              <Button
+                size="sm"
+                variant={activeDimension?.key === dim.key ? "default" : "outline"}
                 onclick={() => onSelectSensitivityDimension(dim.key)}
               >
                 {dim.label}
-              </button>
+              </Button>
             {/each}
           </div>
         {/if}
@@ -228,9 +227,7 @@
             {/each}
           </div>
           <p class="ui-microcopy text-muted-foreground/70">
-            {#if anyVariantAffectsAnalytical}
-              Analytical solution updates with each variant.
-            {:else}
+            {#if !anyVariantAffectsAnalytical}
               Analytical reference is independent — only simulation results change.
             {/if}
           </p>
