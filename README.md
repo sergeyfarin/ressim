@@ -97,7 +97,7 @@ Current scenarios (`src/lib/catalog/scenarios.ts`) — 8 canonical entries after
 | Waterflood | `wf_bl1d` | Mobility ratio, Corey n_o, S_or, capillary, grid |
 | Sweep | `sweep_areal` | Mobility ratio, areal heterogeneity, S_or |
 | Sweep | `sweep_vertical` | V_DP heterogeneity, mobility ratio |
-| Sweep | `sweep_combined` | Mobility × vertical heterogeneity, penalty buildup |
+| Sweep | `sweep_combined` | Mobility × vertical heterogeneity, ideal to worst |
 | Depletion | `dep_pss` | Well location, skin, permeability, compressibility |
 | Depletion | `dep_decline` | Skin, permeability |
 | Gas | `gas_injection` | None yet |

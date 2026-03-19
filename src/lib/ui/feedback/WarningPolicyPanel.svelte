@@ -4,7 +4,6 @@
     WarningPolicyGroup,
     WarningPolicyGroupKey,
     WarningPolicyGroupSources,
-    WarningPolicySource,
   } from "../../warningPolicy";
   import { getWarningPolicyGroups } from "../../warningPolicy";
 
@@ -24,12 +23,6 @@
     ),
   );
 
-  function sourceLabel(source: WarningPolicySource): string {
-    if (source === "validation") return "Inputs";
-    if (source === "runtime") return "Run";
-    return "Reference";
-  }
-
   function toneClass(group: WarningPolicyGroup): string {
     if (group.tone === "destructive") {
       return "border-destructive/70 bg-destructive/8 text-destructive";
@@ -42,48 +35,18 @@
 </script>
 
 {#if visibleGroups.length > 0}
-  <div class="warning-stack">
+  <div class="mt-2 space-y-1.5">
     {#each visibleGroups as group}
-      <section class={`warning-group ${toneClass(group)}`}>
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <div class="ui-section-kicker">
-              {group.title}
-            </div>
-            <p class="ui-support-copy mt-1 opacity-90">{group.description}</p>
-          </div>
-          <span class="ui-chip ui-chip-caps rounded border border-current/35 bg-card/75">
-            {group.items.length} item{group.items.length === 1 ? "" : "s"}
-          </span>
-        </div>
-
-        <ul class="mt-2 space-y-1.5 text-xs">
+      <div class={`rounded border px-2.5 py-1.5 text-xs ${toneClass(group)}`}>
+        {#if visibleGroups.length > 1}
+          <div class="ui-chip-caps mb-0.5 font-semibold opacity-60">{group.title}</div>
+        {/if}
+        <ul class="space-y-0.5">
           {#each group.items as item}
-            <li class="rounded border border-current/20 bg-card/70 px-2.5 py-2">
-              <div class="flex flex-wrap items-start gap-2">
-                <span class="ui-chip ui-chip-caps rounded border border-current/25 bg-card/85 px-1.5 py-0.5 opacity-85">
-                  {sourceLabel(item.source)}
-                </span>
-                <span class="flex-1">{item.message}</span>
-              </div>
-            </li>
+            <li>{item.message}</li>
           {/each}
         </ul>
-      </section>
+      </div>
     {/each}
   </div>
 {/if}
-
-<style>
-  .warning-stack {
-    display: grid;
-    gap: 0.75rem;
-    margin-top: 0.85rem;
-  }
-
-  .warning-group {
-    border: 1px solid;
-    border-radius: var(--radius);
-    padding: 0.8rem 0.9rem;
-  }
-</style>

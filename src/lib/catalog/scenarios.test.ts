@@ -60,13 +60,13 @@ describe('sweep scenario sensitivities', () => {
         ]);
     });
 
-    it('splits the combined sweep scenario into interaction and penalty-buildup axes', () => {
+    it('splits the combined sweep scenario into interaction and ideal-to-worst axes', () => {
         const scenario = getScenario('sweep_combined');
 
         expect(scenario?.defaultSensitivityDimensionKey).toBe('interaction_core');
         expect(scenario?.sensitivities.map((dimension) => dimension.key)).toEqual([
             'interaction_core',
-            'penalty_buildup',
+            'sweep_ladder',
         ]);
 
         const interactionAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'interaction_core');
@@ -78,14 +78,14 @@ describe('sweep scenario sensitivities', () => {
         ]);
         expect(interactionAxis?.variants.every((variant) => variant.affectsAnalytical)).toBe(true);
 
-        const penaltyAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'penalty_buildup');
-        expect(penaltyAxis?.variants.map((variant) => variant.key)).toEqual([
-            'buildup_ideal',
-            'buildup_vertical_only',
-            'buildup_full_heterogeneity',
-            'buildup_all_penalties',
+        const ladderAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'sweep_ladder');
+        expect(ladderAxis?.variants.map((variant) => variant.key)).toEqual([
+            'ladder_ideal',
+            'ladder_vertical',
+            'ladder_full_het',
+            'ladder_worst',
         ]);
-        expect(penaltyAxis?.variants.every((variant) => variant.affectsAnalytical === false)).toBe(true);
+        expect(ladderAxis?.variants.every((variant) => variant.affectsAnalytical === false)).toBe(true);
 
         const interactionParams = getScenarioWithVariantParams(
             'sweep_combined',
@@ -97,12 +97,12 @@ describe('sweep scenario sensitivities', () => {
             permMode: 'uniform',
         });
 
-        const buildupParams = getScenarioWithVariantParams(
+        const ladderParams = getScenarioWithVariantParams(
             'sweep_combined',
-            'penalty_buildup',
-            'buildup_full_heterogeneity',
+            'sweep_ladder',
+            'ladder_full_het',
         );
-        expect(buildupParams).toMatchObject({
+        expect(ladderParams).toMatchObject({
             permMode: 'random',
             minPerm: 40,
             maxPerm: 500,

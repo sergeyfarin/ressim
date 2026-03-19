@@ -70,7 +70,7 @@
       <!-- Primary run button -->
       <Button
         size="sm"
-        variant="default"
+        variant="success"
         onclick={onRunSteps}
         disabled={!wasmReady || workerRunning || hasValidationErrors}
         >{runLabel}</Button>
@@ -105,7 +105,6 @@
         <span class="opacity-60">·</span>
         <span>{simTime.toFixed(1)} d</span>
         <span class="opacity-60">·</span>
-        <span>{historyLength} snap</span>
       </div>
     </div>
 

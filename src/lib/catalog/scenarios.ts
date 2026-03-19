@@ -476,7 +476,7 @@ export const SCENARIOS: Scenario[] = [
             {
                 key: 'capillary',
                 label: 'Capillary Pressure',
-                description: 'Capillary entry pressure diffuses the sharp BL shock front. The analytical BL reference stays sharp — deviation from it quantifies capillary spreading. Analytical reference does NOT update (capillary is absent from BL theory).',
+                description: 'Capillary pressure diffuses the sharp BL shock front. The analytical solution stays sharp — the gap between them quantifies capillary spreading. The analytical solution does not include capillary effects.',
                 variants: [
                     {
                         key: 'cap_off',
@@ -853,7 +853,7 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'sweep_combined',
         label: 'Combined Sweep (3D)',
-        description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Interaction and penalty-buildup dimensions isolate mobility-only, layering-only, and compounded sweep losses.',
+        description: 'Volumetric sweep E_vol = E_A × E_V in a 3D five-spot-over-layers flood. Two axes: a 2×2 interaction matrix of mobility vs. layering, and a progressive sweep from ideal to fully-degraded conditions.',
         analyticalMethodSummary: 'Factorized sweep model: Craig areal × Dykstra-Parsons vertical × BL displacement, linked via the local-PVI approximation.',
         analyticalMethodReference: 'Craig (1971); Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
@@ -973,12 +973,12 @@ export const SCENARIOS: Scenario[] = [
                 ],
             },
             {
-                key: 'penalty_buildup',
-                label: 'Penalty Buildup',
-                description: 'Compact best-to-worst ladder for single versus stacked penalties. Variants that include full-field random heterogeneity are simulation-focused; the shared analytical sweep remains baseline context rather than a per-variant full-heterogeneity model.',
+                key: 'sweep_ladder',
+                label: 'Ideal to Worst',
+                description: 'Progressive sweep comparison from ideal to fully degraded: starts with uniform permeability and favorable mobility, then adds vertical heterogeneity, full-field randomness, and finally unfavorable mobility. Random-heterogeneity variants are simulation-focused; the analytical sweep curve remains shared context.',
                 variants: [
                     {
-                        key: 'buildup_ideal',
+                        key: 'ladder_ideal',
                         label: 'Ideal  (uniform, favorable)',
                         description: 'Best-case 3D sweep: uniform permeability and favorable mobility.',
                         paramPatch: {
@@ -991,14 +991,14 @@ export const SCENARIOS: Scenario[] = [
                         affectsAnalytical: false,
                     },
                     {
-                        key: 'buildup_vertical_only',
+                        key: 'ladder_vertical',
                         label: 'Vertical only  (layered, favorable)',
-                        description: 'Single-penalty case: layered vertical heterogeneity with favorable mobility retained.',
+                        description: 'First degradation step: layered vertical heterogeneity with favorable mobility retained.',
                         paramPatch: { mu_o: 0.5 },
                         affectsAnalytical: false,
                     },
                     {
-                        key: 'buildup_full_heterogeneity',
+                        key: 'ladder_full_het',
                         label: 'Vertical + areal heterogeneity',
                         description: 'Seeded full-field random permeability to approximate simultaneous areal and vertical non-uniformity at moderate mobility.',
                         paramPatch: {
@@ -1011,9 +1011,9 @@ export const SCENARIOS: Scenario[] = [
                         affectsAnalytical: false,
                     },
                     {
-                        key: 'buildup_all_penalties',
+                        key: 'ladder_worst',
                         label: 'Worst case  (full heterogeneity, unfavorable)',
-                        description: 'Stack all penalties: full-field heterogeneity plus strongly unfavorable mobility.',
+                        description: 'Fully degraded: full-field heterogeneity combined with strongly unfavorable mobility.',
                         paramPatch: {
                             mu_o: 5.0,
                             permMode: 'random',

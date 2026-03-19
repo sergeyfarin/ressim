@@ -521,14 +521,6 @@
             </div>
         {/if}
 
-        {#if runtime.warningPolicy.referenceCaveat.items.length > 0}
-            <WarningPolicyPanel
-                policy={runtime.warningPolicy}
-                groups={["referenceCaveat"]}
-                groupSources={{ referenceCaveat: ["analytical"] }}
-            />
-        {/if}
-
         <div class="hidden">
             {#if params.analyticalSolutionMode === 'depletion'}
                 <span>Depletion Reference Solution</span>

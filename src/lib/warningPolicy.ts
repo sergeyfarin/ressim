@@ -237,21 +237,21 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     if (!injectorEnabled) {
       addReason(
         'wf-injector-disabled',
-        'Injector is disabled, so the waterflood reference solution assumptions do not hold.',
+        'Injector is disabled — the waterflood analytical solution does not apply.',
         'critical',
       );
     }
     if (toggles.geo !== '1d') {
       addReason(
         'wf-geometry-not-1d',
-        'The waterflood reference solution expects 1D geometry.',
+        'Geometry is not 1D — the waterflood analytical solution assumes linear flow.',
         'warning',
       );
     }
     if (toggles.well !== 'e2e') {
       addReason(
         'wf-well-not-e2e',
-        'The waterflood reference solution expects end-to-end wells.',
+        'Wells are not end-to-end — the waterflood analytical solution assumes linear end-to-end flow.',
         'warning',
       );
     }
@@ -259,14 +259,14 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     if (injectorEnabled) {
       addReason(
         'dep-injector-enabled',
-        'Injector is enabled, so the depletion reference solution assumptions do not hold.',
+        'Injector is enabled — the depletion analytical solution does not apply.',
         'critical',
       );
     }
     if (!(toggles.geo === '1d' || toggles.well === 'center')) {
       addReason(
         'dep-geometry-well-mismatch',
-        'The depletion reference solution expects 1D or center-producer assumptions.',
+        'Well position deviates — the depletion analytical solution assumes 1D or centered well.',
         'warning',
       );
     }
@@ -275,21 +275,21 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
   if (permMode !== 'uniform') {
     addReason(
       'perm-nonuniform',
-      'Permeability is non-uniform, so the reference solution becomes approximate.',
+      'Permeability is non-uniform — the analytical solution is approximate.',
       'warning',
     );
   }
   if (gravityEnabled) {
     addReason(
       'gravity-enabled',
-      'Gravity is enabled, which deviates from the reference solution assumptions.',
+      'Gravity is enabled — the analytical solution assumes gravity-free flow.',
       'warning',
     );
   }
   if (capillaryEnabled) {
     addReason(
       'capillary-enabled',
-      'Capillary pressure is enabled, which deviates from the reference solution assumptions.',
+      'Capillary pressure is enabled — the analytical solution assumes capillary-free flow.',
       'warning',
     );
   }
@@ -297,7 +297,7 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
   if (activeMode === 'sim') {
     addReason(
       'sim-mode-exploratory',
-      'Scenario Builder is exploratory; the reference solution is treated as approximate guidance.',
+      'Scenario Builder is exploratory — the analytical solution is shown as guidance only.',
       'notice',
     );
   }
