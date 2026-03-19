@@ -4,7 +4,9 @@ A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physi
 
 ## Current State (2026-03)
 
-- **Active simplification refactor**: replacing the 4-layer "case library + editability policies" navigation with a simple `pick scenario → optionally pick sensitivity → run` flow. New model: `src/lib/catalog/scenarios.ts` + `ScenarioPicker.svelte` (see `REFACTOR.md` — steps 4 and 7 pending).
+- **Scenario picker**: predefined scenarios with optional sensitivity sweeps replace the old 4-layer case-library navigation. Source of truth: `src/lib/catalog/scenarios.ts` + `ScenarioPicker.svelte`.
+- **Sweep efficiency**: Craig (1971) areal sweep (2D XY), Dykstra-Parsons (1950) vertical sweep (2D XZ), and volumetric product (3D E_vol = E_A × E_V) implemented as analytical overlays with dedicated chart.
+- **Scenario/sensitivity redesign in progress** (S1): consolidating 18 scenario entries into ~6 canonical scenarios each supporting multiple selectable sensitivity dimensions (mobility, rock, capillary, grid, well placement). See `REFACTOR.md` Phase 2.
 - **Reference-solution overlays**: permissive for approximate cases, with clearly visible caveats.
 - **Three-phase support** (experimental): oil/water/gas simulation via Stone II relative permeability; no analytical reference solution.
 - **Execution model**: all scenarios initialize and run directly in browser-side WASM; no pre-run artifact pipeline.
@@ -41,8 +43,9 @@ A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physi
 - **3D property view** (Three.js) — selectable properties: pressure, water/oil/gas saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
 - **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
 - **Sw Profile chart** — cell-index saturation profile compared to the reference flood front.
-- **Scenario picker** (active refactor) — 7 predefined benchmark/reference scenarios plus custom mode. Each scenario is a complete self-contained parameter set with optional sensitivity variants.
-- **Sensitivity sweeps** — run one simulation per variant; stored results feed comparison charts.
+- **Scenario picker** — predefined scenarios plus custom mode. Each scenario is a complete self-contained parameter set with selectable sensitivity dimensions (e.g. Mobility Ratio, Corey n_o, S_or, Capillary, Grid). See `REFACTOR.md` Phase 2 for the in-progress redesign to ~6 canonical scenarios with multi-dimension sensitivity.
+- **Sensitivity sweeps** — select a dimension and variants; one simulation per variant; stored results feed comparison charts.
+- **Sweep efficiency charts** — analytical Craig areal sweep (2D XY), Dykstra-Parsons vertical sweep (2D XZ), and combined volumetric sweep (3D) plotted as E_A, E_V, E_A × E_V curves vs PVI.
 - **Reference-to-custom handoff** — start from any scenario and switch to custom editing while preserving source provenance.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
@@ -59,16 +62,24 @@ Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 
 Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, confirming that the remaining mismatch is dominated by coarse-grid and coarse-timestep numerical effects.
 
-Current benchmark scenarios (`src/lib/catalog/scenarios.ts`):
+Current scenarios (`src/lib/catalog/scenarios.ts`) — 18 entries, consolidating to ~6 canonical scenarios under the S1 redesign (see `REFACTOR.md` Phase 2):
 
-| Key | Class | Sensitivity |
-|-----|-------|-------------|
-| `wf_bl_case_a` | Waterflood | Grid refinement (24/48/96 cells) |
-| `wf_bl_case_b` | Waterflood | Grid refinement (24/48/96 cells) |
-| `wf_mobility_study` | Waterflood | Oil viscosity (0.5/1.0/5.0 cP) |
-| `dep_dietz_center` | Depletion | None |
-| `dep_dietz_corner` | Depletion | None |
-| `dep_fetkovich` | Depletion | None |
+| Domain | Key | Sensitivity dimensions |
+|--------|-----|------------------------|
+| Waterflood | `wf_bl_case_a`, `wf_bl_case_b` | Grid refinement (24/48/96 cells) |
+| Waterflood | `wf_mobility_study` | Oil viscosity / mobility ratio |
+| Waterflood | `wf_corey_exponent` | Corey n_o (1.5 / 2.0 / 3.5) |
+| Waterflood | `wf_residual_oil` | S_or (0.05 / 0.15 / 0.30) |
+| Waterflood | `wf_capillary` | Entry pressure P_e (0 / 0.3 / 1.5 bar) |
+| Sweep | `sweep_areal_mobility` | Mobility ratio M |
+| Sweep | `sweep_areal_residual` | Residual oil S_or |
+| Sweep | `sweep_vertical_vdp` | Dykstra-Parsons V_DP heterogeneity |
+| Sweep | `sweep_combined` | Mobility × heterogeneity |
+| Depletion | `dep_dietz_center`, `dep_dietz_corner` | None (shape factor is the contrast) |
+| Depletion | `dep_skin`, `dep_permeability`, `dep_compressibility` | Skin / k / c_o respectively |
+| Depletion | `dep_fetkovich` | None |
+
+**Post-S1 canonical scenarios (target):** `wf_1d_waterflood`, `sweep_areal`, `sweep_vertical`, `sweep_combined`, `dep_dietz`, `dep_fetkovich` — each with 2–5 selectable sensitivity dimensions.
 
 ## Unit System
 

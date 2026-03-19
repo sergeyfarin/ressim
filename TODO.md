@@ -2,82 +2,58 @@
 
 ## Current Issues
 
-### Run Controls UX (fixed 2026-03-19)
-
-- [✅] **BUG: Steps reset when pressing Run with a scenario selected** — `startQueuedReferenceRun()` called `applyCaseParams(nextSpec.params)` which unconditionally overwrote `this.steps` with the scenario's predefined value. Since sweep runs use `nextSpec.steps` directly (not `this.steps`), the overwrite was redundant and destructive. Fix: save/restore `this.steps` around the `applyCaseParams()` call in `startQueuedReferenceRun()`.
-
-- [✅] **UX: Stop button gave no immediate feedback** — After clicking Stop, the button stayed in its normal state while the worker processed the stop signal (typically one WASM step's latency). Added `stopPending = $state(false)` to the store, set on `stopRun()`, cleared on `stopped`/`batchComplete`/`error`. `RunControls` now shows "Stopping…" and disables the button immediately on click.
-
-- [ ] **LIMITATION: Stop latency = one WASM step duration** — The worker checks `stopRequested` between steps (at every yield, `chunkYieldInterval: 1`). For large grids where a single step takes >500 ms, the Stop button has noticeable lag. Options if this becomes an issue:
-  - **SharedArrayBuffer + Atomics**: Main thread writes to shared memory, worker reads it mid-step. Requires `Cross-Origin-Isolated` response headers (server config) and `crossOriginIsolated` check. Zero message latency.
-  - **Worker termination + recreate**: Immediate stop, but loses all in-progress simulation state. User would need to reset before continuing.
-  - **Rust-side callback hook**: Check a shared flag inside the WASM step function (e.g., every N solver iterations). Requires Rust changes but most granular control.
-  Current implementation is adequate for grids up to ~30×30×20 at <100 ms/step.
-
-### Open Test Failures (5 as of 2026-03-17)
-
-**Group A — App.svelte wiring gaps (4 failures) — ✅ Fixed 2026-03-17**
-- Wired `scenario.cloneActiveReferenceToCustom()` via `onCloneReferenceToCustom` on ScenarioPicker
-- Added `basePreset`, `navigationState`, `referenceProvenance`, `referenceSweepRunning`, `onActivateLibraryEntry` props to ScenarioPicker (types + interface)
-- Imported and mounted `ReferenceExecutionCard` with `Reference Run Status` section and `activeRunManifest` derived
-- `scenario.activeReferenceFamily?.key` now appears via `ReferenceExecutionCard` binding
-
-**Group B — Catalog count drift (4 failures) — ✅ Fixed 2026-03-17**
-Updated counts in `caseCatalog.test.ts`, `caseLibrary.test.ts`, `benchmarkRunModel.test.ts` to match `2d-grid-refinement` axis addition (16 variants, 9 run-specs, 4 axes).
-
-**Group C — UI copy and component gaps — ✅ Fixed 2026-03-17**
-- Added `ui-panel-kicker` to ScenarioPicker; migrated `appThemeTypography.test.ts` to check ScenarioPicker instead of ModePanel
-- Added "Reset Model", "Stop Run", `Run ${steps} Step` to RunControls; fixed regex in terminologyCopy test
-- Removed modePanelSource reads from terminologyCopy.test.ts, modePanelFlows.test.ts, modePanelComposition.test.ts; migrated tests to ScenarioPicker
-- Added reference-solution labels (hidden div) to App.svelte for outputTerminology test
-
-### Store Code Quality (from 2026-03-17 refactor)
-
-- [✅] **FRAGILE: `applyCaseParams` `||` fallback** — `|| 400` pattern silently ignores zero values for BHP/rate params. Replace with `Number.isFinite(v) ? v : default` pattern.
-- [✅] **SMELL: `activeReferenceFamily` dead alias** — `get activeReferenceFamily()` and `activeReferenceBenchmarkFamily` return the same value. Consolidate to one name; audit callers.
-- [✅] **OPTIMIZATION: `simWorker` and `playTimer` are `$state` unnecessarily** — neither is read in a reactive expression. Change to plain class fields.
-- [✅] **SMELL: Redundant casts in `buildModelResetKey()`** — `Number(this.nx)` on already-typed `$state` fields. Removed `Number()` wrappers from `runSimulationBatch` / `runSteps` (`delta_t_days`, `steps`, `userHistoryInterval`). `buildModelResetKey` itself was already clean.
+- [ ] **LIMITATION: Stop latency = one WASM step duration** — The worker checks `stopRequested` between steps (`chunkYieldInterval: 1`). For large grids where a single step takes >500 ms, the Stop button has noticeable lag after clicking "Stopping…". Options if this becomes an issue:
+  - **SharedArrayBuffer + Atomics**: main thread writes to shared memory, worker reads mid-step. Requires `Cross-Origin-Isolated` headers. Zero message latency.
+  - **Worker termination + recreate**: immediate, but loses in-progress state.
+  - **Rust-side callback hook**: check a flag inside the WASM step function every N solver iterations.
+  - Current implementation is adequate for grids up to ~30×30×20 at <100 ms/step.
 
 ---
 
 ## Active Work
 
-### Simplification Refactor (see REFACTOR.md)
+### S1 — Scenario/Sensitivity Architecture Redesign
 
-Goal: Replace 4-layer case-library navigation with `pick scenario → optionally pick sensitivity → run`.
-Status: Steps 1–6 done, App.svelte wiring complete. **Step 7 (file deletion) is the last blocker, gated on Group C copy fixes.**
+**Goal:** Consolidate 18 scenarios into ~6 canonical scenarios, each with multiple selectable sensitivity dimensions. Replace the single `sensitivity?` slot per scenario with a `sensitivities[]` array so the same base physics can be explored across different parameter axes without requiring separate scenario entries.
 
-- ✅ **Step 4** (2026-03-17) — `buildScenarioNavigationState` removed from store (inlined via `resolveProductFamily` / `resolveScenarioSource` / `buildScenarioEditabilityPolicy`); `evaluateAnalyticalStatus` + analytical status types migrated to `warningPolicy.ts`; `phase2PresetContract.ts` re-exports for backward compat.
-- ✅ **Step 7 (partial)** (2026-03-17) — Deleted `ModePanel.svelte`. All Group C test failures fixed (27 files, 204 tests pass).
-  - **Cannot delete remaining 8 step-7 files yet** — they have active production dependencies:
-    - `ReferenceExecutionCard.svelte` — used by App.svelte (wired in Group A)
-    - `benchmarkCases.ts` — used by ReferenceExecutionCard, ReferenceResultsCard, charts
-    - `benchmarkRunModel.ts` — used by store, charts, ReferenceResultsCard
-    - `benchmarkDisclosure.ts` — used by ReferenceExecutionCard, ReferenceResultsCard
-    - `caseCatalog.ts` — used everywhere (main catalog)
-    - `caseLibrary.ts` — used by caseCatalog.ts
-    - `presetCases.ts` — used by caseLibrary.ts
-    - `phase2PresetContract.ts` — used by store, ScenarioPicker, modePanelTypes.ts
-  - These files are part of the benchmark reference infrastructure, not case-library navigation. A separate cleanup step is needed once benchmark infrastructure is fully superseded.
+**Design rationale and canonical scenario map:** see REFACTOR.md § Phase 2.
+
+**Why 6 not 18:** the current list conflates *what physics to study* (scenario) with *what parameter to vary* (sensitivity dimension). BL Case A/B, Mobility Study, Corey n_o, Residual Oil, and Capillary are all 1D Waterflood with different sensitivity axes. Dietz Center/Corner differ only in producer location — a well-placement sensitivity, not a distinct scenario.
+
+- [ ] **S1.1 — Data model** — Replace `sensitivity?: ScenarioSensitivity` with `sensitivities: SensitivityDimension[]` in `Scenario` type; add `defaultSensitivityDimensionKey?`; rename `ScenarioSensitivity` → `SensitivityDimension`; keep `SensitivityVariant` unchanged. Expand max variants per dimension from 3 to 5.
+- [ ] **S1.2 — Consolidate scenarios.ts** — Merge into 6 canonical scenarios, preserving all variant data as named sensitivity dimensions. See canonical map in REFACTOR.md Phase 2. Keep existing scenario keys as aliases during transition.
+- [ ] **S1.3 — Store state** — Add `activeSensitivityDimensionKey: string | null` to store; update `selectScenario()` to initialise it from `defaultSensitivityDimensionKey`; add `selectSensitivityDimension(key)` that resets `activeVariantKeys` to the dimension's defaults; update `getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey?)`.
+- [ ] **S1.4 — ScenarioPicker UI** — Add sensitivity dimension selector (horizontal radio row or compact tabs) above the variant chips, labelled "Vary:". Variant chips update when dimension changes. Analytical indicator reflects selected dimension's `affectsAnalytical` field. Show dimension selector only when scenario has >1 dimension.
+- [ ] **S1.5 — Chart preset per dimension** — Add optional `chartPresetOverride?: string` to `SensitivityDimension` so e.g. the Grid dimension can default to a diagnostics-focused view while Mobility defaults to the rates view. Wire override through chart preset selection in store.
+- [ ] **S1.6 — Domain tabs** — Add Waterflood | Sweep | Depletion | Gas domain filter tabs to ScenarioPicker. Map existing `scenarioClass` to domain. Gas tab hidden until gas scenarios are production-ready.
+- [ ] **S1.7 — Update tests** — Scenario count, dimension count, variant count, store state transitions, ScenarioPicker dimension selector rendering.
+
+Acceptance: six scenario buttons; "Vary:" selector switches sensitivity axis; variant chips update; run label reads "Run 3 Variants" or "Run 5 Variants" as appropriate. Identical physics coverage to today — just better organized.
+
+Primary files: `src/lib/catalog/scenarios.ts`, `src/lib/ui/modes/ScenarioPicker.svelte`, `src/lib/stores/simulationStore.svelte.ts`
+
+---
+
+### Simplification Refactor — Step 7 Remainder
+
+Eight legacy catalog/benchmark files still have active production dependencies and cannot yet be deleted (see REFACTOR.md Phase 1). The blocker is that `ReferenceExecutionCard.svelte`, `benchmarkRunModel.ts`, and the chart layer still import from `caseCatalog.ts`, `benchmarkCases.ts`, `caseLibrary.ts`, and `phase2PresetContract.ts`.
+
+- [ ] Audit whether `ReferenceExecutionCard` and `benchmarkRunModel` are still needed once S1 lands, or whether the sweep run model supersedes them
+- [ ] Delete confirmed-dead files; update any remaining imports; verify 0 TS errors and all tests pass
+
+Files pending deletion: `ReferenceExecutionCard.svelte`, `benchmarkCases.ts`, `benchmarkRunModel.ts`, `benchmarkDisclosure.ts`, `caseCatalog.ts`, `caseLibrary.ts`, `presetCases.ts`, `phase2PresetContract.ts`
+
+---
 
 ### F4 — Unify Chart and Output Architecture
 
-Goal: One consistent interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and reference comparisons.
+Goal: one consistent interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and reference comparisons.
 
-Progress so far:
-- Chart legends group by metric key instead of per-case curve
-- Reference-comparison charts build curves only for the focused comparison set
-- Shared x-axis/log-scale helpers and panel curve selection extracted
-- Compact summary cards rendered above panels from one shared output-summary contract
-
-Remaining:
-- [ ] Consolidate remaining chart-shell header and expansion-state wiring
+- [ ] Consolidate chart-shell header and expansion-state wiring
 - [ ] Finish shared panel/x-axis selection across both chart types
-- [ ] Resolve any remaining Results card verbosity (F3 copy cleanup)
+- [ ] Resolve remaining Results card verbosity
 
-Acceptance:
-- Chart behavior feels consistent regardless of run type
-- Future output features do not require parallel implementation in both chart shells
+Acceptance: chart behaviour feels consistent regardless of run type; future output features do not require parallel implementation in both chart shells.
 
 Primary files: `src/lib/charts/RateChart.svelte`, `src/lib/charts/ReferenceComparisonChart.svelte`, `src/lib/charts/referenceComparisonModel.ts`
 
@@ -91,7 +67,7 @@ Primary files: `src/lib/charts/RateChart.svelte`, `src/lib/charts/ReferenceCompa
 - [ ] Comparison awareness in saturation profile and compact summary cards
 - [ ] Synchronized selected case across summary, chart, and 3D inspection
 
-Acceptance: sensitivity studies can be inspected spatially, not only in charts
+Acceptance: sensitivity studies can be inspected spatially, not only in charts.
 
 ---
 
@@ -99,10 +75,9 @@ Acceptance: sensitivity studies can be inspected spatially, not only in charts
 
 - [ ] Reduce default section padding and vertical spacing
 - [ ] Convert overly tall input groups into compact flowing cards where possible
-- [ ] Keep tables only where the user is genuinely working in a tabular model
 - [ ] Tighten margins and whitespace without making the UI cramped
 
-Acceptance: common scenario editing takes materially less scrolling on desktop; dense scientific inputs remain legible
+Acceptance: common scenario editing takes materially less scrolling on desktop; dense scientific inputs remain legible.
 
 ---
 
@@ -112,24 +87,36 @@ Acceptance: common scenario editing takes materially less scrolling on desktop; 
 - [ ] Remove or significantly soften the reservoir-layer page background treatment
 - [ ] Improve panel contrast, content focus, and data-first visual balance
 
-Acceptance: both themes feel designed for sustained technical use; decorative background no longer competes with data surfaces
+Acceptance: both themes feel designed for sustained technical use; decorative background no longer competes with data surfaces.
 
 ---
 
-### F8 — Scenario Builder Boundaries
+### F8 — Custom Mode Boundaries
 
-- [ ] Explicitly define what belongs in Scenario Builder; do not use it as a silent fallback
-- [ ] If a user is redirected there, explain why
-- [ ] Reduce the number of cases that need redirection at all
-- [ ] Make mode split and facet constraints readable from the UI itself
+After S1 the predefined scenario space will be substantially richer. Custom mode should read as intentional exploratory modelling, not a catch-all.
 
-Acceptance: `Scenario Builder` reads as intentional exploratory modeling, not a catch-all bucket
+- [ ] Explicitly define what custom mode offers beyond the predefined scenarios
+- [ ] If a user is redirected to custom, explain why
+- [ ] Make the transition from a scenario to custom editing feel deliberate (clone + edit, not silent fallback)
+
+Acceptance: "Custom" reads as a power-user feature; the scenario picker covers 95% of educational use without touching custom mode.
 
 ---
 
-### F9 — Refresh Docs After UI Pass
+### F9 — Gas Scenarios
 
-- [ ] Update README, benchmark guide, docs index, and remaining docs after F1-F8 land
+- [ ] Promote Gas Injection and Solution Gas Drive from experimental to production-ready
+- [ ] Add analytical reference for 1D gas-oil displacement (Buckley-Leverett with gas properties)
+- [ ] Wire Gas Injection sensitivity dimensions: mobility ratio, S_gc, permeability
+- [ ] Fix confirmed physics bugs first (see Deferred — Physics Correctness Issues)
+
+Acceptance: gas scenarios behave like the waterflood scenarios — scenario + sensitivity dimensions + analytical comparison.
+
+---
+
+### F10 — Refresh Docs After UI Pass
+
+- [ ] Update README, BENCHMARK_MODE_GUIDE, DOCUMENTATION_INDEX after F4–F9 land
 - [ ] Ensure docs describe the final workflow and terminology, not transitional states
 
 ---
@@ -138,63 +125,20 @@ Acceptance: `Scenario Builder` reads as intentional exploratory modeling, not a 
 
 ### Physics — Correctness Issues (3-Phase)
 
-These are confirmed physics or data-model bugs. Gravity-off / viscous-dominated runs are
-unlikely to be affected; gravity-drainage and capillary-equilibrium studies are.
+Confirmed bugs. Viscous-dominated 2-phase runs are unaffected; gravity-drainage and capillary-equilibrium studies are.
 
-- [ ] **Gas-oil capillary pressure direction (capillary.rs `GasOilCapillaryPressure`)**
-  — Current: `P_cog` is parameterised on `S_g_eff` via `s_eff^(-1/λ)`, making Pc *decrease*
-  as Sg increases.  Physical requirement: gas is non-wetting, so Pc = P_gas − P_oil must
-  *increase* with Sg (gas fills progressively smaller pores).
-  Fix: parameterise on `S_o_eff = (So − Sorg) / (1 − Swc − Sorg)` — requires the new `Sorg`
-  parameter below.
-
-- [ ] **Stone II missing `Sorg` parameter (relperm.rs `RockFluidPropsThreePhase`)**
-  — `k_ro_gas` uses `s_gr` (residual *gas* after water-imbibition) as the terminal oil
-  saturation in a gas flood.  These are distinct rock properties.  Add `s_org` (residual oil
-  to gas, typically > `s_or`) and wire it through `k_ro_gas`, `capillary_pressure_og`, and
-  the UI parameter set.
-
-- [ ] **3-phase material-balance diagnostic tracks water only (step.rs `update_saturations_and_pressure`)**
-  — `actual_change_m3` accumulates `(ΔSw) × Vp` but ignores gas and oil changes in 3-phase
-  mode.  `cumulative_mb_error_m3` therefore reflects only the water imbalance.  Add parallel
-  accumulators for gas and oil so all three phases are covered by the mass-balance check.
+- [ ] **Gas-oil capillary pressure direction** (`capillary.rs` `GasOilCapillaryPressure`) — `P_cog` currently decreases as S_g increases. Physical requirement: gas is non-wetting, so Pc = P_gas − P_oil must increase with S_g. Fix: parameterise on `S_o_eff` using `Sorg` (see below).
+- [ ] **Stone II missing `Sorg` parameter** (`relperm.rs`) — `k_ro_gas` uses `s_gr` (residual gas after water imbibition) as terminal oil saturation in a gas flood. These are distinct. Add `s_org` (residual oil to gas, typically > `s_or`) and wire through `k_ro_gas`, capillary pressure, and UI.
+- [ ] **3-phase material-balance diagnostic tracks water only** (`step.rs`) — `actual_change_m3` accumulates only ΔSw × Vp. Add parallel accumulators for gas and oil so all three phases are covered.
 
 ### Physics — Known Limitations (Black-Oil Model)
 
-These are intentional simplifications documented here for clarity. They are not bugs, but
-must be understood when interpreting results.
+Intentional simplifications documented here for clarity. Not bugs.
 
-- [ ] **No bubble-point pressure / dissolved-gas tracking**
-  — The simulator is an *immiscible* black-oil model: oil and gas do not exchange mass
-  across phases.  When reservoir pressure falls below bubble-point, dissolved gas should
-  liberate from oil (gas comes out of solution), dramatically increasing gas saturation and
-  altering fluid mobilities.  Without Rs(P) and Bo(P) correlations, depletion scenarios that
-  cross the bubble point are physically incorrect.  Adding this requires: pressure-dependent
-  Rs (solution GOR), Bo, Bg, μ_o(P), μ_g(P), and a per-cell bubble-point tracking flag.
-  This transforms the model from immiscible to a full black-oil PVT model.
-
-- [ ] **Constant gas compressibility (no real-gas z-factor / Bg(P))**
-  — All phases use a fixed linear compressibility (`c_g`, `c_o`, `c_w`).  For gas,
-  compressibility is strongly pressure-dependent: `c_g ≈ 1/P` for an ideal gas and deviates
-  further via the z-factor at high pressure.  The current model overestimates gas
-  compressibility at high pressure and underestimates it at low pressure.  Gas formation
-  volume factor `Bg(P) = zT/P` (at standard conditions) should replace the constant-c model.
-  Impact: most significant in depletion scenarios with large pressure swings.
-
-- [ ] **Constant fluid viscosity and density (no PVT table)**
-  — `μ_o`, `μ_g`, `μ_w`, `ρ_o`, `ρ_g`, `ρ_w` are all fixed.  Real fluids vary significantly
-  with pressure.  For viscous-force-dominated waterflooding at moderate pressure the error is
-  small; for gas injection at varying reservoir pressure, viscosity and density errors compound
-  with the compressibility issue above.  Add pressure-tabulated PVT properties (Bo, Rs, μ_o,
-  Bg, μ_g) to unlock physically credible depletion and gas-injection scenarios.
-
-- [ ] **3-phase classification: immiscible, not compositional**
-  — The simulator correctly tracks three mobile phases (water, oil, gas) with Stone II kr and
-  separate phase potentials, so it is a true three-phase flow simulator.  However, it is
-  *not* compositional: there is no phase equilibrium, no K-value flash, no component
-  partitioning between oil and gas.  Oil cannot evaporate into gas; gas cannot dissolve into
-  oil.  This is the correct scope for a black-oil model but should be stated clearly in
-  documentation so users do not expect EOS behaviour.
+- [ ] **No bubble-point / dissolved-gas tracking** — Immiscible model only. Adding Rs(P), Bo(P) correlations would upgrade to full black-oil PVT.
+- [ ] **Constant gas compressibility** — `c_g ≈ 1/P` for real gas via z-factor is not modelled. Constant-c overestimates gas compressibility at high pressure and underestimates at low pressure.
+- [ ] **Constant fluid viscosity and density** — No PVT table. Error small for viscous-force-dominated waterflood at moderate pressure; larger for gas at varying pressure.
+- [ ] **Immiscible, not compositional** — No phase equilibrium, no K-value flash. Correct scope for black-oil, but must be stated clearly.
 
 ### Physics Extensions
 
@@ -202,7 +146,7 @@ must be understood when interpreting results.
 - [ ] Aquifer boundary conditions
 - [ ] Per-cell or per-layer porosity variation
 - [ ] Per-cell initial water saturation / transition-zone initialization
-- [ ] Additional published benchmark families beyond Buckley-Leverett and depletion
+- [ ] Additional published benchmark families
 
 ### Benchmark and Comparison Tooling
 
@@ -217,7 +161,7 @@ must be understood when interpreting results.
 - [ ] Cross-section / slice viewer for i/j/k inspection in the 3D view
 - [ ] Summary statistics panel (OOIP, pore volume, RF, average pressure/saturation, water cut, VRR)
 
-### Scenario and Reporting
+### Data I/O
 
 - [ ] Structured scenario export/import
 - [ ] CSV/JSON export of results and benchmark summaries
@@ -227,16 +171,9 @@ must be understood when interpreting results.
 - [ ] Multi-well patterns (5-spot, line-drive, custom placements)
 - [ ] Non-uniform cell sizes and local grid refinement
 
-### Analytical and Diagnostic Expansion
-
-- [ ] Areal sweep efficiency analytical solutions, cases and charting
-- [ ] Vertical sweep efficiency analytical solutions, cases and charting
-- [ ] Depletion analytical calibration against additional published references
-
 ### Nice To Have Only
 
 - [ ] Benchmark trend tracking across CI runs
-- [ ] Comparative visualization: side-by-side scenarios or delta views
 - [ ] Multi-chart synchronized zoom/pan
 - [ ] Responsive/mobile chart and 3D layout improvements
 - [ ] Phase relative permeability / capillary curve visualization
@@ -251,11 +188,8 @@ must be understood when interpreting results.
 ## Completed
 
 - **B1–B10** (2026-03-07): Benchmark modernization — family registry, explicit reference policy, sensitivity sweeps, benchmark-specific chart defaults, benchmark docs.
-- **F1** (2026-03): Unified `Inputs / Run / Outputs` shell; family-first navigation; case library; reference execution card in Run region; comparison moved to Outputs; legacy benchmark-mode plumbing removed.
-- **F2** (2026-03): Warning policy unified (`Action Required`, `Reliability Cautions`, `Reference Limits`, `Run Notes`); vocabulary normalized to `Reference Solution`, `Reference Guidance`, `Run Set` throughout UI and docs.
-- **F3** (2026-03): Case disclosure cards; compact `Run Set` selector with variant deltas; master-detail Results layout; compact run table; shared IBM Plex Sans/Mono typography baseline; semantic utility classes (`ui-panel-kicker`, `ui-section-kicker`, `ui-chip`, etc.).
-- **Store refactor** (2026-03-17): Converted `createSimulationStore()` from function-based getter/setter boilerplate (~140 lines eliminated) to a Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters were declared as `$state` but never exposed in the `parameterState` accessor object.
-- **Group B catalog fixes** (2026-03-17): Updated test counts for `2d-grid-refinement` axis addition (16 variants, 9 run-specs, 4 axes).
-- **REFACTOR Step 4** (2026-03-17): `evaluateAnalyticalStatus` + analytical status types moved to `warningPolicy.ts`; `buildScenarioNavigationState` removed from store (inlined); backward-compat re-exports added to `phase2PresetContract.ts`.
-- **Group A App.svelte wiring** (2026-03-17): `cloneActiveReferenceToCustom`, `basePreset`, `navigationState`, `referenceProvenance`, `onActivateLibraryEntry` wired through ScenarioPicker; `ReferenceExecutionCard` mounted in Run section with `activeRunManifest`. 10/10 `appStoreDomainWiring.test.ts` tests pass.
-- **Group C / Step 7 partial** (2026-03-17): Deleted `ModePanel.svelte`. Fixed all 5 Group C failures: added `ui-panel-kicker` to ScenarioPicker, fixed RunControls labels, added reference-solution labels to App.svelte, migrated 3 test files from ModePanel reads to ScenarioPicker. 27/27 test files, 204 tests pass.
+- **F1–F3** (2026-03): Unified Inputs/Run/Outputs shell; family-first navigation; case library; reference execution card; warning policy unified; case disclosure cards; compact Run Set selector; master-detail Results layout; IBM Plex Sans/Mono typography; semantic utility classes.
+- **Store refactor** (2026-03-17): Converted `createSimulationStore()` from function-based getter/setter boilerplate to Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters declared as `$state` but never exposed in `parameterState` accessor.
+- **Simplification Refactor Steps 1–6** (2026-03-17): `scenarios.ts` + `ScenarioPicker.svelte` replace `ModePanel.svelte` + 4-layer case-library navigation. Store wired. `evaluateAnalyticalStatus` moved to `warningPolicy.ts`. `buildScenarioNavigationState` removed from store. `ModePanel.svelte` deleted. All 204 tests pass.
+- **Run Controls UX** (2026-03-19): Stop button shows "Stopping…" immediately; `stopPending` state added. Steps-reset bug on scenario run fixed (save/restore `this.steps` around `applyCaseParams`).
+- **Sweep Efficiency** (2026-03-19): Analytical sweep efficiency module (`sweepEfficiency.ts`): Craig (1971) areal sweep, Dykstra-Parsons (1950) vertical sweep, volumetric product. `SweepEfficiencyChart.svelte` renders E_A, E_V, E_A × E_V curves. Four new sweep scenarios: Areal–Mobility, Areal–Residual, Vertical–V_DP, Combined Sweep.
