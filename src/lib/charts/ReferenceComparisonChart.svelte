@@ -31,6 +31,7 @@
         theme = 'dark',
         analyticalPerVariant = false,
         previewVariantParams = undefined,
+        pendingPreviewVariants = undefined,
         previewBaseParams = undefined,
         previewScenarioClass = undefined,
     }: {
@@ -41,6 +42,12 @@
         analyticalPerVariant?: boolean;
         /** Per-variant preview curves shown before any runs complete (analyticalPerVariant=true). */
         previewVariantParams?: AnalyticalPreviewVariant[];
+        /**
+         * Analytical-only overlays for variants still queued/running (results not
+         * yet in `results`). Keeps the chart from collapsing back to N=1 curves
+         * while a sweep is in progress.
+         */
+        pendingPreviewVariants?: AnalyticalPreviewVariant[];
         /** Single-curve fallback preview (analyticalPerVariant=false). */
         previewBaseParams?: Record<string, any>;
         previewScenarioClass?: string;
@@ -81,6 +88,7 @@
         (Boolean(previewBaseParams) || (previewVariantParams?.length ?? 0) > 0),
     );
 
+
     $effect(() => {
         if (isPreviewMode && (previewScenarioClass === 'buckley-leverett' || previewScenarioClass === 'waterflood')) {
             xAxisMode = 'pvi';
@@ -95,6 +103,7 @@
             theme,
             analyticalPerVariant,
             previewVariantParams,
+            pendingPreviewVariants,
             previewBaseParams,
             previewScenarioClass,
         }),

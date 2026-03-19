@@ -374,6 +374,46 @@ const SWEEP_DASH_COMBINED = [12, 4] as number[];  // long dash   — E_vol
  * Single-entry arrays use the neutral reference color (current base-preview
  * behavior). Multi-entry arrays use per-variant case colors.
  */
+
+/**
+ * Shared Buckley-Leverett analytical computation over a fixed unit PVI grid [0..3].
+ *
+ * Used both by the all-analytical preview (no results yet) and by the mid-sweep
+ * pending-variant overlay (some results done, others still queued). Returns null
+ * when the calculation fails so callers can skip the curve independently.
+ */
+function computeBLAnalyticalFromParams(params: Record<string, any>): {
+    pviValues: number[];
+    waterCut: Array<number | null>;
+    recovery: Array<number | null>;
+} | null {
+    const N = 150;
+    const pviMax = 3.0;
+    const pviValues = Array.from({ length: N }, (_, i) => (i / (N - 1)) * pviMax);
+    const injRates = new Array(N).fill(1);
+    let analyticalProduction: Array<{ oilRate: number; waterRate: number; cumulativeOil: number }>;
+    try {
+        analyticalProduction = calculateAnalyticalProduction(
+            extractRockProps(params),
+            extractFluidProps(params),
+            toFiniteNumber(params.initialSaturation, toFiniteNumber(params.s_wc, 0.1)),
+            pviValues,
+            injRates,
+            1, // poreVolume = 1 → time = PVI
+        );
+    } catch {
+        return null;
+    }
+    const waterCut = analyticalProduction.map((pt) => {
+        const total = Math.max(0, pt.oilRate + pt.waterRate);
+        return total > 1e-12 ? pt.waterRate / total : 0;
+    });
+    const recovery = analyticalProduction.map((pt) =>
+        Math.max(0, Math.min(1, pt.cumulativeOil / 1)), // ooip = 1 (unit pore volume)
+    );
+    return { pviValues, waterCut, recovery };
+}
+
 function buildAnalyticalPreviewPanels(
     variants: AnalyticalPreviewVariant[],
     xAxisMode: RateChartXAxisMode,
@@ -399,39 +439,13 @@ function buildAnalyticalPreviewPanels(
         multiVariant ? `${variant.label} — ` : '';
 
     if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
-        const N = 150;
-        const pviMax = 3.0;
-        const pviValues = Array.from({ length: N }, (_, i) => (i / (N - 1)) * pviMax);
-        const injRates = new Array(N).fill(1);
-        const ooip = 1; // poreVolume = 1, so RF = cumOil
-
         variants.forEach((variant, index) => {
             const color = getColor(index);
             const prefix = labelPrefix(variant);
             const caseKey = multiVariant ? variant.variantKey : undefined;
 
-            let analyticalProduction: Array<{ oilRate: number; waterRate: number; cumulativeOil: number }>;
-            try {
-                analyticalProduction = calculateAnalyticalProduction(
-                    extractRockProps(variant.params),
-                    extractFluidProps(variant.params),
-                    toFiniteNumber(variant.params.initialSaturation, toFiniteNumber(variant.params.s_wc, 0.1)),
-                    pviValues,
-                    injRates,
-                    1, // poreVolume = 1 → time = PVI
-                );
-            } catch {
-                // Skip this variant — bad params or numerical failure, don't abort others.
-                return;
-            }
-
-            const waterCut = analyticalProduction.map((pt) => {
-                const total = Math.max(0, pt.oilRate + pt.waterRate);
-                return total > 1e-12 ? pt.waterRate / total : 0;
-            });
-            const recovery = analyticalProduction.map((pt) =>
-                Math.max(0, Math.min(1, pt.cumulativeOil / ooip)),
-            );
+            const curves = computeBLAnalyticalFromParams(variant.params);
+            if (!curves) return; // numerical failure — skip, don't abort other variants
 
             appendSeries(panels.rates, {
                 label: `${prefix}Analytical Water Cut`,
@@ -442,7 +456,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, pviValues, waterCut);
+            }, curves.pviValues, curves.waterCut);
             appendSeries(panels.recovery, {
                 label: `${prefix}Analytical Recovery Factor`,
                 curveKey: 'recovery-factor',
@@ -452,7 +466,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, pviValues, recovery);
+            }, curves.pviValues, curves.recovery);
         });
 
         return panels;
@@ -671,6 +685,15 @@ export function buildReferenceComparisonModel(input: {
      * Takes priority over previewBaseParams when non-empty.
      */
     previewVariantParams?: AnalyticalPreviewVariant[];
+    /**
+     * Variants whose simulations are still queued/running (results not yet in
+     * `results`). Rendered as analytical-only dashed overlays alongside the
+     * completed results so the chart never collapses from N preview curves to
+     * fewer as the sweep progresses. Colors continue the case-color sequence
+     * from where orderedResults leaves off so each variant keeps its color
+     * throughout preview → in-progress → completed.
+     */
+    pendingPreviewVariants?: AnalyticalPreviewVariant[];
     /** Fallback single-curve preview (used when analyticalPerVariant is false). */
     previewBaseParams?: Record<string, any>;
     previewScenarioClass?: string;
@@ -959,6 +982,39 @@ export function buildReferenceComparisonModel(input: {
                     }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
                 }
             });
+
+            // Analytical-only overlay for variants still queued/running.
+            // Color indices continue from orderedResults.length so each variant
+            // keeps the same color from initial preview → in-progress → completed.
+            // Uses the same unit-PVI grid as the all-analytical preview for a
+            // consistent x-axis (BL scenarios default to PVI).
+            if (input.pendingPreviewVariants?.length) {
+                input.pendingPreviewVariants.forEach((variant, i) => {
+                    const color = getReferenceComparisonCaseColor(orderedResults.length + i);
+                    const curves = computeBLAnalyticalFromParams(variant.params);
+                    if (!curves) return; // bad params — skip this variant
+                    appendSeries(panels.rates, {
+                        label: `${variant.label} — Reference`,
+                        curveKey: 'water-cut-reference',
+                        caseKey: variant.variantKey,
+                        toggleLabel: 'Reference Water Cut',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, curves.pviValues, curves.waterCut);
+                    appendSeries(panels.recovery, {
+                        label: `${variant.label} — Reference Recovery`,
+                        curveKey: 'recovery-factor',
+                        caseKey: variant.variantKey,
+                        toggleLabel: 'Reference Recovery',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, curves.pviValues, curves.recovery);
+                });
+            }
         }
     } else {
         // Depletion: single shared reference from base result.

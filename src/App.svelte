@@ -111,6 +111,21 @@
         if (!familyKey) return [];
         return runtime.referenceRunResults.filter((result) => result.familyKey === familyKey);
     });
+
+    // Variants whose results haven't landed yet — keeps analytical preview curves
+    // visible mid-sweep so the chart never snaps from N lines to fewer.
+    // Keyed by variantKey because buildScenarioSweepSpecs sets variantKey on each spec.
+    const pendingPreviewVariants = $derived.by(() => {
+        if (!previewVariantParams?.length) return undefined;
+        if (activeReferenceResults.length === 0) return undefined; // pure preview handles this
+        const completedVariantKeys = new Set(
+            activeReferenceResults.map((r) => r.variantKey).filter(Boolean),
+        );
+        const pending = previewVariantParams.filter(
+            (v) => !completedVariantKeys.has(v.variantKey),
+        );
+        return pending.length > 0 ? pending : undefined;
+    });
     const activeComparisonSelection = $derived(scenario.activeComparisonSelection);
     const activeReferenceBaseResult = $derived.by(() => {
         return activeReferenceResults.find((result) => result.variantKey === null) ?? null;
@@ -579,6 +594,7 @@
                             {analyticalPerVariant}
                             {theme}
                             previewVariantParams={activeReferenceResults.length === 0 ? previewVariantParams : undefined}
+                            pendingPreviewVariants={activeReferenceResults.length > 0 ? pendingPreviewVariants : undefined}
                             previewBaseParams={activeReferenceResults.length === 0 && !previewVariantParams?.length ? (params as Record<string, any>) : undefined}
                             previewScenarioClass={activeReferenceFamily.scenarioClass}
                         />
