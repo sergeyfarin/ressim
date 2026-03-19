@@ -92,6 +92,84 @@ export function computeWelgeMetrics(rock: RockProps, fluid: FluidProps, initialS
     };
 }
 
+// ── BL recovery factor vs PVI (Welge construction, pure analytical) ──
+
+/**
+ * Compute Buckley-Leverett recovery factor as a function of PVI for a 1D tube
+ * with perfect areal and vertical sweep (E_A = E_V = 1).
+ *
+ * Uses the Welge (1952) material balance:
+ *   Before breakthrough:  S̄_w = S_wc + PVI × (1 − fw_initial)
+ *   After breakthrough:   S̄_w = S_w2 + PVI × (1 − fw(S_w2))
+ *     where S_w2 satisfies  1/PVI = dfw/dSw|_{S_w2}
+ *
+ * RF = (S̄_w − S_wc) / (1 − S_wc)
+ *
+ * This is parameterised purely by PVI and rock/fluid props — independent of
+ * rate, time, or grid geometry. It represents the maximum possible recovery
+ * for a given fluid system, achieved only when sweep is perfect (1D slab).
+ *
+ * Assumes initial water saturation = S_wc (connate only).
+ * Ignores expansion corrections (Bo ≈ 1, incompressible).
+ */
+export function computeBLRecoveryVsPVI(
+    rock: RockProps,
+    fluid: FluidProps,
+    pviMax: number = 3.0,
+    nPoints: number = 200,
+): { pvi: number; rf: number }[] {
+    const s_wc = rock.s_wc;
+    const sMax = 1 - rock.s_or;
+    const fw_initial = fractionalFlow(s_wc, rock, fluid);
+
+    // Welge tangent: find shock front saturation (replicates computeWelgeMetrics logic)
+    let s_wf = s_wc;
+    let maxSlope = 0;
+    for (let s = s_wc + 5e-4; s <= sMax; s += 5e-4) {
+        const fw = fractionalFlow(s, rock, fluid);
+        const slope = (fw - fw_initial) / Math.max(1e-12, s - s_wc);
+        if (slope > maxSlope && Number.isFinite(slope)) { maxSlope = slope; s_wf = s; }
+    }
+
+    const fw_shock = fractionalFlow(s_wf, rock, fluid);
+    const dfw_shock = (fw_shock - fw_initial) / Math.max(1e-12, s_wf - s_wc);
+    const pvi_bt = dfw_shock > 1e-12 ? 1.0 / dfw_shock : Infinity;
+
+    // Binary-search Sw at outlet post-BT: 1/PVI = dfw/dSw|_{Sw_outlet}
+    function findOutletSw(targetDfw: number): number {
+        let lo = s_wf, hi = sMax;
+        const dfwLo = dfw_dSw(lo, rock, fluid, 1e-4);
+        const dfwHi = dfw_dSw(hi, rock, fluid, 1e-4);
+        if (targetDfw >= dfwLo) return lo;
+        if (targetDfw <= dfwHi) return hi;
+        for (let iter = 0; iter < 60; iter++) {
+            const mid = 0.5 * (lo + hi);
+            if (dfw_dSw(mid, rock, fluid, 1e-4) > targetDfw) lo = mid; else hi = mid;
+            if (hi - lo < 1e-7) break;
+        }
+        return 0.5 * (lo + hi);
+    }
+
+    const result: { pvi: number; rf: number }[] = [];
+    for (let i = 0; i <= nPoints; i++) {
+        const pvi = (i / nPoints) * pviMax;
+        let swAvg: number;
+        if (pvi <= 0) {
+            swAvg = s_wc;
+        } else if (pvi <= pvi_bt) {
+            // Before breakthrough: Welge material balance
+            swAvg = s_wc + pvi * (1 - fw_initial);
+        } else {
+            // After breakthrough: Welge equation
+            const s_w2 = findOutletSw(1.0 / pvi);
+            swAvg = s_w2 + pvi * (1 - fractionalFlow(s_w2, rock, fluid));
+        }
+        const rf = Math.max(0, Math.min(1, (swAvg - s_wc) / Math.max(1e-12, 1 - s_wc)));
+        result.push({ pvi, rf });
+    }
+    return result;
+}
+
 // ── Analytical production (Buckley-Leverett) ──
 export function calculateAnalyticalProduction(
     rock: RockProps,

@@ -9,7 +9,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset } from "./lib/catalog/scenarios";
-    import { computeSimSweepPoint } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepPoint, computeSweepRecoveryFactor, type SweepRFResult } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -56,6 +56,19 @@
         }
         return result.length > 0 ? result : null;
     });
+
+    // Analytical recovery factor for sweep scenarios: RF = E_vol(Craig+DP) × E_D_BL(PVI_local).
+    // Computed purely from rock/fluid props — no simulation data required.
+    const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
+        if (!showSweepPanel || !outputProfileRockProps || !outputProfileFluidProps) return null;
+        const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
+            ? params.layerPermsX
+            : params.nz > 1
+                ? Array.from({ length: params.nz }, () => params.uniformPermX)
+                : [params.uniformPermX];
+        return computeSweepRecoveryFactor(outputProfileRockProps, outputProfileFluidProps, perms, params.cellDz);
+    });
+
     // True when any active sensitivity variant is declared to affect the analytical solution.
     // Drives per-result vs shared analytical curve rendering in the comparison chart.
     const analyticalPerVariant = $derived.by(() => {
@@ -573,6 +586,7 @@
                             layerThickness={params.cellDz}
                             {showSweepPanel}
                             {sweepEfficiencySimSeries}
+                            {sweepRFAnalytical}
                         />
                     {:else}
                         <div

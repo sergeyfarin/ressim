@@ -51,6 +51,69 @@ Primary files: `src/lib/charts/RateChart.svelte`, `src/lib/charts/ReferenceCompa
 
 Simulation sweep efficiency (E_A_sim, E_V_sim, E_vol_sim) is now computed from `grid.sat_water` (per-cell saturation already streamed to the frontend for the 3D view). Three separate panels — Areal / Vertical / Volumetric — each show solid = simulation, dashed = analytical. Vertical panel only shown when nz > 1.
 
+Analytical recovery factor added (2026-03-19): `RF = E_vol(Craig+DP) × E_D_BL(PVI_local)` using Welge construction. New "Recovery Factor — Sweep Analysis" panel is the primary output; sweep efficiency panels are now diagnostic/supplemental. See F11 for known limitations and future improvements.
+
+---
+
+### F11 — Sweep RF Analytical: Known Limitations and Improvement Path
+
+The implemented formula `RF_sweep(PVI) = E_vol(PVI) × E_D_BL(PVI/E_vol(PVI))` is a useful first-order approximation. The following issues are known and should be addressed to improve fidelity.
+
+#### Current approximations (decreasing severity)
+
+**A. Local-PVI approximation** *(moderate error, fixable)*
+The formula assumes displacement quality within the swept zone is uniform and equal to 1D BL at `PVI_local = PVI / E_vol`. In reality, cells near the injector are over-displaced while frontier cells are under-displaced. This approximation:
+- Tends to underestimate early RF (displaced zone assumed too mature)
+- May slightly overestimate late RF (frontier under-displacement ignored)
+- Breaks down when E_vol is very small (PVI_local → ∞, clamped to E_D_piston)
+
+*Better option A1*: **Stiles (1949) method** — rigorous layer-by-layer BL integration. Each layer is swept sequentially in order of permeability; BL solution applied to each layer independently. Gives exact RF for Dykstra-Parsons model with piston-like displacement. No stream-tube approximation needed.
+
+*Better option A2*: **Stream-tube model** — divide the five-spot flow pattern into stream tubes (e.g., from potential-flow solution), apply 1D BL to each tube independently, sum contributions. Accounts for spatial variation in local flux. Higher accuracy, more implementation work.
+
+**B. Craig (1971) five-spot areal sweep correlation** *(±10–15% accuracy)*
+- Fitted to lab-scale flood data; extrapolation outside M ∈ [0.1, 10] increases uncertainty
+- Only valid for confined five-spot geometry; not applicable to:
+  - Line drives (use Buckley-Leverett directly, E_A = 1 in the displacement direction)
+  - Nine-spot, seven-spot, inverted patterns (different Craig tables exist)
+  - Peripheral/edge water drives (no correlation; use numerical simulation)
+- Assumes uniform areal permeability. Areal heterogeneity is not captured by the DP vertical coefficient.
+
+*Option*: Include Craig's tabulated data for other patterns; allow the user to select pattern geometry.
+
+**C. Dykstra-Parsons non-communicating layers** *(potentially large error)*
+- Assumes zero vertical cross-flow (Kv/Kh = 0). This is the most restrictive assumption.
+- With full vertical communication (Kv/Kh ≥ 0.1), layers equilibrate pressure rapidly and E_V → 1 (vertical sweep is complete). DP overpredicts vertical heterogeneity impact in this case.
+- With partial communication, reality lies between DP and full-commingling.
+- The IMPES simulator has nonzero Kv, so E_V_sim will generally exceed E_V_DP for the same params.
+
+*Option B1*: Add Kv/Kh parameter awareness — if Kv/Kh is high, blend E_V_DP toward 1.0.
+*Option B2*: Implement Warren-Root (1963) or Coats-Dempsey partially-communicating layer model.
+
+**D. Independence of E_A and E_V** *(small to moderate error)*
+E_vol = E_A × E_V treats areal and vertical sweep as independent. In reality, high-permeability layers create preferential channels that also affect areal sweep patterns. The error is generally conservative (real E_vol is close to or slightly different from E_A × E_V).
+
+**E. Expansion corrections** *(small for waterfloods, <3%)*
+Bo ≈ 1 assumed (incompressible). For undersaturated waterfloods with pressure support from injection, ΔP is small and Bo change is negligible. Error grows near the bubble point where gas liberation changes effective Bo and kr curves. Depletion scenarios are handled separately.
+
+**F. Constant injection rate** *(small)*
+Craig's correlation was developed at constant injection rate. The IMPES simulator uses BHP-controlled wells, so rate varies (especially at early time). The timing of areal sweep events (breakthrough) may shift for variable-rate injection.
+
+#### Validation plan
+- [ ] Compare RF_sweep_analytical vs RF_sim for sweep_areal scenario (expected: RF_sim ≈ RF_sweep_analytical for large homogeneous grid where BL and Craig apply)
+- [ ] Check that RF_sim > RF_sweep_analytical when Kv > 0 (improved vertical communication vs DP assumption)
+- [ ] Verify RF_sweep_analytical < RF_1D_BL at all PVI (sweep penalty must reduce RF)
+- [ ] Test degenerate cases: nz=1 (E_V=1, RF_sweep ≈ E_A × RF_1D); M→0 (E_A→1, RF_sweep → RF_1D)
+
+#### Future: Stiles method implementation (recommended)
+The Stiles (1949) method is the natural upgrade for the layered-reservoir case. It:
+1. Sorts layers by permeability (highest first = earliest breakthrough)
+2. Applies Buckley-Leverett to each layer independently
+3. At any cumulative injection, sums oil production across all layers
+4. Exactly satisfies material balance by construction (no local-PVI approximation)
+
+This eliminates limitation A entirely and gives exact RF under the DP assumptions (B, C, D, E, F still apply). Implementation: ~100 lines in `sweepEfficiency.ts`, no new dependencies.
+
 ---
 
 ### F5 — Multi-Case Comparison Beyond Charts

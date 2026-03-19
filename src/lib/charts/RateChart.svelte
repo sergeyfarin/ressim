@@ -44,6 +44,7 @@
         layerThickness = 1,
         showSweepPanel = false,
         sweepEfficiencySimSeries = null,
+        sweepRFAnalytical = null,
     }: {
         rateHistory?: RateHistoryPoint[];
         analyticalProductionData?: AnalyticalProductionPoint[];
@@ -62,6 +63,7 @@
         layerThickness?: number;
         showSweepPanel?: boolean;
         sweepEfficiencySimSeries?: Array<{ time: number; eA: number; eV: number; eVol: number }> | null;
+        sweepRFAnalytical?: import("../analytical/sweepEfficiency").SweepRFResult | null;
     } = $props();
 
     type SimSweepSeries = Array<{ time: number; eA: number; eV: number; eVol: number }>;
@@ -78,7 +80,10 @@
     let ratesExpanded = $state(true);
     let cumulativeExpanded = $state(false);
     let diagnosticsExpanded = $state(false);
-    let sweepExpanded = $state(true);
+    let sweepRFExpanded = $state(true);
+    let sweepArealExpanded = $state(false);
+    let sweepVerticalExpanded = $state(false);
+    let sweepVolExpanded = $state(false);
 
     // --- Panel alignment state ---
     let nativeGutters = $state<Record<string, { left: number; right: number }>>(
@@ -938,11 +943,20 @@
         ratesCurves.some((curve) => curve.label.includes("Rate")),
     );
 
-    // --- Sweep efficiency panels (sweep-domain scenarios only, PVI x-axis) ---
+    // --- Sweep panels (sweep-domain scenarios only, PVI x-axis) ---
     //
-    // Three separate panels: Areal (E_A), Vertical (E_V), Volumetric (E_vol).
-    // Each panel shows: solid = simulation (from per-cell sat_water), dashed = analytical.
-    // Color encodes nothing extra here (single live run); solid/dashed encodes sim vs analytical.
+    // PANEL ORDER (primary → diagnostic):
+    //   1. Recovery Factor — RF_sim (solid) vs RF_sweep_analytical = E_vol×E_D_BL (dashed)
+    //                        vs RF_1D_BL upper bound (light dashed). PRIMARY output.
+    //   2. Areal Sweep Efficiency (E_A) — sim (solid) vs analytical (dashed). DIAGNOSTIC.
+    //   3. Vertical Sweep Efficiency (E_V) — shown only when nz > 1.  DIAGNOSTIC.
+    //   4. Volumetric Sweep Efficiency (E_vol = E_A × E_V).  DIAGNOSTIC.
+    //
+    // Chart convention (all sweep panels):
+    //   Solid         = simulation (IMPES result or derived from sat_water grid)
+    //   Dashed [7,4]  = primary analytical reference
+    //   Dashed [4,4]  = supplemental analytical reference (e.g., perfect-sweep upper bound)
+    //   Color         = single-run: fixed per metric; multi-variant: CASE_COLORS[index]
     //
     const sweepScaleConfig = {
         y: {
@@ -954,6 +968,23 @@
             alignToPixels: true,
             title: { display: true, text: "Sweep Efficiency" },
             ticks: { count: 6 },
+        },
+    };
+
+    const sweepRFScaleConfig = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: "Recovery Factor" },
+            ticks: {
+                count: 6,
+                callback: (v: string | number) =>
+                    typeof v === "number" ? (v * 100).toFixed(0) + "%" : v,
+            },
         },
     };
 
@@ -1057,7 +1088,48 @@
             analyticalXY(analytical.combined.map((p) => p.efficiency)),
         ];
 
-        return { arealCurves, arealSeries, verticalCurves, verticalSeries, volCurves, volSeries, hasVertical };
+        // Recovery Factor panel
+        // Sim RF: map rateHistory → (pvi, rf) using cumulatives
+        const simRFSeries = cumulatives.pvi.map((x, i) => ({ x, y: recoveryFactor[i] ?? null }));
+
+        const rfCurves: CurveConfig[] = [
+            {
+                label: "RF (Simulation)",
+                curveKey: "sweep-rf-sim",
+                toggleLabel: "RF (Sim)",
+                color: "#15803d",
+                borderWidth: 2.4,
+                yAxisID: "y",
+            } as CurveConfig,
+            {
+                label: "RF (Sweep — Craig×BL)",
+                curveKey: "sweep-rf-sweep",
+                toggleLabel: "RF Analytical (Sweep)",
+                color: "#15803d",
+                borderWidth: 2.0,
+                borderDash: [7, 4],
+                yAxisID: "y",
+            } as CurveConfig,
+            {
+                label: "RF (1D BL — perfect sweep)",
+                curveKey: "sweep-rf-bl1d",
+                toggleLabel: "RF 1D BL (upper bound)",
+                color: "#4ade80",
+                borderWidth: 1.4,
+                borderDash: [4, 4],
+                yAxisID: "y",
+                defaultVisible: false,
+            } as CurveConfig,
+        ];
+        const rfSeries = sweepRFAnalytical
+            ? [
+                simRFSeries,
+                sweepRFAnalytical.curve.map((p) => ({ x: p.pvi, y: p.rfSweep })),
+                sweepRFAnalytical.curve.map((p) => ({ x: p.pvi, y: p.rfBL1D })),
+              ]
+            : [simRFSeries, [], []];
+
+        return { rfCurves, rfSeries, arealCurves, arealSeries, verticalCurves, verticalSeries, volCurves, volSeries, hasVertical };
     });
     const summaryItems = $derived.by(() => {
         return buildLiveOutputSummaryItems({
@@ -1189,12 +1261,29 @@
         }}
     />
 
-    <!-- Sweep efficiency panels (sweep-domain scenarios only) -->
+    <!-- Sweep panels (sweep-domain scenarios only) — RF first (primary), efficiency panels diagnostic -->
     {#if sweepPanels}
+        <!-- 1. Recovery Factor — primary output -->
+        <ChartSubPanel
+            panelId="sweep-rf"
+            title="Recovery Factor — Sweep Analysis"
+            bind:expanded={sweepRFExpanded}
+            curves={sweepPanels.rfCurves}
+            seriesData={sweepPanels.rfSeries}
+            scaleConfigs={sweepRFScaleConfig}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, "sweep-rf": { left, right } };
+            }}
+        />
+        <!-- 2–4. Sweep efficiency decomposition (diagnostic) -->
         <ChartSubPanel
             panelId="sweep-areal"
             title="Areal Sweep Efficiency (E_A)"
-            bind:expanded={sweepExpanded}
+            bind:expanded={sweepArealExpanded}
             curves={sweepPanels.arealCurves}
             seriesData={sweepPanels.arealSeries}
             scaleConfigs={sweepScaleConfig}
@@ -1210,7 +1299,7 @@
             <ChartSubPanel
                 panelId="sweep-vertical"
                 title="Vertical Sweep Efficiency (E_V)"
-                expanded={false}
+                bind:expanded={sweepVerticalExpanded}
                 curves={sweepPanels.verticalCurves}
                 seriesData={sweepPanels.verticalSeries}
                 scaleConfigs={sweepScaleConfig}
@@ -1226,7 +1315,7 @@
         <ChartSubPanel
             panelId="sweep-vol"
             title="Volumetric Sweep Efficiency (E_vol)"
-            expanded={false}
+            bind:expanded={sweepVolExpanded}
             curves={sweepPanels.volCurves}
             seriesData={sweepPanels.volSeries}
             scaleConfigs={sweepScaleConfig}

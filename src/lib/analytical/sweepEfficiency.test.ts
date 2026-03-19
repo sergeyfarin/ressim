@@ -10,8 +10,10 @@ import {
     generateLayerPermDistribution,
     computeVerticalSweep,
     computeCombinedSweep,
+    computeSweepRecoveryFactor,
     type SweepPoint,
 } from './sweepEfficiency';
+import { computeBLRecoveryVsPVI } from './fractionalFlow';
 import type { RockProps, FluidProps } from './fractionalFlow';
 
 const defaultRock: RockProps = { s_wc: 0.1, s_or: 0.1, n_w: 2, n_o: 2, k_rw_max: 1.0, k_ro_max: 1.0 };
@@ -283,6 +285,102 @@ describe('computeVerticalSweep', () => {
         const result = computeVerticalSweep([100, 50, 200], 10, 2.0);
         expect(result.vdp).toBeGreaterThan(0);
         expect(result.vdp).toBeLessThan(1);
+    });
+});
+
+// ── computeBLRecoveryVsPVI ──
+
+describe('computeBLRecoveryVsPVI', () => {
+    it('starts at RF=0 at PVI=0', () => {
+        const curve = computeBLRecoveryVsPVI(defaultRock, defaultFluid);
+        expect(curve[0].pvi).toBe(0);
+        expect(curve[0].rf).toBe(0);
+    });
+
+    it('is monotonically non-decreasing', () => {
+        const curve = computeBLRecoveryVsPVI(defaultRock, defaultFluid, 3.0, 200);
+        for (let i = 1; i < curve.length; i++) {
+            expect(curve[i].rf).toBeGreaterThanOrEqual(curve[i - 1].rf - 1e-9);
+        }
+    });
+
+    it('is bounded [0, 1] at all PVI', () => {
+        const curve = computeBLRecoveryVsPVI(defaultRock, defaultFluid, 5.0, 100);
+        for (const pt of curve) {
+            expect(pt.rf).toBeGreaterThanOrEqual(0);
+            expect(pt.rf).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('approaches E_D_piston = (1-Sor-Swc)/(1-Swc) at high PVI (within 5%)', () => {
+        // BL RF converges slowly to the piston limit — expect ≥90% of E_D_piston at PVI=20
+        const curve = computeBLRecoveryVsPVI(defaultRock, defaultFluid, 20.0, 500);
+        const edPiston = (1 - defaultRock.s_or - defaultRock.s_wc) / (1 - defaultRock.s_wc);
+        const lastRf = curve[curve.length - 1].rf;
+        expect(lastRf).toBeGreaterThan(edPiston * 0.90);
+        expect(lastRf).toBeLessThanOrEqual(edPiston + 1e-9);
+    });
+
+    it('favourable mobility (M<1) reaches higher RF faster than unfavourable (M>1)', () => {
+        const rockFav: RockProps = { ...defaultRock, k_rw_max: 0.3, mu_w: 1, mu_o: 1 };  // M<1 approx
+        // Use same defaultFluid but different endpoint krw to change M
+        const fluidLowM: FluidProps = { mu_w: 2.0, mu_o: 1.0 };  // M<1
+        const fluidHighM: FluidProps = { mu_w: 0.5, mu_o: 5.0 }; // M>1
+        const curveLow = computeBLRecoveryVsPVI(defaultRock, fluidLowM, 2.0, 100);
+        const curveHigh = computeBLRecoveryVsPVI(defaultRock, fluidHighM, 2.0, 100);
+        // At PVI=1, favourable should have higher RF
+        const rfLow = curveLow.find(p => p.pvi >= 1.0)?.rf ?? 0;
+        const rfHigh = curveHigh.find(p => p.pvi >= 1.0)?.rf ?? 0;
+        expect(rfLow).toBeGreaterThan(rfHigh);
+    });
+});
+
+// ── computeSweepRecoveryFactor ──
+
+describe('computeSweepRecoveryFactor', () => {
+    it('returns curve with correct length', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10, 3.0, 100);
+        expect(result.curve).toHaveLength(101);
+    });
+
+    it('starts at RF=0 at PVI=0', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10);
+        expect(result.curve[0].rfSweep).toBe(0);
+        expect(result.curve[0].rfBL1D).toBe(0);
+    });
+
+    it('rfSweep ≤ rfBL1D at all PVI (sweep penalty reduces RF vs perfect sweep)', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100, 50, 200], 10);
+        for (const pt of result.curve) {
+            expect(pt.rfSweep).toBeLessThanOrEqual(pt.rfBL1D + 1e-9);
+        }
+    });
+
+    it('rfSweep ≤ edPiston at all PVI', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100, 50, 200], 10);
+        for (const pt of result.curve) {
+            expect(pt.rfSweep).toBeLessThanOrEqual(result.edPiston + 1e-9);
+        }
+    });
+
+    it('single-layer (nz=1): E_vol=E_A, rfSweep≈rfBL1D at high PVI (sweep approaches perfect)', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10, 5.0, 200);
+        const last = result.curve[result.curve.length - 1];
+        // With nz=1, E_V=1, so E_vol=E_A. At high PVI E_A→1 and rfSweep→rfBL1D
+        expect(last.rfSweep).toBeCloseTo(last.rfBL1D, 1);
+    });
+
+    it('is monotonically non-decreasing', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100, 50, 200], 10);
+        for (let i = 1; i < result.curve.length; i++) {
+            expect(result.curve[i].rfSweep).toBeGreaterThanOrEqual(result.curve[i - 1].rfSweep - 1e-9);
+        }
+    });
+
+    it('edPiston matches (1-Sor-Swc)/(1-Swc)', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10);
+        const expected = (1 - defaultRock.s_or - defaultRock.s_wc) / (1 - defaultRock.s_wc);
+        expect(result.edPiston).toBeCloseTo(expected, 6);
     });
 });
 

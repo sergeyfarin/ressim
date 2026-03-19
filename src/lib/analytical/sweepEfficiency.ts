@@ -10,6 +10,7 @@
  */
 
 import type { RockProps, FluidProps } from './fractionalFlow';
+import { computeBLRecoveryVsPVI } from './fractionalFlow';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -33,6 +34,26 @@ export type CombinedSweepResult = {
     arealSweep: ArealSweepResult;
     verticalSweep: VerticalSweepResult;
     combined: SweepPoint[];
+};
+
+export type SweepRFPoint = {
+    pvi: number;
+    /** RF from sweep model: E_vol(PVI) × E_D_BL(PVI_local). Primary analytical prediction. */
+    rfSweep: number;
+    /** RF from 1D BL alone (perfect sweep, E_vol = 1). Upper-bound reference. */
+    rfBL1D: number;
+    /** Volumetric sweep efficiency at this PVI. */
+    eVol: number;
+    /** Displacement efficiency within swept zone at this PVI. */
+    eD: number;
+};
+
+export type SweepRFResult = {
+    curve: SweepRFPoint[];
+    /** Maximum possible displacement efficiency (piston model): (1−Sor−Swc)/(1−Swc). */
+    edPiston: number;
+    eAAtBreakthrough: number;
+    vdp: number;
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -411,4 +432,92 @@ export function computeCombinedSweep(
     }
 
     return { arealSweep: areal, verticalSweep: vertical, combined };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sweep recovery factor: RF = E_vol(PVI) × E_D_BL(PVI_local)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Combine Craig/Dykstra-Parsons sweep efficiency with Buckley-Leverett
+ * displacement efficiency to produce an analytical recovery factor curve.
+ *
+ *   RF_sweep(PVI) = E_vol(PVI) × E_D_BL(PVI_local)
+ *
+ * where:
+ *   E_vol(PVI) = E_A_Craig(PVI) × E_V_DykstraParsons(PVI)  [volumetric sweep]
+ *   PVI_local  = PVI / E_vol(PVI)                           [local PVI in swept zone]
+ *   E_D_BL(x)  = RF_1D_BL(x)                               [1D Welge RF at PVI = x]
+ *
+ * --- APPROXIMATION & LIMITATIONS ---
+ *
+ * 1. Local-PVI approximation: assumes displacement quality within the swept zone
+ *    is uniform and equal to what a 1D BL system receives at PVI_local. In
+ *    reality, cells near the injector are over-displaced while frontier cells are
+ *    under-displaced. This underestimates early RF and may slightly overestimate
+ *    late RF. A rigorous treatment uses stream-tube integration (see TODO F11).
+ *
+ * 2. Craig (1971) five-spot correlation accuracy: ±10–15% based on original
+ *    lab data scatter. Valid for M ∈ [0.1, 10]; confidence degrades outside.
+ *    Only applies to confined five-spot geometry (not line drives or nine-spots).
+ *
+ * 3. Dykstra-Parsons non-communicating layers: assumes zero vertical cross-flow.
+ *    Full cross-flow (good Kv/Kh) → E_V → 1 and the DP model overpredicts
+ *    vertical heterogeneity impact. See Warren-Root or layered BL for cross-flow.
+ *
+ * 4. Independence of E_A and E_V: E_vol = E_A × E_V is an approximation.
+ *    In reality, vertical heterogeneity reshapes areal flow paths.
+ *
+ * 5. Expansion terms ignored: Bo ≈ 1, incompressible fluids. Error < 3% for
+ *    typical waterfloods; increases near the bubble point.
+ *
+ * 6. Constant injection rate assumed by Craig's correlation. BHP-controlled
+ *    wells see variable rates; timing of E_A(PVI) may shift accordingly.
+ *
+ * Better models (see TODO F11): Stiles (1949) layer-by-layer BL integration;
+ * stream-tube models; capacitance-resistance models fitted to production data.
+ */
+export function computeSweepRecoveryFactor(
+    rock: RockProps,
+    fluid: FluidProps,
+    permeabilities: number[],
+    layerThickness: number,
+    pviMax: number = 3.0,
+    nPoints: number = 200,
+): SweepRFResult {
+    // Build a dense 1D BL RF lookup table (extended range to handle PVI_local >> pviMax)
+    const blLookupMax = pviMax * 5;
+    const blLookupN = nPoints * 5;
+    const blCurve = computeBLRecoveryVsPVI(rock, fluid, blLookupMax, blLookupN);
+
+    function interpBL1D(pvi: number): number {
+        if (pvi <= 0) return 0;
+        if (pvi >= blCurve[blCurve.length - 1].pvi) return blCurve[blCurve.length - 1].rf;
+        let lo = 0, hi = blCurve.length - 1;
+        while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (blCurve[mid].pvi <= pvi) lo = mid; else hi = mid;
+        }
+        const t = (pvi - blCurve[lo].pvi) / Math.max(1e-12, blCurve[hi].pvi - blCurve[lo].pvi);
+        return blCurve[lo].rf + t * (blCurve[hi].rf - blCurve[lo].rf);
+    }
+
+    const edPiston = Math.max(0, (1 - rock.s_or - rock.s_wc) / Math.max(1e-12, 1 - rock.s_wc));
+    const sweep = computeCombinedSweep(rock, fluid, permeabilities, layerThickness, pviMax, nPoints);
+
+    const curve: SweepRFPoint[] = sweep.combined.map(({ pvi, efficiency: eVol }) => {
+        const rfBL1D = interpBL1D(pvi);
+        // PVI_local: effective PVI in the swept zone. Clamp at blLookupMax so
+        // interpBL1D returns E_D_piston when E_vol is very small (swept zone ~empty).
+        const pviLocal = eVol > 1e-3 ? Math.min(pvi / eVol, blLookupMax) : blLookupMax;
+        const eD = interpBL1D(pviLocal);
+        return { pvi, rfSweep: Math.min(eVol * eD, edPiston), rfBL1D, eVol, eD };
+    });
+
+    return {
+        curve,
+        edPiston,
+        eAAtBreakthrough: sweep.arealSweep.eaAtBreakthrough,
+        vdp: sweep.verticalSweep.vdp,
+    };
 }
