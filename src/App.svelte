@@ -8,7 +8,7 @@
     import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
-    import { getChartPreset } from "./lib/catalog/scenarios";
+    import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
     import { computeSimSweepPoint, computeSweepRecoveryFactor, type SweepRFResult } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
@@ -81,6 +81,30 @@
         return activeDim.variants
             .filter((v) => scenario.activeVariantKeys.includes(v.key))
             .some((v) => v.affectsAnalytical);
+    });
+
+    // When analyticalPerVariant is true, build one preview entry per selected
+    // variant so the comparison chart can show all analytical curves before any
+    // simulation runs complete. Each entry carries the full merged params so the
+    // chart can compute the BL / depletion analytical solution independently.
+    const previewVariantParams = $derived.by(() => {
+        if (!analyticalPerVariant) return undefined;
+        const sc = scenario.activeScenarioObject;
+        if (!sc) return undefined;
+        const dim = sc.sensitivities.find(
+            (d) => d.key === scenario.activeSensitivityDimensionKey,
+        );
+        if (!dim) return undefined;
+        if (scenario.activeVariantKeys.length === 0) return undefined;
+        return scenario.activeVariantKeys.flatMap((vk) => {
+            const variant = dim.variants.find((v) => v.key === vk);
+            if (!variant) return [];
+            return [{
+                label: variant.label,
+                variantKey: vk,
+                params: getScenarioWithVariantParams(sc.key, dim.key, vk),
+            }];
+        });
     });
     const activeReferenceResults = $derived.by(() => {
         const familyKey = activeReferenceFamily?.key ?? null;
@@ -554,7 +578,8 @@
                             layoutConfig={activeRateChartLayoutConfig}
                             {analyticalPerVariant}
                             {theme}
-                            previewBaseParams={activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
+                            previewVariantParams={activeReferenceResults.length === 0 ? previewVariantParams : undefined}
+                            previewBaseParams={activeReferenceResults.length === 0 && !previewVariantParams?.length ? (params as Record<string, any>) : undefined}
                             previewScenarioClass={activeReferenceFamily.scenarioClass}
                         />
                     {:else if RateChartComponent}

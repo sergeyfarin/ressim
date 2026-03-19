@@ -21,6 +21,7 @@
     import {
         buildReferenceComparisonModel,
         getReferenceComparisonCaseColor,
+        type AnalyticalPreviewVariant,
     } from './referenceComparisonModel';
 
     let {
@@ -29,6 +30,7 @@
         layoutConfig = {},
         theme = 'dark',
         analyticalPerVariant = false,
+        previewVariantParams = undefined,
         previewBaseParams = undefined,
         previewScenarioClass = undefined,
     }: {
@@ -37,6 +39,9 @@
         layoutConfig?: RateChartLayoutConfig;
         theme?: 'dark' | 'light';
         analyticalPerVariant?: boolean;
+        /** Per-variant preview curves shown before any runs complete (analyticalPerVariant=true). */
+        previewVariantParams?: AnalyticalPreviewVariant[];
+        /** Single-curve fallback preview (analyticalPerVariant=false). */
         previewBaseParams?: Record<string, any>;
         previewScenarioClass?: string;
     } = $props();
@@ -71,7 +76,10 @@
         if (config.diagnosticsExpanded !== undefined) diagnosticsExpanded = config.diagnosticsExpanded;
     });
 
-    const isPreviewMode = $derived(results.length === 0 && Boolean(previewBaseParams));
+    const isPreviewMode = $derived(
+        results.length === 0 &&
+        (Boolean(previewBaseParams) || (previewVariantParams?.length ?? 0) > 0),
+    );
 
     $effect(() => {
         if (isPreviewMode && (previewScenarioClass === 'buckley-leverett' || previewScenarioClass === 'waterflood')) {
@@ -86,6 +94,7 @@
             xAxisMode,
             theme,
             analyticalPerVariant,
+            previewVariantParams,
             previewBaseParams,
             previewScenarioClass,
         }),
