@@ -185,4 +185,22 @@ describe('benchmarkRunModel', () => {
         expect(result.comparisonOutputs.cumulativeOilRelativeErrorAtFinalTime).toBeGreaterThanOrEqual(0);
         expect(result.comparisonOutputs.cumulativeOilRelativeErrorAtFinalTime).toBeLessThan(1);
     });
+
+    it('snapshots params and rate history so later mutations cannot corrupt stored runs', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const rateHistory = buildSyntheticRateHistory(baseSpec.params, 1.0);
+        const result = buildBenchmarkRunResult({
+            spec: baseSpec,
+            rateHistory,
+        });
+
+        rateHistory[0].time = 999;
+        rateHistory[0].total_production_oil = 0;
+        baseSpec.params.mu_o = 999;
+
+        expect(result.rateHistory[0]?.time).toBe(1);
+        expect(result.rateHistory[0]?.total_production_oil).not.toBe(0);
+        expect(result.params.mu_o).not.toBe(999);
+    });
 });

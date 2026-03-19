@@ -233,3 +233,17 @@ The current depletion well-location mismatch exists because scenario metadata ca
 - Add small adapter builders per analytical family.
 - Add tests that fail when a sensitivity dimension marked `affectsAnalytical: true` does not affect any consumed analytical input.
 - Keep scenario metadata and analytical plumbing coupled by tests instead of convention.
+
+### C. Analytical Method Metadata and Comparison Architecture
+
+Scenario metadata now carries short analytical-method disclosure fields so the picker can state which method is being shown for each scenario and cite the relevant reference.
+
+Suggested next step after the current cleanup work:
+
+- Keep one canonical metadata source for analytical-method summary and reference per scenario.
+- When analytical routing becomes method-selectable, move from one scenario-level method string to a small method registry keyed by scenario class and method id.
+- Defer implementation of multi-method sweep comparison for now, but treat it as the target architecture for sweep analytics:
+  - current local-PVI approximation for fast baseline comparisons
+  - Stiles layer-by-layer method for layered systems
+  - stream-tube / flow-unit method for full-field heterogeneity
+- Design chart and results plumbing so future method comparison can show deltas between methods for the same sensitivity set rather than forcing one method to replace the others.

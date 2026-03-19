@@ -259,6 +259,50 @@ describe('referenceComparisonModel', () => {
         ]);
     });
 
+    it('keeps four compared simulation curves distinct when more than three runs are shown', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
+        const specs = buildBenchmarkRunSpecs(family!, [variants[0], variants[1], variants[2], variants[3]]);
+
+        const reference = computeWelgeMetrics(
+            {
+                s_wc: Number(specs[0].params.s_wc),
+                s_or: Number(specs[0].params.s_or),
+                n_w: Number(specs[0].params.n_w),
+                n_o: Number(specs[0].params.n_o),
+                k_rw_max: Number(specs[0].params.k_rw_max),
+                k_ro_max: Number(specs[0].params.k_ro_max),
+            },
+            {
+                mu_w: Number(specs[0].params.mu_w),
+                mu_o: Number(specs[0].params.mu_o),
+            },
+            Number(specs[0].params.initialSaturation),
+        );
+
+        const results = specs.map((spec, index) => buildBenchmarkRunResult({
+            spec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(
+                spec.params,
+                reference.breakthroughPvi * (1 + index * 0.03),
+                index * 0.01,
+            ),
+        }));
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results,
+            xAxisMode: 'pvi',
+        });
+
+        const waterCutCurves = model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-sim');
+        const waterCutSeries = model.panels.rates.series.filter((_, index) => model.panels.rates.curves[index]?.curveKey === 'water-cut-sim');
+
+        expect(waterCutCurves).toHaveLength(5);
+        expect(new Set(waterCutCurves.map((curve) => curve.caseKey)).size).toBe(5);
+        expect(waterCutSeries.every((series) => series.length > 0)).toBe(true);
+    });
+
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {
         const family = getBenchmarkFamily('dietz_sq_center');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);

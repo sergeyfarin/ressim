@@ -167,7 +167,14 @@
     <!-- ── Concise parameter summary ── -->
     <div class="border-t border-border/50 px-3 py-2">
       <div class="flex items-start justify-between gap-2">
-        <p class="ui-microcopy text-muted-foreground">{activeScenario.description}</p>
+        <div class="space-y-1">
+          <p class="ui-microcopy text-muted-foreground">{activeScenario.description}</p>
+          <p class="ui-microcopy text-muted-foreground/80">
+            <span class="font-medium text-foreground/85">Analytical method:</span>
+            {activeScenario.analyticalMethodSummary}
+            <span class="text-muted-foreground/70"> Ref: {activeScenario.analyticalMethodReference}</span>
+          </p>
+        </div>
         <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
           Customize →
         </Button>

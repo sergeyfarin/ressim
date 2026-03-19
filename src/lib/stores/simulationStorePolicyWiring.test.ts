@@ -39,6 +39,15 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/explicitLibraryEntryKey/);
   });
 
+  it('preserves edited run controls for scenario sensitivity sweeps', () => {
+    expect(storeSource).toMatch(/const runSteps = Math\.max\(1, Math\.round\(Number\(this\.steps/);
+    expect(storeSource).toMatch(/const runDeltaTDays = Number\(this\.delta_t_days/);
+    expect(storeSource).toMatch(/steps: runSteps/);
+    expect(storeSource).toMatch(/deltaTDays: runDeltaTDays/);
+    expect(storeSource).toMatch(/const savedDeltaTDays = this\.delta_t_days/);
+    expect(storeSource).toMatch(/this\.delta_t_days = savedDeltaTDays/);
+  });
+
   it('exposes compatibility navigation state alongside legacy mode state', () => {
     expect(storeSource).not.toMatch(/buildScenarioNavigationState/);
     expect(storeSource).toMatch(/resolveProductFamily/);

@@ -18,6 +18,7 @@
         curveKey?: string;
         caseKey?: string;
         toggleLabel?: string;
+        toggleGroupKey?: string;
         color: string;
         borderWidth?: number;
         borderDash?: number[];
@@ -72,11 +73,15 @@
     let visibleCurveGroups = $state<Record<string, boolean>>({});
     let curveSignature = $state("");
     let chartSchemaSignature = $derived.by(() => JSON.stringify({
-        curves: curves.map((curve) => ({
+        curves: curves.map((curve, idx) => ({
+            caseKey: curve.caseKey ?? null,
+            curveKey: curve.curveKey ?? null,
             label: curve.label,
+            color: curve.color,
             yAxisID: curve.yAxisID,
             borderWidth: curve.borderWidth ?? 2,
             borderDash: curve.borderDash ?? [],
+            datasetKey: getCurveDatasetKey(curve, idx),
         })),
         scales: Object.entries(cleanScaleConfigs).map(([axisId, cfg]) => ({
             axisId,
@@ -106,12 +111,28 @@
     let scaleMeta = $derived(scaleDerived.meta);
     let cleanScaleConfigs = $derived(scaleDerived.clean);
 
+    function getCurveToggleGroupKey(curve: CurveConfig | undefined, idx: number): string {
+        return curve?.toggleGroupKey ?? curve?.curveKey ?? curve?.label ?? String(idx);
+    }
+
+    function getCurveDatasetKey(curve: CurveConfig | undefined, idx: number): string {
+        return JSON.stringify({
+            caseKey: curve?.caseKey ?? null,
+            curveKey: curve?.curveKey ?? null,
+            label: curve?.label ?? String(idx),
+            yAxisID: curve?.yAxisID ?? 'y',
+            color: curve?.color ?? null,
+            borderWidth: curve?.borderWidth ?? 2,
+            borderDash: curve?.borderDash ?? [],
+        });
+    }
+
     const curveToggleGroups = $derived.by(() => {
         const groups: CurveToggleGroup[] = [];
         const groupByKey = new Map<string, CurveToggleGroup>();
 
         curves.forEach((curve, idx) => {
-            const groupKey = curve.curveKey ?? curve.label;
+            const groupKey = getCurveToggleGroupKey(curve, idx);
             const visibleByDefault = curve.defaultVisible !== false && !curve.disabled;
 
             if (!groupByKey.has(groupKey)) {
@@ -140,7 +161,7 @@
     });
 
     function isCurveVisible(idx: number): boolean {
-        const groupKey = curves[idx]?.curveKey ?? curves[idx]?.label ?? String(idx);
+        const groupKey = getCurveToggleGroupKey(curves[idx], idx);
         return !curves[idx]?.disabled && (visibleCurveGroups[groupKey] ?? true);
     }
 
@@ -224,6 +245,7 @@
                 const dataset = getLineDataset(chart, idx);
                 return (
                     !dataset
+                    || (dataset as any)._datasetKey !== getCurveDatasetKey(curve, idx)
                     || getDatasetLabel(chart, idx) !== curve.label
                     || dataset.yAxisID !== curve.yAxisID
                 );
@@ -418,9 +440,10 @@
         const ctx = chartCanvas.getContext("2d");
         if (!ctx) return;
 
-        const datasets = curves.map((curve) => ({
+        const datasets = curves.map((curve, idx) => ({
             label: curve.label,
             data: [] as XYPoint[],
+            _datasetKey: getCurveDatasetKey(curve, idx),
             borderColor: curve.color,
             borderWidth: curve.borderWidth ?? 2,
             borderDash: curve.borderDash ? [...curve.borderDash] : undefined,

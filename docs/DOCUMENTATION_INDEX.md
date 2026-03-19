@@ -21,6 +21,7 @@ Use this file to decide which documents describe the current repository state.
 
 - **Scenario model**: `src/lib/catalog/scenarios.ts` is the single source of truth for all predefined scenarios. S1 is complete; the current surface exposes 8 canonical scenarios across Waterflood / Sweep / Depletion / Gas, each with zero or more sensitivity dimensions.
 - **Input UI**: `src/lib/ui/modes/ScenarioPicker.svelte` is the primary input surface. Domain tabs and sensitivity-dimension selection are live.
+- **Analytical method disclosure**: each canonical scenario now carries a short analytical-method summary plus literature/status reference in `src/lib/catalog/scenarios.ts`, and the same mapping is summarized in `README.md`.
 - **Sweep efficiency**: `src/lib/analytical/sweepEfficiency.ts` + `SweepEfficiencyChart.svelte` implement Craig areal, Dykstra-Parsons vertical, and combined volumetric sweep analytical models.
 - **Legacy catalog files** (`caseCatalog.ts`, `benchmarkCases.ts`, `caseLibrary.ts`, etc.) still exist with active dependencies — removal blocked on Step 7 (see REFACTOR.md Phase 1).
 - **All scenarios** initialize and run directly in browser-side WASM. No pre-run artifact pipeline.

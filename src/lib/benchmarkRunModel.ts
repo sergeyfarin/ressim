@@ -106,6 +106,88 @@ const EMPTY_COMPARISON_OUTPUTS: BenchmarkComparisonOutputs = {
     errorSummary: 'Reference review details are not available yet.',
 };
 
+function clonePlainValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((item) => clonePlainValue(item));
+    }
+
+    if (value instanceof Float64Array) {
+        return new Float64Array(value);
+    }
+
+    if (value instanceof Float32Array) {
+        return new Float32Array(value);
+    }
+
+    if (value instanceof Int32Array) {
+        return new Int32Array(value);
+    }
+
+    if (value instanceof Uint32Array) {
+        return new Uint32Array(value);
+    }
+
+    if (value instanceof Uint16Array) {
+        return new Uint16Array(value);
+    }
+
+    if (value instanceof Uint8Array) {
+        return new Uint8Array(value);
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([key, entryValue]) => [key, clonePlainValue(entryValue)]),
+        );
+    }
+
+    return value;
+}
+
+function cloneParams(params: Record<string, any>): Record<string, any> {
+    return Object.fromEntries(
+        Object.entries(params).map(([key, value]) => [key, clonePlainValue(value)]),
+    );
+}
+
+function cloneRateHistoryPoint(point: RateHistoryPoint): RateHistoryPoint {
+    return Object.fromEntries(
+        Object.entries(point).map(([key, value]) => [key, clonePlainValue(value)]),
+    ) as RateHistoryPoint;
+}
+
+function cloneRateHistory(rateHistory: RateHistoryPoint[]): RateHistoryPoint[] {
+    return rateHistory.map((point) => cloneRateHistoryPoint(point));
+}
+
+function cloneSimulatorSnapshot(snapshot: SimulatorSnapshot | null | undefined): SimulatorSnapshot | null {
+    if (!snapshot) return null;
+
+    return {
+        grid: {
+            pressure: new Float64Array(snapshot.grid.pressure),
+            sat_water: new Float64Array(snapshot.grid.sat_water),
+            sat_oil: new Float64Array(snapshot.grid.sat_oil),
+            sat_gas: new Float64Array(snapshot.grid.sat_gas),
+        },
+        wells: snapshot.wells.map((well) => Object.fromEntries(
+            Object.entries(well).map(([key, value]) => [key, clonePlainValue(value)]),
+        ) as typeof well),
+        time: snapshot.time,
+        rateHistory: Array.isArray(snapshot.rateHistory) ? cloneRateHistory(snapshot.rateHistory) : undefined,
+        solverWarning: snapshot.solverWarning ?? null,
+        recordHistory: snapshot.recordHistory,
+        stepIndex: snapshot.stepIndex,
+        profile: snapshot.profile ? { ...snapshot.profile } : undefined,
+    };
+}
+
+function cloneSimulatorHistory(history: SimulatorSnapshot[]): SimulatorSnapshot[] {
+    return history
+        .map((snapshot) => cloneSimulatorSnapshot(snapshot))
+        .filter((snapshot): snapshot is SimulatorSnapshot => Boolean(snapshot));
+}
+
 function toFiniteNumber(value: unknown, fallback: number): number {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
@@ -567,9 +649,9 @@ export function buildBenchmarkRunResult(input: {
     finalSnapshot?: SimulatorSnapshot | null;
 }): BenchmarkRunResult {
     const { spec } = input;
-    const rateHistory = Array.isArray(input.rateHistory) ? [...input.rateHistory] : [];
-    const history = Array.isArray(input.history) ? [...input.history] : [];
-    const finalSnapshot = input.finalSnapshot ?? history.at(-1) ?? null;
+    const rateHistory = Array.isArray(input.rateHistory) ? cloneRateHistory(input.rateHistory) : [];
+    const history = Array.isArray(input.history) ? cloneSimulatorHistory(input.history) : [];
+    const finalSnapshot = cloneSimulatorSnapshot(input.finalSnapshot ?? history.at(-1) ?? null);
     const watercutThreshold = spec.breakthroughCriterion?.value ?? 0.01;
     const poreVolume = getPoreVolume(spec.params);
     const ooip = getOoip(spec.params);
@@ -646,7 +728,7 @@ export function buildBenchmarkRunResult(input: {
         variantLabel: spec.variantLabel,
         label: spec.label,
         description: spec.description,
-        params: spec.params,
+        params: cloneParams(spec.params),
         rateHistory,
         history,
         finalSnapshot,

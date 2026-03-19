@@ -16,6 +16,7 @@
 
 - [ ] **Depletion analytical contract gap** — `calculateDepletionAnalyticalProduction()` does not currently consume producer location, so the `dep_pss` well-location / Dietz shape-factor sensitivity changes simulation inputs but not the analytical helper. Required follow-up: pass producer position or explicit shape factor into the depletion analytical adapter, update comparison builders, and add tests proving center/corner analytical curves diverge. Until fixed, treat this sensitivity as simulation-only in the UI.
 - [ ] **Analytical adapter coverage tests** — add a small contract test that every sensitivity dimension marked `affectsAnalytical: true` changes at least one input actually consumed by the analytical builder for that scenario class.
+- [ ] **Analytical method disclosure upkeep** — keep scenario-level analytical method summary/reference metadata aligned with the actual overlay path shown in the UI whenever analytical routing changes.
 - [ ] **Capillary-pressure documentation gap** — document the current Brooks-Corey cap at `20 × P_entry` in user-facing docs and note that it is a numerical stabilization, not a physical plateau.
 - [ ] **SwProfile output status** — `SwProfileChart.svelte` still exists, but the card is commented out in `App.svelte`. Either restore it as a supported output or remove the stale component/docs references.
 - [ ] **Benchmark acceptance policy refresh** — keep the current coarse 25–30% Buckley-Leverett thresholds as regression guards if needed, but add a tighter validation target tier based on the observed refined-grid behavior (currently about 2.5–3.1%).
@@ -121,6 +122,12 @@ The Stiles (1949) method is the natural upgrade for the layered-reservoir case. 
 4. Exactly satisfies material balance by construction (no local-PVI approximation)
 
 This eliminates limitation A entirely and gives exact RF under the DP assumptions (B, C, D, E, F still apply). Implementation: ~100 lines in `sweepEfficiency.ts`, no new dependencies.
+
+#### Future: Multi-method sweep comparison framework
+- [ ] Implement three selectable analytical sweep methods for the same scenario family: current local-PVI approximation, Stiles layer-by-layer method, and a stream-tube / flow-unit method for full-field heterogeneity.
+- [ ] Add side-by-side comparison views so sensitivity studies can show how method choice changes RF, breakthrough timing, and sweep penalties rather than presenting one analytical curve as authoritative.
+- [ ] Keep the current approximation as the fast baseline / teaching mode even after higher-fidelity methods land.
+- [ ] Introduce a compact flow-unit abstraction so random areal heterogeneity can be represented analytically without requiring the full simulator output as the only source of truth.
 
 ---
 

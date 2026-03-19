@@ -75,11 +75,14 @@ describe('ChartSubPanel architecture checks', () => {
     expect(/toggleCurveGroup/.test(subPanelSrc)).toBe(true);
     expect(/curveToggleGroups/.test(subPanelSrc)).toBe(true);
     expect(/visibleCurveGroups/.test(subPanelSrc)).toBe(true);
+    expect(/getCurveToggleGroupKey/.test(subPanelSrc)).toBe(true);
   });
 
   it('recreates the chart when the curve schema changes', () => {
     expect(/mountedChartSchemaSignature/.test(subPanelSrc)).toBe(true);
     expect(/chart\.data\.datasets\.length\s*!==\s*curves\.length/.test(subPanelSrc)).toBe(true);
+    expect(/getCurveDatasetKey/.test(subPanelSrc)).toBe(true);
+    expect(/_datasetKey/.test(subPanelSrc)).toBe(true);
   });
 
   it('contains axis bounds logic', () => {

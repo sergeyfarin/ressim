@@ -2,6 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { getScenario, getScenarioWithVariantParams } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
+    it('provides analytical method metadata for every canonical scenario', () => {
+        const scenarioKeys = [
+            'wf_bl1d',
+            'sweep_areal',
+            'sweep_vertical',
+            'sweep_combined',
+            'dep_pss',
+            'dep_decline',
+            'gas_injection',
+            'gas_drive',
+        ];
+
+        for (const key of scenarioKeys) {
+            const scenario = getScenario(key);
+            expect(scenario?.analyticalMethodSummary?.length).toBeGreaterThan(10);
+            expect(scenario?.analyticalMethodReference?.length).toBeGreaterThan(5);
+        }
+    });
+
     it('adds a seeded areal heterogeneity axis for the areal sweep scenario', () => {
         const scenario = getScenario('sweep_areal');
 

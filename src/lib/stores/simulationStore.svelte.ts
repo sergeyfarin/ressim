@@ -802,8 +802,10 @@ class SimulationStoreImpl {
         this.referenceSweepError = '';
 
         const savedSteps = this.steps; // preserve user's run-control override
+        const savedDeltaTDays = this.delta_t_days;
         this.applyCaseParams(nextSpec.params);
         this.steps = savedSteps;
+        this.delta_t_days = savedDeltaTDays;
         this.modelNeedsReinit = false;
         this.modelReinitNotice = '';
         this.pendingAutoReinit = false;
@@ -1610,6 +1612,8 @@ class SimulationStoreImpl {
             : 'depletion' as const;
         const baseParams = scenario.params;
         const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
+        const runSteps = Math.max(1, Math.round(Number(this.steps ?? baseParams.steps ?? 240)));
+        const runDeltaTDays = Number(this.delta_t_days ?? baseParams.delta_t_days ?? 0.125);
 
         const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
 
@@ -1632,8 +1636,8 @@ class SimulationStoreImpl {
                 label: `${scenario.label} — ${variant.label}`,
                 description: variant.description,
                 params: variantParams,
-                steps: Number(variantParams.steps ?? baseParams.steps ?? 240),
-                deltaTDays: Number(variantParams.delta_t_days ?? baseParams.delta_t_days ?? 0.125),
+                steps: runSteps,
+                deltaTDays: runDeltaTDays,
                 historyInterval: 1,
                 reference: analyticalRef,
                 comparisonMetric: null,

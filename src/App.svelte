@@ -21,7 +21,7 @@
     const runtime = store.runtimeState;
 
     // ---------- UI-only state ----------
-    let theme: "dark" | "light" = $state("dark");
+    let theme: "dark" | "light" = $state("light");
     let showDebugState = $state(false);
     let showProperty: "pressure" | "saturation_water" | "saturation_oil" =
         $state("pressure");

@@ -67,6 +67,8 @@ export type Scenario = {
     key: string;
     label: string;
     description: string;
+    analyticalMethodSummary: string;
+    analyticalMethodReference: string;
     /** Physical classification — drives analytical solution routing. */
     scenarioClass: ScenarioClass;
     /** UI domain — controls which tab this scenario appears under. */
@@ -222,6 +224,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'wf_bl1d',
         label: '1D Waterflood',
         description: '1D Buckley-Leverett waterflood. Viscous-dominated displacement; no gravity or capillary pressure. Numerical solution converges to the analytical shock as grid is refined. — Buckley & Leverett (1942)',
+        analyticalMethodSummary: 'Analytical overlay uses the Buckley-Leverett fractional-flow solution with Welge shock construction to predict breakthrough and recovery.',
+        analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
         domain: 'waterflood',
         chartPreset: 'waterflood',
@@ -448,6 +452,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'sweep_areal',
         label: 'Areal Sweep (XY)',
         description: 'Five-spot areal sweep efficiency. E_A at breakthrough depends strongly on end-point mobility ratio. E_A(BT) ≈ 0.70 at M = 1, drops sharply for unfavourable M > 1. — Craig (1971)',
+        analyticalMethodSummary: 'Analytical overlay uses Craig five-spot areal sweep correlations; random areal heterogeneity variants keep that curve as baseline context and read the extra penalty from simulation.',
+        analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
         scenarioClass: 'waterflood',
         domain: 'sweep',
         chartPreset: 'waterflood',
@@ -616,6 +622,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'sweep_vertical',
         label: 'Vertical Sweep (XZ)',
         description: 'Dykstra-Parsons vertical sweep efficiency for non-communicating layers. Higher V_DP → more heterogeneity → earlier breakthrough in fast layers → lower E_V. — Dykstra & Parsons (1950)',
+        analyticalMethodSummary: 'Analytical overlay uses the Dykstra-Parsons non-communicating layered sweep model, paired with Buckley-Leverett displacement efficiency.',
+        analyticalMethodReference: 'Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
         domain: 'sweep',
         chartPreset: 'waterflood',
@@ -757,6 +765,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'sweep_combined',
         label: 'Combined Sweep (3D)',
         description: 'Volumetric sweep E_vol = E_A × E_V in a 3D flood. Use the interaction axis to isolate mobility-versus-layering effects, and the penalty-buildup axis to add full-field heterogeneity without exploding the case count. — Craig (1971), Dykstra & Parsons (1950)',
+        analyticalMethodSummary: 'Analytical overlay uses the current factorized sweep model: Craig areal sweep, Dykstra-Parsons vertical sweep, and Buckley-Leverett recovery linked through the local-PVI approximation.',
+        analyticalMethodReference: 'Craig (1971); Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
         scenarioClass: 'waterflood',
         domain: 'sweep',
         chartPreset: 'waterflood',
@@ -938,6 +948,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'dep_pss',
         label: 'Pressure Depletion',
         description: 'Pseudo-steady-state depletion of a bounded square reservoir. Well location determines the Dietz shape factor C_A, which sets the characteristic decline time. — Dietz (1965)',
+        analyticalMethodSummary: 'Analytical overlay uses the Dietz pseudo-steady-state bounded-drainage model, with well position represented through the drainage shape factor.',
+        analyticalMethodReference: 'Dietz (1965); standard pseudo-steady-state productivity-index formulation.',
         scenarioClass: 'depletion',
         domain: 'depletion',
         chartPreset: 'depletion',
@@ -1116,6 +1128,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'dep_decline',
         label: 'Rate Decline',
         description: 'Constant-BHP exponential decline. Fetkovich showed that all finite-reservoir wells exhibit exponential decline at long producing times. PI controls rate; c_t controls duration. — Fetkovich (1971)',
+        analyticalMethodSummary: 'Analytical overlay uses a Fetkovich-style exponential decline reference for constant-BHP production from a finite reservoir.',
+        analyticalMethodReference: 'Fetkovich (1971).',
         scenarioClass: 'depletion',
         domain: 'depletion',
         chartPreset: 'fetkovich',
@@ -1257,6 +1271,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'gas_injection',
         label: 'Gas Injection',
         description: 'Gas injector displacing oil in a 1D homogeneous reservoir. No initial free gas. Experimental — no analytical reference solution. Known physics issues: see TODO.md.',
+        analyticalMethodSummary: 'This scenario is currently simulation-only. No analytical overlay is shown while the three-phase gas-injection model remains under validation.',
+        analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
         scenarioClass: '3phase',
         domain: 'gas',
         chartPreset: 'depletion',
@@ -1306,6 +1322,8 @@ export const SCENARIOS: Scenario[] = [
         key: 'gas_drive',
         label: 'Solution Gas Drive',
         description: 'Pressure depletion with initial free gas — models a reservoir already below bubble point. Experimental — no analytical reference solution. Known physics issues: see TODO.md.',
+        analyticalMethodSummary: 'This scenario is currently simulation-only. No analytical overlay is shown while three-phase depletion physics remains experimental.',
+        analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
         scenarioClass: '3phase',
         domain: 'gas',
         chartPreset: 'depletion',

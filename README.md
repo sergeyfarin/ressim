@@ -11,6 +11,26 @@ A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physi
 - **Three-phase support** (experimental): oil/water/gas simulation via Stone II relative permeability is implemented, but important three-phase correctness gaps remain. See `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` and `TODO.md`.
 - **Execution model**: all scenarios initialize and run directly in browser-side WASM; no pre-run artifact pipeline.
 
+## Analytical Methods By Scenario
+
+The scenario picker now states which analytical method is being shown for the active scenario. The current mapping is:
+
+| Scenario | Analytical method shown | Reference |
+|----------|-------------------------|-----------|
+| `wf_bl1d` | Buckley-Leverett fractional-flow solution with Welge shock construction | Buckley and Leverett (1942); Welge (1952) |
+| `sweep_areal` | Craig confined five-spot areal sweep correlation | Craig (1971); Dyes, Caudle, and Erickson (1954) |
+| `sweep_vertical` | Dykstra-Parsons non-communicating layered sweep with Buckley-Leverett displacement efficiency | Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952) |
+| `sweep_combined` | Current factorized sweep model: Craig areal sweep × Dykstra-Parsons vertical sweep × Buckley-Leverett recovery through the local-PVI approximation | Craig (1971); Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952) |
+| `dep_pss` | Dietz pseudo-steady-state bounded-drainage decline model | Dietz (1965) |
+| `dep_decline` | Fetkovich-style exponential decline reference | Fetkovich (1971) |
+| `gas_injection` | No analytical overlay yet; simulation-only | No validated analytical reference currently wired |
+| `gas_drive` | No analytical overlay yet; simulation-only | No validated analytical reference currently wired |
+
+Important interpretation note:
+
+- `sweep_areal` random-heterogeneity variants remain simulation-dominant; the Craig curve stays as baseline context rather than a full-field heterogeneity model.
+- `sweep_combined` still uses the current first-order local-PVI approximation. Planned future upgrades include Stiles and stream-tube / flow-unit methods; see `TODO.md`.
+
 ## Features
 
 ### Simulation Engine (Rust → WASM)
@@ -75,13 +95,13 @@ Current scenarios (`src/lib/catalog/scenarios.ts`) — 8 canonical entries after
 | Domain | Key | Sensitivity dimensions |
 |--------|-----|------------------------|
 | Waterflood | `wf_bl1d` | Mobility ratio, Corey n_o, S_or, capillary, grid |
-| Sweep | `sweep_areal` | Mobility ratio, S_or |
+| Sweep | `sweep_areal` | Mobility ratio, areal heterogeneity, S_or |
 | Sweep | `sweep_vertical` | V_DP heterogeneity, mobility ratio |
-| Sweep | `sweep_combined` | Mobility + heterogeneity |
+| Sweep | `sweep_combined` | Mobility × vertical heterogeneity, penalty buildup |
 | Depletion | `dep_pss` | Well location, skin, permeability, compressibility |
 | Depletion | `dep_decline` | Skin, permeability |
-| Gas | `gas_injection` | Mobility, S_gc, permeability |
-| Gas | `gas_solution_drive` | Initial gas saturation, c_o |
+| Gas | `gas_injection` | None yet |
+| Gas | `gas_drive` | None yet |
 
 ## Unit System
 
