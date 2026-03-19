@@ -1083,23 +1083,24 @@ class SimulationStoreImpl {
                 } else {
                     this.referenceSweepRunning = false;
                     this.restoreActiveReferenceBaseDisplay();
-                    const completionMsg = `Reference run set completed ${this.referenceRunResults.length} run(s).`;
-                    if (this.referenceConvergenceWarnings.length > 0) {
-                        this.runtimeWarning = `${completionMsg} Convergence issues in: ${this.referenceConvergenceWarnings.join(', ')}.`;
-                    } else {
-                        this.runtimeWarning = completionMsg;
-                    }
+                    this.solverWarning = this.referenceConvergenceWarnings.length > 0
+                        ? `Convergence issues during sweep — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
+                        : '';
+                    this.runtimeWarning = '';
                 }
                 return;
             }
             if (this.pendingAutoReinit) {
                 this.pendingAutoReinit = false;
                 const reinitialized = this.initSimulator({ silent: true });
+                this.solverWarning = '';
                 this.runtimeWarning = reinitialized
                     ? 'Inputs changed. Model reset to step 0.'
                     : this.runtimeWarning;
-            } else if (this.convergenceHitCount > 0) {
-                this.runtimeWarning = `Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} during the run — check charts for anomalies.`;
+            } else {
+                this.solverWarning = this.convergenceHitCount > 0
+                    ? `Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} during the run — check charts for anomalies.`
+                    : '';
             }
             return;
         }
@@ -1117,32 +1118,33 @@ class SimulationStoreImpl {
                     this.updateProfileStats(message.profile, this.profileStats.renderApplyMs);
                 }
                 this.restoreActiveReferenceBaseDisplay();
-                const stoppedMsg = `Reference run set stopped after ${this.referenceRunsCompleted} completed run(s).`;
                 if (this.convergenceHitCount > 0) {
                     this.referenceConvergenceWarnings = [
                         ...this.referenceConvergenceWarnings,
                         `"${this.convergenceHitCaseName}" (${this.convergenceHitCount}×, partial)`,
                     ];
                 }
-                this.runtimeWarning = this.referenceConvergenceWarnings.length > 0
-                    ? `${stoppedMsg} Convergence issues in: ${this.referenceConvergenceWarnings.join(', ')}.`
-                    : stoppedMsg;
+                this.solverWarning = this.referenceConvergenceWarnings.length > 0
+                    ? `Convergence issues during sweep — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
+                    : '';
+                this.runtimeWarning = `Reference run set stopped after ${this.referenceRunsCompleted} completed run(s).`;
                 return;
             }
             if (this.pendingAutoReinit) {
                 this.pendingAutoReinit = false;
                 const reinitialized = this.initSimulator({ silent: true });
+                this.solverWarning = '';
                 this.runtimeWarning = reinitialized
                     ? 'Inputs changed during the run. Model reset to step 0.'
                     : this.runtimeWarning;
                 return;
             }
-            const stoppedStepsMsg = message.reason === 'user'
+            this.solverWarning = this.convergenceHitCount > 0
+                ? `Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} during the run — check charts for anomalies.`
+                : '';
+            this.runtimeWarning = message.reason === 'user'
                 ? `Simulation stopped after ${Number(message.completedSteps ?? 0)} step(s).`
                 : 'No running simulation to stop.';
-            this.runtimeWarning = this.convergenceHitCount > 0
-                ? `${stoppedStepsMsg} Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} — check charts for anomalies.`
-                : stoppedStepsMsg;
             this.currentRunTotalSteps = 0;
             this.currentRunStepsCompleted = 0;
             if ('profile' in message && message.profile) {
