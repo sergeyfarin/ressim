@@ -12,25 +12,11 @@
 
 ## Active Work
 
-### S1 — Scenario/Sensitivity Architecture Redesign
+### ~~S1 — Scenario/Sensitivity Architecture Redesign~~ ✅ COMPLETE (2026-03-19)
 
-**Goal:** Consolidate 18 scenarios into ~6 canonical scenarios, each with multiple selectable sensitivity dimensions. Replace the single `sensitivity?` slot per scenario with a `sensitivities[]` array so the same base physics can be explored across different parameter axes without requiring separate scenario entries.
+Consolidated 18 scenarios → 8 canonical scenarios (6 + 2 gas); replaced single `sensitivity?` slot with `sensitivities: SensitivityDimension[]` array; multi-dimension sensitivity selection; domain grouping (Waterflood / Sweep / Depletion / Gas); `chartPresetOverride` per dimension; stale-key guard in UI; explicit params per scenario + `Object.freeze()`; `enabledByDefault?` on variants; all 28 test files pass.
 
-**Design rationale and canonical scenario map:** see REFACTOR.md § Phase 2.
-
-**Why 6 not 18:** the current list conflates *what physics to study* (scenario) with *what parameter to vary* (sensitivity dimension). BL Case A/B, Mobility Study, Corey n_o, Residual Oil, and Capillary are all 1D Waterflood with different sensitivity axes. Dietz Center/Corner differ only in producer location — a well-placement sensitivity, not a distinct scenario.
-
-- [ ] **S1.1 — Data model** — Replace `sensitivity?: ScenarioSensitivity` with `sensitivities: SensitivityDimension[]` in `Scenario` type; add `defaultSensitivityDimensionKey?`; rename `ScenarioSensitivity` → `SensitivityDimension`; keep `SensitivityVariant` unchanged. Expand max variants per dimension from 3 to 5.
-- [ ] **S1.2 — Consolidate scenarios.ts** — Merge into 6 canonical scenarios, preserving all variant data as named sensitivity dimensions. See canonical map in REFACTOR.md Phase 2. Keep existing scenario keys as aliases during transition.
-- [ ] **S1.3 — Store state** — Add `activeSensitivityDimensionKey: string | null` to store; update `selectScenario()` to initialise it from `defaultSensitivityDimensionKey`; add `selectSensitivityDimension(key)` that resets `activeVariantKeys` to the dimension's defaults; update `getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey?)`.
-- [ ] **S1.4 — ScenarioPicker UI** — Add sensitivity dimension selector (horizontal radio row or compact tabs) above the variant chips, labelled "Vary:". Variant chips update when dimension changes. Analytical indicator reflects selected dimension's `affectsAnalytical` field. Show dimension selector only when scenario has >1 dimension.
-- [ ] **S1.5 — Chart preset per dimension** — Add optional `chartPresetOverride?: string` to `SensitivityDimension` so e.g. the Grid dimension can default to a diagnostics-focused view while Mobility defaults to the rates view. Wire override through chart preset selection in store.
-- [ ] **S1.6 — Domain tabs** — Add Waterflood | Sweep | Depletion | Gas domain filter tabs to ScenarioPicker. Map existing `scenarioClass` to domain. Gas tab hidden until gas scenarios are production-ready.
-- [ ] **S1.7 — Update tests** — Scenario count, dimension count, variant count, store state transitions, ScenarioPicker dimension selector rendering.
-
-Acceptance: six scenario buttons; "Vary:" selector switches sensitivity axis; variant chips update; run label reads "Run 3 Variants" or "Run 5 Variants" as appropriate. Identical physics coverage to today — just better organized.
-
-Primary files: `src/lib/catalog/scenarios.ts`, `src/lib/ui/modes/ScenarioPicker.svelte`, `src/lib/stores/simulationStore.svelte.ts`
+See REFACTOR.md § Phase 2 for full design spec and canonical scenario map.
 
 ---
 
@@ -193,3 +179,4 @@ Intentional simplifications documented here for clarity. Not bugs.
 - **Simplification Refactor Steps 1–6** (2026-03-17): `scenarios.ts` + `ScenarioPicker.svelte` replace `ModePanel.svelte` + 4-layer case-library navigation. Store wired. `evaluateAnalyticalStatus` moved to `warningPolicy.ts`. `buildScenarioNavigationState` removed from store. `ModePanel.svelte` deleted. All 204 tests pass.
 - **Run Controls UX** (2026-03-19): Stop button shows "Stopping…" immediately; `stopPending` state added. Steps-reset bug on scenario run fixed (save/restore `this.steps` around `applyCaseParams`).
 - **Sweep Efficiency** (2026-03-19): Analytical sweep efficiency module (`sweepEfficiency.ts`): Craig (1971) areal sweep, Dykstra-Parsons (1950) vertical sweep, volumetric product. `SweepEfficiencyChart.svelte` renders E_A, E_V, E_A × E_V curves. Four new sweep scenarios: Areal–Mobility, Areal–Residual, Vertical–V_DP, Combined Sweep.
+- **S1 — Scenario/Sensitivity Architecture Redesign** (2026-03-19): Consolidated 18 scenarios → 8 canonical scenarios with multi-dimension sensitivity selection. New types `ScenarioDomain`, `SensitivityDimension`; `sensitivities: SensitivityDimension[]` replaces `sensitivity?`; domain grouping in ScenarioPicker; `chartPresetOverride` per dimension; stale-key guard; explicit params + `Object.freeze()`; `enabledByDefault?` on variants; `activeSensitivityDimensionKey` in store; `selectSensitivityDimension()` action; 28/28 tests pass.

@@ -41,8 +41,12 @@
     // Drives per-result vs shared analytical curve rendering in the comparison chart.
     const analyticalPerVariant = $derived.by(() => {
         const sc = scenario.activeScenarioObject;
-        if (!sc?.sensitivity) return false;
-        return sc.sensitivity.variants
+        if (!sc) return false;
+        const activeDim = sc.sensitivities.find(
+            (d) => d.key === scenario.activeSensitivityDimensionKey,
+        );
+        if (!activeDim) return false;
+        return activeDim.variants
             .filter((v) => scenario.activeVariantKeys.includes(v.key))
             .some((v) => v.affectsAnalytical);
     });
@@ -169,7 +173,12 @@
 
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (scenario.activeScenarioObject) {
-            return getChartPreset(scenario.activeScenarioObject.chartPreset);
+            // If the active sensitivity dimension has a chart preset override, use it.
+            const activeDim = scenario.activeScenarioObject.sensitivities.find(
+                (d) => d.key === scenario.activeSensitivityDimensionKey,
+            );
+            const presetKey = activeDim?.chartPresetOverride ?? scenario.activeScenarioObject.chartPreset;
+            return getChartPreset(presetKey);
         }
         if (activeReferenceFamily) {
             return getReferenceRateChartLayoutConfig({
@@ -182,8 +191,9 @@
 
     function handleRun() {
         const scenarioKey = scenario.activeScenarioKey;
-        if (scenarioKey && !scenario.isCustomMode && scenario.activeVariantKeys.length > 0) {
-            runtime.runScenarioSweep(scenarioKey, scenario.activeVariantKeys);
+        const dimensionKey = scenario.activeSensitivityDimensionKey;
+        if (scenarioKey && dimensionKey && !scenario.isCustomMode && scenario.activeVariantKeys.length > 0) {
+            runtime.runScenarioSweep(scenarioKey, dimensionKey, scenario.activeVariantKeys);
         } else {
             runtime.runSteps();
         }
@@ -291,7 +301,7 @@
         await loadThreeDViewModule();
         await tick();
 
-        scenario.selectScenario("wf_bl_case_a");
+        scenario.selectScenario("wf_bl1d");
     });
 
     onDestroy(() => {
@@ -404,6 +414,7 @@
         <section class="space-y-2">
         <ScenarioPicker
             activeScenarioKey={scenario.activeScenarioKey}
+            activeSensitivityDimensionKey={scenario.activeSensitivityDimensionKey}
             activeVariantKeys={scenario.activeVariantKeys}
             isCustom={scenario.isCustomMode}
             activeMode={scenario.activeMode}
@@ -417,6 +428,7 @@
             referenceProvenance={scenario.referenceProvenance}
             referenceSweepRunning={runtime.referenceSweepRunning}
             onSelectScenario={(key) => scenario.selectScenario(key)}
+            onSelectSensitivityDimension={(key) => scenario.selectSensitivityDimension(key)}
             onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
             onEnterCustomMode={() => scenario.enterCustomMode()}
             onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}

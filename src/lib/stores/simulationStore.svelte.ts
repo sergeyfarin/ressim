@@ -39,7 +39,7 @@ import {
     type ValidationWarning,
 } from '../validateInputs';
 import { buildWarningPolicy, evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
-import { getScenario, getScenarioWithVariantParams } from '../catalog/scenarios';
+import { getScenario, getScenarioWithVariantParams, getDefaultVariantKeys } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
@@ -277,6 +277,7 @@ class SimulationStoreImpl {
 
     // Scenario-picker state
     activeScenarioKey: string | null = $state(null);
+    activeSensitivityDimensionKey: string | null = $state(null);
     activeVariantKeys: string[] = $state([]);
     isCustomMode = $state(false);
 
@@ -1539,8 +1540,15 @@ class SimulationStoreImpl {
         this.activeComparisonSelection = buildComparisonSelection();
         this.clearReferenceRunnerState(true);
 
-        this.activeVariantKeys = scenario.sensitivity?.variants.map((v) => v.key) ?? [];
+        // Initialise sensitivity dimension and pre-select enabled variants.
+        const defaultDimKey = scenario.defaultSensitivityDimensionKey ?? scenario.sensitivities[0]?.key ?? null;
+        this.activeSensitivityDimensionKey = defaultDimKey;
+        const defaultDim = scenario.sensitivities.find((d) => d.key === defaultDimKey) ?? null;
+        this.activeVariantKeys = defaultDim ? getDefaultVariantKeys(defaultDim) : [];
 
+        // Resolve CaseMode from scenarioClass.
+        // NOTE: '3phase' scenarios currently fall through to 'dep' — this is a known
+        // limitation. Gas scenarios should set activeMode to '3p' in a future pass.
         const nextMode: CaseMode = scenario.scenarioClass === 'waterflood' ? 'wf' : 'dep';
         this.activeMode = nextMode;
         this.toggles = getDefaultToggles(nextMode);
@@ -1549,6 +1557,24 @@ class SimulationStoreImpl {
 
         this.applyCaseParams(scenario.params);
         this.baseCaseSignature = this.buildCaseSignature();
+    }
+
+    /**
+     * Switch the active sensitivity dimension for the current scenario.
+     * Resets activeVariantKeys to the new dimension's default-enabled variants.
+     */
+    selectSensitivityDimension(dimensionKey: string) {
+        const scenario = this.activeScenarioObject;
+        if (!scenario) return;
+        const dimension = scenario.sensitivities.find((d) => d.key === dimensionKey);
+        if (!dimension) {
+            if (import.meta.env.DEV) {
+                console.warn(`[store] selectSensitivityDimension: unknown key "${dimensionKey}" for scenario "${scenario.key}"`);
+            }
+            return;
+        }
+        this.activeSensitivityDimensionKey = dimensionKey;
+        this.activeVariantKeys = getDefaultVariantKeys(dimension);
     }
 
     toggleScenarioVariant(variantKey: string) {
@@ -1564,10 +1590,19 @@ class SimulationStoreImpl {
 
     buildScenarioSweepSpecs(
         scenarioKey: string,
+        dimensionKey: string,
         variantKeys: string[],
     ): import('../benchmarkRunModel').BenchmarkRunSpec[] {
         const scenario = getScenario(scenarioKey);
         if (!scenario) return [];
+
+        const dimension = scenario.sensitivities.find((d) => d.key === dimensionKey);
+        if (!dimension) {
+            if (import.meta.env.DEV) {
+                console.warn(`[store] buildScenarioSweepSpecs: unknown dimensionKey "${dimensionKey}" for scenario "${scenarioKey}"`);
+            }
+            return [];
+        }
 
         const scenarioClass = scenario.scenarioClass === 'waterflood'
             ? 'buckley-leverett' as const
@@ -1578,11 +1613,16 @@ class SimulationStoreImpl {
         const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
 
         for (const variantKey of variantKeys) {
-            const variant = scenario.sensitivity?.variants.find((v) => v.key === variantKey);
-            if (!variant) continue;
-            const variantParams = getScenarioWithVariantParams(scenarioKey, variantKey);
+            const variant = dimension.variants.find((v) => v.key === variantKey);
+            if (!variant) {
+                if (import.meta.env.DEV) {
+                    console.warn(`[store] buildScenarioSweepSpecs: unknown variantKey "${variantKey}" in dimension "${dimensionKey}"`);
+                }
+                continue;
+            }
+            const variantParams = getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey);
             specs.push({
-                key: `${scenarioKey}__${variantKey}`,
+                key: `${scenarioKey}__${dimensionKey}__${variantKey}`,
                 caseKey: scenarioKey,
                 familyKey: scenarioKey,
                 scenarioClass,
@@ -1604,14 +1644,14 @@ class SimulationStoreImpl {
         return specs;
     }
 
-    runScenarioSweep(scenarioKey: string, variantKeys: string[]): boolean {
+    runScenarioSweep(scenarioKey: string, dimensionKey: string, variantKeys: string[]): boolean {
         if (!this.wasmReady || !this.simWorker) {
             this.runtimeError = 'WASM not ready yet.';
             return false;
         }
         if (this.workerRunning || this.referenceSweepRunning) return false;
 
-        const specs = this.buildScenarioSweepSpecs(scenarioKey, variantKeys);
+        const specs = this.buildScenarioSweepSpecs(scenarioKey, dimensionKey, variantKeys);
         if (specs.length === 0) return false;
 
         this.clearReferenceRunnerState(true);

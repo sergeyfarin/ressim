@@ -53,7 +53,7 @@ describe("Scenario picker composition", () => {
   it("binds section components directly instead of routing through wrapper-only field panels", () => {
     expect(scenarioSectionsSource).toMatch(/bind:well_radius=\{params\.well_radius\}/);
     expect(scenarioSectionsSource).toMatch(/bind:delta_t_days=\{params\.delta_t_days\}/);
-    expect(scenarioSectionsSource).toMatch(/bind:initialPressure=\{params\.initialPressure\}/);
+    expect(scenarioSectionsSource).toMatch(/bindings=\{params\}/);
     expect(scenarioSectionsSource).toMatch(/bind:analyticalSolutionMode=\{params\.analyticalSolutionMode\}/);
     expect(scenarioSectionsSource).not.toMatch(/GridFieldsPanel|ReservoirFieldsPanel|WellsFieldsPanel|TimestepFieldsPanel|AnalyticalFieldsPanel/);
   });

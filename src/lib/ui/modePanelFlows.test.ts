@@ -21,9 +21,9 @@ describe('scenario picker flows', () => {
   });
 
   it('shows sensitivity variant chips when the scenario has a sensitivity axis', () => {
-    expect(scenarioPickerSource).toMatch(/sensitivity\.variants/);
+    expect(scenarioPickerSource).toMatch(/activeDimension\.variants/);
     expect(scenarioPickerSource).toMatch(/onToggleVariant/);
     expect(scenarioPickerSource).toMatch(/ui-chip/);
-    expect(scenarioPickerSource).toMatch(/activeVariantKeys\.includes/);
+    expect(scenarioPickerSource).toMatch(/validActiveVariantKeys\.includes/);
   });
 });

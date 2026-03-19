@@ -47,7 +47,7 @@ These files still have active production imports and cannot yet be deleted:
 
 **Goal:** Replace the current model — 18 scenarios each with one optional sensitivity dimension — with ~6 canonical scenarios each supporting multiple selectable sensitivity dimensions.
 
-**Status:** Design complete. Implementation tracked in `TODO.md` items S1.1–S1.7.
+**Status:** ✅ Complete (2026-03-19). 28/28 tests pass.
 
 ### The Problem
 

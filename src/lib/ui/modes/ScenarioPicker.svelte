@@ -3,7 +3,7 @@
   import Card from "../controls/Card.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
-  import { SCENARIOS, getScenario, type Scenario } from "../../catalog/scenarios";
+  import { SCENARIOS, getScenario, type Scenario, type ScenarioDomain } from "../../catalog/scenarios";
   import type { CaseMode, ToggleState } from "../../catalog/caseCatalog";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
   import type { WarningPolicy } from "../../warningPolicy";
@@ -15,6 +15,7 @@
 
   let {
     activeScenarioKey = null,
+    activeSensitivityDimensionKey = null,
     activeVariantKeys = [],
     isCustom = false,
     activeMode = "wf",
@@ -28,6 +29,7 @@
     referenceProvenance = null,
     referenceSweepRunning = false,
     onSelectScenario = () => {},
+    onSelectSensitivityDimension = () => {},
     onToggleVariant = () => {},
     onEnterCustomMode = () => {},
     onCloneReferenceToCustom = () => {},
@@ -36,6 +38,7 @@
     onParamEdit = () => {},
   }: {
     activeScenarioKey?: string | null;
+    activeSensitivityDimensionKey?: string | null;
     activeVariantKeys?: string[];
     isCustom?: boolean;
     activeMode?: CaseMode;
@@ -49,6 +52,7 @@
     referenceProvenance?: ReferenceProvenance | null;
     referenceSweepRunning?: boolean;
     onSelectScenario?: (key: string) => void;
+    onSelectSensitivityDimension?: (key: string) => void;
     onToggleVariant?: (variantKey: string) => void;
     onEnterCustomMode?: () => void;
     onCloneReferenceToCustom?: () => void;
@@ -57,16 +61,47 @@
     onParamEdit?: () => void;
   } = $props();
 
+  // ── Derived scenario state ──────────────────────────────────────────────────
+
   const activeScenario = $derived(
     !isCustom && activeScenarioKey ? getScenario(activeScenarioKey) : null,
   );
 
-  const sensitivity = $derived(activeScenario?.sensitivity ?? null);
+  // Active sensitivity dimension, resolved from the scenario's sensitivities array.
+  const activeDimension = $derived.by(() => {
+    if (!activeScenario) return null;
+    if (!activeSensitivityDimensionKey) return activeScenario.sensitivities[0] ?? null;
+    return activeScenario.sensitivities.find((d) => d.key === activeSensitivityDimensionKey) ?? null;
+  });
 
-  // True if any variant in this sensitivity updates the analytical solution.
-  const sensitivityAffectsAnalytical = $derived(
-    sensitivity?.variants.some((v) => v.affectsAnalytical) ?? false,
+  // Guard: only include variant keys that actually belong to the active dimension.
+  // Prevents stale keys from a previous scenario/dimension from lingering in the UI.
+  const validActiveVariantKeys = $derived.by(() => {
+    if (!activeDimension) return [];
+    const validKeys = new Set(activeDimension.variants.map((v) => v.key));
+    return activeVariantKeys.filter((k) => validKeys.has(k));
+  });
+
+  // True if any selected variant in the active dimension updates the analytical solution.
+  const dimensionAffectsAnalytical = $derived.by(() => {
+    if (!activeDimension) return false;
+    return activeDimension.variants
+      .filter((v) => validActiveVariantKeys.includes(v.key))
+      .some((v) => v.affectsAnalytical);
+  });
+
+  // True if any variant in the dimension is analytical-affecting (used for footer text).
+  const anyVariantAffectsAnalytical = $derived(
+    activeDimension?.variants.some((v) => v.affectsAnalytical) ?? false,
   );
+
+  // Scenario groups by domain, ordered for display.
+  const DOMAIN_GROUPS: { domain: ScenarioDomain; label: string }[] = [
+    { domain: 'waterflood', label: 'Waterflood' },
+    { domain: 'sweep',      label: 'Sweep' },
+    { domain: 'depletion',  label: 'Depletion' },
+    { domain: 'gas',        label: 'Gas' },
+  ];
 
   function formatParamSummary(scenario: Scenario): string {
     const p = scenario.params;
@@ -99,52 +134,32 @@
   <div class="p-3 space-y-2">
     <div class="ui-panel-kicker text-muted-foreground">Scenario</div>
     <div class="flex flex-wrap items-start gap-2">
-    <!-- Waterflood group -->
-    <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
-      {#each SCENARIOS.filter((s) => s.scenarioClass === "waterflood") as scenario}
-        <Button
-          size="sm"
-          variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-          onclick={() => onSelectScenario(scenario.key)}
-        >
-          {scenario.label}
-        </Button>
+
+      {#each DOMAIN_GROUPS as group}
+        {@const groupScenarios = SCENARIOS.filter((s) => s.domain === group.domain)}
+        {#if groupScenarios.length > 0 && (group.domain !== 'gas' || activeMode === '3p')}
+          <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
+            {#each groupScenarios as scenario}
+              <Button
+                size="sm"
+                variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
+                onclick={() => onSelectScenario(scenario.key)}
+              >
+                {scenario.label}
+              </Button>
+            {/each}
+          </div>
+        {/if}
       {/each}
-    </div>
-    <!-- Depletion group -->
-    <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
-      {#each SCENARIOS.filter((s) => s.scenarioClass === "depletion") as scenario}
-        <Button
-          size="sm"
-          variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-          onclick={() => onSelectScenario(scenario.key)}
-        >
-          {scenario.label}
-        </Button>
-      {/each}
-    </div>
-    <!-- Three-phase group (only shown when activeMode === '3p') -->
-    {#if activeMode === "3p"}
-      <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
-        {#each SCENARIOS.filter((s) => s.scenarioClass === "3phase") as scenario}
-          <Button
-            size="sm"
-            variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-            onclick={() => onSelectScenario(scenario.key)}
-          >
-            {scenario.label}
-          </Button>
-        {/each}
-      </div>
-    {/if}
-    <!-- Custom -->
-    <Button
-      size="sm"
-      variant={isCustom ? "default" : "outline"}
-      onclick={onEnterCustomMode}
-    >
-      Custom
-    </Button>
+
+      <!-- Custom -->
+      <Button
+        size="sm"
+        variant={isCustom ? "default" : "outline"}
+        onclick={onEnterCustomMode}
+      >
+        Custom
+      </Button>
     </div>
   </div>
 
@@ -162,35 +177,60 @@
       </p>
     </div>
 
-    <!-- ── Sensitivity selector ── -->
-    {#if sensitivity}
-      <div class="border-t border-border/50 px-3 py-2 space-y-1.5">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="ui-subsection-kicker">{sensitivity.label}:</span>
-          {#each sensitivity.variants as variant}
-            <button
-              type="button"
-              class={`ui-chip cursor-pointer transition-colors ${
-                activeVariantKeys.includes(variant.key)
-                  ? "border-primary/60 bg-primary/10 text-foreground"
-                  : "border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              }`}
-              title={variant.description}
-              onclick={() => onToggleVariant(variant.key)}
-            >
-              {variant.label}
-            </button>
-          {/each}
-        </div>
-        {#if sensitivityAffectsAnalytical}
+    <!-- ── Sensitivity panel ── -->
+    {#if activeScenario.sensitivities.length > 0}
+      <div class="border-t border-border/50 px-3 py-2 space-y-2">
+
+        <!-- Dimension selector — only shown when there are multiple dimensions -->
+        {#if activeScenario.sensitivities.length > 1}
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="ui-subsection-kicker text-muted-foreground">Vary:</span>
+            {#each activeScenario.sensitivities as dim}
+              <button
+                type="button"
+                class={`ui-chip cursor-pointer transition-colors ${
+                  activeDimension?.key === dim.key
+                    ? "border-primary/70 bg-primary/15 text-foreground font-medium"
+                    : "border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+                onclick={() => onSelectSensitivityDimension(dim.key)}
+              >
+                {dim.label}
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Variant chips for the active dimension -->
+        {#if activeDimension}
+          <div class="flex flex-wrap items-center gap-2">
+            {#if activeScenario.sensitivities.length === 1}
+              <span class="ui-subsection-kicker">{activeDimension.label}:</span>
+            {/if}
+            {#each activeDimension.variants as variant}
+              <button
+                type="button"
+                class={`ui-chip cursor-pointer transition-colors ${
+                  validActiveVariantKeys.includes(variant.key)
+                    ? "border-primary/60 bg-primary/10 text-foreground"
+                    : "border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+                title={variant.description}
+                onclick={() => onToggleVariant(variant.key)}
+              >
+                {variant.label}
+              </button>
+            {/each}
+          </div>
           <p class="ui-microcopy text-muted-foreground/70">
-            Analytical solution updates with each variant.
-          </p>
-        {:else}
-          <p class="ui-microcopy text-muted-foreground/70">
-            Analytical reference is grid-independent — only simulation results change.
+            {#if anyVariantAffectsAnalytical}
+              Analytical solution updates with each variant.
+            {:else}
+              Analytical reference is independent — only simulation results change.
+            {/if}
           </p>
         {/if}
+
       </div>
     {/if}
 
