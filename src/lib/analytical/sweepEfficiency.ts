@@ -334,6 +334,57 @@ export function computeVerticalSweep(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Simulation sweep efficiency (from per-cell saturation data)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute simulation sweep efficiencies from a per-cell saturation array.
+ *
+ * Cell layout: flat index = k * nx * ny + j * nx + i  (k=layer, j=col, i=row).
+ * A cell is considered "swept" if its water saturation exceeds s_wc + eps.
+ *
+ *  E_vol — volumetric: fraction of all cells that are swept.
+ *  E_A   — areal:      fraction of (i,j) columns that contain ≥1 swept cell.
+ *  E_V   — vertical:   E_vol / E_A  (layers swept within the swept area).
+ *
+ * Returns {eA, eV, eVol} in [0, 1].
+ */
+export function computeSimSweepPoint(
+    satWater: Float64Array | number[],
+    nx: number,
+    ny: number,
+    nz: number,
+    s_wc: number,
+    eps = 0.01,
+): { eA: number; eV: number; eVol: number } {
+    if (!satWater || satWater.length === 0 || nx <= 0 || ny <= 0 || nz <= 0) {
+        return { eA: 0, eV: 0, eVol: 0 };
+    }
+    const threshold = s_wc + eps;
+    let sweptCells = 0;
+    let sweptColumns = 0;
+
+    for (let j = 0; j < ny; j++) {
+        for (let i = 0; i < nx; i++) {
+            let colSwept = false;
+            for (let k = 0; k < nz; k++) {
+                if (satWater[k * nx * ny + j * nx + i] > threshold) {
+                    sweptCells++;
+                    colSwept = true;
+                }
+            }
+            if (colSwept) sweptColumns++;
+        }
+    }
+
+    const total = nx * ny * nz;
+    const eVol = sweptCells / total;
+    const eA = sweptColumns / (nx * ny);
+    const eV = eA > 1e-9 ? eVol / eA : 0;
+    return { eA, eV, eVol };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Combined volumetric sweep
 // ────────────────────────────────────────────────────────────────────────────
 

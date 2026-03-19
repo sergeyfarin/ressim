@@ -468,6 +468,7 @@ class SimulationStoreImpl {
             label: sc.label,
             description: sc.description,
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
+            showSweepPanel: sc.domain === 'sweep',
         };
     });
 

@@ -42,6 +42,8 @@
         fluidProps,
         layerPermeabilities = [],
         layerThickness = 1,
+        showSweepPanel = false,
+        sweepEfficiencySimSeries = null,
     }: {
         rateHistory?: RateHistoryPoint[];
         analyticalProductionData?: AnalyticalProductionPoint[];
@@ -58,7 +60,11 @@
         fluidProps?: FluidProps;
         layerPermeabilities?: number[];
         layerThickness?: number;
+        showSweepPanel?: boolean;
+        sweepEfficiencySimSeries?: Array<{ time: number; eA: number; eV: number; eVol: number }> | null;
     } = $props();
+
+    type SimSweepSeries = Array<{ time: number; eA: number; eV: number; eVol: number }>;
 
     // --- X-axis state (shared across all panels) ---
     type XYPoint = { x: number; y: number | null };
@@ -932,8 +938,13 @@
         ratesCurves.some((curve) => curve.label.includes("Rate")),
     );
 
-    // --- Sweep efficiency panel (waterflood only, fixed PVI x-axis) ---
-    const sweepScales = {
+    // --- Sweep efficiency panels (sweep-domain scenarios only, PVI x-axis) ---
+    //
+    // Three separate panels: Areal (E_A), Vertical (E_V), Volumetric (E_vol).
+    // Each panel shows: solid = simulation (from per-cell sat_water), dashed = analytical.
+    // Color encodes nothing extra here (single live run); solid/dashed encodes sim vs analytical.
+    //
+    const sweepScaleConfig = {
         y: {
             type: "linear",
             display: true,
@@ -945,48 +956,108 @@
             ticks: { count: 6 },
         },
     };
-    const sweepData = $derived.by(() => {
-        if ((activeMode !== "waterflood" && activeMode !== "wf") || !rockProps || !fluidProps) return null;
+
+    // Map simulation sweep history entries onto PVI x-axis using rateHistory time series.
+    function simSweepToXY(
+        series: SimSweepSeries,
+        getter: (pt: SimSweepSeries[0]) => number,
+    ): Array<{ x: number; y: number | null }> {
+        if (!series || series.length === 0) return [];
+        return series.map((pt) => {
+            // Find cumulative PVI at this simulation time by scanning rateHistory
+            const tIdx = timeValues.findIndex((t) => t >= pt.time - 1e-9);
+            const pvi = tIdx >= 0 ? (cumulatives.pvi[tIdx] ?? null) : (cumulatives.pvi.at(-1) ?? null);
+            return { x: pvi ?? 0, y: getter(pt) };
+        });
+    }
+
+    const sweepPanels = $derived.by(() => {
+        if (!showSweepPanel || !rockProps || !fluidProps) return null;
+
         const perms = layerPermeabilities.length > 0 ? layerPermeabilities : [100];
-        const sweep = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, 3.0);
-        const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
-        const toXY = (ys: number[]) => pviValues.map((x, i) => ({ x, y: ys[i] ?? null }));
-        return {
-            curves: [
-                {
-                    label: "Areal (E_A)",
-                    curveKey: "sweep-areal",
-                    toggleLabel: "Areal (E_A)",
-                    color: "#2563eb",
-                    borderWidth: 2,
-                    yAxisID: "y",
-                } as CurveConfig,
-                {
-                    label: "Vertical (E_V)",
-                    curveKey: "sweep-vertical",
-                    toggleLabel: "Vertical (E_V)",
-                    color: "#16a34a",
-                    borderWidth: 1.6,
-                    borderDash: [4, 4],
-                    yAxisID: "y",
-                    defaultVisible: false,
-                } as CurveConfig,
-                {
-                    label: "Combined (E_vol)",
-                    curveKey: "sweep-combined",
-                    toggleLabel: "Combined (E_vol)",
-                    color: "#dc2626",
-                    borderWidth: 2,
-                    borderDash: [8, 3],
-                    yAxisID: "y",
-                } as CurveConfig,
-            ],
-            series: [
-                toXY(sweep.arealSweep.curve.map((p) => p.efficiency)),
-                toXY(sweep.verticalSweep.curve.map((p) => p.efficiency)),
-                toXY(sweep.combined.map((p) => p.efficiency)),
-            ],
-        };
+        const analytical = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, 3.0);
+        const pviValues = analytical.arealSweep.curve.map((p) => p.pvi);
+        const analyticalXY = (ys: number[]) => pviValues.map((x, i) => ({ x, y: ys[i] ?? null }));
+
+        const hasSim = sweepEfficiencySimSeries != null && sweepEfficiencySimSeries.length > 0;
+        const hasVertical = layerPermeabilities.length > 1;
+
+        // Areal panel
+        const arealCurves: CurveConfig[] = [
+            ...(hasSim ? [{
+                label: "E_A (Simulation)",
+                curveKey: "sweep-areal-sim",
+                toggleLabel: "E_A (Sim)",
+                color: "#2563eb",
+                borderWidth: 2.4,
+                yAxisID: "y",
+            } as CurveConfig] : []),
+            {
+                label: "E_A (Analytical)",
+                curveKey: "sweep-areal-analytical",
+                toggleLabel: "E_A (Analytical)",
+                color: "#2563eb",
+                borderWidth: 2.0,
+                borderDash: [7, 4],
+                yAxisID: "y",
+            } as CurveConfig,
+        ];
+        const arealSeries = [
+            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eA)] : []),
+            analyticalXY(analytical.arealSweep.curve.map((p) => p.efficiency)),
+        ];
+
+        // Vertical panel (only shown when nz > 1)
+        const verticalCurves: CurveConfig[] = hasVertical ? [
+            ...(hasSim ? [{
+                label: "E_V (Simulation)",
+                curveKey: "sweep-vertical-sim",
+                toggleLabel: "E_V (Sim)",
+                color: "#16a34a",
+                borderWidth: 2.4,
+                yAxisID: "y",
+            } as CurveConfig] : []),
+            {
+                label: "E_V (Analytical)",
+                curveKey: "sweep-vertical-analytical",
+                toggleLabel: "E_V (Analytical)",
+                color: "#16a34a",
+                borderWidth: 2.0,
+                borderDash: [7, 4],
+                yAxisID: "y",
+            } as CurveConfig,
+        ] : [];
+        const verticalSeries = hasVertical ? [
+            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eV)] : []),
+            analyticalXY(analytical.verticalSweep.curve.map((p) => p.efficiency)),
+        ] : [];
+
+        // Volumetric panel
+        const volCurves: CurveConfig[] = [
+            ...(hasSim ? [{
+                label: "E_vol (Simulation)",
+                curveKey: "sweep-vol-sim",
+                toggleLabel: "E_vol (Sim)",
+                color: "#dc2626",
+                borderWidth: 2.4,
+                yAxisID: "y",
+            } as CurveConfig] : []),
+            {
+                label: "E_vol (Analytical)",
+                curveKey: "sweep-vol-analytical",
+                toggleLabel: "E_vol (Analytical)",
+                color: "#dc2626",
+                borderWidth: 2.0,
+                borderDash: [7, 4],
+                yAxisID: "y",
+            } as CurveConfig,
+        ];
+        const volSeries = [
+            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eVol)] : []),
+            analyticalXY(analytical.combined.map((p) => p.efficiency)),
+        ];
+
+        return { arealCurves, arealSeries, verticalCurves, verticalSeries, volCurves, volSeries, hasVertical };
     });
     const summaryItems = $derived.by(() => {
         return buildLiveOutputSummaryItems({
@@ -1118,21 +1189,53 @@
         }}
     />
 
-    <!-- Sweep efficiency panel (waterflood only) -->
-    {#if sweepData}
+    <!-- Sweep efficiency panels (sweep-domain scenarios only) -->
+    {#if sweepPanels}
         <ChartSubPanel
-            panelId="sweep"
-            title="Sweep Efficiency"
+            panelId="sweep-areal"
+            title="Areal Sweep Efficiency (E_A)"
             bind:expanded={sweepExpanded}
-            curves={sweepData.curves}
-            seriesData={sweepData.series}
-            scaleConfigs={sweepScales}
+            curves={sweepPanels.arealCurves}
+            seriesData={sweepPanels.arealSeries}
+            scaleConfigs={sweepScaleConfig}
             {theme}
             logScale={false}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, sweep: { left, right } };
+                nativeGutters = { ...nativeGutters, "sweep-areal": { left, right } };
+            }}
+        />
+        {#if sweepPanels.hasVertical}
+            <ChartSubPanel
+                panelId="sweep-vertical"
+                title="Vertical Sweep Efficiency (E_V)"
+                expanded={false}
+                curves={sweepPanels.verticalCurves}
+                seriesData={sweepPanels.verticalSeries}
+                scaleConfigs={sweepScaleConfig}
+                {theme}
+                logScale={false}
+                targetLeftGutter={maxLeftGutter}
+                targetRightGutter={maxRightGutter}
+                onGutterMeasure={(left: number, right: number) => {
+                    nativeGutters = { ...nativeGutters, "sweep-vertical": { left, right } };
+                }}
+            />
+        {/if}
+        <ChartSubPanel
+            panelId="sweep-vol"
+            title="Volumetric Sweep Efficiency (E_vol)"
+            expanded={false}
+            curves={sweepPanels.volCurves}
+            seriesData={sweepPanels.volSeries}
+            scaleConfigs={sweepScaleConfig}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, "sweep-vol": { left, right } };
             }}
         />
     {/if}

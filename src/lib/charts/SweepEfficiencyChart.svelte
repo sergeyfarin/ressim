@@ -60,7 +60,8 @@
                         data: [],
                         borderColor: "#2563eb",
                         backgroundColor: "rgba(37, 99, 235, 0.08)",
-                        borderWidth: 2.4,
+                        borderWidth: 2.0,
+                        borderDash: [7, 4],
                         pointRadius: 0,
                         fill: false,
                     },
@@ -69,17 +70,18 @@
                         data: [],
                         borderColor: "#16a34a",
                         backgroundColor: "rgba(22, 163, 74, 0.08)",
-                        borderWidth: 2.4,
+                        borderWidth: 1.6,
+                        borderDash: [3, 4],
                         pointRadius: 0,
                         fill: false,
                     },
                     {
-                        label: "Combined (E_A × E_V)",
+                        label: "Combined (E_vol)",
                         data: [],
                         borderColor: "#dc2626",
                         backgroundColor: "rgba(220, 38, 38, 0.08)",
-                        borderWidth: 2,
-                        borderDash: [6, 4],
+                        borderWidth: 2.4,
+                        borderDash: [12, 4],
                         pointRadius: 0,
                         fill: false,
                     },
@@ -176,7 +178,7 @@
     <div class="p-4 md:p-5">
         <div class="mb-2">
             <h3 class="text-sm font-semibold">
-                Sweep Efficiency vs PVI
+                Sweep Efficiency vs PVI (Analytical)
             </h3>
             <p class="text-xs opacity-70">
                 {sourceLabel} — Areal (Craig five-spot), Vertical (Dykstra-Parsons), Combined (E_A × E_V).

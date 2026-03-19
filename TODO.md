@@ -47,6 +47,12 @@ Primary files: `src/lib/charts/RateChart.svelte`, `src/lib/charts/ReferenceCompa
 
 ## Product Roadmap
 
+### ~~F10 — Simulation Sweep Efficiency~~ ✅ COMPLETE (2026-03-19)
+
+Simulation sweep efficiency (E_A_sim, E_V_sim, E_vol_sim) is now computed from `grid.sat_water` (per-cell saturation already streamed to the frontend for the 3D view). Three separate panels — Areal / Vertical / Volumetric — each show solid = simulation, dashed = analytical. Vertical panel only shown when nz > 1.
+
+---
+
 ### F5 — Multi-Case Comparison Beyond Charts
 
 - [ ] Case selection/switching for the 3D view across sensitivity runs

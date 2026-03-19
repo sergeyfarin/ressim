@@ -332,6 +332,26 @@ function getLayerPermeabilities(params: Record<string, any>): number[] {
     return [toFiniteNumber(params.uniformPermX, 100)];
 }
 
+// ─── Chart Visual Convention ──────────────────────────────────────────────────
+//
+//  Solid line   = simulation result (primary output from IMPES solver)
+//  Dashed line  = analytical reference (Craig, Dykstra-Parsons, Buckley-Leverett, etc.)
+//  Color        = sensitivity variant / case index (CASE_COLORS[index])
+//
+//  Sweep panel — all curves are analytical (no simulation sweep efficiency output
+//  exists yet). Within a single variant color, dash PATTERN distinguishes curve type:
+//    E_A  (areal):    [7, 4]  medium dash,  weight 2.0
+//    E_V  (vertical): [3, 4]  short dash,   weight 1.6  (hidden by default)
+//    E_vol (combined):[12, 4] long dash,    weight 2.4  ← boldest = key result
+//
+//  Future: add simulation sweep efficiency (E_A_sim computed from saturation
+//  snapshots) as solid lines alongside these analytical dashed curves — see TODO.md.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SWEEP_DASH_AREAL    = [7, 4]  as number[];  // medium dash — E_A
+const SWEEP_DASH_VERTICAL = [3, 4]  as number[];  // short dash  — E_V
+const SWEEP_DASH_COMBINED = [12, 4] as number[];  // long dash   — E_vol
+
 function buildSweepPanel(input: {
     orderedResults: BenchmarkRunResult[];
     theme: ReferenceComparisonTheme;
@@ -350,7 +370,6 @@ function buildSweepPanel(input: {
             const thickness = toFiniteNumber(result.params.cellDz, 1);
             const sweep = computeCombinedSweep(rock, fluid, perms, thickness, pviMax);
             const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
-            const isBase = result.variantKey === null;
 
             appendSeries(panel, {
                 label: `${result.label} E_A`,
@@ -358,7 +377,8 @@ function buildSweepPanel(input: {
                 caseKey: result.key,
                 toggleLabel: 'Areal (E_A)',
                 color,
-                borderWidth: isBase ? 2.2 : 1.8,
+                borderWidth: 2.0,
+                borderDash: SWEEP_DASH_AREAL,
                 yAxisID: 'y',
             }, pviValues, sweep.arealSweep.curve.map((p) => p.efficiency));
 
@@ -368,8 +388,8 @@ function buildSweepPanel(input: {
                 caseKey: result.key,
                 toggleLabel: 'Vertical (E_V)',
                 color,
-                borderWidth: isBase ? 1.8 : 1.4,
-                borderDash: [4, 4],
+                borderWidth: 1.6,
+                borderDash: SWEEP_DASH_VERTICAL,
                 yAxisID: 'y',
                 defaultVisible: false,
             }, pviValues, sweep.verticalSweep.curve.map((p) => p.efficiency));
@@ -380,8 +400,8 @@ function buildSweepPanel(input: {
                 caseKey: result.key,
                 toggleLabel: 'Combined (E_vol)',
                 color,
-                borderWidth: isBase ? 2.2 : 1.8,
-                borderDash: [8, 3],
+                borderWidth: 2.4,
+                borderDash: SWEEP_DASH_COMBINED,
                 yAxisID: 'y',
             }, pviValues, sweep.combined.map((p) => p.efficiency));
         });
@@ -401,7 +421,8 @@ function buildSweepPanel(input: {
             curveKey: 'sweep-areal',
             toggleLabel: 'Areal (E_A)',
             color: referenceColor,
-            borderWidth: 2,
+            borderWidth: 2.0,
+            borderDash: SWEEP_DASH_AREAL,
             yAxisID: 'y',
         }, pviValues, sweep.arealSweep.curve.map((p) => p.efficiency));
 
@@ -411,7 +432,7 @@ function buildSweepPanel(input: {
             toggleLabel: 'Vertical (E_V)',
             color: referenceColor,
             borderWidth: 1.6,
-            borderDash: [4, 4],
+            borderDash: SWEEP_DASH_VERTICAL,
             yAxisID: 'y',
             defaultVisible: false,
         }, pviValues, sweep.verticalSweep.curve.map((p) => p.efficiency));
@@ -421,8 +442,8 @@ function buildSweepPanel(input: {
             curveKey: 'sweep-combined',
             toggleLabel: 'Combined (E_vol)',
             color: referenceColor,
-            borderWidth: 2,
-            borderDash: [8, 3],
+            borderWidth: 2.4,
+            borderDash: SWEEP_DASH_COMBINED,
             yAxisID: 'y',
         }, pviValues, sweep.combined.map((p) => p.efficiency));
     }
@@ -754,7 +775,7 @@ export function buildReferenceComparisonModel(input: {
         }
     }
 
-    const sweepPanel = family.scenarioClass === 'buckley-leverett'
+    const sweepPanel = (family.scenarioClass === 'buckley-leverett' && family.showSweepPanel === true)
         ? buildSweepPanel({
             orderedResults,
             theme: input.theme ?? 'dark',

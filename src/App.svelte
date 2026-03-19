@@ -9,6 +9,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset } from "./lib/catalog/scenarios";
+    import { computeSimSweepPoint } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -37,6 +38,24 @@
     let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
     const activeReferenceFamily = $derived(scenario.activeScenarioAsFamily ?? scenario.activeReferenceFamily);
+    // True only for sweep-domain scenarios — hides the sweep efficiency panel for 1D waterflood/depletion.
+    const showSweepPanel = $derived(scenario.activeScenarioObject?.domain === 'sweep');
+
+    // Simulation sweep efficiency time series — computed from per-cell saturation snapshots.
+    // Only populated for sweep-domain scenarios; null otherwise.
+    type SimSweepPoint = { time: number; eA: number; eV: number; eVol: number };
+    const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
+        if (!showSweepPanel || runtime.history.length === 0) return null;
+        const { nx, ny, nz, s_wc } = params;
+        const result: SimSweepPoint[] = [];
+        for (const entry of runtime.history) {
+            const sw = entry.grid?.sat_water;
+            if (!sw || sw.length !== nx * ny * nz) continue;
+            const { eA, eV, eVol } = computeSimSweepPoint(sw, nx, ny, nz, s_wc);
+            result.push({ time: entry.time, eA, eV, eVol });
+        }
+        return result.length > 0 ? result : null;
+    });
     // True when any active sensitivity variant is declared to affect the analytical solution.
     // Drives per-result vs shared analytical curve rendering in the comparison chart.
     const analyticalPerVariant = $derived.by(() => {
@@ -552,6 +571,8 @@
                                     ? Array.from({ length: params.nz }, () => params.uniformPermX)
                                     : [params.uniformPermX]}
                             layerThickness={params.cellDz}
+                            {showSweepPanel}
+                            {sweepEfficiencySimSeries}
                         />
                     {:else}
                         <div
