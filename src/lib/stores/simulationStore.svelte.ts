@@ -220,6 +220,7 @@ class SimulationStoreImpl {
     simWorker: Worker | null = null;
     runCompleted = $state(false);
     workerRunning = $state(false);
+    stopPending = $state(false);
     currentRunTotalSteps = $state(0);
     currentRunStepsCompleted = $state(0);
     referenceSweepRunning = $state(false);
@@ -798,7 +799,9 @@ class SimulationStoreImpl {
         this.activeReferenceRunSpec = nextSpec;
         this.referenceSweepError = '';
 
+        const savedSteps = this.steps; // preserve user's run-control override
         this.applyCaseParams(nextSpec.params);
+        this.steps = savedSteps;
         this.modelNeedsReinit = false;
         this.modelReinitNotice = '';
         this.pendingAutoReinit = false;
@@ -1046,6 +1049,7 @@ class SimulationStoreImpl {
         }
         if (message.type === 'batchComplete') {
             this.workerRunning = false;
+            this.stopPending = false;
             this.runCompleted = true;
             this.currentRunTotalSteps = 0;
             this.currentRunStepsCompleted = 0;
@@ -1073,6 +1077,7 @@ class SimulationStoreImpl {
         }
         if (message.type === 'stopped') {
             this.workerRunning = false;
+            this.stopPending = false;
             this.runCompleted = true;
             if (this.referenceSweepRunning || this.activeReferenceRunSpec) {
                 this.referenceSweepRunning = false;
@@ -1112,6 +1117,7 @@ class SimulationStoreImpl {
         }
         if (message.type === 'error') {
             this.workerRunning = false;
+            this.stopPending = false;
             console.error('Simulation worker error:', message.message);
             this.runtimeError = String(message.message ?? 'Simulation error');
             if (this.referenceSweepRunning || this.activeReferenceRunSpec) {
@@ -1253,7 +1259,12 @@ class SimulationStoreImpl {
             this.userHistoryInterval ?? this.defaultHistoryInterval,
         );
     }
-    stopRun() { if (this.simWorker) this.simWorker.postMessage({ type: 'stop' }); }
+    stopRun() {
+        if (this.simWorker) {
+            this.stopPending = true;
+            this.simWorker.postMessage({ type: 'stop' });
+        }
+    }
 
     // ===== Config Diff Detection =====
 

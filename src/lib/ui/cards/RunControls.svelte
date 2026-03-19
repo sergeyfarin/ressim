@@ -16,6 +16,7 @@
     runProgress = "",
     steps = $bindable(20),
     numSensitivities = 0,
+    stopPending = false,
     onRunSteps = () => {},
     onInitSimulator = () => {},
     onStopRun = () => {},
@@ -31,6 +32,7 @@
     runProgress?: string;
     steps?: number;
     numSensitivities?: number;
+    stopPending?: boolean;
     onRunSteps?: () => void;
     onInitSimulator?: () => void;
     onStopRun?: () => void;
@@ -77,7 +79,8 @@
         size="sm"
         variant="destructive"
         onclick={onStopRun}
-        disabled={!workerRunning}>Stop Run</Button>
+        disabled={!workerRunning || stopPending}
+        >{stopPending ? "Stopping…" : "Stop Run"}</Button>
 
       <div class="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
 

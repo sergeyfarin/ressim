@@ -441,6 +441,7 @@
                     ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
                     : ""}
             bind:steps={params.steps}
+            stopPending={runtime.stopPending}
             onRunSteps={handleRun}
             onInitSimulator={() => runtime.initSimulator()}
             onStopRun={() => runtime.stopRun()}

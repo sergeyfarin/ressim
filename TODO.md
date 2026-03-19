@@ -2,6 +2,18 @@
 
 ## Current Issues
 
+### Run Controls UX (fixed 2026-03-19)
+
+- [✅] **BUG: Steps reset when pressing Run with a scenario selected** — `startQueuedReferenceRun()` called `applyCaseParams(nextSpec.params)` which unconditionally overwrote `this.steps` with the scenario's predefined value. Since sweep runs use `nextSpec.steps` directly (not `this.steps`), the overwrite was redundant and destructive. Fix: save/restore `this.steps` around the `applyCaseParams()` call in `startQueuedReferenceRun()`.
+
+- [✅] **UX: Stop button gave no immediate feedback** — After clicking Stop, the button stayed in its normal state while the worker processed the stop signal (typically one WASM step's latency). Added `stopPending = $state(false)` to the store, set on `stopRun()`, cleared on `stopped`/`batchComplete`/`error`. `RunControls` now shows "Stopping…" and disables the button immediately on click.
+
+- [ ] **LIMITATION: Stop latency = one WASM step duration** — The worker checks `stopRequested` between steps (at every yield, `chunkYieldInterval: 1`). For large grids where a single step takes >500 ms, the Stop button has noticeable lag. Options if this becomes an issue:
+  - **SharedArrayBuffer + Atomics**: Main thread writes to shared memory, worker reads it mid-step. Requires `Cross-Origin-Isolated` response headers (server config) and `crossOriginIsolated` check. Zero message latency.
+  - **Worker termination + recreate**: Immediate stop, but loses all in-progress simulation state. User would need to reset before continuing.
+  - **Rust-side callback hook**: Check a shared flag inside the WASM step function (e.g., every N solver iterations). Requires Rust changes but most granular control.
+  Current implementation is adequate for grids up to ~30×30×20 at <100 ms/step.
+
 ### Open Test Failures (5 as of 2026-03-17)
 
 **Group A — App.svelte wiring gaps (4 failures) — ✅ Fixed 2026-03-17**
