@@ -138,17 +138,15 @@
       {#each DOMAIN_GROUPS as group}
         {@const groupScenarios = SCENARIOS.filter((s) => s.domain === group.domain)}
         {#if groupScenarios.length > 0 && (group.domain !== 'gas' || activeMode === '3p')}
-          <div class="flex flex-wrap gap-1.5 rounded border border-border/50 p-1.5">
-            {#each groupScenarios as scenario}
-              <Button
-                size="sm"
-                variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
-                onclick={() => onSelectScenario(scenario.key)}
-              >
-                {scenario.label}
-              </Button>
-            {/each}
-          </div>
+          {#each groupScenarios as scenario}
+            <Button
+              size="sm"
+              variant={!isCustom && activeScenarioKey === scenario.key ? "default" : "outline"}
+              onclick={() => onSelectScenario(scenario.key)}
+            >
+              {scenario.label}
+            </Button>
+          {/each}
         {/if}
       {/each}
 
@@ -191,7 +189,7 @@
         <!-- Dimension selector — only shown when there are multiple dimensions -->
         {#if activeScenario.sensitivities.length > 1}
           <div class="flex flex-wrap items-center gap-2">
-            <span class="ui-subsection-kicker text-muted-foreground">Vary:</span>
+            <span class="ui-subsection-kicker text-muted-foreground">Sensitivy sets:</span>
             {#each activeScenario.sensitivities as dim}
               <button
                 type="button"

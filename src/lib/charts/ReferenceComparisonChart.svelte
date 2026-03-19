@@ -45,6 +45,7 @@
     let sweepExpanded = $state(true);
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
+    const MAX_RECOMMENDED_VISIBLE_CASES = 20;
 
     let nativeGutters = $state<Record<string, { left: number; right: number }>>({});
     let maxLeftGutter = $derived(
@@ -75,6 +76,10 @@
     );
     const visibleResults = $derived.by(() => {
         return overlayModel.orderedResults.filter((result) => visibleCaseKeys[result.key] ?? true);
+    });
+    const caseVolumeWarning = $derived.by(() => {
+        if (visibleResults.length <= MAX_RECOMMENDED_VISIBLE_CASES) return null;
+        return `Showing ${visibleResults.length} runs. Charts are designed to stay readable up to ${MAX_RECOMMENDED_VISIBLE_CASES}; above that, overlap and scale compression increase.`;
     });
 
     $effect(() => {
@@ -282,6 +287,11 @@
             </div>
         {/if}
         <OutputSummaryStrip items={summaryItems} />
+        {#if caseVolumeWarning}
+            <div class="rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
+                {caseVolumeWarning}
+            </div>
+        {/if}
         {#if overlayModel.orderedResults.length > 1}
             <div class="flex items-center gap-2 overflow-x-auto">
                 <span class="ui-section-kicker shrink-0 opacity-50">Cases</span>

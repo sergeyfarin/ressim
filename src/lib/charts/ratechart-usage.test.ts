@@ -83,6 +83,12 @@ describe('ChartSubPanel architecture checks', () => {
     expect(/chart\.data\.datasets\.length\s*!==\s*curves\.length/.test(subPanelSrc)).toBe(true);
     expect(/getCurveDatasetKey/.test(subPanelSrc)).toBe(true);
     expect(/_datasetKey/.test(subPanelSrc)).toBe(true);
+    expect(/curves\.length !== seriesData\.length/.test(subPanelSrc)).toBe(true);
+  });
+
+  it('warns when more than twenty comparison runs are visible', () => {
+    expect(/MAX_RECOMMENDED_VISIBLE_CASES\s*=\s*20/.test(referenceComparisonChartSrc)).toBe(true);
+    expect(/Showing \$\{visibleResults\.length\} runs\./.test(referenceComparisonChartSrc)).toBe(true);
   });
 
   it('contains axis bounds logic', () => {

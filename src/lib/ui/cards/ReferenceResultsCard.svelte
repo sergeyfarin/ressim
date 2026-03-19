@@ -76,13 +76,7 @@
     return "n/a";
   }
 
-  const orderedResults = $derived.by(() => (
-    [...results].sort((left, right) => {
-      if (left.variantKey === null && right.variantKey !== null) return -1;
-      if (left.variantKey !== null && right.variantKey === null) return 1;
-      return left.label.localeCompare(right.label);
-    })
-  ));
+  const orderedResults = $derived.by(() => ([...results]));
   const baseResult = $derived.by(() => (
     orderedResults.find((result) => result.variantKey === null) ?? orderedResults[0] ?? null
   ));

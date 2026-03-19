@@ -152,15 +152,15 @@ function buildXAxisValues(
     xAxisMode: RateChartXAxisMode,
     tau: number | null = null,
 ): Array<number | null> {
-    if (xAxisMode === 'pvi') return derived.pvi;
-    if (xAxisMode === 'pvp') return derived.pvp;
-    if (xAxisMode === 'cumInjection') return derived.cumulativeInjection;
-    if (xAxisMode === 'cumLiquid') return derived.cumulativeLiquid;
+    if (xAxisMode === 'pvi') return [...derived.pvi];
+    if (xAxisMode === 'pvp') return [...derived.pvp];
+    if (xAxisMode === 'cumInjection') return [...derived.cumulativeInjection];
+    if (xAxisMode === 'cumLiquid') return [...derived.cumulativeLiquid];
     if (xAxisMode === 'logTime') return derived.time.map((value) => (value > 0 ? Math.log10(value) : null));
     if (xAxisMode === 'tD' && Number.isFinite(tau) && (tau as number) > 0) {
         return derived.time.map((value) => value / (tau as number));
     }
-    return derived.time;
+    return [...derived.time];
 }
 
 function getBaseResult(results: BenchmarkRunResult[]): BenchmarkRunResult | null {
@@ -168,11 +168,7 @@ function getBaseResult(results: BenchmarkRunResult[]): BenchmarkRunResult | null
 }
 
 function orderResults(results: BenchmarkRunResult[]): BenchmarkRunResult[] {
-    return [...results].sort((left, right) => {
-        if (left.variantKey === null && right.variantKey !== null) return -1;
-        if (left.variantKey !== null && right.variantKey === null) return 1;
-        return left.label.localeCompare(right.label);
-    });
+    return [...results];
 }
 
 function buildBuckleyLeverettReference(

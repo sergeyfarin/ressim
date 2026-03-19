@@ -93,7 +93,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
 }
 
 describe('referenceComparisonModel', () => {
-    it('builds BL overlay panels with base-first ordering and reference-solution curves', () => {
+    it('preserves provided run order while still building reference-solution curves', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
         const [baseSpec, gridVariantSpec] = buildBenchmarkRunSpecs(family!, [variants[0]]);
@@ -129,7 +129,10 @@ describe('referenceComparisonModel', () => {
             xAxisMode: 'pvi',
         });
 
-        expect(model.orderedResults[0].variantKey).toBeNull();
+        expect(model.orderedResults.map((result) => result.key)).toEqual([
+            gridVariantResult.key,
+            baseResult.key,
+        ]);
         expect(model.panels.rates.curves.map((curve) => curve.label)).toEqual(
             expect.arrayContaining([
                 `${baseResult.label} Water Cut`,
@@ -298,9 +301,65 @@ describe('referenceComparisonModel', () => {
         const waterCutCurves = model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-sim');
         const waterCutSeries = model.panels.rates.series.filter((_, index) => model.panels.rates.curves[index]?.curveKey === 'water-cut-sim');
 
+        expect(model.orderedResults.map((result) => result.key)).toEqual(results.map((result) => result.key));
         expect(waterCutCurves).toHaveLength(5);
         expect(new Set(waterCutCurves.map((curve) => curve.caseKey)).size).toBe(5);
         expect(waterCutSeries.every((series) => series.length > 0)).toBe(true);
+        expect(model.panels.rates.curves).toHaveLength(model.panels.rates.series.length);
+        expect(model.panels.cumulative.curves).toHaveLength(model.panels.cumulative.series.length);
+        expect(model.panels.diagnostics.curves).toHaveLength(model.panels.diagnostics.series.length);
+    });
+
+    it('stays length-aligned for large comparison sets', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const reference = computeWelgeMetrics(
+            {
+                s_wc: Number(baseSpec.params.s_wc),
+                s_or: Number(baseSpec.params.s_or),
+                n_w: Number(baseSpec.params.n_w),
+                n_o: Number(baseSpec.params.n_o),
+                k_rw_max: Number(baseSpec.params.k_rw_max),
+                k_ro_max: Number(baseSpec.params.k_ro_max),
+            },
+            {
+                mu_w: Number(baseSpec.params.mu_w),
+                mu_o: Number(baseSpec.params.mu_o),
+            },
+            Number(baseSpec.params.initialSaturation),
+        );
+
+        const results = Array.from({ length: 21 }, (_, index) => {
+            const spec = {
+                ...baseSpec,
+                key: index === 0 ? baseSpec.key : `synthetic_${index}`,
+                caseKey: index === 0 ? baseSpec.caseKey : `synthetic_${index}`,
+                variantKey: index === 0 ? null : `synthetic_${index}`,
+                variantLabel: index === 0 ? null : `Synthetic ${index}`,
+                label: index === 0 ? baseSpec.label : `Synthetic ${index}`,
+            };
+
+            return buildBenchmarkRunResult({
+                spec,
+                rateHistory: buildSyntheticWaterfloodRateHistory(
+                    spec.params,
+                    reference.breakthroughPvi * (1 + index * 0.01),
+                    index * 0.002,
+                ),
+            });
+        });
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results,
+            xAxisMode: 'pvi',
+        });
+
+        expect(model.orderedResults).toHaveLength(21);
+        expect(model.panels.rates.curves).toHaveLength(model.panels.rates.series.length);
+        expect(model.panels.cumulative.curves).toHaveLength(model.panels.cumulative.series.length);
+        expect(model.panels.diagnostics.curves).toHaveLength(model.panels.diagnostics.series.length);
+        expect(model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-sim')).toHaveLength(21);
     });
 
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {

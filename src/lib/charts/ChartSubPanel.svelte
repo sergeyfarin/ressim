@@ -239,6 +239,17 @@
     function updateChart() {
         if (!chart || !seriesData) return;
 
+        if (curves.length !== seriesData.length) {
+            if (typeof console !== "undefined") {
+                console.warn(
+                    `[ChartSubPanel] curves/series mismatch for ${panelId || title || "panel"}: curves=${curves.length}, series=${seriesData.length}`,
+                );
+            }
+            destroyChart();
+            createChart();
+            return;
+        }
+
         const datasetSchemaMismatch =
             chart.data.datasets.length !== curves.length ||
             curves.some((curve, idx) => {
