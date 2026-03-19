@@ -22,7 +22,7 @@ This document describes the architecture decisions made when adding oil/water/ga
 
 - Existing oil-water curve P_cow(S_w) — unchanged
 - New oil-gas curve P_cog(S_g) — same Brooks-Corey form, own entry pressure + lambda
-  - Phase pressures: P_water = P_oil − P_cow; P_gas = P_oil − P_cog
+  - Phase pressures: P_water = P_oil − P_cow; P_gas = P_oil + P_cog
 
 ### Injected Phase
 
@@ -110,6 +110,12 @@ Three-phase mode is **experimental**. There is no analytical reference solution 
 - Stone II reduces to two-phase k_ro at S_g = 0 (testable)
 - k_ro(S_wc, S_gr) = 0 (residual condition)
 - k_ro(S_wc, 0) = k_ro_max (endpoint)
-- Material balance is tracked per-timestep (existing mechanism extended to three phases)
+- Material-balance diagnostics currently report only the water-phase accumulation path; phase-by-phase three-phase diagnostics are still pending.
 
 No benchmark suite comparable to the Buckley-Leverett BL-Case-A/B suite exists yet for three-phase behavior.
+
+## Known Correctness Gaps
+
+- **Gas-oil capillary direction model**: the current gas-oil Brooks-Corey helper is parameterized on gas saturation and is documented in code as a known limitation. It should ultimately be reformulated around oil saturation for non-wetting gas invasion.
+- **Missing residual-oil-to-gas endpoint**: the current Stone II helper does not yet carry a separate residual-oil-to-gas saturation parameter.
+- **Diagnostics gap**: current material-balance reporting does not yet break out oil and gas phase accumulation errors.

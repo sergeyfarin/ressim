@@ -39,6 +39,10 @@ The current Rust implementation defines this as `DARCY_METRIC_FACTOR` in `src/li
 - **Formula:** λ = k_r / μ
 - **Total Mobility:** λ_t = k_rw/μ_w + k_ro/μ_o
 
+For three-phase runs the implementation extends this to:
+
+$$\lambda_t = \frac{k_{rw}}{\mu_w} + \frac{k_{ro}}{\mu_o} + \frac{k_{rg}}{\mu_g}$$
+
 ### Fractional Flow
 - **Symbol:** f_w
 - **Units:** dimensionless
@@ -62,12 +66,15 @@ FluidProperties {
 - **Oil compressibility:** 5e-6 to 1e-4 1/bar
 - **Water compressibility:** 3e-6 to 5e-6 1/bar
 
+Current simplification note:
+- ResSim currently treats phase viscosity, density, and formation-volume factors as constant for the active run. There is no pressure-dependent PVT table lookup in the present model.
+
 ## Rock and Fluid Properties (Default Values)
 
 ```rust
 RockFluidProps {
-    s_wc: 0.2,      // Connate water saturation [dimensionless]
-    s_or: 0.2,      // Residual oil saturation [dimensionless]
+    s_wc: 0.1,      // Connate water saturation [dimensionless]
+    s_or: 0.1,      // Residual oil saturation [dimensionless]
     n_w: 2.0,       // Corey exponent - water [dimensionless]
     n_o: 2.0,       // Corey exponent - oil [dimensionless]
 }
@@ -82,6 +89,15 @@ Oil relative permeability:
 $$k_{ro}(S_w) = \left[\frac{1 - S_w - S_{or}}{1 - S_{wc} - S_{or}}\right]^{n_o}$$
 
 Effective saturation range: $[S_{wc}, 1 - S_{or}]$
+
+### Capillary Pressure
+
+- **Oil-water sign convention:** $P_{cow} = P_{oil} - P_{water}$
+- **Model:** Brooks-Corey capillary pressure
+- **Current numerical protection:** the Rust implementation caps capillary pressure at $20 \times P_{entry}$ to avoid runaway capillary-sponge behavior in long-column gravity calculations.
+
+Interpretation note:
+- This cap is a numerical safeguard, not a physical plateau in the capillary curve. For capillary-dominated studies, document the chosen $P_{entry}$ and remember that the simulated curve is regularized.
 
 ## Grid Cell Properties (Default Values)
 
@@ -108,15 +124,15 @@ GridCell {
 
 ```rust
 ReservoirSimulator::new(nx, ny, nz) {
-    dx: 100.0,   // Cell size x-direction [m]
-    dy: 100.0,   // Cell size y-direction [m]
-    dz: 20.0,    // Cell size z-direction [m]
+    dx: 10.0,    // Cell size x-direction [m]
+    dy: 10.0,    // Cell size y-direction [m]
+    dz: 1.0,     // Cell size z-direction [m]
 }
 ```
 
 Example: 20×10×10 grid = 2000 cells
-- Bulk volume: (20×100 m) × (10×100 m) × (10×20 m) = 2000 × 1000 × 200 m³ = 400 million m³
-- Pore volume at 20% porosity: 80 million m³
+- Bulk volume: (20×10 m) × (10×10 m) × (10×1 m) = 200 × 100 × 10 m³ = 200,000 m³
+- Pore volume at 20% porosity: 40,000 m³
 
 ## API Input/Output
 
@@ -130,11 +146,12 @@ simulator.step(delta_t_days: f64)
 
 ### Well Definition
 ```rust
-simulator.add_well(i, j, k, bhp_bar, pi_m3_day_bar, injector)
+simulator.add_well(i, j, k, bhp_bar, well_radius_m, skin, injector)
 ```
 - **Position:** Grid indices (i, j, k)
 - **BHP:** Bottom-hole pressure [bar]
-- **PI:** Productivity index [m³/day/bar]
+- **Well radius:** Wellbore radius [m]
+- **Skin:** Skin factor [dimensionless]
 - **Injector:** Boolean flag (true=injector, false=producer)
 
 ### Grid State Output
@@ -233,4 +250,6 @@ If converting between systems:
 
 4. **Material balance:** While the IMPES method is not strictly conservative (due to splitting), material balance errors are typically small for small time steps and reasonable mobility ratios.
 
-5. **Default grid:** 20 × 10 × 10 cells with 100m × 100m × 20m dimensions = 2,000 cell blocks, total volume ~80 million m³.
+5. **Three-phase diagnostics:** current material-balance reporting is still water-phase-centric; do not interpret it as a full per-phase closure check.
+
+6. **Default grid:** the constructor starts from 10 m × 10 m × 1 m cells and 100 mD / 100 mD / 10 mD permeability until scenario parameters overwrite them.

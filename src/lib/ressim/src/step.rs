@@ -507,7 +507,7 @@ impl ReservoirSimulator {
                             let lam_o_up = if dphi_o >= 0.0 { lam_o_i } else { lam_o_j };
                             let lam_w_up = if dphi_w >= 0.0 { lam_w_i } else { lam_w_j };
 
-                            // Gas potential: P_gas = P_oil - P_cog => dphi_g = dphi_oil + d(P_cog)
+                            // Gas potential: P_gas = P_oil + P_cog => dphi_g = dphi_oil + d(P_cog)
                             let pc_og_i = self.get_gas_oil_capillary_pressure(self.sat_gas[id]);
                             let pc_og_j = self.get_gas_oil_capillary_pressure(self.sat_gas[*n_id]);
                             let grav_g = self.gravity_head_bar(depth_i, depth_j, self.rho_g);

@@ -4,11 +4,11 @@ A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physi
 
 ## Current State (2026-03)
 
-- **Scenario picker**: predefined scenarios with optional sensitivity sweeps replace the old 4-layer case-library navigation. Source of truth: `src/lib/catalog/scenarios.ts` + `ScenarioPicker.svelte`.
-- **Sweep efficiency**: Craig (1971) areal sweep (2D XY), Dykstra-Parsons (1950) vertical sweep (2D XZ), and volumetric product (3D E_vol = E_A × E_V) implemented as analytical overlays with dedicated chart.
-- **Scenario/sensitivity redesign in progress** (S1): consolidating 18 scenario entries into ~6 canonical scenarios each supporting multiple selectable sensitivity dimensions (mobility, rock, capillary, grid, well placement). See `REFACTOR.md` Phase 2.
-- **Reference-solution overlays**: permissive for approximate cases, with clearly visible caveats.
-- **Three-phase support** (experimental): oil/water/gas simulation via Stone II relative permeability; no analytical reference solution.
+- **Scenario picker**: `src/lib/catalog/scenarios.ts` + `ScenarioPicker.svelte` are now the primary scenario/sensitivity surface.
+- **Scenario model**: S1 is complete. The app currently exposes 8 canonical scenarios across Waterflood, Sweep, Depletion, and Gas domains, each with zero or more sensitivity dimensions.
+- **Sweep efficiency**: Craig (1971) areal sweep (2D XY), Dykstra-Parsons (1950) vertical sweep (2D XZ), and volumetric product (3D E_vol = E_A × E_V) are implemented as analytical overlays with a sweep-recovery panel.
+- **Reference-solution overlays**: Buckley-Leverett and depletion overlays are available, but some analytical paths still use first-order approximations. See the limitations notes below and `docs/IMPLEMENTATION_REVIEW_2026-03-19.md`.
+- **Three-phase support** (experimental): oil/water/gas simulation via Stone II relative permeability is implemented, but important three-phase correctness gaps remain. See `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` and `TODO.md`.
 - **Execution model**: all scenarios initialize and run directly in browser-side WASM; no pre-run artifact pipeline.
 
 ## Features
@@ -36,20 +36,28 @@ A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physi
 - **Depletion decline** — PSS reference solution `q(t) = q₀·exp(−t/τ)` with Dietz shape-factor PI.
   - 1D slab and 2D radial drainage geometry support.
   - Per-layer PI summation for multi-layer cases.
+- **Known limitation**: depletion well-location sensitivity is not yet fully wired into the analytical helper. Current well-location variants change the simulator state, but the analytical helper still infers Dietz shape from geometry only.
 - Mismatch metrics: MAE, RMSE, MAPE displayed in the rate chart.
 
 ### Visualization & UI
 
 - **3D property view** (Three.js) — selectable properties: pressure, water/oil/gas saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
 - **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
-- **Sw Profile chart** — cell-index saturation profile compared to the reference flood front.
-- **Scenario picker** — predefined scenarios plus custom mode. Each scenario is a complete self-contained parameter set with selectable sensitivity dimensions (e.g. Mobility Ratio, Corey n_o, S_or, Capillary, Grid). See `REFACTOR.md` Phase 2 for the in-progress redesign to ~6 canonical scenarios with multi-dimension sensitivity.
+- **Scenario picker** — predefined scenarios plus custom mode. Each scenario is a complete self-contained parameter set with selectable sensitivity dimensions (e.g. Mobility Ratio, Corey n_o, S_or, Capillary, Grid). See `REFACTOR.md` for the completed S1 redesign and the next cleanup/refactor candidates.
 - **Sensitivity sweeps** — select a dimension and variants; one simulation per variant; stored results feed comparison charts.
 - **Sweep efficiency charts** — analytical Craig areal sweep (2D XY), Dykstra-Parsons vertical sweep (2D XZ), and combined volumetric sweep (3D) plotted as E_A, E_V, E_A × E_V curves vs PVI.
 - **Reference-to-custom handoff** — start from any scenario and switch to custom editing while preserving source provenance.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
 - **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.
+
+### Model Validity Notes
+
+- **Sweep recovery overlays are approximate**. The current formula combines Craig areal sweep, Dykstra-Parsons vertical sweep, and Buckley-Leverett displacement efficiency through a local-PVI approximation. This is useful for qualitative comparison, but it is not a substitute for a full stream-tube or Stiles-style layer-by-layer treatment.
+- **Craig areal sweep is pattern-specific**. The implemented correlation is for confined five-spot behavior and should not be treated as a line-drive or peripheral waterflood model.
+- **Dykstra-Parsons assumes non-communicating layers**. When vertical communication is significant, the analytical vertical sweep penalty is conservative relative to the simulator.
+- **Three-phase mode remains experimental**. Gas-oil capillary pressure direction, missing residual-oil-to-gas support, and phase-by-phase material-balance diagnostics are still open items.
+- **Capillary pressure is numerically capped**. Brooks-Corey capillary pressure is limited to 20 times entry pressure in the simulator to avoid runaway sponge behavior; see `docs/UNIT_SYSTEM.md`.
 
 ### Validation & Benchmarks
 
@@ -60,26 +68,20 @@ Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 | BL-Case-A (favorable mobility) | 0.586 | 0.609 | 4.0% |
 | BL-Case-B (adverse mobility) | 0.507 | 0.553 | 9.0% |
 
-Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, confirming that the remaining mismatch is dominated by coarse-grid and coarse-timestep numerical effects.
+Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, confirming that the remaining mismatch is dominated by coarse-grid and coarse-timestep numerical effects. The current 25–30% acceptance limits are coarse regression guards, not the target accuracy of the method.
 
-Current scenarios (`src/lib/catalog/scenarios.ts`) — 18 entries, consolidating to ~6 canonical scenarios under the S1 redesign (see `REFACTOR.md` Phase 2):
+Current scenarios (`src/lib/catalog/scenarios.ts`) — 8 canonical entries after S1 completion:
 
 | Domain | Key | Sensitivity dimensions |
 |--------|-----|------------------------|
-| Waterflood | `wf_bl_case_a`, `wf_bl_case_b` | Grid refinement (24/48/96 cells) |
-| Waterflood | `wf_mobility_study` | Oil viscosity / mobility ratio |
-| Waterflood | `wf_corey_exponent` | Corey n_o (1.5 / 2.0 / 3.5) |
-| Waterflood | `wf_residual_oil` | S_or (0.05 / 0.15 / 0.30) |
-| Waterflood | `wf_capillary` | Entry pressure P_e (0 / 0.3 / 1.5 bar) |
-| Sweep | `sweep_areal_mobility` | Mobility ratio M |
-| Sweep | `sweep_areal_residual` | Residual oil S_or |
-| Sweep | `sweep_vertical_vdp` | Dykstra-Parsons V_DP heterogeneity |
-| Sweep | `sweep_combined` | Mobility × heterogeneity |
-| Depletion | `dep_dietz_center`, `dep_dietz_corner` | None (shape factor is the contrast) |
-| Depletion | `dep_skin`, `dep_permeability`, `dep_compressibility` | Skin / k / c_o respectively |
-| Depletion | `dep_fetkovich` | None |
-
-**Post-S1 canonical scenarios (target):** `wf_1d_waterflood`, `sweep_areal`, `sweep_vertical`, `sweep_combined`, `dep_dietz`, `dep_fetkovich` — each with 2–5 selectable sensitivity dimensions.
+| Waterflood | `wf_bl1d` | Mobility ratio, Corey n_o, S_or, capillary, grid |
+| Sweep | `sweep_areal` | Mobility ratio, S_or |
+| Sweep | `sweep_vertical` | V_DP heterogeneity, mobility ratio |
+| Sweep | `sweep_combined` | Mobility + heterogeneity |
+| Depletion | `dep_pss` | Well location, skin, permeability, compressibility |
+| Depletion | `dep_decline` | Skin, permeability |
+| Gas | `gas_injection` | Mobility, S_gc, permeability |
+| Gas | `gas_solution_drive` | Initial gas saturation, c_o |
 
 ## Unit System
 
@@ -136,15 +138,15 @@ src/
 ├── app.css                         — global styles
 ├── main.ts                         — app entry point
 └── lib/
-    ├── analytical/                 — analytical Svelte components + Buckley-Leverett helper logic/tests
-    ├── charts/                     — RateChart, ChartSubPanel, SwProfileChart, and chart helpers/tests
+    ├── analytical/                 — analytical Svelte components + Buckley-Leverett/depletion/sweep helper logic/tests
+    ├── charts/                     — RateChart, comparison charts, sweep charts, and chart helpers/tests
     ├── visualization/              — Three.js 3D grid rendering + legend
     ├── workers/                    — Web Worker bridge to the WASM simulator
     ├── simulator-types.ts          — TypeScript interfaces for worker payloads
     ├── buildCreatePayload.ts       — payload builder + tests
     ├── catalog/                    — scenarios.ts (new) + legacy catalog code (being removed, see REFACTOR.md)
     ├── ui/                         — ScenarioPicker, feedback surfaces, controls, cards, and section panels
-    ├── components/ui/              — primitive UI controls (Button, Card, Input, Select, Collapsible)
+    ├── ui/controls/                — primitive UI controls (Button, Card, Input, Select, Collapsible)
     └── ressim/src/                 — Rust simulator core
         ├── lib.rs                  — WASM API surface
         ├── step.rs                 — IMPES timestep logic (2-phase and 3-phase)
@@ -168,6 +170,7 @@ docs/                               — technical reference docs (see below)
 | `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark scenario reference guidance and chart defaults |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase (Stone II) architecture and parameter reference |
+| `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Verified scientific gaps, doc/code mismatches, and recommended follow-up work |
 | `docs/UNIT_SYSTEM.md` | Comprehensive unit system reference |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻³` constant |

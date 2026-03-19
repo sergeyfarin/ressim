@@ -12,6 +12,14 @@
 
 ## Active Work
 
+### Review Follow-Ups — 2026-03-19
+
+- [ ] **Depletion analytical contract gap** — `calculateDepletionAnalyticalProduction()` does not currently consume producer location, so the `dep_pss` well-location / Dietz shape-factor sensitivity changes simulation inputs but not the analytical helper. Required follow-up: pass producer position or explicit shape factor into the depletion analytical adapter, update comparison builders, and add tests proving center/corner analytical curves diverge. Until fixed, treat this sensitivity as simulation-only in the UI.
+- [ ] **Analytical adapter coverage tests** — add a small contract test that every sensitivity dimension marked `affectsAnalytical: true` changes at least one input actually consumed by the analytical builder for that scenario class.
+- [ ] **Capillary-pressure documentation gap** — document the current Brooks-Corey cap at `20 × P_entry` in user-facing docs and note that it is a numerical stabilization, not a physical plateau.
+- [ ] **SwProfile output status** — `SwProfileChart.svelte` still exists, but the card is commented out in `App.svelte`. Either restore it as a supported output or remove the stale component/docs references.
+- [ ] **Benchmark acceptance policy refresh** — keep the current coarse 25–30% Buckley-Leverett thresholds as regression guards if needed, but add a tighter validation target tier based on the observed refined-grid behavior (currently about 2.5–3.1%).
+
 ### ~~S1 — Scenario/Sensitivity Architecture Redesign~~ ✅ COMPLETE (2026-03-19)
 
 Consolidated 18 scenarios → 8 canonical scenarios (6 + 2 gas); replaced single `sensitivity?` slot with `sensitivities: SensitivityDimension[]` array; multi-dimension sensitivity selection; domain grouping (Waterflood / Sweep / Depletion / Gas); `chartPresetOverride` per dimension; stale-key guard in UI; explicit params per scenario + `Object.freeze()`; `enabledByDefault?` on variants; all 28 test files pass.
@@ -185,6 +193,10 @@ Confirmed bugs. Viscous-dominated 2-phase runs are unaffected; gravity-drainage 
 - [ ] **Gas-oil capillary pressure direction** (`capillary.rs` `GasOilCapillaryPressure`) — `P_cog` currently decreases as S_g increases. Physical requirement: gas is non-wetting, so Pc = P_gas − P_oil must increase with S_g. Fix: parameterise on `S_o_eff` using `Sorg` (see below).
 - [ ] **Stone II missing `Sorg` parameter** (`relperm.rs`) — `k_ro_gas` uses `s_gr` (residual gas after water imbibition) as terminal oil saturation in a gas flood. These are distinct. Add `s_org` (residual oil to gas, typically > `s_or`) and wire through `k_ro_gas`, capillary pressure, and UI.
 - [ ] **3-phase material-balance diagnostic tracks water only** (`step.rs`) — `actual_change_m3` accumulates only ΔSw × Vp. Add parallel accumulators for gas and oil so all three phases are covered.
+
+### Analytical — Correctness / Contract Gaps
+
+- [ ] **Dietz well-location sensitivity is not yet analytical-aware** (`depletionAnalytical.ts`, `DepletionAnalytical.svelte`, `referenceComparisonModel.ts`, `benchmarkRunModel.ts`) — the depletion analytical helper infers shape from geometry/aspect ratio but does not consume `producerI` / `producerJ`. Current `dep_pss` metadata implies center/corner analytical variation that is not actually wired.
 
 ### Physics — Known Limitations (Black-Oil Model)
 

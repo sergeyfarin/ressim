@@ -48,6 +48,10 @@ Relative Error = abs((PV_BT_sim - PV_BT_ref) / PV_BT_ref)
 
 These tolerances account for finite-volume numerical diffusion, BHP-driven well control (instead of strict constant-rate injection), and explicit saturation transport discretization in the current simulator.
 
+Interpretation note:
+- These thresholds are intentionally coarse regression guards for the present browser/WASM simulator configuration.
+- They should not be read as the target accuracy of the Buckley-Leverett method itself; the observed coarse-grid errors are materially tighter, and the refined-grid checks are currently about 2.5–3.1%.
+
 ## Current Results (from test run)
 
 Command:
@@ -127,7 +131,7 @@ Frontend alignment note:
 
 - README includes a Model Validation Benchmarks (P4-1) section with tolerance policy and a link to this page.
 - Chart-level reference-solution mismatch metrics (MAE/RMSE/MAPE) remain visible in the rate chart panel for quick run-time comparison.
-- Buckley-Leverett scenarios are defined in `src/lib/catalog/scenarios.ts` as `wf_bl_case_a` and `wf_bl_case_b`; each scenario is a complete self-contained parameter set.
+- The active waterflood scenario is `wf_bl1d` in `src/lib/catalog/scenarios.ts`; BL Case A / BL Case B behavior now lives under its mobility sensitivity variants.
 - Benchmark execution uses the sensitivity sweep workflow: run base only, or select sensitivity variants (grid refinement, viscosity) for a sweep.
 - Stored reference-run results feed benchmark-specific comparison charts.
 - There is no generated frontend benchmark artifact; benchmark evidence is kept in Rust tests and scenario presets.

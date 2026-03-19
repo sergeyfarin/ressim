@@ -905,21 +905,21 @@ export const SCENARIOS: Scenario[] = [
             {
                 key: 'shape_factor',
                 label: 'Well Location  (C_A)',
-                description: 'Well position within a bounded square reservoir determines the Dietz shape factor C_A. Central well C_A ≈ 30.88 vs corner well C_A ≈ 0.56 — a ~55× difference that dramatically changes decline rate. Both simulation and analytical update.',
+                description: 'Well position within a bounded square reservoir determines the Dietz shape factor C_A. Central well C_A ≈ 30.88 vs corner well C_A ≈ 0.56 — a ~55× difference that dramatically changes decline rate. The simulator updates today; the depletion analytical helper still needs explicit producer-position wiring.',
                 variants: [
                     {
                         key: 'ca_center',
                         label: 'Centre  (C_A ≈ 30.88)',
                         description: 'Central producer — maximum drainage efficiency, slow decline. Base case.',
                         paramPatch: {},
-                        affectsAnalytical: true,
+                        affectsAnalytical: false,
                     },
                     {
                         key: 'ca_corner',
                         label: 'Corner  (C_A ≈ 0.56)',
                         description: 'Corner producer — minimum drainage efficiency, fast decline.',
                         paramPatch: { producerI: 0, producerJ: 0 },
-                        affectsAnalytical: true,
+                        affectsAnalytical: false,
                     },
                 ],
             },

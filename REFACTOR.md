@@ -204,3 +204,32 @@ getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey?): Record<str
 - Existing scenario keys (`wf_bl_case_a`, `dep_dietz_center`, etc.) should be preserved as aliases in `getScenario()` during transition to avoid breaking any persisted state or tests.
 - The `scenarioClass` field on `Scenario` maps to domain tab: `'waterflood'` → Waterflood + Sweep, `'depletion'` → Depletion, `'3phase'` → Gas.
 - Tests that count scenarios or variants will need updating. Update counts explicitly; do not use snapshot-style "N scenarios expected" without documenting the intent.
+
+---
+
+## Phase 3 — Candidate Cleanup After Review
+
+These items were identified during the 2026-03-19 implementation review and are good candidates once Step 7 / F4 pressure drops.
+
+### A. Extract Output Selection View Model
+
+`App.svelte` currently owns parallel derived value groups for:
+
+- selected reference result
+- output profile inputs
+- 3D output inputs
+- analytical helper inputs
+
+This creates avoidable duplication and makes it easier for charts, 3D output, and analytical adapters to drift.
+
+**Suggested direction:** create one typed output-selection helper or store-facing view model that returns the active run/result payload shared by charts, 3D, and analytical components.
+
+### B. Add Typed Analytical Adapter Contracts
+
+The current depletion well-location mismatch exists because scenario metadata can claim `affectsAnalytical: true` while the analytical builder does not consume the required parameters.
+
+**Suggested direction:**
+
+- Add small adapter builders per analytical family.
+- Add tests that fail when a sensitivity dimension marked `affectsAnalytical: true` does not affect any consumed analytical input.
+- Keep scenario metadata and analytical plumbing coupled by tests instead of convention.
