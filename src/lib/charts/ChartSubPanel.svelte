@@ -91,13 +91,14 @@
         _dynamicTitle?: (labels: string[]) => string;
         _fraction?: boolean;
         _auto?: boolean;
+        _tickFormatter?: (value: string | number) => string | number;
     };
     let scaleDerived = $derived.by(() => {
         let meta: Record<string, ScaleMeta> = {};
         let clean: Record<string, any> = {};
         for (const [key, cfg] of Object.entries(scaleConfigs)) {
-            const { _dynamicTitle, _fraction, _auto, ...rest } = cfg;
-            meta[key] = { _dynamicTitle, _fraction, _auto };
+            const { _dynamicTitle, _fraction, _auto, _tickFormatter, ...rest } = cfg;
+            meta[key] = { _dynamicTitle, _fraction, _auto, _tickFormatter };
             clean[key] = structuredClone(rest);
         }
         return { meta, clean };
@@ -482,6 +483,9 @@
                                 },
                                 ticks: {
                                     ...(cfg.ticks ?? {}),
+                                    ...(typeof scaleMeta[key]?._tickFormatter === "function"
+                                        ? { callback: scaleMeta[key]._tickFormatter }
+                                        : {}),
                                     font: {
                                         family: "'JetBrains Mono', monospace",
                                         size: 10,

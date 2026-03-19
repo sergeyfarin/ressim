@@ -147,7 +147,6 @@ Acceptance: common scenario editing takes materially less scrolling on desktop; 
 ### F7 — Redesign Themes
 
 - [ ] Replace near-black dark / flat-white light surfaces with deliberate working themes
-- [ ] Remove or significantly soften the reservoir-layer page background treatment
 - [ ] Improve panel contrast, content focus, and data-first visual balance
 
 Acceptance: both themes feel designed for sustained technical use; decorative background no longer competes with data surfaces.

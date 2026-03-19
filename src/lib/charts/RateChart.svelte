@@ -982,9 +982,9 @@
             title: { display: true, text: "Recovery Factor" },
             ticks: {
                 count: 6,
-                callback: (v: string | number) =>
-                    typeof v === "number" ? (v * 100).toFixed(0) + "%" : v,
             },
+            _tickFormatter: (v: string | number) =>
+                typeof v === "number" ? (v * 100).toFixed(0) + "%" : v,
         },
     };
 
