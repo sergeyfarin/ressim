@@ -12,6 +12,14 @@
 
 ## Active Work
 
+### Chart Lifecycle — Open Issues (2026-03-19)
+
+- [ ] **Color stability when sweep results arrive out of order** — `orderResults()` sorts by variant presence then insertion order. If sweep results arrive in non-declaration order, colors can shift mid-sweep. Fix: sort `orderedResults` by variant declaration index (from `previewVariantParams` order), not arrival order.
+- [ ] **Single-variant preview uses neutral reference color** — When exactly 1 variant is selected, curves use the neutral gray reference color rather than case color index 0. Inconsistent with multi-variant behavior. Low priority — acceptable for single selections.
+- [ ] **Sweep panel has no pending overlays** — During mid-sweep for BL sweep scenarios, `buildSweepPanel` only shows completed results' analytical curves. Pending variants have no sweep overlay. Low priority since sweep efficiency is a secondary chart.
+- [ ] **`previewBaseParams` coupling is fragile** — In `App.svelte`, `previewBaseParams` is passed only when `!previewVariantParams?.length && activeReferenceResults.length === 0`. If these conditions ever diverge a mismatched preview could render. Add defensive guard.
+- [ ] **Tests missing for `previewCases` and depletion per-variant** — `referenceComparisonModel.test.ts` does not cover: `previewCases` population in pure-preview or mid-sweep mode; depletion scenario with `analyticalPerVariant=true`; `colorIndex` offset correctness. Add dedicated test cases.
+
 ### Review Follow-Ups — 2026-03-19
 
 - [ ] **Depletion analytical contract gap** — `calculateDepletionAnalyticalProduction()` does not currently consume producer location, so the `dep_pss` well-location / Dietz shape-factor sensitivity changes simulation inputs but not the analytical helper. Required follow-up: pass producer position or explicit shape factor into the depletion analytical adapter, update comparison builders, and add tests proving center/corner analytical curves diverge. Until fixed, treat this sensitivity as simulation-only in the UI.
@@ -267,3 +275,4 @@ Intentional simplifications documented here for clarity. Not bugs.
 - **Run Controls UX** (2026-03-19): Stop button shows "Stopping…" immediately; `stopPending` state added. Steps-reset bug on scenario run fixed (save/restore `this.steps` around `applyCaseParams`).
 - **Sweep Efficiency** (2026-03-19): Analytical sweep efficiency module (`sweepEfficiency.ts`): Craig (1971) areal sweep, Dykstra-Parsons (1950) vertical sweep, volumetric product. `SweepEfficiencyChart.svelte` renders E_A, E_V, E_A × E_V curves. Four new sweep scenarios: Areal–Mobility, Areal–Residual, Vertical–V_DP, Combined Sweep.
 - **S1 — Scenario/Sensitivity Architecture Redesign** (2026-03-19): Consolidated 18 scenarios → 8 canonical scenarios with multi-dimension sensitivity selection. New types `ScenarioDomain`, `SensitivityDimension`; `sensitivities: SensitivityDimension[]` replaces `sensitivity?`; domain grouping in ScenarioPicker; `chartPresetOverride` per dimension; stale-key guard; explicit params + `Object.freeze()`; `enabledByDefault?` on variants; `activeSensitivityDimensionKey` in store; `selectSensitivityDimension()` action; 28/28 tests pass.
+- **Analytical preview lifecycle fixes** (2026-03-19): Multi-variant analytical preview before runs (BL + depletion); mid-sweep color continuity via `pendingPreviewVariants`; depletion per-variant analytical (each result gets own dashed reference curve); cases selector visible during preview via `previewCases: ReferenceComparisonPreviewCase[]` on model; "Analytical preview — N variant(s)" header replaces confusing "0 of 0 runs shown". `computeDepletionAnalyticalFromParams` helper extracted for DRY preview and pending-overlay paths.

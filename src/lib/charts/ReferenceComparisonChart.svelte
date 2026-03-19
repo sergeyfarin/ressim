@@ -22,6 +22,7 @@
         buildReferenceComparisonModel,
         getReferenceComparisonCaseColor,
         type AnalyticalPreviewVariant,
+        type ReferenceComparisonPreviewCase,
     } from './referenceComparisonModel';
 
     let {
@@ -117,14 +118,18 @@
     });
 
     $effect(() => {
-        const orderedCaseKeys = overlayModel.orderedResults.map((result) => result.key);
-        const nextSignature = orderedCaseKeys.join('|');
+        // Track both completed results and pending/preview variant keys so toggling
+        // works throughout the full lifecycle: pure preview → mid-sweep → completed.
+        const resultKeys = overlayModel.orderedResults.map((r) => r.key);
+        const previewKeys = overlayModel.previewCases.map((c) => c.key);
+        const allKeys = [...resultKeys, ...previewKeys];
+        const nextSignature = allKeys.join('|');
         if (caseSelectorSignature === nextSignature) return;
 
         const previousVisibility = visibleCaseKeys;
         caseSelectorSignature = nextSignature;
         visibleCaseKeys = Object.fromEntries(
-            orderedCaseKeys.map((key) => [key, previousVisibility[key] ?? true]),
+            allKeys.map((key) => [key, previousVisibility[key] ?? true]),
         );
     });
 
@@ -342,9 +347,15 @@
             <div class="ui-section-kicker opacity-50">
                 Output Comparison
             </div>
-            <div class="ui-support-copy">
-                {visibleResults.length} of {overlayModel.orderedResults.length} stored run(s) shown
-            </div>
+            {#if overlayModel.orderedResults.length > 0}
+                <div class="ui-support-copy">
+                    {visibleResults.length} of {overlayModel.orderedResults.length} stored run(s) shown
+                </div>
+            {:else if overlayModel.previewCases.length > 0}
+                <div class="ui-support-copy text-muted-foreground/70">
+                    Analytical preview — {overlayModel.previewCases.length} variant(s)
+                </div>
+            {/if}
         </div>
         {#if overlayModel.orderedResults.length > 1}
             <div class="ui-support-copy">
@@ -357,7 +368,7 @@
                 {caseVolumeWarning}
             </div>
         {/if}
-        {#if overlayModel.orderedResults.length > 1}
+        {#if overlayModel.orderedResults.length + overlayModel.previewCases.length > 1}
             <div class="flex items-center gap-2 overflow-x-auto">
                 <span class="ui-section-kicker shrink-0 opacity-50">Cases</span>
                 {#each overlayModel.orderedResults as result, index}
@@ -380,6 +391,29 @@
                             />
                         </svg>
                         <span>{result.label}</span>
+                    </button>
+                {/each}
+                {#each overlayModel.previewCases as pc}
+                    <button
+                        type="button"
+                        class={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${(visibleCaseKeys[pc.key] ?? true)
+                            ? 'border-primary/40 bg-muted/25 text-foreground'
+                            : 'border-border/70 bg-transparent text-muted-foreground opacity-60 hover:opacity-90'}`}
+                        onclick={() => toggleCaseVisibility(pc.key)}
+                        title={`${(visibleCaseKeys[pc.key] ?? true) ? 'Hide' : 'Show'} ${pc.label} (analytical preview)`}
+                    >
+                        <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
+                            <line
+                                x1="0"
+                                y1="1.5"
+                                x2="14"
+                                y2="1.5"
+                                stroke={getReferenceComparisonCaseColor(pc.colorIndex)}
+                                stroke-width="2"
+                                stroke-dasharray="7,4"
+                            />
+                        </svg>
+                        <span>{pc.label}</span>
                     </button>
                 {/each}
             </div>

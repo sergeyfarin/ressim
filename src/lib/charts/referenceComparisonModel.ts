@@ -16,11 +16,33 @@ export type ReferenceComparisonPanel = {
 
 export type ReferenceComparisonModel = {
     orderedResults: BenchmarkRunResult[];
+    /**
+     * Preview/pending variant entries for the cases selector UI.
+     * Populated when:
+     *  - Pure preview (no results): multi-variant analytical preview cases.
+     *  - Mid-sweep (some results done): remaining queued/running variants.
+     * Empty when all variants have completed results (orderedResults covers everything).
+     */
+    previewCases: ReferenceComparisonPreviewCase[];
     panels: Record<RateChartPanelKey, ReferenceComparisonPanel>;
     sweepPanel: ReferenceComparisonPanel | null;
 };
 
 export type ReferenceComparisonTheme = 'dark' | 'light';
+
+/**
+ * A preview or pending variant entry shown in the cases selector UI.
+ * Used both in pure-preview mode (no results yet) and during mid-sweep
+ * (some results done, others still queued/running).
+ */
+export type ReferenceComparisonPreviewCase = {
+    /** Variant key — matches caseKey on the chart series for visibility toggling. */
+    key: string;
+    /** Display label for the cases selector button. */
+    label: string;
+    /** Color palette index used for this variant's curves. */
+    colorIndex: number;
+};
 
 /**
  * One entry in the multi-variant analytical preview shown before any simulation
@@ -414,6 +436,85 @@ function computeBLAnalyticalFromParams(params: Record<string, any>): {
     return { pviValues, waterCut, recovery };
 }
 
+/**
+ * Shared depletion analytical computation over a synthesised time grid derived
+ * from scenario params (steps × delta_t_days). Used for preview and pending-
+ * variant overlays where no simulation result (and therefore no real time axis)
+ * is available yet.
+ *
+ * Returns null on numerical failure so callers can skip the curve independently.
+ */
+function computeDepletionAnalyticalFromParams(
+    params: Record<string, any>,
+    xAxisMode: RateChartXAxisMode,
+): {
+    xValues: (number | null)[];
+    oilRates: (number | null)[];
+    recoveryValues: (number | null)[];
+    avgPressureValues: (number | null)[];
+} | null {
+    const steps = toFiniteNumber(params.steps, 200);
+    const dt = toFiniteNumber(params.delta_t_days, 5);
+    const timeHistory = Array.from({ length: steps }, (_, i) => (i + 1) * dt);
+
+    let analyticalResult: ReturnType<typeof calculateDepletionAnalyticalProduction>;
+    try {
+        analyticalResult = calculateDepletionAnalyticalProduction({
+            reservoir: {
+                length: toFiniteNumber(params.nx, 1) * toFiniteNumber(params.cellDx, 10),
+                area: toFiniteNumber(params.ny, 1)
+                    * toFiniteNumber(params.cellDy, 10)
+                    * toFiniteNumber(params.nz, 1)
+                    * toFiniteNumber(params.cellDz, 1),
+                porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
+            },
+            timeHistory,
+            initialSaturation: toFiniteNumber(params.initialSaturation, 0.3),
+            nz: toFiniteNumber(params.nz, 1),
+            permMode: String(params.permMode ?? 'uniform'),
+            uniformPermX: toFiniteNumber(params.uniformPermX, 100),
+            uniformPermY: toFiniteNumber(params.uniformPermY ?? params.uniformPermX, 100),
+            layerPermsX: Array.isArray(params.layerPermsX) ? params.layerPermsX.map(Number) : [],
+            layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
+            cellDx: toFiniteNumber(params.cellDx, 10),
+            cellDy: toFiniteNumber(params.cellDy, 10),
+            cellDz: toFiniteNumber(params.cellDz, 1),
+            wellRadius: toFiniteNumber(params.well_radius, 0.1),
+            wellSkin: toFiniteNumber(params.well_skin, 0),
+            muO: toFiniteNumber(params.mu_o, 1),
+            sWc: toFiniteNumber(params.s_wc, 0.1),
+            sOr: toFiniteNumber(params.s_or, 0.1),
+            nO: toFiniteNumber(params.n_o, 2),
+            c_o: toFiniteNumber(params.c_o, 1e-5),
+            c_w: toFiniteNumber(params.c_w, 3e-6),
+            cRock: toFiniteNumber(params.rock_compressibility, 1e-6),
+            initialPressure: toFiniteNumber(params.initialPressure, 300),
+            producerBhp: toFiniteNumber(params.producerBhp, 100),
+            depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
+        });
+    } catch {
+        return null;
+    }
+
+    const ooip = getOoip(params);
+    const tau = analyticalResult.meta.tau ?? null;
+    const xMode = xAxisMode === 'logTime' ? 'logTime' : xAxisMode === 'tD' ? 'tD' : 'time';
+    const xValues = analyticalResult.production.map((pt) => {
+        if (xMode === 'logTime') return pt.time > 0 ? Math.log10(pt.time) : null;
+        if (xMode === 'tD' && Number.isFinite(tau) && (tau as number) > 0) return pt.time / (tau as number);
+        return pt.time;
+    });
+
+    return {
+        xValues,
+        oilRates: analyticalResult.production.map((pt) => pt.oilRate),
+        recoveryValues: analyticalResult.production.map((pt) =>
+            ooip > 1e-12 ? Math.max(0, Math.min(1, pt.cumulativeOil / ooip)) : null,
+        ),
+        avgPressureValues: analyticalResult.production.map((pt) => pt.avgPressure),
+    };
+}
+
 function buildAnalyticalPreviewPanels(
     variants: AnalyticalPreviewVariant[],
     xAxisMode: RateChartXAxisMode,
@@ -478,58 +579,8 @@ function buildAnalyticalPreviewPanels(
             const prefix = labelPrefix(variant);
             const caseKey = multiVariant ? variant.variantKey : undefined;
 
-            const steps = toFiniteNumber(variant.params.steps, 200);
-            const dt = toFiniteNumber(variant.params.delta_t_days, 5);
-            const timeHistory = Array.from({ length: steps }, (_, i) => (i + 1) * dt);
-
-            let analyticalResult: ReturnType<typeof calculateDepletionAnalyticalProduction>;
-            try {
-                analyticalResult = calculateDepletionAnalyticalProduction({
-                    reservoir: {
-                        length: toFiniteNumber(variant.params.nx, 1) * toFiniteNumber(variant.params.cellDx, 10),
-                        area: toFiniteNumber(variant.params.ny, 1)
-                            * toFiniteNumber(variant.params.cellDy, 10)
-                            * toFiniteNumber(variant.params.nz, 1)
-                            * toFiniteNumber(variant.params.cellDz, 1),
-                        porosity: toFiniteNumber(variant.params.reservoirPorosity ?? variant.params.porosity, 0.2),
-                    },
-                    timeHistory,
-                    initialSaturation: toFiniteNumber(variant.params.initialSaturation, 0.3),
-                    nz: toFiniteNumber(variant.params.nz, 1),
-                    permMode: String(variant.params.permMode ?? 'uniform'),
-                    uniformPermX: toFiniteNumber(variant.params.uniformPermX, 100),
-                    uniformPermY: toFiniteNumber(variant.params.uniformPermY ?? variant.params.uniformPermX, 100),
-                    layerPermsX: Array.isArray(variant.params.layerPermsX) ? variant.params.layerPermsX.map(Number) : [],
-                    layerPermsY: Array.isArray(variant.params.layerPermsY) ? variant.params.layerPermsY.map(Number) : [],
-                    cellDx: toFiniteNumber(variant.params.cellDx, 10),
-                    cellDy: toFiniteNumber(variant.params.cellDy, 10),
-                    cellDz: toFiniteNumber(variant.params.cellDz, 1),
-                    wellRadius: toFiniteNumber(variant.params.well_radius, 0.1),
-                    wellSkin: toFiniteNumber(variant.params.well_skin, 0),
-                    muO: toFiniteNumber(variant.params.mu_o, 1),
-                    sWc: toFiniteNumber(variant.params.s_wc, 0.1),
-                    sOr: toFiniteNumber(variant.params.s_or, 0.1),
-                    nO: toFiniteNumber(variant.params.n_o, 2),
-                    c_o: toFiniteNumber(variant.params.c_o, 1e-5),
-                    c_w: toFiniteNumber(variant.params.c_w, 3e-6),
-                    cRock: toFiniteNumber(variant.params.rock_compressibility, 1e-6),
-                    initialPressure: toFiniteNumber(variant.params.initialPressure, 300),
-                    producerBhp: toFiniteNumber(variant.params.producerBhp, 100),
-                    depletionRateScale: toFiniteNumber(variant.params.analyticalDepletionRateScale, 1),
-                });
-            } catch {
-                // Skip this variant — bad params or numerical failure, don't abort others.
-                return;
-            }
-
-            const ooip = getOoip(variant.params);
-            const tau = analyticalResult.meta.tau ?? null;
-            const xMode = xAxisMode === 'logTime' ? 'logTime' : xAxisMode === 'tD' ? 'tD' : 'time';
-            const xValues = analyticalResult.production.map((pt) => {
-                if (xMode === 'logTime') return pt.time > 0 ? Math.log10(pt.time) : null;
-                if (xMode === 'tD' && Number.isFinite(tau) && (tau as number) > 0) return pt.time / (tau as number);
-                return pt.time;
-            });
+            const curves = computeDepletionAnalyticalFromParams(variant.params, xAxisMode);
+            if (!curves) return; // bad params or numerical failure — skip, don't abort others
 
             appendSeries(panels.rates, {
                 label: `${prefix}Analytical Oil Rate`,
@@ -540,7 +591,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, xValues, analyticalResult.production.map((pt) => pt.oilRate));
+            }, curves.xValues, curves.oilRates);
             appendSeries(panels.recovery, {
                 label: `${prefix}Analytical Recovery Factor`,
                 curveKey: 'recovery-factor',
@@ -550,9 +601,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, xValues, analyticalResult.production.map((pt) => (
-                ooip > 1e-12 ? Math.max(0, Math.min(1, pt.cumulativeOil / ooip)) : null
-            )));
+            }, curves.xValues, curves.recoveryValues);
             appendSeries(panels.diagnostics, {
                 label: `${prefix}Analytical Avg Pressure`,
                 curveKey: 'avg-pressure-reference',
@@ -562,7 +611,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, xValues, analyticalResult.production.map((pt) => pt.avgPressure));
+            }, curves.xValues, curves.avgPressureValues);
         });
 
         return panels;
@@ -724,10 +773,15 @@ export function buildReferenceComparisonModel(input: {
                     input.previewScenarioClass,
                     input.theme ?? 'dark',
                 );
-                return { orderedResults, panels: previewPanels, sweepPanel: null };
+                // Expose multi-variant preview entries so the cases selector can
+                // render toggle buttons even before any simulations have completed.
+                const previewCases: ReferenceComparisonPreviewCase[] = variants.length > 1
+                    ? variants.map((v, i) => ({ key: v.variantKey, label: v.label, colorIndex: i }))
+                    : [];
+                return { orderedResults, previewCases, panels: previewPanels, sweepPanel: null };
             }
         }
-        return { orderedResults, panels, sweepPanel: null };
+        return { orderedResults, previewCases: [], panels, sweepPanel: null };
     }
 
     const derivedByKey = new Map<string, DerivedRunSeries>(
@@ -903,12 +957,12 @@ export function buildReferenceComparisonModel(input: {
     });
 
     if (!baseResult) {
-        return { orderedResults, panels, sweepPanel: null };
+        return { orderedResults, previewCases: [], panels, sweepPanel: null };
     }
 
     const baseDerived = derivedByKey.get(baseResult.key);
     if (!baseDerived) {
-        return { orderedResults, panels, sweepPanel: null };
+        return { orderedResults, previewCases: [], panels, sweepPanel: null };
     }
 
     if (family.scenarioClass === 'buckley-leverett') {
@@ -1017,52 +1071,157 @@ export function buildReferenceComparisonModel(input: {
             }
         }
     } else {
-        // Depletion: single shared reference from base result.
-        const refOverlay = buildDepletionReference(baseResult, baseDerived, input.xAxisMode);
-        if (refOverlay.rates) {
-            appendSeries(panels.rates, {
-                label: refOverlay.rates.label,
-                curveKey: 'oil-rate-reference',
-                toggleLabel: refOverlay.rates.label,
-                color: referenceColor,
-                borderWidth: 2,
-                borderDash: [7, 4],
-                yAxisID: 'y',
-            }, refOverlay.xValues, refOverlay.rates.values);
-        }
-        if (refOverlay.cumulative) {
-            appendSeries(panels.recovery, {
-                label: refOverlay.cumulative.recoveryLabel,
-                curveKey: 'recovery-factor',
-                toggleLabel: 'Reference Solution Recovery',
-                color: referenceColor,
-                borderWidth: 2,
-                borderDash: [7, 4],
-                yAxisID: 'y',
-            }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-            appendSeries(panels.cumulative, {
-                label: refOverlay.cumulative.cumulativeLabel,
-                curveKey: 'cum-oil-reference',
-                toggleLabel: refOverlay.cumulative.cumulativeLabel,
-                color: referenceColor,
-                borderWidth: 1.4,
-                borderDash: [3, 5],
-                yAxisID: 'y',
-                defaultVisible: false,
-            }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
-        }
-        if (refOverlay.diagnostics) {
-            appendSeries(panels.diagnostics, {
-                label: refOverlay.diagnostics.label,
-                curveKey: 'avg-pressure-reference',
-                toggleLabel: refOverlay.diagnostics.label,
-                color: referenceColor,
-                borderWidth: 2,
-                borderDash: [7, 4],
-                yAxisID: 'y',
-            }, refOverlay.xValues, refOverlay.diagnostics.values);
+        // Depletion path.
+        if (input.analyticalPerVariant) {
+            // Per-result analytical — each variant gets its own dashed reference curve
+            // in its case color so the user can directly compare sim vs. analytical.
+            orderedResults.forEach((result, index) => {
+                const derived = derivedByKey.get(result.key);
+                if (!derived) return;
+                const color = getReferenceComparisonCaseColor(index);
+                let refOverlay: ReturnType<typeof buildDepletionReference>;
+                try {
+                    refOverlay = buildDepletionReference(result, derived, input.xAxisMode);
+                } catch {
+                    return; // bad params — skip this result's reference curve
+                }
+                if (refOverlay.rates) {
+                    appendSeries(panels.rates, {
+                        label: `${result.label} — Reference`,
+                        curveKey: 'oil-rate-reference',
+                        caseKey: result.key,
+                        toggleLabel: 'Reference Oil Rate',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.rates.values);
+                }
+                if (refOverlay.cumulative) {
+                    appendSeries(panels.recovery, {
+                        label: `${result.label} — Reference Recovery`,
+                        curveKey: 'recovery-factor',
+                        caseKey: result.key,
+                        toggleLabel: 'Reference Recovery',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                }
+                if (refOverlay.diagnostics) {
+                    appendSeries(panels.diagnostics, {
+                        label: `${result.label} — Reference Pressure`,
+                        curveKey: 'avg-pressure-reference',
+                        caseKey: result.key,
+                        toggleLabel: 'Reference Pressure',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.diagnostics.values);
+                }
+            });
+
+            // Analytical-only overlay for variants still queued/running (pending).
+            // Color indices continue from orderedResults.length so each variant
+            // keeps its color throughout preview → in-progress → completed.
+            if (input.pendingPreviewVariants?.length) {
+                input.pendingPreviewVariants.forEach((variant, i) => {
+                    const color = getReferenceComparisonCaseColor(orderedResults.length + i);
+                    const curves = computeDepletionAnalyticalFromParams(variant.params, input.xAxisMode);
+                    if (!curves) return;
+                    appendSeries(panels.rates, {
+                        label: `${variant.label} — Reference`,
+                        curveKey: 'oil-rate-reference',
+                        caseKey: variant.variantKey,
+                        toggleLabel: 'Reference Oil Rate',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, curves.xValues, curves.oilRates);
+                    appendSeries(panels.recovery, {
+                        label: `${variant.label} — Reference Recovery`,
+                        curveKey: 'recovery-factor',
+                        caseKey: variant.variantKey,
+                        toggleLabel: 'Reference Recovery',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, curves.xValues, curves.recoveryValues);
+                    appendSeries(panels.diagnostics, {
+                        label: `${variant.label} — Reference Pressure`,
+                        curveKey: 'avg-pressure-reference',
+                        caseKey: variant.variantKey,
+                        toggleLabel: 'Reference Pressure',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, curves.xValues, curves.avgPressureValues);
+                });
+            }
+        } else {
+            // Shared reference from base result — one curve for all cases.
+            const refOverlay = buildDepletionReference(baseResult, baseDerived, input.xAxisMode);
+            if (refOverlay.rates) {
+                appendSeries(panels.rates, {
+                    label: refOverlay.rates.label,
+                    curveKey: 'oil-rate-reference',
+                    toggleLabel: refOverlay.rates.label,
+                    color: referenceColor,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.rates.values);
+            }
+            if (refOverlay.cumulative) {
+                appendSeries(panels.recovery, {
+                    label: refOverlay.cumulative.recoveryLabel,
+                    curveKey: 'recovery-factor',
+                    toggleLabel: 'Reference Solution Recovery',
+                    color: referenceColor,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                appendSeries(panels.cumulative, {
+                    label: refOverlay.cumulative.cumulativeLabel,
+                    curveKey: 'cum-oil-reference',
+                    toggleLabel: refOverlay.cumulative.cumulativeLabel,
+                    color: referenceColor,
+                    borderWidth: 1.4,
+                    borderDash: [3, 5],
+                    yAxisID: 'y',
+                    defaultVisible: false,
+                }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
+            }
+            if (refOverlay.diagnostics) {
+                appendSeries(panels.diagnostics, {
+                    label: refOverlay.diagnostics.label,
+                    curveKey: 'avg-pressure-reference',
+                    toggleLabel: refOverlay.diagnostics.label,
+                    color: referenceColor,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.diagnostics.values);
+            }
         }
     }
+
+    // Pending preview cases for mid-sweep: variants whose results haven't landed yet.
+    // These appear in the cases selector alongside completed orderedResults entries.
+    const pendingPreviewCases: ReferenceComparisonPreviewCase[] =
+        (input.pendingPreviewVariants?.length && input.analyticalPerVariant)
+            ? input.pendingPreviewVariants.map((v, i) => ({
+                key: v.variantKey,
+                label: v.label,
+                colorIndex: orderedResults.length + i,
+            }))
+            : [];
 
     const sweepPanel = (family.scenarioClass === 'buckley-leverett' && family.showSweepPanel === true)
         ? buildSweepPanel({
@@ -1072,5 +1231,5 @@ export function buildReferenceComparisonModel(input: {
         })
         : null;
 
-    return { orderedResults, panels, sweepPanel };
+    return { orderedResults, previewCases: pendingPreviewCases, panels, sweepPanel };
 }
