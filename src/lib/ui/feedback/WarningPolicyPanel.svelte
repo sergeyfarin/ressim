@@ -35,7 +35,7 @@
 </script>
 
 {#if visibleGroups.length > 0}
-  <div class="mt-2 space-y-1.5">
+  <div class="space-y-1.5">
     {#each visibleGroups as group}
       <div class={`rounded border px-2.5 py-1.5 text-xs ${toneClass(group)}`}>
         {#if visibleGroups.length > 1}

@@ -101,10 +101,17 @@
 
       <!-- Inline status -->
       <div class="flex items-center gap-3 text-xs text-muted-foreground ml-auto">
-        <span class={workerRunning ? "text-primary font-medium" : ""}>{statusText}</span>
+        <span class={`rounded-full px-2 py-0.5 text-xs font-medium ${
+          workerRunning
+            ? "bg-primary/15 text-primary"
+            : statusText === "Ready"
+              ? "bg-success/15 text-success"
+              : statusText === "Complete"
+                ? "bg-success/15 text-success"
+                : "bg-muted text-muted-foreground"
+        }`}>{statusText}</span>
         <span class="opacity-60">·</span>
         <span>{simTime.toFixed(1)} d</span>
-        <span class="opacity-60">·</span>
       </div>
     </div>
 

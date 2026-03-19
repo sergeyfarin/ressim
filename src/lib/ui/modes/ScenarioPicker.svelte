@@ -226,29 +226,32 @@
               </button>
             {/each}
           </div>
-          {#if !anyVariantAffectsAnalytical}
-            <div class="rounded border border-info/70 bg-info/10 px-2.5 py-1.5 text-xs text-info">
-              Analytical solution is fixed — only simulation results change.
-            </div>
-          {/if}
         {/if}
 
       </div>
     {/if}
 
   {/if}
-  {#if warningPolicy}
-  <div class="px-3 pb-3 space-y-2">
-    <WarningPolicyPanel
-      policy={warningPolicy}
-      groups={["blockingValidation", "nonPhysical", "referenceCaveat", "advisory"]}
-      groupSources={{
-        blockingValidation: ["validation"],
-        nonPhysical: ["validation"],
-        referenceCaveat: ["analytical"],
-        advisory: ["validation"],
-      }}
-    /></div>
+  {#if warningPolicy || (activeDimension && !anyVariantAffectsAnalytical)}
+  <div class="px-3 pb-3 space-y-1.5">
+    {#if activeDimension && !anyVariantAffectsAnalytical}
+      <div class="rounded border border-info/70 bg-info/10 px-2.5 py-1.5 text-xs text-info">
+        Analytical solution is fixed — only simulation results change.
+      </div>
+    {/if}
+    {#if warningPolicy}
+      <WarningPolicyPanel
+        policy={warningPolicy}
+        groups={["blockingValidation", "nonPhysical", "referenceCaveat", "advisory"]}
+        groupSources={{
+          blockingValidation: ["validation"],
+          nonPhysical: ["validation"],
+          referenceCaveat: ["analytical"],
+          advisory: ["validation"],
+        }}
+      />
+    {/if}
+  </div>
   {/if}
   {#if isCustom}
     <!-- ── Custom mode: full parameter form ── -->

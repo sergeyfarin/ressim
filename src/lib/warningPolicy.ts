@@ -272,10 +272,18 @@ export function evaluateAnalyticalStatus(input: AnalyticalStatusInput): Analytic
     }
   }
 
-  if (permMode !== 'uniform') {
+  if (permMode === 'random') {
     addReason(
       'perm-nonuniform',
-      'Permeability is non-uniform — the analytical solution is approximate.',
+      'Random permeability heterogeneity — the analytical solution is approximate.',
+      'warning',
+    );
+  }
+  const hasMultipleLayers = toggles.geo === '2dxz' || toggles.geo === '3d';
+  if (permMode === 'perLayer' && hasMultipleLayers && analyticalMode === 'depletion') {
+    addReason(
+      'perm-layered-depletion',
+      'Layered permeability with multiple layers — the depletion analytical solution assumes a single homogeneous layer.',
       'warning',
     );
   }
