@@ -116,11 +116,11 @@ All three-phase correctness fixes from Phase 1A are prerequisites.
 
 ### 3B. Gas-Oil Buckley-Leverett Analytical
 
-- [ ] Extend `fractionalFlow.ts` to support gas-oil displacement: `f_g(S_g)` using gas relative permeability (Corey) and gas/oil viscosity ratio
-- [ ] Welge tangent construction for gas-oil system — shock front saturation, breakthrough PVI
-- [ ] Wire as analytical overlay for `gas_injection` scenario
-- [ ] Add sensitivity dimensions to `gas_injection`: mobility ratio (μ_g/μ_o), S_gc, permeability, grid convergence
-- [ ] Validate: simulator gas breakthrough PVI vs analytical for favorable and adverse gas mobility
+- [x] Extend `fractionalFlow.ts` to support gas-oil displacement: `f_g(S_g)` using gas relative permeability (Corey) and gas/oil viscosity ratio
+- [x] Welge tangent construction for gas-oil system — shock front saturation, breakthrough PVI
+- [x] Wire as analytical overlay for `gas_injection` scenario
+- [x] Add sensitivity dimensions to `gas_injection`: mobility ratio (μ_g/μ_o), S_gc, permeability, grid convergence
+- [x] Validate: simulator gas breakthrough PVI vs analytical for favorable and adverse gas mobility
 
 ### 3C. Solution Gas Drive Scenario
 

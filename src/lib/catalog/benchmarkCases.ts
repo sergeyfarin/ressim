@@ -15,7 +15,7 @@ export type BenchmarkEntry = {
     params: Record<string, any>;
 };
 
-export type BenchmarkScenarioClass = 'buckley-leverett' | 'depletion';
+export type BenchmarkScenarioClass = 'buckley-leverett' | 'depletion' | 'gas-oil-bl';
 
 export type BenchmarkSensitivityAxisKey =
     | 'grid-refinement'

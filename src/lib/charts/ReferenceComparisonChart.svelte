@@ -307,11 +307,15 @@
     }
 
     const ratesPanel = $derived(resolvePanelDefinition('rates', {
-        title: family?.scenarioClass === 'buckley-leverett' ? 'Breakthrough' : 'Oil Rate',
+        title: family?.scenarioClass === 'buckley-leverett' ? 'Breakthrough'
+            : family?.scenarioClass === 'gas-oil-bl' ? 'Gas Breakthrough'
+            : 'Oil Rate',
         curveKeys: family?.scenarioClass === 'buckley-leverett'
             ? ['water-cut-sim', 'water-cut-reference']
+            : family?.scenarioClass === 'gas-oil-bl'
+            ? ['gas-cut-sim', 'gas-cut-reference']
             : ['oil-rate-sim', 'oil-rate-reference'],
-        scalePreset: family?.scenarioClass === 'buckley-leverett' ? 'breakthrough' : 'rates',
+        scalePreset: (family?.scenarioClass === 'buckley-leverett' || family?.scenarioClass === 'gas-oil-bl') ? 'breakthrough' : 'rates',
         allowLogToggle: family?.scenarioClass === 'depletion',
     }));
     const recoveryPanel = $derived(resolvePanelDefinition('recovery', {

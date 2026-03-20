@@ -20,7 +20,7 @@ import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /** Physical classification — drives analytical solution routing and mode toggles. */
-export type ScenarioClass = 'waterflood' | 'depletion' | '3phase';
+export type ScenarioClass = 'waterflood' | 'depletion' | '3phase' | 'gas-oil-bl';
 
 /**
  * UI domain — controls which tab a scenario appears under in ScenarioPicker.
@@ -259,6 +259,56 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
                     title: 'Pressure',
                     curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
                     scalePreset: 'pressure',
+                },
+            },
+        },
+    },
+
+    /**
+     * Gas-oil Buckley-Leverett: PVI x-axis, gas cut + recovery + cum oil panels
+     * with analytical reference overlays (gas-oil fractional flow).
+     */
+    gas_oil_bl: {
+        rateChart: {
+            xAxisMode: 'pvi',
+            xAxisOptions: ['pvi', 'time', 'cumInjection'],
+            allowLogScale: false,
+            logScale: false,
+            ratesExpanded: true,
+            recoveryExpanded: true,
+            cumulativeExpanded: false,
+            diagnosticsExpanded: false,
+            panels: {
+                rates: {
+                    title: 'Gas Breakthrough',
+                    curveKeys: ['gas-cut-sim', 'gas-cut-reference'],
+                    scalePreset: 'breakthrough',
+                    allowLogToggle: false,
+                },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+                    scalePreset: 'recovery',
+                },
+                cumulative: {
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
+                    scalePreset: 'cumulative_volumes',
+                },
+                diagnostics: {
+                    title: 'Pressure',
+                    curveKeys: ['avg-pressure-sim'],
+                    scalePreset: 'pressure',
+                },
+                volumes: {
+                    title: 'Cum Injection',
+                    curveKeys: ['cum-injection'],
+                    scalePreset: 'cumulative_volumes',
+                },
+                oil_rate: {
+                    title: 'Oil Rate',
+                    curveKeys: ['oil-rate-sim'],
+                    scalePreset: 'rates',
                 },
             },
         },
@@ -1383,16 +1433,17 @@ export const SCENARIOS: Scenario[] = [
     {
         key: 'gas_injection',
         label: 'Gas Injection',
-        description: 'Gas injector displacing oil in a 1D homogeneous reservoir; no initial free gas. Experimental — known three-phase physics issues (see TODO.md).',
-        analyticalMethodSummary: 'Simulation-only — no analytical overlay while the three-phase gas-injection model remains under validation.',
-        analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
-        scenarioClass: '3phase',
+        description: 'Gas injector displacing oil in a 1D homogeneous reservoir; no initial free gas. The numerical gas front sharpens toward the analytical solution as grid resolution increases.',
+        analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction for gas-oil displacement — predicts gas breakthrough timing and post-breakthrough recovery.',
+        analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952) — applied to gas-oil system.',
+        scenarioClass: 'gas-oil-bl',
         domain: 'gas',
-        chartPreset: 'gas',
+        chartPreset: 'gas_oil_bl',
+        defaultSensitivityDimensionKey: 'mobility',
         params: {
             analyticalSolutionMode: 'waterflood',
-            nx: 20, ny: 1, nz: 1,
-            cellDx: 50, cellDy: 50, cellDz: 10,
+            nx: 50, ny: 1, nz: 1,
+            cellDx: 20, cellDy: 50, cellDz: 10,
             initialPressure: 250,
             initialSaturation: 0.2,
             initialGasSaturation: 0,
@@ -1414,7 +1465,7 @@ export const SCENARIOS: Scenario[] = [
             producerControlMode: 'pressure',
             injectorBhp: 350, producerBhp: 100,
             injectorI: 0, injectorJ: 0,
-            producerI: 19, producerJ: 0,
+            producerI: 49, producerJ: 0,
             well_radius: 0.1, well_skin: 0,
             capillaryEnabled: false,
             capillaryPEntry: 0, capillaryLambda: 2,
@@ -1422,13 +1473,134 @@ export const SCENARIOS: Scenario[] = [
             threePhaseModeEnabled: true,
             injectedFluid: 'gas',
             pcogEnabled: false, pcogPEntry: 3, pcogLambda: 2,
-            delta_t_days: 5,
-            steps: 60,
-            max_sat_change_per_step: 0.1,
+            delta_t_days: 2,
+            steps: 150,
+            max_sat_change_per_step: 0.05,
             max_pressure_change_per_step: 75,
             max_well_rate_change_fraction: 0.75,
         },
-        sensitivities: [],
+        sensitivities: [
+            {
+                key: 'mobility',
+                label: 'Gas Mobility Ratio',
+                description: 'Vary gas viscosity to explore how the gas-oil mobility ratio M = (k_rg/μ_g)/(k_ro/μ_o) controls gas breakthrough timing and oil recovery. Gas is typically much more mobile than oil (very low μ_g), giving strongly unfavorable M.',
+                variants: [
+                    {
+                        key: 'mob_favorable',
+                        label: 'M ≈ 4  (μ_g = 0.1 cp)',
+                        description: 'Relatively favorable gas mobility — later breakthrough, better recovery. Unusual for gas but instructive.',
+                        paramPatch: { mu_g: 0.1 },
+                        affectsAnalytical: true,
+                    },
+                    {
+                        key: 'mob_base',
+                        label: 'M ≈ 40  (μ_g = 0.02 cp)',
+                        description: 'Base case — typical gas viscosity, strongly unfavorable mobility. Early gas breakthrough.',
+                        paramPatch: {},
+                        affectsAnalytical: true,
+                    },
+                    {
+                        key: 'mob_adverse',
+                        label: 'M ≈ 200  (μ_g = 0.005 cp)',
+                        description: 'Extremely adverse mobility — very early breakthrough, poor recovery. Typical of light gas in heavy oil.',
+                        paramPatch: { mu_g: 0.005 },
+                        affectsAnalytical: true,
+                    },
+                ],
+            },
+            {
+                key: 's_gc',
+                label: 'Critical Gas Saturation S_gc',
+                description: 'S_gc is the minimum gas saturation for gas to flow. Higher S_gc delays gas breakthrough but traps more gas behind the front.',
+                variants: [
+                    {
+                        key: 'sgc_low',
+                        label: 'S_gc = 0.02',
+                        description: 'Low critical gas — gas flows at very low saturations.',
+                        paramPatch: { s_gc: 0.02 },
+                        affectsAnalytical: true,
+                    },
+                    {
+                        key: 'sgc_base',
+                        label: 'S_gc = 0.05  (base)',
+                        description: 'Moderate critical gas saturation — base case.',
+                        paramPatch: {},
+                        affectsAnalytical: true,
+                    },
+                    {
+                        key: 'sgc_high',
+                        label: 'S_gc = 0.10',
+                        description: 'High critical gas saturation — delays gas flow onset.',
+                        paramPatch: { s_gc: 0.10 },
+                        affectsAnalytical: true,
+                    },
+                ],
+            },
+            {
+                key: 'perm',
+                label: 'Permeability',
+                description: 'Permeability controls total flow rate (both phases), affecting how quickly the displacement front reaches the producer. The analytical BL solution is permeability-independent on a PVI basis.',
+                variants: [
+                    {
+                        key: 'perm_low',
+                        label: 'k = 10 mD  (tight)',
+                        description: 'Low permeability — slower displacement, same BL profile on PVI axis.',
+                        paramPatch: { uniformPermX: 10, uniformPermY: 10, uniformPermZ: 1 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'perm_base',
+                        label: 'k = 100 mD  (base)',
+                        description: 'Base permeability.',
+                        paramPatch: {},
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'perm_high',
+                        label: 'k = 1000 mD  (high)',
+                        description: 'High permeability — faster displacement, more throughput per timestep.',
+                        paramPatch: { uniformPermX: 1000, uniformPermY: 1000, uniformPermZ: 100 },
+                        affectsAnalytical: false,
+                    },
+                ],
+            },
+            {
+                key: 'grid',
+                label: 'Grid Resolution',
+                description: 'Numerical convergence study. The gas-oil BL analytical solution is grid-independent — only the simulation changes as the grid is refined.',
+                chartPresetOverride: 'gas_oil_bl',
+                variants: [
+                    {
+                        key: 'grid_10',
+                        label: '10 cells  (coarse)',
+                        description: 'Coarse 10-cell grid — large numerical diffusion, smeared gas front.',
+                        paramPatch: { nx: 10, producerI: 9, cellDx: 100 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'grid_25',
+                        label: '25 cells  (medium)',
+                        description: 'Medium grid — moderate numerical diffusion.',
+                        paramPatch: { nx: 25, producerI: 24, cellDx: 40 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'grid_50',
+                        label: '50 cells  (base)',
+                        description: 'Base 50-cell grid.',
+                        paramPatch: {},
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'grid_100',
+                        label: '100 cells  (fine)',
+                        description: 'Fine 100-cell grid — sharper gas front.',
+                        paramPatch: { nx: 100, producerI: 99, cellDx: 10 },
+                        affectsAnalytical: false,
+                    },
+                ],
+            },
+        ],
     },
 
     {

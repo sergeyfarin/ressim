@@ -1,6 +1,6 @@
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
-import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
-import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
+import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -64,6 +64,7 @@ type DerivedRunSeries = {
     time: number[];
     oilRate: Array<number | null>;
     waterCut: Array<number | null>;
+    gasCut: Array<number | null>;
     avgWaterSat: Array<number | null>;
     pressure: Array<number | null>;
     recovery: Array<number | null>;
@@ -90,7 +91,7 @@ function requiresRunMappedAnalyticalXAxis(
     scenarioClass: string | null | undefined,
     xAxisMode: RateChartXAxisMode,
 ): boolean {
-    if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
+    if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood' || scenarioClass === 'gas-oil-bl') {
         return xAxisMode !== 'pvi';
     }
     return false;
@@ -224,6 +225,12 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
         time: result.rateHistory.map((point) => toFiniteNumber(point.time, 0)),
         oilRate: result.rateHistory.map((point) => Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)))),
         waterCut: [...result.watercutSeries],
+        gasCut: result.rateHistory.map((point) => {
+            const gasRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0)));
+            const oilRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)));
+            const total = gasRate + oilRate;
+            return total > 1e-12 ? gasRate / total : 0;
+        }),
         avgWaterSat: result.rateHistory.map((point) => {
             const value = point.avg_water_saturation;
             return Number.isFinite(value) ? Number(value) : null;
@@ -420,6 +427,100 @@ function extractFluidProps(params: Record<string, any>): FluidProps {
     return {
         mu_w: toFiniteNumber(params.mu_w, 0.5),
         mu_o: toFiniteNumber(params.mu_o, 1),
+    };
+}
+
+function extractGasOilRockProps(params: Record<string, any>): GasOilRockProps {
+    return {
+        s_wc: toFiniteNumber(params.s_wc, 0.2),
+        s_gc: toFiniteNumber(params.s_gc, 0.05),
+        s_gr: toFiniteNumber(params.s_gr, 0.05),
+        s_org: toFiniteNumber(params.s_org, 0.20),
+        n_o: toFiniteNumber(params.n_o, 2),
+        n_g: toFiniteNumber(params.n_g, 1.5),
+        k_ro_max: toFiniteNumber(params.k_ro_max, 1),
+        k_rg_max: toFiniteNumber(params.k_rg_max, 0.8),
+    };
+}
+
+function extractGasOilFluidProps(params: Record<string, any>): GasOilFluidProps {
+    return {
+        mu_o: toFiniteNumber(params.mu_o, 2),
+        mu_g: toFiniteNumber(params.mu_g, 0.02),
+    };
+}
+
+function computeGasOilBLAnalyticalFromParams(params: Record<string, any>): {
+    pviValues: number[];
+    gasCut: Array<number | null>;
+    recovery: Array<number | null>;
+} | null {
+    const N = 150;
+    const pviMax = 3.0;
+    const pviValues = Array.from({ length: N }, (_, i) => (i / (N - 1)) * pviMax);
+    const injRates = new Array(N).fill(1);
+    let analyticalProduction: Array<{ oilRate: number; gasRate: number; cumulativeOil: number }>;
+    try {
+        analyticalProduction = calculateGasOilAnalyticalProduction(
+            extractGasOilRockProps(params),
+            extractGasOilFluidProps(params),
+            toFiniteNumber(params.initialGasSaturation, 0),
+            pviValues,
+            injRates,
+            1, // unit pore volume — PVI = cumulative injection directly
+        );
+    } catch {
+        return null;
+    }
+    if (!analyticalProduction.length) return null;
+
+    const s_wc = toFiniteNumber(params.s_wc, 0.2);
+    const ooip = 1 - s_wc; // oil initially in place as fraction of PV
+
+    const gasCut = analyticalProduction.map((point) => {
+        const total = Math.max(0, point.oilRate + point.gasRate);
+        return total > 1e-12 ? point.gasRate / total : 0;
+    });
+    const recovery = analyticalProduction.map((point) => (
+        ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
+    ));
+    return { pviValues, gasCut, recovery };
+}
+
+function buildGasOilBLReference(
+    baseResult: BenchmarkRunResult,
+    derived: DerivedRunSeries,
+    xAxisMode: RateChartXAxisMode,
+): AnalyticalOverlay {
+    const poreVolume = getPoreVolume(baseResult.params);
+    const ooip = getOoip(baseResult.params);
+    const analyticalProduction = calculateGasOilAnalyticalProduction(
+        extractGasOilRockProps(baseResult.params),
+        extractGasOilFluidProps(baseResult.params),
+        toFiniteNumber(baseResult.params.initialGasSaturation, 0),
+        derived.time,
+        baseResult.rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
+        poreVolume,
+    );
+
+    const gasCut = analyticalProduction.map((point) => {
+        const total = Math.max(0, point.oilRate + point.gasRate);
+        return total > 1e-12 ? point.gasRate / total : 0;
+    });
+    const recovery = analyticalProduction.map((point) => (
+        ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
+    ));
+
+    return {
+        rates: { label: 'Reference Solution Gas Cut', values: gasCut },
+        cumulative: {
+            recoveryLabel: 'Reference Solution Recovery',
+            recoveryValues: recovery,
+            cumulativeLabel: 'Reference Solution Cum Oil',
+            cumulativeValues: analyticalProduction.map((point) => point.cumulativeOil),
+        },
+        diagnostics: null,
+        xValues: buildXAxisValues(derived, xAxisMode),
     };
 }
 
@@ -768,6 +869,44 @@ function buildAnalyticalPreviewPanels(
         return panels;
     }
 
+    if (scenarioClass === 'gas-oil-bl') {
+        variants.forEach((variant, index) => {
+            const color = getColor(index);
+            const prefix = labelPrefix(variant);
+            const caseKey = multiVariant ? variant.variantKey : undefined;
+
+            const curves = computeGasOilBLAnalyticalFromParams(variant.params);
+            if (!curves) return;
+
+            appendSeries(panels.rates, {
+                label: `${prefix}Analytical Gas Cut`,
+                curveKey: 'gas-cut-reference',
+                ...(caseKey ? { caseKey } : {}),
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
+                color,
+                legendColor: legendGrey,
+                borderWidth: 2,
+                borderDash: [7, 4],
+                yAxisID: 'y',
+            }, curves.pviValues, curves.gasCut);
+            appendSeries(panels.recovery, {
+                label: `${prefix}Analytical Recovery Factor`,
+                curveKey: 'recovery-factor-reference',
+                ...(caseKey ? { caseKey } : {}),
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
+                color,
+                legendColor: legendGrey,
+                borderWidth: 2,
+                borderDash: [7, 4],
+                yAxisID: 'y',
+            }, curves.pviValues, curves.recovery);
+        });
+
+        return panels;
+    }
+
     return panels;
 }
 
@@ -1111,6 +1250,88 @@ export function buildReferenceComparisonModel(input: {
             return;
         }
 
+        if (family.scenarioClass === 'gas-oil-bl') {
+            appendSeries(panels.rates, {
+                label: `${result.label} Gas Cut`,
+                curveKey: 'gas-cut-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.gasCut);
+            appendSeries(panels.recovery, {
+                label: `${result.label} Recovery`,
+                curveKey: 'recovery-factor-primary',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.recovery);
+            appendSeries(panels.cumulative, {
+                label: `${result.label} Cum Oil`,
+                curveKey: 'cum-oil-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.cumulativeOil);
+            appendSeries(panels.oil_rate, {
+                label: `${result.label} Oil Rate`,
+                curveKey: 'oil-rate-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.oilRate);
+            appendSeries(panels.volumes, {
+                label: `${result.label} Cum Injection`,
+                curveKey: 'cum-injection',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.cumulativeInjection);
+            appendSeries(panels.diagnostics, {
+                label: `${result.label} Avg Pressure`,
+                curveKey: 'avg-pressure-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.pressure);
+            return;
+        }
+
         appendSeries(
             panels.rates,
             {
@@ -1344,6 +1565,133 @@ export function buildReferenceComparisonModel(input: {
                         yAxisID: 'y',
                     }, curves.pviValues, curves.recovery);
                 });
+                }
+            }
+        }
+    } else if (family.scenarioClass === 'gas-oil-bl') {
+        const allSameAnalytical = !input.analyticalPerVariant;
+
+        if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
+            const refOverlay = buildGasOilBLReference(baseResult, baseDerived, input.xAxisMode);
+            if (refOverlay.rates) {
+                appendSeries(panels.rates, {
+                    label: 'Reference Solution Gas Cut',
+                    curveKey: 'gas-cut-reference',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
+                    color: referenceColor,
+                    legendColor: legendGrey,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.rates.values);
+            }
+            if (refOverlay.cumulative) {
+                appendSeries(panels.recovery, {
+                    label: 'Reference Solution Recovery',
+                    curveKey: 'recovery-factor-reference',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
+                    color: referenceColor,
+                    legendColor: legendGrey,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                appendSeries(panels.cumulative, {
+                    label: 'Reference Solution Cum Oil',
+                    curveKey: 'cum-oil-reference',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
+                    color: referenceColor,
+                    legendColor: legendGrey,
+                    borderWidth: 2,
+                    borderDash: [7, 4],
+                    yAxisID: 'y',
+                }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
+            }
+        } else {
+            orderedResults.forEach((result, index) => {
+                const derived = derivedByKey.get(result.key);
+                if (!derived) return;
+                const color = getReferenceComparisonCaseColor(index);
+                const caseLabel = compactCaseLabel(result.label);
+                const refOverlay = buildGasOilBLReference(result, derived, input.xAxisMode);
+                if (refOverlay.rates) {
+                    appendSeries(panels.rates, {
+                        label: `${result.label} — Reference`,
+                        curveKey: 'gas-cut-reference',
+                        caseKey: result.key,
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.rates.values);
+                }
+                if (refOverlay.cumulative) {
+                    appendSeries(panels.recovery, {
+                        label: `${result.label} — Reference Recovery`,
+                        curveKey: 'recovery-factor-reference',
+                        caseKey: result.key,
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                }
+            });
+
+            if (input.pendingPreviewVariants?.length) {
+                if (usesRunMappedAnalyticalXAxis) {
+                    hidesPendingAnalyticalWithoutMapping = true;
+                }
+                if (!usesRunMappedAnalyticalXAxis) {
+                    input.pendingPreviewVariants.forEach((variant, i) => {
+                        const color = getReferenceComparisonCaseColor(orderedResults.length + i);
+                        const curves = computeGasOilBLAnalyticalFromParams(variant.params);
+                        if (!curves) return;
+                        const vLabel = compactCaseLabel(variant.label);
+                        appendSeries(panels.rates, {
+                            label: `${variant.label} — Reference`,
+                            curveKey: 'gas-cut-reference',
+                            caseKey: variant.variantKey,
+                            toggleGroupKey: variant.variantKey + '__ref',
+                            toggleLabel: vLabel,
+                            legendSection: 'analytical',
+                            legendSectionLabel: 'Analytical (dashed lines):',
+                            color,
+                            borderWidth: 1.5,
+                            borderDash: [7, 4],
+                            yAxisID: 'y',
+                        }, curves.pviValues, curves.gasCut);
+                        appendSeries(panels.recovery, {
+                            label: `${variant.label} — Reference Recovery`,
+                            curveKey: 'recovery-factor-reference',
+                            caseKey: variant.variantKey,
+                            toggleGroupKey: variant.variantKey + '__ref',
+                            toggleLabel: vLabel,
+                            legendSection: 'analytical',
+                            legendSectionLabel: 'Analytical (dashed lines):',
+                            color,
+                            borderWidth: 1.5,
+                            borderDash: [7, 4],
+                            yAxisID: 'y',
+                        }, curves.pviValues, curves.recovery);
+                    });
                 }
             }
         }

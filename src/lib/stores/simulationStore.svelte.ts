@@ -456,7 +456,9 @@ class SimulationStoreImpl {
     activeScenarioAsFamily = $derived.by((): import('../catalog/benchmarkCases').BenchmarkFamily | null => {
         const sc = this.activeScenarioObject;
         if (!sc || this.isCustomMode) return null;
-        const scenarioClass = sc.scenarioClass === 'waterflood' ? 'buckley-leverett' as const : 'depletion' as const;
+        const scenarioClass = sc.scenarioClass === 'waterflood' ? 'buckley-leverett' as const
+            : sc.scenarioClass === 'gas-oil-bl' ? 'gas-oil-bl' as const
+            : 'depletion' as const;
         return {
             key: sc.key,
             baseCaseKey: sc.key,
@@ -464,8 +466,10 @@ class SimulationStoreImpl {
             sensitivityAxes: [],
             reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
             displayDefaults: {
-                xAxis: (sc.scenarioClass === 'waterflood' ? 'pvi' : 'time') as import('../catalog/benchmarkCases').BenchmarkXAxisKey,
+                xAxis: (sc.scenarioClass === 'waterflood' || sc.scenarioClass === 'gas-oil-bl' ? 'pvi' : 'time') as import('../catalog/benchmarkCases').BenchmarkXAxisKey,
                 panels: (sc.scenarioClass === 'waterflood'
+                    ? ['watercut-breakthrough', 'recovery', 'pressure']
+                    : sc.scenarioClass === 'gas-oil-bl'
                     ? ['watercut-breakthrough', 'recovery', 'pressure']
                     : ['oil-rate', 'cumulative-oil', 'decline-diagnostics']) as import('../catalog/benchmarkCases').BenchmarkPanelKey[],
             },

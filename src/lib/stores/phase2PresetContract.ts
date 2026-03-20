@@ -65,11 +65,11 @@ function isFetkovichBenchmarkCase(benchmarkId: string | null | undefined): boole
 export function resolveProductFamily(input: {
     activeMode: CaseMode;
     activeLibraryFamily?: ProductFamily | null;
-    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
+    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | 'gas-oil-bl' | null;
     benchmarkId?: string | null;
 }): ProductFamily {
     if (input.activeLibraryFamily) return input.activeLibraryFamily;
-    if (input.benchmarkScenarioClass === 'buckley-leverett') {
+    if (input.benchmarkScenarioClass === 'buckley-leverett' || input.benchmarkScenarioClass === 'gas-oil-bl') {
         return 'waterflood';
     }
     if (isFetkovichBenchmarkCase(input.benchmarkId ?? null)) {
@@ -164,7 +164,7 @@ export function buildScenarioNavigationState(input: {
     referenceSourceLabel?: string | null;
     provenanceSummary?: string | null;
     benchmarkId?: string | null;
-    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
+    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | 'gas-oil-bl' | null;
     activeComparisonSelection?: ComparisonSelection;
 }): ScenarioNavigationState {
     const hasResolvedLibraryCaseKey = Object.prototype.hasOwnProperty.call(input, 'activeLibraryCaseKey');
@@ -445,7 +445,7 @@ export function buildBasePresetProfile(input: {
     isModified: boolean;
     benchmarkId?: string | null;
     benchmarkLabel?: string | null;
-    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | null;
+    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | 'gas-oil-bl' | null;
     activeLibraryCaseKey?: string | null;
     activeLibraryGroup?: LibraryCaseGroup | null;
 }): BasePresetProfile {

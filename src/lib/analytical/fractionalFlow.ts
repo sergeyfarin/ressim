@@ -1,6 +1,8 @@
 /**
  * Pure-function implementations of Buckley-Leverett / fractional flow analytics.
  * Extracted from FractionalFlow.svelte for testability.
+ *
+ * Supports both water-oil and gas-oil displacement systems.
  */
 
 export type RockProps = {
@@ -17,11 +19,37 @@ export type FluidProps = {
     mu_o: number;
 };
 
+/** Gas-oil rock properties for gas-oil Buckley-Leverett. */
+export type GasOilRockProps = {
+    s_wc: number;   // connate water (immobile)
+    s_gc: number;   // critical gas saturation
+    s_gr: number;   // residual (trapped) gas
+    s_org: number;  // residual oil to gas
+    n_o: number;    // Corey exponent — oil
+    n_g: number;    // Corey exponent — gas
+    k_ro_max: number;
+    k_rg_max: number;
+};
+
+/** Gas-oil fluid properties. */
+export type GasOilFluidProps = {
+    mu_o: number;
+    mu_g: number;
+};
+
 export type WelgeMetrics = {
     shockSw: number;
     breakthroughPvi: number;
     waterCutAtBreakthrough: number;
     initialSw: number;
+};
+
+/** Welge metrics for gas-oil system (saturation variable is S_g). */
+export type GasOilWelgeMetrics = {
+    shockSg: number;
+    breakthroughPvi: number;
+    gasCutAtBreakthrough: number;
+    initialSg: number;
 };
 
 export type AnalyticalPoint = {
@@ -244,6 +272,254 @@ export function calculateAnalyticalProduction(
         cumulativeOil += boundedOilRate * dt;
 
         result.push({ time: t, oilRate: boundedOilRate, waterRate, cumulativeOil });
+    }
+    return result;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Gas-Oil Buckley-Leverett
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Displacement variable: S_g (gas saturation).
+// Water is immobile at S_wc throughout.
+// Oil saturation: S_o = 1 − S_wc − S_g.
+//
+// Gas relperm:   k_rg(S_g)   = k_rg_max × [(S_g − S_gc) / (1 − S_wc − S_gc − S_gr)]^n_g
+// Oil relperm:   k_ro_g(S_g) = k_ro_max × [(1 − S_wc − S_g − S_org) / (1 − S_wc − S_org)]^n_o
+// Fractional flow: f_g = (k_rg/μ_g) / (k_rg/μ_g + k_ro_g/μ_o)
+//
+// Mobile gas range: S_g ∈ [S_gc, 1 − S_wc − S_org]
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Gas-oil relative permeability (Corey model) ──
+
+export function k_rg(s_g: number, rock: GasOilRockProps): number {
+    const denom = 1 - rock.s_wc - rock.s_gc - rock.s_gr;
+    if (denom <= 0) return 0;
+    const s_eff = Math.max(0, Math.min(1, (s_g - rock.s_gc) / denom));
+    return rock.k_rg_max * Math.pow(s_eff, rock.n_g);
+}
+
+export function k_ro_gas(s_g: number, rock: GasOilRockProps): number {
+    const denom = 1 - rock.s_wc - rock.s_org;
+    if (denom <= 0) return 0;
+    const s_eff = Math.max(0, Math.min(1, (1 - rock.s_wc - s_g - rock.s_org) / denom));
+    return rock.k_ro_max * Math.pow(s_eff, rock.n_o);
+}
+
+// ── Gas-oil fractional flow ──
+
+export function fractionalFlowGas(s_g: number, rock: GasOilRockProps, fluid: GasOilFluidProps): number {
+    const krg = k_rg(s_g, rock);
+    const kro = k_ro_gas(s_g, rock);
+    const numerator = krg / fluid.mu_g;
+    const denominator = numerator + kro / fluid.mu_o;
+    if (denominator === 0) return 0;
+    return numerator / denominator;
+}
+
+// ── Gas-oil fractional flow derivative (central difference) ──
+
+export function dfg_dSg(s_g: number, rock: GasOilRockProps, fluid: GasOilFluidProps, ds = 1e-6): number {
+    const sMin = rock.s_gc;
+    const sMax = 1 - rock.s_wc - rock.s_org;
+    if (s_g < sMin || s_g > sMax) return 0;
+    const fg_plus = fractionalFlowGas(Math.min(sMax, s_g + ds), rock, fluid);
+    const fg_minus = fractionalFlowGas(Math.max(sMin, s_g - ds), rock, fluid);
+    return (fg_plus - fg_minus) / (2 * ds);
+}
+
+// ── Gas-oil Welge tangent construction ──
+
+export function computeWelgeMetricsGas(
+    rock: GasOilRockProps,
+    fluid: GasOilFluidProps,
+    initialGasSaturation: number,
+): GasOilWelgeMetrics {
+    const sMin = rock.s_gc;
+    const sMax = 1 - rock.s_wc - rock.s_org;
+    const initialSgClamped = Math.max(0, Math.min(sMax, initialGasSaturation));
+
+    // fg at initial gas saturation (typically 0 since S_g_init < S_gc)
+    const fgInitial = fractionalFlowGas(Math.max(sMin, initialSgClamped), rock, fluid);
+
+    let sgShock = sMin;
+    let maxSlope = 0;
+    for (let s = sMin + 5e-4; s <= sMax; s += 5e-4) {
+        const fg = fractionalFlowGas(s, rock, fluid);
+        // Tangent from (initialSg, fg(initialSg)) to (s, fg(s))
+        const slope = (fg - fgInitial) / Math.max(1e-12, s - initialSgClamped);
+        if (slope > maxSlope && Number.isFinite(slope)) {
+            maxSlope = slope;
+            sgShock = s;
+        }
+    }
+
+    const fgShock = fractionalFlowGas(sgShock, rock, fluid);
+    const dfgAtShock = (fgShock - fgInitial) / Math.max(1e-12, sgShock - initialSgClamped);
+    const breakthroughPvi = dfgAtShock > 1e-12 ? 1.0 / dfgAtShock : 0;
+
+    return {
+        shockSg: sgShock,
+        breakthroughPvi,
+        gasCutAtBreakthrough: fgShock,
+        initialSg: initialSgClamped,
+    };
+}
+
+// ── Gas-oil BL recovery factor vs PVI ──
+
+export function computeGasOilRecoveryVsPVI(
+    rock: GasOilRockProps,
+    fluid: GasOilFluidProps,
+    pviMax: number = 3.0,
+    nPoints: number = 200,
+): { pvi: number; rf: number }[] {
+    const sMax = 1 - rock.s_wc - rock.s_org;
+    const s_gc = rock.s_gc;
+    // Initial state: no free gas (S_g = 0), oil saturation = 1 − S_wc
+    const initialSg = 0;
+    const fgInitial = fractionalFlowGas(Math.max(s_gc, initialSg), rock, fluid);
+
+    // Welge tangent: find shock front gas saturation
+    let s_gf = s_gc;
+    let maxSlope = 0;
+    for (let s = s_gc + 5e-4; s <= sMax; s += 5e-4) {
+        const fg = fractionalFlowGas(s, rock, fluid);
+        const slope = (fg - fgInitial) / Math.max(1e-12, s - initialSg);
+        if (slope > maxSlope && Number.isFinite(slope)) { maxSlope = slope; s_gf = s; }
+    }
+
+    const fg_shock = fractionalFlowGas(s_gf, rock, fluid);
+    const dfg_shock = (fg_shock - fgInitial) / Math.max(1e-12, s_gf - initialSg);
+    const pvi_bt = dfg_shock > 1e-12 ? 1.0 / dfg_shock : Infinity;
+
+    // Binary-search Sg at outlet post-BT: 1/PVI = dfg/dSg|_{Sg_outlet}
+    function findOutletSg(targetDfg: number): number {
+        let lo = s_gf, hi = sMax;
+        const dfgLo = dfg_dSg(lo, rock, fluid, 1e-4);
+        const dfgHi = dfg_dSg(hi, rock, fluid, 1e-4);
+        if (targetDfg >= dfgLo) return lo;
+        if (targetDfg <= dfgHi) return hi;
+        for (let iter = 0; iter < 60; iter++) {
+            const mid = 0.5 * (lo + hi);
+            if (dfg_dSg(mid, rock, fluid, 1e-4) > targetDfg) lo = mid; else hi = mid;
+            if (hi - lo < 1e-7) break;
+        }
+        return 0.5 * (lo + hi);
+    }
+
+    // Oil initially in place (as fraction of pore volume): S_oi = 1 − S_wc
+    const s_oi = 1 - rock.s_wc;
+
+    const result: { pvi: number; rf: number }[] = [];
+    for (let i = 0; i <= nPoints; i++) {
+        const pvi = (i / nPoints) * pviMax;
+        let sgAvg: number;
+        if (pvi <= 0) {
+            sgAvg = 0;
+        } else if (pvi <= pvi_bt) {
+            // Before breakthrough: Welge material balance
+            // Average gas saturation = initial + PVI × (1 − fg_initial)
+            sgAvg = initialSg + pvi * (1 - fgInitial);
+        } else {
+            // After breakthrough: Welge equation
+            const s_g2 = findOutletSg(1.0 / pvi);
+            sgAvg = s_g2 + pvi * (1 - fractionalFlowGas(s_g2, rock, fluid));
+        }
+        // Recovery = oil displaced / OOIP = (S_oi − S_o) / S_oi = S_g_avg / S_oi
+        const rf = Math.max(0, Math.min(1, sgAvg / Math.max(1e-12, s_oi)));
+        result.push({ pvi, rf });
+    }
+    return result;
+}
+
+// ── Gas-oil analytical production (time-based, for overlay on simulation) ──
+
+export type GasOilAnalyticalPoint = {
+    time: number;
+    oilRate: number;
+    gasRate: number;
+    cumulativeOil: number;
+};
+
+export function calculateGasOilAnalyticalProduction(
+    rock: GasOilRockProps,
+    fluid: GasOilFluidProps,
+    initialGasSaturation: number,
+    timeHistory: number[],
+    injectionRateSeries: number[],
+    poreVolume: number,
+): GasOilAnalyticalPoint[] {
+    const sMax = 1 - rock.s_wc - rock.s_org;
+    const s_gc = rock.s_gc;
+    const initialSg = Math.max(0, Math.min(sMax, initialGasSaturation));
+    const fgInitial = fractionalFlowGas(Math.max(s_gc, initialSg), rock, fluid);
+
+    // Welge tangent
+    let sg_f = s_gc;
+    let max_slope = 0;
+    for (let s = s_gc + 5e-4; s <= sMax; s += 5e-4) {
+        const fg = fractionalFlowGas(s, rock, fluid);
+        const slope = (fg - fgInitial) / Math.max(1e-12, s - initialSg);
+        if (slope > max_slope) {
+            max_slope = slope;
+            sg_f = s;
+        }
+    }
+
+    const fg_at_shock = fractionalFlowGas(sg_f, rock, fluid);
+    const dfg_at_shock = (fg_at_shock - fgInitial) / Math.max(1e-12, sg_f - initialSg);
+    const breakthroughPVI = dfg_at_shock > 1e-12 ? 1.0 / dfg_at_shock : Number.POSITIVE_INFINITY;
+
+    const q0 = injectionRateSeries.find(rate => Number.isFinite(rate) && rate > 0) ?? 0;
+    if (q0 <= 0) {
+        return timeHistory.map(t => ({ time: t, oilRate: 0, gasRate: 0, cumulativeOil: 0 }));
+    }
+
+    function findOutletSg(target_dfg: number): number {
+        let lo = sg_f;
+        let hi = sMax;
+        const dfg_lo = dfg_dSg(lo, rock, fluid, 1e-4);
+        const dfg_hi = dfg_dSg(hi, rock, fluid, 1e-4);
+        if (target_dfg >= dfg_lo) return lo;
+        if (target_dfg <= dfg_hi) return hi;
+        for (let iter = 0; iter < 50; iter++) {
+            const mid = 0.5 * (lo + hi);
+            const dfg_mid = dfg_dSg(mid, rock, fluid, 1e-4);
+            if (dfg_mid > target_dfg) lo = mid;
+            else hi = mid;
+            if (hi - lo < 1e-6) break;
+        }
+        return 0.5 * (lo + hi);
+    }
+
+    const result: GasOilAnalyticalPoint[] = [];
+    let cumulativeOil = 0;
+    let cumulativePVI = 0;
+
+    for (let i = 0; i < timeHistory.length; i++) {
+        const t = timeHistory[i];
+        const q = Number.isFinite(injectionRateSeries[i]) && injectionRateSeries[i] > 0
+            ? injectionRateSeries[i] : q0;
+        const dt = i > 0 ? Math.max(0, t - timeHistory[i - 1]) : Math.max(0, t);
+        if (poreVolume > 0) cumulativePVI += (q * dt) / poreVolume;
+
+        let oilRate: number;
+        if (cumulativePVI <= breakthroughPVI) {
+            // Before gas breakthrough: all injected gas displaces oil
+            oilRate = q * (1 - fgInitial);
+        } else {
+            const target_dfg = cumulativePVI > 1e-12 ? 1.0 / cumulativePVI : dfg_at_shock;
+            const s_g_at_outlet = findOutletSg(target_dfg);
+            const fg_at_outlet = fractionalFlowGas(s_g_at_outlet, rock, fluid);
+            oilRate = q * (1 - fg_at_outlet);
+        }
+        const boundedOilRate = Math.max(0, oilRate);
+        const gasRate = Math.max(0, q - boundedOilRate);
+        cumulativeOil += boundedOilRate * dt;
+
+        result.push({ time: t, oilRate: boundedOilRate, gasRate, cumulativeOil });
     }
     return result;
 }
