@@ -335,7 +335,7 @@
         class="flex flex-col gap-3 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="ui-section-kicker opacity-50">
+            <div class="ui-section-kicker">
                 Comparison Plots
             </div>
             {#if overlayModel.previewCases.length > 0 && overlayModel.orderedResults.length === 0}

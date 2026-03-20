@@ -136,12 +136,14 @@
                         diagnosticsExpanded = conf.diagnosticsExpanded;
                 } else {
                     // Fallback to purely string-matched defaults when CaseParams lacks layout metadata
-                    if (cat === "depletion" || cs.includes("depletion")) {
+                    if (cat === "dep" || cat === "depletion" || cs.includes("depletion")) {
                         ratesExpanded = true;
                         cumulativeExpanded = false;
                         diagnosticsExpanded = true;
                     } else if (
+                        cat === "wf" ||
                         cat === "waterflood" ||
+                        cs.startsWith("wf_") ||
                         cs.includes("waterflood") ||
                         cs.startsWith("bl_")
                     ) {
@@ -150,6 +152,8 @@
                         diagnosticsExpanded = false;
                     }
                     if (
+                        cat === "wf" ||
+                        cs.startsWith("wf_") ||
                         cs.startsWith("bl_") ||
                         cs === "waterflood_custom_subcase"
                     ) {

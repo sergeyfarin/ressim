@@ -560,7 +560,7 @@ function buildAnalyticalPreviewPanels(
             }, curves.pviValues, curves.waterCut);
             appendSeries(panels.recovery, {
                 label: `${prefix}Analytical Recovery Factor`,
-                curveKey: 'recovery-factor',
+                curveKey: 'recovery-factor-reference',
                 ...(caseKey ? { caseKey } : {}),
                 toggleLabel: 'Analytical Recovery Factor',
                 color,
@@ -594,7 +594,7 @@ function buildAnalyticalPreviewPanels(
             }, curves.xValues, curves.oilRates);
             appendSeries(panels.recovery, {
                 label: `${prefix}Analytical Recovery Factor`,
-                curveKey: 'recovery-factor',
+                curveKey: 'recovery-factor-reference',
                 ...(caseKey ? { caseKey } : {}),
                 toggleLabel: 'Analytical Recovery Factor',
                 color,
@@ -832,7 +832,7 @@ export function buildReferenceComparisonModel(input: {
                 panels.recovery,
                 {
                     label: `${result.label} Recovery`,
-                    curveKey: 'recovery-factor',
+                    curveKey: 'recovery-factor-primary',
                     caseKey: result.key,
                     toggleLabel: 'Recovery Factor',
                     color,
@@ -912,7 +912,7 @@ export function buildReferenceComparisonModel(input: {
             panels.recovery,
             {
                 label: `${result.label} Recovery`,
-                curveKey: 'recovery-factor',
+                curveKey: 'recovery-factor-primary',
                 caseKey: result.key,
                 toggleLabel: 'Recovery Factor',
                 color,
@@ -985,7 +985,7 @@ export function buildReferenceComparisonModel(input: {
             if (refOverlay.cumulative) {
                 appendSeries(panels.recovery, {
                     label: 'Reference Solution Recovery',
-                    curveKey: 'recovery-factor',
+                    curveKey: 'recovery-factor-reference',
                     toggleLabel: 'Reference Solution Recovery',
                     color: referenceColor,
                     borderWidth: 2,
@@ -1026,7 +1026,7 @@ export function buildReferenceComparisonModel(input: {
                 if (refOverlay.cumulative) {
                     appendSeries(panels.recovery, {
                         label: `${result.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor',
+                        curveKey: 'recovery-factor-reference',
                         caseKey: result.key,
                         toggleLabel: 'Reference Recovery',
                         color,
@@ -1059,7 +1059,7 @@ export function buildReferenceComparisonModel(input: {
                     }, curves.pviValues, curves.waterCut);
                     appendSeries(panels.recovery, {
                         label: `${variant.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor',
+                        curveKey: 'recovery-factor-reference',
                         caseKey: variant.variantKey,
                         toggleLabel: 'Reference Recovery',
                         color,
@@ -1100,7 +1100,7 @@ export function buildReferenceComparisonModel(input: {
                 if (refOverlay.cumulative) {
                     appendSeries(panels.recovery, {
                         label: `${result.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor',
+                        curveKey: 'recovery-factor-reference',
                         caseKey: result.key,
                         toggleLabel: 'Reference Recovery',
                         color,
@@ -1143,7 +1143,7 @@ export function buildReferenceComparisonModel(input: {
                     }, curves.xValues, curves.oilRates);
                     appendSeries(panels.recovery, {
                         label: `${variant.label} — Reference Recovery`,
-                        curveKey: 'recovery-factor',
+                        curveKey: 'recovery-factor-reference',
                         caseKey: variant.variantKey,
                         toggleLabel: 'Reference Recovery',
                         color,
@@ -1180,7 +1180,7 @@ export function buildReferenceComparisonModel(input: {
             if (refOverlay.cumulative) {
                 appendSeries(panels.recovery, {
                     label: refOverlay.cumulative.recoveryLabel,
-                    curveKey: 'recovery-factor',
+                    curveKey: 'recovery-factor-reference',
                     toggleLabel: 'Reference Solution Recovery',
                     color: referenceColor,
                     borderWidth: 2,
