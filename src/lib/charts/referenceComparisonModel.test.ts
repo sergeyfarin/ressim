@@ -145,6 +145,9 @@ describe('referenceComparisonModel', () => {
             ]),
         );
         expect(model.panels.cumulative.curves.map((curve) => curve.label)).toEqual(
+            expect.arrayContaining(['Reference Solution Cum Oil']),
+        );
+        expect(model.panels.recovery.curves.map((curve) => curve.label)).toEqual(
             expect.arrayContaining(['Reference Solution Recovery']),
         );
         expect(model.panels.diagnostics.curves).toHaveLength(2);
@@ -165,11 +168,12 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.rates.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining([`${result.label} Oil Rate`, 'Reference Solution Oil Rate']),
+            expect.arrayContaining([`${result.label} Oil Rate`, `${result.label} — Reference`]),
         );
         expect(model.panels.diagnostics.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining([`${result.label} Avg Pressure`, 'Reference Solution Avg Pressure']),
+            expect.arrayContaining([`${result.label} Avg Pressure`, `${result.label} — Reference Pressure`]),
         );
+        expect(model.axisMappingWarning).toContain('remapped from each completed simulation run');
         expect(model.panels.rates.series.at(-1)?.at(-1)?.x).toBeGreaterThan(0);
     });
 
@@ -366,6 +370,76 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-sim')).toHaveLength(21);
     });
 
+    it('remaps shared waterflood analytical overlays per completed run on time axis', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const secondSpec = {
+            ...baseSpec,
+            key: 'grid_like_variant',
+            caseKey: 'grid_like_variant',
+            variantKey: 'grid_like_variant',
+            variantLabel: 'Grid-like variant',
+            label: 'Grid-like variant',
+            params: {
+                ...baseSpec.params,
+                nx: 24,
+                producerI: 23,
+                cellDx: 40,
+            },
+        };
+
+        const reference = computeWelgeMetrics(
+            {
+                s_wc: Number(baseSpec.params.s_wc),
+                s_or: Number(baseSpec.params.s_or),
+                n_w: Number(baseSpec.params.n_w),
+                n_o: Number(baseSpec.params.n_o),
+                k_rw_max: Number(baseSpec.params.k_rw_max),
+                k_ro_max: Number(baseSpec.params.k_ro_max),
+            },
+            {
+                mu_w: Number(baseSpec.params.mu_w),
+                mu_o: Number(baseSpec.params.mu_o),
+            },
+            Number(baseSpec.params.initialSaturation),
+        );
+
+        const baseResult = buildBenchmarkRunResult({
+            spec: baseSpec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(baseSpec.params, reference.breakthroughPvi, 0),
+        });
+        const variantResult = buildBenchmarkRunResult({
+            spec: secondSpec,
+            rateHistory: buildSyntheticWaterfloodRateHistory(secondSpec.params, reference.breakthroughPvi * 1.02, 0.01),
+        });
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [baseResult, variantResult],
+            xAxisMode: 'time',
+            analyticalPerVariant: false,
+        });
+
+        expect(model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(2);
+        expect(model.axisMappingWarning).toContain('remapped from each completed simulation run');
+    });
+
+    it('hides waterflood analytical preview curves on time axis until runs exist for remapping', () => {
+        const model = buildReferenceComparisonModel({
+            family: null,
+            results: [],
+            xAxisMode: 'time',
+            previewScenarioClass: 'waterflood',
+            previewVariantParams: [
+                { label: 'Base', variantKey: 'base', params: { s_wc: 0.1, s_or: 0.1, n_w: 2, n_o: 2, k_rw_max: 1, k_ro_max: 1, mu_w: 0.5, mu_o: 1.0, initialSaturation: 0.1 } },
+            ],
+        });
+
+        expect(model.panels.rates.curves).toHaveLength(0);
+        expect(model.previewCases).toHaveLength(0);
+        expect(model.axisMappingWarning).toContain('hidden on this axis until remapping data exists');
+    });
+
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {
         const family = getBenchmarkFamily('dietz_sq_center');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);
@@ -381,7 +455,7 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.rates.curves.find((curve) => curve.label === `${result.label} Oil Rate`)?.curveKey).toBe('oil-rate-sim');
-        expect(model.panels.cumulative.curves.find((curve) => curve.label === `${result.label} Recovery`)?.curveKey).toBe('recovery-factor');
+        expect(model.panels.recovery.curves.find((curve) => curve.label === `${result.label} Recovery`)?.curveKey).toBe('recovery-factor-primary');
         expect(model.panels.diagnostics.curves.find((curve) => curve.label === `${result.label} Avg Pressure`)?.curveKey).toBe('avg-pressure-sim');
     });
 });

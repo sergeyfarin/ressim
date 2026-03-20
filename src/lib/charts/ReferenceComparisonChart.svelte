@@ -442,6 +442,11 @@
                     xAxisMode = value as RateChartXAxisMode;
                 }}
             />
+            {#if overlayModel.axisMappingWarning}
+                <span class="text-[11px] text-muted-foreground">
+                    {overlayModel.axisMappingWarning}
+                </span>
+            {/if}
         </div>
     </div>
 

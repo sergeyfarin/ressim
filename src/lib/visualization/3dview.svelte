@@ -92,6 +92,7 @@
     let legendMin = 0;
     let legendMax = 1;
     let lastDimsKey = "";
+    let lastLegendModeKey = "";
 
     // Reactive grid reference
     let activeGrid: GridState | null = null;
@@ -855,12 +856,20 @@
         updateVisualization(activeGrid, showProperty);
     }
 
-    $: if (legendCanvas && isTernaryBlend(showProperty)) {
-        tick().then(() => {
-            if (legendCanvas && isTernaryBlend(showProperty)) {
-                drawTernaryLegend();
-            }
-        });
+    $: if (legendCanvas) {
+        const legendModeKey = `${showProperty}|${isTernaryBlend(showProperty) ? "ternary" : "scalar"}`;
+        if (legendModeKey !== lastLegendModeKey) {
+            lastLegendModeKey = legendModeKey;
+            const propertyAtSchedule = showProperty;
+            tick().then(() => {
+                if (!legendCanvas || showProperty !== propertyAtSchedule) return;
+                if (activeGrid) {
+                    updateVisualization(activeGrid, propertyAtSchedule);
+                } else {
+                    clearVisualization(propertyAtSchedule);
+                }
+            });
+        }
     }
 
     $: if (instancedMesh && !activeGrid) {

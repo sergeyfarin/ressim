@@ -26,6 +26,7 @@ export type ReferenceComparisonModel = {
     previewCases: ReferenceComparisonPreviewCase[];
     panels: Record<RateChartPanelKey, ReferenceComparisonPanel>;
     sweepPanel: ReferenceComparisonPanel | null;
+    axisMappingWarning: string | null;
 };
 
 export type ReferenceComparisonTheme = 'dark' | 'light';
@@ -84,6 +85,33 @@ type AnalyticalOverlay = {
     diagnostics: { label: string; values: Array<number | null> } | null;
     xValues: Array<number | null>;
 };
+
+function requiresRunMappedAnalyticalXAxis(
+    scenarioClass: string | null | undefined,
+    xAxisMode: RateChartXAxisMode,
+): boolean {
+    if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
+        return xAxisMode !== 'pvi';
+    }
+    if (scenarioClass === 'depletion') {
+        return true;
+    }
+    return false;
+}
+
+function buildAnalyticalAxisWarning(input: {
+    usesRunMappedAnalyticalXAxis: boolean;
+    hidesPendingAnalyticalWithoutMapping: boolean;
+}): string | null {
+    const parts: string[] = [];
+    if (input.usesRunMappedAnalyticalXAxis) {
+        parts.push('Analytical overlays on this axis are remapped from each completed simulation run.');
+    }
+    if (input.hidesPendingAnalyticalWithoutMapping) {
+        parts.push('Analytical curves without completed simulation runs are hidden on this axis until remapping data exists.');
+    }
+    return parts.length > 0 ? parts.join(' ') : null;
+}
 
 const CASE_COLORS = [
     '#0f766e',
@@ -796,6 +824,12 @@ export function buildReferenceComparisonModel(input: {
     const orderedResults = orderResults(input.results);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
+    const scenarioClass = family?.scenarioClass ?? input.previewScenarioClass ?? null;
+    const usesRunMappedAnalyticalXAxis = requiresRunMappedAnalyticalXAxis(
+        scenarioClass,
+        input.xAxisMode,
+    );
+    let hidesPendingAnalyticalWithoutMapping = false;
 
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
         rates: { curves: [], series: [] },
@@ -808,6 +842,21 @@ export function buildReferenceComparisonModel(input: {
 
     if (!family || orderedResults.length === 0) {
         if (orderedResults.length === 0 && input.previewScenarioClass) {
+            if (requiresRunMappedAnalyticalXAxis(input.previewScenarioClass, input.xAxisMode)) {
+                hidesPendingAnalyticalWithoutMapping = Boolean(
+                    input.previewBaseParams || (input.previewVariantParams?.length ?? 0) > 0,
+                );
+                return {
+                    orderedResults,
+                    previewCases: [],
+                    panels,
+                    sweepPanel: null,
+                    axisMappingWarning: buildAnalyticalAxisWarning({
+                        usesRunMappedAnalyticalXAxis: false,
+                        hidesPendingAnalyticalWithoutMapping,
+                    }),
+                };
+            }
             // Prefer per-variant preview when available; fall back to single base preview.
             const variants: AnalyticalPreviewVariant[] =
                 input.previewVariantParams?.length
@@ -827,10 +876,16 @@ export function buildReferenceComparisonModel(input: {
                 const previewCases: ReferenceComparisonPreviewCase[] = variants.length > 1
                     ? variants.map((v, i) => ({ key: v.variantKey, label: v.label, colorIndex: i }))
                     : [];
-                return { orderedResults, previewCases, panels: previewPanels, sweepPanel: null };
+                return {
+                    orderedResults,
+                    previewCases,
+                    panels: previewPanels,
+                    sweepPanel: null,
+                    axisMappingWarning: null,
+                };
             }
         }
-        return { orderedResults, previewCases: [], panels, sweepPanel: null };
+        return { orderedResults, previewCases: [], panels, sweepPanel: null, axisMappingWarning: null };
     }
 
     const derivedByKey = new Map<string, DerivedRunSeries>(
@@ -1052,18 +1107,36 @@ export function buildReferenceComparisonModel(input: {
     });
 
     if (!baseResult) {
-        return { orderedResults, previewCases: [], panels, sweepPanel: null };
+        return {
+            orderedResults,
+            previewCases: [],
+            panels,
+            sweepPanel: null,
+            axisMappingWarning: buildAnalyticalAxisWarning({
+                usesRunMappedAnalyticalXAxis,
+                hidesPendingAnalyticalWithoutMapping,
+            }),
+        };
     }
 
     const baseDerived = derivedByKey.get(baseResult.key);
     if (!baseDerived) {
-        return { orderedResults, previewCases: [], panels, sweepPanel: null };
+        return {
+            orderedResults,
+            previewCases: [],
+            panels,
+            sweepPanel: null,
+            axisMappingWarning: buildAnalyticalAxisWarning({
+                usesRunMappedAnalyticalXAxis,
+                hidesPendingAnalyticalWithoutMapping,
+            }),
+        };
     }
 
     if (family.scenarioClass === 'buckley-leverett') {
         const allSameAnalytical = !input.analyticalPerVariant;
 
-        if (allSameAnalytical) {
+        if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
             // Shared reference — one curve for all (analytical is grid/timestep-independent).
             const refOverlay = buildBuckleyLeverettReference(baseResult, baseDerived, input.xAxisMode);
             if (refOverlay.rates) {
@@ -1110,8 +1183,9 @@ export function buildReferenceComparisonModel(input: {
                 }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
             }
         } else {
-            // Per-result analytical — viscosity/rel-perm differ so each result gets
-            // its own analytical curve in the same color as its simulation (dashed).
+            // Per-result analytical — either the analytical physics differs by case,
+            // or the selected x-axis requires remapping the same PVI solution onto
+            // each completed run's own time/injection history.
             orderedResults.forEach((result, index) => {
                 const derived = derivedByKey.get(result.key);
                 if (!derived) return;
@@ -1156,6 +1230,10 @@ export function buildReferenceComparisonModel(input: {
             // Uses the same unit-PVI grid as the all-analytical preview for a
             // consistent x-axis (BL scenarios default to PVI).
             if (input.pendingPreviewVariants?.length) {
+                if (usesRunMappedAnalyticalXAxis) {
+                    hidesPendingAnalyticalWithoutMapping = true;
+                }
+                if (!usesRunMappedAnalyticalXAxis) {
                 input.pendingPreviewVariants.forEach((variant, i) => {
                     const color = getReferenceComparisonCaseColor(orderedResults.length + i);
                     const curves = computeBLAnalyticalFromParams(variant.params);
@@ -1188,13 +1266,16 @@ export function buildReferenceComparisonModel(input: {
                         yAxisID: 'y',
                     }, curves.pviValues, curves.recovery);
                 });
+                }
             }
         }
     } else {
         // Depletion path.
-        if (input.analyticalPerVariant) {
+        if (input.analyticalPerVariant || usesRunMappedAnalyticalXAxis) {
             // Per-result analytical — each variant gets its own dashed reference curve
             // in its case color so the user can directly compare sim vs. analytical.
+            // This path also handles shared analytical physics on axes whose x-values
+            // are derived from each completed run's simulation history.
             orderedResults.forEach((result, index) => {
                 const derived = derivedByKey.get(result.key);
                 if (!derived) return;
@@ -1257,6 +1338,10 @@ export function buildReferenceComparisonModel(input: {
             // Color indices continue from orderedResults.length so each variant
             // keeps its color throughout preview → in-progress → completed.
             if (input.pendingPreviewVariants?.length) {
+                if (usesRunMappedAnalyticalXAxis) {
+                    hidesPendingAnalyticalWithoutMapping = true;
+                }
+                if (!usesRunMappedAnalyticalXAxis) {
                 input.pendingPreviewVariants.forEach((variant, i) => {
                     const color = getReferenceComparisonCaseColor(orderedResults.length + i);
                     const curves = computeDepletionAnalyticalFromParams(variant.params, input.xAxisMode);
@@ -1302,6 +1387,7 @@ export function buildReferenceComparisonModel(input: {
                         yAxisID: 'y',
                     }, curves.xValues, curves.avgPressureValues);
                 });
+                }
             }
         } else {
             // Shared reference from base result — one curve for all cases.
@@ -1370,7 +1456,7 @@ export function buildReferenceComparisonModel(input: {
     // Pending preview cases for mid-sweep: variants whose results haven't landed yet.
     // These appear in the cases selector alongside completed orderedResults entries.
     const pendingPreviewCases: ReferenceComparisonPreviewCase[] =
-        (input.pendingPreviewVariants?.length && input.analyticalPerVariant)
+        (input.pendingPreviewVariants?.length && input.analyticalPerVariant && !usesRunMappedAnalyticalXAxis)
             ? input.pendingPreviewVariants.map((v, i) => ({
                 key: v.variantKey,
                 label: v.label,
@@ -1386,5 +1472,14 @@ export function buildReferenceComparisonModel(input: {
         })
         : null;
 
-    return { orderedResults, previewCases: pendingPreviewCases, panels, sweepPanel };
+    return {
+        orderedResults,
+        previewCases: pendingPreviewCases,
+        panels,
+        sweepPanel,
+        axisMappingWarning: buildAnalyticalAxisWarning({
+            usesRunMappedAnalyticalXAxis,
+            hidesPendingAnalyticalWithoutMapping,
+        }),
+    };
 }

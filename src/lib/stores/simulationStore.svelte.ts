@@ -248,6 +248,7 @@ class SimulationStoreImpl {
     runtimeError = $state('');
     convergenceHitCount = $state(0);
     convergenceHitCaseName = $state('');
+    latestStepSolverWarning = $state('');
     referenceConvergenceWarnings = $state<string[]>([]);
     vizRevision = $state(0);
     modelReinitNotice = $state('');
@@ -506,6 +507,48 @@ class SimulationStoreImpl {
     }
 
     // ===== Internal Helpers =====
+
+    formatConvergenceCaseWarning(label: string, count: number, partial = false): string {
+        return `"${label}" (${count}×${partial ? ', partial' : ''})`;
+    }
+
+    buildConvergenceSummary(caseWarnings: string[]): string {
+        return `Convergence issues — check charts for anomalies. Cases affected: ${caseWarnings.join(', ')}.`;
+    }
+
+    refreshConvergenceWarningDisplay(options: { includeActiveReferenceCase?: boolean } = {}) {
+        const { includeActiveReferenceCase = false } = options;
+
+        if (
+            this.referenceSweepRunning ||
+            this.activeReferenceRunSpec ||
+            this.referenceConvergenceWarnings.length > 0
+        ) {
+            const warnings = [...this.referenceConvergenceWarnings];
+            if (
+                includeActiveReferenceCase &&
+                this.activeReferenceRunSpec &&
+                this.convergenceHitCount > 0
+            ) {
+                warnings.push(
+                    this.formatConvergenceCaseWarning(
+                        this.convergenceHitCaseName || this.activeReferenceRunSpec.label,
+                        this.convergenceHitCount,
+                        true,
+                    ),
+                );
+            }
+
+            this.solverWarning = warnings.length > 0
+                ? this.buildConvergenceSummary(warnings)
+                : '';
+            return;
+        }
+
+        this.solverWarning = this.convergenceHitCount > 0
+            ? `Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} during the run — check charts for anomalies.`
+            : '';
+    }
 
     buildValidationInput(): SimulationInputs {
         return {
@@ -817,7 +860,8 @@ class SimulationStoreImpl {
         this.runtimeError = '';
         this.convergenceHitCount = 0;
         this.convergenceHitCaseName = nextSpec.label;
-        this.solverWarning = '';
+        this.latestStepSolverWarning = '';
+        this.refreshConvergenceWarningDisplay();
         this.currentRunTotalSteps = nextSpec.steps;
         this.currentRunStepsCompleted = 0;
         this.runCompleted = false;
@@ -1030,11 +1074,12 @@ class SimulationStoreImpl {
         this.simTime = message.time;
         this.rateHistory = message.rateHistory ?? [];
         const newSolverWarning = message.solverWarning || '';
-        if (newSolverWarning && !this.solverWarning) {
+        if (newSolverWarning && !this.latestStepSolverWarning) {
             // new convergence hit (rising edge)
             this.convergenceHitCount += 1;
         }
-        this.solverWarning = newSolverWarning;
+        this.latestStepSolverWarning = newSolverWarning;
+        this.refreshConvergenceWarningDisplay({ includeActiveReferenceCase: true });
         if (message.recordHistory) {
             this.pushHistoryEntry({ time: message.time, grid: message.grid, wells: message.wells });
         }
@@ -1076,18 +1121,18 @@ class SimulationStoreImpl {
                 if (this.convergenceHitCount > 0) {
                     this.referenceConvergenceWarnings = [
                         ...this.referenceConvergenceWarnings,
-                        `"${this.convergenceHitCaseName}" (${this.convergenceHitCount}×)`,
+                        this.formatConvergenceCaseWarning(this.convergenceHitCaseName, this.convergenceHitCount),
                     ];
                 }
+                this.latestStepSolverWarning = '';
                 this.finalizeActiveReferenceRun();
                 if (this.referenceRunQueue.length > 0) {
+                    this.refreshConvergenceWarningDisplay();
                     this.startQueuedReferenceRun();
                 } else {
                     this.referenceSweepRunning = false;
                     this.restoreActiveReferenceBaseDisplay();
-                    this.solverWarning = this.referenceConvergenceWarnings.length > 0
-                        ? `Convergence issues — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
-                        : '';
+                    this.refreshConvergenceWarningDisplay();
                     this.runtimeWarning = '';
                 }
                 return;
@@ -1095,14 +1140,14 @@ class SimulationStoreImpl {
             if (this.pendingAutoReinit) {
                 this.pendingAutoReinit = false;
                 const reinitialized = this.initSimulator({ silent: true });
+                this.latestStepSolverWarning = '';
                 this.solverWarning = '';
                 this.runtimeWarning = reinitialized
                     ? 'Inputs changed. Model reset to step 0.'
                     : this.runtimeWarning;
             } else {
-                this.solverWarning = this.convergenceHitCount > 0
-                    ? `Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} during the run — check charts for anomalies.`
-                    : '';
+                this.latestStepSolverWarning = '';
+                this.refreshConvergenceWarningDisplay();
             }
             return;
         }
@@ -1123,27 +1168,26 @@ class SimulationStoreImpl {
                 if (this.convergenceHitCount > 0) {
                     this.referenceConvergenceWarnings = [
                         ...this.referenceConvergenceWarnings,
-                        `"${this.convergenceHitCaseName}" (${this.convergenceHitCount}×, partial)`,
+                        this.formatConvergenceCaseWarning(this.convergenceHitCaseName, this.convergenceHitCount, true),
                     ];
                 }
-                this.solverWarning = this.referenceConvergenceWarnings.length > 0
-                    ? `Convergence issues — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
-                    : '';
+                this.latestStepSolverWarning = '';
+                this.refreshConvergenceWarningDisplay();
                 this.runtimeWarning = `Reference run set stopped after ${this.referenceRunsCompleted} completed run(s).`;
                 return;
             }
             if (this.pendingAutoReinit) {
                 this.pendingAutoReinit = false;
                 const reinitialized = this.initSimulator({ silent: true });
+                this.latestStepSolverWarning = '';
                 this.solverWarning = '';
                 this.runtimeWarning = reinitialized
                     ? 'Inputs changed during the run. Model reset to step 0.'
                     : this.runtimeWarning;
                 return;
             }
-            this.solverWarning = this.convergenceHitCount > 0
-                ? `Convergence issue hit ${this.convergenceHitCount} time${this.convergenceHitCount === 1 ? '' : 's'} during the run — check charts for anomalies.`
-                : '';
+            this.latestStepSolverWarning = '';
+            this.refreshConvergenceWarningDisplay();
             this.runtimeWarning = message.reason === 'user'
                 ? `Simulation stopped after ${Number(message.completedSteps ?? 0)} step(s).`
                 : 'No running simulation to stop.';
@@ -1282,9 +1326,11 @@ class SimulationStoreImpl {
         this.currentRunTotalSteps = batchSteps;
         this.currentRunStepsCompleted = 0;
         this.runtimeError = '';
+        this.referenceConvergenceWarnings = [];
         this.convergenceHitCount = 0;
         this.convergenceHitCaseName = '';
-        this.solverWarning = '';
+        this.latestStepSolverWarning = '';
+        this.refreshConvergenceWarningDisplay();
         this.runtimeWarning = this.longRunEstimate
             ? `Estimated run: ${this.estimatedRunSeconds.toFixed(1)}s. You can stop at any time.`
             : this.runtimeWarning;
