@@ -526,6 +526,8 @@ function buildAnalyticalPreviewPanels(
         recovery: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
         diagnostics: { curves: [], series: [] },
+        volumes: { curves: [], series: [] },
+        oil_rate: { curves: [], series: [] },
     };
 
     if (variants.length === 0) return panels;
@@ -755,6 +757,8 @@ export function buildReferenceComparisonModel(input: {
         recovery: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
         diagnostics: { curves: [], series: [] },
+        volumes: { curves: [], series: [] },
+        oil_rate: { curves: [], series: [] },
     };
 
     if (!family || orderedResults.length === 0) {
@@ -851,26 +855,39 @@ export function buildReferenceComparisonModel(input: {
                     caseKey: result.key,
                     toggleLabel: 'Cum Oil',
                     color,
-                    borderWidth: 1.4,
-                    borderDash: [5, 4],
+                    borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
-                    defaultVisible: false,
+                    defaultVisible,
                 },
                 xValues,
                 derived.cumulativeOil,
             );
             appendSeries(
-                panels.cumulative,
+                panels.oil_rate,
+                {
+                    label: `${result.label} Oil Rate`,
+                    curveKey: 'oil-rate-sim',
+                    caseKey: result.key,
+                    toggleLabel: 'Oil Rate',
+                    color,
+                    borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                    yAxisID: 'y',
+                    defaultVisible,
+                },
+                xValues,
+                derived.oilRate,
+            );
+            appendSeries(
+                panels.volumes,
                 {
                     label: `${result.label} Cum Injection`,
                     curveKey: 'cum-injection',
                     caseKey: result.key,
                     toggleLabel: 'Cum Injection',
                     color,
-                    borderWidth: 1.2,
-                    borderDash: [3, 3],
+                    borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
-                    defaultVisible: false,
+                    defaultVisible,
                 },
                 xValues,
                 derived.cumulativeInjection,
@@ -931,8 +948,7 @@ export function buildReferenceComparisonModel(input: {
                 caseKey: result.key,
                 toggleLabel: 'Cum Oil',
                 color,
-                borderWidth: 1.4,
-                borderDash: [5, 4],
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
                 defaultVisible: false,
             },
@@ -997,10 +1013,9 @@ export function buildReferenceComparisonModel(input: {
                     curveKey: 'cum-oil-reference',
                     toggleLabel: 'Reference Solution Cum Oil',
                     color: referenceColor,
-                    borderWidth: 1.4,
-                    borderDash: [3, 5],
+                    borderWidth: 2,
+                    borderDash: [7, 4],
                     yAxisID: 'y',
-                    defaultVisible: false,
                 }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
             }
         } else {
@@ -1192,10 +1207,9 @@ export function buildReferenceComparisonModel(input: {
                     curveKey: 'cum-oil-reference',
                     toggleLabel: refOverlay.cumulative.cumulativeLabel,
                     color: referenceColor,
-                    borderWidth: 1.4,
-                    borderDash: [3, 5],
+                    borderWidth: 2,
+                    borderDash: [7, 4],
                     yAxisID: 'y',
-                    defaultVisible: false,
                 }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
             }
             if (refOverlay.diagnostics) {

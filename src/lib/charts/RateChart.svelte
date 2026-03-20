@@ -81,6 +81,8 @@
     let recoveryExpanded = $state(true);
     let cumulativeExpanded = $state(false);
     let diagnosticsExpanded = $state(false);
+    let volumesExpanded = $state(false);
+    let oilRateExpanded = $state(false);
     let sweepRFExpanded = $state(true);
     let sweepArealExpanded = $state(false);
     let sweepVerticalExpanded = $state(false);
@@ -134,6 +136,10 @@
                         cumulativeExpanded = conf.cumulativeExpanded;
                     if (conf.diagnosticsExpanded !== undefined)
                         diagnosticsExpanded = conf.diagnosticsExpanded;
+                    if (conf.volumesExpanded !== undefined)
+                        volumesExpanded = conf.volumesExpanded;
+                    if (conf.oilRateExpanded !== undefined)
+                        oilRateExpanded = conf.oilRateExpanded;
                 } else {
                     // Fallback to purely string-matched defaults when CaseParams lacks layout metadata
                     if (cat === "dep" || cat === "depletion" || cs.includes("depletion")) {
@@ -990,15 +996,33 @@
             scalePreset: "diagnostics",
         }),
     );
+    let volumesPanel = $derived(
+        buildPanelDefinition("volumes", {
+            title: "Cum Injection",
+            curveKeys: ["cum-injection"],
+            scalePreset: "cumulative_volumes",
+        }),
+    );
+    let oilRatePanel = $derived(
+        buildPanelDefinition("oil_rate", {
+            title: "Oil Rate",
+            curveKeys: ["oil-rate-sim", "oil-rate-reference"],
+            scalePreset: "rates",
+        }),
+    );
 
     let ratesCurves = $derived(ratesPanel.curves);
     let recoveryCurves = $derived(recoveryPanel.curves);
     let cumulativeCurves = $derived(cumulativePanel.curves);
     let diagnosticsCurves = $derived(diagnosticsPanel.curves);
+    let volumesCurves = $derived(volumesPanel.curves);
+    let oilRateCurves = $derived(oilRatePanel.curves);
     let ratesSeries = $derived(ratesPanel.series);
     let recoverySeries = $derived(recoveryPanel.series);
     let cumulativeSeries = $derived(cumulativePanel.series);
     let diagnosticsSeries = $derived(diagnosticsPanel.series);
+    let volumesSeries = $derived(volumesPanel.series);
+    let oilRateSeries = $derived(oilRatePanel.series);
 
     const ratePanelSupportsNormalization = $derived(
         ratesCurves.some((curve) => curve.label.includes("Rate")),
@@ -1338,6 +1362,44 @@
             nativeGutters = { ...nativeGutters, diagnostics: { left, right } };
         }}
     />
+
+    <!-- Volumes panel (cum injection) — shown when panel has content -->
+    {#if volumesCurves.length > 0}
+        <ChartSubPanel
+            panelId="volumes"
+            title={volumesPanel.title}
+            bind:expanded={volumesExpanded}
+            curves={volumesCurves}
+            seriesData={volumesSeries}
+            scaleConfigs={volumesPanel.scales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, volumes: { left, right } };
+            }}
+        />
+    {/if}
+
+    <!-- Oil rate panel (waterflood: collapsed by default) — shown when panel has content -->
+    {#if oilRateCurves.length > 0}
+        <ChartSubPanel
+            panelId="oil_rate"
+            title={oilRatePanel.title}
+            bind:expanded={oilRateExpanded}
+            curves={oilRateCurves}
+            seriesData={oilRateSeries}
+            scaleConfigs={oilRatePanel.scales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, oil_rate: { left, right } };
+            }}
+        />
+    {/if}
 
     <!-- Sweep panels (sweep-domain scenarios only) — RF first (primary), efficiency panels diagnostic -->
     {#if sweepPanels}

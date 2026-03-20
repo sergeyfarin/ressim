@@ -7,7 +7,7 @@ export type RateChartXAxisMode =
     | 'cumLiquid'
     | 'cumInjection';
 
-export type RateChartPanelKey = 'rates' | 'recovery' | 'cumulative' | 'diagnostics';
+export type RateChartPanelKey = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'volumes' | 'oil_rate';
 
 export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'recovery';
 
@@ -33,6 +33,8 @@ export type RateChartConfig = {
     recoveryExpanded?: boolean;
     cumulativeExpanded?: boolean;
     diagnosticsExpanded?: boolean;
+    volumesExpanded?: boolean;
+    oilRateExpanded?: boolean;
     panels?: Partial<Record<RateChartPanelKey, RateChartPanelLayout>>;
     curves?: Record<string, RateChartCurveOverride>;
 };

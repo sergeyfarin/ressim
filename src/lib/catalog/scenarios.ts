@@ -122,13 +122,23 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
                 },
                 cumulative: {
                     title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim', 'cum-injection'],
+                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
                     scalePreset: 'cumulative_volumes',
                 },
                 diagnostics: {
                     title: 'Pressure',
                     curveKeys: ['avg-pressure-sim'],
                     scalePreset: 'pressure',
+                },
+                volumes: {
+                    title: 'Cum Injection',
+                    curveKeys: ['cum-injection'],
+                    scalePreset: 'cumulative_volumes',
+                },
+                oil_rate: {
+                    title: 'Oil Rate',
+                    curveKeys: ['oil-rate-sim'],
+                    scalePreset: 'rates',
                 },
             },
         },

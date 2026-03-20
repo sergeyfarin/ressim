@@ -58,6 +58,8 @@
     let recoveryExpanded = $state(true);
     let cumulativeExpanded = $state(false);
     let diagnosticsExpanded = $state(false);
+    let volumesExpanded = $state(false);
+    let oilRateExpanded = $state(false);
     let sweepExpanded = $state(true);
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
@@ -80,6 +82,8 @@
         if (config.recoveryExpanded !== undefined) recoveryExpanded = config.recoveryExpanded;
         if (config.cumulativeExpanded !== undefined) cumulativeExpanded = config.cumulativeExpanded;
         if (config.diagnosticsExpanded !== undefined) diagnosticsExpanded = config.diagnosticsExpanded;
+        if (config.volumesExpanded !== undefined) volumesExpanded = config.volumesExpanded;
+        if (config.oilRateExpanded !== undefined) oilRateExpanded = config.oilRateExpanded;
     });
 
     const isPreviewMode = $derived(
@@ -319,6 +323,16 @@
         curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
         scalePreset: 'pressure',
     }));
+    const volumesPanel = $derived(resolvePanelDefinition('volumes', {
+        title: 'Cum Injection',
+        curveKeys: ['cum-injection'],
+        scalePreset: 'cumulative_volumes',
+    }));
+    const oilRatePanel = $derived(resolvePanelDefinition('oil_rate', {
+        title: 'Oil Rate',
+        curveKeys: ['oil-rate-sim'],
+        scalePreset: 'rates',
+    }));
     const sweepPanelEntries = $derived.by(() => {
         const sp = overlayModel.sweepPanel;
         if (!sp) return null;
@@ -344,11 +358,6 @@
                 </div>
             {/if}
         </div>
-        {#if overlayModel.orderedResults.length > 1}
-            <div class="ui-support-copy">
-                Charts keep their own case selectors. Run Table selection updates the profile and 3D outputs.
-            </div>
-        {/if}
         {#if caseVolumeWarning}
             <div class="rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
                 {caseVolumeWarning}
@@ -480,6 +489,42 @@
             nativeGutters = { ...nativeGutters, diagnostics: { left, right } };
         }}
     />
+
+    {#if volumesPanel.curves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-volumes"
+            title={volumesPanel.title}
+            bind:expanded={volumesExpanded}
+            curves={volumesPanel.curves}
+            seriesData={volumesPanel.series}
+            scaleConfigs={volumesPanel.scales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, volumes: { left, right } };
+            }}
+        />
+    {/if}
+
+    {#if oilRatePanel.curves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-oil-rate"
+            title={oilRatePanel.title}
+            bind:expanded={oilRateExpanded}
+            curves={oilRatePanel.curves}
+            seriesData={oilRatePanel.series}
+            scaleConfigs={oilRatePanel.scales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, oil_rate: { left, right } };
+            }}
+        />
+    {/if}
 
     {#if family?.scenarioClass === 'buckley-leverett' && sweepPanelCurves.length > 0}
         <ChartSubPanel
