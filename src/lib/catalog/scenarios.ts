@@ -1246,7 +1246,7 @@ export const SCENARIOS: Scenario[] = [
         scenarioClass: 'depletion',
         domain: 'depletion',
         chartPreset: 'fetkovich',
-        defaultSensitivityDimensionKey: 'skin',
+        defaultSensitivityDimensionKey: 'permeability',
         params: {
             analyticalSolutionMode: 'depletion',
             // Fluid
@@ -1303,42 +1303,14 @@ export const SCENARIOS: Scenario[] = [
             well_radius: 0.1,
             well_skin: 0,
             // Numerics
-            delta_t_days: 5,
-            steps: 100,
+            delta_t_days: 0.25,
+            steps: 250,
             max_sat_change_per_step: 0.05,
             max_pressure_change_per_step: 75,
             max_well_rate_change_fraction: 0.75,
             gravityEnabled: false,
         },
         sensitivities: [
-            {
-                key: 'skin',
-                label: 'Skin Factor  s',
-                description: 'Skin modifies near-wellbore pressure drop, scaling PI and hence the exponential decline rate. Both analytical and simulation update.',
-                variants: [
-                    {
-                        key: 'skin_neg',
-                        label: 's = −2  (stimulated)',
-                        description: 'Mild stimulation — higher PI, faster rate, steeper decline.',
-                        paramPatch: { well_skin: -2 },
-                        affectsAnalytical: true,
-                    },
-                    {
-                        key: 'skin_zero',
-                        label: 's = 0  (clean)',
-                        description: 'No damage — base case.',
-                        paramPatch: {},
-                        affectsAnalytical: true,
-                    },
-                    {
-                        key: 'skin_pos',
-                        label: 's = +5  (damaged)',
-                        description: 'Moderate formation damage — reduced PI, slower decline.',
-                        paramPatch: { well_skin: 5 },
-                        affectsAnalytical: true,
-                    },
-                ],
-            },
             {
                 key: 'permeability',
                 label: 'Permeability  k',
@@ -1367,6 +1339,41 @@ export const SCENARIOS: Scenario[] = [
                     },
                 ],
             },
+            {
+                key: 'timestep',
+                label: 'Timestep  Δt',
+                description: 'Timestep size modifies the numerical stability and accuracy of the simulation.',
+                variants: [
+                    {
+                        key: 'timestep_small',
+                        label: 'Δt = 0.1 days  (small)',
+                        description: 'Small timestep — higher accuracy, slower simulation.',
+                        paramPatch: { delta_t_days: 0.1 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'timestep_base',
+                        label: 'Δt = 0.25 days  (base)',
+                        description: 'Base timestep — balances accuracy and simulation speed.',
+                        paramPatch: { delta_t_days: 0.25 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'timestep_large',
+                        label: 'Δt = 1 days  (large)',
+                        description: 'Large timestep — lower accuracy, faster simulation.',
+                        paramPatch: { delta_t_days: 1 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'timestep_very_large',
+                        label: 'Δt = 5 days  (very large)',
+                        description: 'Very large timestep — lower accuracy, faster simulation.',
+                        paramPatch: { delta_t_days: 5 },
+                        affectsAnalytical: false,
+                    },
+                ],
+            },            
         ],
     },
 
