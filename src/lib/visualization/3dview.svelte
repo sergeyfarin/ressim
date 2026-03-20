@@ -1246,17 +1246,9 @@
 </script>
 
 <div style="display:flex; flex-direction:column;">
-    <div class="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-        <div>
-            <div class="ui-section-kicker">
-                Spatial View
-            </div>
-            <div class="ui-support-copy">
-                Inspecting {sourceLabel} in the active playback window.
-            </div>
-        </div>
-        <div class="ui-chip border border-border/70 bg-background text-muted-foreground">
-            {sourceLabel}
+    <div class="mb-2 px-1">
+        <div class="ui-section-kicker">
+            Spatial View
         </div>
     </div>
     <div class="flex items-center gap-4 w-full px-1">

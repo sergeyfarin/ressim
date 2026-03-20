@@ -49,15 +49,13 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/<ReferenceResultsCard/);
     expect(appSource).toMatch(/family=\{activeReferenceFamily\}/);
     expect(appSource).toMatch(/results=\{activeReferenceResults\}/);
-    expect(appSource).toMatch(/selectedResultKey=\{activePrimaryComparisonResultKey\}/);
-    expect(appSource).toMatch(/onSelectResult=\{handleSelectComparisonResult\}/);
     expect(appSource).toMatch(/scenario\.setComparisonSelection\(/);
     expect(appSource).not.toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
     expect(appSource).not.toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);
     expect(appSource).toMatch(/scenario\.activeReferenceFamily\?\.key/);
     expect(appSource).toMatch(/getReferenceRateChartLayoutConfig/);
     expect(appSource).toMatch(/ReferenceComparisonChartComponent/);
-    expect(appSource).toMatch(/activeReferenceFamily && activeReferenceResults.length > 0 && ReferenceComparisonChartComponent/);
+    expect(appSource).toMatch(/activeReferenceFamily && ReferenceComparisonChartComponent/);
     expect(appSource).toMatch(/Results/);
   });
 

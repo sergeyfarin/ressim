@@ -518,6 +518,20 @@ export const SCENARIOS: Scenario[] = [
                 chartPresetOverride: 'waterflood',
                 variants: [
                     {
+                        key: 'grid_3',
+                        label: '3 cells  (coarse)',
+                        description: 'Coarse 3-cell grid — large numerical diffusion, smeared front.',
+                        paramPatch: { nx: 3, producerI: 2, cellDx: 320 },
+                        affectsAnalytical: false,
+                    },
+                    {
+                        key: 'grid_6',
+                        label: '6 cells  (coarse)',
+                        description: 'Coarse 6-cell grid — large numerical diffusion, smeared front.',
+                        paramPatch: { nx: 6, producerI: 5, cellDx: 160 },
+                        affectsAnalytical: false,
+                    },
+                    {
                         key: 'grid_24',
                         label: '24 cells  (coarse)',
                         description: 'Coarse 24-cell grid — large numerical diffusion, smeared front.',

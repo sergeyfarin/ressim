@@ -580,9 +580,6 @@
                 <ReferenceResultsCard
                     family={activeReferenceFamily}
                     results={activeReferenceResults}
-                    selectedResultKey={activePrimaryComparisonResultKey}
-                    onSelectResult={handleSelectComparisonResult}
-                    onClearSelection={clearComparisonSelection}
                 />
 
                 <Card class="overflow-hidden">
@@ -640,6 +637,40 @@
             <div class="space-y-4">
                 <Card>
                     <div class="p-4 md:p-5">
+                        {#if activeReferenceResults.length > 0}
+                            <div class="mb-3 flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                                        activePrimaryComparisonResultKey === null
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
+                                    }`}
+                                    onclick={clearComparisonSelection}
+                                >
+                                    Live runtime
+                                </button>
+                                {#each activeReferenceResults as result}
+                                    <button
+                                        type="button"
+                                        class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                                            activePrimaryComparisonResultKey === result.key
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
+                                        }`}
+                                        onclick={() => handleSelectComparisonResult(result.key)}
+                                    >
+                                        {result.variantKey === null ? "Base" : (result.variantLabel ?? result.label)}
+                                    </button>
+                                {/each}
+                            </div>
+                        {:else}
+                            <div class="mb-3">
+                                <span class="ui-chip border border-border/70 bg-background text-muted-foreground">
+                                    Live runtime
+                                </span>
+                            </div>
+                        {/if}
                         {#if ThreeDViewComponent}
                             {#key `${output3DNx}-${output3DNy}-${output3DNz}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
                                 <ThreeDViewComponent
