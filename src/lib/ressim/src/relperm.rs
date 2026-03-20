@@ -22,11 +22,14 @@ pub struct RockFluidPropsThreePhase {
     // ── Gas system ────────────────────────────────────────────────────────────
     /// Critical gas saturation (min Sg for gas to flow) [dimensionless]
     pub s_gc: f64,
-    /// Residual (trapped) gas saturation [dimensionless]
+    /// Residual (trapped) gas saturation after imbibition [dimensionless]
     pub s_gr: f64,
+    /// Residual oil saturation in a gas flood (typically > s_or) [dimensionless]
+    /// Used as the terminal oil saturation in k_ro_gas and gas-oil capillary pressure.
+    pub s_org: f64,
     /// Corey exponent for gas [dimensionless]
     pub n_g: f64,
-    /// Max gas relative permeability at So = Sor [dimensionless]
+    /// Max gas relative permeability at So = Sorg [dimensionless]
     pub k_rg_max: f64,
 }
 
@@ -56,13 +59,14 @@ impl RockFluidPropsThreePhase {
     }
 
     /// Oil relative permeability in oil-gas 2-phase system (Sw = Swc).
-    /// S_o_eff = (1 − Swc − Sg − Sgr) / (1 − Swc − Sgr)
+    /// S_o_eff = (1 − Swc − Sg − Sorg) / (1 − Swc − Sorg)
+    /// Uses s_org (residual oil to gas) as the terminal saturation, not s_gr (trapped gas).
     pub fn k_ro_gas(&self, s_g: f64) -> f64 {
-        let denom = 1.0 - self.s_wc - self.s_gr;
+        let denom = 1.0 - self.s_wc - self.s_org;
         if denom <= 0.0 {
             return 0.0;
         }
-        let s_eff = ((1.0 - self.s_wc - s_g - self.s_gr) / denom).clamp(0.0, 1.0);
+        let s_eff = ((1.0 - self.s_wc - s_g - self.s_org) / denom).clamp(0.0, 1.0);
         self.k_ro_max * s_eff.powf(self.n_o)
     }
 

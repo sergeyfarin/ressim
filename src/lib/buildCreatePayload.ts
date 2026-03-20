@@ -150,6 +150,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     // Three-phase
     s_gc:    toClamped(state.s_gc,    0, 1,    0.05),
     s_gr:    toClamped(state.s_gr,    0, 1,    0.05),
+    s_org:   toClamped(state.s_org,   0, 1,    0.15),
     n_g:     toMin(state.n_g,         0.01,    1.5),
     k_rg_max: toClamped(state.k_rg_max, 0.01, 1, 1.0),
     pcogEnabled: Boolean(state.pcogEnabled ?? false),

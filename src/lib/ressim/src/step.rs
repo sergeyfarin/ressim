@@ -811,6 +811,7 @@ impl ReservoirSimulator {
         let n_cells = self.nx * self.ny * self.nz;
         // Apply saturation updates with physical clipping
         let mut actual_change_m3 = 0.0;
+        let mut actual_change_gas_m3 = 0.0;
         for idx in 0..n_cells {
             let vp_m3 = self.pore_volume_m3(idx);
             if vp_m3 <= 0.0 {
@@ -843,6 +844,7 @@ impl ReservoirSimulator {
                 self.sat_gas[idx] = if sum > 0.0 { sg_new / sum } else { sg_new };
 
                 actual_change_m3 += (self.sat_water[idx] - sw_old) * vp_m3;
+                actual_change_gas_m3 += (self.sat_gas[idx] - sg_old) * vp_m3;
             } else {
                 // Two-phase: material balance s_w + s_o = 1
                 let sw_min = self.scal.s_wc;
@@ -864,7 +866,10 @@ impl ReservoirSimulator {
         let mut total_prod_liquid_reservoir = 0.0;
         let mut total_injection = 0.0;
         let mut total_injection_reservoir = 0.0;
+        let mut total_water_injection_reservoir = 0.0;
+        let mut total_gas_injection_reservoir = 0.0;
         let mut total_prod_water_reservoir = 0.0;
+        let mut total_prod_gas_reservoir = 0.0;
         let mut total_prod_gas = 0.0;
 
         for w in &self.wells {
@@ -873,6 +878,14 @@ impl ReservoirSimulator {
                 if w.injector {
                     total_injection -= q_m3_day / self.b_w.max(1e-9);
                     total_injection_reservoir += -q_m3_day;
+                    if self.three_phase_mode {
+                        match self.injected_fluid {
+                            InjectedFluid::Water => total_water_injection_reservoir += -q_m3_day,
+                            InjectedFluid::Gas => total_gas_injection_reservoir += -q_m3_day,
+                        }
+                    } else {
+                        total_water_injection_reservoir += -q_m3_day;
+                    }
                 } else {
                     total_prod_liquid_reservoir += q_m3_day;
                     let (fw, fg) = if self.three_phase_mode {
@@ -881,6 +894,7 @@ impl ReservoirSimulator {
                         (self.frac_flow_water(id), 0.0)
                     };
                     total_prod_water_reservoir += q_m3_day * fw;
+                    total_prod_gas_reservoir += q_m3_day * fg;
                     let oil_rate = q_m3_day * (1.0 - fw - fg) / self.b_o.max(1e-9);
                     let water_rate = q_m3_day * fw / self.b_w.max(1e-9);
                     total_prod_oil += oil_rate;
@@ -891,15 +905,18 @@ impl ReservoirSimulator {
         }
 
         // Update cumulative water volumes in reservoir conditions for material balance
-        self.cumulative_injection_m3 += total_injection_reservoir * dt_days;
+        self.cumulative_injection_m3 += total_water_injection_reservoir * dt_days;
         self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
-        // Compute cumulative material balance error [m³]
-        // Net water added via wells = (water injection_res - water production_res) * dt
-        let net_added_m3 = (total_injection_reservoir - total_prod_water_reservoir) * dt_days;
+        // Water material balance: (water injected − water produced) should equal ΔSw × Vp
+        let net_water_added_m3 = (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
+        self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
-        // Accumulate missing material (positive if mass vanished, negative if mass was created)
-        self.cumulative_mb_error_m3 += net_added_m3 - actual_change_m3;
+        // Gas material balance (three-phase only): (gas injected − gas produced) should equal ΔSg × Vp
+        if self.three_phase_mode {
+            let net_gas_added_m3 = (total_gas_injection_reservoir - total_prod_gas_reservoir) * dt_days;
+            self.cumulative_mb_gas_error_m3 += net_gas_added_m3 - actual_change_gas_m3;
+        }
 
         // Report the absolute cumulative error
         let mb_error = self.cumulative_mb_error_m3.abs();
@@ -936,6 +953,7 @@ impl ReservoirSimulator {
             total_injection: total_injection,
             total_injection_reservoir: total_injection_reservoir,
             material_balance_error_m3: mb_error,
+            material_balance_error_gas_m3: self.cumulative_mb_gas_error_m3.abs(),
             avg_reservoir_pressure,
             avg_water_saturation,
             total_production_gas: total_prod_gas,

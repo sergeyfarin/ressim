@@ -55,17 +55,12 @@ impl CapillaryPressure {
 /// Oil-gas capillary pressure: P_cog(S_g) = P_gas − P_oil (gas is non-wetting).
 /// Used in step.rs as: P_gas = P_oil + P_cog, consistent with standard black-oil convention.
 ///
-/// **Known limitation**: parameterised on S_g_eff so P_cog *decreases* with increasing S_g.
-/// Physically, for a non-wetting gas phase, P_cog should *increase* with S_g as gas displaces
-/// oil into progressively smaller pores. The correct approach is to parameterise on S_o_eff
-/// (oil saturation) and requires a separate residual-oil-to-gas saturation parameter (Sorg).
-/// For viscous-dominated flow with gravity disabled this error is negligible; for gravity-drainage
-/// or capillary-equilibrium studies, fix before use.
-///
-/// Same Brooks-Corey form as `CapillaryPressure` but parameterised on S_g.
+/// Parameterised on S_o_eff (oil wetting-phase effective saturation) using `s_org`
+/// (residual oil to gas). As S_g increases, S_o decreases, S_o_eff decreases, and
+/// P_cog = P_entry × S_o_eff^(−1/λ) increases — physically correct for a non-wetting gas.
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct GasOilCapillaryPressure {
-    /// Entry pressure [bar]
+    /// Entry pressure [bar] — P_cog when S_o is at its maximum (S_g = 0)
     pub p_entry: f64,
     /// Brooks-Corey exponent (lambda) [dimensionless]
     pub lambda: f64,
@@ -73,17 +68,21 @@ pub struct GasOilCapillaryPressure {
 
 impl GasOilCapillaryPressure {
     /// P_cog(S_g): capillary pressure [bar] as a function of gas saturation.
-    /// S_g_eff = (S_g − S_gc) / (1 − S_wc − S_gc − S_gr)
+    ///
+    /// Uses oil effective saturation at connate water: S_o = 1 − S_wc − S_g.
+    /// S_o_eff = (S_o − S_org) / (1 − S_wc − S_org)
+    ///
+    /// P_cog increases with S_g (correct non-wetting behaviour):
+    /// - S_g = 0          → S_o_eff = 1 → P_cog = P_entry (minimum)
+    /// - S_g → 1−Swc−Sorg → S_o_eff = 0 → P_cog = 20 × P_entry (cap)
     pub fn capillary_pressure_og(&self, s_g: f64, rock: &RockFluidPropsThreePhase) -> f64 {
-        let denom = 1.0 - rock.s_wc - rock.s_gc - rock.s_gr;
+        let denom = 1.0 - rock.s_wc - rock.s_org;
         if denom <= 0.0 {
-            return 0.0;
+            return self.p_entry * 20.0;
         }
-        let s_eff = ((s_g - rock.s_gc) / denom).clamp(0.0, 1.0);
 
-        if s_eff >= 1.0 {
-            return 0.0; // At maximum gas saturation, capillary pressure is zero
-        }
+        let s_o = 1.0 - rock.s_wc - s_g;
+        let s_eff = ((s_o - rock.s_org) / denom).clamp(0.0, 1.0);
 
         let pc_max = self.p_entry * 20.0;
 
@@ -91,6 +90,8 @@ impl GasOilCapillaryPressure {
             return pc_max;
         }
 
+        // Brooks-Corey: P_cog = P_entry × S_o_eff^(−1/λ)
+        // At s_eff = 1: pc = P_entry; decreases toward 0 only if s_eff > 1 (physically excluded)
         let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
         pc.clamp(0.0, pc_max)
     }

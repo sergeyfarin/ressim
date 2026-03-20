@@ -33,6 +33,7 @@ export type SimulationInputs = {
     // Three-phase (optional)
     s_gc?: number;
     s_gr?: number;
+    s_org?: number;
     n_g?: number;
     mu_g?: number;
     c_g?: number;

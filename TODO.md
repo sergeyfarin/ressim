@@ -12,9 +12,9 @@ Goal: clean up tech debt, fix known correctness issues, finish incomplete work.
 
 Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 
-- [ ] **Gas-oil capillary pressure direction** — `capillary.rs`: P_cog currently *decreases* with increasing S_g. Physical requirement: gas is non-wetting, P_cog must increase with S_g. Fix: parameterise on S_o_eff using `S_org`.
-- [ ] **Stone II missing `S_org` parameter** — `relperm.rs`: `k_ro_gas` uses `s_gr` as terminal oil saturation in a gas flood; should use a distinct `s_org` (residual oil to gas, typically > `s_or`). Add `s_org` and wire through `k_ro_gas`, capillary pressure, and UI.
-- [ ] **3-phase material-balance diagnostic** — `step.rs`: `actual_change_m3` accumulates only ΔS_w × Vp. Add parallel accumulators for gas and oil so all three phases are covered.
+- [x] **Gas-oil capillary pressure direction** — `capillary.rs`: P_cog now parameterised on S_o_eff using `s_org`; increases correctly with S_g.
+- [x] **Stone II missing `S_org` parameter** — `relperm.rs`: `k_ro_gas` now uses `s_org` (residual oil to gas) as terminal saturation. `s_org` added to `RockFluidPropsThreePhase`, WASM API, TypeScript types, store, worker, and gas scenarios (default 0.20).
+- [x] **3-phase material-balance diagnostic** — `step.rs`: gas accumulator (`actual_change_gas_m3`) added; gas injection/production tracked separately; `cumulative_mb_gas_error_m3` reported in `TimePointRates.material_balance_error_gas_m3`.
 
 ### 1B. Analytical Contract Gaps
 

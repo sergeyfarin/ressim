@@ -142,7 +142,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     call3p(
       'setThreePhaseRelPermProps',
       payload.s_wc, payload.s_or,
-      payload.s_gc ?? 0.05, payload.s_gr ?? 0.05,
+      payload.s_gc ?? 0.05, payload.s_gr ?? 0.05, payload.s_org ?? 0.15,
       payload.n_w, payload.n_o, payload.n_g ?? 1.5,
       payload.k_rw_max ?? 1.0, payload.k_ro_max ?? 1.0, payload.k_rg_max ?? 1.0,
     );

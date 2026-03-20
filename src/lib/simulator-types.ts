@@ -74,6 +74,8 @@ export interface SimulatorCreatePayload {
   // ── Three-phase SCAL ────────────────────────────────────────────────────────
   s_gc?: number;
   s_gr?: number;
+  /** Residual oil saturation in a gas flood (typically ≥ s_or). Distinct from s_gr. */
+  s_org?: number;
   n_g?: number;
   k_rg_max?: number;
   // Gas-oil capillary pressure

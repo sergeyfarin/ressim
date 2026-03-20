@@ -27,6 +27,10 @@ pub struct TimePointRates {
     /// Average gas saturation (non-zero only in three-phase mode)
     #[serde(default)]
     pub avg_gas_saturation: f64,
+    /// Gas material balance error [m³]: cumulative (gas injection − gas production) vs actual
+    /// in-place gas change. Non-zero only in three-phase mode.
+    #[serde(default)]
+    pub material_balance_error_gas_m3: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

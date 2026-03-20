@@ -198,6 +198,7 @@ class SimulationStoreImpl {
     // Three-phase
     s_gc = $state(0.05);
     s_gr = $state(0.05);
+    s_org = $state(0.15);
     n_g = $state(1.5);
     k_rg_max = $state(1.0);
     pcogEnabled = $state(false);
@@ -525,7 +526,7 @@ class SimulationStoreImpl {
             injectorI: this.injectorI, injectorJ: this.injectorJ,
             producerI: this.producerI, producerJ: this.producerJ,
             s_wc: this.s_wc, s_or: this.s_or,
-            s_gc: this.s_gc, s_gr: this.s_gr, n_g: this.n_g, mu_g: this.mu_g, c_g: this.c_g,
+            s_gc: this.s_gc, s_gr: this.s_gr, s_org: this.s_org, n_g: this.n_g, mu_g: this.mu_g, c_g: this.c_g,
             threePhaseModeEnabled: this.threePhaseModeEnabled,
             minPerm: this.minPerm, maxPerm: this.maxPerm,
             injectorEnabled: this.injectorEnabled,
@@ -600,6 +601,7 @@ class SimulationStoreImpl {
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
             s_gc: this.s_gc,
             s_gr: this.s_gr,
+            s_org: this.s_org,
             n_g: this.n_g,
             k_rg_max: this.k_rg_max,
             pcogEnabled: this.pcogEnabled,
@@ -659,7 +661,7 @@ class SimulationStoreImpl {
             uniformPermX: this.uniformPermX,
             uniformPermY: this.uniformPermY,
             uniformPermZ: this.uniformPermZ,
-            s_gc: this.s_gc, s_gr: this.s_gr, n_g: this.n_g, k_rg_max: this.k_rg_max,
+            s_gc: this.s_gc, s_gr: this.s_gr, s_org: this.s_org, n_g: this.n_g, k_rg_max: this.k_rg_max,
             pcogEnabled: this.pcogEnabled, pcogPEntry: this.pcogPEntry, pcogLambda: this.pcogLambda,
             mu_g: this.mu_g, c_g: this.c_g, rho_g: this.rho_g,
             threePhaseModeEnabled: this.threePhaseModeEnabled,
@@ -702,7 +704,7 @@ class SimulationStoreImpl {
             injectorI: this.injectorI, injectorJ: this.injectorJ,
             producerI: this.producerI, producerJ: this.producerJ,
             threePhaseModeEnabled: this.threePhaseModeEnabled,
-            s_gc: this.s_gc, s_gr: this.s_gr, n_g: this.n_g, k_rg_max: this.k_rg_max,
+            s_gc: this.s_gc, s_gr: this.s_gr, s_org: this.s_org, n_g: this.n_g, k_rg_max: this.k_rg_max,
             mu_g: this.mu_g, c_g: this.c_g, rho_g: this.rho_g,
             pcogEnabled: this.pcogEnabled, pcogPEntry: this.pcogPEntry,
             pcogLambda: this.pcogLambda,
@@ -1520,6 +1522,7 @@ class SimulationStoreImpl {
         this.threePhaseModeEnabled = Boolean(resolved.threePhaseModeEnabled);
         if (resolved.s_gc !== undefined) this.s_gc = Number(resolved.s_gc);
         if (resolved.s_gr !== undefined) this.s_gr = Number(resolved.s_gr);
+        if (resolved.s_org !== undefined) this.s_org = Number(resolved.s_org);
         if (resolved.n_g !== undefined) this.n_g = Number(resolved.n_g);
         if (resolved.k_rg_max !== undefined) this.k_rg_max = Number(resolved.k_rg_max);
         if (resolved.mu_g !== undefined) this.mu_g = Number(resolved.mu_g);

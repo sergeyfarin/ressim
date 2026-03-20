@@ -12,11 +12,19 @@ export class ReservoirSimulator {
         wasm.__wbg_reservoirsimulator_free(ptr, 0);
     }
     /**
-     * Cumulative material balance error [m³]
+     * Cumulative water material balance error [m³]
      * @returns {number}
      */
     get cumulative_mb_error_m3() {
         const ret = wasm.__wbg_get_reservoirsimulator_cumulative_mb_error_m3(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+     * @returns {number}
+     */
+    get cumulative_mb_gas_error_m3() {
+        const ret = wasm.__wbg_get_reservoirsimulator_cumulative_mb_gas_error_m3(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -389,11 +397,15 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setThreePhaseModeEnabled(this.__wbg_ptr, enabled);
     }
     /**
-     * Set three-phase relative permeability parameters (Stone II model)
+     * Set three-phase relative permeability parameters (Stone II model).
+     * `s_org` is the residual oil saturation in a gas flood (typically ≥ `s_or`).
+     * It is distinct from `s_gr` (trapped residual gas) and is used as the terminal
+     * oil saturation in `k_ro_gas` and gas-oil capillary pressure.
      * @param {number} s_wc
      * @param {number} s_or
      * @param {number} s_gc
      * @param {number} s_gr
+     * @param {number} s_org
      * @param {number} n_w
      * @param {number} n_o
      * @param {number} n_g
@@ -401,8 +413,8 @@ export class ReservoirSimulator {
      * @param {number} k_ro_max
      * @param {number} k_rg_max
      */
-    setThreePhaseRelPermProps(s_wc, s_or, s_gc, s_gr, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max) {
-        const ret = wasm.reservoirsimulator_setThreePhaseRelPermProps(this.__wbg_ptr, s_wc, s_or, s_gc, s_gr, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max);
+    setThreePhaseRelPermProps(s_wc, s_or, s_gc, s_gr, s_org, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max) {
+        const ret = wasm.reservoirsimulator_setThreePhaseRelPermProps(this.__wbg_ptr, s_wc, s_or, s_gc, s_gr, s_org, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -436,11 +448,18 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_step(this.__wbg_ptr, target_dt_days);
     }
     /**
-     * Cumulative material balance error [m³]
+     * Cumulative water material balance error [m³]
      * @param {number} arg0
      */
     set cumulative_mb_error_m3(arg0) {
         wasm.__wbg_set_reservoirsimulator_cumulative_mb_error_m3(this.__wbg_ptr, arg0);
+    }
+    /**
+     * Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+     * @param {number} arg0
+     */
+    set cumulative_mb_gas_error_m3(arg0) {
+        wasm.__wbg_set_reservoirsimulator_cumulative_mb_gas_error_m3(this.__wbg_ptr, arg0);
     }
 }
 if (Symbol.dispose) ReservoirSimulator.prototype[Symbol.dispose] = ReservoirSimulator.prototype.free;

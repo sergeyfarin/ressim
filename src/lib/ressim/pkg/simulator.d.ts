@@ -109,9 +109,12 @@ export class ReservoirSimulator {
      */
     setThreePhaseModeEnabled(enabled: boolean): void;
     /**
-     * Set three-phase relative permeability parameters (Stone II model)
+     * Set three-phase relative permeability parameters (Stone II model).
+     * `s_org` is the residual oil saturation in a gas flood (typically ≥ `s_or`).
+     * It is distinct from `s_gr` (trapped residual gas) and is used as the terminal
+     * oil saturation in `k_ro_gas` and gas-oil capillary pressure.
      */
-    setThreePhaseRelPermProps(s_wc: number, s_or: number, s_gc: number, s_gr: number, n_w: number, n_o: number, n_g: number, k_rw_max: number, k_ro_max: number, k_rg_max: number): void;
+    setThreePhaseRelPermProps(s_wc: number, s_or: number, s_gc: number, s_gr: number, s_org: number, n_w: number, n_o: number, n_g: number, k_rw_max: number, k_ro_max: number, k_rg_max: number): void;
     setWellBhpLimits(bhp_min: number, bhp_max: number): void;
     setWellControlModes(injector_mode: string, producer_mode: string): void;
     /**
@@ -119,9 +122,13 @@ export class ReservoirSimulator {
      */
     step(target_dt_days: number): void;
     /**
-     * Cumulative material balance error [m³]
+     * Cumulative water material balance error [m³]
      */
     cumulative_mb_error_m3: number;
+    /**
+     * Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+     */
+    cumulative_mb_gas_error_m3: number;
 }
 
 export function set_panic_hook(): void;
@@ -131,8 +138,10 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_get_reservoirsimulator_cumulative_mb_error_m3: (a: number) => number;
+    readonly __wbg_get_reservoirsimulator_cumulative_mb_gas_error_m3: (a: number) => number;
     readonly __wbg_reservoirsimulator_free: (a: number, b: number) => void;
     readonly __wbg_set_reservoirsimulator_cumulative_mb_error_m3: (a: number, b: number) => void;
+    readonly __wbg_set_reservoirsimulator_cumulative_mb_gas_error_m3: (a: number, b: number) => void;
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
@@ -168,7 +177,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
     readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setThreePhaseModeEnabled: (a: number, b: number) => void;
-    readonly reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number];
+    readonly reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number];
     readonly reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly reservoirsimulator_step: (a: number, b: number) => void;

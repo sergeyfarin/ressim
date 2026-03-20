@@ -2,8 +2,10 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_get_reservoirsimulator_cumulative_mb_error_m3: (a: number) => number;
+export const __wbg_get_reservoirsimulator_cumulative_mb_gas_error_m3: (a: number) => number;
 export const __wbg_reservoirsimulator_free: (a: number, b: number) => void;
 export const __wbg_set_reservoirsimulator_cumulative_mb_error_m3: (a: number, b: number) => void;
+export const __wbg_set_reservoirsimulator_cumulative_mb_gas_error_m3: (a: number, b: number) => void;
 export const reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
 export const reservoirsimulator_getDimensions: (a: number) => any;
 export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
@@ -39,7 +41,7 @@ export const reservoirsimulator_setRockProperties: (a: number, b: number, c: num
 export const reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
 export const reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setThreePhaseModeEnabled: (a: number, b: number) => void;
-export const reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number];
+export const reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number];
 export const reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
 export const reservoirsimulator_step: (a: number, b: number) => void;

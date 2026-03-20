@@ -117,8 +117,10 @@ pub struct ReservoirSimulator {
     cumulative_injection_m3: f64,
     /// Cumulative water produced in reservoir conditions [m³] for material balance
     cumulative_production_m3: f64,
-    /// Cumulative material balance error [m³]
+    /// Cumulative water material balance error [m³]
     pub cumulative_mb_error_m3: f64,
+    /// Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+    pub cumulative_mb_gas_error_m3: f64,
     target_producer_rate_m3_day: f64,
     rock_compressibility: f64,
     depth_reference_m: f64,
@@ -202,6 +204,7 @@ impl ReservoirSimulator {
             cumulative_injection_m3: 0.0,
             cumulative_production_m3: 0.0,
             cumulative_mb_error_m3: 0.0,
+            cumulative_mb_gas_error_m3: 0.0,
             // Three-phase (disabled by default)
             scal_3p: None,
             pc_og: None,
@@ -782,7 +785,10 @@ impl ReservoirSimulator {
         self.three_phase_mode = enabled;
     }
 
-    /// Set three-phase relative permeability parameters (Stone II model)
+    /// Set three-phase relative permeability parameters (Stone II model).
+    /// `s_org` is the residual oil saturation in a gas flood (typically ≥ `s_or`).
+    /// It is distinct from `s_gr` (trapped residual gas) and is used as the terminal
+    /// oil saturation in `k_ro_gas` and gas-oil capillary pressure.
     #[wasm_bindgen(js_name = setThreePhaseRelPermProps)]
     pub fn set_three_phase_rel_perm_props(
         &mut self,
@@ -790,6 +796,7 @@ impl ReservoirSimulator {
         s_or: f64,
         s_gc: f64,
         s_gr: f64,
+        s_org: f64,
         n_w: f64,
         n_o: f64,
         n_g: f64,
@@ -803,6 +810,12 @@ impl ReservoirSimulator {
                 s_wc + s_or + s_gc + s_gr
             ));
         }
+        if s_wc + s_org >= 1.0 {
+            return Err(format!(
+                "Invalid saturation endpoints: S_wc + S_org must be < 1.0, got {}",
+                s_wc + s_org
+            ));
+        }
         if n_w <= 0.0 || n_o <= 0.0 || n_g <= 0.0 {
             return Err(format!(
                 "Corey exponents must be positive, got n_w={}, n_o={}, n_g={}",
@@ -810,7 +823,7 @@ impl ReservoirSimulator {
             ));
         }
         self.scal_3p = Some(RockFluidPropsThreePhase {
-            s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max, s_gc, s_gr, n_g, k_rg_max,
+            s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max, s_gc, s_gr, s_org, n_g, k_rg_max,
         });
         Ok(())
     }
@@ -1753,7 +1766,7 @@ mod tests {
 
         let rock = RockFluidPropsThreePhase {
             s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
-            s_gc: 0.05, s_gr: 0.05, n_g: 1.5, k_rg_max: 0.7,
+            s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 1.5, k_rg_max: 0.7,
         };
 
         // At connate water with no free gas → k_ro should equal k_ro_max
@@ -1764,12 +1777,12 @@ mod tests {
             rock.k_ro_max, kro_at_swc
         );
 
-        // At connate water, gas fills remaining mobile pore volume → k_ro = 0
-        let sg_max = 1.0 - rock.s_wc - rock.s_gr;
-        let kro_max_gas = rock.k_ro_stone2(rock.s_wc, sg_max);
+        // When gas saturation reaches 1 − Swc − Sorg, oil is at residual → k_ro = 0
+        let sg_at_sorg = 1.0 - rock.s_wc - rock.s_org;
+        let kro_max_gas = rock.k_ro_stone2(rock.s_wc, sg_at_sorg);
         assert!(
             kro_max_gas < 1e-9,
-            "k_ro_stone2(Swc, sg_max) should be ~0 but got {}",
+            "k_ro_stone2(Swc, sg_at_sorg) should be ~0 but got {}",
             kro_max_gas
         );
 
@@ -1809,7 +1822,7 @@ mod tests {
 
         let rock = RockFluidPropsThreePhase {
             s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
-            s_gc: 0.05, s_gr: 0.05, n_g: 2.0, k_rg_max: 0.7,
+            s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 2.0, k_rg_max: 0.7,
         };
 
         // Below and at critical gas saturation → k_rg = 0
@@ -1847,7 +1860,7 @@ mod tests {
 
         let rock = RockFluidPropsThreePhase {
             s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
-            s_gc: 0.05, s_gr: 0.05, n_g: 1.5, k_rg_max: 0.7,
+            s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 1.5, k_rg_max: 0.7,
         };
 
         // When Sg = 0, Stone II must collapse exactly to the oil-water k_ro curve:
@@ -1869,7 +1882,7 @@ mod tests {
     fn make_3phase_gas_injection_sim(nx: usize) -> ReservoirSimulator {
         let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05,
+            0.10, 0.10, 0.05, 0.05, 0.10,
             2.0, 2.0, 1.5,
             0.8, 0.9, 0.7,
         ).unwrap();
@@ -1981,19 +1994,19 @@ mod tests {
 
         // Endpoint sum >= 1.0 must be rejected
         err_contains(
-            sim.set_three_phase_rel_perm_props(0.4, 0.3, 0.2, 0.2, 2.0, 2.0, 1.5, 1.0, 1.0, 0.7),
+            sim.set_three_phase_rel_perm_props(0.4, 0.3, 0.2, 0.2, 0.1, 2.0, 2.0, 1.5, 1.0, 1.0, 0.7),
             "must be < 1.0",
         );
 
         // Zero Corey exponent for water
         err_contains(
-            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.0, 2.0, 1.5, 1.0, 1.0, 0.7),
+            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.10, 0.0, 2.0, 1.5, 1.0, 1.0, 0.7),
             "must be positive",
         );
 
         // Zero Corey exponent for gas
         err_contains(
-            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 2.0, 2.0, 0.0, 1.0, 1.0, 0.7),
+            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.10, 2.0, 2.0, 0.0, 1.0, 1.0, 0.7),
             "must be positive",
         );
     }
