@@ -7,7 +7,7 @@
 
     let {
         title,
-        open = false,
+        open = true,
         hasError = false,
         children,
         class: className,
@@ -20,12 +20,12 @@
 </script>
 
 <details
-    class={`group overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm transition-all ${className || ""} ${hasError ? "border-destructive" : "border-border"}`}
+    class={`group overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm transition-all ${className || ""} ${hasError ? "border-destructive" : "border-border"}`}
     {open}
     {...rest}
 >
     <summary
-        class="flex cursor-pointer list-none items-center justify-between bg-muted/40 px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted/60 [&::-webkit-details-marker]:hidden"
+        class="flex cursor-pointer list-none items-center justify-between bg-muted/40 px-3 py-2 text-xs font-semibold transition-colors hover:bg-muted/60 [&::-webkit-details-marker]:hidden"
     >
         {title}
         <svg

@@ -6,12 +6,10 @@ const rateChartPath = path.join(__dirname, 'RateChart.svelte');
 const subPanelPath = path.join(__dirname, 'ChartSubPanel.svelte');
 const referenceComparisonChartPath = path.join(__dirname, 'ReferenceComparisonChart.svelte');
 const chartPanelSelectionPath = path.join(__dirname, 'chartPanelSelection.ts');
-const outputSummaryStripPath = path.join(__dirname, 'OutputSummaryStrip.svelte');
 const rateChartSrc = fs.readFileSync(rateChartPath, 'utf8');
 const subPanelSrc = fs.readFileSync(subPanelPath, 'utf8');
 const referenceComparisonChartSrc = fs.readFileSync(referenceComparisonChartPath, 'utf8');
 const chartPanelSelectionSrc = fs.readFileSync(chartPanelSelectionPath, 'utf8');
-const outputSummaryStripSrc = fs.readFileSync(outputSummaryStripPath, 'utf8');
 
 describe('RateChart architecture checks', () => {
   it('imports and uses ChartSubPanel', () => {
@@ -44,11 +42,6 @@ describe('RateChart architecture checks', () => {
     expect(/getConfiguredXAxisOptions/.test(referenceComparisonChartSrc)).toBe(true);
     expect(/resolveChartPanelDefinition/.test(referenceComparisonChartSrc)).toBe(true);
     expect(/coerceChartAxisState/.test(chartPanelSelectionSrc)).toBe(true);
-  });
-
-  it('uses a shared output-summary strip in the live chart shell', () => {
-    expect(/OutputSummaryStrip/.test(rateChartSrc)).toBe(true);
-    expect(/ui-panel-kicker/.test(outputSummaryStripSrc)).toBe(true);
   });
 
   it('computes error stats (MAE, RMSE, MAPE)', () => {

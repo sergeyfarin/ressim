@@ -4,6 +4,7 @@
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
   import { SCENARIOS, getScenario, type Scenario, type ScenarioDomain } from "../../catalog/scenarios";
+  import { RESERVOIR_PRESETS, type ReservoirPreset } from "../../catalog/reservoirPresets";
   import type { CaseMode, ToggleState } from "../../catalog/caseCatalog";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
   import type { WarningPolicy } from "../../warningPolicy";
@@ -150,13 +151,13 @@
         {/if}
       {/each}
 
-      <!-- Custom -->
+      <!-- Custom (simulation only — no analytical reference) -->
       <Button
         size="sm"
         variant={isCustom ? "default" : "outline"}
         onclick={onEnterCustomMode}
       >
-        Custom
+        Custom (Simulation only)
       </Button>
     </div>
   </div>
@@ -254,8 +255,29 @@
   </div>
   {/if}
   {#if isCustom}
-    <!-- ── Custom mode: full parameter form ── -->
-    <div class="border-t border-border/50 pt-2">
+    <!-- ── Custom mode: presets + full parameter form ── -->
+    <div class="border-t border-border/50">
+      <div class="flex items-center gap-1.5 px-3 py-2 flex-wrap">
+        <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Rock type presets:</span>
+        {#each RESERVOIR_PRESETS as preset}
+          <button
+            type="button"
+            class="ui-chip cursor-pointer border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
+            title={preset.description}
+            onclick={() => {
+              const p = preset.params;
+              for (const [key, value] of Object.entries(p)) {
+                if (key in params && typeof value !== 'function') {
+                  (params as any)[key] = value;
+                }
+              }
+              onParamEdit();
+            }}
+          >
+            {preset.label}
+          </button>
+        {/each}
+      </div>
       <ScenarioSectionsPanel
         {activeMode}
         {toggles}

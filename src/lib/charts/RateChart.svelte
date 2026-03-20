@@ -1,6 +1,5 @@
 <script lang="ts">
     import ChartSubPanel from "./ChartSubPanel.svelte";
-    import OutputSummaryStrip from "./OutputSummaryStrip.svelte";
     import type { CurveConfig } from "./ChartSubPanel.svelte";
     import {
         coerceChartAxisState,
@@ -21,7 +20,6 @@
         RateHistoryPoint,
         AnalyticalProductionPoint,
     } from "../simulator-types";
-    import { buildLiveOutputSummaryItems } from "./outputSummary";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
     import { computeCombinedSweep } from "../analytical/sweepEfficiency";
     import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
@@ -1216,21 +1214,6 @@
 
         return { rfCurves, rfSeries, arealCurves, arealSeries, verticalCurves, verticalSeries, volCurves, volSeries, hasVertical };
     });
-    const summaryItems = $derived.by(() => {
-        return buildLiveOutputSummaryItems({
-            activeMode,
-            activeCase,
-            timeValues,
-            pviSeries: cumulatives.pvi,
-            oilRateSeries: oilProd,
-            waterCutSeries: waterCutSim,
-            cumulativeOilSeries: cumulatives.cumOil,
-            recoverySeries: recoveryFactor,
-            pressureSeries: avgPressure,
-            mismatchSummary,
-        });
-    });
-
     let xAxisOptions = $derived.by(() => {
         return getConfiguredXAxisOptions(
             allXAxisOptions,
@@ -1255,8 +1238,6 @@
     <div
         class="flex flex-col gap-3 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
     >
-        <OutputSummaryStrip items={summaryItems} />
-
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div class="flex items-center gap-2 overflow-x-auto">
                 <span

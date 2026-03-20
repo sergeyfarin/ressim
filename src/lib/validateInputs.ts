@@ -38,6 +38,8 @@ export type SimulationInputs = {
     mu_g?: number;
     c_g?: number;
     threePhaseModeEnabled?: boolean;
+    uniformPermX: number;
+    reservoirPorosity: number;
     minPerm: number;
     maxPerm: number;
     injectorEnabled: boolean;
@@ -57,7 +59,7 @@ export type ValidationState = {
 export type ValidationWarningSurface = 'non-physical' | 'advisory';
 
 export type ValidationWarning = {
-    code: 'long-run-duration' | 'pressure-step-large';
+    code: 'long-run-duration' | 'pressure-step-large' | 'low-permeability' | 'high-viscosity-ratio' | 'large-grid' | 'small-timestep' | 'high-mobility-ratio';
     message: string;
     surface: ValidationWarningSurface;
     fieldKey?: string;
@@ -151,6 +153,36 @@ export function validateInputs(input: SimulationInputs): ValidationState {
             message: 'Large max ΔP per step may reduce numerical robustness.',
             surface: 'non-physical',
             fieldKey: 'max_pressure_change_per_step',
+        });
+    }
+    if (input.uniformPermX < 0.1) {
+        warnings.push({
+            code: 'low-permeability',
+            message: 'Permeability < 0.1 mD: convergence may be slow; consider smaller timestep.',
+            surface: 'advisory',
+        });
+    }
+    const mobilityRatio = (input.mu_o / input.mu_w) > 0 ? input.mu_o / input.mu_w : 1;
+    if (mobilityRatio > 50) {
+        warnings.push({
+            code: 'high-mobility-ratio',
+            message: `High mobility ratio (μ_o/μ_w ≈ ${mobilityRatio.toFixed(0)}): expect early breakthrough and poor sweep.`,
+            surface: 'advisory',
+        });
+    }
+    const totalCells = input.nx * input.ny * input.nz;
+    if (totalCells > 50000) {
+        warnings.push({
+            code: 'large-grid',
+            message: `${totalCells.toLocaleString()} cells: simulation may be slow; each step > 1 s.`,
+            surface: 'advisory',
+        });
+    }
+    if (input.delta_t_days < 0.01) {
+        warnings.push({
+            code: 'small-timestep',
+            message: 'Very small timestep: simulation will need many steps to cover meaningful time.',
+            surface: 'advisory',
         });
     }
     return { errors, warnings };

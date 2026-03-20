@@ -572,6 +572,8 @@ class SimulationStoreImpl {
             s_wc: this.s_wc, s_or: this.s_or,
             s_gc: this.s_gc, s_gr: this.s_gr, s_org: this.s_org, n_g: this.n_g, mu_g: this.mu_g, c_g: this.c_g,
             threePhaseModeEnabled: this.threePhaseModeEnabled,
+            uniformPermX: this.uniformPermX,
+            reservoirPorosity: this.reservoirPorosity,
             minPerm: this.minPerm, maxPerm: this.maxPerm,
             injectorEnabled: this.injectorEnabled,
             injectorControlMode: this.injectorControlMode,

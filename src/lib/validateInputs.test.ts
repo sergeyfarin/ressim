@@ -20,6 +20,8 @@ function makeValidInputs(overrides: Partial<SimulationInputs> = {}): SimulationI
         injectorI: 0, injectorJ: 0,
         producerI: 9, producerJ: 9,
         s_wc: 0.1, s_or: 0.1,
+        uniformPermX: 100,
+        reservoirPorosity: 0.2,
         minPerm: 50, maxPerm: 500,
         injectorEnabled: true,
         injectorControlMode: 'pressure',

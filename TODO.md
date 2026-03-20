@@ -75,20 +75,23 @@ Goal: make custom mode a deliberate power-user feature; improve input density.
 
 Current custom mode is a catch-all that dumps 50+ raw parameter inputs with no context, no grouping intelligence, and no relationship to the predefined scenarios. It reads as legacy, not intentional.
 
-**Redesign direction:**
+**Focus: fully custom mode ground-up redesign.**
 
-- [ ] **Clone-and-edit flow** — entering custom mode should clone the currently active scenario's params as a starting point, not reset to defaults. Show provenance ("Based on: 1D Waterflood — Mobility Ratio").  -- IMPORTANT - I am not sure this is good idea to clone anything to custom. It will be confusing. Maybe allow minimum customization in place in each scenario and fully custom model. So postpone this one for now.
-- [ ] **Per-scenario customisation** — allow parameter overrides *within* a predefined scenario without switching to full custom mode. The scenario stays active; the user sees which params they've changed and can reset individual overrides. This replaces the need to "go custom" for small parameter tweaks.
-- [ ] **Grouped parameter sections** — replace flat 50-field form with domain-aware groups: Rock Properties, Fluid PVT, Wells, Grid & Timestep, Relative Permeability (SCAL), Gas/3-Phase. Each group collapsible; show only groups relevant to the active scenario class. Most important it should be almost redesigned from ground. Groups flowing to avoid full width. Where possible very compact tables could help for example for nx, ny, nz, dx, dy, dz and immediately showing model size - design table like https://github.com/sergeyfarin/retirement-planner
-- [ ] **Preset starting points** — quick-pick buttons for common reservoir types (sandstone, shale, carbonate, tight gas) that set reasonable default ranges for porosity, permeability, fluid properties.
-- [ ] **Save/load custom configurations** — persist named custom scenarios in localStorage; allow export/import as JSON. Put it to later. For now no saving / no loading
-- [ ] **Validation guidance** — proactive parameter range warnings (e.g. "permeability < 0.1 mD: convergence may be slow") instead of only post-run validation errors.
+- [x] **Grouped parameter sections** — all sections redesigned with dense `<table>` layouts: Geometry (3×4 cells/size/total grid), Reservoir (initial conditions table + fluid PVT table + inline perm), Wells (compact 2-row table), Rel Perm (endpoints table + inline capillary + side-by-side SVG curves), Timestep (single-row table), Gas (combined rel perm + PVT in one table), Analytical (inline controls). FilterCard dimension toggles removed from custom mode panel.
+- [x] **Preset starting points** — rock-type quick-pick chips (Sandstone, Carbonate, Shale/Tight, Heavy Oil) in custom mode header. Each applies domain-appropriate defaults for porosity, permeability, viscosity, saturation endpoints, capillary pressure. Defined in `reservoirPresets.ts`.
+- [x] **Validation guidance** — proactive advisory warnings for low permeability (<0.1 mD), high mobility ratio (>50), large grid (>50k cells), very small timestep (<0.01 d). Wired through existing `ValidationWarning` system and `WarningPolicyPanel`.
+
+**Postponed (revisit after custom mode lands):**
+
+- **Clone-and-edit flow** — cloning scenario params into custom mode may be confusing. Revisit after per-scenario customisation is designed.
+- **Per-scenario customisation** — allow parameter overrides *within* a predefined scenario without switching to full custom mode. Depends on the grouped layout being stable first.
+- **Save/load custom configurations** — persist named custom scenarios in localStorage; export/import as JSON. Not needed initially.
 
 ### 2B. Compact Input Layout
 
-- [ ] Reduce default section padding and vertical spacing
-- [ ] Convert overly tall input groups into compact flowing cards
-- [ ] Tighten margins without making the UI cramped; common scenario editing should take materially less scrolling
+- [x] Reduce default section padding and vertical spacing — all sections use `px-2.5 py-2` instead of `p-3`+`space-y-2`; panel wrapper uses `space-y-1 px-1 py-1.5`
+- [x] Convert overly tall input groups into compact dense tables — replaced card grids, stacked label+input pairs with inline `<table>` rows
+- [x] Tighten margins — Collapsible sections, table cells, checkbox labels all use minimal padding; summary text removed from section headers (data is in the tables)
 
 ### 2C. Theme Refresh
 
