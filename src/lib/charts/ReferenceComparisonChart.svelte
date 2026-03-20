@@ -188,11 +188,11 @@
             display: true,
             position: 'left',
             min: 0,
-            max: 1,
             alignToPixels: true,
             title: { display: true, text: 'Recovery Factor' },
             ticks: { count: 6 },
             _fraction: true,
+            _maxCap: 1,
         },
     };
     const cumulativeVolumesScales = {
@@ -350,6 +350,50 @@
     });
     const sweepPanelCurves = $derived(sweepPanelEntries?.map((e) => e.curve) ?? []);
     const sweepPanelSeries = $derived(sweepPanelEntries?.map((e) => e.series) ?? []);
+
+    // Compute a shared x-axis range so every panel aligns.
+    // Clips the x-range where all rate curves have dropped below 1e-7 of peak,
+    // ensuring at least 7 decades are visible on a log-scale rate axis while
+    // trimming the dead tail where nothing changes.
+    const sharedXRange = $derived.by(() => {
+        const allPanels = [ratesPanel, recoveryPanel, cumulativePanel, diagnosticsPanel, volumesPanel, oilRatePanel];
+        let globalMin = Infinity;
+        let globalMax = -Infinity;
+        for (const panel of allPanels) {
+            for (const series of panel.series) {
+                for (const pt of series) {
+                    if (Number.isFinite(pt.x)) {
+                        if (pt.x < globalMin) globalMin = pt.x;
+                        if (pt.x > globalMax) globalMax = pt.x;
+                    }
+                }
+            }
+        }
+        if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax) || globalMin >= globalMax) return undefined;
+
+        // Find the peak rate across all rate-panel series, then clip at 1e-7 of peak.
+        const rateSeries = ratesPanel.series;
+        let peakRate = 0;
+        for (const series of rateSeries) {
+            for (const pt of series) {
+                if (Number.isFinite(pt.y) && pt.y! > peakRate) peakRate = pt.y!;
+            }
+        }
+        if (peakRate <= 0) return { min: globalMin, max: globalMax };
+
+        const threshold = peakRate * 1e-7;
+        let clippedMax = globalMin;
+        for (const series of rateSeries) {
+            for (const pt of series) {
+                if (Number.isFinite(pt.x) && Number.isFinite(pt.y) && pt.y! > threshold) {
+                    if (pt.x > clippedMax) clippedMax = pt.x;
+                }
+            }
+        }
+        // Only clip if it actually reduces the range; otherwise keep full extent.
+        const xMax = clippedMax > globalMin ? Math.min(globalMax, clippedMax) : globalMax;
+        return { min: globalMin, max: xMax };
+    });
 </script>
 
 <div class="flex flex-col">
@@ -460,6 +504,7 @@
         {theme}
         bind:logScale
         allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? ratesPanel.allowLogToggle}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -476,6 +521,7 @@
         scaleConfigs={recoveryPanel.scales}
         {theme}
         logScale={false}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -492,6 +538,7 @@
         scaleConfigs={cumulativePanel.scales}
         {theme}
         logScale={false}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -508,6 +555,7 @@
         scaleConfigs={diagnosticsPanel.scales}
         {theme}
         logScale={false}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -525,6 +573,7 @@
             scaleConfigs={volumesPanel.scales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -543,6 +592,7 @@
             scaleConfigs={oilRatePanel.scales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -561,6 +611,7 @@
             scaleConfigs={sweepScales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {

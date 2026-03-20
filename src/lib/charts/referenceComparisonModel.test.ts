@@ -168,12 +168,21 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.rates.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining([`${result.label} Oil Rate`, `${result.label} — Reference`]),
+            expect.arrayContaining([`${result.label} Oil Rate`, 'Reference Solution Oil Rate']),
         );
         expect(model.panels.diagnostics.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining([`${result.label} Avg Pressure`, `${result.label} — Reference Pressure`]),
+            expect.arrayContaining([`${result.label} Avg Pressure`, 'Reference Solution Avg Pressure']),
         );
-        expect(model.axisMappingWarning).toContain('remapped from each completed simulation run');
+        expect(model.axisMappingWarning).toBeNull();
+        // Simulation curve (first series) should use tD, not raw time.
+        // tD = time / tau; for typical depletion params tau >> 1, so tD < time.
+        const simSeries = model.panels.rates.series[0];
+        const lastSimX = simSeries?.at(-1)?.x ?? 0;
+        expect(lastSimX).toBeGreaterThan(0);
+        // With tD x-axis, the max x should be well below the raw time (which is days).
+        // Raw time from buildDepletionReferenceRateHistory is steps * dt (e.g. 200 * 5 = 1000 days).
+        // tD at that point should be much smaller than 1000.
+        expect(lastSimX).toBeLessThan(100);
         expect(model.panels.rates.series.at(-1)?.at(-1)?.x).toBeGreaterThan(0);
     });
 

@@ -47,6 +47,7 @@
         chartHeight = "min(36vh, 300px)",
         targetLeftGutter = 0,
         targetRightGutter = 0,
+        xRange,
         onGutterMeasure,
     }: {
         panelId?: string;
@@ -61,6 +62,7 @@
         chartHeight?: string;
         targetLeftGutter?: number;
         targetRightGutter?: number;
+        xRange?: { min: number; max: number } | undefined;
         onGutterMeasure?: (left: number, right: number) => void;
     } = $props();
 
@@ -112,14 +114,15 @@
         _dynamicTitle?: (labels: string[]) => string;
         _fraction?: boolean;
         _auto?: boolean;
+        _maxCap?: number;
         _tickFormatter?: (value: string | number) => string | number;
     };
     let scaleDerived = $derived.by(() => {
         let meta: Record<string, ScaleMeta> = {};
         let clean: Record<string, any> = {};
         for (const [key, cfg] of Object.entries(scaleConfigs)) {
-            const { _dynamicTitle, _fraction, _auto, _tickFormatter, ...rest } = cfg;
-            meta[key] = { _dynamicTitle, _fraction, _auto, _tickFormatter };
+            const { _dynamicTitle, _fraction, _auto, _maxCap, _tickFormatter, ...rest } = cfg;
+            meta[key] = { _dynamicTitle, _fraction, _auto, _maxCap, _tickFormatter };
             clean[key] = structuredClone(rest);
         }
         return { meta, clean };
@@ -382,6 +385,13 @@
             } else {
                 scales.y.min = 0;
                 applyPositiveAxisBounds(scales.y, collectAxisValues("y"));
+                // Cap the max if configured (e.g. recovery factor capped at 1.0)
+                const cap = (scaleMeta.y as any)?._maxCap;
+                if (Number.isFinite(cap)) {
+                    if (scales.y.max === undefined || scales.y.max > cap) {
+                        scales.y.max = cap;
+                    }
+                }
             }
         }
 
@@ -397,6 +407,10 @@
             } else {
                 applyPositiveAxisBounds(config, collectAxisValues(axisId));
             }
+            const cap = (scaleMeta[axisId] as any)?._maxCap;
+            if (Number.isFinite(cap) && (config.max === undefined || config.max > cap)) {
+                config.max = cap;
+            }
         }
 
         // Dynamic axis title based on which curves are visible
@@ -410,6 +424,15 @@
                 const newTitle = meta._dynamicTitle(visibleLabels);
                 if (config.title && newTitle) config.title.text = newTitle;
             }
+        }
+
+        // Synchronize x-axis range across panels when a shared range is provided
+        if (xRange && scales.x) {
+            scales.x.min = xRange.min;
+            scales.x.max = xRange.max;
+        } else if (scales.x) {
+            delete scales.x.min;
+            delete scales.x.max;
         }
 
         chart.update();

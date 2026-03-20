@@ -1352,13 +1352,6 @@ export const SCENARIOS: Scenario[] = [
                         affectsAnalytical: false,
                     },
                     {
-                        key: 'timestep_base',
-                        label: 'Δt = 0.25 days  (base)',
-                        description: 'Base timestep — balances accuracy and simulation speed.',
-                        paramPatch: { delta_t_days: 0.25 },
-                        affectsAnalytical: false,
-                    },
-                    {
                         key: 'timestep_large',
                         label: 'Δt = 1 days  (large)',
                         description: 'Large timestep — lower accuracy, faster simulation.',
@@ -1367,9 +1360,9 @@ export const SCENARIOS: Scenario[] = [
                     },
                     {
                         key: 'timestep_very_large',
-                        label: 'Δt = 5 days  (very large)',
+                        label: 'Δt = 10 days  (very large)',
                         description: 'Very large timestep — lower accuracy, faster simulation.',
-                        paramPatch: { delta_t_days: 5 },
+                        paramPatch: { delta_t_days: 10 },
                         affectsAnalytical: false,
                     },
                 ],

@@ -93,9 +93,6 @@ function requiresRunMappedAnalyticalXAxis(
     if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
         return xAxisMode !== 'pvi';
     }
-    if (scenarioClass === 'depletion') {
-        return true;
-    }
     return false;
 }
 
@@ -404,6 +401,51 @@ function extractFluidProps(params: Record<string, any>): FluidProps {
     };
 }
 
+function computeDepletionTau(params: Record<string, any>): number | null {
+    try {
+        const result = calculateDepletionAnalyticalProduction({
+            reservoir: {
+                length: toFiniteNumber(params.nx, 1) * toFiniteNumber(params.cellDx, 10),
+                area: toFiniteNumber(params.ny, 1)
+                    * toFiniteNumber(params.cellDy, 10)
+                    * toFiniteNumber(params.nz, 1)
+                    * toFiniteNumber(params.cellDz, 1),
+                porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
+            },
+            timeHistory: [1],
+            initialSaturation: toFiniteNumber(params.initialSaturation, 0.3),
+            nz: toFiniteNumber(params.nz, 1),
+            permMode: String(params.permMode ?? 'uniform'),
+            uniformPermX: toFiniteNumber(params.uniformPermX, 100),
+            uniformPermY: toFiniteNumber(params.uniformPermY ?? params.uniformPermX, 100),
+            layerPermsX: Array.isArray(params.layerPermsX) ? params.layerPermsX.map(Number) : [],
+            layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
+            cellDx: toFiniteNumber(params.cellDx, 10),
+            cellDy: toFiniteNumber(params.cellDy, 10),
+            cellDz: toFiniteNumber(params.cellDz, 1),
+            wellRadius: toFiniteNumber(params.well_radius, 0.1),
+            wellSkin: toFiniteNumber(params.well_skin, 0),
+            muO: toFiniteNumber(params.mu_o, 1),
+            sWc: toFiniteNumber(params.s_wc, 0.1),
+            sOr: toFiniteNumber(params.s_or, 0.1),
+            nO: toFiniteNumber(params.n_o, 2),
+            c_o: toFiniteNumber(params.c_o, 1e-5),
+            c_w: toFiniteNumber(params.c_w, 3e-6),
+            cRock: toFiniteNumber(params.rock_compressibility, 1e-6),
+            initialPressure: toFiniteNumber(params.initialPressure, 300),
+            producerBhp: toFiniteNumber(params.producerBhp, 100),
+            depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
+            nx: toFiniteNumber(params.nx, 1),
+            ny: toFiniteNumber(params.ny, 1),
+            producerI: params.producerI != null ? toFiniteNumber(params.producerI, 0) : undefined,
+            producerJ: params.producerJ != null ? toFiniteNumber(params.producerJ, 0) : undefined,
+        });
+        return result.meta.tau ?? null;
+    } catch {
+        return null;
+    }
+}
+
 function getLayerPermeabilities(params: Record<string, any>): number[] {
     const nz = toFiniteNumber(params.nz, 1);
     if (String(params.permMode) === 'perLayer'
@@ -503,6 +545,7 @@ function computeDepletionAnalyticalFromParams(
     xValues: (number | null)[];
     oilRates: (number | null)[];
     recoveryValues: (number | null)[];
+    cumulativeOilValues: (number | null)[];
     avgPressureValues: (number | null)[];
 } | null {
     const steps = toFiniteNumber(params.steps, 200);
@@ -567,6 +610,7 @@ function computeDepletionAnalyticalFromParams(
         recoveryValues: analyticalResult.production.map((pt) =>
             ooip > 1e-12 ? Math.max(0, Math.min(1, pt.cumulativeOil / ooip)) : null,
         ),
+        cumulativeOilValues: analyticalResult.production.map((pt) => pt.cumulativeOil),
         avgPressureValues: analyticalResult.production.map((pt) => pt.avgPressure),
     };
 }
@@ -673,6 +717,18 @@ function buildAnalyticalPreviewPanels(
                 borderDash: [7, 4],
                 yAxisID: 'y',
             }, curves.xValues, curves.recoveryValues);
+            appendSeries(panels.cumulative, {
+                label: `${prefix}Analytical Cum Oil`,
+                curveKey: 'cum-oil-reference',
+                ...(caseKey ? { caseKey } : {}),
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
+                color,
+                legendColor: legendGrey,
+                borderWidth: 2,
+                borderDash: [7, 4],
+                yAxisID: 'y',
+            }, curves.xValues, curves.cumulativeOilValues);
             appendSeries(panels.diagnostics, {
                 label: `${prefix}Analytical Avg Pressure`,
                 curveKey: 'avg-pressure-reference',
@@ -897,7 +953,8 @@ export function buildReferenceComparisonModel(input: {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
         const color = getReferenceComparisonCaseColor(index);
-        const xValues = buildXAxisValues(derived, input.xAxisMode);
+        const tau = scenarioClass === 'depletion' ? computeDepletionTau(result.params) : null;
+        const xValues = buildXAxisValues(derived, input.xAxisMode, tau);
         const defaultVisible = true;
 
         const caseLabel = compactCaseLabel(result.label);
@@ -1081,7 +1138,6 @@ export function buildReferenceComparisonModel(input: {
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
-                defaultVisible: false,
             },
             xValues,
             derived.cumulativeOil,
@@ -1316,6 +1372,19 @@ export function buildReferenceComparisonModel(input: {
                         borderDash: [7, 4],
                         yAxisID: 'y',
                     }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
+                    appendSeries(panels.cumulative, {
+                        label: `${result.label} — Reference Cum Oil`,
+                        curveKey: 'cum-oil-reference',
+                        caseKey: result.key,
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
                 }
                 if (refOverlay.diagnostics) {
                     appendSeries(panels.diagnostics, {
@@ -1373,6 +1442,19 @@ export function buildReferenceComparisonModel(input: {
                         borderDash: [7, 4],
                         yAxisID: 'y',
                     }, curves.xValues, curves.recoveryValues);
+                    appendSeries(panels.cumulative, {
+                        label: `${variant.label} — Reference Cum Oil`,
+                        curveKey: 'cum-oil-reference',
+                        caseKey: variant.variantKey,
+                        toggleGroupKey: variant.variantKey + '__ref',
+                        toggleLabel: vLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
+                        color,
+                        borderWidth: 1.5,
+                        borderDash: [7, 4],
+                        yAxisID: 'y',
+                    }, curves.xValues, curves.cumulativeOilValues);
                     appendSeries(panels.diagnostics, {
                         label: `${variant.label} — Reference Pressure`,
                         curveKey: 'avg-pressure-reference',
