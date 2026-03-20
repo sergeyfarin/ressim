@@ -32,10 +32,23 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 
 Eight legacy catalog/benchmark files still have active production dependencies. The blocker is that `ReferenceExecutionCard`, `benchmarkRunModel`, and the chart layer still import from old catalog files.
 
-- [ ] Audit whether `ReferenceExecutionCard` and `benchmarkRunModel` are superseded by the S1 sweep-run model
+- [x] Audit whether `ReferenceExecutionCard` and `benchmarkRunModel` are superseded by the S1 sweep-run model
 - [ ] Delete confirmed-dead files; update remaining imports; verify 0 TS errors and all tests pass
 
-Files pending deletion: `ReferenceExecutionCard.svelte`, `benchmarkCases.ts`, `benchmarkRunModel.ts`, `benchmarkDisclosure.ts`, `caseCatalog.ts`, `caseLibrary.ts`, `presetCases.ts`, `phase2PresetContract.ts`
+**Audit result (2026-03-20):** None of the 8 files are dead — all are actively load-bearing. The S1 scenario system coexists with (rather than replaces) the old benchmark layer:
+
+- `benchmarkRunModel.ts` defines `BenchmarkRunSpec`/`BenchmarkRunResult` types shared by *both* old reference families and new scenario sweeps (the store synthesizes virtual families via `activeScenarioAsFamily`).
+- `ReferenceExecutionCard.svelte` is still the only UI for traditional benchmark family selection (rendered in App.svelte when `activeReferenceFamily` is set).
+- `benchmarkDisclosure.ts` provides parameter snapshots/variant summaries consumed by `ReferenceExecutionCard`.
+- `benchmarkCases.ts` exports benchmark family definitions and types imported by 10+ files.
+- `caseCatalog.ts` re-exports from benchmarkCases + caseLibrary + presetCases; provides `CaseMode`/`ToggleState` types used across UI and stores.
+- `caseLibrary.ts`, `presetCases.ts`, `phase2PresetContract.ts` all imported by caseCatalog, stores, or UI components.
+
+**To unblock deletion**, the following migration is needed:
+1. Move shared types (`BenchmarkRunSpec`, `BenchmarkRunResult`, etc.) into a new `referenceRunModel.ts` (or into `scenarios.ts`)
+2. Merge `ReferenceExecutionCard` functionality into `ScenarioPicker` or a unified sensitivity-selection component
+3. Migrate remaining preset cases and benchmark families into `scenarios.ts` with equivalent sensitivity dimensions
+4. Inline or relocate `caseCatalog.ts` type exports (`CaseMode`, `ToggleState`, `Dimension`, etc.) into appropriate modules
 
 ### 1D. Chart & Output Polish
 

@@ -110,15 +110,28 @@ function buildAnalyticalAxisWarning(input: {
     return parts.length > 0 ? parts.join(' ') : null;
 }
 
+/** Tableau 20 — 20 perceptually distinct colors for categorical data. */
 const CASE_COLORS = [
-    '#0f766e',
-    '#2563eb',
-    '#dc2626',
-    '#7c3aed',
-    '#ea580c',
-    '#0891b2',
-    '#4f46e5',
-    '#65a30d',
+    '#4e79a7',
+    '#f28e2b',
+    '#e15759',
+    '#76b7b2',
+    '#59a14f',
+    '#edc948',
+    '#b07aa1',
+    '#ff9da7',
+    '#9c755f',
+    '#bab0ac',
+    '#af7aa1',
+    '#d37295',
+    '#fabfd2',
+    '#b6992d',
+    '#499894',
+    '#86bcb6',
+    '#8cd17d',
+    '#f1ce63',
+    '#a0cbe8',
+    '#ffbe7d',
 ];
 
 export function getReferenceComparisonCaseColor(index: number): string {
@@ -249,8 +262,17 @@ function getBaseResult(results: BenchmarkRunResult[]): BenchmarkRunResult | null
     return results.find((result) => result.variantKey === null) ?? results[0] ?? null;
 }
 
-function orderResults(results: BenchmarkRunResult[]): BenchmarkRunResult[] {
-    return [...results];
+function orderResults(
+    results: BenchmarkRunResult[],
+    variantOrder?: AnalyticalPreviewVariant[],
+): BenchmarkRunResult[] {
+    if (!variantOrder?.length) return [...results];
+    const orderIndex = new Map(variantOrder.map((v, i) => [v.variantKey, i]));
+    return [...results].sort((a, b) => {
+        const ai = a.variantKey != null ? orderIndex.get(a.variantKey) ?? Infinity : -1;
+        const bi = b.variantKey != null ? orderIndex.get(b.variantKey) ?? Infinity : -1;
+        return ai - bi;
+    });
 }
 
 function buildBuckleyLeverettReference(
@@ -877,7 +899,7 @@ export function buildReferenceComparisonModel(input: {
     previewScenarioClass?: string;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
-    const orderedResults = orderResults(input.results);
+    const orderedResults = orderResults(input.results, input.previewVariantParams);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
     const scenarioClass = family?.scenarioClass ?? input.previewScenarioClass ?? null;
@@ -1537,13 +1559,20 @@ export function buildReferenceComparisonModel(input: {
 
     // Pending preview cases for mid-sweep: variants whose results haven't landed yet.
     // These appear in the cases selector alongside completed orderedResults entries.
+    // Color indices use declaration order from previewVariantParams so each variant
+    // keeps the same color throughout preview → in-progress → completed.
     const pendingPreviewCases: ReferenceComparisonPreviewCase[] =
         (input.pendingPreviewVariants?.length && input.analyticalPerVariant && !usesRunMappedAnalyticalXAxis)
-            ? input.pendingPreviewVariants.map((v, i) => ({
-                key: v.variantKey,
-                label: v.label,
-                colorIndex: orderedResults.length + i,
-            }))
+            ? (() => {
+                const declOrder = new Map(
+                    (input.previewVariantParams ?? []).map((v, i) => [v.variantKey, i]),
+                );
+                return input.pendingPreviewVariants!.map((v) => ({
+                    key: v.variantKey,
+                    label: v.label,
+                    colorIndex: declOrder.get(v.variantKey) ?? orderedResults.length,
+                }));
+            })()
             : [];
 
     const sweepPanel = (family.scenarioClass === 'buckley-leverett' && family.showSweepPanel === true)
