@@ -132,6 +132,7 @@ class SimulationStoreImpl {
     cellDz = $state(1);
     delta_t_days = $state(0.25);
     steps = $state(20);
+    hasUserDeltaTDaysOverride = $state(false);
 
     // Initial Conditions
     initialPressure = $state(300.0);
@@ -1421,6 +1422,7 @@ class SimulationStoreImpl {
         this.referenceProvenance = null;
         this.activeComparisonSelection = buildComparisonSelection();
         this.clearReferenceRunnerState(true);
+        this.clearRuntimeOverrides();
 
         this.applyCaseParams(composeCaseParams(this.toggles));
         this.baseCaseSignature = this.buildCaseSignature();
@@ -1430,6 +1432,14 @@ class SimulationStoreImpl {
         if (this.isModified) return;
         this.isModified = true;
         this.baseCaseSignature = '';
+    }
+
+    clearRuntimeOverrides() {
+        this.hasUserDeltaTDaysOverride = false;
+    }
+
+    markDeltaTDaysOverride() {
+        this.hasUserDeltaTDaysOverride = true;
     }
 
     resolveOwningModeForLibraryEntry(entryKey: string): CaseMode | null {
@@ -1471,6 +1481,7 @@ class SimulationStoreImpl {
         this.activeComparisonSelection = buildComparisonSelection();
         this.baseCaseSignature = '';
         this.clearReferenceRunnerState(true);
+        this.clearRuntimeOverrides();
 
         this.applyCaseParams(entry.params);
         this.baseCaseSignature = this.buildCaseSignature();
@@ -1647,6 +1658,7 @@ class SimulationStoreImpl {
         this.toggles = getDefaultToggles(nextMode);
         this.explicitLibraryEntryKey = null;
         this.activeCase = key;
+        this.clearRuntimeOverrides();
 
         this.applyCaseParams(scenario.params);
         this.baseCaseSignature = this.buildCaseSignature();
@@ -1703,7 +1715,6 @@ class SimulationStoreImpl {
         const baseParams = scenario.params;
         const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
         const runSteps = Math.max(1, Math.round(Number(this.steps ?? baseParams.steps ?? 240)));
-        const runDeltaTDays = Number(this.delta_t_days ?? baseParams.delta_t_days ?? 0.125);
 
         const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
 
@@ -1716,6 +1727,9 @@ class SimulationStoreImpl {
                 continue;
             }
             const variantParams = getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey);
+            const runDeltaTDays = this.hasUserDeltaTDaysOverride
+                ? Number(this.delta_t_days ?? baseParams.delta_t_days ?? 0.125)
+                : Number(variantParams.delta_t_days ?? baseParams.delta_t_days ?? 0.125);
             specs.push({
                 key: `${scenarioKey}__${dimensionKey}__${variantKey}`,
                 caseKey: scenarioKey,

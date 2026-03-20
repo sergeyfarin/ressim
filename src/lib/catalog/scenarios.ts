@@ -422,7 +422,7 @@ export const SCENARIOS: Scenario[] = [
                         key: 'mob_unfavorable',
                         label: 'M ≈ 10  (μ_o = 5.0 cp)',
                         description: 'Strongly unfavourable — very early breakthrough, poor recovery. Classic viscous fingering regime.',
-                        paramPatch: { mu_o: 5.0 },
+                        paramPatch: { mu_o: 5.0, delta_t_days: 0.5 },
                         affectsAnalytical: true,
                     },
                 ],

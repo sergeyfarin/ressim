@@ -39,6 +39,7 @@ Files pending deletion: `ReferenceExecutionCard.svelte`, `benchmarkCases.ts`, `b
 
 ### 1D. Chart & Output Polish
 
+- [x] Scenario sweep runtime controls keep `steps` tied to the run-controls input while allowing per-variant `Δt` defaults unless the timestep field is explicitly edited.
 - [ ] **Color stability when sweep results arrive out of order** — `orderResults()` sorts by variant presence then insertion order. Fix: sort by variant declaration index from `previewVariantParams` order, not arrival order.
 - [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.
 - [ ] **Sweep panel has no pending overlays** — during mid-sweep, `buildSweepPanel` only shows completed results. Low priority.

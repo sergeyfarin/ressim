@@ -39,13 +39,15 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/explicitLibraryEntryKey/);
   });
 
-  it('preserves edited run controls for scenario sensitivity sweeps', () => {
+  it('treats scenario runtime controls as explicit overrides for sensitivity sweeps', () => {
+    expect(storeSource).toMatch(/hasUserDeltaTDaysOverride = \$state\(false\)/);
+    expect(storeSource).toMatch(/markDeltaTDaysOverride\(\)/);
     expect(storeSource).toMatch(/const runSteps = Math\.max\(1, Math\.round\(Number\(this\.steps/);
-    expect(storeSource).toMatch(/const runDeltaTDays = Number\(this\.delta_t_days/);
+    expect(storeSource).toMatch(/const runDeltaTDays = this\.hasUserDeltaTDaysOverride/);
+    expect(storeSource).toMatch(/variantParams\.delta_t_days \?\? baseParams\.delta_t_days/);
     expect(storeSource).toMatch(/steps: runSteps/);
     expect(storeSource).toMatch(/deltaTDays: runDeltaTDays/);
-    expect(storeSource).toMatch(/const savedDeltaTDays = this\.delta_t_days/);
-    expect(storeSource).toMatch(/this\.delta_t_days = savedDeltaTDays/);
+    expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
   });
 
   it('exposes compatibility navigation state alongside legacy mode state', () => {

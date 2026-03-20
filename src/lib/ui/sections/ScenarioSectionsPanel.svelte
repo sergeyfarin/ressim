@@ -101,6 +101,7 @@
               bind:max_sat_change_per_step={params.max_sat_change_per_step}
               bind:max_pressure_change_per_step={params.max_pressure_change_per_step}
               bind:max_well_rate_change_fraction={params.max_well_rate_change_fraction}
+              onDeltaTDaysEdit={params.markDeltaTDaysOverride}
               fieldErrors={validationErrors}
             />
           {:else if section.key === "analytical"}

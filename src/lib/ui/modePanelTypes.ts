@@ -88,6 +88,7 @@ export type ModePanelParameterBindings = {
   analyticalSolutionMode: AnalyticalSolutionMode;
   analyticalDepletionRateScale: number;
   parameterOverrideCount: number;
+  markDeltaTDaysOverride: () => void;
   handleNzOrPermModeChange: () => void;
   handleAnalyticalSolutionModeChange: (mode: AnalyticalSolutionMode) => void;
   // Three-phase
