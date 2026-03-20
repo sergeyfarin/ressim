@@ -1084,7 +1084,7 @@ class SimulationStoreImpl {
                     this.referenceSweepRunning = false;
                     this.restoreActiveReferenceBaseDisplay();
                     this.solverWarning = this.referenceConvergenceWarnings.length > 0
-                        ? `Convergence issues during sweep — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
+                        ? `Convergence issues — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
                         : '';
                     this.runtimeWarning = '';
                 }
@@ -1125,7 +1125,7 @@ class SimulationStoreImpl {
                     ];
                 }
                 this.solverWarning = this.referenceConvergenceWarnings.length > 0
-                    ? `Convergence issues during sweep — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
+                    ? `Convergence issues — check charts for anomalies. Cases affected: ${this.referenceConvergenceWarnings.join(', ')}.`
                     : '';
                 this.runtimeWarning = `Reference run set stopped after ${this.referenceRunsCompleted} completed run(s).`;
                 return;
