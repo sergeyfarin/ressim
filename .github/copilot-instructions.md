@@ -203,6 +203,19 @@ Primary docs in `docs/` folder:
 6. **Worker Safety**: Ensure worker-posted state snapshots remain serializable
 7. **WASM Compatibility**: Test that Rust changes compile to WASM (`npm run build:wasm`)
 
+## Working Style
+
+### TODO Discipline
+While working on any task, actively look for and log in `TODO.md`:
+- Bugs, gaps, bad smells, bad practices
+- Potential issues or logical/physics mistakes
+- Valuable improvements, functionality gains, better UX opportunities
+
+When a task is complete, revisit `TODO.md`: mark finished items as done and add any new discoveries made during the work. Keeping TODO current is part of the definition of done.
+
+### Prefer Fundamental Fixes
+Prefer fixes that address root causes and future needs over quick patches. Keep code clean and avoid accumulating workarounds.
+
 ## Known Constraints
 
 - Three.js version pinned in `package.json`; avoid casual upgrades because visualization behavior is version-sensitive
