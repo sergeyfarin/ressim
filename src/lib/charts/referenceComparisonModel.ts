@@ -312,6 +312,10 @@ function buildDepletionReference(
         initialPressure: toFiniteNumber(baseResult.params.initialPressure, 300),
         producerBhp: toFiniteNumber(baseResult.params.producerBhp, 100),
         depletionRateScale: toFiniteNumber(baseResult.params.analyticalDepletionRateScale, 1),
+        nx: toFiniteNumber(baseResult.params.nx, 1),
+        ny: toFiniteNumber(baseResult.params.ny, 1),
+        producerI: baseResult.params.producerI != null ? toFiniteNumber(baseResult.params.producerI, 0) : undefined,
+        producerJ: baseResult.params.producerJ != null ? toFiniteNumber(baseResult.params.producerJ, 0) : undefined,
     });
     const ooip = getOoip(baseResult.params);
     const tau = analyticalResult.meta.tau ?? null;
@@ -511,6 +515,10 @@ function computeDepletionAnalyticalFromParams(
             initialPressure: toFiniteNumber(params.initialPressure, 300),
             producerBhp: toFiniteNumber(params.producerBhp, 100),
             depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
+            nx: toFiniteNumber(params.nx, 1),
+            ny: toFiniteNumber(params.ny, 1),
+            producerI: params.producerI != null ? toFiniteNumber(params.producerI, 0) : undefined,
+            producerJ: params.producerJ != null ? toFiniteNumber(params.producerJ, 0) : undefined,
         });
     } catch {
         return null;

@@ -45,6 +45,10 @@ export type DepletionAnalyticalParams = {
     initialPressure: number;
     producerBhp: number;
     depletionRateScale: number;
+    nx?: number;
+    ny?: number;
+    producerI?: number;
+    producerJ?: number;
 };
 
 export type DepletionAnalyticalResult = {
@@ -65,6 +69,78 @@ export function emptyDepletionAnalyticalResult(): DepletionAnalyticalResult {
         },
         production: [],
     };
+}
+
+/**
+ * Dietz shape factor C_A for known drainage geometries and well positions.
+ *
+ * For square drainage areas the well position determines C_A via log-linear
+ * interpolation between the two tabulated endpoints:
+ *   - Center well: C_A = 30.8828  (Dietz 1965)
+ *   - Corner well: C_A = 0.5598   (quarter-drainage symmetry)
+ *
+ * The interpolation variable is the Chebyshev (L∞) normalised distance of
+ * the well from the grid centre — 0 at centre, 1 at corner.
+ */
+const CA_SQUARE_CENTER = 30.8828;
+const CA_SQUARE_CORNER = 0.5598;
+
+export function computeShapeFactor(input: {
+    nxCells: number;
+    nyCells: number;
+    aspectRatio: number;
+    nx?: number;
+    ny?: number;
+    producerI?: number;
+    producerJ?: number;
+}): { shapeFactor: number; shapeLabel: string } {
+    const { nxCells, nyCells, aspectRatio, nx, ny, producerI, producerJ } = input;
+
+    if (nyCells <= 1) {
+        return { shapeFactor: 0, shapeLabel: "1D Slab (end well)" };
+    }
+
+    // Square drainage area — use position-aware shape factor
+    if (aspectRatio > 0.5 && aspectRatio < 2.0) {
+        const gridNx = nx ?? nxCells;
+        const gridNy = ny ?? nyCells;
+        const hasPosition =
+            producerI !== undefined && producerI !== null &&
+            producerJ !== undefined && producerJ !== null;
+
+        if (!hasPosition || (gridNx <= 1 && gridNy <= 1)) {
+            return { shapeFactor: CA_SQUARE_CENTER, shapeLabel: "Square (center)" };
+        }
+
+        // Normalised Chebyshev distance from grid centre: 0 = center, 1 = corner
+        const cx = (gridNx - 1) / 2;
+        const cy = (gridNy - 1) / 2;
+        const dx = cx > 0 ? Math.abs((producerI as number) - cx) / cx : 0;
+        const dy = cy > 0 ? Math.abs((producerJ as number) - cy) / cy : 0;
+        const d = Math.min(1, Math.max(0, Math.max(dx, dy)));
+
+        // Log-linear interpolation between tabulated endpoints
+        const logCA =
+            Math.log(CA_SQUARE_CENTER) * (1 - d) +
+            Math.log(CA_SQUARE_CORNER) * d;
+        const shapeFactor = Math.exp(logCA);
+
+        if (d < 0.15) {
+            return { shapeFactor, shapeLabel: "Square (center)" };
+        } else if (d > 0.85) {
+            return { shapeFactor, shapeLabel: `Square (corner, C_A ≈ ${shapeFactor.toFixed(2)})` };
+        }
+        return { shapeFactor, shapeLabel: `Square (off-center, C_A ≈ ${shapeFactor.toFixed(2)})` };
+    }
+
+    // Non-square rectangles — aspect-ratio based (no position adjustment yet)
+    if (aspectRatio >= 2.0 && aspectRatio < 5.0) {
+        return { shapeFactor: 10.84, shapeLabel: `Rectangle ${aspectRatio.toFixed(1)}:1` };
+    }
+    if (aspectRatio >= 5.0) {
+        return { shapeFactor: 2.36, shapeLabel: `Elongated ${aspectRatio.toFixed(0)}:1` };
+    }
+    return { shapeFactor: 10.84, shapeLabel: `Rectangle 1:${(1 / aspectRatio).toFixed(1)}` };
 }
 
 export function calculateDepletionAnalyticalProduction(
@@ -117,26 +193,15 @@ export function calculateDepletionAnalyticalProduction(
     const nxCells = Math.max(1, Math.round(lengthX / Math.max(1e-6, cellDx)));
     const nyCells = Math.max(1, Math.round(lengthY / Math.max(1e-6, cellDy)));
 
-    let shapeFactor: number;
-    let shapeLabel: string;
-    const aspectRatio = lengthX / Math.max(1e-6, lengthY);
-
-    if (nyCells <= 1) {
-        shapeFactor = 0;
-        shapeLabel = "1D Slab (end well)";
-    } else if (aspectRatio > 0.5 && aspectRatio < 2.0) {
-        shapeFactor = 30.8828;
-        shapeLabel = "Square (center)";
-    } else if (aspectRatio >= 2.0 && aspectRatio < 5.0) {
-        shapeFactor = 10.84;
-        shapeLabel = `Rectangle ${aspectRatio.toFixed(1)}:1`;
-    } else if (aspectRatio >= 5.0) {
-        shapeFactor = 2.36;
-        shapeLabel = `Elongated ${aspectRatio.toFixed(0)}:1`;
-    } else {
-        shapeFactor = 10.84;
-        shapeLabel = `Rectangle 1:${(1 / aspectRatio).toFixed(1)}`;
-    }
+    const { shapeFactor, shapeLabel } = computeShapeFactor({
+        nxCells,
+        nyCells,
+        aspectRatio: lengthX / Math.max(1e-6, lengthY),
+        nx: params.nx,
+        ny: params.ny,
+        producerI: params.producerI,
+        producerJ: params.producerJ,
+    });
 
     let totalOilPi = 0;
 

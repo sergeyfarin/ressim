@@ -18,9 +18,15 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 
 ### 1B. Analytical Contract Gaps
 
-- [ ] **Dietz well-location sensitivity** — `depletionAnalytical.ts` infers shape factor from aspect ratio only; does not consume `producerI`/`producerJ`. The `dep_pss` shape-factor dimension marks `affectsAnalytical: false` — technically correct (analytical doesn't change) but conceptually wrong (it *should* change). Fix: pass producer position or explicit C_A into the depletion analytical adapter; update `affectsAnalytical: true`; add test proving center (C_A ≈ 30.88) and corner (C_A ≈ 0.56) analytical curves diverge.
-- [ ] **Analytical adapter coverage tests** — add contract tests that every sensitivity dimension marked `affectsAnalytical: true` actually changes at least one input consumed by the analytical builder for that scenario class. Prevents future Dietz-style gaps.
-- [ ] **Analytical method disclosure upkeep** — keep scenario-level analytical method summary/reference metadata aligned with the actual overlay path shown in the UI whenever analytical routing changes.
+- [x] **Dietz well-location sensitivity** — `computeShapeFactor()` now accepts `producerI`/`producerJ` and uses log-linear interpolation between tabulated C_A endpoints (center 30.8828, corner 0.5598). All three adapter call sites pass grid dims and producer position. `affectsAnalytical: true` for both shape-factor variants. Tests prove center/corner divergence in q0 and tau.
+- [x] **Analytical adapter coverage tests** — contract test in `scenarios.test.ts` verifies every `affectsAnalytical: true` variant actually changes analytical output. Runs BL, sweep, and depletion fingerprints for all 6 analytical scenarios (50 test cases).
+- [x] **Analytical method disclosure upkeep** — `dep_pss` summary already reads "for the active well location"; `dep_decline` (1D slab, no position sensitivity) is also correct. `ScenarioPicker.svelte` renders metadata directly — no alignment gap.
+
+### Discoveries (from 1B work)
+
+- **`sweep_ladder` affectsAnalytical semantic gap** — `sweep_combined / sweep_ladder` variants patch `mu_o` (which DOES change BL/sweep analytical output) yet are marked `affectsAnalytical: false`. This is intentional — the ladder dimension uses a shared analytical reference for pedagogical clarity while degradation is shown via simulation only. The contract test correctly skips the `false` direction for this reason. Document this pattern if more "intentionally-shared" dimensions are added.
+- **Pre-existing test failures** — 7 UI/terminology tests (`modePanelFlows`, `outputTerminology`, `terminologyCopy`, `appThemeTypography`, `appStoreDomainWiring`, `ratechart-usage`) and 2 `referenceComparisonModel` tests fail on clean master. Not caused by 1B changes.
+- **Dietz C_A log compression** — the 55× shape factor ratio (center vs corner) compresses to only ~30% PI difference through the `ln(A/C_A)` denominator. This limits the visual divergence between analytical curves; the scenario description should set appropriate expectations.
 
 ### 1C. Legacy Cleanup (Phase 1 Step 7 Remainder)
 
