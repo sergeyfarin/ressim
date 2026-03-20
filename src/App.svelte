@@ -634,7 +634,7 @@
                             {theme}
                             previewVariantParams={activeReferenceResults.length === 0 ? previewVariantParams : undefined}
                             pendingPreviewVariants={activeReferenceResults.length > 0 ? pendingPreviewVariants : undefined}
-                            previewBaseParams={activeReferenceResults.length === 0 && !previewVariantParams?.length ? (params as Record<string, any>) : undefined}
+                            previewBaseParams={activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
                             previewScenarioClass={activeReferenceFamily.scenarioClass}
                         />
                     {:else if RateChartComponent}

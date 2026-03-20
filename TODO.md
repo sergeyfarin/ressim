@@ -53,10 +53,10 @@ Eight legacy catalog/benchmark files still have active production dependencies. 
 ### 1D. Chart & Output Polish
 
 - [x] Scenario sweep runtime controls keep `steps` tied to the run-controls input while allowing per-variant `Δt` defaults unless the timestep field is explicitly edited.
-- [ ] **Color stability when sweep results arrive out of order** — `orderResults()` sorts by variant presence then insertion order. Fix: sort by variant declaration index from `previewVariantParams` order, not arrival order.
+- [x] **Color stability when sweep results arrive out of order** — `orderResults()` now sorts by `previewVariantParams` declaration index; pending preview cases also use declaration-order color indices.
 - [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.
 - [ ] **Sweep panel has no pending overlays** — during mid-sweep, `buildSweepPanel` only shows completed results. Low priority.
-- [ ] **`previewBaseParams` coupling is fragile** — add defensive guard against preview/result condition divergence in `App.svelte`.
+- [x] **`previewBaseParams` coupling is fragile** — removed redundant `!previewVariantParams?.length` guard from App.svelte; model builder already handles variant→base precedence internally.
 - [ ] **Tests missing for `previewCases` and depletion per-variant** — add coverage for pure-preview mode, mid-sweep mode, depletion with `analyticalPerVariant=true`, and `colorIndex` offset correctness.
 
 ### 1E. Documentation Refresh
@@ -77,11 +77,11 @@ Current custom mode is a catch-all that dumps 50+ raw parameter inputs with no c
 
 **Redesign direction:**
 
-- [ ] **Clone-and-edit flow** — entering custom mode should clone the currently active scenario's params as a starting point, not reset to defaults. Show provenance ("Based on: 1D Waterflood — Mobility Ratio").
+- [ ] **Clone-and-edit flow** — entering custom mode should clone the currently active scenario's params as a starting point, not reset to defaults. Show provenance ("Based on: 1D Waterflood — Mobility Ratio").  -- IMPORTANT - I am not sure this is good idea to clone anything to custom. It will be confusing. Maybe allow minimum customization in place in each scenario and fully custom model. So postpone this one for now.
 - [ ] **Per-scenario customisation** — allow parameter overrides *within* a predefined scenario without switching to full custom mode. The scenario stays active; the user sees which params they've changed and can reset individual overrides. This replaces the need to "go custom" for small parameter tweaks.
-- [ ] **Grouped parameter sections** — replace flat 50-field form with domain-aware groups: Rock Properties, Fluid PVT, Wells, Grid & Timestep, Relative Permeability (SCAL), Gas/3-Phase. Each group collapsible; show only groups relevant to the active scenario class.
+- [ ] **Grouped parameter sections** — replace flat 50-field form with domain-aware groups: Rock Properties, Fluid PVT, Wells, Grid & Timestep, Relative Permeability (SCAL), Gas/3-Phase. Each group collapsible; show only groups relevant to the active scenario class. Most important it should be almost redesigned from ground. Groups flowing to avoid full width. Where possible very compact tables could help for example for nx, ny, nz, dx, dy, dz and immediately showing model size - design table like https://github.com/sergeyfarin/retirement-planner
 - [ ] **Preset starting points** — quick-pick buttons for common reservoir types (sandstone, shale, carbonate, tight gas) that set reasonable default ranges for porosity, permeability, fluid properties.
-- [ ] **Save/load custom configurations** — persist named custom scenarios in localStorage; allow export/import as JSON.
+- [ ] **Save/load custom configurations** — persist named custom scenarios in localStorage; allow export/import as JSON. Put it to later. For now no saving / no loading
 - [ ] **Validation guidance** — proactive parameter range warnings (e.g. "permeability < 0.1 mD: convergence may be slow") instead of only post-run validation errors.
 
 ### 2B. Compact Input Layout
