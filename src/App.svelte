@@ -23,8 +23,12 @@
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("light");
     let showDebugState = $state(false);
-    let showProperty: "pressure" | "saturation_water" | "saturation_oil" =
-        $state("pressure");
+    let showProperty:
+        | "pressure"
+        | "saturation_water"
+        | "saturation_oil"
+        | "saturation_gas"
+        | "saturation_ternary" = $state("pressure");
     let legendFixedMin = $state(0);
     let legendFixedMax = $state(1);
 
@@ -186,6 +190,8 @@
         s_or: Number(activeSelectedReferenceResult?.params.s_or ?? params.s_or),
         n_w: Number(activeSelectedReferenceResult?.params.n_w ?? params.n_w),
         n_o: Number(activeSelectedReferenceResult?.params.n_o ?? params.n_o),
+        k_rw_max: Number(activeSelectedReferenceResult?.params.k_rw_max ?? params.k_rw_max),
+        k_ro_max: Number(activeSelectedReferenceResult?.params.k_ro_max ?? params.k_ro_max),
     }));
     const outputProfileFluidProps = $derived.by(() => ({
         mu_w: Number(activeSelectedReferenceResult?.params.mu_w ?? params.mu_w),
@@ -236,11 +242,36 @@
     const output3DSourceLabel = $derived.by(() => (
         activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
     ));
+    const default3DProperty = $derived.by(() => {
+        if (activeSelectedReferenceResult) {
+            const resultParams = activeSelectedReferenceResult.params ?? {};
+            if (resultParams.injectedFluid === "gas") {
+                return "saturation_gas" as const;
+            }
+            if (resultParams.analyticalSolutionMode === "waterflood") {
+                return "saturation_water" as const;
+            }
+            return null;
+        }
+
+        if (params.injectedFluid === "gas" && params.threePhaseModeEnabled) {
+            return "saturation_gas" as const;
+        }
+
+        const domain = scenario.activeScenarioObject?.domain;
+        if (domain === "waterflood" || domain === "sweep") {
+            return "saturation_water" as const;
+        }
+
+        return null;
+    });
     const activeRunManifest = $derived.by(() => ({
         referencePolicySummary: scenario.activeLibraryEntry?.referencePolicySummary ?? null,
         referenceProvenance: scenario.referenceProvenance,
         referenceFamily: scenario.activeReferenceFamily ?? null,
     }));
+
+    let last3DSelectionContextKey = $state("");
 
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (scenario.activeScenarioObject) {
@@ -306,6 +337,17 @@
         if (activePrimaryComparisonResultKey) return;
 
         clearComparisonSelection();
+    });
+
+    $effect(() => {
+        const selectionContextKey = `${scenario.activeScenarioKey ?? "none"}|${activeSelectedReferenceResult?.key ?? "live"}`;
+        if (selectionContextKey === last3DSelectionContextKey) return;
+
+        last3DSelectionContextKey = selectionContextKey;
+
+        if (default3DProperty) {
+            showProperty = default3DProperty;
+        }
     });
 
 

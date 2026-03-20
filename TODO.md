@@ -260,6 +260,7 @@ Goal: advanced reservoir modeling features.
 - [ ] Relative error (%) diagnostic curves
 - [ ] Uncertainty and sensitivity batch runner beyond curated benchmark sensitivities
 - [ ] Benchmark acceptance policy refresh — add tighter validation tier (~5%) alongside current 25–30% regression guards
+- [ ] **Defer geometry source-of-truth redesign** — keep the current explicit `(nx, ny, nz) + (cellDx, cellDy, cellDz)` model for now. Revisit much later, only if custom-mode redesign or future non-uniform-grid work justifies the extra resolver/helper complexity.
 
 ---
 
@@ -274,6 +275,9 @@ Goal: advanced reservoir modeling features.
 
 ## Completed
 
+- **3D ternary blend + gas defaulting** (2026-03-20): Added a separate ternary saturation color-blend mode to `ThreeDView`, switched the ternary mixing from straight RGB to perceptual OKLab blending, fixed immediate triangle redraw on selector changes, aligned gas saturation to the oil-style hue ramp with a `Swc`-anchored legend range, brightened the phase anchors, compacted the triangle legend, removed its border/padding/labels, and the app now defaults the 3D selector to gas saturation for gas-injection contexts.
+- **3D gas saturation + waterflood default** (2026-03-20): `ThreeDView` now supports gas saturation as a selectable scalar, and the app auto-selects water saturation when the active 3D context switches into waterflood or sweep runs.
+- **3D output provenance label** (2026-03-20): `ThreeDView` now renders the passed `sourceLabel`, removing the Svelte unused-export warning and keeping output provenance visible in the Spatial View header.
 - **B1–B10** (2026-03-07): Benchmark modernization — family registry, explicit reference policy, sensitivity sweeps, benchmark-specific chart defaults, benchmark docs.
 - **F1–F3** (2026-03): Unified Inputs/Run/Outputs shell; family-first navigation; case library; reference execution card; warning policy unified; case disclosure cards; compact Run Set selector; master-detail Results layout; IBM Plex Sans/Mono typography; semantic utility classes.
 - **Store refactor** (2026-03-17): Converted `createSimulationStore()` to Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters declared as `$state` but never exposed in `parameterState` accessor.

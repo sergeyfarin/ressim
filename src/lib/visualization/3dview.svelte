@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import {
         AmbientLight,
         BoxGeometry,
@@ -33,7 +33,25 @@
 
     type HistoryEntry = SimulatorSnapshot;
 
-    type PropertyKey = "pressure" | "saturation_water" | "saturation_oil";
+    type PropertyKey =
+        | "pressure"
+        | "saturation_water"
+        | "saturation_oil"
+        | "saturation_gas"
+        | "saturation_ternary";
+
+    type RgbTriplet = [number, number, number];
+    type OklabTriplet = [number, number, number];
+
+    const TERNARY_WATER_COLOR = new Color("#38bdf8");
+    const TERNARY_OIL_COLOR = new Color("#4ade80");
+    const TERNARY_GAS_COLOR = new Color("#fb7185");
+    const TERNARY_WATER_SRGB: RgbTriplet = [0.2196, 0.7412, 0.9725];
+    const TERNARY_OIL_SRGB: RgbTriplet = [0.2902, 0.8706, 0.502];
+    const TERNARY_GAS_SRGB: RgbTriplet = [0.9843, 0.4431, 0.5216];
+    const TERNARY_WATER_OKLAB = srgbToOklab(TERNARY_WATER_SRGB);
+    const TERNARY_OIL_OKLAB = srgbToOklab(TERNARY_OIL_SRGB);
+    const TERNARY_GAS_OKLAB = srgbToOklab(TERNARY_GAS_SRGB);
 
     export let nx: number = 20;
     export let ny: number = 10;
@@ -102,6 +120,8 @@
         pressure: { min: 0, max: 1000 },
         saturation_water: { min: 0, max: 1 },
         saturation_oil: { min: 0, max: 1 },
+        saturation_gas: { min: 0, max: 1 },
+        saturation_ternary: { min: 0, max: 1 },
     };
 
     const propertyDisplay: Record<
@@ -119,12 +139,24 @@
             unit: "fraction",
             decimals: 3,
         },
+        saturation_gas: {
+            label: "Gas Saturation",
+            unit: "fraction",
+            decimals: 3,
+        },
+        saturation_ternary: {
+            label: "Ternary Saturation",
+            unit: "blend",
+            decimals: 3,
+        },
     };
 
     const showPropertyOptions: Array<{ value: PropertyKey; label: string }> = [
         { value: "pressure", label: "Pressure" },
         { value: "saturation_water", label: "Water Sat" },
         { value: "saturation_oil", label: "Oil Sat" },
+        { value: "saturation_gas", label: "Gas Sat" },
+        { value: "saturation_ternary", label: "Ternary Sat" },
     ];
 
     let groupSummary = "";
@@ -155,6 +187,109 @@
 
     function clamp(value: number, min: number, max: number): number {
         return Math.min(max, Math.max(min, value));
+    }
+
+    function srgbChannelToLinear(value: number): number {
+        if (value <= 0.04045) return value / 12.92;
+        return Math.pow((value + 0.055) / 1.055, 2.4);
+    }
+
+    function linearChannelToSrgb(value: number): number {
+        const clamped = clamp(value, 0, 1);
+        if (clamped <= 0.0031308) return clamped * 12.92;
+        return 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
+    }
+
+    function srgbToOklab([red, green, blue]: RgbTriplet): OklabTriplet {
+        const linearRed = srgbChannelToLinear(red);
+        const linearGreen = srgbChannelToLinear(green);
+        const linearBlue = srgbChannelToLinear(blue);
+
+        const l =
+            0.4122214708 * linearRed +
+            0.5363325363 * linearGreen +
+            0.0514459929 * linearBlue;
+        const m =
+            0.2119034982 * linearRed +
+            0.6806995451 * linearGreen +
+            0.1073969566 * linearBlue;
+        const s =
+            0.0883024619 * linearRed +
+            0.2817188376 * linearGreen +
+            0.6299787005 * linearBlue;
+
+        const lRoot = Math.cbrt(l);
+        const mRoot = Math.cbrt(m);
+        const sRoot = Math.cbrt(s);
+
+        return [
+            0.2104542553 * lRoot +
+                0.793617785 * mRoot -
+                0.0040720468 * sRoot,
+            1.9779984951 * lRoot -
+                2.428592205 * mRoot +
+                0.4505937099 * sRoot,
+            0.0259040371 * lRoot +
+                0.7827717662 * mRoot -
+                0.808675766 * sRoot,
+        ];
+    }
+
+    function oklabToSrgb([lightness, aAxis, bAxis]: OklabTriplet): RgbTriplet {
+        const lRoot =
+            lightness + 0.3963377774 * aAxis + 0.2158037573 * bAxis;
+        const mRoot =
+            lightness - 0.1055613458 * aAxis - 0.0638541728 * bAxis;
+        const sRoot =
+            lightness - 0.0894841775 * aAxis - 1.291485548 * bAxis;
+
+        const l = lRoot * lRoot * lRoot;
+        const m = mRoot * mRoot * mRoot;
+        const s = sRoot * sRoot * sRoot;
+
+        const linearRed =
+            4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+        const linearGreen =
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+        const linearBlue =
+            -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+
+        return [
+            linearChannelToSrgb(linearRed),
+            linearChannelToSrgb(linearGreen),
+            linearChannelToSrgb(linearBlue),
+        ];
+    }
+
+    function getTernaryBlendSrgb(
+        waterWeight: number,
+        oilWeight: number,
+        gasWeight: number,
+    ): RgbTriplet {
+        const total = waterWeight + oilWeight + gasWeight;
+        if (!Number.isFinite(total) || total <= 1e-9) {
+            return [0.5, 0.5, 0.5];
+        }
+
+        const normalizedWater = waterWeight / total;
+        const normalizedOil = oilWeight / total;
+        const normalizedGas = gasWeight / total;
+
+        return oklabToSrgb([
+            TERNARY_WATER_OKLAB[0] * normalizedWater +
+                TERNARY_OIL_OKLAB[0] * normalizedOil +
+                TERNARY_GAS_OKLAB[0] * normalizedGas,
+            TERNARY_WATER_OKLAB[1] * normalizedWater +
+                TERNARY_OIL_OKLAB[1] * normalizedOil +
+                TERNARY_GAS_OKLAB[1] * normalizedGas,
+            TERNARY_WATER_OKLAB[2] * normalizedWater +
+                TERNARY_OIL_OKLAB[2] * normalizedOil +
+                TERNARY_GAS_OKLAB[2] * normalizedGas,
+        ]);
+    }
+
+    function isTernaryBlend(property: PropertyKey): boolean {
+        return property === "saturation_ternary";
     }
 
     function onLegendMinInput(event: Event) {
@@ -265,7 +400,60 @@
             return Number(grid.sat_water?.[index] ?? NaN);
         if (property === "saturation_oil")
             return Number(grid.sat_oil?.[index] ?? NaN);
+        if (property === "saturation_gas")
+            return Number(grid.sat_gas?.[index] ?? NaN);
+        if (property === "saturation_ternary") return NaN;
         return NaN;
+    }
+
+    function getPhaseSaturations(
+        grid: GridState | null | undefined,
+        index: number,
+    ): { water: number; oil: number; gas: number } | null {
+        if (!grid) return null;
+
+        const water = Number(grid.sat_water?.[index] ?? NaN);
+        const oil = Number(grid.sat_oil?.[index] ?? NaN);
+        const gas = Number(grid.sat_gas?.[index] ?? NaN);
+
+        if (
+            !Number.isFinite(water) ||
+            !Number.isFinite(oil) ||
+            !Number.isFinite(gas)
+        ) {
+            return null;
+        }
+
+        return {
+            water: Math.max(0, water),
+            oil: Math.max(0, oil),
+            gas: Math.max(0, gas),
+        };
+    }
+
+    function getTernaryBlendColor(
+        grid: GridState | null | undefined,
+        index: number,
+    ): Color | null {
+        const phases = getPhaseSaturations(grid, index);
+        if (!phases) return null;
+
+        const total = phases.water + phases.oil + phases.gas;
+        if (!Number.isFinite(total) || total <= 1e-9) return null;
+
+        const waterWeight = phases.water / total;
+        const oilWeight = phases.oil / total;
+        const gasWeight = phases.gas / total;
+        const [red, green, blue] = getTernaryBlendSrgb(
+            waterWeight,
+            oilWeight,
+            gasWeight,
+        );
+
+        tmpColor.setRGB(red, green, blue);
+        tmpColor.convertSRGBToLinear();
+
+        return tmpColor;
     }
 
     function getModelLegendRange(property: PropertyKey): {
@@ -321,6 +509,17 @@
             const min = sor;
             const max = Math.max(min + 1e-6, 1 - swc);
             return { min, max };
+        }
+
+        if (property === "saturation_gas") {
+            const swc = clamp(Number(s_wc), 0, 0.95);
+            const min = swc;
+            const max = Math.max(min + 1e-6, 1 - swc);
+            return { min, max };
+        }
+
+        if (property === "saturation_ternary") {
+            return fixed;
         }
 
         if (property === "pressure") {
@@ -566,8 +765,16 @@
         if (property === "pressure") {
             return `${property}|${dimsKey}`;
         }
-        if (property === "saturation_water" || property === "saturation_oil") {
+        if (
+            property === "saturation_water" ||
+            property === "saturation_oil" ||
+            property === "saturation_gas"
+        ) {
             return `${property}|${dimsKey}|${s_wc}|${s_or}`;
+        }
+
+        if (property === "saturation_ternary") {
+            return `${property}|${dimsKey}`;
         }
 
         const staticRefLen = getStaticReferenceGrid()?.pressure?.length ?? 0;
@@ -646,6 +853,14 @@
         legendFixedMin;
         legendFixedMax;
         updateVisualization(activeGrid, showProperty);
+    }
+
+    $: if (legendCanvas && isTernaryBlend(showProperty)) {
+        tick().then(() => {
+            if (legendCanvas && isTernaryBlend(showProperty)) {
+                drawTernaryLegend();
+            }
+        });
     }
 
     $: if (instancedMesh && !activeGrid) {
@@ -869,22 +1084,31 @@
                     const satOil = Number(
                         currentGrid.sat_oil?.[cellIndex] ?? 0,
                     );
+                    const satGas = Number(
+                        currentGrid.sat_gas?.[cellIndex] ?? 0,
+                    );
 
                     const pLabel = `P: ${pressure.toFixed(2)} bar`;
                     const swLabel = `Sw: ${satWater.toFixed(3)}`;
                     const soLabel = `So: ${satOil.toFixed(3)}`;
+                    const sgLabel = `Sg: ${satGas.toFixed(3)}`;
 
                     const bold = (s: string) => `<b>${s}</b>`;
+                    const highlightAllPhases = showProperty === "saturation_ternary";
                     tooltipContent =
                         (showProperty === "pressure" ? bold(pLabel) : pLabel) +
                         "<br>" +
-                        (showProperty === "saturation_water"
+                        (showProperty === "saturation_water" || highlightAllPhases
                             ? bold(swLabel)
                             : swLabel) +
                         "<br>" +
-                        (showProperty === "saturation_oil"
+                        (showProperty === "saturation_oil" || highlightAllPhases
                             ? bold(soLabel)
-                            : soLabel);
+                            : soLabel) +
+                        "<br>" +
+                        (showProperty === "saturation_gas" || highlightAllPhases
+                            ? bold(sgLabel)
+                            : sgLabel);
                     tooltipX = x + 10;
                     tooltipY = y + 10;
                     tooltipVisible = true;
@@ -1057,7 +1281,11 @@
         const fixed = fixedRanges[property] ?? { min: 0, max: 1 };
         legendMin = fixed.min;
         legendMax = fixed.max;
-        drawLegend(legendMin, legendMax, property);
+        if (isTernaryBlend(property)) {
+            drawTernaryLegend();
+        } else {
+            drawLegend(legendMin, legendMax, property);
+        }
     }
 
     function applyGridToInstances(
@@ -1074,6 +1302,26 @@
         }
 
         if (!gridArray || !gridArray.pressure) return;
+
+        if (isTernaryBlend(property)) {
+            legendMin = 0;
+            legendMax = 1;
+            drawTernaryLegend();
+
+            for (let idx = 0; idx < visibleCellIndices.length; idx++) {
+                const cellIndex = visibleCellIndices[idx];
+                const color = getTernaryBlendColor(gridArray, cellIndex);
+                if (!color) {
+                    tmpColor.set(0x888888);
+                    instancedMesh.setColorAt(idx, tmpColor);
+                    continue;
+                }
+                instancedMesh.setColorAt(idx, color);
+            }
+
+            instancedMesh.instanceColor.needsUpdate = true;
+            return;
+        }
 
         const values: number[] = [];
         const numInstances = visibleCellIndices.length;
@@ -1243,6 +1491,59 @@
         const textWidth = ctx.measureText(maxText).width;
         ctx.fillText(maxText, w - textWidth - 2, h + 2);
     }
+
+    function drawTernaryLegend(): void {
+        if (!legendCanvas) return;
+        const ctx = legendCanvas.getContext("2d");
+        if (!ctx) return;
+
+        const w = legendCanvas.width;
+        const h = legendCanvas.height;
+
+        const paddingX = 10;
+        const paddingTop = 6;
+        const paddingBottom = 8;
+        const vertexWater = { x: paddingX, y: h - paddingBottom };
+        const vertexOil = { x: w - paddingX, y: h - paddingBottom };
+        const vertexGas = { x: w * 0.5, y: paddingTop };
+
+        ctx.clearRect(0, 0, w, h);
+
+        const image = ctx.createImageData(w, h);
+        const data = image.data;
+        const denom =
+            (vertexOil.y - vertexGas.y) * (vertexWater.x - vertexGas.x) +
+            (vertexGas.x - vertexOil.x) * (vertexWater.y - vertexGas.y);
+
+        for (let py = 0; py < h; py++) {
+            for (let px = 0; px < w; px++) {
+                const lWater =
+                    ((vertexOil.y - vertexGas.y) * (px - vertexGas.x) +
+                        (vertexGas.x - vertexOil.x) * (py - vertexGas.y)) /
+                    denom;
+                const lOil =
+                    ((vertexGas.y - vertexWater.y) * (px - vertexGas.x) +
+                        (vertexWater.x - vertexGas.x) * (py - vertexGas.y)) /
+                    denom;
+                const lGas = 1 - lWater - lOil;
+
+                if (lWater < 0 || lOil < 0 || lGas < 0) continue;
+
+                const [red, green, blue] = getTernaryBlendSrgb(
+                    lWater,
+                    lOil,
+                    lGas,
+                );
+                const index = (py * w + px) * 4;
+                data[index] = Math.round(red * 255);
+                data[index + 1] = Math.round(green * 255);
+                data[index + 2] = Math.round(blue * 255);
+                data[index + 3] = 255;
+            }
+        }
+
+        ctx.putImageData(image, 0, 0);
+    }
 </script>
 
 <div style="display:flex; flex-direction:column;">
@@ -1250,6 +1551,9 @@
         <div class="ui-section-kicker">
             Spatial View
         </div>
+        <p class="text-xs text-muted-foreground">
+            {sourceLabel} spatial snapshot and well placement.
+        </p>
     </div>
     <div class="flex items-center gap-4 w-full px-1">
         <input
@@ -1290,60 +1594,68 @@
         <ToggleGroup options={showPropertyOptions} bind:value={showProperty} />
 
         <div class="flex items-center gap-3">
-            <div class="legend" style="margin:0;">
+            <div
+                class={`legend ${isTernaryBlend(showProperty) ? "legend--ternary" : ""}`}
+                style="margin:0;"
+            >
                 <canvas
                     bind:this={legendCanvas}
-                    width="200"
-                    height="18"
-                    style="width:140px;height:12px"
+                    class:legend-canvas--ternary={isTernaryBlend(showProperty)}
+                    width={isTernaryBlend(showProperty) ? 140 : 200}
+                    height={isTernaryBlend(showProperty) ? 78 : 18}
+                    style={isTernaryBlend(showProperty)
+                        ? "width:116px;height:64px"
+                        : "width:140px;height:12px"}
                 ></canvas>
             </div>
 
-            <div class="flex items-center gap-1.5">
-                <span
-                    class="label-text ui-panel-kicker"
-                    >Min</span
-                >
-                <div
-                    class="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 transition-colors"
-                >
-                    <input
-                        type="number"
-                        step="any"
-                        class="flex h-6 w-14 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-mono shadow-sm transition-colors focus:ring-1 focus:ring-ring"
-                        value={legendFixedMin}
-                        oninput={onLegendMinInput}
-                    />
-                    <button
-                        type="button"
-                        class="ui-chip inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted px-0 transition-colors hover:bg-accent hover:text-accent-foreground"
-                        onclick={applyModelLegendMin}>Auto</button
+            {#if !isTernaryBlend(showProperty)}
+                <div class="flex items-center gap-1.5">
+                    <span
+                        class="label-text ui-panel-kicker"
+                        >Min</span
                     >
+                    <div
+                        class="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 transition-colors"
+                    >
+                        <input
+                            type="number"
+                            step="any"
+                            class="flex h-6 w-14 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-mono shadow-sm transition-colors focus:ring-1 focus:ring-ring"
+                            value={legendFixedMin}
+                            oninput={onLegendMinInput}
+                        />
+                        <button
+                            type="button"
+                            class="ui-chip inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted px-0 transition-colors hover:bg-accent hover:text-accent-foreground"
+                            onclick={applyModelLegendMin}>Auto</button
+                        >
+                    </div>
                 </div>
-            </div>
 
-            <div class="flex items-center gap-1.5">
-                <span
-                    class="label-text ui-panel-kicker"
-                    >Max</span
-                >
-                <div
-                    class="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 transition-colors"
-                >
-                    <input
-                        type="number"
-                        step="any"
-                        class="flex h-6 w-14 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-mono shadow-sm transition-colors focus:ring-1 focus:ring-ring"
-                        value={legendFixedMax}
-                        oninput={onLegendMaxInput}
-                    />
-                    <button
-                        type="button"
-                        class="ui-chip inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted px-0 transition-colors hover:bg-accent hover:text-accent-foreground"
-                        onclick={applyModelLegendMax}>Auto</button
+                <div class="flex items-center gap-1.5">
+                    <span
+                        class="label-text ui-panel-kicker"
+                        >Max</span
                     >
+                    <div
+                        class="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 transition-colors"
+                    >
+                        <input
+                            type="number"
+                            step="any"
+                            class="flex h-6 w-14 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-mono shadow-sm transition-colors focus:ring-1 focus:ring-ring"
+                            value={legendFixedMax}
+                            oninput={onLegendMaxInput}
+                        />
+                        <button
+                            type="button"
+                            class="ui-chip inline-flex h-6 w-8 items-center justify-center whitespace-nowrap rounded-sm bg-muted px-0 transition-colors hover:bg-accent hover:text-accent-foreground"
+                            onclick={applyModelLegendMax}>Auto</button
+                        >
+                    </div>
                 </div>
-            </div>
+            {/if}
         </div>
     </div>
     <div style="position:relative;">
@@ -1375,8 +1687,18 @@
         align-items: center;
         gap: 8px;
     }
+    .legend--ternary {
+        margin-top: 0;
+        margin-bottom: 0;
+        gap: 0;
+    }
     .legend canvas {
         border: 1px solid #ccc;
         background: #fff;
+    }
+    .legend canvas.legend-canvas--ternary {
+        border: 0;
+        background: transparent;
+        padding: 0;
     }
 </style>
