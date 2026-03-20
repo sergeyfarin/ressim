@@ -1,5 +1,20 @@
 # ResSim — TODO
 
+## Recently Completed
+
+### Chart Legend and Cases Selector Redesign ✅ COMPLETE (2026-03-20)
+
+- **Cases selector dual-line indicator**: When `analyticalPerVariant=true`, case buttons in `ReferenceComparisonChart` now show two stacked lines — dashed (analytical) above, solid (simulation) below — using a 7px SVG. When only analytical preview exists, single dashed line as before. Eliminates the confusing line-style swap when simulation results arrive.
+- **Sub-panel legend redesign**: `ChartSubPanel` toggle groups in comparison charts now show "Simulation (N)" / "Analytical solution (N)" with a neutral grey indicator instead of per-curve colored labels. Implemented via:
+  - New `legendColor?: string` field on `CurveConfig` (falls back to `color` for chart lines)
+  - New `toggleGroupKey: 'sim'` / `'analytical'` on all curves in `referenceComparisonModel.ts`
+  - Pre-computed `simLabel` and `analyticalLabel` (with case counts) in `buildReferenceComparisonModel`
+  - Sweep panel curves (`E_A`, `E_V`, `E_vol`) intentionally excluded — they need individual toggles
+
+Known gap: RateChart (single-simulation view) still uses per-curve labels ("Oil Rate", "Oil Rate (Reference Solution)") — acceptable since that chart has multiple variable types requiring individual toggles.
+
+---
+
 ## Current Issues
 
 - [ ] **LIMITATION: Stop latency = one WASM step duration** — The worker checks `stopRequested` between steps (`chunkYieldInterval: 1`). For large grids where a single step takes >500 ms, the Stop button has noticeable lag after clicking "Stopping…". Options if this becomes an issue:

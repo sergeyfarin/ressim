@@ -20,11 +20,18 @@
         toggleLabel?: string;
         toggleGroupKey?: string;
         color: string;
+        /** Override color used in the toggle-group line indicator (falls back to `color`).
+         *  Useful when the actual chart line is case-colored but the legend should be neutral. */
+        legendColor?: string;
         borderWidth?: number;
         borderDash?: number[];
         yAxisID: string;
         defaultVisible?: boolean;
         disabled?: boolean;
+        /** Groups this curve's toggle button under a collapsible legend section. */
+        legendSection?: string;
+        /** Label shown on the section header button (e.g. "Simulation (solid lines):"). */
+        legendSectionLabel?: string;
     }
 
     let {
@@ -65,9 +72,18 @@
         indices: number[];
         disabled: boolean;
         color: string;
+        legendColor: string;
         borderDash?: number[];
         borderWidth: number;
         defaultVisible: boolean;
+        legendSection?: string;
+        legendSectionLabel?: string;
+    };
+    type LegendSectionEntry = {
+        sectionId: string;
+        label: string;
+        groups: CurveToggleGroup[];
+        borderDash?: number[];
     };
 
     let visibleCurveGroups = $state<Record<string, boolean>>({});
@@ -142,9 +158,12 @@
                     indices: [idx],
                     disabled: Boolean(curve.disabled),
                     color: curve.color,
+                    legendColor: curve.legendColor ?? curve.color,
                     borderDash: curve.borderDash ? [...curve.borderDash] : undefined,
                     borderWidth: curve.borderWidth ?? 2,
                     defaultVisible: visibleByDefault,
+                    legendSection: curve.legendSection,
+                    legendSectionLabel: curve.legendSectionLabel,
                 };
                 groupByKey.set(groupKey, nextGroup);
                 groups.push(nextGroup);
@@ -159,6 +178,46 @@
 
         return groups;
     });
+
+    const legendSections = $derived.by(() => {
+        const flat: CurveToggleGroup[] = [];
+        const sectionMap = new Map<string, LegendSectionEntry>();
+        const sectionOrder: string[] = [];
+
+        for (const group of curveToggleGroups) {
+            if (!group.legendSection) {
+                flat.push(group);
+            } else {
+                if (!sectionMap.has(group.legendSection)) {
+                    sectionMap.set(group.legendSection, {
+                        sectionId: group.legendSection,
+                        label: group.legendSectionLabel ?? group.legendSection,
+                        groups: [],
+                        borderDash: group.borderDash,
+                    });
+                    sectionOrder.push(group.legendSection);
+                }
+                sectionMap.get(group.legendSection)!.groups.push(group);
+            }
+        }
+
+        return { flat, sections: sectionOrder.map((id) => sectionMap.get(id)!) };
+    });
+
+    const sectionLabelGrey = $derived(theme === 'dark' ? '#94a3b8' : '#64748b');
+
+    function isSectionVisible(groups: CurveToggleGroup[]): boolean {
+        return groups.some((g) => visibleCurveGroups[g.key] ?? true);
+    }
+
+    function toggleSection(groups: CurveToggleGroup[]) {
+        const allVisible = groups.every((g) => visibleCurveGroups[g.key] ?? true);
+        visibleCurveGroups = {
+            ...visibleCurveGroups,
+            ...Object.fromEntries(groups.map((g) => [g.key, !allVisible])),
+        };
+        updateChart();
+    }
 
     function isCurveVisible(idx: number): boolean {
         const groupKey = getCurveToggleGroupKey(curves[idx], idx);
@@ -564,6 +623,41 @@
     />
 </svelte:head>
 
+{#snippet curveGroupButton(group: CurveToggleGroup)}
+    <button
+        type="button"
+        disabled={group.disabled}
+        class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all
+            {(visibleCurveGroups[group.key] ?? true)
+                ? 'bg-muted border-2 border-primary/30 opacity-100 shadow-sm'
+                : 'bg-transparent border border-dashed border-border opacity-50'}
+            {!group.disabled
+                ? 'cursor-pointer hover:opacity-75'
+                : 'disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale'}"
+        onclick={() => toggleCurveGroup(group.key)}
+        title={group.disabled
+            ? "Curve disabled for this case"
+            : (visibleCurveGroups[group.key] ?? true)
+              ? `Hide ${group.label}`
+              : `Show ${group.label}`}
+    >
+        <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
+            <line
+                x1="0" y1="1.5" x2="14" y2="1.5"
+                stroke={group.legendColor}
+                stroke-width={group.borderWidth}
+                stroke-dasharray={Array.isArray(group.borderDash) ? group.borderDash.join(', ') : ''}
+            />
+        </svg>
+        <span>{group.label}</span>
+        <span
+            class="opacity-60 ml-0.5 {(visibleCurveGroups[group.key] ?? true)
+                ? 'text-[9px]'
+                : 'text-[14px]'}"
+        >{(visibleCurveGroups[group.key] ?? true) ? "✕" : "+"}</span>
+    </button>
+{/snippet}
+
 <div
     class="border-t border-border overflow-hidden {expanded
         ? 'bg-card'
@@ -642,49 +736,42 @@
                         </div>
                     {/if}
 
-                    <!-- Metric-group toggles keep compared cases aligned within the same family -->
-                    {#each curveToggleGroups as group}
-                        <button
-                            type="button"
-                            disabled={group.disabled}
-                            class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all
-                        {(visibleCurveGroups[group.key] ?? true)
-                                ? 'bg-muted border-2 border-primary/30 opacity-100 shadow-sm'
-                                : 'bg-transparent border border-dashed border-border opacity-50'}
-                        {!group.disabled
-                                ? 'cursor-pointer hover:opacity-75'
-                                : 'disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale'}"
-                            onclick={() => toggleCurveGroup(group.key)}
-                            title={group.disabled
-                                ? "Curve disabled for this case"
-                                : (visibleCurveGroups[group.key] ?? true)
-                                  ? `Hide ${group.label}`
-                                  : `Show ${group.label}`}
-                        >
-                            <svg
-                                width="14"
-                                height="3"
-                                class="overflow-visible shrink-0"
-                                viewBox="0 0 14 3"
+                    <!-- Flat toggle groups (no legendSection) -->
+                    {#each legendSections.flat as group}
+                        {@render curveGroupButton(group)}
+                    {/each}
+
+                    <!-- Sectioned toggle groups -->
+                    {#each legendSections.sections as section}
+                        {#if section.groups.length === 1}
+                            {@render curveGroupButton(section.groups[0])}
+                        {:else}
+                            <!-- Section header: toggles all groups in section -->
+                            <button
+                                type="button"
+                                class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all
+                                    {isSectionVisible(section.groups)
+                                        ? 'bg-muted border-2 border-primary/30 opacity-100 shadow-sm'
+                                        : 'bg-transparent border border-dashed border-border opacity-50'}
+                                    cursor-pointer hover:opacity-75"
+                                onclick={() => toggleSection(section.groups)}
+                                title="{isSectionVisible(section.groups) ? 'Hide' : 'Show'} all"
                             >
-                                <line
-                                    x1="0"
-                                    y1="1.5"
-                                    x2="14"
-                                    y2="1.5"
-                                    stroke={group.color}
-                                    stroke-width={group.borderWidth}
-                                    stroke-dasharray={Array.isArray(group.borderDash) ? group.borderDash.join(', ') : ''}
-                                />
-                            </svg>
-                            <span>{group.label}</span>
-                            <span
-                                class="opacity-60 ml-0.5 {(visibleCurveGroups[group.key] ?? true)
-                                    ? 'text-[9px]'
-                                    : 'text-[14px]'}"
-                                >{(visibleCurveGroups[group.key] ?? true) ? "✕" : "+"}</span
-                            >
-                        </button>
+                                <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
+                                    <line
+                                        x1="0" y1="1.5" x2="14" y2="1.5"
+                                        stroke={sectionLabelGrey}
+                                        stroke-width="1.8"
+                                        stroke-dasharray={Array.isArray(section.borderDash) ? section.borderDash.join(', ') : ''}
+                                    />
+                                </svg>
+                                <span>{section.label}</span>
+                            </button>
+                            <!-- Individual case buttons -->
+                            {#each section.groups as group}
+                                {@render curveGroupButton(group)}
+                            {/each}
+                        {/if}
                     {/each}
                 </div>
             {/if}

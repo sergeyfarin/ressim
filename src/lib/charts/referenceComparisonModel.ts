@@ -104,6 +104,26 @@ function getReferenceColor(theme: ReferenceComparisonTheme): string {
     return theme === 'dark' ? '#f8fafc' : '#0f172a';
 }
 
+/** Neutral grey used as the toggle-group line indicator for simulation and
+ *  analytical legend items in comparison charts. The actual line colors come
+ *  from the case-color palette (shown in the Cases selector above the charts). */
+function getLegendGrey(theme: ReferenceComparisonTheme): string {
+    return theme === 'dark' ? '#94a3b8' : '#64748b';
+}
+
+/**
+ * Strips the scenario-name prefix from a case label so sub-panel legend buttons
+ * stay compact. E.g. "Rate Decline — s=0 (clean)" → "s=0 (clean)".
+ * Falls back to the full label when no separator is found.
+ */
+function compactCaseLabel(label: string): string {
+    const emDash = label.indexOf(' — ');
+    if (emDash !== -1) return label.slice(emDash + 3).trim();
+    const hyphen = label.indexOf(' - ');
+    if (hyphen !== -1) return label.slice(hyphen + 3).trim();
+    return label;
+}
+
 function toFiniteNumber(value: unknown, fallback: number): number {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
@@ -534,12 +554,17 @@ function buildAnalyticalPreviewPanels(
 
     const multiVariant = variants.length > 1;
     const neutralColor = getReferenceColor(theme);
+    const legendGrey = getLegendGrey(theme);
 
     const getColor = (index: number) =>
         multiVariant ? getReferenceComparisonCaseColor(index) : neutralColor;
 
     const labelPrefix = (variant: AnalyticalPreviewVariant) =>
         multiVariant ? `${variant.label} — ` : '';
+
+    const analyticalLabel = variants.length === 1
+        ? 'Analytical solution'
+        : `Analytical solution (${variants.length})`;
 
     if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
         variants.forEach((variant, index) => {
@@ -554,8 +579,10 @@ function buildAnalyticalPreviewPanels(
                 label: `${prefix}Analytical Water Cut`,
                 curveKey: 'water-cut-reference',
                 ...(caseKey ? { caseKey } : {}),
-                toggleLabel: 'Analytical Water Cut',
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
                 color,
+                legendColor: legendGrey,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
@@ -564,8 +591,10 @@ function buildAnalyticalPreviewPanels(
                 label: `${prefix}Analytical Recovery Factor`,
                 curveKey: 'recovery-factor-reference',
                 ...(caseKey ? { caseKey } : {}),
-                toggleLabel: 'Analytical Recovery Factor',
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
                 color,
+                legendColor: legendGrey,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
@@ -588,8 +617,10 @@ function buildAnalyticalPreviewPanels(
                 label: `${prefix}Analytical Oil Rate`,
                 curveKey: 'oil-rate-reference',
                 ...(caseKey ? { caseKey } : {}),
-                toggleLabel: 'Analytical Oil Rate',
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
                 color,
+                legendColor: legendGrey,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
@@ -598,8 +629,10 @@ function buildAnalyticalPreviewPanels(
                 label: `${prefix}Analytical Recovery Factor`,
                 curveKey: 'recovery-factor-reference',
                 ...(caseKey ? { caseKey } : {}),
-                toggleLabel: 'Analytical Recovery Factor',
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
                 color,
+                legendColor: legendGrey,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
@@ -608,8 +641,10 @@ function buildAnalyticalPreviewPanels(
                 label: `${prefix}Analytical Avg Pressure`,
                 curveKey: 'avg-pressure-reference',
                 ...(caseKey ? { caseKey } : {}),
-                toggleLabel: 'Analytical Avg Pressure',
+                toggleGroupKey: 'analytical',
+                toggleLabel: analyticalLabel,
                 color,
+                legendColor: legendGrey,
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
@@ -752,6 +787,8 @@ export function buildReferenceComparisonModel(input: {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
+    const legendGrey = getLegendGrey(input.theme ?? 'dark');
+
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
         rates: { curves: [], series: [] },
         recovery: { curves: [], series: [] },
@@ -800,6 +837,8 @@ export function buildReferenceComparisonModel(input: {
         const xValues = buildXAxisValues(derived, input.xAxisMode);
         const defaultVisible = true;
 
+        const caseLabel = compactCaseLabel(result.label);
+
         if (family.scenarioClass === 'buckley-leverett') {
             appendSeries(
                 panels.rates,
@@ -807,7 +846,10 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Water Cut`,
                     curveKey: 'water-cut-sim',
                     caseKey: result.key,
-                    toggleLabel: 'Water Cut',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -822,7 +864,9 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Avg Water Sat`,
                     curveKey: 'avg-water-sat',
                     caseKey: result.key,
-                    toggleLabel: 'Avg Water Sat',
+                    // No toggleGroupKey override — falls back to curveKey so all cases
+                    // share one "Avg Sw" toggle, keeping it out of the per-case section.
+                    toggleLabel: 'Avg Sw',
                     color,
                     borderWidth: 1.6,
                     borderDash: [2, 4],
@@ -838,7 +882,10 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Recovery`,
                     curveKey: 'recovery-factor-primary',
                     caseKey: result.key,
-                    toggleLabel: 'Recovery Factor',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -853,7 +900,10 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Cum Oil`,
                     curveKey: 'cum-oil-sim',
                     caseKey: result.key,
-                    toggleLabel: 'Cum Oil',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -868,7 +918,10 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Oil Rate`,
                     curveKey: 'oil-rate-sim',
                     caseKey: result.key,
-                    toggleLabel: 'Oil Rate',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -883,7 +936,10 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Cum Injection`,
                     curveKey: 'cum-injection',
                     caseKey: result.key,
-                    toggleLabel: 'Cum Injection',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -898,7 +954,10 @@ export function buildReferenceComparisonModel(input: {
                     label: `${result.label} Avg Pressure`,
                     curveKey: 'avg-pressure-sim',
                     caseKey: result.key,
-                    toggleLabel: 'Avg Pressure',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
@@ -916,7 +975,10 @@ export function buildReferenceComparisonModel(input: {
                 label: `${result.label} Oil Rate`,
                 curveKey: 'oil-rate-sim',
                 caseKey: result.key,
-                toggleLabel: 'Oil Rate',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
@@ -931,7 +993,10 @@ export function buildReferenceComparisonModel(input: {
                 label: `${result.label} Recovery`,
                 curveKey: 'recovery-factor-primary',
                 caseKey: result.key,
-                toggleLabel: 'Recovery Factor',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
@@ -946,7 +1011,10 @@ export function buildReferenceComparisonModel(input: {
                 label: `${result.label} Cum Oil`,
                 curveKey: 'cum-oil-sim',
                 caseKey: result.key,
-                toggleLabel: 'Cum Oil',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
@@ -961,7 +1029,10 @@ export function buildReferenceComparisonModel(input: {
                 label: `${result.label} Avg Pressure`,
                 curveKey: 'avg-pressure-sim',
                 caseKey: result.key,
-                toggleLabel: 'Avg Pressure',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
@@ -991,8 +1062,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.rates, {
                     label: 'Reference Solution Water Cut',
                     curveKey: 'water-cut-reference',
-                    toggleLabel: 'Reference Solution Water Cut',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',
@@ -1002,8 +1077,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.recovery, {
                     label: 'Reference Solution Recovery',
                     curveKey: 'recovery-factor-reference',
-                    toggleLabel: 'Reference Solution Recovery',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',
@@ -1011,8 +1090,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.cumulative, {
                     label: 'Reference Solution Cum Oil',
                     curveKey: 'cum-oil-reference',
-                    toggleLabel: 'Reference Solution Cum Oil',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',
@@ -1025,13 +1108,17 @@ export function buildReferenceComparisonModel(input: {
                 const derived = derivedByKey.get(result.key);
                 if (!derived) return;
                 const color = getReferenceComparisonCaseColor(index);
+                const caseLabel = compactCaseLabel(result.label);
                 const refOverlay = buildBuckleyLeverettReference(result, derived, input.xAxisMode);
                 if (refOverlay.rates) {
                     appendSeries(panels.rates, {
                         label: `${result.label} — Reference`,
                         curveKey: 'water-cut-reference',
                         caseKey: result.key,
-                        toggleLabel: 'Reference Water Cut',
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1043,7 +1130,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${result.label} — Reference Recovery`,
                         curveKey: 'recovery-factor-reference',
                         caseKey: result.key,
-                        toggleLabel: 'Reference Recovery',
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1062,11 +1152,15 @@ export function buildReferenceComparisonModel(input: {
                     const color = getReferenceComparisonCaseColor(orderedResults.length + i);
                     const curves = computeBLAnalyticalFromParams(variant.params);
                     if (!curves) return; // bad params — skip this variant
+                    const vLabel = compactCaseLabel(variant.label);
                     appendSeries(panels.rates, {
                         label: `${variant.label} — Reference`,
                         curveKey: 'water-cut-reference',
                         caseKey: variant.variantKey,
-                        toggleLabel: 'Reference Water Cut',
+                        toggleGroupKey: variant.variantKey + '__ref',
+                        toggleLabel: vLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1076,7 +1170,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${variant.label} — Reference Recovery`,
                         curveKey: 'recovery-factor-reference',
                         caseKey: variant.variantKey,
-                        toggleLabel: 'Reference Recovery',
+                        toggleGroupKey: variant.variantKey + '__ref',
+                        toggleLabel: vLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1094,6 +1191,7 @@ export function buildReferenceComparisonModel(input: {
                 const derived = derivedByKey.get(result.key);
                 if (!derived) return;
                 const color = getReferenceComparisonCaseColor(index);
+                const caseLabel = compactCaseLabel(result.label);
                 let refOverlay: ReturnType<typeof buildDepletionReference>;
                 try {
                     refOverlay = buildDepletionReference(result, derived, input.xAxisMode);
@@ -1105,7 +1203,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${result.label} — Reference`,
                         curveKey: 'oil-rate-reference',
                         caseKey: result.key,
-                        toggleLabel: 'Reference Oil Rate',
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1117,7 +1218,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${result.label} — Reference Recovery`,
                         curveKey: 'recovery-factor-reference',
                         caseKey: result.key,
-                        toggleLabel: 'Reference Recovery',
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1129,7 +1233,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${result.label} — Reference Pressure`,
                         curveKey: 'avg-pressure-reference',
                         caseKey: result.key,
-                        toggleLabel: 'Reference Pressure',
+                        toggleGroupKey: result.key + '__ref',
+                        toggleLabel: caseLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1146,11 +1253,15 @@ export function buildReferenceComparisonModel(input: {
                     const color = getReferenceComparisonCaseColor(orderedResults.length + i);
                     const curves = computeDepletionAnalyticalFromParams(variant.params, input.xAxisMode);
                     if (!curves) return;
+                    const vLabel = compactCaseLabel(variant.label);
                     appendSeries(panels.rates, {
                         label: `${variant.label} — Reference`,
                         curveKey: 'oil-rate-reference',
                         caseKey: variant.variantKey,
-                        toggleLabel: 'Reference Oil Rate',
+                        toggleGroupKey: variant.variantKey + '__ref',
+                        toggleLabel: vLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1160,7 +1271,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${variant.label} — Reference Recovery`,
                         curveKey: 'recovery-factor-reference',
                         caseKey: variant.variantKey,
-                        toggleLabel: 'Reference Recovery',
+                        toggleGroupKey: variant.variantKey + '__ref',
+                        toggleLabel: vLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1170,7 +1284,10 @@ export function buildReferenceComparisonModel(input: {
                         label: `${variant.label} — Reference Pressure`,
                         curveKey: 'avg-pressure-reference',
                         caseKey: variant.variantKey,
-                        toggleLabel: 'Reference Pressure',
+                        toggleGroupKey: variant.variantKey + '__ref',
+                        toggleLabel: vLabel,
+                        legendSection: 'analytical',
+                        legendSectionLabel: 'Analytical (dashed lines):',
                         color,
                         borderWidth: 1.5,
                         borderDash: [7, 4],
@@ -1185,8 +1302,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.rates, {
                     label: refOverlay.rates.label,
                     curveKey: 'oil-rate-reference',
-                    toggleLabel: refOverlay.rates.label,
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',
@@ -1196,8 +1317,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.recovery, {
                     label: refOverlay.cumulative.recoveryLabel,
                     curveKey: 'recovery-factor-reference',
-                    toggleLabel: 'Reference Solution Recovery',
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',
@@ -1205,8 +1330,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.cumulative, {
                     label: refOverlay.cumulative.cumulativeLabel,
                     curveKey: 'cum-oil-reference',
-                    toggleLabel: refOverlay.cumulative.cumulativeLabel,
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',
@@ -1216,8 +1345,12 @@ export function buildReferenceComparisonModel(input: {
                 appendSeries(panels.diagnostics, {
                     label: refOverlay.diagnostics.label,
                     curveKey: 'avg-pressure-reference',
-                    toggleLabel: refOverlay.diagnostics.label,
+                    toggleGroupKey: 'analytical-shared',
+                    toggleLabel: 'Analytical solution',
+                    legendSection: 'analytical',
+                    legendSectionLabel: 'Analytical (dashed lines):',
                     color: referenceColor,
+                    legendColor: legendGrey,
                     borderWidth: 2,
                     borderDash: [7, 4],
                     yAxisID: 'y',

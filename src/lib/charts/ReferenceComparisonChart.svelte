@@ -277,6 +277,14 @@
             .filter((entry) => !entry.curve.caseKey || (visibleCaseKeys[entry.curve.caseKey] ?? true));
     }
 
+    function compactCaseLabel(label: string): string {
+        const emDash = label.indexOf(' — ');
+        if (emDash !== -1) return label.slice(emDash + 3).trim();
+        const hyphen = label.indexOf(' - ');
+        if (hyphen !== -1) return label.slice(hyphen + 3).trim();
+        return label;
+    }
+
     function toggleCaseVisibility(resultKey: string) {
         visibleCaseKeys = {
             ...visibleCaseKeys,
@@ -375,17 +383,29 @@
                         onclick={() => toggleCaseVisibility(result.key)}
                         title={`${(visibleCaseKeys[result.key] ?? true) ? 'Hide' : 'Show'} ${result.label}`}
                     >
-                        <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
-                            <line
-                                x1="0"
-                                y1="1.5"
-                                x2="14"
-                                y2="1.5"
-                                stroke={getReferenceComparisonCaseColor(index)}
-                                stroke-width={result.variantKey === null ? 2.8 : 2.2}
-                            />
-                        </svg>
-                        <span>{result.label}</span>
+                        {#if analyticalPerVariant}
+                            <!-- Dual indicator: dashed = analytical, solid = simulation -->
+                            <svg width="14" height="9" class="overflow-visible shrink-0" viewBox="0 0 14 9">
+                                <line x1="0" y1="2" x2="14" y2="2"
+                                    stroke={getReferenceComparisonCaseColor(index)}
+                                    stroke-width="1.4" stroke-dasharray="5,3" />
+                                <line x1="0" y1="7" x2="14" y2="7"
+                                    stroke={getReferenceComparisonCaseColor(index)}
+                                    stroke-width={result.variantKey === null ? 2.0 : 1.6} />
+                            </svg>
+                        {:else}
+                            <svg width="14" height="3" class="overflow-visible shrink-0" viewBox="0 0 14 3">
+                                <line
+                                    x1="0"
+                                    y1="1.5"
+                                    x2="14"
+                                    y2="1.5"
+                                    stroke={getReferenceComparisonCaseColor(index)}
+                                    stroke-width={result.variantKey === null ? 2.8 : 2.2}
+                                />
+                            </svg>
+                        {/if}
+                        <span title={result.label}>{compactCaseLabel(result.label)}</span>
                     </button>
                 {/each}
                 {#each overlayModel.previewCases as pc}
@@ -408,7 +428,7 @@
                                 stroke-dasharray="7,4"
                             />
                         </svg>
-                        <span>{pc.label}</span>
+                        <span title={pc.label}>{compactCaseLabel(pc.label)}</span>
                     </button>
                 {/each}
             </div>
