@@ -7,9 +7,9 @@ Use this file to decide which documents describe the current repository state.
 | Document | Use it for |
 |----------|------------|
 | `README.md` | Product overview, quick start, project layout, feature summary, physics status |
-| `TODO.md` | Prioritized work items and product roadmap (F4–F9) |
-| `REFACTOR.md` | Architecture working document — Phase 1 (case-library simplification) mostly complete, Step 7 file deletions pending; Phase 2 (scenario/sensitivity redesign S1) design spec |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark scenario reference guidance, sensitivity policy, and chart defaults (**note**: references pre-simplification architecture; update pending after S1 lands) |
+| `TODO.md` | Phased roadmap: Phase 1 (consolidate & fix) → Phase 4 (black-oil PVT) → Phase 7 (extended physics) |
+| `REFACTOR.md` | Architecture working document — custom mode redesign, analytical adapter contracts, black-oil PVT extension design |
+| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark scenario reference guidance, sensitivity policy, and chart defaults (**note**: references pre-S1 architecture; update pending) |
 | `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Verified scientific gaps, stale assumptions, and recommended follow-up work |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, acceptance tolerances, and results |
 | `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase (Stone II) architecture decisions and parameter reference |

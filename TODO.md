@@ -1,283 +1,268 @@
-# ResSim — TODO
+# ResSim — Roadmap
 
-## Recently Completed
-
-### Chart Legend and Cases Selector Redesign ✅ COMPLETE (2026-03-20)
-
-- **Cases selector dual-line indicator**: When `analyticalPerVariant=true`, case buttons in `ReferenceComparisonChart` now show two stacked lines — dashed (analytical) above, solid (simulation) below — using a 7px SVG. When only analytical preview exists, single dashed line as before. Eliminates the confusing line-style swap when simulation results arrive.
-- **Sub-panel legend redesign**: `ChartSubPanel` toggle groups in comparison charts now show "Simulation (N)" / "Analytical solution (N)" with a neutral grey indicator instead of per-curve colored labels. Implemented via:
-  - New `legendColor?: string` field on `CurveConfig` (falls back to `color` for chart lines)
-  - New `toggleGroupKey: 'sim'` / `'analytical'` on all curves in `referenceComparisonModel.ts`
-  - Pre-computed `simLabel` and `analyticalLabel` (with case counts) in `buildReferenceComparisonModel`
-  - Sweep panel curves (`E_A`, `E_V`, `E_vol`) intentionally excluded — they need individual toggles
-
-Known gap: RateChart (single-simulation view) still uses per-curve labels ("Oil Rate", "Oil Rate (Reference Solution)") — acceptable since that chart has multiple variable types requiring individual toggles.
+Phased plan to evolve ResSim from a validated 2-phase waterflood teaching tool into a full black-oil simulator with gas, volatile-oil, and compositional-aware analytics.
 
 ---
 
-## Current Issues
+## Phase 1 — Consolidate & Fix (current foundations)
 
-- [ ] **LIMITATION: Stop latency = one WASM step duration** — The worker checks `stopRequested` between steps (`chunkYieldInterval: 1`). For large grids where a single step takes >500 ms, the Stop button has noticeable lag after clicking "Stopping…". Options if this becomes an issue:
-  - **SharedArrayBuffer + Atomics**: main thread writes to shared memory, worker reads mid-step. Requires `Cross-Origin-Isolated` headers. Zero message latency.
-  - **Worker termination + recreate**: immediate, but loses in-progress state.
-  - **Rust-side callback hook**: check a flag inside the WASM step function every N solver iterations.
-  - Current implementation is adequate for grids up to ~30×30×20 at <100 ms/step.
+Goal: clean up tech debt, fix known correctness issues, finish incomplete work.
 
----
+### 1A. Three-Phase Correctness Fixes
 
-## Active Work
+Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 
-### Chart Lifecycle — Open Issues (2026-03-19)
+- [ ] **Gas-oil capillary pressure direction** — `capillary.rs`: P_cog currently *decreases* with increasing S_g. Physical requirement: gas is non-wetting, P_cog must increase with S_g. Fix: parameterise on S_o_eff using `S_org`.
+- [ ] **Stone II missing `S_org` parameter** — `relperm.rs`: `k_ro_gas` uses `s_gr` as terminal oil saturation in a gas flood; should use a distinct `s_org` (residual oil to gas, typically > `s_or`). Add `s_org` and wire through `k_ro_gas`, capillary pressure, and UI.
+- [ ] **3-phase material-balance diagnostic** — `step.rs`: `actual_change_m3` accumulates only ΔS_w × Vp. Add parallel accumulators for gas and oil so all three phases are covered.
 
-- [ ] **Color stability when sweep results arrive out of order** — `orderResults()` sorts by variant presence then insertion order. If sweep results arrive in non-declaration order, colors can shift mid-sweep. Fix: sort `orderedResults` by variant declaration index (from `previewVariantParams` order), not arrival order.
-- [ ] **Single-variant preview uses neutral reference color** — When exactly 1 variant is selected, curves use the neutral gray reference color rather than case color index 0. Inconsistent with multi-variant behavior. Low priority — acceptable for single selections.
-- [ ] **Sweep panel has no pending overlays** — During mid-sweep for BL sweep scenarios, `buildSweepPanel` only shows completed results' analytical curves. Pending variants have no sweep overlay. Low priority since sweep efficiency is a secondary chart.
-- [ ] **`previewBaseParams` coupling is fragile** — In `App.svelte`, `previewBaseParams` is passed only when `!previewVariantParams?.length && activeReferenceResults.length === 0`. If these conditions ever diverge a mismatched preview could render. Add defensive guard.
-- [ ] **Tests missing for `previewCases` and depletion per-variant** — `referenceComparisonModel.test.ts` does not cover: `previewCases` population in pure-preview or mid-sweep mode; depletion scenario with `analyticalPerVariant=true`; `colorIndex` offset correctness. Add dedicated test cases.
+### 1B. Analytical Contract Gaps
 
-### Review Follow-Ups — 2026-03-19
-
-- [ ] **Depletion analytical contract gap** — `calculateDepletionAnalyticalProduction()` does not currently consume producer location, so the `dep_pss` well-location / Dietz shape-factor sensitivity changes simulation inputs but not the analytical helper. Required follow-up: pass producer position or explicit shape factor into the depletion analytical adapter, update comparison builders, and add tests proving center/corner analytical curves diverge. Until fixed, treat this sensitivity as simulation-only in the UI.
-- [ ] **Analytical adapter coverage tests** — add a small contract test that every sensitivity dimension marked `affectsAnalytical: true` changes at least one input actually consumed by the analytical builder for that scenario class.
+- [ ] **Dietz well-location sensitivity** — `depletionAnalytical.ts` infers shape factor from aspect ratio only; does not consume `producerI`/`producerJ`. The `dep_pss` shape-factor dimension marks `affectsAnalytical: false` — technically correct (analytical doesn't change) but conceptually wrong (it *should* change). Fix: pass producer position or explicit C_A into the depletion analytical adapter; update `affectsAnalytical: true`; add test proving center (C_A ≈ 30.88) and corner (C_A ≈ 0.56) analytical curves diverge.
+- [ ] **Analytical adapter coverage tests** — add contract tests that every sensitivity dimension marked `affectsAnalytical: true` actually changes at least one input consumed by the analytical builder for that scenario class. Prevents future Dietz-style gaps.
 - [ ] **Analytical method disclosure upkeep** — keep scenario-level analytical method summary/reference metadata aligned with the actual overlay path shown in the UI whenever analytical routing changes.
-- [ ] **Capillary-pressure documentation gap** — document the current Brooks-Corey cap at `20 × P_entry` in user-facing docs and note that it is a numerical stabilization, not a physical plateau.
-- [ ] **SwProfile output status** — `SwProfileChart.svelte` still exists, but the card is commented out in `App.svelte`. Either restore it as a supported output or remove the stale component/docs references.
-- [ ] **Benchmark acceptance policy refresh** — keep the current coarse 25–30% Buckley-Leverett thresholds as regression guards if needed, but add a tighter validation target tier based on the observed refined-grid behavior (currently about 2.5–3.1%).
 
-### ~~S1 — Scenario/Sensitivity Architecture Redesign~~ ✅ COMPLETE (2026-03-19)
+### 1C. Legacy Cleanup (Phase 1 Step 7 Remainder)
 
-Consolidated 18 scenarios → 8 canonical scenarios (6 + 2 gas); replaced single `sensitivity?` slot with `sensitivities: SensitivityDimension[]` array; multi-dimension sensitivity selection; domain grouping (Waterflood / Sweep / Depletion / Gas); `chartPresetOverride` per dimension; stale-key guard in UI; explicit params per scenario + `Object.freeze()`; `enabledByDefault?` on variants; all 28 test files pass.
+Eight legacy catalog/benchmark files still have active production dependencies. The blocker is that `ReferenceExecutionCard`, `benchmarkRunModel`, and the chart layer still import from old catalog files.
 
-See REFACTOR.md § Phase 2 for full design spec and canonical scenario map.
-
----
-
-### Simplification Refactor — Step 7 Remainder
-
-Eight legacy catalog/benchmark files still have active production dependencies and cannot yet be deleted (see REFACTOR.md Phase 1). The blocker is that `ReferenceExecutionCard.svelte`, `benchmarkRunModel.ts`, and the chart layer still import from `caseCatalog.ts`, `benchmarkCases.ts`, `caseLibrary.ts`, and `phase2PresetContract.ts`.
-
-- [ ] Audit whether `ReferenceExecutionCard` and `benchmarkRunModel` are still needed once S1 lands, or whether the sweep run model supersedes them
-- [ ] Delete confirmed-dead files; update any remaining imports; verify 0 TS errors and all tests pass
+- [ ] Audit whether `ReferenceExecutionCard` and `benchmarkRunModel` are superseded by the S1 sweep-run model
+- [ ] Delete confirmed-dead files; update remaining imports; verify 0 TS errors and all tests pass
 
 Files pending deletion: `ReferenceExecutionCard.svelte`, `benchmarkCases.ts`, `benchmarkRunModel.ts`, `benchmarkDisclosure.ts`, `caseCatalog.ts`, `caseLibrary.ts`, `presetCases.ts`, `phase2PresetContract.ts`
 
+### 1D. Chart & Output Polish
+
+- [ ] **Color stability when sweep results arrive out of order** — `orderResults()` sorts by variant presence then insertion order. Fix: sort by variant declaration index from `previewVariantParams` order, not arrival order.
+- [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.
+- [ ] **Sweep panel has no pending overlays** — during mid-sweep, `buildSweepPanel` only shows completed results. Low priority.
+- [ ] **`previewBaseParams` coupling is fragile** — add defensive guard against preview/result condition divergence in `App.svelte`.
+- [ ] **Tests missing for `previewCases` and depletion per-variant** — add coverage for pure-preview mode, mid-sweep mode, depletion with `analyticalPerVariant=true`, and `colorIndex` offset correctness.
+
+### 1E. Documentation Refresh
+
+- [ ] Update BENCHMARK_MODE_GUIDE.md — references pre-S1 `ModePanel.svelte` and 4-layer navigation
+- [ ] Resolve SwProfileChart status — either restore the card in `App.svelte` or remove the stale component and doc references
+- [ ] Document capillary pressure cap (20 × P_entry) in user-facing physics notes, not just code comments
+
 ---
 
-### F4 — Unify Chart and Output Architecture
+## Phase 2 — Custom Mode Redesign & UX
 
-Goal: one consistent interaction model for x-axis selection, panel expansion, legends, and output summaries across live runs and reference comparisons.
+Goal: make custom mode a deliberate power-user feature; improve input density.
 
-- [ ] Consolidate chart-shell header and expansion-state wiring
+### 2A. Custom Mode Redesign
+
+Current custom mode is a catch-all that dumps 50+ raw parameter inputs with no context, no grouping intelligence, and no relationship to the predefined scenarios. It reads as legacy, not intentional.
+
+**Redesign direction:**
+
+- [ ] **Clone-and-edit flow** — entering custom mode should clone the currently active scenario's params as a starting point, not reset to defaults. Show provenance ("Based on: 1D Waterflood — Mobility Ratio").
+- [ ] **Per-scenario customisation** — allow parameter overrides *within* a predefined scenario without switching to full custom mode. The scenario stays active; the user sees which params they've changed and can reset individual overrides. This replaces the need to "go custom" for small parameter tweaks.
+- [ ] **Grouped parameter sections** — replace flat 50-field form with domain-aware groups: Rock Properties, Fluid PVT, Wells, Grid & Timestep, Relative Permeability (SCAL), Gas/3-Phase. Each group collapsible; show only groups relevant to the active scenario class.
+- [ ] **Preset starting points** — quick-pick buttons for common reservoir types (sandstone, shale, carbonate, tight gas) that set reasonable default ranges for porosity, permeability, fluid properties.
+- [ ] **Save/load custom configurations** — persist named custom scenarios in localStorage; allow export/import as JSON.
+- [ ] **Validation guidance** — proactive parameter range warnings (e.g. "permeability < 0.1 mD: convergence may be slow") instead of only post-run validation errors.
+
+### 2B. Compact Input Layout
+
+- [ ] Reduce default section padding and vertical spacing
+- [ ] Convert overly tall input groups into compact flowing cards
+- [ ] Tighten margins without making the UI cramped; common scenario editing should take materially less scrolling
+
+### 2C. Theme Refresh
+
+- [ ] Replace near-black dark / flat-white light surfaces with deliberate working themes
+- [ ] Improve panel contrast, content focus, and data-first visual balance
+
+### 2D. Unify Chart & Output Architecture
+
+- [ ] Consolidate chart-shell header and expansion-state wiring across `RateChart` and `ReferenceComparisonChart`
 - [ ] Finish shared panel/x-axis selection across both chart types
-- [ ] Resolve remaining Results card verbosity
-
-Acceptance: chart behaviour feels consistent regardless of run type; future output features do not require parallel implementation in both chart shells.
-
-Primary files: `src/lib/charts/RateChart.svelte`, `src/lib/charts/ReferenceComparisonChart.svelte`, `src/lib/charts/referenceComparisonModel.ts`
+- [ ] Extract output selection view model from `App.svelte` — one typed helper returning the active run/result payload shared by charts, 3D, and analytical components
 
 ---
 
-## Product Roadmap
+## Phase 3 — Gas Scenarios (Immiscible)
 
-### ~~F10 — Simulation Sweep Efficiency~~ ✅ COMPLETE (2026-03-19)
+Goal: promote gas injection and solution gas drive from experimental to production-ready with analytical references. Still immiscible (constant PVT); no dissolved-gas tracking yet.
 
-Simulation sweep efficiency (E_A_sim, E_V_sim, E_vol_sim) is now computed from `grid.sat_water` (per-cell saturation already streamed to the frontend for the 3D view). Three separate panels — Areal / Vertical / Volumetric — each show solid = simulation, dashed = analytical. Vertical panel only shown when nz > 1.
+### 3A. Fix Physics (prerequisite — Phase 1A must land first)
 
-Analytical recovery factor added (2026-03-19): `RF = E_vol(Craig+DP) × E_D_BL(PVI_local)` using Welge construction. New "Recovery Factor — Sweep Analysis" panel is the primary output; sweep efficiency panels are now diagnostic/supplemental. See F11 for known limitations and future improvements.
+All three-phase correctness fixes from Phase 1A are prerequisites.
 
----
+### 3B. Gas-Oil Buckley-Leverett Analytical
 
-### F11 — Sweep RF Analytical: Known Limitations and Improvement Path
+- [ ] Extend `fractionalFlow.ts` to support gas-oil displacement: `f_g(S_g)` using gas relative permeability (Corey) and gas/oil viscosity ratio
+- [ ] Welge tangent construction for gas-oil system — shock front saturation, breakthrough PVI
+- [ ] Wire as analytical overlay for `gas_injection` scenario
+- [ ] Add sensitivity dimensions to `gas_injection`: mobility ratio (μ_g/μ_o), S_gc, permeability, grid convergence
+- [ ] Validate: simulator gas breakthrough PVI vs analytical for favorable and adverse gas mobility
 
-The implemented formula `RF_sweep(PVI) = E_vol(PVI) × E_D_BL(PVI/E_vol(PVI))` is a useful first-order approximation. The following issues are known and should be addressed to improve fidelity.
+### 3C. Solution Gas Drive Scenario
 
-#### Current approximations (decreasing severity)
+- [ ] Define `gas_drive` base params: initially undersaturated oil with gas saturation above S_gc, BHP below bubble point
+- [ ] Add sensitivity dimensions: initial gas saturation, oil viscosity, permeability
+- [ ] Note: without Rs(P) tracking (Phase 4), solution gas drive is simulated as immiscible depletion with free gas — qualitatively useful but not quantitatively accurate for below-bubble-point behavior
 
-**A. Local-PVI approximation** *(moderate error, fixable)*
-The formula assumes displacement quality within the swept zone is uniform and equal to 1D BL at `PVI_local = PVI / E_vol`. In reality, cells near the injector are over-displaced while frontier cells are under-displaced. This approximation:
-- Tends to underestimate early RF (displaced zone assumed too mature)
-- May slightly overestimate late RF (frontier under-displacement ignored)
-- Breaks down when E_vol is very small (PVI_local → ∞, clamped to E_D_piston)
+### 3D. Gas Material Balance Diagnostics
 
-*Better option A1*: **Stiles (1949) method** — rigorous layer-by-layer BL integration. Each layer is swept sequentially in order of permeability; BL solution applied to each layer independently. Gives exact RF for Dykstra-Parsons model with piston-like displacement. No stream-tube approximation needed.
-
-*Better option A2*: **Stream-tube model** — divide the five-spot flow pattern into stream tubes (e.g., from potential-flow solution), apply 1D BL to each tube independently, sum contributions. Accounts for spatial variation in local flux. Higher accuracy, more implementation work.
-
-**B. Craig (1971) five-spot areal sweep correlation** *(±10–15% accuracy)*
-- Fitted to lab-scale flood data; extrapolation outside M ∈ [0.1, 10] increases uncertainty
-- Only valid for confined five-spot geometry; not applicable to:
-  - Line drives (use Buckley-Leverett directly, E_A = 1 in the displacement direction)
-  - Nine-spot, seven-spot, inverted patterns (different Craig tables exist)
-  - Peripheral/edge water drives (no correlation; use numerical simulation)
-- Assumes uniform areal permeability. Areal heterogeneity is not captured by the DP vertical coefficient.
-
-*Option*: Include Craig's tabulated data for other patterns; allow the user to select pattern geometry.
-
-**C. Dykstra-Parsons non-communicating layers** *(potentially large error)*
-- Assumes zero vertical cross-flow (Kv/Kh = 0). This is the most restrictive assumption.
-- With full vertical communication (Kv/Kh ≥ 0.1), layers equilibrate pressure rapidly and E_V → 1 (vertical sweep is complete). DP overpredicts vertical heterogeneity impact in this case.
-- With partial communication, reality lies between DP and full-commingling.
-- The IMPES simulator has nonzero Kv, so E_V_sim will generally exceed E_V_DP for the same params.
-
-*Option B1*: Add Kv/Kh parameter awareness — if Kv/Kh is high, blend E_V_DP toward 1.0.
-*Option B2*: Implement Warren-Root (1963) or Coats-Dempsey partially-communicating layer model.
-
-**D. Independence of E_A and E_V** *(small to moderate error)*
-E_vol = E_A × E_V treats areal and vertical sweep as independent. In reality, high-permeability layers create preferential channels that also affect areal sweep patterns. The error is generally conservative (real E_vol is close to or slightly different from E_A × E_V).
-
-**E. Expansion corrections** *(small for waterfloods, <3%)*
-Bo ≈ 1 assumed (incompressible). For undersaturated waterfloods with pressure support from injection, ΔP is small and Bo change is negligible. Error grows near the bubble point where gas liberation changes effective Bo and kr curves. Depletion scenarios are handled separately.
-
-**F. Constant injection rate** *(small)*
-Craig's correlation was developed at constant injection rate. The IMPES simulator uses BHP-controlled wells, so rate varies (especially at early time). The timing of areal sweep events (breakthrough) may shift for variable-rate injection.
-
-#### Validation plan
-- [ ] Compare RF_sweep_analytical vs RF_sim for sweep_areal scenario (expected: RF_sim ≈ RF_sweep_analytical for large homogeneous grid where BL and Craig apply)
-- [ ] Check that RF_sim > RF_sweep_analytical when Kv > 0 (improved vertical communication vs DP assumption)
-- [ ] Verify RF_sweep_analytical < RF_1D_BL at all PVI (sweep penalty must reduce RF)
-- [ ] Test degenerate cases: nz=1 (E_V=1, RF_sweep ≈ E_A × RF_1D); M→0 (E_A→1, RF_sweep → RF_1D)
-
-#### Future: Stiles method implementation (recommended)
-The Stiles (1949) method is the natural upgrade for the layered-reservoir case. It:
-1. Sorts layers by permeability (highest first = earliest breakthrough)
-2. Applies Buckley-Leverett to each layer independently
-3. At any cumulative injection, sums oil production across all layers
-4. Exactly satisfies material balance by construction (no local-PVI approximation)
-
-This eliminates limitation A entirely and gives exact RF under the DP assumptions (B, C, D, E, F still apply). Implementation: ~100 lines in `sweepEfficiency.ts`, no new dependencies.
-
-#### Future: Multi-method sweep comparison framework
-- [ ] Implement three selectable analytical sweep methods for the same scenario family: current local-PVI approximation, Stiles layer-by-layer method, and a stream-tube / flow-unit method for full-field heterogeneity.
-- [ ] Add side-by-side comparison views so sensitivity studies can show how method choice changes RF, breakthrough timing, and sweep penalties rather than presenting one analytical curve as authoritative.
-- [ ] Keep the current approximation as the fast baseline / teaching mode even after higher-fidelity methods land.
-- [ ] Introduce a compact flow-unit abstraction so random areal heterogeneity can be represented analytically without requiring the full simulator output as the only source of truth.
+- [ ] Add p/z diagnostic output panel — plot cumulative gas produced vs (P_i − P)/z for each timestep
+- [ ] Straight line = depleting gas reservoir; curvature = aquifer influx or phase change
+- [ ] Requires z-factor correlation (even simple c_g ≈ 1/P) — add as configurable option
+- [ ] High diagnostic value for validating gas simulation physics
 
 ---
 
-### F5 — Multi-Case Comparison Beyond Charts
+## Phase 4 — Black-Oil PVT (Volatile Oil)
+
+Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure-dependent fluid properties. This is the largest physics extension and unlocks volatile oil, solution gas drive with dissolved gas, and gas cap behavior.
+
+### 4A. PVT Correlations
+
+- [ ] **Rs(P) — solution gas-oil ratio**: Standing (1947) or Vazquez-Beggs (1980) correlation. Rs decreases as P drops below bubble point P_b; Rs = Rs_max above P_b.
+- [ ] **Bo(P) — oil formation volume factor**: Standing or Glaso (1980). Bo increases with Rs (swelling); above P_b, Bo decreases slightly with pressure (compression).
+- [ ] **Bg(P) — gas formation volume factor**: ideal gas law corrected by z-factor. Bg = (P_sc × z × T) / (P × T_sc).
+- [ ] **μ_o(P) — oil viscosity**: Beggs-Robinson (1975) or Vasquez-Beggs. Viscosity decreases with dissolved gas; increases sharply below P_b as gas liberates.
+- [ ] **μ_g(P) — gas viscosity**: Lee-Gonzalez-Eakin (1966) correlation. Varies with pressure and temperature.
+- [ ] **z-factor**: Standing-Katz chart or Hall-Yarborough (1973) correlation for real gas compressibility.
+- [ ] **PVT table structure in Rust**: `PvtTable` struct with interpolation; replace constant `c_o`, `c_g`, `mu_o`, `mu_g` with pressure-dependent lookups.
+- [ ] **UI for PVT**: bubble-point pressure input; API gravity and gas specific gravity for correlation-based PVT; option to input tabular PVT directly.
+
+### 4B. Bubble-Point Tracking & Phase Split
+
+- [ ] Track dissolved gas per cell: `Rs_cell(P_cell)` — gas comes out of solution when local pressure drops below P_b
+- [ ] Phase split logic: if `P < P_b`, compute `Rs(P)` and liberate excess gas → increase `S_g`
+- [ ] Secondary gas cap formation: cells that drop below P_b develop free gas saturation even if initially `S_g = 0`
+- [ ] Gas re-dissolution: if pressure rises above P_b (due to injection), gas dissolves back into oil
+- [ ] Modify accumulation term in `step.rs`: use time-dependent Bo, Bg when computing compressibility and phase volumes
+
+### 4C. Updated Pressure Equation
+
+- [ ] Accumulation: `(V_p / dt) × [c_t(P) × S_phases + ...]` with pressure-dependent compressibility
+- [ ] Transmissibility: mobility uses pressure-dependent viscosity from PVT lookup
+- [ ] Well model: PI uses local PVT properties; GOR (gas-oil ratio) at producer from local Rs and free gas
+
+### 4D. Volatile Oil Analytical References
+
+- [ ] **Hyperbolic decline (Arps)** — extend `dep_decline` with Arps b-parameter (0–1): `q(t) = q_i / (1 + b × D_i × t)^(1/b)`. Current exponential (b=0) is a special case.
+- [ ] **Fetkovich type-curve matching** — dimensionless decline rate and time; overlay published type curves for volatile-oil decline characterization.
+- [ ] **Material-balance equation** — Havlena-Odeh (1963) formulation: `N × (E_o + m × E_g + E_fw) = F` where F = cumulative withdrawal, E terms = expansion indices. Enables OOIP estimation and drive-mechanism identification.
+- [ ] **Drive-mechanism indicator** — from material balance: water drive index, gas-cap drive index, solution-gas drive index, compaction drive index. Show as stacked bar or pie diagnostic.
+
+### 4E. Gas Cap Scenarios
+
+- [ ] **Primary gas cap** — initial free gas zone above oil column. Configure via gas-oil contact (GOC) depth and initial gas saturation profile. Analytical: Schilthuis (1936) material balance with gas cap ratio `m`.
+- [ ] **Gas cap expansion** — as oil zone depletes, gas cap expands downward. Analytical: track gas-cap movement via material balance; compare vs simulation gas front position.
+- [ ] **Secondary gas cap** — forms when undersaturated oil drops below bubble point. No classical analytical solution; compare simulation against material-balance-predicted cumulative gas liberation.
+- [ ] **Gas cap blowdown** — producing from gas cap after oil zone depleted. Simple volumetric depletion with p/z analysis.
+
+### 4F. Validation
+
+- [ ] **SPE comparative solution** benchmarks (SPE1, SPE3) for black-oil validation
+- [ ] Grid-convergence study for volatile-oil depletion: verify Bo, Rs, Sg profiles converge with refinement
+- [ ] Material-balance closure: cumulative production should match OOIP × recovery factor from analytical MB
+
+---
+
+## Phase 5 — Advanced Analytics & Sweep Methods
+
+Goal: upgrade analytical reference methods beyond first-order approximations.
+
+### 5A. Stiles Method (Recommended Next Sweep Upgrade)
+
+- [ ] Implement Stiles (1949) layer-by-layer BL integration in `sweepEfficiency.ts` (~100 lines)
+- [ ] Eliminates the local-PVI approximation (largest current sweep error)
+- [ ] Sorts layers by permeability; applies independent BL displacement to each; sums oil production
+- [ ] Exactly satisfies material balance by construction
+- [ ] Keep current local-PVI method as fast baseline / teaching mode
+
+### 5B. Warren-Root Vertical Sweep Upgrade
+
+- [ ] Add Kv/Kh-aware blending between DP (zero cross-flow) and perfect communication (E_V → 1)
+- [ ] Simple approach: `E_V_adjusted = E_V_DP × (1 − f(Kv/Kh)) + 1.0 × f(Kv/Kh)` where f is a monotonic blend function
+- [ ] Resolves known mismatch where simulator (nonzero Kv) always exceeds DP analytical for vertical sweep
+
+### 5C. Multi-Method Comparison Framework
+
+- [ ] Selectable analytical sweep methods per scenario: local-PVI, Stiles, stream-tube
+- [ ] Side-by-side comparison views: show how method choice changes RF, breakthrough timing, sweep penalty
+- [ ] Compact flow-unit abstraction for representing random areal heterogeneity analytically
+
+### 5D. Extended Pattern Correlations
+
+- [ ] Craig tables for other well patterns: nine-spot, seven-spot, inverted five-spot, line drive
+- [ ] User-selectable pattern geometry in sweep scenarios
+- [ ] Line-drive: E_A = 1 in displacement direction, use BL directly
+
+---
+
+## Phase 6 — Multi-Case Inspection & Data I/O
+
+Goal: make sensitivity studies inspectable beyond charts; enable data portability.
+
+### 6A. Multi-Case 3D Inspection
 
 - [ ] Case selection/switching for the 3D view across sensitivity runs
 - [ ] Comparison awareness in saturation profile and compact summary cards
 - [ ] Synchronized selected case across summary, chart, and 3D inspection
 
-Acceptance: sensitivity studies can be inspected spatially, not only in charts.
+### 6B. Summary Statistics Panel
 
----
+- [ ] OOIP, pore volume, recovery factor, average pressure/saturation, water cut, VRR
+- [ ] Visible for both single runs and sensitivity sweeps
+- [ ] Cross-case comparison table for sweep results
 
-### F6 — Compact Input Layout
+### 6C. Data Export/Import
 
-- [ ] Reduce default section padding and vertical spacing
-- [ ] Convert overly tall input groups into compact flowing cards where possible
-- [ ] Tighten margins and whitespace without making the UI cramped
+- [ ] Structured scenario export/import (JSON)
+- [ ] CSV/JSON export of simulation results and benchmark summaries
+- [ ] Report export with plots and key metrics
 
-Acceptance: common scenario editing takes materially less scrolling on desktop; dense scientific inputs remain legible.
+### 6D. Cross-Section Viewer
 
----
-
-### F7 — Redesign Themes
-
-- [ ] Replace near-black dark / flat-white light surfaces with deliberate working themes
-- [ ] Improve panel contrast, content focus, and data-first visual balance
-
-Acceptance: both themes feel designed for sustained technical use; decorative background no longer competes with data surfaces.
-
----
-
-### F8 — Custom Mode Boundaries
-
-After S1 the predefined scenario space will be substantially richer. Custom mode should read as intentional exploratory modelling, not a catch-all.
-
-- [ ] Explicitly define what custom mode offers beyond the predefined scenarios
-- [ ] If a user is redirected to custom, explain why
-- [ ] Make the transition from a scenario to custom editing feel deliberate (clone + edit, not silent fallback)
-
-Acceptance: "Custom" reads as a power-user feature; the scenario picker covers 95% of educational use without touching custom mode.
-
----
-
-### F9 — Gas Scenarios
-
-- [ ] Promote Gas Injection and Solution Gas Drive from experimental to production-ready
-- [ ] Add analytical reference for 1D gas-oil displacement (Buckley-Leverett with gas properties)
-- [ ] Wire Gas Injection sensitivity dimensions: mobility ratio, S_gc, permeability
-- [ ] Fix confirmed physics bugs first (see Deferred — Physics Correctness Issues)
-
-Acceptance: gas scenarios behave like the waterflood scenarios — scenario + sensitivity dimensions + analytical comparison.
-
----
-
-### F10 — Refresh Docs After UI Pass
-
-- [ ] Update README, BENCHMARK_MODE_GUIDE, DOCUMENTATION_INDEX after F4–F9 land
-- [ ] Ensure docs describe the final workflow and terminology, not transitional states
-
----
-
-## Deferred / Later
-
-### Physics — Correctness Issues (3-Phase)
-
-Confirmed bugs. Viscous-dominated 2-phase runs are unaffected; gravity-drainage and capillary-equilibrium studies are.
-
-- [ ] **Gas-oil capillary pressure direction** (`capillary.rs` `GasOilCapillaryPressure`) — `P_cog` currently decreases as S_g increases. Physical requirement: gas is non-wetting, so Pc = P_gas − P_oil must increase with S_g. Fix: parameterise on `S_o_eff` using `Sorg` (see below).
-- [ ] **Stone II missing `Sorg` parameter** (`relperm.rs`) — `k_ro_gas` uses `s_gr` (residual gas after water imbibition) as terminal oil saturation in a gas flood. These are distinct. Add `s_org` (residual oil to gas, typically > `s_or`) and wire through `k_ro_gas`, capillary pressure, and UI.
-- [ ] **3-phase material-balance diagnostic tracks water only** (`step.rs`) — `actual_change_m3` accumulates only ΔSw × Vp. Add parallel accumulators for gas and oil so all three phases are covered.
-
-### Analytical — Correctness / Contract Gaps
-
-- [ ] **Dietz well-location sensitivity is not yet analytical-aware** (`depletionAnalytical.ts`, `DepletionAnalytical.svelte`, `referenceComparisonModel.ts`, `benchmarkRunModel.ts`) — the depletion analytical helper infers shape from geometry/aspect ratio but does not consume `producerI` / `producerJ`. Current `dep_pss` metadata implies center/corner analytical variation that is not actually wired.
-
-### Physics — Known Limitations (Black-Oil Model)
-
-Intentional simplifications documented here for clarity. Not bugs.
-
-- [ ] **No bubble-point / dissolved-gas tracking** — Immiscible model only. Adding Rs(P), Bo(P) correlations would upgrade to full black-oil PVT.
-- [ ] **Constant gas compressibility** — `c_g ≈ 1/P` for real gas via z-factor is not modelled. Constant-c overestimates gas compressibility at high pressure and underestimates at low pressure.
-- [ ] **Constant fluid viscosity and density** — No PVT table. Error small for viscous-force-dominated waterflood at moderate pressure; larger for gas at varying pressure.
-- [ ] **Immiscible, not compositional** — No phase equilibrium, no K-value flash. Correct scope for black-oil, but must be stated clearly.
-
-### Physics Extensions
-
-- [ ] Well schedule support
-- [ ] Aquifer boundary conditions
-- [ ] Per-cell or per-layer porosity variation
-- [ ] Per-cell initial water saturation / transition-zone initialization
-- [ ] Additional published benchmark families
-
-### Benchmark and Comparison Tooling
-
-- [ ] Grid-convergence study preset family
-- [ ] A/B run comparison overlays
-- [ ] Relative error (%) diagnostic curves
-- [ ] Uncertainty and sensitivity batch runner beyond curated benchmark sensitivities
-
-### Visualization and Charting
-
+- [ ] i/j/k slice viewer for property inspection in the 3D view
 - [ ] Sw profile plot evolution and tighter 3D companion integration
-- [ ] Cross-section / slice viewer for i/j/k inspection in the 3D view
-- [ ] Summary statistics panel (OOIP, pore volume, RF, average pressure/saturation, water cut, VRR)
 
-### Data I/O
+---
 
-- [ ] Structured scenario export/import
-- [ ] CSV/JSON export of results and benchmark summaries
+## Phase 7 — Extended Physics & Well Models
 
-### Wells and Advanced Reservoir Modeling
+Goal: advanced reservoir modeling features.
 
 - [ ] Multi-well patterns (5-spot, line-drive, custom placements)
+- [ ] Well schedule support (rate changes, shut-ins, re-completions over time)
+- [ ] Aquifer boundary conditions (Carter-Tracy or Fetkovich aquifer model)
+- [ ] Per-cell or per-layer porosity variation
+- [ ] Per-cell initial water saturation / transition-zone initialization (J-function or specified)
 - [ ] Non-uniform cell sizes and local grid refinement
+- [ ] Horizontal or deviated well model with generalized Peaceman PI
 
-### Nice To Have Only
+---
+
+## Backlog (Low Priority / Nice-to-Have)
 
 - [ ] Benchmark trend tracking across CI runs
 - [ ] Multi-chart synchronized zoom/pan
 - [ ] Responsive/mobile chart and 3D layout improvements
-- [ ] Phase relative permeability / capillary curve visualization
-- [ ] Report export for plots and key metrics
+- [ ] Phase relative permeability / capillary curve visualization (interactive kr/Pc editor)
 - [ ] Undo/redo for parameter changes
-- [ ] Horizontal or deviated well model with generalized Peaceman PI
 - [ ] Per-cell capillary pressure variation and capillary hysteresis
-- [ ] Fetkovich type-curve overlay expansion
+- [ ] Leverett J-Function capillary scaling
+- [ ] Grid-convergence study preset family
+- [ ] A/B run comparison overlays
+- [ ] Relative error (%) diagnostic curves
+- [ ] Uncertainty and sensitivity batch runner beyond curated benchmark sensitivities
+- [ ] Benchmark acceptance policy refresh — add tighter validation tier (~5%) alongside current 25–30% regression guards
+
+---
+
+## Known Constraints
+
+- Three.js pinned at 0.183.2 — do not upgrade casually
+- WASM requires `wasm32-unknown-unknown` target
+- Worker ↔ UI communication: structured cloning only (no functions or class instances)
+- Stop latency = one WASM step duration; for large grids (>30×30×20), single step may take >500 ms. Options: SharedArrayBuffer+Atomics, worker termination+recreate, or Rust-side callback hook.
 
 ---
 
@@ -285,9 +270,11 @@ Intentional simplifications documented here for clarity. Not bugs.
 
 - **B1–B10** (2026-03-07): Benchmark modernization — family registry, explicit reference policy, sensitivity sweeps, benchmark-specific chart defaults, benchmark docs.
 - **F1–F3** (2026-03): Unified Inputs/Run/Outputs shell; family-first navigation; case library; reference execution card; warning policy unified; case disclosure cards; compact Run Set selector; master-detail Results layout; IBM Plex Sans/Mono typography; semantic utility classes.
-- **Store refactor** (2026-03-17): Converted `createSimulationStore()` from function-based getter/setter boilerplate to Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters declared as `$state` but never exposed in `parameterState` accessor.
-- **Simplification Refactor Steps 1–6** (2026-03-17): `scenarios.ts` + `ScenarioPicker.svelte` replace `ModePanel.svelte` + 4-layer case-library navigation. Store wired. `evaluateAnalyticalStatus` moved to `warningPolicy.ts`. `buildScenarioNavigationState` removed from store. `ModePanel.svelte` deleted. All 204 tests pass.
-- **Run Controls UX** (2026-03-19): Stop button shows "Stopping…" immediately; `stopPending` state added. Steps-reset bug on scenario run fixed (save/restore `this.steps` around `applyCaseParams`).
-- **Sweep Efficiency** (2026-03-19): Analytical sweep efficiency module (`sweepEfficiency.ts`): Craig (1971) areal sweep, Dykstra-Parsons (1950) vertical sweep, volumetric product. `SweepEfficiencyChart.svelte` renders E_A, E_V, E_A × E_V curves. Four new sweep scenarios: Areal–Mobility, Areal–Residual, Vertical–V_DP, Combined Sweep.
-- **S1 — Scenario/Sensitivity Architecture Redesign** (2026-03-19): Consolidated 18 scenarios → 8 canonical scenarios with multi-dimension sensitivity selection. New types `ScenarioDomain`, `SensitivityDimension`; `sensitivities: SensitivityDimension[]` replaces `sensitivity?`; domain grouping in ScenarioPicker; `chartPresetOverride` per dimension; stale-key guard; explicit params + `Object.freeze()`; `enabledByDefault?` on variants; `activeSensitivityDimensionKey` in store; `selectSensitivityDimension()` action; 28/28 tests pass.
-- **Analytical preview lifecycle fixes** (2026-03-19): Multi-variant analytical preview before runs (BL + depletion); mid-sweep color continuity via `pendingPreviewVariants`; depletion per-variant analytical (each result gets own dashed reference curve); cases selector visible during preview via `previewCases: ReferenceComparisonPreviewCase[]` on model; "Analytical preview — N variant(s)" header replaces confusing "0 of 0 runs shown". `computeDepletionAnalyticalFromParams` helper extracted for DRY preview and pending-overlay paths.
+- **Store refactor** (2026-03-17): Converted `createSimulationStore()` to Svelte 5 class with `$state` fields. Fixed silent bug: 13 three-phase parameters declared as `$state` but never exposed in `parameterState` accessor.
+- **Simplification Refactor Steps 1–6** (2026-03-17): `scenarios.ts` + `ScenarioPicker.svelte` replace `ModePanel.svelte` + 4-layer case-library navigation.
+- **Run Controls UX** (2026-03-19): Stop button shows "Stopping…" immediately; `stopPending` state added.
+- **Sweep Efficiency** (2026-03-19): Craig (1971) areal sweep, Dykstra-Parsons (1950) vertical sweep, volumetric product. `SweepEfficiencyChart.svelte`. Four new sweep scenarios.
+- **S1 — Scenario/Sensitivity Architecture Redesign** (2026-03-19): Consolidated 18 scenarios → 8 canonical scenarios with multi-dimension sensitivity selection.
+- **Analytical preview lifecycle** (2026-03-19): Multi-variant analytical preview before runs; mid-sweep color continuity; depletion per-variant analytical.
+- **F10 — Simulation Sweep Efficiency** (2026-03-19): E_A_sim, E_V_sim, E_vol_sim computed from grid saturation. Analytical RF = E_vol × E_D_BL.
+- **Chart Legend & Cases Selector Redesign** (2026-03-20): Dual-line indicator (analytical/simulation); sub-panel legends with "Simulation (N)" / "Analytical solution (N)".

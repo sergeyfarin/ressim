@@ -1,83 +1,73 @@
-# ResSim — Black-Oil Simulator with Analytical Comparison
+# ResSim — Black-Oil Reservoir Simulator with Analytical Comparison
 
 Compare IMPES numerical solutions against classical analytical methods — Buckley-Leverett, Craig sweep, Dykstra-Parsons, Dietz decline — with scenario-based sensitivity sweeps and 3D visualization. Runs entirely in the browser via Rust/WASM.
 
 ## Current State (2026-03)
 
-- **Scenario picker**: `src/lib/catalog/scenarios.ts` + `ScenarioPicker.svelte` are now the primary scenario/sensitivity surface.
-- **Scenario model**: S1 is complete. The app currently exposes 8 canonical scenarios across Waterflood, Sweep, Depletion, and Gas domains, each with zero or more sensitivity dimensions.
-- **Sweep efficiency**: Craig (1971) areal sweep (2D XY), Dykstra-Parsons (1950) vertical sweep (2D XZ), and volumetric product (3D E_vol = E_A × E_V) are implemented as analytical overlays with a sweep-recovery panel.
-- **Reference-solution overlays**: Buckley-Leverett and depletion overlays are available, but some analytical paths still use first-order approximations. See the limitations notes below and `docs/IMPLEMENTATION_REVIEW_2026-03-19.md`.
-- **Three-phase support** (experimental): oil/water/gas simulation via Stone II relative permeability is implemented, but important three-phase correctness gaps remain. See `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` and `TODO.md`.
-- **Execution model**: all scenarios initialize and run directly in browser-side WASM; no pre-run artifact pipeline.
+- **8 canonical scenarios** across Waterflood, Sweep, Depletion, and Gas domains, each with selectable sensitivity dimensions.
+- **Sweep efficiency**: Craig (1971) areal, Dykstra-Parsons (1950) vertical, and combined volumetric sweep with recovery-factor overlay.
+- **Two-phase oil/water**: validated against Buckley-Leverett theory (2.5–3.1% error on refined grids).
+- **Three-phase oil/water/gas** (experimental): Stone II relative permeability implemented but has known correctness gaps (see Model Validity Notes).
+- **All execution in-browser** via WASM — no backend required.
 
-## Analytical Methods By Scenario
+## Analytical Methods
 
-The scenario picker now states which analytical method is being shown for the active scenario. The current mapping is:
+| Scenario | Analytical Method | Reference |
+|----------|-------------------|-----------|
+| `wf_bl1d` — 1D Waterflood | Buckley-Leverett fractional-flow with Welge shock construction | Buckley & Leverett (1942); Welge (1952) |
+| `sweep_areal` — Areal Sweep | Craig confined five-spot areal sweep correlation | Craig (1971); Dyes, Caudle & Erickson (1954) |
+| `sweep_vertical` — Vertical Sweep | Dykstra-Parsons non-communicating layered sweep with BL displacement efficiency | Dykstra & Parsons (1950) |
+| `sweep_combined` — Combined Sweep | Craig × Dykstra-Parsons × BL via local-PVI approximation | Craig; DP; BL; Welge |
+| `dep_pss` — Pressure Depletion | Dietz pseudo-steady-state bounded-drainage decline | Dietz (1965) |
+| `dep_decline` — Rate Decline | Exponential decline reference | Fetkovich (1971) |
+| `gas_injection` — Gas Injection | *Planned: gas-oil Buckley-Leverett* | Simulation-only currently |
+| `gas_drive` — Solution Gas Drive | *Planned: immiscible gas depletion analytics* | Simulation-only currently |
 
-| Scenario | Analytical method shown | Reference |
-|----------|-------------------------|-----------|
-| `wf_bl1d` | Buckley-Leverett fractional-flow solution with Welge shock construction | Buckley and Leverett (1942); Welge (1952) |
-| `sweep_areal` | Craig confined five-spot areal sweep correlation | Craig (1971); Dyes, Caudle, and Erickson (1954) |
-| `sweep_vertical` | Dykstra-Parsons non-communicating layered sweep with Buckley-Leverett displacement efficiency | Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952) |
-| `sweep_combined` | Current factorized sweep model: Craig areal sweep × Dykstra-Parsons vertical sweep × Buckley-Leverett recovery through the local-PVI approximation | Craig (1971); Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952) |
-| `dep_pss` | Dietz pseudo-steady-state bounded-drainage decline model | Dietz (1965) |
-| `dep_decline` | Fetkovich-style exponential decline reference | Fetkovich (1971) |
-| `gas_injection` | No analytical overlay yet; simulation-only | No validated analytical reference currently wired |
-| `gas_drive` | No analytical overlay yet; simulation-only | No validated analytical reference currently wired |
-
-Important interpretation note:
-
-- `sweep_areal` random-heterogeneity variants remain simulation-dominant; the Craig curve stays as baseline context rather than a full-field heterogeneity model.
-- `sweep_combined` still uses the current first-order local-PVI approximation. Planned future upgrades include Stiles and stream-tube / flow-unit methods; see `TODO.md`.
+**Interpretation notes:**
+- `sweep_areal` random-heterogeneity variants are simulation-dominant; Craig curve serves as baseline context.
+- `sweep_combined` uses a first-order local-PVI approximation. Stiles layer-by-layer method is the planned upgrade (see `TODO.md` Phase 5).
+- `dep_pss` well-location sensitivity currently changes only the simulation; the analytical helper does not yet consume producer position (see `TODO.md` Phase 1B).
 
 ## Features
 
 ### Simulation Engine (Rust → WASM)
 
 - **IMPES solver** — implicit pressure, explicit saturation on a 3D Cartesian grid.
-- **Two-phase oil/water** flow with Corey relative permeability and optional Brooks-Corey capillary pressure.
-- **Three-phase oil/water/gas** flow (experimental): Stone II k_ro, Corey k_rg, oil-gas capillary pressure, explicit gas saturation transport, CFL check extended to gas.
-- **Corey relative permeability** — configurable endpoints (`S_wc`, `S_or`, `S_gc`, `S_gr`) and exponents (`n_w`, `n_o`, `n_g`).
-- **Brooks-Corey capillary pressure** — optional oil-water and oil-gas curves with physical caps.
+- **Two-phase oil/water** — Corey relative permeability, optional Brooks-Corey capillary pressure.
+- **Three-phase oil/water/gas** (experimental) — Stone II k_ro, Corey k_rg, oil-gas capillary pressure, explicit gas transport, CFL extended to gas.
+- **Corey relative permeability** — configurable endpoints (S_wc, S_or, S_gc, S_gr) and exponents (n_w, n_o, n_g).
+- **Brooks-Corey capillary pressure** — optional oil-water and oil-gas curves with numerical cap at 20 × P_entry.
 - **Gravity** — configurable toggle with phase-density-weighted hydrostatic head.
 - **Permeability modes**: uniform, random (optional deterministic seed), per-layer CSV input.
-- **User-editable porosity**, initial water saturation, and rock compressibility.
-- **Well model**: Peaceman PI, rate or BHP control, per-layer completion, auto BHP constraint switching. Dynamic PI update each timestep.
-- **Material-balance error** tracking returned per timestep.
-- **PCG solver convergence** warning surfaced in the UI.
-- **Modular Rust layout**: `lib.rs` (WASM API), `step.rs`, `solver.rs`, `relperm.rs`, `capillary.rs`, `well.rs`, `grid.rs`.
+- **Well model**: Peaceman PI, rate or BHP control, per-layer completion, auto BHP constraint switching, dynamic PI update.
+- **Adaptive timestepping**: CFL-based saturation limit, pressure change limit, well rate change limit.
+- **Material-balance error** tracking per timestep; PCG solver convergence warning.
 
-### Reference Solutions and Comparisons
+### Reference Solutions & Comparisons
 
-- **Buckley-Leverett** fractional-flow reference solution for waterflood cases.
-  - Welge tangent construction, Sw profile, post-breakthrough outlet Sw via bisection.
-  - Breakthrough via cumulative PVI tracking.
-- **Depletion decline** — PSS reference solution `q(t) = q₀·exp(−t/τ)` with Dietz shape-factor PI.
-  - 1D slab and 2D radial drainage geometry support.
-  - Per-layer PI summation for multi-layer cases.
-- **Known limitation**: depletion well-location sensitivity is not yet fully wired into the analytical helper. Current well-location variants change the simulator state, but the analytical helper still infers Dietz shape from geometry only.
-- Mismatch metrics: MAE, RMSE, MAPE displayed in the rate chart.
+- **Buckley-Leverett**: Welge tangent construction, Sw profile, post-breakthrough outlet Sw via bisection, cumulative PVI tracking.
+- **Depletion decline**: Dietz PSS with shape-factor table (square, rectangular, elongated); Peaceman PI with per-layer summation; 1D slab and 2D radial geometries.
+- **Sweep efficiency**: Craig five-spot areal sweep (breakthrough + post-BT growth), Dykstra-Parsons layered vertical sweep, combined recovery factor.
+- **Mismatch metrics**: MAE, RMSE, MAPE displayed in comparison charts.
 
 ### Visualization & UI
 
-- **3D property view** (Three.js) — selectable properties: pressure, water/oil/gas saturation, permeability (x/y/z), porosity. Interactive legend with Fixed / Percentile range modes.
-- **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time (Fetkovich), PVI, cumulative liquid/injection.
-- **Scenario picker** — predefined scenarios plus custom mode. Each scenario is a complete self-contained parameter set with selectable sensitivity dimensions (e.g. Mobility Ratio, Corey n_o, S_or, Capillary, Grid). See `REFACTOR.md` for the completed S1 redesign and the next cleanup/refactor candidates.
-- **Sensitivity sweeps** — select a dimension and variants; one simulation per variant; stored results feed comparison charts.
-- **Sweep efficiency charts** — analytical Craig areal sweep (2D XY), Dykstra-Parsons vertical sweep (2D XZ), and combined volumetric sweep (3D) plotted as E_A, E_V, E_A × E_V curves vs PVI.
-- **Reference-to-custom handoff** — start from any scenario and switch to custom editing while preserving source provenance.
+- **3D property view** (Three.js) — pressure, water/oil/gas saturation, permeability (x/y/z), porosity. Fixed / Percentile range modes.
+- **Rate chart** — collapsible Rates, Cumulative, Diagnostics panels with 21 curves. X-axis modes: time, log-time, PVI, cumulative liquid/injection.
+- **Scenario picker** — predefined scenarios with selectable sensitivity dimensions; custom mode for advanced exploration.
+- **Sensitivity sweeps** — select dimension and variants; one simulation per variant; stored results feed comparison charts.
+- **Sweep efficiency charts** — E_A, E_V, E_vol vs PVI with simulation and analytical overlays.
 - **Worker-based stepping** keeps UI responsive. Replay/history controls with time slider.
-- **Simulation progress indicator** (step X / N).
 - **Dark/Light theme** toggle.
 
 ### Model Validity Notes
 
-- **Sweep recovery overlays are approximate**. The current formula combines Craig areal sweep, Dykstra-Parsons vertical sweep, and Buckley-Leverett displacement efficiency through a local-PVI approximation. This is useful for qualitative comparison, but it is not a substitute for a full stream-tube or Stiles-style layer-by-layer treatment.
-- **Craig areal sweep is pattern-specific**. The implemented correlation is for confined five-spot behavior and should not be treated as a line-drive or peripheral waterflood model.
-- **Dykstra-Parsons assumes non-communicating layers**. When vertical communication is significant, the analytical vertical sweep penalty is conservative relative to the simulator.
-- **Three-phase mode remains experimental**. Gas-oil capillary pressure direction, missing residual-oil-to-gas support, and phase-by-phase material-balance diagnostics are still open items.
-- **Capillary pressure is numerically capped**. Brooks-Corey capillary pressure is limited to 20 times entry pressure in the simulator to avoid runaway sponge behavior; see `docs/UNIT_SYSTEM.md`.
+- **Sweep recovery overlays are approximate.** The current formula combines Craig, Dykstra-Parsons, and BL through a local-PVI approximation — useful for qualitative comparison, not a substitute for Stiles or stream-tube methods.
+- **Craig areal sweep is five-spot-specific.** Not applicable to line drives, peripheral floods, or other patterns.
+- **Dykstra-Parsons assumes non-communicating layers (Kv = 0).** When vertical communication is significant, the analytical penalty is conservative vs. the simulator.
+- **Three-phase mode remains experimental.** Known issues: gas-oil Pc direction inverted, Stone II missing S_org parameter, oil-phase material balance not tracked. See `TODO.md` Phase 1A.
+- **Capillary pressure capped at 20 × P_entry** for numerical stability — not a physical plateau.
+- **All PVT properties are constant** (no pressure dependence). Adequate for viscous-dominated waterfloods at moderate pressure; inaccurate near bubble point or for gas at varying pressure. Black-oil PVT extension planned in `TODO.md` Phase 4.
 
 ### Validation & Benchmarks
 
@@ -88,20 +78,34 @@ Buckley-Leverett breakthrough PVI benchmarks (Rust unit tests):
 | BL-Case-A (favorable mobility) | 0.586 | 0.609 | 4.0% |
 | BL-Case-B (adverse mobility) | 0.507 | 0.553 | 9.0% |
 
-Refined discretization (nx=96, dt=0.125d) reduces errors to about 2.5–3.1%, confirming that the remaining mismatch is dominated by coarse-grid and coarse-timestep numerical effects. The current 25–30% acceptance limits are coarse regression guards, not the target accuracy of the method.
+Refined discretization (nx=96, dt=0.125d) reduces errors to 2.5–3.1%. Current 25–30% acceptance limits are coarse regression guards; observed accuracy is much better.
 
-Current scenarios (`src/lib/catalog/scenarios.ts`) — 8 canonical entries after S1 completion:
+## Scenarios
 
-| Domain | Key | Sensitivity dimensions |
+| Domain | Key | Sensitivity Dimensions |
 |--------|-----|------------------------|
 | Waterflood | `wf_bl1d` | Mobility ratio, Corey n_o, S_or, capillary, grid |
 | Sweep | `sweep_areal` | Mobility ratio, areal heterogeneity, S_or |
 | Sweep | `sweep_vertical` | V_DP heterogeneity, mobility ratio |
-| Sweep | `sweep_combined` | Mobility × vertical heterogeneity, ideal to worst |
+| Sweep | `sweep_combined` | Mobility × vertical heterogeneity |
 | Depletion | `dep_pss` | Well location, skin, permeability, compressibility |
 | Depletion | `dep_decline` | Skin, permeability |
-| Gas | `gas_injection` | None yet |
-| Gas | `gas_drive` | None yet |
+| Gas | `gas_injection` | *Planned* |
+| Gas | `gas_drive` | *Planned* |
+
+## Roadmap
+
+See [TODO.md](TODO.md) for the phased roadmap:
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1 | Consolidate & fix (3-phase bugs, analytical gaps, legacy cleanup) | Active |
+| 2 | Custom mode redesign & UX | Planned |
+| 3 | Gas scenarios with analytical references | Planned |
+| 4 | Black-oil PVT (volatile oil, gas cap, Rs/Bo) | Planned |
+| 5 | Advanced analytics (Stiles, Warren-Root, multi-method) | Planned |
+| 6 | Multi-case inspection & data I/O | Planned |
+| 7 | Extended physics & well models | Future |
 
 ## Unit System
 
@@ -158,44 +162,40 @@ src/
 ├── app.css                         — global styles
 ├── main.ts                         — app entry point
 └── lib/
-    ├── analytical/                 — analytical Svelte components + Buckley-Leverett/depletion/sweep helper logic/tests
-    ├── charts/                     — RateChart, comparison charts, sweep charts, and chart helpers/tests
+    ├── analytical/                 — Buckley-Leverett, depletion, sweep efficiency (TS + Svelte + tests)
+    ├── charts/                     — RateChart, comparison charts, sweep charts, chart helpers/tests
     ├── visualization/              — Three.js 3D grid rendering + legend
-    ├── workers/                    — Web Worker bridge to the WASM simulator
+    ├── workers/                    — Web Worker bridge to WASM simulator
     ├── simulator-types.ts          — TypeScript interfaces for worker payloads
     ├── buildCreatePayload.ts       — payload builder + tests
-    ├── catalog/                    — scenarios.ts (new) + legacy catalog code (being removed, see REFACTOR.md)
-    ├── ui/                         — ScenarioPicker, feedback surfaces, controls, cards, and section panels
+    ├── catalog/                    — scenarios.ts (primary) + legacy catalog code (pending cleanup)
+    ├── ui/                         — ScenarioPicker, feedback surfaces, controls, cards, section panels
     ├── ui/controls/                — primitive UI controls (Button, Card, Input, Select, Collapsible)
     └── ressim/src/                 — Rust simulator core
-        ├── lib.rs                  — WASM API surface
+        ├── lib.rs                  — WASM API surface + benchmark tests
         ├── step.rs                 — IMPES timestep logic (2-phase and 3-phase)
-        ├── solver.rs               — PCG pressure solver
+        ├── solver.rs               — PCG pressure solver (Jacobi preconditioned)
         ├── relperm.rs              — Corey rel-perm (2-phase) + Stone II (3-phase)
         ├── capillary.rs            — Brooks-Corey capillary pressure (oil-water + oil-gas)
-        ├── well.rs                 — well model + validation
-        └── grid.rs                 — grid cell definitions
-scripts/
-└── build-wasm.sh                   — WASM build script
-public/
-└── cases/                          — curated preset scenarios
-docs/                               — technical reference docs (see below)
+        ├── well.rs                 — Peaceman well model + validation
+        └── grid.rs                 — grid cell definitions + transmissibility
+docs/                               — technical reference docs
+REFACTOR.md                         — architecture decisions and design specs
+TODO.md                             — phased roadmap and work items
 ```
 
 ## Key Documentation
 
 | Document | Content |
 |----------|---------|
-| `docs/DOCUMENTATION_INDEX.md` | Map of authoritative docs |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark scenario reference guidance and chart defaults |
-| `docs/P4_TWO_PHASE_BENCHMARKS.md` | BL benchmark methodology, tolerances, and results |
-| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase (Stone II) architecture and parameter reference |
-| `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Verified scientific gaps, doc/code mismatches, and recommended follow-up work |
-| `docs/UNIT_SYSTEM.md` | Comprehensive unit system reference |
-| `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
-| `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of `8.527×10⁻³` constant |
-| `REFACTOR.md` | Active simplification refactor working document |
-| `TODO.md` | Prioritized work items and product roadmap |
+| [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md) | Map of authoritative docs |
+| [docs/UNIT_SYSTEM.md](docs/UNIT_SYSTEM.md) | Comprehensive unit system and physics equations |
+| [docs/P4_TWO_PHASE_BENCHMARKS.md](docs/P4_TWO_PHASE_BENCHMARKS.md) | BL benchmark methodology, tolerances, and results |
+| [docs/THREE_PHASE_IMPLEMENTATION_NOTES.md](docs/THREE_PHASE_IMPLEMENTATION_NOTES.md) | Three-phase (Stone II) architecture and known gaps |
+| [docs/IMPLEMENTATION_REVIEW_2026-03-19.md](docs/IMPLEMENTATION_REVIEW_2026-03-19.md) | Verified scientific gaps and recommended follow-ups |
+| [docs/TRANSMISSIBILITY_FACTOR.md](docs/TRANSMISSIBILITY_FACTOR.md) | Derivation of `8.527×10⁻³` constant |
+| [REFACTOR.md](REFACTOR.md) | Active architecture work and design decisions |
+| [TODO.md](TODO.md) | Phased roadmap and prioritized work items |
 
 ## Physics Summary
 
@@ -203,27 +203,31 @@ docs/                               — technical reference docs (see below)
 
 | Feature | Details |
 |---------|---------|
-| Two-phase oil/water flow | IMPES pressure-saturation splitting |
-| Three-phase oil/water/gas flow | Stone II k_ro, Corey k_rg, oil-gas Pc, explicit gas transport (experimental) |
-| Corey relative permeability | S_wc, S_or, S_gc, S_gr; exponents n_w, n_o, n_g; maximums k_rw_max, k_ro_max, k_rg_max |
-| Brooks-Corey capillary pressure | Oil-water (optional) and oil-gas (optional, 3-phase only) |
-| Gravity segregation | Optional toggle, ρ·g·Δz head per phase |
-| Peaceman well model | Rate or BHP control, dynamic PI per timestep |
-| Well BHP constraints | Auto-switch rate→BHP if limit violated |
-| Material balance tracking | Per-timestep MB error |
-| PCG solver with convergence warning | Max 1000 iterations, residual check |
-| Saturation-weighted compressibility | Per-cell c_t = ϕ(c_o·S_o + c_w·S_w + c_g·S_g) + c_r |
-| Water or gas injection | Injector flag + `injectedFluid` parameter (`"water"` or `"gas"`) |
+| Two-phase oil/water flow | IMPES pressure-saturation splitting; validated |
+| Three-phase oil/water/gas flow | Stone II k_ro, Corey k_rg, gas Pc, gas transport (experimental) |
+| Corey relative permeability | S_wc, S_or, S_gc, S_gr; exponents n_w, n_o, n_g |
+| Brooks-Corey capillary pressure | Oil-water + oil-gas (optional); 20× entry cap |
+| Gravity segregation | Optional; ρ·g·Δz head per phase |
+| Peaceman well model | Rate or BHP control; dynamic PI; per-layer completion |
+| Material balance tracking | Per-timestep MB error (water phase; gas/oil planned) |
+| PCG solver | Jacobi preconditioned; 1000 max iterations; convergence warning |
+| Adaptive timestepping | CFL saturation, pressure, and well-rate limits |
 
-### Not Implemented / Deferred
+### Planned
 
-| Feature | Priority |
-|---------|----------|
-| Aquifer boundary conditions | Medium |
-| Horizontal / deviated wells | Medium |
-| Non-uniform cell sizes | Medium |
-| Leverett J-Function capillary scaling | Medium |
-| Capillary hysteresis | Low |
-| Per-cell capillary pressure variation | Low |
+| Feature | Phase | Priority |
+|---------|-------|----------|
+| Gas-oil BL analytical | 3 | High |
+| Black-oil PVT: Rs(P), Bo(P), Bg(P), μ(P) | 4 | High |
+| Bubble-point tracking & phase split | 4 | High |
+| Gas cap expansion/secondary gas cap | 4 | High |
+| Stiles sweep method | 5 | Medium |
+| Arps hyperbolic decline | 4 | Medium |
+| Material-balance (Havlena-Odeh) | 4 | Medium |
+| p/z diagnostic | 3 | Medium |
+| Multi-well patterns | 7 | Lower |
+| Aquifer boundary conditions | 7 | Lower |
+| Non-uniform cell sizes | 7 | Lower |
+| Horizontal/deviated wells | 7 | Lower |
 
-See [TODO.md](TODO.md) for the full work backlog and product roadmap.
+See [TODO.md](TODO.md) for the full phased roadmap.
