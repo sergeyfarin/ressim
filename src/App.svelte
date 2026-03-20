@@ -469,12 +469,12 @@
             class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
         >
             <div>
-                <h1 class="text-2xl font-bold lg:text-3xl">
-                    Simplified Reservoir Simulation Model
+                <h1 class="title-gradient text-2xl font-bold lg:text-3xl">
+                    ResSim — Black-Oil Simulator with Analytical Comparison
                 </h1>
                 <p class="text-sm opacity-80">
-                    Interactive two-phase simulation with 3D visualisation fully
-                    in browser.
+                    Compare IMPES numerical solutions against classical analytical methods with scenario-based sensitivity sweeps and 3D visualization.
+                    Runs entirely in your browser — no data sent to any server, no cookies.
                 </p>
             </div>
             <Button size="sm" variant="outline" onclick={toggleTheme}>

@@ -1,6 +1,6 @@
-# ResSim — Browser-Based 3D Reservoir Simulator
+# ResSim — Black-Oil Simulator with Analytical Comparison
 
-A two- and three-phase IMPES reservoir simulator built with **Rust/WASM** (physics core) and **Svelte 5 + Vite** (frontend). It provides interactive 3D visualization, production-rate charting with reference-solution comparisons, and benchmark-based validation — all running entirely in the browser.
+Compare IMPES numerical solutions against classical analytical methods — Buckley-Leverett, Craig sweep, Dykstra-Parsons, Dietz decline — with scenario-based sensitivity sweeps and 3D visualization. Runs entirely in the browser via Rust/WASM.
 
 ## Current State (2026-03)
 

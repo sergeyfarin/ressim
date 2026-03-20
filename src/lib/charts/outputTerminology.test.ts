@@ -28,12 +28,10 @@ describe('output terminology copy', () => {
   });
 
   it('uses output-comparison wording in the comparison chart shell and app empty states', () => {
-    expect(comparisonChartSource).toMatch(/Output Comparison/);
+    expect(comparisonChartSource).toMatch(/Comparison Plots/);
     expect(comparisonChartSource).toMatch(/Charts keep their own case selectors/);
     expect(comparisonChartSource).toMatch(/Run Table selection updates the profile and 3D outputs/);
     expect(comparisonChartSource).toMatch(/Cases/);
-    expect(outputSummarySource).toMatch(/Focused Run/);
-    expect(outputSummarySource).toMatch(/Primary Review/);
     expect(comparisonChartSource).not.toMatch(/Stored Run Comparison/);
     expect(appSource).toMatch(/Results/);
     expect(appSource).not.toMatch(/Outputs/);

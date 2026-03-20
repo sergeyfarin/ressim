@@ -46,9 +46,8 @@ describe('RateChart architecture checks', () => {
     expect(/coerceChartAxisState/.test(chartPanelSelectionSrc)).toBe(true);
   });
 
-  it('uses a shared output-summary strip above both chart shells', () => {
+  it('uses a shared output-summary strip in the live chart shell', () => {
     expect(/OutputSummaryStrip/.test(rateChartSrc)).toBe(true);
-    expect(/OutputSummaryStrip/.test(referenceComparisonChartSrc)).toBe(true);
     expect(/ui-panel-kicker/.test(outputSummaryStripSrc)).toBe(true);
   });
 

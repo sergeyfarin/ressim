@@ -1,8 +1,3 @@
-import type { BenchmarkFamily } from '../catalog/benchmarkCases';
-import type {
-    BenchmarkReferenceComparisonStatus,
-    BenchmarkRunResult,
-} from '../benchmarkRunModel';
 
 export type OutputSummaryTone = 'default' | 'positive' | 'warning';
 
@@ -52,26 +47,6 @@ function formatPercent(value: number | null | undefined, digits = 1): string {
     return `${(Number(value) * 100).toFixed(digits)}%`;
 }
 
-function formatSigned(value: number | null | undefined, digits = 2): string {
-    if (!Number.isFinite(value)) return 'n/a';
-
-    const numeric = Number(value);
-    return `${numeric >= 0 ? '+' : ''}${formatNumber(numeric, digits)}`;
-}
-
-function getOoip(params: Record<string, any>): number {
-    const nx = toFiniteNumber(params.nx) ?? 1;
-    const ny = toFiniteNumber(params.ny) ?? 1;
-    const nz = toFiniteNumber(params.nz) ?? 1;
-    const cellDx = toFiniteNumber(params.cellDx) ?? 10;
-    const cellDy = toFiniteNumber(params.cellDy) ?? 10;
-    const cellDz = toFiniteNumber(params.cellDz) ?? 1;
-    const porosity = toFiniteNumber(params.reservoirPorosity ?? params.porosity) ?? 0.2;
-    const initialSaturation = toFiniteNumber(params.initialSaturation) ?? 0.3;
-
-    return nx * ny * nz * cellDx * cellDy * cellDz * porosity * Math.max(0, 1 - initialSaturation);
-}
-
 function detectLiveScenarioLabel(activeMode: string, activeCase: string): 'Waterflood' | 'Depletion Analysis' {
     const mode = activeMode.toLowerCase();
     const activeCaseLower = activeCase.toLowerCase();
@@ -85,54 +60,6 @@ function detectLiveScenarioLabel(activeMode: string, activeCase: string): 'Water
     }
 
     return 'Depletion Analysis';
-}
-
-function formatComparisonStatus(status: BenchmarkReferenceComparisonStatus): string {
-    if (status === 'within-tolerance') return 'Within tolerance';
-    if (status === 'outside-tolerance') return 'Outside tolerance';
-    if (status === 'pending-reference') return 'Pending reference';
-    return 'Trend-based review';
-}
-
-function getComparisonTone(status: BenchmarkReferenceComparisonStatus): OutputSummaryTone {
-    if (status === 'within-tolerance') return 'positive';
-    if (status === 'outside-tolerance' || status === 'pending-reference') return 'warning';
-    return 'default';
-}
-
-function buildPrimaryReviewValue(result: BenchmarkRunResult, family: BenchmarkFamily | null): string {
-    if (family?.scenarioClass === 'buckley-leverett') {
-        return Number.isFinite(result.breakthroughPvi)
-            ? `${formatNumber(result.breakthroughPvi, 3)} PVI`
-            : 'n/a';
-    }
-
-    if (Number.isFinite(result.comparisonOutputs.oilRateRelativeErrorAtFinalTime)) {
-        return formatPercent(result.comparisonOutputs.oilRateRelativeErrorAtFinalTime, 1);
-    }
-
-    return formatComparisonStatus(result.referenceComparison.status);
-}
-
-function buildPrimaryReviewDetail(result: BenchmarkRunResult, family: BenchmarkFamily | null): string {
-    if (family?.scenarioClass === 'buckley-leverett') {
-        const parts = [
-            Number.isFinite(result.referenceComparison.referenceValue)
-                ? `Ref ${formatNumber(result.referenceComparison.referenceValue, 3)} PVI`
-                : null,
-            Number.isFinite(result.comparisonOutputs.breakthroughShiftPvi)
-                ? `Shift ${formatSigned(result.comparisonOutputs.breakthroughShiftPvi, 3)} PVI`
-                : null,
-            Number.isFinite(result.referenceComparison.relativeError)
-                ? `${formatPercent(result.referenceComparison.relativeError, 1)} error`
-                : null,
-        ].filter(Boolean);
-
-        if (parts.length > 0) return parts.join(' · ');
-    }
-
-    if (result.comparisonOutputs.errorSummary) return result.comparisonOutputs.errorSummary;
-    return result.referenceComparison.summary;
 }
 
 export function buildLiveOutputSummaryItems(input: {
@@ -201,56 +128,3 @@ export function buildLiveOutputSummaryItems(input: {
     ];
 }
 
-export function buildReferenceComparisonSummaryItems(input: {
-    family: BenchmarkFamily | null;
-    results: BenchmarkRunResult[];
-    primaryResultKey?: string | null;
-}): OutputSummaryItem[] {
-    const focusedResult = input.results.find((result) => result.key === input.primaryResultKey)
-        ?? input.results.find((result) => result.variantKey === null)
-        ?? input.results[0]
-        ?? null;
-
-    if (!focusedResult) return [];
-
-    const finalRecovery = lastFinite(focusedResult.recoverySeries);
-    const finalPressure = lastFinite(focusedResult.pressureSeries);
-    const ooip = getOoip(focusedResult.params);
-    const finalCumOil = Number.isFinite(finalRecovery) && ooip > 1e-12
-        ? (finalRecovery as number) * ooip
-        : null;
-
-    return [
-        {
-            label: 'Focused Run',
-            value: focusedResult.label,
-            detail: `${input.results.length} stored run${input.results.length === 1 ? '' : 's'} · ${formatComparisonStatus(focusedResult.referenceComparison.status)}`,
-            tone: getComparisonTone(focusedResult.referenceComparison.status),
-        },
-        {
-            label: 'Primary Review',
-            value: buildPrimaryReviewValue(focusedResult, input.family),
-            detail: buildPrimaryReviewDetail(focusedResult, input.family),
-            tone: getComparisonTone(focusedResult.referenceComparison.status),
-        },
-        {
-            label: 'Recovery',
-            value: formatPercent(finalRecovery, 1),
-            detail: [
-                Number.isFinite(finalCumOil) ? `Cum oil ${formatNumber(finalCumOil, 0)} m3` : null,
-                Number.isFinite(focusedResult.comparisonOutputs.recoveryDifferenceAtFinalCoordinate)
-                    ? `Delta ${formatSigned((focusedResult.comparisonOutputs.recoveryDifferenceAtFinalCoordinate as number) * 100, 1)}%`
-                    : null,
-            ].filter(Boolean).join(' · ') || 'Recovery review stays in the chart panels',
-        },
-        {
-            label: 'Avg Pressure',
-            value: Number.isFinite(finalPressure)
-                ? `${formatNumber(finalPressure, 1)} bar`
-                : 'n/a',
-            detail: Number.isFinite(focusedResult.comparisonOutputs.pressureDifferenceAtFinalTime)
-                ? `Delta ${formatSigned(focusedResult.comparisonOutputs.pressureDifferenceAtFinalTime, 1)} bar`
-                : focusedResult.referencePolicy.referenceLabel,
-        },
-    ];
-}

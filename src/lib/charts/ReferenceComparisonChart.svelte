@@ -1,6 +1,5 @@
 <script lang="ts">
     import ChartSubPanel from './ChartSubPanel.svelte';
-    import OutputSummaryStrip from './OutputSummaryStrip.svelte';
     import ToggleGroup from '../ui/controls/ToggleGroup.svelte';
     import type { BenchmarkFamily } from '../catalog/benchmarkCases';
     import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -17,7 +16,6 @@
         RateChartScalePreset,
         RateChartXAxisMode,
     } from './rateChartLayoutConfig';
-    import { buildReferenceComparisonSummaryItems } from './outputSummary';
     import {
         buildReferenceComparisonModel,
         getReferenceComparisonCaseColor,
@@ -321,13 +319,6 @@
         curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
         scalePreset: 'pressure',
     }));
-    const summaryItems = $derived.by(() => (
-        buildReferenceComparisonSummaryItems({
-            family,
-            results: visibleResults,
-        })
-    ));
-
     const sweepPanelEntries = $derived.by(() => {
         const sp = overlayModel.sweepPanel;
         if (!sp) return null;
@@ -345,13 +336,9 @@
     >
         <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="ui-section-kicker opacity-50">
-                Output Comparison
+                Comparison Plots
             </div>
-            {#if overlayModel.orderedResults.length > 0}
-                <div class="ui-support-copy">
-                    {visibleResults.length} of {overlayModel.orderedResults.length} stored run(s) shown
-                </div>
-            {:else if overlayModel.previewCases.length > 0}
+            {#if overlayModel.previewCases.length > 0 && overlayModel.orderedResults.length === 0}
                 <div class="ui-support-copy text-muted-foreground/70">
                     Analytical preview — {overlayModel.previewCases.length} variant(s)
                 </div>
@@ -362,7 +349,6 @@
                 Charts keep their own case selectors. Run Table selection updates the profile and 3D outputs.
             </div>
         {/if}
-        <OutputSummaryStrip items={summaryItems} />
         {#if caseVolumeWarning}
             <div class="rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
                 {caseVolumeWarning}

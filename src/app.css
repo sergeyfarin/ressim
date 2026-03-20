@@ -279,6 +279,14 @@ body {
       rgba(18, 18, 18, 0.6) 100%);
 }
 
+/* ── Page title gradient (reservoir colormap: water-blue → teal → amber/oil) ── */
+.title-gradient {
+  background: linear-gradient(to right, #0369a1 0%, #06b6d4 45%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 /* ── Compact Tables (for Input Panels) ── */
 .compact-table {
   font-family: var(--font-mono);
