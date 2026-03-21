@@ -3,12 +3,13 @@ import type { Scenario } from '../scenarios';
 export const gas_drive: Scenario = {
     key: 'gas_drive',
     label: 'Solution Gas Drive',
-    description: 'Pressure depletion with initial free gas — models a reservoir already below bubble point. Experimental — known three-phase physics issues (see TODO.md).',
+    description: 'Pressure depletion with initial free gas. Note: without Rs(P) tracking, this is simulated as immiscible depletion (constant PVT) with free gas expansion — qualitatively useful but not quantitatively accurate for below-bubble-point behavior.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay while three-phase depletion physics remains experimental.',
     analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
     scenarioClass: '3phase',
     domain: 'gas',
     chartPreset: 'gas',
+    defaultSensitivityDimensionKey: 'sg_init',
     capabilities: {
         analyticalMethod: 'none',
         showSweepPanel: false,
@@ -55,5 +56,90 @@ export const gas_drive: Scenario = {
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
     },
-    sensitivities: [],
+    sensitivities: [
+        {
+            key: 'sg_init',
+            label: 'Initial Gas Saturation',
+            description: 'Vary the initial gas saturation to explore the effect of free gas volume at the start of pressure depletion.',
+            variants: [
+                {
+                    key: 'sg_low',
+                    label: 'S_g = 0.05',
+                    description: 'At critical gas saturation — gas is initially immobile.',
+                    paramPatch: { initialGasSaturation: 0.05 },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'sg_base',
+                    label: 'S_g = 0.08  (base)',
+                    description: 'Base case — initial free gas slightly above critical saturation.',
+                    paramPatch: {},
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'sg_high',
+                    label: 'S_g = 0.15',
+                    description: 'High initial gas saturation — more free gas expansion support.',
+                    paramPatch: { initialGasSaturation: 0.15 },
+                    affectsAnalytical: false,
+                },
+            ],
+        },
+        {
+            key: 'viscosity',
+            label: 'Oil Viscosity',
+            description: 'Vary oil viscosity to explore how it affects the mobility ratio and liquid recovery during gas expansion.',
+            variants: [
+                {
+                    key: 'visc_light',
+                    label: 'μ_o = 0.5 cp  (light)',
+                    description: 'Light oil — higher mobility, faster oil production.',
+                    paramPatch: { mu_o: 0.5 },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'visc_base',
+                    label: 'μ_o = 2.0 cp  (base)',
+                    description: 'Base viscosity.',
+                    paramPatch: {},
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'visc_heavy',
+                    label: 'μ_o = 10.0 cp  (heavy)',
+                    description: 'Heavy oil — lower mobility, slower oil production.',
+                    paramPatch: { mu_o: 10.0 },
+                    affectsAnalytical: false,
+                },
+            ],
+        },
+        {
+            key: 'perm',
+            label: 'Permeability',
+            description: 'Permeability controls total flow rate, affecting how quickly the reservoir depressurizes.',
+            variants: [
+                {
+                    key: 'perm_low',
+                    label: 'k = 10 mD  (tight)',
+                    description: 'Low permeability — slower depletion.',
+                    paramPatch: { uniformPermX: 10, uniformPermY: 10, uniformPermZ: 1 },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'perm_base',
+                    label: 'k = 100 mD  (base)',
+                    description: 'Base permeability.',
+                    paramPatch: {},
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'perm_high',
+                    label: 'k = 1000 mD  (high)',
+                    description: 'High permeability — faster depletion.',
+                    paramPatch: { uniformPermX: 1000, uniformPermY: 1000, uniformPermZ: 100 },
+                    affectsAnalytical: false,
+                },
+            ],
+        },
+    ],
 };

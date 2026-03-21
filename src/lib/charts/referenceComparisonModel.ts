@@ -71,6 +71,8 @@ type DerivedRunSeries = {
     cumulativeOil: Array<number | null>;
     cumulativeInjection: Array<number | null>;
     cumulativeLiquid: Array<number | null>;
+    cumulativeGas: Array<number | null>;
+    p_z: Array<number | null>;
     pvi: Array<number | null>;
     pvp: Array<number | null>;
 };
@@ -209,6 +211,10 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
 
     const cumulativeInjectionSeries: Array<number | null> = [];
     const cumulativeLiquidSeries: Array<number | null> = [];
+    const cumulativeGasSeries: Array<number | null> = [];
+    const pZSeries: Array<number | null> = [];
+    
+    let cumulativeGas = 0;
 
     for (let index = 0; index < result.rateHistory.length; index += 1) {
         const point = result.rateHistory[index];
@@ -217,8 +223,16 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
             : Math.max(0, toFiniteNumber(point.time, 0));
         cumulativeInjection += Math.max(0, toFiniteNumber(point.total_injection, 0)) * dt;
         cumulativeLiquid += Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0))) * dt;
+        cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
+        
         cumulativeInjectionSeries.push(cumulativeInjection);
         cumulativeLiquidSeries.push(cumulativeLiquid);
+        cumulativeGasSeries.push(cumulativeGas);
+        
+        const pressure = toFiniteNumber(point.avg_reservoir_pressure, 0);
+        // Simple z-factor = 1 for now. If needed, we can apply a real gas correlation here.
+        const zFactor = 1.0;
+        pZSeries.push(pressure > 0 ? pressure / zFactor : null);
     }
 
     return {
@@ -242,6 +256,8 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
         )),
         cumulativeInjection: cumulativeInjectionSeries,
         cumulativeLiquid: cumulativeLiquidSeries,
+        cumulativeGas: cumulativeGasSeries,
+        p_z: pZSeries,
         pvi: [...result.pviSeries],
         pvp: cumulativeLiquidSeries.map((value) => (
             poreVolume > 1e-12 && Number.isFinite(value) ? Number(value) / poreVolume : null
@@ -258,6 +274,7 @@ function buildXAxisValues(
     if (xAxisMode === 'pvp') return [...derived.pvp];
     if (xAxisMode === 'cumInjection') return [...derived.cumulativeInjection];
     if (xAxisMode === 'cumLiquid') return [...derived.cumulativeLiquid];
+    if (xAxisMode === 'cumGas') return [...derived.cumulativeGas];
     if (xAxisMode === 'logTime') return derived.time.map((value) => (value > 0 ? Math.log10(value) : null));
     if (xAxisMode === 'tD' && Number.isFinite(tau) && (tau as number) > 0) {
         return derived.time.map((value) => value / (tau as number));
@@ -1247,6 +1264,24 @@ export function buildReferenceComparisonModel(input: {
                 xValues,
                 derived.pressure,
             );
+            appendSeries(
+                panels.diagnostics,
+                {
+                    label: `${result.label} P/z`,
+                    curveKey: 'p_z_sim',
+                    caseKey: result.key,
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
+                    color,
+                    borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                    yAxisID: 'y',
+                    defaultVisible,
+                },
+                xValues,
+                derived.p_z,
+            );
             return;
         }
 
@@ -1329,6 +1364,19 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.pressure);
+            appendSeries(panels.diagnostics, {
+                label: `${result.label} P/z`,
+                curveKey: 'p_z_sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.p_z);
             return;
         }
 
@@ -1402,6 +1450,24 @@ export function buildReferenceComparisonModel(input: {
             },
             xValues,
             derived.pressure,
+        );
+        appendSeries(
+            panels.diagnostics,
+            {
+                label: `${result.label} P/z`,
+                curveKey: 'p_z_sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            },
+            xValues,
+            derived.p_z,
         );
     });
 

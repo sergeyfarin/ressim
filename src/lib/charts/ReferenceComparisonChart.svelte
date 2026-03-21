@@ -98,6 +98,22 @@
         }
     });
 
+    const isGasContext = $derived(
+        family?.analyticalMethod === 'gas-oil-bl' || 
+        family?.key === 'gas_drive' || 
+        family?.key === 'gas_injection' ||
+        (results[0]?.params?.injectedFluid === 'gas') ||
+        (results[0]?.params?.initialGasSaturation > 0) ||
+        (previewBaseParams?.injectedFluid === 'gas') ||
+        (previewBaseParams?.initialGasSaturation > 0)
+    );
+
+    $effect(() => {
+        if (isGasContext && layoutConfig?.rateChart?.diagnosticsExpanded === undefined) {
+            diagnosticsExpanded = true;
+        }
+    });
+
     const overlayModel = $derived(
         buildReferenceComparisonModel({
             family,
@@ -331,8 +347,8 @@
         scalePreset: 'cumulative_volumes',
     }));
     const diagnosticsPanel = $derived(resolvePanelDefinition('diagnostics', {
-        title: 'Pressure',
-        curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
+        title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
+        curveKeys: isGasContext ? ['p_z_sim', 'p_z_reference'] : ['avg-pressure-sim', 'avg-pressure-reference'],
         scalePreset: 'pressure',
     }));
     const volumesPanel = $derived(resolvePanelDefinition('volumes', {

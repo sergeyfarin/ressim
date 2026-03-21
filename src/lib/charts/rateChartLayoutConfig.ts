@@ -5,7 +5,8 @@ export type RateChartXAxisMode =
     | 'pvi'
     | 'pvp'
     | 'cumLiquid'
-    | 'cumInjection';
+    | 'cumInjection'
+    | 'cumGas';
 
 export type RateChartPanelKey = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'volumes' | 'oil_rate';
 

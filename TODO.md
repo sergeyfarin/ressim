@@ -162,16 +162,16 @@ All three-phase correctness fixes from Phase 1A are prerequisites.
 
 ### 3C. Solution Gas Drive Scenario
 
-- [ ] Define `gas_drive` base params: initially undersaturated oil with gas saturation above S_gc, BHP below bubble point
-- [ ] Add sensitivity dimensions: initial gas saturation, oil viscosity, permeability
-- [ ] Note: without Rs(P) tracking (Phase 4), solution gas drive is simulated as immiscible depletion with free gas — qualitatively useful but not quantitatively accurate for below-bubble-point behavior
+- [x] Define `gas_drive` base params: initially undersaturated oil with gas saturation above S_gc, BHP below bubble point
+- [x] Add sensitivity dimensions: initial gas saturation, oil viscosity, permeability
+- [x] Note: without Rs(P) tracking (Phase 4), solution gas drive is simulated as immiscible depletion with free gas — qualitatively useful but not quantitatively accurate for below-bubble-point behavior
 
 ### 3D. Gas Material Balance Diagnostics
 
-- [ ] Add p/z diagnostic output panel — plot cumulative gas produced vs (P_i − P)/z for each timestep
-- [ ] Straight line = depleting gas reservoir; curvature = aquifer influx or phase change
-- [ ] Requires z-factor correlation (even simple c_g ≈ 1/P) — add as configurable option
-- [ ] High diagnostic value for validating gas simulation physics
+- [x] Add p/z diagnostic output panel — plot cumulative gas produced vs (P_i − P)/z for each timestep
+- [x] Straight line = depleting gas reservoir; curvature = aquifer influx or phase change
+- [x] Requires z-factor correlation (even simple c_g ≈ 1/P) — add as configurable option
+- [x] High diagnostic value for validating gas simulation physics
 
 ---
 
