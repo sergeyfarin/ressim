@@ -1923,7 +1923,7 @@ export function buildReferenceComparisonModel(input: {
             })()
             : [];
 
-    const sweepPanel = (family.scenarioClass === 'buckley-leverett' && family.showSweepPanel === true)
+    const sweepPanel = (family.showSweepPanel === true)
         ? buildSweepPanel({
             orderedResults,
             theme: input.theme ?? 'dark',

@@ -93,7 +93,7 @@
 
 
     $effect(() => {
-        if (isPreviewMode && (previewScenarioClass === 'buckley-leverett' || previewScenarioClass === 'waterflood')) {
+        if (isPreviewMode && (previewScenarioClass === 'buckley-leverett' || previewScenarioClass === 'waterflood' || previewScenarioClass === 'gas-oil-bl')) {
             xAxisMode = 'pvi';
         }
     });
@@ -605,7 +605,7 @@
         />
     {/if}
 
-    {#if family?.scenarioClass === 'buckley-leverett' && sweepPanelCurves.length > 0}
+    {#if family?.showSweepPanel && sweepPanelCurves.length > 0}
         <ChartSubPanel
             panelId="comparison-sweep"
             title="Sweep Efficiency"

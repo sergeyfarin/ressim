@@ -456,29 +456,32 @@ class SimulationStoreImpl {
     activeScenarioAsFamily = $derived.by((): import('../catalog/benchmarkCases').BenchmarkFamily | null => {
         const sc = this.activeScenarioObject;
         if (!sc || this.isCustomMode) return null;
-        const scenarioClass = sc.scenarioClass === 'waterflood' ? 'buckley-leverett' as const
-            : sc.scenarioClass === 'gas-oil-bl' ? 'gas-oil-bl' as const
+        const caps = sc.capabilities;
+
+        // Map analyticalMethod → BenchmarkScenarioClass for the legacy benchmark layer.
+        const scenarioClass = caps.analyticalMethod === 'buckley-leverett' ? 'buckley-leverett' as const
+            : caps.analyticalMethod === 'gas-oil-bl' ? 'gas-oil-bl' as const
             : 'depletion' as const;
+
+        const xAxis = caps.analyticalNativeXAxis as import('../catalog/benchmarkCases').BenchmarkXAxisKey;
+        const panels = (caps.primaryRateCurve === 'oil-rate'
+            ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
+            : ['watercut-breakthrough', 'recovery', 'pressure']
+        ) as import('../catalog/benchmarkCases').BenchmarkPanelKey[];
+
         return {
             key: sc.key,
             baseCaseKey: sc.key,
             scenarioClass,
             sensitivityAxes: [],
             reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
-            displayDefaults: {
-                xAxis: (sc.scenarioClass === 'waterflood' || sc.scenarioClass === 'gas-oil-bl' ? 'pvi' : 'time') as import('../catalog/benchmarkCases').BenchmarkXAxisKey,
-                panels: (sc.scenarioClass === 'waterflood'
-                    ? ['watercut-breakthrough', 'recovery', 'pressure']
-                    : sc.scenarioClass === 'gas-oil-bl'
-                    ? ['watercut-breakthrough', 'recovery', 'pressure']
-                    : ['oil-rate', 'cumulative-oil', 'decline-diagnostics']) as import('../catalog/benchmarkCases').BenchmarkPanelKey[],
-            },
+            displayDefaults: { xAxis, panels },
             stylePolicy: { colorBy: 'case' as const, lineStyleBy: 'quantity-or-reference' as const, separatePressurePanel: true },
             runPolicy: 'compare-to-reference' as const,
             label: sc.label,
             description: sc.description,
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
-            showSweepPanel: sc.domain === 'sweep',
+            showSweepPanel: caps.showSweepPanel,
         };
     });
 
@@ -1656,10 +1659,8 @@ class SimulationStoreImpl {
         const defaultDim = scenario.sensitivities.find((d) => d.key === defaultDimKey) ?? null;
         this.activeVariantKeys = defaultDim ? getDefaultVariantKeys(defaultDim) : [];
 
-        // Resolve CaseMode from scenarioClass.
-        // NOTE: '3phase' scenarios currently fall through to 'dep' — this is a known
-        // limitation. Gas scenarios should set activeMode to '3p' in a future pass.
-        const nextMode: CaseMode = scenario.scenarioClass === 'waterflood' ? 'wf' : 'dep';
+        // CaseMode is declared by the scenario's capabilities — no scenarioClass branching.
+        const nextMode: CaseMode = scenario.capabilities.caseMode;
         this.activeMode = nextMode;
         this.toggles = getDefaultToggles(nextMode);
         this.explicitLibraryEntryKey = null;
@@ -1715,8 +1716,10 @@ class SimulationStoreImpl {
             return [];
         }
 
-        const scenarioClass = scenario.scenarioClass === 'waterflood'
+        const scenarioClass = scenario.capabilities.analyticalMethod === 'buckley-leverett'
             ? 'buckley-leverett' as const
+            : scenario.capabilities.analyticalMethod === 'gas-oil-bl'
+            ? 'gas-oil-bl' as const
             : 'depletion' as const;
         const baseParams = scenario.params;
         const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };

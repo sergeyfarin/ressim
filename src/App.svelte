@@ -42,8 +42,8 @@
     let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
     const activeReferenceFamily = $derived(scenario.activeScenarioAsFamily ?? scenario.activeReferenceFamily);
-    // True only for sweep-domain scenarios — hides the sweep efficiency panel for 1D waterflood/depletion.
-    const showSweepPanel = $derived(scenario.activeScenarioObject?.domain === 'sweep');
+    // True only for sweep scenarios — reads from scenario capabilities.
+    const showSweepPanel = $derived(scenario.activeScenarioObject?.capabilities.showSweepPanel ?? false);
 
     // Simulation sweep efficiency time series — computed from per-cell saturation snapshots.
     // Only populated for sweep-domain scenarios; null otherwise.
@@ -258,9 +258,9 @@
             return "saturation_gas" as const;
         }
 
-        const domain = scenario.activeScenarioObject?.domain;
-        if (domain === "waterflood" || domain === "sweep") {
-            return "saturation_water" as const;
+        const default3D = scenario.activeScenarioObject?.capabilities.default3DScalar;
+        if (default3D) {
+            return default3D;
         }
 
         return null;

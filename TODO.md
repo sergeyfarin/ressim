@@ -28,6 +28,35 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 - **Pre-existing test failures** — 7 UI/terminology tests (`modePanelFlows`, `outputTerminology`, `terminologyCopy`, `appThemeTypography`, `appStoreDomainWiring`, `ratechart-usage`) and 2 `referenceComparisonModel` tests fail on clean master. Not caused by 1B changes.
 - **Dietz C_A log compression** — the 55× shape factor ratio (center vs corner) compresses to only ~30% PI difference through the `ln(A/C_A)` denominator. This limits the visual divergence between analytical curves; the scenario description should set appropriate expectations.
 
+### 1C-caps. Scenario Capability Declarations (Phase 1 Refactor)
+
+`ScenarioCapabilities` type added to `Scenario` — each scenario explicitly declares its analytical method, primary rate curve, sweep panel, x-axis, injector presence, case mode, 3D default, and three-phase gate. Consumer code reads capabilities instead of branching on `scenarioClass`/`domain`.
+
+**Completed (2026-03-21):**
+- [x] `ScenarioCapabilities` type with 9 behavioral fields replaces scattered conditional logic
+- [x] All 8 scenarios split into per-scenario files under `src/lib/catalog/scenarios/` for easy comparison
+- [x] `scenarios.ts` restructured as barrel file (types + chart presets + imports + lookup helpers)
+- [x] `CUSTOM_MODE_CAPABILITIES` default for custom mode (no scenario object)
+- [x] `simulationStore.svelte.ts`: `activeScenarioAsFamily` adapter, `CaseMode` resolution, sweep specs all use capabilities
+- [x] `App.svelte`: `showSweepPanel`, `default3DProperty` use capabilities
+- [x] `ScenarioPicker.svelte`: `requiresThreePhaseMode` replaces `domain !== 'gas' || activeMode === '3p'`
+- [x] `referenceComparisonModel.ts`: sweep panel gate simplified to `family.showSweepPanel`
+- [x] `ReferenceComparisonChart.svelte`: sweep panel gate and gas-oil-bl preview axis fixed
+
+**Remaining consumer-side branching (intentionally retained):**
+- `referenceComparisonModel.ts`: 8 sites branch on `BenchmarkFamily.scenarioClass` (consumer interface) — legitimate domain logic selecting which analytical curves to draw. Fed correctly through the adapter chain.
+- `referenceChartConfig.ts`: 2 sites branch on `BenchmarkFamily.scenarioClass` — old benchmark chart layouts.
+- `benchmarkRunModel.ts`: 3 sites branch on `BenchmarkRunSpec.scenarioClass` — reference policy and diagnostics routing.
+- `benchmarkDisclosure.ts`: 1 site branch on `BenchmarkScenarioClass` — reference label text.
+- `ReferenceComparisonChart.svelte`: 6 sites branch on `family.scenarioClass` — chart panel layout defaults.
+
+These use `BenchmarkScenarioClass` (the consumer interface), not `ScenarioClass` (the scenario definition). The adapter correctly maps `capabilities.analyticalMethod` → `BenchmarkScenarioClass`. Full elimination requires replacing `BenchmarkScenarioClass` with `AnalyticalMethod` across the benchmark subsystem (deferred to 1C legacy cleanup).
+
+**Discovered issues:**
+- `gas_injection` scenario was silently falling through to `CaseMode: 'dep'` instead of `'3p'` — now explicitly declared as `'dep'` in capabilities with a TODO to change to `'3p'` when three-phase mode is complete
+- `gas_drive` same issue — `caseMode: 'dep'` explicitly declared, should be `'3p'` later
+- `ReferenceComparisonChart.svelte` preview x-axis effect was missing `'gas-oil-bl'` — gas-oil scenarios in preview mode weren't defaulting to PVI x-axis (fixed)
+
 ### 1C. Legacy Cleanup (Phase 1 Step 7 Remainder)
 
 Eight legacy catalog/benchmark files still have active production dependencies. The blocker is that `ReferenceExecutionCard`, `benchmarkRunModel`, and the chart layer still import from old catalog files.
