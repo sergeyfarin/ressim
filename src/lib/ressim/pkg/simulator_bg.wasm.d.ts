@@ -11,6 +11,7 @@ export const reservoirsimulator_getDimensions: (a: number) => any;
 export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
 export const reservoirsimulator_getPressures: (a: number) => [number, number];
 export const reservoirsimulator_getRateHistory: (a: number) => any;
+export const reservoirsimulator_getRs: (a: number) => [number, number];
 export const reservoirsimulator_getSatGas: (a: number) => [number, number];
 export const reservoirsimulator_getSatOil: (a: number) => [number, number];
 export const reservoirsimulator_getSatWater: (a: number) => [number, number];

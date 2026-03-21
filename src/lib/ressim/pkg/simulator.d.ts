@@ -29,6 +29,10 @@ export class ReservoirSimulator {
     getPressures(): Float64Array;
     getRateHistory(): any;
     /**
+     * Get dissolved gas ratio array [m3/m3]
+     */
+    getRs(): Float64Array;
+    /**
      * Get gas saturation array (zeros when running in 2-phase mode)
      */
     getSatGas(): Float64Array;
@@ -148,6 +152,7 @@ export interface InitOutput {
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
+    readonly reservoirsimulator_getRs: (a: number) => [number, number];
     readonly reservoirsimulator_getSatGas: (a: number) => [number, number];
     readonly reservoirsimulator_getSatOil: (a: number) => [number, number];
     readonly reservoirsimulator_getSatWater: (a: number) => [number, number];

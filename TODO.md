@@ -195,11 +195,11 @@ Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure
 
 ### 4B. Bubble-Point Tracking & Phase Split
 
-- [ ] Track dissolved gas per cell: `Rs_cell(P_cell)` — gas comes out of solution when local pressure drops below P_b
-- [ ] Phase split logic: if `P < P_b`, compute `Rs(P)` and liberate excess gas → increase `S_g`
-- [ ] Secondary gas cap formation: cells that drop below P_b develop free gas saturation even if initially `S_g = 0`
-- [ ] Gas re-dissolution: if pressure rises above P_b (due to injection), gas dissolves back into oil
-- [ ] Modify accumulation term in `step.rs`: use time-dependent Bo, Bg when computing compressibility and phase volumes
+- [x] Track dissolved gas per cell: `Rs_cell(P_cell)` — gas comes out of solution when local pressure drops below P_b
+- [x] Phase split logic: if `P < P_b`, compute `Rs(P)` and liberate excess gas → increase `S_g`
+- [x] Secondary gas cap formation: cells that drop below P_b develop free gas saturation even if initially `S_g = 0`
+- [x] Gas re-dissolution: if pressure rises above P_b (due to injection), gas dissolves back into oil
+- [x] Modify accumulation term in `step.rs`: use time-dependent Bo, Bg when computing compressibility and phase volumes
 
 ### 4C. Updated Pressure Equation
 

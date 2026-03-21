@@ -147,6 +147,8 @@ pub struct ReservoirSimulator {
     /// Gas density [kg/m³]
     pub(crate) rho_g: f64,
     pub(crate) pvt_table: Option<pvt::PvtTable>,
+    /// Dissolved gas ratio at standard conditions [m³ gas / m³ oil] per cell
+    pub(crate) rs: Vec<f64>,
 }
 
 #[wasm_bindgen]
@@ -203,6 +205,22 @@ impl ReservoirSimulator {
         self.pvt.rho_w
     }
 
+    pub(crate) fn get_b_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            table.interpolate(p).bo_m3m3
+        } else {
+            self.b_o // constant fallback
+        }
+    }
+
+    pub(crate) fn get_b_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            table.interpolate(p).bg_m3m3
+        } else {
+            1.0
+        }
+    }
+
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -217,6 +235,7 @@ impl ReservoirSimulator {
         let sat_water = vec![0.3; n];
         let sat_oil = vec![0.7; n];
         let sat_gas = vec![0.0; n];
+        let rs = vec![0.0; n];
         ReservoirSimulator {
             nx,
             ny,
@@ -268,6 +287,7 @@ impl ReservoirSimulator {
             c_g: 1e-4,
             rho_g: 10.0,
             pvt_table: None,
+            rs,
         }
     }
 
@@ -820,7 +840,13 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setPvtTable)]
     pub fn set_pvt_table(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let rows: Vec<pvt::PvtRow> = serde_wasm_bindgen::from_value(table_js)?;
-        self.pvt_table = Some(pvt::PvtTable::new(rows, self.pvt.c_o));
+        let table = pvt::PvtTable::new(rows, self.pvt.c_o);
+        // Initialize rs array for all cells based on initial pressure
+        let n = self.nx * self.ny * self.nz;
+        for i in 0..n {
+            self.rs[i] = table.interpolate(self.pressure[i]).rs_m3m3;
+        }
+        self.pvt_table = Some(table);
         Ok(())
     }
 
@@ -840,6 +866,12 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = getSatGas)]
     pub fn get_sat_gas(&self) -> Vec<f64> {
         self.sat_gas.clone()
+    }
+
+    /// Get dissolved gas ratio array [m3/m3]
+    #[wasm_bindgen(js_name = getRs)]
+    pub fn get_rs(&self) -> Vec<f64> {
+        self.rs.clone()
     }
 
     /// Enable or disable the three-phase simulation mode

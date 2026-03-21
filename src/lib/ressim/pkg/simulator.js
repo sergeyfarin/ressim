@@ -96,6 +96,16 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
+     * Get dissolved gas ratio array [m3/m3]
+     * @returns {Float64Array}
+     */
+    getRs() {
+        const ret = wasm.reservoirsimulator_getRs(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * Get gas saturation array (zeros when running in 2-phase mode)
      * @returns {Float64Array}
      */

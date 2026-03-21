@@ -231,7 +231,7 @@ impl ReservoirSimulator {
             self.update_dynamic_well_productivity_indices();
 
             // Calculate fluxes and stability for the remaining time step
-            let (p_new, delta_water_m3, delta_gas_m3, stable_dt_factor, pcg_converged, pcg_iters) =
+            let (p_new, delta_water_m3, delta_gas_m3, delta_dg_sc, stable_dt_factor, pcg_converged, pcg_iters) =
                 self.calculate_fluxes(remaining_dt);
 
             // Track solver convergence warning
@@ -247,17 +247,19 @@ impl ReservoirSimulator {
             let final_p;
             let final_delta_water_m3;
             let final_delta_gas_m3;
+            let final_delta_dg_sc;
 
             if stable_dt_factor < 1.0 {
                 // Timestep is too large, reduce it based on CFL condition
                 actual_dt = remaining_dt * stable_dt_factor * 0.9; // Use 90% for safety
 
                 // Re-solve pressure and fluxes with reduced dt for accuracy.
-                let (p_resolv, dw_resolv, dg_resolv, _factor2, pcg_conv2, pcg_iters2) =
+                let (p_resolv, dw_resolv, dg_resolv, ddg_resolv, _factor2, pcg_conv2, pcg_iters2) =
                     self.calculate_fluxes(actual_dt);
                 final_p = p_resolv;
                 final_delta_water_m3 = dw_resolv;
                 final_delta_gas_m3 = dg_resolv;
+                final_delta_dg_sc = ddg_resolv;
 
                 if !pcg_conv2 {
                     self.last_solver_warning = format!(
@@ -272,6 +274,7 @@ impl ReservoirSimulator {
                 final_p = p_new;
                 final_delta_water_m3 = delta_water_m3;
                 final_delta_gas_m3 = delta_gas_m3;
+                final_delta_dg_sc = delta_dg_sc;
             }
 
             if !actual_dt.is_finite() || actual_dt <= 1e-12 {
@@ -288,6 +291,7 @@ impl ReservoirSimulator {
                 &final_p,
                 &final_delta_water_m3,
                 &final_delta_gas_m3,
+                &final_delta_dg_sc,
                 actual_dt,
             );
 
@@ -412,10 +416,10 @@ impl ReservoirSimulator {
     fn calculate_fluxes(
         &self,
         delta_t_days: f64,
-    ) -> (DVector<f64>, Vec<f64>, Vec<f64>, f64, bool, usize) {
+    ) -> (DVector<f64>, Vec<f64>, Vec<f64>, Vec<f64>, f64, bool, usize) {
         let n_cells = self.nx * self.ny * self.nz;
         if n_cells == 0 {
-            return (DVector::zeros(0), vec![], vec![], 1.0, true, 0);
+            return (DVector::zeros(0), vec![], vec![], vec![], 1.0, true, 0);
         }
         let dt_days = delta_t_days.max(1e-12);
 
@@ -598,6 +602,7 @@ impl ReservoirSimulator {
         // Track total water and gas volume change [m³] per cell over dt_days
         let mut delta_water_m3 = vec![0.0f64; n_cells];
         let mut delta_gas_m3 = vec![0.0f64; n_cells];
+        let mut delta_dg_sc = vec![0.0f64; n_cells];
         let mut max_sat_change = 0.0;
 
         // Interface fluxes: compute once per neighbor pair and distribute upwind
@@ -697,6 +702,27 @@ impl ReservoirSimulator {
 
                             delta_gas_m3[id] -= dv_gas;
                             delta_gas_m3[nid] += dv_gas;
+
+                            // Oil flux to advect Dissolved Gas (Rs)
+                            if self.pvt_table.is_some() {
+                                let grav_o = self.gravity_head_bar(depth_i, depth_j, self.get_rho_o(self.pressure[id]));
+                                let dphi_o = (p_i - p_j) - grav_o;
+                                let (_, lam_o_i, _) = self.phase_mobilities_3p(id);
+                                let (_, lam_o_j, _) = self.phase_mobilities_3p(nid);
+                                let lam_o_up = if dphi_o >= 0.0 { lam_o_i } else { lam_o_j };
+                                let t_o = geom_t * lam_o_up;
+                                
+                                let oil_flux_res_day = t_o * dphi_o;
+                                let p_upwind = if dphi_o >= 0.0 { p_i } else { p_j };
+                                let oil_flux_sc_day = oil_flux_res_day / self.get_b_o(p_upwind);
+                                
+                                let rs_upwind = if dphi_o >= 0.0 { self.rs[id] } else { self.rs[nid] };
+                                let dg_flux_sc_day = oil_flux_sc_day * rs_upwind;
+                                let dv_dg_sc = dg_flux_sc_day * dt_days;
+                                
+                                delta_dg_sc[id] -= dv_dg_sc;
+                                delta_dg_sc[nid] += dv_dg_sc;
+                            }
                         }
                     }
                 }
@@ -711,16 +737,25 @@ impl ReservoirSimulator {
                 if self.three_phase_mode {
                     // Three-phase: injection fluid depends on injectedFluid setting;
                     // producers produce at local fractional flow composition.
-                    let (fw, fg) = if w.injector {
+                    let (fw, fg, fo) = if w.injector {
                         match self.injected_fluid {
-                            InjectedFluid::Water => (1.0, 0.0),
-                            InjectedFluid::Gas => (0.0, 1.0),
+                            InjectedFluid::Water => (1.0, 0.0, 0.0),
+                            InjectedFluid::Gas => (0.0, 1.0, 0.0),
                         }
                     } else {
-                        (self.frac_flow_water_3p(id), self.frac_flow_gas(id))
+                        let lam_t = self.total_mobility_3p(id).max(f64::EPSILON);
+                        let (lam_w, lam_o, lam_g) = self.phase_mobilities_3p(id);
+                        (lam_w / lam_t, lam_g / lam_t, lam_o / lam_t)
                     };
                     delta_water_m3[id] -= q_m3_day * fw * dt_days;
                     delta_gas_m3[id] -= q_m3_day * fg * dt_days;
+                    
+                    if !w.injector && self.pvt_table.is_some() {
+                        let q_o_res = q_m3_day * fo;
+                        let q_o_sc = q_o_res / self.get_b_o(p_new[id]);
+                        let q_dg_sc = q_o_sc * self.rs[id];
+                        delta_dg_sc[id] -= q_dg_sc * dt_days;
+                    }
                 } else {
                     // Two-phase: injectors always inject 100% water
                     let fw = if w.injector {
@@ -795,6 +830,7 @@ impl ReservoirSimulator {
             p_new,
             delta_water_m3,
             delta_gas_m3,
+            delta_dg_sc,
             stable_dt_factor,
             pcg_result.converged,
             pcg_result.iterations,
@@ -806,6 +842,7 @@ impl ReservoirSimulator {
         p_new: &DVector<f64>,
         delta_water_m3: &Vec<f64>,
         delta_gas_m3: &Vec<f64>,
+        delta_dg_sc: &Vec<f64>,
         dt_days: f64,
     ) {
         let n_cells = self.nx * self.ny * self.nz;
@@ -833,9 +870,59 @@ impl ReservoirSimulator {
                         (self.scal.s_wc, self.scal.s_or, 0.0, 0.0)
                     };
 
-                let sw_new = (sw_old + delta_sw).clamp(s_wc, 1.0 - s_or - s_gc);
-                let sg_new = (sg_old + delta_sg).clamp(0.0, 1.0 - s_wc - s_gr);
-                let so_new = (1.0 - sw_new - sg_new).max(0.0);
+                let mut sw_new = (sw_old + delta_sw).clamp(s_wc, 1.0 - s_or - s_gc);
+                let mut sg_new = (sg_old + delta_sg).clamp(0.0, 1.0 - s_wc - s_gr);
+                let mut so_new = (1.0 - sw_new - sg_new).max(0.0);
+
+                // --- Phase Split: Bubble Point Tracking ---
+                if self.pvt_table.is_some() {
+                    let mut rs_cell = self.rs[idx];
+                    let bo_new = self.get_b_o(p_new[idx]);
+                    let bg_new = self.get_b_g(p_new[idx]);
+                    let rs_max = self.pvt_table.as_ref().unwrap().interpolate(p_new[idx]).rs_m3m3;
+
+                    // Advect Rs using standard oil volume
+                    let so_old = self.sat_oil[idx];
+                    let bo_old = self.get_b_o(self.pressure[idx]);
+                    let v_o_sc_old = (so_old * vp_m3) / bo_old;
+                    let v_o_sc_new = (so_new * vp_m3) / bo_new;
+                    let v_dg_sc_old = v_o_sc_old * rs_cell;
+                    let v_dg_sc_new = v_dg_sc_old + delta_dg_sc[idx];
+                    if v_o_sc_new > 0.0 {
+                        rs_cell = v_dg_sc_new / v_o_sc_new;
+                    }
+
+                    // Phase Flash
+                    if rs_cell > rs_max {
+                        // Liberate internal excess dissolved gas
+                        let liberated_rs = rs_cell - rs_max;
+                        let v_g_liberated_sc = liberated_rs * v_o_sc_new;
+                        let v_g_liberated_res = v_g_liberated_sc * bg_new;
+                        
+                        let delta_sg_liberated = v_g_liberated_res / vp_m3;
+                        let effective_delta = delta_sg_liberated.min(so_new); // Prevent negative oil
+
+                        sg_new += effective_delta;
+                        so_new -= effective_delta;
+                        rs_cell = rs_max;
+                    } else if rs_cell < rs_max && sg_new > 0.0 {
+                        // Dissolve free gas back into undersaturated oil
+                        let capacity_rs = rs_max - rs_cell;
+                        let v_g_free_sc = (sg_new * vp_m3) / bg_new;
+                        let max_dissolvable_gas_sc = capacity_rs * v_o_sc_new;
+                        
+                        let dissolved_gas_sc = v_g_free_sc.min(max_dissolvable_gas_sc);
+                        let dissolved_gas_res = dissolved_gas_sc * bg_new;
+                        let delta_sg_dissolved = dissolved_gas_res / vp_m3;
+
+                        sg_new -= delta_sg_dissolved;
+                        so_new += delta_sg_dissolved;
+                        if v_o_sc_new > 0.0 {
+                            rs_cell += dissolved_gas_sc / v_o_sc_new;
+                        }
+                    }
+                    self.rs[idx] = rs_cell;
+                }
 
                 // Re-normalise if floating point causes sum ≠ 1
                 let sum = sw_new + so_new + sg_new;

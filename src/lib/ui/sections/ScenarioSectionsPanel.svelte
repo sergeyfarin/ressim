@@ -38,7 +38,7 @@
     />
   </div>
 
-  <div class="flow-item">
+  <div class="flow-item {params.pvtMode === 'black-oil' ? 'col-span-all' : ''}">
     <FluidPropertiesSection
       bindings={params}
       fieldErrors={validationErrors}
@@ -123,5 +123,10 @@
   .flow-item {
     break-inside: avoid;
     margin-bottom: 0.375rem;
+  }
+
+  .col-span-all {
+    column-span: all;
+    width: 100%;
   }
 </style>
