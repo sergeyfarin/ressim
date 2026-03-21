@@ -165,6 +165,8 @@ export interface RateHistoryPoint {
   avg_water_saturation?: number;
   total_production_gas?: number;
   avg_gas_saturation?: number;
+  /** Producing GOR [Sm³/Sm³]: (free gas + dissolved gas) / oil at surface */
+  producing_gor?: number;
   // additional fields produced by the simulator may exist
   [key: string]: unknown;
 }

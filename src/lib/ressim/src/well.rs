@@ -31,6 +31,11 @@ pub struct TimePointRates {
     /// in-place gas change. Non-zero only in three-phase mode.
     #[serde(default)]
     pub material_balance_error_gas_m3: f64,
+    /// Producing gas-oil ratio [Sm³/Sm³]: total surface gas / surface oil at producers.
+    /// Includes both free gas and dissolved gas (Rs) liberated at surface.
+    /// Non-zero only in three-phase mode with PVT table.
+    #[serde(default)]
+    pub producing_gor: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -958,10 +958,12 @@ impl ReservoirSimulator {
         let mut total_prod_water_reservoir = 0.0;
         let mut total_prod_gas_reservoir = 0.0;
         let mut total_prod_gas = 0.0;
+        let mut total_prod_dissolved_gas = 0.0;
 
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
             if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+                let p_cell = p_new[id];
                 if w.injector {
                     total_injection -= q_m3_day / self.b_w.max(1e-9);
                     total_injection_reservoir += -q_m3_day;
@@ -982,11 +984,20 @@ impl ReservoirSimulator {
                     };
                     total_prod_water_reservoir += q_m3_day * fw;
                     total_prod_gas_reservoir += q_m3_day * fg;
-                    let oil_rate = q_m3_day * (1.0 - fw - fg) / self.b_o.max(1e-9);
-                    let water_rate = q_m3_day * fw / self.b_w.max(1e-9);
-                    total_prod_oil += oil_rate;
-                    total_prod_liquid += oil_rate + water_rate;
-                    total_prod_gas += q_m3_day * fg;
+                    // Surface rates: divide reservoir volumes by pressure-dependent FVFs
+                    let bo = self.get_b_o(p_cell).max(1e-9);
+                    let bw = self.b_w.max(1e-9); // Bw essentially constant in black-oil
+                    let oil_rate_sc = q_m3_day * (1.0 - fw - fg) / bo;
+                    let water_rate_sc = q_m3_day * fw / bw;
+                    total_prod_oil += oil_rate_sc;
+                    total_prod_liquid += oil_rate_sc + water_rate_sc;
+                    // Free gas at surface: reservoir gas rate / Bg
+                    let bg = self.get_b_g(p_cell).max(1e-9);
+                    total_prod_gas += q_m3_day * fg / bg;
+                    // Dissolved gas liberated at surface: oil_sc × Rs
+                    if self.pvt_table.is_some() && self.three_phase_mode {
+                        total_prod_dissolved_gas += oil_rate_sc * self.rs[id];
+                    }
                 }
             }
         }
@@ -1032,6 +1043,14 @@ impl ReservoirSimulator {
             0.0
         };
 
+        // Producing GOR [Sm³/Sm³] = (free gas SC + dissolved gas SC) / oil SC
+        let total_gas_sc = total_prod_gas + total_prod_dissolved_gas;
+        let producing_gor = if total_prod_oil > 1e-12 {
+            total_gas_sc / total_prod_oil
+        } else {
+            0.0
+        };
+
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
             total_production_oil: total_prod_oil,
@@ -1043,8 +1062,9 @@ impl ReservoirSimulator {
             material_balance_error_gas_m3: self.cumulative_mb_gas_error_m3.abs(),
             avg_reservoir_pressure,
             avg_water_saturation,
-            total_production_gas: total_prod_gas,
+            total_production_gas: total_gas_sc,
             avg_gas_saturation,
+            producing_gor,
         });
 
         // Advance simulation time

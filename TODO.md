@@ -203,9 +203,9 @@ Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure
 
 ### 4C. Updated Pressure Equation
 
-- [ ] Accumulation: `(V_p / dt) × [c_t(P) × S_phases + ...]` with pressure-dependent compressibility
-- [ ] Transmissibility: mobility uses pressure-dependent viscosity from PVT lookup
-- [ ] Well model: PI uses local PVT properties; GOR (gas-oil ratio) at producer from local Rs and free gas
+- [x] Accumulation: `(V_p / dt) × [c_t(P) × S_phases + ...]` with pressure-dependent compressibility — `get_c_o(p)` and `get_c_g(p)` use PVT table interpolation with finite-difference approximation (dP = 1 bar)
+- [x] Transmissibility: mobility uses pressure-dependent viscosity from PVT lookup — `get_mu_o(p)`, `get_mu_g(p)` called per-cell in `phase_mobilities()` and `phase_mobilities_3p()`
+- [x] Well model: PI uses local PVT properties via `total_mobility(id)` / `total_mobility_3p(id)` updated before each pressure solve; producing GOR tracked as (free gas / Bg + dissolved gas Rs × oil SC) / oil SC and reported in `TimePointRates.producing_gor`; surface-volume conversion uses pressure-dependent Bo, Bg at well cell pressure
 
 ### 4D. Volatile Oil Analytical References
 

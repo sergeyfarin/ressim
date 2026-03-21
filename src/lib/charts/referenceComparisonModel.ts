@@ -75,6 +75,7 @@ type DerivedRunSeries = {
     p_z: Array<number | null>;
     pvi: Array<number | null>;
     pvp: Array<number | null>;
+    gor: Array<number | null>;
 };
 
 type AnalyticalOverlay = {
@@ -262,6 +263,10 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
         pvp: cumulativeLiquidSeries.map((value) => (
             poreVolume > 1e-12 && Number.isFinite(value) ? Number(value) / poreVolume : null
         )),
+        gor: result.rateHistory.map((point) => {
+            const value = toFiniteNumber(point.producing_gor as number, 0);
+            return value > 0 ? value : null;
+        }),
     };
 }
 
@@ -1282,6 +1287,22 @@ export function buildReferenceComparisonModel(input: {
                 xValues,
                 derived.p_z,
             );
+            appendSeries(
+                panels.diagnostics,
+                {
+                    label: `${result.label} GOR`,
+                    curveKey: 'gor-sim',
+                    caseKey: result.key,
+                    toggleLabel: 'GOR',
+                    color,
+                    borderWidth: 1.6,
+                    borderDash: [4, 3],
+                    yAxisID: 'y',
+                    defaultVisible: false,
+                },
+                xValues,
+                derived.gor,
+            );
             return;
         }
 
@@ -1377,6 +1398,17 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.p_z);
+            appendSeries(panels.diagnostics, {
+                label: `${result.label} GOR`,
+                curveKey: 'gor-sim',
+                caseKey: result.key,
+                toggleLabel: 'GOR',
+                color,
+                borderWidth: 1.6,
+                borderDash: [4, 3],
+                yAxisID: 'y',
+                defaultVisible: false,
+            }, xValues, derived.gor);
             return;
         }
 
@@ -1468,6 +1500,22 @@ export function buildReferenceComparisonModel(input: {
             },
             xValues,
             derived.p_z,
+        );
+        appendSeries(
+            panels.diagnostics,
+            {
+                label: `${result.label} GOR`,
+                curveKey: 'gor-sim',
+                caseKey: result.key,
+                toggleLabel: 'GOR',
+                color,
+                borderWidth: 1.6,
+                borderDash: [4, 3],
+                yAxisID: 'y',
+                defaultVisible: false,
+            },
+            xValues,
+            derived.gor,
         );
     });
 
