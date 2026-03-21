@@ -113,14 +113,14 @@ impl ReservoirSimulator {
         }
         let krw = self.scal.k_rw(self.sat_water[id]);
         let kro = self.scal.k_ro(self.sat_water[id]);
-        krw / self.pvt.mu_w + kro / self.pvt.mu_o
+        krw / self.get_mu_w(self.pressure[id]) + kro / self.get_mu_o(self.pressure[id])
     }
 
     /// Phase mobilities [1/cP] for water and oil (2-phase)
     fn phase_mobilities(&self, id: usize) -> (f64, f64) {
         let krw = self.scal.k_rw(self.sat_water[id]);
         let kro = self.scal.k_ro(self.sat_water[id]);
-        (krw / self.pvt.mu_w, kro / self.pvt.mu_o)
+        (krw / self.get_mu_w(self.pressure[id]), kro / self.get_mu_o(self.pressure[id]))
     }
 
     // ── Three-phase helper methods ────────────────────────────────────────────
@@ -133,9 +133,9 @@ impl ReservoirSimulator {
         };
         let sw = self.sat_water[id];
         let sg = self.sat_gas[id];
-        s.k_rw(sw) / self.pvt.mu_w
-            + s.k_ro_stone2(sw, sg) / self.pvt.mu_o
-            + s.k_rg(sg) / self.mu_g
+        s.k_rw(sw) / self.get_mu_w(self.pressure[id])
+            + s.k_ro_stone2(sw, sg) / self.get_mu_o(self.pressure[id])
+            + s.k_rg(sg) / self.get_mu_g(self.pressure[id])
     }
 
     /// Phase mobilities (λ_w, λ_o, λ_g) using Stone II k_ro
@@ -150,9 +150,9 @@ impl ReservoirSimulator {
         let sw = self.sat_water[id];
         let sg = self.sat_gas[id];
         (
-            s.k_rw(sw) / self.pvt.mu_w,
-            s.k_ro_stone2(sw, sg) / self.pvt.mu_o,
-            s.k_rg(sg) / self.mu_g,
+            s.k_rw(sw) / self.get_mu_w(self.pressure[id]),
+            s.k_ro_stone2(sw, sg) / self.get_mu_o(self.pressure[id]),
+            s.k_rg(sg) / self.get_mu_g(self.pressure[id]),
         )
     }
 
@@ -160,7 +160,7 @@ impl ReservoirSimulator {
     fn gas_mobility(&self, id: usize) -> f64 {
         self.scal_3p
             .as_ref()
-            .map_or(0.0, |s| s.k_rg(self.sat_gas[id]) / self.mu_g)
+            .map_or(0.0, |s| s.k_rg(self.sat_gas[id]) / self.get_mu_g(self.pressure[id]))
     }
 
     /// Oil-gas capillary pressure [bar] at given gas saturation
@@ -210,8 +210,8 @@ impl ReservoirSimulator {
     /// Used in upwind scheme for saturation transport
     fn frac_flow_water(&self, id: usize) -> f64 {
         let krw = self.scal.k_rw(self.sat_water[id]);
-        let lam_w = krw / self.pvt.mu_w;
-        let lam_t = lam_w + (self.scal.k_ro(self.sat_water[id]) / self.pvt.mu_o);
+        let lam_w = krw / self.get_mu_w(self.pressure[id]);
+        let lam_t = lam_w + (self.scal.k_ro(self.sat_water[id]) / self.get_mu_o(self.pressure[id]));
         if lam_t <= 0.0 {
             0.0
         } else {
@@ -444,9 +444,9 @@ impl ReservoirSimulator {
                     } else {
                         self.sat_oil[id]
                     };
-                    let c_t = (self.pvt.c_o * so_id
+                    let c_t = (self.get_c_o(self.pressure[id]) * so_id
                         + self.pvt.c_w * self.sat_water[id]
-                        + if self.three_phase_mode { self.c_g * sg_id } else { 0.0 })
+                        + if self.three_phase_mode { self.get_c_g(self.pressure[id]) * sg_id } else { 0.0 })
                         + self.rock_compressibility;
 
                     // Accumulation term: (Vp [m³] * c_t [1/bar]) / dt [day]
@@ -488,8 +488,8 @@ impl ReservoirSimulator {
                         let pc_i = self.get_capillary_pressure(self.sat_water[id]);
                         let pc_j = self.get_capillary_pressure(self.sat_water[*n_id]);
 
-                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.pvt.rho_w);
-                        let grav_o = self.gravity_head_bar(depth_i, depth_j, self.pvt.rho_o);
+                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.get_rho_w(self.pressure[id]));
+                        let grav_o = self.gravity_head_bar(depth_i, depth_j, self.get_rho_o(self.pressure[id]));
 
                         // Phase potential differences (positive if flowing from i to j)
                         let dphi_o = (p_i - p_j) - grav_o;
@@ -628,7 +628,7 @@ impl ReservoirSimulator {
                         let pc_i = self.get_capillary_pressure(self.sat_water[id]);
                         let pc_j = self.get_capillary_pressure(self.sat_water[nid]);
 
-                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.pvt.rho_w);
+                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.get_rho_w(self.pressure[id]));
 
                         let dphi_w = (p_i - p_j) - (pc_i - pc_j) - grav_w;
 

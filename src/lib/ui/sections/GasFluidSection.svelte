@@ -16,6 +16,7 @@
     pcogPEntry = $bindable(3.0),
     pcogLambda = $bindable(2.0),
     injectedFluid = $bindable<"water" | "gas">("gas"),
+    pvtMode = "constant",
     fieldErrors = {},
   }: {
     s_gc?: number;
@@ -29,6 +30,7 @@
     pcogPEntry?: number;
     pcogLambda?: number;
     injectedFluid?: "water" | "gas";
+    pvtMode?: string;
     fieldErrors?: Record<string, string>;
   } = $props();
 
@@ -67,9 +69,9 @@
             <td class="px-1 py-1"><ValidatedInput type="number" min="0" max="1" step="0.01" class="w-full h-7 px-1.5 text-xs" bind:value={s_gr} error={fieldErrors.s_gr} /></td>
             <td class="px-1 py-1"><ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-1.5 text-xs" bind:value={n_g} error={fieldErrors.n_g} /></td>
             <td class="px-1 py-1"><Input type="number" min="0.01" max="1" step="0.05" class="w-full h-7 px-1.5 text-xs" bind:value={k_rg_max} /></td>
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0.001" step="0.001" class="w-full h-7 px-1.5 text-xs" bind:value={mu_g} error={fieldErrors.mu_g} /></td>
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0" step="1e-5" class="w-full h-7 px-1.5 text-xs" bind:value={c_g} error={fieldErrors.c_g} /></td>
-            <td class="px-1 py-1"><Input type="number" min="0.1" step="1" class="w-full h-7 px-1.5 text-xs" bind:value={rho_g} /></td>
+            <td class="px-1 py-1"><ValidatedInput type="number" min="0.001" step="0.001" class="w-full h-7 px-1.5 text-xs" disabled={pvtMode === 'black-oil'} bind:value={mu_g} error={fieldErrors.mu_g} /></td>
+            <td class="px-1 py-1"><ValidatedInput type="number" min="0" step="1e-5" class="w-full h-7 px-1.5 text-xs" disabled={pvtMode === 'black-oil'} bind:value={c_g} error={fieldErrors.c_g} /></td>
+            <td class="px-1 py-1"><Input type="number" min="0.1" step="1" class="w-full h-7 px-1.5 text-xs" disabled={pvtMode === 'black-oil'} bind:value={rho_g} /></td>
           </tr>
         </tbody>
       </table>

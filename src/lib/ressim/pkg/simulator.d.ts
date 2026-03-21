@@ -60,9 +60,6 @@ export class ReservoirSimulator {
      */
     setGasOilCapillaryParams(p_entry: number, lambda: number): void;
     setGravityEnabled(enabled: boolean): void;
-    /**
-     * Set initial gas saturation for all grid cells (three-phase mode)
-     */
     setInitialGasSaturation(sat_gas: number): void;
     /**
      * Set initial pressure for all grid cells
@@ -93,6 +90,10 @@ export class ReservoirSimulator {
      * Set permeability with deterministic random distribution using a fixed seed
      */
     setPermeabilityRandomSeeded(min_perm: number, max_perm: number, seed: bigint): void;
+    /**
+     * Set initial gas saturation for all grid cells (three-phase mode)
+     */
+    setPvtTable(table_js: any): void;
     setRateControlledWells(enabled: boolean): void;
     /**
      * Set relative permeability properties
@@ -171,6 +172,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setPermeabilityPerLayer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandom: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setPermeabilityRandomSeeded: (a: number, b: number, c: number, d: bigint) => [number, number];
+    readonly reservoirsimulator_setPvtTable: (a: number, b: any) => [number, number];
     readonly reservoirsimulator_setRateControlledWells: (a: number, b: number) => void;
     readonly reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];

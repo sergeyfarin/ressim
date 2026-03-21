@@ -4,6 +4,7 @@
   import GeometrySection from "./GeometrySection.svelte";
   import RelativeCapillarySection from "./RelativeCapillarySection.svelte";
   import ReservoirSection from "./ReservoirSection.svelte";
+  import FluidPropertiesSection from "./FluidPropertiesSection.svelte";
   import TimestepSection from "./TimestepSection.svelte";
   import WellsSection from "./WellsSection.svelte";
 
@@ -33,6 +34,13 @@
     <ReservoirSection
       bindings={params}
       onNzOrPermModeChange={params.handleNzOrPermModeChange}
+      fieldErrors={validationErrors}
+    />
+  </div>
+
+  <div class="flow-item">
+    <FluidPropertiesSection
+      bindings={params}
       fieldErrors={validationErrors}
     />
   </div>

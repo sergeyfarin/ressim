@@ -243,6 +243,7 @@ export const PHASE2_TRACKED_PARAMETER_KEYS = [
     'nx', 'ny', 'nz',
     'cellDx', 'cellDy', 'cellDz',
     'initialPressure', 'initialSaturation', 'reservoirPorosity',
+    'pvtMode', 'apiGravity', 'gasSpecificGravity', 'reservoirTemperature', 'bubblePoint',
     'mu_w', 'mu_o', 'c_o', 'c_w',
     'rock_compressibility', 'depth_reference',
     'volume_expansion_o', 'volume_expansion_w',
@@ -268,6 +269,7 @@ export const PHASE2_PARAMETER_GROUPS: Record<ParameterOverrideGroupKey, readonly
     grid: ['nx', 'ny', 'nz', 'cellDx', 'cellDy', 'cellDz'],
     initial: ['initialPressure', 'initialSaturation', 'reservoirPorosity'],
     fluids: [
+        'pvtMode', 'apiGravity', 'gasSpecificGravity', 'reservoirTemperature', 'bubblePoint',
         'mu_w', 'mu_o', 'c_o', 'c_w',
         'rock_compressibility', 'depth_reference',
         'volume_expansion_o', 'volume_expansion_w',

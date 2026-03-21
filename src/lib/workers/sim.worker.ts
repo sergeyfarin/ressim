@@ -100,6 +100,11 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     setFluidCompressibilities.call(simulator, Number(payload.c_o), Number(payload.c_w));
   }
 
+  const setPvtTable = (simulator as any).setPvtTable;
+  if (payload.pvtMode === 'black-oil' && payload.pvtTable && typeof setPvtTable === 'function') {
+    setPvtTable.call(simulator, payload.pvtTable);
+  }
+
   const setRockProperties = /** @type {any} */ (simulator).setRockProperties;
   if (typeof setRockProperties === 'function') {
     setRockProperties.call(

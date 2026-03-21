@@ -162,5 +162,8 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     threePhaseModeEnabled: Boolean(state.threePhaseModeEnabled ?? false),
     injectedFluid: (state.injectedFluid ?? 'gas') as 'water' | 'gas',
     initialGasSaturation: toClamped(state.initialGasSaturation, 0, 1, 0),
+
+    pvtMode: state.pvtMode === 'black-oil' ? 'black-oil' : 'constant',
+    pvtTable: state.pvtMode === 'black-oil' ? state.pvtTable : undefined,
   }
 }

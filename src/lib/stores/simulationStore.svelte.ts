@@ -24,6 +24,7 @@ import {
     type ToggleState
 } from '../catalog/caseCatalog';
 import { buildCreatePayloadFromState } from '../buildCreatePayload';
+import { generateBlackOilTable } from '../physics/pvt';
 import {
     buildBenchmarkCreatePayload,
     buildBenchmarkRunResult,
@@ -140,6 +141,12 @@ class SimulationStoreImpl {
     reservoirPorosity = $state(0.2);
 
     // Fluid properties
+    pvtMode: 'constant' | 'black-oil' = $state('constant');
+    apiGravity = $state(30.0);
+    gasSpecificGravity = $state(0.7);
+    reservoirTemperature = $state(80.0);
+    bubblePoint = $state(150.0);
+
     mu_w = $state(0.5);
     mu_o = $state(1.0);
     c_o = $state(1e-5);
@@ -288,6 +295,14 @@ class SimulationStoreImpl {
     isCustomMode = $state(false);
 
     // ===== $derived =====
+
+    pvtTable = $derived.by(() => {
+        if (this.pvtMode === 'black-oil') {
+            const pMax = Math.max(this.initialPressure * 1.5, Math.max(this.injectorBhp, this.producerBhp) * 1.5, 500);
+            return generateBlackOilTable(this.apiGravity, this.gasSpecificGravity, this.reservoirTemperature, this.bubblePoint, pMax);
+        }
+        return undefined;
+    });
 
     defaultHistoryInterval = $derived(Math.max(1, Math.ceil(this.steps / 50)));
 
@@ -602,6 +617,12 @@ class SimulationStoreImpl {
             initialPressure: this.initialPressure,
             initialSaturation: this.initialSaturation,
             reservoirPorosity: this.reservoirPorosity,
+            pvtMode: this.pvtMode,
+            pvtTable: this.pvtTable,
+            apiGravity: this.apiGravity,
+            gasSpecificGravity: this.gasSpecificGravity,
+            reservoirTemperature: this.reservoirTemperature,
+            bubblePoint: this.bubblePoint,
             mu_w: this.mu_w,
             mu_o: this.mu_o,
             c_o: this.c_o,
@@ -680,6 +701,8 @@ class SimulationStoreImpl {
             cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
             initialPressure: this.initialPressure, initialSaturation: this.initialSaturation,
             porosity: this.reservoirPorosity,
+            pvtMode: this.pvtMode,
+            pvtTable: this.pvtTable,
             mu_w: this.mu_w, mu_o: this.mu_o, c_o: this.c_o, c_w: this.c_w,
             rho_w: this.rho_w, rho_o: this.rho_o,
             rock_compressibility: this.rock_compressibility,
@@ -728,6 +751,8 @@ class SimulationStoreImpl {
             cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
             initialPressure: this.initialPressure, initialSaturation: this.initialSaturation,
             reservoirPorosity: this.reservoirPorosity,
+            pvtMode: this.pvtMode, apiGravity: this.apiGravity, gasSpecificGravity: this.gasSpecificGravity,
+            reservoirTemperature: this.reservoirTemperature, bubblePoint: this.bubblePoint,
             mu_w: this.mu_w, mu_o: this.mu_o, c_o: this.c_o, c_w: this.c_w,
             rock_compressibility: this.rock_compressibility, depth_reference: this.depth_reference,
             volume_expansion_o: this.volume_expansion_o, volume_expansion_w: this.volume_expansion_w,
@@ -1557,6 +1582,17 @@ class SimulationStoreImpl {
         this.max_sat_change_per_step = fin(resolved.max_sat_change_per_step, 0.1);
         this.initialPressure = fin(resolved.initialPressure, 300);
         this.initialSaturation = fin(resolved.initialSaturation, 0.3);
+        
+        if (resolved.pvtMode === 'black-oil' || resolved.pvtMode === 'constant') {
+            this.pvtMode = resolved.pvtMode;
+        } else {
+            this.pvtMode = 'constant';
+        }
+        this.apiGravity = fin(resolved.apiGravity, 30.0);
+        this.gasSpecificGravity = fin(resolved.gasSpecificGravity, 0.7);
+        this.reservoirTemperature = fin(resolved.reservoirTemperature, 80.0);
+        this.bubblePoint = fin(resolved.bubblePoint, 150.0);
+
         this.mu_w = fin(resolved.mu_w, 0.5);
         this.mu_o = fin(resolved.mu_o, 1.0);
         this.c_o = fin(resolved.c_o, 1e-5);

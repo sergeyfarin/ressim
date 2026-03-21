@@ -322,7 +322,7 @@ describe('computeBLRecoveryVsPVI', () => {
     });
 
     it('favourable mobility (M<1) reaches higher RF faster than unfavourable (M>1)', () => {
-        const rockFav: RockProps = { ...defaultRock, k_rw_max: 0.3, mu_w: 1, mu_o: 1 };  // M<1 approx
+        const rockFav: RockProps = { ...defaultRock, k_rw_max: 0.3 };  // M<1 approx
         // Use same defaultFluid but different endpoint krw to change M
         const fluidLowM: FluidProps = { mu_w: 2.0, mu_o: 1.0 };  // M<1
         const fluidHighM: FluidProps = { mu_w: 0.5, mu_o: 5.0 }; // M>1

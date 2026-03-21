@@ -68,52 +68,6 @@
       </table>
     </div>
 
-    <!-- Fluid PVT — dense table -->
-    <div class="overflow-x-auto rounded-md border border-border">
-      <table class="compact-table w-full text-left">
-        <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th class="px-2 py-1 font-medium">Phase</th>
-            <th class="px-2 py-1 font-medium">μ (cP)</th>
-            <th class="px-2 py-1 font-medium">ρ (kg/m³)</th>
-            <th class="px-2 py-1 font-medium">c (1/bar)</th>
-            <th class="px-2 py-1 font-medium">B_f</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border text-xs">
-          <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Water</td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={bindings.mu_w} error={fieldErrors.mu_w} />
-            </td>
-            <td class="px-1 py-1">
-              <Input type="number" min="1" step="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.rho_w} />
-            </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2 text-xs" bind:value={bindings.c_w} error={fieldErrors.c_w} />
-            </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={bindings.volume_expansion_w} error={fieldErrors.volume_expansion_w} />
-            </td>
-          </tr>
-          <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Oil</td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={bindings.mu_o} error={fieldErrors.mu_o} />
-            </td>
-            <td class="px-1 py-1">
-              <Input type="number" min="1" step="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.rho_o} />
-            </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2 text-xs" bind:value={bindings.c_o} error={fieldErrors.c_o} />
-            </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={bindings.volume_expansion_o} error={fieldErrors.volume_expansion_o} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
 
     <!-- Gravity + Permeability row -->
     <div class="flex items-center gap-3">

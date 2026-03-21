@@ -54,7 +54,7 @@ describe('mode panel helpers', () => {
   });
 
   it('returns shared mode panel sections for current modes', () => {
-    expect(getModePanelSections('dep')).toEqual(MODE_PANEL_SECTIONS);
-    expect(getModePanelSections('sim')).toEqual(MODE_PANEL_SECTIONS);
+    expect(getModePanelSections()).toEqual(MODE_PANEL_SECTIONS);
+    expect(getModePanelSections()).toEqual(MODE_PANEL_SECTIONS);
   });
 });

@@ -42,7 +42,7 @@ function applyPermeability(simulator: ReservoirSimulator, params: BenchmarkParam
     ? Array.from(params.layerPermsZ as ArrayLike<number>)
     : Array.from({ length: nz }, () => Number(params.uniformPermZ ?? 10));
 
-  simulator.setPermeabilityPerLayer(permsX, permsY, permsZ);
+  simulator.setPermeabilityPerLayer(new Float64Array(permsX), new Float64Array(permsY), new Float64Array(permsZ));
 }
 
 function measureBreakthroughPvi(params: BenchmarkParams, watercutThreshold = 0.01) {

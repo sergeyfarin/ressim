@@ -25,6 +25,7 @@ use wasm_bindgen::prelude::*;
 mod capillary;
 mod grid;
 mod relperm;
+mod pvt;
 mod solver;
 mod step;
 mod well;
@@ -145,10 +146,63 @@ pub struct ReservoirSimulator {
     pub(crate) c_g: f64,
     /// Gas density [kg/m³]
     pub(crate) rho_g: f64,
+    pub(crate) pvt_table: Option<pvt::PvtTable>,
 }
 
 #[wasm_bindgen]
 impl ReservoirSimulator {
+
+    pub(crate) fn get_mu_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table { table.interpolate(p).mu_o_cp } else { self.pvt.mu_o }
+    }
+    pub(crate) fn get_mu_w(&self, _p: f64) -> f64 {
+        self.pvt.mu_w // Water viscosity is constant for now
+    }
+    pub(crate) fn get_mu_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table { table.interpolate(p).mu_g_cp } else { self.mu_g }
+    }
+    pub(crate) fn get_c_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let dp = 1.0;
+            let p_minus = if p > dp { p - dp } else { 0.0 };
+            let b1 = table.interpolate(p_minus).bo_m3m3;
+            let b2 = table.interpolate(p + dp).bo_m3m3;
+            let bo = table.interpolate(p).bo_m3m3;
+            if bo > 1e-12 { (-1.0 / bo) * (b2 - b1) / (2.0 * dp) } else { self.pvt.c_o }
+        } else {
+            self.pvt.c_o
+        }
+    }
+    pub(crate) fn get_c_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let dp = 1.0;
+            let p_minus = if p > dp { p - dp } else { 0.0 };
+            let b1 = table.interpolate(p_minus).bg_m3m3;
+            let b2 = table.interpolate(p + dp).bg_m3m3;
+            let bg = table.interpolate(p).bg_m3m3;
+            if bg > 1e-12 { (-1.0 / bg) * (b2 - b1) / (2.0 * dp) } else { self.c_g }
+        } else {
+            self.c_g
+        }
+    }
+    pub(crate) fn get_rho_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            self.pvt.rho_o / table.interpolate(p).bo_m3m3
+        } else {
+            self.pvt.rho_o
+        }
+    }
+    pub(crate) fn get_rho_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            self.rho_g / table.interpolate(p).bg_m3m3
+        } else {
+            self.rho_g
+        }
+    }
+    pub(crate) fn get_rho_w(&self, _p: f64) -> f64 {
+        self.pvt.rho_w
+    }
+
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -213,6 +267,7 @@ impl ReservoirSimulator {
             mu_g: 0.02,
             c_g: 1e-4,
             rho_g: 10.0,
+            pvt_table: None,
         }
     }
 
@@ -761,6 +816,14 @@ impl ReservoirSimulator {
     }
 
     /// Set initial gas saturation for all grid cells (three-phase mode)
+
+    #[wasm_bindgen(js_name = setPvtTable)]
+    pub fn set_pvt_table(&mut self, table_js: JsValue) -> Result<(), JsValue> {
+        let rows: Vec<pvt::PvtRow> = serde_wasm_bindgen::from_value(table_js)?;
+        self.pvt_table = Some(pvt::PvtTable::new(rows, self.pvt.c_o));
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = setInitialGasSaturation)]
     pub fn set_initial_gas_saturation(&mut self, sat_gas: f64) {
         let n = self.nx * self.ny * self.nz;

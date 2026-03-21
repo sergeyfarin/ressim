@@ -1,4 +1,5 @@
 import type { CaseMode, ToggleState } from "../catalog/caseCatalog";
+import type { PvtRow } from "../simulator-types";
 import type {
   BasePresetProfile,
   ComparisonSelection,
@@ -28,6 +29,12 @@ export type WellControlMode = "rate" | "pressure";
 export type AnalyticalSolutionMode = "waterflood" | "depletion";
 
 export type ModePanelParameterBindings = {
+  pvtMode: 'constant' | 'black-oil';
+  pvtTable?: PvtRow[];
+  apiGravity: number;
+  gasSpecificGravity: number;
+  reservoirTemperature: number;
+  bubblePoint: number;
   nx: number;
   ny: number;
   nz: number;

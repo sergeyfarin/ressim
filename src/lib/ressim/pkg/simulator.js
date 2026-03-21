@@ -246,7 +246,6 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setGravityEnabled(this.__wbg_ptr, enabled);
     }
     /**
-     * Set initial gas saturation for all grid cells (three-phase mode)
      * @param {number} sat_gas
      */
     setInitialGasSaturation(sat_gas) {
@@ -333,6 +332,16 @@ export class ReservoirSimulator {
      */
     setPermeabilityRandomSeeded(min_perm, max_perm, seed) {
         const ret = wasm.reservoirsimulator_setPermeabilityRandomSeeded(this.__wbg_ptr, min_perm, max_perm, seed);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Set initial gas saturation for all grid cells (three-phase mode)
+     * @param {any} table_js
+     */
+    setPvtTable(table_js) {
+        const ret = wasm.reservoirsimulator_setPvtTable(this.__wbg_ptr, table_js);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

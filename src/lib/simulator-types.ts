@@ -3,6 +3,15 @@
  * and for the simulator "create" payload constructed by the UI.
  */
 
+export interface PvtRow {
+    p_bar: number;
+    rs_m3m3: number;
+    bo_m3m3: number;
+    mu_o_cp: number;
+    bg_m3m3: number;
+    mu_g_cp: number;
+}
+
 /** Permutation mode for assigning permeability */
 export type PermMode = 'uniform' | 'random' | 'perLayer' | string;
 
@@ -29,6 +38,9 @@ export interface SimulatorCreatePayload {
   c_w: number;
   rho_w: number;
   rho_o: number;
+
+  pvtMode?: 'constant' | 'black-oil';
+  pvtTable?: PvtRow[];
 
   // rock / compressibility
   rock_compressibility: number;

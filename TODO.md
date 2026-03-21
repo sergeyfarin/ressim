@@ -181,14 +181,17 @@ Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure
 
 ### 4A. PVT Correlations
 
-- [ ] **Rs(P) — solution gas-oil ratio**: Standing (1947) or Vazquez-Beggs (1980) correlation. Rs decreases as P drops below bubble point P_b; Rs = Rs_max above P_b.
-- [ ] **Bo(P) — oil formation volume factor**: Standing or Glaso (1980). Bo increases with Rs (swelling); above P_b, Bo decreases slightly with pressure (compression).
-- [ ] **Bg(P) — gas formation volume factor**: ideal gas law corrected by z-factor. Bg = (P_sc × z × T) / (P × T_sc).
-- [ ] **μ_o(P) — oil viscosity**: Beggs-Robinson (1975) or Vasquez-Beggs. Viscosity decreases with dissolved gas; increases sharply below P_b as gas liberates.
-- [ ] **μ_g(P) — gas viscosity**: Lee-Gonzalez-Eakin (1966) correlation. Varies with pressure and temperature.
-- [ ] **z-factor**: Standing-Katz chart or Hall-Yarborough (1973) correlation for real gas compressibility.
-- [ ] **PVT table structure in Rust**: `PvtTable` struct with interpolation; replace constant `c_o`, `c_g`, `mu_o`, `mu_g` with pressure-dependent lookups.
-- [ ] **UI for PVT**: bubble-point pressure input; API gravity and gas specific gravity for correlation-based PVT; option to input tabular PVT directly.
+- [x] **Rs(P) — solution gas-oil ratio**: Standing (1947) or Vazquez-Beggs (1980) correlation. Rs decreases as P drops below bubble point P_b; Rs = Rs_max above P_b.
+- [x] **Bo(P) — oil formation volume factor**: Standing or Glaso (1980). Bo increases with Rs (swelling); above P_b, Bo decreases slightly with pressure (compression).
+- [x] **Bg(P) — gas formation volume factor**: ideal gas law corrected by z-factor. Bg = (P_sc × z × T) / (P × T_sc).
+- [x] **μ_o(P) — oil viscosity**: Beggs-Robinson (1975) or Vasquez-Beggs. Viscosity decreases with dissolved gas; increases sharply below P_b as gas liberates.
+- [x] **μ_g(P) — gas viscosity**: Lee-Gonzalez-Eakin (1966) correlation. Varies with pressure and temperature.
+- [x] **z-factor**: Standing-Katz chart or Hall-Yarborough (1973) correlation for real gas compressibility.
+- [x] **PVT table structure in Rust**: `PvtTable` struct with interpolation; replace constant `c_o`, `c_g`, `mu_o`, `mu_g` with pressure-dependent lookups.
+- [x] **UI for PVT**: bubble-point pressure input; API gravity and gas specific gravity for correlation-based PVT; option to input tabular PVT directly.
+- [x] Extract `FluidPropertiesSection` out of `ReservoirSection.svelte` to declutter the inputs.
+- [x] In Black-Oil PVT mode, add a graphical preview chart (utilizing Chart.js via `ChartSubPanel`) alongside the tabular data for clear visualization of PVT curves vs Pressure.
+- [x] Phase 4D: Split monolithic reservoir presets into independent `ROCK_PRESETS` and `FLUID_PRESETS` for improved Custom Mode UI flexibility with Black-Oil testing.
 
 ### 4B. Bubble-Point Tracking & Phase Split
 
