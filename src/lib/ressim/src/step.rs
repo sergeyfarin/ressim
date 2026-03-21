@@ -870,7 +870,7 @@ impl ReservoirSimulator {
                         (self.scal.s_wc, self.scal.s_or, 0.0, 0.0)
                     };
 
-                let mut sw_new = (sw_old + delta_sw).clamp(s_wc, 1.0 - s_or - s_gc);
+                let sw_new = (sw_old + delta_sw).clamp(s_wc, 1.0 - s_or - s_gc);
                 let mut sg_new = (sg_old + delta_sg).clamp(0.0, 1.0 - s_wc - s_gr);
                 let mut so_new = (1.0 - sw_new - sg_new).max(0.0);
 

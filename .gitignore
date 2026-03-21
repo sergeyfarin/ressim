@@ -25,6 +25,7 @@ dist-ssr
 
 # Project exclude paths
 /src/lib/ressim/target/
+/target/
 
 # coverage output
 /coverage

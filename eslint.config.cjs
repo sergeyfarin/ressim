@@ -3,7 +3,7 @@ const svelte = require('eslint-plugin-svelte');
 
 module.exports = [
   {
-    ignores: ['dist/', 'node_modules/', 'coverage/', 'src/lib/ressim/pkg/'],
+    ignores: ['dist/', 'node_modules/', 'coverage/', 'src/lib/ressim/pkg/', 'src/lib/ressim-wasm/*.d.ts'],
   },
   ...svelte.configs['flat/base'],
   {

@@ -11,6 +11,7 @@ Goal: clean up tech debt, fix known correctness issues, finish incomplete work.
 ### Active Slice (2026-03-21)
 
 - [x] Restore repository health for validation checks (`npm run typecheck`, `npm run lint`, `npm test`, and build-related Svelte diagnostics) after the recent sweep/chart changes.
+- [x] Add a dedicated `npm run validate` bundle for sequential repo validation (`typecheck` → `lint` → `test` → `build`).
 
 ### 1A. Three-Phase Correctness Fixes
 
