@@ -50,25 +50,89 @@ export type PrimaryRateCurve = 'water-cut' | 'gas-cut' | 'oil-rate';
 /** Default 3D scalar property to display when a scenario loads. */
 export type Default3DScalar = 'saturation_water' | 'saturation_gas' | null;
 
+// ─── Analytical output contract ──────────────────────────────────────────────
+
+/** What a given analytical method produces and its display defaults. */
+export type AnalyticalOutputContract = {
+    /** Curve outputs this method can produce. */
+    produces: readonly string[];
+    /** Which primary rate curves are valid for this method. */
+    supportedRateCurves: readonly PrimaryRateCurve[];
+    /** Native x-axis of the analytical solution. */
+    nativeXAxis: 'pvi' | 'time';
+    /** Default primary rate curve. */
+    defaultPrimaryRateCurve: PrimaryRateCurve;
+    /** Whether depletion tau (tD axis) is meaningful. */
+    hasTau: boolean;
+    /** Default panel expansion state for the RateChart. */
+    defaultPanelExpansion: {
+        rates: boolean;
+        recovery: boolean;
+        cumulative: boolean;
+        diagnostics: boolean;
+    };
+};
+
+/**
+ * Each analytical method declares its output contract — what it produces and
+ * how results should be displayed by default. Scenarios inherit these defaults
+ * and only override what they need.
+ */
+export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOutputContract> = {
+    'buckley-leverett': {
+        produces: ['water-cut', 'recovery', 'cum-oil'],
+        supportedRateCurves: ['water-cut'],
+        nativeXAxis: 'pvi',
+        defaultPrimaryRateCurve: 'water-cut',
+        hasTau: false,
+        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
+    },
+    'gas-oil-bl': {
+        produces: ['gas-cut', 'recovery', 'cum-oil'],
+        supportedRateCurves: ['gas-cut'],
+        nativeXAxis: 'pvi',
+        defaultPrimaryRateCurve: 'gas-cut',
+        hasTau: false,
+        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
+    },
+    'depletion': {
+        produces: ['oil-rate', 'recovery', 'cum-oil', 'pressure'],
+        supportedRateCurves: ['oil-rate'],
+        nativeXAxis: 'time',
+        defaultPrimaryRateCurve: 'oil-rate',
+        hasTau: true,
+        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: true },
+    },
+    'none': {
+        produces: [],
+        supportedRateCurves: ['water-cut', 'gas-cut', 'oil-rate'],
+        nativeXAxis: 'time',
+        defaultPrimaryRateCurve: 'oil-rate',
+        hasTau: false,
+        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
+    },
+};
+
+// ─── Scenario capabilities ───────────────────────────────────────────────────
+
 /**
  * Scenario capability declarations — the single source of truth for all
- * behavioral routing that was previously scattered across conditional logic
- * branching on scenarioClass/domain.
+ * behavioral routing. Fields derivable from `analyticalMethod` are optional
+ * overrides; omitted fields inherit from ANALYTICAL_OUTPUT_CONTRACTS.
  *
- * Every scenario declares its capabilities explicitly. Consumer code reads
- * these fields instead of switching on scenarioClass or domain.
+ * Consumer code reads resolved capabilities via `resolveCapabilities()`.
  */
 export type ScenarioCapabilities = {
-    /** Which analytical reference model to use (replaces scenarioClass routing). */
+    /** Which analytical reference model to use — the primary routing key. */
     analyticalMethod: AnalyticalMethod;
-    /** Primary rate curve displayed in the "rates" panel. */
-    primaryRateCurve: PrimaryRateCurve;
+    /** Override the default primary rate curve for this analytical method. */
+    primaryRateCurve?: PrimaryRateCurve;
+    /** Override the native x-axis for this analytical method. */
+    analyticalNativeXAxis?: 'pvi' | 'time';
+    /** Override whether tau is meaningful for this analytical method. */
+    hasTauDimensionlessTime?: boolean;
     /** Whether the sweep efficiency panel (E_A, E_V, E_vol) should be shown. */
     showSweepPanel: boolean;
-    /** Native x-axis of the analytical solution — determines whether remapping is needed. */
-    analyticalNativeXAxis: 'pvi' | 'time';
-    /** Whether depletion tau (tD axis) is meaningful for this scenario. */
-    hasTauDimensionlessTime: boolean;
     /** Whether the scenario includes an active injector. */
     hasInjector: boolean;
     /** Default 3D scalar to show on load. */
@@ -76,6 +140,53 @@ export type ScenarioCapabilities = {
     /** Whether the gas domain tab gate applies (scenario only visible in 3-phase mode). */
     requiresThreePhaseMode: boolean;
 };
+
+/** Fully resolved capabilities — all fields guaranteed present. */
+export type ResolvedCapabilities = {
+    analyticalMethod: AnalyticalMethod;
+    primaryRateCurve: PrimaryRateCurve;
+    analyticalNativeXAxis: 'pvi' | 'time';
+    hasTauDimensionlessTime: boolean;
+    showSweepPanel: boolean;
+    hasInjector: boolean;
+    default3DScalar: Default3DScalar;
+    requiresThreePhaseMode: boolean;
+    /** Panel expansion defaults from the analytical output contract. */
+    defaultPanelExpansion: AnalyticalOutputContract['defaultPanelExpansion'];
+};
+
+/** Merge analytical method defaults with scenario overrides. */
+export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabilities {
+    const contract = ANALYTICAL_OUTPUT_CONTRACTS[caps.analyticalMethod];
+    return {
+        analyticalMethod: caps.analyticalMethod,
+        primaryRateCurve: caps.primaryRateCurve ?? contract.defaultPrimaryRateCurve,
+        analyticalNativeXAxis: caps.analyticalNativeXAxis ?? contract.nativeXAxis,
+        hasTauDimensionlessTime: caps.hasTauDimensionlessTime ?? contract.hasTau,
+        showSweepPanel: caps.showSweepPanel,
+        hasInjector: caps.hasInjector,
+        default3DScalar: caps.default3DScalar,
+        requiresThreePhaseMode: caps.requiresThreePhaseMode,
+        defaultPanelExpansion: contract.defaultPanelExpansion,
+    };
+}
+
+/**
+ * Validate that a scenario's capabilities are consistent with the analytical
+ * method's output contract. Returns an array of error strings (empty = valid).
+ */
+export function validateScenarioCapabilities(caps: ScenarioCapabilities): string[] {
+    const contract = ANALYTICAL_OUTPUT_CONTRACTS[caps.analyticalMethod];
+    const errors: string[] = [];
+    const effectiveRateCurve = caps.primaryRateCurve ?? contract.defaultPrimaryRateCurve;
+    if (!contract.supportedRateCurves.includes(effectiveRateCurve)) {
+        errors.push(
+            `analyticalMethod '${caps.analyticalMethod}' does not support primaryRateCurve '${effectiveRateCurve}' `
+            + `(supported: ${contract.supportedRateCurves.join(', ')})`,
+        );
+    }
+    return errors;
+}
 
 export type SensitivityVariant = {
     key: string;
@@ -144,10 +255,7 @@ export type Scenario = {
 /** Default capabilities for custom mode (no predefined scenario). */
 export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
     analyticalMethod: 'none',
-    primaryRateCurve: 'oil-rate',
     showSweepPanel: false,
-    analyticalNativeXAxis: 'time',
-    hasTauDimensionlessTime: false,
     hasInjector: true,
     default3DScalar: null,
     requiresThreePhaseMode: false,

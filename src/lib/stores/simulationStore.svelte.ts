@@ -39,7 +39,7 @@ import {
     type ValidationWarning,
 } from '../validateInputs';
 import { buildWarningPolicy, evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
-import { getScenario, getScenarioWithVariantParams, getDefaultVariantKeys } from '../catalog/scenarios';
+import { getScenario, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
@@ -422,7 +422,6 @@ class SimulationStoreImpl {
             provenanceSummary: activeSource === 'custom' ? null : (this.activeLibraryEntry?.provenanceSummary ?? null),
             activeComparisonSelection: buildComparisonSelection(this.activeComparisonSelection),
             editabilityPolicy: buildScenarioEditabilityPolicy({
-                activeMode: this.activeMode,
                 caseSource: activeSource,
                 activeLibraryGroup,
             }),
@@ -456,15 +455,15 @@ class SimulationStoreImpl {
     activeScenarioAsFamily = $derived.by((): import('../catalog/benchmarkCases').BenchmarkFamily | null => {
         const sc = this.activeScenarioObject;
         if (!sc || this.isCustomMode) return null;
-        const caps = sc.capabilities;
+        const resolved = resolveCapabilities(sc.capabilities);
 
         // Map analyticalMethod → deprecated scenarioClass (still required by BenchmarkFamily type).
-        const scenarioClass = caps.analyticalMethod === 'buckley-leverett' ? 'buckley-leverett' as const
-            : caps.analyticalMethod === 'gas-oil-bl' ? 'gas-oil-bl' as const
+        const scenarioClass = resolved.analyticalMethod === 'buckley-leverett' ? 'buckley-leverett' as const
+            : resolved.analyticalMethod === 'gas-oil-bl' ? 'gas-oil-bl' as const
             : 'depletion' as const;
 
-        const xAxis = caps.analyticalNativeXAxis as import('../catalog/benchmarkCases').BenchmarkXAxisKey;
-        const panels = (caps.primaryRateCurve === 'oil-rate'
+        const xAxis = resolved.analyticalNativeXAxis as import('../catalog/benchmarkCases').BenchmarkXAxisKey;
+        const panels = (resolved.primaryRateCurve === 'oil-rate'
             ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
             : ['watercut-breakthrough', 'recovery', 'pressure']
         ) as import('../catalog/benchmarkCases').BenchmarkPanelKey[];
@@ -473,7 +472,7 @@ class SimulationStoreImpl {
             key: sc.key,
             baseCaseKey: sc.key,
             scenarioClass,
-            analyticalMethod: caps.analyticalMethod,
+            analyticalMethod: resolved.analyticalMethod,
             sensitivityAxes: [],
             reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
             displayDefaults: { xAxis, panels },
@@ -482,7 +481,7 @@ class SimulationStoreImpl {
             label: sc.label,
             description: sc.description,
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
-            showSweepPanel: caps.showSweepPanel,
+            showSweepPanel: resolved.showSweepPanel,
         };
     });
 
@@ -505,7 +504,6 @@ class SimulationStoreImpl {
         $effect(() => {
             if (!shouldAutoClearModifiedState({
                 isModified: this.isModified,
-                activeMode: this.activeMode,
                 referenceProvenance: this.referenceProvenance,
                 parameterOverrideCount: this.parameterOverrideCount,
             })) return;
@@ -1500,7 +1498,6 @@ class SimulationStoreImpl {
 
     cloneActiveReferenceToCustom(): boolean {
         if (!shouldAllowReferenceClone({
-            activeMode: this.activeMode,
             isModified: this.isModified,
             hasReferenceLibraryCase: Boolean(this.activeNavigationLibraryEntry),
         })) return false;

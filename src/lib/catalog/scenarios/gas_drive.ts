@@ -11,10 +11,7 @@ export const gas_drive: Scenario = {
     chartPreset: 'gas',
     capabilities: {
         analyticalMethod: 'none',
-        primaryRateCurve: 'oil-rate',
         showSweepPanel: false,
-        analyticalNativeXAxis: 'time',
-        hasTauDimensionlessTime: false,
         hasInjector: false,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,

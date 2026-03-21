@@ -12,10 +12,7 @@ export const gas_injection: Scenario = {
     defaultSensitivityDimensionKey: 'mobility',
     capabilities: {
         analyticalMethod: 'gas-oil-bl',
-        primaryRateCurve: 'gas-cut',
         showSweepPanel: false,
-        analyticalNativeXAxis: 'pvi',
-        hasTauDimensionlessTime: false,
         hasInjector: true,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,

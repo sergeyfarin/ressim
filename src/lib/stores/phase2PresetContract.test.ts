@@ -184,7 +184,6 @@ describe('phase2PresetContract', () => {
 
     it('locks non-reference library cases behind customize just like reference cases', () => {
         const policy = buildScenarioEditabilityPolicy({
-            activeMode: 'wf',
             caseSource: 'case-library',
         });
 
@@ -199,7 +198,6 @@ describe('phase2PresetContract', () => {
 
     it('treats reference library cases as locked reference flows', () => {
         const policy = buildScenarioEditabilityPolicy({
-            activeMode: 'dep',
             caseSource: 'case-library',
             activeLibraryGroup: 'literature-reference',
         });
@@ -429,14 +427,12 @@ describe('phase2PresetContract', () => {
     it('auto-clears modified state only when there is no seeded reference provenance and no overrides', () => {
         expect(shouldAutoClearModifiedState({
             isModified: true,
-            activeMode: 'dep',
             referenceProvenance: null,
             parameterOverrideCount: 0,
         })).toBe(true);
 
         expect(shouldAutoClearModifiedState({
             isModified: true,
-            activeMode: 'dep',
             referenceProvenance: {
                 sourceBenchmarkId: 'bl_case_a_refined',
                 sourceCaseKey: 'bench_bl-case-a-refined',
@@ -448,17 +444,16 @@ describe('phase2PresetContract', () => {
 
         expect(shouldAutoClearModifiedState({
             isModified: true,
-            activeMode: 'dep',
             referenceProvenance: null,
             parameterOverrideCount: 2,
         })).toBe(false);
     });
 
     it('only allows clone-to-custom from unmodified reference-capable state', () => {
-        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
-        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: true, hasReferenceLibraryCase: true })).toBe(false);
-        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false, hasReferenceLibraryCase: true })).toBe(true);
-        expect(shouldAllowReferenceClone({ activeMode: 'dep', isModified: false })).toBe(false);
+        expect(shouldAllowReferenceClone({ isModified: false, hasReferenceLibraryCase: true })).toBe(true);
+        expect(shouldAllowReferenceClone({ isModified: true, hasReferenceLibraryCase: true })).toBe(false);
+        expect(shouldAllowReferenceClone({ isModified: false, hasReferenceLibraryCase: true })).toBe(true);
+        expect(shouldAllowReferenceClone({ isModified: false })).toBe(false);
     });
 
     it('shows mode-panel status row for provenance or tracked overrides', () => {

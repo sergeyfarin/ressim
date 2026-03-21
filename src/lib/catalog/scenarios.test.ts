@@ -3,7 +3,14 @@ import { calculateAnalyticalProduction } from '../analytical/fractionalFlow';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
-import { getScenario, getScenarioWithVariantParams } from './scenarios';
+import {
+    getScenario,
+    getScenarioWithVariantParams,
+    listScenarios,
+    resolveCapabilities,
+    validateScenarioCapabilities,
+    ANALYTICAL_OUTPUT_CONTRACTS,
+} from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
     it('provides analytical method metadata for every canonical scenario', () => {
@@ -263,4 +270,72 @@ describe('affectsAnalytical contract', () => {
             }
         }
     }
+});
+
+describe('scenario capability validation', () => {
+    it('every scenario passes capability validation against its analytical output contract', () => {
+        for (const scenario of listScenarios()) {
+            const errors = validateScenarioCapabilities(scenario.capabilities);
+            expect(errors, `${scenario.key}: ${errors.join('; ')}`).toEqual([]);
+        }
+    });
+
+    it('resolveCapabilities produces correct defaults for each analytical method', () => {
+        const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        expect(bl.primaryRateCurve).toBe('water-cut');
+        expect(bl.analyticalNativeXAxis).toBe('pvi');
+        expect(bl.hasTauDimensionlessTime).toBe(false);
+
+        const dep = resolveCapabilities({ analyticalMethod: 'depletion', showSweepPanel: false, hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
+        expect(dep.primaryRateCurve).toBe('oil-rate');
+        expect(dep.analyticalNativeXAxis).toBe('time');
+        expect(dep.hasTauDimensionlessTime).toBe(true);
+
+        const gasOil = resolveCapabilities({ analyticalMethod: 'gas-oil-bl', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        expect(gasOil.primaryRateCurve).toBe('gas-cut');
+        expect(gasOil.analyticalNativeXAxis).toBe('pvi');
+    });
+
+    it('resolveCapabilities respects explicit overrides', () => {
+        const resolved = resolveCapabilities({
+            analyticalMethod: 'buckley-leverett',
+            primaryRateCurve: 'oil-rate', // explicit override
+            analyticalNativeXAxis: 'time', // explicit override
+            showSweepPanel: false,
+            hasInjector: true,
+            default3DScalar: null,
+            requiresThreePhaseMode: false,
+        });
+        expect(resolved.primaryRateCurve).toBe('oil-rate');
+        expect(resolved.analyticalNativeXAxis).toBe('time');
+    });
+
+    it('validateScenarioCapabilities catches invalid primaryRateCurve for analytical method', () => {
+        const errors = validateScenarioCapabilities({
+            analyticalMethod: 'depletion',
+            primaryRateCurve: 'water-cut', // depletion cannot produce water-cut
+            showSweepPanel: false,
+            hasInjector: false,
+            default3DScalar: null,
+            requiresThreePhaseMode: false,
+        });
+        expect(errors.length).toBeGreaterThan(0);
+        expect(errors[0]).toContain('water-cut');
+    });
+
+    it('resolved capabilities include defaultPanelExpansion from the output contract', () => {
+        const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
+        expect(bl.defaultPanelExpansion.diagnostics).toBe(false);
+
+        const dep = resolveCapabilities({ analyticalMethod: 'depletion', showSweepPanel: false, hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
+        expect(dep.defaultPanelExpansion.diagnostics).toBe(true);
+    });
+
+    it('ANALYTICAL_OUTPUT_CONTRACTS covers all AnalyticalMethod values', () => {
+        const methods = ['buckley-leverett', 'gas-oil-bl', 'depletion', 'none'] as const;
+        for (const method of methods) {
+            expect(ANALYTICAL_OUTPUT_CONTRACTS[method]).toBeDefined();
+            expect(ANALYTICAL_OUTPUT_CONTRACTS[method].supportedRateCurves.length).toBeGreaterThan(0);
+        }
+    });
 });

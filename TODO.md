@@ -51,6 +51,16 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 - [x] `caseMode` eliminated from `ScenarioCapabilities` — derived from `analyticalMethod` at the single consumption site in `simulationStore`
 - [x] `BenchmarkScenarioClass` type and `BenchmarkFamily.scenarioClass` field kept as deprecated — only used by the 5 benchmark family definitions and the adapter mapping in `simulationStore`
 
+**Analytical Output Contracts & Validation (2026-03-21):**
+- [x] `ANALYTICAL_OUTPUT_CONTRACTS` table — declares what each `AnalyticalMethod` produces, supported rate curves, native x-axis, default panel expansion, and tau availability
+- [x] `resolveCapabilities()` — merges analytical method defaults with optional per-scenario overrides; returns fully-resolved `ResolvedCapabilities`
+- [x] `validateScenarioCapabilities()` — catches configuration mistakes (e.g. requesting `water-cut` from a depletion method) at test time
+- [x] Per-scenario capabilities simplified — `primaryRateCurve`, `analyticalNativeXAxis`, `hasTauDimensionlessTime` now optional (derived from analytical method unless overridden)
+- [x] `simulationStore` adapter uses `resolveCapabilities()` for the `activeScenarioAsFamily` bridge
+- [x] Dead `activeMode` parameter removed from `buildScenarioEditabilityPolicy`, `shouldAutoClearModifiedState`, `shouldAllowReferenceClone` (3 functions in `phase2PresetContract.ts` + all call sites)
+- [x] 6 new validation tests in `scenarios.test.ts` covering contracts, resolution, overrides, and error detection
+- [x] `CaseMode` confirmed as catalog-key only — all remaining branches are legitimate catalog/preset lookups (no behavioral migration needed)
+
 **Discovered issues:**
 - `gas_injection` scenario was silently falling through to `CaseMode: 'dep'` instead of `'3p'` — now CaseMode derived from analyticalMethod (gas-oil-bl → 'dep')
 - `gas_drive` same issue — CaseMode derived as 'dep' (analyticalMethod: 'none')

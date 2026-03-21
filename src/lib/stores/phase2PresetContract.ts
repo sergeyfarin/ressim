@@ -115,7 +115,6 @@ export function resolveLibraryCaseGroup(input: {
 }
 
 export function buildScenarioEditabilityPolicy(input: {
-    activeMode: CaseMode;
     caseSource: ScenarioSource;
     activeLibraryGroup?: LibraryCaseGroup | null;
 }): ScenarioEditabilityPolicy {
@@ -211,7 +210,6 @@ export function buildScenarioNavigationState(input: {
         provenanceSummary: activeSource === 'custom' ? null : hasProvenanceSummary ? input.provenanceSummary ?? null : null,
         activeComparisonSelection: buildComparisonSelection(input.activeComparisonSelection),
         editabilityPolicy: buildScenarioEditabilityPolicy({
-            activeMode: input.activeMode,
             caseSource: activeSource,
             activeLibraryGroup,
         }),
@@ -383,7 +381,6 @@ export function buildReferenceCloneProvenance(input: {
 
 export function shouldAutoClearModifiedState(input: {
     isModified: boolean;
-    activeMode: CaseMode;
     referenceProvenance: ReferenceProvenance | null;
     parameterOverrideCount: number;
 }): boolean {
@@ -393,7 +390,6 @@ export function shouldAutoClearModifiedState(input: {
 }
 
 export function shouldAllowReferenceClone(input: {
-    activeMode: CaseMode;
     isModified: boolean;
     hasReferenceLibraryCase?: boolean;
 }): boolean {

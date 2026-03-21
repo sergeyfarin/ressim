@@ -12,10 +12,7 @@ export const dep_pss: Scenario = {
     defaultSensitivityDimensionKey: 'shape_factor',
     capabilities: {
         analyticalMethod: 'depletion',
-        primaryRateCurve: 'oil-rate',
         showSweepPanel: false,
-        analyticalNativeXAxis: 'time',
-        hasTauDimensionlessTime: true,
         hasInjector: false,
         default3DScalar: null,
         requiresThreePhaseMode: false,

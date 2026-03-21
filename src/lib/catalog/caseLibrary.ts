@@ -243,7 +243,6 @@ function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
             : 'No library sensitivities available.',
         sensitivityAxes,
         editabilityPolicy: buildScenarioEditabilityPolicy({
-            activeMode: activationMode,
             caseSource: CASE_LIBRARY_SOURCE,
             activeLibraryGroup: provenance.group,
         }),
@@ -281,7 +280,6 @@ function buildPresetLibraryEntry(entry: PresetEntry): CaseLibraryEntry {
         sensitivitySummary: buildPresetSensitivitySummary(),
         sensitivityAxes: [],
         editabilityPolicy: buildScenarioEditabilityPolicy({
-            activeMode: entry.mode,
             caseSource: CASE_LIBRARY_SOURCE,
         }),
         benchmarkFamilyKey: null,

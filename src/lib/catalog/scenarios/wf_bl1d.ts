@@ -12,10 +12,7 @@ export const wf_bl1d: Scenario = {
     defaultSensitivityDimensionKey: 'mobility',
     capabilities: {
         analyticalMethod: 'buckley-leverett',
-        primaryRateCurve: 'water-cut',
         showSweepPanel: false,
-        analyticalNativeXAxis: 'pvi',
-        hasTauDimensionlessTime: false,
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

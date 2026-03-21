@@ -12,10 +12,7 @@ export const sweep_vertical: Scenario = {
     defaultSensitivityDimensionKey: 'heterogeneity',
     capabilities: {
         analyticalMethod: 'buckley-leverett',
-        primaryRateCurve: 'water-cut',
         showSweepPanel: true,
-        analyticalNativeXAxis: 'pvi',
-        hasTauDimensionlessTime: false,
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
