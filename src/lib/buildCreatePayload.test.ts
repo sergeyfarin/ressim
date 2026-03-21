@@ -56,4 +56,15 @@ describe('buildCreatePayloadFromState', () => {
     expect(typeof payload.capillaryEnabled).toBe('boolean')
     expect(Array.isArray(payload.permsX)).toBe(true)
   })
+
+  it('defaults the producer to the opposite j-boundary when producerJ is implicit', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 5,
+      ny: 4,
+      nz: 1,
+      producerI: 4,
+    }) as SimulatorCreatePayload
+
+    expect(payload.producerJ).toBe(3)
+  })
 })

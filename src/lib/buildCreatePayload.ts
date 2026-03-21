@@ -21,6 +21,10 @@ function toIntRange(value: unknown, min: number, max: number, fallback: number):
   return Math.min(max, Math.max(min, Math.round(toFiniteNumber(value, fallback))))
 }
 
+function defaultProducerJForGrid(ny: number): number {
+  return Math.max(0, ny - 1)
+}
+
 function normalizeLayerArray(values: unknown, fallback: number, length: number): number[] {
   if (!Array.isArray(values)) {
     return Array.from({ length }, () => fallback)
@@ -78,7 +82,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
   const injectorI = toIntRange(state.injectorI, 0, nx - 1, 0)
   const injectorJ = toIntRange(state.injectorJ, 0, ny - 1, 0)
   const producerI = toIntRange(state.producerI, 0, nx - 1, nx - 1)
-  const producerJ = toIntRange(state.producerJ, 0, ny - 1, 0)
+  const producerJ = toIntRange(state.producerJ, 0, ny - 1, defaultProducerJForGrid(ny))
 
   return {
     nx,

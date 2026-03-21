@@ -170,7 +170,16 @@ impl ReservoirSimulator {
             let b1 = table.interpolate(p_minus).bo_m3m3;
             let b2 = table.interpolate(p + dp).bo_m3m3;
             let bo = table.interpolate(p).bo_m3m3;
-            if bo > 1e-12 { (-1.0 / bo) * (b2 - b1) / (2.0 * dp) } else { self.pvt.c_o }
+            if bo > 1e-12 {
+                let derived_c_o = (-1.0 / bo) * (b2 - b1) / (2.0 * dp);
+                if derived_c_o.is_finite() && derived_c_o > 0.0 {
+                    derived_c_o.max(self.pvt.c_o)
+                } else {
+                    self.pvt.c_o
+                }
+            } else {
+                self.pvt.c_o
+            }
         } else {
             self.pvt.c_o
         }
@@ -1035,6 +1044,49 @@ mod tests {
     struct BuckleyMetrics {
         breakthrough_pv: f64,
         reference_breakthrough_pv: f64,
+    }
+
+    #[test]
+    fn black_oil_compressibility_falls_back_when_bo_slope_goes_negative() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.pvt.c_o = 1e-5;
+        sim.pvt_table = Some(pvt::PvtTable::new(
+            vec![
+                pvt::PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 5.0,
+                    bo_m3m3: 1.05,
+                    mu_o_cp: 1.5,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                pvt::PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.12,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.006,
+                    mu_g_cp: 0.025,
+                },
+                pvt::PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.11944,
+                    mu_o_cp: 1.3,
+                    bg_m3m3: 0.0045,
+                    mu_g_cp: 0.03,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+
+        let c_o_below_bubble_point = sim.get_c_o(149.0);
+        let c_o_above_bubble_point = sim.get_c_o(175.0);
+
+        assert!(c_o_below_bubble_point.is_finite());
+        assert!(c_o_above_bubble_point.is_finite());
+        assert_eq!(c_o_below_bubble_point, sim.pvt.c_o);
+        assert!(c_o_above_bubble_point >= sim.pvt.c_o);
     }
 
     fn buckley_case_a(

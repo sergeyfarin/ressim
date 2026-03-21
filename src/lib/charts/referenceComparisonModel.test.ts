@@ -3,6 +3,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from '../catalog/caseCatalog';
 import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
+import type { SimulatorSnapshot } from '../simulator-types';
 import { buildReferenceComparisonModel } from './referenceComparisonModel';
 
 function buildSyntheticWaterfloodRateHistory(
@@ -97,6 +98,47 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
     }));
 }
 
+function buildSweepSnapshots(params: Record<string, any>, counts: number[]): SimulatorSnapshot[] {
+    const nx = Number(params.nx);
+    const ny = Number(params.ny);
+    const nz = Number(params.nz);
+    const total = nx * ny * nz;
+    const swc = Number(params.s_wc ?? 0.1);
+    const pressure = Number(params.initialPressure ?? 300);
+
+    return counts.map((sweptCount, index) => {
+        const satWater = new Float64Array(total).fill(swc);
+        const satOil = new Float64Array(total).fill(Math.max(0, 1 - swc));
+        const satGas = new Float64Array(total).fill(0);
+        for (let cell = 0; cell < Math.min(total, sweptCount); cell += 1) {
+            satWater[cell] = swc + 0.2;
+            satOil[cell] = Math.max(0, 1 - satWater[cell]);
+        }
+
+        return {
+            time: index + 1,
+            grid: {
+                pressure: new Float64Array(total).fill(pressure),
+                sat_water: satWater,
+                sat_oil: satOil,
+                sat_gas: satGas,
+            },
+            wells: [],
+        };
+    });
+}
+
+function buildSweepRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
+    const rateHistory = buildSyntheticWaterfloodRateHistory(spec.params, 0.55, 0);
+    const total = Number(spec.params.nx) * Number(spec.params.ny) * Number(spec.params.nz);
+    const history = buildSweepSnapshots(spec.params, [1, Math.max(2, Math.floor(total / 4)), Math.max(3, Math.floor(total / 2))]);
+    return buildBenchmarkRunResult({
+        spec,
+        rateHistory,
+        history,
+    });
+}
+
 describe('referenceComparisonModel', () => {
     it('preserves provided run order while still building reference-solution curves', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
@@ -151,7 +193,12 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.recovery.curves.map((curve) => curve.label)).toEqual(
             expect.arrayContaining(['Reference Solution Recovery']),
         );
-        expect(model.panels.diagnostics.curves).toHaveLength(2);
+        expect(model.panels.diagnostics.curves.map((curve) => curve.label)).toEqual(
+            expect.arrayContaining([
+                `${baseResult.label} Avg Pressure`,
+                `${gridVariantResult.label} Avg Pressure`,
+            ]),
+        );
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {
@@ -467,5 +514,81 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.rates.curves.find((curve) => curve.label === `${result.label} Oil Rate`)?.curveKey).toBe('oil-rate-sim');
         expect(model.panels.recovery.curves.find((curve) => curve.label === `${result.label} Recovery`)?.curveKey).toBe('recovery-factor-primary');
         expect(model.panels.diagnostics.curves.find((curve) => curve.label === `${result.label} Avg Pressure`)?.curveKey).toBe('avg-pressure-sim');
+    });
+
+    it('builds sweep preview panels before any sweep runs complete', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
+        const specs = buildBenchmarkRunSpecs(baseFamily!, [variants[0], variants[1]]);
+        const previewVariantParams = specs.slice(1).map((spec) => ({
+            label: spec.label,
+            variantKey: spec.key,
+            params: spec.params,
+        }));
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [],
+            xAxisMode: 'pvi',
+            analyticalPerVariant: true,
+            previewVariantParams,
+            previewAnalyticalMethod: family.analyticalMethod,
+        });
+
+        expect(model.previewCases).toHaveLength(2);
+        expect(model.sweepPanels.rf?.curves).toHaveLength(2);
+        expect(model.sweepPanels.areal?.curves).toHaveLength(2);
+        expect(model.sweepPanels.combined?.curves.map((curve) => curve.curveKey)).toEqual([
+            'sweep-combined-reference',
+            'sweep-combined-reference',
+        ]);
+    });
+
+    it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
+        const [baseSpec, variantSpec] = buildBenchmarkRunSpecs(baseFamily!, [variants[0]]);
+        const baseResult = buildSweepRunResult(baseSpec);
+        const pendingVariant = {
+            label: variantSpec.label,
+            variantKey: variantSpec.key,
+            params: variantSpec.params,
+        };
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [baseResult],
+            xAxisMode: 'pvi',
+            analyticalPerVariant: false,
+            previewVariantParams: [
+                { label: baseSpec.label, variantKey: baseSpec.key, params: baseSpec.params },
+                pendingVariant,
+            ],
+            pendingPreviewVariants: [pendingVariant],
+        });
+
+        expect(model.previewCases.map((entry) => entry.key)).toEqual([pendingVariant.variantKey]);
+
+        const combinedPanel = model.sweepPanels.combined;
+        expect(combinedPanel).not.toBeNull();
+
+        const completedSimIndex = combinedPanel!.curves.findIndex(
+            (curve) => curve.curveKey === 'sweep-combined-sim' && curve.caseKey === baseResult.key,
+        );
+        const completedAnalyticalIndex = combinedPanel!.curves.findIndex(
+            (curve) => curve.curveKey === 'sweep-combined-reference' && curve.caseKey === baseResult.key,
+        );
+        const pendingAnalyticalIndex = combinedPanel!.curves.findIndex(
+            (curve) => curve.curveKey === 'sweep-combined-reference' && curve.caseKey === pendingVariant.variantKey,
+        );
+
+        expect(completedSimIndex).toBeGreaterThanOrEqual(0);
+        expect(completedAnalyticalIndex).toBeGreaterThanOrEqual(0);
+        expect(pendingAnalyticalIndex).toBeGreaterThanOrEqual(0);
+        expect(combinedPanel!.series[completedSimIndex]?.length).toBeGreaterThan(0);
+        expect(combinedPanel!.series[pendingAnalyticalIndex]?.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.rf?.curves.some((curve) => curve.curveKey === 'sweep-rf-sim')).toBe(true);
     });
 });

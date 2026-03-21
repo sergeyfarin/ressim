@@ -8,6 +8,10 @@ Phased plan to evolve ResSim from a validated 2-phase waterflood teaching tool i
 
 Goal: clean up tech debt, fix known correctness issues, finish incomplete work.
 
+### Active Slice (2026-03-21)
+
+- [ ] Restore repository health for validation checks (`npm run typecheck`, `npm run lint`, `npm test`, and build-related Svelte diagnostics) after the recent sweep/chart changes.
+
 ### 1A. Three-Phase Correctness Fixes
 
 Confirmed bugs blocking gas scenarios from leaving "experimental" status.
@@ -93,7 +97,7 @@ Eight legacy catalog/benchmark files still have active production dependencies. 
 - [x] Scenario sweep runtime controls keep `steps` tied to the run-controls input while allowing per-variant `Δt` defaults unless the timestep field is explicitly edited.
 - [x] **Color stability when sweep results arrive out of order** — `orderResults()` now sorts by `previewVariantParams` declaration index; pending preview cases also use declaration-order color indices.
 - [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.
-- [ ] **Sweep panel has no pending overlays** — during mid-sweep, `buildSweepPanel` only shows completed results. Low priority.
+- [x] **Sweep panels now support preview and pending overlays** — comparison sweep charts render analytical-only preview panels before runs complete, keep pending variants visible during mid-sweep, and overlay solid simulation curves with dashed analytical references once results land.
 - [x] **`previewBaseParams` coupling is fragile** — removed redundant `!previewVariantParams?.length` guard from App.svelte; model builder already handles variant→base precedence internally.
 - [ ] **Tests missing for `previewCases` and depletion per-variant** — add coverage for pure-preview mode, mid-sweep mode, depletion with `analyticalPerVariant=true`, and `colorIndex` offset correctness.
 
@@ -102,6 +106,7 @@ Eight legacy catalog/benchmark files still have active production dependencies. 
 - [ ] Update BENCHMARK_MODE_GUIDE.md — references pre-S1 `ModePanel.svelte` and 4-layer navigation
 - [ ] Resolve SwProfileChart status — either restore the card in `App.svelte` or remove the stale component and doc references
 - [ ] Document capillary pressure cap (20 × P_entry) in user-facing physics notes, not just code comments
+- [ ] Clarify `sweep_areal` geometry / boundary interpretation — the current injector-at-origin, producer-at-far-corner setup behaves as a quarter five-spot symmetry element with no-flow outer boundaries, so `Imax`/`Jmax` wall lag can be mistaken for an indexing bug. Add a note in scenario/docs or revise the setup if full-pattern visual intuition is desired.
 
 ---
 
@@ -118,6 +123,7 @@ Current custom mode is a catch-all that dumps 50+ raw parameter inputs with no c
 - [x] **Grouped parameter sections** — all sections redesigned with dense `<table>` layouts: Geometry (3×4 cells/size/total grid), Reservoir (initial conditions table + fluid PVT table + inline perm), Wells (compact 2-row table), Rel Perm (endpoints table + inline capillary + side-by-side SVG curves), Timestep (single-row table), Gas (combined rel perm + PVT in one table), Analytical (inline controls). FilterCard dimension toggles removed from custom mode panel.
 - [x] **Preset starting points** — rock-type quick-pick chips (Sandstone, Carbonate, Shale/Tight, Heavy Oil) in custom mode header. Each applies domain-appropriate defaults for porosity, permeability, viscosity, saturation endpoints, capillary pressure. Defined in `reservoirPresets.ts`.
 - [x] **Validation guidance** — proactive advisory warnings for low permeability (<0.1 mD), high mobility ratio (>50), large grid (>50k cells), very small timestep (<0.01 d). Wired through existing `ValidationWarning` system and `WarningPolicyPanel`.
+- [x] **Custom-mode default well layout** — when well coordinates are implicit, the producer now defaults to the opposite `j` boundary (`ny - 1`) instead of sharing the injector edge. This avoids misleading 2D floods where the `Jmax` wall appears to lag due to the default corner-to-edge layout rather than an indexing bug.
 
 **Postponed (revisit after custom mode lands):**
 
@@ -188,6 +194,7 @@ Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure
 - [x] **μ_g(P) — gas viscosity**: Lee-Gonzalez-Eakin (1966) correlation. Varies with pressure and temperature.
 - [x] **z-factor**: Standing-Katz chart or Hall-Yarborough (1973) correlation for real gas compressibility.
 - [x] **PVT table structure in Rust**: `PvtTable` struct with interpolation; replace constant `c_o`, `c_g`, `mu_o`, `mu_g` with pressure-dependent lookups.
+- [x] **Black-oil pressure solver stabilization** — table-derived `c_o` now falls back to the base positive compressibility when the saturated `B_o(P)` slope would otherwise make the simplified IMPES pressure accumulation negative. Fixes severe slowdowns / PCG non-convergence for high-bubble-point volatile-oil and condensate custom presets.
 - [x] **UI for PVT**: bubble-point pressure input; API gravity and gas specific gravity for correlation-based PVT; option to input tabular PVT directly.
 - [x] Extract `FluidPropertiesSection` out of `ReservoirSection.svelte` to declutter the inputs.
 - [x] In Black-Oil PVT mode, add a graphical preview chart (utilizing Chart.js via `ChartSubPanel`) alongside the tabular data for clear visualization of PVT curves vs Pressure.

@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepPoint, computeSweepRecoveryFactor } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './ChartSubPanel.svelte';
@@ -13,6 +13,13 @@ export type XYPoint = { x: number; y: number | null };
 export type ReferenceComparisonPanel = {
     curves: CurveConfig[];
     series: XYPoint[][];
+};
+
+export type ReferenceComparisonSweepPanels = {
+    rf: ReferenceComparisonPanel | null;
+    areal: ReferenceComparisonPanel | null;
+    vertical: ReferenceComparisonPanel | null;
+    combined: ReferenceComparisonPanel | null;
 };
 
 export type ReferenceComparisonModel = {
@@ -26,7 +33,7 @@ export type ReferenceComparisonModel = {
      */
     previewCases: ReferenceComparisonPreviewCase[];
     panels: Record<RateChartPanelKey, ReferenceComparisonPanel>;
-    sweepPanel: ReferenceComparisonPanel | null;
+    sweepPanels: ReferenceComparisonSweepPanels;
     axisMappingWarning: string | null;
 };
 
@@ -436,6 +443,39 @@ function appendSeries(
     panel.series.push(toXYSeries(xValues, yValues));
 }
 
+function createReferenceComparisonPanel(): ReferenceComparisonPanel {
+    return { curves: [], series: [] };
+}
+
+function createSweepPanels(): Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel> {
+    return {
+        rf: createReferenceComparisonPanel(),
+        areal: createReferenceComparisonPanel(),
+        vertical: createReferenceComparisonPanel(),
+        combined: createReferenceComparisonPanel(),
+    };
+}
+
+function emptySweepPanels(): ReferenceComparisonSweepPanels {
+    return {
+        rf: null,
+        areal: null,
+        vertical: null,
+        combined: null,
+    };
+}
+
+function finalizeSweepPanels(
+    panels: Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel>,
+): ReferenceComparisonSweepPanels {
+    return {
+        rf: panels.rf.curves.length > 0 ? panels.rf : null,
+        areal: panels.areal.curves.length > 0 ? panels.areal : null,
+        vertical: panels.vertical.curves.length > 0 ? panels.vertical : null,
+        combined: panels.combined.curves.length > 0 ? panels.combined : null,
+    };
+}
+
 function extractRockProps(params: Record<string, any>): RockProps {
     return {
         s_wc: toFiniteNumber(params.s_wc, 0.1),
@@ -710,6 +750,252 @@ function computeMbeDiagnostics(
 const SWEEP_DASH_AREAL    = [7, 4]  as number[];  // medium dash — E_A
 const SWEEP_DASH_VERTICAL = [3, 4]  as number[];  // short dash  — E_V
 const SWEEP_DASH_COMBINED = [12, 4] as number[];  // long dash   — E_vol
+
+function mapSweepTimeToPvi(result: BenchmarkRunResult, time: number): number | null {
+    const idx = result.rateHistory.findIndex((point) => Number(point.time) >= time - 1e-9);
+    if (idx >= 0) {
+        return result.pviSeries[idx] ?? null;
+    }
+    return result.pviSeries.at(-1) ?? null;
+}
+
+function dedupeSweepSeries(points: XYPoint[]): XYPoint[] {
+    const deduped: XYPoint[] = [];
+    for (const point of points) {
+        const previous = deduped.at(-1);
+        if (previous && Math.abs(previous.x - point.x) <= 1e-9) {
+            previous.y = point.y;
+            continue;
+        }
+        deduped.push({ ...point });
+    }
+    return deduped;
+}
+
+function buildSimulationSweepSeries(result: BenchmarkRunResult): {
+    rf: XYPoint[];
+    areal: XYPoint[];
+    vertical: XYPoint[];
+    combined: XYPoint[];
+    hasVertical: boolean;
+} {
+    const nx = Math.max(1, Math.floor(toFiniteNumber(result.params.nx, 1)));
+    const ny = Math.max(1, Math.floor(toFiniteNumber(result.params.ny, 1)));
+    const nz = Math.max(1, Math.floor(toFiniteNumber(result.params.nz, 1)));
+    const s_wc = toFiniteNumber(result.params.s_wc, 0.1);
+    const hasVertical = getLayerPermeabilities(result.params).length > 1;
+
+    const snapshots = [...result.history];
+    if (result.finalSnapshot) {
+        const lastTime = snapshots.at(-1)?.time;
+        if (lastTime == null || Math.abs(lastTime - result.finalSnapshot.time) > 1e-9) {
+            snapshots.push(result.finalSnapshot);
+        }
+    }
+
+    const areal: XYPoint[] = [];
+    const vertical: XYPoint[] = [];
+    const combined: XYPoint[] = [];
+
+    snapshots.forEach((snapshot) => {
+        const pvi = mapSweepTimeToPvi(result, Number(snapshot.time));
+        if (!Number.isFinite(pvi)) return;
+        const satWater = snapshot.grid?.sat_water;
+        if (!satWater || satWater.length === 0) return;
+        const sweep = computeSimSweepPoint(satWater, nx, ny, nz, s_wc);
+        areal.push({ x: Number(pvi), y: sweep.eA });
+        vertical.push({ x: Number(pvi), y: sweep.eV });
+        combined.push({ x: Number(pvi), y: sweep.eVol });
+    });
+
+    return {
+        rf: dedupeSweepSeries(toXYSeries(result.pviSeries, result.recoverySeries)),
+        areal: dedupeSweepSeries(areal),
+        vertical: dedupeSweepSeries(vertical),
+        combined: dedupeSweepSeries(combined),
+        hasVertical,
+    };
+}
+
+function buildAnalyticalSweepSeries(params: Record<string, any>): {
+    pviValues: number[];
+    rf: Array<number | null>;
+    areal: Array<number | null>;
+    vertical: Array<number | null>;
+    combined: Array<number | null>;
+    hasVertical: boolean;
+} {
+    const rock = extractRockProps(params);
+    const fluid = extractFluidProps(params);
+    const permeabilities = getLayerPermeabilities(params);
+    const thickness = toFiniteNumber(params.cellDz, 1);
+    const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0);
+    const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0);
+    return {
+        pviValues: sweep.arealSweep.curve.map((point) => point.pvi),
+        rf: recovery.curve.map((point) => point.rfSweep),
+        areal: sweep.arealSweep.curve.map((point) => point.efficiency),
+        vertical: sweep.verticalSweep.curve.map((point) => point.efficiency),
+        combined: sweep.combined.map((point) => point.efficiency),
+        hasVertical: permeabilities.length > 1,
+    };
+}
+
+function appendAnalyticalSweepCurves(
+    panels: Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel>,
+    input: {
+        label: string;
+        caseKey?: string;
+        toggleLabel: string;
+        color: string;
+        params: Record<string, any>;
+        theme: ReferenceComparisonTheme;
+    },
+) {
+    const analytical = buildAnalyticalSweepSeries(input.params);
+    const toggleGroupKey = input.caseKey ? `${input.caseKey}__ref` : 'analytical';
+    const legendColor = input.caseKey ? undefined : getLegendGrey(input.theme);
+    const borderWidth = input.caseKey ? 1.5 : 2;
+
+    appendSeries(panels.rf, {
+        label: `${input.label} — Analytical RF`,
+        curveKey: 'sweep-rf-reference',
+        ...(input.caseKey ? { caseKey: input.caseKey } : {}),
+        toggleGroupKey,
+        toggleLabel: input.toggleLabel,
+        legendSection: 'analytical',
+        legendSectionLabel: 'Analytical (dashed lines):',
+        color: input.color,
+        ...(legendColor ? { legendColor } : {}),
+        borderWidth,
+        borderDash: [7, 4],
+        yAxisID: 'y',
+    }, analytical.pviValues, analytical.rf);
+
+    appendSeries(panels.areal, {
+        label: `${input.label} — Analytical E_A`,
+        curveKey: 'sweep-areal-reference',
+        ...(input.caseKey ? { caseKey: input.caseKey } : {}),
+        toggleGroupKey,
+        toggleLabel: input.toggleLabel,
+        legendSection: 'analytical',
+        legendSectionLabel: 'Analytical (dashed lines):',
+        color: input.color,
+        ...(legendColor ? { legendColor } : {}),
+        borderWidth,
+        borderDash: SWEEP_DASH_AREAL,
+        yAxisID: 'y',
+    }, analytical.pviValues, analytical.areal);
+
+    if (analytical.hasVertical) {
+        appendSeries(panels.vertical, {
+            label: `${input.label} — Analytical E_V`,
+            curveKey: 'sweep-vertical-reference',
+            ...(input.caseKey ? { caseKey: input.caseKey } : {}),
+            toggleGroupKey,
+            toggleLabel: input.toggleLabel,
+            legendSection: 'analytical',
+            legendSectionLabel: 'Analytical (dashed lines):',
+            color: input.color,
+            ...(legendColor ? { legendColor } : {}),
+            borderWidth,
+            borderDash: SWEEP_DASH_VERTICAL,
+            yAxisID: 'y',
+        }, analytical.pviValues, analytical.vertical);
+    }
+
+    appendSeries(panels.combined, {
+        label: `${input.label} — Analytical E_vol`,
+        curveKey: 'sweep-combined-reference',
+        ...(input.caseKey ? { caseKey: input.caseKey } : {}),
+        toggleGroupKey,
+        toggleLabel: input.toggleLabel,
+        legendSection: 'analytical',
+        legendSectionLabel: 'Analytical (dashed lines):',
+        color: input.color,
+        ...(legendColor ? { legendColor } : {}),
+        borderWidth,
+        borderDash: SWEEP_DASH_COMBINED,
+        yAxisID: 'y',
+    }, analytical.pviValues, analytical.combined);
+}
+
+function appendSimulationSweepCurves(
+    panels: Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel>,
+    result: BenchmarkRunResult,
+    color: string,
+) {
+    const simulation = buildSimulationSweepSeries(result);
+    const caseLabel = compactCaseLabel(result.label);
+
+    if (simulation.rf.length > 0) {
+        panels.rf.curves.push({
+            label: `${result.label} RF`,
+            curveKey: 'sweep-rf-sim',
+            caseKey: result.key,
+            toggleGroupKey: result.key,
+            toggleLabel: caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: 'Simulation (solid lines):',
+            color,
+            borderWidth: result.variantKey === null ? 2.8 : 2.2,
+            yAxisID: 'y',
+            defaultVisible: true,
+        });
+        panels.rf.series.push(simulation.rf);
+    }
+
+    if (simulation.areal.length > 0) {
+        panels.areal.curves.push({
+            label: `${result.label} E_A`,
+            curveKey: 'sweep-areal-sim',
+            caseKey: result.key,
+            toggleGroupKey: result.key,
+            toggleLabel: caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: 'Simulation (solid lines):',
+            color,
+            borderWidth: result.variantKey === null ? 2.8 : 2.2,
+            yAxisID: 'y',
+            defaultVisible: true,
+        });
+        panels.areal.series.push(simulation.areal);
+    }
+
+    if (simulation.hasVertical && simulation.vertical.length > 0) {
+        panels.vertical.curves.push({
+            label: `${result.label} E_V`,
+            curveKey: 'sweep-vertical-sim',
+            caseKey: result.key,
+            toggleGroupKey: result.key,
+            toggleLabel: caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: 'Simulation (solid lines):',
+            color,
+            borderWidth: result.variantKey === null ? 2.8 : 2.2,
+            yAxisID: 'y',
+            defaultVisible: true,
+        });
+        panels.vertical.series.push(simulation.vertical);
+    }
+
+    if (simulation.combined.length > 0) {
+        panels.combined.curves.push({
+            label: `${result.label} E_vol`,
+            curveKey: 'sweep-combined-sim',
+            caseKey: result.key,
+            toggleGroupKey: result.key,
+            toggleLabel: caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: 'Simulation (solid lines):',
+            color,
+            borderWidth: result.variantKey === null ? 2.8 : 2.2,
+            yAxisID: 'y',
+            defaultVisible: true,
+        });
+        panels.combined.series.push(simulation.combined);
+    }
+}
 
 /**
  * Build analytical-only preview panels before any simulation results exist.
@@ -1020,103 +1306,67 @@ function buildAnalyticalPreviewPanels(
     return panels;
 }
 
-function buildSweepPanel(input: {
-    orderedResults: BenchmarkRunResult[];
+function buildPreviewSweepPanels(input: {
+    variants: AnalyticalPreviewVariant[];
     theme: ReferenceComparisonTheme;
-    analyticalPerVariant: boolean;
-}): ReferenceComparisonPanel {
-    const panel: ReferenceComparisonPanel = { curves: [], series: [] };
+}): ReferenceComparisonSweepPanels {
+    const panels = createSweepPanels();
+    const multiVariant = input.variants.length > 1;
     const referenceColor = getReferenceColor(input.theme);
-    const pviMax = 3.0;
 
-    if (input.analyticalPerVariant) {
-        input.orderedResults.forEach((result, index) => {
-            const color = getReferenceComparisonCaseColor(index);
-            const rock = extractRockProps(result.params);
-            const fluid = extractFluidProps(result.params);
-            const perms = getLayerPermeabilities(result.params);
-            const thickness = toFiniteNumber(result.params.cellDz, 1);
-            const sweep = computeCombinedSweep(rock, fluid, perms, thickness, pviMax);
-            const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
-
-            appendSeries(panel, {
-                label: `${result.label} E_A`,
-                curveKey: 'sweep-areal',
-                caseKey: result.key,
-                toggleLabel: 'Areal (E_A)',
-                color,
-                borderWidth: 2.0,
-                borderDash: SWEEP_DASH_AREAL,
-                yAxisID: 'y',
-            }, pviValues, sweep.arealSweep.curve.map((p) => p.efficiency));
-
-            appendSeries(panel, {
-                label: `${result.label} E_V`,
-                curveKey: 'sweep-vertical',
-                caseKey: result.key,
-                toggleLabel: 'Vertical (E_V)',
-                color,
-                borderWidth: 1.6,
-                borderDash: SWEEP_DASH_VERTICAL,
-                yAxisID: 'y',
-                defaultVisible: false,
-            }, pviValues, sweep.verticalSweep.curve.map((p) => p.efficiency));
-
-            appendSeries(panel, {
-                label: `${result.label} E_vol`,
-                curveKey: 'sweep-combined',
-                caseKey: result.key,
-                toggleLabel: 'Combined (E_vol)',
-                color,
-                borderWidth: 2.4,
-                borderDash: SWEEP_DASH_COMBINED,
-                yAxisID: 'y',
-            }, pviValues, sweep.combined.map((p) => p.efficiency));
+    input.variants.forEach((variant, index) => {
+        const color = multiVariant ? getReferenceComparisonCaseColor(index) : referenceColor;
+        const label = variant.label || 'Analytical';
+        appendAnalyticalSweepCurves(panels, {
+            label,
+            ...(multiVariant ? { caseKey: variant.variantKey } : {}),
+            toggleLabel: multiVariant ? compactCaseLabel(label) : 'Analytical solution',
+            color,
+            params: variant.params,
+            theme: input.theme,
         });
-    } else {
-        const baseResult = getBaseResult(input.orderedResults);
-        if (!baseResult) return panel;
+    });
 
-        const rock = extractRockProps(baseResult.params);
-        const fluid = extractFluidProps(baseResult.params);
-        const perms = getLayerPermeabilities(baseResult.params);
-        const thickness = toFiniteNumber(baseResult.params.cellDz, 1);
-        const sweep = computeCombinedSweep(rock, fluid, perms, thickness, pviMax);
-        const pviValues = sweep.arealSweep.curve.map((p) => p.pvi);
+    return finalizeSweepPanels(panels);
+}
 
-        appendSeries(panel, {
-            label: 'Areal (E_A)',
-            curveKey: 'sweep-areal',
-            toggleLabel: 'Areal (E_A)',
-            color: referenceColor,
-            borderWidth: 2.0,
-            borderDash: SWEEP_DASH_AREAL,
-            yAxisID: 'y',
-        }, pviValues, sweep.arealSweep.curve.map((p) => p.efficiency));
+function buildSweepPanels(input: {
+    orderedResults: BenchmarkRunResult[];
+    pendingPreviewVariants?: AnalyticalPreviewVariant[];
+    previewVariantParams?: AnalyticalPreviewVariant[];
+    theme: ReferenceComparisonTheme;
+}): ReferenceComparisonSweepPanels {
+    const panels = createSweepPanels();
 
-        appendSeries(panel, {
-            label: 'Vertical (E_V)',
-            curveKey: 'sweep-vertical',
-            toggleLabel: 'Vertical (E_V)',
-            color: referenceColor,
-            borderWidth: 1.6,
-            borderDash: SWEEP_DASH_VERTICAL,
-            yAxisID: 'y',
-            defaultVisible: false,
-        }, pviValues, sweep.verticalSweep.curve.map((p) => p.efficiency));
+    input.orderedResults.forEach((result, index) => {
+        const color = getReferenceComparisonCaseColor(index);
+        appendSimulationSweepCurves(panels, result, color);
+        appendAnalyticalSweepCurves(panels, {
+            label: result.label,
+            caseKey: result.key,
+            toggleLabel: compactCaseLabel(result.label),
+            color,
+            params: result.params,
+            theme: input.theme,
+        });
+    });
 
-        appendSeries(panel, {
-            label: 'Combined (E_vol)',
-            curveKey: 'sweep-combined',
-            toggleLabel: 'Combined (E_vol)',
-            color: referenceColor,
-            borderWidth: 2.4,
-            borderDash: SWEEP_DASH_COMBINED,
-            yAxisID: 'y',
-        }, pviValues, sweep.combined.map((p) => p.efficiency));
+    if (input.pendingPreviewVariants?.length) {
+        const declarationOrder = new Map((input.previewVariantParams ?? []).map((variant, index) => [variant.variantKey, index]));
+        input.pendingPreviewVariants.forEach((variant, fallbackIndex) => {
+            const colorIndex = declarationOrder.get(variant.variantKey) ?? (input.orderedResults.length + fallbackIndex);
+            appendAnalyticalSweepCurves(panels, {
+                label: variant.label,
+                caseKey: variant.variantKey,
+                toggleLabel: compactCaseLabel(variant.label),
+                color: getReferenceComparisonCaseColor(colorIndex),
+                params: variant.params,
+                theme: input.theme,
+            });
+        });
     }
 
-    return panel;
+    return finalizeSweepPanels(panels);
 }
 
 export function buildReferenceComparisonModel(input: {
@@ -1177,7 +1427,7 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     previewCases: [],
                     panels,
-                    sweepPanel: null,
+                    sweepPanels: emptySweepPanels(),
                     axisMappingWarning: buildAnalyticalAxisWarning({
                         usesRunMappedAnalyticalXAxis: false,
                         hidesPendingAnalyticalWithoutMapping,
@@ -1207,12 +1457,17 @@ export function buildReferenceComparisonModel(input: {
                     orderedResults,
                     previewCases,
                     panels: previewPanels,
-                    sweepPanel: null,
+                    sweepPanels: family?.showSweepPanel === true
+                        ? buildPreviewSweepPanels({
+                            variants,
+                            theme: input.theme ?? 'dark',
+                        })
+                        : emptySweepPanels(),
                     axisMappingWarning: null,
                 };
             }
         }
-        return { orderedResults, previewCases: [], panels, sweepPanel: null, axisMappingWarning: null };
+        return { orderedResults, previewCases: [], panels, sweepPanels: emptySweepPanels(), axisMappingWarning: null };
     }
 
     const derivedByKey = new Map<string, DerivedRunSeries>(
@@ -1692,7 +1947,7 @@ export function buildReferenceComparisonModel(input: {
             orderedResults,
             previewCases: [],
             panels,
-            sweepPanel: null,
+            sweepPanels: emptySweepPanels(),
             axisMappingWarning: buildAnalyticalAxisWarning({
                 usesRunMappedAnalyticalXAxis,
                 hidesPendingAnalyticalWithoutMapping,
@@ -1706,7 +1961,7 @@ export function buildReferenceComparisonModel(input: {
             orderedResults,
             previewCases: [],
             panels,
-            sweepPanel: null,
+            sweepPanels: emptySweepPanels(),
             axisMappingWarning: buildAnalyticalAxisWarning({
                 usesRunMappedAnalyticalXAxis,
                 hidesPendingAnalyticalWithoutMapping,
@@ -2192,7 +2447,9 @@ export function buildReferenceComparisonModel(input: {
     // Color indices use declaration order from previewVariantParams so each variant
     // keeps the same color throughout preview → in-progress → completed.
     const pendingPreviewCases: ReferenceComparisonPreviewCase[] =
-        (input.pendingPreviewVariants?.length && input.analyticalPerVariant && !usesRunMappedAnalyticalXAxis)
+        (input.pendingPreviewVariants?.length
+            && ((input.analyticalPerVariant && !usesRunMappedAnalyticalXAxis)
+                || family.showSweepPanel === true))
             ? (() => {
                 const declOrder = new Map(
                     (input.previewVariantParams ?? []).map((v, i) => [v.variantKey, i]),
@@ -2205,19 +2462,20 @@ export function buildReferenceComparisonModel(input: {
             })()
             : [];
 
-    const sweepPanel = (family.showSweepPanel === true)
-        ? buildSweepPanel({
+    const sweepPanels = (family.showSweepPanel === true)
+        ? buildSweepPanels({
             orderedResults,
             theme: input.theme ?? 'dark',
-            analyticalPerVariant: input.analyticalPerVariant ?? false,
+            pendingPreviewVariants: input.pendingPreviewVariants,
+            previewVariantParams: input.previewVariantParams,
         })
-        : null;
+        : emptySweepPanels();
 
     return {
         orderedResults,
         previewCases: pendingPreviewCases,
         panels,
-        sweepPanel,
+        sweepPanels,
         axisMappingWarning: buildAnalyticalAxisWarning({
             usesRunMappedAnalyticalXAxis,
             hidesPendingAnalyticalWithoutMapping,

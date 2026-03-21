@@ -60,7 +60,10 @@
     let diagnosticsExpanded = $state(false);
     let volumesExpanded = $state(false);
     let oilRateExpanded = $state(false);
-    let sweepExpanded = $state(true);
+    let sweepRfExpanded = $state(false);
+    let sweepArealExpanded = $state(true);
+    let sweepVerticalExpanded = $state(true);
+    let sweepCombinedExpanded = $state(true);
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
     const MAX_RECOMMENDED_VISIBLE_CASES = 20;
@@ -89,6 +92,10 @@
     const isPreviewMode = $derived(
         results.length === 0 &&
         (Boolean(previewBaseParams) || (previewVariantParams?.length ?? 0) > 0),
+    );
+
+    const showPerCaseAnalyticalIndicator = $derived(
+        analyticalPerVariant || family?.showSweepPanel === true,
     );
 
 
@@ -361,15 +368,28 @@
         curveKeys: ['oil-rate-sim'],
         scalePreset: 'rates',
     }));
-    const sweepPanelEntries = $derived.by(() => {
-        const sp = overlayModel.sweepPanel;
-        if (!sp) return null;
-        return sp.curves
-            .map((curve, idx) => ({ curve, series: sp.series[idx] ?? [] }))
+    function getVisibleSweepPanelEntries(panel: { curves: typeof overlayModel.panels.rates.curves; series: typeof overlayModel.panels.rates.series } | null) {
+        if (!panel) return [];
+        return panel.curves
+            .map((curve, idx) => ({ curve, series: panel.series[idx] ?? [] }))
             .filter((entry) => !entry.curve.caseKey || (visibleCaseKeys[entry.curve.caseKey] ?? true));
-    });
-    const sweepPanelCurves = $derived(sweepPanelEntries?.map((e) => e.curve) ?? []);
-    const sweepPanelSeries = $derived(sweepPanelEntries?.map((e) => e.series) ?? []);
+    }
+
+    const sweepRfEntries = $derived.by(() => getVisibleSweepPanelEntries(overlayModel.sweepPanels.rf));
+    const sweepRfCurves = $derived(sweepRfEntries.map((entry) => entry.curve));
+    const sweepRfSeries = $derived(sweepRfEntries.map((entry) => entry.series));
+
+    const sweepArealEntries = $derived.by(() => getVisibleSweepPanelEntries(overlayModel.sweepPanels.areal));
+    const sweepArealCurves = $derived(sweepArealEntries.map((entry) => entry.curve));
+    const sweepArealSeries = $derived(sweepArealEntries.map((entry) => entry.series));
+
+    const sweepVerticalEntries = $derived.by(() => getVisibleSweepPanelEntries(overlayModel.sweepPanels.vertical));
+    const sweepVerticalCurves = $derived(sweepVerticalEntries.map((entry) => entry.curve));
+    const sweepVerticalSeries = $derived(sweepVerticalEntries.map((entry) => entry.series));
+
+    const sweepCombinedEntries = $derived.by(() => getVisibleSweepPanelEntries(overlayModel.sweepPanels.combined));
+    const sweepCombinedCurves = $derived(sweepCombinedEntries.map((entry) => entry.curve));
+    const sweepCombinedSeries = $derived(sweepCombinedEntries.map((entry) => entry.series));
 
     // Compute a shared x-axis range so every panel aligns.
     // Clips the x-range where all rate curves have dropped below 1e-7 of peak,
@@ -447,7 +467,7 @@
                         onclick={() => toggleCaseVisibility(result.key)}
                         title={`${(visibleCaseKeys[result.key] ?? true) ? 'Hide' : 'Show'} ${result.label}`}
                     >
-                        {#if analyticalPerVariant}
+                        {#if showPerCaseAnalyticalIndicator}
                             <!-- Dual indicator: dashed = analytical, solid = simulation -->
                             <svg width="14" height="9" class="overflow-visible shrink-0" viewBox="0 0 14 9">
                                 <line x1="0" y1="2" x2="14" y2="2"
@@ -621,21 +641,74 @@
         />
     {/if}
 
-    {#if family?.showSweepPanel && sweepPanelCurves.length > 0}
+    {#if family?.showSweepPanel && sweepRfCurves.length > 0}
         <ChartSubPanel
-            panelId="comparison-sweep"
-            title="Sweep Efficiency"
-            bind:expanded={sweepExpanded}
-            curves={sweepPanelCurves}
-            seriesData={sweepPanelSeries}
+            panelId="comparison-sweep-rf"
+            title="Sweep Recovery Factor"
+            bind:expanded={sweepRfExpanded}
+            curves={sweepRfCurves}
+            seriesData={sweepRfSeries}
             scaleConfigs={sweepScales}
             {theme}
             logScale={false}
-            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, sweep: { left, right } };
+                nativeGutters = { ...nativeGutters, sweep_rf: { left, right } };
+            }}
+        />
+    {/if}
+
+    {#if family?.showSweepPanel && sweepArealCurves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-sweep-areal"
+            title="Areal Sweep Efficiency"
+            bind:expanded={sweepArealExpanded}
+            curves={sweepArealCurves}
+            seriesData={sweepArealSeries}
+            scaleConfigs={sweepScales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, sweep_areal: { left, right } };
+            }}
+        />
+    {/if}
+
+    {#if family?.showSweepPanel && sweepVerticalCurves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-sweep-vertical"
+            title="Vertical Sweep Efficiency"
+            bind:expanded={sweepVerticalExpanded}
+            curves={sweepVerticalCurves}
+            seriesData={sweepVerticalSeries}
+            scaleConfigs={sweepScales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, sweep_vertical: { left, right } };
+            }}
+        />
+    {/if}
+
+    {#if family?.showSweepPanel && sweepCombinedCurves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-sweep-combined"
+            title="Volumetric Sweep Efficiency"
+            bind:expanded={sweepCombinedExpanded}
+            curves={sweepCombinedCurves}
+            seriesData={sweepCombinedSeries}
+            scaleConfigs={sweepScales}
+            {theme}
+            logScale={false}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, sweep_combined: { left, right } };
             }}
         />
     {/if}

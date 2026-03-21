@@ -74,7 +74,7 @@
     <!-- Fluid PVT Header -->
     <div class="flex items-center justify-between mb-1 px-1">
       <span class="text-xs font-semibold text-foreground">PVT Model</span>
-      <Select class="h-6 text-xs px-1.5 w-[160px]" bind:value={bindings.pvtMode}>
+      <Select class="h-6 text-xs px-1.5 w-40" bind:value={bindings.pvtMode}>
         <option value="constant">Constant Properties</option>
         <option value="black-oil">Black-Oil Correlations</option>
       </Select>

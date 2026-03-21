@@ -83,6 +83,10 @@ function isPermMode(value: string): value is 'uniform' | 'random' | 'perLayer' {
     return value === 'uniform' || value === 'random' || value === 'perLayer';
 }
 
+function defaultProducerJForGrid(ny: number): number {
+    return Math.max(0, ny - 1);
+}
+
 // ---------- Types ----------
 
 type HistoryEntry = SimulatorSnapshot;
@@ -192,7 +196,7 @@ class SimulationStoreImpl {
     injectorI = $state(0);
     injectorJ = $state(0);
     producerI = $state(14);
-    producerJ = $state(0);
+    producerJ = $state(9);
 
     // Stability
     max_sat_change_per_step = $state(0.1);
@@ -1672,7 +1676,7 @@ class SimulationStoreImpl {
         this.injectorI = fin(resolved.injectorI, 0);
         this.injectorJ = fin(resolved.injectorJ, 0);
         this.producerI = fin(resolved.producerI, this.nx - 1);
-        this.producerJ = fin(resolved.producerJ, 0);
+        this.producerJ = fin(resolved.producerJ, defaultProducerJForGrid(this.ny));
         this.resetModelAndVisualizationState(true, false);
         this.modelNeedsReinit = true;
         this.modelReinitNotice = '';
