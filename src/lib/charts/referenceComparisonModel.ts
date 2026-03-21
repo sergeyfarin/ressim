@@ -5,7 +5,7 @@ import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '.
 import { computeCombinedSweep, computeSimSweepPoint, computeSweepRecoveryFactor } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
-import type { CurveConfig } from './ChartSubPanel.svelte';
+import type { CurveConfig } from './chartTypes';
 import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 
 export type XYPoint = { x: number; y: number | null };

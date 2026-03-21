@@ -14,43 +14,30 @@ describe('mode panel helpers', () => {
     expect(geometry?.dims).toEqual(['geo', 'grid']);
   });
 
-  it('keeps geometry quick-pick definitions local to the geometry component', () => {
-    expect(geometryEditorSource).toMatch(/const GEOMETRY_GRID_CONTROLS/);
-    expect(geometryEditorSource).toMatch(/function getQuickPickMatch/);
-    expect(geometryEditorSource).toMatch(/function getControlErrorMessage/);
+  it('keeps geometry editing helpers local to the geometry component', () => {
+    expect(geometryEditorSource).toMatch(/const totalCells = \$derived\(bindings\.nx \* bindings\.ny \* bindings\.nz\)/);
+    expect(geometryEditorSource).toMatch(/function fmtLen\(v: number\)/);
+    expect(geometryEditorSource).toMatch(/function setInt\(param: "nx" \| "ny" \| "nz", raw: string\)/);
+    expect(geometryEditorSource).toMatch(/function setFloat\(param: "cellDx" \| "cellDy" \| "cellDz", raw: string\)/);
   });
 
-  it('defines nx quick picks with inline custom entry behavior', () => {
-    expect(geometryEditorSource).toContain('{ key: "12", label: "12", patch: { nx: 12 } }');
-    expect(geometryEditorSource).toContain('{ key: "24", label: "24", patch: { nx: 24 } }');
-    expect(geometryEditorSource).toContain('{ key: "48", label: "48", patch: { nx: 48 } }');
-    expect(geometryEditorSource).toContain('{ key: "96", label: "96", patch: { nx: 96 } }');
-    expect(geometryEditorSource).toContain('customLabel: "Custom X cells"');
-    expect(geometryEditorSource).toContain('integer: true');
+  it('renders direct X-axis grid editing inside the compact table layout', () => {
+    expect(geometryEditorSource).toContain('<Collapsible title="Grid"');
+    expect(geometryEditorSource).toContain('<th class="px-1 py-0.5 font-medium">Axis</th>');
+    expect(geometryEditorSource).toContain('<th class="px-1 py-0.5 font-medium">Cells</th>');
+    expect(geometryEditorSource).toContain('<th class="px-1 py-0.5 font-medium">Size (m)</th>');
+    expect(geometryEditorSource).toContain("value={bindings.nx} oninput={(e) => setInt('nx', (e.currentTarget as HTMLInputElement).value)}");
+    expect(geometryEditorSource).toContain("value={bindings.cellDx} oninput={(e) => setFloat('cellDx', (e.currentTarget as HTMLInputElement).value)}");
   });
 
-  it('uses toggle-plus-custom controls for the rest of the geometry editor', () => {
-    expect(geometryEditorSource).toContain('{ key: "1", label: "1", patch: { ny: 1 } }');
-    expect(geometryEditorSource).toContain('{ key: "11", label: "11", patch: { ny: 11 } }');
-    expect(geometryEditorSource).toContain('{ key: "21", label: "21", patch: { ny: 21 } }');
-    expect(geometryEditorSource).toContain('{ key: "41", label: "41", patch: { ny: 41 } }');
-    expect(geometryEditorSource).toContain('{ key: "1", label: "1", patch: { nz: 1 } }');
-    expect(geometryEditorSource).toContain('{ key: "3", label: "3", patch: { nz: 3 } }');
-    expect(geometryEditorSource).toContain('{ key: "5", label: "5", patch: { nz: 5 } }');
-    expect(geometryEditorSource).toContain('{ key: "10", label: "10", patch: { nz: 10 } }');
-    expect(geometryEditorSource).toContain('changeBehavior: "sync-layer-arrays"');
-    expect(geometryEditorSource).toContain('{ key: "5", label: "5 m", patch: { cellDx: 5 } }');
-    expect(geometryEditorSource).toContain('{ key: "10", label: "10 m", patch: { cellDx: 10 } }');
-    expect(geometryEditorSource).toContain('{ key: "20", label: "20 m", patch: { cellDx: 20 } }');
-    expect(geometryEditorSource).toContain('{ key: "40", label: "40 m", patch: { cellDx: 40 } }');
-    expect(geometryEditorSource).toContain('{ key: "5", label: "5 m", patch: { cellDy: 5 } }');
-    expect(geometryEditorSource).toContain('{ key: "10", label: "10 m", patch: { cellDy: 10 } }');
-    expect(geometryEditorSource).toContain('{ key: "20", label: "20 m", patch: { cellDy: 20 } }');
-    expect(geometryEditorSource).toContain('{ key: "40", label: "40 m", patch: { cellDy: 40 } }');
-    expect(geometryEditorSource).toContain('{ key: "1", label: "1 m", patch: { cellDz: 1 } }');
-    expect(geometryEditorSource).toContain('{ key: "5", label: "5 m", patch: { cellDz: 5 } }');
-    expect(geometryEditorSource).toContain('{ key: "10", label: "10 m", patch: { cellDz: 10 } }');
-    expect(geometryEditorSource).toContain('{ key: "20", label: "20 m", patch: { cellDz: 20 } }');
+  it('keeps Y and Z editing wired directly to numeric inputs and derived totals', () => {
+    expect(geometryEditorSource).toContain("value={bindings.ny} oninput={(e) => setInt('ny', (e.currentTarget as HTMLInputElement).value)}");
+    expect(geometryEditorSource).toContain("value={bindings.nz} oninput={(e) => setInt('nz', (e.currentTarget as HTMLInputElement).value)}");
+    expect(geometryEditorSource).toContain("value={bindings.cellDy} oninput={(e) => setFloat('cellDy', (e.currentTarget as HTMLInputElement).value)}");
+    expect(geometryEditorSource).toContain("value={bindings.cellDz} oninput={(e) => setFloat('cellDz', (e.currentTarget as HTMLInputElement).value)}");
+    expect(geometryEditorSource).toContain('bindings.handleNzOrPermModeChange()');
+    expect(geometryEditorSource).toContain('{fmtLen(totalY)}');
+    expect(geometryEditorSource).toContain('{fmtLen(totalZ)}');
   });
 
   it('returns shared mode panel sections for current modes', () => {

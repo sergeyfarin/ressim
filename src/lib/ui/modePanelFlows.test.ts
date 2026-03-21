@@ -8,9 +8,10 @@ const scenarioPickerSource = fs.readFileSync(scenarioPickerPath, 'utf8');
 describe('scenario picker flows', () => {
   it('keeps validation warnings scoped to the scenario picker warning surface', () => {
     expect(scenarioPickerSource).toMatch(/<WarningPolicyPanel/);
-    expect(scenarioPickerSource).toMatch(/groups=\{\["blockingValidation", "nonPhysical", "advisory"\]\}/);
+    expect(scenarioPickerSource).toMatch(/groups=\{\["blockingValidation", "nonPhysical", "referenceCaveat", "advisory"\]\}/);
     expect(scenarioPickerSource).toMatch(/blockingValidation: \["validation"\]/);
     expect(scenarioPickerSource).toMatch(/nonPhysical: \["validation"\]/);
+    expect(scenarioPickerSource).toMatch(/referenceCaveat: \["analytical"\]/);
     expect(scenarioPickerSource).toMatch(/advisory: \["validation"\]/);
   });
 

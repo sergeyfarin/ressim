@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy, tick, untrack } from "svelte";
     import { Chart, registerables, type ChartDataset } from "chart.js";
+    import type { CurveConfig } from "./chartTypes";
     import {
         getLineDataset,
         getDatasetLabel,
@@ -11,28 +12,6 @@
 
     type XYPoint = { x: number; y: number | null };
     type LineDataset = ChartDataset<"line", Array<number | null | XYPoint>>;
-
-    /** Panel configuration passed from parent */
-    export interface CurveConfig {
-        label: string;
-        curveKey?: string;
-        caseKey?: string;
-        toggleLabel?: string;
-        toggleGroupKey?: string;
-        color: string;
-        /** Override color used in the toggle-group line indicator (falls back to `color`).
-         *  Useful when the actual chart line is case-colored but the legend should be neutral. */
-        legendColor?: string;
-        borderWidth?: number;
-        borderDash?: number[];
-        yAxisID: string;
-        defaultVisible?: boolean;
-        disabled?: boolean;
-        /** Groups this curve's toggle button under a collapsible legend section. */
-        legendSection?: string;
-        /** Label shown on the section header button (e.g. "Simulation (solid lines):"). */
-        legendSectionLabel?: string;
-    }
 
     let {
         panelId = "",

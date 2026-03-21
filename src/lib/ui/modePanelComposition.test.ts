@@ -44,10 +44,11 @@ describe("Scenario picker composition", () => {
     expect(scenarioSectionsSource).toMatch(/section.key === "scal"/);
   });
 
-  it("keeps geometry quick-edit wiring behind a focused section component", () => {
-    expect(geometrySectionSource).toMatch(/const GEOMETRY_GRID_CONTROLS/);
+  it("keeps geometry grid editing behind a focused section component", () => {
+    expect(geometrySectionSource).toMatch(/<Collapsible title="Grid"/);
     expect(geometrySectionSource).not.toMatch(/geometryGridQuickEditor/);
-    expect(geometrySectionSource).toMatch(/function getQuickPickMatch/);
+    expect(geometrySectionSource).toMatch(/function setInt\(param: "nx" \| "ny" \| "nz", raw: string\)/);
+    expect(geometrySectionSource).toMatch(/function setFloat\(param: "cellDx" \| "cellDy" \| "cellDz", raw: string\)/);
   });
 
   it("binds section components directly instead of routing through wrapper-only field panels", () => {

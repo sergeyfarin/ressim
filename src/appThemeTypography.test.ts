@@ -37,7 +37,8 @@ describe('app theme typography', () => {
     expect(scenarioPickerSource).toMatch(/ui-panel-kicker/);
     expect(scenarioPickerSource).toMatch(/ui-chip/);
     expect(referenceExecutionSource).toMatch(/ui-support-copy/);
-    expect(referenceResultsSource).toMatch(/ui-subsection-kicker/);
+    expect(referenceResultsSource).toMatch(/ui-panel-kicker/);
+    expect(referenceResultsSource).toMatch(/ui-microcopy/);
     expect(warningPanelSource).toMatch(/ui-chip-caps/);
     expect(comparisonChartSource).toMatch(/ui-section-kicker/);
     expect(threeDViewSource).toMatch(/ui-chip/);

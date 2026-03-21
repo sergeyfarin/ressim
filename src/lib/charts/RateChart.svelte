@@ -1,6 +1,6 @@
 <script lang="ts">
     import ChartSubPanel from "./ChartSubPanel.svelte";
-    import type { CurveConfig } from "./ChartSubPanel.svelte";
+    import type { CurveConfig } from "./chartTypes";
     import {
         coerceChartAxisState,
         getConfiguredXAxisOptions,

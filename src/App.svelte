@@ -5,7 +5,6 @@
     import ReferenceResultsCard from "./lib/ui/cards/ReferenceResultsCard.svelte";
     import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
-    import WarningPolicyPanel from "./lib/ui/feedback/WarningPolicyPanel.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";

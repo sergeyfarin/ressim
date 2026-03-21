@@ -4,7 +4,7 @@
   import Select from "../controls/Select.svelte";
   import ValidatedInput from "../controls/ValidatedInput.svelte";
   import ChartSubPanel from "../../charts/ChartSubPanel.svelte";
-  import type { CurveConfig } from "../../charts/ChartSubPanel.svelte";
+  import type { CurveConfig } from "../../charts/chartTypes";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
 
   let {

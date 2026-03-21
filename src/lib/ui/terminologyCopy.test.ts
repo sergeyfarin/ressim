@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const runControlsSource = fs.readFileSync(path.join(__dirname, 'cards', 'RunControls.svelte'), 'utf8');
 const referenceExecutionSource = fs.readFileSync(path.join(__dirname, 'cards', 'ReferenceExecutionCard.svelte'), 'utf8');
 const analyticalSectionSource = fs.readFileSync(path.join(__dirname, 'sections', 'AnalyticalSection.svelte'), 'utf8');
-const warningPanelSource = fs.readFileSync(path.join(__dirname, 'feedback', 'WarningPolicyPanel.svelte'), 'utf8');
+const warningPolicySource = fs.readFileSync(path.join(__dirname, '..', 'warningPolicy.ts'), 'utf8');
 const modePanelSectionsSource = fs.readFileSync(path.join(__dirname, 'modePanelSections.ts'), 'utf8');
 const caseLibrarySource = fs.readFileSync(path.join(__dirname, '..', 'catalog', 'caseLibrary.ts'), 'utf8');
 
@@ -31,13 +31,13 @@ describe('ui terminology copy', () => {
   });
 
   it('uses reference-solution language in the analytical section and warning sources', () => {
-    expect(analyticalSectionSource).toMatch(/Reference Inputs/);
     expect(analyticalSectionSource).toMatch(/Reference Solution/);
+    expect(analyticalSectionSource).not.toMatch(/Reference Inputs/);
     expect(analyticalSectionSource).not.toMatch(/Analytical Inputs/);
     expect(analyticalSectionSource).not.toMatch(/Analytical Model/);
-    expect(warningPanelSource).toMatch(/return "Inputs"/);
-    expect(warningPanelSource).toMatch(/return "Run"/);
-    expect(warningPanelSource).toMatch(/return "Reference"/);
+    expect(warningPolicySource).toMatch(/title: "Action Required"/);
+    expect(warningPolicySource).toMatch(/title: "Reference Limits"/);
+    expect(warningPolicySource).toMatch(/title: "Run Notes"/);
   });
 
   it('uses reference-guidance wording in section labels and library copy', () => {
