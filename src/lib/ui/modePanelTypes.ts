@@ -94,6 +94,7 @@ export type ModePanelParameterBindings = {
   max_well_rate_change_fraction: number;
   analyticalSolutionMode: AnalyticalSolutionMode;
   analyticalDepletionRateScale: number;
+  analyticalArpsB: number;
   parameterOverrideCount: number;
   markDeltaTDaysOverride: () => void;
   handleNzOrPermModeChange: () => void;

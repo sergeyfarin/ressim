@@ -59,6 +59,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
         initialPressure: Number(params.initialPressure),
         producerBhp: Number(params.producerBhp),
         depletionRateScale: Number(params.analyticalDepletionRateScale ?? 1),
+        arpsB: Number(params.analyticalArpsB ?? 0),
         nx: params.nx != null ? Number(params.nx) : undefined,
         ny: params.ny != null ? Number(params.ny) : undefined,
         producerI: params.producerI != null ? Number(params.producerI) : undefined,

@@ -260,7 +260,7 @@ export const PHASE2_TRACKED_PARAMETER_KEYS = [
     'injectorI', 'injectorJ', 'producerI', 'producerJ',
     'max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction',
     'gravityEnabled', 'capillaryEnabled', 'capillaryPEntry', 'capillaryLambda',
-    'analyticalSolutionMode', 'analyticalDepletionRateScale',
+    'analyticalSolutionMode', 'analyticalDepletionRateScale', 'analyticalArpsB',
 ] as const;
 
 export type TrackedParameterKey = (typeof PHASE2_TRACKED_PARAMETER_KEYS)[number];
@@ -291,7 +291,7 @@ export const PHASE2_PARAMETER_GROUPS: Record<ParameterOverrideGroupKey, readonly
     ],
     stability: ['max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction'],
     physics: ['gravityEnabled', 'capillaryEnabled', 'capillaryPEntry', 'capillaryLambda'],
-    analytical: ['analyticalSolutionMode', 'analyticalDepletionRateScale'],
+    analytical: ['analyticalSolutionMode', 'analyticalDepletionRateScale', 'analyticalArpsB'],
 };
 
 export type ParameterOverrideGroups = Record<ParameterOverrideGroupKey, string[]>;

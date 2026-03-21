@@ -443,6 +443,7 @@ function buildDepletionAnalyticalDiagnostics(input: {
         initialPressure: toFiniteNumber(spec.params.initialPressure, 300),
         producerBhp: toFiniteNumber(spec.params.producerBhp, 100),
         depletionRateScale: toFiniteNumber(spec.params.analyticalDepletionRateScale, 1),
+        arpsB: toFiniteNumber(spec.params.analyticalArpsB, 0),
         nx: toFiniteNumber(spec.params.nx, 1),
         ny: toFiniteNumber(spec.params.ny, 1),
         producerI: spec.params.producerI != null ? toFiniteNumber(spec.params.producerI, 0) : undefined,

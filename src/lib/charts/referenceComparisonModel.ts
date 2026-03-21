@@ -1,4 +1,5 @@
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
+import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
 import { computeCombinedSweep } from '../analytical/sweepEfficiency';
@@ -388,6 +389,7 @@ function buildDepletionReference(
         initialPressure: toFiniteNumber(baseResult.params.initialPressure, 300),
         producerBhp: toFiniteNumber(baseResult.params.producerBhp, 100),
         depletionRateScale: toFiniteNumber(baseResult.params.analyticalDepletionRateScale, 1),
+        arpsB: toFiniteNumber(baseResult.params.analyticalArpsB, 0),
         nx: toFiniteNumber(baseResult.params.nx, 1),
         ny: toFiniteNumber(baseResult.params.ny, 1),
         producerI: baseResult.params.producerI != null ? toFiniteNumber(baseResult.params.producerI, 0) : undefined,
@@ -580,6 +582,7 @@ function computeDepletionTau(params: Record<string, any>): number | null {
             initialPressure: toFiniteNumber(params.initialPressure, 300),
             producerBhp: toFiniteNumber(params.producerBhp, 100),
             depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
+            arpsB: toFiniteNumber(params.analyticalArpsB, 0),
             nx: toFiniteNumber(params.nx, 1),
             ny: toFiniteNumber(params.ny, 1),
             producerI: params.producerI != null ? toFiniteNumber(params.producerI, 0) : undefined,
@@ -602,6 +605,71 @@ function getLayerPermeabilities(params: Record<string, any>): number[] {
         return Array.from({ length: nz }, () => toFiniteNumber(params.uniformPermX, 100));
     }
     return [toFiniteNumber(params.uniformPermX, 100)];
+}
+
+/**
+ * Compute Havlena-Odeh MBE OOIP ratio (N_mbe / N_volumetric) from simulation output.
+ * Returns a series of ratio values (should converge to ~1.0 for a consistent simulation).
+ */
+function computeMbeOoipRatio(
+    result: BenchmarkRunResult,
+    derived: DerivedRunSeries,
+): Array<number | null> {
+    const params = result.params;
+    const poreVolume = getPoreVolume(params);
+    const pvtMode = String(params.pvtMode ?? 'constant');
+
+    // Build cumulative production series (integrate rates × dt)
+    const n = result.rateHistory.length;
+    const cumOil: number[] = [];
+    const cumGas: number[] = [];
+    const cumWater: number[] = [];
+    let co = 0, cg = 0, cw = 0;
+
+    for (let i = 0; i < n; i++) {
+        const point = result.rateHistory[i];
+        const dt = i > 0
+            ? Math.max(0, toFiniteNumber(point.time, 0) - toFiniteNumber(result.rateHistory[i - 1]?.time, 0))
+            : Math.max(0, toFiniteNumber(point.time, 0));
+        co += Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0))) * dt;
+        const gasRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0)));
+        cg += gasRate * dt;
+        const liqRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0)));
+        const oilRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)));
+        cw += Math.max(0, liqRate - oilRate) * dt;
+        cumOil.push(co);
+        cumGas.push(cg);
+        cumWater.push(cw);
+    }
+
+    const mbeResult = calculateMaterialBalance({
+        initialPressure: toFiniteNumber(params.initialPressure, 300),
+        initialWaterSaturation: toFiniteNumber(params.initialSaturation, 0.3),
+        initialGasSaturation: toFiniteNumber(params.initialGasSaturation, 0),
+        porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
+        poreVolume,
+        c_w: toFiniteNumber(params.c_w, 3e-6),
+        c_rock: toFiniteNumber(params.rock_compressibility, 1e-6),
+        pvtMode: pvtMode === 'black-oil' ? 'black-oil' : 'constant',
+        Bo_constant: toFiniteNumber(params.volume_expansion_o, 1.0),
+        Bw_constant: toFiniteNumber(params.volume_expansion_w, 1.0),
+        c_o: toFiniteNumber(params.c_o, 1e-5),
+        apiGravity: toFiniteNumber(params.apiGravity, 30),
+        gasSpecificGravity: toFiniteNumber(params.gasSpecificGravity, 0.7),
+        reservoirTemperature: toFiniteNumber(params.reservoirTemperature, 80),
+        bubblePoint: toFiniteNumber(params.bubblePoint, 150),
+        pressureHistory: derived.pressure.map((v) => toFiniteNumber(v, 0)),
+        cumulativeOilSC: cumOil,
+        cumulativeGasSC: cumGas,
+        cumulativeWaterSC: cumWater,
+        timeHistory: derived.time,
+    });
+
+    const Nvol = mbeResult.volumetricOoip;
+    return mbeResult.points.map((pt) => {
+        if (pt.N_mbe === null || Nvol < 1e-12) return null;
+        return pt.N_mbe / Nvol;
+    });
 }
 
 // ─── Chart Visual Convention ──────────────────────────────────────────────────
@@ -731,6 +799,7 @@ function computeDepletionAnalyticalFromParams(
             initialPressure: toFiniteNumber(params.initialPressure, 300),
             producerBhp: toFiniteNumber(params.producerBhp, 100),
             depletionRateScale: toFiniteNumber(params.analyticalDepletionRateScale, 1),
+            arpsB: toFiniteNumber(params.analyticalArpsB, 0),
             nx: toFiniteNumber(params.nx, 1),
             ny: toFiniteNumber(params.ny, 1),
             producerI: params.producerI != null ? toFiniteNumber(params.producerI, 0) : undefined,
@@ -1517,6 +1586,30 @@ export function buildReferenceComparisonModel(input: {
             xValues,
             derived.gor,
         );
+
+        // ── MBE OOIP ratio (Havlena-Odeh diagnostic) ────────────────
+        if (analyticalMethod === 'depletion') {
+            const mbeRatio = computeMbeOoipRatio(result, derived);
+            appendSeries(
+                panels.diagnostics,
+                {
+                    label: `${result.label} MBE OOIP Ratio`,
+                    curveKey: 'mbe-ooip-ratio',
+                    caseKey: result.key,
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
+                    color,
+                    borderWidth: 1.6,
+                    borderDash: [2, 3],
+                    yAxisID: 'y1',
+                    defaultVisible: false,
+                },
+                xValues,
+                mbeRatio,
+            );
+        }
     });
 
     if (!baseResult) {

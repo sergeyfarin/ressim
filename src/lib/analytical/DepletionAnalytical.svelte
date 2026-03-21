@@ -44,6 +44,7 @@
         initialPressure = 300.0, // Initial reservoir pressure [bar]
         producerBhp = 100.0, // Producer bottom-hole pressure [bar]
         depletionRateScale = 1.0, // Multiplier on initial rate for manual calibration
+        arpsB = 0.0, // Arps decline exponent: 0=exponential, 0<b<1=hyperbolic, 1=harmonic
         onAnalyticalData = () => {},
         onAnalyticalMeta = () => {},
     }: {
@@ -72,6 +73,7 @@
         initialPressure?: number;
         producerBhp?: number;
         depletionRateScale?: number;
+        arpsB?: number;
         onAnalyticalData?: (payload: AnalyticalDataPayload) => void;
         onAnalyticalMeta?: (payload: AnalyticalMetaPayload) => void;
     } = $props();
@@ -109,6 +111,7 @@
             initialPressure,
             producerBhp,
             depletionRateScale,
+            arpsB,
         });
 
         onAnalyticalMeta(result.meta);

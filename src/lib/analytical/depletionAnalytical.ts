@@ -18,6 +18,7 @@ export type DepletionAnalyticalMeta = {
     shapeLabel: string;
     q0?: number;
     tau?: number;
+    arpsB?: number;
 };
 
 export type DepletionAnalyticalParams = {
@@ -45,6 +46,7 @@ export type DepletionAnalyticalParams = {
     initialPressure: number;
     producerBhp: number;
     depletionRateScale: number;
+    arpsB?: number;
     nx?: number;
     ny?: number;
     producerI?: number;
@@ -272,15 +274,46 @@ export function calculateDepletionAnalyticalProduction(
     const tau = Math.max(1e-6, (poreVolume * totalCompressibility) / oilPi);
     const pressureDrop = Math.max(0, initialPressure - producerBhp);
     const q0 = oilPi * pressureDrop * Math.max(0, depletionRateScale);
-    const totalExpelledVolume = q0 * tau;
+    const Di = 1 / tau; // Initial decline rate [1/day]
+
+    // Arps decline exponent: b=0 exponential, 0<b<1 hyperbolic, b=1 harmonic.
+    // Fetkovich (1971) shows b=0 for single-phase slightly-compressible bounded
+    // reservoirs at constant BHP.  Values of b>0 arise from layered/commingled
+    // production, multiphase flow, or heterogeneous reservoirs — Arps (1945).
+    const b = Math.max(0, Math.min(1, params.arpsB ?? 0));
 
     const production = timeHistory.map((timeValue) => {
         const time = Math.max(0, Number(timeValue) || 0);
-        const exponent = Math.min(700, time / tau);
-        const expTerm = Math.exp(-exponent);
-        const oilRate = q0 * expTerm;
-        const cumulativeOil = totalExpelledVolume * (1 - expTerm);
-        const avgPressure = producerBhp + pressureDrop * expTerm;
+        let oilRate: number;
+        let cumulativeOil: number;
+
+        if (b < 1e-8) {
+            // ── Exponential decline (b ≈ 0) ──────────────────────────────
+            // q(t) = q_i · exp(−D_i·t)
+            // N_p(t) = q_i/D_i · [1 − exp(−D_i·t)]
+            const exponent = Math.min(700, Di * time);
+            const expTerm = Math.exp(-exponent);
+            oilRate = q0 * expTerm;
+            cumulativeOil = (q0 / Di) * (1 - expTerm);
+        } else if (b > 1 - 1e-8) {
+            // ── Harmonic decline (b ≈ 1) ─────────────────────────────────
+            // q(t) = q_i / (1 + D_i·t)
+            // N_p(t) = q_i/D_i · ln(1 + D_i·t)
+            const denominator = 1 + Di * time;
+            oilRate = q0 / denominator;
+            cumulativeOil = (q0 / Di) * Math.log(denominator);
+        } else {
+            // ── Hyperbolic decline (0 < b < 1) ──────────────────────────
+            // q(t) = q_i / (1 + b·D_i·t)^(1/b)
+            // N_p(t) = q_i/((1−b)·D_i) · [1 − (1 + b·D_i·t)^((b−1)/b)]
+            const base = 1 + b * Di * time;
+            oilRate = q0 * Math.pow(base, -1 / b);
+            cumulativeOil = (q0 / ((1 - b) * Di)) * (1 - Math.pow(base, (b - 1) / b));
+        }
+
+        // Pressure tracks rate through the PI relationship:
+        // P_avg = P_bhp + q(t)/PI = P_bhp + ΔP · q(t)/q_i
+        const avgPressure = producerBhp + pressureDrop * (q0 > 0 ? oilRate / q0 : 0);
 
         return {
             time,
@@ -298,6 +331,7 @@ export function calculateDepletionAnalyticalProduction(
             shapeLabel,
             q0,
             tau,
+            arpsB: b,
         },
         production,
     };

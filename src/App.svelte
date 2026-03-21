@@ -494,6 +494,7 @@
             initialPressure={params.initialPressure}
             producerBhp={params.producerBhp}
             depletionRateScale={params.analyticalDepletionRateScale}
+            arpsB={params.analyticalArpsB}
             onAnalyticalData={(detail) => {
                 if (params.analyticalSolutionMode === "depletion") {
                     runtime.analyticalProductionData = detail.production;

@@ -2,7 +2,7 @@ import type { Scenario } from '../scenarios';
 
 export const dep_decline: Scenario = {
     key: 'dep_decline',
-    label: 'Rate Decline',
+    label: 'Fetkovich Decline (Oil)',
     description: 'Constant-BHP production from a finite reservoir. PI sets the initial rate level; total compressibility c_t sets the decline duration. Displayed on log-time axes to reveal the exponential trend.',
     analyticalMethodSummary: 'Fetkovich exponential decline — rate and recovery reference curves for constant-BHP depletion, updated for active skin and permeability.',
     analyticalMethodReference: 'Fetkovich (1971).',

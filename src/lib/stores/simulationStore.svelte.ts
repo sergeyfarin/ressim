@@ -222,6 +222,7 @@ class SimulationStoreImpl {
     // Analytical solution
     analyticalSolutionMode: 'waterflood' | 'depletion' = $state('depletion');
     analyticalDepletionRateScale = $state(1.0);
+    analyticalArpsB = $state(0.0);
 
     // ===== $state: Simulation Output / Runtime =====
 
@@ -672,6 +673,7 @@ class SimulationStoreImpl {
             capillaryLambda: this.capillaryLambda,
             analyticalSolutionMode: this.analyticalSolutionMode,
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
+            analyticalArpsB: this.analyticalArpsB,
             s_gc: this.s_gc,
             s_gr: this.s_gr,
             s_org: this.s_org,
@@ -797,6 +799,7 @@ class SimulationStoreImpl {
             steps: this.steps,
             analyticalSolutionMode: this.analyticalSolutionMode,
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
+            analyticalArpsB: this.analyticalArpsB,
         });
     }
 
@@ -1646,6 +1649,8 @@ class SimulationStoreImpl {
         } else {
             this.analyticalSolutionMode = this.injectorEnabled ? 'waterflood' : 'depletion';
         }
+        this.analyticalDepletionRateScale = fin(resolved.analyticalDepletionRateScale, 1.0);
+        this.analyticalArpsB = fin(resolved.analyticalArpsB, 0.0);
         this.injectorControlMode = resolved.injectorControlMode === 'rate' ? 'rate' : 'pressure';
         this.producerControlMode = resolved.producerControlMode === 'rate' ? 'rate' : 'pressure';
         this.injectorBhp = fin(resolved.injectorBhp, 400);

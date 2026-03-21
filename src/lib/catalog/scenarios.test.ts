@@ -21,6 +21,7 @@ describe('sweep scenario sensitivities', () => {
             'sweep_combined',
             'dep_pss',
             'dep_decline',
+            'dep_arps',
             'gas_injection',
             'gas_drive',
         ];
@@ -213,6 +214,7 @@ function depletionFingerprint(params: Record<string, unknown>): number[] {
         initialPressure: toNum(params.initialPressure, 300),
         producerBhp: toNum(params.producerBhp, 100),
         depletionRateScale: toNum(params.analyticalDepletionRateScale, 1),
+        arpsB: toNum(params.analyticalArpsB, 0),
         nx: params.nx != null ? toNum(params.nx, 1) : undefined,
         ny: params.ny != null ? toNum(params.ny, 1) : undefined,
         producerI: params.producerI != null ? toNum(params.producerI, 0) : undefined,
@@ -233,7 +235,7 @@ function arraysEqual(a: number[], b: number[], tol = 1e-12): boolean {
 }
 
 describe('affectsAnalytical contract', () => {
-    const analyticalScenarios = ['wf_bl1d', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'dep_pss', 'dep_decline'];
+    const analyticalScenarios = ['wf_bl1d', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'dep_pss', 'dep_decline', 'dep_arps'];
 
     for (const scenarioKey of analyticalScenarios) {
         const scenario = getScenario(scenarioKey)!;

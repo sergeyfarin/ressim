@@ -22,6 +22,7 @@ import { sweep_areal } from './scenarios/sweep_areal';
 import { sweep_vertical } from './scenarios/sweep_vertical';
 import { sweep_combined } from './scenarios/sweep_combined';
 import { dep_pss } from './scenarios/dep_pss';
+import { dep_arps } from './scenarios/dep_arps';
 import { dep_decline } from './scenarios/dep_decline';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
@@ -386,8 +387,8 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
                     scalePreset: 'cumulative_volumes',
                 },
                 diagnostics: {
-                    title: 'Pressure',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
+                    title: 'Pressure & MBE',
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio'],
                     scalePreset: 'pressure',
                 },
             },
@@ -426,8 +427,8 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
                     scalePreset: 'cumulative_volumes',
                 },
                 diagnostics: {
-                    title: 'Pressure',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
+                    title: 'Pressure & MBE',
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio'],
                     scalePreset: 'pressure',
                 },
             },
@@ -534,6 +535,7 @@ export const SCENARIOS: Scenario[] = [
     sweep_combined,
     dep_pss,
     dep_decline,
+    dep_arps,
     gas_injection,
     gas_drive,
 ];
