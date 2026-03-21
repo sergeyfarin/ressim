@@ -17,7 +17,6 @@ export const dep_decline: Scenario = {
         analyticalNativeXAxis: 'time',
         hasTauDimensionlessTime: true,
         hasInjector: false,
-        caseMode: 'dep',
         default3DScalar: null,
         requiresThreePhaseMode: false,
     },

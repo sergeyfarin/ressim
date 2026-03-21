@@ -210,7 +210,7 @@ function buildBenchmarkLibraryEntry(family: BenchmarkFamily): CaseLibraryEntry {
     const provenance = getBenchmarkProvenanceMetadata(family);
     const productFamily = resolveProductFamily({
         activeMode: 'dep',
-        benchmarkScenarioClass: family.scenarioClass,
+        benchmarkScenarioClass: family.analyticalMethod,
         benchmarkId: family.key,
     });
     const activationMode = resolveActivationModeForFamily(productFamily);

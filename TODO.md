@@ -30,7 +30,7 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 
 ### 1C-caps. Scenario Capability Declarations (Phase 1 Refactor)
 
-`ScenarioCapabilities` type added to `Scenario` — each scenario explicitly declares its analytical method, primary rate curve, sweep panel, x-axis, injector presence, case mode, 3D default, and three-phase gate. Consumer code reads capabilities instead of branching on `scenarioClass`/`domain`.
+`ScenarioCapabilities` type added to `Scenario` — each scenario explicitly declares its analytical method, primary rate curve, sweep panel, x-axis, injector presence, 3D default, and three-phase gate. Consumer code reads capabilities instead of branching on `scenarioClass`/`domain`. All consumer-side branching now uses `analyticalMethod` (unified vocabulary); `caseMode` eliminated.
 
 **Completed (2026-03-21):**
 - [x] `ScenarioCapabilities` type with 9 behavioral fields replaces scattered conditional logic
@@ -43,18 +43,17 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 - [x] `referenceComparisonModel.ts`: sweep panel gate simplified to `family.showSweepPanel`
 - [x] `ReferenceComparisonChart.svelte`: sweep panel gate and gas-oil-bl preview axis fixed
 
-**Remaining consumer-side branching (intentionally retained):**
-- `referenceComparisonModel.ts`: 8 sites branch on `BenchmarkFamily.scenarioClass` (consumer interface) — legitimate domain logic selecting which analytical curves to draw. Fed correctly through the adapter chain.
-- `referenceChartConfig.ts`: 2 sites branch on `BenchmarkFamily.scenarioClass` — old benchmark chart layouts.
-- `benchmarkRunModel.ts`: 3 sites branch on `BenchmarkRunSpec.scenarioClass` — reference policy and diagnostics routing.
-- `benchmarkDisclosure.ts`: 1 site branch on `BenchmarkScenarioClass` — reference label text.
-- `ReferenceComparisonChart.svelte`: 6 sites branch on `family.scenarioClass` — chart panel layout defaults.
-
-These use `BenchmarkScenarioClass` (the consumer interface), not `ScenarioClass` (the scenario definition). The adapter correctly maps `capabilities.analyticalMethod` → `BenchmarkScenarioClass`. Full elimination requires replacing `BenchmarkScenarioClass` with `AnalyticalMethod` across the benchmark subsystem (deferred to 1C legacy cleanup).
+**Consumer-side branching — migrated to `analyticalMethod` (2026-03-21):**
+- [x] All consumer types (`BenchmarkRunSpec`, `BenchmarkRunResult`, `BenchmarkReferencePolicy`) use `analyticalMethod: AnalyticalMethod` instead of `scenarioClass`
+- [x] All branching in `benchmarkRunModel.ts`, `referenceComparisonModel.ts`, `referenceChartConfig.ts`, `benchmarkDisclosure.ts`, `ReferenceComparisonChart.svelte` uses `analyticalMethod`
+- [x] `previewScenarioClass` prop/param renamed to `previewAnalyticalMethod` throughout
+- [x] `phase2PresetContract.ts` `benchmarkScenarioClass` parameter type widened to `AnalyticalMethod`
+- [x] `caseMode` eliminated from `ScenarioCapabilities` — derived from `analyticalMethod` at the single consumption site in `simulationStore`
+- [x] `BenchmarkScenarioClass` type and `BenchmarkFamily.scenarioClass` field kept as deprecated — only used by the 5 benchmark family definitions and the adapter mapping in `simulationStore`
 
 **Discovered issues:**
-- `gas_injection` scenario was silently falling through to `CaseMode: 'dep'` instead of `'3p'` — now explicitly declared as `'dep'` in capabilities with a TODO to change to `'3p'` when three-phase mode is complete
-- `gas_drive` same issue — `caseMode: 'dep'` explicitly declared, should be `'3p'` later
+- `gas_injection` scenario was silently falling through to `CaseMode: 'dep'` instead of `'3p'` — now CaseMode derived from analyticalMethod (gas-oil-bl → 'dep')
+- `gas_drive` same issue — CaseMode derived as 'dep' (analyticalMethod: 'none')
 - `ReferenceComparisonChart.svelte` preview x-axis effect was missing `'gas-oil-bl'` — gas-oil scenarios in preview mode weren't defaulting to PVI x-axis (fixed)
 
 ### 1C. Legacy Cleanup (Phase 1 Step 7 Remainder)

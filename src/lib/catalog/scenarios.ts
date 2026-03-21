@@ -71,8 +71,6 @@ export type ScenarioCapabilities = {
     hasTauDimensionlessTime: boolean;
     /** Whether the scenario includes an active injector. */
     hasInjector: boolean;
-    /** The CaseMode for legacy toggle/mode logic. */
-    caseMode: 'wf' | 'dep';
     /** Default 3D scalar to show on load. */
     default3DScalar: Default3DScalar;
     /** Whether the gas domain tab gate applies (scenario only visible in 3-phase mode). */
@@ -151,7 +149,6 @@ export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
     analyticalNativeXAxis: 'time',
     hasTauDimensionlessTime: false,
     hasInjector: true,
-    caseMode: 'wf',
     default3DScalar: null,
     requiresThreePhaseMode: false,
 };

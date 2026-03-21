@@ -17,8 +17,6 @@ export const gas_injection: Scenario = {
         analyticalNativeXAxis: 'pvi',
         hasTauDimensionlessTime: false,
         hasInjector: true,
-        // TODO(gas): should be '3p' once three-phase mode support is complete.
-        caseMode: 'dep',
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
     },

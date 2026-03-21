@@ -396,7 +396,7 @@ class SimulationStoreImpl {
             isModified: this.isModified,
             benchmarkId,
             benchmarkLabel,
-            benchmarkScenarioClass: this.activeReferenceFamily?.scenarioClass ?? null,
+            benchmarkScenarioClass: this.activeReferenceFamily?.analyticalMethod ?? null,
             activeLibraryCaseKey: this.activeLibraryEntry?.key ?? null,
             activeLibraryGroup: this.activeLibraryEntry?.group ?? null,
         });
@@ -411,7 +411,7 @@ class SimulationStoreImpl {
             activeFamily: resolveProductFamily({
                 activeMode: this.activeMode,
                 activeLibraryFamily: this.activeNavigationLibraryEntry?.family ?? null,
-                benchmarkScenarioClass: this.activeReferenceFamily?.scenarioClass ?? null,
+                benchmarkScenarioClass: this.activeReferenceFamily?.analyticalMethod ?? null,
                 benchmarkId,
             }),
             activeSource,
@@ -458,7 +458,7 @@ class SimulationStoreImpl {
         if (!sc || this.isCustomMode) return null;
         const caps = sc.capabilities;
 
-        // Map analyticalMethod → BenchmarkScenarioClass for the legacy benchmark layer.
+        // Map analyticalMethod → deprecated scenarioClass (still required by BenchmarkFamily type).
         const scenarioClass = caps.analyticalMethod === 'buckley-leverett' ? 'buckley-leverett' as const
             : caps.analyticalMethod === 'gas-oil-bl' ? 'gas-oil-bl' as const
             : 'depletion' as const;
@@ -473,6 +473,7 @@ class SimulationStoreImpl {
             key: sc.key,
             baseCaseKey: sc.key,
             scenarioClass,
+            analyticalMethod: caps.analyticalMethod,
             sensitivityAxes: [],
             reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
             displayDefaults: { xAxis, panels },
@@ -1659,8 +1660,8 @@ class SimulationStoreImpl {
         const defaultDim = scenario.sensitivities.find((d) => d.key === defaultDimKey) ?? null;
         this.activeVariantKeys = defaultDim ? getDefaultVariantKeys(defaultDim) : [];
 
-        // CaseMode is declared by the scenario's capabilities — no scenarioClass branching.
-        const nextMode: CaseMode = scenario.capabilities.caseMode;
+        // Derive CaseMode from analyticalMethod: BL waterfloods use 'wf', everything else uses 'dep'.
+        const nextMode: CaseMode = scenario.capabilities.analyticalMethod === 'buckley-leverett' ? 'wf' : 'dep';
         this.activeMode = nextMode;
         this.toggles = getDefaultToggles(nextMode);
         this.explicitLibraryEntryKey = null;
@@ -1716,11 +1717,7 @@ class SimulationStoreImpl {
             return [];
         }
 
-        const scenarioClass = scenario.capabilities.analyticalMethod === 'buckley-leverett'
-            ? 'buckley-leverett' as const
-            : scenario.capabilities.analyticalMethod === 'gas-oil-bl'
-            ? 'gas-oil-bl' as const
-            : 'depletion' as const;
+        const analyticalMethod = scenario.capabilities.analyticalMethod;
         const baseParams = scenario.params;
         const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
         const runSteps = Math.max(1, Math.round(Number(this.steps ?? baseParams.steps ?? 240)));
@@ -1743,7 +1740,7 @@ class SimulationStoreImpl {
                 key: `${scenarioKey}__${dimensionKey}__${variantKey}`,
                 caseKey: scenarioKey,
                 familyKey: scenarioKey,
-                scenarioClass,
+                analyticalMethod,
                 variantKey,
                 variantLabel: variant.label,
                 label: `${scenario.label} — ${variant.label}`,

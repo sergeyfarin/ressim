@@ -8,7 +8,7 @@ describe('referenceChartConfig', () => {
         const config = getReferenceRateChartLayoutConfig({
             family,
             referencePolicy: {
-                scenarioClass: 'buckley-leverett',
+                analyticalMethod: 'buckley-leverett',
                 referenceKind: 'analytical',
                 referenceSource: 'buckley-leverett-shock-reference',
                 referenceLabel: 'Buckley-Leverett reference solution',
@@ -46,7 +46,7 @@ describe('referenceChartConfig', () => {
         const config = getReferenceRateChartLayoutConfig({
             family,
             referencePolicy: {
-                scenarioClass: 'buckley-leverett',
+                analyticalMethod: 'buckley-leverett',
                 referenceKind: 'numerical-refined',
                 referenceSource: 'bl_case_b_refined:refined-numerical-reference',
                 referenceLabel: 'Refined numerical reference',

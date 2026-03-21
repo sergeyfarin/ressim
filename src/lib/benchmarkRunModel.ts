@@ -8,13 +8,14 @@ import type {
     BenchmarkReferenceDefinition,
     BenchmarkVariant,
 } from './catalog/benchmarkCases';
+import type { AnalyticalMethod } from './catalog/scenarios';
 import type { RateHistoryPoint, SimulatorCreatePayload, SimulatorSnapshot } from './simulator-types';
 
 export type BenchmarkRunSpec = {
     key: string;
     caseKey: string;
     familyKey: string;
-    scenarioClass: BenchmarkFamily['scenarioClass'];
+    analyticalMethod: AnalyticalMethod;
     variantKey: string | null;
     variantLabel: string | null;
     label: string;
@@ -48,7 +49,7 @@ export type BenchmarkReferenceComparison = {
 };
 
 export type BenchmarkReferencePolicy = {
-    scenarioClass: BenchmarkFamily['scenarioClass'];
+    analyticalMethod: AnalyticalMethod;
     referenceKind: BenchmarkReferenceDefinition['kind'];
     referenceSource: string;
     referenceLabel: string;
@@ -73,7 +74,7 @@ export type BenchmarkRunResult = {
     key: string;
     caseKey: string;
     familyKey: string;
-    scenarioClass: BenchmarkFamily['scenarioClass'];
+    analyticalMethod: AnalyticalMethod;
     variantKey: string | null;
     variantLabel: string | null;
     label: string;
@@ -221,9 +222,9 @@ function formatSignedNumber(value: number | null | undefined, digits = 3): strin
 }
 
 function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy {
-    if (spec.scenarioClass === 'buckley-leverett' && spec.reference.kind === 'analytical') {
+    if (spec.analyticalMethod === 'buckley-leverett' && spec.reference.kind === 'analytical') {
         return {
-            scenarioClass: spec.scenarioClass,
+            analyticalMethod: spec.analyticalMethod,
             referenceKind: spec.reference.kind,
             referenceSource: spec.reference.source,
             referenceLabel: 'Buckley-Leverett reference solution',
@@ -233,9 +234,9 @@ function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy 
         };
     }
 
-    if (spec.scenarioClass === 'buckley-leverett' && spec.reference.kind === 'numerical-refined') {
+    if (spec.analyticalMethod === 'buckley-leverett' && spec.reference.kind === 'numerical-refined') {
         return {
-            scenarioClass: spec.scenarioClass,
+            analyticalMethod: spec.analyticalMethod,
             referenceKind: spec.reference.kind,
             referenceSource: spec.reference.source,
             referenceLabel: 'Refined numerical reference',
@@ -246,7 +247,7 @@ function buildReferencePolicy(spec: BenchmarkRunSpec): BenchmarkReferencePolicy 
     }
 
     return {
-        scenarioClass: spec.scenarioClass,
+        analyticalMethod: spec.analyticalMethod,
         referenceKind: spec.reference.kind,
         referenceSource: spec.reference.source,
         referenceLabel: 'Depletion reference solution',
@@ -596,7 +597,7 @@ export function buildBenchmarkRunSpecs(
             key: family.baseCase.key,
             caseKey: family.baseCase.key,
             familyKey: family.key,
-            scenarioClass: family.scenarioClass,
+            analyticalMethod: family.analyticalMethod,
             variantKey: null,
             variantLabel: null,
             label: family.label,
@@ -618,7 +619,7 @@ export function buildBenchmarkRunSpecs(
                 key: variant.key,
                 caseKey: variant.key,
                 familyKey: family.key,
-                scenarioClass: family.scenarioClass,
+                analyticalMethod: family.analyticalMethod,
                 variantKey: variant.variantKey,
                 variantLabel: variant.label,
                 label: variant.label,
@@ -705,7 +706,7 @@ export function buildBenchmarkRunResult(input: {
         }
     }
 
-    const referenceDetails = spec.scenarioClass === 'buckley-leverett'
+    const referenceDetails = spec.analyticalMethod === 'buckley-leverett'
         ? (spec.reference.kind === 'analytical'
             ? buildBuckleyLeverettAnalyticalDiagnostics({
                 spec,
@@ -727,7 +728,7 @@ export function buildBenchmarkRunResult(input: {
         key: spec.key,
         caseKey: spec.caseKey,
         familyKey: spec.familyKey,
-        scenarioClass: spec.scenarioClass,
+        analyticalMethod: spec.analyticalMethod,
         variantKey: spec.variantKey,
         variantLabel: spec.variantLabel,
         label: spec.label,

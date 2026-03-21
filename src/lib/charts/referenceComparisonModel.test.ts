@@ -438,7 +438,7 @@ describe('referenceComparisonModel', () => {
             family: null,
             results: [],
             xAxisMode: 'time',
-            previewScenarioClass: 'waterflood',
+            previewAnalyticalMethod: 'waterflood',
             previewVariantParams: [
                 { label: 'Base', variantKey: 'base', params: { s_wc: 0.1, s_or: 0.1, n_w: 2, n_o: 2, k_rw_max: 1, k_ro_max: 1, mu_w: 0.5, mu_o: 1.0, initialSaturation: 0.1 } },
             ],

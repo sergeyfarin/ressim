@@ -174,7 +174,7 @@
         Math.max(0, Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.total_injection ?? runtime.latestInjectionRate ?? 0))
     ));
     const outputProfileScenarioMode = $derived.by(() => (
-        activeSelectedReferenceResult?.scenarioClass === "depletion" ? "depletion" : params.analyticalSolutionMode
+        activeSelectedReferenceResult?.analyticalMethod === "depletion" ? "depletion" : params.analyticalSolutionMode
     ));
     const outputProfileSourceLabel = $derived.by(() => (
         activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
@@ -635,7 +635,7 @@
                             previewVariantParams={activeReferenceResults.length === 0 ? previewVariantParams : undefined}
                             pendingPreviewVariants={activeReferenceResults.length > 0 ? pendingPreviewVariants : undefined}
                             previewBaseParams={activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
-                            previewScenarioClass={activeReferenceFamily.scenarioClass}
+                            previewAnalyticalMethod={activeReferenceFamily.analyticalMethod}
                         />
                     {:else if RateChartComponent}
                         <RateChartComponent

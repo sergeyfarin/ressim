@@ -40,7 +40,7 @@
   const referenceGuidance = $derived.by(() => (
     activeFamily
       ? buildBenchmarkReferenceGuidance({
-        scenarioClass: activeFamily.scenarioClass,
+        analyticalMethod: activeFamily.analyticalMethod,
         referenceKind: activeFamily.reference.kind,
         comparisonMetric: activeFamily.comparisonMetric ?? null,
         displayDefaults: activeFamily.displayDefaults ?? null,

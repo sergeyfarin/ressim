@@ -15,7 +15,7 @@ export function getReferenceRateChartLayoutConfig(input: {
     const family = input.family ?? null;
     if (!family) return {};
 
-    if (family.scenarioClass === 'buckley-leverett') {
+    if (family.analyticalMethod === 'buckley-leverett') {
         const analyticalOverlayPrimary = input.referencePolicy?.analyticalOverlayRole !== 'secondary';
 
         return {

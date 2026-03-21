@@ -1,4 +1,5 @@
 import type { CaseMode, ToggleState } from '../catalog/caseCatalog';
+import type { AnalyticalMethod } from '../catalog/scenarios';
 
 export type PresetSource = 'facet' | 'reference' | 'custom';
 
@@ -65,7 +66,7 @@ function isFetkovichBenchmarkCase(benchmarkId: string | null | undefined): boole
 export function resolveProductFamily(input: {
     activeMode: CaseMode;
     activeLibraryFamily?: ProductFamily | null;
-    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | 'gas-oil-bl' | null;
+    benchmarkScenarioClass?: AnalyticalMethod | null;
     benchmarkId?: string | null;
 }): ProductFamily {
     if (input.activeLibraryFamily) return input.activeLibraryFamily;
@@ -164,7 +165,7 @@ export function buildScenarioNavigationState(input: {
     referenceSourceLabel?: string | null;
     provenanceSummary?: string | null;
     benchmarkId?: string | null;
-    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | 'gas-oil-bl' | null;
+    benchmarkScenarioClass?: AnalyticalMethod | null;
     activeComparisonSelection?: ComparisonSelection;
 }): ScenarioNavigationState {
     const hasResolvedLibraryCaseKey = Object.prototype.hasOwnProperty.call(input, 'activeLibraryCaseKey');
@@ -445,7 +446,7 @@ export function buildBasePresetProfile(input: {
     isModified: boolean;
     benchmarkId?: string | null;
     benchmarkLabel?: string | null;
-    benchmarkScenarioClass?: 'buckley-leverett' | 'depletion' | 'gas-oil-bl' | null;
+    benchmarkScenarioClass?: AnalyticalMethod | null;
     activeLibraryCaseKey?: string | null;
     activeLibraryGroup?: LibraryCaseGroup | null;
 }): BasePresetProfile {

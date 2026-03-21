@@ -181,7 +181,7 @@ describe('benchmarkRunModel', () => {
             rateHistory: buildDepletionReferenceRateHistory(baseSpec.params),
         });
 
-        expect(result.scenarioClass).toBe('depletion');
+        expect(result.analyticalMethod).toBe('depletion');
         expect(result.referencePolicy.referenceLabel).toContain('Depletion reference solution');
         expect(result.referencePolicy.analyticalOverlayRole).toBe('primary');
         expect(result.referenceComparison.status).toBe('not-applicable');

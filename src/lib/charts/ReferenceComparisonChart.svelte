@@ -32,7 +32,7 @@
         previewVariantParams = undefined,
         pendingPreviewVariants = undefined,
         previewBaseParams = undefined,
-        previewScenarioClass = undefined,
+        previewAnalyticalMethod = undefined,
     }: {
         results?: BenchmarkRunResult[];
         family?: BenchmarkFamily | null;
@@ -49,7 +49,7 @@
         pendingPreviewVariants?: AnalyticalPreviewVariant[];
         /** Single-curve fallback preview (analyticalPerVariant=false). */
         previewBaseParams?: Record<string, any>;
-        previewScenarioClass?: string;
+        previewAnalyticalMethod?: string;
     } = $props();
 
     let xAxisMode = $state<RateChartXAxisMode>('time');
@@ -93,7 +93,7 @@
 
 
     $effect(() => {
-        if (isPreviewMode && (previewScenarioClass === 'buckley-leverett' || previewScenarioClass === 'waterflood' || previewScenarioClass === 'gas-oil-bl')) {
+        if (isPreviewMode && (previewAnalyticalMethod === 'buckley-leverett' || previewAnalyticalMethod === 'waterflood' || previewAnalyticalMethod === 'gas-oil-bl')) {
             xAxisMode = 'pvi';
         }
     });
@@ -108,7 +108,7 @@
             previewVariantParams,
             pendingPreviewVariants,
             previewBaseParams,
-            previewScenarioClass,
+            previewAnalyticalMethod,
         }),
     );
     const visibleResults = $derived.by(() => {
@@ -307,16 +307,16 @@
     }
 
     const ratesPanel = $derived(resolvePanelDefinition('rates', {
-        title: family?.scenarioClass === 'buckley-leverett' ? 'Breakthrough'
-            : family?.scenarioClass === 'gas-oil-bl' ? 'Gas Breakthrough'
+        title: family?.analyticalMethod === 'buckley-leverett' ? 'Breakthrough'
+            : family?.analyticalMethod === 'gas-oil-bl' ? 'Gas Breakthrough'
             : 'Oil Rate',
-        curveKeys: family?.scenarioClass === 'buckley-leverett'
+        curveKeys: family?.analyticalMethod === 'buckley-leverett'
             ? ['water-cut-sim', 'water-cut-reference']
-            : family?.scenarioClass === 'gas-oil-bl'
+            : family?.analyticalMethod === 'gas-oil-bl'
             ? ['gas-cut-sim', 'gas-cut-reference']
             : ['oil-rate-sim', 'oil-rate-reference'],
-        scalePreset: (family?.scenarioClass === 'buckley-leverett' || family?.scenarioClass === 'gas-oil-bl') ? 'breakthrough' : 'rates',
-        allowLogToggle: family?.scenarioClass === 'depletion',
+        scalePreset: (family?.analyticalMethod === 'buckley-leverett' || family?.analyticalMethod === 'gas-oil-bl') ? 'breakthrough' : 'rates',
+        allowLogToggle: family?.analyticalMethod === 'depletion',
     }));
     const recoveryPanel = $derived(resolvePanelDefinition('recovery', {
         title: 'Recovery Factor',
@@ -325,7 +325,7 @@
     }));
     const cumulativePanel = $derived(resolvePanelDefinition('cumulative', {
         title: 'Cum Oil',
-        curveKeys: family?.scenarioClass === 'buckley-leverett'
+        curveKeys: family?.analyticalMethod === 'buckley-leverett'
             ? ['cum-oil-sim', 'cum-oil-reference', 'cum-injection']
             : ['cum-oil-sim', 'cum-oil-reference'],
         scalePreset: 'cumulative_volumes',

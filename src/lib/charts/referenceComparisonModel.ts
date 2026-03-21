@@ -88,10 +88,10 @@ type AnalyticalOverlay = {
 };
 
 function requiresRunMappedAnalyticalXAxis(
-    scenarioClass: string | null | undefined,
+    analyticalMethod: string | null | undefined,
     xAxisMode: RateChartXAxisMode,
 ): boolean {
-    if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood' || scenarioClass === 'gas-oil-bl') {
+    if (analyticalMethod === 'buckley-leverett' || analyticalMethod === 'waterflood' || analyticalMethod === 'gas-oil-bl') {
         return xAxisMode !== 'pvi';
     }
     return false;
@@ -741,7 +741,7 @@ function computeDepletionAnalyticalFromParams(
 function buildAnalyticalPreviewPanels(
     variants: AnalyticalPreviewVariant[],
     xAxisMode: RateChartXAxisMode,
-    scenarioClass: string,
+    analyticalMethod: string,
     theme: ReferenceComparisonTheme,
 ): Record<RateChartPanelKey, ReferenceComparisonPanel> {
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
@@ -769,7 +769,7 @@ function buildAnalyticalPreviewPanels(
         ? 'Analytical solution'
         : `Analytical solution (${variants.length})`;
 
-    if (scenarioClass === 'buckley-leverett' || scenarioClass === 'waterflood') {
+    if (analyticalMethod === 'buckley-leverett' || analyticalMethod === 'waterflood') {
         variants.forEach((variant, index) => {
             const color = getColor(index);
             const prefix = labelPrefix(variant);
@@ -807,7 +807,7 @@ function buildAnalyticalPreviewPanels(
         return panels;
     }
 
-    if (scenarioClass === 'depletion') {
+    if (analyticalMethod === 'depletion') {
         variants.forEach((variant, index) => {
             const color = getColor(index);
             const prefix = labelPrefix(variant);
@@ -869,7 +869,7 @@ function buildAnalyticalPreviewPanels(
         return panels;
     }
 
-    if (scenarioClass === 'gas-oil-bl') {
+    if (analyticalMethod === 'gas-oil-bl') {
         variants.forEach((variant, index) => {
             const color = getColor(index);
             const prefix = labelPrefix(variant);
@@ -1035,15 +1035,15 @@ export function buildReferenceComparisonModel(input: {
     pendingPreviewVariants?: AnalyticalPreviewVariant[];
     /** Fallback single-curve preview (used when analyticalPerVariant is false). */
     previewBaseParams?: Record<string, any>;
-    previewScenarioClass?: string;
+    previewAnalyticalMethod?: string;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const orderedResults = orderResults(input.results, input.previewVariantParams);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
-    const scenarioClass = family?.scenarioClass ?? input.previewScenarioClass ?? null;
+    const analyticalMethod = family?.analyticalMethod ?? input.previewAnalyticalMethod ?? null;
     const usesRunMappedAnalyticalXAxis = requiresRunMappedAnalyticalXAxis(
-        scenarioClass,
+        analyticalMethod,
         input.xAxisMode,
     );
     let hidesPendingAnalyticalWithoutMapping = false;
@@ -1058,8 +1058,8 @@ export function buildReferenceComparisonModel(input: {
     };
 
     if (!family || orderedResults.length === 0) {
-        if (orderedResults.length === 0 && input.previewScenarioClass) {
-            if (requiresRunMappedAnalyticalXAxis(input.previewScenarioClass, input.xAxisMode)) {
+        if (orderedResults.length === 0 && input.previewAnalyticalMethod) {
+            if (requiresRunMappedAnalyticalXAxis(input.previewAnalyticalMethod, input.xAxisMode)) {
                 hidesPendingAnalyticalWithoutMapping = Boolean(
                     input.previewBaseParams || (input.previewVariantParams?.length ?? 0) > 0,
                 );
@@ -1085,7 +1085,7 @@ export function buildReferenceComparisonModel(input: {
                 const previewPanels = buildAnalyticalPreviewPanels(
                     variants,
                     input.xAxisMode,
-                    input.previewScenarioClass,
+                    input.previewAnalyticalMethod,
                     input.theme ?? 'dark',
                 );
                 // Expose multi-variant preview entries so the cases selector can
@@ -1114,13 +1114,13 @@ export function buildReferenceComparisonModel(input: {
         const derived = derivedByKey.get(result.key);
         if (!derived) return;
         const color = getReferenceComparisonCaseColor(index);
-        const tau = scenarioClass === 'depletion' ? computeDepletionTau(result.params) : null;
+        const tau = analyticalMethod === 'depletion' ? computeDepletionTau(result.params) : null;
         const xValues = buildXAxisValues(derived, input.xAxisMode, tau);
         const defaultVisible = true;
 
         const caseLabel = compactCaseLabel(result.label);
 
-        if (family.scenarioClass === 'buckley-leverett') {
+        if (family.analyticalMethod === 'buckley-leverett') {
             appendSeries(
                 panels.rates,
                 {
@@ -1250,7 +1250,7 @@ export function buildReferenceComparisonModel(input: {
             return;
         }
 
-        if (family.scenarioClass === 'gas-oil-bl') {
+        if (family.analyticalMethod === 'gas-oil-bl') {
             appendSeries(panels.rates, {
                 label: `${result.label} Gas Cut`,
                 curveKey: 'gas-cut-sim',
@@ -1432,7 +1432,7 @@ export function buildReferenceComparisonModel(input: {
         };
     }
 
-    if (family.scenarioClass === 'buckley-leverett') {
+    if (family.analyticalMethod === 'buckley-leverett') {
         const allSameAnalytical = !input.analyticalPerVariant;
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
@@ -1568,7 +1568,7 @@ export function buildReferenceComparisonModel(input: {
                 }
             }
         }
-    } else if (family.scenarioClass === 'gas-oil-bl') {
+    } else if (family.analyticalMethod === 'gas-oil-bl') {
         const allSameAnalytical = !input.analyticalPerVariant;
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {

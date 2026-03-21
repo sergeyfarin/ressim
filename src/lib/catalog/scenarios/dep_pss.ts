@@ -17,7 +17,6 @@ export const dep_pss: Scenario = {
         analyticalNativeXAxis: 'time',
         hasTauDimensionlessTime: true,
         hasInjector: false,
-        caseMode: 'dep',
         default3DScalar: null,
         requiresThreePhaseMode: false,
     },

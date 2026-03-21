@@ -16,7 +16,6 @@ export const gas_drive: Scenario = {
         analyticalNativeXAxis: 'time',
         hasTauDimensionlessTime: false,
         hasInjector: false,
-        caseMode: 'dep',
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
     },

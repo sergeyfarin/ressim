@@ -42,7 +42,7 @@ describe('benchmarkDisclosure', () => {
 
     it('builds reference guidance for comparison-driven families', () => {
         const guidance = buildBenchmarkReferenceGuidance({
-            scenarioClass: 'buckley-leverett',
+            analyticalMethod: 'buckley-leverett',
             referenceKind: 'analytical',
             comparisonMetric: {
                 kind: 'breakthrough-pv-relative-error',

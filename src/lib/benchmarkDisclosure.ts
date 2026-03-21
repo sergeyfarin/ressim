@@ -3,8 +3,8 @@ import type {
     BenchmarkDisplayDefaults,
     BenchmarkReferenceKind,
     BenchmarkRunPolicy,
-    BenchmarkScenarioClass,
 } from './catalog/benchmarkCases';
+import type { AnalyticalMethod } from './catalog/scenarios';
 
 export type BenchmarkCaseSnapshot = {
     grid: string;
@@ -109,14 +109,17 @@ function buildPermeabilitySummary(params: Record<string, any>): string {
 }
 
 function buildReferenceLabel(
-    scenarioClass: BenchmarkScenarioClass,
+    analyticalMethod: AnalyticalMethod,
     referenceKind: BenchmarkReferenceKind,
 ): string {
-    if (scenarioClass === 'buckley-leverett' && referenceKind === 'numerical-refined') {
+    if (analyticalMethod === 'buckley-leverett' && referenceKind === 'numerical-refined') {
         return 'Refined numerical reference';
     }
-    if (scenarioClass === 'buckley-leverett') {
+    if (analyticalMethod === 'buckley-leverett') {
         return 'Buckley-Leverett reference solution';
+    }
+    if (analyticalMethod === 'gas-oil-bl') {
+        return 'Gas-oil Buckley-Leverett reference solution';
     }
     return 'Depletion reference solution';
 }
@@ -159,13 +162,13 @@ export function buildBenchmarkCaseSnapshot(params: Record<string, any>): Benchma
 }
 
 export function buildBenchmarkReferenceGuidance(input: {
-    scenarioClass: BenchmarkScenarioClass;
+    analyticalMethod: AnalyticalMethod;
     referenceKind: BenchmarkReferenceKind;
     comparisonMetric: BenchmarkComparisonMetric | null;
     displayDefaults: BenchmarkDisplayDefaults | null;
     runPolicy: BenchmarkRunPolicy | null;
 }): BenchmarkReferenceGuidance {
-    const reference = `Reference solution: ${buildReferenceLabel(input.scenarioClass, input.referenceKind)}.`;
+    const reference = `Reference solution: ${buildReferenceLabel(input.analyticalMethod, input.referenceKind)}.`;
     const metric = input.comparisonMetric
         ? `Review metric: arrival-PVI relative error against ${input.comparisonMetric.target === 'analytical-reference' ? 'the reference solution' : 'the refined numerical reference'} (${formatNumber(input.comparisonMetric.tolerance * 100, 1)}% tolerance).`
         : 'Review metric: trend comparison against the reference solution.';

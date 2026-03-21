@@ -17,7 +17,6 @@ export const sweep_areal: Scenario = {
         analyticalNativeXAxis: 'pvi',
         hasTauDimensionlessTime: false,
         hasInjector: true,
-        caseMode: 'wf',
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
     },
