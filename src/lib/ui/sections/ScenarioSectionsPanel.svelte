@@ -2,11 +2,12 @@
   import type { ScenarioModePanelProps } from "../modePanelTypes";
   import { getModePanelSections } from "../modePanelSections";
   import AnalyticalSection from "./AnalyticalSection.svelte";
+  import BlackOilSection from "./BlackOilSection.svelte";
+  import FluidPvtSection from "./FluidPvtSection.svelte";
   import GasFluidSection from "./GasFluidSection.svelte";
   import GeometrySection from "./GeometrySection.svelte";
   import RelativeCapillarySection from "./RelativeCapillarySection.svelte";
   import ReservoirSection from "./ReservoirSection.svelte";
-  import FluidPropertiesSection from "./FluidPropertiesSection.svelte";
   import TimestepSection from "./TimestepSection.svelte";
   import WellsSection from "./WellsSection.svelte";
 
@@ -44,12 +45,19 @@
         />
       </div>
 
-      <div class="flow-item {params.pvtMode === 'black-oil' ? 'col-span-all' : ''}">
-        <FluidPropertiesSection
+      <div class="flow-item">
+        <FluidPvtSection
           bindings={params}
           fieldErrors={validationErrors}
+          onParamEdit={onParamEdit}
         />
       </div>
+
+      {#if params.pvtMode === 'black-oil'}
+        <div class="flow-item">
+          <BlackOilSection bindings={params} />
+        </div>
+      {/if}
     {:else if section.key === "scal"}
       <div class="flow-item">
         <RelativeCapillarySection
@@ -140,8 +148,4 @@
     margin-bottom: 0.375rem;
   }
 
-  .col-span-all {
-    column-span: all;
-    width: 100%;
-  }
 </style>

@@ -7,6 +7,7 @@
 
     let {
         title,
+        subtitle,
         open = true,
         hasError = false,
         children,
@@ -14,6 +15,7 @@
         ...rest
     }: Props & {
         title: string;
+        subtitle?: string;
         open?: boolean;
         hasError?: boolean;
     } = $props();
@@ -27,7 +29,12 @@
     <summary
         class="flex cursor-pointer list-none items-center justify-between bg-muted/40 px-3 py-2 text-xs font-semibold transition-colors hover:bg-muted/60 [&::-webkit-details-marker]:hidden"
     >
-        {title}
+        <span class="flex items-center gap-2">
+            {title}
+            {#if subtitle}
+                <span class="text-[10px] font-normal text-muted-foreground">{subtitle}</span>
+            {/if}
+        </span>
         <svg
             xmlns="http://www.w3.org/2000/svg"
             width="16"

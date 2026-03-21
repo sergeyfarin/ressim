@@ -4,7 +4,7 @@
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
   import { SCENARIOS, getScenario, type Scenario, type ScenarioDomain } from "../../catalog/scenarios";
-  import { ROCK_PRESETS, FLUID_PRESETS } from "../../catalog/reservoirPresets";
+  import { ROCK_PRESETS } from "../../catalog/reservoirPresets";
   import type { CaseMode, ToggleState } from "../../catalog/caseCatalog";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
   import type { WarningPolicy } from "../../warningPolicy";
@@ -257,31 +257,9 @@
   {#if isCustom}
     <!-- ── Custom mode: presets + full parameter form ── -->
     <div class="border-t border-border/50">
-      <div class="flex items-center gap-1.5 px-3 py-1 flex-wrap mt-1">
-        <span class="text-[10px] w-20 font-medium text-muted-foreground uppercase tracking-wide">Rock Presets:</span>
+      <div class="flex items-center gap-1.5 px-3 py-1 pb-2 flex-wrap mt-1 border-b border-border/50">
+        <span class="text-[10px] w-20 font-medium text-muted-foreground uppercase tracking-wide">Rock Profile</span>
         {#each ROCK_PRESETS as preset}
-          <button
-            type="button"
-            class="ui-chip cursor-pointer border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
-            title={preset.description}
-            onclick={() => {
-              const p = preset.params;
-              for (const [key, value] of Object.entries(p)) {
-                if (key in params && typeof value !== 'function') {
-                  (params as any)[key] = value;
-                }
-              }
-              onParamEdit();
-            }}
-          >
-            {preset.label}
-          </button>
-        {/each}
-      </div>
-
-      <div class="flex items-center gap-1.5 px-3 py-1 pb-2 flex-wrap border-b border-border/50">
-        <span class="text-[10px] w-20 font-medium text-muted-foreground uppercase tracking-wide">Fluid Presets:</span>
-        {#each FLUID_PRESETS as preset}
           <button
             type="button"
             class="ui-chip cursor-pointer border-border/60 bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors"
