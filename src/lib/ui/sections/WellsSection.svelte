@@ -64,11 +64,11 @@
     <div class="flex items-center gap-3 flex-wrap">
       <label class="flex items-center gap-1 text-xs">
         <span class="text-[10px] font-medium text-muted-foreground">r_w (m)</span>
-        <ValidatedInput type="number" min="0.01" step="0.01" class="w-16 h-7 px-1.5 text-xs" bind:value={well_radius} error={fieldErrors.wellRadius} />
+        <ValidatedInput type="number" min="0.01" step="0.01" class="w-16 h-6 px-1 text-xs" bind:value={well_radius} error={fieldErrors.wellRadius} />
       </label>
       <label class="flex items-center gap-1 text-xs">
         <span class="text-[10px] font-medium text-muted-foreground">Skin</span>
-        <Input type="number" step="0.1" class="w-16 h-7 px-1.5 text-xs" bind:value={well_skin} />
+        <Input type="number" step="0.1" class="w-16 h-6 px-1 text-xs" bind:value={well_skin} />
       </label>
       <label class="flex items-center gap-1.5 cursor-pointer ml-auto">
         <input type="checkbox" class="h-3.5 w-3.5 rounded border-input accent-primary" bind:checked={injectorEnabled} />
@@ -81,74 +81,74 @@
       <table class="compact-table w-full text-left">
         <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th class="px-2 py-1 font-medium">Well</th>
-            <th class="px-2 py-1 font-medium">Mode</th>
-            <th class="px-2 py-1 font-medium">BHP (bar)</th>
-            <th class="px-2 py-1 font-medium">Rate (m³/d)</th>
-            <th class="px-2 py-1 font-medium">i, j</th>
+            <th class="px-1 py-0.5 font-medium">Well</th>
+            <th class="px-1 py-0.5 font-medium">Mode</th>
+            <th class="px-1 py-0.5 font-medium">BHP (bar)</th>
+            <th class="px-1 py-0.5 font-medium">Rate (m³/d)</th>
+            <th class="px-1 py-0.5 font-medium">i, j</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border text-xs">
           <tr class={!injectorEnabled ? "opacity-40" : ""}>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Inj</td>
-            <td class="px-1 py-1">
-              <Select class="w-full h-7 px-1 text-xs" bind:value={injectorControlMode} disabled={!injectorEnabled}>
+            <td class="px-1 py-0.5 font-medium text-muted-foreground">Inj</td>
+            <td class="px-0.5 py-0.5">
+              <Select class="w-full h-6 px-1 text-xs" bind:value={injectorControlMode} disabled={!injectorEnabled}>
                 <option value="pressure">P</option>
                 <option value="rate">Q</option>
               </Select>
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" step="1" class="w-full h-7 px-2 text-xs"
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" step="1" class="w-full h-6 px-1 text-xs"
                 bind:value={injectorBhp}
                 disabled={injectorControlMode === "rate" || !injectorEnabled}
                 error={injectorControlMode === "pressure" ? fieldErrors.wellPressureOrder : undefined} />
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" step="1" class="w-full h-7 px-2 text-xs"
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0" step="1" class="w-full h-6 px-1 text-xs"
                 bind:value={targetInjectorRate}
                 disabled={injectorControlMode === "pressure" || !injectorEnabled}
                 error={injectorControlMode === "rate" ? fieldErrors.injectorRate : undefined} />
             </td>
-            <td class="px-1 py-1">
+            <td class="px-0.5 py-0.5">
               <div class="flex items-center gap-0.5">
                 <Input type="number" min="0" max={Math.max(0, nx - 1)} step="1"
-                  class={`w-10 h-7 px-1 text-center text-xs ${!injectorValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
+                  class={`w-10 h-6 px-1 text-center text-xs ${!injectorValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={injectorI} disabled={!injectorEnabled} />
                 <span class="text-muted-foreground">,</span>
                 <Input type="number" min="0" max={Math.max(0, ny - 1)} step="1"
-                  class={`w-10 h-7 px-1 text-center text-xs ${!injectorValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
+                  class={`w-10 h-6 px-1 text-center text-xs ${!injectorValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={injectorJ} disabled={!injectorEnabled} />
               </div>
             </td>
           </tr>
           <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Prod</td>
-            <td class="px-1 py-1">
-              <Select class="w-full h-7 px-1 text-xs" bind:value={producerControlMode}>
+            <td class="px-1 py-0.5 font-medium text-muted-foreground">Prod</td>
+            <td class="px-0.5 py-0.5">
+              <Select class="w-full h-6 px-1 text-xs" bind:value={producerControlMode}>
                 <option value="pressure">P</option>
                 <option value="rate">Q</option>
               </Select>
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" step="1" class="w-full h-7 px-2 text-xs"
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" step="1" class="w-full h-6 px-1 text-xs"
                 bind:value={producerBhp}
                 disabled={producerControlMode === "rate"}
                 error={producerControlMode === "pressure" ? fieldErrors.wellPressureOrder : undefined} />
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" step="1" class="w-full h-7 px-2 text-xs"
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0" step="1" class="w-full h-6 px-1 text-xs"
                 bind:value={targetProducerRate}
                 disabled={producerControlMode === "pressure"}
                 error={producerControlMode === "rate" ? fieldErrors.producerRate : undefined} />
             </td>
-            <td class="px-1 py-1">
+            <td class="px-0.5 py-0.5">
               <div class="flex items-center gap-0.5">
                 <Input type="number" min="0" max={Math.max(0, nx - 1)} step="1"
-                  class={`w-10 h-7 px-1 text-center text-xs ${!producerValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
+                  class={`w-10 h-6 px-1 text-center text-xs ${!producerValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={producerI} />
                 <span class="text-muted-foreground">,</span>
                 <Input type="number" min="0" max={Math.max(0, ny - 1)} step="1"
-                  class={`w-10 h-7 px-1 text-center text-xs ${!producerValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
+                  class={`w-10 h-6 px-1 text-center text-xs ${!producerValid || Boolean(fieldErrors.wellOverlap) ? "border-destructive" : ""}`}
                   bind:value={producerJ} />
               </div>
             </td>

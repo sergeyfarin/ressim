@@ -388,7 +388,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
                 },
                 diagnostics: {
                     title: 'Pressure & MBE',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio'],
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio', 'drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
                     scalePreset: 'pressure',
                 },
             },
@@ -428,7 +428,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
                 },
                 diagnostics: {
                     title: 'Pressure & MBE',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio'],
+                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio', 'drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
                     scalePreset: 'pressure',
                 },
             },

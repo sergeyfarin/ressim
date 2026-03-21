@@ -15,6 +15,7 @@
     pcogEnabled = $bindable(false),
     pcogPEntry = $bindable(3.0),
     pcogLambda = $bindable(2.0),
+    initialGasSaturation = $bindable(0.0),
     injectedFluid = $bindable<"water" | "gas">("gas"),
     pvtMode = "constant",
     fieldErrors = {},
@@ -26,6 +27,7 @@
     mu_g?: number;
     c_g?: number;
     rho_g?: number;
+    initialGasSaturation?: number;
     pcogEnabled?: boolean;
     pcogPEntry?: number;
     pcogLambda?: number;
@@ -37,16 +39,28 @@
   const hasError = $derived(
     !!fieldErrors.s_gc || !!fieldErrors.s_gr || !!fieldErrors.n_g || !!fieldErrors.mu_g || !!fieldErrors.c_g,
   );
+
+  // Gas compressibility scale: display as coefficient × 10⁻⁴
+  const CG_SCALE = 1e4;
+  let c_g_scaled = $derived(Math.round(c_g * CG_SCALE * 1e4) / 1e4);
+  function setCgScaled(e: Event) {
+    const v = Number((e.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(v)) c_g = v / CG_SCALE;
+  }
 </script>
 
 <Collapsible title="Gas Phase" {hasError}>
   <div class="space-y-2 px-2.5 py-2">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-3">
       <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Inject:</span>
-      <Select class="h-7 text-xs px-1.5 w-20" bind:value={injectedFluid}>
+      <Select class="h-6 text-xs px-1.5 w-20" bind:value={injectedFluid}>
         <option value="gas">Gas</option>
         <option value="water">Water</option>
       </Select>
+      <label class="flex items-center gap-1 text-xs ml-auto">
+        <span class="text-[10px] text-muted-foreground">S_gi</span>
+        <Input type="number" min="0" max="1" step="0.01" class="w-14 h-6 px-1 text-xs" bind:value={initialGasSaturation} />
+      </label>
     </div>
 
     <!-- Gas rel perm + PVT in one table -->
@@ -54,24 +68,24 @@
       <table class="compact-table w-full text-left">
         <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th class="px-2 py-1 font-medium">S_gc</th>
-            <th class="px-2 py-1 font-medium">S_gr</th>
-            <th class="px-2 py-1 font-medium">n_g</th>
-            <th class="px-2 py-1 font-medium">kr_max</th>
-            <th class="px-2 py-1 font-medium">μ_g (cP)</th>
-            <th class="px-2 py-1 font-medium">c_g (1/bar)</th>
-            <th class="px-2 py-1 font-medium">ρ_g (kg/m³)</th>
+            <th class="px-1 py-0.5 font-medium">S_gc</th>
+            <th class="px-1 py-0.5 font-medium">S_gr</th>
+            <th class="px-1 py-0.5 font-medium">n_g</th>
+            <th class="px-1 py-0.5 font-medium">kr_max</th>
+            <th class="px-1 py-0.5 font-medium">μ_g (cP)</th>
+            <th class="px-1 py-0.5 font-medium" title="Gas compressibility (×10⁻⁴ per bar)">c_g (×10⁻⁴)</th>
+            <th class="px-1 py-0.5 font-medium">ρ_g (kg/m³)</th>
           </tr>
         </thead>
         <tbody>
           <tr class="text-xs">
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0" max="1" step="0.01" class="w-full h-7 px-1.5 text-xs" bind:value={s_gc} error={fieldErrors.s_gc} /></td>
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0" max="1" step="0.01" class="w-full h-7 px-1.5 text-xs" bind:value={s_gr} error={fieldErrors.s_gr} /></td>
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-1.5 text-xs" bind:value={n_g} error={fieldErrors.n_g} /></td>
-            <td class="px-1 py-1"><Input type="number" min="0.01" max="1" step="0.05" class="w-full h-7 px-1.5 text-xs" bind:value={k_rg_max} /></td>
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0.001" step="0.001" class="w-full h-7 px-1.5 text-xs" disabled={pvtMode === 'black-oil'} bind:value={mu_g} error={fieldErrors.mu_g} /></td>
-            <td class="px-1 py-1"><ValidatedInput type="number" min="0" step="1e-5" class="w-full h-7 px-1.5 text-xs" disabled={pvtMode === 'black-oil'} bind:value={c_g} error={fieldErrors.c_g} /></td>
-            <td class="px-1 py-1"><Input type="number" min="0.1" step="1" class="w-full h-7 px-1.5 text-xs" disabled={pvtMode === 'black-oil'} bind:value={rho_g} /></td>
+            <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="0" max="1" step="0.01" class="w-full h-6 px-1 text-xs" bind:value={s_gc} error={fieldErrors.s_gc} /></td>
+            <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="0" max="1" step="0.01" class="w-full h-6 px-1 text-xs" bind:value={s_gr} error={fieldErrors.s_gr} /></td>
+            <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" bind:value={n_g} error={fieldErrors.n_g} /></td>
+            <td class="px-0.5 py-0.5"><Input type="number" min="0.01" max="1" step="0.05" class="w-full h-6 px-1 text-xs" bind:value={k_rg_max} /></td>
+            <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="0.001" step="0.001" class="w-full h-6 px-1 text-xs" disabled={pvtMode === 'black-oil'} bind:value={mu_g} error={fieldErrors.mu_g} /></td>
+            <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="0" step="0.1" class="w-full h-6 px-1 text-xs" disabled={pvtMode === 'black-oil'} value={c_g_scaled} oninput={setCgScaled} error={fieldErrors.c_g} /></td>
+            <td class="px-0.5 py-0.5"><Input type="number" min="0.1" step="1" class="w-full h-6 px-1 text-xs" disabled={pvtMode === 'black-oil'} bind:value={rho_g} /></td>
           </tr>
         </tbody>
       </table>
@@ -86,11 +100,11 @@
       {#if pcogEnabled}
         <label class="flex items-center gap-1 text-xs">
           <span class="text-[10px] text-muted-foreground">P_e (bar)</span>
-          <Input type="number" min="0" step="0.5" class="w-16 h-7 px-1.5 text-xs" bind:value={pcogPEntry} />
+          <Input type="number" min="0" step="0.5" class="w-16 h-6 px-1 text-xs" bind:value={pcogPEntry} />
         </label>
         <label class="flex items-center gap-1 text-xs">
           <span class="text-[10px] text-muted-foreground">λ</span>
-          <Input type="number" min="0.1" step="0.1" class="w-14 h-7 px-1.5 text-xs" bind:value={pcogLambda} />
+          <Input type="number" min="0.1" step="0.1" class="w-14 h-6 px-1 text-xs" bind:value={pcogLambda} />
         </label>
       {/if}
     </div>

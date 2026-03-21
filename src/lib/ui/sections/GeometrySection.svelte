@@ -41,51 +41,51 @@
 
 <div class="dense-section rounded-lg border border-border bg-card shadow-sm">
   <div class="overflow-x-auto rounded-md border border-border">
-    <table class="dense-table w-full text-left">
+    <table class="dense-table w-full text-left" style="table-layout: fixed">
       <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
         <tr>
-          <th class="px-2 py-1.5 font-medium">Axis</th>
-          <th class="px-2 py-1.5 font-medium">Cells</th>
-          <th class="px-2 py-1.5 font-medium">Size (m)</th>
-          <th class="px-2 py-1.5 font-medium text-right">Total</th>
+          <th class="px-1 py-1 font-medium">Axis</th>
+          <th class="px-1 py-1 font-medium">Cells</th>
+          <th class="px-1 py-1 font-medium">Size (m)</th>
+          <th class="px-1 py-1 font-medium text-right">Total</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-border text-xs">
         <tr>
-          <td class="px-2 py-1 font-medium text-muted-foreground">X</td>
-          <td class="px-1 py-1">
-            <Input type="number" min={1} step={1} class={`w-full h-7 px-2 text-xs ${fieldErrors.nx ? 'border-destructive' : ''}`}
+          <td class="px-1 py-0.5 font-medium text-muted-foreground">X</td>
+          <td class="px-0.5 py-0.5">
+            <Input type="number" min={1} step={1} class={`w-full h-6 px-1 text-xs ${fieldErrors.nx ? 'border-destructive' : ''}`}
               value={bindings.nx} oninput={(e) => setInt('nx', (e.currentTarget as HTMLInputElement).value)} />
           </td>
-          <td class="px-1 py-1">
-            <Input type="number" min={0.1} step={1} class={`w-full h-7 px-2 text-xs ${fieldErrors.cellDx ? 'border-destructive' : ''}`}
+          <td class="px-0.5 py-0.5">
+            <Input type="number" min={0.1} step={1} class={`w-full h-6 px-1 text-xs ${fieldErrors.cellDx ? 'border-destructive' : ''}`}
               value={bindings.cellDx} oninput={(e) => setFloat('cellDx', (e.currentTarget as HTMLInputElement).value)} />
           </td>
-          <td class="px-2 py-1 text-right text-muted-foreground tabular-nums">{fmtLen(totalX)}</td>
+          <td class="px-1 py-0.5 text-right text-muted-foreground tabular-nums">{fmtLen(totalX)}</td>
         </tr>
         <tr>
-          <td class="px-2 py-1 font-medium text-muted-foreground">Y</td>
-          <td class="px-1 py-1">
-            <Input type="number" min={1} step={1} class={`w-full h-7 px-2 text-xs ${fieldErrors.ny ? 'border-destructive' : ''}`}
+          <td class="px-1 py-0.5 font-medium text-muted-foreground">Y</td>
+          <td class="px-0.5 py-0.5">
+            <Input type="number" min={1} step={1} class={`w-full h-6 px-1 text-xs ${fieldErrors.ny ? 'border-destructive' : ''}`}
               value={bindings.ny} oninput={(e) => setInt('ny', (e.currentTarget as HTMLInputElement).value)} />
           </td>
-          <td class="px-1 py-1">
-            <Input type="number" min={0.1} step={1} class={`w-full h-7 px-2 text-xs ${fieldErrors.cellDy ? 'border-destructive' : ''}`}
+          <td class="px-0.5 py-0.5">
+            <Input type="number" min={0.1} step={1} class={`w-full h-6 px-1 text-xs ${fieldErrors.cellDy ? 'border-destructive' : ''}`}
               value={bindings.cellDy} oninput={(e) => setFloat('cellDy', (e.currentTarget as HTMLInputElement).value)} />
           </td>
-          <td class="px-2 py-1 text-right text-muted-foreground tabular-nums">{fmtLen(totalY)}</td>
+          <td class="px-1 py-0.5 text-right text-muted-foreground tabular-nums">{fmtLen(totalY)}</td>
         </tr>
         <tr>
-          <td class="px-2 py-1 font-medium text-muted-foreground">Z</td>
-          <td class="px-1 py-1">
-            <Input type="number" min={1} step={1} class={`w-full h-7 px-2 text-xs ${fieldErrors.nz ? 'border-destructive' : ''}`}
+          <td class="px-1 py-0.5 font-medium text-muted-foreground">Z</td>
+          <td class="px-0.5 py-0.5">
+            <Input type="number" min={1} step={1} class={`w-full h-6 px-1 text-xs ${fieldErrors.nz ? 'border-destructive' : ''}`}
               value={bindings.nz} oninput={(e) => setInt('nz', (e.currentTarget as HTMLInputElement).value)} />
           </td>
-          <td class="px-1 py-1">
-            <Input type="number" min={0.1} step={0.5} class={`w-full h-7 px-2 text-xs ${fieldErrors.cellDz ? 'border-destructive' : ''}`}
+          <td class="px-0.5 py-0.5">
+            <Input type="number" min={0.1} step={0.5} class={`w-full h-6 px-1 text-xs ${fieldErrors.cellDz ? 'border-destructive' : ''}`}
               value={bindings.cellDz} oninput={(e) => setFloat('cellDz', (e.currentTarget as HTMLInputElement).value)} />
           </td>
-          <td class="px-2 py-1 text-right text-muted-foreground tabular-nums">{fmtLen(totalZ)}</td>
+          <td class="px-1 py-0.5 text-right text-muted-foreground tabular-nums">{fmtLen(totalZ)}</td>
         </tr>
       </tbody>
     </table>

@@ -24,6 +24,20 @@
     !!fieldErrors.volume_expansion_o
   );
 
+  // Compressibility scale factor: display as coefficient × 10⁻⁶
+  const C_SCALE = 1e6;
+  let c_w_scaled = $derived(Math.round(bindings.c_w * C_SCALE * 1e4) / 1e4);
+  let c_o_scaled = $derived(Math.round(bindings.c_o * C_SCALE * 1e4) / 1e4);
+
+  function setCwScaled(e: Event) {
+    const v = Number((e.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(v)) bindings.c_w = v / C_SCALE;
+  }
+  function setCoScaled(e: Event) {
+    const v = Number((e.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(v)) bindings.c_o = v / C_SCALE;
+  }
+
   let pvtChartExpanded = $state(true);
 
   let pvtData = $derived.by(() => {
@@ -72,18 +86,18 @@
         <table class="compact-table w-full text-left">
           <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th class="px-2 py-1 font-medium">API Gravity</th>
-              <th class="px-2 py-1 font-medium">Gas SG (Air=1)</th>
-              <th class="px-2 py-1 font-medium">Temp (°C)</th>
-              <th class="px-2 py-1 font-medium">Bubble Pt (bar)</th>
+              <th class="px-1 py-0.5 font-medium">API Gravity</th>
+              <th class="px-1 py-0.5 font-medium">Gas SG (Air=1)</th>
+              <th class="px-1 py-0.5 font-medium">Temp (°C)</th>
+              <th class="px-1 py-0.5 font-medium">Bubble Pt (bar)</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td class="px-1 py-1"><Input type="number" step="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.apiGravity} /></td>
-              <td class="px-1 py-1"><Input type="number" step="0.05" class="w-full h-7 px-2 text-xs" bind:value={bindings.gasSpecificGravity} /></td>
-              <td class="px-1 py-1"><Input type="number" step="5" class="w-full h-7 px-2 text-xs" bind:value={bindings.reservoirTemperature} /></td>
-              <td class="px-1 py-1"><Input type="number" step="10" class="w-full h-7 px-2 text-xs" bind:value={bindings.bubblePoint} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" step="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.apiGravity} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" step="0.05" class="w-full h-6 px-1 text-xs" bind:value={bindings.gasSpecificGravity} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" step="5" class="w-full h-6 px-1 text-xs" bind:value={bindings.reservoirTemperature} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" step="10" class="w-full h-6 px-1 text-xs" bind:value={bindings.bubblePoint} /></td>
             </tr>
           </tbody>
         </table>
@@ -99,12 +113,12 @@
             <table class="compact-table w-full text-left text-[10px]">
               <thead class="border-b border-border bg-muted/80 text-muted-foreground sticky top-0 backdrop-blur-sm">
                 <tr>
-                  <th class="px-2 py-1 font-medium">P (bar)</th>
-                  <th class="px-2 py-1 font-medium">R_s (m³/m³)</th>
-                  <th class="px-2 py-1 font-medium">B_o</th>
-                  <th class="px-2 py-1 font-medium">μ_o (cP)</th>
-                  <th class="px-2 py-1 font-medium">B_g</th>
-                  <th class="px-2 py-1 font-medium">μ_g (cP)</th>
+                  <th class="px-1 py-0.5 font-medium">P (bar)</th>
+                  <th class="px-1 py-0.5 font-medium">R_s (m³/m³)</th>
+                  <th class="px-1 py-0.5 font-medium">B_o</th>
+                  <th class="px-1 py-0.5 font-medium">μ_o (cP)</th>
+                  <th class="px-1 py-0.5 font-medium">B_g</th>
+                  <th class="px-1 py-0.5 font-medium">μ_g (cP)</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-border">
@@ -144,42 +158,42 @@
       <table class="compact-table w-full text-left">
         <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th class="px-2 py-1 font-medium">Phase</th>
-            <th class="px-2 py-1 font-medium">μ (cP)</th>
-            <th class="px-2 py-1 font-medium">ρ (kg/m³)</th>
-            <th class="px-2 py-1 font-medium">c (1/bar)</th>
-            <th class="px-2 py-1 font-medium">B_f</th>
+            <th class="px-1 py-0.5 font-medium">Phase</th>
+            <th class="px-1 py-0.5 font-medium">μ (cP)</th>
+            <th class="px-1 py-0.5 font-medium">ρ (kg/m³)</th>
+            <th class="px-1 py-0.5 font-medium" title="Compressibility (×10⁻⁶ per bar)">c (×10⁻⁶)</th>
+            <th class="px-1 py-0.5 font-medium">B_f</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border text-xs">
           <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Water</td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={bindings.mu_w} error={fieldErrors.mu_w} />
+            <td class="px-1 py-0.5 font-medium text-muted-foreground">Water</td>
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" bind:value={bindings.mu_w} error={fieldErrors.mu_w} />
             </td>
-            <td class="px-1 py-1">
-              <Input type="number" min="1" step="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.rho_w} />
+            <td class="px-0.5 py-0.5">
+              <Input type="number" min="1" step="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.rho_w} />
             </td>
-            <td class="px-1 py-1">
-               <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2 text-xs" bind:value={bindings.c_w} error={fieldErrors.c_w} />
+            <td class="px-0.5 py-0.5">
+               <ValidatedInput type="number" min="0" step="1" class="w-full h-6 px-1 text-xs" value={c_w_scaled} oninput={setCwScaled} error={fieldErrors.c_w} />
             </td>
-            <td class="px-1 py-1">
-               <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={bindings.volume_expansion_w} error={fieldErrors.volume_expansion_w} />
+            <td class="px-0.5 py-0.5">
+               <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" bind:value={bindings.volume_expansion_w} error={fieldErrors.volume_expansion_w} />
             </td>
           </tr>
           <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Oil</td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.mu_o} error={fieldErrors.mu_o} />
+            <td class="px-1 py-0.5 font-medium text-muted-foreground">Oil</td>
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.mu_o} error={fieldErrors.mu_o} />
             </td>
-            <td class="px-1 py-1">
-              <Input type="number" min="1" step="1" class="w-full h-7 px-2 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.rho_o} />
+            <td class="px-0.5 py-0.5">
+              <Input type="number" min="1" step="1" class="w-full h-6 px-1 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.rho_o} />
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.c_o} error={fieldErrors.c_o} />
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0" step="1" class="w-full h-6 px-1 text-xs" disabled={bindings.pvtMode === 'black-oil'} value={c_o_scaled} oninput={setCoScaled} error={fieldErrors.c_o} />
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.volume_expansion_o} error={fieldErrors.volume_expansion_o} />
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" disabled={bindings.pvtMode === 'black-oil'} bind:value={bindings.volume_expansion_o} error={fieldErrors.volume_expansion_o} />
             </td>
           </tr>
         </tbody>

@@ -105,32 +105,32 @@
       <table class="compact-table w-full text-left">
         <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th class="px-2 py-1 font-medium">Phase</th>
-            <th class="px-2 py-1 font-medium">S_end</th>
-            <th class="px-2 py-1 font-medium">n (Corey)</th>
-            <th class="px-2 py-1 font-medium">kr_max</th>
+            <th class="px-1 py-0.5 font-medium">Phase</th>
+            <th class="px-1 py-0.5 font-medium">S_end</th>
+            <th class="px-1 py-0.5 font-medium">n (Corey)</th>
+            <th class="px-1 py-0.5 font-medium">kr_max</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border text-xs">
           <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Water</td>
-            <td class="px-1 py-1">
+            <td class="px-1 py-0.5 font-medium text-muted-foreground">Water</td>
+            <td class="px-0.5 py-0.5">
               <Input type="number" min="0" max="0.9" step="0.01"
-                class={`w-full h-7 px-2 text-xs ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
+                class={`w-full h-6 px-1 text-xs ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
                 bind:value={s_wc} />
             </td>
-            <td class="px-1 py-1"><Input type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={n_w} /></td>
-            <td class="px-1 py-1"><Input type="number" min="0.01" max="1.0" step="0.01" class="w-full h-7 px-2 text-xs" bind:value={k_rw_max} /></td>
+            <td class="px-0.5 py-0.5"><Input type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" bind:value={n_w} /></td>
+            <td class="px-0.5 py-0.5"><Input type="number" min="0.01" max="1.0" step="0.01" class="w-full h-6 px-1 text-xs" bind:value={k_rw_max} /></td>
           </tr>
           <tr>
-            <td class="px-2 py-1 font-medium text-muted-foreground">Oil</td>
-            <td class="px-1 py-1">
+            <td class="px-1 py-0.5 font-medium text-muted-foreground">Oil</td>
+            <td class="px-0.5 py-0.5">
               <Input type="number" min="0" max="0.9" step="0.01"
-                class={`w-full h-7 px-2 text-xs ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
+                class={`w-full h-6 px-1 text-xs ${Boolean(fieldErrors.saturationEndpoints) ? "border-destructive" : ""}`}
                 bind:value={s_or} />
             </td>
-            <td class="px-1 py-1"><Input type="number" min="0.1" step="0.1" class="w-full h-7 px-2 text-xs" bind:value={n_o} /></td>
-            <td class="px-1 py-1"><Input type="number" min="0.01" max="1.0" step="0.01" class="w-full h-7 px-2 text-xs" bind:value={k_ro_max} /></td>
+            <td class="px-0.5 py-0.5"><Input type="number" min="0.1" step="0.1" class="w-full h-6 px-1 text-xs" bind:value={n_o} /></td>
+            <td class="px-0.5 py-0.5"><Input type="number" min="0.01" max="1.0" step="0.01" class="w-full h-6 px-1 text-xs" bind:value={k_ro_max} /></td>
           </tr>
         </tbody>
       </table>
@@ -149,11 +149,11 @@
       {#if capillaryEnabled}
         <label class="flex items-center gap-1 text-xs">
           <span class="text-[10px] text-muted-foreground">P_e (bar)</span>
-          <Input type="number" min="0" step="0.1" class="w-16 h-7 px-1.5 text-xs" bind:value={capillaryPEntry} />
+          <Input type="number" min="0" step="0.1" class="w-16 h-6 px-1 text-xs" bind:value={capillaryPEntry} />
         </label>
         <label class="flex items-center gap-1 text-xs">
           <span class="text-[10px] text-muted-foreground">λ</span>
-          <Input type="number" min="0.1" step="0.1" class="w-14 h-7 px-1.5 text-xs" bind:value={capillaryLambda} />
+          <Input type="number" min="0.1" step="0.1" class="w-14 h-6 px-1 text-xs" bind:value={capillaryLambda} />
         </label>
       {/if}
     </div>

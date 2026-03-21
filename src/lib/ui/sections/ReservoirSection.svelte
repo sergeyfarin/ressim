@@ -30,6 +30,14 @@
         key.includes("initial"),
     ),
   );
+
+  // Compressibility scale factor: display as coefficient × 10⁻⁶
+  const C_SCALE = 1e6;
+  let c_rock_scaled = $derived(Math.round(bindings.rock_compressibility * C_SCALE * 1e4) / 1e4);
+  function setCrockScaled(e: Event) {
+    const v = Number((e.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(v)) bindings.rock_compressibility = v / C_SCALE;
+  }
 </script>
 
 <Collapsible title="Reservoir Properties" {hasError}>
@@ -39,29 +47,29 @@
       <table class="compact-table w-full text-left">
         <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th class="px-2 py-1 font-medium">P (bar)</th>
-            <th class="px-2 py-1 font-medium">Sw_init</th>
-            <th class="px-2 py-1 font-medium">Porosity</th>
-            <th class="px-2 py-1 font-medium">Depth (m)</th>
-            <th class="px-2 py-1 font-medium">c_rock (1/bar)</th>
+            <th class="px-1 py-0.5 font-medium">P (bar)</th>
+            <th class="px-1 py-0.5 font-medium">Sw_init</th>
+            <th class="px-1 py-0.5 font-medium">Porosity</th>
+            <th class="px-1 py-0.5 font-medium">Depth (m)</th>
+            <th class="px-1 py-0.5 font-medium" title="Rock compressibility (×10⁻⁶ per bar)">c_rock (×10⁻⁶)</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td class="px-1 py-1">
-              <Input type="number" step="10" class="w-full h-7 px-2 text-xs" bind:value={bindings.initialPressure} />
+            <td class="px-0.5 py-0.5">
+              <Input type="number" step="10" class="w-full h-6 px-1 text-xs" bind:value={bindings.initialPressure} />
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" max="1" step="0.05" class="w-full h-7 px-2 text-xs" bind:value={bindings.initialSaturation} error={fieldErrors.initialSaturation} />
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0" max="1" step="0.05" class="w-full h-6 px-1 text-xs" bind:value={bindings.initialSaturation} error={fieldErrors.initialSaturation} />
             </td>
-            <td class="px-1 py-1">
-              <Input type="number" min="0.01" max="1.0" step="0.01" class="w-full h-7 px-2 text-xs" bind:value={bindings.reservoirPorosity} />
+            <td class="px-0.5 py-0.5">
+              <Input type="number" min="0.01" max="1.0" step="0.01" class="w-full h-6 px-1 text-xs" bind:value={bindings.reservoirPorosity} />
             </td>
-            <td class="px-1 py-1">
-              <Input type="number" step="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.depth_reference} />
+            <td class="px-0.5 py-0.5">
+              <Input type="number" step="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.depth_reference} />
             </td>
-            <td class="px-1 py-1">
-              <ValidatedInput type="number" min="0" step="1e-6" class="w-full h-7 px-2 text-xs" bind:value={bindings.rock_compressibility} error={fieldErrors.rock_compressibility} />
+            <td class="px-0.5 py-0.5">
+              <ValidatedInput type="number" min="0" step="1" class="w-full h-6 px-1 text-xs" value={c_rock_scaled} oninput={setCrockScaled} error={fieldErrors.rock_compressibility} />
             </td>
           </tr>
         </tbody>
@@ -77,7 +85,7 @@
       </label>
       <div class="flex items-center gap-1.5">
         <span class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Perm:</span>
-        <Select class="h-7 text-xs px-1.5" bind:value={bindings.permMode} onchange={onNzOrPermModeChange}>
+        <Select class="h-6 text-xs px-1.5" bind:value={bindings.permMode} onchange={onNzOrPermModeChange}>
           <option value="uniform">Uniform</option>
           <option value="random">Random</option>
           <option value="perLayer">Per Layer</option>
@@ -92,16 +100,16 @@
         <table class="compact-table w-full text-left">
           <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th class="px-2 py-1 font-medium">kX (mD)</th>
-              <th class="px-2 py-1 font-medium">kY (mD)</th>
-              <th class="px-2 py-1 font-medium">kZ (mD)</th>
+              <th class="px-1 py-0.5 font-medium">kX (mD)</th>
+              <th class="px-1 py-0.5 font-medium">kY (mD)</th>
+              <th class="px-1 py-0.5 font-medium">kZ (mD)</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td class="px-1 py-1"><Input type="number" min="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.uniformPermX} /></td>
-              <td class="px-1 py-1"><Input type="number" min="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.uniformPermY} /></td>
-              <td class="px-1 py-1"><Input type="number" min="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.uniformPermZ} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" min="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.uniformPermX} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" min="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.uniformPermY} /></td>
+              <td class="px-0.5 py-0.5"><Input type="number" min="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.uniformPermZ} /></td>
             </tr>
           </tbody>
         </table>
@@ -113,21 +121,21 @@
           <span class="text-xs font-medium">Seeded</span>
         </label>
         {#if bindings.useRandomSeed}
-          <Input type="number" step="1" class="w-20 h-7 px-2 text-xs" bind:value={bindings.randomSeed} />
+          <Input type="number" step="1" class="w-20 h-6 px-1 text-xs" bind:value={bindings.randomSeed} />
         {/if}
       </div>
       <div class="overflow-x-auto rounded-md border border-border">
         <table class="compact-table w-full text-left">
           <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th class="px-2 py-1 font-medium">Min k (mD)</th>
-              <th class="px-2 py-1 font-medium">Max k (mD)</th>
+              <th class="px-1 py-0.5 font-medium">Min k (mD)</th>
+              <th class="px-1 py-0.5 font-medium">Max k (mD)</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td class="px-1 py-1"><ValidatedInput type="number" min="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.minPerm} error={fieldErrors.permBounds} /></td>
-              <td class="px-1 py-1"><ValidatedInput type="number" min="1" class="w-full h-7 px-2 text-xs" bind:value={bindings.maxPerm} error={fieldErrors.permBounds} /></td>
+              <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.minPerm} error={fieldErrors.permBounds} /></td>
+              <td class="px-0.5 py-0.5"><ValidatedInput type="number" min="1" class="w-full h-6 px-1 text-xs" bind:value={bindings.maxPerm} error={fieldErrors.permBounds} /></td>
             </tr>
           </tbody>
         </table>
@@ -137,10 +145,10 @@
         <table class="compact-table w-full text-left">
           <thead class="border-b border-border bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th class="px-2 py-1 font-medium w-10">Lyr</th>
-              <th class="px-2 py-1 font-medium">kX (mD)</th>
-              <th class="px-2 py-1 font-medium">kY (mD)</th>
-              <th class="px-2 py-1 font-medium">kZ (mD)</th>
+              <th class="px-1 py-0.5 font-medium w-10">Lyr</th>
+              <th class="px-1 py-0.5 font-medium">kX (mD)</th>
+              <th class="px-1 py-0.5 font-medium">kY (mD)</th>
+              <th class="px-1 py-0.5 font-medium">kZ (mD)</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border">

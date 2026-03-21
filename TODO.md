@@ -212,7 +212,7 @@ Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure
 - [x] **Hyperbolic decline (Arps)** — Arps b-parameter (0–1) in `depletionAnalytical.ts`: exponential (b=0), hyperbolic (0<b<1), harmonic (b=1). New `dep_arps` scenario with 5-layer commingled reservoir and b/contrast sensitivities. `dep_decline` renamed to "Fetkovich Decline (Oil)".
 - [ ] ~~**Fetkovich type-curve matching**~~ — _Long-term / deferred. Value unclear: the Arps b-parameter sensitivity already lets users visually match decline behaviour against the layered simulation. Full type-curve overlay (transient + decline stems with r_eD) requires constant-terminal-pressure radial flow solution (Ei/Bessel) — significant analytical work for marginal incremental insight in this context. Revisit if demand arises._
 - [x] **Material-balance equation** — Havlena-Odeh (1963) in `materialBalance.ts`: computes F, E_o, E_g, E_fw, E_t, N_mbe and drive indices per timestep. Supports constant and black-oil PVT (Standing Bo/Rs, Hall-Yarborough z-factor). MBE OOIP ratio diagnostic curve added to depletion chart presets (secondary y-axis, default hidden). 6 unit tests covering volumetric OOIP, constant-PVT depletion, drive index normalization, gas cap ratio, black-oil PVT, and convergence.
-- [ ] **Drive-mechanism indicator** — from material balance: water drive index, gas-cap drive index, solution-gas drive index, compaction drive index. Show as stacked bar or pie diagnostic.
+- [x] **Drive-mechanism indicator** — three drive index curves (compaction, oil expansion, gas cap) added to depletion diagnostics panel from MBE computation. Fractional values summing to 1.0 on secondary y-axis. Grouped under "Drive Indices" legend section, default hidden.
 
 ### 4E. Gas Cap Scenarios
 

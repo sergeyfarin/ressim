@@ -290,14 +290,17 @@ body {
 /* ── Compact Tables (for Input Panels) ── */
 .compact-table {
   font-family: var(--font-mono);
+  table-layout: fixed;
 }
 
 .compact-table th,
 .compact-table td {
-  padding: 0.15rem 0.25rem;
+  padding: 0.1rem 0.2rem;
   font-size: 11px;
   line-height: 1.1;
   letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .compact-table .input-xs,

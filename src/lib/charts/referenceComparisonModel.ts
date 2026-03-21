@@ -608,13 +608,21 @@ function getLayerPermeabilities(params: Record<string, any>): number[] {
 }
 
 /**
- * Compute Havlena-Odeh MBE OOIP ratio (N_mbe / N_volumetric) from simulation output.
- * Returns a series of ratio values (should converge to ~1.0 for a consistent simulation).
+ * Compute Havlena-Odeh MBE diagnostics from simulation output:
+ * - OOIP ratio (N_mbe / N_volumetric) — should converge to ~1.0
+ * - Drive indices (oil expansion, gas cap, compaction) — fractional, sum to 1.0
  */
-function computeMbeOoipRatio(
+type MbeDiagnostics = {
+    ooipRatio: Array<number | null>;
+    driveOilExpansion: Array<number | null>;
+    driveGasCap: Array<number | null>;
+    driveCompaction: Array<number | null>;
+};
+
+function computeMbeDiagnostics(
     result: BenchmarkRunResult,
     derived: DerivedRunSeries,
-): Array<number | null> {
+): MbeDiagnostics {
     const params = result.params;
     const poreVolume = getPoreVolume(params);
     const pvtMode = String(params.pvtMode ?? 'constant');
@@ -666,10 +674,21 @@ function computeMbeOoipRatio(
     });
 
     const Nvol = mbeResult.volumetricOoip;
-    return mbeResult.points.map((pt) => {
-        if (pt.N_mbe === null || Nvol < 1e-12) return null;
-        return pt.N_mbe / Nvol;
-    });
+    return {
+        ooipRatio: mbeResult.points.map((pt) => {
+            if (pt.N_mbe === null || Nvol < 1e-12) return null;
+            return pt.N_mbe / Nvol;
+        }),
+        driveOilExpansion: mbeResult.points.map((pt) =>
+            pt.Et > 1e-15 ? pt.driveIndex_oilExpansion : null,
+        ),
+        driveGasCap: mbeResult.points.map((pt) =>
+            pt.Et > 1e-15 ? pt.driveIndex_gasCap : null,
+        ),
+        driveCompaction: mbeResult.points.map((pt) =>
+            pt.Et > 1e-15 ? pt.driveIndex_compaction : null,
+        ),
+    };
 }
 
 // ─── Chart Visual Convention ──────────────────────────────────────────────────
@@ -1587,9 +1606,9 @@ export function buildReferenceComparisonModel(input: {
             derived.gor,
         );
 
-        // ── MBE OOIP ratio (Havlena-Odeh diagnostic) ────────────────
+        // ── MBE diagnostics (Havlena-Odeh) ─────────────────────────
         if (analyticalMethod === 'depletion') {
-            const mbeRatio = computeMbeOoipRatio(result, derived);
+            const mbe = computeMbeDiagnostics(result, derived);
             appendSeries(
                 panels.diagnostics,
                 {
@@ -1607,7 +1626,63 @@ export function buildReferenceComparisonModel(input: {
                     defaultVisible: false,
                 },
                 xValues,
-                mbeRatio,
+                mbe.ooipRatio,
+            );
+
+            // ── Drive mechanism indices ─────────────────────────────
+            appendSeries(
+                panels.diagnostics,
+                {
+                    label: `${result.label} Drive: Compaction`,
+                    curveKey: 'drive-compaction',
+                    caseKey: result.key,
+                    toggleGroupKey: `${result.key}-drive`,
+                    toggleLabel: caseLabel,
+                    legendSection: 'drive',
+                    legendSectionLabel: 'Drive Indices:',
+                    color: '#e67e22',
+                    borderWidth: 1.4,
+                    yAxisID: 'y1',
+                    defaultVisible: false,
+                },
+                xValues,
+                mbe.driveCompaction,
+            );
+            appendSeries(
+                panels.diagnostics,
+                {
+                    label: `${result.label} Drive: Oil Expansion`,
+                    curveKey: 'drive-oil-expansion',
+                    caseKey: result.key,
+                    toggleGroupKey: `${result.key}-drive`,
+                    toggleLabel: caseLabel,
+                    legendSection: 'drive',
+                    legendSectionLabel: 'Drive Indices:',
+                    color: '#27ae60',
+                    borderWidth: 1.4,
+                    yAxisID: 'y1',
+                    defaultVisible: false,
+                },
+                xValues,
+                mbe.driveOilExpansion,
+            );
+            appendSeries(
+                panels.diagnostics,
+                {
+                    label: `${result.label} Drive: Gas Cap`,
+                    curveKey: 'drive-gas-cap',
+                    caseKey: result.key,
+                    toggleGroupKey: `${result.key}-drive`,
+                    toggleLabel: caseLabel,
+                    legendSection: 'drive',
+                    legendSectionLabel: 'Drive Indices:',
+                    color: '#2980b9',
+                    borderWidth: 1.4,
+                    yAxisID: 'y1',
+                    defaultVisible: false,
+                },
+                xValues,
+                mbe.driveGasCap,
             );
         }
     });
