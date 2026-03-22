@@ -87,6 +87,7 @@ export const sweep_combined: Scenario = {
             key: 'interaction_core',
             label: 'Mobility × Vertical Heterogeneity',
             description: 'Minimal 2 × 2 interaction map for 3D sweep. Separate mobility-only, layering-only, and compounded penalties without introducing areal randomness.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'interaction_favorable_uniform',
@@ -134,6 +135,7 @@ export const sweep_combined: Scenario = {
             key: 'sweep_ladder',
             label: 'Ideal to Worst',
             description: 'Progressive sweep comparison from ideal to fully degraded: starts with uniform permeability and favorable mobility, then adds vertical heterogeneity, full-field randomness, and finally unfavorable mobility. Random-heterogeneity variants are simulation-focused; the analytical sweep curve remains shared context.',
+            analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'ladder_ideal',

@@ -602,7 +602,7 @@ describe('referenceComparisonModel', () => {
 
     it('keeps BL rate overlays shared for sweep variants that only change heterogeneity', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const, analyticalOverlayMode: 'shared' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
 
         const heterogeneityPreviewVariants = [
@@ -672,6 +672,79 @@ describe('referenceComparisonModel', () => {
 
         expect(completedModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(1);
         expect(completedModel.sweepPanels.combined?.curves.length).toBeGreaterThan(1);
+    });
+
+    it('keeps multiple BL breakthrough references for completed sweep mobility runs', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const, analyticalOverlayMode: 'per-result' as const };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+
+        const mobilitySpecs = [
+            {
+                ...baseSpec,
+                key: 'sweep_mobility_favorable',
+                caseKey: 'sweep_mobility_favorable',
+                variantKey: 'sweep_mobility_favorable',
+                variantLabel: 'Favorable mobility',
+                label: 'Sweep mobility favorable',
+                params: {
+                    ...baseSpec.params,
+                    mu_o: 0.5,
+                    nx: 21,
+                    ny: 21,
+                    nz: 5,
+                    producerI: 20,
+                    producerJ: 20,
+                },
+            },
+            {
+                ...baseSpec,
+                key: 'sweep_mobility_base',
+                caseKey: 'sweep_mobility_base',
+                variantKey: 'sweep_mobility_base',
+                variantLabel: 'Base mobility',
+                label: 'Sweep mobility base',
+                params: {
+                    ...baseSpec.params,
+                    mu_o: 1.0,
+                    nx: 21,
+                    ny: 21,
+                    nz: 5,
+                    producerI: 20,
+                    producerJ: 20,
+                },
+            },
+            {
+                ...baseSpec,
+                key: 'sweep_mobility_unfavorable',
+                caseKey: 'sweep_mobility_unfavorable',
+                variantKey: 'sweep_mobility_unfavorable',
+                variantLabel: 'Unfavorable mobility',
+                label: 'Sweep mobility unfavorable',
+                params: {
+                    ...baseSpec.params,
+                    mu_o: 5.0,
+                    nx: 21,
+                    ny: 21,
+                    nz: 5,
+                    producerI: 20,
+                    producerJ: 20,
+                },
+            },
+        ];
+
+        const results = mobilitySpecs.map((spec) => buildSweepRunResult(spec));
+        const model = buildReferenceComparisonModel({
+            family,
+            results,
+            xAxisMode: 'pvi',
+        });
+
+        const referenceCurves = model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference');
+        expect(referenceCurves).toHaveLength(3);
+        expect(new Set(referenceCurves.map((curve) => curve.caseKey))).toEqual(
+            new Set(results.map((result) => result.key)),
+        );
     });
 
     it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {

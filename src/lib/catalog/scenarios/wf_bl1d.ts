@@ -84,6 +84,7 @@ export const wf_bl1d: Scenario = {
             key: 'mobility',
             label: 'Mobility Ratio',
             description: 'Vary oil viscosity to explore how the end-point mobility ratio M = (k_rw/μ_w)/(k_ro/μ_o) controls breakthrough timing, watercut shape, and recovery. Both simulation and analytical solution update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'mob_favorable',
@@ -119,6 +120,7 @@ export const wf_bl1d: Scenario = {
             key: 'corey_no',
             label: 'Corey Exponent n_o',
             description: 'The Corey exponent controls the curvature of k_ro(S_w). Higher n_o → more convex k_ro → oil transmits less readily at intermediate saturations. Both simulation and analytical update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'no_15',
@@ -147,6 +149,7 @@ export const wf_bl1d: Scenario = {
             key: 'sor',
             label: 'Residual Oil  S_or',
             description: 'S_or sets the ceiling on waterflood recovery: RF_max = (1 − S_wc − S_or)/(1 − S_wc). Also shifts the fractional flow curve endpoint. Both simulation and analytical update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'sor_low',
@@ -175,6 +178,7 @@ export const wf_bl1d: Scenario = {
             key: 'grid',
             label: 'Grid Resolution',
             description: 'Numerical convergence study. The Buckley-Leverett analytical solution is grid-independent — only the simulation changes as the grid is refined.',
+            analyticalOverlayMode: 'shared',
             chartPresetOverride: 'waterflood',
             variants: [
                 {

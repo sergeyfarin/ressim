@@ -106,6 +106,7 @@ export const dep_arps: Scenario = {
             key: 'arps_b',
             label: 'Arps b Exponent',
             description: 'Arps decline exponent b controls the curvature of rate decline. b=0 is exponential (Fetkovich), b=1 is harmonic. For commingled layered reservoirs, b typically falls between 0.3 and 0.5. — Arps (1945)',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'b_exponential',
@@ -149,6 +150,7 @@ export const dep_arps: Scenario = {
             key: 'layer_contrast',
             label: 'Layer Contrast',
             description: 'Permeability contrast between layers controls the effective Arps b. Higher contrast → more spread in layer time constants → higher effective b.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'contrast_low',

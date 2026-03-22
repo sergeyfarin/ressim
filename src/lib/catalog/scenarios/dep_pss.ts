@@ -83,6 +83,7 @@ export const dep_pss: Scenario = {
             key: 'shape_factor',
             label: 'Well Location  (C_A)',
             description: 'Well position within a bounded square reservoir determines the Dietz shape factor C_A. Central well C_A ≈ 30.88 vs corner well C_A ≈ 0.56 — a ~55× difference that dramatically changes decline rate. Both simulator and analytical update with well position.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'ca_center',
@@ -104,6 +105,7 @@ export const dep_pss: Scenario = {
             key: 'skin',
             label: 'Skin Factor  s',
             description: 'Skin modifies the near-wellbore pressure drop, scaling the productivity index and hence the decline rate. Positive skin = formation damage; negative skin = stimulation. — Hawkins (1956)',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'skin_neg',
@@ -132,6 +134,7 @@ export const dep_pss: Scenario = {
             key: 'permeability',
             label: 'Permeability  k',
             description: 'PI ∝ k; decline time constant τ = V_p·c_t/PI is inversely proportional to k. Higher permeability → faster, steeper decline. Both analytical and simulation update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'perm_tight',
@@ -160,6 +163,7 @@ export const dep_pss: Scenario = {
             key: 'compressibility',
             label: 'Compressibility  c_o',
             description: 'Total compressibility c_t governs reservoir storage. Higher c_t → more energy stored → longer decline. τ = V_p·c_t/PI. — Craft & Hawkins (1959)',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'ct_low',

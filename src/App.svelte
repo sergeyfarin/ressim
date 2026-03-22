@@ -91,6 +91,8 @@
             (d) => d.key === scenario.activeSensitivityDimensionKey,
         );
         if (!activeDim) return false;
+        if (activeDim.analyticalOverlayMode === 'per-result') return true;
+        if (activeDim.analyticalOverlayMode === 'shared') return false;
         return activeDim.variants
             .filter((v) => scenario.activeVariantKeys.includes(v.key))
             .some((v) => v.affectsAnalytical);

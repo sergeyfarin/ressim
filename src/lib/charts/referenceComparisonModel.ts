@@ -4,6 +4,7 @@ import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } fr
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
 import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, normalizeSimSweepPointForGeometry, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
 import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
@@ -547,6 +548,17 @@ function getBuckleyLeverettOverlaySignature(params: Record<string, any>): string
 function hasDistinctBuckleyLeverettOverlays(paramSets: Array<Record<string, any>>): boolean {
     if (paramSets.length <= 1) return false;
     return new Set(paramSets.map((params) => getBuckleyLeverettOverlaySignature(params))).size > 1;
+}
+
+function resolveOverlayMode(input: {
+    requested: AnalyticalOverlayMode | null | undefined;
+    distinctByPhysics: boolean;
+    analyticalPerVariant?: boolean;
+}): 'shared' | 'per-result' {
+    if (input.requested === 'shared') return 'shared';
+    if (input.requested === 'per-result') return 'per-result';
+    if (input.analyticalPerVariant) return 'per-result';
+    return input.distinctByPhysics ? 'per-result' : 'shared';
 }
 
 function extractGasOilRockProps(params: Record<string, any>): GasOilRockProps {
@@ -1561,6 +1573,7 @@ export function buildReferenceComparisonModel(input: {
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
     const analyticalMethod = family?.analyticalMethod ?? input.previewAnalyticalMethod ?? null;
+    const requestedOverlayMode = family?.analyticalOverlayMode ?? 'auto';
     const usesRunMappedAnalyticalXAxis = requiresRunMappedAnalyticalXAxis(
         analyticalMethod,
         input.xAxisMode,
@@ -1573,6 +1586,19 @@ export function buildReferenceComparisonModel(input: {
         ...orderedResults.map((result) => result.params),
         ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
     ]);
+    const buckleyLeverettOverlayMode = resolveOverlayMode({
+        requested: requestedOverlayMode,
+        distinctByPhysics: distinctBuckleyLeverettOverlays,
+    });
+    const gasOilOverlayMode = resolveOverlayMode({
+        requested: requestedOverlayMode,
+        distinctByPhysics: distinctGasOilBLOutlays,
+    });
+    const depletionOverlayMode = resolveOverlayMode({
+        requested: requestedOverlayMode,
+        distinctByPhysics: false,
+        analyticalPerVariant: input.analyticalPerVariant,
+    });
     let hidesPendingAnalyticalWithoutMapping = false;
 
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
@@ -1611,11 +1637,11 @@ export function buildReferenceComparisonModel(input: {
             if (variants.length > 0) {
                 const analyticalPreviewVariants = input.previewAnalyticalMethod === 'buckley-leverett'
                     && !usesRunMappedAnalyticalXAxis
-                    && !hasDistinctBuckleyLeverettOverlays(variants.map((variant) => variant.params))
+                    && buckleyLeverettOverlayMode === 'shared'
                     ? [variants[0]]
                     : input.previewAnalyticalMethod === 'gas-oil-bl'
                     && !usesRunMappedAnalyticalXAxis
-                    && !hasDistinctGasOilBLOutlays(variants.map((variant) => variant.params))
+                    && gasOilOverlayMode === 'shared'
                     ? [variants[0]]
                     : variants;
                 const previewPanels = buildAnalyticalPreviewPanels(
@@ -2147,7 +2173,7 @@ export function buildReferenceComparisonModel(input: {
     }
 
     if (family.analyticalMethod === 'buckley-leverett') {
-        const allSameAnalytical = !distinctBuckleyLeverettOverlays;
+        const allSameAnalytical = buckleyLeverettOverlayMode === 'shared';
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
             // Shared reference — one curve for all (analytical is grid/timestep-independent).
@@ -2283,7 +2309,7 @@ export function buildReferenceComparisonModel(input: {
             }
         }
     } else if (family.analyticalMethod === 'gas-oil-bl') {
-        const allSameAnalytical = !distinctGasOilBLOutlays;
+        const allSameAnalytical = gasOilOverlayMode === 'shared';
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
             const refOverlay = buildGasOilBLReference(baseResult, baseDerived, input.xAxisMode);
@@ -2411,7 +2437,7 @@ export function buildReferenceComparisonModel(input: {
         }
     } else {
         // Depletion path.
-        if (input.analyticalPerVariant || usesRunMappedAnalyticalXAxis) {
+        if (depletionOverlayMode === 'per-result' || usesRunMappedAnalyticalXAxis) {
             // Per-result analytical — each variant gets its own dashed reference curve
             // in its case color so the user can directly compare sim vs. analytical.
             // This path also handles shared analytical physics on axes whose x-values

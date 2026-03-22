@@ -83,6 +83,7 @@ export const sweep_areal: Scenario = {
             key: 'mobility',
             label: 'Mobility Ratio',
             description: 'End-point mobility ratio M = (k_rw_max/μ_w)/(k_ro_max/μ_o) is the primary control on five-spot areal sweep efficiency. Both simulation and analytical (Craig polynomial) update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'mob_favorable',
@@ -111,6 +112,7 @@ export const sweep_areal: Scenario = {
             key: 'areal_heterogeneity',
             label: 'Areal Heterogeneity',
             description: 'Introduce seeded within-layer permeability variation to test areal sweep sensitivity beyond the Craig five-spot correlation. Simulation changes, while the analytical areal sweep curve remains shared context because the current model does not resolve within-layer randomness.',
+            analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'areal_uniform',
@@ -151,6 +153,7 @@ export const sweep_areal: Scenario = {
             key: 'sor',
             label: 'Residual Oil  S_or',
             description: 'S_or affects the endpoint mobility ratio (k_ro endpoint shifts with S_or), influencing both displacement efficiency and areal sweep. Both simulation and analytical update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'sor_low',
@@ -179,6 +182,7 @@ export const sweep_areal: Scenario = {
             key: 'grid_resolution',
             label: 'Grid Resolution',
             description: 'Grid resolution affects the numerical accuracy of the simulation. Both simulation and analytical update.',
+            analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'grid_low',

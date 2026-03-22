@@ -85,6 +85,7 @@ export const dep_decline: Scenario = {
             key: 'permeability',
             label: 'Permeability  k',
             description: 'PI ∝ k; time constant τ = V_p·c_t/PI ∝ 1/k. Higher permeability → faster decline. Both analytical and simulation update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'perm_tight',
@@ -113,6 +114,7 @@ export const dep_decline: Scenario = {
             key: 'timestep',
             label: 'Timestep  Δt',
             description: 'Timestep size modifies the numerical stability and accuracy of the simulation.',
+            analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'timestep_small',

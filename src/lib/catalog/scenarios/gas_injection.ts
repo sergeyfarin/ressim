@@ -61,6 +61,7 @@ export const gas_injection: Scenario = {
             key: 'mobility',
             label: 'Gas Mobility Ratio',
             description: 'Vary gas viscosity to explore how the gas-oil mobility ratio M = (k_rg/μ_g)/(k_ro/μ_o) controls gas breakthrough timing and oil recovery. Gas is typically much more mobile than oil (very low μ_g), giving strongly unfavorable M.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'mob_favorable',
@@ -89,6 +90,7 @@ export const gas_injection: Scenario = {
             key: 's_gc',
             label: 'Critical Gas Saturation S_gc',
             description: 'S_gc is the minimum gas saturation for gas to flow. Higher S_gc delays gas breakthrough but traps more gas behind the front.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'sgc_low',
@@ -117,6 +119,7 @@ export const gas_injection: Scenario = {
             key: 'perm',
             label: 'Permeability',
             description: 'Permeability controls total flow rate (both phases), affecting how quickly the displacement front reaches the producer. The analytical BL solution is permeability-independent on a PVI basis.',
+            analyticalOverlayMode: 'shared',
             variants: [
                 {
                     key: 'perm_low',
@@ -145,6 +148,7 @@ export const gas_injection: Scenario = {
             key: 'grid',
             label: 'Grid Resolution',
             description: 'Numerical convergence study. The gas-oil BL analytical solution is grid-independent — only the simulation changes as the grid is refined.',
+            analyticalOverlayMode: 'shared',
             chartPresetOverride: 'gas_oil_bl',
             variants: [
                 {

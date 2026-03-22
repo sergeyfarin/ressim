@@ -277,6 +277,61 @@ describe('affectsAnalytical contract', () => {
 });
 
 describe('scenario capability validation', () => {
+    it('all scenarios with analytical overlays declare analytical overlay grouping on every sensitivity dimension', () => {
+        for (const scenario of listScenarios()) {
+            if (scenario.capabilities.analyticalMethod === 'none') continue;
+            for (const dimension of scenario.sensitivities) {
+                expect(
+                    dimension.analyticalOverlayMode,
+                    `${scenario.key} / ${dimension.key} should declare analyticalOverlayMode explicitly`,
+                ).toBeDefined();
+            }
+        }
+    });
+
+    it('sweep sensitivity dimensions declare explicit analytical overlay policies', () => {
+        expect(getScenario('sweep_areal')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['mobility', 'per-result'],
+            ['areal_heterogeneity', 'shared'],
+            ['sor', 'per-result'],
+            ['grid_resolution', 'shared'],
+        ]);
+        expect(getScenario('wf_bl1d')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['mobility', 'per-result'],
+            ['corey_no', 'per-result'],
+            ['sor', 'per-result'],
+            ['grid', 'shared'],
+        ]);
+        expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['shape_factor', 'per-result'],
+            ['skin', 'per-result'],
+            ['permeability', 'per-result'],
+            ['compressibility', 'per-result'],
+        ]);
+        expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['permeability', 'per-result'],
+            ['timestep', 'shared'],
+        ]);
+        expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['arps_b', 'per-result'],
+            ['layer_contrast', 'per-result'],
+        ]);
+        expect(getScenario('gas_injection')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['mobility', 'per-result'],
+            ['s_gc', 'per-result'],
+            ['perm', 'shared'],
+            ['grid', 'shared'],
+        ]);
+        expect(getScenario('sweep_vertical')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['heterogeneity', 'per-result'],
+            ['mobility', 'per-result'],
+        ]);
+        expect(getScenario('sweep_combined')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
+            ['interaction_core', 'per-result'],
+            ['sweep_ladder', 'shared'],
+        ]);
+    });
+
     it('every scenario passes capability validation against its analytical output contract', () => {
         for (const scenario of listScenarios()) {
             const errors = validateScenarioCapabilities(scenario.capabilities);

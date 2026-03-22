@@ -49,6 +49,9 @@ export type AnalyticalMethod =
 /** Which primary rate curve to show in the "rates" chart panel. */
 export type PrimaryRateCurve = 'water-cut' | 'gas-cut' | 'oil-rate';
 
+/** How analytical overlays should be grouped for a selected sensitivity dimension. */
+export type AnalyticalOverlayMode = 'auto' | 'shared' | 'per-result';
+
 /** Default 3D scalar property to display when a scenario loads. */
 export type Default3DScalar = 'saturation_water' | 'saturation_gas' | null;
 
@@ -226,6 +229,12 @@ export type SensitivityDimension = {
     label: string;
     description: string;
     variants: SensitivityVariant[];
+    /**
+     * How comparison-chart analytical overlays should be grouped when this
+     * dimension is active. `auto` falls back to physics-signature inference;
+     * explicit modes are preferred for scenario-defined sensitivity studies.
+     */
+    analyticalOverlayMode?: AnalyticalOverlayMode;
     /**
      * Override the scenario's chartPreset when this dimension is active.
      * Useful when a dimension (e.g. grid convergence) benefits from a different

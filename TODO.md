@@ -47,6 +47,7 @@ Confirmed bugs blocking gas scenarios from leaving "experimental" status.
 - [x] `ScenarioPicker.svelte`: `requiresThreePhaseMode` replaces `domain !== 'gas' || activeMode === '3p'`
 - [x] `referenceComparisonModel.ts`: sweep panel gate simplified to `family.showSweepPanel`
 - [x] `ReferenceComparisonChart.svelte`: sweep panel gate and gas-oil-bl preview axis fixed
+- [x] Sensitivity-level `analyticalOverlayMode` metadata added for all scenario-defined analytical studies, so preview/comparison overlay grouping is scenario-owned (`shared` vs `per-result`) instead of falling back to chart-side `auto` inference except for legacy benchmark-family flows
 
 **Consumer-side branching — migrated to `analyticalMethod` (2026-03-21):**
 - [x] All consumer types (`BenchmarkRunSpec`, `BenchmarkRunResult`, `BenchmarkReferencePolicy`) use `analyticalMethod: AnalyticalMethod` instead of `scenarioClass`
@@ -107,6 +108,7 @@ Eight legacy catalog/benchmark files still have active production dependencies. 
 - [x] **Color stability when sweep results arrive out of order** — `orderResults()` now sorts by `previewVariantParams` declaration index; pending preview cases also use declaration-order color indices.
 - [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.
 - [x] **Sweep panels now support preview and pending overlays** — comparison sweep charts render analytical-only preview panels before runs complete, keep pending variants visible during mid-sweep, and overlay solid simulation curves with dashed analytical references once results land.
+- [x] **Sweep breakthrough overlay grouping is now scenario-driven** — sweep sensitivity dimensions now declare whether BL/gas-BL breakthrough references stay `shared` or remain `per-result` after runs complete, so mobility-sensitive sweep scenarios keep their multiple analytical curves while intentionally shared heterogeneity ladders stay collapsed to one.
 - [x] **`previewBaseParams` coupling is fragile** — removed redundant `!previewVariantParams?.length` guard from App.svelte; model builder already handles variant→base precedence internally.
 - [ ] **Tests missing for `previewCases` and depletion per-variant** — add coverage for pure-preview mode, mid-sweep mode, depletion with `analyticalPerVariant=true`, and `colorIndex` offset correctness.
 

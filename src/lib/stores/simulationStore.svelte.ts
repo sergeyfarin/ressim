@@ -476,6 +476,7 @@ class SimulationStoreImpl {
         const sc = this.activeScenarioObject;
         if (!sc || this.isCustomMode) return null;
         const resolved = resolveCapabilities(sc.capabilities);
+        const activeDimension = sc.sensitivities.find((dimension) => dimension.key === this.activeSensitivityDimensionKey) ?? null;
 
         // Map analyticalMethod → deprecated scenarioClass (still required by BenchmarkFamily type).
         const scenarioClass = resolved.analyticalMethod === 'buckley-leverett' ? 'buckley-leverett' as const
@@ -503,6 +504,7 @@ class SimulationStoreImpl {
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
             showSweepPanel: resolved.showSweepPanel,
             sweepGeometry: resolved.sweepGeometry,
+            analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
         };
     });
 

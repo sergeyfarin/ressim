@@ -87,6 +87,7 @@ export const sweep_vertical: Scenario = {
             key: 'heterogeneity',
             label: 'Layer Heterogeneity  V_DP',
             description: 'Compare uniform, moderate, and extreme permeability contrasts across layers. The Dykstra-Parsons analytical model uses the active layer permeabilities, so both simulation and analytical sweep overlays update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'vdp_uniform',
@@ -124,6 +125,7 @@ export const sweep_vertical: Scenario = {
             key: 'mobility',
             label: 'Mobility Ratio',
             description: 'Mobility ratio also affects vertical sweep efficiency — unfavourable mobility worsens E_V in layered reservoirs. Both simulation and analytical update.',
+            analyticalOverlayMode: 'per-result',
             variants: [
                 {
                     key: 'mob_favorable',
