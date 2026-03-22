@@ -1,6 +1,7 @@
 <script lang="ts">
   import Button from "../controls/Button.svelte";
   import Card from "../controls/Card.svelte";
+  import ToggleGroup from "../controls/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
   import { SCENARIOS, getScenario, type Scenario, type ScenarioDomain } from "../../catalog/scenarios";
@@ -17,6 +18,7 @@
   let {
     activeScenarioKey = null,
     activeSensitivityDimensionKey = null,
+    activeAnalyticalOptionKey = null,
     activeVariantKeys = [],
     isCustom = false,
     activeMode = "wf",
@@ -32,6 +34,7 @@
     onSelectScenario = () => {},
     onSelectSensitivityDimension = () => {},
     onToggleVariant = () => {},
+    onSelectAnalyticalOption = () => {},
     onEnterCustomMode = () => {},
     onCloneReferenceToCustom = () => {},
     onActivateLibraryEntry = () => false,
@@ -40,6 +43,7 @@
   }: {
     activeScenarioKey?: string | null;
     activeSensitivityDimensionKey?: string | null;
+    activeAnalyticalOptionKey?: string | null;
     activeVariantKeys?: string[];
     isCustom?: boolean;
     activeMode?: CaseMode;
@@ -55,6 +59,7 @@
     onSelectScenario?: (key: string) => void;
     onSelectSensitivityDimension?: (key: string) => void;
     onToggleVariant?: (variantKey: string) => void;
+    onSelectAnalyticalOption?: (optionKey: string) => void;
     onEnterCustomMode?: () => void;
     onCloneReferenceToCustom?: () => void;
     onActivateLibraryEntry?: (entryKey: string) => boolean;
@@ -95,6 +100,23 @@
   const anyVariantAffectsAnalytical = $derived(
     activeDimension?.variants.some((v) => v.affectsAnalytical) ?? false,
   );
+
+  const activeAnalyticalOption = $derived.by(() => {
+    const options = activeScenario?.analyticalOptions ?? [];
+    if (options.length === 0) return null;
+    return options.find((option) => option.key === activeAnalyticalOptionKey)
+      ?? options.find((option) => option.default)
+      ?? options[0]
+      ?? null;
+  });
+
+  const analyticalOptionToggleOptions = $derived.by(() => {
+    return (activeScenario?.analyticalOptions ?? []).map((option) => ({
+      value: option.key,
+      label: option.label,
+      title: option.summary,
+    }));
+  });
 
   // Scenario groups by domain, ordered for display.
   const DOMAIN_GROUPS: { domain: ScenarioDomain; label: string }[] = [
@@ -171,11 +193,20 @@
         {formatParamSummary(activeScenario)}
       </p>
           <p class="ui-microcopy text-foreground">{activeScenario.description}</p>
-          <p class="ui-microcopy text-foreground">
-          <span class="text-foreground font-semibold">Analytical:</span>
-            {activeScenario.analyticalMethodSummary}
-            <span class="text-foreground"> Ref: {activeScenario.analyticalMethodReference}</span>
-          </p>
+          <div class="ui-microcopy text-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="text-foreground font-semibold">Analytical:</span>
+            {#if analyticalOptionToggleOptions.length > 1 && activeAnalyticalOption}
+              <ToggleGroup
+                options={analyticalOptionToggleOptions}
+                value={activeAnalyticalOption.key}
+                onChange={(value) => onSelectAnalyticalOption(String(value))}
+              />
+            {/if}
+            <span>
+              {activeAnalyticalOption?.summary ?? activeScenario.analyticalMethodSummary}
+              <span class="text-foreground"> Ref: {activeAnalyticalOption?.reference ?? activeScenario.analyticalMethodReference}</span>
+            </span>
+          </div>
         </div>
         
       </div>

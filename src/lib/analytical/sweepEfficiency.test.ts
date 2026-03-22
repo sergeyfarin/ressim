@@ -394,6 +394,23 @@ describe('computeSweepRecoveryFactor', () => {
         const expected = (1 - defaultRock.s_or - defaultRock.s_wc) / (1 - defaultRock.s_wc);
         expect(result.edPiston).toBeCloseTo(expected, 6);
     });
+
+    it('Stiles reduces to the Dykstra-Parsons limit for a single layer', () => {
+        const stiles = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10, 3.0, 120, 'both', 'stiles');
+        const dykstra = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10, 3.0, 120, 'both', 'dykstra-parsons');
+
+        expect(stiles.method).toBe('stiles');
+        expect(stiles.curve.at(-1)?.rfSweep).toBeCloseTo(dykstra.curve.at(-1)?.rfSweep ?? NaN, 3);
+    });
+
+    it('Stiles stays monotone and below the 1D BL upper bound for layered floods', () => {
+        const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [300, 100, 30], 10, 3.0, 120, 'both', 'stiles');
+
+        for (let i = 1; i < result.curve.length; i += 1) {
+            expect(result.curve[i].rfSweep).toBeGreaterThanOrEqual(result.curve[i - 1].rfSweep - 1e-9);
+            expect(result.curve[i].rfSweep).toBeLessThanOrEqual(result.curve[i].rfBL1D + 1e-9);
+        }
+    });
 });
 
 describe('normalizeSimSweepPointForGeometry', () => {
@@ -612,5 +629,13 @@ describe('computeCombinedSweep', () => {
         expect(result.arealSweep.curve).toHaveLength(101);
         expect(result.verticalSweep.curve).toHaveLength(101);
         expect(result.combined).toHaveLength(101);
+    });
+
+    it('supports a Stiles analytical path for combined layered floods', () => {
+        const result = computeCombinedSweep(defaultRock, defaultFluid, [300, 100, 30], 10, 3.0, 100, 'both', 'stiles');
+        expect(result.arealSweep.curve).toHaveLength(101);
+        expect(result.verticalSweep.curve).toHaveLength(101);
+        expect(result.combined).toHaveLength(101);
+        expect(result.verticalSweep.curve.some((point) => point.efficiency < 0.999)).toBe(true);
     });
 });

@@ -82,6 +82,15 @@ describe('sweep scenario sensitivities', () => {
         expect(Number(combined?.params.steps ?? 0)).toBeGreaterThanOrEqual(Number(vertical?.params.steps ?? 0));
     });
 
+    it('exposes Stiles and Dykstra-Parsons analytical options for the combined sweep scenario', () => {
+        const scenario = getScenario('sweep_combined');
+
+        expect(scenario?.analyticalOptions?.map((option) => [option.key, option.sweepMethod, option.default ?? false])).toEqual([
+            ['stiles', 'stiles', true],
+            ['dykstra', 'dykstra-parsons', false],
+        ]);
+    });
+
     it('splits the combined sweep scenario into interaction and ideal-to-worst axes', () => {
         const scenario = getScenario('sweep_combined');
 

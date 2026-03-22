@@ -21,7 +21,7 @@
         AnalyticalProductionPoint,
     } from "../simulator-types";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
-    import { computeCombinedSweep, getSweepComponentVisibility, type SweepGeometry } from "../analytical/sweepEfficiency";
+    import { computeCombinedSweep, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from "../analytical/sweepEfficiency";
     import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
     import { resolveSharedXAxisRange } from "./xAxisRangePolicy";
 
@@ -43,6 +43,7 @@
         layerThickness = 1,
         showSweepPanel = false,
         sweepGeometry = 'both',
+        sweepAnalyticalMethod = 'dykstra-parsons',
         sweepEfficiencySimSeries = null,
         sweepRFAnalytical = null,
     }: {
@@ -63,6 +64,7 @@
         layerThickness?: number;
         showSweepPanel?: boolean;
         sweepGeometry?: SweepGeometry;
+        sweepAnalyticalMethod?: SweepAnalyticalMethod;
         sweepEfficiencySimSeries?: Array<{ time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null }> | null;
         sweepRFAnalytical?: import("../analytical/sweepEfficiency").SweepRFResult | null;
     } = $props();
@@ -1146,7 +1148,7 @@
         if (!showSweepPanel || !rockProps || !fluidProps) return null;
 
         const perms = layerPermeabilities.length > 0 ? layerPermeabilities : [100];
-        const analytical = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, 3.0, 200, sweepGeometry);
+        const analytical = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, 3.0, 200, sweepGeometry, sweepAnalyticalMethod);
         const visibility = getSweepComponentVisibility(sweepGeometry);
         const pviValues = analytical.arealSweep.curve.map((p) => p.pvi);
         const analyticalXY = (ys: number[]) => pviValues.map((pvi, i) => ({ x: mapPviToActiveXAxis(pvi) ?? 0, y: ys[i] ?? null }));
@@ -1208,15 +1210,26 @@
         // Volumetric panel
         const volCurves: CurveConfig[] = [
             ...(hasSim ? [{
-                label: sweepGeometry === 'both' ? "Mobile Oil Recovered (Simulation)" : "E_vol (Simulation)",
-                curveKey: sweepGeometry === 'both' ? "sweep-vol-mobile-oil-sim" : "sweep-vol-sim",
-                toggleLabel: sweepGeometry === 'both' ? "Mobile Oil Recovered (Sim)" : "E_vol (Sim)",
+                label: "E_vol (Simulation)",
+                curveKey: "sweep-vol-sim",
+                toggleLabel: "E_vol (Sim)",
                 color: "#dc2626",
                 borderWidth: 2.4,
                 yAxisID: "y",
             } as CurveConfig] : []),
+            ...(hasSim && sweepGeometry === 'both' ? [{
+                label: "Mobile Oil Recovered (Simulation)",
+                curveKey: "sweep-vol-mobile-oil-sim",
+                toggleLabel: "Mobile Oil Recovered (Sim)",
+                color: "#f59e0b",
+                borderWidth: 1.8,
+                borderDash: [3, 3],
+                yAxisID: "y",
+            } as CurveConfig] : []),
             {
-                label: "E_vol (Analytical Sweep)",
+                label: sweepRFAnalytical?.method === 'stiles'
+                    ? "E_vol (Analytical Total — Stiles Layered BL)"
+                    : "E_vol (Analytical Total — Dykstra-Parsons)",
                 curveKey: "sweep-vol-analytical",
                 toggleLabel: "E_vol (Analytical)",
                 color: "#dc2626",
@@ -1226,7 +1239,8 @@
             } as CurveConfig,
         ];
         const volSeries = [
-            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => sweepGeometry === 'both' ? p.mobileOilRecovered : p.eVol)] : []),
+            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eVol)] : []),
+            ...(hasSim && sweepGeometry === 'both' ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.mobileOilRecovered)] : []),
             analyticalXY(analytical.combined.map((p) => p.efficiency)),
         ];
 
@@ -1244,7 +1258,9 @@
                 yAxisID: "y",
             } as CurveConfig,
             {
-                label: "RF (Sweep — Craig×BL)",
+                label: sweepRFAnalytical?.method === 'stiles'
+                    ? "RF (Analytical Total — Stiles Layered BL)"
+                    : "RF (Analytical Total — Dykstra-Parsons)",
                 curveKey: "sweep-rf-sweep",
                 toggleLabel: "RF Analytical (Sweep)",
                 color: "#15803d",
@@ -1527,7 +1543,7 @@
         {/if}
         <ChartSubPanel
             panelId="sweep-vol"
-            title="Analytical E_vol vs Simulation Mobile Oil Recovered"
+            title="Analytical Total E_vol vs Simulation Mobile Oil Recovered"
             bind:expanded={sweepVolExpanded}
             curves={sweepPanels.volCurves}
             seriesData={sweepPanels.volSeries}

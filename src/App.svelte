@@ -8,7 +8,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -78,6 +78,11 @@
             ?? scenario.activeScenarioObject?.capabilities.sweepGeometry
             ?? 'both';
     });
+    const sweepAnalyticalMethod = $derived.by((): SweepAnalyticalMethod => {
+        return scenario.activeAnalyticalOption?.sweepMethod
+            ?? scenario.activeScenarioAsFamily?.sweepAnalyticalMethod
+            ?? 'dykstra-parsons';
+    });
     const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
         if (!showSweepPanel || !outputProfileRockProps || !outputProfileFluidProps) return null;
         const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
@@ -85,7 +90,7 @@
             : params.nz > 1
                 ? Array.from({ length: params.nz }, () => params.uniformPermX)
                 : [params.uniformPermX];
-        return computeSweepRecoveryFactor(outputProfileRockProps, outputProfileFluidProps, perms, params.cellDz, 3.0, 200, sweepGeometry);
+        return computeSweepRecoveryFactor(outputProfileRockProps, outputProfileFluidProps, perms, params.cellDz, 3.0, 200, sweepGeometry, sweepAnalyticalMethod);
     });
 
     // True when any active sensitivity variant is declared to affect the analytical solution.
@@ -546,6 +551,7 @@
         <ScenarioPicker
             activeScenarioKey={scenario.activeScenarioKey}
             activeSensitivityDimensionKey={scenario.activeSensitivityDimensionKey}
+            activeAnalyticalOptionKey={scenario.activeAnalyticalOptionKey}
             activeVariantKeys={scenario.activeVariantKeys}
             isCustom={scenario.isCustomMode}
             activeMode={scenario.activeMode}
@@ -561,6 +567,7 @@
             onSelectScenario={(key) => scenario.selectScenario(key)}
             onSelectSensitivityDimension={(key) => scenario.selectSensitivityDimension(key)}
             onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
+            onSelectAnalyticalOption={(key) => scenario.selectAnalyticalOption(key)}
             onEnterCustomMode={() => scenario.enterCustomMode()}
             onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}
             onActivateLibraryEntry={(key) => scenario.activateLibraryEntry(key)}
@@ -679,6 +686,7 @@
                             layerThickness={params.cellDz}
                             {showSweepPanel}
                             {sweepGeometry}
+                            {sweepAnalyticalMethod}
                             {sweepEfficiencySimSeries}
                             {sweepRFAnalytical}
                         />

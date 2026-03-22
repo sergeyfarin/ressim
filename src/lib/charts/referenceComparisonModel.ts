@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -910,9 +910,9 @@ function buildSimulationSweepSeries(
     areal: XYPoint[];
     vertical: XYPoint[];
     combined: XYPoint[];
+    combinedMobileOil: XYPoint[];
     showAreal: boolean;
     showVertical: boolean;
-    combinedSimulationMetric: 'evol' | 'mobile-oil-recovered';
 } {
     const nx = Math.max(1, Math.floor(toFiniteNumber(result.params.nx, 1)));
     const ny = Math.max(1, Math.floor(toFiniteNumber(result.params.ny, 1)));
@@ -934,7 +934,7 @@ function buildSimulationSweepSeries(
     const areal: XYPoint[] = geometry === 'both' ? [] : [{ x: 0, y: 0 }];
     const vertical: XYPoint[] = geometry === 'both' ? [] : [{ x: 0, y: 0 }];
     const combined: XYPoint[] = [{ x: 0, y: 0 }];
-    const combinedSimulationMetric = geometry === 'both' ? 'mobile-oil-recovered' as const : 'evol' as const;
+    const combinedMobileOil: XYPoint[] = geometry === 'both' ? [{ x: 0, y: 0 }] : [];
     const initialOilSaturation = Math.max(0, 1 - initialSw);
     const residualOilSaturation = toFiniteNumber(result.params.s_or, rock.s_or);
 
@@ -961,10 +961,10 @@ function buildSimulationSweepSeries(
         if (sweep.eV != null) {
             vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
         }
-        combined.push({
-            x: Number(selectedXAxis),
-            y: geometry === 'both' ? sweep.mobileOilRecovered : sweep.eVol,
-        });
+        combined.push({ x: Number(selectedXAxis), y: sweep.eVol });
+        if (geometry === 'both') {
+            combinedMobileOil.push({ x: Number(selectedXAxis), y: sweep.mobileOilRecovered });
+        }
     });
 
     const sweepRfXValues = mapPviSeriesToXAxis(result.pviSeries, derived, xAxisMode, tau);
@@ -974,9 +974,9 @@ function buildSimulationSweepSeries(
         areal: visibility.showAreal ? dedupeSweepSeries(areal) : [],
         vertical: visibility.showVertical ? dedupeSweepSeries(vertical) : [],
         combined: dedupeSweepSeries(combined),
+        combinedMobileOil: geometry === 'both' ? dedupeSweepSeries(combinedMobileOil) : [],
         showAreal: visibility.showAreal,
         showVertical: visibility.showVertical,
-        combinedSimulationMetric,
     };
 }
 
@@ -986,6 +986,7 @@ function buildAnalyticalSweepSeries(
     xAxisMode: RateChartXAxisMode,
     tau: number | null,
     geometry: SweepGeometry,
+    method: SweepAnalyticalMethod,
 ): {
     xValues: Array<number | null>;
     rf: Array<number | null>;
@@ -1000,8 +1001,8 @@ function buildAnalyticalSweepSeries(
     const permeabilities = getLayerPermeabilities(params);
     const thickness = toFiniteNumber(params.cellDz, 1);
     const visibility = getSweepComponentVisibility(geometry);
-    const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
-    const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
+    const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry, method);
+    const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry, method);
     const xValues = mapPviSeriesToXAxis(sweep.arealSweep.curve.map((point) => point.pvi), derived, xAxisMode, tau);
     return {
         xValues,
@@ -1027,15 +1028,22 @@ function appendAnalyticalSweepCurves(
         xAxisMode: RateChartXAxisMode;
         tau: number | null;
         geometry: SweepGeometry;
+        method: SweepAnalyticalMethod;
     },
 ) {
-    const analytical = buildAnalyticalSweepSeries(input.params, input.derived, input.xAxisMode, input.tau, input.geometry);
+    const analytical = buildAnalyticalSweepSeries(input.params, input.derived, input.xAxisMode, input.tau, input.geometry, input.method);
     const toggleGroupKey = input.caseKey ? `${input.caseKey}__ref` : 'analytical';
     const legendColor = input.caseKey ? undefined : getLegendGrey(input.theme);
     const borderWidth = input.caseKey ? 1.5 : 2;
+    const analyticalRfLabel = input.method === 'stiles'
+        ? `${input.label} — Analytical Total RF (Stiles Layered BL)`
+        : `${input.label} — Analytical Total RF (Dykstra-Parsons)`;
+    const analyticalEvolLabel = input.method === 'stiles'
+        ? `${input.label} — Analytical Total E_vol (Stiles Layered BL)`
+        : `${input.label} — Analytical Total E_vol (Dykstra-Parsons)`;
 
     appendSeries(panels.rf, {
-        label: `${input.label} — Analytical RF`,
+        label: analyticalRfLabel,
         curveKey: 'sweep-rf-reference',
         ...(input.caseKey ? { caseKey: input.caseKey } : {}),
         toggleGroupKey,
@@ -1051,7 +1059,7 @@ function appendAnalyticalSweepCurves(
 
     if (analytical.showAreal) {
         appendSeries(panels.areal, {
-            label: `${input.label} — Analytical E_A`,
+            label: `${input.label} — Analytical E_A (diagnostic decomposition)`,
             curveKey: 'sweep-areal-reference',
             ...(input.caseKey ? { caseKey: input.caseKey } : {}),
             toggleGroupKey,
@@ -1068,7 +1076,7 @@ function appendAnalyticalSweepCurves(
 
     if (analytical.showVertical) {
         appendSeries(panels.vertical, {
-            label: `${input.label} — Analytical E_V`,
+            label: `${input.label} — Analytical E_V (diagnostic decomposition)`,
             curveKey: 'sweep-vertical-reference',
             ...(input.caseKey ? { caseKey: input.caseKey } : {}),
             toggleGroupKey,
@@ -1084,7 +1092,7 @@ function appendAnalyticalSweepCurves(
     }
 
     appendSeries(panels.combined, {
-        label: `${input.label} — Analytical E_vol`,
+        label: analyticalEvolLabel,
         curveKey: 'sweep-combined-reference',
         ...(input.caseKey ? { caseKey: input.caseKey } : {}),
         toggleGroupKey,
@@ -1164,12 +1172,8 @@ function appendSimulationSweepCurves(
 
     if (simulation.combined.length > 0) {
         panels.combined.curves.push({
-            label: simulation.combinedSimulationMetric === 'mobile-oil-recovered'
-                ? `${result.label} Mobile Oil Recovered`
-                : `${result.label} E_vol`,
-            curveKey: simulation.combinedSimulationMetric === 'mobile-oil-recovered'
-                ? 'sweep-combined-mobile-oil-sim'
-                : 'sweep-combined-sim',
+            label: `${result.label} E_vol`,
+            curveKey: 'sweep-combined-sim',
             caseKey: result.key,
             toggleGroupKey: result.key,
             toggleLabel: caseLabel,
@@ -1181,6 +1185,24 @@ function appendSimulationSweepCurves(
             defaultVisible: true,
         });
         panels.combined.series.push(simulation.combined);
+    }
+
+    if (simulation.combinedMobileOil.length > 0) {
+        panels.combined.curves.push({
+            label: `${result.label} Mobile Oil Recovered`,
+            curveKey: 'sweep-combined-mobile-oil-sim',
+            caseKey: result.key,
+            toggleGroupKey: result.key,
+            toggleLabel: caseLabel,
+            legendSection: 'sim',
+            legendSectionLabel: 'Simulation (solid lines):',
+            color,
+            borderWidth: 1.8,
+            borderDash: [3, 3],
+            yAxisID: 'y',
+            defaultVisible: true,
+        });
+        panels.combined.series.push(simulation.combinedMobileOil);
     }
 }
 
@@ -1499,6 +1521,7 @@ function buildPreviewSweepPanels(input: {
     variants: AnalyticalPreviewVariant[];
     theme: ReferenceComparisonTheme;
     geometry: SweepGeometry;
+    method: SweepAnalyticalMethod;
 }): ReferenceComparisonSweepPanels {
     const panels = createSweepPanels();
     const multiVariant = input.variants.length > 1;
@@ -1535,6 +1558,7 @@ function buildPreviewSweepPanels(input: {
             xAxisMode: 'pvi',
             tau: null,
             geometry: input.geometry,
+            method: input.method,
         });
     });
 
@@ -1549,6 +1573,7 @@ function buildSweepPanels(input: {
     xAxisMode: RateChartXAxisMode;
     derivedByKey: Map<string, DerivedRunSeries>;
     geometry: SweepGeometry;
+    method: SweepAnalyticalMethod;
 }): ReferenceComparisonSweepPanels {
     const panels = createSweepPanels();
 
@@ -1569,6 +1594,7 @@ function buildSweepPanels(input: {
             xAxisMode: input.xAxisMode,
             tau,
             geometry: input.geometry,
+            method: input.method,
         });
     });
 
@@ -1604,6 +1630,7 @@ function buildSweepPanels(input: {
                 xAxisMode: input.xAxisMode,
                 tau: null,
                 geometry: input.geometry,
+                method: input.method,
             });
         });
     }
@@ -1735,6 +1762,7 @@ export function buildReferenceComparisonModel(input: {
                             variants,
                             theme: input.theme ?? 'dark',
                             geometry: family?.sweepGeometry ?? 'both',
+                            method: family?.sweepAnalyticalMethod ?? 'dykstra-parsons',
                         })
                         : emptySweepPanels(),
                     axisMappingWarning: null,
@@ -2745,6 +2773,7 @@ export function buildReferenceComparisonModel(input: {
             xAxisMode: input.xAxisMode,
             derivedByKey,
             geometry: family.sweepGeometry ?? 'both',
+            method: family.sweepAnalyticalMethod ?? 'dykstra-parsons',
         })
         : emptySweepPanels();
 

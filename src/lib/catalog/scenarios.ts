@@ -14,7 +14,7 @@
  */
 
 import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
-import type { SweepGeometry } from '../analytical/sweepEfficiency';
+import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
 
 // ─── Per-scenario imports ────────────────────────────────────────────────────
 
@@ -51,6 +51,15 @@ export type PrimaryRateCurve = 'water-cut' | 'gas-cut' | 'oil-rate';
 
 /** How analytical overlays should be grouped for a selected sensitivity dimension. */
 export type AnalyticalOverlayMode = 'auto' | 'shared' | 'per-result';
+
+export type ScenarioAnalyticalOption = {
+    key: string;
+    label: string;
+    summary: string;
+    reference: string;
+    sweepMethod?: SweepAnalyticalMethod;
+    default?: boolean;
+};
 
 /** Default 3D scalar property to display when a scenario loads. */
 export type Default3DScalar = 'saturation_water' | 'saturation_gas' | null;
@@ -249,6 +258,7 @@ export type Scenario = {
     description: string;
     analyticalMethodSummary: string;
     analyticalMethodReference: string;
+    analyticalOptions?: ScenarioAnalyticalOption[];
     /** Physical classification — metadata label, not used for behavioral routing. */
     scenarioClass: ScenarioClass;
     /** UI domain — controls which tab this scenario appears under (presentational only). */

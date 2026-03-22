@@ -1049,11 +1049,14 @@ describe('referenceComparisonModel', () => {
         const verticalPanel = model.sweepPanels.vertical;
         const verticalSimIndex = verticalPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-vertical-sim');
         const combinedPanel = model.sweepPanels.combined;
+        const combinedEvolIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
         const combinedSimIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
 
         expect(verticalSimIndex).toBe(-1);
         expect(verticalPanel!.curves.some((curve) => curve.curveKey === 'sweep-vertical-reference')).toBe(true);
+        expect(combinedPanel!.series[combinedEvolIndex]?.[0]).toEqual({ x: 0, y: 0 });
         expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(combinedPanel!.curves[combinedEvolIndex]?.label).toContain('E_vol');
         expect(combinedPanel!.curves[combinedSimIndex]?.label).toContain('Mobile Oil Recovered');
     });
 
@@ -1073,10 +1076,12 @@ describe('referenceComparisonModel', () => {
         const sweepRfPanel = model.sweepPanels.rf;
         const simRfIndex = sweepRfPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-rf-sim');
         const analyticalCombinedPanel = model.sweepPanels.combined;
+        const combinedEvolIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
         const combinedSimIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
         const analyticalCombinedIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-reference');
 
         expect(sweepRfPanel!.series[simRfIndex]).toEqual(recoverySimSeries);
+        expect(combinedEvolIndex).toBeGreaterThanOrEqual(0);
         expect(combinedSimIndex).toBeGreaterThanOrEqual(0);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[0]?.x).toBe(0);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.at(-1)?.x).toBeCloseTo(recoverySimSeries.at(-1)?.x ?? NaN, 10);

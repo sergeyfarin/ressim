@@ -40,7 +40,7 @@ import {
     type ValidationWarning,
 } from '../validateInputs';
 import { buildWarningPolicy, evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
-import { getScenario, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities } from '../catalog/scenarios';
+import { getScenario, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities, type ScenarioAnalyticalOption } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
@@ -296,6 +296,7 @@ class SimulationStoreImpl {
     // Scenario-picker state
     activeScenarioKey: string | null = $state(null);
     activeSensitivityDimensionKey: string | null = $state(null);
+    activeAnalyticalOptionKey: string | null = $state(null);
     activeVariantKeys: string[] = $state([]);
     isCustomMode = $state(false);
 
@@ -471,6 +472,14 @@ class SimulationStoreImpl {
     });
 
     activeScenarioObject = $derived(getScenario(this.activeScenarioKey));
+    activeAnalyticalOption = $derived.by((): ScenarioAnalyticalOption | null => {
+        const scenario = this.activeScenarioObject;
+        const options = scenario?.analyticalOptions ?? [];
+        if (options.length === 0) return null;
+        const selected = options.find((option) => option.key === this.activeAnalyticalOptionKey);
+        if (selected) return selected;
+        return options.find((option) => option.default) ?? options[0] ?? null;
+    });
 
     activeScenarioAsFamily = $derived.by((): import('../catalog/benchmarkCases').BenchmarkFamily | null => {
         const sc = this.activeScenarioObject;
@@ -504,6 +513,7 @@ class SimulationStoreImpl {
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
             showSweepPanel: resolved.showSweepPanel,
             sweepGeometry: resolved.sweepGeometry,
+            sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,
             analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
         };
     });
@@ -1704,6 +1714,9 @@ class SimulationStoreImpl {
         this.activeSensitivityDimensionKey = defaultDimKey;
         const defaultDim = scenario.sensitivities.find((d) => d.key === defaultDimKey) ?? null;
         this.activeVariantKeys = defaultDim ? getDefaultVariantKeys(defaultDim) : [];
+        this.activeAnalyticalOptionKey = scenario.analyticalOptions?.find((option) => option.default)?.key
+            ?? scenario.analyticalOptions?.[0]?.key
+            ?? null;
 
         // Derive CaseMode from analyticalMethod: BL waterfloods use 'wf', everything else uses 'dep'.
         const nextMode: CaseMode = scenario.capabilities.analyticalMethod === 'buckley-leverett' ? 'wf' : 'dep';
@@ -1740,6 +1753,18 @@ class SimulationStoreImpl {
         this.activeVariantKeys = getDefaultVariantKeys(dimension);
     }
 
+    selectAnalyticalOption(optionKey: string) {
+        const scenario = this.activeScenarioObject;
+        if (!scenario) return;
+        if (this.referenceSweepRunning || this.activeReferenceRunSpec) return;
+        if (!(scenario.analyticalOptions ?? []).some((option) => option.key === optionKey)) return;
+        if (optionKey === this.activeAnalyticalOptionKey) return;
+
+        this.activeComparisonSelection = buildComparisonSelection();
+        this.clearReferenceRunnerState(true);
+        this.activeAnalyticalOptionKey = optionKey;
+    }
+
     toggleScenarioVariant(variantKey: string) {
         if (this.referenceSweepRunning || this.activeReferenceRunSpec) return;
 
@@ -1752,6 +1777,7 @@ class SimulationStoreImpl {
 
     enterCustomMode() {
         this.isCustomMode = true;
+        this.activeAnalyticalOptionKey = null;
         this.handleParamEdit();
     }
 

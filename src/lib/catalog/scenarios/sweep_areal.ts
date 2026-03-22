@@ -72,7 +72,7 @@ export const sweep_areal: Scenario = {
         well_skin: 0,
         // Numerics
         delta_t_days: 0.5,
-        steps: 240,
+        steps: 500,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -103,7 +103,7 @@ export const sweep_areal: Scenario = {
                     key: 'mob_unfavorable',
                     label: 'M ≈ 10  (μ_o = 5.0 cp)',
                     description: 'Strongly unfavourable — viscous channelling, early breakthrough, poor areal sweep.',
-                    paramPatch: { mu_o: 5.0 },
+                    paramPatch: { mu_o: 5.0, delta_t_days: 1 },
                     affectsAnalytical: true,
                 },
             ],

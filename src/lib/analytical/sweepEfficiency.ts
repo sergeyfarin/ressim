@@ -18,6 +18,8 @@ import { computeBLRecoveryVsPVI, computeWelgeMetrics } from './fractionalFlow';
 
 export type SweepPoint = { pvi: number; efficiency: number };
 
+export type SweepAnalyticalMethod = 'stiles' | 'dykstra-parsons';
+
 export type ArealSweepResult = {
     curve: SweepPoint[];
     mobilityRatio: number;
@@ -68,6 +70,7 @@ export type SweepRFResult = {
     edPiston: number;
     eAAtBreakthrough: number;
     vdp: number;
+    method: SweepAnalyticalMethod;
 };
 
 export type SimSweepPoint = {
@@ -362,6 +365,125 @@ export function arealSweepAtBreakthrough(M: number): number {
 function computeLocalDisplacementFrontPvi(rock: RockProps, fluid: FluidProps): number {
     const welge = computeWelgeMetrics(rock, fluid, rock.s_wc);
     return Math.max(0.01, welge.breakthroughPvi);
+}
+
+function buildBLRFInterpolator(
+    rock: RockProps,
+    fluid: FluidProps,
+    pviMax: number,
+    nPoints: number,
+): {
+    lookupMax: number;
+    edPiston: number;
+    interpolate: (pvi: number) => number;
+} {
+    const lookupMax = pviMax * 5;
+    const lookupN = nPoints * 5;
+    const blCurve = computeBLRecoveryVsPVI(rock, fluid, lookupMax, lookupN);
+    const edPiston = Math.max(0, (1 - rock.s_or - rock.s_wc) / Math.max(1e-12, 1 - rock.s_wc));
+
+    function interpolate(pvi: number): number {
+        if (pvi <= 0) return 0;
+        if (pvi >= blCurve[blCurve.length - 1].pvi) return blCurve[blCurve.length - 1].rf;
+        let lo = 0;
+        let hi = blCurve.length - 1;
+        while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (blCurve[mid].pvi <= pvi) lo = mid;
+            else hi = mid;
+        }
+        const fraction = (pvi - blCurve[lo].pvi) / Math.max(1e-12, blCurve[hi].pvi - blCurve[lo].pvi);
+        return blCurve[lo].rf + fraction * (blCurve[hi].rf - blCurve[lo].rf);
+    }
+
+    return { lookupMax, edPiston, interpolate };
+}
+
+function normalizeLayerFlowFractions(permeabilities: number[]): number[] {
+    const cleaned = permeabilities.map((perm) => Math.max(0, Number(perm) || 0));
+    const total = cleaned.reduce((sum, perm) => sum + perm, 0);
+    if (total <= 1e-12) {
+        const fallbackLength = Math.max(1, cleaned.length);
+        return Array.from({ length: fallbackLength }, () => 1 / fallbackLength);
+    }
+    return cleaned.map((perm) => perm / total);
+}
+
+function computeStilesSweepAnalytics(
+    rock: RockProps,
+    fluid: FluidProps,
+    permeabilities: number[],
+    layerThickness: number,
+    pviMax: number,
+    nPoints: number,
+    geometry: SweepGeometry,
+): {
+    arealSweep: ArealSweepResult;
+    verticalSweep: VerticalSweepResult;
+    combined: SweepPoint[];
+    rf: SweepRFPoint[];
+    edPiston: number;
+} {
+    const visibility = getSweepComponentVisibility(geometry);
+    const areal = computeArealSweep(rock, fluid, pviMax, nPoints);
+    const maskedArealCurve = areal.curve.map((point) => ({
+        pvi: point.pvi,
+        efficiency: visibility.showAreal ? point.efficiency : 1,
+    }));
+
+    const bl = buildBLRFInterpolator(rock, fluid, pviMax, nPoints);
+    const flowFractions = normalizeLayerFlowFractions(permeabilities);
+    const layerCount = Math.max(1, flowFractions.length);
+    const vdp = dykstraParsonsCoefficient(permeabilities);
+
+    const verticalCurve: SweepPoint[] = [];
+    const combinedCurve: SweepPoint[] = [];
+    const rfCurve: SweepRFPoint[] = [];
+
+    for (const point of maskedArealCurve) {
+        const eA = point.efficiency;
+        const rfBL1D = bl.interpolate(point.pvi);
+        const zonePvi = visibility.showAreal
+            ? (eA > 1e-6 ? Math.min(point.pvi / eA, bl.lookupMax) : bl.lookupMax)
+            : Math.min(point.pvi, bl.lookupMax);
+        const zonePerfectRf = bl.interpolate(zonePvi);
+        const averageLayerRf = visibility.showVertical
+            ? flowFractions.reduce((sum, fraction) => {
+                const layerPvi = Math.min(zonePvi * layerCount * fraction, bl.lookupMax);
+                return sum + bl.interpolate(layerPvi);
+            }, 0)
+                / layerCount
+            : zonePerfectRf;
+        const eV = visibility.showVertical
+            ? (zonePerfectRf > 1e-9 ? clamp01(averageLayerRf / zonePerfectRf) : 0)
+            : 1;
+        const eVol = clamp01(eA * eV);
+        const rfSweep = clamp01(Math.min(eA * averageLayerRf, bl.edPiston));
+
+        verticalCurve.push({
+            pvi: point.pvi,
+            efficiency: visibility.showVertical ? eV : 1,
+        });
+        combinedCurve.push({
+            pvi: point.pvi,
+            efficiency: eVol,
+        });
+        rfCurve.push({
+            pvi: point.pvi,
+            rfSweep,
+            rfBL1D,
+            eVol,
+            eD: zonePerfectRf,
+        });
+    }
+
+    return {
+        arealSweep: { ...areal, curve: maskedArealCurve },
+        verticalSweep: { curve: verticalCurve, vdp },
+        combined: combinedCurve,
+        rf: rfCurve,
+        edPiston: bl.edPiston,
+    };
 }
 
 /**
@@ -726,7 +848,17 @@ export function computeCombinedSweep(
     pviMax: number = 3.0,
     nPoints: number = 200,
     geometry: SweepGeometry = 'both',
+    method: SweepAnalyticalMethod = 'dykstra-parsons',
 ): CombinedSweepResult {
+    if (method === 'stiles') {
+        const stiles = computeStilesSweepAnalytics(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry);
+        return {
+            arealSweep: stiles.arealSweep,
+            verticalSweep: stiles.verticalSweep,
+            combined: stiles.combined,
+        };
+    }
+
     const M = mobilityRatio(rock, fluid);
     const visibility = getSweepComponentVisibility(geometry);
     const localFrontPvi = computeLocalDisplacementFrontPvi(rock, fluid);
@@ -811,40 +943,37 @@ export function computeSweepRecoveryFactor(
     pviMax: number = 3.0,
     nPoints: number = 200,
     geometry: SweepGeometry = 'both',
+    method: SweepAnalyticalMethod = 'dykstra-parsons',
 ): SweepRFResult {
-    // Build a dense 1D BL RF lookup table (extended range to handle PVI_local >> pviMax)
-    const blLookupMax = pviMax * 5;
-    const blLookupN = nPoints * 5;
-    const blCurve = computeBLRecoveryVsPVI(rock, fluid, blLookupMax, blLookupN);
-
-    function interpBL1D(pvi: number): number {
-        if (pvi <= 0) return 0;
-        if (pvi >= blCurve[blCurve.length - 1].pvi) return blCurve[blCurve.length - 1].rf;
-        let lo = 0, hi = blCurve.length - 1;
-        while (hi - lo > 1) {
-            const mid = (lo + hi) >> 1;
-            if (blCurve[mid].pvi <= pvi) lo = mid; else hi = mid;
-        }
-        const t = (pvi - blCurve[lo].pvi) / Math.max(1e-12, blCurve[hi].pvi - blCurve[lo].pvi);
-        return blCurve[lo].rf + t * (blCurve[hi].rf - blCurve[lo].rf);
+    if (method === 'stiles') {
+        const stiles = computeStilesSweepAnalytics(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry);
+        return {
+            curve: stiles.rf,
+            edPiston: stiles.edPiston,
+            eAAtBreakthrough: stiles.arealSweep.eaAtBreakthrough,
+            vdp: stiles.verticalSweep.vdp,
+            method,
+        };
     }
 
-    const edPiston = Math.max(0, (1 - rock.s_or - rock.s_wc) / Math.max(1e-12, 1 - rock.s_wc));
-    const sweep = computeCombinedSweep(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry);
+    // Build a dense 1D BL RF lookup table (extended range to handle PVI_local >> pviMax)
+    const bl = buildBLRFInterpolator(rock, fluid, pviMax, nPoints);
+    const sweep = computeCombinedSweep(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry, method);
 
     const curve: SweepRFPoint[] = sweep.combined.map(({ pvi, efficiency: eVol }) => {
-        const rfBL1D = interpBL1D(pvi);
+        const rfBL1D = bl.interpolate(pvi);
         // PVI_local: effective PVI in the swept zone. Clamp at blLookupMax so
         // interpBL1D returns E_D_piston when E_vol is very small (swept zone ~empty).
-        const pviLocal = eVol > 1e-3 ? Math.min(pvi / eVol, blLookupMax) : blLookupMax;
-        const eD = interpBL1D(pviLocal);
-        return { pvi, rfSweep: Math.min(eVol * eD, edPiston), rfBL1D, eVol, eD };
+        const pviLocal = eVol > 1e-3 ? Math.min(pvi / eVol, bl.lookupMax) : bl.lookupMax;
+        const eD = bl.interpolate(pviLocal);
+        return { pvi, rfSweep: Math.min(eVol * eD, bl.edPiston), rfBL1D, eVol, eD };
     });
 
     return {
         curve,
-        edPiston,
+        edPiston: bl.edPiston,
         eAAtBreakthrough: sweep.arealSweep.eaAtBreakthrough,
         vdp: sweep.verticalSweep.vdp,
+        method,
     };
 }

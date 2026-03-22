@@ -268,11 +268,11 @@ Goal: upgrade analytical reference methods beyond first-order approximations.
 
 ### 5A. Stiles Method (Recommended Next Sweep Upgrade)
 
-- [ ] Implement Stiles (1949) layer-by-layer BL integration in `sweepEfficiency.ts` (~100 lines)
-- [ ] Eliminates the local-PVI approximation (largest current sweep error)
-- [ ] Sorts layers by permeability; applies independent BL displacement to each; sums oil production
-- [ ] Exactly satisfies material balance by construction
-- [ ] Keep current local-PVI method as fast baseline / teaching mode
+- [x] Implement Stiles (1949) layer-by-layer BL integration in `sweepEfficiency.ts` for the combined sweep scenario
+- [x] Keep current Dykstra-Parsons / local-PVI method as an alternate analytical mode for the same scenario
+- [x] Add a scenario-defined analytical-method toggle in the Scenario picker; `sweep_combined` now defaults to Stiles and can switch back to Dykstra-Parsons
+- [ ] Extend the selectable analytical sweep-method framework beyond `sweep_combined` so other scenarios can opt in without custom wiring
+- [ ] Document the semantics clearly: Stiles strengthens total RF / effective combined sweep for layered floods, while analytical `E_A` / `E_V` remain decomposition diagnostics
 
 ### 5B. Warren-Root Vertical Sweep Upgrade
 
