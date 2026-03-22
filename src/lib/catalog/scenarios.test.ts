@@ -289,15 +289,18 @@ describe('scenario capability validation', () => {
         expect(bl.primaryRateCurve).toBe('water-cut');
         expect(bl.analyticalNativeXAxis).toBe('pvi');
         expect(bl.hasTauDimensionlessTime).toBe(false);
+        expect(bl.sweepGeometry).toBeNull();
 
         const dep = resolveCapabilities({ analyticalMethod: 'depletion', showSweepPanel: false, hasInjector: false, default3DScalar: null, requiresThreePhaseMode: false });
         expect(dep.primaryRateCurve).toBe('oil-rate');
         expect(dep.analyticalNativeXAxis).toBe('time');
         expect(dep.hasTauDimensionlessTime).toBe(true);
+        expect(dep.sweepGeometry).toBeNull();
 
         const gasOil = resolveCapabilities({ analyticalMethod: 'gas-oil-bl', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(gasOil.primaryRateCurve).toBe('gas-cut');
         expect(gasOil.analyticalNativeXAxis).toBe('pvi');
+        expect(gasOil.sweepGeometry).toBeNull();
     });
 
     it('resolveCapabilities respects explicit overrides', () => {
@@ -305,13 +308,15 @@ describe('scenario capability validation', () => {
             analyticalMethod: 'buckley-leverett',
             primaryRateCurve: 'oil-rate', // explicit override
             analyticalNativeXAxis: 'time', // explicit override
-            showSweepPanel: false,
+            showSweepPanel: true,
+            sweepGeometry: 'vertical',
             hasInjector: true,
             default3DScalar: null,
             requiresThreePhaseMode: false,
         });
         expect(resolved.primaryRateCurve).toBe('oil-rate');
         expect(resolved.analyticalNativeXAxis).toBe('time');
+        expect(resolved.sweepGeometry).toBe('vertical');
     });
 
     it('validateScenarioCapabilities catches invalid primaryRateCurve for analytical method', () => {
@@ -325,6 +330,17 @@ describe('scenario capability validation', () => {
         });
         expect(errors.length).toBeGreaterThan(0);
         expect(errors[0]).toContain('water-cut');
+    });
+
+    it('validateScenarioCapabilities requires sweepGeometry for sweep-panel scenarios', () => {
+        const errors = validateScenarioCapabilities({
+            analyticalMethod: 'buckley-leverett',
+            showSweepPanel: true,
+            hasInjector: true,
+            default3DScalar: null,
+            requiresThreePhaseMode: false,
+        });
+        expect(errors).toContain('showSweepPanel scenarios must declare sweepGeometry.');
     });
 
     it('resolved capabilities include defaultPanelExpansion from the output contract', () => {

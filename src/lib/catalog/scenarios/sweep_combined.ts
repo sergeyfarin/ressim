@@ -13,6 +13,7 @@ export const sweep_combined: Scenario = {
     capabilities: {
         analyticalMethod: 'buckley-leverett',
         showSweepPanel: true,
+        sweepGeometry: 'both',
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

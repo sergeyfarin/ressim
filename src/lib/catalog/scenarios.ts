@@ -14,6 +14,7 @@
  */
 
 import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
+import type { SweepGeometry } from '../analytical/sweepEfficiency';
 
 // ─── Per-scenario imports ────────────────────────────────────────────────────
 
@@ -134,6 +135,8 @@ export type ScenarioCapabilities = {
     hasTauDimensionlessTime?: boolean;
     /** Whether the sweep efficiency panel (E_A, E_V, E_vol) should be shown. */
     showSweepPanel: boolean;
+    /** Scenario-defined sweep decomposition geometry. Drives panel visibility and semantics. */
+    sweepGeometry?: SweepGeometry;
     /** Whether the scenario includes an active injector. */
     hasInjector: boolean;
     /** Default 3D scalar to show on load. */
@@ -149,6 +152,7 @@ export type ResolvedCapabilities = {
     analyticalNativeXAxis: 'pvi' | 'time';
     hasTauDimensionlessTime: boolean;
     showSweepPanel: boolean;
+    sweepGeometry: SweepGeometry | null;
     hasInjector: boolean;
     default3DScalar: Default3DScalar;
     requiresThreePhaseMode: boolean;
@@ -165,6 +169,7 @@ export function resolveCapabilities(caps: ScenarioCapabilities): ResolvedCapabil
         analyticalNativeXAxis: caps.analyticalNativeXAxis ?? contract.nativeXAxis,
         hasTauDimensionlessTime: caps.hasTauDimensionlessTime ?? contract.hasTau,
         showSweepPanel: caps.showSweepPanel,
+        sweepGeometry: caps.showSweepPanel ? (caps.sweepGeometry ?? 'both') : null,
         hasInjector: caps.hasInjector,
         default3DScalar: caps.default3DScalar,
         requiresThreePhaseMode: caps.requiresThreePhaseMode,
@@ -185,6 +190,12 @@ export function validateScenarioCapabilities(caps: ScenarioCapabilities): string
             `analyticalMethod '${caps.analyticalMethod}' does not support primaryRateCurve '${effectiveRateCurve}' `
             + `(supported: ${contract.supportedRateCurves.join(', ')})`,
         );
+    }
+    if (caps.showSweepPanel && !caps.sweepGeometry) {
+        errors.push('showSweepPanel scenarios must declare sweepGeometry.');
+    }
+    if (!caps.showSweepPanel && caps.sweepGeometry) {
+        errors.push('sweepGeometry can only be set when showSweepPanel is true.');
     }
     return errors;
 }
@@ -257,6 +268,7 @@ export type Scenario = {
 export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
     analyticalMethod: 'none',
     showSweepPanel: false,
+    sweepGeometry: undefined,
     hasInjector: true,
     default3DScalar: null,
     requiresThreePhaseMode: false,

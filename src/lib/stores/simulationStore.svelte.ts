@@ -502,6 +502,7 @@ class SimulationStoreImpl {
             description: sc.description,
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
             showSweepPanel: resolved.showSweepPanel,
+            sweepGeometry: resolved.sweepGeometry,
         };
     });
 

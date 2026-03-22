@@ -13,6 +13,7 @@ export const sweep_vertical: Scenario = {
     capabilities: {
         analyticalMethod: 'buckley-leverett',
         showSweepPanel: true,
+        sweepGeometry: 'vertical',
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

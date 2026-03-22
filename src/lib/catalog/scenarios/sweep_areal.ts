@@ -13,6 +13,7 @@ export const sweep_areal: Scenario = {
     capabilities: {
         analyticalMethod: 'buckley-leverett',
         showSweepPanel: true,
+        sweepGeometry: 'areal',
         hasInjector: true,
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,

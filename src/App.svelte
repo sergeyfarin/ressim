@@ -68,12 +68,9 @@
     // Analytical recovery factor for sweep scenarios: RF = E_vol(Craig+DP) × E_D_BL(PVI_local).
     // Computed purely from rock/fluid props — no simulation data required.
     const sweepGeometry = $derived.by((): SweepGeometry => {
-        const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
-            ? params.layerPermsX : [params.uniformPermX];
-        const hasVerticalHeterogeneity = perms.length > 1 && new Set(perms).size > 1;
-        if (!hasVerticalHeterogeneity) return 'areal';
-        if (params.ny <= 1) return 'vertical';
-        return 'both';
+        return scenario.activeScenarioAsFamily?.sweepGeometry
+            ?? scenario.activeScenarioObject?.capabilities.sweepGeometry
+            ?? 'both';
     });
     const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
         if (!showSweepPanel || !outputProfileRockProps || !outputProfileFluidProps) return null;
@@ -649,7 +646,7 @@
                             previewVariantParams={activeReferenceResults.length === 0 ? previewVariantParams : undefined}
                             pendingPreviewVariants={activeReferenceResults.length > 0 ? pendingPreviewVariants : undefined}
                             previewBaseParams={activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
-                            previewAnalyticalMethod={activeReferenceFamily.analyticalMethod}
+                            previewAnalyticalMethod={activeReferenceFamily?.analyticalMethod}
                         />
                     {:else if RateChartComponent}
                         <RateChartComponent

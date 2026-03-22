@@ -573,7 +573,7 @@ describe('referenceComparisonModel', () => {
 
     it('builds sweep preview panels before any sweep runs complete', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
         const specs = buildBenchmarkRunSpecs(baseFamily!, [variants[0], variants[1]]);
         const previewVariantParams = specs.slice(1).map((spec) => ({
@@ -602,7 +602,7 @@ describe('referenceComparisonModel', () => {
 
     it('keeps BL rate overlays shared for sweep variants that only change heterogeneity', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
 
         const heterogeneityPreviewVariants = [
@@ -676,7 +676,7 @@ describe('referenceComparisonModel', () => {
 
     it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');
         const [baseSpec, variantSpec] = buildBenchmarkRunSpecs(baseFamily!, [variants[0]]);
         const baseResult = buildSweepRunResult(baseSpec);
@@ -723,7 +723,7 @@ describe('referenceComparisonModel', () => {
 
     it('hides the areal sweep panel for vertical sweep geometry', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
         const verticalSpec = {
             ...baseSpec,
@@ -758,9 +758,47 @@ describe('referenceComparisonModel', () => {
         expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
     });
 
+    it('keeps uniform variants on the vertical sweep decomposition when scenario geometry is vertical', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const uniformVerticalSpec = {
+            ...baseSpec,
+            key: 'vertical_uniform_case',
+            caseKey: 'vertical_uniform_case',
+            label: 'Vertical uniform case',
+            params: {
+                ...baseSpec.params,
+                nx: 24,
+                ny: 1,
+                nz: 3,
+                cellDx: 10,
+                cellDy: 10,
+                cellDz: 4,
+                permMode: 'uniform',
+                uniformPermX: 100,
+                uniformPermY: 100,
+                uniformPermZ: 10,
+                producerI: 23,
+                producerJ: 0,
+            },
+        };
+
+        const result = buildSweepRunResult(uniformVerticalSpec);
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'pvi',
+        });
+
+        expect(model.sweepPanels.areal).toBeNull();
+        expect(model.sweepPanels.vertical?.curves.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
+    });
+
     it('hides the vertical sweep panel for areal sweep geometry', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'areal' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
         const arealSpec = {
             ...baseSpec,
@@ -796,7 +834,7 @@ describe('referenceComparisonModel', () => {
 
     it('starts sweep simulation series at zero and uses volumetric sweep for vertical simulation E_V', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
         const verticalSpec = {
             ...baseSpec,
@@ -835,7 +873,7 @@ describe('referenceComparisonModel', () => {
 
     it('remaps completed sweep panels onto the selected time axis', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
-        const family = { ...baseFamily!, showSweepPanel: true };
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
         const result = buildSweepRunResult(baseSpec);
 
@@ -863,6 +901,7 @@ describe('referenceComparisonModel', () => {
             key: 'gas_injection',
             analyticalMethod: 'gas-oil-bl',
             showSweepPanel: false,
+            sweepGeometry: null,
         } as any;
         const baseSpec = {
             key: 'gas_base',

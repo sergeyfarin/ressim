@@ -94,6 +94,7 @@ export type BenchmarkFamily = BenchmarkFamilyDefinition & {
     baseCase: BenchmarkEntry;
     /** True only for sweep-domain scenarios where E_A/E_V/E_vol panels are physically meaningful. */
     showSweepPanel?: boolean;
+    sweepGeometry?: import('../analytical/sweepEfficiency').SweepGeometry | null;
 };
 
 type BenchmarkVariantTemplate = {

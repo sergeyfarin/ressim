@@ -845,6 +845,7 @@ function buildSimulationSweepSeries(
     xAxisMode: RateChartXAxisMode,
     tau: number | null,
     derived: DerivedRunSeries,
+    geometry: SweepGeometry,
 ): {
     rf: XYPoint[];
     areal: XYPoint[];
@@ -860,7 +861,7 @@ function buildSimulationSweepSeries(
     const fluid = extractFluidProps(result.params);
     const initialSw = toFiniteNumber(result.params.initialSaturation, rock.s_wc);
     const sweptThreshold = computeSweptThreshold(rock, fluid, initialSw);
-    const visibility = getSweepComponentVisibility(inferSweepGeometry(result.params));
+    const visibility = getSweepComponentVisibility(geometry);
 
     const snapshots = [...result.history];
     if (result.finalSnapshot) {
@@ -883,7 +884,7 @@ function buildSimulationSweepSeries(
         if (!satWater || satWater.length === 0) return;
         const sweep = normalizeSimSweepPointForGeometry(
             computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold),
-            inferSweepGeometry(result.params),
+            geometry,
         );
         areal.push({ x: Number(selectedXAxis), y: sweep.eA });
         vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
@@ -902,29 +903,12 @@ function buildSimulationSweepSeries(
     };
 }
 
-/**
- * Infer which sweep components are physically meaningful from grid params.
- *
- *  - nz=1 or single uniform perm → 'areal' (XY five-spot, E_V = 1)
- *  - ny=1 with layered perms     → 'vertical' (XZ line drive, E_A = 1)
- *  - otherwise                    → 'both'
- */
-function inferSweepGeometry(params: Record<string, any>): SweepGeometry {
-    const ny = Math.max(1, Math.floor(toFiniteNumber(params.ny, 1)));
-    const permeabilities = getLayerPermeabilities(params);
-    const hasVerticalHeterogeneity = permeabilities.length > 1
-        && new Set(permeabilities).size > 1;
-
-    if (!hasVerticalHeterogeneity) return 'areal';
-    if (ny <= 1) return 'vertical';
-    return 'both';
-}
-
 function buildAnalyticalSweepSeries(
     params: Record<string, any>,
     derived: DerivedRunSeries,
     xAxisMode: RateChartXAxisMode,
     tau: number | null,
+    geometry: SweepGeometry,
 ): {
     xValues: Array<number | null>;
     rf: Array<number | null>;
@@ -938,7 +922,6 @@ function buildAnalyticalSweepSeries(
     const fluid = extractFluidProps(params);
     const permeabilities = getLayerPermeabilities(params);
     const thickness = toFiniteNumber(params.cellDz, 1);
-    const geometry = inferSweepGeometry(params);
     const visibility = getSweepComponentVisibility(geometry);
     const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
     const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
@@ -966,9 +949,10 @@ function appendAnalyticalSweepCurves(
         derived: DerivedRunSeries;
         xAxisMode: RateChartXAxisMode;
         tau: number | null;
+        geometry: SweepGeometry;
     },
 ) {
-    const analytical = buildAnalyticalSweepSeries(input.params, input.derived, input.xAxisMode, input.tau);
+    const analytical = buildAnalyticalSweepSeries(input.params, input.derived, input.xAxisMode, input.tau, input.geometry);
     const toggleGroupKey = input.caseKey ? `${input.caseKey}__ref` : 'analytical';
     const legendColor = input.caseKey ? undefined : getLegendGrey(input.theme);
     const borderWidth = input.caseKey ? 1.5 : 2;
@@ -1045,8 +1029,9 @@ function appendSimulationSweepCurves(
     xAxisMode: RateChartXAxisMode,
     tau: number | null,
     derived: DerivedRunSeries,
+    geometry: SweepGeometry,
 ) {
-    const simulation = buildSimulationSweepSeries(result, xAxisMode, tau, derived);
+    const simulation = buildSimulationSweepSeries(result, xAxisMode, tau, derived, geometry);
     const caseLabel = compactCaseLabel(result.label);
 
     if (simulation.rf.length > 0) {
@@ -1430,6 +1415,7 @@ function buildAnalyticalPreviewPanels(
 function buildPreviewSweepPanels(input: {
     variants: AnalyticalPreviewVariant[];
     theme: ReferenceComparisonTheme;
+    geometry: SweepGeometry;
 }): ReferenceComparisonSweepPanels {
     const panels = createSweepPanels();
     const multiVariant = input.variants.length > 1;
@@ -1465,6 +1451,7 @@ function buildPreviewSweepPanels(input: {
             derived: previewDerived,
             xAxisMode: 'pvi',
             tau: null,
+            geometry: input.geometry,
         });
     });
 
@@ -1478,6 +1465,7 @@ function buildSweepPanels(input: {
     theme: ReferenceComparisonTheme;
     xAxisMode: RateChartXAxisMode;
     derivedByKey: Map<string, DerivedRunSeries>;
+    geometry: SweepGeometry;
 }): ReferenceComparisonSweepPanels {
     const panels = createSweepPanels();
 
@@ -1486,7 +1474,7 @@ function buildSweepPanels(input: {
         const derived = input.derivedByKey.get(result.key);
         if (!derived) return;
         const tau = computeDepletionTau(result.params);
-        appendSimulationSweepCurves(panels, result, color, input.xAxisMode, tau, derived);
+        appendSimulationSweepCurves(panels, result, color, input.xAxisMode, tau, derived, input.geometry);
         appendAnalyticalSweepCurves(panels, {
             label: result.label,
             caseKey: result.key,
@@ -1497,6 +1485,7 @@ function buildSweepPanels(input: {
             derived,
             xAxisMode: input.xAxisMode,
             tau,
+            geometry: input.geometry,
         });
     });
 
@@ -1531,6 +1520,7 @@ function buildSweepPanels(input: {
                 derived: previewDerived,
                 xAxisMode: input.xAxisMode,
                 tau: null,
+                geometry: input.geometry,
             });
         });
     }
@@ -1647,6 +1637,7 @@ export function buildReferenceComparisonModel(input: {
                         ? buildPreviewSweepPanels({
                             variants,
                             theme: input.theme ?? 'dark',
+                            geometry: family?.sweepGeometry ?? 'both',
                         })
                         : emptySweepPanels(),
                     axisMappingWarning: null,
@@ -2656,6 +2647,7 @@ export function buildReferenceComparisonModel(input: {
             previewVariantParams: input.previewVariantParams,
             xAxisMode: input.xAxisMode,
             derivedByKey,
+            geometry: family.sweepGeometry ?? 'both',
         })
         : emptySweepPanels();
 
