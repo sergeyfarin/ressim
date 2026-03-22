@@ -745,6 +745,60 @@ describe('referenceComparisonModel', () => {
         expect(new Set(referenceCurves.map((curve) => curve.caseKey))).toEqual(
             new Set(results.map((result) => result.key)),
         );
+
+        const referenceSeries = model.panels.rates.series.filter((_, index) => (
+            model.panels.rates.curves[index]?.curveKey === 'water-cut-reference'
+        ));
+        expect(referenceSeries.every((series) => series.some((point) => (point.y ?? 0) > 0))).toBe(true);
+    });
+
+    it('builds nonzero completed sweep BL references on PVI even when injection-rate history is missing', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const, analyticalOverlayMode: 'per-result' as const };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+
+        const results = [0.5, 5.0].map((mu_o, index) => {
+            const spec = {
+                ...baseSpec,
+                key: `vertical_mobility_${index}`,
+                caseKey: `vertical_mobility_${index}`,
+                variantKey: `vertical_mobility_${index}`,
+                variantLabel: `mobility_${index}`,
+                label: `Vertical mobility ${index}`,
+                params: {
+                    ...baseSpec.params,
+                    mu_o,
+                    nx: 48,
+                    ny: 1,
+                    nz: 5,
+                    permMode: 'perLayer',
+                    layerPermsX: [200, 150, 100, 60, 40],
+                    layerPermsY: [200, 150, 100, 60, 40],
+                    producerI: 47,
+                    producerJ: 0,
+                },
+            };
+            const result = buildSweepRunResult(spec);
+            result.rateHistory = result.rateHistory.map((point) => ({
+                ...point,
+                total_injection: 0,
+            }));
+            result.pviSeries = [0.15, 0.4, 0.8];
+            return result;
+        });
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results,
+            xAxisMode: 'pvi',
+        });
+
+        const referenceSeries = model.panels.rates.series.filter((_, index) => (
+            model.panels.rates.curves[index]?.curveKey === 'water-cut-reference'
+        ));
+
+        expect(referenceSeries).toHaveLength(2);
+        expect(referenceSeries.every((series) => series.some((point) => (point.y ?? 0) > 0))).toBe(true);
     });
 
     it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {

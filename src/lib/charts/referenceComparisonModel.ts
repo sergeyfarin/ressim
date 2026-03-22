@@ -360,6 +360,26 @@ function buildBuckleyLeverettReference(
     derived: DerivedRunSeries,
     xAxisMode: RateChartXAxisMode,
 ): AnalyticalOverlay {
+    if (xAxisMode === 'pvi') {
+        const analytical = computeBLAnalyticalFromParams(baseResult.params);
+        if (analytical) {
+            const ooip = getOoip(baseResult.params);
+            return {
+                rates: { label: 'Reference Solution Water Cut', values: analytical.waterCut },
+                cumulative: {
+                    recoveryLabel: 'Reference Solution Recovery',
+                    recoveryValues: analytical.recovery,
+                    cumulativeLabel: 'Reference Solution Cum Oil',
+                    cumulativeValues: analytical.cumulativeOil.map((value) => (
+                        Number.isFinite(value) && ooip > 1e-12 ? Number(value) * ooip : null
+                    )),
+                },
+                diagnostics: null,
+                xValues: analytical.pviValues,
+            };
+        }
+    }
+
     const poreVolume = getPoreVolume(baseResult.params);
     const ooip = getOoip(baseResult.params);
     const analyticalProduction = calculateAnalyticalProduction(
@@ -395,7 +415,9 @@ function buildBuckleyLeverettReference(
             recoveryLabel: 'Reference Solution Recovery',
             recoveryValues: recovery,
             cumulativeLabel: 'Reference Solution Cum Oil',
-            cumulativeValues: analyticalProduction.map((point) => point.cumulativeOil),
+            cumulativeValues: analyticalProduction.map((point) => (
+                ooip > 1e-12 ? point.cumulativeOil : null
+            )),
         },
         diagnostics: null,
         xValues: buildXAxisValues(derived, xAxisMode),
@@ -598,6 +620,7 @@ function computeGasOilBLAnalyticalFromParams(params: Record<string, any>): {
     pviValues: number[];
     gasCut: Array<number | null>;
     recovery: Array<number | null>;
+    cumulativeOil: Array<number | null>;
 } | null {
     const N = 150;
     const pviMax = 3.0;
@@ -628,7 +651,8 @@ function computeGasOilBLAnalyticalFromParams(params: Record<string, any>): {
     const recovery = analyticalProduction.map((point) => (
         ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
     ));
-    return { pviValues, gasCut, recovery };
+    const cumulativeOil = analyticalProduction.map((point) => point.cumulativeOil);
+    return { pviValues, gasCut, recovery, cumulativeOil };
 }
 
 function buildGasOilBLReference(
@@ -636,6 +660,26 @@ function buildGasOilBLReference(
     derived: DerivedRunSeries,
     xAxisMode: RateChartXAxisMode,
 ): AnalyticalOverlay {
+    if (xAxisMode === 'pvi') {
+        const analytical = computeGasOilBLAnalyticalFromParams(baseResult.params);
+        if (analytical) {
+            const ooip = getOoip(baseResult.params);
+            return {
+                rates: { label: 'Reference Solution Gas Cut', values: analytical.gasCut },
+                cumulative: {
+                    recoveryLabel: 'Reference Solution Recovery',
+                    recoveryValues: analytical.recovery,
+                    cumulativeLabel: 'Reference Solution Cum Oil',
+                    cumulativeValues: analytical.cumulativeOil.map((value) => (
+                        Number.isFinite(value) && ooip > 1e-12 ? Number(value) * ooip : null
+                    )),
+                },
+                diagnostics: null,
+                xValues: analytical.pviValues,
+            };
+        }
+    }
+
     const poreVolume = getPoreVolume(baseResult.params);
     const ooip = getOoip(baseResult.params);
     const analyticalProduction = calculateGasOilAnalyticalProduction(
@@ -1138,6 +1182,7 @@ function computeBLAnalyticalFromParams(params: Record<string, any>): {
     pviValues: number[];
     waterCut: Array<number | null>;
     recovery: Array<number | null>;
+    cumulativeOil: Array<number | null>;
 } | null {
     const N = 150;
     const pviMax = 3.0;
@@ -1163,7 +1208,8 @@ function computeBLAnalyticalFromParams(params: Record<string, any>): {
     const recovery = analyticalProduction.map((pt) =>
         Math.max(0, Math.min(1, pt.cumulativeOil / 1)), // ooip = 1 (unit pore volume)
     );
-    return { pviValues, waterCut, recovery };
+    const cumulativeOil = analyticalProduction.map((pt) => pt.cumulativeOil);
+    return { pviValues, waterCut, recovery, cumulativeOil };
 }
 
 /**

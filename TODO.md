@@ -106,9 +106,11 @@ Eight legacy catalog/benchmark files still have active production dependencies. 
 
 - [x] Scenario sweep runtime controls keep `steps` tied to the run-controls input while allowing per-variant `Δt` defaults unless the timestep field is explicitly edited.
 - [x] **Color stability when sweep results arrive out of order** — `orderResults()` now sorts by `previewVariantParams` declaration index; pending preview cases also use declaration-order color indices.
+- [x] **Snapshot target reduced from ~50 to ~25 samples per run** — `defaultHistoryInterval`, benchmark run specs, and scenario sweep specs now all sample history at roughly 25 snapshots instead of 50, reducing worker/UI overhead and speeding up comparison runs.
 - [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.
 - [x] **Sweep panels now support preview and pending overlays** — comparison sweep charts render analytical-only preview panels before runs complete, keep pending variants visible during mid-sweep, and overlay solid simulation curves with dashed analytical references once results land.
 - [x] **Sweep breakthrough overlay grouping is now scenario-driven** — sweep sensitivity dimensions now declare whether BL/gas-BL breakthrough references stay `shared` or remain `per-result` after runs complete, so mobility-sensitive sweep scenarios keep their multiple analytical curves while intentionally shared heterogeneity ladders stay collapsed to one.
+- [x] **Completed PVI BL references no longer depend on runtime injection history** — `referenceComparisonModel.ts` now uses the pure analytical PVI path for completed BL / gas-oil BL overlays on the PVI axis, so sweep scenarios do not collapse analytical breakthrough curves to zero when runtime `total_injection` fields are missing or zero.
 - [x] **`previewBaseParams` coupling is fragile** — removed redundant `!previewVariantParams?.length` guard from App.svelte; model builder already handles variant→base precedence internally.
 - [ ] **Tests missing for `previewCases` and depletion per-variant** — add coverage for pure-preview mode, mid-sweep mode, depletion with `analyticalPerVariant=true`, and `colorIndex` offset correctness.
 

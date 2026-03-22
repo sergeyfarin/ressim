@@ -309,7 +309,7 @@ class SimulationStoreImpl {
         return undefined;
     });
 
-    defaultHistoryInterval = $derived(Math.max(1, Math.ceil(this.steps / 50)));
+    defaultHistoryInterval = $derived(Math.max(1, Math.ceil(this.steps / 25)));
 
     ooipM3 = $derived(
         this.nx * this.ny * this.nz * this.cellDx * this.cellDy * this.cellDz *
@@ -1793,7 +1793,7 @@ class SimulationStoreImpl {
                 params: variantParams,
                 steps: runSteps,
                 deltaTDays: runDeltaTDays,
-                historyInterval: Math.max(1, Math.ceil(runSteps / 50)),
+                historyInterval: Math.max(1, Math.ceil(runSteps / 25)),
                 reference: analyticalRef,
                 comparisonMetric: null,
                 breakthroughCriterion: null,
