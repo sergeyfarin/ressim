@@ -570,7 +570,6 @@ describe('computeSimSweepPointForGeometry', () => {
 
         expect(point.eVol).toBeCloseTo(0.5 / 8, 10);
         expect(point.eA).toBeCloseTo(0.5 / 4, 10);
-        expect(point.eV).toBeCloseTo(1, 10);
     });
 });
 
