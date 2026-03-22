@@ -1049,10 +1049,12 @@ describe('referenceComparisonModel', () => {
         const verticalPanel = model.sweepPanels.vertical;
         const verticalSimIndex = verticalPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-vertical-sim');
         const combinedPanel = model.sweepPanels.combined;
-        const combinedSimIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
+        const combinedSimIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
 
-        expect(verticalPanel!.series[verticalSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(verticalSimIndex).toBe(-1);
+        expect(verticalPanel!.curves.some((curve) => curve.curveKey === 'sweep-vertical-reference')).toBe(true);
         expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(combinedPanel!.curves[combinedSimIndex]?.label).toContain('Mobile Oil Recovered');
     });
 
     it('remaps completed sweep panels onto the selected time axis', () => {
@@ -1071,9 +1073,11 @@ describe('referenceComparisonModel', () => {
         const sweepRfPanel = model.sweepPanels.rf;
         const simRfIndex = sweepRfPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-rf-sim');
         const analyticalCombinedPanel = model.sweepPanels.combined;
+        const combinedSimIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
         const analyticalCombinedIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-reference');
 
         expect(sweepRfPanel!.series[simRfIndex]).toEqual(recoverySimSeries);
+        expect(combinedSimIndex).toBeGreaterThanOrEqual(0);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[0]?.x).toBe(0);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.at(-1)?.x).toBeCloseTo(recoverySimSeries.at(-1)?.x ?? NaN, 10);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[1]?.x).toBeGreaterThan(0);

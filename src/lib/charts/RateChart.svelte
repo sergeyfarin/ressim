@@ -63,11 +63,11 @@
         layerThickness?: number;
         showSweepPanel?: boolean;
         sweepGeometry?: SweepGeometry;
-        sweepEfficiencySimSeries?: Array<{ time: number; eA: number; eV: number; eVol: number }> | null;
+        sweepEfficiencySimSeries?: Array<{ time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null }> | null;
         sweepRFAnalytical?: import("../analytical/sweepEfficiency").SweepRFResult | null;
     } = $props();
 
-    type SimSweepSeries = Array<{ time: number; eA: number; eV: number; eVol: number }>;
+    type SimSweepSeries = Array<{ time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null }>;
 
     // --- X-axis state (shared across all panels) ---
     type XYPoint = { x: number; y: number | null };
@@ -1071,9 +1071,9 @@
     // PANEL ORDER (primary → diagnostic):
     //   1. Recovery Factor — RF_sim (solid) vs RF_sweep_analytical = E_vol×E_D_BL (dashed)
     //                        vs RF_1D_BL upper bound (light dashed). PRIMARY output.
-    //   2. Areal Sweep Efficiency (E_A) — sim (solid) vs analytical (dashed). DIAGNOSTIC.
-    //   3. Vertical Sweep Efficiency (E_V) — shown only when nz > 1.  DIAGNOSTIC.
-    //   4. Volumetric Sweep Efficiency (E_vol = E_A × E_V).  DIAGNOSTIC.
+    //   2. Areal Sweep Efficiency (E_A) — analytical-only for combined geometry; sim+analytical otherwise. DIAGNOSTIC.
+    //   3. Vertical Sweep Efficiency (E_V) — analytical-only for combined geometry; sim+analytical otherwise. DIAGNOSTIC.
+    //   4. Combined total panel — analytical E_vol, plus simulation mobile-oil-recovered for combined geometry. DIAGNOSTIC.
     //
     // Chart convention (all sweep panels):
     //   Solid         = simulation (IMPES result or derived from sat_water grid)
@@ -1114,17 +1114,18 @@
     // Map simulation sweep history entries onto PVI x-axis using rateHistory time series.
     function simSweepToXY(
         series: SimSweepSeries,
-        getter: (pt: SimSweepSeries[0]) => number,
+        getter: (pt: SimSweepSeries[0]) => number | null,
     ): Array<{ x: number; y: number | null }> {
         if (!series || series.length === 0) return [];
         const points = series.map((pt) => {
+            const yValue = getter(pt);
             if (pt.time <= 1e-12) {
-                return { x: getSweepZeroXAxisValue() ?? 0, y: getter(pt) };
+                return { x: getSweepZeroXAxisValue() ?? 0, y: Number.isFinite(yValue) ? Number(yValue) : null };
             }
             // Map simulation sweep history onto the currently selected x-axis.
             const tIdx = timeValues.findIndex((t) => t >= pt.time - 1e-9);
             const x = tIdx >= 0 ? (xValues[tIdx] ?? null) : (xValues.at(-1) ?? null);
-            return { x: x ?? 0, y: getter(pt) };
+            return { x: x ?? 0, y: Number.isFinite(yValue) ? Number(yValue) : null };
         });
         const deduped: Array<{ x: number; y: number | null }> = [];
         for (const point of points) {
@@ -1151,12 +1152,13 @@
         const analyticalXY = (ys: number[]) => pviValues.map((pvi, i) => ({ x: mapPviToActiveXAxis(pvi) ?? 0, y: ys[i] ?? null }));
 
         const hasSim = sweepEfficiencySimSeries != null && sweepEfficiencySimSeries.length > 0;
+        const hasComponentSim = hasSim && sweepGeometry !== 'both';
         const showAreal = visibility.showAreal;
         const showVertical = visibility.showVertical;
 
         // Areal panel
         const arealCurves: CurveConfig[] = showAreal ? [
-            ...(hasSim ? [{
+            ...(hasComponentSim ? [{
                 label: "E_A (Simulation)",
                 curveKey: "sweep-areal-sim",
                 toggleLabel: "E_A (Sim)",
@@ -1175,12 +1177,12 @@
             } as CurveConfig,
         ] : [];
         const arealSeries = showAreal ? [
-            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eA)] : []),
+            ...(hasComponentSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eA)] : []),
             analyticalXY(analytical.arealSweep.curve.map((p) => p.efficiency)),
         ] : [];
 
         const verticalCurves: CurveConfig[] = showVertical ? [
-            ...(hasSim ? [{
+            ...(hasComponentSim ? [{
                 label: "E_V (Simulation)",
                 curveKey: "sweep-vertical-sim",
                 toggleLabel: "E_V (Sim)",
@@ -1199,22 +1201,22 @@
             } as CurveConfig,
         ] : [];
         const verticalSeries = showVertical ? [
-            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eV)] : []),
+            ...(hasComponentSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eV)] : []),
             analyticalXY(analytical.verticalSweep.curve.map((p) => p.efficiency)),
         ] : [];
 
         // Volumetric panel
         const volCurves: CurveConfig[] = [
             ...(hasSim ? [{
-                label: "E_vol (Simulation)",
-                curveKey: "sweep-vol-sim",
-                toggleLabel: "E_vol (Sim)",
+                label: sweepGeometry === 'both' ? "Mobile Oil Recovered (Simulation)" : "E_vol (Simulation)",
+                curveKey: sweepGeometry === 'both' ? "sweep-vol-mobile-oil-sim" : "sweep-vol-sim",
+                toggleLabel: sweepGeometry === 'both' ? "Mobile Oil Recovered (Sim)" : "E_vol (Sim)",
                 color: "#dc2626",
                 borderWidth: 2.4,
                 yAxisID: "y",
             } as CurveConfig] : []),
             {
-                label: "E_vol (Analytical)",
+                label: "E_vol (Analytical Sweep)",
                 curveKey: "sweep-vol-analytical",
                 toggleLabel: "E_vol (Analytical)",
                 color: "#dc2626",
@@ -1224,7 +1226,7 @@
             } as CurveConfig,
         ];
         const volSeries = [
-            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eVol)] : []),
+            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => sweepGeometry === 'both' ? p.mobileOilRecovered : p.eVol)] : []),
             analyticalXY(analytical.combined.map((p) => p.efficiency)),
         ];
 
@@ -1525,7 +1527,7 @@
         {/if}
         <ChartSubPanel
             panelId="sweep-vol"
-            title="Volumetric Sweep Efficiency (E_vol)"
+            title="Analytical E_vol vs Simulation Mobile Oil Recovered"
             bind:expanded={sweepVolExpanded}
             curves={sweepPanels.volCurves}
             seriesData={sweepPanels.volSeries}

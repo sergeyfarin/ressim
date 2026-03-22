@@ -76,6 +76,13 @@ export type SimSweepPoint = {
     eVol: number;
 };
 
+export type SimSweepDiagnostics = {
+    eA: number | null;
+    eV: number | null;
+    eVol: number;
+    mobileOilRecovered: number | null;
+};
+
 type SimSweepGeometryContext = {
     geometry: SweepGeometry;
     injectorI?: number;
@@ -252,6 +259,67 @@ export function computeSimSweepPointForGeometry(
         };
     }
     return normalizeSimSweepPointForGeometry(raw, context.geometry);
+}
+
+export function computeMobileOilRecoveredFraction(
+    satOil: Float64Array | number[] | null | undefined,
+    nx: number,
+    ny: number,
+    nz: number,
+    initialOilSaturation: number,
+    residualOilSaturation: number,
+): number {
+    const totalCells = nx * ny * nz;
+    if (!satOil || satOil.length === 0 || totalCells <= 0) return 0;
+
+    const initialMobileOilPerCell = Math.max(0, initialOilSaturation - residualOilSaturation);
+    const initialMobileOil = totalCells * initialMobileOilPerCell;
+    if (initialMobileOil <= 1e-12) return 0;
+
+    let remainingMobileOil = 0;
+    for (let index = 0; index < Math.min(totalCells, satOil.length); index += 1) {
+        remainingMobileOil += Math.max(0, Number(satOil[index]) - residualOilSaturation);
+    }
+
+    return clamp01(1 - remainingMobileOil / initialMobileOil);
+}
+
+export function computeSimSweepDiagnosticsForGeometry(
+    satWater: Float64Array | number[],
+    satOil: Float64Array | number[] | null | undefined,
+    nx: number,
+    ny: number,
+    nz: number,
+    sweptThreshold: number,
+    context: SimSweepGeometryContext,
+    initialOilSaturation: number,
+    residualOilSaturation: number,
+): SimSweepDiagnostics {
+    const raw = computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold);
+
+    if (context.geometry === 'both') {
+        return {
+            eA: null,
+            eV: null,
+            eVol: raw.eVol,
+            mobileOilRecovered: computeMobileOilRecoveredFraction(
+                satOil,
+                nx,
+                ny,
+                nz,
+                initialOilSaturation,
+                residualOilSaturation,
+            ),
+        };
+    }
+
+    const point = computeSimSweepPointForGeometry(satWater, nx, ny, nz, sweptThreshold, context);
+    return {
+        eA: point.eA,
+        eV: point.eV,
+        eVol: point.eVol,
+        mobileOilRecovered: null,
+    };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

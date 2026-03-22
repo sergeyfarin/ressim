@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepPointForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -912,6 +912,7 @@ function buildSimulationSweepSeries(
     combined: XYPoint[];
     showAreal: boolean;
     showVertical: boolean;
+    combinedSimulationMetric: 'evol' | 'mobile-oil-recovered';
 } {
     const nx = Math.max(1, Math.floor(toFiniteNumber(result.params.nx, 1)));
     const ny = Math.max(1, Math.floor(toFiniteNumber(result.params.ny, 1)));
@@ -930,9 +931,12 @@ function buildSimulationSweepSeries(
         }
     }
 
-    const areal: XYPoint[] = [{ x: 0, y: 0 }];
-    const vertical: XYPoint[] = [{ x: 0, y: 0 }];
+    const areal: XYPoint[] = geometry === 'both' ? [] : [{ x: 0, y: 0 }];
+    const vertical: XYPoint[] = geometry === 'both' ? [] : [{ x: 0, y: 0 }];
     const combined: XYPoint[] = [{ x: 0, y: 0 }];
+    const combinedSimulationMetric = geometry === 'both' ? 'mobile-oil-recovered' as const : 'evol' as const;
+    const initialOilSaturation = Math.max(0, 1 - initialSw);
+    const residualOilSaturation = toFiniteNumber(result.params.s_or, rock.s_or);
 
     snapshots.forEach((snapshot) => {
         const pvi = mapSweepTimeToPvi(result, Number(snapshot.time));
@@ -940,8 +944,9 @@ function buildSimulationSweepSeries(
         const selectedXAxis = mapPviSeriesToXAxis([pvi], derived, xAxisMode, tau)[0];
         if (!Number.isFinite(selectedXAxis)) return;
         const satWater = snapshot.grid?.sat_water;
+        const satOil = snapshot.grid?.sat_oil;
         if (!satWater || satWater.length === 0) return;
-        const sweep = computeSimSweepPointForGeometry(satWater, nx, ny, nz, sweptThreshold, {
+        const sweep = computeSimSweepDiagnosticsForGeometry(satWater, satOil, nx, ny, nz, sweptThreshold, {
             geometry,
             injectorI: toFiniteNumber(result.params.injectorI, 0),
             injectorJ: toFiniteNumber(result.params.injectorJ, 0),
@@ -949,10 +954,17 @@ function buildSimulationSweepSeries(
             producerJ: toFiniteNumber(result.params.producerJ, Math.max(0, ny - 1)),
             cellDx: toFiniteNumber(result.params.cellDx, 1),
             cellDy: toFiniteNumber(result.params.cellDy, 1),
+        }, initialOilSaturation, residualOilSaturation);
+        if (sweep.eA != null) {
+            areal.push({ x: Number(selectedXAxis), y: sweep.eA });
+        }
+        if (sweep.eV != null) {
+            vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
+        }
+        combined.push({
+            x: Number(selectedXAxis),
+            y: geometry === 'both' ? sweep.mobileOilRecovered : sweep.eVol,
         });
-        areal.push({ x: Number(selectedXAxis), y: sweep.eA });
-        vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
-        combined.push({ x: Number(selectedXAxis), y: sweep.eVol });
     });
 
     const sweepRfXValues = mapPviSeriesToXAxis(result.pviSeries, derived, xAxisMode, tau);
@@ -964,6 +976,7 @@ function buildSimulationSweepSeries(
         combined: dedupeSweepSeries(combined),
         showAreal: visibility.showAreal,
         showVertical: visibility.showVertical,
+        combinedSimulationMetric,
     };
 }
 
@@ -1151,8 +1164,12 @@ function appendSimulationSweepCurves(
 
     if (simulation.combined.length > 0) {
         panels.combined.curves.push({
-            label: `${result.label} E_vol`,
-            curveKey: 'sweep-combined-sim',
+            label: simulation.combinedSimulationMetric === 'mobile-oil-recovered'
+                ? `${result.label} Mobile Oil Recovered`
+                : `${result.label} E_vol`,
+            curveKey: simulation.combinedSimulationMetric === 'mobile-oil-recovered'
+                ? 'sweep-combined-mobile-oil-sim'
+                : 'sweep-combined-sim',
             caseKey: result.key,
             toggleGroupKey: result.key,
             toggleLabel: caseLabel,

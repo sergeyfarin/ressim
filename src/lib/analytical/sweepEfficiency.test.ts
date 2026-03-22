@@ -11,7 +11,9 @@ import {
     computeVerticalSweep,
     computeCombinedSweep,
     computeSweepRecoveryFactor,
+    computeSimSweepDiagnosticsForGeometry,
     computeSimSweepPointForGeometry,
+    computeMobileOilRecoveredFraction,
     normalizeSimSweepPointForGeometry,
     type SweepPoint,
 } from './sweepEfficiency';
@@ -508,6 +510,55 @@ describe('computeSimSweepPointForGeometry', () => {
         expect(point.eA).toBeCloseTo(1, 10);
         expect(point.eVol).toBeCloseTo(1, 10);
         expect(point.eV).toBeCloseTo(1, 10);
+    });
+});
+
+describe('computeMobileOilRecoveredFraction', () => {
+    it('returns zero at the initial oil saturation state', () => {
+        const satOil = new Float64Array(8).fill(0.8);
+        expect(computeMobileOilRecoveredFraction(satOil, 2, 2, 2, 0.8, 0.1)).toBeCloseTo(0, 10);
+    });
+
+    it('returns unity when all oil is reduced to residual saturation', () => {
+        const satOil = new Float64Array(8).fill(0.1);
+        expect(computeMobileOilRecoveredFraction(satOil, 2, 2, 2, 0.8, 0.1)).toBeCloseTo(1, 10);
+    });
+});
+
+describe('computeSimSweepDiagnosticsForGeometry', () => {
+    it('hides combined simulation E_A and E_V while exposing mobile-oil recovered', () => {
+        const nx = 2;
+        const ny = 2;
+        const nz = 2;
+        const satWater = new Float64Array(nx * ny * nz).fill(0.1);
+        const satOil = new Float64Array(nx * ny * nz).fill(0.8);
+        satWater[0] = 0.4;
+        satOil[0] = 0.5;
+
+        const point = computeSimSweepDiagnosticsForGeometry(
+            satWater,
+            satOil,
+            nx,
+            ny,
+            nz,
+            0.2,
+            {
+                geometry: 'both',
+                injectorI: 0,
+                injectorJ: 0,
+                producerI: 1,
+                producerJ: 1,
+                cellDx: 20,
+                cellDy: 20,
+            },
+            0.8,
+            0.1,
+        );
+
+        expect(point.eA).toBeNull();
+        expect(point.eV).toBeNull();
+        expect(point.eVol).toBeCloseTo(0.125, 10);
+        expect(point.mobileOilRecovered).toBeGreaterThan(0);
     });
 });
 

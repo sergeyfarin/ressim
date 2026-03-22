@@ -740,7 +740,7 @@
     {#if family?.showSweepPanel && sweepCombinedCurves.length > 0}
         <ChartSubPanel
             panelId="comparison-sweep-combined"
-            title="Volumetric Sweep Efficiency"
+            title="Analytical E_vol vs Simulation Mobile Oil Recovered"
             bind:expanded={sweepCombinedExpanded}
             curves={sweepCombinedCurves}
             seriesData={sweepCombinedSeries}

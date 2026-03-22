@@ -8,7 +8,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepPointForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -46,17 +46,18 @@
 
     // Simulation sweep efficiency time series — computed from per-cell saturation snapshots.
     // Only populated for sweep-domain scenarios; null otherwise.
-    type SimSweepPoint = { time: number; eA: number; eV: number; eVol: number };
+    type SimSweepPoint = { time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null };
     const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
         if (!showSweepPanel || runtime.history.length === 0) return null;
         if (!outputProfileRockProps || !outputProfileFluidProps) return null;
         const { nx, ny, nz, initialSaturation } = params;
         const sweptThreshold = computeSweptThreshold(outputProfileRockProps, outputProfileFluidProps, initialSaturation);
-        const result: SimSweepPoint[] = [{ time: 0, eA: 0, eV: 0, eVol: 0 }];
+        const result: SimSweepPoint[] = [{ time: 0, eA: sweepGeometry === 'both' ? null : 0, eV: sweepGeometry === 'both' ? null : 0, eVol: 0, mobileOilRecovered: sweepGeometry === 'both' ? 0 : null }];
         for (const entry of runtime.history) {
             const sw = entry.grid?.sat_water;
+            const so = entry.grid?.sat_oil;
             if (!sw || sw.length !== nx * ny * nz) continue;
-            const { eA, eV, eVol } = computeSimSweepPointForGeometry(sw, nx, ny, nz, sweptThreshold, {
+            const { eA, eV, eVol, mobileOilRecovered } = computeSimSweepDiagnosticsForGeometry(sw, so, nx, ny, nz, sweptThreshold, {
                 geometry: sweepGeometry,
                 injectorI: params.injectorI,
                 injectorJ: params.injectorJ,
@@ -64,8 +65,8 @@
                 producerJ: params.producerJ,
                 cellDx: params.cellDx,
                 cellDy: params.cellDy,
-            });
-            result.push({ time: entry.time, eA, eV, eVol });
+            }, Math.max(0, 1 - initialSaturation), params.s_or);
+            result.push({ time: entry.time, eA, eV, eVol, mobileOilRecovered });
         }
         return result.length > 0 ? result : null;
     });
