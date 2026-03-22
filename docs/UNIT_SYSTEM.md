@@ -66,8 +66,9 @@ FluidProperties {
 - **Oil compressibility:** 5e-6 to 1e-4 1/bar
 - **Water compressibility:** 3e-6 to 5e-6 1/bar
 
-Current simplification note:
-- ResSim currently treats phase viscosity, density, and formation-volume factors as constant for the active run. There is no pressure-dependent PVT table lookup in the present model.
+Current PVT note:
+- Constant-PVT input remains the default for many teaching scenarios.
+- Black-oil PVT mode is also available: pressure-dependent `B_o`, `B_g`, `R_s`, `mu_o`, and `mu_g` can be generated from correlations or supplied through tabular input.
 
 ## Rock and Fluid Properties (Default Values)
 
@@ -250,6 +251,7 @@ If converting between systems:
 
 4. **Material balance:** While the IMPES method is not strictly conservative (due to splitting), material balance errors are typically small for small time steps and reasonable mobility ratios.
 
-5. **Three-phase diagnostics:** current material-balance reporting is still water-phase-centric; do not interpret it as a full per-phase closure check.
+5. **Three-phase diagnostics:** water and gas cumulative material-balance errors are reported explicitly. Oil remains the residual phase in current diagnostics, so this is not yet a full per-phase closure check.
+6. **Black-oil solver safeguard:** below bubble point, the simulator can fall back to the base positive `c_o` in the pressure accumulation path to avoid destabilizing the IMPES pressure solve when saturated `B_o(P)` slope would otherwise imply a negative compressibility contribution.
 
 6. **Default grid:** the constructor starts from 10 m × 10 m × 1 m cells and 100 mD / 100 mD / 10 mD permeability until scenario parameters overwrite them.

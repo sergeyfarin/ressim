@@ -1,216 +1,129 @@
-# Frontend Architecture — Working Document
+# ResSim Roadmap
 
-> Track active architecture work and design decisions. Delete sections when complete and docs are refreshed.
+This roadmap is future-facing. Completed work has been moved out of `TODO.md` into `docs/DELIVERED_WORK_2026_Q1.md` so the active plan stays readable.
 
----
+## Prioritization Principles
 
-## Completed Work
+The ordering below follows standard reservoir-engineering practice and the literature already referenced in the project.
 
-### Phase 1 — Case-Library Simplification ✅
+1. Validate before expanding. Comparative-solution and benchmark evidence should lead black-oil and three-phase growth.
+2. Keep analytical methods honest about assumptions. Buckley-Leverett, Craig, Dykstra-Parsons, Stiles, Dietz, Fetkovich, Arps, and Havlena-Odeh all have narrow validity ranges.
+3. Reduce architectural duplication before adding new UI surfaces. The remaining benchmark layer and output-selection plumbing are still more expensive than they should be.
+4. Add new physics only after the existing interpretation and diagnostics are trustworthy.
 
-Replaced 4-layer "case library + editability policies" navigation with **pick scenario → optionally pick sensitivity → run** flow. `scenarios.ts` + `ScenarioPicker.svelte` are now the primary scenario surface (~150 lines vs 451 for old `ModePanel.svelte`).
+## Priority 1: Scientific Validation And Closure
 
-**Step 7 partial:** 8 legacy catalog files still have active production imports and cannot yet be deleted. See TODO.md Phase 1C.
+### 1.1 Black-oil validation
 
-### Phase 2 — Scenario/Sensitivity Architecture Redesign (S1) ✅
+- Add SPE-style comparative-solution coverage for black-oil cases before extending into more gas-cap and compositional features.
+- Add grid-convergence checks for pressure, Rs, Bo, and liberated-gas behavior in volatile-oil style depletion.
+- Document current black-oil solver safeguards in user-facing physics notes, especially the saturated-region `c_o` fallback used to keep the IMPES pressure solve stable.
 
-Consolidated 18 scenarios → 8 canonical scenarios with `sensitivities: SensitivityDimension[]` (multi-dimension per scenario). 28/28 tests pass. See TODO.md Completed section for details.
+Why first:
+- In the reservoir-simulation literature, black-oil extensions are only meaningful when the pressure equation, PVT coupling, and material-balance behavior are benchmarked against accepted reference problems.
 
----
+### 1.2 Three-phase validation
 
-## Active Architecture: Custom Mode Redesign
+- Define the bar for leaving `experimental` status.
+- Add gas-injection and gas-drive acceptance tests that check breakthrough timing, gas saturation evolution, and phase-closure diagnostics.
+- Clarify what is and is not reported in current material-balance diagnostics: water and gas are explicit, oil is residual.
 
-### Problem Statement
+Why first:
+- The code now contains more three-phase capability than the docs claim, but validation still lags implementation.
 
-Custom mode currently dumps 50+ raw parameter inputs (Geometry, Reservoir, Wells, Timestep, Analytical, SCAL, Gas) with no relationship to predefined scenarios. After S1 (8 canonical scenarios × multiple sensitivity dimensions), custom mode reads as legacy, not intentional.
+### 1.3 Regression coverage gaps
 
-Key issues:
-- **No provenance**: entering custom mode loses the active scenario context
-- **No clone-and-edit**: users can't start from a scenario and tweak individual params
-- **Mixed systems**: custom mode still routes through old `CaseMode` enum (`'wf'`, `'dep'`, `'sim'`) and toggle-based case library, not the new scenario system
-- **No persistence**: custom configurations are ephemeral; no save/load
-- **No guidance**: no quick-picks for common reservoir types, no validation warnings
+- Add missing comparison-model tests for preview-only cases, per-variant depletion analytics, and color-index stability.
+- Add a regression guard for the duplicated undersaturated `c_o = 1e-5 /bar` assumption shared by `physics/pvt.ts` and `analytical/materialBalance.ts`.
 
-### Design Direction
+## Priority 2: Analytical Method Integrity
 
-**Per-scenario customisation (preferred over full custom mode):**
+### 2.1 Enforce one analytical method per scenario
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Scenario: 1D Waterflood (Buckley-Leverett)             │
-│  Vary: [Mobility ●] [Corey n_o] [S_or] [Cap] [Grid]   │
-│                                                          │
-│  ┌─ Overrides ────────────────────────────────────────┐ │
-│  │  μ_o: 1.0 → [2.5] cp  (modified)     [Reset ↺]   │ │
-│  │  n_w: 2.0 → [3.0]     (modified)     [Reset ↺]   │ │
-│  │  + Add parameter override...                       │ │
-│  └────────────────────────────────────────────────────┘ │
-│                                                          │
-│  Analytical: Buckley-Leverett (updates with overrides)  │
-│  [Run]  [Reset All Overrides]                           │
-└─────────────────────────────────────────────────────────┘
-```
+- Promote sweep to a first-class analytical family in scenario capabilities instead of partially piggybacking on Buckley-Leverett semantics.
+- Make invalid primary-rate and overlay combinations impossible at the type / config level, not just test-detected.
+- Route benchmark disclosure and comparison metadata through the same analytical-method contract.
 
-- User stays within a scenario; overrides are tracked and resettable individually
-- Analytical solution updates live as params change (if `affectsAnalytical`)
-- No need to "switch modes" — customisation is a layer on top of the scenario
-- Full custom mode remains as escape hatch for configurations that don't fit any scenario
+Why next:
+- This removes a class of ambiguous chart and policy behavior before more analytical methods are added.
 
-**Full custom mode (power-user):**
+### 2.2 Finish the sweep-method framework
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Custom Configuration                                    │
-│  Based on: 1D Waterflood — Mobility Ratio (cloned)      │
-│                                                          │
-│  ▸ Rock Properties          (3 fields modified)          │
-│  ▸ Fluid PVT                (1 field modified)           │
-│  ▾ Wells                                                 │
-│    │  well_radius: [0.1] m   well_skin: [0]              │
-│    │  Injector BHP: [250] bar                            │
-│    │  Producer BHP: [100] bar                            │
-│  ▸ Grid & Timestep                                       │
-│  ▸ Relative Permeability                                 │
-│  ▸ Gas / 3-Phase             (hidden for 2-phase)        │
-│                                                          │
-│  [Save Configuration ▾]  [Load ▾]  [Export JSON]         │
-└─────────────────────────────────────────────────────────┘
-```
+- Generalize the current `sweep_combined` Stiles / Dykstra-Parsons toggle so other sweep scenarios can opt into multiple analytical methods without custom wiring.
+- Keep the semantics explicit: total recovery comparison can improve while decomposition panels remain teaching diagnostics.
+- Document the `sweep_areal` quarter-five-spot interpretation so users do not mistake the outer no-flow boundaries for a gridding bug.
 
-- Always clones from a scenario (provenance shown)
-- Domain-aware collapsible groups (not flat 50-field form)
-- Modification indicators per section
-- Save/load/export capabilities
+Why next:
+- Stiles is the right direction for layered floods, but the current implementation is still scenario-specific rather than framework-level.
 
-### Implementation Notes
+## Priority 3: Scenario And Benchmark Architecture Consolidation
 
-- `SimulationStore` needs per-field override tracking: `Map<string, { base: unknown, override: unknown }>`
-- Scenario stays active when overrides are applied; only enters full custom mode if user explicitly requests
-- `getScenarioWithVariantParams()` should accept optional overrides map
-- UI: `ScenarioPicker` shows override indicator badge when active scenario has overrides
-- Analytical adapters should re-evaluate when overrides affect analytical inputs
+### 3.1 Remove the remaining split brain
 
----
+- Collapse the remaining legacy benchmark layer into the scenario system where practical.
+- Reduce dependence on `benchmarkCases.ts`, `caseCatalog.ts`, `ReferenceExecutionCard`, and the older benchmark-family adapters.
+- Move shared run/result types into a clearer reference-run model owned by the scenario architecture.
 
-## Active Architecture: Analytical Adapter Contracts
+### 3.2 Extract the output-selection view model
 
-### Problem
+- Pull the active output payload selection out of `App.svelte` so charts, 3D view, and analytical helpers consume the same typed result.
+- Use that refactor to simplify comparison-state wiring and reduce chart duplication.
 
-The Dietz well-location sensitivity bug pattern: scenario metadata claims `affectsAnalytical: true` (or should), but the analytical builder doesn't actually consume the relevant parameter. No automated check catches this.
+Why this block matters:
+- The largest remaining maintenance cost in the UI is architectural overlap, not missing widgets.
 
-### Design
+## Priority 4: Product Workflow And Data Portability
 
-```typescript
-// Per analytical family, define consumed inputs:
-type AnalyticalContract = {
-    scenarioClass: string;              // 'waterflood' | 'depletion' | 'sweep'
-    consumedParams: string[];           // params that change analytical output
-    builder: (params: Record<string, unknown>) => AnalyticalResult;
-};
+### 4.1 Per-scenario overrides
 
-// Contract test:
-// For each scenario with sensitivities:
-//   For each dimension with affectsAnalytical: true:
-//     For each variant:
-//       Assert: builder(base + patch) !== builder(base)
-//       i.e., the analytical output actually changes
-```
+- Introduce scenario-preserving parameter overrides instead of forcing users into an all-or-nothing custom mode.
+- Track per-field provenance and reset behavior.
 
-This prevents silent decoupling between metadata and implementation.
+### 4.2 Multi-case inspection
 
----
+- Add multi-case 3D inspection and synchronized case selection across charts, summaries, and spatial views.
+- Restore or explicitly retire the dormant saturation-profile path as part of the same output review.
 
-## Active Architecture: Black-Oil PVT Extension
+### 4.3 Export and persistence
 
-### Current State
+- Add JSON export/import for scenarios and custom studies.
+- Add CSV/JSON result export for sensitivity runs and benchmark summaries.
 
-All fluid properties are constant scalars in `FluidProperties` (Rust struct):
-- `mu_o`, `mu_w`, `mu_g` — viscosities (cP)
-- `rho_o`, `rho_w`, `rho_g` — densities (kg/m³)
-- `c_o`, `c_w`, `c_g` — compressibilities (1/bar)
+Why after architecture cleanup:
+- Persistence and comparison UX are much easier to implement once the output-selection model is unified.
 
-No pressure dependence, no dissolved gas, no formation volume factors.
+## Priority 5: Physics Extensions After Validation
 
-### Target State (Phase 4)
+### 5.1 Gas-cap and depletion extensions
 
-```rust
-enum PvtModel {
-    Constant(ConstantPvt),          // Current behavior
-    BlackOil(BlackOilPvt),          // New: pressure-dependent
-}
+- Primary gas-cap scenario with gas-cap ratio `m` and material-balance framing.
+- Gas-cap expansion and secondary gas-cap interpretation tied to the existing black-oil machinery.
+- Gas-cap blowdown with p/z style diagnostics.
 
-struct BlackOilPvt {
-    bubble_point: f64,              // P_b (bar)
-    // Correlation-based (Standing, Vazquez-Beggs, etc.)
-    api_gravity: f64,
-    gas_specific_gravity: f64,
-    temperature: f64,               // reservoir temperature (°C)
-    // Or tabular:
-    pvt_table: Option<PvtTable>,    // user-supplied Bo, Rs, μ vs P
-}
+### 5.2 Vertical and areal sweep upgrades
 
-struct PvtTable {
-    pressure: Vec<f64>,
-    bo: Vec<f64>,                   // oil FVF
-    rs: Vec<f64>,                   // solution GOR
-    mu_o: Vec<f64>,                 // oil viscosity
-    bg: Vec<f64>,                   // gas FVF
-    mu_g: Vec<f64>,                 // gas viscosity
-}
-```
+- Kv/Kh-aware Warren-Root style blending between Dykstra-Parsons and perfect communication.
+- Additional well-pattern correlations only after current sweep semantics are clean.
 
-### Impact on Simulator
+### 5.3 Longer-range reservoir-model features
 
-1. **Accumulation term**: `(V_p / dt) × [∂(S_o/Bo)/∂P + ∂(S_g/Bg)/∂P + ∂(S_w/Bw)/∂P] × ΔP`
-2. **Transmissibility**: mobility uses `μ(P)` from PVT lookup
-3. **Phase volumes**: `V_o = V_p × S_o / Bo(P)`, `V_g = V_p × S_g / Bg(P)`
-4. **Gas liberation**: when `P < P_b`, compute `Rs(P)` and increase `S_g` by liberated gas volume
-5. **Well model**: GOR at producer = `Rs(P_well) + (k_rg/μ_g) / (k_ro/μ_o) × (Bg/Bo)`
+- Aquifer models.
+- Well schedules.
+- Non-uniform grids and local refinement.
+- Horizontal or deviated wells.
 
-### Migration Strategy
+Why later:
+- These features add breadth, but they should come after the simulator's current black-oil, gas, and analytical foundations are better validated.
 
-- Keep `PvtModel::Constant` as default — zero regression risk for existing scenarios
-- `BlackOilPvt` activated only when user sets `bubble_point > 0` or selects a volatile-oil scenario
-- All existing tests continue to use constant PVT
-- New test suite for black-oil: SPE1 and SPE3 comparative solutions
+## References Behind The Ordering
 
----
+The roadmap direction is consistent with the classic references already used by the project and standard simulator-development practice:
 
-## Canonical Scenario Map (Current: 8 Scenarios)
+- Buckley and Leverett, Welge: use analytical flood theory only where assumptions remain explicit.
+- Craig; Dykstra and Parsons; Stiles: sweep methods are pattern- and communication-dependent, so method selection must stay explicit.
+- Dietz; Fetkovich; Arps; Havlena and Odeh: depletion diagnostics are useful only when geometry, PVT, and drive assumptions are clear.
+- SPE comparative-solution practice: benchmark the physics before claiming maturity for a simulator mode.
 
-| Domain | Key | Sensitivity Dimensions | Analytical |
-|--------|-----|------------------------|------------|
-| Waterflood | `wf_bl1d` | Mobility, Corey n_o, S_or, Capillary, Grid | Buckley-Leverett |
-| Sweep | `sweep_areal` | Mobility, Areal heterogeneity, S_or | Craig (1971) |
-| Sweep | `sweep_vertical` | V_DP heterogeneity, Mobility | Dykstra-Parsons (1950) |
-| Sweep | `sweep_combined` | Combined mobility × heterogeneity | Craig × DP × BL |
-| Depletion | `dep_pss` | Well location, Skin, Permeability, Compressibility | Dietz (1965) |
-| Depletion | `dep_decline` | Skin, Permeability | Fetkovich exponential |
-| Gas | `gas_injection` | *None yet* | *Planned: gas-oil BL* |
-| Gas | `gas_drive` | *None yet* | *Planned: immiscible gas depletion* |
+## Delivered Work
 
-### Planned Additions (Phase 4)
-
-| Domain | Key | Description | Analytical |
-|--------|-----|-------------|------------|
-| Volatile Oil | `vo_depletion` | Undersaturated oil depletion below P_b | Arps hyperbolic + MB |
-| Gas Cap | `gc_expansion` | Primary gas cap over oil column | Schilthuis MB |
-| Gas Cap | `gc_secondary` | Secondary gas cap from solution gas | MB-predicted gas liberation |
-| Gas | `gas_depletion` | Dry gas volumetric depletion | p/z analysis |
-
----
-
-## Store State Summary
-
-```typescript
-// Scenario state (S1, complete):
-activeScenarioKey: string | null;
-activeSensitivityDimensionKey: string | null;
-activeVariantKeys: string[];
-isCustomMode: boolean;
-
-// Planned additions (custom mode redesign):
-parameterOverrides: Map<string, unknown>;     // per-field overrides within active scenario
-customConfigName: string | null;               // name for save/load
-customConfigProvenance: string | null;         // scenario key this was cloned from
-```
+Recent delivered work lives in `docs/DELIVERED_WORK_2026_Q1.md`.

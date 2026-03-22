@@ -1,12 +1,14 @@
 # Implementation Review — 2026-03-19
 
-This review records verified gaps between the current scientific implementation, the UI metadata, and the active documentation. It is intended to feed `TODO.md`, `REFACTOR.md`, and user-facing docs.
+Historical review snapshot. Several findings recorded here have since been addressed and moved into delivered work, roadmap items, or updated docs.
+
+This review records verified gaps between the scientific implementation, the UI metadata, and the documentation state as of 2026-03-19. Use it as historical context, not as the current source of truth.
 
 ## Scope
 
 - Analytical helpers: Buckley-Leverett, sweep-efficiency, depletion
 - Rust physics notes that materially affect model interpretation
-- User-facing docs: `README.md`, `TODO.md`, `REFACTOR.md`, `docs/*`
+- User-facing docs at the time: `README.md`, `TODO.md`, and `docs/*`
 
 ## Verified Findings
 

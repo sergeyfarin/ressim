@@ -1,7 +1,7 @@
 # Frontend UI Audit
 
 Date: 2026-03-07
-Status: current frontend/product audit for workflow, consistency, and usability
+Status: historical product audit snapshot. Useful for background, but superseded by the current roadmap, TODO, and architecture notes.
 
 ## Scope
 

@@ -1,7 +1,7 @@
 # Benchmark Workflow Guide
 
-Date: 2026-03-07; updated 2026-03-17
-Status: **Reference guidance, sensitivity policy, and chart defaults remain current.** The "Source of truth" and "Execution workflow" sections below reference pre-simplification architecture (old `caseCatalog.ts` / `ModePanel.svelte` model) and will be rewritten after REFACTOR.md step 7 completes.
+Date: 2026-03-07; refreshed 2026-03-22
+Status: current for benchmark semantics, workflow, and chart behavior. Legacy benchmark-family files still exist, but the user-facing workflow is now scenario-first.
 
 This page describes the benchmark system that the current frontend code and regression suite enforce. Use it together with `docs/P4_TWO_PHASE_BENCHMARKS.md`:
 
@@ -10,17 +10,16 @@ This page describes the benchmark system that the current frontend code and regr
 
 ## Source of truth
 
-> **Note (2026-03-17):** The files listed below are being replaced by `src/lib/catalog/scenarios.ts` (scenario definitions + sensitivity variants) and `src/lib/ui/modes/ScenarioPicker.svelte` (selection UI). This section will be rewritten when REFACTOR.md step 7 completes. The physics, reference-guidance, sensitivity-policy, and chart-defaults sections above and below remain current.
+The current benchmark system is split across the scenario layer and a smaller legacy benchmark-family layer.
 
-The benchmark system is intentionally split by responsibility, with one logical owner for each concern:
-
-- benchmark family definitions and generated variants live in `src/lib/catalog/benchmarkCases.ts`
-- benchmark selector wiring and catalog exports live in `src/lib/catalog/caseCatalog.ts`
-- normalized benchmark run specs and stored results live in `src/lib/benchmarkRunModel.ts`
+- canonical scenarios and scenario-owned sensitivity definitions live in `src/lib/catalog/scenarios.ts`
+- legacy Rust-parity benchmark families still live in `src/lib/catalog/benchmarkCases.ts`
+- normalized reference-run specs and stored results live in `src/lib/benchmarkRunModel.ts`
 - benchmark-specific chart defaults live in `src/lib/charts/referenceChartConfig.ts`
 - benchmark comparison overlays live in `src/lib/charts/referenceComparisonModel.ts` and `src/lib/charts/ReferenceComparisonChart.svelte`
-- family-owned benchmark/reference workflow UI lives in `src/lib/ui/modes/ModePanel.svelte` and `src/App.svelte`
-- benchmark execution dispatch lives in `src/lib/stores/simulationStore.svelte.ts` through `runActiveReferenceSelection()`
+- scenario-first selection UI lives in `src/lib/ui/modes/ScenarioPicker.svelte`
+- benchmark-family execution UI still uses `src/lib/ui/cards/ReferenceExecutionCard.svelte`
+- execution dispatch lives in `src/lib/stores/simulationStore.svelte.ts`
 
 There is no generated benchmark artifact pipeline. Benchmarks execute directly in browser-side WASM, and the authoritative validation evidence remains the Rust and frontend regression suites.
 
@@ -60,16 +59,16 @@ Important interpretation rule:
 
 ## Execution workflow in the UI
 
-Benchmark/reference workflows now live inside the owning product families rather than in a separate top-level benchmark destination.
+Benchmark and reference workflows now sit inside the scenario-first product flow rather than behind a separate benchmark destination.
 
 The current workflow is:
 
-1. Select the owning family in `Inputs`, then choose a benchmark/reference case from `Case Library`.
-2. In the `Run` region's `Run Set`, choose either `Base case` or one sensitivity axis.
-3. If an axis is selected, keep all variants checked or reduce the run to an explicit subset within that axis.
-4. Run the selection through one button (`Run Base` or the axis-specific variant count label).
-5. Review stored benchmark/reference results scoped to the active family in `Outputs`.
-6. Optionally press `Customize` to seed the same family into editable custom state.
+1. Select a canonical scenario in `ScenarioPicker`.
+2. Choose either the base run or a sensitivity dimension owned by that scenario.
+3. Keep all default variants selected or reduce the run to an explicit subset.
+4. Run the current selection from the shared run controls.
+5. Review stored results in the comparison outputs.
+6. For legacy Rust-parity benchmark families that still use benchmark-family cards, use `ReferenceExecutionCard` from the same overall flow rather than a separate benchmark mode.
 
 Current workflow constraints:
 

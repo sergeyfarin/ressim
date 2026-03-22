@@ -1,42 +1,42 @@
 # Documentation Index
 
-Use this file to decide which documents describe the current repository state.
+Use this file to decide which documents are authoritative, which are active working notes, and which are historical snapshots.
 
 ## Authoritative References
 
 | Document | Use it for |
 |----------|------------|
-| `README.md` | Product overview, quick start, project layout, feature summary, physics status |
-| `TODO.md` | Phased roadmap: Phase 1 (consolidate & fix) → Phase 4 (black-oil PVT) → Phase 7 (extended physics) |
-| `REFACTOR.md` | Architecture working document — custom mode redesign, analytical adapter contracts, black-oil PVT extension design |
-| `docs/BENCHMARK_MODE_GUIDE.md` | Benchmark scenario reference guidance, sensitivity policy, and chart defaults (**note**: references pre-S1 architecture; update pending) |
-| `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Verified scientific gaps, stale assumptions, and recommended follow-up work |
-| `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, acceptance tolerances, and results |
-| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase (Stone II) architecture decisions and parameter reference |
-| `docs/UNIT_SYSTEM.md` | Unit conventions, IMPES equations, and WASM API reference |
+| `README.md` | Product overview, current feature state, quick start, and doc map |
+| `ROADMAP.md` | Future-facing roadmap and priority order |
+| `TODO.md` | Active execution tracker only |
+| `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
+| `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark workflow semantics and comparison behavior |
+| `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, tolerances, and current results |
+| `docs/THREE_PHASE_IMPLEMENTATION_NOTES.md` | Three-phase implementation details, conventions, and remaining validation gaps |
+| `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and solver / PVT notes |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
-| `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the `8.527×10⁻³` transmissibility constant |
+| `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
 
 ## Current Repo-Level Facts
 
-- **Scenario model**: `src/lib/catalog/scenarios.ts` is the single source of truth for all predefined scenarios. S1 is complete; the current surface exposes 8 canonical scenarios across Waterflood / Sweep / Depletion / Gas, each with zero or more sensitivity dimensions.
-- **Input UI**: `src/lib/ui/modes/ScenarioPicker.svelte` is the primary input surface. Domain tabs and sensitivity-dimension selection are live.
-- **Analytical method disclosure**: each canonical scenario now carries a short analytical-method summary plus literature/status reference in `src/lib/catalog/scenarios.ts`, and the same mapping is summarized in `README.md`.
-- **Sweep efficiency**: `src/lib/analytical/sweepEfficiency.ts` + `SweepEfficiencyChart.svelte` implement Craig areal, Dykstra-Parsons vertical, and combined volumetric sweep analytical models.
-- **Legacy catalog files** (`caseCatalog.ts`, `benchmarkCases.ts`, `caseLibrary.ts`, etc.) still exist with active dependencies — removal blocked on Step 7 (see REFACTOR.md Phase 1).
-- **All scenarios** initialize and run directly in browser-side WASM. No pre-run artifact pipeline.
-- **Three-phase** (oil/water/gas) simulation is implemented via Stone II relative permeability (`threePhaseModeEnabled` flag). Experimental — no analytical reference solution.
-- **Review note**: see `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` for verified analytical-contract gaps and scientific documentation updates.
-- **Historical rationale** and completed execution history live in git history rather than tracked docs.
+- `src/lib/catalog/scenarios.ts` is the primary scenario registry.
+- There are 9 canonical scenarios under `src/lib/catalog/scenarios/`.
+- `ScenarioPicker.svelte` is the main scenario-selection surface.
+- Legacy benchmark-family files still exist and remain load-bearing in parts of the UI and chart stack.
+- All simulations execute directly in browser-side WASM. There is no prerun artifact pipeline.
+- Black-oil mode is implemented and exposed in the UI, but its validation backlog is still open.
+- Three-phase mode is implemented, but remains experimental because validation depth still trails the implementation.
 
-## Historical Documents
+## Historical Snapshots
 
-These files are kept for reference but are no longer current:
+These files are useful context, but they are not live specs.
 
 | Document | Status |
 |----------|--------|
-| `docs/FRONTEND_UI_AUDIT_2026-03-07.md` | Product audit that generated the F1–F9 workstream; superseded by `TODO.md` as live tracker |
+| `docs/FRONTEND_UI_AUDIT_2026-03-07.md` | Historical frontend audit that fed later refactoring work |
+| `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Historical implementation review snapshot; some findings have since been closed |
 
 ## Maintenance Rule
 
-When a document stops describing the current implementation, either update it to match the code, or remove it. Rely on git history for completed work — do not keep zombie docs in the active reference set.
+If a document stops describing the current implementation or current plan, either update it immediately or demote it to historical status. Do not leave half-current working documents in the authoritative set.

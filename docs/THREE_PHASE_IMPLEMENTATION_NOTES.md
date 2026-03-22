@@ -1,6 +1,6 @@
 # Three-Phase Flow Implementation Notes
 
-Status: Implemented (Rust + TypeScript frontend). Experimental — no analytical reference solution for validation.
+Status: implemented in Rust and the TypeScript frontend. Still experimental because comparative-solution and acceptance-test coverage remain incomplete.
 
 This document describes the architecture decisions made when adding oil/water/gas three-phase simulation. The existing two-phase code path is unchanged; three-phase is purely additive and activated by the `threePhaseModeEnabled` flag.
 
@@ -105,17 +105,22 @@ The following are explicitly not modified by three-phase:
 
 ## Validation Status
 
-Three-phase mode is **experimental**. There is no analytical reference solution wired for gas-phase behavior. Validation approach:
+Three-phase mode is **experimental**.
 
-- Stone II reduces to two-phase k_ro at S_g = 0 (testable)
-- k_ro(S_wc, S_gr) = 0 (residual condition)
-- k_ro(S_wc, 0) = k_ro_max (endpoint)
-- Material-balance diagnostics currently report only the water-phase accumulation path; phase-by-phase three-phase diagnostics are still pending.
+What is already covered:
 
-No benchmark suite comparable to the Buckley-Leverett BL-Case-A/B suite exists yet for three-phase behavior.
+- Stone II reductions and endpoint behavior are unit-testable.
+- Gas injection / gas saturation behavior is exercised in Rust tests.
+- Water and gas cumulative material-balance errors are reported explicitly at runtime.
 
-## Known Correctness Gaps
+What is still missing:
 
-- **Gas-oil capillary direction model**: the current gas-oil Brooks-Corey helper is parameterized on gas saturation and is documented in code as a known limitation. It should ultimately be reformulated around oil saturation for non-wetting gas invasion.
-- **Missing residual-oil-to-gas endpoint**: the current Stone II helper does not yet carry a separate residual-oil-to-gas saturation parameter.
-- **Diagnostics gap**: current material-balance reporting does not yet break out oil and gas phase accumulation errors.
+- No comparative-solution benchmark suite comparable to the Buckley-Leverett BL-Case-A/B coverage exists yet for three-phase behavior.
+- Oil-phase closure is still indirect because oil remains the residual phase in current diagnostics.
+- Gas-oriented scenario acceptance criteria have not yet been formalized.
+
+## Remaining Gaps
+
+- **Validation gap**: there is still no accepted comparative-solution benchmark set for three-phase behavior in this repository.
+- **Diagnostics gap**: oil-phase material-balance closure is still not reported explicitly as its own cumulative diagnostic.
+- **Product-status gap**: gas scenarios are implemented, but the documentation and acceptance policy still need a consistent definition of what qualifies as non-experimental.

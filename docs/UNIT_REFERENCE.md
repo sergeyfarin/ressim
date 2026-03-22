@@ -173,6 +173,7 @@ When setting up a simulation:
 4. **Corey model:** Standard relative permeability correlation
 5. **Gravity:** Optional toggle with phase-density-weighted hydrostatic head
 6. **Capillary pressure:** Optional Brooks-Corey capillary model
+7. **Black-oil mode:** Optional pressure-dependent PVT path for volatile-oil style studies
 
 ## Documentation Files
 
