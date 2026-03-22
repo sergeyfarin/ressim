@@ -21,6 +21,7 @@ export type ReferenceComparisonSweepPanels = {
     areal: ReferenceComparisonPanel | null;
     vertical: ReferenceComparisonPanel | null;
     combined: ReferenceComparisonPanel | null;
+    combinedMobileOil: ReferenceComparisonPanel | null;
 };
 
 export type ReferenceComparisonModel = {
@@ -512,12 +513,50 @@ function createReferenceComparisonPanel(): ReferenceComparisonPanel {
     return { curves: [], series: [] };
 }
 
+function stripReferenceCurveKeys(
+    panel: ReferenceComparisonPanel,
+    excludedCurveKeys: Set<string>,
+): ReferenceComparisonPanel {
+    const keptEntries = panel.curves
+        .map((curve, index) => ({ curve, series: panel.series[index] ?? [] }))
+        .filter((entry) => !excludedCurveKeys.has(entry.curve.curveKey ?? entry.curve.label));
+
+    return {
+        curves: keptEntries.map((entry) => entry.curve),
+        series: keptEntries.map((entry) => entry.series),
+    };
+}
+
+function suppressPrimaryAnalyticalPanels(
+    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
+): Record<RateChartPanelKey, ReferenceComparisonPanel> {
+    const excludedCurveKeys = new Set([
+        'oil-rate-reference',
+        'water-cut-reference',
+        'gas-cut-reference',
+        'recovery-factor-reference',
+        'cum-oil-reference',
+        'avg-pressure-reference',
+        'p_z_reference',
+    ]);
+
+    return {
+        rates: stripReferenceCurveKeys(panels.rates, excludedCurveKeys),
+        recovery: stripReferenceCurveKeys(panels.recovery, excludedCurveKeys),
+        cumulative: stripReferenceCurveKeys(panels.cumulative, excludedCurveKeys),
+        diagnostics: stripReferenceCurveKeys(panels.diagnostics, excludedCurveKeys),
+        volumes: panels.volumes,
+        oil_rate: stripReferenceCurveKeys(panels.oil_rate, excludedCurveKeys),
+    };
+}
+
 function createSweepPanels(): Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel> {
     return {
         rf: createReferenceComparisonPanel(),
         areal: createReferenceComparisonPanel(),
         vertical: createReferenceComparisonPanel(),
         combined: createReferenceComparisonPanel(),
+        combinedMobileOil: createReferenceComparisonPanel(),
     };
 }
 
@@ -527,6 +566,7 @@ function emptySweepPanels(): ReferenceComparisonSweepPanels {
         areal: null,
         vertical: null,
         combined: null,
+        combinedMobileOil: null,
     };
 }
 
@@ -538,6 +578,7 @@ function finalizeSweepPanels(
         areal: panels.areal.curves.length > 0 ? panels.areal : null,
         vertical: panels.vertical.curves.length > 0 ? panels.vertical : null,
         combined: panels.combined.curves.length > 0 ? panels.combined : null,
+        combinedMobileOil: panels.combinedMobileOil.curves.length > 0 ? panels.combinedMobileOil : null,
     };
 }
 
@@ -1105,6 +1146,23 @@ function appendAnalyticalSweepCurves(
         borderDash: SWEEP_DASH_COMBINED,
         yAxisID: 'y',
     }, analytical.xValues, analytical.combined);
+
+    if (input.geometry === 'both') {
+        appendSeries(panels.combinedMobileOil, {
+            label: analyticalEvolLabel,
+            curveKey: 'sweep-combined-reference',
+            ...(input.caseKey ? { caseKey: input.caseKey } : {}),
+            toggleGroupKey,
+            toggleLabel: input.toggleLabel,
+            legendSection: 'analytical',
+            legendSectionLabel: 'Analytical (dashed lines):',
+            color: input.color,
+            ...(legendColor ? { legendColor } : {}),
+            borderWidth,
+            borderDash: SWEEP_DASH_COMBINED,
+            yAxisID: 'y',
+        }, analytical.xValues, analytical.combined);
+    }
 }
 
 function appendSimulationSweepCurves(
@@ -1188,7 +1246,7 @@ function appendSimulationSweepCurves(
     }
 
     if (simulation.combinedMobileOil.length > 0) {
-        panels.combined.curves.push({
+        panels.combinedMobileOil.curves.push({
             label: `${result.label} Mobile Oil Recovered`,
             curveKey: 'sweep-combined-mobile-oil-sim',
             caseKey: result.key,
@@ -1202,7 +1260,7 @@ function appendSimulationSweepCurves(
             yAxisID: 'y',
             defaultVisible: true,
         });
-        panels.combined.series.push(simulation.combinedMobileOil);
+        panels.combinedMobileOil.series.push(simulation.combinedMobileOil);
     }
 }
 
@@ -1667,6 +1725,7 @@ export function buildReferenceComparisonModel(input: {
     previewAnalyticalMethod?: string;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
+    const suppressPrimaryAnalyticalOverlays = family?.showSweepPanel === true && family?.sweepGeometry === 'both';
     const orderedResults = orderResults(input.results, input.previewVariantParams);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
@@ -1742,12 +1801,14 @@ export function buildReferenceComparisonModel(input: {
                     && gasOilOverlayMode === 'shared'
                     ? [variants[0]]
                     : variants;
-                const previewPanels = buildAnalyticalPreviewPanels(
-                    analyticalPreviewVariants,
-                    input.xAxisMode,
-                    input.previewAnalyticalMethod,
-                    input.theme ?? 'dark',
-                );
+                const previewPanels = suppressPrimaryAnalyticalOverlays
+                    ? panels
+                    : buildAnalyticalPreviewPanels(
+                        analyticalPreviewVariants,
+                        input.xAxisMode,
+                        input.previewAnalyticalMethod,
+                        input.theme ?? 'dark',
+                    );
                 // Expose multi-variant preview entries so the cases selector can
                 // render toggle buttons even before any simulations have completed.
                 const previewCases: ReferenceComparisonPreviewCase[] = variants.length > 1
@@ -1756,7 +1817,9 @@ export function buildReferenceComparisonModel(input: {
                 return {
                     orderedResults,
                     previewCases,
-                    panels: previewPanels,
+                    panels: suppressPrimaryAnalyticalOverlays
+                        ? suppressPrimaryAnalyticalPanels(previewPanels)
+                        : previewPanels,
                     sweepPanels: family?.showSweepPanel === true
                         ? buildPreviewSweepPanels({
                             variants,
@@ -2271,7 +2334,7 @@ export function buildReferenceComparisonModel(input: {
         };
     }
 
-    if (family.analyticalMethod === 'buckley-leverett') {
+    if (family.analyticalMethod === 'buckley-leverett' && !suppressPrimaryAnalyticalOverlays) {
         const allSameAnalytical = buckleyLeverettOverlayMode === 'shared';
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
@@ -2777,10 +2840,14 @@ export function buildReferenceComparisonModel(input: {
         })
         : emptySweepPanels();
 
+    const visiblePanels = suppressPrimaryAnalyticalOverlays
+        ? suppressPrimaryAnalyticalPanels(panels)
+        : panels;
+
     return {
         orderedResults,
         previewCases: pendingPreviewCases,
-        panels,
+        panels: visiblePanels,
         sweepPanels,
         axisMappingWarning: buildAnalyticalAxisWarning({
             usesRunMappedAnalyticalXAxis,

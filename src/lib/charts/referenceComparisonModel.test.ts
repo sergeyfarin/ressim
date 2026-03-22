@@ -635,7 +635,7 @@ describe('referenceComparisonModel', () => {
         ]);
     });
 
-    it('keeps BL rate overlays shared for sweep variants that only change heterogeneity', () => {
+    it('suppresses generic BL rate overlays for combined sweep variants that only change heterogeneity', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
         const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const, analyticalOverlayMode: 'shared' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
@@ -684,7 +684,7 @@ describe('referenceComparisonModel', () => {
             previewAnalyticalMethod: family.analyticalMethod,
         });
 
-        expect(previewModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(1);
+        expect(previewModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(0);
         expect(previewModel.sweepPanels.combined?.curves.length).toBe(2);
 
         const resultSpecs = heterogeneityPreviewVariants.map((variant) => ({
@@ -705,11 +705,11 @@ describe('referenceComparisonModel', () => {
             analyticalPerVariant: true,
         });
 
-        expect(completedModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(1);
+        expect(completedModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(0);
         expect(completedModel.sweepPanels.combined?.curves.length).toBeGreaterThan(1);
     });
 
-    it('keeps multiple BL breakthrough references for completed sweep mobility runs', () => {
+    it('suppresses generic BL breakthrough references for completed combined sweep mobility runs', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
         const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const, analyticalOverlayMode: 'per-result' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
@@ -776,15 +776,8 @@ describe('referenceComparisonModel', () => {
         });
 
         const referenceCurves = model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference');
-        expect(referenceCurves).toHaveLength(3);
-        expect(new Set(referenceCurves.map((curve) => curve.caseKey))).toEqual(
-            new Set(results.map((result) => result.key)),
-        );
-
-        const referenceSeries = model.panels.rates.series.filter((_, index) => (
-            model.panels.rates.curves[index]?.curveKey === 'water-cut-reference'
-        ));
-        expect(referenceSeries.every((series) => series.some((point) => (point.y ?? 0) > 0))).toBe(true);
+        expect(referenceCurves).toHaveLength(0);
+        expect(model.sweepPanels.combined?.curves.filter((curve) => curve.curveKey === 'sweep-combined-reference')).toHaveLength(3);
     });
 
     it('builds nonzero completed sweep BL references on PVI even when injection-rate history is missing', () => {
@@ -863,7 +856,9 @@ describe('referenceComparisonModel', () => {
         expect(model.previewCases.map((entry) => entry.key)).toEqual([pendingVariant.variantKey]);
 
         const combinedPanel = model.sweepPanels.combined;
+        const combinedMobileOilPanel = model.sweepPanels.combinedMobileOil;
         expect(combinedPanel).not.toBeNull();
+        expect(combinedMobileOilPanel).toBeNull();
 
         const completedSimIndex = combinedPanel!.curves.findIndex(
             (curve) => curve.curveKey === 'sweep-combined-sim' && curve.caseKey === baseResult.key,
@@ -918,6 +913,7 @@ describe('referenceComparisonModel', () => {
         expect(model.sweepPanels.areal).toBeNull();
         expect(model.sweepPanels.vertical?.curves.length).toBeGreaterThan(0);
         expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.combinedMobileOil).toBeNull();
     });
 
     it('keeps uniform variants on the vertical sweep decomposition when scenario geometry is vertical', () => {
@@ -956,6 +952,7 @@ describe('referenceComparisonModel', () => {
         expect(model.sweepPanels.areal).toBeNull();
         expect(model.sweepPanels.vertical?.curves.length).toBeGreaterThan(0);
         expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.combinedMobileOil).toBeNull();
     });
 
     it('hides the vertical sweep panel for areal sweep geometry', () => {
@@ -992,6 +989,7 @@ describe('referenceComparisonModel', () => {
         expect(model.sweepPanels.vertical).toBeNull();
         expect(model.sweepPanels.areal?.curves.length).toBeGreaterThan(0);
         expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.combinedMobileOil).toBeNull();
     });
 
     it('starts sweep simulation series at zero and uses volumetric sweep for vertical simulation E_V', () => {
@@ -1050,14 +1048,15 @@ describe('referenceComparisonModel', () => {
         const verticalSimIndex = verticalPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-vertical-sim');
         const combinedPanel = model.sweepPanels.combined;
         const combinedEvolIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
-        const combinedSimIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
+        const combinedMobileOilPanel = model.sweepPanels.combinedMobileOil;
+        const combinedSimIndex = combinedMobileOilPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
 
         expect(verticalSimIndex).toBe(-1);
         expect(verticalPanel!.curves.some((curve) => curve.curveKey === 'sweep-vertical-reference')).toBe(true);
         expect(combinedPanel!.series[combinedEvolIndex]?.[0]).toEqual({ x: 0, y: 0 });
-        expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(combinedMobileOilPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
         expect(combinedPanel!.curves[combinedEvolIndex]?.label).toContain('E_vol');
-        expect(combinedPanel!.curves[combinedSimIndex]?.label).toContain('Mobile Oil Recovered');
+        expect(combinedMobileOilPanel!.curves[combinedSimIndex]?.label).toContain('Mobile Oil Recovered');
     });
 
     it('remaps completed sweep panels onto the selected time axis', () => {
@@ -1076,8 +1075,9 @@ describe('referenceComparisonModel', () => {
         const sweepRfPanel = model.sweepPanels.rf;
         const simRfIndex = sweepRfPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-rf-sim');
         const analyticalCombinedPanel = model.sweepPanels.combined;
+        const analyticalCombinedMobileOilPanel = model.sweepPanels.combinedMobileOil;
         const combinedEvolIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
-        const combinedSimIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
+        const combinedSimIndex = analyticalCombinedMobileOilPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-mobile-oil-sim');
         const analyticalCombinedIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-reference');
 
         expect(sweepRfPanel!.series[simRfIndex]).toEqual(recoverySimSeries);
@@ -1087,6 +1087,25 @@ describe('referenceComparisonModel', () => {
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.at(-1)?.x).toBeCloseTo(recoverySimSeries.at(-1)?.x ?? NaN, 10);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[1]?.x).toBeGreaterThan(0);
         expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[1]?.x).toBeLessThanOrEqual(recoverySimSeries.at(-1)?.x ?? NaN);
+        expect(analyticalCombinedMobileOilPanel!.series[combinedSimIndex]?.[0]?.x).toBe(0);
+    });
+
+    it('suppresses generic BL analytical overlays for combined sweep scenarios', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const result = buildSweepRunResult(baseSpec);
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'pvi',
+        });
+
+        expect(model.panels.recovery.curves.some((curve) => curve.curveKey === 'recovery-factor-reference')).toBe(false);
+        expect(model.panels.rates.curves.some((curve) => curve.curveKey === 'water-cut-reference')).toBe(false);
+        expect(model.sweepPanels.combined?.curves.some((curve) => curve.curveKey === 'sweep-combined-reference')).toBe(true);
+        expect(model.sweepPanels.combinedMobileOil?.curves.some((curve) => curve.curveKey === 'sweep-combined-reference')).toBe(true);
     });
 
     it('keeps gas-oil BL overlays shared for variants that only change permeability', () => {

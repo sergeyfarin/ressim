@@ -65,6 +65,7 @@
     let sweepArealExpanded = $state(true);
     let sweepVerticalExpanded = $state(true);
     let sweepCombinedExpanded = $state(true);
+    let sweepCombinedMobileOilExpanded = $state(false);
     let visibleCaseKeys = $state<Record<string, boolean>>({});
     let caseSelectorSignature = $state('');
     const MAX_RECOMMENDED_VISIBLE_CASES = 20;
@@ -392,6 +393,10 @@
     const sweepCombinedCurves = $derived(sweepCombinedEntries.map((entry) => entry.curve));
     const sweepCombinedSeries = $derived(sweepCombinedEntries.map((entry) => entry.series));
 
+    const sweepCombinedMobileOilEntries = $derived.by(() => getVisibleSweepPanelEntries(overlayModel.sweepPanels.combinedMobileOil));
+    const sweepCombinedMobileOilCurves = $derived(sweepCombinedMobileOilEntries.map((entry) => entry.curve));
+    const sweepCombinedMobileOilSeries = $derived(sweepCombinedMobileOilEntries.map((entry) => entry.series));
+
     function toFiniteNumber(value: unknown, fallback: number): number {
         const numeric = Number(value);
         return Number.isFinite(numeric) ? numeric : fallback;
@@ -466,6 +471,7 @@
                 ...sweepArealSeries,
                 ...sweepVerticalSeries,
                 ...sweepCombinedSeries,
+                ...sweepCombinedMobileOilSeries,
             ],
             rateSeries: ratesPanel.series,
             xAxisMode,
@@ -740,7 +746,7 @@
     {#if family?.showSweepPanel && sweepCombinedCurves.length > 0}
         <ChartSubPanel
             panelId="comparison-sweep-combined"
-            title="Analytical Total E_vol vs Simulation Mobile Oil Recovered"
+            title="Analytical Total E_vol vs Simulated E_vol"
             bind:expanded={sweepCombinedExpanded}
             curves={sweepCombinedCurves}
             seriesData={sweepCombinedSeries}
@@ -752,6 +758,25 @@
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
                 nativeGutters = { ...nativeGutters, sweep_combined: { left, right } };
+            }}
+        />
+    {/if}
+
+    {#if family?.showSweepPanel && sweepCombinedMobileOilCurves.length > 0}
+        <ChartSubPanel
+            panelId="comparison-sweep-combined-mobile-oil"
+            title="Analytical Total E_vol vs Simulated Mobile Oil Recovered"
+            bind:expanded={sweepCombinedMobileOilExpanded}
+            curves={sweepCombinedMobileOilCurves}
+            seriesData={sweepCombinedMobileOilSeries}
+            scaleConfigs={sweepScales}
+            {theme}
+            logScale={false}
+            xRange={sharedXRange}
+            targetLeftGutter={maxLeftGutter}
+            targetRightGutter={maxRightGutter}
+            onGutterMeasure={(left: number, right: number) => {
+                nativeGutters = { ...nativeGutters, sweep_combined_mobile_oil: { left, right } };
             }}
         />
     {/if}

@@ -90,6 +90,7 @@
     let sweepArealExpanded = $state(false);
     let sweepVerticalExpanded = $state(false);
     let sweepVolExpanded = $state(false);
+    let sweepMobileOilExpanded = $state(false);
 
     // --- Panel alignment state ---
     let nativeGutters = $state<Record<string, { left: number; right: number }>>(
@@ -1005,6 +1006,29 @@
         };
     }
 
+    function filterPanelCurves(panel: PanelDefinition, excludedCurveKeys: Set<string>): PanelDefinition {
+        const keptEntries = panel.curves
+            .map((curve, index) => ({ curve, series: panel.series[index] ?? [] }))
+            .filter((entry) => !excludedCurveKeys.has(entry.curve.curveKey ?? entry.curve.label));
+
+        return {
+            ...panel,
+            curves: keptEntries.map((entry) => entry.curve),
+            series: keptEntries.map((entry) => entry.series),
+        };
+    }
+
+    const suppressPrimaryAnalyticalOverlays = $derived(showSweepPanel && sweepGeometry === "both");
+    const suppressedPrimaryAnalyticalCurveKeys = new Set([
+        "oil-rate-reference",
+        "water-rate-reference",
+        "cum-oil-reference",
+        "recovery-factor-reference",
+        "avg-pressure-reference",
+        "wor-reference",
+        "water-cut-reference",
+    ]);
+
     let ratesPanel = $derived(
         buildPanelDefinition("rates", {
             title: "Rates",
@@ -1051,16 +1075,37 @@
         }),
     );
 
-    let ratesCurves = $derived(ratesPanel.curves);
-    let recoveryCurves = $derived(recoveryPanel.curves);
-    let cumulativeCurves = $derived(cumulativePanel.curves);
-    let diagnosticsCurves = $derived(diagnosticsPanel.curves);
+    let filteredRatesPanel = $derived(
+        suppressPrimaryAnalyticalOverlays
+            ? filterPanelCurves(ratesPanel, suppressedPrimaryAnalyticalCurveKeys)
+            : ratesPanel,
+    );
+    let filteredRecoveryPanel = $derived(
+        suppressPrimaryAnalyticalOverlays
+            ? filterPanelCurves(recoveryPanel, suppressedPrimaryAnalyticalCurveKeys)
+            : recoveryPanel,
+    );
+    let filteredCumulativePanel = $derived(
+        suppressPrimaryAnalyticalOverlays
+            ? filterPanelCurves(cumulativePanel, suppressedPrimaryAnalyticalCurveKeys)
+            : cumulativePanel,
+    );
+    let filteredDiagnosticsPanel = $derived(
+        suppressPrimaryAnalyticalOverlays
+            ? filterPanelCurves(diagnosticsPanel, suppressedPrimaryAnalyticalCurveKeys)
+            : diagnosticsPanel,
+    );
+
+    let ratesCurves = $derived(filteredRatesPanel.curves);
+    let recoveryCurves = $derived(filteredRecoveryPanel.curves);
+    let cumulativeCurves = $derived(filteredCumulativePanel.curves);
+    let diagnosticsCurves = $derived(filteredDiagnosticsPanel.curves);
     let volumesCurves = $derived(volumesPanel.curves);
     let oilRateCurves = $derived(oilRatePanel.curves);
-    let ratesSeries = $derived(ratesPanel.series);
-    let recoverySeries = $derived(recoveryPanel.series);
-    let cumulativeSeries = $derived(cumulativePanel.series);
-    let diagnosticsSeries = $derived(diagnosticsPanel.series);
+    let ratesSeries = $derived(filteredRatesPanel.series);
+    let recoverySeries = $derived(filteredRecoveryPanel.series);
+    let cumulativeSeries = $derived(filteredCumulativePanel.series);
+    let diagnosticsSeries = $derived(filteredDiagnosticsPanel.series);
     let volumesSeries = $derived(volumesPanel.series);
     let oilRateSeries = $derived(oilRatePanel.series);
 
@@ -1075,7 +1120,8 @@
     //                        vs RF_1D_BL upper bound (light dashed). PRIMARY output.
     //   2. Areal Sweep Efficiency (E_A) — analytical-only for combined geometry; sim+analytical otherwise. DIAGNOSTIC.
     //   3. Vertical Sweep Efficiency (E_V) — analytical-only for combined geometry; sim+analytical otherwise. DIAGNOSTIC.
-    //   4. Combined total panel — analytical E_vol, plus simulation mobile-oil-recovered for combined geometry. DIAGNOSTIC.
+    //   4. Total E_vol panel — analytical total E_vol vs simulated E_vol. DIAGNOSTIC.
+    //   5. Mobile-oil panel — analytical total E_vol vs simulated mobile-oil-recovered (combined only). DIAGNOSTIC.
     //
     // Chart convention (all sweep panels):
     //   Solid         = simulation (IMPES result or derived from sat_water grid)
@@ -1217,15 +1263,6 @@
                 borderWidth: 2.4,
                 yAxisID: "y",
             } as CurveConfig] : []),
-            ...(hasSim && sweepGeometry === 'both' ? [{
-                label: "Mobile Oil Recovered (Simulation)",
-                curveKey: "sweep-vol-mobile-oil-sim",
-                toggleLabel: "Mobile Oil Recovered (Sim)",
-                color: "#f59e0b",
-                borderWidth: 1.8,
-                borderDash: [3, 3],
-                yAxisID: "y",
-            } as CurveConfig] : []),
             {
                 label: sweepRFAnalytical?.method === 'stiles'
                     ? "E_vol (Analytical Total — Stiles Layered BL)"
@@ -1240,9 +1277,35 @@
         ];
         const volSeries = [
             ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.eVol)] : []),
-            ...(hasSim && sweepGeometry === 'both' ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.mobileOilRecovered)] : []),
             analyticalXY(analytical.combined.map((p) => p.efficiency)),
         ];
+
+        const mobileOilCurves: CurveConfig[] = sweepGeometry === 'both' ? [
+            ...(hasSim ? [{
+                label: "Mobile Oil Recovered (Simulation)",
+                curveKey: "sweep-vol-mobile-oil-sim",
+                toggleLabel: "Mobile Oil Recovered (Sim)",
+                color: "#f59e0b",
+                borderWidth: 1.8,
+                borderDash: [3, 3],
+                yAxisID: "y",
+            } as CurveConfig] : []),
+            {
+                label: sweepRFAnalytical?.method === 'stiles'
+                    ? "E_vol (Analytical Total — Stiles Layered BL)"
+                    : "E_vol (Analytical Total — Dykstra-Parsons)",
+                curveKey: "sweep-vol-analytical-mobile-oil",
+                toggleLabel: "E_vol (Analytical)",
+                color: "#dc2626",
+                borderWidth: 2.0,
+                borderDash: [7, 4],
+                yAxisID: "y",
+            } as CurveConfig,
+        ] : [];
+        const mobileOilSeries = sweepGeometry === 'both' ? [
+            ...(hasSim ? [simSweepToXY(sweepEfficiencySimSeries!, (p) => p.mobileOilRecovered)] : []),
+            analyticalXY(analytical.combined.map((p) => p.efficiency)),
+        ] : [];
 
         // Recovery Factor panel
         // Sim RF: map rateHistory → (pvi, rf) using cumulatives
@@ -1268,7 +1331,7 @@
                 borderDash: [7, 4],
                 yAxisID: "y",
             } as CurveConfig,
-            {
+            ...(sweepGeometry === 'both' ? [] : [{
                 label: "RF (1D BL — perfect sweep)",
                 curveKey: "sweep-rf-bl1d",
                 toggleLabel: "RF 1D BL (upper bound)",
@@ -1277,17 +1340,32 @@
                 borderDash: [4, 4],
                 yAxisID: "y",
                 defaultVisible: false,
-            } as CurveConfig,
+            } as CurveConfig]),
         ];
         const rfSeries = sweepRFAnalytical
             ? [
                 simRFSeries,
-                                sweepRFAnalytical.curve.map((p) => ({ x: mapPviToActiveXAxis(p.pvi) ?? 0, y: p.rfSweep })),
-                                sweepRFAnalytical.curve.map((p) => ({ x: mapPviToActiveXAxis(p.pvi) ?? 0, y: p.rfBL1D })),
+                sweepRFAnalytical.curve.map((p) => ({ x: mapPviToActiveXAxis(p.pvi) ?? 0, y: p.rfSweep })),
+                ...(sweepGeometry === 'both'
+                    ? []
+                    : [sweepRFAnalytical.curve.map((p) => ({ x: mapPviToActiveXAxis(p.pvi) ?? 0, y: p.rfBL1D }))]),
               ]
-            : [simRFSeries, [], []];
+            : (sweepGeometry === 'both' ? [simRFSeries, []] : [simRFSeries, [], []]);
 
-        return { rfCurves, rfSeries, arealCurves, arealSeries, verticalCurves, verticalSeries, volCurves, volSeries, showAreal, showVertical };
+        return {
+            rfCurves,
+            rfSeries,
+            arealCurves,
+            arealSeries,
+            verticalCurves,
+            verticalSeries,
+            volCurves,
+            volSeries,
+            mobileOilCurves,
+            mobileOilSeries,
+            showAreal,
+            showVertical,
+        };
     });
 
     const sharedXRange = $derived.by(() => {
@@ -1303,6 +1381,7 @@
                 ...(sweepPanels ? sweepPanels.arealSeries : []),
                 ...(sweepPanels ? sweepPanels.verticalSeries : []),
                 ...(sweepPanels ? sweepPanels.volSeries : []),
+                ...(sweepPanels ? sweepPanels.mobileOilSeries : []),
             ],
             rateSeries: ratesSeries,
             xAxisMode,
@@ -1398,7 +1477,7 @@
         bind:expanded={recoveryExpanded}
         curves={recoveryCurves}
         seriesData={recoverySeries}
-        scaleConfigs={recoveryPanel.scales}
+        scaleConfigs={filteredRecoveryPanel.scales}
         {theme}
         logScale={false}
         xRange={sharedXRange}
@@ -1416,7 +1495,7 @@
         bind:expanded={cumulativeExpanded}
         curves={cumulativeCurves}
         seriesData={cumulativeSeries}
-        scaleConfigs={cumulativePanel.scales}
+        scaleConfigs={filteredCumulativePanel.scales}
         {theme}
         logScale={false}
         xRange={sharedXRange}
@@ -1434,7 +1513,7 @@
         bind:expanded={diagnosticsExpanded}
         curves={diagnosticsCurves}
         seriesData={diagnosticsSeries}
-        scaleConfigs={diagnosticsPanel.scales}
+        scaleConfigs={filteredDiagnosticsPanel.scales}
         {theme}
         logScale={false}
         xRange={sharedXRange}
@@ -1543,7 +1622,9 @@
         {/if}
         <ChartSubPanel
             panelId="sweep-vol"
-            title="Analytical Total E_vol vs Simulation Mobile Oil Recovered"
+            title={sweepGeometry === 'both'
+                ? "Analytical Total E_vol vs Simulated E_vol"
+                : "Combined Sweep Efficiency (E_vol)"}
             bind:expanded={sweepVolExpanded}
             curves={sweepPanels.volCurves}
             seriesData={sweepPanels.volSeries}
@@ -1557,10 +1638,28 @@
                 nativeGutters = { ...nativeGutters, "sweep-vol": { left, right } };
             }}
         />
+        {#if sweepPanels.mobileOilCurves.length > 0}
+            <ChartSubPanel
+                panelId="sweep-mobile-oil"
+                title="Analytical Total E_vol vs Simulated Mobile Oil Recovered"
+                bind:expanded={sweepMobileOilExpanded}
+                curves={sweepPanels.mobileOilCurves}
+                seriesData={sweepPanels.mobileOilSeries}
+                scaleConfigs={sweepScaleConfig}
+                {theme}
+                logScale={false}
+                xRange={sharedXRange}
+                targetLeftGutter={maxLeftGutter}
+                targetRightGutter={maxRightGutter}
+                onGutterMeasure={(left: number, right: number) => {
+                    nativeGutters = { ...nativeGutters, "sweep-mobile-oil": { left, right } };
+                }}
+            />
+        {/if}
     {/if}
 
     <!-- Error stats -->
-    {#if mismatchSummary.pointsCompared > 0}
+    {#if !suppressPrimaryAnalyticalOverlays && mismatchSummary.pointsCompared > 0}
         <div class="ui-support-copy px-4 pb-4 pt-2 opacity-60 md:px-5 md:pb-5">
             Reference Solution: {mismatchSummary.pointsCompared} pts · MAE: {mismatchSummary.mae.toFixed(
                 3,
