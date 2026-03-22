@@ -86,6 +86,15 @@ export type SimSweepDiagnostics = {
     mobileOilRecovered: number | null;
 };
 
+export type SimSweepSaturationWindow = {
+    initialSw: number;
+    thresholdSw: number;
+    shockSw: number;
+    maxSw: number;
+};
+
+type SimSweepSaturationInput = number | SimSweepSaturationWindow;
+
 type SimSweepGeometryContext = {
     geometry: SweepGeometry;
     injectorI?: number;
@@ -170,6 +179,29 @@ function saturationFrontWeight(sw: number, sweptThreshold: number): number {
     return clamp01((sw - sweptThreshold) / Math.max(1e-12, 1 - sweptThreshold));
 }
 
+function isSimSweepSaturationWindow(value: SimSweepSaturationInput): value is SimSweepSaturationWindow {
+    return typeof value !== 'number';
+}
+
+function cellSweepWeight(sw: number, saturation: SimSweepSaturationInput): number {
+    if (!Number.isFinite(sw)) return 0;
+    if (!isSimSweepSaturationWindow(saturation)) {
+        return sw > saturation ? 1 : 0;
+    }
+
+    const span = saturation.shockSw - saturation.initialSw;
+    if (span > 1e-12) {
+        return clamp01((sw - saturation.initialSw) / span);
+    }
+
+    const fallbackSpan = saturation.maxSw - saturation.initialSw;
+    if (fallbackSpan > 1e-12) {
+        return clamp01((sw - saturation.initialSw) / fallbackSpan);
+    }
+
+    return 0;
+}
+
 function weightedQuantile(entries: Array<{ coordinate: number; weight: number }>, quantile: number): number {
     const filtered = entries
         .filter((entry) => entry.weight > 1e-12 && Number.isFinite(entry.coordinate))
@@ -195,7 +227,7 @@ function computeCombinedSimVerticalSweep(
     nx: number,
     ny: number,
     nz: number,
-    sweptThreshold: number,
+    sweptThreshold: SimSweepSaturationInput,
     context: SimSweepGeometryContext,
 ): number {
     if (nx <= 1 || ny <= 1 || nz <= 1) {
@@ -220,7 +252,9 @@ function computeCombinedSimVerticalSweep(
             for (let i = 0; i < nx; i += 1) {
                 const index = k * nx * ny + j * nx + i;
                 const columnIndex = j * nx + i;
-                const weight = saturationFrontWeight(Number(satWater[index]), sweptThreshold);
+                const weight = isSimSweepSaturationWindow(sweptThreshold)
+                    ? cellSweepWeight(Number(satWater[index]), sweptThreshold)
+                    : saturationFrontWeight(Number(satWater[index]), sweptThreshold);
                 entries.push({
                     coordinate: columnCoordinates[columnIndex],
                     weight,
@@ -250,7 +284,7 @@ export function computeSimSweepPointForGeometry(
     nx: number,
     ny: number,
     nz: number,
-    sweptThreshold: number,
+    sweptThreshold: SimSweepSaturationInput,
     context: SimSweepGeometryContext,
 ): SimSweepPoint {
     const raw = computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold);
@@ -293,7 +327,7 @@ export function computeSimSweepDiagnosticsForGeometry(
     nx: number,
     ny: number,
     nz: number,
-    sweptThreshold: number,
+    sweptThreshold: SimSweepSaturationInput,
     context: SimSweepGeometryContext,
     initialOilSaturation: number,
     residualOilSaturation: number,
@@ -764,35 +798,64 @@ export function computeVerticalSweep(
 /**
  * Compute a physically meaningful "swept" threshold from the Buckley-Leverett
  * shock-front saturation.  A cell is considered swept when its water saturation
- * reaches the midpoint between Swc and the BL shock front — i.e. the
- * displacement front has meaningfully passed through it.
+ * reaches the midpoint between the actual initial water saturation and the BL
+ * shock-front saturation. Under a sharp-front finite-volume picture, that means
+ * the front has traversed roughly half of the cell.
  *
  * This avoids the pitfall of a tiny fixed epsilon (e.g. 0.01) that triggers
  * on numerical diffusion far ahead of the actual front.
  */
 export function computeSweptThreshold(rock: RockProps, fluid: FluidProps, initialSw: number): number {
+    return computeSweepSaturationWindow(rock, fluid, initialSw).thresholdSw;
+}
+
+export function computeSweepSaturationWindow(
+    rock: RockProps,
+    fluid: FluidProps,
+    initialSw: number,
+): SimSweepSaturationWindow {
     const welge = computeWelgeMetrics(rock, fluid, initialSw);
-    // Midpoint between initial Sw and BL shock-front Sw.
-    // If Welge fails (shockSw ≈ initialSw), fall back to 20% of movable range.
-    const movable = 1 - rock.s_or - rock.s_wc;
-    if (welge.shockSw - initialSw < 0.01 * movable) {
-        return initialSw + 0.2 * movable;
+    const initialSwClamped = welge.initialSw;
+    const maxSw = 1 - rock.s_or;
+    const remainingMovableWindow = Math.max(0, maxSw - initialSwClamped);
+    const shockSpan = welge.shockSw - initialSwClamped;
+
+    // Midpoint between the local initial state and the post-shock state.
+    // If Welge degenerates (shockSw ≈ initialSw), fall back to 20% of the
+    // remaining movable interval from the actual initial condition.
+    if (!Number.isFinite(shockSpan) || shockSpan < 0.01 * Math.max(1e-12, remainingMovableWindow)) {
+        return {
+            initialSw: initialSwClamped,
+            thresholdSw: Math.min(maxSw, initialSwClamped + 0.2 * remainingMovableWindow),
+            shockSw: initialSwClamped,
+            maxSw,
+        };
     }
-    return (initialSw + welge.shockSw) / 2;
+
+    return {
+        initialSw: initialSwClamped,
+        thresholdSw: Math.min(maxSw, initialSwClamped + 0.5 * shockSpan),
+        shockSw: Math.min(maxSw, welge.shockSw),
+        maxSw,
+    };
 }
 
 /**
  * Compute simulation sweep efficiencies from a per-cell saturation array.
  *
  * Cell layout: flat index = k * nx * ny + j * nx + i  (k=layer, j=col, i=row).
- * A cell is considered "swept" if its water saturation exceeds the given threshold.
+ * A cell is considered "swept" either by exceeding a hard threshold or, when a
+ * saturation window is provided, by contributing a continuous invasion weight
+ * between the initial and shock saturations.
  *
  *  E_vol — volumetric: fraction of all cells that are swept.
  *  E_A   — areal:      fraction of (i,j) columns that contain ≥1 swept cell.
  *  E_V   — vertical:   E_vol / E_A  (layers swept within the swept area).
  *
- * @param sweptThreshold — absolute Sw threshold for a cell to count as swept.
- *   Use {@link computeSweptThreshold} to derive from BL shock-front saturation.
+ * @param sweptThreshold — absolute Sw threshold for binary sweep counting, or a
+ *   saturation window for continuous sweep weighting.
+ *   Use {@link computeSweptThreshold} for the binary path or
+ *   {@link computeSweepSaturationWindow} for the continuous path.
  *
  * Returns {eA, eV, eVol} in [0, 1].
  */
@@ -801,7 +864,7 @@ export function computeSimSweepPoint(
     nx: number,
     ny: number,
     nz: number,
-    sweptThreshold: number,
+    sweptThreshold: SimSweepSaturationInput,
 ): { eA: number; eV: number; eVol: number } {
     if (!satWater || satWater.length === 0 || nx <= 0 || ny <= 0 || nz <= 0) {
         return { eA: 0, eV: 0, eVol: 0 };
@@ -811,14 +874,13 @@ export function computeSimSweepPoint(
 
     for (let j = 0; j < ny; j++) {
         for (let i = 0; i < nx; i++) {
-            let colSwept = false;
+            let columnWeight = 0;
             for (let k = 0; k < nz; k++) {
-                if (satWater[k * nx * ny + j * nx + i] > sweptThreshold) {
-                    sweptCells++;
-                    colSwept = true;
-                }
+                const weight = cellSweepWeight(satWater[k * nx * ny + j * nx + i], sweptThreshold);
+                sweptCells += weight;
+                columnWeight = Math.max(columnWeight, weight);
             }
-            if (colSwept) sweptColumns++;
+            sweptColumns += columnWeight;
         }
     }
 

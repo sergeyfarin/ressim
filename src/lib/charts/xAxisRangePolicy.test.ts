@@ -76,4 +76,24 @@ describe('xAxisRangePolicy', () => {
 
         expect(range).toEqual({ min: 5, max: 20 });
     });
+
+    it('snaps wide-range floating endpoint residue to meaningful round bounds', () => {
+        const range = resolveSharedXAxisRange({
+            allSeries: [[{ x: 0.006, y: 0.1 }, { x: 70.00000000006, y: 0.8 }]],
+            xAxisMode: 'time',
+            policy: { mode: 'data-extent' },
+        });
+
+        expect(range).toEqual({ min: 0, max: 70 });
+    });
+
+    it('preserves small exact windows instead of over-rounding by large-range heuristics', () => {
+        const range = resolveSharedXAxisRange({
+            allSeries: [[{ x: 0.0001, y: 0.1 }, { x: 0.0002, y: 0.8 }]],
+            xAxisMode: 'time',
+            policy: { mode: 'data-extent' },
+        });
+
+        expect(range).toEqual({ min: 0.0001, max: 0.0002 });
+    });
 });

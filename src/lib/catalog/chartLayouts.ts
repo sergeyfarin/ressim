@@ -11,7 +11,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'volumes', 'oil_rate'],
+            panelOrder: ['rates', 'recovery', 'oil_rate', 'cumulative', 'diagnostics', 'volumes'],
             panels: {
                 rates: {
                     title: 'Watercut',
@@ -61,7 +61,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'pvi-window', minPvi: 0, maxPvi: 2.5 },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['rates', 'recovery', 'cumulative', 'diagnostics', 'sweep_rf', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'sweep_combined_mobile_oil'],
+            panelOrder: ['sweep_rf', 'sweep_areal', 'sweep_vertical', 'sweep_combined', 'sweep_combined_mobile_oil', 'rates', 'recovery', 'cumulative', 'diagnostics'],
             panels: {
                 rates: {
                     title: 'Watercut',

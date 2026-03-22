@@ -11,6 +11,7 @@ export const sweep_vertical: Scenario = {
         rateChart: {
             panels: {
                 sweep_areal: { visible: false },
+                sweep_combined: { visible: false },
                 sweep_combined_mobile_oil: { visible: false },
             },
         },

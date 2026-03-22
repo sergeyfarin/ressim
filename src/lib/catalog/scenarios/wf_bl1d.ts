@@ -87,7 +87,7 @@ export const wf_bl1d: Scenario = {
                     key: 'mob_favorable',
                     label: 'M ≈ 1  (μ_o = 0.5 cp)',
                     description: 'Near-unit mobility ratio — sharp, piston-like displacement. Best waterflood recovery.',
-                    paramPatch: { mu_o: 0.5 },
+                    paramPatch: { mu_o: 0.5, steps: 200 },
                     affectsAnalytical: true,
                 },
                 {
@@ -108,7 +108,7 @@ export const wf_bl1d: Scenario = {
                     key: 'mob_unfavorable',
                     label: 'M ≈ 10  (μ_o = 5.0 cp)',
                     description: 'Strongly unfavourable — very early breakthrough relative to injected volume (PVI), poor recovery. Classic viscous fingering regime.',
-                    paramPatch: { mu_o: 5.0 },
+                    paramPatch: { mu_o: 5.0, steps: 300 },
                     affectsAnalytical: true,
                 },
             ],

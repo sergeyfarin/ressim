@@ -4,11 +4,18 @@
 
 ## Now
 
+- [x] Apply continuous saturation weighting to the combined simulation volumetric sweep path so hidden `E_vol` diagnostics do not depend on a hard cutoff.
+- [x] Switch areal simulation sweep from binary swept-column counting to continuous cell weighting, while keeping vertical/combined sweep semantics unchanged.
+- [x] Make the simulation sweep threshold use the actual initial water saturation and add regression tests for nonzero-`initialSaturation` and degenerate-Welge fallback behavior.
+- [x] Revert Buckley-Leverett analytical cum-oil and oil-rate overlays; fix recovery normalization for completed-run references.
+- [x] Extend Buckley-Leverett analytical chart wiring so cumulative-oil preview curves and completed-run oil-rate references use the same analytical source.
+- [x] Fix Buckley-Leverett preview recovery normalization so nonzero `initialSaturation` uses OOIP rather than unit pore volume.
 - [ ] Add black-oil comparative-solution validation (`SPE1` / `SPE3` style coverage, or the closest practical subset) and document the acceptance policy.
 - [ ] Define the exit criteria for three-phase `experimental` status and add acceptance tests for gas injection and gas-drive scenarios.
 - [ ] Reconcile all three-phase docs with the implemented state: corrected gas-oil capillary sign, `s_org`, explicit gas material-balance reporting, and remaining oil-phase diagnostic limits.
 - [ ] Add regression tests for comparison-model preview mode, depletion per-variant analytical overlays, and color-index stability.
 - [ ] Add a guard test for the duplicated undersaturated `c_o = 1e-5 /bar` assumption shared by the black-oil PVT generator and material-balance helper.
+- [ ] Fix chart x-axis endpoint generation for cumulative/time modes: prepend zero anchors where appropriate and snap shared x-range/ticks to round values so Chart.js does not expose floating residues like `0.006` or `70.00000000006`.
 
 ## Next
 

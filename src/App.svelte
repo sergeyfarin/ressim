@@ -7,7 +7,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getScenarioChartLayout, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepDiagnosticsForGeometry, computeSweepSaturationWindow, computeSweptThreshold, computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -50,7 +50,9 @@
         if (!showSweepPanel || runtime.history.length === 0) return null;
         if (!outputProfileRockProps || !outputProfileFluidProps) return null;
         const { nx, ny, nz, initialSaturation } = params;
-        const sweptThreshold = computeSweptThreshold(outputProfileRockProps, outputProfileFluidProps, initialSaturation);
+        const sweptThreshold = sweepGeometry !== 'vertical'
+            ? computeSweepSaturationWindow(outputProfileRockProps, outputProfileFluidProps, initialSaturation)
+            : computeSweptThreshold(outputProfileRockProps, outputProfileFluidProps, initialSaturation);
         const result: SimSweepPoint[] = [{ time: 0, eA: sweepGeometry === 'both' ? null : 0, eV: sweepGeometry === 'both' ? null : 0, eVol: 0, mobileOilRecovered: sweepGeometry === 'both' ? 0 : null }];
         for (const entry of runtime.history) {
             const sw = entry.grid?.sat_water;

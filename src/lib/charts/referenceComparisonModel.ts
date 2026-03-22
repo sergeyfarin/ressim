@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweepSaturationWindow, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -367,65 +367,54 @@ function buildBuckleyLeverettReference(
 ): AnalyticalOverlay {
     if (xAxisMode === 'pvi') {
         const analytical = computeBLAnalyticalFromParams(baseResult.params);
-        if (analytical) {
-            const ooip = getOoip(baseResult.params);
+        if (!analytical) {
             return {
-                rates: { label: 'Reference Solution Water Cut', values: analytical.waterCut },
-                cumulative: {
-                    recoveryLabel: 'Reference Solution Recovery',
-                    recoveryValues: analytical.recovery,
-                    cumulativeLabel: 'Reference Solution Cum Oil',
-                    cumulativeValues: analytical.cumulativeOil.map((value) => (
-                        Number.isFinite(value) && ooip > 1e-12 ? Number(value) * ooip : null
-                    )),
-                },
+                rates: null,
+                cumulative: null,
                 diagnostics: null,
-                xValues: analytical.pviValues,
+                xValues: [],
             };
         }
+
+        return {
+            rates: { label: 'Reference Solution Water Cut', values: analytical.waterCut },
+            cumulative: {
+                recoveryLabel: 'Reference Solution Recovery',
+                recoveryValues: analytical.recovery,
+                cumulativeLabel: 'Reference Solution Cum Oil',
+                cumulativeValues: analytical.cumulativeOil,
+            },
+            diagnostics: null,
+            xValues: analytical.xValues,
+        };
     }
 
-    const poreVolume = getPoreVolume(baseResult.params);
-    const ooip = getOoip(baseResult.params);
-    const analyticalProduction = calculateAnalyticalProduction(
-        {
-            s_wc: toFiniteNumber(baseResult.params.s_wc, 0.1),
-            s_or: toFiniteNumber(baseResult.params.s_or, 0.1),
-            n_w: toFiniteNumber(baseResult.params.n_w, 2),
-            n_o: toFiniteNumber(baseResult.params.n_o, 2),
-            k_rw_max: toFiniteNumber(baseResult.params.k_rw_max, 1),
-            k_ro_max: toFiniteNumber(baseResult.params.k_ro_max, 1),
-        },
-        {
-            mu_w: toFiniteNumber(baseResult.params.mu_w, 0.5),
-            mu_o: toFiniteNumber(baseResult.params.mu_o, 1),
-        },
-        toFiniteNumber(baseResult.params.initialSaturation, toFiniteNumber(baseResult.params.s_wc, 0.1)),
-        derived.time,
-        baseResult.rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
-        poreVolume,
-    );
-
-    const waterCut = analyticalProduction.map((point) => {
-        const total = Math.max(0, point.oilRate + point.waterRate);
-        return total > 1e-12 ? point.waterRate / total : 0;
+    const analytical = computeBLAnalyticalFromParams(baseResult.params, {
+        xValues: buildXAxisValues(derived, xAxisMode),
+        timeHistory: derived.time,
+        injectionRateSeries: baseResult.rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
+        poreVolume: getPoreVolume(baseResult.params),
+        recoveryDenominator: getOoip(baseResult.params),
     });
-    const recovery = analyticalProduction.map((point) => (
-        ooip > 1e-12 ? Math.max(0, Math.min(1, point.cumulativeOil / ooip)) : null
-    ));
+    if (!analytical) {
+        return {
+            rates: null,
+            cumulative: null,
+            diagnostics: null,
+            xValues: [],
+        };
+    }
 
     return {
-        rates: { label: 'Reference Solution Water Cut', values: waterCut },
+        rates: { label: 'Reference Solution Water Cut', values: analytical.waterCut },
         cumulative: {
             recoveryLabel: 'Reference Solution Recovery',
-            recoveryValues: recovery,
+            recoveryValues: analytical.recovery,
             cumulativeLabel: 'Reference Solution Cum Oil',
-            cumulativeValues: analyticalProduction.map((point) => (
-                ooip > 1e-12 ? point.cumulativeOil : null
-            )),
+            cumulativeValues: analytical.cumulativeOil,
         },
         diagnostics: null,
-        xValues: buildXAxisValues(derived, xAxisMode),
+        xValues: analytical.xValues,
     };
 }
 
@@ -724,7 +713,6 @@ function computeGasOilBLAnalyticalFromParams(params: Record<string, any>): {
 
     const s_wc = toFiniteNumber(params.s_wc, 0.2);
     const ooip = 1 - s_wc; // oil initially in place as fraction of PV
-
     const gasCut = analyticalProduction.map((point) => {
         const total = Math.max(0, point.oilRate + point.gasRate);
         return total > 1e-12 ? point.gasRate / total : 0;
@@ -1001,7 +989,9 @@ function buildSimulationSweepSeries(
     const rock = extractRockProps(result.params);
     const fluid = extractFluidProps(result.params);
     const initialSw = toFiniteNumber(result.params.initialSaturation, rock.s_wc);
-    const sweptThreshold = computeSweptThreshold(rock, fluid, initialSw);
+    const sweptThreshold = geometry !== 'vertical'
+        ? computeSweepSaturationWindow(rock, fluid, initialSw)
+        : computeSweptThreshold(rock, fluid, initialSw);
     const visibility = getSweepComponentVisibility(geometry);
 
     const snapshots = [...result.history];
@@ -1104,11 +1094,11 @@ function appendAnalyticalSweepCurves(
         toggleLabel: string;
         color: string;
         params: Record<string, any>;
-        theme: ReferenceComparisonTheme;
         derived: DerivedRunSeries;
         xAxisMode: RateChartXAxisMode;
         tau: number | null;
         geometry: SweepGeometry;
+        theme: ReferenceComparisonTheme;
         method: SweepAnalyticalMethod;
     },
 ) {
@@ -1323,38 +1313,53 @@ function appendSimulationSweepCurves(
  * pending-variant overlay (some results done, others still queued). Returns null
  * when the calculation fails so callers can skip the curve independently.
  */
-function computeBLAnalyticalFromParams(params: Record<string, any>): {
-    pviValues: number[];
+function computeBLAnalyticalFromParams(
+    params: Record<string, any>,
+    options?: {
+        xValues?: Array<number | null>;
+        timeHistory?: number[];
+        injectionRateSeries?: number[];
+        poreVolume?: number;
+        recoveryDenominator?: number;
+    },
+): {
+    xValues: Array<number | null>;
     waterCut: Array<number | null>;
     recovery: Array<number | null>;
     cumulativeOil: Array<number | null>;
+    oilRate: Array<number | null>;
 } | null {
     const N = 150;
     const pviMax = 3.0;
-    const pviValues = Array.from({ length: N }, (_, i) => (i / (N - 1)) * pviMax);
-    const injRates = new Array(N).fill(1);
+    const defaultPviValues = Array.from({ length: N }, (_, i) => (i / (N - 1)) * pviMax);
+    const xValues = options?.xValues ?? defaultPviValues;
+    const timeHistory = options?.timeHistory ?? defaultPviValues;
+    const injRates = options?.injectionRateSeries ?? new Array(timeHistory.length).fill(1);
     let analyticalProduction: Array<{ oilRate: number; waterRate: number; cumulativeOil: number }>;
     try {
         analyticalProduction = calculateAnalyticalProduction(
             extractRockProps(params),
             extractFluidProps(params),
             toFiniteNumber(params.initialSaturation, toFiniteNumber(params.s_wc, 0.1)),
-            pviValues,
+            timeHistory,
             injRates,
-            1, // poreVolume = 1 → time = PVI
+            options?.poreVolume ?? 1,
         );
     } catch {
         return null;
     }
+    const initialSaturation = toFiniteNumber(params.initialSaturation, toFiniteNumber(params.s_wc, 0.1));
+    const ooip = Math.max(1e-12, options?.recoveryDenominator ?? (1 - initialSaturation));
     const waterCut = analyticalProduction.map((pt) => {
         const total = Math.max(0, pt.oilRate + pt.waterRate);
         return total > 1e-12 ? pt.waterRate / total : 0;
     });
     const recovery = analyticalProduction.map((pt) =>
-        Math.max(0, Math.min(1, pt.cumulativeOil / 1)), // ooip = 1 (unit pore volume)
+        Math.max(0, Math.min(1, pt.cumulativeOil / ooip)),
     );
     const cumulativeOil = analyticalProduction.map((pt) => pt.cumulativeOil);
-    return { pviValues, waterCut, recovery, cumulativeOil };
+    const oilRate = analyticalProduction.map((pt) => pt.oilRate);
+    return { xValues, waterCut, recovery, cumulativeOil, oilRate };
 }
 
 /**
@@ -1494,7 +1499,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, curves.pviValues, curves.waterCut);
+            }, curves.xValues, curves.waterCut);
             appendSeries(panels.recovery, {
                 label: `${prefix}Analytical Recovery Factor`,
                 curveKey: 'recovery-factor-reference',
@@ -1506,7 +1511,7 @@ function buildAnalyticalPreviewPanels(
                 borderWidth: 2,
                 borderDash: [7, 4],
                 yAxisID: 'y',
-            }, curves.pviValues, curves.recovery);
+            }, curves.xValues, curves.recovery);
         });
 
         return panels;
@@ -2414,19 +2419,6 @@ export function buildReferenceComparisonModel(input: {
                     borderDash: [7, 4],
                     yAxisID: 'y',
                 }, refOverlay.xValues, refOverlay.cumulative.recoveryValues);
-                appendSeries(panels.cumulative, {
-                    label: 'Reference Solution Cum Oil',
-                    curveKey: 'cum-oil-reference',
-                    toggleGroupKey: 'analytical-shared',
-                    toggleLabel: 'Analytical solution',
-                    legendSection: 'analytical',
-                    legendSectionLabel: 'Analytical (dashed lines):',
-                    color: referenceColor,
-                    legendColor: legendGrey,
-                    borderWidth: 2,
-                    borderDash: [7, 4],
-                    yAxisID: 'y',
-                }, refOverlay.xValues, refOverlay.cumulative.cumulativeValues);
             }
         } else {
             // Per-result analytical — either the analytical physics differs by case,
@@ -2497,7 +2489,7 @@ export function buildReferenceComparisonModel(input: {
                         borderWidth: 1.5,
                         borderDash: [7, 4],
                         yAxisID: 'y',
-                    }, curves.pviValues, curves.waterCut);
+                    }, curves.xValues, curves.waterCut);
                     appendSeries(panels.recovery, {
                         label: `${variant.label} — Reference Recovery`,
                         curveKey: 'recovery-factor-reference',
@@ -2510,7 +2502,7 @@ export function buildReferenceComparisonModel(input: {
                         borderWidth: 1.5,
                         borderDash: [7, 4],
                         yAxisID: 'y',
-                    }, curves.pviValues, curves.recovery);
+                    }, curves.xValues, curves.recovery);
                 });
                 }
             }

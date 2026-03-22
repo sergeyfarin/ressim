@@ -11,13 +11,15 @@ import {
     computeVerticalSweep,
     computeCombinedSweep,
     computeSweepRecoveryFactor,
+    computeSweepSaturationWindow,
     computeSimSweepDiagnosticsForGeometry,
     computeSimSweepPointForGeometry,
     computeMobileOilRecoveredFraction,
+    computeSweptThreshold,
     normalizeSimSweepPointForGeometry,
     type SweepPoint,
 } from './sweepEfficiency';
-import { computeBLRecoveryVsPVI } from './fractionalFlow';
+import { computeBLRecoveryVsPVI, computeWelgeMetrics } from './fractionalFlow';
 import type { RockProps, FluidProps } from './fractionalFlow';
 
 const defaultRock: RockProps = { s_wc: 0.1, s_or: 0.1, n_w: 2, n_o: 2, k_rw_max: 1.0, k_ro_max: 1.0 };
@@ -429,6 +431,28 @@ describe('normalizeSimSweepPointForGeometry', () => {
 });
 
 describe('computeSimSweepPointForGeometry', () => {
+    it('uses continuous cell weighting for areal geometry instead of binary swept-column counting', () => {
+        const saturation = computeSweepSaturationWindow(defaultRock, defaultFluid, defaultRock.s_wc);
+        const satWater = new Float64Array([
+            saturation.initialSw,
+            saturation.thresholdSw,
+        ]);
+
+        const point = computeSimSweepPointForGeometry(satWater, 2, 1, 1, saturation, {
+            geometry: 'areal',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 1,
+            producerJ: 0,
+            cellDx: 10,
+            cellDy: 10,
+        });
+
+        expect(point.eA).toBeCloseTo(0.25, 10);
+        expect(point.eVol).toBeCloseTo(point.eA, 10);
+        expect(point.eV).toBe(1);
+    });
+
     it('keeps vertical geometry on the existing volumetric sweep definition', () => {
         const satWater = new Float64Array(6 * 1 * 3).fill(0.1);
         satWater[0] = 0.4;
@@ -528,6 +552,26 @@ describe('computeSimSweepPointForGeometry', () => {
         expect(point.eVol).toBeCloseTo(1, 10);
         expect(point.eV).toBeCloseTo(1, 10);
     });
+
+    it('uses continuous weighting for combined-geometry volumetric sweep', () => {
+        const saturation = computeSweepSaturationWindow(defaultRock, defaultFluid, defaultRock.s_wc);
+        const satWater = new Float64Array(2 * 2 * 2).fill(saturation.initialSw);
+        satWater[0] = saturation.thresholdSw;
+
+        const point = computeSimSweepPointForGeometry(satWater, 2, 2, 2, saturation, {
+            geometry: 'both',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 1,
+            producerJ: 1,
+            cellDx: 20,
+            cellDy: 20,
+        });
+
+        expect(point.eVol).toBeCloseTo(0.5 / 8, 10);
+        expect(point.eA).toBeCloseTo(0.5 / 4, 10);
+        expect(point.eV).toBeCloseTo(1, 10);
+    });
 });
 
 describe('computeMobileOilRecoveredFraction', () => {
@@ -539,6 +583,36 @@ describe('computeMobileOilRecoveredFraction', () => {
     it('returns unity when all oil is reduced to residual saturation', () => {
         const satOil = new Float64Array(8).fill(0.1);
         expect(computeMobileOilRecoveredFraction(satOil, 2, 2, 2, 0.8, 0.1)).toBeCloseTo(1, 10);
+    });
+});
+
+describe('computeSweptThreshold', () => {
+    it('uses the midpoint between the actual initial saturation and the Welge shock state', () => {
+        const initialSw = 0.25;
+        const welge = computeWelgeMetrics(defaultRock, defaultFluid, initialSw);
+        const threshold = computeSweptThreshold(defaultRock, defaultFluid, initialSw);
+
+        expect(threshold).toBeCloseTo(welge.initialSw + 0.5 * (welge.shockSw - welge.initialSw), 10);
+        expect(threshold).toBeGreaterThan(welge.initialSw);
+        expect(threshold).toBeLessThan(welge.shockSw);
+    });
+
+    it('falls back from the actual initial saturation when the Welge front degenerates', () => {
+        const initialSw = 0.25;
+        const immobileWaterRock: RockProps = { ...defaultRock, k_rw_max: 0 };
+        const threshold = computeSweptThreshold(immobileWaterRock, defaultFluid, initialSw);
+        const expected = initialSw + 0.2 * ((1 - immobileWaterRock.s_or) - initialSw);
+
+        expect(threshold).toBeCloseTo(expected, 10);
+    });
+
+    it('returns the corresponding saturation window for continuous areal weighting', () => {
+        const window = computeSweepSaturationWindow(defaultRock, defaultFluid, 0.25);
+
+        expect(window.thresholdSw).toBeCloseTo(computeSweptThreshold(defaultRock, defaultFluid, 0.25), 10);
+        expect(window.initialSw).toBeCloseTo(0.25, 10);
+        expect(window.shockSw).toBeGreaterThan(window.initialSw);
+        expect(window.maxSw).toBeCloseTo(1 - defaultRock.s_or, 10);
     });
 });
 
@@ -575,6 +649,42 @@ describe('computeSimSweepDiagnosticsForGeometry', () => {
         expect(point.eA).toBeNull();
         expect(point.eV).toBeNull();
         expect(point.eVol).toBeCloseTo(0.125, 10);
+        expect(point.mobileOilRecovered).toBeGreaterThan(0);
+    });
+
+    it('uses continuous weighting for combined-geometry eVol when given a saturation window', () => {
+        const nx = 2;
+        const ny = 2;
+        const nz = 2;
+        const saturation = computeSweepSaturationWindow(defaultRock, defaultFluid, defaultRock.s_wc);
+        const satWater = new Float64Array(nx * ny * nz).fill(saturation.initialSw);
+        const satOil = new Float64Array(nx * ny * nz).fill(0.8);
+        satWater[0] = saturation.thresholdSw;
+        satOil[0] = 0.5;
+
+        const point = computeSimSweepDiagnosticsForGeometry(
+            satWater,
+            satOil,
+            nx,
+            ny,
+            nz,
+            saturation,
+            {
+                geometry: 'both',
+                injectorI: 0,
+                injectorJ: 0,
+                producerI: 1,
+                producerJ: 1,
+                cellDx: 20,
+                cellDy: 20,
+            },
+            0.8,
+            0.1,
+        );
+
+        expect(point.eA).toBeNull();
+        expect(point.eV).toBeNull();
+        expect(point.eVol).toBeCloseTo(0.5 / 8, 10);
         expect(point.mobileOilRecovered).toBeGreaterThan(0);
     });
 });

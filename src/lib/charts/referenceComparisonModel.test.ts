@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
-import { computeWelgeMetrics } from '../analytical/fractionalFlow';
+import { calculateAnalyticalProduction, computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from '../catalog/caseCatalog';
 import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
@@ -292,12 +292,14 @@ describe('referenceComparisonModel', () => {
                 'Reference Solution Water Cut',
             ]),
         );
-        expect(model.panels.cumulative.curves.map((curve) => curve.label)).toEqual(
-            expect.arrayContaining(['Reference Solution Cum Oil']),
-        );
         expect(model.panels.recovery.curves.map((curve) => curve.label)).toEqual(
             expect.arrayContaining(['Reference Solution Recovery']),
         );
+        const referenceCurveIndex = model.panels.rates.curves.findIndex((curve) => curve.label === 'Reference Solution Water Cut');
+        expect(referenceCurveIndex).toBeGreaterThanOrEqual(0);
+        const referenceSeries = model.panels.rates.series[referenceCurveIndex];
+        expect(referenceSeries).toHaveLength(150);
+        expect(referenceSeries.at(-1)?.x).toBeCloseTo(3, 6);
         expect(model.panels.diagnostics.curves.map((curve) => curve.label)).toEqual(
             expect.arrayContaining([
                 `${baseResult.label} Avg Pressure`,
@@ -600,6 +602,60 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.rates.curves).toHaveLength(0);
         expect(model.previewCases).toHaveLength(0);
         expect(model.axisMappingWarning).toContain('hidden on this axis until remapping data exists');
+    });
+
+    it('normalizes waterflood preview recovery by unit OOIP when initial saturation is nonzero', () => {
+        const params = {
+            s_wc: 0.1,
+            s_or: 0.1,
+            n_w: 2,
+            n_o: 2,
+            k_rw_max: 1,
+            k_ro_max: 1,
+            mu_w: 0.5,
+            mu_o: 1.0,
+            initialSaturation: 0.1,
+        };
+        const model = buildReferenceComparisonModel({
+            family: null,
+            results: [],
+            xAxisMode: 'pvi',
+            previewAnalyticalMethod: 'buckley-leverett',
+            previewVariantParams: [
+                {
+                    label: 'Base',
+                    variantKey: 'base',
+                    params,
+                },
+            ],
+        });
+
+        const pointCount = 150;
+        const pviValues = Array.from({ length: pointCount }, (_, index) => (index / (pointCount - 1)) * 3);
+        const analyticalProduction = calculateAnalyticalProduction(
+            {
+                s_wc: params.s_wc,
+                s_or: params.s_or,
+                n_w: params.n_w,
+                n_o: params.n_o,
+                k_rw_max: params.k_rw_max,
+                k_ro_max: params.k_ro_max,
+            },
+            {
+                mu_w: params.mu_w,
+                mu_o: params.mu_o,
+            },
+            params.initialSaturation,
+            pviValues,
+            new Array(pointCount).fill(1),
+            1,
+        );
+        const expectedFinalRecovery = analyticalProduction.at(-1)!.cumulativeOil / (1 - params.initialSaturation);
+        expect(model.panels.recovery.series).toHaveLength(1);
+        const recoverySeries = model.panels.recovery.series[0];
+        const finalPoint = recoverySeries.at(-1);
+        expect(finalPoint?.y).not.toBeNull();
+        expect(finalPoint?.y as number).toBeCloseTo(expectedFinalRecovery, 6);
     });
 
     it('assigns shared metric keys so compared cases stay aligned within the same family', () => {

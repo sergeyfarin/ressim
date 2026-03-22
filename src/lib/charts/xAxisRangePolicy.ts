@@ -7,6 +7,81 @@ export type AxisMapping = {
     rangeValues: Array<number | null>;
 };
 
+const TARGET_X_AXIS_TICK_COUNT = 6;
+
+function getStepDecimalPlaces(step: number): number {
+    if (!Number.isFinite(step) || step <= 0) return 0;
+
+    for (let decimals = 0; decimals <= 12; decimals += 1) {
+        const scaled = step * (10 ** decimals);
+        if (Math.abs(scaled - Math.round(scaled)) <= 1e-9) return decimals;
+    }
+
+    return 12;
+}
+
+function normalizeFloatingValue(value: number, step?: number): number {
+    if (!Number.isFinite(value)) return value;
+    if (Number.isFinite(step) && Number(step) > 0) {
+        return Number(value.toFixed(getStepDecimalPlaces(Number(step))));
+    }
+    return Number.parseFloat(value.toPrecision(12));
+}
+
+function getNiceStepSize(range: number, targetTickCount = TARGET_X_AXIS_TICK_COUNT): number {
+    if (!Number.isFinite(range) || range <= 0) return 0;
+
+    const targetIntervals = Math.max(1, targetTickCount - 1);
+    const rawStep = range / targetIntervals;
+    const exponent = Math.floor(Math.log10(rawStep));
+    const magnitude = 10 ** exponent;
+    const normalized = rawStep / magnitude;
+
+    if (normalized <= 1) return magnitude;
+    if (normalized <= 2) return 2 * magnitude;
+    if (normalized <= 2.5) return 2.5 * magnitude;
+    if (normalized <= 5) return 5 * magnitude;
+    return 10 * magnitude;
+}
+
+function snapBoundaryToNiceValue(value: number, step: number): number {
+    if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) {
+        return value;
+    }
+
+    const candidateSteps = [step, step / 2, step / 4].filter((candidate, index, values) => (
+        Number.isFinite(candidate)
+        && candidate > 0
+        && values.indexOf(candidate) === index
+    ));
+
+    for (const candidateStep of candidateSteps) {
+        const nearestMultiple = Math.round(value / candidateStep) * candidateStep;
+        const tolerance = Math.max(candidateStep * 0.15, Math.abs(value) * 1e-9, 1e-12);
+
+        if (Math.abs(value - nearestMultiple) <= tolerance) {
+            return normalizeFloatingValue(nearestMultiple, candidateStep);
+        }
+    }
+
+    return normalizeFloatingValue(value);
+}
+
+function snapSharedXAxisRange(range: { min: number; max: number }): { min: number; max: number } {
+    const span = range.max - range.min;
+    if (!Number.isFinite(span) || span <= 0) return range;
+
+    const step = getNiceStepSize(span);
+    if (step <= 0) return range;
+
+    const snapped = {
+        min: snapBoundaryToNiceValue(range.min, step),
+        max: snapBoundaryToNiceValue(range.max, step),
+    };
+
+    return snapped.min < snapped.max ? snapped : range;
+}
+
 function computeSeriesExtent(seriesGroups: XYPoint[][]): { min: number; max: number } | undefined {
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
@@ -78,7 +153,7 @@ export function resolveSharedXAxisRange(input: {
 
     const policy = input.policy ?? { mode: 'rate-tail-threshold' as const, relativeThreshold: 1e-7 };
 
-    if (policy.mode === 'data-extent') return extent;
+    if (policy.mode === 'data-extent') return snapSharedXAxisRange(extent);
 
     if (policy.mode === 'rate-tail-threshold') {
         const rateSeries = input.rateSeries ?? [];
@@ -99,10 +174,10 @@ export function resolveSharedXAxisRange(input: {
             }
         }
 
-        return {
+        return snapSharedXAxisRange({
             min: extent.min,
             max: clippedMax > extent.min ? Math.min(extent.max, clippedMax) : extent.max,
-        };
+        });
     }
 
     const minCandidates: number[] = [];
@@ -129,5 +204,5 @@ export function resolveSharedXAxisRange(input: {
     const min = minCandidates.length > 0 ? Math.min(extent.min, Math.min(...minCandidates)) : extent.min;
     const max = maxCandidates.length > 0 ? Math.max(extent.max, Math.max(...maxCandidates)) : extent.max;
 
-    return min < max ? { min, max } : extent;
+    return min < max ? snapSharedXAxisRange({ min, max }) : snapSharedXAxisRange(extent);
 }
