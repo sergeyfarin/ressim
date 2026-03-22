@@ -8,7 +8,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, normalizeSimSweepPointForGeometry, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -50,13 +50,16 @@
     const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
         if (!showSweepPanel || runtime.history.length === 0) return null;
         if (!outputProfileRockProps || !outputProfileFluidProps) return null;
-        const { nx, ny, nz, s_wc } = params;
-        const sweptThreshold = computeSweptThreshold(outputProfileRockProps, outputProfileFluidProps, s_wc);
-        const result: SimSweepPoint[] = [];
+        const { nx, ny, nz, initialSaturation } = params;
+        const sweptThreshold = computeSweptThreshold(outputProfileRockProps, outputProfileFluidProps, initialSaturation);
+        const result: SimSweepPoint[] = [{ time: 0, eA: 0, eV: 0, eVol: 0 }];
         for (const entry of runtime.history) {
             const sw = entry.grid?.sat_water;
             if (!sw || sw.length !== nx * ny * nz) continue;
-            const { eA, eV, eVol } = computeSimSweepPoint(sw, nx, ny, nz, sweptThreshold);
+            const { eA, eV, eVol } = normalizeSimSweepPointForGeometry(
+                computeSimSweepPoint(sw, nx, ny, nz, sweptThreshold),
+                sweepGeometry,
+            );
             result.push({ time: entry.time, eA, eV, eVol });
         }
         return result.length > 0 ? result : null;

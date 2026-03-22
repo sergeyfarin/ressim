@@ -1079,12 +1079,25 @@
         getter: (pt: SimSweepSeries[0]) => number,
     ): Array<{ x: number; y: number | null }> {
         if (!series || series.length === 0) return [];
-        return series.map((pt) => {
+        const points = series.map((pt) => {
+            if (pt.time <= 1e-12) {
+                return { x: 0, y: getter(pt) };
+            }
             // Find cumulative PVI at this simulation time by scanning rateHistory
             const tIdx = timeValues.findIndex((t) => t >= pt.time - 1e-9);
             const pvi = tIdx >= 0 ? (cumulatives.pvi[tIdx] ?? null) : (cumulatives.pvi.at(-1) ?? null);
             return { x: pvi ?? 0, y: getter(pt) };
         });
+        const deduped: Array<{ x: number; y: number | null }> = [];
+        for (const point of points) {
+            const previous = deduped.at(-1);
+            if (previous && Math.abs(previous.x - point.x) <= 1e-9) {
+                previous.y = point.y;
+                continue;
+            }
+            deduped.push(point);
+        }
+        return deduped;
     }
 
     const sweepPanels = $derived.by(() => {

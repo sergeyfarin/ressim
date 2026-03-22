@@ -11,6 +11,7 @@ import {
     computeVerticalSweep,
     computeCombinedSweep,
     computeSweepRecoveryFactor,
+    normalizeSimSweepPointForGeometry,
     type SweepPoint,
 } from './sweepEfficiency';
 import { computeBLRecoveryVsPVI } from './fractionalFlow';
@@ -381,6 +382,21 @@ describe('computeSweepRecoveryFactor', () => {
         const result = computeSweepRecoveryFactor(defaultRock, defaultFluid, [100], 10);
         const expected = (1 - defaultRock.s_or - defaultRock.s_wc) / (1 - defaultRock.s_wc);
         expect(result.edPiston).toBeCloseTo(expected, 6);
+    });
+});
+
+describe('normalizeSimSweepPointForGeometry', () => {
+    it('uses volumetric sweep as vertical sweep for vertical geometry', () => {
+        const normalized = normalizeSimSweepPointForGeometry({ eA: 0.1, eV: 1 / 3, eVol: 0.0333333333 }, 'vertical');
+        expect(normalized.eA).toBe(1);
+        expect(normalized.eV).toBeCloseTo(normalized.eVol, 10);
+    });
+
+    it('forces vertical sweep to unity for areal geometry', () => {
+        const normalized = normalizeSimSweepPointForGeometry({ eA: 0.25, eV: 0.8, eVol: 0.2 }, 'areal');
+        expect(normalized.eA).toBeCloseTo(0.25, 10);
+        expect(normalized.eV).toBe(1);
+        expect(normalized.eVol).toBeCloseTo(0.2, 10);
     });
 });
 

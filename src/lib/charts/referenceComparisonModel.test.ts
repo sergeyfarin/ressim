@@ -664,4 +664,43 @@ describe('referenceComparisonModel', () => {
         expect(model.sweepPanels.areal?.curves.length).toBeGreaterThan(0);
         expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
     });
+
+    it('starts sweep simulation series at zero and uses volumetric sweep for vertical simulation E_V', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const verticalSpec = {
+            ...baseSpec,
+            key: 'vertical_sim_metric_case',
+            caseKey: 'vertical_sim_metric_case',
+            label: 'Vertical sim metric case',
+            params: {
+                ...baseSpec.params,
+                nx: 6,
+                ny: 1,
+                nz: 3,
+                permMode: 'perLayer',
+                layerPermsX: [300, 100, 30],
+                layerPermsY: [300, 100, 30],
+                producerI: 5,
+                producerJ: 0,
+            },
+        };
+
+        const result = buildSweepRunResult(verticalSpec);
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'pvi',
+        });
+
+        const verticalPanel = model.sweepPanels.vertical;
+        const simIndex = verticalPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-vertical-sim');
+        const combinedPanel = model.sweepPanels.combined;
+        const combinedSimIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
+
+        expect(verticalPanel!.series[simIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(verticalPanel!.series[simIndex]?.[1]?.y).toBeCloseTo(combinedPanel!.series[combinedSimIndex]?.[1]?.y ?? NaN, 10);
+    });
 });

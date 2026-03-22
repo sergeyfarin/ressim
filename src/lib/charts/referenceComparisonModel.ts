@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, normalizeSimSweepPointForGeometry, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
@@ -797,16 +797,19 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
         }
     }
 
-    const areal: XYPoint[] = [];
-    const vertical: XYPoint[] = [];
-    const combined: XYPoint[] = [];
+    const areal: XYPoint[] = [{ x: 0, y: 0 }];
+    const vertical: XYPoint[] = [{ x: 0, y: 0 }];
+    const combined: XYPoint[] = [{ x: 0, y: 0 }];
 
     snapshots.forEach((snapshot) => {
         const pvi = mapSweepTimeToPvi(result, Number(snapshot.time));
         if (!Number.isFinite(pvi)) return;
         const satWater = snapshot.grid?.sat_water;
         if (!satWater || satWater.length === 0) return;
-        const sweep = computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold);
+        const sweep = normalizeSimSweepPointForGeometry(
+            computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold),
+            inferSweepGeometry(result.params),
+        );
         areal.push({ x: Number(pvi), y: sweep.eA });
         vertical.push({ x: Number(pvi), y: sweep.eV });
         combined.push({ x: Number(pvi), y: sweep.eVol });

@@ -70,11 +70,40 @@ export type SweepRFResult = {
     vdp: number;
 };
 
+export type SimSweepPoint = {
+    eA: number;
+    eV: number;
+    eVol: number;
+};
+
 export function getSweepComponentVisibility(geometry: SweepGeometry): SweepComponentVisibility {
     return {
         showAreal: geometry !== 'vertical',
         showVertical: geometry !== 'areal',
     };
+}
+
+export function normalizeSimSweepPointForGeometry(
+    point: SimSweepPoint,
+    geometry: SweepGeometry,
+): SimSweepPoint {
+    if (geometry === 'vertical') {
+        return {
+            eA: 1,
+            eV: point.eVol,
+            eVol: point.eVol,
+        };
+    }
+
+    if (geometry === 'areal') {
+        return {
+            eA: point.eA,
+            eV: 1,
+            eVol: point.eVol,
+        };
+    }
+
+    return point;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
