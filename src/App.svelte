@@ -609,7 +609,9 @@
                     ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
                     : ""}
             bind:steps={params.steps}
+            showStepsInput={scenario.isCustomMode}
             stopPending={runtime.stopPending}
+            onStepsEdit={() => params.markStepsOverride()}
             onRunSteps={handleRun}
             onInitSimulator={() => runtime.initSimulator()}
             onStopRun={() => runtime.stopRun()}

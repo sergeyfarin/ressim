@@ -14,6 +14,8 @@ describe('ui terminology copy', () => {
     expect(runControlsSource).toMatch(/Run \$\{steps\} Step/);
     expect(runControlsSource).toMatch(/Stop Run/);
     expect(runControlsSource).toMatch(/Reset Model/);
+    expect(runControlsSource).toMatch(/\{#if showStepsInput\}/);
+    expect(runControlsSource).toMatch(/oninput=\{onStepsEdit\}/);
     expect(runControlsSource).not.toMatch(/Reinit/);
   });
 

@@ -41,8 +41,11 @@ describe('simulation store policy wiring', () => {
 
   it('treats scenario runtime controls as explicit overrides for sensitivity sweeps', () => {
     expect(storeSource).toMatch(/hasUserDeltaTDaysOverride = \$state\(false\)/);
+    expect(storeSource).toMatch(/hasUserStepsOverride = \$state\(false\)/);
     expect(storeSource).toMatch(/markDeltaTDaysOverride\(\)/);
-    expect(storeSource).toMatch(/const runSteps = Math\.max\(1, Math\.round\(Number\(this\.steps/);
+    expect(storeSource).toMatch(/markStepsOverride\(\)/);
+    expect(storeSource).toMatch(/const runSteps = this\.hasUserStepsOverride/);
+    expect(storeSource).toMatch(/variantParams\.steps \?\? baseParams\.steps/);
     expect(storeSource).toMatch(/const runDeltaTDays = this\.hasUserDeltaTDaysOverride/);
     expect(storeSource).toMatch(/variantParams\.delta_t_days \?\? baseParams\.delta_t_days/);
     expect(storeSource).toMatch(/steps: runSteps/);

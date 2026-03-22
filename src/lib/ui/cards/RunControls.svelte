@@ -16,8 +16,10 @@
     warningPolicy = undefined,
     runProgress = "",
     steps = $bindable(20),
+    showStepsInput = false,
     numSensitivities = 0,
     stopPending = false,
+    onStepsEdit = () => {},
     onRunSteps = () => {},
     onInitSimulator = () => {},
     onStopRun = () => {},
@@ -33,8 +35,10 @@
     warningPolicy?: WarningPolicy;
     runProgress?: string;
     steps?: number;
+    showStepsInput?: boolean;
     numSensitivities?: number;
     stopPending?: boolean;
+    onStepsEdit?: () => void;
     onRunSteps?: () => void;
     onInitSimulator?: () => void;
     onStopRun?: () => void;
@@ -86,20 +90,23 @@
 
       <div class="h-4 w-px bg-border/60 mx-1 hidden sm:block"></div>
 
-      <!-- Steps input -->
-      <label class="flex flex-col items-start gap-1">
-        <div class="flex items-center gap-2">
-          <span class="text-xs font-medium text-muted-foreground whitespace-nowrap">Steps:</span>
-          <Input
-            type="number"
-            min="1"
-            class={`w-20 ${Boolean(fieldErrors.steps) ? "border-destructive" : ""}`}
-            bind:value={steps} />
-        </div>
-        {#if fieldErrors.steps}
-          <div class="text-[10px] text-destructive leading-tight">{fieldErrors.steps}</div>
-        {/if}
-      </label>
+      {#if showStepsInput}
+        <!-- Steps input -->
+        <label class="flex flex-col items-start gap-1">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-medium text-muted-foreground whitespace-nowrap">Steps:</span>
+            <Input
+              type="number"
+              min="1"
+              class={`w-20 ${Boolean(fieldErrors.steps) ? "border-destructive" : ""}`}
+              bind:value={steps}
+              oninput={onStepsEdit} />
+          </div>
+          {#if fieldErrors.steps}
+            <div class="text-[10px] text-destructive leading-tight">{fieldErrors.steps}</div>
+          {/if}
+        </label>
+      {/if}
 
       <!-- Inline status -->
       <div class="flex items-center gap-3 text-xs text-muted-foreground ml-auto">

@@ -138,6 +138,7 @@ class SimulationStoreImpl {
     delta_t_days = $state(0.25);
     steps = $state(20);
     hasUserDeltaTDaysOverride = $state(false);
+    hasUserStepsOverride = $state(false);
 
     // Initial Conditions
     initialPressure = $state(300.0);
@@ -1485,10 +1486,15 @@ class SimulationStoreImpl {
 
     clearRuntimeOverrides() {
         this.hasUserDeltaTDaysOverride = false;
+        this.hasUserStepsOverride = false;
     }
 
     markDeltaTDaysOverride() {
         this.hasUserDeltaTDaysOverride = true;
+    }
+
+    markStepsOverride() {
+        this.hasUserStepsOverride = true;
     }
 
     resolveOwningModeForLibraryEntry(entryKey: string): CaseMode | null {
@@ -1798,7 +1804,6 @@ class SimulationStoreImpl {
         const analyticalMethod = scenario.capabilities.analyticalMethod;
         const baseParams = scenario.params;
         const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
-        const runSteps = Math.max(1, Math.round(Number(this.steps ?? baseParams.steps ?? 240)));
 
         const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
 
@@ -1811,6 +1816,9 @@ class SimulationStoreImpl {
                 continue;
             }
             const variantParams = getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey);
+            const runSteps = this.hasUserStepsOverride
+                ? Math.max(1, Math.round(Number(this.steps ?? baseParams.steps ?? 240)))
+                : Math.max(1, Math.round(Number(variantParams.steps ?? baseParams.steps ?? 240)));
             const runDeltaTDays = this.hasUserDeltaTDaysOverride
                 ? Number(this.delta_t_days ?? baseParams.delta_t_days ?? 0.125)
                 : Number(variantParams.delta_t_days ?? baseParams.delta_t_days ?? 0.125);

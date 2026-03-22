@@ -92,6 +92,8 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
     expect(appSource).toMatch(/<ScenarioPicker/);
     expect(appSource).toMatch(/<RunControls/);
+    expect(appSource).toMatch(/showStepsInput=\{scenario\.isCustomMode\}/);
+    expect(appSource).toMatch(/onStepsEdit=\{\(\) =\> params\.markStepsOverride\(\)\}/);
     expect(appSource).not.toMatch(/<WarningPolicyPanel/);
   });
 
