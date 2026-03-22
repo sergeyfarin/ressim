@@ -8,7 +8,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepPoint, computeSweepRecoveryFactor, type SweepRFResult } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -49,12 +49,14 @@
     type SimSweepPoint = { time: number; eA: number; eV: number; eVol: number };
     const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
         if (!showSweepPanel || runtime.history.length === 0) return null;
+        if (!outputProfileRockProps || !outputProfileFluidProps) return null;
         const { nx, ny, nz, s_wc } = params;
+        const sweptThreshold = computeSweptThreshold(outputProfileRockProps, outputProfileFluidProps, s_wc);
         const result: SimSweepPoint[] = [];
         for (const entry of runtime.history) {
             const sw = entry.grid?.sat_water;
             if (!sw || sw.length !== nx * ny * nz) continue;
-            const { eA, eV, eVol } = computeSimSweepPoint(sw, nx, ny, nz, s_wc);
+            const { eA, eV, eVol } = computeSimSweepPoint(sw, nx, ny, nz, sweptThreshold);
             result.push({ time: entry.time, eA, eV, eVol });
         }
         return result.length > 0 ? result : null;
@@ -558,6 +560,7 @@
             runCompleted={runtime.runCompleted}
             simTime={runtime.simTime}
             historyLength={runtime.history.length}
+            totalStepsRun={runtime.rateHistory.length}
             hasValidationErrors={params.hasValidationErrors}
             numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
             runProgress={runtime.referenceSweepRunning

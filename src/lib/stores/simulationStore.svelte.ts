@@ -1790,7 +1790,7 @@ class SimulationStoreImpl {
                 params: variantParams,
                 steps: runSteps,
                 deltaTDays: runDeltaTDays,
-                historyInterval: 1,
+                historyInterval: Math.max(1, Math.ceil(runSteps / 50)),
                 reference: analyticalRef,
                 comparisonMetric: null,
                 breakthroughCriterion: null,

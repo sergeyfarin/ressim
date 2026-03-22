@@ -11,6 +11,7 @@
     runCompleted = false,
     simTime = 0,
     historyLength = 0,
+    totalStepsRun = 0,
     hasValidationErrors = false,
     warningPolicy = undefined,
     runProgress = "",
@@ -27,6 +28,7 @@
     runCompleted?: boolean;
     simTime?: number;
     historyLength?: number;
+    totalStepsRun?: number;
     hasValidationErrors?: boolean;
     warningPolicy?: WarningPolicy;
     runProgress?: string;
@@ -112,6 +114,12 @@
         }`}>{statusText}</span>
         <span class="opacity-60">·</span>
         <span>{simTime.toFixed(1)} d</span>
+        {#if totalStepsRun > 0 && numSensitivities === 0}
+          <span class="opacity-60">·</span>
+          <span>{totalStepsRun} steps</span>
+          <span class="opacity-60">·</span>
+          <span>{historyLength} snaps</span>
+        {/if}
       </div>
     </div>
 

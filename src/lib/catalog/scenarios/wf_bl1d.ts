@@ -71,8 +71,8 @@ export const wf_bl1d: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        delta_t_days: 0.125,
-        steps: 240,
+        delta_t_days: 0.25,
+        steps: 200,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
@@ -101,7 +101,7 @@ export const wf_bl1d: Scenario = {
                 },
                 {
                     key: 'mob_case_b',
-                    label: 'M ≈ 2.3  (BL Case B)',
+                    label: 'M ≈ 2.3  and tighter rock (Case B)',
                     description: 'BL Case B — adverse mobility with tighter rock (μ_o=1.4, μ_w=0.6, n_w=2.2, s_wc=s_or=0.15). Earlier breakthrough than base.',
                     paramPatch: { mu_w: 0.6, mu_o: 1.4, initialSaturation: 0.15, s_wc: 0.15, s_or: 0.15, n_w: 2.2 },
                     affectsAnalytical: true,
@@ -109,8 +109,8 @@ export const wf_bl1d: Scenario = {
                 {
                     key: 'mob_unfavorable',
                     label: 'M ≈ 10  (μ_o = 5.0 cp)',
-                    description: 'Strongly unfavourable — very early breakthrough, poor recovery. Classic viscous fingering regime.',
-                    paramPatch: { mu_o: 5.0, delta_t_days: 0.25 },
+                    description: 'Strongly unfavourable — very early breakthrough relative to injected volume (PVI), poor recovery. Classic viscous fingering regime.',
+                    paramPatch: { mu_o: 5.0 },
                     affectsAnalytical: true,
                 },
             ],
@@ -172,34 +172,6 @@ export const wf_bl1d: Scenario = {
             ],
         },
         {
-            key: 'capillary',
-            label: 'Capillary Pressure',
-            description: 'Capillary pressure diffuses the sharp BL shock front. The analytical solution stays sharp — the gap between them quantifies capillary spreading. The analytical solution does not include capillary effects.',
-            variants: [
-                {
-                    key: 'cap_off',
-                    label: 'P_e = 0  (disabled)',
-                    description: 'No capillary pressure — sharp BL shock; simulation and analytical agree.',
-                    paramPatch: {},
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'cap_mild',
-                    label: 'P_e = 0.3 bar  (mild)',
-                    description: 'Mild capillary entry pressure — slight front spreading. — Rapoport & Leas (1953)',
-                    paramPatch: { capillaryEnabled: true, capillaryPEntry: 0.3, capillaryLambda: 2 },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'cap_strong',
-                    label: 'P_e = 1.5 bar  (strong)',
-                    description: 'Strong capillary pressure — broad transition zone, front significantly smeared.',
-                    paramPatch: { capillaryEnabled: true, capillaryPEntry: 1.5, capillaryLambda: 2 },
-                    affectsAnalytical: false,
-                },
-            ],
-        },
-        {
             key: 'grid',
             label: 'Grid Resolution',
             description: 'Numerical convergence study. The Buckley-Leverett analytical solution is grid-independent — only the simulation changes as the grid is refined.',
@@ -224,13 +196,6 @@ export const wf_bl1d: Scenario = {
                     label: '24 cells  (coarse)',
                     description: 'Coarse 24-cell grid — large numerical diffusion, smeared front.',
                     paramPatch: { nx: 24, producerI: 23, cellDx: 40 },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'grid_48',
-                    label: '48 cells  (medium)',
-                    description: 'Intermediate 48-cell grid — reduced numerical diffusion.',
-                    paramPatch: { nx: 48, producerI: 47, cellDx: 20 },
                     affectsAnalytical: false,
                 },
                 {

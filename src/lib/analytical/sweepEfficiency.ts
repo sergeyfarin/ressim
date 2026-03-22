@@ -10,7 +10,7 @@
  */
 
 import type { RockProps, FluidProps } from './fractionalFlow';
-import { computeBLRecoveryVsPVI } from './fractionalFlow';
+import { computeBLRecoveryVsPVI, computeWelgeMetrics } from './fractionalFlow';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -359,14 +359,37 @@ export function computeVerticalSweep(
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Compute a physically meaningful "swept" threshold from the Buckley-Leverett
+ * shock-front saturation.  A cell is considered swept when its water saturation
+ * reaches the midpoint between Swc and the BL shock front — i.e. the
+ * displacement front has meaningfully passed through it.
+ *
+ * This avoids the pitfall of a tiny fixed epsilon (e.g. 0.01) that triggers
+ * on numerical diffusion far ahead of the actual front.
+ */
+export function computeSweptThreshold(rock: RockProps, fluid: FluidProps, initialSw: number): number {
+    const welge = computeWelgeMetrics(rock, fluid, initialSw);
+    // Midpoint between initial Sw and BL shock-front Sw.
+    // If Welge fails (shockSw ≈ initialSw), fall back to 20% of movable range.
+    const movable = 1 - rock.s_or - rock.s_wc;
+    if (welge.shockSw - initialSw < 0.01 * movable) {
+        return initialSw + 0.2 * movable;
+    }
+    return (initialSw + welge.shockSw) / 2;
+}
+
+/**
  * Compute simulation sweep efficiencies from a per-cell saturation array.
  *
  * Cell layout: flat index = k * nx * ny + j * nx + i  (k=layer, j=col, i=row).
- * A cell is considered "swept" if its water saturation exceeds s_wc + eps.
+ * A cell is considered "swept" if its water saturation exceeds the given threshold.
  *
  *  E_vol — volumetric: fraction of all cells that are swept.
  *  E_A   — areal:      fraction of (i,j) columns that contain ≥1 swept cell.
  *  E_V   — vertical:   E_vol / E_A  (layers swept within the swept area).
+ *
+ * @param sweptThreshold — absolute Sw threshold for a cell to count as swept.
+ *   Use {@link computeSweptThreshold} to derive from BL shock-front saturation.
  *
  * Returns {eA, eV, eVol} in [0, 1].
  */
@@ -375,13 +398,11 @@ export function computeSimSweepPoint(
     nx: number,
     ny: number,
     nz: number,
-    s_wc: number,
-    eps = 0.01,
+    sweptThreshold: number,
 ): { eA: number; eV: number; eVol: number } {
     if (!satWater || satWater.length === 0 || nx <= 0 || ny <= 0 || nz <= 0) {
         return { eA: 0, eV: 0, eVol: 0 };
     }
-    const threshold = s_wc + eps;
     let sweptCells = 0;
     let sweptColumns = 0;
 
@@ -389,7 +410,7 @@ export function computeSimSweepPoint(
         for (let i = 0; i < nx; i++) {
             let colSwept = false;
             for (let k = 0; k < nz; k++) {
-                if (satWater[k * nx * ny + j * nx + i] > threshold) {
+                if (satWater[k * nx * ny + j * nx + i] > sweptThreshold) {
                     sweptCells++;
                     colSwept = true;
                 }

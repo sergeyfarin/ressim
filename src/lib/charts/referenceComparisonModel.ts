@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepPoint, computeSweepRecoveryFactor } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
@@ -782,7 +782,10 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
     const nx = Math.max(1, Math.floor(toFiniteNumber(result.params.nx, 1)));
     const ny = Math.max(1, Math.floor(toFiniteNumber(result.params.ny, 1)));
     const nz = Math.max(1, Math.floor(toFiniteNumber(result.params.nz, 1)));
-    const s_wc = toFiniteNumber(result.params.s_wc, 0.1);
+    const rock = extractRockProps(result.params);
+    const fluid = extractFluidProps(result.params);
+    const initialSw = toFiniteNumber(result.params.initialSaturation, rock.s_wc);
+    const sweptThreshold = computeSweptThreshold(rock, fluid, initialSw);
     const hasVertical = getLayerPermeabilities(result.params).length > 1;
 
     const snapshots = [...result.history];
@@ -802,7 +805,7 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
         if (!Number.isFinite(pvi)) return;
         const satWater = snapshot.grid?.sat_water;
         if (!satWater || satWater.length === 0) return;
-        const sweep = computeSimSweepPoint(satWater, nx, ny, nz, s_wc);
+        const sweep = computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold);
         areal.push({ x: Number(pvi), y: sweep.eA });
         vertical.push({ x: Number(pvi), y: sweep.eV });
         combined.push({ x: Number(pvi), y: sweep.eVol });
