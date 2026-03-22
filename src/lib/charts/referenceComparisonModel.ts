@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
@@ -820,6 +820,24 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
     };
 }
 
+/**
+ * Infer which sweep components are physically meaningful from grid params.
+ *
+ *  - nz=1 or single uniform perm → 'areal' (XY five-spot, E_V = 1)
+ *  - ny=1 with layered perms     → 'vertical' (XZ line drive, E_A = 1)
+ *  - otherwise                    → 'both'
+ */
+function inferSweepGeometry(params: Record<string, any>): SweepGeometry {
+    const ny = Math.max(1, Math.floor(toFiniteNumber(params.ny, 1)));
+    const permeabilities = getLayerPermeabilities(params);
+    const hasVerticalHeterogeneity = permeabilities.length > 1
+        && new Set(permeabilities).size > 1;
+
+    if (!hasVerticalHeterogeneity) return 'areal';
+    if (ny <= 1) return 'vertical';
+    return 'both';
+}
+
 function buildAnalyticalSweepSeries(params: Record<string, any>): {
     pviValues: number[];
     rf: Array<number | null>;
@@ -832,8 +850,9 @@ function buildAnalyticalSweepSeries(params: Record<string, any>): {
     const fluid = extractFluidProps(params);
     const permeabilities = getLayerPermeabilities(params);
     const thickness = toFiniteNumber(params.cellDz, 1);
-    const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0);
-    const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0);
+    const geometry = inferSweepGeometry(params);
+    const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
+    const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
     return {
         pviValues: sweep.arealSweep.curve.map((point) => point.pvi),
         rf: recovery.curve.map((point) => point.rfSweep),

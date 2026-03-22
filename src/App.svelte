@@ -8,7 +8,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -64,6 +64,14 @@
 
     // Analytical recovery factor for sweep scenarios: RF = E_vol(Craig+DP) × E_D_BL(PVI_local).
     // Computed purely from rock/fluid props — no simulation data required.
+    const sweepGeometry = $derived.by((): SweepGeometry => {
+        const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
+            ? params.layerPermsX : [params.uniformPermX];
+        const hasVerticalHeterogeneity = perms.length > 1 && new Set(perms).size > 1;
+        if (!hasVerticalHeterogeneity) return 'areal';
+        if (params.ny <= 1) return 'vertical';
+        return 'both';
+    });
     const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
         if (!showSweepPanel || !outputProfileRockProps || !outputProfileFluidProps) return null;
         const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
@@ -71,7 +79,7 @@
             : params.nz > 1
                 ? Array.from({ length: params.nz }, () => params.uniformPermX)
                 : [params.uniformPermX];
-        return computeSweepRecoveryFactor(outputProfileRockProps, outputProfileFluidProps, perms, params.cellDz);
+        return computeSweepRecoveryFactor(outputProfileRockProps, outputProfileFluidProps, perms, params.cellDz, 3.0, 200, sweepGeometry);
     });
 
     // True when any active sensitivity variant is declared to affect the analytical solution.

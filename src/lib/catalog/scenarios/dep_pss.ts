@@ -2,7 +2,7 @@ import type { Scenario } from '../scenarios';
 
 export const dep_pss: Scenario = {
     key: 'dep_pss',
-    label: 'Pressure Depletion',
+    label: 'Pressure Depletion (Oil)',
     description: 'Bounded square reservoir under pseudo-steady-state. Well position sets the Dietz shape factor C_A (centre C_A ≈ 30.88 vs corner C_A ≈ 0.56), controlling the rate of pressure decline.',
     analyticalMethodSummary: 'PSS productivity-index model — predicts exponential rate and pressure decline for the active well location, skin, and permeability.',
     analyticalMethodReference: 'Dietz (1965); standard pseudo-steady-state productivity-index formulation.',

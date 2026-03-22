@@ -36,6 +36,15 @@ export type CombinedSweepResult = {
     combined: SweepPoint[];
 };
 
+/**
+ * Which sweep components are physically meaningful for a given grid geometry.
+ *
+ *  'areal'    — 2D XY (nz=1 or uniform layers).  E_A from Craig; E_V = 1.
+ *  'vertical' — 2D XZ line drive (ny=1, layered).  E_V from Dykstra-Parsons; E_A = 1.
+ *  'both'     — 3D five-spot + layered.  E_vol = E_A × E_V.
+ */
+export type SweepGeometry = 'areal' | 'vertical' | 'both';
+
 export type SweepRFPoint = {
     pvi: number;
     /** RF from sweep model: E_vol(PVI) × E_D_BL(PVI_local). Primary analytical prediction. */
@@ -101,14 +110,20 @@ export function arealSweepAtBreakthrough(M: number): number {
  * depending on mobility ratio (unfavourable M → slower post-BT growth).
  *
  * Based on Dyes, Caudle & Erickson (1954) graphical correlations.
+ *
+ * @param deltaS — movable saturation (1 − S_or − S_wc).  PVI at breakthrough
+ *   equals E_A_bt × ΔS because the injected water fills only the movable
+ *   saturation range within the swept pattern area.  Default 1 for backward
+ *   compatibility; callers with rock props should pass the real value.
  */
-export function arealSweepAtPvi(M: number, pvi: number): number {
+export function arealSweepAtPvi(M: number, pvi: number, deltaS: number = 1): number {
     if (pvi <= 0) return 0;
     const eaBt = arealSweepAtBreakthrough(M);
     if (eaBt <= 0) return 0;
 
-    // PVI at breakthrough: for a five-spot, PVI_bt ≈ E_A_bt (piston approx)
-    const pviBt = eaBt;
+    // PVI at breakthrough: piston-like displacement sweeps E_A_bt fraction
+    // of the pattern, filling ΔS of movable saturation in the swept zone.
+    const pviBt = eaBt * Math.max(0.01, deltaS);
 
     if (pvi <= pviBt) {
         return Math.max(0, (pvi / pviBt) * eaBt);
@@ -129,11 +144,12 @@ export function arealSweepCurve(
     M: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
+    deltaS: number = 1,
 ): SweepPoint[] {
     const result: SweepPoint[] = [];
     for (let i = 0; i <= nPoints; i++) {
         const pvi = (i / nPoints) * pviMax;
-        result.push({ pvi, efficiency: arealSweepAtPvi(M, pvi) });
+        result.push({ pvi, efficiency: arealSweepAtPvi(M, pvi, deltaS) });
     }
     return result;
 }
@@ -149,11 +165,13 @@ export function computeArealSweep(
 ): ArealSweepResult {
     const M = mobilityRatio(rock, fluid);
     const eaBt = arealSweepAtBreakthrough(M);
+    const deltaS = Math.max(0.01, 1 - rock.s_or - rock.s_wc);
+    const pviBt = eaBt * deltaS;
     return {
-        curve: arealSweepCurve(M, pviMax, nPoints),
+        curve: arealSweepCurve(M, pviMax, nPoints, deltaS),
         mobilityRatio: M,
         eaAtBreakthrough: eaBt,
-        pviAtBreakthrough: eaBt, // five-spot: PVI_bt ≈ E_A_bt
+        pviAtBreakthrough: pviBt,
     };
 }
 
@@ -194,89 +212,89 @@ export function dykstraParsonsCoefficient(permeabilities: number[]): number {
  * Dykstra-Parsons vertical sweep efficiency for N non-communicating layers
  * with piston-like displacement (constant pressure drop across all layers).
  *
- * Each layer has a permeability k_i and thickness h_i. The water front in
- * layer i advances proportionally to its permeability. We track sequential
- * breakthrough events (fastest→slowest layer) and compute E_v at each.
+ * Each layer has a permeability k_i and thickness h_i.  All layers share the
+ * same total pressure drop ΔP.  The water front in each layer advances at a
+ * rate that depends on its permeability and the mobility contrast between the
+ * swept (water) zone behind the front and the un-swept (oil) zone ahead.
  *
- * Returns a stepwise   { pvi, efficiency }[]   curve.
+ * **Mobility ratio effect** — After the fastest layer breaks through, it
+ * flows entirely water at endpoint mobility λ_w = k_rw_max/μ_w.  For M > 1
+ * (unfavourable), this high-mobility channel steals injection from remaining
+ * layers, significantly slowing their front advance and reducing E_V.  The
+ * model integrates this flow redistribution at each PVI step.
+ *
+ * @param deltaS — movable saturation (1 − S_or − S_wc).  Determines PVI at
+ *   which each layer's piston front reaches the outlet.  Default 1.
+ *
+ * Returns a   { pvi, efficiency }[]   curve.
  */
 export function verticalSweep(
     layers: Array<{ perm: number; thickness: number }>,
     M: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
+    deltaS: number = 1,
 ): SweepPoint[] {
     if (layers.length === 0) return [{ pvi: 0, efficiency: 0 }];
 
     const totalH = layers.reduce((s, l) => s + Math.max(0, l.thickness), 0);
     if (totalH <= 0) return [{ pvi: 0, efficiency: 0 }];
 
-    // Sort layers by permeability descending (fastest to flood out first)
-    const sortedLayers = layers
-        .map((l, idx) => ({
-            perm: Math.max(1e-9, l.perm),
-            thickness: Math.max(0, l.thickness),
-            idx,
-        }))
-        .sort((a, b) => b.perm - a.perm);
+    const clampedDeltaS = Math.max(0.01, deltaS);
+    const nLayers = layers.length;
+    const h = layers.map(l => Math.max(0, l.thickness));
+    const k = layers.map(l => Math.max(1e-9, l.perm));
 
-    // Compute the PVI at which each layer floods out, assuming piston-like
-    // displacement.  In the Dykstra-Parsons model, the front velocity in
-    // layer i is proportional to k_i.  The fastest layer floods first.
-    //
-    // For constant ΔP across all layers, the fill time for layer i is
-    // proportional to 1/k_i (relative to the fastest layer).
-    //
-    // PVI_bt for the system = fraction of total PV in the fastest layer.
-    // After that layer floods out, its flow becomes water (mobility M effect).
+    // Front positions x[i] ∈ [0, 1] — fraction of layer length swept
+    const x = new Float64Array(nLayers);
 
-    const kMax = sortedLayers[0].perm;
+    // Time-step in PVI space with sub-stepping for accuracy
+    const subStepsPerPoint = 20;
+    const totalSteps = nPoints * subStepsPerPoint;
+    const dPVI = pviMax / totalSteps;
 
-    // PVI at which each layer's front reaches the outlet (relative reference)
-    // Layer i fills when its normalized front position = 1, i.e.
-    //   PVI_i = (kMax / k_i) × PVI_1   where PVI_1 = h_1 / totalH
-    // But with mobility ratio adjustment: after a layer floods, it carries
-    // water at higher mobility, which steals pressure from remaining layers.
-    //
-    // Simplified Dykstra-Parsons: ignore cross-flow redistribution,
-    // breakthrough PVI for each layer scales as kMax/k_i × (h_1/totalH).
+    const result: SweepPoint[] = [{ pvi: 0, efficiency: 0 }];
 
-    const btPviBaseline = sortedLayers[0].thickness / totalH;
-    const btEvents: Array<{ pvi: number; cumulativeThickness: number }> = [];
-    let cumulativeH = 0;
+    for (let step = 1; step <= totalSteps; step++) {
+        // Compute effective mobility for each layer (normalised to λ_o = 1):
+        //   Un-flooded layer at front position x_i:
+        //     Series resistance → λ_eff = 1 / [x_i/M + (1 − x_i)]
+        //   Flooded layer (x_i ≥ 1): all water → λ_eff = M
+        let totalEffRate = 0;
+        const effRates = new Float64Array(nLayers);
 
-    for (const layer of sortedLayers) {
-        const layerBtPvi = (kMax / layer.perm) * btPviBaseline;
-        // Apply mobility ratio effect: after BT, water's higher mobility
-        // accelerates remaining layers only mildly in piston-like model.
-        const adjustedPvi = layerBtPvi * (1 + (M - 1) * (cumulativeH / totalH) * 0.3);
-        cumulativeH += layer.thickness;
-        btEvents.push({ pvi: Math.max(0, adjustedPvi), cumulativeThickness: cumulativeH });
-    }
-
-    // Build continuous curve by interpolating between BT events
-    const result: SweepPoint[] = [];
-    for (let i = 0; i <= nPoints; i++) {
-        const pvi = (i / nPoints) * pviMax;
-        let ev = 0;
-
-        if (pvi <= 0) {
-            ev = 0;
-        } else {
-            // Sum fraction of each layer that is swept at this PVI
-            let sweptH = 0;
-            for (let j = 0; j < sortedLayers.length; j++) {
-                const layerPviBt = btEvents[j].pvi;
-                if (layerPviBt <= 0) {
-                    sweptH += sortedLayers[j].thickness;
-                } else {
-                    const fraction = Math.min(1, pvi / layerPviBt);
-                    sweptH += sortedLayers[j].thickness * fraction;
-                }
-            }
-            ev = sweptH / totalH;
+        for (let i = 0; i < nLayers; i++) {
+            const lambdaEff = x[i] >= 1
+                ? M
+                : 1 / (x[i] / Math.max(1e-12, M) + (1 - x[i]));
+            effRates[i] = h[i] * k[i] * lambdaEff;
+            totalEffRate += effRates[i];
         }
-        result.push({ pvi, efficiency: Math.max(0, Math.min(1, ev)) });
+
+        if (totalEffRate <= 0) break;
+
+        // Advance each un-flooded layer's front:
+        //   dx_i/dPVI = k_i × λ_eff_i × totalH / (Σ(h_j × k_j × λ_eff_j) × ΔS)
+        //
+        // Derivation: from q_i ∝ h_i × k_i × λ_eff_i and the relation
+        //   dPVI = Σ q_j × dt / totalPV,  dx_i = q_i × dt / (h_i × ΔS × PV_layer_i/h_i)
+        // the h_i cancels, leaving dx_i ∝ k_i × λ_eff_i.
+        for (let i = 0; i < nLayers; i++) {
+            if (x[i] >= 1) continue;
+            const lambdaEff = 1 / (x[i] / Math.max(1e-12, M) + (1 - x[i]));
+            const dx = k[i] * lambdaEff * totalH * dPVI / (totalEffRate * clampedDeltaS);
+            x[i] = Math.min(1, x[i] + dx);
+        }
+
+        // Record at output points
+        if (step % subStepsPerPoint === 0) {
+            let sweptH = 0;
+            for (let i = 0; i < nLayers; i++) {
+                sweptH += h[i] * Math.min(1, x[i]);
+            }
+            const pvi = (step / totalSteps) * pviMax;
+            result.push({ pvi, efficiency: Math.max(0, Math.min(1, sweptH / totalH)) });
+        }
     }
 
     return result;
@@ -346,10 +364,11 @@ export function computeVerticalSweep(
     M: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
+    deltaS: number = 1,
 ): VerticalSweepResult {
     const layers = permeabilities.map((perm) => ({ perm, thickness: layerThickness }));
     return {
-        curve: verticalSweep(layers, M, pviMax, nPoints),
+        curve: verticalSweep(layers, M, pviMax, nPoints, deltaS),
         vdp: dykstraParsonsCoefficient(permeabilities),
     };
 }
@@ -432,6 +451,10 @@ export function computeSimSweepPoint(
 
 /**
  * Compute combined volumetric sweep: E_vol(PVI) = E_A(PVI) × E_V(PVI).
+ *
+ * @param geometry — which sweep components to apply.  'areal' sets E_V = 1
+ *   (single-layer or uniform XY five-spot);  'vertical' sets E_A = 1
+ *   (XZ line drive);  'both' applies the full product.
  */
 export function computeCombinedSweep(
     rock: RockProps,
@@ -440,15 +463,24 @@ export function computeCombinedSweep(
     layerThickness: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
+    geometry: SweepGeometry = 'both',
 ): CombinedSweepResult {
-    const areal = computeArealSweep(rock, fluid, pviMax, nPoints);
-    const vertical = computeVerticalSweep(permeabilities, layerThickness, areal.mobilityRatio, pviMax, nPoints);
+    const deltaS = Math.max(0.01, 1 - rock.s_or - rock.s_wc);
+    const M = mobilityRatio(rock, fluid);
+    const useAreal = geometry !== 'vertical';
+    const useVertical = geometry !== 'areal';
 
+    const areal = computeArealSweep(rock, fluid, pviMax, nPoints);
+    const vertical = computeVerticalSweep(permeabilities, layerThickness, M, pviMax, nPoints, deltaS);
+
+    // Build pvi grid from the areal curve (always computed for metrics)
     const combined: SweepPoint[] = [];
     for (let i = 0; i < areal.curve.length && i < vertical.curve.length; i++) {
+        const ea = useAreal ? areal.curve[i].efficiency : 1;
+        const ev = useVertical ? vertical.curve[i].efficiency : 1;
         combined.push({
             pvi: areal.curve[i].pvi,
-            efficiency: areal.curve[i].efficiency * vertical.curve[i].efficiency,
+            efficiency: ea * ev,
         });
     }
 
@@ -505,6 +537,7 @@ export function computeSweepRecoveryFactor(
     layerThickness: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
+    geometry: SweepGeometry = 'both',
 ): SweepRFResult {
     // Build a dense 1D BL RF lookup table (extended range to handle PVI_local >> pviMax)
     const blLookupMax = pviMax * 5;
@@ -524,7 +557,7 @@ export function computeSweepRecoveryFactor(
     }
 
     const edPiston = Math.max(0, (1 - rock.s_or - rock.s_wc) / Math.max(1e-12, 1 - rock.s_wc));
-    const sweep = computeCombinedSweep(rock, fluid, permeabilities, layerThickness, pviMax, nPoints);
+    const sweep = computeCombinedSweep(rock, fluid, permeabilities, layerThickness, pviMax, nPoints, geometry);
 
     const curve: SweepRFPoint[] = sweep.combined.map(({ pvi, efficiency: eVol }) => {
         const rfBL1D = interpBL1D(pvi);
