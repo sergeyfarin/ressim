@@ -7,7 +7,7 @@
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
-    import { getChartLayout, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
+    import { getScenarioChartLayout, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
     import { computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
@@ -297,12 +297,10 @@
 
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (scenario.activeScenarioObject) {
-            // If the active sensitivity dimension has a chart layout override, use it.
-            const activeDim = scenario.activeScenarioObject.sensitivities.find(
-                (d) => d.key === scenario.activeSensitivityDimensionKey,
+            return getScenarioChartLayout(
+                scenario.activeScenarioObject,
+                scenario.activeSensitivityDimensionKey,
             );
-            const layoutKey = activeDim?.chartLayoutKeyOverride ?? scenario.activeScenarioObject.chartLayoutKey;
-            return getChartLayout(layoutKey);
         }
         if (activeReferenceFamily) {
             return getReferenceRateChartLayoutConfig({

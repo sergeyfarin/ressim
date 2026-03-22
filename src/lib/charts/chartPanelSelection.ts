@@ -30,6 +30,8 @@ export type ChartPanelFallback = {
     curveLabels?: string[];
     scalePreset: RateChartScalePreset;
     allowLogToggle?: boolean;
+    visible?: boolean;
+    expanded?: boolean;
 };
 
 type SelectableCurve = {
@@ -112,6 +114,22 @@ export function resolveChartPanelDefinition<
         curves: selectedEntries.map((entry) => entry.curve),
         series: selectedEntries.map((entry) => entry.series),
         scales: getScalePresetConfig(override?.scalePreset ?? fallback.scalePreset),
+        allowLogToggle: override?.allowLogToggle ?? fallback.allowLogToggle ?? false,
+    };
+}
+
+export function resolveChartPanelLayout(input: {
+    override?: RateChartPanelLayout;
+    fallback: ChartPanelFallback;
+}): Required<Pick<ChartPanelFallback, 'title' | 'scalePreset' | 'visible' | 'expanded'>> & {
+    allowLogToggle: boolean;
+} {
+    const { override, fallback } = input;
+    return {
+        title: override?.title ?? fallback.title,
+        scalePreset: override?.scalePreset ?? fallback.scalePreset,
+        visible: override?.visible ?? fallback.visible ?? true,
+        expanded: override?.expanded ?? fallback.expanded ?? false,
         allowLogToggle: override?.allowLogToggle ?? fallback.allowLogToggle ?? false,
     };
 }

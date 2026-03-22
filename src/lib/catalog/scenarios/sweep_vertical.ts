@@ -7,6 +7,14 @@ export const sweep_vertical: Scenario = {
     analyticalMethodSummary: 'Dykstra-Parsons layered model with BL displacement — predicts per-layer breakthrough and combined E_V for the active layer permeabilities.',
     analyticalMethodReference: 'Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'sweep',
+    chartLayoutPatch: {
+        rateChart: {
+            panels: {
+                sweep_areal: { visible: false },
+                sweep_combined_mobile_oil: { visible: false },
+            },
+        },
+    },
     defaultSensitivityDimensionKey: 'heterogeneity',
     capabilities: {
         analyticalMethod: 'buckley-leverett',

@@ -15,6 +15,9 @@
 
 import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
 import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
+import { getChartLayout, mergeChartLayoutConfig } from './chartLayouts';
+
+export { CHART_LAYOUTS, getChartLayout, mergeChartLayoutConfig } from './chartLayouts';
 
 // ─── Per-scenario imports ────────────────────────────────────────────────────
 
@@ -247,6 +250,8 @@ export type SensitivityDimension = {
      * default view than the scenario's primary chart.
      */
     chartLayoutKeyOverride?: string;
+    /** Patch applied on top of the resolved shared layout for this dimension. */
+    chartLayoutPatchOverride?: RateChartLayoutConfig;
 };
 
 export type Scenario = {
@@ -260,6 +265,8 @@ export type Scenario = {
     params: Record<string, unknown>;
     /** Key into CHART_LAYOUTS — selects the shared chart layout template for this scenario. */
     chartLayoutKey: string;
+    /** Scenario-local tweaks applied on top of the shared chart layout. */
+    chartLayoutPatch?: RateChartLayoutConfig;
     /** Behavioral capability declarations — single source of truth for all routing logic. */
     capabilities: ScenarioCapabilities;
     /**
@@ -286,275 +293,7 @@ export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
     requiresThreePhaseMode: false,
 };
 
-// ─── Chart presets ────────────────────────────────────────────────────────────
-
-export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
-    /**
-     * 1D Buckley-Leverett waterflood: PVI x-axis, one variable per panel.
-     * Rates → water cut  |  Recovery → RF  |  Cum Oil (collapsed)  |  Pressure (collapsed)
-     */
-    waterflood: {
-        rateChart: {
-            xAxisMode: 'pvi',
-            xAxisOptions: ['pvi', 'time', 'cumInjection'],
-            xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
-            allowLogScale: false,
-            logScale: false,
-            ratesExpanded: true,
-            recoveryExpanded: true,
-            cumulativeExpanded: false,
-            diagnosticsExpanded: false,
-            panels: {
-                rates: {
-                    title: 'Watercut',
-                    curveKeys: ['water-cut-sim', 'water-cut-reference'],
-                    scalePreset: 'breakthrough',
-                    allowLogToggle: false,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
-                    scalePreset: 'recovery',
-                },
-                cumulative: {
-                    title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                diagnostics: {
-                    title: 'Pressure',
-                    curveKeys: ['avg-pressure-sim'],
-                    scalePreset: 'pressure',
-                },
-                volumes: {
-                    title: 'Cum Injection',
-                    curveKeys: ['cum-injection'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                oil_rate: {
-                    title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim'],
-                    scalePreset: 'rates',
-                },
-            },
-        },
-    },
-
-    /**
-     * Sweep efficiency scenarios: all standard panels collapsed — the sweep-specific panels
-     * (RF sweep, E_A, E_V, E_vol) are the primary display when showSweepPanel is active.
-     */
-    sweep: {
-        rateChart: {
-            xAxisMode: 'pvi',
-            xAxisOptions: ['pvi', 'time'],
-            xAxisRangePolicy: { mode: 'pvi-window', minPvi: 0, maxPvi: 2.5 },
-            allowLogScale: false,
-            logScale: false,
-            ratesExpanded: false,
-            recoveryExpanded: false,
-            cumulativeExpanded: false,
-            diagnosticsExpanded: false,
-            panels: {
-                rates: {
-                    title: 'Watercut',
-                    curveKeys: ['water-cut-sim', 'water-cut-reference'],
-                    scalePreset: 'breakthrough',
-                    allowLogToggle: false,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
-                    scalePreset: 'recovery',
-                },
-                cumulative: {
-                    title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                diagnostics: {
-                    title: 'Pressure',
-                    curveKeys: ['avg-pressure-sim'],
-                    scalePreset: 'pressure',
-                },
-            },
-        },
-    },
-
-    /**
-     * Oil depletion (PSS/transient): time x-axis, oil rate + RF + pressure panels.
-     * Analytical reference solution shown alongside simulation.
-     */
-    oil_depletion: {
-        rateChart: {
-            xAxisMode: 'time',
-            xAxisOptions: ['time', 'tD', 'logTime'],
-            xAxisRangePolicy: { mode: 'data-extent' },
-            allowLogScale: true,
-            logScale: false,
-            ratesExpanded: true,
-            recoveryExpanded: true,
-            cumulativeExpanded: false,
-            diagnosticsExpanded: true,
-            panels: {
-                rates: {
-                    title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim', 'oil-rate-reference'],
-                    scalePreset: 'rates',
-                    allowLogToggle: true,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
-                    scalePreset: 'recovery',
-                },
-                cumulative: {
-                    title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                diagnostics: {
-                    title: 'Pressure & MBE',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio', 'drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
-                    scalePreset: 'pressure',
-                },
-            },
-        },
-    },
-
-    /**
-     * Fetkovich exponential decline: log-time x-axis, log-scale rates.
-     * Same panel structure as oil_depletion.
-     */
-    fetkovich: {
-        rateChart: {
-            xAxisMode: 'logTime',
-            xAxisOptions: ['logTime', 'time', 'tD'],
-            xAxisRangePolicy: { mode: 'data-extent' },
-            allowLogScale: true,
-            logScale: true,
-            ratesExpanded: true,
-            recoveryExpanded: true,
-            cumulativeExpanded: false,
-            diagnosticsExpanded: true,
-            panels: {
-                rates: {
-                    title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim', 'oil-rate-reference'],
-                    scalePreset: 'rates',
-                    allowLogToggle: true,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
-                    scalePreset: 'recovery',
-                },
-                cumulative: {
-                    title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                diagnostics: {
-                    title: 'Pressure & MBE',
-                    curveKeys: ['avg-pressure-sim', 'avg-pressure-reference', 'mbe-ooip-ratio', 'drive-compaction', 'drive-oil-expansion', 'drive-gas-cap'],
-                    scalePreset: 'pressure',
-                },
-            },
-        },
-    },
-
-    /**
-     * Gas-oil Buckley-Leverett: PVI x-axis, gas cut + recovery + cum oil panels
-     * with analytical reference overlays (gas-oil fractional flow).
-     */
-    gas_oil_bl: {
-        rateChart: {
-            xAxisMode: 'pvi',
-            xAxisOptions: ['pvi', 'time', 'cumInjection'],
-            xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
-            allowLogScale: false,
-            logScale: false,
-            ratesExpanded: true,
-            recoveryExpanded: true,
-            cumulativeExpanded: false,
-            diagnosticsExpanded: false,
-            panels: {
-                rates: {
-                    title: 'Gas Breakthrough',
-                    curveKeys: ['gas-cut-sim', 'gas-cut-reference'],
-                    scalePreset: 'breakthrough',
-                    allowLogToggle: false,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
-                    scalePreset: 'recovery',
-                },
-                cumulative: {
-                    title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim', 'cum-oil-reference'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                diagnostics: {
-                    title: 'Pressure',
-                    curveKeys: ['avg-pressure-sim'],
-                    scalePreset: 'pressure',
-                },
-                volumes: {
-                    title: 'Cum Injection',
-                    curveKeys: ['cum-injection'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                oil_rate: {
-                    title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim'],
-                    scalePreset: 'rates',
-                },
-            },
-        },
-    },
-
-    /**
-     * Gas-domain scenarios: no validated analytical reference yet.
-     * Same panel structure as oil_depletion but without analytical reference curves.
-     */
-    gas: {
-        rateChart: {
-            xAxisMode: 'time',
-            xAxisOptions: ['time', 'logTime'],
-            xAxisRangePolicy: { mode: 'data-extent' },
-            allowLogScale: true,
-            logScale: false,
-            ratesExpanded: true,
-            recoveryExpanded: true,
-            cumulativeExpanded: false,
-            diagnosticsExpanded: true,
-            panels: {
-                rates: {
-                    title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim'],
-                    scalePreset: 'rates',
-                    allowLogToggle: true,
-                },
-                recovery: {
-                    title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary'],
-                    scalePreset: 'recovery',
-                },
-                cumulative: {
-                    title: 'Cum Oil',
-                    curveKeys: ['cum-oil-sim'],
-                    scalePreset: 'cumulative_volumes',
-                },
-                diagnostics: {
-                    title: 'Pressure',
-                    curveKeys: ['avg-pressure-sim'],
-                    scalePreset: 'pressure',
-                },
-            },
-        },
-    },
-};
+// ─── Shared chart layouts live in ./chartLayouts.ts ─────────────────────────
 
 // ─── Scenarios ────────────────────────────────────────────────────────────────
 
@@ -637,9 +376,26 @@ export function getDefaultVariantKeys(dimension: SensitivityDimension): string[]
         .map((v) => v.key);
 }
 
-/** Returns the chart layout config for a layout key, or {} if not found. */
-export function getChartLayout(layoutKey: string | null | undefined): RateChartLayoutConfig {
-    return CHART_LAYOUTS[layoutKey ?? ''] ?? {};
+/** Resolve the shared chart layout for a scenario plus any scenario/dimension patches. */
+export function getScenarioChartLayout(
+    scenario: Pick<Scenario, 'chartLayoutKey' | 'chartLayoutPatch' | 'sensitivities'>,
+    dimensionKey?: string | null,
+): RateChartLayoutConfig {
+    const activeDimension = dimensionKey
+        ? scenario.sensitivities.find((dimension) => dimension.key === dimensionKey)
+        : undefined;
+    const layoutKey = activeDimension?.chartLayoutKeyOverride ?? scenario.chartLayoutKey;
+    return mergeChartLayoutConfig(
+        mergeChartLayoutConfig(getChartLayout(layoutKey), scenario.chartLayoutPatch),
+        activeDimension?.chartLayoutPatchOverride,
+    );
+}
+
+export function suppressesPrimaryAnalyticalOverlays(layoutConfig: RateChartLayoutConfig): boolean {
+    const primaryPanelKeys = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate'] as const;
+    return !primaryPanelKeys.some((panelKey) => (
+        layoutConfig.rateChart?.panels?.[panelKey]?.curveKeys?.some((curveKey) => curveKey.includes('-reference'))
+    ));
 }
 
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {

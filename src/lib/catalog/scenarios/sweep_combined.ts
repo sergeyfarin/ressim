@@ -24,6 +24,23 @@ export const sweep_combined: Scenario = {
         },
     ],
     chartLayoutKey: 'sweep',
+    chartLayoutPatch: {
+        rateChart: {
+            panels: {
+                rates: { curveKeys: ['water-cut-sim'] },
+                recovery: { curveKeys: ['recovery-factor-primary'] },
+                cumulative: { curveKeys: ['cum-oil-sim'] },
+                diagnostics: { curveKeys: ['avg-pressure-sim'] },
+                sweep_combined: {
+                    title: 'Analytical Total E_vol vs Simulated E_vol',
+                    visible: true,
+                },
+                sweep_combined_mobile_oil: {
+                    visible: true,
+                },
+            },
+        },
+    },
     defaultSensitivityDimensionKey: 'interaction_core',
     capabilities: {
         analyticalMethod: 'buckley-leverett',

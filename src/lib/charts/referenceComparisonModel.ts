@@ -7,7 +7,7 @@ import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
-import type { RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { RateChartPanelId, RateChartAuxiliaryPanelKey, RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 
 export type XYPoint = { x: number; y: number | null };
 
@@ -16,13 +16,18 @@ export type ReferenceComparisonPanel = {
     series: XYPoint[][];
 };
 
-export type ReferenceComparisonSweepPanels = {
+type ReferenceComparisonSweepPanels = {
     rf: ReferenceComparisonPanel | null;
     areal: ReferenceComparisonPanel | null;
     vertical: ReferenceComparisonPanel | null;
     combined: ReferenceComparisonPanel | null;
     combinedMobileOil: ReferenceComparisonPanel | null;
 };
+
+type ReferenceComparisonPrimaryPanelMap = Record<RateChartPanelKey, ReferenceComparisonPanel>;
+type ReferenceComparisonAuxiliaryPanelMap = Record<RateChartAuxiliaryPanelKey, ReferenceComparisonPanel | null>;
+
+export type ReferenceComparisonPanelMap = ReferenceComparisonPrimaryPanelMap & ReferenceComparisonAuxiliaryPanelMap;
 
 export type ReferenceComparisonModel = {
     orderedResults: BenchmarkRunResult[];
@@ -34,8 +39,7 @@ export type ReferenceComparisonModel = {
      * Empty when all variants have completed results (orderedResults covers everything).
      */
     previewCases: ReferenceComparisonPreviewCase[];
-    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>;
-    sweepPanels: ReferenceComparisonSweepPanels;
+    panels: ReferenceComparisonPanelMap;
     axisMappingWarning: string | null;
 };
 
@@ -513,6 +517,16 @@ function createReferenceComparisonPanel(): ReferenceComparisonPanel {
     return { curves: [], series: [] };
 }
 
+function createSweepPanels(): Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel> {
+    return {
+        rf: createReferenceComparisonPanel(),
+        areal: createReferenceComparisonPanel(),
+        vertical: createReferenceComparisonPanel(),
+        combined: createReferenceComparisonPanel(),
+        combinedMobileOil: createReferenceComparisonPanel(),
+    };
+}
+
 function stripReferenceCurveKeys(
     panel: ReferenceComparisonPanel,
     excludedCurveKeys: Set<string>,
@@ -550,13 +564,39 @@ function suppressPrimaryAnalyticalPanels(
     };
 }
 
-function createSweepPanels(): Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel> {
+function emptyPanelMap(): ReferenceComparisonPanelMap {
     return {
-        rf: createReferenceComparisonPanel(),
-        areal: createReferenceComparisonPanel(),
-        vertical: createReferenceComparisonPanel(),
-        combined: createReferenceComparisonPanel(),
-        combinedMobileOil: createReferenceComparisonPanel(),
+        rates: createReferenceComparisonPanel(),
+        recovery: createReferenceComparisonPanel(),
+        cumulative: createReferenceComparisonPanel(),
+        diagnostics: createReferenceComparisonPanel(),
+        volumes: createReferenceComparisonPanel(),
+        oil_rate: createReferenceComparisonPanel(),
+        sweep_rf: null,
+        sweep_areal: null,
+        sweep_vertical: null,
+        sweep_combined: null,
+        sweep_combined_mobile_oil: null,
+    };
+}
+
+function combinePanelMaps(input: {
+    primary: ReferenceComparisonPrimaryPanelMap;
+    sweep?: ReferenceComparisonSweepPanels;
+}): ReferenceComparisonPanelMap {
+    return {
+        ...emptyPanelMap(),
+        rates: input.primary.rates,
+        recovery: input.primary.recovery,
+        cumulative: input.primary.cumulative,
+        diagnostics: input.primary.diagnostics,
+        volumes: input.primary.volumes,
+        oil_rate: input.primary.oil_rate,
+        sweep_rf: input.sweep?.rf ?? null,
+        sweep_areal: input.sweep?.areal ?? null,
+        sweep_vertical: input.sweep?.vertical ?? null,
+        sweep_combined: input.sweep?.combined ?? null,
+        sweep_combined_mobile_oil: input.sweep?.combinedMobileOil ?? null,
     };
 }
 
@@ -1725,7 +1765,8 @@ export function buildReferenceComparisonModel(input: {
     previewAnalyticalMethod?: string;
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
-    const suppressPrimaryAnalyticalOverlays = family?.showSweepPanel === true && family?.sweepGeometry === 'both';
+    const suppressPrimaryAnalyticalOverlays = family?.suppressPrimaryAnalyticalOverlays
+        ?? (family?.showSweepPanel === true && family?.sweepGeometry === 'both');
     const orderedResults = orderResults(input.results, input.previewVariantParams);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');
@@ -1776,8 +1817,7 @@ export function buildReferenceComparisonModel(input: {
                 return {
                     orderedResults,
                     previewCases: [],
-                    panels,
-                    sweepPanels: emptySweepPanels(),
+                    panels: combinePanelMaps({ primary: panels }),
                     axisMappingWarning: buildAnalyticalAxisWarning({
                         usesRunMappedAnalyticalXAxis: false,
                         hidesPendingAnalyticalWithoutMapping,
@@ -1817,22 +1857,29 @@ export function buildReferenceComparisonModel(input: {
                 return {
                     orderedResults,
                     previewCases,
-                    panels: suppressPrimaryAnalyticalOverlays
-                        ? suppressPrimaryAnalyticalPanels(previewPanels)
-                        : previewPanels,
-                    sweepPanels: family?.showSweepPanel === true
-                        ? buildPreviewSweepPanels({
-                            variants,
-                            theme: input.theme ?? 'dark',
-                            geometry: family?.sweepGeometry ?? 'both',
-                            method: family?.sweepAnalyticalMethod ?? 'dykstra-parsons',
-                        })
-                        : emptySweepPanels(),
+                    panels: combinePanelMaps({
+                        primary: suppressPrimaryAnalyticalOverlays
+                            ? suppressPrimaryAnalyticalPanels(previewPanels)
+                            : previewPanels,
+                        sweep: family?.showSweepPanel === true
+                            ? buildPreviewSweepPanels({
+                                variants,
+                                theme: input.theme ?? 'dark',
+                                geometry: family?.sweepGeometry ?? 'both',
+                                method: family?.sweepAnalyticalMethod ?? 'dykstra-parsons',
+                            })
+                            : emptySweepPanels(),
+                    }),
                     axisMappingWarning: null,
                 };
             }
         }
-        return { orderedResults, previewCases: [], panels, sweepPanels: emptySweepPanels(), axisMappingWarning: null };
+        return {
+            orderedResults,
+            previewCases: [],
+            panels: combinePanelMaps({ primary: panels }),
+            axisMappingWarning: null,
+        };
     }
 
     const derivedByKey = new Map<string, DerivedRunSeries>(
@@ -2311,8 +2358,7 @@ export function buildReferenceComparisonModel(input: {
         return {
             orderedResults,
             previewCases: [],
-            panels,
-            sweepPanels: emptySweepPanels(),
+            panels: combinePanelMaps({ primary: panels }),
             axisMappingWarning: buildAnalyticalAxisWarning({
                 usesRunMappedAnalyticalXAxis,
                 hidesPendingAnalyticalWithoutMapping,
@@ -2325,8 +2371,7 @@ export function buildReferenceComparisonModel(input: {
         return {
             orderedResults,
             previewCases: [],
-            panels,
-            sweepPanels: emptySweepPanels(),
+            panels: combinePanelMaps({ primary: panels }),
             axisMappingWarning: buildAnalyticalAxisWarning({
                 usesRunMappedAnalyticalXAxis,
                 hidesPendingAnalyticalWithoutMapping,
@@ -2847,8 +2892,7 @@ export function buildReferenceComparisonModel(input: {
     return {
         orderedResults,
         previewCases: pendingPreviewCases,
-        panels: visiblePanels,
-        sweepPanels,
+        panels: combinePanelMaps({ primary: visiblePanels, sweep: sweepPanels }),
         axisMappingWarning: buildAnalyticalAxisWarning({
             usesRunMappedAnalyticalXAxis,
             hidesPendingAnalyticalWithoutMapping,

@@ -85,6 +85,7 @@ export type BenchmarkFamily = BenchmarkFamilyDefinition & {
     label: string;
     description: string;
     baseCase: BenchmarkEntry;
+    suppressPrimaryAnalyticalOverlays?: boolean;
     /** True only for sweep-domain scenarios where E_A/E_V/E_vol panels are physically meaningful. */
     showSweepPanel?: boolean;
     sweepGeometry?: import('../analytical/sweepEfficiency').SweepGeometry | null;

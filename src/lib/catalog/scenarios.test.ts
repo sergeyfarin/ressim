@@ -5,6 +5,7 @@ import { computeCombinedSweep } from '../analytical/sweepEfficiency';
 import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     getScenario,
+    getScenarioChartLayout,
     getScenarioWithVariantParams,
     getScenarioGroup,
     listScenarios,
@@ -452,5 +453,18 @@ describe('scenario capability validation', () => {
         expect(CHART_LAYOUTS.oil_depletion.rateChart?.xAxisRangePolicy).toEqual({
             mode: 'data-extent',
         });
+    });
+
+    it('merges scenario chart layout patches on top of shared sweep layouts', () => {
+        const arealLayout = getScenarioChartLayout(getScenario('sweep_areal')!);
+        const combinedLayout = getScenarioChartLayout(getScenario('sweep_combined')!);
+
+        expect(arealLayout.rateChart?.panels?.sweep_vertical?.visible).toBe(false);
+        expect(arealLayout.rateChart?.panels?.sweep_areal?.visible).toBe(true);
+
+        expect(combinedLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
+        expect(combinedLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
+        expect(combinedLayout.rateChart?.panels?.sweep_combined?.title).toBe('Analytical Total E_vol vs Simulated E_vol');
+        expect(combinedLayout.rateChart?.panels?.sweep_combined_mobile_oil?.visible).toBe(true);
     });
 });

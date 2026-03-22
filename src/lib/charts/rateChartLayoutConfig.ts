@@ -8,9 +8,35 @@ export type RateChartXAxisMode =
     | 'cumInjection'
     | 'cumGas';
 
-export type RateChartPanelKey = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'volumes' | 'oil_rate';
+export type RateChartPrimaryPanelId = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'volumes' | 'oil_rate';
 
-export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'recovery';
+export type RateChartSweepPanelId =
+    | 'sweep_rf'
+    | 'sweep_areal'
+    | 'sweep_vertical'
+    | 'sweep_combined'
+    | 'sweep_combined_mobile_oil';
+
+export type RateChartPanelId = RateChartPrimaryPanelId | RateChartSweepPanelId;
+
+export type RateChartPanelKey = RateChartPrimaryPanelId;
+export type RateChartAuxiliaryPanelKey = RateChartSweepPanelId;
+
+export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
+    'rates',
+    'recovery',
+    'cumulative',
+    'diagnostics',
+    'volumes',
+    'oil_rate',
+    'sweep_rf',
+    'sweep_areal',
+    'sweep_vertical',
+    'sweep_combined',
+    'sweep_combined_mobile_oil',
+];
+
+export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'recovery' | 'sweep' | 'sweep_rf';
 
 export type RateChartXAxisRangePolicy =
     | { mode: 'data-extent' }
@@ -28,6 +54,8 @@ export type RateChartPanelLayout = {
     curveLabels?: string[];
     scalePreset?: RateChartScalePreset;
     allowLogToggle?: boolean;
+    visible?: boolean;
+    expanded?: boolean;
 };
 
 export type RateChartConfig = {
@@ -42,7 +70,8 @@ export type RateChartConfig = {
     diagnosticsExpanded?: boolean;
     volumesExpanded?: boolean;
     oilRateExpanded?: boolean;
-    panels?: Partial<Record<RateChartPanelKey, RateChartPanelLayout>>;
+    panelOrder?: RateChartPanelId[];
+    panels?: Partial<Record<RateChartPanelId, RateChartPanelLayout>>;
     curves?: Record<string, RateChartCurveOverride>;
 };
 

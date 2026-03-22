@@ -40,7 +40,7 @@ import {
     type ValidationWarning,
 } from '../validateInputs';
 import { buildWarningPolicy, evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
-import { getDefaultScenarioAnalyticalMode, getScenario, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities, type ScenarioAnalyticalOption } from '../catalog/scenarios';
+import { getDefaultScenarioAnalyticalMode, getScenario, getScenarioChartLayout, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities, suppressesPrimaryAnalyticalOverlays, type ScenarioAnalyticalOption } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
@@ -486,6 +486,7 @@ class SimulationStoreImpl {
         if (!sc || this.isCustomMode) return null;
         const resolved = resolveCapabilities(sc.capabilities);
         const activeDimension = sc.sensitivities.find((dimension) => dimension.key === this.activeSensitivityDimensionKey) ?? null;
+        const chartLayout = getScenarioChartLayout(sc, this.activeSensitivityDimensionKey);
 
         const xAxis = resolved.analyticalNativeXAxis as import('../catalog/benchmarkCases').BenchmarkXAxisKey;
         const panels = (resolved.primaryRateCurve === 'oil-rate'
@@ -505,6 +506,7 @@ class SimulationStoreImpl {
             label: sc.label,
             description: sc.description,
             baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
+            suppressPrimaryAnalyticalOverlays: suppressesPrimaryAnalyticalOverlays(chartLayout),
             showSweepPanel: resolved.showSweepPanel,
             sweepGeometry: resolved.sweepGeometry,
             sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,

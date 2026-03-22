@@ -1,10 +1,12 @@
 <script lang="ts">
+    import { untrack } from "svelte";
     import ChartSubPanel from "./ChartSubPanel.svelte";
     import type { CurveConfig } from "./chartTypes";
     import {
         coerceChartAxisState,
         getConfiguredXAxisOptions,
         resolveChartPanelDefinition,
+        resolveChartPanelLayout,
         type ChartPanelDefinition,
         type ChartPanelEntry,
         type ChartPanelFallback,
@@ -12,10 +14,11 @@
     } from "./chartPanelSelection";
     import type {
         RateChartLayoutConfig,
-        RateChartPanelKey,
+        RateChartPanelId,
         RateChartScalePreset,
         RateChartXAxisMode,
     } from "./rateChartLayoutConfig";
+    import { DEFAULT_RATE_CHART_PANEL_ORDER } from "./rateChartLayoutConfig";
     import type {
         RateHistoryPoint,
         AnalyticalProductionPoint,
@@ -79,18 +82,21 @@
     let logScale = $state(false);
     let normalizeRates = $state(false);
 
+    function createDefaultPanelExpandedState(): Record<RateChartPanelId, boolean> {
+        return Object.fromEntries(
+            DEFAULT_RATE_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
+        ) as Record<RateChartPanelId, boolean>;
+    }
+
+    function equalPanelExpandedState(
+        left: Record<RateChartPanelId, boolean>,
+        right: Record<RateChartPanelId, boolean>,
+    ): boolean {
+        return DEFAULT_RATE_CHART_PANEL_ORDER.every((panelKey) => left[panelKey] === right[panelKey]);
+    }
+
     // --- Panel expand/collapse state ---
-    let ratesExpanded = $state(true);
-    let recoveryExpanded = $state(true);
-    let cumulativeExpanded = $state(false);
-    let diagnosticsExpanded = $state(false);
-    let volumesExpanded = $state(false);
-    let oilRateExpanded = $state(false);
-    let sweepRFExpanded = $state(true);
-    let sweepArealExpanded = $state(false);
-    let sweepVerticalExpanded = $state(false);
-    let sweepVolExpanded = $state(false);
-    let sweepMobileOilExpanded = $state(false);
+    let panelExpanded = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelExpandedState());
 
     // --- Panel alignment state ---
     let nativeGutters = $state<Record<string, { left: number; right: number }>>(
@@ -120,61 +126,51 @@
     // --- Scenario-aware panel defaults ---
     // --- Scenario-aware panel defaults ---
     $effect(() => {
-        // Track the activeCase trigger affirmatively so it evaluates once upon case shift
         const cat = (activeMode ?? "").toLowerCase();
         const cs = (activeCase ?? "").toLowerCase();
 
-        // Use untrack so setting the state variables right here does not re-trigger this exact effect!
-        import("svelte").then(({ untrack }) => {
-            untrack(() => {
-                const conf = layoutConfig?.rateChart;
-                if (conf) {
-                    if (conf.logScale !== undefined) logScale = conf.logScale;
-                    if (conf.xAxisMode !== undefined)
-                        xAxisMode = conf.xAxisMode;
-                    if (conf.ratesExpanded !== undefined)
-                        ratesExpanded = conf.ratesExpanded;
-                    if (conf.recoveryExpanded !== undefined)
-                        recoveryExpanded = conf.recoveryExpanded;
-                    if (conf.cumulativeExpanded !== undefined)
-                        cumulativeExpanded = conf.cumulativeExpanded;
-                    if (conf.diagnosticsExpanded !== undefined)
-                        diagnosticsExpanded = conf.diagnosticsExpanded;
-                    if (conf.volumesExpanded !== undefined)
-                        volumesExpanded = conf.volumesExpanded;
-                    if (conf.oilRateExpanded !== undefined)
-                        oilRateExpanded = conf.oilRateExpanded;
-                } else {
-                    // Fallback to purely string-matched defaults when CaseParams lacks layout metadata
-                    if (cat === "dep" || cat === "depletion" || cs.includes("depletion")) {
-                        ratesExpanded = true;
-                        cumulativeExpanded = false;
-                        diagnosticsExpanded = true;
-                    } else if (
-                        cat === "wf" ||
-                        cat === "waterflood" ||
-                        cs.startsWith("wf_") ||
-                        cs.includes("waterflood") ||
-                        cs.startsWith("bl_")
-                    ) {
-                        ratesExpanded = true;
-                        cumulativeExpanded = true;
-                        diagnosticsExpanded = false;
-                    }
-                    if (
-                        cat === "wf" ||
-                        cs.startsWith("wf_") ||
-                        cs.startsWith("bl_") ||
-                        cs === "waterflood_custom_subcase"
-                    ) {
-                        xAxisMode = pviAvailable ? "pvi" : "time";
-                    } else {
-                        xAxisMode = "time";
-                        logScale = false;
-                    }
-                }
-            });
-        });
+        const currentExpanded = untrack(() => panelExpanded);
+        const nextExpanded = { ...currentExpanded };
+        const conf = layoutConfig?.rateChart;
+        if (conf) {
+            if (conf.logScale !== undefined) logScale = conf.logScale;
+            if (conf.xAxisMode !== undefined) xAxisMode = conf.xAxisMode;
+            for (const panelKey of conf.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER) {
+                const expanded = conf.panels?.[panelKey]?.expanded;
+                if (expanded !== undefined) nextExpanded[panelKey] = expanded;
+            }
+        } else {
+            if (cat === "dep" || cat === "depletion" || cs.includes("depletion")) {
+                nextExpanded.rates = true;
+                nextExpanded.cumulative = false;
+                nextExpanded.diagnostics = true;
+            } else if (
+                cat === "wf" ||
+                cat === "waterflood" ||
+                cs.startsWith("wf_") ||
+                cs.includes("waterflood") ||
+                cs.startsWith("bl_")
+            ) {
+                nextExpanded.rates = true;
+                nextExpanded.cumulative = true;
+                nextExpanded.diagnostics = false;
+            }
+            if (
+                cat === "wf" ||
+                cs.startsWith("wf_") ||
+                cs.startsWith("bl_") ||
+                cs === "waterflood_custom_subcase"
+            ) {
+                xAxisMode = pviAvailable ? "pvi" : "time";
+            } else {
+                xAxisMode = "time";
+                logScale = false;
+            }
+        }
+
+        if (!equalPanelExpandedState(currentExpanded, nextExpanded)) {
+            panelExpanded = nextExpanded;
+        }
     });
 
     // ════════════════════════════════════════════════════════════
@@ -963,6 +959,8 @@
     ]);
 
     function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
+        if (scalePreset === "sweep") return sweepScaleConfig;
+        if (scalePreset === "sweep_rf") return sweepRFScaleConfig;
         if (scalePreset === "breakthrough") return breakthroughScales;
         if (scalePreset === "pressure") return pressureScales;
         if (scalePreset === "cumulative") return cumulativeScales;
@@ -989,129 +987,83 @@
         ];
     });
 
-    function buildPanelDefinition(
-        panelKey: RateChartPanelKey,
-        input: ChartPanelFallback,
-    ): PanelDefinition {
-        const panelDefinition = resolveChartPanelDefinition({
-            override: layoutConfig?.rateChart?.panels?.[panelKey],
-            fallback: input,
-            entries: curveRegistry,
-            getScalePresetConfig,
-        });
-
-        return {
-            ...panelDefinition,
-            curves: applyCurveLayout(panelDefinition.curves),
-        };
-    }
-
-    function filterPanelCurves(panel: PanelDefinition, excludedCurveKeys: Set<string>): PanelDefinition {
-        const keptEntries = panel.curves
-            .map((curve, index) => ({ curve, series: panel.series[index] ?? [] }))
-            .filter((entry) => !excludedCurveKeys.has(entry.curve.curveKey ?? entry.curve.label));
-
-        return {
-            ...panel,
-            curves: keptEntries.map((entry) => entry.curve),
-            series: keptEntries.map((entry) => entry.series),
-        };
-    }
-
-    const suppressPrimaryAnalyticalOverlays = $derived(showSweepPanel && sweepGeometry === "both");
-    const suppressedPrimaryAnalyticalCurveKeys = new Set([
-        "oil-rate-reference",
-        "water-rate-reference",
-        "cum-oil-reference",
-        "recovery-factor-reference",
-        "avg-pressure-reference",
-        "wor-reference",
-        "water-cut-reference",
-    ]);
-
-    let ratesPanel = $derived(
-        buildPanelDefinition("rates", {
+    const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => ({
+        rates: {
             title: "Rates",
             curveKeys: baseRatesCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseRatesCurves.map((curve) => curve.label),
             scalePreset: "rates",
             allowLogToggle: true,
-        }),
-    );
-    let recoveryPanel = $derived(
-        buildPanelDefinition("recovery", {
+            visible: true,
+            expanded: true,
+        },
+        recovery: {
             title: "Recovery Factor",
             curveKeys: ["recovery-factor-primary", "recovery-factor-reference"],
             scalePreset: "recovery",
-        }),
-    );
-    let cumulativePanel = $derived(
-        buildPanelDefinition("cumulative", {
+            visible: true,
+            expanded: true,
+        },
+        cumulative: {
             title: "Cum Oil",
             curveKeys: ["cum-oil-sim", "cum-oil-reference", "cum-injection"],
             scalePreset: "cumulative_volumes",
-        }),
-    );
-    let diagnosticsPanel = $derived(
-        buildPanelDefinition("diagnostics", {
+            visible: true,
+            expanded: false,
+        },
+        diagnostics: {
             title: "Diagnostics",
             curveKeys: baseDiagnosticsCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseDiagnosticsCurves.map((curve) => curve.label),
             scalePreset: "diagnostics",
-        }),
-    );
-    let volumesPanel = $derived(
-        buildPanelDefinition("volumes", {
+            visible: true,
+            expanded: false,
+        },
+        volumes: {
             title: "Cum Injection",
             curveKeys: ["cum-injection"],
             scalePreset: "cumulative_volumes",
-        }),
-    );
-    let oilRatePanel = $derived(
-        buildPanelDefinition("oil_rate", {
+            visible: true,
+            expanded: false,
+        },
+        oil_rate: {
             title: "Oil Rate",
             curveKeys: ["oil-rate-sim", "oil-rate-reference"],
             scalePreset: "rates",
-        }),
-    );
-
-    let filteredRatesPanel = $derived(
-        suppressPrimaryAnalyticalOverlays
-            ? filterPanelCurves(ratesPanel, suppressedPrimaryAnalyticalCurveKeys)
-            : ratesPanel,
-    );
-    let filteredRecoveryPanel = $derived(
-        suppressPrimaryAnalyticalOverlays
-            ? filterPanelCurves(recoveryPanel, suppressedPrimaryAnalyticalCurveKeys)
-            : recoveryPanel,
-    );
-    let filteredCumulativePanel = $derived(
-        suppressPrimaryAnalyticalOverlays
-            ? filterPanelCurves(cumulativePanel, suppressedPrimaryAnalyticalCurveKeys)
-            : cumulativePanel,
-    );
-    let filteredDiagnosticsPanel = $derived(
-        suppressPrimaryAnalyticalOverlays
-            ? filterPanelCurves(diagnosticsPanel, suppressedPrimaryAnalyticalCurveKeys)
-            : diagnosticsPanel,
-    );
-
-    let ratesCurves = $derived(filteredRatesPanel.curves);
-    let recoveryCurves = $derived(filteredRecoveryPanel.curves);
-    let cumulativeCurves = $derived(filteredCumulativePanel.curves);
-    let diagnosticsCurves = $derived(filteredDiagnosticsPanel.curves);
-    let volumesCurves = $derived(volumesPanel.curves);
-    let oilRateCurves = $derived(oilRatePanel.curves);
-    let ratesSeries = $derived(filteredRatesPanel.series);
-    let recoverySeries = $derived(filteredRecoveryPanel.series);
-    let cumulativeSeries = $derived(filteredCumulativePanel.series);
-    let diagnosticsSeries = $derived(filteredDiagnosticsPanel.series);
-    let volumesSeries = $derived(volumesPanel.series);
-    let oilRateSeries = $derived(oilRatePanel.series);
-
-    const ratePanelSupportsNormalization = $derived(
-        ratesCurves.some((curve) => curve.label.includes("Rate")),
-    );
+            visible: true,
+            expanded: false,
+        },
+        sweep_rf: {
+            title: "Recovery Factor — Sweep Analysis",
+            scalePreset: "sweep_rf",
+            visible: true,
+            expanded: true,
+        },
+        sweep_areal: {
+            title: "Areal Sweep Efficiency (E_A)",
+            scalePreset: "sweep",
+            visible: true,
+            expanded: true,
+        },
+        sweep_vertical: {
+            title: "Vertical Sweep Efficiency (E_V)",
+            scalePreset: "sweep",
+            visible: true,
+            expanded: true,
+        },
+        sweep_combined: {
+            title: "Combined Sweep Efficiency (E_vol)",
+            scalePreset: "sweep",
+            visible: true,
+            expanded: true,
+        },
+        sweep_combined_mobile_oil: {
+            title: "Analytical Total E_vol vs Simulated Mobile Oil Recovered",
+            scalePreset: "sweep",
+            visible: false,
+            expanded: false,
+        },
+    }));
 
     // --- Sweep panels (sweep-domain scenarios only, remapped to active x-axis) ---
     //
@@ -1368,22 +1320,88 @@
         };
     });
 
+    function buildPanelDefinition(
+        panelKey: RateChartPanelId,
+        entries: Array<ChartPanelEntry<CurveConfig, XYPoint[]>>,
+    ): PanelDefinition {
+        const panelDefinition = resolveChartPanelDefinition({
+            override: layoutConfig?.rateChart?.panels?.[panelKey],
+            fallback: panelFallbacks[panelKey],
+            entries,
+            getScalePresetConfig,
+        });
+
+        return {
+            ...panelDefinition,
+            curves: applyCurveLayout(panelDefinition.curves),
+        };
+    }
+
+    function toPanelEntries(
+        curves: CurveConfig[],
+        series: XYPoint[][],
+    ): Array<ChartPanelEntry<CurveConfig, XYPoint[]>> {
+        return curves.map((curve, index) => ({
+            curve,
+            series: series[index] ?? [],
+        }));
+    }
+
+    const panelEntriesByKey = $derived.by((): Record<RateChartPanelId, Array<ChartPanelEntry<CurveConfig, XYPoint[]>>> => ({
+        rates: curveRegistry,
+        recovery: curveRegistry,
+        cumulative: curveRegistry,
+        diagnostics: curveRegistry,
+        volumes: curveRegistry,
+        oil_rate: curveRegistry,
+        sweep_rf: sweepPanels ? toPanelEntries(sweepPanels.rfCurves, sweepPanels.rfSeries) : [],
+        sweep_areal: sweepPanels ? toPanelEntries(sweepPanels.arealCurves, sweepPanels.arealSeries) : [],
+        sweep_vertical: sweepPanels ? toPanelEntries(sweepPanels.verticalCurves, sweepPanels.verticalSeries) : [],
+        sweep_combined: sweepPanels ? toPanelEntries(sweepPanels.volCurves, sweepPanels.volSeries) : [],
+        sweep_combined_mobile_oil: sweepPanels ? toPanelEntries(sweepPanels.mobileOilCurves, sweepPanels.mobileOilSeries) : [],
+    }));
+
+    const resolvedPanels = $derived.by(() => {
+        const panelOrder = layoutConfig?.rateChart?.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER;
+
+        return panelOrder
+            .map((panelKey) => {
+                const panelLayout = resolveChartPanelLayout({
+                    override: layoutConfig?.rateChart?.panels?.[panelKey],
+                    fallback: panelFallbacks[panelKey],
+                });
+                const panelDefinition = buildPanelDefinition(panelKey, panelEntriesByKey[panelKey]);
+
+                return {
+                    key: panelKey,
+                    chartId: panelKey.replaceAll('_', '-'),
+                    title: panelDefinition.title,
+                    curves: panelDefinition.curves,
+                    series: panelDefinition.series,
+                    scales: panelDefinition.scales,
+                    allowLogToggle: panelDefinition.allowLogToggle || panelLayout.allowLogToggle,
+                    visible: panelLayout.visible,
+                    expanded: panelExpanded[panelKey] ?? panelLayout.expanded,
+                };
+            })
+            .filter((panel) => panel.visible && panel.curves.length > 0);
+    });
+
+    const ratePanelSupportsNormalization = $derived(
+        (resolvedPanels.find((panel) => panel.key === 'rates')?.curves ?? []).some((curve) => curve.label.includes("Rate")),
+    );
+
+    const showsPrimaryAnalyticalCurves = $derived.by(() => (
+        resolvedPanels
+            .filter((panel) => panel.key !== 'sweep_rf' && panel.key !== 'sweep_areal' && panel.key !== 'sweep_vertical' && panel.key !== 'sweep_combined' && panel.key !== 'sweep_combined_mobile_oil')
+            .flatMap((panel) => panel.curves)
+            .some((curve) => (curve.curveKey ?? "").includes("-reference"))
+    ));
+
     const sharedXRange = $derived.by(() => {
         return resolveSharedXAxisRange({
-            allSeries: [
-                ...ratesSeries,
-                ...recoverySeries,
-                ...cumulativeSeries,
-                ...diagnosticsSeries,
-                ...volumesSeries,
-                ...oilRateSeries,
-                ...(sweepPanels ? sweepPanels.rfSeries : []),
-                ...(sweepPanels ? sweepPanels.arealSeries : []),
-                ...(sweepPanels ? sweepPanels.verticalSeries : []),
-                ...(sweepPanels ? sweepPanels.volSeries : []),
-                ...(sweepPanels ? sweepPanels.mobileOilSeries : []),
-            ],
-            rateSeries: ratesSeries,
+            allSeries: resolvedPanels.flatMap((panel) => panel.series),
+            rateSeries: resolvedPanels.find((panel) => panel.key === 'rates')?.series ?? [],
             xAxisMode,
             policy: layoutConfig?.rateChart?.xAxisRangePolicy,
             pviMappings: [{ domainValues: cumulatives.pvi, rangeValues: xValues }],
@@ -1451,215 +1469,28 @@
         </div>
     </div>
 
-    <!-- Rates panel -->
-    <ChartSubPanel
-        panelId="rates"
-        title={ratesPanel.title}
-        bind:expanded={ratesExpanded}
-        curves={ratesCurves}
-        seriesData={ratesSeries}
-        scaleConfigs={ratesPanel.scales}
-        {theme}
-        bind:logScale
-        allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? ratesPanel.allowLogToggle}
-        xRange={sharedXRange}
-        targetLeftGutter={maxLeftGutter}
-        targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left: number, right: number) => {
-            nativeGutters = { ...nativeGutters, rates: { left, right } };
-        }}
-    />
-
-    <!-- Recovery Factor panel -->
-    <ChartSubPanel
-        panelId="recovery"
-        title={recoveryPanel.title}
-        bind:expanded={recoveryExpanded}
-        curves={recoveryCurves}
-        seriesData={recoverySeries}
-        scaleConfigs={filteredRecoveryPanel.scales}
-        {theme}
-        logScale={false}
-        xRange={sharedXRange}
-        targetLeftGutter={maxLeftGutter}
-        targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left: number, right: number) => {
-            nativeGutters = { ...nativeGutters, recovery: { left, right } };
-        }}
-    />
-
-    <!-- Cumulative panel -->
-    <ChartSubPanel
-        panelId="cumulative"
-        title={cumulativePanel.title}
-        bind:expanded={cumulativeExpanded}
-        curves={cumulativeCurves}
-        seriesData={cumulativeSeries}
-        scaleConfigs={filteredCumulativePanel.scales}
-        {theme}
-        logScale={false}
-        xRange={sharedXRange}
-        targetLeftGutter={maxLeftGutter}
-        targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left: number, right: number) => {
-            nativeGutters = { ...nativeGutters, cumulative: { left, right } };
-        }}
-    />
-
-    <!-- Diagnostics panel -->
-    <ChartSubPanel
-        panelId="diagnostics"
-        title={diagnosticsPanel.title}
-        bind:expanded={diagnosticsExpanded}
-        curves={diagnosticsCurves}
-        seriesData={diagnosticsSeries}
-        scaleConfigs={filteredDiagnosticsPanel.scales}
-        {theme}
-        logScale={false}
-        xRange={sharedXRange}
-        targetLeftGutter={maxLeftGutter}
-        targetRightGutter={maxRightGutter}
-        onGutterMeasure={(left: number, right: number) => {
-            nativeGutters = { ...nativeGutters, diagnostics: { left, right } };
-        }}
-    />
-
-    <!-- Volumes panel (cum injection) — shown when panel has content -->
-    {#if volumesCurves.length > 0}
+    {#each resolvedPanels as panel (panel.key)}
         <ChartSubPanel
-            panelId="volumes"
-            title={volumesPanel.title}
-            bind:expanded={volumesExpanded}
-            curves={volumesCurves}
-            seriesData={volumesSeries}
-            scaleConfigs={volumesPanel.scales}
+            panelId={panel.chartId}
+            title={panel.title}
+            bind:expanded={panelExpanded[panel.key]}
+            curves={panel.curves}
+            seriesData={panel.series}
+            scaleConfigs={panel.scales}
             {theme}
-            logScale={false}
+            bind:logScale
+            allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? panel.allowLogToggle}
             xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, volumes: { left, right } };
+                nativeGutters = { ...nativeGutters, [panel.key]: { left, right } };
             }}
         />
-    {/if}
-
-    <!-- Oil rate panel (waterflood: collapsed by default) — shown when panel has content -->
-    {#if oilRateCurves.length > 0}
-        <ChartSubPanel
-            panelId="oil_rate"
-            title={oilRatePanel.title}
-            bind:expanded={oilRateExpanded}
-            curves={oilRateCurves}
-            seriesData={oilRateSeries}
-            scaleConfigs={oilRatePanel.scales}
-            {theme}
-            logScale={false}
-            xRange={sharedXRange}
-            targetLeftGutter={maxLeftGutter}
-            targetRightGutter={maxRightGutter}
-            onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, oil_rate: { left, right } };
-            }}
-        />
-    {/if}
-
-    <!-- Sweep panels (sweep-domain scenarios only) — RF first (primary), efficiency panels diagnostic -->
-    {#if sweepPanels}
-        <!-- 1. Recovery Factor — primary output -->
-        <ChartSubPanel
-            panelId="sweep-rf"
-            title="Recovery Factor — Sweep Analysis"
-            bind:expanded={sweepRFExpanded}
-            curves={sweepPanels.rfCurves}
-            seriesData={sweepPanels.rfSeries}
-            scaleConfigs={sweepRFScaleConfig}
-            {theme}
-            logScale={false}
-            xRange={sharedXRange}
-            targetLeftGutter={maxLeftGutter}
-            targetRightGutter={maxRightGutter}
-            onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, "sweep-rf": { left, right } };
-            }}
-        />
-        <!-- 2–4. Sweep efficiency decomposition (diagnostic) -->
-        {#if sweepPanels.showAreal}
-            <ChartSubPanel
-                panelId="sweep-areal"
-                title="Areal Sweep Efficiency (E_A)"
-                bind:expanded={sweepArealExpanded}
-                curves={sweepPanels.arealCurves}
-                seriesData={sweepPanels.arealSeries}
-                scaleConfigs={sweepScaleConfig}
-                {theme}
-                logScale={false}
-                xRange={sharedXRange}
-                targetLeftGutter={maxLeftGutter}
-                targetRightGutter={maxRightGutter}
-                onGutterMeasure={(left: number, right: number) => {
-                    nativeGutters = { ...nativeGutters, "sweep-areal": { left, right } };
-                }}
-            />
-        {/if}
-        {#if sweepPanels.showVertical}
-            <ChartSubPanel
-                panelId="sweep-vertical"
-                title="Vertical Sweep Efficiency (E_V)"
-                bind:expanded={sweepVerticalExpanded}
-                curves={sweepPanels.verticalCurves}
-                seriesData={sweepPanels.verticalSeries}
-                scaleConfigs={sweepScaleConfig}
-                {theme}
-                logScale={false}
-                xRange={sharedXRange}
-                targetLeftGutter={maxLeftGutter}
-                targetRightGutter={maxRightGutter}
-                onGutterMeasure={(left: number, right: number) => {
-                    nativeGutters = { ...nativeGutters, "sweep-vertical": { left, right } };
-                }}
-            />
-        {/if}
-        <ChartSubPanel
-            panelId="sweep-vol"
-            title={sweepGeometry === 'both'
-                ? "Analytical Total E_vol vs Simulated E_vol"
-                : "Combined Sweep Efficiency (E_vol)"}
-            bind:expanded={sweepVolExpanded}
-            curves={sweepPanels.volCurves}
-            seriesData={sweepPanels.volSeries}
-            scaleConfigs={sweepScaleConfig}
-            {theme}
-            logScale={false}
-            xRange={sharedXRange}
-            targetLeftGutter={maxLeftGutter}
-            targetRightGutter={maxRightGutter}
-            onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, "sweep-vol": { left, right } };
-            }}
-        />
-        {#if sweepPanels.mobileOilCurves.length > 0}
-            <ChartSubPanel
-                panelId="sweep-mobile-oil"
-                title="Analytical Total E_vol vs Simulated Mobile Oil Recovered"
-                bind:expanded={sweepMobileOilExpanded}
-                curves={sweepPanels.mobileOilCurves}
-                seriesData={sweepPanels.mobileOilSeries}
-                scaleConfigs={sweepScaleConfig}
-                {theme}
-                logScale={false}
-                xRange={sharedXRange}
-                targetLeftGutter={maxLeftGutter}
-                targetRightGutter={maxRightGutter}
-                onGutterMeasure={(left: number, right: number) => {
-                    nativeGutters = { ...nativeGutters, "sweep-mobile-oil": { left, right } };
-                }}
-            />
-        {/if}
-    {/if}
+    {/each}
 
     <!-- Error stats -->
-    {#if !suppressPrimaryAnalyticalOverlays && mismatchSummary.pointsCompared > 0}
+    {#if showsPrimaryAnalyticalCurves && mismatchSummary.pointsCompared > 0}
         <div class="ui-support-copy px-4 pb-4 pt-2 opacity-60 md:px-5 md:pb-5">
             Reference Solution: {mismatchSummary.pointsCompared} pts · MAE: {mismatchSummary.mae.toFixed(
                 3,

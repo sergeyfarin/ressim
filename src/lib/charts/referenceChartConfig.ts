@@ -24,9 +24,7 @@ export function getReferenceRateChartLayoutConfig(input: {
                 xAxisOptions: ['pvi', 'time', 'cumInjection'],
                 allowLogScale: false,
                 logScale: false,
-                ratesExpanded: true,
-                cumulativeExpanded: true,
-                diagnosticsExpanded: false,
+                panelOrder: ['rates', 'cumulative', 'diagnostics'],
                 panels: {
                     rates: {
                         title: 'Breakthrough',
@@ -38,6 +36,7 @@ export function getReferenceRateChartLayoutConfig(input: {
                             : ['Water Cut (Sim)', 'Avg Water Sat'],
                         scalePreset: 'breakthrough',
                         allowLogToggle: false,
+                        expanded: true,
                     },
                     cumulative: {
                         title: 'Recovery',
@@ -48,12 +47,14 @@ export function getReferenceRateChartLayoutConfig(input: {
                             ? ['Recovery Factor', 'Cum Oil', 'Cum Oil (Reference Solution)', 'Cum Injection']
                             : ['Recovery Factor', 'Cum Oil', 'Cum Injection'],
                         scalePreset: 'cumulative',
+                        expanded: true,
                     },
                     diagnostics: {
                         title: 'Pressure',
                         curveKeys: ['avg-pressure-sim'],
                         curveLabels: ['Avg Pressure'],
                         scalePreset: 'pressure',
+                        expanded: false,
                     },
                 },
             },
@@ -71,9 +72,7 @@ export function getReferenceRateChartLayoutConfig(input: {
             xAxisOptions: depletionXAxisOptions,
             allowLogScale: true,
             logScale: family.key === 'fetkovich_exp',
-            ratesExpanded: true,
-            cumulativeExpanded: true,
-            diagnosticsExpanded: true,
+            panelOrder: ['rates', 'cumulative', 'diagnostics'],
             panels: {
                 rates: {
                     title: 'Oil Rate',
@@ -81,18 +80,21 @@ export function getReferenceRateChartLayoutConfig(input: {
                     curveLabels: ['Oil Rate', 'Oil Rate (Reference Solution)', 'Oil Rate Error'],
                     scalePreset: 'rates',
                     allowLogToggle: true,
+                    expanded: true,
                 },
                 cumulative: {
                     title: 'Cumulative Oil / Recovery',
                     curveKeys: ['cum-oil-sim', 'cum-oil-reference', 'recovery-factor'],
                     curveLabels: ['Cum Oil', 'Cum Oil (Reference Solution)', 'Recovery Factor'],
                     scalePreset: 'cumulative',
+                    expanded: true,
                 },
                 diagnostics: {
                     title: 'Pressure / Decline',
                     curveKeys: ['avg-pressure-sim', 'avg-pressure-reference'],
                     curveLabels: ['Avg Pressure', 'Avg Pressure (Reference Solution)'],
                     scalePreset: 'pressure',
+                    expanded: true,
                 },
             },
         },

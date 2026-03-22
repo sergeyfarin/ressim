@@ -21,19 +21,20 @@ describe('referenceChartConfig', () => {
         expect(config).toMatchObject({
             rateChart: {
                 xAxisMode: 'pvi',
-                ratesExpanded: true,
-                cumulativeExpanded: true,
-                diagnosticsExpanded: false,
+                panelOrder: ['rates', 'cumulative', 'diagnostics'],
                 panels: {
                     rates: {
                         title: 'Breakthrough',
                         scalePreset: 'breakthrough',
+                        expanded: true,
                     },
                     cumulative: {
                         title: 'Recovery',
+                        expanded: true,
                     },
                     diagnostics: {
                         title: 'Pressure',
+                        expanded: false,
                     },
                 },
             },

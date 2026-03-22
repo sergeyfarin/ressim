@@ -7,6 +7,14 @@ export const sweep_areal: Scenario = {
     analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous pattern. Heterogeneous variants show the additional sweep penalty on top of this baseline.',
     analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
     chartLayoutKey: 'sweep',
+    chartLayoutPatch: {
+        rateChart: {
+            panels: {
+                sweep_vertical: { visible: false },
+                sweep_combined_mobile_oil: { visible: false },
+            },
+        },
+    },
     defaultSensitivityDimensionKey: 'mobility',
     capabilities: {
         analyticalMethod: 'buckley-leverett',

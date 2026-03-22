@@ -3,6 +3,7 @@ import {
     coerceChartAxisState,
     getConfiguredXAxisOptions,
     resolveChartPanelDefinition,
+    resolveChartPanelLayout,
     type ChartPanelEntry,
 } from './chartPanelSelection';
 
@@ -89,5 +90,30 @@ describe('chartPanelSelection', () => {
 
         expect(panel.curves.map((curve) => curve.label)).toEqual(['Pressure']);
         expect(panel.series).toEqual([[2]]);
+    });
+
+    it('merges visibility and expansion metadata from the panel layout override', () => {
+        const panel = resolveChartPanelLayout({
+            override: {
+                title: 'Configured Sweep',
+                scalePreset: 'sweep',
+                visible: false,
+                expanded: true,
+            },
+            fallback: {
+                title: 'Sweep',
+                scalePreset: 'sweep_rf',
+                visible: true,
+                expanded: false,
+            },
+        });
+
+        expect(panel).toEqual({
+            title: 'Configured Sweep',
+            scalePreset: 'sweep',
+            visible: false,
+            expanded: true,
+            allowLogToggle: false,
+        });
     });
 });

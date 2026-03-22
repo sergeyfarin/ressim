@@ -167,7 +167,8 @@ Current custom mode is a catch-all that dumps 50+ raw parameter inputs with no c
 
 - [ ] Consolidate chart-shell header and expansion-state wiring across `RateChart` and `ReferenceComparisonChart`
 - [ ] Finish shared panel/x-axis selection across both chart types
-- [ ] Eliminate the separate sweep-panel taxonomy in `referenceComparisonModel.ts` / `ReferenceComparisonChart.svelte` by extending the shared chart layout contract to describe scenario-owned auxiliary panels (sweep RF / E_A / E_V / E_vol / mobile-oil), so scenario metadata selects panels while chart code only materializes series
+- [x] Extract shared scenario chart layouts into `src/lib/catalog/chartLayouts.ts` and allow per-scenario / per-dimension layout patching so scenario chart ownership is explicit
+- [x] Eliminate the separate sweep-panel taxonomy in `referenceComparisonModel.ts` / `ReferenceComparisonChart.svelte` by moving to a unified `panelOrder + panels` chart layout contract, so scenario metadata selects every panel and both chart renderers loop over the resolved panel list instead of hard-coded sweep buckets
 - [ ] Extract output selection view model from `App.svelte` — one typed helper returning the active run/result payload shared by charts, 3D, and analytical components
 
 ---
