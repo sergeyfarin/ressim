@@ -183,6 +183,41 @@ function buildSweepSnapshots(params: Record<string, any>, counts: number[]): Sim
     });
 }
 
+function buildSweepColumnSnapshots(
+    params: Record<string, any>,
+    layerCountsPerSnapshot: number[],
+): SimulatorSnapshot[] {
+    const nx = Number(params.nx);
+    const ny = Number(params.ny);
+    const nz = Number(params.nz);
+    const total = nx * ny * nz;
+    const swc = Number(params.s_wc ?? 0.1);
+    const pressure = Number(params.initialPressure ?? 300);
+    const offInjectorColumn = nx + 1;
+
+    return layerCountsPerSnapshot.map((layerCount, index) => {
+        const satWater = new Float64Array(total).fill(swc);
+        const satOil = new Float64Array(total).fill(Math.max(0, 1 - swc));
+        const satGas = new Float64Array(total).fill(0);
+        for (let k = 0; k < Math.min(nz, layerCount); k += 1) {
+            const cellIndex = k * nx * ny + offInjectorColumn;
+            satWater[cellIndex] = swc + 0.2;
+            satOil[cellIndex] = Math.max(0, 1 - satWater[cellIndex]);
+        }
+
+        return {
+            time: index + 1,
+            grid: {
+                pressure: new Float64Array(total).fill(pressure),
+                sat_water: satWater,
+                sat_oil: satOil,
+                sat_gas: satGas,
+            },
+            wells: [],
+        };
+    });
+}
+
 function buildSweepRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
     const rateHistory = buildSyntheticWaterfloodRateHistory(spec.params, 0.55, 0);
     const total = Number(spec.params.nx) * Number(spec.params.ny) * Number(spec.params.nz);
@@ -996,6 +1031,28 @@ describe('referenceComparisonModel', () => {
         expect(verticalPanel!.series[simIndex]?.[0]).toEqual({ x: 0, y: 0 });
         expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
         expect(verticalPanel!.series[simIndex]?.[1]?.y).toBeCloseTo(combinedPanel!.series[combinedSimIndex]?.[1]?.y ?? NaN, 10);
+    });
+
+    it('preserves the zero origin when the first sweep snapshot also remaps to x=0', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'both' as const };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const result = buildSweepRunResult(baseSpec);
+        result.pviSeries = result.pviSeries.map((value, index) => (index === 0 ? 0 : value));
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'pvi',
+        });
+
+        const verticalPanel = model.sweepPanels.vertical;
+        const verticalSimIndex = verticalPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-vertical-sim');
+        const combinedPanel = model.sweepPanels.combined;
+        const combinedSimIndex = combinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-sim');
+
+        expect(verticalPanel!.series[verticalSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
+        expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
     });
 
     it('remaps completed sweep panels onto the selected time axis', () => {

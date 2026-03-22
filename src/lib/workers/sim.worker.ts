@@ -324,6 +324,15 @@ self.onmessage = async (event) => {
       stopRequested = false;
       post('runStarted', { steps, deltaTDays });
 
+      // Emit the fully initialized pre-step state so downstream charts and
+      // playback have an actual t=0 snapshot rather than a synthetic origin.
+      post('state', getStatePayload(true, -1, {
+        batchMs: 0,
+        avgStepMs: 0,
+        snapshotsSent: 1,
+      }));
+      snapshotsSent = 1;
+
       let lastYieldTime = performance.now();
 
       for (let i = 0; i < steps; i++) {

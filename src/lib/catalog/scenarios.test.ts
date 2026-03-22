@@ -74,6 +74,14 @@ describe('sweep scenario sensitivities', () => {
         ]);
     });
 
+    it('keeps combined sweep timestep aligned with the tuned vertical scenario while allowing a longer run horizon', () => {
+        const vertical = getScenario('sweep_vertical');
+        const combined = getScenario('sweep_combined');
+
+        expect(combined?.params.delta_t_days).toBe(vertical?.params.delta_t_days);
+        expect(Number(combined?.params.steps ?? 0)).toBeGreaterThanOrEqual(Number(vertical?.params.steps ?? 0));
+    });
+
     it('splits the combined sweep scenario into interaction and ideal-to-worst axes', () => {
         const scenario = getScenario('sweep_combined');
 

@@ -76,6 +76,16 @@ export type SimSweepPoint = {
     eVol: number;
 };
 
+type SimSweepGeometryContext = {
+    geometry: SweepGeometry;
+    injectorI?: number;
+    injectorJ?: number;
+    producerI?: number;
+    producerJ?: number;
+    cellDx?: number;
+    cellDy?: number;
+};
+
 export function getSweepComponentVisibility(geometry: SweepGeometry): SweepComponentVisibility {
     return {
         showAreal: geometry !== 'vertical',
@@ -104,6 +114,144 @@ export function normalizeSimSweepPointForGeometry(
     }
 
     return point;
+}
+
+function clamp01(value: number): number {
+    return Math.max(0, Math.min(1, value));
+}
+
+function cellCenterCoordinate(index: number, spacing: number): number {
+    return (index + 0.5) * Math.max(1e-12, spacing);
+}
+
+function projectedSweepPathCoordinate(
+    i: number,
+    j: number,
+    nx: number,
+    ny: number,
+    context: SimSweepGeometryContext,
+): number {
+    const injectorI = Number.isFinite(context.injectorI) ? Number(context.injectorI) : 0;
+    const injectorJ = Number.isFinite(context.injectorJ) ? Number(context.injectorJ) : 0;
+    const producerI = Number.isFinite(context.producerI) ? Number(context.producerI) : Math.max(0, nx - 1);
+    const producerJ = Number.isFinite(context.producerJ) ? Number(context.producerJ) : Math.max(0, ny - 1);
+    const cellDx = Math.max(1e-12, Number(context.cellDx ?? 1));
+    const cellDy = Math.max(1e-12, Number(context.cellDy ?? 1));
+
+    const injectorX = cellCenterCoordinate(injectorI, cellDx);
+    const injectorY = cellCenterCoordinate(injectorJ, cellDy);
+    const producerX = cellCenterCoordinate(producerI, cellDx);
+    const producerY = cellCenterCoordinate(producerJ, cellDy);
+    const cellX = cellCenterCoordinate(i, cellDx);
+    const cellY = cellCenterCoordinate(j, cellDy);
+
+    const dirX = producerX - injectorX;
+    const dirY = producerY - injectorY;
+    const denom = dirX * dirX + dirY * dirY;
+    if (denom <= 1e-12) return 0;
+
+    const relX = cellX - injectorX;
+    const relY = cellY - injectorY;
+    return clamp01((relX * dirX + relY * dirY) / denom);
+}
+
+function saturationFrontWeight(sw: number, sweptThreshold: number): number {
+    if (!Number.isFinite(sw) || sw <= sweptThreshold) return 0;
+    return clamp01((sw - sweptThreshold) / Math.max(1e-12, 1 - sweptThreshold));
+}
+
+function weightedQuantile(entries: Array<{ coordinate: number; weight: number }>, quantile: number): number {
+    const filtered = entries
+        .filter((entry) => entry.weight > 1e-12 && Number.isFinite(entry.coordinate))
+        .sort((a, b) => a.coordinate - b.coordinate);
+    if (filtered.length === 0) return 0;
+
+    const totalWeight = filtered.reduce((sum, entry) => sum + entry.weight, 0);
+    if (totalWeight <= 1e-12) return 0;
+
+    const target = clamp01(quantile) * totalWeight;
+    let cumulative = 0;
+    for (const entry of filtered) {
+        cumulative += entry.weight;
+        if (cumulative >= target - 1e-12) {
+            return clamp01(entry.coordinate);
+        }
+    }
+    return clamp01(filtered.at(-1)?.coordinate ?? 0);
+}
+
+function computeCombinedSimVerticalSweep(
+    satWater: Float64Array | number[],
+    nx: number,
+    ny: number,
+    nz: number,
+    sweptThreshold: number,
+    context: SimSweepGeometryContext,
+): number {
+    if (nx <= 1 || ny <= 1 || nz <= 1) {
+        return 0;
+    }
+
+    const columnUnionEntries: Array<{ coordinate: number; weight: number }> = [];
+
+    const columnCoordinates = new Float64Array(nx * ny);
+    const columnUnionWeights = new Float64Array(nx * ny);
+    for (let j = 0; j < ny; j += 1) {
+        for (let i = 0; i < nx; i += 1) {
+            const columnIndex = j * nx + i;
+            columnCoordinates[columnIndex] = projectedSweepPathCoordinate(i, j, nx, ny, context);
+        }
+    }
+
+    const layerFronts = new Float64Array(nz);
+    for (let k = 0; k < nz; k += 1) {
+        const entries: Array<{ coordinate: number; weight: number }> = [];
+        for (let j = 0; j < ny; j += 1) {
+            for (let i = 0; i < nx; i += 1) {
+                const index = k * nx * ny + j * nx + i;
+                const columnIndex = j * nx + i;
+                const weight = saturationFrontWeight(Number(satWater[index]), sweptThreshold);
+                entries.push({
+                    coordinate: columnCoordinates[columnIndex],
+                    weight,
+                });
+                columnUnionWeights[columnIndex] = Math.max(columnUnionWeights[columnIndex], weight);
+            }
+        }
+        layerFronts[k] = weightedQuantile(entries, 0.5);
+    }
+
+    for (let columnIndex = 0; columnIndex < columnUnionWeights.length; columnIndex += 1) {
+        columnUnionEntries.push({
+            coordinate: columnCoordinates[columnIndex],
+            weight: columnUnionWeights[columnIndex],
+        });
+    }
+
+    const unionFront = weightedQuantile(columnUnionEntries, 0.5);
+    if (unionFront <= 1e-9) return 0;
+
+    const combinedFront = clamp01(layerFronts.reduce((sum, value) => sum + value, 0) / nz);
+    return clamp01(combinedFront / unionFront);
+}
+
+export function computeSimSweepPointForGeometry(
+    satWater: Float64Array | number[],
+    nx: number,
+    ny: number,
+    nz: number,
+    sweptThreshold: number,
+    context: SimSweepGeometryContext,
+): SimSweepPoint {
+    const raw = computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold);
+    if (context.geometry === 'both') {
+        return {
+            eA: raw.eA,
+            eV: computeCombinedSimVerticalSweep(satWater, nx, ny, nz, sweptThreshold, context),
+            eVol: raw.eVol,
+        };
+    }
+    return normalizeSimSweepPointForGeometry(raw, context.geometry);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

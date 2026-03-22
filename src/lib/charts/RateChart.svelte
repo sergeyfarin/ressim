@@ -1130,6 +1130,9 @@
         for (const point of points) {
             const previous = deduped.at(-1);
             if (previous && Math.abs(previous.x - point.x) <= 1e-9) {
+                if (deduped.length === 1 && Math.abs(previous.x) <= 1e-9) {
+                    continue;
+                }
                 previous.y = point.y;
                 continue;
             }

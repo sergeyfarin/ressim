@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, normalizeSimSweepPointForGeometry, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepPointForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -888,6 +888,9 @@ function dedupeSweepSeries(points: XYPoint[]): XYPoint[] {
     for (const point of points) {
         const previous = deduped.at(-1);
         if (previous && Math.abs(previous.x - point.x) <= 1e-9) {
+            if (deduped.length === 1 && Math.abs(previous.x) <= 1e-9) {
+                continue;
+            }
             previous.y = point.y;
             continue;
         }
@@ -938,10 +941,15 @@ function buildSimulationSweepSeries(
         if (!Number.isFinite(selectedXAxis)) return;
         const satWater = snapshot.grid?.sat_water;
         if (!satWater || satWater.length === 0) return;
-        const sweep = normalizeSimSweepPointForGeometry(
-            computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold),
+        const sweep = computeSimSweepPointForGeometry(satWater, nx, ny, nz, sweptThreshold, {
             geometry,
-        );
+            injectorI: toFiniteNumber(result.params.injectorI, 0),
+            injectorJ: toFiniteNumber(result.params.injectorJ, 0),
+            producerI: toFiniteNumber(result.params.producerI, Math.max(0, nx - 1)),
+            producerJ: toFiniteNumber(result.params.producerJ, Math.max(0, ny - 1)),
+            cellDx: toFiniteNumber(result.params.cellDx, 1),
+            cellDy: toFiniteNumber(result.params.cellDy, 1),
+        });
         areal.push({ x: Number(selectedXAxis), y: sweep.eA });
         vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
         combined.push({ x: Number(selectedXAxis), y: sweep.eVol });

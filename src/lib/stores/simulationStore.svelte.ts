@@ -1724,6 +1724,7 @@ class SimulationStoreImpl {
     selectSensitivityDimension(dimensionKey: string) {
         const scenario = this.activeScenarioObject;
         if (!scenario) return;
+        if (this.referenceSweepRunning || this.activeReferenceRunSpec) return;
         const dimension = scenario.sensitivities.find((d) => d.key === dimensionKey);
         if (!dimension) {
             if (import.meta.env.DEV) {
@@ -1731,11 +1732,19 @@ class SimulationStoreImpl {
             }
             return;
         }
+        if (dimensionKey === this.activeSensitivityDimensionKey) return;
+
+        this.activeComparisonSelection = buildComparisonSelection();
+        this.clearReferenceRunnerState(true);
         this.activeSensitivityDimensionKey = dimensionKey;
         this.activeVariantKeys = getDefaultVariantKeys(dimension);
     }
 
     toggleScenarioVariant(variantKey: string) {
+        if (this.referenceSweepRunning || this.activeReferenceRunSpec) return;
+
+        this.activeComparisonSelection = buildComparisonSelection();
+        this.clearReferenceRunnerState(true);
         this.activeVariantKeys = this.activeVariantKeys.includes(variantKey)
             ? this.activeVariantKeys.filter((k) => k !== variantKey)
             : [...this.activeVariantKeys, variantKey];

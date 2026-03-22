@@ -50,6 +50,14 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
   });
 
+  it('clears stale reference comparisons when sensitivity selection changes', () => {
+    expect(storeSource).toMatch(/selectSensitivityDimension\(dimensionKey: string\)/);
+    expect(storeSource).toMatch(/if \(this\.referenceSweepRunning \|\| this\.activeReferenceRunSpec\) return;/);
+    expect(storeSource).toMatch(/this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.clearReferenceRunnerState\(true\);[\s\S]*this\.activeSensitivityDimensionKey = dimensionKey;/);
+    expect(storeSource).toMatch(/toggleScenarioVariant\(variantKey: string\)/);
+    expect(storeSource).toMatch(/toggleScenarioVariant\(variantKey: string\)[\s\S]*this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.clearReferenceRunnerState\(true\);/);
+  });
+
   it('exposes compatibility navigation state alongside legacy mode state', () => {
     expect(storeSource).not.toMatch(/buildScenarioNavigationState/);
     expect(storeSource).toMatch(/resolveProductFamily/);

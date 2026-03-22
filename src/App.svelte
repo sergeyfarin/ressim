@@ -8,7 +8,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, normalizeSimSweepPointForGeometry, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import { computeSimSweepPointForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -56,10 +56,15 @@
         for (const entry of runtime.history) {
             const sw = entry.grid?.sat_water;
             if (!sw || sw.length !== nx * ny * nz) continue;
-            const { eA, eV, eVol } = normalizeSimSweepPointForGeometry(
-                computeSimSweepPoint(sw, nx, ny, nz, sweptThreshold),
-                sweepGeometry,
-            );
+            const { eA, eV, eVol } = computeSimSweepPointForGeometry(sw, nx, ny, nz, sweptThreshold, {
+                geometry: sweepGeometry,
+                injectorI: params.injectorI,
+                injectorJ: params.injectorJ,
+                producerI: params.producerI,
+                producerJ: params.producerJ,
+                cellDx: params.cellDx,
+                cellDy: params.cellDy,
+            });
             result.push({ time: entry.time, eA, eV, eVol });
         }
         return result.length > 0 ? result : null;

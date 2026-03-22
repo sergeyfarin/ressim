@@ -11,6 +11,7 @@ import {
     computeVerticalSweep,
     computeCombinedSweep,
     computeSweepRecoveryFactor,
+    computeSimSweepPointForGeometry,
     normalizeSimSweepPointForGeometry,
     type SweepPoint,
 } from './sweepEfficiency';
@@ -405,6 +406,108 @@ describe('normalizeSimSweepPointForGeometry', () => {
         expect(normalized.eA).toBeCloseTo(0.25, 10);
         expect(normalized.eV).toBe(1);
         expect(normalized.eVol).toBeCloseTo(0.2, 10);
+    });
+});
+
+describe('computeSimSweepPointForGeometry', () => {
+    it('keeps vertical geometry on the existing volumetric sweep definition', () => {
+        const satWater = new Float64Array(6 * 1 * 3).fill(0.1);
+        satWater[0] = 0.4;
+        satWater[1] = 0.4;
+
+        const point = computeSimSweepPointForGeometry(satWater, 6, 1, 3, 0.2, {
+            geometry: 'vertical',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 5,
+            producerJ: 0,
+            cellDx: 10,
+            cellDy: 10,
+        });
+
+        expect(point.eA).toBe(1);
+        expect(point.eV).toBeCloseTo(point.eVol, 10);
+    });
+
+    it('keeps combined-geometry E_V at unity when all layers advance together in the same near-injector column', () => {
+        const nx = 21;
+        const ny = 21;
+        const nz = 5;
+        const satWater = new Float64Array(nx * ny * nz).fill(0.1);
+        const offInjectorColumn = nx + 1;
+        for (let k = 0; k < nz; k += 1) {
+            satWater[k * nx * ny + offInjectorColumn] = 0.4;
+        }
+
+        const point = computeSimSweepPointForGeometry(satWater, nx, ny, nz, 0.2, {
+            geometry: 'both',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 20,
+            producerJ: 20,
+            cellDx: 20,
+            cellDy: 20,
+        });
+
+        expect(point.eA).toBeGreaterThan(0);
+        expect(point.eA).toBeLessThan(0.01);
+        expect(point.eV).toBeCloseTo(1, 10);
+        expect(point.eVol).toBeCloseTo(point.eA, 10);
+    });
+
+    it('gives layered combined cases a lower early-time E_V than uniform all-layer advance', () => {
+        const nx = 21;
+        const ny = 21;
+        const nz = 5;
+        const uniform = new Float64Array(nx * ny * nz).fill(0.1);
+        const layered = new Float64Array(nx * ny * nz).fill(0.1);
+        const offInjectorColumn = nx + 1;
+        for (let k = 0; k < nz; k += 1) {
+            uniform[k * nx * ny + offInjectorColumn] = 0.4;
+        }
+        for (let k = 0; k < 3; k += 1) {
+            layered[k * nx * ny + offInjectorColumn] = 0.4;
+        }
+
+        const commonContext = {
+            geometry: 'both' as const,
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 20,
+            producerJ: 20,
+            cellDx: 20,
+            cellDy: 20,
+        };
+
+        const uniformPoint = computeSimSweepPointForGeometry(uniform, nx, ny, nz, 0.2, commonContext);
+        const layeredPoint = computeSimSweepPointForGeometry(layered, nx, ny, nz, 0.2, commonContext);
+
+        expect(uniformPoint.eV).toBeGreaterThan(layeredPoint.eV);
+        expect(uniformPoint.eV).toBeCloseTo(1, 10);
+        expect(layeredPoint.eV).toBeCloseTo(0.6, 6);
+        expect(uniformPoint.eA).toBeCloseTo(layeredPoint.eA, 10);
+        expect(uniformPoint.eVol).toBeGreaterThan(layeredPoint.eVol);
+    });
+
+    it('lets combined-geometry E_A and E_vol reach unity for a fully swept domain', () => {
+        const nx = 21;
+        const ny = 21;
+        const nz = 5;
+        const satWater = new Float64Array(nx * ny * nz).fill(0.4);
+
+        const point = computeSimSweepPointForGeometry(satWater, nx, ny, nz, 0.2, {
+            geometry: 'both',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 20,
+            producerJ: 20,
+            cellDx: 20,
+            cellDy: 20,
+        });
+
+        expect(point.eA).toBeCloseTo(1, 10);
+        expect(point.eVol).toBeCloseTo(1, 10);
+        expect(point.eV).toBeCloseTo(1, 10);
     });
 });
 
