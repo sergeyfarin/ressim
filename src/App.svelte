@@ -533,16 +533,36 @@
         >
             <div>
                 <h1 class="title-gradient text-2xl font-bold lg:text-3xl">
-                    ResSim — Black-Oil Simulator with Analytical Comparison
+                    3D Three-Phase Reservoir Simulation with Analytical Reference Solutions
                 </h1>
                 <p class="text-sm opacity-80">
-                    Compare IMPES numerical solutions against classical analytical methods with scenario-based sensitivity sweeps and 3D visualization.
-                    Runs entirely in your browser — no data sent to any server, no cookies.
+                    Compare IMPES numerical solutions against classical analytical methods with scenario-based sensitivities and 3D visualization.
+                    <br /><strong>Runs entirely in your browser</strong> — no data sent to any server, no cookies.
                 </p>
             </div>
-            <Button size="sm" variant="outline" onclick={toggleTheme}>
-                {theme === "dark" ? "☀ Light" : "🌙 Dark"}
-            </Button>
+            <div class="flex items-center gap-2">
+                <a
+                    href="https://github.com/sergeyfarin/ressim"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Open ResSim on GitHub"
+                    title="Open ResSim on GitHub"
+                    class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        class="h-4.5 w-4.5"
+                        aria-hidden="true"
+                    >
+                        <path d="M12 .5C5.65.5.5 5.66.5 12.03c0 5.1 3.3 9.42 7.88 10.95.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.21.7-3.89-1.36-3.89-1.36-.53-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.72-1.55-2.56-.29-5.25-1.29-5.25-5.72 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.48.11-3.08 0 0 .97-.31 3.19 1.18a11.1 11.1 0 0 1 5.8 0c2.22-1.49 3.19-1.18 3.19-1.18.63 1.6.23 2.79.11 3.08.74.81 1.19 1.84 1.19 3.1 0 4.44-2.69 5.42-5.26 5.71.41.36.77 1.05.77 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A11.53 11.53 0 0 0 23.5 12.03C23.5 5.66 18.35.5 12 .5Z" />
+                    </svg>
+                </a>
+                <Button size="sm" variant="outline" onclick={toggleTheme}>
+                    {theme === "dark" ? "☀ Light" : "🌙 Dark"}
+                </Button>
+            </div>
         </header>
 
         <section class="space-y-2">
