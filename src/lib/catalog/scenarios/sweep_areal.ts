@@ -6,9 +6,7 @@ export const sweep_areal: Scenario = {
     description: 'Five-spot pattern flood in 2D (XY). Areal sweep E_A at breakthrough is strongly controlled by end-point mobility ratio: E_A(BT) ≈ 0.70 at M = 1, dropping sharply for unfavourable M > 1.',
     analyticalMethodSummary: 'Craig five-spot correlation — predicts E_A vs PVI for a homogeneous pattern. Heterogeneous variants show the additional sweep penalty on top of this baseline.',
     analyticalMethodReference: 'Craig (1971); Dyes, Caudle, and Erickson (1954).',
-    scenarioClass: 'waterflood',
-    domain: 'sweep',
-    chartPreset: 'sweep',
+    chartLayoutKey: 'sweep',
     defaultSensitivityDimensionKey: 'mobility',
     capabilities: {
         analyticalMethod: 'buckley-leverett',
@@ -19,7 +17,6 @@ export const sweep_areal: Scenario = {
         requiresThreePhaseMode: false,
     },
     params: {
-        analyticalSolutionMode: 'waterflood',
         // Fluid
         mu_w: 0.5,
         mu_o: 1.0,

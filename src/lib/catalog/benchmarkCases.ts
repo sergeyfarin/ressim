@@ -15,11 +15,6 @@ export type BenchmarkEntry = {
     params: Record<string, any>;
 };
 
-/**
- * @deprecated Use AnalyticalMethod from scenarios.ts instead. Kept as alias during migration.
- */
-export type BenchmarkScenarioClass = 'buckley-leverett' | 'depletion' | 'gas-oil-bl';
-
 export type BenchmarkSensitivityAxisKey =
     | 'grid-refinement'
     | '2d-grid-refinement'
@@ -75,8 +70,6 @@ export type BenchmarkVariantAnalyticalValidity =
 type BenchmarkFamilyDefinition = {
     key: string;
     baseCaseKey: string;
-    /** @deprecated Use analyticalMethod instead. */
-    scenarioClass: BenchmarkScenarioClass;
     /** Which analytical reference model to use — unified vocabulary with ScenarioCapabilities. */
     analyticalMethod: import('../catalog/scenarios').AnalyticalMethod;
     sensitivityAxes: BenchmarkSensitivityAxisKey[];
@@ -315,7 +308,6 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
     {
         key: 'bl_case_a_refined',
         baseCaseKey: 'bl_case_a_refined',
-        scenarioClass: 'buckley-leverett',
         analyticalMethod: 'buckley-leverett',
         sensitivityAxes: ['grid-refinement', '2d-grid-refinement', 'timestep-refinement', 'heterogeneity'],
         reference: {
@@ -345,7 +337,6 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
     {
         key: 'bl_case_b_refined',
         baseCaseKey: 'bl_case_b_refined',
-        scenarioClass: 'buckley-leverett',
         analyticalMethod: 'buckley-leverett',
         sensitivityAxes: ['grid-refinement', '2d-grid-refinement', 'timestep-refinement', 'heterogeneity'],
         reference: {
@@ -375,7 +366,6 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
     {
         key: 'dietz_sq_center',
         baseCaseKey: 'dietz_sq_center',
-        scenarioClass: 'depletion',
         analyticalMethod: 'depletion',
         sensitivityAxes: [],
         reference: {
@@ -396,7 +386,6 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
     {
         key: 'dietz_sq_corner',
         baseCaseKey: 'dietz_sq_corner',
-        scenarioClass: 'depletion',
         analyticalMethod: 'depletion',
         sensitivityAxes: [],
         reference: {
@@ -417,7 +406,6 @@ const benchmarkFamilyDefinitions: BenchmarkFamilyDefinition[] = [
     {
         key: 'fetkovich_exp',
         baseCaseKey: 'fetkovich_exp',
-        scenarioClass: 'depletion',
         analyticalMethod: 'depletion',
         sensitivityAxes: [],
         reference: {

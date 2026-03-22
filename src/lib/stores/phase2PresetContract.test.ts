@@ -39,26 +39,26 @@ describe('phase2PresetContract', () => {
     it('maps benchmark families into compatibility product families', () => {
         expect(resolveProductFamily({
             activeMode: 'dep',
-            benchmarkScenarioClass: 'buckley-leverett',
+            benchmarkAnalyticalMethod: 'buckley-leverett',
             benchmarkId: 'bl_case_a_refined',
         })).toBe('waterflood');
 
         expect(resolveProductFamily({
             activeMode: 'dep',
-            benchmarkScenarioClass: 'depletion',
+            benchmarkAnalyticalMethod: 'depletion',
             benchmarkId: 'dietz_sq_center',
         })).toBe('depletion-analysis');
 
         expect(resolveProductFamily({
             activeMode: 'dep',
-            benchmarkScenarioClass: 'depletion',
+            benchmarkAnalyticalMethod: 'depletion',
             benchmarkId: 'fetkovich_exp',
         })).toBe('type-curves');
 
         expect(resolveProductFamily({
             activeMode: 'dep',
             activeLibraryFamily: 'type-curves',
-            benchmarkScenarioClass: 'depletion',
+            benchmarkAnalyticalMethod: 'depletion',
             benchmarkId: 'fetkovich_exp',
         })).toBe('type-curves');
     });
@@ -79,7 +79,7 @@ describe('phase2PresetContract', () => {
             referenceSourceLabel: 'Buckley-Leverett reference solution',
             provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett family maintained as an internal reference family.',
             benchmarkId: 'bl_case_a_refined',
-            benchmarkScenarioClass: 'buckley-leverett',
+            benchmarkAnalyticalMethod: 'buckley-leverett',
             activeComparisonSelection: {
                 primaryResultKey: 'base',
                 comparedResultKeys: ['grid_48'],
@@ -117,7 +117,7 @@ describe('phase2PresetContract', () => {
             referenceSourceLabel: 'Buckley-Leverett reference solution',
             provenanceSummary: 'Homogeneous Rust-parity Buckley-Leverett family maintained as an internal reference family.',
             benchmarkId: 'bl_case_a_refined',
-            benchmarkScenarioClass: 'buckley-leverett',
+            benchmarkAnalyticalMethod: 'buckley-leverett',
         });
 
         expect(navigation).toMatchObject({
@@ -161,7 +161,7 @@ describe('phase2PresetContract', () => {
             activeLibraryFamily: 'type-curves',
             activeLibraryGroup: 'literature-reference',
             benchmarkId: 'fetkovich_exp',
-            benchmarkScenarioClass: 'depletion',
+            benchmarkAnalyticalMethod: 'depletion',
         });
 
         expect(navigation.activeFamily).toBe('type-curves');
@@ -175,7 +175,7 @@ describe('phase2PresetContract', () => {
             activeCaseKey: 'fetkovich_exp',
             activeLibraryFamily: 'type-curves',
             benchmarkId: 'fetkovich_exp',
-            benchmarkScenarioClass: 'depletion',
+            benchmarkAnalyticalMethod: 'depletion',
         });
 
         expect(navigation.activeFamily).toBe('type-curves');
@@ -219,7 +219,7 @@ describe('phase2PresetContract', () => {
             isModified: false,
             benchmarkId: 'dietz_sq_center',
             benchmarkLabel: 'Dietz Square Center',
-            benchmarkScenarioClass: 'depletion',
+            benchmarkAnalyticalMethod: 'depletion',
             activeLibraryCaseKey: 'dietz_sq_center',
             activeLibraryGroup: 'literature-reference',
         });

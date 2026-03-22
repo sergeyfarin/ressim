@@ -126,10 +126,10 @@
     {:else if section.key === "analytical"}
       <div class="flow-item">
         <AnalyticalSection
-          bind:analyticalSolutionMode={params.analyticalSolutionMode}
+          bind:analyticalMode={params.analyticalMode}
           bind:analyticalDepletionRateScale={params.analyticalDepletionRateScale}
           bind:analyticalArpsB={params.analyticalArpsB}
-          onAnalyticalSolutionModeChange={params.handleAnalyticalSolutionModeChange}
+          onAnalyticalModeChange={params.handleAnalyticalModeChange}
         />
       </div>
     {/if}

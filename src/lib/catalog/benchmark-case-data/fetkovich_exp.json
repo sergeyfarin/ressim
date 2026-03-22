@@ -7,7 +7,7 @@
   "description": "Constant BHP exponential decline",
   "params": {
     "mode": "benchmark",
-    "analyticalSolutionMode": "depletion",
+    "analyticalMode": "depletion",
     "nx": 48,
     "ny": 1,
     "nz": 1,

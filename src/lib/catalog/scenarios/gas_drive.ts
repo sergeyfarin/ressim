@@ -6,9 +6,7 @@ export const gas_drive: Scenario = {
     description: 'Pressure depletion with initial free gas. Note: without Rs(P) tracking, this is simulated as immiscible depletion (constant PVT) with free gas expansion — qualitatively useful but not quantitatively accurate for below-bubble-point behavior.',
     analyticalMethodSummary: 'Simulation-only — no analytical overlay while three-phase depletion physics remains experimental.',
     analyticalMethodReference: 'No validated analytical reference in the current repo yet.',
-    scenarioClass: '3phase',
-    domain: 'gas',
-    chartPreset: 'gas',
+    chartLayoutKey: 'gas',
     defaultSensitivityDimensionKey: 'sg_init',
     capabilities: {
         analyticalMethod: 'none',
@@ -18,7 +16,6 @@ export const gas_drive: Scenario = {
         requiresThreePhaseMode: true,
     },
     params: {
-        analyticalSolutionMode: 'depletion',
         nx: 20, ny: 1, nz: 1,
         cellDx: 50, cellDy: 50, cellDz: 10,
         initialPressure: 200,

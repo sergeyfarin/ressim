@@ -7,7 +7,7 @@
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
-    import { getChartPreset, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
+    import { getChartLayout, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
     import { computeSimSweepDiagnosticsForGeometry, computeSweptThreshold, computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
@@ -196,7 +196,7 @@
         Math.max(0, Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.total_injection ?? runtime.latestInjectionRate ?? 0))
     ));
     const outputProfileScenarioMode = $derived.by(() => (
-        activeSelectedReferenceResult?.analyticalMethod === "depletion" ? "depletion" : params.analyticalSolutionMode
+        activeSelectedReferenceResult?.analyticalMethod === "depletion" ? "depletion" : params.analyticalMode
     ));
     const outputProfileSourceLabel = $derived.by(() => (
         activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
@@ -270,7 +270,7 @@
             if (resultParams.injectedFluid === "gas") {
                 return "saturation_gas" as const;
             }
-            if (resultParams.analyticalSolutionMode === "waterflood") {
+            if (activeSelectedReferenceResult?.analyticalMethod !== "depletion") {
                 return "saturation_water" as const;
             }
             return null;
@@ -297,12 +297,12 @@
 
     const activeRateChartLayoutConfig = $derived.by(() => {
         if (scenario.activeScenarioObject) {
-            // If the active sensitivity dimension has a chart preset override, use it.
+            // If the active sensitivity dimension has a chart layout override, use it.
             const activeDim = scenario.activeScenarioObject.sensitivities.find(
                 (d) => d.key === scenario.activeSensitivityDimensionKey,
             );
-            const presetKey = activeDim?.chartPresetOverride ?? scenario.activeScenarioObject.chartPreset;
-            return getChartPreset(presetKey);
+            const layoutKey = activeDim?.chartLayoutKeyOverride ?? scenario.activeScenarioObject.chartLayoutKey;
+            return getChartLayout(layoutKey);
         }
         if (activeReferenceFamily) {
             return getReferenceRateChartLayoutConfig({
@@ -473,21 +473,21 @@
                 area: params.ny * params.cellDy * params.nz * params.cellDz,
                 porosity: params.reservoirPorosity,
             }}
-            scenarioMode={params.analyticalSolutionMode}
+            scenarioMode={params.analyticalMode}
             onAnalyticalData={(detail) => {
-                if (params.analyticalSolutionMode === "waterflood") {
+                if (params.analyticalMode === "waterflood") {
                     runtime.analyticalProductionData = detail.production;
                 }
             }}
             onAnalyticalMeta={(detail) => {
-                if (params.analyticalSolutionMode === "waterflood") {
+                if (params.analyticalMode === "waterflood") {
                     runtime.analyticalMeta = detail;
                 }
             }}
         />
 
         <DepletionAnalytical
-            enabled={params.analyticalSolutionMode === "depletion"}
+            enabled={params.analyticalMode === "depletion"}
             timeHistory={runtime.rateHistory.map((point) => point.time)}
             reservoir={{
                 length: params.nx * params.cellDx,
@@ -518,12 +518,12 @@
             depletionRateScale={params.analyticalDepletionRateScale}
             arpsB={params.analyticalArpsB}
             onAnalyticalData={(detail) => {
-                if (params.analyticalSolutionMode === "depletion") {
+                if (params.analyticalMode === "depletion") {
                     runtime.analyticalProductionData = detail.production;
                 }
             }}
             onAnalyticalMeta={(detail) => {
-                if (params.analyticalSolutionMode === "depletion") {
+                if (params.analyticalMode === "depletion") {
                     runtime.analyticalMeta = detail;
                 }
             }}
@@ -629,9 +629,9 @@
         {/if}
 
         <div class="hidden">
-            {#if params.analyticalSolutionMode === 'depletion'}
+            {#if params.analyticalMode === 'depletion'}
                 <span>Depletion Reference Solution</span>
-            {:else if params.analyticalSolutionMode === 'waterflood'}
+            {:else if params.analyticalMode === 'waterflood'}
                 <span>Waterflood Reference Solution · Reference solution: Buckley-Leverett fractional flow</span>
             {/if}
         </div>

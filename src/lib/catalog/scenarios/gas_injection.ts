@@ -6,9 +6,7 @@ export const gas_injection: Scenario = {
     description: 'Gas injector displacing oil in a 1D homogeneous reservoir; no initial free gas. The numerical gas front sharpens toward the analytical solution as grid resolution increases.',
     analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction for gas-oil displacement — predicts gas breakthrough timing and post-breakthrough recovery.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952) — applied to gas-oil system.',
-    scenarioClass: 'gas-oil-bl',
-    domain: 'gas',
-    chartPreset: 'gas_oil_bl',
+    chartLayoutKey: 'gas_oil_bl',
     defaultSensitivityDimensionKey: 'mobility',
     capabilities: {
         analyticalMethod: 'gas-oil-bl',
@@ -18,7 +16,6 @@ export const gas_injection: Scenario = {
         requiresThreePhaseMode: true,
     },
     params: {
-        analyticalSolutionMode: 'waterflood',
         nx: 50, ny: 1, nz: 1,
         cellDx: 20, cellDy: 50, cellDz: 10,
         initialPressure: 250,
@@ -149,7 +146,7 @@ export const gas_injection: Scenario = {
             label: 'Grid Resolution',
             description: 'Numerical convergence study. The gas-oil BL analytical solution is grid-independent — only the simulation changes as the grid is refined.',
             analyticalOverlayMode: 'shared',
-            chartPresetOverride: 'gas_oil_bl',
+            chartLayoutKeyOverride: 'gas_oil_bl',
             variants: [
                 {
                     key: 'grid_10',

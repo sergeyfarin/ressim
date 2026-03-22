@@ -30,21 +30,18 @@ import { gas_drive } from './scenarios/gas_drive';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/** Physical classification — retained as metadata label; behavioral routing uses capabilities. */
-export type ScenarioClass = 'waterflood' | 'depletion' | '3phase' | 'gas-oil-bl';
-
-/**
- * UI domain — controls which tab a scenario appears under in ScenarioPicker.
- * Purely presentational — behavioral routing uses capabilities, not domain.
- */
-export type ScenarioDomain = 'waterflood' | 'sweep' | 'depletion' | 'gas';
-
 /** Which analytical reference model to compute for overlay curves. */
 export type AnalyticalMethod =
     | 'buckley-leverett'
     | 'gas-oil-bl'
     | 'depletion'
     | 'none';
+
+/** Coarse analytical family used by the custom/editor UI. */
+export type AnalyticalMode = 'waterflood' | 'depletion' | 'none';
+
+/** Presentational scenario grouping used by ScenarioPicker. */
+export type ScenarioGroup = 'waterflood' | 'sweep' | 'depletion' | 'gas';
 
 /** Which primary rate curve to show in the "rates" chart panel. */
 export type PrimaryRateCurve = 'water-cut' | 'gas-cut' | 'oil-rate';
@@ -245,11 +242,11 @@ export type SensitivityDimension = {
      */
     analyticalOverlayMode?: AnalyticalOverlayMode;
     /**
-     * Override the scenario's chartPreset when this dimension is active.
+     * Override the scenario's chartLayoutKey when this dimension is active.
      * Useful when a dimension (e.g. grid convergence) benefits from a different
      * default view than the scenario's primary chart.
      */
-    chartPresetOverride?: string;
+    chartLayoutKeyOverride?: string;
 };
 
 export type Scenario = {
@@ -259,14 +256,10 @@ export type Scenario = {
     analyticalMethodSummary: string;
     analyticalMethodReference: string;
     analyticalOptions?: ScenarioAnalyticalOption[];
-    /** Physical classification — metadata label, not used for behavioral routing. */
-    scenarioClass: ScenarioClass;
-    /** UI domain — controls which tab this scenario appears under (presentational only). */
-    domain: ScenarioDomain;
     /** Complete, self-contained simulator parameter set. No shared base objects. */
     params: Record<string, unknown>;
-    /** Key into CHART_PRESETS — controls default x-axis, panels, and curve selection. */
-    chartPreset: string;
+    /** Key into CHART_LAYOUTS — selects the shared chart layout template for this scenario. */
+    chartLayoutKey: string;
     /** Behavioral capability declarations — single source of truth for all routing logic. */
     capabilities: ScenarioCapabilities;
     /**
@@ -295,7 +288,7 @@ export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
 
 // ─── Chart presets ────────────────────────────────────────────────────────────
 
-export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
+export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
     /**
      * 1D Buckley-Leverett waterflood: PVI x-axis, one variable per panel.
      * Rates → water cut  |  Recovery → RF  |  Cum Oil (collapsed)  |  Pressure (collapsed)
@@ -644,9 +637,31 @@ export function getDefaultVariantKeys(dimension: SensitivityDimension): string[]
         .map((v) => v.key);
 }
 
-/** Returns the chart layout config for a preset key, or {} if not found. */
-export function getChartPreset(presetKey: string | null | undefined): RateChartLayoutConfig {
-    return CHART_PRESETS[presetKey ?? ''] ?? {};
+/** Returns the chart layout config for a layout key, or {} if not found. */
+export function getChartLayout(layoutKey: string | null | undefined): RateChartLayoutConfig {
+    return CHART_LAYOUTS[layoutKey ?? ''] ?? {};
+}
+
+export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {
+    if (method === 'depletion') return 'depletion';
+    if (method === 'none') return 'none';
+    return 'waterflood';
+}
+
+export function getDefaultScenarioAnalyticalMode(caps: ScenarioCapabilities): Exclude<AnalyticalMode, 'none'> {
+    const analyticalMode = getAnalyticalModeForMethod(caps.analyticalMethod);
+    if (analyticalMode !== 'none') return analyticalMode;
+    return caps.hasInjector ? 'waterflood' : 'depletion';
+}
+
+export function getScenarioGroup(scenario: Pick<Scenario, 'capabilities'>): ScenarioGroup {
+    const { capabilities } = scenario;
+    if (capabilities.requiresThreePhaseMode || capabilities.analyticalMethod === 'gas-oil-bl') {
+        return 'gas';
+    }
+    if (capabilities.showSweepPanel) return 'sweep';
+    if (capabilities.analyticalMethod === 'depletion') return 'depletion';
+    return 'waterflood';
 }
 
 export function listScenarios(): Scenario[] {

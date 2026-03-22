@@ -6,9 +6,7 @@ export const wf_bl1d: Scenario = {
     description: 'Viscous-dominated 1D displacement — no gravity or capillary pressure. The numerical shock front sharpens toward the analytical solution as grid resolution increases.',
     analyticalMethodSummary: 'Fractional-flow solution with Welge shock construction — predicts breakthrough timing and post-breakthrough recovery, independent of grid resolution.',
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
-    scenarioClass: 'waterflood',
-    domain: 'waterflood',
-    chartPreset: 'waterflood',
+    chartLayoutKey: 'waterflood',
     defaultSensitivityDimensionKey: 'mobility',
     capabilities: {
         analyticalMethod: 'buckley-leverett',
@@ -18,7 +16,6 @@ export const wf_bl1d: Scenario = {
         requiresThreePhaseMode: false,
     },
     params: {
-        analyticalSolutionMode: 'waterflood',
         // Fluid properties
         mu_w: 0.5,
         mu_o: 1.0,
@@ -179,7 +176,7 @@ export const wf_bl1d: Scenario = {
             label: 'Grid Resolution',
             description: 'Numerical convergence study. The Buckley-Leverett analytical solution is grid-independent — only the simulation changes as the grid is refined.',
             analyticalOverlayMode: 'shared',
-            chartPresetOverride: 'waterflood',
+            chartLayoutKeyOverride: 'waterflood',
             variants: [
                 {
                     key: 'grid_3',

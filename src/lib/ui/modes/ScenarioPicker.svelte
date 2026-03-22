@@ -4,7 +4,7 @@
   import ToggleGroup from "../controls/ToggleGroup.svelte";
   import WarningPolicyPanel from "../feedback/WarningPolicyPanel.svelte";
   import ScenarioSectionsPanel from "../sections/ScenarioSectionsPanel.svelte";
-  import { SCENARIOS, getScenario, type Scenario, type ScenarioDomain } from "../../catalog/scenarios";
+  import { SCENARIOS, getScenario, getScenarioGroup, type Scenario, type ScenarioGroup } from "../../catalog/scenarios";
   import { ROCK_PRESETS } from "../../catalog/reservoirPresets";
   import type { CaseMode, ToggleState } from "../../catalog/caseCatalog";
   import type { ModePanelParameterBindings } from "../modePanelTypes";
@@ -119,11 +119,11 @@
   });
 
   // Scenario groups by domain, ordered for display.
-  const DOMAIN_GROUPS: { domain: ScenarioDomain; label: string }[] = [
-    { domain: 'waterflood', label: 'Waterflood' },
-    { domain: 'sweep',      label: 'Sweep' },
-    { domain: 'depletion',  label: 'Depletion' },
-    { domain: 'gas',        label: 'Gas' },
+  const DOMAIN_GROUPS: { group: ScenarioGroup; label: string }[] = [
+    { group: 'waterflood', label: 'Waterflood' },
+    { group: 'sweep',      label: 'Sweep' },
+    { group: 'depletion',  label: 'Depletion' },
+    { group: 'gas',        label: 'Gas' },
   ];
 
   function formatParamSummary(scenario: Scenario): string {
@@ -159,7 +159,7 @@
     <div class="flex flex-wrap items-start gap-2">
 
       {#each DOMAIN_GROUPS as group}
-        {@const groupScenarios = SCENARIOS.filter((s) => s.domain === group.domain && (!s.capabilities.requiresThreePhaseMode || activeMode === '3p'))}
+        {@const groupScenarios = SCENARIOS.filter((s) => getScenarioGroup(s) === group.group && (!s.capabilities.requiresThreePhaseMode || activeMode === '3p'))}
         {#if groupScenarios.length > 0}
           {#each groupScenarios as scenario}
             <Button

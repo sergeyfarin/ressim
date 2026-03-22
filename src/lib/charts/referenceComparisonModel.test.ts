@@ -1125,7 +1125,7 @@ describe('referenceComparisonModel', () => {
             label: 'Gas Base',
             description: 'Base gas-oil case',
             params: {
-                analyticalSolutionMode: 'waterflood',
+                analyticalMode: 'waterflood',
                 nx: 50, ny: 1, nz: 1,
                 cellDx: 20, cellDy: 50, cellDz: 10,
                 initialPressure: 250,

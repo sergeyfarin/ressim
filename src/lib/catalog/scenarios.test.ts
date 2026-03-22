@@ -6,11 +6,12 @@ import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
 import {
     getScenario,
     getScenarioWithVariantParams,
+    getScenarioGroup,
     listScenarios,
     resolveCapabilities,
     validateScenarioCapabilities,
     ANALYTICAL_OUTPUT_CONTRACTS,
-    CHART_PRESETS,
+    CHART_LAYOUTS,
 } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
@@ -242,8 +243,8 @@ function depletionFingerprint(params: Record<string, unknown>): number[] {
     return [result.meta.q0 ?? 0, result.meta.tau ?? 0, ...result.production.map((pt) => pt.oilRate)];
 }
 
-function analyticalFingerprint(scenarioClass: string, params: Record<string, unknown>): number[] {
-    if (scenarioClass === 'depletion') return depletionFingerprint(params);
+function analyticalFingerprint(analyticalMethod: string, params: Record<string, unknown>): number[] {
+    if (analyticalMethod === 'depletion') return depletionFingerprint(params);
     // waterflood class covers both BL and sweep scenarios
     return [...blFingerprint(params), ...sweepFingerprint(params)];
 }
@@ -261,14 +262,21 @@ describe('affectsAnalytical contract', () => {
 
         for (const dim of scenario.sensitivities) {
             const baseFingerprint = analyticalFingerprint(
-                scenario.scenarioClass,
+                scenario.capabilities.analyticalMethod,
                 scenario.params as Record<string, unknown>,
             );
 
             for (const variant of dim.variants) {
                 const isBaseCase = Object.keys(variant.paramPatch).length === 0;
                 const variantParams = getScenarioWithVariantParams(scenarioKey, dim.key, variant.key);
-                const variantFp = analyticalFingerprint(scenario.scenarioClass, variantParams);
+                const variantFp = analyticalFingerprint(scenario.capabilities.analyticalMethod, variantParams);
+    it('derives scenario picker groups from capabilities instead of storing duplicate domain metadata', () => {
+        expect(getScenarioGroup(getScenario('wf_bl1d')!)).toBe('waterflood');
+        expect(getScenarioGroup(getScenario('sweep_areal')!)).toBe('sweep');
+        expect(getScenarioGroup(getScenario('dep_pss')!)).toBe('depletion');
+        expect(getScenarioGroup(getScenario('gas_injection')!)).toBe('gas');
+    });
+
 
                 if (isBaseCase) {
                     // Base-case variants (empty paramPatch) produce identical output by definition
@@ -432,16 +440,16 @@ describe('scenario capability validation', () => {
     });
 
     it('chart presets expose scenario-controlled x-axis range policies', () => {
-        expect(CHART_PRESETS.waterflood.rateChart?.xAxisRangePolicy).toEqual({
+        expect(CHART_LAYOUTS.waterflood.rateChart?.xAxisRangePolicy).toEqual({
             mode: 'rate-tail-threshold',
             relativeThreshold: 1e-7,
         });
-        expect(CHART_PRESETS.sweep.rateChart?.xAxisRangePolicy).toEqual({
+        expect(CHART_LAYOUTS.sweep.rateChart?.xAxisRangePolicy).toEqual({
             mode: 'pvi-window',
             minPvi: 0,
             maxPvi: 2.5,
         });
-        expect(CHART_PRESETS.oil_depletion.rateChart?.xAxisRangePolicy).toEqual({
+        expect(CHART_LAYOUTS.oil_depletion.rateChart?.xAxisRangePolicy).toEqual({
             mode: 'data-extent',
         });
     });

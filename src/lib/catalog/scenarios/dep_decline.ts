@@ -6,9 +6,7 @@ export const dep_decline: Scenario = {
     description: 'Constant-BHP production from a finite reservoir. PI sets the initial rate level; total compressibility c_t sets the decline duration. Displayed on log-time axes to reveal the exponential trend.',
     analyticalMethodSummary: 'Fetkovich exponential decline — rate and recovery reference curves for constant-BHP depletion, updated for active skin and permeability.',
     analyticalMethodReference: 'Fetkovich (1971).',
-    scenarioClass: 'depletion',
-    domain: 'depletion',
-    chartPreset: 'fetkovich',
+    chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'permeability',
     capabilities: {
         analyticalMethod: 'depletion',
@@ -18,7 +16,6 @@ export const dep_decline: Scenario = {
         requiresThreePhaseMode: false,
     },
     params: {
-        analyticalSolutionMode: 'depletion',
         // Fluid
         mu_w: 0.5,
         mu_o: 1.0,

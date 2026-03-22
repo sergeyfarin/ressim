@@ -22,9 +22,7 @@ export const dep_arps: Scenario = {
     description: 'Commingled multi-layer depletion at constant BHP. Each layer declines exponentially with its own time constant; the composite rate follows Arps hyperbolic decline with 0 < b < 1. Vary the Arps b exponent to match the layered simulation.',
     analyticalMethodSummary: 'Arps (1945) generalised decline — exponential (b=0), hyperbolic (0<b<1), or harmonic (b=1) rate decline matched against commingled layered simulation.',
     analyticalMethodReference: 'Arps (1945); Fetkovich (1971).',
-    scenarioClass: 'depletion',
-    domain: 'depletion',
-    chartPreset: 'fetkovich',
+    chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'arps_b',
     capabilities: {
         analyticalMethod: 'depletion',
@@ -34,7 +32,6 @@ export const dep_arps: Scenario = {
         requiresThreePhaseMode: false,
     },
     params: {
-        analyticalSolutionMode: 'depletion',
         // Fluid
         mu_w: 0.5,
         mu_o: 1.0,

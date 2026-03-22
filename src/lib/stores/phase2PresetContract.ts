@@ -66,17 +66,17 @@ function isFetkovichBenchmarkCase(benchmarkId: string | null | undefined): boole
 export function resolveProductFamily(input: {
     activeMode: CaseMode;
     activeLibraryFamily?: ProductFamily | null;
-    benchmarkScenarioClass?: AnalyticalMethod | null;
+    benchmarkAnalyticalMethod?: AnalyticalMethod | null;
     benchmarkId?: string | null;
 }): ProductFamily {
     if (input.activeLibraryFamily) return input.activeLibraryFamily;
-    if (input.benchmarkScenarioClass === 'buckley-leverett' || input.benchmarkScenarioClass === 'gas-oil-bl') {
+    if (input.benchmarkAnalyticalMethod === 'buckley-leverett' || input.benchmarkAnalyticalMethod === 'gas-oil-bl') {
         return 'waterflood';
     }
     if (isFetkovichBenchmarkCase(input.benchmarkId ?? null)) {
         return 'type-curves';
     }
-    if (input.benchmarkScenarioClass === 'depletion') {
+    if (input.benchmarkAnalyticalMethod === 'depletion') {
         return 'depletion-analysis';
     }
     if (input.activeMode === 'wf') return 'waterflood';
@@ -164,7 +164,7 @@ export function buildScenarioNavigationState(input: {
     referenceSourceLabel?: string | null;
     provenanceSummary?: string | null;
     benchmarkId?: string | null;
-    benchmarkScenarioClass?: AnalyticalMethod | null;
+    benchmarkAnalyticalMethod?: AnalyticalMethod | null;
     activeComparisonSelection?: ComparisonSelection;
 }): ScenarioNavigationState {
     const hasResolvedLibraryCaseKey = Object.prototype.hasOwnProperty.call(input, 'activeLibraryCaseKey');
@@ -176,7 +176,7 @@ export function buildScenarioNavigationState(input: {
     const activeFamily = resolveProductFamily({
         activeMode: input.activeMode,
         activeLibraryFamily: input.activeLibraryFamily ?? null,
-        benchmarkScenarioClass: input.benchmarkScenarioClass ?? null,
+        benchmarkAnalyticalMethod: input.benchmarkAnalyticalMethod ?? null,
         benchmarkId: input.benchmarkId ?? null,
     });
     const activeSource = resolveScenarioSource({
@@ -260,7 +260,7 @@ export const PHASE2_TRACKED_PARAMETER_KEYS = [
     'injectorI', 'injectorJ', 'producerI', 'producerJ',
     'max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction',
     'gravityEnabled', 'capillaryEnabled', 'capillaryPEntry', 'capillaryLambda',
-    'analyticalSolutionMode', 'analyticalDepletionRateScale', 'analyticalArpsB',
+    'analyticalMode', 'analyticalDepletionRateScale', 'analyticalArpsB',
 ] as const;
 
 export type TrackedParameterKey = (typeof PHASE2_TRACKED_PARAMETER_KEYS)[number];
@@ -291,7 +291,7 @@ export const PHASE2_PARAMETER_GROUPS: Record<ParameterOverrideGroupKey, readonly
     ],
     stability: ['max_sat_change_per_step', 'max_pressure_change_per_step', 'max_well_rate_change_fraction'],
     physics: ['gravityEnabled', 'capillaryEnabled', 'capillaryPEntry', 'capillaryLambda'],
-    analytical: ['analyticalSolutionMode', 'analyticalDepletionRateScale', 'analyticalArpsB'],
+    analytical: ['analyticalMode', 'analyticalDepletionRateScale', 'analyticalArpsB'],
 };
 
 export type ParameterOverrideGroups = Record<ParameterOverrideGroupKey, string[]>;
@@ -444,7 +444,7 @@ export function buildBasePresetProfile(input: {
     isModified: boolean;
     benchmarkId?: string | null;
     benchmarkLabel?: string | null;
-    benchmarkScenarioClass?: AnalyticalMethod | null;
+    benchmarkAnalyticalMethod?: AnalyticalMethod | null;
     activeLibraryCaseKey?: string | null;
     activeLibraryGroup?: LibraryCaseGroup | null;
 }): BasePresetProfile {
@@ -455,7 +455,7 @@ export function buildBasePresetProfile(input: {
         isModified,
         benchmarkId,
         benchmarkLabel,
-        benchmarkScenarioClass,
+        benchmarkAnalyticalMethod,
         activeLibraryCaseKey,
         activeLibraryGroup,
     } = input;
@@ -477,7 +477,7 @@ export function buildBasePresetProfile(input: {
         activeLibraryCaseKey,
         activeLibraryGroup,
         benchmarkId: benchmarkId ?? null,
-        benchmarkScenarioClass: benchmarkScenarioClass ?? null,
+        benchmarkAnalyticalMethod: benchmarkAnalyticalMethod ?? null,
     });
 
     return {

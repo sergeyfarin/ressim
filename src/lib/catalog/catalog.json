@@ -62,14 +62,14 @@
         "steps": 30,
         "delta_t_days": 1,
         "injectorEnabled": false,
-        "analyticalSolutionMode": "none",
+        "analyticalMode": "none",
         "useCapillaryGravity": false
     },
     "modes": {
         "dep": {
             "baseParams": {
                 "injectorEnabled": false,
-                "analyticalSolutionMode": "depletion",
+                "analyticalMode": "depletion",
                 "steps": 36,
                 "delta_t_days": 0.5
             },
@@ -418,7 +418,7 @@
         "wf": {
             "baseParams": {
                 "injectorEnabled": true,
-                "analyticalSolutionMode": "waterflood",
+                "analyticalMode": "waterflood",
                 "steps": 50,
                 "delta_t_days": 0.5
             },
@@ -778,7 +778,7 @@
         "sim": {
             "baseParams": {
                 "injectorEnabled": true,
-                "analyticalSolutionMode": "none",
+                "analyticalMode": "none",
                 "steps": 30,
                 "delta_t_days": 0.5
             },

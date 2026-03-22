@@ -40,7 +40,7 @@ import {
     type ValidationWarning,
 } from '../validateInputs';
 import { buildWarningPolicy, evaluateAnalyticalStatus, type AnalyticalStatus } from '../warningPolicy';
-import { getScenario, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities, type ScenarioAnalyticalOption } from '../catalog/scenarios';
+import { getDefaultScenarioAnalyticalMode, getScenario, getScenarioWithVariantParams, getDefaultVariantKeys, resolveCapabilities, type ScenarioAnalyticalOption } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
     buildBasePresetProfile,
@@ -224,7 +224,7 @@ class SimulationStoreImpl {
     initialGasSaturation = $state(0.0);
 
     // Analytical solution
-    analyticalSolutionMode: 'waterflood' | 'depletion' = $state('depletion');
+    analyticalMode: 'waterflood' | 'depletion' = $state('depletion');
     analyticalDepletionRateScale = $state(1.0);
     analyticalArpsB = $state(0.0);
 
@@ -417,7 +417,7 @@ class SimulationStoreImpl {
             isModified: this.isModified,
             benchmarkId,
             benchmarkLabel,
-            benchmarkScenarioClass: this.activeReferenceFamily?.analyticalMethod ?? null,
+            benchmarkAnalyticalMethod: this.activeReferenceFamily?.analyticalMethod ?? null,
             activeLibraryCaseKey: this.activeLibraryEntry?.key ?? null,
             activeLibraryGroup: this.activeLibraryEntry?.group ?? null,
         });
@@ -432,7 +432,7 @@ class SimulationStoreImpl {
             activeFamily: resolveProductFamily({
                 activeMode: this.activeMode,
                 activeLibraryFamily: this.activeNavigationLibraryEntry?.family ?? null,
-                benchmarkScenarioClass: this.activeReferenceFamily?.analyticalMethod ?? null,
+                benchmarkAnalyticalMethod: this.activeReferenceFamily?.analyticalMethod ?? null,
                 benchmarkId,
             }),
             activeSource,
@@ -462,7 +462,7 @@ class SimulationStoreImpl {
     analyticalStatus = $derived.by(() => {
         return evaluateAnalyticalStatus({
             activeMode: this.activeMode,
-            analyticalMode: this.analyticalSolutionMode,
+            analyticalMode: this.analyticalMode,
             injectorEnabled: this.injectorEnabled,
             gravityEnabled: this.gravityEnabled,
             capillaryEnabled: this.capillaryEnabled,
@@ -487,11 +487,6 @@ class SimulationStoreImpl {
         const resolved = resolveCapabilities(sc.capabilities);
         const activeDimension = sc.sensitivities.find((dimension) => dimension.key === this.activeSensitivityDimensionKey) ?? null;
 
-        // Map analyticalMethod → deprecated scenarioClass (still required by BenchmarkFamily type).
-        const scenarioClass = resolved.analyticalMethod === 'buckley-leverett' ? 'buckley-leverett' as const
-            : resolved.analyticalMethod === 'gas-oil-bl' ? 'gas-oil-bl' as const
-            : 'depletion' as const;
-
         const xAxis = resolved.analyticalNativeXAxis as import('../catalog/benchmarkCases').BenchmarkXAxisKey;
         const panels = (resolved.primaryRateCurve === 'oil-rate'
             ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
@@ -501,7 +496,6 @@ class SimulationStoreImpl {
         return {
             key: sc.key,
             baseCaseKey: sc.key,
-            scenarioClass,
             analyticalMethod: resolved.analyticalMethod,
             sensitivityAxes: [],
             reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
@@ -688,7 +682,7 @@ class SimulationStoreImpl {
             capillaryEnabled: this.capillaryEnabled,
             capillaryPEntry: this.capillaryPEntry,
             capillaryLambda: this.capillaryLambda,
-            analyticalSolutionMode: this.analyticalSolutionMode,
+            analyticalMode: this.analyticalMode,
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
             analyticalArpsB: this.analyticalArpsB,
             s_gc: this.s_gc,
@@ -814,7 +808,7 @@ class SimulationStoreImpl {
             model: this.buildModelResetKey(),
             delta_t_days: this.delta_t_days,
             steps: this.steps,
-            analyticalSolutionMode: this.analyticalSolutionMode,
+            analyticalMode: this.analyticalMode,
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
             analyticalArpsB: this.analyticalArpsB,
         });
@@ -1568,8 +1562,8 @@ class SimulationStoreImpl {
         this.referenceProvenance = provenance;
     }
 
-    handleAnalyticalSolutionModeChange(mode: 'waterflood' | 'depletion') {
-        this.analyticalSolutionMode = mode;
+    handleAnalyticalModeChange(mode: 'waterflood' | 'depletion') {
+        this.analyticalMode = mode;
         this.analyticalProductionData = [];
         this.analyticalMeta = {
             mode,
@@ -1658,13 +1652,14 @@ class SimulationStoreImpl {
             this.initialGasSaturation = Number(resolved.initialGasSaturation);
         }
 
-        // Sync analyticalSolutionMode using the actual resolved parameters
-        if (resolved.analyticalSolutionMode === 'waterflood' || resolved.analyticalSolutionMode === 'depletion') {
-            this.analyticalSolutionMode = resolved.analyticalSolutionMode;
-        } else if (resolved.analyticalSolutionMode === 'none' && resolved.mode) {
-            this.analyticalSolutionMode = resolved.mode === 'wf' ? 'waterflood' : 'depletion';
+        // Sync analyticalMode from explicit params first, then legacy params, then inferred defaults.
+        const resolvedAnalyticalMode = resolved.analyticalMode ?? resolved.analyticalSolutionMode;
+        if (resolvedAnalyticalMode === 'waterflood' || resolvedAnalyticalMode === 'depletion') {
+            this.analyticalMode = resolvedAnalyticalMode;
+        } else if (resolvedAnalyticalMode === 'none' && resolved.mode) {
+            this.analyticalMode = resolved.mode === 'wf' ? 'waterflood' : 'depletion';
         } else {
-            this.analyticalSolutionMode = this.injectorEnabled ? 'waterflood' : 'depletion';
+            this.analyticalMode = this.injectorEnabled ? 'waterflood' : 'depletion';
         }
         this.analyticalDepletionRateScale = fin(resolved.analyticalDepletionRateScale, 1.0);
         this.analyticalArpsB = fin(resolved.analyticalArpsB, 0.0);
@@ -1725,6 +1720,7 @@ class SimulationStoreImpl {
         this.explicitLibraryEntryKey = null;
         this.activeCase = key;
         this.clearRuntimeOverrides();
+        this.analyticalMode = getDefaultScenarioAnalyticalMode(scenario.capabilities);
 
         this.applyCaseParams(scenario.params);
         this.baseCaseSignature = this.buildCaseSignature();

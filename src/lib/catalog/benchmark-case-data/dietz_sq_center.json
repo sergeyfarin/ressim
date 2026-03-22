@@ -7,7 +7,7 @@
   "description": "Shape factor C_A ≈ 30.88 (Dietz, 1965)",
   "params": {
     "mode": "benchmark",
-    "analyticalSolutionMode": "depletion",
+    "analyticalMode": "depletion",
     "nx": 21,
     "ny": 21,
     "nz": 1,

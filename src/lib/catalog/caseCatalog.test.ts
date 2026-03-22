@@ -181,7 +181,7 @@ describe('caseCatalog Dynamic Catalog', () => {
     ]);
 
     expect(caseA).toMatchObject({
-      scenarioClass: 'buckley-leverett',
+      analyticalMethod: 'buckley-leverett',
       reference: {
         kind: 'analytical',
         source: 'buckley-leverett-shock-reference',
@@ -212,7 +212,7 @@ describe('caseCatalog Dynamic Catalog', () => {
     expect(caseA?.description).toBe(caseA?.baseCase.description);
 
     expect(dietz).toMatchObject({
-      scenarioClass: 'depletion',
+      analyticalMethod: 'depletion',
       reference: {
         kind: 'analytical',
         source: 'dietz-shape-factor-reference',

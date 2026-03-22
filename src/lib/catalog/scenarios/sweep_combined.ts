@@ -23,9 +23,7 @@ export const sweep_combined: Scenario = {
             sweepMethod: 'dykstra-parsons',
         },
     ],
-    scenarioClass: 'waterflood',
-    domain: 'sweep',
-    chartPreset: 'sweep',
+    chartLayoutKey: 'sweep',
     defaultSensitivityDimensionKey: 'interaction_core',
     capabilities: {
         analyticalMethod: 'buckley-leverett',
@@ -36,7 +34,6 @@ export const sweep_combined: Scenario = {
         requiresThreePhaseMode: false,
     },
     params: {
-        analyticalSolutionMode: 'waterflood',
         // Fluid
         mu_w: 0.5,
         mu_o: 1.0,
@@ -92,7 +89,7 @@ export const sweep_combined: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        delta_t_days: 0.5,
+        delta_t_days: 0.25,
         steps: 750,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,

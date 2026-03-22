@@ -55,7 +55,7 @@ describe("Scenario picker composition", () => {
     expect(scenarioSectionsSource).toMatch(/bind:well_radius=\{params\.well_radius\}/);
     expect(scenarioSectionsSource).toMatch(/bind:delta_t_days=\{params\.delta_t_days\}/);
     expect(scenarioSectionsSource).toMatch(/bindings=\{params\}/);
-    expect(scenarioSectionsSource).toMatch(/bind:analyticalSolutionMode=\{params\.analyticalSolutionMode\}/);
+    expect(scenarioSectionsSource).toMatch(/bind:analyticalMode=\{params\.analyticalMode\}/);
     expect(scenarioSectionsSource).not.toMatch(/GridFieldsPanel|ReservoirFieldsPanel|WellsFieldsPanel|TimestepFieldsPanel|AnalyticalFieldsPanel/);
   });
 });
