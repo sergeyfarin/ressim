@@ -1766,7 +1766,7 @@ export function buildReferenceComparisonModel(input: {
 }): ReferenceComparisonModel {
     const family = input.family ?? null;
     const suppressPrimaryAnalyticalOverlays = family?.suppressPrimaryAnalyticalOverlays
-        ?? (family?.showSweepPanel === true && family?.sweepGeometry === 'both');
+        ?? (family?.showSweepPanel === true);
     const orderedResults = orderResults(input.results, input.previewVariantParams);
     const referenceColor = getReferenceColor(input.theme ?? 'dark');
     const legendGrey = getLegendGrey(input.theme ?? 'dark');

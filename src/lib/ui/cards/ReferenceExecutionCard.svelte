@@ -45,6 +45,8 @@
         comparisonMetric: activeFamily.comparisonMetric ?? null,
         displayDefaults: activeFamily.displayDefaults ?? null,
         runPolicy: activeFamily.runPolicy ?? null,
+        showSweepPanel: activeFamily.showSweepPanel ?? false,
+        sweepAnalyticalMethod: activeFamily.sweepAnalyticalMethod ?? null,
       })
       : null
   ));

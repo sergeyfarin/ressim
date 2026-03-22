@@ -65,14 +65,14 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             panels: {
                 rates: {
                     title: 'Watercut',
-                    curveKeys: ['water-cut-sim', 'water-cut-reference'],
+                    curveKeys: ['water-cut-sim'],
                     scalePreset: 'breakthrough',
                     allowLogToggle: false,
                     expanded: false,
                 },
                 recovery: {
                     title: 'Recovery Factor',
-                    curveKeys: ['recovery-factor-primary', 'recovery-factor-reference'],
+                    curveKeys: ['recovery-factor-primary'],
                     scalePreset: 'recovery',
                     expanded: false,
                 },

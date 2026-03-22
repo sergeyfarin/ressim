@@ -795,7 +795,7 @@ describe('referenceComparisonModel', () => {
         expect(getSweepPanel(model, 'combined')?.curves.filter((curve) => curve.curveKey === 'sweep-combined-reference')).toHaveLength(3);
     });
 
-    it('builds nonzero completed sweep BL references on PVI even when injection-rate history is missing', () => {
+    it('suppresses BL breakthrough references for vertical sweep runs even when injection-rate history is missing', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
         const family = { ...baseFamily!, showSweepPanel: true, sweepGeometry: 'vertical' as const, analyticalOverlayMode: 'per-result' as const };
         const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
@@ -836,12 +836,8 @@ describe('referenceComparisonModel', () => {
             xAxisMode: 'pvi',
         });
 
-        const referenceSeries = model.panels.rates.series.filter((_, index) => (
-            model.panels.rates.curves[index]?.curveKey === 'water-cut-reference'
-        ));
-
-        expect(referenceSeries).toHaveLength(2);
-        expect(referenceSeries.every((series) => series.some((point) => (point.y ?? 0) > 0))).toBe(true);
+        expect(model.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(0);
+        expect(getSweepPanel(model, 'vertical')?.curves.filter((curve) => curve.curveKey === 'sweep-vertical-reference')).toHaveLength(2);
     });
 
     it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {

@@ -2,7 +2,6 @@
     import { onMount, onDestroy, tick } from "svelte";
     import FractionalFlow from "./lib/analytical/FractionalFlow.svelte";
     import DepletionAnalytical from "./lib/analytical/DepletionAnalytical.svelte";
-    import ReferenceResultsCard from "./lib/ui/cards/ReferenceResultsCard.svelte";
     import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
@@ -663,11 +662,6 @@
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
             <div class="space-y-4">
-                <ReferenceResultsCard
-                    family={activeReferenceFamily}
-                    results={activeReferenceResults}
-                />
-
                 <Card class="overflow-hidden">
                     {#if activeReferenceFamily && ReferenceComparisonChartComponent}
                         <ReferenceComparisonChartComponent

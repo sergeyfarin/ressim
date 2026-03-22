@@ -45,10 +45,8 @@ describe('App store domain wiring', () => {
   });
 
   it('filters reference outputs by active reference family rather than the benchmark tab', () => {
-    expect(appSource).toMatch(/import ReferenceResultsCard from "\.\/lib\/ui\/cards\/ReferenceResultsCard\.svelte"/);
-    expect(appSource).toMatch(/<ReferenceResultsCard/);
-    expect(appSource).toMatch(/family=\{activeReferenceFamily\}/);
-    expect(appSource).toMatch(/results=\{activeReferenceResults\}/);
+    expect(appSource).not.toMatch(/ReferenceResultsCard/);
+    expect(appSource).not.toMatch(/Reference Run Results/);
     expect(appSource).toMatch(/scenario\.setComparisonSelection\(/);
     expect(appSource).not.toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
     expect(appSource).not.toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);

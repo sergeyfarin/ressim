@@ -391,11 +391,32 @@ export function getScenarioChartLayout(
     );
 }
 
-export function suppressesPrimaryAnalyticalOverlays(layoutConfig: RateChartLayoutConfig): boolean {
-    const primaryPanelKeys = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate'] as const;
-    return !primaryPanelKeys.some((panelKey) => (
+const PRIMARY_ANALYTICAL_PANEL_KEYS = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate'] as const;
+
+export function hasPrimaryAnalyticalReferenceCurves(layoutConfig: RateChartLayoutConfig): boolean {
+    return PRIMARY_ANALYTICAL_PANEL_KEYS.some((panelKey) => (
         layoutConfig.rateChart?.panels?.[panelKey]?.curveKeys?.some((curveKey) => curveKey.includes('-reference'))
     ));
+}
+
+export function suppressesPrimaryAnalyticalOverlays(layoutConfig: RateChartLayoutConfig): boolean {
+    return !hasPrimaryAnalyticalReferenceCurves(layoutConfig);
+}
+
+export function validateScenarioChartLayout(scenario: Pick<Scenario, 'key' | 'capabilities' | 'chartLayoutKey' | 'chartLayoutPatch' | 'sensitivities'>): string[] {
+    const errors: string[] = [];
+    const dimensionKeys = [null, ...scenario.sensitivities.map((dimension) => dimension.key)];
+
+    for (const dimensionKey of dimensionKeys) {
+        const layout = getScenarioChartLayout(scenario, dimensionKey);
+        if (scenario.capabilities.showSweepPanel && hasPrimaryAnalyticalReferenceCurves(layout)) {
+            errors.push(
+                `scenario '${scenario.key}'${dimensionKey ? ` / ${dimensionKey}` : ''} must not include primary analytical reference curves when showSweepPanel is true.`,
+            );
+        }
+    }
+
+    return errors;
 }
 
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {

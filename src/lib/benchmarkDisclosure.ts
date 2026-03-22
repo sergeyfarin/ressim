@@ -111,7 +111,14 @@ function buildPermeabilitySummary(params: Record<string, any>): string {
 function buildReferenceLabel(
     analyticalMethod: AnalyticalMethod,
     referenceKind: BenchmarkReferenceKind,
+    showSweepPanel = false,
+    sweepAnalyticalMethod: string | null = null,
 ): string {
+    if (showSweepPanel) {
+        if (sweepAnalyticalMethod === 'stiles') return 'Sweep reference solution (Stiles)';
+        if (sweepAnalyticalMethod === 'dykstra-parsons') return 'Sweep reference solution (Dykstra-Parsons)';
+        return 'Sweep reference solution';
+    }
     if (analyticalMethod === 'buckley-leverett' && referenceKind === 'numerical-refined') {
         return 'Refined numerical reference';
     }
@@ -167,8 +174,15 @@ export function buildBenchmarkReferenceGuidance(input: {
     comparisonMetric: BenchmarkComparisonMetric | null;
     displayDefaults: BenchmarkDisplayDefaults | null;
     runPolicy: BenchmarkRunPolicy | null;
+    showSweepPanel?: boolean;
+    sweepAnalyticalMethod?: string | null;
 }): BenchmarkReferenceGuidance {
-    const reference = `Reference solution: ${buildReferenceLabel(input.analyticalMethod, input.referenceKind)}.`;
+    const reference = `Reference solution: ${buildReferenceLabel(
+        input.analyticalMethod,
+        input.referenceKind,
+        input.showSweepPanel ?? false,
+        input.sweepAnalyticalMethod ?? null,
+    )}.`;
     const metric = input.comparisonMetric
         ? `Review metric: arrival-PVI relative error against ${input.comparisonMetric.target === 'analytical-reference' ? 'the reference solution' : 'the refined numerical reference'} (${formatNumber(input.comparisonMetric.tolerance * 100, 1)}% tolerance).`
         : 'Review metric: trend comparison against the reference solution.';

@@ -338,10 +338,13 @@
 
     const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => ({
         rates: {
-            title: family?.analyticalMethod === 'buckley-leverett' ? 'Breakthrough'
+            title: family?.showSweepPanel === true ? 'Watercut'
+                : family?.analyticalMethod === 'buckley-leverett' ? 'Breakthrough'
                 : family?.analyticalMethod === 'gas-oil-bl' ? 'Gas Breakthrough'
                 : 'Oil Rate',
-            curveKeys: family?.analyticalMethod === 'buckley-leverett'
+            curveKeys: family?.showSweepPanel === true
+                ? ['water-cut-sim']
+                : family?.analyticalMethod === 'buckley-leverett'
                 ? ['water-cut-sim', 'water-cut-reference']
                 : family?.analyticalMethod === 'gas-oil-bl'
                 ? ['gas-cut-sim', 'gas-cut-reference']
@@ -360,7 +363,9 @@
         },
         cumulative: {
             title: 'Cum Oil',
-            curveKeys: family?.analyticalMethod === 'buckley-leverett'
+            curveKeys: family?.showSweepPanel === true
+                ? ['cum-oil-sim']
+                : family?.analyticalMethod === 'buckley-leverett'
                 ? ['cum-oil-sim', 'cum-oil-reference', 'cum-injection']
                 : ['cum-oil-sim', 'cum-oil-reference'],
             scalePreset: 'cumulative_volumes',
@@ -369,7 +374,9 @@
         },
         diagnostics: {
             title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
-            curveKeys: isGasContext ? ['p_z_sim', 'p_z_reference'] : ['avg-pressure-sim', 'avg-pressure-reference'],
+            curveKeys: family?.showSweepPanel === true
+                ? ['avg-pressure-sim']
+                : isGasContext ? ['p_z_sim', 'p_z_reference'] : ['avg-pressure-sim', 'avg-pressure-reference'],
             scalePreset: 'pressure',
             visible: true,
             expanded: false,

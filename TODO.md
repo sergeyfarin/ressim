@@ -4,6 +4,14 @@ Phased plan to evolve ResSim from a validated 2-phase waterflood teaching tool i
 
 ---
 
+## 2026-03-22 Need to decide later on analytical methods enforcing single method per active scenario
+Do one of the following or several
+- Promote sweep to a first-class analytical method in the scenario type system, separate from Buckley-Leverett.
+- Make primary reference curves illegal at the type/config level for that method, not just via validation.
+- Route reference-run policy labels and comparison metadata through that method too, so the semantics are explicit everywhere, not only in chart behavior.
+
+
+
 ## Phase 1 — Consolidate & Fix (current foundations)
 
 Goal: clean up tech debt, fix known correctness issues, finish incomplete work.
@@ -169,7 +177,9 @@ Current custom mode is a catch-all that dumps 50+ raw parameter inputs with no c
 - [ ] Finish shared panel/x-axis selection across both chart types
 - [x] Extract shared scenario chart layouts into `src/lib/catalog/chartLayouts.ts` and allow per-scenario / per-dimension layout patching so scenario chart ownership is explicit
 - [x] Eliminate the separate sweep-panel taxonomy in `referenceComparisonModel.ts` / `ReferenceComparisonChart.svelte` by moving to a unified `panelOrder + panels` chart layout contract, so scenario metadata selects every panel and both chart renderers loop over the resolved panel list instead of hard-coded sweep buckets
+- [x] Keep sweep scenarios single-method in the UI by removing primary BL reference curves from sweep layouts and validating that `showSweepPanel` scenarios cannot reintroduce them in primary chart panels
 - [ ] Extract output selection view model from `App.svelte` — one typed helper returning the active run/result payload shared by charts, 3D, and analytical components
+- [ ] Reintroduce reference-run summary metrics only after they are scenario-specific; keep the generic `Reference Run Results` table removed until the output contract is redesigned
 
 ---
 

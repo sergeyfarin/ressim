@@ -6,7 +6,6 @@ const appCssSource = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, 'App.svelte'), 'utf8');
 const scenarioPickerSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'modes', 'ScenarioPicker.svelte'), 'utf8');
 const referenceExecutionSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'cards', 'ReferenceExecutionCard.svelte'), 'utf8');
-const referenceResultsSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'cards', 'ReferenceResultsCard.svelte'), 'utf8');
 const warningPanelSource = fs.readFileSync(path.join(__dirname, 'lib', 'ui', 'feedback', 'WarningPolicyPanel.svelte'), 'utf8');
 const comparisonChartSource = fs.readFileSync(path.join(__dirname, 'lib', 'charts', 'ReferenceComparisonChart.svelte'), 'utf8');
 const threeDViewSource = fs.readFileSync(path.join(__dirname, 'lib', 'visualization', '3dview.svelte'), 'utf8');
@@ -37,8 +36,6 @@ describe('app theme typography', () => {
     expect(scenarioPickerSource).toMatch(/ui-panel-kicker/);
     expect(scenarioPickerSource).toMatch(/ui-chip/);
     expect(referenceExecutionSource).toMatch(/ui-support-copy/);
-    expect(referenceResultsSource).toMatch(/ui-panel-kicker/);
-    expect(referenceResultsSource).toMatch(/ui-microcopy/);
     expect(warningPanelSource).toMatch(/ui-chip-caps/);
     expect(comparisonChartSource).toMatch(/ui-section-kicker/);
     expect(threeDViewSource).toMatch(/ui-chip/);

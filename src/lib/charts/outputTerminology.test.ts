@@ -2,31 +2,23 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-const referenceResultsSource = fs.readFileSync(path.join(__dirname, '..', 'ui', 'cards', 'ReferenceResultsCard.svelte'), 'utf8');
 const comparisonChartSource = fs.readFileSync(path.join(__dirname, 'ReferenceComparisonChart.svelte'), 'utf8');
 const rateChartSource = fs.readFileSync(path.join(__dirname, 'RateChart.svelte'), 'utf8');
 const swProfileSource = fs.readFileSync(path.join(__dirname, 'SwProfileChart.svelte'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', '..', 'App.svelte'), 'utf8');
 
 describe('output terminology copy', () => {
-  it('uses output-review wording in the reference results summary card', () => {
-    expect(referenceResultsSource).toMatch(/Reference Run Results/);
-    expect(referenceResultsSource).toMatch(/ready for output review/);
-    expect(referenceResultsSource).toMatch(/BT PVI/);
-    expect(referenceResultsSource).toMatch(/BT Time \(d\)/);
-    expect(referenceResultsSource).toMatch(/Delta vs reference/);
-    expect(referenceResultsSource).toMatch(/Status/);
-    expect(referenceResultsSource).toMatch(/Base case/);
-    expect(referenceResultsSource).toMatch(/Variant/);
-    expect(referenceResultsSource).not.toMatch(/Stored Reference Results/);
-    expect(referenceResultsSource).not.toMatch(/Base Reference/);
+  it('does not render the deprecated reference results summary table copy', () => {
+    expect(appSource).not.toMatch(/Reference Run Results/);
+    expect(appSource).not.toMatch(/ready for output review/);
+    expect(appSource).not.toMatch(/Delta vs reference/);
   });
 
   it('uses output-comparison wording in the comparison chart shell and app empty states', () => {
     expect(comparisonChartSource).toMatch(/Comparison Plots/);
     expect(comparisonChartSource).toMatch(/Cases/);
     expect(comparisonChartSource).toMatch(/Analytical preview —/);
-    expect(comparisonChartSource).toMatch(/comparison-sweep-combined/);
+    expect(comparisonChartSource).toMatch(/analytical preview/);
     expect(comparisonChartSource).not.toMatch(/Stored Run Comparison/);
     expect(appSource).toMatch(/Results/);
     expect(appSource).not.toMatch(/Outputs/);

@@ -4,8 +4,8 @@ export const sweep_vertical: Scenario = {
     key: 'sweep_vertical',
     label: 'Vertical Sweep (XZ)',
     description: 'Non-communicating layered reservoir (XZ). Higher permeability contrast V_DP causes earlier breakthrough in faster layers, reducing vertical sweep E_V.',
-    analyticalMethodSummary: 'Dykstra-Parsons layered model with BL displacement — predicts per-layer breakthrough and combined E_V for the active layer permeabilities.',
-    analyticalMethodReference: 'Dykstra and Parsons (1950); Buckley and Leverett (1942); Welge (1952).',
+    analyticalMethodSummary: 'Dykstra-Parsons layered sweep model — predicts per-layer breakthrough ordering and combined E_V for the active layer permeabilities.',
+    analyticalMethodReference: 'Dykstra and Parsons (1950).',
     chartLayoutKey: 'sweep',
     chartLayoutPatch: {
         rateChart: {

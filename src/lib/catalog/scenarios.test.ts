@@ -8,8 +8,10 @@ import {
     getScenarioChartLayout,
     getScenarioWithVariantParams,
     getScenarioGroup,
+    hasPrimaryAnalyticalReferenceCurves,
     listScenarios,
     resolveCapabilities,
+    validateScenarioChartLayout,
     validateScenarioCapabilities,
     ANALYTICAL_OUTPUT_CONTRACTS,
     CHART_LAYOUTS,
@@ -365,6 +367,13 @@ describe('scenario capability validation', () => {
         }
     });
 
+    it('every scenario passes chart-layout validation against its analytical display contract', () => {
+        for (const scenario of listScenarios()) {
+            const errors = validateScenarioChartLayout(scenario);
+            expect(errors, `${scenario.key}: ${errors.join('; ')}`).toEqual([]);
+        }
+    });
+
     it('resolveCapabilities produces correct defaults for each analytical method', () => {
         const bl = resolveCapabilities({ analyticalMethod: 'buckley-leverett', showSweepPanel: false, hasInjector: true, default3DScalar: null, requiresThreePhaseMode: false });
         expect(bl.primaryRateCurve).toBe('water-cut');
@@ -461,6 +470,8 @@ describe('scenario capability validation', () => {
 
         expect(arealLayout.rateChart?.panels?.sweep_vertical?.visible).toBe(false);
         expect(arealLayout.rateChart?.panels?.sweep_areal?.visible).toBe(true);
+        expect(arealLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
+        expect(hasPrimaryAnalyticalReferenceCurves(arealLayout)).toBe(false);
 
         expect(combinedLayout.rateChart?.panels?.rates?.curveKeys).toEqual(['water-cut-sim']);
         expect(combinedLayout.rateChart?.panels?.recovery?.curveKeys).toEqual(['recovery-factor-primary']);
