@@ -6,6 +6,61 @@ import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRun
 import type { SimulatorSnapshot } from '../simulator-types';
 import { buildReferenceComparisonModel } from './referenceComparisonModel';
 
+function buildSyntheticGasOilRateHistory(
+    params: Record<string, any>,
+    breakthroughPvi: number,
+    gasCutShift = 0,
+) {
+    const poreVolume = Number(params.nx)
+        * Number(params.ny)
+        * Number(params.nz)
+        * Number(params.cellDx)
+        * Number(params.cellDy)
+        * Number(params.cellDz)
+        * Number(params.reservoirPorosity ?? 0.2);
+
+    const firstInjection = 0.4 * breakthroughPvi * poreVolume;
+    const secondInjection = 0.6 * breakthroughPvi * poreVolume;
+    const thirdInjection = 0.6 * breakthroughPvi * poreVolume;
+
+    return [
+        {
+            time: 1,
+            total_injection: firstInjection,
+            total_production_liquid: 100,
+            total_production_oil: 100,
+            total_production_gas: 1 + gasCutShift * 5,
+            avg_reservoir_pressure: 245,
+            avg_water_saturation: Number(params.initialSaturation ?? 0.2),
+        },
+        {
+            time: 2,
+            total_injection: secondInjection,
+            total_production_liquid: 100,
+            total_production_oil: 85 - gasCutShift * 10,
+            total_production_gas: 20 + gasCutShift * 20,
+            avg_reservoir_pressure: 232,
+            avg_water_saturation: Number(params.initialSaturation ?? 0.2),
+        },
+        {
+            time: 3,
+            total_injection: thirdInjection,
+            total_production_liquid: 100,
+            total_production_oil: 55 - gasCutShift * 10,
+            total_production_gas: 55 + gasCutShift * 25,
+            avg_reservoir_pressure: 220,
+            avg_water_saturation: Number(params.initialSaturation ?? 0.2),
+        },
+    ];
+}
+
+function buildGasOilRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
+    return buildBenchmarkRunResult({
+        spec,
+        rateHistory: buildSyntheticGasOilRateHistory(spec.params, 0.35, 0),
+    });
+}
+
 function buildSyntheticWaterfloodRateHistory(
     params: Record<string, any>,
     breakthroughPvi: number,
@@ -545,6 +600,80 @@ describe('referenceComparisonModel', () => {
         ]);
     });
 
+    it('keeps BL rate overlays shared for sweep variants that only change heterogeneity', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+
+        const heterogeneityPreviewVariants = [
+            {
+                label: 'Uniform layers',
+                variantKey: 'uniform_layers',
+                params: {
+                    ...baseSpec.params,
+                    permMode: 'uniform',
+                    uniformPermX: 100,
+                    uniformPermY: 100,
+                    uniformPermZ: 10,
+                    nx: 48,
+                    ny: 1,
+                    nz: 5,
+                    producerI: 47,
+                    producerJ: 0,
+                },
+            },
+            {
+                label: 'Layered contrast',
+                variantKey: 'layered_contrast',
+                params: {
+                    ...baseSpec.params,
+                    permMode: 'perLayer',
+                    layerPermsX: [200, 150, 100, 60, 40],
+                    layerPermsY: [200, 150, 100, 60, 40],
+                    layerPermsZ: [20, 15, 10, 6, 4],
+                    nx: 48,
+                    ny: 1,
+                    nz: 5,
+                    producerI: 47,
+                    producerJ: 0,
+                },
+            },
+        ];
+
+        const previewModel = buildReferenceComparisonModel({
+            family,
+            results: [],
+            xAxisMode: 'pvi',
+            analyticalPerVariant: true,
+            previewVariantParams: heterogeneityPreviewVariants,
+            previewAnalyticalMethod: family.analyticalMethod,
+        });
+
+        expect(previewModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(1);
+        expect(previewModel.sweepPanels.combined?.curves.length).toBe(2);
+
+        const resultSpecs = heterogeneityPreviewVariants.map((variant) => ({
+            ...baseSpec,
+            key: variant.variantKey,
+            caseKey: variant.variantKey,
+            variantKey: variant.variantKey,
+            variantLabel: variant.label,
+            label: variant.label,
+            params: variant.params,
+        }));
+        const results = resultSpecs.map((spec) => buildSweepRunResult(spec));
+
+        const completedModel = buildReferenceComparisonModel({
+            family,
+            results,
+            xAxisMode: 'pvi',
+            analyticalPerVariant: true,
+        });
+
+        expect(completedModel.panels.rates.curves.filter((curve) => curve.curveKey === 'water-cut-reference')).toHaveLength(1);
+        expect(completedModel.sweepPanels.combined?.curves.length).toBeGreaterThan(1);
+    });
+
     it('keeps pending sweep variants visible as dashed overlays while completed runs show solid sweep curves', () => {
         const baseFamily = getBenchmarkFamily('bl_case_a_refined');
         const family = { ...baseFamily!, showSweepPanel: true };
@@ -702,5 +831,149 @@ describe('referenceComparisonModel', () => {
         expect(verticalPanel!.series[simIndex]?.[0]).toEqual({ x: 0, y: 0 });
         expect(combinedPanel!.series[combinedSimIndex]?.[0]).toEqual({ x: 0, y: 0 });
         expect(verticalPanel!.series[simIndex]?.[1]?.y).toBeCloseTo(combinedPanel!.series[combinedSimIndex]?.[1]?.y ?? NaN, 10);
+    });
+
+    it('remaps completed sweep panels onto the selected time axis', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const result = buildSweepRunResult(baseSpec);
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        const recoverySimSeries = model.panels.recovery.series[0];
+        const sweepRfPanel = model.sweepPanels.rf;
+        const simRfIndex = sweepRfPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-rf-sim');
+        const analyticalCombinedPanel = model.sweepPanels.combined;
+        const analyticalCombinedIndex = analyticalCombinedPanel!.curves.findIndex((curve) => curve.curveKey === 'sweep-combined-reference');
+
+        expect(sweepRfPanel!.series[simRfIndex]).toEqual(recoverySimSeries);
+        expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[0]?.x).toBe(0);
+        expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.at(-1)?.x).toBeCloseTo(recoverySimSeries.at(-1)?.x ?? NaN, 10);
+        expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[1]?.x).toBeGreaterThan(0);
+        expect(analyticalCombinedPanel!.series[analyticalCombinedIndex]?.[1]?.x).toBeLessThanOrEqual(recoverySimSeries.at(-1)?.x ?? NaN);
+    });
+
+    it('keeps gas-oil BL overlays shared for variants that only change permeability', () => {
+        const family = {
+            key: 'gas_injection',
+            analyticalMethod: 'gas-oil-bl',
+            showSweepPanel: false,
+        } as any;
+        const baseSpec = {
+            key: 'gas_base',
+            caseKey: 'gas_base',
+            familyKey: 'gas_injection',
+            analyticalMethod: 'gas-oil-bl' as const,
+            variantKey: null,
+            variantLabel: null,
+            label: 'Gas Base',
+            description: 'Base gas-oil case',
+            params: {
+                analyticalSolutionMode: 'waterflood',
+                nx: 50, ny: 1, nz: 1,
+                cellDx: 20, cellDy: 50, cellDz: 10,
+                initialPressure: 250,
+                initialSaturation: 0.2,
+                initialGasSaturation: 0,
+                reservoirPorosity: 0.2,
+                uniformPermX: 100, uniformPermY: 100, uniformPermZ: 10,
+                permMode: 'uniform',
+                s_wc: 0.2, s_or: 0.15,
+                s_gc: 0.05, s_gr: 0.05, s_org: 0.20,
+                n_w: 2.0, n_o: 2.0, n_g: 1.5,
+                k_rw_max: 0.4, k_ro_max: 1.0, k_rg_max: 0.8,
+                mu_w: 0.5, mu_o: 2.0, mu_g: 0.02,
+                c_w: 3e-6, c_o: 1e-5, c_g: 1e-4,
+                rho_w: 1000, rho_o: 800, rho_g: 10,
+                depth_reference: 0,
+                volume_expansion_o: 1.0, volume_expansion_w: 1.0,
+                rock_compressibility: 1e-6,
+                injectorEnabled: true,
+                injectorControlMode: 'pressure',
+                producerControlMode: 'pressure',
+                injectorBhp: 350, producerBhp: 100,
+                injectorI: 0, injectorJ: 0,
+                producerI: 49, producerJ: 0,
+                well_radius: 0.1, well_skin: 0,
+                capillaryEnabled: false,
+                capillaryPEntry: 0, capillaryLambda: 2,
+                gravityEnabled: false,
+                threePhaseModeEnabled: true,
+                injectedFluid: 'gas',
+                pcogEnabled: false, pcogPEntry: 3, pcogLambda: 2,
+                delta_t_days: 2,
+                steps: 150,
+                max_sat_change_per_step: 0.05,
+                max_pressure_change_per_step: 75,
+                max_well_rate_change_fraction: 0.75,
+            },
+            steps: 150,
+            deltaTDays: 2,
+            historyInterval: 3,
+            reference: { kind: 'analytical' as const, source: 'gas_injection:analytical' },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Base gas-oil case',
+        };
+
+        const permeabilityPreviewVariants = [
+            {
+                label: '10 mD',
+                variantKey: 'perm_low',
+                params: {
+                    ...baseSpec.params,
+                    uniformPermX: 10,
+                    uniformPermY: 10,
+                    uniformPermZ: 1,
+                },
+            },
+            {
+                label: '1000 mD',
+                variantKey: 'perm_high',
+                params: {
+                    ...baseSpec.params,
+                    uniformPermX: 1000,
+                    uniformPermY: 1000,
+                    uniformPermZ: 100,
+                },
+            },
+        ];
+
+        const previewModel = buildReferenceComparisonModel({
+            family,
+            results: [],
+            xAxisMode: 'pvi',
+            analyticalPerVariant: true,
+            previewVariantParams: permeabilityPreviewVariants,
+            previewAnalyticalMethod: 'gas-oil-bl',
+        });
+
+        expect(previewModel.panels.rates.curves.filter((curve) => curve.curveKey === 'gas-cut-reference')).toHaveLength(1);
+
+        const resultSpecs = permeabilityPreviewVariants.map((variant) => ({
+            ...baseSpec,
+            key: variant.variantKey,
+            caseKey: variant.variantKey,
+            variantKey: variant.variantKey,
+            variantLabel: variant.label,
+            label: variant.label,
+            params: variant.params,
+        }));
+        const results = resultSpecs.map((spec) => buildGasOilRunResult(spec));
+
+        const completedModel = buildReferenceComparisonModel({
+            family,
+            results,
+            xAxisMode: 'pvi',
+            analyticalPerVariant: true,
+        });
+
+        expect(completedModel.panels.rates.curves.filter((curve) => curve.curveKey === 'gas-cut-reference')).toHaveLength(1);
+        expect(completedModel.panels.recovery.curves.filter((curve) => curve.curveKey === 'recovery-factor-reference')).toHaveLength(1);
     });
 });

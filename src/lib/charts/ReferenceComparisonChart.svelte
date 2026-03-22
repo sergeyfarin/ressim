@@ -10,6 +10,7 @@
         type ChartPanelEntry,
         type ChartXAxisOption,
     } from './chartPanelSelection';
+    import { resolveSharedXAxisRange, type AxisMapping } from './xAxisRangePolicy';
     import type {
         RateChartLayoutConfig,
         RateChartPanelKey,
@@ -391,48 +392,86 @@
     const sweepCombinedCurves = $derived(sweepCombinedEntries.map((entry) => entry.curve));
     const sweepCombinedSeries = $derived(sweepCombinedEntries.map((entry) => entry.series));
 
-    // Compute a shared x-axis range so every panel aligns.
-    // Clips the x-range where all rate curves have dropped below 1e-7 of peak,
-    // ensuring at least 7 decades are visible on a log-scale rate axis while
-    // trimming the dead tail where nothing changes.
+    function toFiniteNumber(value: unknown, fallback: number): number {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : fallback;
+    }
+
+    function getPoreVolume(params: Record<string, any>): number {
+        return toFiniteNumber(params.nx, 1)
+            * toFiniteNumber(params.ny, 1)
+            * toFiniteNumber(params.nz, 1)
+            * toFiniteNumber(params.cellDx, 10)
+            * toFiniteNumber(params.cellDy, 10)
+            * toFiniteNumber(params.cellDz, 1)
+            * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
+    }
+
+    function buildComparisonXAxisValues(result: BenchmarkRunResult, axisMode: RateChartXAxisMode): Array<number | null> {
+        const time = result.rateHistory.map((point) => toFiniteNumber(point.time, 0));
+        if (axisMode === 'pvi') return [...result.pviSeries];
+        if (axisMode === 'logTime') return time.map((value) => (value > 0 ? Math.log10(value) : null));
+        if (axisMode === 'time' || axisMode === 'tD') return time;
+
+        let cumulativeInjection = 0;
+        let cumulativeLiquid = 0;
+        let cumulativeGas = 0;
+        const cumulativeInjectionSeries: Array<number | null> = [];
+        const cumulativeLiquidSeries: Array<number | null> = [];
+        const cumulativeGasSeries: Array<number | null> = [];
+
+        for (let index = 0; index < result.rateHistory.length; index += 1) {
+            const point = result.rateHistory[index];
+            const dt = index > 0
+                ? Math.max(0, toFiniteNumber(point.time, 0) - toFiniteNumber(result.rateHistory[index - 1]?.time, 0))
+                : Math.max(0, toFiniteNumber(point.time, 0));
+            cumulativeInjection += Math.max(0, toFiniteNumber(point.total_injection, 0)) * dt;
+            cumulativeLiquid += Math.max(0, Math.abs(toFiniteNumber(point.total_production_liquid, 0))) * dt;
+            cumulativeGas += Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0))) * dt;
+            cumulativeInjectionSeries.push(cumulativeInjection);
+            cumulativeLiquidSeries.push(cumulativeLiquid);
+            cumulativeGasSeries.push(cumulativeGas);
+        }
+
+        if (axisMode === 'cumInjection') return cumulativeInjectionSeries;
+        if (axisMode === 'cumLiquid') return cumulativeLiquidSeries;
+        if (axisMode === 'cumGas') return cumulativeGasSeries;
+        if (axisMode === 'pvp') {
+            const poreVolume = getPoreVolume(result.params);
+            return cumulativeLiquidSeries.map((value) => (
+                poreVolume > 1e-12 && Number.isFinite(value) ? Number(value) / poreVolume : null
+            ));
+        }
+
+        return time;
+    }
+
+    const visiblePviMappings = $derived.by((): AxisMapping[] => {
+        return visibleResults.map((result) => ({
+            domainValues: [...result.pviSeries],
+            rangeValues: buildComparisonXAxisValues(result, xAxisMode),
+        }));
+    });
+
     const sharedXRange = $derived.by(() => {
-        const allPanels = [ratesPanel, recoveryPanel, cumulativePanel, diagnosticsPanel, volumesPanel, oilRatePanel];
-        let globalMin = Infinity;
-        let globalMax = -Infinity;
-        for (const panel of allPanels) {
-            for (const series of panel.series) {
-                for (const pt of series) {
-                    if (Number.isFinite(pt.x)) {
-                        if (pt.x < globalMin) globalMin = pt.x;
-                        if (pt.x > globalMax) globalMax = pt.x;
-                    }
-                }
-            }
-        }
-        if (!Number.isFinite(globalMin) || !Number.isFinite(globalMax) || globalMin >= globalMax) return undefined;
-
-        // Find the peak rate across all rate-panel series, then clip at 1e-7 of peak.
-        const rateSeries = ratesPanel.series;
-        let peakRate = 0;
-        for (const series of rateSeries) {
-            for (const pt of series) {
-                if (Number.isFinite(pt.y) && pt.y! > peakRate) peakRate = pt.y!;
-            }
-        }
-        if (peakRate <= 0) return { min: globalMin, max: globalMax };
-
-        const threshold = peakRate * 1e-7;
-        let clippedMax = globalMin;
-        for (const series of rateSeries) {
-            for (const pt of series) {
-                if (Number.isFinite(pt.x) && Number.isFinite(pt.y) && pt.y! > threshold) {
-                    if (pt.x > clippedMax) clippedMax = pt.x;
-                }
-            }
-        }
-        // Only clip if it actually reduces the range; otherwise keep full extent.
-        const xMax = clippedMax > globalMin ? Math.min(globalMax, clippedMax) : globalMax;
-        return { min: globalMin, max: xMax };
+        return resolveSharedXAxisRange({
+            allSeries: [
+                ...ratesPanel.series,
+                ...recoveryPanel.series,
+                ...cumulativePanel.series,
+                ...diagnosticsPanel.series,
+                ...volumesPanel.series,
+                ...oilRatePanel.series,
+                ...sweepRfSeries,
+                ...sweepArealSeries,
+                ...sweepVerticalSeries,
+                ...sweepCombinedSeries,
+            ],
+            rateSeries: ratesPanel.series,
+            xAxisMode,
+            policy: layoutConfig?.rateChart?.xAxisRangePolicy,
+            pviMappings: visiblePviMappings,
+        });
     });
 </script>
 
@@ -651,6 +690,7 @@
             scaleConfigs={sweepScales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -669,6 +709,7 @@
             scaleConfigs={sweepScales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -687,6 +728,7 @@
             scaleConfigs={sweepScales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -705,6 +747,7 @@
             scaleConfigs={sweepScales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {

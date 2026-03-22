@@ -143,6 +143,11 @@ export function arealSweepAtBreakthrough(M: number): number {
     return Math.max(0, Math.min(1, ea));
 }
 
+function computeLocalDisplacementFrontPvi(rock: RockProps, fluid: FluidProps): number {
+    const welge = computeWelgeMetrics(rock, fluid, rock.s_wc);
+    return Math.max(0.01, welge.breakthroughPvi);
+}
+
 /**
  * Areal sweep efficiency vs cumulative PVI for a five-spot pattern.
  *
@@ -152,19 +157,18 @@ export function arealSweepAtBreakthrough(M: number): number {
  *
  * Based on Dyes, Caudle & Erickson (1954) graphical correlations.
  *
- * @param deltaS — movable saturation (1 − S_or − S_wc).  PVI at breakthrough
- *   equals E_A_bt × ΔS because the injected water fills only the movable
- *   saturation range within the swept pattern area.  Default 1 for backward
- *   compatibility; callers with rock props should pass the real value.
+ * @param localFrontPvi — 1D Buckley-Leverett breakthrough PVI in the locally
+ *   swept zone. PVI at pattern breakthrough is E_A_bt × PVI_bt,local. Default
+ *   1 keeps the function usable as a standalone correlation helper.
  */
-export function arealSweepAtPvi(M: number, pvi: number, deltaS: number = 1): number {
+export function arealSweepAtPvi(M: number, pvi: number, localFrontPvi: number = 1): number {
     if (pvi <= 0) return 0;
     const eaBt = arealSweepAtBreakthrough(M);
     if (eaBt <= 0) return 0;
 
-    // PVI at breakthrough: piston-like displacement sweeps E_A_bt fraction
-    // of the pattern, filling ΔS of movable saturation in the swept zone.
-    const pviBt = eaBt * Math.max(0.01, deltaS);
+    // Pattern breakthrough occurs when the average swept area reaches E_A_bt
+    // and the local front in that swept area reaches its 1D BL breakthrough.
+    const pviBt = eaBt * Math.max(0.01, localFrontPvi);
 
     if (pvi <= pviBt) {
         return Math.max(0, (pvi / pviBt) * eaBt);
@@ -185,12 +189,12 @@ export function arealSweepCurve(
     M: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
-    deltaS: number = 1,
+    localFrontPvi: number = 1,
 ): SweepPoint[] {
     const result: SweepPoint[] = [];
     for (let i = 0; i <= nPoints; i++) {
         const pvi = (i / nPoints) * pviMax;
-        result.push({ pvi, efficiency: arealSweepAtPvi(M, pvi, deltaS) });
+        result.push({ pvi, efficiency: arealSweepAtPvi(M, pvi, localFrontPvi) });
     }
     return result;
 }
@@ -206,10 +210,10 @@ export function computeArealSweep(
 ): ArealSweepResult {
     const M = mobilityRatio(rock, fluid);
     const eaBt = arealSweepAtBreakthrough(M);
-    const deltaS = Math.max(0.01, 1 - rock.s_or - rock.s_wc);
-    const pviBt = eaBt * deltaS;
+    const localFrontPvi = computeLocalDisplacementFrontPvi(rock, fluid);
+    const pviBt = eaBt * localFrontPvi;
     return {
-        curve: arealSweepCurve(M, pviMax, nPoints, deltaS),
+        curve: arealSweepCurve(M, pviMax, nPoints, localFrontPvi),
         mobilityRatio: M,
         eaAtBreakthrough: eaBt,
         pviAtBreakthrough: pviBt,
@@ -264,8 +268,9 @@ export function dykstraParsonsCoefficient(permeabilities: number[]): number {
  * layers, significantly slowing their front advance and reducing E_V.  The
  * model integrates this flow redistribution at each PVI step.
  *
- * @param deltaS — movable saturation (1 − S_or − S_wc).  Determines PVI at
- *   which each layer's piston front reaches the outlet.  Default 1.
+ * @param localFrontPvi — 1D Buckley-Leverett breakthrough PVI in the local
+ *   swept zone. Determines how quickly each layer front advances per unit PVI.
+ *   Default 1 preserves the old standalone helper behaviour.
  *
  * Returns a   { pvi, efficiency }[]   curve.
  */
@@ -274,14 +279,14 @@ export function verticalSweep(
     M: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
-    deltaS: number = 1,
+    localFrontPvi: number = 1,
 ): SweepPoint[] {
     if (layers.length === 0) return [{ pvi: 0, efficiency: 0 }];
 
     const totalH = layers.reduce((s, l) => s + Math.max(0, l.thickness), 0);
     if (totalH <= 0) return [{ pvi: 0, efficiency: 0 }];
 
-    const clampedDeltaS = Math.max(0.01, deltaS);
+    const clampedFrontPvi = Math.max(0.01, localFrontPvi);
     const nLayers = layers.length;
     const h = layers.map(l => Math.max(0, l.thickness));
     const k = layers.map(l => Math.max(1e-9, l.perm));
@@ -315,15 +320,15 @@ export function verticalSweep(
         if (totalEffRate <= 0) break;
 
         // Advance each un-flooded layer's front:
-        //   dx_i/dPVI = k_i × λ_eff_i × totalH / (Σ(h_j × k_j × λ_eff_j) × ΔS)
+        //   dx_i/dPVI = k_i × λ_eff_i × totalH / (Σ(h_j × k_j × λ_eff_j) × PVI_bt,local)
         //
         // Derivation: from q_i ∝ h_i × k_i × λ_eff_i and the relation
-        //   dPVI = Σ q_j × dt / totalPV,  dx_i = q_i × dt / (h_i × ΔS × PV_layer_i/h_i)
+        //   dPVI = Σ q_j × dt / totalPV,  dx_i = q_i × dt / (h_i × PVI_bt,local × PV_layer_i/h_i)
         // the h_i cancels, leaving dx_i ∝ k_i × λ_eff_i.
         for (let i = 0; i < nLayers; i++) {
             if (x[i] >= 1) continue;
             const lambdaEff = 1 / (x[i] / Math.max(1e-12, M) + (1 - x[i]));
-            const dx = k[i] * lambdaEff * totalH * dPVI / (totalEffRate * clampedDeltaS);
+            const dx = k[i] * lambdaEff * totalH * dPVI / (totalEffRate * clampedFrontPvi);
             x[i] = Math.min(1, x[i] + dx);
         }
 
@@ -405,11 +410,11 @@ export function computeVerticalSweep(
     M: number,
     pviMax: number = 3.0,
     nPoints: number = 200,
-    deltaS: number = 1,
+    localFrontPvi: number = 1,
 ): VerticalSweepResult {
     const layers = permeabilities.map((perm) => ({ perm, thickness: layerThickness }));
     return {
-        curve: verticalSweep(layers, M, pviMax, nPoints, deltaS),
+        curve: verticalSweep(layers, M, pviMax, nPoints, localFrontPvi),
         vdp: dykstraParsonsCoefficient(permeabilities),
     };
 }
@@ -506,12 +511,12 @@ export function computeCombinedSweep(
     nPoints: number = 200,
     geometry: SweepGeometry = 'both',
 ): CombinedSweepResult {
-    const deltaS = Math.max(0.01, 1 - rock.s_or - rock.s_wc);
     const M = mobilityRatio(rock, fluid);
     const visibility = getSweepComponentVisibility(geometry);
+    const localFrontPvi = computeLocalDisplacementFrontPvi(rock, fluid);
 
     const areal = computeArealSweep(rock, fluid, pviMax, nPoints);
-    const vertical = computeVerticalSweep(permeabilities, layerThickness, M, pviMax, nPoints, deltaS);
+    const vertical = computeVerticalSweep(permeabilities, layerThickness, M, pviMax, nPoints, localFrontPvi);
     const maskedArealCurve = areal.curve.map((point) => ({
         pvi: point.pvi,
         efficiency: visibility.showAreal ? point.efficiency : 1,

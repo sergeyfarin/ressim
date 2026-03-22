@@ -23,6 +23,7 @@
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
     import { computeCombinedSweep, getSweepComponentVisibility, type SweepGeometry } from "../analytical/sweepEfficiency";
     import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
+    import { resolveSharedXAxisRange } from "./xAxisRangePolicy";
 
     let {
         rateHistory = [],
@@ -522,6 +523,43 @@
         if (xAxisMode === "logTime") return "Time (days) — log₁₀";
         if (xAxisMode === "tD") return "Dimensionless Time (tD = t/τ)";
         return "Time (days)";
+    }
+
+    function getSweepZeroXAxisValue(): number | null {
+        return xAxisMode === "logTime" ? null : 0;
+    }
+
+    function mapPviToActiveXAxis(pvi: number): number | null {
+        if (!Number.isFinite(pvi)) return null;
+        if (xAxisMode === "pvi") return pvi;
+        if (pvi <= 1e-12) return getSweepZeroXAxisValue();
+
+        const domain = cumulatives.pvi;
+        const range = xValues;
+        if (domain.length === 0 || range.length === 0) return null;
+
+        let previousIndex = -1;
+        for (let index = 0; index < domain.length; index++) {
+            const xDomain = domain[index];
+            const xRange = range[index];
+            if (!Number.isFinite(xDomain) || !Number.isFinite(xRange)) continue;
+            if (Math.abs((xDomain as number) - pvi) <= 1e-9) return Number(xRange);
+            if ((xDomain as number) > pvi) {
+                if (previousIndex < 0) return Number(xRange);
+                const d0 = Number(domain[previousIndex]);
+                const r0 = Number(range[previousIndex]);
+                const d1 = Number(xDomain);
+                const r1 = Number(xRange);
+                if (Math.abs(d1 - d0) <= 1e-12) return r1;
+                const fraction = (pvi - d0) / (d1 - d0);
+                return r0 + fraction * (r1 - r0);
+            }
+            previousIndex = index;
+        }
+
+        return previousIndex >= 0 && Number.isFinite(range[previousIndex])
+            ? Number(range[previousIndex])
+            : null;
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1028,7 +1066,7 @@
         ratesCurves.some((curve) => curve.label.includes("Rate")),
     );
 
-    // --- Sweep panels (sweep-domain scenarios only, PVI x-axis) ---
+    // --- Sweep panels (sweep-domain scenarios only, remapped to active x-axis) ---
     //
     // PANEL ORDER (primary → diagnostic):
     //   1. Recovery Factor — RF_sim (solid) vs RF_sweep_analytical = E_vol×E_D_BL (dashed)
@@ -1081,12 +1119,12 @@
         if (!series || series.length === 0) return [];
         const points = series.map((pt) => {
             if (pt.time <= 1e-12) {
-                return { x: 0, y: getter(pt) };
+                return { x: getSweepZeroXAxisValue() ?? 0, y: getter(pt) };
             }
-            // Find cumulative PVI at this simulation time by scanning rateHistory
+            // Map simulation sweep history onto the currently selected x-axis.
             const tIdx = timeValues.findIndex((t) => t >= pt.time - 1e-9);
-            const pvi = tIdx >= 0 ? (cumulatives.pvi[tIdx] ?? null) : (cumulatives.pvi.at(-1) ?? null);
-            return { x: pvi ?? 0, y: getter(pt) };
+            const x = tIdx >= 0 ? (xValues[tIdx] ?? null) : (xValues.at(-1) ?? null);
+            return { x: x ?? 0, y: getter(pt) };
         });
         const deduped: Array<{ x: number; y: number | null }> = [];
         for (const point of points) {
@@ -1107,7 +1145,7 @@
         const analytical = computeCombinedSweep(rockProps, fluidProps, perms, layerThickness, 3.0, 200, sweepGeometry);
         const visibility = getSweepComponentVisibility(sweepGeometry);
         const pviValues = analytical.arealSweep.curve.map((p) => p.pvi);
-        const analyticalXY = (ys: number[]) => pviValues.map((x, i) => ({ x, y: ys[i] ?? null }));
+        const analyticalXY = (ys: number[]) => pviValues.map((pvi, i) => ({ x: mapPviToActiveXAxis(pvi) ?? 0, y: ys[i] ?? null }));
 
         const hasSim = sweepEfficiencySimSeries != null && sweepEfficiencySimSeries.length > 0;
         const showAreal = visibility.showAreal;
@@ -1189,7 +1227,7 @@
 
         // Recovery Factor panel
         // Sim RF: map rateHistory → (pvi, rf) using cumulatives
-        const simRFSeries = cumulatives.pvi.map((x, i) => ({ x, y: recoveryFactor[i] ?? null }));
+        const simRFSeries = xValues.map((x, i) => ({ x: x ?? 0, y: recoveryFactor[i] ?? null }));
 
         const rfCurves: CurveConfig[] = [
             {
@@ -1223,13 +1261,35 @@
         const rfSeries = sweepRFAnalytical
             ? [
                 simRFSeries,
-                sweepRFAnalytical.curve.map((p) => ({ x: p.pvi, y: p.rfSweep })),
-                sweepRFAnalytical.curve.map((p) => ({ x: p.pvi, y: p.rfBL1D })),
+                                sweepRFAnalytical.curve.map((p) => ({ x: mapPviToActiveXAxis(p.pvi) ?? 0, y: p.rfSweep })),
+                                sweepRFAnalytical.curve.map((p) => ({ x: mapPviToActiveXAxis(p.pvi) ?? 0, y: p.rfBL1D })),
               ]
             : [simRFSeries, [], []];
 
         return { rfCurves, rfSeries, arealCurves, arealSeries, verticalCurves, verticalSeries, volCurves, volSeries, showAreal, showVertical };
     });
+
+    const sharedXRange = $derived.by(() => {
+        return resolveSharedXAxisRange({
+            allSeries: [
+                ...ratesSeries,
+                ...recoverySeries,
+                ...cumulativeSeries,
+                ...diagnosticsSeries,
+                ...volumesSeries,
+                ...oilRateSeries,
+                ...(sweepPanels ? sweepPanels.rfSeries : []),
+                ...(sweepPanels ? sweepPanels.arealSeries : []),
+                ...(sweepPanels ? sweepPanels.verticalSeries : []),
+                ...(sweepPanels ? sweepPanels.volSeries : []),
+            ],
+            rateSeries: ratesSeries,
+            xAxisMode,
+            policy: layoutConfig?.rateChart?.xAxisRangePolicy,
+            pviMappings: [{ domainValues: cumulatives.pvi, rangeValues: xValues }],
+        });
+    });
+
     let xAxisOptions = $derived.by(() => {
         return getConfiguredXAxisOptions(
             allXAxisOptions,
@@ -1302,6 +1362,7 @@
         {theme}
         bind:logScale
         allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? ratesPanel.allowLogToggle}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -1319,6 +1380,7 @@
         scaleConfigs={recoveryPanel.scales}
         {theme}
         logScale={false}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -1336,6 +1398,7 @@
         scaleConfigs={cumulativePanel.scales}
         {theme}
         logScale={false}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -1353,6 +1416,7 @@
         scaleConfigs={diagnosticsPanel.scales}
         {theme}
         logScale={false}
+        xRange={sharedXRange}
         targetLeftGutter={maxLeftGutter}
         targetRightGutter={maxRightGutter}
         onGutterMeasure={(left: number, right: number) => {
@@ -1371,6 +1435,7 @@
             scaleConfigs={volumesPanel.scales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -1390,6 +1455,7 @@
             scaleConfigs={oilRatePanel.scales}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -1410,6 +1476,7 @@
             scaleConfigs={sweepRFScaleConfig}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
@@ -1427,6 +1494,7 @@
                 scaleConfigs={sweepScaleConfig}
                 {theme}
                 logScale={false}
+                xRange={sharedXRange}
                 targetLeftGutter={maxLeftGutter}
                 targetRightGutter={maxRightGutter}
                 onGutterMeasure={(left: number, right: number) => {
@@ -1444,6 +1512,7 @@
                 scaleConfigs={sweepScaleConfig}
                 {theme}
                 logScale={false}
+                xRange={sharedXRange}
                 targetLeftGutter={maxLeftGutter}
                 targetRightGutter={maxRightGutter}
                 onGutterMeasure={(left: number, right: number) => {
@@ -1460,6 +1529,7 @@
             scaleConfigs={sweepScaleConfig}
             {theme}
             logScale={false}
+            xRange={sharedXRange}
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {

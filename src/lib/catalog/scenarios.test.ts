@@ -10,6 +10,7 @@ import {
     resolveCapabilities,
     validateScenarioCapabilities,
     ANALYTICAL_OUTPUT_CONTRACTS,
+    CHART_PRESETS,
 } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
@@ -41,6 +42,7 @@ describe('sweep scenario sensitivities', () => {
             'mobility',
             'areal_heterogeneity',
             'sor',
+            'grid_resolution',
         ]);
 
         const arealAxis = scenario?.sensitivities.find((dimension) => dimension.key === 'areal_heterogeneity');
@@ -339,5 +341,20 @@ describe('scenario capability validation', () => {
             expect(ANALYTICAL_OUTPUT_CONTRACTS[method]).toBeDefined();
             expect(ANALYTICAL_OUTPUT_CONTRACTS[method].supportedRateCurves.length).toBeGreaterThan(0);
         }
+    });
+
+    it('chart presets expose scenario-controlled x-axis range policies', () => {
+        expect(CHART_PRESETS.waterflood.rateChart?.xAxisRangePolicy).toEqual({
+            mode: 'rate-tail-threshold',
+            relativeThreshold: 1e-7,
+        });
+        expect(CHART_PRESETS.sweep.rateChart?.xAxisRangePolicy).toEqual({
+            mode: 'pvi-window',
+            minPvi: 0,
+            maxPvi: 2.5,
+        });
+        expect(CHART_PRESETS.oil_depletion.rateChart?.xAxisRangePolicy).toEqual({
+            mode: 'data-extent',
+        });
     });
 });

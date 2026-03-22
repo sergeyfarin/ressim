@@ -151,6 +151,14 @@ describe('computeArealSweep', () => {
         expect(result.eaAtBreakthrough).toBeGreaterThan(0.4);
         expect(result.eaAtBreakthrough).toBeLessThan(0.8);
     });
+
+    it('changes early-time areal sweep with mobility', () => {
+        const favorable = computeArealSweep(defaultRock, { mu_w: 1.0, mu_o: 0.5 }, 3.0, 200);
+        const unfavorable = computeArealSweep(defaultRock, { mu_w: 0.5, mu_o: 5.0 }, 3.0, 200);
+        const earlyIndex = favorable.curve.findIndex((point) => point.pvi >= 0.1);
+        expect(earlyIndex).toBeGreaterThanOrEqual(0);
+        expect(favorable.curve[earlyIndex].efficiency).not.toBeCloseTo(unfavorable.curve[earlyIndex].efficiency, 6);
+    });
 });
 
 // ── Dykstra-Parsons coefficient ──
@@ -403,6 +411,14 @@ describe('normalizeSimSweepPointForGeometry', () => {
 // ── computeCombinedSweep ──
 
 describe('computeCombinedSweep', () => {
+    it('changes early-time vertical sweep with mobility', () => {
+        const favorable = computeCombinedSweep(defaultRock, { mu_w: 1.0, mu_o: 0.5 }, [300, 100, 30], 10, 3.0, 200, 'vertical');
+        const unfavorable = computeCombinedSweep(defaultRock, { mu_w: 0.5, mu_o: 5.0 }, [300, 100, 30], 10, 3.0, 200, 'vertical');
+        const earlyIndex = favorable.verticalSweep.curve.findIndex((point) => point.pvi >= 0.1);
+        expect(earlyIndex).toBeGreaterThanOrEqual(0);
+        expect(favorable.verticalSweep.curve[earlyIndex].efficiency).not.toBeCloseTo(unfavorable.verticalSweep.curve[earlyIndex].efficiency, 6);
+    });
+
     it('masks areal sweep to unity for vertical-only geometry', () => {
         const result = computeCombinedSweep(defaultRock, defaultFluid, [300, 100, 30], 10, 3.0, 100, 'vertical');
         for (let i = 0; i < result.combined.length; i++) {

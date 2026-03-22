@@ -295,6 +295,48 @@ function buildXAxisValues(
     return [...derived.time];
 }
 
+function getSweepZeroXAxisValue(xAxisMode: RateChartXAxisMode): number | null {
+    return xAxisMode === 'logTime' ? null : 0;
+}
+
+function mapPviSeriesToXAxis(
+    pviValues: Array<number | null>,
+    derived: DerivedRunSeries,
+    xAxisMode: RateChartXAxisMode,
+    tau: number | null,
+): Array<number | null> {
+    if (xAxisMode === 'pvi') return [...pviValues];
+
+    const mappedAxis = buildXAxisValues(derived, xAxisMode, tau);
+    return pviValues.map((targetPvi) => {
+        if (!Number.isFinite(targetPvi)) return null;
+        if ((targetPvi as number) <= 1e-12) return getSweepZeroXAxisValue(xAxisMode);
+
+        let previousIndex = -1;
+        for (let index = 0; index < derived.pvi.length; index += 1) {
+            const domain = derived.pvi[index];
+            const range = mappedAxis[index];
+            if (!Number.isFinite(domain) || !Number.isFinite(range)) continue;
+            if (Math.abs((domain as number) - (targetPvi as number)) <= 1e-9) return Number(range);
+            if ((domain as number) > (targetPvi as number)) {
+                if (previousIndex < 0) return Number(range);
+                const d0 = Number(derived.pvi[previousIndex]);
+                const r0 = Number(mappedAxis[previousIndex]);
+                const d1 = Number(domain);
+                const r1 = Number(range);
+                if (Math.abs(d1 - d0) <= 1e-12) return r1;
+                const fraction = ((targetPvi as number) - d0) / (d1 - d0);
+                return r0 + fraction * (r1 - r0);
+            }
+            previousIndex = index;
+        }
+
+        return previousIndex >= 0 && Number.isFinite(mappedAxis[previousIndex])
+            ? Number(mappedAxis[previousIndex])
+            : null;
+    });
+}
+
 function getBaseResult(results: BenchmarkRunResult[]): BenchmarkRunResult | null {
     return results.find((result) => result.variantKey === null) ?? results[0] ?? null;
 }
@@ -494,6 +536,19 @@ function extractFluidProps(params: Record<string, any>): FluidProps {
     };
 }
 
+function getBuckleyLeverettOverlaySignature(params: Record<string, any>): string {
+    return JSON.stringify({
+        rock: extractRockProps(params),
+        fluid: extractFluidProps(params),
+        initialSaturation: toFiniteNumber(params.initialSaturation, toFiniteNumber(params.s_wc, 0.1)),
+    });
+}
+
+function hasDistinctBuckleyLeverettOverlays(paramSets: Array<Record<string, any>>): boolean {
+    if (paramSets.length <= 1) return false;
+    return new Set(paramSets.map((params) => getBuckleyLeverettOverlaySignature(params))).size > 1;
+}
+
 function extractGasOilRockProps(params: Record<string, any>): GasOilRockProps {
     return {
         s_wc: toFiniteNumber(params.s_wc, 0.2),
@@ -512,6 +567,19 @@ function extractGasOilFluidProps(params: Record<string, any>): GasOilFluidProps 
         mu_o: toFiniteNumber(params.mu_o, 2),
         mu_g: toFiniteNumber(params.mu_g, 0.02),
     };
+}
+
+function getGasOilBLOverlaySignature(params: Record<string, any>): string {
+    return JSON.stringify({
+        rock: extractGasOilRockProps(params),
+        fluid: extractGasOilFluidProps(params),
+        initialGasSaturation: toFiniteNumber(params.initialGasSaturation, 0),
+    });
+}
+
+function hasDistinctGasOilBLOutlays(paramSets: Array<Record<string, any>>): boolean {
+    if (paramSets.length <= 1) return false;
+    return new Set(paramSets.map((params) => getGasOilBLOverlaySignature(params))).size > 1;
 }
 
 function computeGasOilBLAnalyticalFromParams(params: Record<string, any>): {
@@ -772,7 +840,12 @@ function dedupeSweepSeries(points: XYPoint[]): XYPoint[] {
     return deduped;
 }
 
-function buildSimulationSweepSeries(result: BenchmarkRunResult): {
+function buildSimulationSweepSeries(
+    result: BenchmarkRunResult,
+    xAxisMode: RateChartXAxisMode,
+    tau: number | null,
+    derived: DerivedRunSeries,
+): {
     rf: XYPoint[];
     areal: XYPoint[];
     vertical: XYPoint[];
@@ -804,19 +877,23 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
     snapshots.forEach((snapshot) => {
         const pvi = mapSweepTimeToPvi(result, Number(snapshot.time));
         if (!Number.isFinite(pvi)) return;
+        const selectedXAxis = mapPviSeriesToXAxis([pvi], derived, xAxisMode, tau)[0];
+        if (!Number.isFinite(selectedXAxis)) return;
         const satWater = snapshot.grid?.sat_water;
         if (!satWater || satWater.length === 0) return;
         const sweep = normalizeSimSweepPointForGeometry(
             computeSimSweepPoint(satWater, nx, ny, nz, sweptThreshold),
             inferSweepGeometry(result.params),
         );
-        areal.push({ x: Number(pvi), y: sweep.eA });
-        vertical.push({ x: Number(pvi), y: sweep.eV });
-        combined.push({ x: Number(pvi), y: sweep.eVol });
+        areal.push({ x: Number(selectedXAxis), y: sweep.eA });
+        vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
+        combined.push({ x: Number(selectedXAxis), y: sweep.eVol });
     });
 
+    const sweepRfXValues = mapPviSeriesToXAxis(result.pviSeries, derived, xAxisMode, tau);
+
     return {
-        rf: dedupeSweepSeries(toXYSeries(result.pviSeries, result.recoverySeries)),
+        rf: dedupeSweepSeries(toXYSeries(sweepRfXValues, result.recoverySeries)),
         areal: visibility.showAreal ? dedupeSweepSeries(areal) : [],
         vertical: visibility.showVertical ? dedupeSweepSeries(vertical) : [],
         combined: dedupeSweepSeries(combined),
@@ -843,8 +920,13 @@ function inferSweepGeometry(params: Record<string, any>): SweepGeometry {
     return 'both';
 }
 
-function buildAnalyticalSweepSeries(params: Record<string, any>): {
-    pviValues: number[];
+function buildAnalyticalSweepSeries(
+    params: Record<string, any>,
+    derived: DerivedRunSeries,
+    xAxisMode: RateChartXAxisMode,
+    tau: number | null,
+): {
+    xValues: Array<number | null>;
     rf: Array<number | null>;
     areal: Array<number | null>;
     vertical: Array<number | null>;
@@ -860,8 +942,9 @@ function buildAnalyticalSweepSeries(params: Record<string, any>): {
     const visibility = getSweepComponentVisibility(geometry);
     const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
     const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
+    const xValues = mapPviSeriesToXAxis(sweep.arealSweep.curve.map((point) => point.pvi), derived, xAxisMode, tau);
     return {
-        pviValues: sweep.arealSweep.curve.map((point) => point.pvi),
+        xValues,
         rf: recovery.curve.map((point) => point.rfSweep),
         areal: sweep.arealSweep.curve.map((point) => point.efficiency),
         vertical: sweep.verticalSweep.curve.map((point) => point.efficiency),
@@ -880,9 +963,12 @@ function appendAnalyticalSweepCurves(
         color: string;
         params: Record<string, any>;
         theme: ReferenceComparisonTheme;
+        derived: DerivedRunSeries;
+        xAxisMode: RateChartXAxisMode;
+        tau: number | null;
     },
 ) {
-    const analytical = buildAnalyticalSweepSeries(input.params);
+    const analytical = buildAnalyticalSweepSeries(input.params, input.derived, input.xAxisMode, input.tau);
     const toggleGroupKey = input.caseKey ? `${input.caseKey}__ref` : 'analytical';
     const legendColor = input.caseKey ? undefined : getLegendGrey(input.theme);
     const borderWidth = input.caseKey ? 1.5 : 2;
@@ -900,7 +986,7 @@ function appendAnalyticalSweepCurves(
         borderWidth,
         borderDash: [7, 4],
         yAxisID: 'y',
-    }, analytical.pviValues, analytical.rf);
+    }, analytical.xValues, analytical.rf);
 
     if (analytical.showAreal) {
         appendSeries(panels.areal, {
@@ -916,7 +1002,7 @@ function appendAnalyticalSweepCurves(
             borderWidth,
             borderDash: SWEEP_DASH_AREAL,
             yAxisID: 'y',
-        }, analytical.pviValues, analytical.areal);
+        }, analytical.xValues, analytical.areal);
     }
 
     if (analytical.showVertical) {
@@ -933,7 +1019,7 @@ function appendAnalyticalSweepCurves(
             borderWidth,
             borderDash: SWEEP_DASH_VERTICAL,
             yAxisID: 'y',
-        }, analytical.pviValues, analytical.vertical);
+        }, analytical.xValues, analytical.vertical);
     }
 
     appendSeries(panels.combined, {
@@ -949,15 +1035,18 @@ function appendAnalyticalSweepCurves(
         borderWidth,
         borderDash: SWEEP_DASH_COMBINED,
         yAxisID: 'y',
-    }, analytical.pviValues, analytical.combined);
+    }, analytical.xValues, analytical.combined);
 }
 
 function appendSimulationSweepCurves(
     panels: Record<keyof ReferenceComparisonSweepPanels, ReferenceComparisonPanel>,
     result: BenchmarkRunResult,
     color: string,
+    xAxisMode: RateChartXAxisMode,
+    tau: number | null,
+    derived: DerivedRunSeries,
 ) {
-    const simulation = buildSimulationSweepSeries(result);
+    const simulation = buildSimulationSweepSeries(result, xAxisMode, tau, derived);
     const caseLabel = compactCaseLabel(result.label);
 
     if (simulation.rf.length > 0) {
@@ -1345,6 +1434,23 @@ function buildPreviewSweepPanels(input: {
     const panels = createSweepPanels();
     const multiVariant = input.variants.length > 1;
     const referenceColor = getReferenceColor(input.theme);
+    const previewDerived: DerivedRunSeries = {
+        time: [],
+        oilRate: [],
+        waterCut: [],
+        gasCut: [],
+        avgWaterSat: [],
+        pressure: [],
+        recovery: [],
+        cumulativeOil: [],
+        cumulativeInjection: [],
+        cumulativeLiquid: [],
+        cumulativeGas: [],
+        p_z: [],
+        pvi: [],
+        pvp: [],
+        gor: [],
+    };
 
     input.variants.forEach((variant, index) => {
         const color = multiVariant ? getReferenceComparisonCaseColor(index) : referenceColor;
@@ -1356,6 +1462,9 @@ function buildPreviewSweepPanels(input: {
             color,
             params: variant.params,
             theme: input.theme,
+            derived: previewDerived,
+            xAxisMode: 'pvi',
+            tau: null,
         });
     });
 
@@ -1367,12 +1476,17 @@ function buildSweepPanels(input: {
     pendingPreviewVariants?: AnalyticalPreviewVariant[];
     previewVariantParams?: AnalyticalPreviewVariant[];
     theme: ReferenceComparisonTheme;
+    xAxisMode: RateChartXAxisMode;
+    derivedByKey: Map<string, DerivedRunSeries>;
 }): ReferenceComparisonSweepPanels {
     const panels = createSweepPanels();
 
     input.orderedResults.forEach((result, index) => {
         const color = getReferenceComparisonCaseColor(index);
-        appendSimulationSweepCurves(panels, result, color);
+        const derived = input.derivedByKey.get(result.key);
+        if (!derived) return;
+        const tau = computeDepletionTau(result.params);
+        appendSimulationSweepCurves(panels, result, color, input.xAxisMode, tau, derived);
         appendAnalyticalSweepCurves(panels, {
             label: result.label,
             caseKey: result.key,
@@ -1380,11 +1494,31 @@ function buildSweepPanels(input: {
             color,
             params: result.params,
             theme: input.theme,
+            derived,
+            xAxisMode: input.xAxisMode,
+            tau,
         });
     });
 
-    if (input.pendingPreviewVariants?.length) {
+    if (input.pendingPreviewVariants?.length && input.xAxisMode === 'pvi') {
         const declarationOrder = new Map((input.previewVariantParams ?? []).map((variant, index) => [variant.variantKey, index]));
+        const previewDerived = input.orderedResults[0] ? buildDerivedRunSeries(input.orderedResults[0]) : {
+            time: [],
+            oilRate: [],
+            waterCut: [],
+            gasCut: [],
+            avgWaterSat: [],
+            pressure: [],
+            recovery: [],
+            cumulativeOil: [],
+            cumulativeInjection: [],
+            cumulativeLiquid: [],
+            cumulativeGas: [],
+            p_z: [],
+            pvi: [],
+            pvp: [],
+            gor: [],
+        };
         input.pendingPreviewVariants.forEach((variant, fallbackIndex) => {
             const colorIndex = declarationOrder.get(variant.variantKey) ?? (input.orderedResults.length + fallbackIndex);
             appendAnalyticalSweepCurves(panels, {
@@ -1394,6 +1528,9 @@ function buildSweepPanels(input: {
                 color: getReferenceComparisonCaseColor(colorIndex),
                 params: variant.params,
                 theme: input.theme,
+                derived: previewDerived,
+                xAxisMode: input.xAxisMode,
+                tau: null,
             });
         });
     }
@@ -1438,6 +1575,14 @@ export function buildReferenceComparisonModel(input: {
         analyticalMethod,
         input.xAxisMode,
     );
+    const distinctBuckleyLeverettOverlays = hasDistinctBuckleyLeverettOverlays([
+        ...orderedResults.map((result) => result.params),
+        ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
+    ]);
+    const distinctGasOilBLOutlays = hasDistinctGasOilBLOutlays([
+        ...orderedResults.map((result) => result.params),
+        ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
+    ]);
     let hidesPendingAnalyticalWithoutMapping = false;
 
     const panels: Record<RateChartPanelKey, ReferenceComparisonPanel> = {
@@ -1474,8 +1619,17 @@ export function buildReferenceComparisonModel(input: {
                         ? [{ label: '', variantKey: 'base', params: input.previewBaseParams }]
                         : [];
             if (variants.length > 0) {
+                const analyticalPreviewVariants = input.previewAnalyticalMethod === 'buckley-leverett'
+                    && !usesRunMappedAnalyticalXAxis
+                    && !hasDistinctBuckleyLeverettOverlays(variants.map((variant) => variant.params))
+                    ? [variants[0]]
+                    : input.previewAnalyticalMethod === 'gas-oil-bl'
+                    && !usesRunMappedAnalyticalXAxis
+                    && !hasDistinctGasOilBLOutlays(variants.map((variant) => variant.params))
+                    ? [variants[0]]
+                    : variants;
                 const previewPanels = buildAnalyticalPreviewPanels(
-                    variants,
+                    analyticalPreviewVariants,
                     input.xAxisMode,
                     input.previewAnalyticalMethod,
                     input.theme ?? 'dark',
@@ -2002,7 +2156,7 @@ export function buildReferenceComparisonModel(input: {
     }
 
     if (family.analyticalMethod === 'buckley-leverett') {
-        const allSameAnalytical = !input.analyticalPerVariant;
+        const allSameAnalytical = !distinctBuckleyLeverettOverlays;
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
             // Shared reference — one curve for all (analytical is grid/timestep-independent).
@@ -2138,7 +2292,7 @@ export function buildReferenceComparisonModel(input: {
             }
         }
     } else if (family.analyticalMethod === 'gas-oil-bl') {
-        const allSameAnalytical = !input.analyticalPerVariant;
+        const allSameAnalytical = !distinctGasOilBLOutlays;
 
         if (allSameAnalytical && !usesRunMappedAnalyticalXAxis) {
             const refOverlay = buildGasOilBLReference(baseResult, baseDerived, input.xAxisMode);
@@ -2500,6 +2654,8 @@ export function buildReferenceComparisonModel(input: {
             theme: input.theme ?? 'dark',
             pendingPreviewVariants: input.pendingPreviewVariants,
             previewVariantParams: input.previewVariantParams,
+            xAxisMode: input.xAxisMode,
+            derivedByKey,
         })
         : emptySweepPanels();
 

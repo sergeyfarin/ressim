@@ -12,6 +12,11 @@ export type RateChartPanelKey = 'rates' | 'recovery' | 'cumulative' | 'diagnosti
 
 export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'recovery';
 
+export type RateChartXAxisRangePolicy =
+    | { mode: 'data-extent' }
+    | { mode: 'rate-tail-threshold'; relativeThreshold?: number }
+    | { mode: 'pvi-window'; minPvi?: number; maxPvi: number };
+
 export type RateChartCurveOverride = {
     disabled?: boolean;
     visible?: boolean;
@@ -30,6 +35,7 @@ export type RateChartConfig = {
     allowLogScale?: boolean;
     xAxisMode?: RateChartXAxisMode;
     xAxisOptions?: RateChartXAxisMode[];
+    xAxisRangePolicy?: RateChartXAxisRangePolicy;
     ratesExpanded?: boolean;
     recoveryExpanded?: boolean;
     cumulativeExpanded?: boolean;

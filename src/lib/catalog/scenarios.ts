@@ -273,6 +273,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
         rateChart: {
             xAxisMode: 'pvi',
             xAxisOptions: ['pvi', 'time', 'cumInjection'],
+            xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
             allowLogScale: false,
             logScale: false,
             ratesExpanded: true,
@@ -281,7 +282,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
             diagnosticsExpanded: false,
             panels: {
                 rates: {
-                    title: 'Breakthrough',
+                    title: 'Watercut',
                     curveKeys: ['water-cut-sim', 'water-cut-reference'],
                     scalePreset: 'breakthrough',
                     allowLogToggle: false,
@@ -323,6 +324,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
         rateChart: {
             xAxisMode: 'pvi',
             xAxisOptions: ['pvi', 'time'],
+            xAxisRangePolicy: { mode: 'pvi-window', minPvi: 0, maxPvi: 2.5 },
             allowLogScale: false,
             logScale: false,
             ratesExpanded: false,
@@ -331,7 +333,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
             diagnosticsExpanded: false,
             panels: {
                 rates: {
-                    title: 'Breakthrough (1D BL)',
+                    title: 'Watercut',
                     curveKeys: ['water-cut-sim', 'water-cut-reference'],
                     scalePreset: 'breakthrough',
                     allowLogToggle: false,
@@ -363,6 +365,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
         rateChart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'tD', 'logTime'],
+            xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
             ratesExpanded: true,
@@ -403,6 +406,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
         rateChart: {
             xAxisMode: 'logTime',
             xAxisOptions: ['logTime', 'time', 'tD'],
+            xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: true,
             ratesExpanded: true,
@@ -443,6 +447,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
         rateChart: {
             xAxisMode: 'pvi',
             xAxisOptions: ['pvi', 'time', 'cumInjection'],
+            xAxisRangePolicy: { mode: 'rate-tail-threshold', relativeThreshold: 1e-7 },
             allowLogScale: false,
             logScale: false,
             ratesExpanded: true,
@@ -493,6 +498,7 @@ export const CHART_PRESETS: Record<string, RateChartLayoutConfig> = {
         rateChart: {
             xAxisMode: 'time',
             xAxisOptions: ['time', 'logTime'],
+            xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: true,
             logScale: false,
             ratesExpanded: true,
