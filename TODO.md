@@ -229,6 +229,12 @@ Goal: upgrade from immiscible constant-PVT to full black-oil model with pressure
 - [ ] **Secondary gas cap** — forms when undersaturated oil drops below bubble point. No classical analytical solution; compare simulation against material-balance-predicted cumulative gas liberation.
 - [ ] **Gas cap blowdown** — producing from gas cap after oil zone depleted. Simple volumetric depletion with p/z analysis.
 
+### Known Limitations & Design Notes
+
+1. **Hardcoded undersaturated c_o = 1e-5 /bar** — `generateBlackOilTable()` in `physics/pvt.ts` and `evaluateBlackOilPvt()` in `materialBalance.ts` both use a fixed `c_o = 1e-5 /bar` for undersaturated Bo extrapolation (`Bo = Bo_pb × exp(−c_o × ΔP)`). This is the standard oilfield default but does not reflect the scenario's actual fluid compressibility. A correlation-based value (e.g. Vasquez-Beggs) could be substituted if more accuracy is needed above the bubble point. The two locations must stay in sync.
+
+2. **Saturated-region c_o fallback in pressure solver** — In `lib.rs::get_c_o()`, below the bubble point Bo *increases* with pressure (more gas dissolves → oil swells), so the finite-difference derivative `(−1/Bo) dBo/dP` is negative. A negative accumulation term would destabilise the IMPES pressure solve (PCG non-convergence), so the code falls back to the base positive `c_o`. This is physically correct: the volumetric effect of gas dissolving/liberating is already handled by the phase-split Rs-tracking logic in `step.rs`, so omitting saturated-oil swelling from the pressure accumulation avoids double-counting.
+
 ### 4F. Validation
 
 - [ ] **SPE comparative solution** benchmarks (SPE1, SPE3) for black-oil validation
