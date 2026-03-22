@@ -670,6 +670,7 @@
                                     : [params.uniformPermX]}
                             layerThickness={params.cellDz}
                             {showSweepPanel}
+                            {sweepGeometry}
                             {sweepEfficiencySimSeries}
                             {sweepRFAnalytical}
                         />

@@ -387,6 +387,22 @@ describe('computeSweepRecoveryFactor', () => {
 // ── computeCombinedSweep ──
 
 describe('computeCombinedSweep', () => {
+    it('masks areal sweep to unity for vertical-only geometry', () => {
+        const result = computeCombinedSweep(defaultRock, defaultFluid, [300, 100, 30], 10, 3.0, 100, 'vertical');
+        for (let i = 0; i < result.combined.length; i++) {
+            expect(result.arealSweep.curve[i].efficiency).toBe(1);
+            expect(result.combined[i].efficiency).toBeCloseTo(result.verticalSweep.curve[i].efficiency, 10);
+        }
+    });
+
+    it('masks vertical sweep to unity for areal-only geometry', () => {
+        const result = computeCombinedSweep(defaultRock, defaultFluid, [100, 100, 100], 10, 3.0, 100, 'areal');
+        for (let i = 0; i < result.combined.length; i++) {
+            expect(result.verticalSweep.curve[i].efficiency).toBe(1);
+            expect(result.combined[i].efficiency).toBeCloseTo(result.arealSweep.curve[i].efficiency, 10);
+        }
+    });
+
     it('combined ≤ min(areal, vertical) at each PVI', () => {
         const result = computeCombinedSweep(defaultRock, defaultFluid, [100, 50, 200], 10);
         for (let i = 0; i < result.combined.length; i++) {

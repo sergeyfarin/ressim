@@ -95,6 +95,11 @@ Eight legacy catalog/benchmark files still have active production dependencies. 
 
 ### 1D. Chart & Output Polish
 
+- [x] **Sweep geometry masking bug** — `computeCombinedSweep()` now masks inapplicable component curves to unity before returning results, so vertical-only cases no longer expose Craig `E_A` curves and areal-only / uniform-layer cases no longer expose spurious `E_V` penalties.
+- [x] **RateChart sweep analytics ignore geometry** — `RateChart.svelte` now receives `sweepGeometry` from `App.svelte` and passes it into `computeCombinedSweep(...)`, keeping the runtime sweep decomposition aligned with the geometry-aware RF calculation.
+- [x] **Simulation sweep panels are not geometry-aware** — sweep panel visibility is now gated by inferred geometry in both the runtime chart and the comparison model, so vertical-only XZ cases hide areal panels and areal-only cases hide vertical panels.
+- [ ] **Runtime sweep threshold uses `s_wc` instead of `initialSaturation`** — `App.svelte` derives the swept-cell threshold from connate water saturation, while `referenceComparisonModel.ts` correctly uses `initialSaturation`. Runtime and comparison sweep curves can therefore diverge for cases where `initialSaturation !== s_wc`.
+
 - [x] Scenario sweep runtime controls keep `steps` tied to the run-controls input while allowing per-variant `Δt` defaults unless the timestep field is explicitly edited.
 - [x] **Color stability when sweep results arrive out of order** — `orderResults()` now sorts by `previewVariantParams` declaration index; pending preview cases also use declaration-order color indices.
 - [ ] **Single-variant preview uses neutral reference color** — inconsistent with multi-variant behavior. Low priority.

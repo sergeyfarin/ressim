@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepPoint, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
@@ -777,7 +777,8 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
     areal: XYPoint[];
     vertical: XYPoint[];
     combined: XYPoint[];
-    hasVertical: boolean;
+    showAreal: boolean;
+    showVertical: boolean;
 } {
     const nx = Math.max(1, Math.floor(toFiniteNumber(result.params.nx, 1)));
     const ny = Math.max(1, Math.floor(toFiniteNumber(result.params.ny, 1)));
@@ -786,7 +787,7 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
     const fluid = extractFluidProps(result.params);
     const initialSw = toFiniteNumber(result.params.initialSaturation, rock.s_wc);
     const sweptThreshold = computeSweptThreshold(rock, fluid, initialSw);
-    const hasVertical = getLayerPermeabilities(result.params).length > 1;
+    const visibility = getSweepComponentVisibility(inferSweepGeometry(result.params));
 
     const snapshots = [...result.history];
     if (result.finalSnapshot) {
@@ -813,10 +814,11 @@ function buildSimulationSweepSeries(result: BenchmarkRunResult): {
 
     return {
         rf: dedupeSweepSeries(toXYSeries(result.pviSeries, result.recoverySeries)),
-        areal: dedupeSweepSeries(areal),
-        vertical: dedupeSweepSeries(vertical),
+        areal: visibility.showAreal ? dedupeSweepSeries(areal) : [],
+        vertical: visibility.showVertical ? dedupeSweepSeries(vertical) : [],
         combined: dedupeSweepSeries(combined),
-        hasVertical,
+        showAreal: visibility.showAreal,
+        showVertical: visibility.showVertical,
     };
 }
 
@@ -844,13 +846,15 @@ function buildAnalyticalSweepSeries(params: Record<string, any>): {
     areal: Array<number | null>;
     vertical: Array<number | null>;
     combined: Array<number | null>;
-    hasVertical: boolean;
+    showAreal: boolean;
+    showVertical: boolean;
 } {
     const rock = extractRockProps(params);
     const fluid = extractFluidProps(params);
     const permeabilities = getLayerPermeabilities(params);
     const thickness = toFiniteNumber(params.cellDz, 1);
     const geometry = inferSweepGeometry(params);
+    const visibility = getSweepComponentVisibility(geometry);
     const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
     const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry);
     return {
@@ -859,7 +863,8 @@ function buildAnalyticalSweepSeries(params: Record<string, any>): {
         areal: sweep.arealSweep.curve.map((point) => point.efficiency),
         vertical: sweep.verticalSweep.curve.map((point) => point.efficiency),
         combined: sweep.combined.map((point) => point.efficiency),
-        hasVertical: permeabilities.length > 1,
+        showAreal: visibility.showAreal,
+        showVertical: visibility.showVertical,
     };
 }
 
@@ -894,22 +899,24 @@ function appendAnalyticalSweepCurves(
         yAxisID: 'y',
     }, analytical.pviValues, analytical.rf);
 
-    appendSeries(panels.areal, {
-        label: `${input.label} — Analytical E_A`,
-        curveKey: 'sweep-areal-reference',
-        ...(input.caseKey ? { caseKey: input.caseKey } : {}),
-        toggleGroupKey,
-        toggleLabel: input.toggleLabel,
-        legendSection: 'analytical',
-        legendSectionLabel: 'Analytical (dashed lines):',
-        color: input.color,
-        ...(legendColor ? { legendColor } : {}),
-        borderWidth,
-        borderDash: SWEEP_DASH_AREAL,
-        yAxisID: 'y',
-    }, analytical.pviValues, analytical.areal);
+    if (analytical.showAreal) {
+        appendSeries(panels.areal, {
+            label: `${input.label} — Analytical E_A`,
+            curveKey: 'sweep-areal-reference',
+            ...(input.caseKey ? { caseKey: input.caseKey } : {}),
+            toggleGroupKey,
+            toggleLabel: input.toggleLabel,
+            legendSection: 'analytical',
+            legendSectionLabel: 'Analytical (dashed lines):',
+            color: input.color,
+            ...(legendColor ? { legendColor } : {}),
+            borderWidth,
+            borderDash: SWEEP_DASH_AREAL,
+            yAxisID: 'y',
+        }, analytical.pviValues, analytical.areal);
+    }
 
-    if (analytical.hasVertical) {
+    if (analytical.showVertical) {
         appendSeries(panels.vertical, {
             label: `${input.label} — Analytical E_V`,
             curveKey: 'sweep-vertical-reference',
@@ -984,7 +991,7 @@ function appendSimulationSweepCurves(
         panels.areal.series.push(simulation.areal);
     }
 
-    if (simulation.hasVertical && simulation.vertical.length > 0) {
+    if (simulation.vertical.length > 0) {
         panels.vertical.curves.push({
             label: `${result.label} E_V`,
             curveKey: 'sweep-vertical-sim',

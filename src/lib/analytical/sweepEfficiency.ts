@@ -45,6 +45,11 @@ export type CombinedSweepResult = {
  */
 export type SweepGeometry = 'areal' | 'vertical' | 'both';
 
+export type SweepComponentVisibility = {
+    showAreal: boolean;
+    showVertical: boolean;
+};
+
 export type SweepRFPoint = {
     pvi: number;
     /** RF from sweep model: E_vol(PVI) × E_D_BL(PVI_local). Primary analytical prediction. */
@@ -64,6 +69,13 @@ export type SweepRFResult = {
     eAAtBreakthrough: number;
     vdp: number;
 };
+
+export function getSweepComponentVisibility(geometry: SweepGeometry): SweepComponentVisibility {
+    return {
+        showAreal: geometry !== 'vertical',
+        showVertical: geometry !== 'areal',
+    };
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Mobility ratio
@@ -467,24 +479,35 @@ export function computeCombinedSweep(
 ): CombinedSweepResult {
     const deltaS = Math.max(0.01, 1 - rock.s_or - rock.s_wc);
     const M = mobilityRatio(rock, fluid);
-    const useAreal = geometry !== 'vertical';
-    const useVertical = geometry !== 'areal';
+    const visibility = getSweepComponentVisibility(geometry);
 
     const areal = computeArealSweep(rock, fluid, pviMax, nPoints);
     const vertical = computeVerticalSweep(permeabilities, layerThickness, M, pviMax, nPoints, deltaS);
+    const maskedArealCurve = areal.curve.map((point) => ({
+        pvi: point.pvi,
+        efficiency: visibility.showAreal ? point.efficiency : 1,
+    }));
+    const maskedVerticalCurve = vertical.curve.map((point) => ({
+        pvi: point.pvi,
+        efficiency: visibility.showVertical ? point.efficiency : 1,
+    }));
 
     // Build pvi grid from the areal curve (always computed for metrics)
     const combined: SweepPoint[] = [];
-    for (let i = 0; i < areal.curve.length && i < vertical.curve.length; i++) {
-        const ea = useAreal ? areal.curve[i].efficiency : 1;
-        const ev = useVertical ? vertical.curve[i].efficiency : 1;
+    for (let i = 0; i < maskedArealCurve.length && i < maskedVerticalCurve.length; i++) {
+        const ea = maskedArealCurve[i].efficiency;
+        const ev = maskedVerticalCurve[i].efficiency;
         combined.push({
-            pvi: areal.curve[i].pvi,
+            pvi: maskedArealCurve[i].pvi,
             efficiency: ea * ev,
         });
     }
 
-    return { arealSweep: areal, verticalSweep: vertical, combined };
+    return {
+        arealSweep: { ...areal, curve: maskedArealCurve },
+        verticalSweep: { ...vertical, curve: maskedVerticalCurve },
+        combined,
+    };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -591,4 +591,77 @@ describe('referenceComparisonModel', () => {
         expect(combinedPanel!.series[pendingAnalyticalIndex]?.length).toBeGreaterThan(0);
         expect(model.sweepPanels.rf?.curves.some((curve) => curve.curveKey === 'sweep-rf-sim')).toBe(true);
     });
+
+    it('hides the areal sweep panel for vertical sweep geometry', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const verticalSpec = {
+            ...baseSpec,
+            key: 'vertical_sweep_case',
+            caseKey: 'vertical_sweep_case',
+            label: 'Vertical sweep case',
+            params: {
+                ...baseSpec.params,
+                nx: 24,
+                ny: 1,
+                nz: 3,
+                cellDx: 10,
+                cellDy: 10,
+                cellDz: 4,
+                permMode: 'perLayer',
+                layerPermsX: [300, 100, 30],
+                layerPermsY: [300, 100, 30],
+                producerI: 23,
+                producerJ: 0,
+            },
+        };
+
+        const result = buildSweepRunResult(verticalSpec);
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'pvi',
+        });
+
+        expect(model.sweepPanels.areal).toBeNull();
+        expect(model.sweepPanels.vertical?.curves.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
+    });
+
+    it('hides the vertical sweep panel for areal sweep geometry', () => {
+        const baseFamily = getBenchmarkFamily('bl_case_a_refined');
+        const family = { ...baseFamily!, showSweepPanel: true };
+        const [baseSpec] = buildBenchmarkRunSpecs(baseFamily!);
+        const arealSpec = {
+            ...baseSpec,
+            key: 'areal_sweep_case',
+            caseKey: 'areal_sweep_case',
+            label: 'Areal sweep case',
+            params: {
+                ...baseSpec.params,
+                nx: 21,
+                ny: 21,
+                nz: 3,
+                cellDx: 20,
+                cellDy: 20,
+                cellDz: 4,
+                permMode: 'uniform',
+                uniformPermX: 150,
+                producerI: 20,
+                producerJ: 20,
+            },
+        };
+
+        const result = buildSweepRunResult(arealSpec);
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'pvi',
+        });
+
+        expect(model.sweepPanels.vertical).toBeNull();
+        expect(model.sweepPanels.areal?.curves.length).toBeGreaterThan(0);
+        expect(model.sweepPanels.combined?.curves.length).toBeGreaterThan(0);
+    });
 });
