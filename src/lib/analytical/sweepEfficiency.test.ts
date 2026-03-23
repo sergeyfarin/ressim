@@ -472,6 +472,26 @@ describe('computeSimSweepPointForGeometry', () => {
         expect(point.eV).toBeCloseTo(point.eVol, 10);
     });
 
+    it('uses continuous weighting for vertical geometry volumetric sweep', () => {
+        const saturation = computeSweepSaturationWindow(defaultRock, defaultFluid, defaultRock.s_wc);
+        const satWater = new Float64Array(6 * 1 * 3).fill(saturation.initialSw);
+        satWater[0] = saturation.thresholdSw;
+
+        const point = computeSimSweepPointForGeometry(satWater, 6, 1, 3, saturation, {
+            geometry: 'vertical',
+            injectorI: 0,
+            injectorJ: 0,
+            producerI: 5,
+            producerJ: 0,
+            cellDx: 10,
+            cellDy: 10,
+        });
+
+        expect(point.eA).toBe(1);
+        expect(point.eVol).toBeCloseTo(0.5 / (6 * 3), 10);
+        expect(point.eV).toBeCloseTo(point.eVol, 10);
+    });
+
     it('keeps combined-geometry E_V at unity when all layers advance together in the same near-injector column', () => {
         const nx = 21;
         const ny = 21;
@@ -685,6 +705,42 @@ describe('computeSimSweepDiagnosticsForGeometry', () => {
         expect(point.eV).toBeNull();
         expect(point.eVol).toBeCloseTo(0.5 / 8, 10);
         expect(point.mobileOilRecovered).toBeGreaterThan(0);
+    });
+
+    it('uses continuous weighting for vertical-geometry eVol when given a saturation window', () => {
+        const nx = 6;
+        const ny = 1;
+        const nz = 3;
+        const saturation = computeSweepSaturationWindow(defaultRock, defaultFluid, defaultRock.s_wc);
+        const satWater = new Float64Array(nx * ny * nz).fill(saturation.initialSw);
+        const satOil = new Float64Array(nx * ny * nz).fill(0.8);
+        satWater[0] = saturation.thresholdSw;
+        satOil[0] = 0.5;
+
+        const point = computeSimSweepDiagnosticsForGeometry(
+            satWater,
+            satOil,
+            nx,
+            ny,
+            nz,
+            saturation,
+            {
+                geometry: 'vertical',
+                injectorI: 0,
+                injectorJ: 0,
+                producerI: 5,
+                producerJ: 0,
+                cellDx: 10,
+                cellDy: 10,
+            },
+            0.8,
+            0.1,
+        );
+
+        expect(point.eA).toBe(1);
+        expect(point.eVol).toBeCloseTo(0.5 / (6 * 3), 10);
+        expect(point.eV).toBeCloseTo(point.eVol, 10);
+        expect(point.mobileOilRecovered).toBeNull();
     });
 });
 

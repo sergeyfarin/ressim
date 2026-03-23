@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweepSaturationWindow, computeSweptThreshold, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweepSaturationWindow, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -989,9 +989,7 @@ function buildSimulationSweepSeries(
     const rock = extractRockProps(result.params);
     const fluid = extractFluidProps(result.params);
     const initialSw = toFiniteNumber(result.params.initialSaturation, rock.s_wc);
-    const sweptThreshold = geometry !== 'vertical'
-        ? computeSweepSaturationWindow(rock, fluid, initialSw)
-        : computeSweptThreshold(rock, fluid, initialSw);
+    const sweptThreshold = computeSweepSaturationWindow(rock, fluid, initialSw);
     const visibility = getSweepComponentVisibility(geometry);
 
     const snapshots = [...result.history];

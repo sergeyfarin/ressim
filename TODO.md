@@ -4,6 +4,7 @@
 
 ## Now
 
+- [x] Apply continuous saturation weighting to the vertical-only simulation sweep path so `E_V` no longer depends on a hard cutoff.
 - [x] Apply continuous saturation weighting to the combined simulation volumetric sweep path so hidden `E_vol` diagnostics do not depend on a hard cutoff.
 - [x] Switch areal simulation sweep from binary swept-column counting to continuous cell weighting, while keeping vertical/combined sweep semantics unchanged.
 - [x] Make the simulation sweep threshold use the actual initial water saturation and add regression tests for nonzero-`initialSaturation` and degenerate-Welge fallback behavior.

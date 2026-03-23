@@ -848,8 +848,8 @@ export function computeSweepSaturationWindow(
  * saturation window is provided, by contributing a continuous invasion weight
  * between the initial and shock saturations.
  *
- *  E_vol — volumetric: fraction of all cells that are swept.
- *  E_A   — areal:      fraction of (i,j) columns that contain ≥1 swept cell.
+ *  E_vol — volumetric: weighted fraction of swept cells.
+ *  E_A   — areal:      weighted fraction of (i,j) columns reached by the flood.
  *  E_V   — vertical:   E_vol / E_A  (layers swept within the swept area).
  *
  * @param sweptThreshold — absolute Sw threshold for binary sweep counting, or a
