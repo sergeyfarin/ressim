@@ -103,6 +103,11 @@ export interface SimulatorCreatePayload {
   injectedFluid?: 'water' | 'gas';
   // Initial gas saturation
   initialGasSaturation?: number;
+  // Per-layer initial conditions (optional; override scalar values when present)
+  initialSaturationPerLayer?: number[];
+  initialGasSaturationPerLayer?: number[];
+  // Per-layer cell thickness in z-direction (optional; overrides scalar cellDz)
+  cellDzPerLayer?: number[];
 
   // wells / controls
   well_radius: number;

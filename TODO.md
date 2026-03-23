@@ -12,6 +12,11 @@
 - [x] Extend Buckley-Leverett analytical chart wiring so cumulative-oil preview curves and completed-run oil-rate references use the same analytical source.
 - [x] Fix Buckley-Leverett preview recovery normalization so nonzero `initialSaturation` uses OOIP rather than unit pore volume.
 - [ ] Add black-oil comparative-solution validation (`SPE1` / `SPE3` style coverage, or the closest practical subset) and document the acceptance policy.
+  - [x] Per-layer cell thickness (dz) — Rust solver accepts `Vec<f64>` per layer instead of scalar.
+  - [x] Per-layer initial gas saturation — Rust `setInitialGasSaturationPerLayer`.
+  - [x] Worker wiring — TypeScript payload supports `cellDzPerLayer`, `initialSaturationPerLayer`, `initialGasSaturationPerLayer`.
+  - [ ] SPE1 scenario definition with published PVT, SCAL, grid, and well data (PR 2).
+  - [ ] Published reference data embedding and 'published' benchmark reference kind (PR 2).
 - [ ] Define the exit criteria for three-phase `experimental` status and add acceptance tests for gas injection and gas-drive scenarios.
 - [ ] Reconcile all three-phase docs with the implemented state: corrected gas-oil capillary sign, `s_org`, explicit gas material-balance reporting, and remaining oil-phase diagnostic limits.
 - [ ] Add regression tests for comparison-model preview mode, depletion per-variant analytical overlays, and color-index stability.

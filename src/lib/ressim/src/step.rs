@@ -81,7 +81,7 @@ impl ReservoirSimulator {
         // Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
         // Factor = 9.8692e-16 * 1e3 * 1e5 * 86400 = 8.5269888e-3
         Ok(
-            (DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz * total_mobility)
+            (DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz_at(id) * total_mobility)
                 / denom,
         )
     }

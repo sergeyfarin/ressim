@@ -86,7 +86,8 @@ pub struct ReservoirSimulator {
     nz: usize,
     dx: f64,
     dy: f64,
-    dz: f64,
+    /// Cell thickness per layer [m] (length = nz)
+    dz: Vec<f64>,
     porosity: Vec<f64>,
     perm_x: Vec<f64>,
     perm_y: Vec<f64>,
@@ -230,6 +231,12 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Get the z-direction cell thickness for a given cell index.
+    pub(crate) fn dz_at(&self, id: usize) -> f64 {
+        let k = id / (self.nx * self.ny);
+        self.dz[k]
+    }
+
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -249,9 +256,9 @@ impl ReservoirSimulator {
             nx,
             ny,
             nz,
-            dx: 10.0, // meters (x-direction cell size)
-            dy: 10.0, // meters (y-direction cell size)
-            dz: 1.0,  // meters (z-direction cell size)
+            dx: 10.0,           // meters (x-direction cell size)
+            dy: 10.0,           // meters (y-direction cell size)
+            dz: vec![1.0; nz],  // meters (z-direction cell size per layer)
             porosity,
             perm_x,
             perm_y,
@@ -514,7 +521,41 @@ impl ReservoirSimulator {
 
         self.dx = dx;
         self.dy = dy;
-        self.dz = dz;
+        self.dz = vec![dz; self.nz];
+        Ok(())
+    }
+
+    /// Set cell dimensions with per-layer thickness in the z-direction.
+    /// `dz_per_layer` must have length equal to nz.
+    #[wasm_bindgen(js_name = setCellDimensionsPerLayer)]
+    pub fn set_cell_dimensions_per_layer(&mut self, dx: f64, dy: f64, dz_per_layer: Vec<f64>) -> Result<(), String> {
+        if !dx.is_finite() || !dy.is_finite() {
+            return Err("Cell dimensions must be finite numbers".to_string());
+        }
+        if dx <= 0.0 || dy <= 0.0 {
+            return Err(format!(
+                "Cell dimensions must be positive, got dx={}, dy={}",
+                dx, dy
+            ));
+        }
+        if dz_per_layer.len() != self.nz {
+            return Err(format!(
+                "dz_per_layer must have length equal to nz ({}), got {}",
+                self.nz, dz_per_layer.len()
+            ));
+        }
+        for (k, &dz_k) in dz_per_layer.iter().enumerate() {
+            if !dz_k.is_finite() || dz_k <= 0.0 {
+                return Err(format!(
+                    "dz for layer {} must be positive and finite, got {}",
+                    k, dz_k
+                ));
+            }
+        }
+
+        self.dx = dx;
+        self.dy = dy;
+        self.dz = dz_per_layer;
         Ok(())
     }
 
@@ -869,6 +910,46 @@ impl ReservoirSimulator {
             self.sat_gas[i] = sg_clamped;
             self.sat_oil[i] = (1.0 - sw - sg_clamped).max(0.0);
         }
+    }
+
+    /// Set initial gas saturation per z-layer (three-phase mode)
+    #[wasm_bindgen(js_name = setInitialGasSaturationPerLayer)]
+    pub fn set_initial_gas_saturation_per_layer(&mut self, sg: Vec<f64>) -> Result<(), String> {
+        if sg.len() != self.nz {
+            return Err(format!(
+                "Initial gas saturation vector must have length equal to nz ({}), got {}",
+                self.nz, sg.len()
+            ));
+        }
+
+        for (k, sat) in sg.iter().enumerate() {
+            if !sat.is_finite() {
+                return Err(format!(
+                    "Initial gas saturation for layer {} must be finite, got {}",
+                    k, sat
+                ));
+            }
+            if *sat < 0.0 || *sat > 1.0 {
+                return Err(format!(
+                    "Initial gas saturation for layer {} must be within [0, 1], got {}",
+                    k, sat
+                ));
+            }
+        }
+
+        for k in 0..self.nz {
+            for j in 0..self.ny {
+                for i in 0..self.nx {
+                    let id = self.idx(i, j, k);
+                    let sw = self.sat_water[id];
+                    let sg_clamped = sg[k].min(1.0 - sw);
+                    self.sat_gas[id] = sg_clamped;
+                    self.sat_oil[id] = (1.0 - sw - sg_clamped).max(0.0);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Get gas saturation array (zeros when running in 2-phase mode)
@@ -1488,7 +1569,7 @@ mod tests {
         sim_g.set_fluid_densities(800.0, 1000.0).unwrap();
         sim_g.set_gravity_enabled(true);
 
-        let hydro_dp_bar = sim_g.pvt.rho_w * 9.80665 * sim_g.dz * 1e-5;
+        let hydro_dp_bar = sim_g.pvt.rho_w * 9.80665 * sim_g.dz[0] * 1e-5;
         let top_id_g = sim_g.idx(0, 0, 0);
         let bot_id_g = sim_g.idx(0, 0, 1);
         sim_g.pressure[top_id_g] = 300.0;
@@ -1865,7 +1946,7 @@ mod tests {
             * 2.0
             * std::f64::consts::PI
             * k_avg
-            * sim.dz
+            * sim.dz[0]
             * total_mobility
             / denom;
 
@@ -2190,5 +2271,142 @@ mod tests {
         // Valid parameters must succeed
         assert!(sim.set_gas_oil_capillary_params(0.0, 2.0).is_ok());
         assert!(sim.set_gas_oil_capillary_params(5.0, 1.5).is_ok());
+    }
+
+    #[test]
+    fn per_layer_dz_affects_pore_volume_and_depth() {
+        let mut sim = ReservoirSimulator::new(2, 2, 3, 0.25);
+        sim.set_cell_dimensions_per_layer(100.0, 100.0, vec![6.0, 9.0, 15.0])
+            .unwrap();
+
+        // Pore volume = dx * dy * dz_k * porosity
+        let id_k0 = sim.idx(0, 0, 0);
+        let id_k1 = sim.idx(0, 0, 1);
+        let id_k2 = sim.idx(0, 0, 2);
+
+        let pv0 = sim.pore_volume_m3(id_k0);
+        let pv1 = sim.pore_volume_m3(id_k1);
+        let pv2 = sim.pore_volume_m3(id_k2);
+
+        assert!((pv0 - 100.0 * 100.0 * 6.0 * 0.25).abs() < 1e-10);
+        assert!((pv1 - 100.0 * 100.0 * 9.0 * 0.25).abs() < 1e-10);
+        assert!((pv2 - 100.0 * 100.0 * 15.0 * 0.25).abs() < 1e-10);
+
+        // Depth at k: sum of layers above + half of current layer
+        let d0 = sim.depth_at_k(0);
+        let d1 = sim.depth_at_k(1);
+        let d2 = sim.depth_at_k(2);
+
+        assert!((d0 - 3.0).abs() < 1e-10, "k=0: depth should be 6/2 = 3, got {}", d0);
+        assert!((d1 - 10.5).abs() < 1e-10, "k=1: depth should be 6 + 9/2 = 10.5, got {}", d1);
+        assert!((d2 - 22.5).abs() < 1e-10, "k=2: depth should be 6 + 9 + 15/2 = 22.5, got {}", d2);
+    }
+
+    #[test]
+    fn per_layer_dz_validation_rejects_invalid_inputs() {
+        let mut sim = ReservoirSimulator::new(2, 2, 3, 0.2);
+
+        // Wrong length
+        err_contains(
+            sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![1.0, 2.0]),
+            "length equal to nz",
+        );
+
+        // Non-positive dz
+        err_contains(
+            sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![1.0, 0.0, 3.0]),
+            "positive and finite",
+        );
+
+        // Non-positive dx
+        err_contains(
+            sim.set_cell_dimensions_per_layer(-1.0, 10.0, vec![1.0, 2.0, 3.0]),
+            "positive",
+        );
+    }
+
+    #[test]
+    fn set_initial_gas_saturation_per_layer_applies_by_k() {
+        let mut sim = ReservoirSimulator::new(2, 2, 3, 0.2);
+        sim.set_initial_saturation(0.2); // Sw = 0.2 everywhere
+        sim.set_initial_gas_saturation_per_layer(vec![0.7, 0.0, 0.0])
+            .unwrap();
+
+        // Layer 0: Sg = 0.7, So = 1 - 0.2 - 0.7 = 0.1
+        for j in 0..2 {
+            for i in 0..2 {
+                let id = sim.idx(i, j, 0);
+                assert!((sim.sat_gas[id] - 0.7).abs() < 1e-10);
+                assert!((sim.sat_oil[id] - 0.1).abs() < 1e-10);
+            }
+        }
+
+        // Layers 1-2: Sg = 0, So = 0.8
+        for k in 1..3 {
+            for j in 0..2 {
+                for i in 0..2 {
+                    let id = sim.idx(i, j, k);
+                    assert!((sim.sat_gas[id] - 0.0).abs() < 1e-10);
+                    assert!((sim.sat_oil[id] - 0.8).abs() < 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn set_initial_gas_saturation_per_layer_clamps_to_available() {
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+        sim.set_initial_saturation(0.5); // Sw = 0.5
+
+        // Request Sg = 0.8 but only 0.5 is available (1 - Sw)
+        sim.set_initial_gas_saturation_per_layer(vec![0.8, 0.0])
+            .unwrap();
+
+        let id0 = sim.idx(0, 0, 0);
+        assert!((sim.sat_gas[id0] - 0.5).abs() < 1e-10, "Sg should clamp to 0.5");
+        assert!((sim.sat_oil[id0] - 0.0).abs() < 1e-10, "So should be 0");
+    }
+
+    #[test]
+    fn set_initial_gas_saturation_per_layer_validation() {
+        let mut sim = ReservoirSimulator::new(2, 2, 3, 0.2);
+
+        // Wrong length
+        err_contains(
+            sim.set_initial_gas_saturation_per_layer(vec![0.5, 0.0]),
+            "length equal to nz",
+        );
+
+        // Out of range
+        err_contains(
+            sim.set_initial_gas_saturation_per_layer(vec![0.5, -0.1, 0.0]),
+            "within [0, 1]",
+        );
+    }
+
+    #[test]
+    fn non_uniform_dz_transmissibility_z_direction() {
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+        sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![6.0, 15.0])
+            .unwrap();
+        sim.set_permeability_random_seeded(100.0, 100.0, 42).unwrap();
+
+        let id0 = sim.idx(0, 0, 0);
+        let id1 = sim.idx(0, 0, 1);
+
+        let t_z = sim.geometric_transmissibility(id0, id1, 'z');
+
+        // For z-direction: area = dx * dy = 100, dist = (dz0 + dz1) / 2 = 10.5
+        // T = k_h * area / dist
+        let kz0 = sim.perm_z[id0];
+        let kz1 = sim.perm_z[id1];
+        let k_h = 2.0 * kz0 * kz1 / (kz0 + kz1);
+        let expected = k_h * 100.0 / 10.5;
+
+        assert!(
+            (t_z - expected).abs() / expected < 1e-9,
+            "Z-transmissibility with non-uniform dz: expected {}, got {}",
+            expected, t_z
+        );
     }
 }

@@ -167,6 +167,11 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     injectedFluid: (state.injectedFluid ?? 'gas') as 'water' | 'gas',
     initialGasSaturation: toClamped(state.initialGasSaturation, 0, 1, 0),
 
+    // Per-layer overrides (pass through when present)
+    initialSaturationPerLayer: Array.isArray(state.initialSaturationPerLayer) ? state.initialSaturationPerLayer : undefined,
+    initialGasSaturationPerLayer: Array.isArray(state.initialGasSaturationPerLayer) ? state.initialGasSaturationPerLayer : undefined,
+    cellDzPerLayer: Array.isArray(state.cellDzPerLayer) ? state.cellDzPerLayer : undefined,
+
     pvtMode: state.pvtMode === 'black-oil' ? 'black-oil' : 'constant',
     pvtTable: state.pvtMode === 'black-oil' ? state.pvtTable : undefined,
   }

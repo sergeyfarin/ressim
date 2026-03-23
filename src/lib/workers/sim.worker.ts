@@ -85,9 +85,16 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
 function configureSimulator(payload: SimulatorCreatePayload) {
   simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
 
-  const setCellDimensions = /** @type {any} */ (simulator).setCellDimensions;
-  if (typeof setCellDimensions === 'function') {
-    setCellDimensions.call(simulator, Number(payload.cellDx), Number(payload.cellDy), Number(payload.cellDz));
+  if (payload.cellDzPerLayer && payload.cellDzPerLayer.length > 0) {
+    const setCellDimensionsPerLayer = (simulator as any).setCellDimensionsPerLayer;
+    if (typeof setCellDimensionsPerLayer === 'function') {
+      setCellDimensionsPerLayer.call(simulator, Number(payload.cellDx), Number(payload.cellDy), new Float64Array(payload.cellDzPerLayer));
+    }
+  } else {
+    const setCellDimensions = /** @type {any} */ (simulator).setCellDimensions;
+    if (typeof setCellDimensions === 'function') {
+      setCellDimensions.call(simulator, Number(payload.cellDx), Number(payload.cellDy), Number(payload.cellDz));
+    }
   }
 
   const setFluidProperties = /** @type {any} */ (simulator).setFluidProperties;
@@ -122,7 +129,16 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   }
 
   simulator.setInitialPressure(payload.initialPressure);
-  simulator.setInitialSaturation(payload.initialSaturation);
+
+  // Per-layer initial water saturation takes precedence over scalar
+  if (payload.initialSaturationPerLayer && payload.initialSaturationPerLayer.length > 0) {
+    const setPerLayer = (simulator as any).setInitialSaturationPerLayer;
+    if (typeof setPerLayer === 'function') {
+      setPerLayer.call(simulator, new Float64Array(payload.initialSaturationPerLayer));
+    }
+  } else {
+    simulator.setInitialSaturation(payload.initialSaturation);
+  }
 
   const setCapillaryParams = /** @type {any} */ (simulator).setCapillaryParams;
   if (typeof setCapillaryParams === 'function') {
@@ -159,7 +175,10 @@ function configureSimulator(payload: SimulatorCreatePayload) {
       call3p('setGasOilCapillaryParams', payload.pcogPEntry ?? 0, payload.pcogLambda ?? 2);
     }
     call3p('setInjectedFluid', payload.injectedFluid ?? 'gas');
-    if ((payload.initialGasSaturation ?? 0) > 0) {
+    // Per-layer initial gas saturation takes precedence over scalar
+    if (payload.initialGasSaturationPerLayer && payload.initialGasSaturationPerLayer.length > 0) {
+      call3p('setInitialGasSaturationPerLayer', new Float64Array(payload.initialGasSaturationPerLayer));
+    } else if ((payload.initialGasSaturation ?? 0) > 0) {
       call3p('setInitialGasSaturation', payload.initialGasSaturation);
     }
   }
