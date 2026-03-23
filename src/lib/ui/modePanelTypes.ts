@@ -26,7 +26,7 @@ export type PermMode = "uniform" | "random" | "perLayer";
 
 export type WellControlMode = "rate" | "pressure";
 
-export type AnalyticalMode = "waterflood" | "depletion";
+export type AnalyticalMode = "waterflood" | "depletion" | "none";
 
 export type ModePanelParameterBindings = {
   pvtMode: 'constant' | 'black-oil';
@@ -98,7 +98,7 @@ export type ModePanelParameterBindings = {
   parameterOverrideCount: number;
   markDeltaTDaysOverride: () => void;
   handleNzOrPermModeChange: () => void;
-  handleAnalyticalModeChange: (mode: AnalyticalMode) => void;
+  handleAnalyticalModeChange: (mode: Exclude<AnalyticalMode, 'none'>) => void;
   // Three-phase
   s_gc: number;
   s_gr: number;

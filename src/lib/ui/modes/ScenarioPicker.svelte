@@ -268,7 +268,7 @@
   <div class="px-3 pb-3 space-y-1.5">
     {#if activeDimension && !anyVariantAffectsAnalytical}
       <div class="rounded border border-info/70 bg-info/10 px-2.5 py-1.5 text-xs text-info">
-        Analytical solution is fixed — only simulation results change.
+        Analytical/Reference solution is fixed — only simulation results change.
       </div>
     {/if}
     {#if warningPolicy}

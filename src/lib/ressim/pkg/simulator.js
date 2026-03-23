@@ -197,6 +197,21 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * Set cell dimensions with per-layer thickness in the z-direction.
+     * `dz_per_layer` must have length equal to nz.
+     * @param {number} dx
+     * @param {number} dy
+     * @param {Float64Array} dz_per_layer
+     */
+    setCellDimensionsPerLayer(dx, dy, dz_per_layer) {
+        const ptr0 = passArrayF64ToWasm0(dz_per_layer, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setCellDimensionsPerLayer(this.__wbg_ptr, dx, dy, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {number} c_o
      * @param {number} c_w
      */
@@ -260,6 +275,18 @@ export class ReservoirSimulator {
      */
     setInitialGasSaturation(sat_gas) {
         wasm.reservoirsimulator_setInitialGasSaturation(this.__wbg_ptr, sat_gas);
+    }
+    /**
+     * Set initial gas saturation per z-layer (three-phase mode)
+     * @param {Float64Array} sg
+     */
+    setInitialGasSaturationPerLayer(sg) {
+        const ptr0 = passArrayF64ToWasm0(sg, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setInitialGasSaturationPerLayer(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Set initial pressure for all grid cells

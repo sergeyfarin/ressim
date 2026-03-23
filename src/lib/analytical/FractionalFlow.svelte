@@ -17,7 +17,7 @@
     };
     type AnalyticalDataPayload = { production: AnalyticalPoint[] };
     type AnalyticalMetaPayload = {
-        mode: "waterflood" | "depletion";
+        mode: "waterflood" | "depletion" | "none";
         shapeFactor: number | null;
         shapeLabel: string;
     };
@@ -40,7 +40,7 @@
         injectionRateSeries?: number[];
         reservoir: Reservoir;
         initialSaturation?: number;
-        scenarioMode?: "waterflood" | "depletion";
+        scenarioMode?: "waterflood" | "depletion" | "none";
         onAnalyticalData?: (payload: AnalyticalDataPayload) => void;
         onAnalyticalMeta?: (payload: AnalyticalMetaPayload) => void;
         onWelgeMetrics?: (metrics: WelgeMetrics) => void;

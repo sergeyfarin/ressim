@@ -21,6 +21,7 @@ export const reservoirsimulator_loadState: (a: number, b: number, c: any, d: any
 export const reservoirsimulator_new: (a: number, b: number, c: number, d: number) => number;
 export const reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
+export const reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
@@ -28,6 +29,7 @@ export const reservoirsimulator_setGasFluidProperties: (a: number, b: number, c:
 export const reservoirsimulator_setGasOilCapillaryParams: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
+export const reservoirsimulator_setInitialGasSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];

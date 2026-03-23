@@ -449,10 +449,8 @@ export function getAnalyticalModeForMethod(method: AnalyticalMethod): Analytical
     return 'waterflood';
 }
 
-export function getDefaultScenarioAnalyticalMode(caps: ScenarioCapabilities): Exclude<AnalyticalMode, 'none'> {
-    const analyticalMode = getAnalyticalModeForMethod(caps.analyticalMethod);
-    if (analyticalMode !== 'none') return analyticalMode;
-    return caps.hasInjector ? 'waterflood' : 'depletion';
+export function getDefaultScenarioAnalyticalMode(caps: ScenarioCapabilities): AnalyticalMode {
+    return getAnalyticalModeForMethod(caps.analyticalMethod);
 }
 
 export function getScenarioGroup(scenario: Pick<Scenario, 'capabilities'>): ScenarioGroup {

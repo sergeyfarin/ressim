@@ -167,15 +167,18 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     injectedFluid: (state.injectedFluid ?? 'gas') as 'water' | 'gas',
     initialGasSaturation: toClamped(state.initialGasSaturation, 0, 1, 0),
 
-    // Per-layer overrides (pass through when present)
-    initialSaturationPerLayer: Array.isArray(state.initialSaturationPerLayer) ? state.initialSaturationPerLayer : undefined,
-    initialGasSaturationPerLayer: Array.isArray(state.initialGasSaturationPerLayer) ? state.initialGasSaturationPerLayer : undefined,
-    cellDzPerLayer: Array.isArray(state.cellDzPerLayer) ? state.cellDzPerLayer : undefined,
-    // Per-layer well completions (pass through when present)
-    producerKLayers: Array.isArray(state.producerKLayers) ? state.producerKLayers : undefined,
-    injectorKLayers: Array.isArray(state.injectorKLayers) ? state.injectorKLayers : undefined,
+    // Per-layer overrides — spread into fresh arrays to strip Svelte 5 reactive
+    // proxies that cannot be structured-cloned by postMessage.
+    initialSaturationPerLayer: Array.isArray(state.initialSaturationPerLayer) ? [...state.initialSaturationPerLayer] : undefined,
+    initialGasSaturationPerLayer: Array.isArray(state.initialGasSaturationPerLayer) ? [...state.initialGasSaturationPerLayer] : undefined,
+    cellDzPerLayer: Array.isArray(state.cellDzPerLayer) ? [...state.cellDzPerLayer] : undefined,
+    // Per-layer well completions
+    producerKLayers: Array.isArray(state.producerKLayers) ? [...state.producerKLayers] : undefined,
+    injectorKLayers: Array.isArray(state.injectorKLayers) ? [...state.injectorKLayers] : undefined,
 
     pvtMode: state.pvtMode === 'black-oil' ? 'black-oil' : 'constant',
-    pvtTable: state.pvtMode === 'black-oil' ? state.pvtTable : undefined,
+    pvtTable: state.pvtMode === 'black-oil' && Array.isArray(state.pvtTable)
+      ? state.pvtTable.map((row: any) => ({ ...row }))
+      : undefined,
   }
 }

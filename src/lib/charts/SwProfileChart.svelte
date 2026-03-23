@@ -35,7 +35,7 @@
         producerJ?: number;
         initialSaturation?: number;
         injectionRate?: number;
-        scenarioMode?: "waterflood" | "depletion";
+        scenarioMode?: "waterflood" | "depletion" | "none";
         sourceLabel?: string;
         rockProps: { s_wc: number; s_or: number; n_w: number; n_o: number };
         fluidProps: { mu_w: number; mu_o: number };

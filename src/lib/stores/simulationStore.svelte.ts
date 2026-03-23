@@ -225,7 +225,7 @@ class SimulationStoreImpl {
     initialGasSaturation = $state(0.0);
 
     // Analytical solution
-    analyticalMode: 'waterflood' | 'depletion' = $state('depletion');
+    analyticalMode: 'waterflood' | 'depletion' | 'none' = $state('depletion');
     analyticalDepletionRateScale = $state(1.0);
     analyticalArpsB = $state(0.0);
 
@@ -253,7 +253,7 @@ class SimulationStoreImpl {
     rateHistory = $state<RateHistoryPoint[]>([]);
     analyticalProductionData: AnalyticalProductionPoint[] = $state([]);
     analyticalMeta: {
-        mode: 'waterflood' | 'depletion';
+        mode: 'waterflood' | 'depletion' | 'none';
         shapeFactor: number | null;
         shapeLabel: string;
     } = $state({ mode: 'waterflood', shapeFactor: null, shapeLabel: '' });
@@ -918,7 +918,10 @@ class SimulationStoreImpl {
         this.currentRunStepsCompleted = 0;
         this.runCompleted = false;
 
-        const payload = buildBenchmarkCreatePayload(nextSpec.params);
+        // $state.snapshot() strips Svelte 5 reactive proxies so the payload
+        // can be structured-cloned by postMessage (pvtTable, cellDzPerLayer, etc.).
+        const rawParams = $state.snapshot(nextSpec.params) as Record<string, any>;
+        const payload = buildBenchmarkCreatePayload(rawParams);
         this.lastCreateSignature = JSON.stringify(payload);
         this.simWorker.postMessage({ type: 'create', payload });
         this.simWorker.postMessage({
@@ -1662,12 +1665,14 @@ class SimulationStoreImpl {
         }
 
         // Sync analyticalMode from explicit params first, then legacy params, then inferred defaults.
+        // When resolvedAnalyticalMode is undefined (not specified in params), keep the current value
+        // — selectScenario already set it correctly from capabilities.
         const resolvedAnalyticalMode = resolved.analyticalMode ?? resolved.analyticalSolutionMode;
         if (resolvedAnalyticalMode === 'waterflood' || resolvedAnalyticalMode === 'depletion') {
             this.analyticalMode = resolvedAnalyticalMode;
-        } else if (resolvedAnalyticalMode === 'none' && resolved.mode) {
-            this.analyticalMode = resolved.mode === 'wf' ? 'waterflood' : 'depletion';
-        } else {
+        } else if (resolvedAnalyticalMode === 'none') {
+            this.analyticalMode = 'none';
+        } else if (resolvedAnalyticalMode !== undefined) {
             this.analyticalMode = this.injectorEnabled ? 'waterflood' : 'depletion';
         }
         this.analyticalDepletionRateScale = fin(resolved.analyticalDepletionRateScale, 1.0);

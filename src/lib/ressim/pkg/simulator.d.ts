@@ -52,6 +52,11 @@ export class ReservoirSimulator {
     constructor(nx: number, ny: number, nz: number, porosity_val: number);
     setCapillaryParams(p_entry: number, lambda: number): void;
     setCellDimensions(dx: number, dy: number, dz: number): void;
+    /**
+     * Set cell dimensions with per-layer thickness in the z-direction.
+     * `dz_per_layer` must have length equal to nz.
+     */
+    setCellDimensionsPerLayer(dx: number, dy: number, dz_per_layer: Float64Array): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
     setFluidProperties(mu_o: number, mu_w: number): void;
@@ -65,6 +70,10 @@ export class ReservoirSimulator {
     setGasOilCapillaryParams(p_entry: number, lambda: number): void;
     setGravityEnabled(enabled: boolean): void;
     setInitialGasSaturation(sat_gas: number): void;
+    /**
+     * Set initial gas saturation per z-layer (three-phase mode)
+     */
+    setInitialGasSaturationPerLayer(sg: Float64Array): void;
     /**
      * Set initial pressure for all grid cells
      */
@@ -162,6 +171,7 @@ export interface InitOutput {
     readonly reservoirsimulator_new: (a: number, b: number, c: number, d: number) => number;
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
@@ -169,6 +179,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setGasOilCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
+    readonly reservoirsimulator_setInitialGasSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];

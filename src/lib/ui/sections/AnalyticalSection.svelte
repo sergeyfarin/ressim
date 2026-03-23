@@ -4,12 +4,12 @@
   import Select from "../controls/Select.svelte";
 
   let {
-    analyticalMode = $bindable<"waterflood" | "depletion">("waterflood"),
+    analyticalMode = $bindable<"waterflood" | "depletion" | "none">("waterflood"),
     analyticalDepletionRateScale = $bindable(1.0),
     analyticalArpsB = $bindable(0.0),
     onAnalyticalModeChange = (_mode: "waterflood" | "depletion") => {},
   }: {
-    analyticalMode?: "waterflood" | "depletion";
+    analyticalMode?: "waterflood" | "depletion" | "none";
     analyticalDepletionRateScale?: number;
     analyticalArpsB?: number;
     onAnalyticalModeChange?: (mode: "waterflood" | "depletion") => void;
@@ -19,7 +19,7 @@
 <Collapsible title="Reference Solution">
   <div class="flex items-center gap-3 px-2.5 py-2">
     <Select class="h-6 text-xs px-1.5" bind:value={analyticalMode}
-      onchange={() => onAnalyticalModeChange(analyticalMode)}>
+      onchange={() => { if (analyticalMode !== 'none') onAnalyticalModeChange(analyticalMode); }}>
       <option value="depletion">Depletion</option>
       <option value="waterflood">Buckley-Leverett</option>
     </Select>
