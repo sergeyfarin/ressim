@@ -20,8 +20,11 @@ The ordering below follows standard reservoir-engineering practice and the liter
 - Document current black-oil solver safeguards in user-facing physics notes, especially the saturated-region `c_o` fallback used to keep the IMPES pressure solve stable.
 
 Progress:
-- Per-layer cell thickness (`dz` as `Vec<f64>`) and per-layer initial gas saturation are implemented in the Rust solver and wired through the TypeScript worker. This unblocks SPE1 (which requires a gas cap in layer 1 with different thickness from the oil zone).
-- SPE1 scenario definition and published-reference overlay are in progress.
+- Per-layer cell thickness (`dz` as `Vec<f64>`) and per-layer initial gas saturation are implemented in the Rust solver and wired through the TypeScript worker.
+- Per-layer well completions (`producerKLayers`, `injectorKLayers`) allow single-layer wells as required by SPE1.
+- SPE1 scenario is defined (`spe1_gas_injection`) with full PVT table, Corey SCAL approximation, per-layer dz/perm, and Eclipse Case 1 reference data overlay.
+- Published-reference overlay infrastructure (`publishedReferenceSeries`) is wired through the chart model with scatter markers.
+- Remaining: tabular SCAL (SPE1 tables are currently Corey-approximated), surface-rate well control, and quantitative acceptance criteria.
 
 Why first:
 - In the reservoir-simulation literature, black-oil extensions are only meaningful when the pressure equation, PVT coupling, and material-balance behavior are benchmarked against accepted reference problems.

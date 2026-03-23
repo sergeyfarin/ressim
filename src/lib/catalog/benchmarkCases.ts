@@ -91,6 +91,8 @@ export type BenchmarkFamily = BenchmarkFamilyDefinition & {
     sweepGeometry?: import('../analytical/sweepEfficiency').SweepGeometry | null;
     sweepAnalyticalMethod?: import('../analytical/sweepEfficiency').SweepAnalyticalMethod;
     analyticalOverlayMode?: import('../catalog/scenarios').AnalyticalOverlayMode;
+    /** Static published-benchmark reference series to overlay on charts. */
+    publishedReferenceSeries?: import('../catalog/scenarios').PublishedReferenceSeries[];
 };
 
 type BenchmarkVariantTemplate = {

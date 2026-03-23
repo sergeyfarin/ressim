@@ -4,7 +4,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ## Current State
 
-- 9 canonical scenarios across waterflood, sweep, depletion, and gas domains.
+- 10 canonical scenarios across waterflood, sweep, depletion, gas, and black-oil benchmark domains.
 - Two-phase oil/water IMPES workflow validated against Buckley-Leverett breakthrough references.
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
@@ -24,6 +24,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 | Depletion | `dep_arps` | Arps decline + material balance diagnostics | Layered / volatile-oil style depletion study |
 | Gas | `gas_injection` | Gas-oil Buckley-Leverett | Three-phase gas injection with analytical breakthrough |
 | Gas | `gas_drive` | Simulation-first with p/z and MB diagnostics | Qualitative gas-drive study pending stronger validation |
+| Benchmark | `spe1_gas_injection` | Published Eclipse results (Odeh, 1981) | SPE1 black-oil benchmark with per-layer dz, PVT table, single-layer wells |
 
 ## Implemented Capabilities
 
@@ -65,9 +66,13 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Frontend and catalog tests cover scenario contracts, analytical overlay wiring, chart layout behavior, and payload generation.
 - Analytical-contract tests verify that scenario dimensions marked `affectsAnalytical: true` actually perturb the analytical result.
 
+### In Progress
+
+- SPE1 black-oil benchmark scenario is defined with Eclipse reference data overlay. Qualitative comparison is possible; quantitative match requires tabular SCAL support (currently Corey approximation) and surface-rate well control.
+
 ### Still Needed
 
-- SPE-style comparative-solution validation for black-oil mode.
+- Quantitative SPE1 acceptance criteria once tabular SCAL and surface-rate control are implemented.
 - Stronger three-phase acceptance tests before gas cases can be described as production-grade.
 - Additional chart-model coverage for preview-only and per-variant depletion comparison flows.
 

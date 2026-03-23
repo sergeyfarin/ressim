@@ -171,6 +171,9 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     initialSaturationPerLayer: Array.isArray(state.initialSaturationPerLayer) ? state.initialSaturationPerLayer : undefined,
     initialGasSaturationPerLayer: Array.isArray(state.initialGasSaturationPerLayer) ? state.initialGasSaturationPerLayer : undefined,
     cellDzPerLayer: Array.isArray(state.cellDzPerLayer) ? state.cellDzPerLayer : undefined,
+    // Per-layer well completions (pass through when present)
+    producerKLayers: Array.isArray(state.producerKLayers) ? state.producerKLayers : undefined,
+    injectorKLayers: Array.isArray(state.injectorKLayers) ? state.injectorKLayers : undefined,
 
     pvtMode: state.pvtMode === 'black-oil' ? 'black-oil' : 'constant',
     pvtTable: state.pvtMode === 'black-oil' ? state.pvtTable : undefined,

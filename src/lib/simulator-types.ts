@@ -124,6 +124,10 @@ export interface SimulatorCreatePayload {
   injectorJ?: number;
   producerI?: number;
   producerJ?: number;
+  /** Layer indices for producer completions (default: all layers). */
+  producerKLayers?: number[];
+  /** Layer indices for injector completions (default: all layers). */
+  injectorKLayers?: number[];
 }
 
 /** Payload sent with the `run` message */

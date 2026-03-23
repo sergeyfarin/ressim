@@ -248,6 +248,56 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
         },
     },
 
+    spe1: {
+        rateChart: {
+            xAxisMode: 'time',
+            xAxisOptions: ['time', 'logTime'],
+            xAxisRangePolicy: { mode: 'data-extent' },
+            allowLogScale: false,
+            logScale: false,
+            panelOrder: ['diagnostics', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
+            panels: {
+                diagnostics: {
+                    title: 'Average Pressure & GOR',
+                    curveKeys: ['avg-pressure-sim', 'published-pressure', 'gor-sim', 'published-gor'],
+                    scalePreset: 'pressure',
+                    expanded: true,
+                },
+                oil_rate: {
+                    title: 'Oil Rate',
+                    curveKeys: ['oil-rate-sim'],
+                    scalePreset: 'rates',
+                    expanded: true,
+                },
+                rates: {
+                    title: 'Gas Cut',
+                    curveKeys: ['gas-cut-sim'],
+                    scalePreset: 'breakthrough',
+                    allowLogToggle: false,
+                    expanded: false,
+                },
+                recovery: {
+                    title: 'Recovery Factor',
+                    curveKeys: ['recovery-factor-primary'],
+                    scalePreset: 'recovery',
+                    expanded: false,
+                },
+                cumulative: {
+                    title: 'Cum Oil',
+                    curveKeys: ['cum-oil-sim'],
+                    scalePreset: 'cumulative_volumes',
+                    expanded: false,
+                },
+                volumes: {
+                    title: 'Cum Injection',
+                    curveKeys: ['cum-injection'],
+                    scalePreset: 'cumulative_volumes',
+                    expanded: false,
+                },
+            },
+        },
+    },
+
     gas: {
         rateChart: {
             xAxisMode: 'time',

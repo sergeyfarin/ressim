@@ -21,11 +21,11 @@ Use this file to decide which documents are authoritative, which are active work
 ## Current Repo-Level Facts
 
 - `src/lib/catalog/scenarios.ts` is the primary scenario registry.
-- There are 9 canonical scenarios under `src/lib/catalog/scenarios/`.
+- There are 10 canonical scenarios under `src/lib/catalog/scenarios/`.
 - `ScenarioPicker.svelte` is the main scenario-selection surface.
 - Legacy benchmark-family files still exist and remain load-bearing in parts of the UI and chart stack.
 - All simulations execute directly in browser-side WASM. There is no prerun artifact pipeline.
-- Black-oil mode is implemented and exposed in the UI, but its validation backlog is still open.
+- Black-oil mode is implemented and exposed in the UI. SPE1 benchmark scenario is in place with Eclipse reference overlay; quantitative acceptance criteria pending tabular SCAL support.
 - Three-phase mode is implemented, but remains experimental because validation depth still trails the implementation.
 
 ## Historical Snapshots

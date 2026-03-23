@@ -159,7 +159,7 @@
     <div class="flex flex-wrap items-start gap-2">
 
       {#each DOMAIN_GROUPS as group}
-        {@const groupScenarios = SCENARIOS.filter((s) => getScenarioGroup(s) === group.group && (!s.capabilities.requiresThreePhaseMode || activeMode === '3p'))}
+        {@const groupScenarios = SCENARIOS.filter((s) => getScenarioGroup(s) === group.group)}
         {#if groupScenarios.length > 0}
           {#each groupScenarios as scenario}
             <Button

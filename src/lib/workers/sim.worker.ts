@@ -243,13 +243,20 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   const producerBhp = Number(payload.producerBhp ?? 100);
   const injectorBhp = Number(payload.injectorBhp ?? 500);
 
+  const producerKLayers: number[] = Array.isArray(payload.producerKLayers)
+    ? payload.producerKLayers
+    : Array.from({ length: payload.nz }, (_, i) => i);
+  const injectorKLayers: number[] = Array.isArray(payload.injectorKLayers)
+    ? payload.injectorKLayers
+    : Array.from({ length: payload.nz }, (_, i) => i);
+
   try {
-    for (let i = 0; i < payload.nz; i++) {
-      simulator.add_well(producerI, producerJ, i, producerBhp, payload.well_radius, payload.well_skin, false);
+    for (const k of producerKLayers) {
+      simulator.add_well(producerI, producerJ, k, producerBhp, payload.well_radius, payload.well_skin, false);
     }
     if (Boolean(payload.injectorEnabled ?? true)) {
-      for (let i = 0; i < payload.nz; i++) {
-        simulator.add_well(injectorI, injectorJ, i, injectorBhp, payload.well_radius, payload.well_skin, true);
+      for (const k of injectorKLayers) {
+        simulator.add_well(injectorI, injectorJ, k, injectorBhp, payload.well_radius, payload.well_skin, true);
       }
     }
   } catch (err: any) {

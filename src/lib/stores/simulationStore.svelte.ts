@@ -512,6 +512,7 @@ class SimulationStoreImpl {
             sweepGeometry: resolved.sweepGeometry,
             sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,
             analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
+            publishedReferenceSeries: sc.publishedReferenceSeries,
         };
     });
 
@@ -1721,8 +1722,9 @@ class SimulationStoreImpl {
             ?? scenario.analyticalOptions?.[0]?.key
             ?? null;
 
-        // Derive CaseMode from analyticalMethod: BL waterfloods use 'wf', everything else uses 'dep'.
-        const nextMode: CaseMode = scenario.capabilities.analyticalMethod === 'buckley-leverett' ? 'wf' : 'dep';
+        // Derive CaseMode from scenario capabilities.
+        const nextMode: CaseMode = scenario.capabilities.requiresThreePhaseMode ? '3p'
+            : scenario.capabilities.analyticalMethod === 'buckley-leverett' ? 'wf' : 'dep';
         this.activeMode = nextMode;
         this.toggles = getDefaultToggles(nextMode);
         this.explicitLibraryEntryKey = null;

@@ -30,6 +30,7 @@ import { dep_arps } from './scenarios/dep_arps';
 import { dep_decline } from './scenarios/dep_decline';
 import { gas_injection } from './scenarios/gas_injection';
 import { gas_drive } from './scenarios/gas_drive';
+import { spe1_gas_injection } from './scenarios/spe1_gas_injection';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -254,6 +255,23 @@ export type SensitivityDimension = {
     chartLayoutPatchOverride?: RateChartLayoutConfig;
 };
 
+/**
+ * A single static reference data series from a published benchmark.
+ * Used to overlay published simulator results (e.g. Eclipse SPE1) on charts.
+ */
+export type PublishedReferenceSeries = {
+    /** Which chart panel this series appears in (e.g. 'diagnostics', 'rates', 'oil_rate'). */
+    panelKey: string;
+    /** Display label in the legend (e.g. 'Eclipse — Avg Pressure'). */
+    label: string;
+    /** Curve key for toggle grouping (e.g. 'published-pressure'). */
+    curveKey: string;
+    /** Static data points — x is time in days, y is the metric value. */
+    data: { x: number; y: number }[];
+    /** Chart.js y-axis ID (e.g. 'y' for primary, 'y1' for secondary). */
+    yAxisID?: string;
+};
+
 export type Scenario = {
     key: string;
     label: string;
@@ -281,6 +299,11 @@ export type Scenario = {
      * Defaults to sensitivities[0].key if omitted.
      */
     defaultSensitivityDimensionKey?: string;
+    /**
+     * Static reference data from published benchmarks (e.g. Eclipse SPE1 results).
+     * Overlaid on charts as dashed reference curves alongside simulation output.
+     */
+    publishedReferenceSeries?: PublishedReferenceSeries[];
 };
 
 /** Default capabilities for custom mode (no predefined scenario). */
@@ -307,6 +330,7 @@ export const SCENARIOS: Scenario[] = [
     dep_arps,
     gas_injection,
     gas_drive,
+    spe1_gas_injection,
 ];
 
 // Freeze all scenario params objects to catch accidental in-place mutation early.

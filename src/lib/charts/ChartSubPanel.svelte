@@ -320,8 +320,9 @@
 
             const lineDataset = getLineDataset(chart, idx);
             if (lineDataset) {
-                lineDataset.pointRadius = 0;
-                lineDataset.pointHoverRadius = 0;
+                const pr = curves[idx]?.pointRadius ?? 0;
+                lineDataset.pointRadius = pr;
+                lineDataset.pointHoverRadius = pr ? (pr + 2) : 0;
                 lineDataset.pointHitRadius = 8;
             }
 
@@ -520,8 +521,8 @@
             borderWidth: curve.borderWidth ?? 2,
             borderDash: curve.borderDash ? [...curve.borderDash] : undefined,
             yAxisID: curve.yAxisID,
-            pointRadius: 0,
-            pointHoverRadius: 0,
+            pointRadius: curve.pointRadius ?? 0,
+            pointHoverRadius: curve.pointRadius ? (curve.pointRadius + 2) : 0,
             pointHitRadius: 8,
         }));
 

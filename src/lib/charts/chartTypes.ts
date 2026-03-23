@@ -13,4 +13,6 @@ export type CurveConfig = {
     disabled?: boolean;
     legendSection?: string;
     legendSectionLabel?: string;
+    /** Override point radius for scatter-style markers (default 0 = no markers). */
+    pointRadius?: number;
 };

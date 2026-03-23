@@ -2879,6 +2879,30 @@ export function buildReferenceComparisonModel(input: {
         ? suppressPrimaryAnalyticalPanels(panels)
         : panels;
 
+    // ── Published reference overlays (static benchmark data) ────────────
+    if (family.publishedReferenceSeries?.length) {
+        const publishedColor = '#e74c3c';
+        for (const series of family.publishedReferenceSeries) {
+            const targetPanel = visiblePanels[series.panelKey as RateChartPanelKey];
+            if (!targetPanel) continue;
+            const xVals = series.data.map((pt) => pt.x);
+            const yVals = series.data.map((pt) => pt.y);
+            appendSeries(targetPanel, {
+                label: series.label,
+                curveKey: series.curveKey,
+                toggleGroupKey: 'published-reference',
+                toggleLabel: 'Published reference',
+                legendSection: 'published',
+                legendSectionLabel: 'Published (markers):',
+                color: publishedColor,
+                borderWidth: 1.5,
+                borderDash: [4, 4],
+                yAxisID: series.yAxisID ?? 'y',
+                pointRadius: 4,
+            }, xVals, yVals);
+        }
+    }
+
     return {
         orderedResults,
         previewCases: pendingPreviewCases,

@@ -15,8 +15,12 @@
   - [x] Per-layer cell thickness (dz) — Rust solver accepts `Vec<f64>` per layer instead of scalar.
   - [x] Per-layer initial gas saturation — Rust `setInitialGasSaturationPerLayer`.
   - [x] Worker wiring — TypeScript payload supports `cellDzPerLayer`, `initialSaturationPerLayer`, `initialGasSaturationPerLayer`.
-  - [ ] SPE1 scenario definition with published PVT, SCAL, grid, and well data (PR 2).
-  - [ ] Published reference data embedding and 'published' benchmark reference kind (PR 2).
+  - [x] Per-layer well completions — worker supports `producerKLayers` / `injectorKLayers` for single-layer well completions.
+  - [x] SPE1 scenario definition with published PVT, SCAL (Corey approximation), grid, and well data.
+  - [x] Published reference data overlay — `publishedReferenceSeries` on Scenario type, wired through chart model with scatter markers.
+  - [x] SPE1 chart layout (`spe1`) with pressure, GOR, oil rate, gas cut panels.
+  - [ ] Tune SPE1 rate targets and validate against Eclipse reference (qualitative match expected; exact match requires tabular SCAL).
+  - [ ] Add tabular SCAL support to Rust solver (currently Corey-only, SPE1 tables are approximated).
 - [ ] Define the exit criteria for three-phase `experimental` status and add acceptance tests for gas injection and gas-drive scenarios.
 - [ ] Reconcile all three-phase docs with the implemented state: corrected gas-oil capillary sign, `s_org`, explicit gas material-balance reporting, and remaining oil-phase diagnostic limits.
 - [ ] Add regression tests for comparison-model preview mode, depletion per-variant analytical overlays, and color-index stability.
