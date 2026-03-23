@@ -72,8 +72,13 @@ Gas saturation change criterion added alongside existing water and pressure chec
 | Injected fluid | `injectedFluid` | `injected_fluid` | `"gas"` | — |
 | Three-phase mode flag | `threePhaseModeEnabled` | `three_phase_mode` | false | — |
 | Initial gas saturation | `initialGasSaturation` | — | 0.0 | fraction |
+| Initial gas saturation per layer | `initialGasSaturationPerLayer` | — | — | fraction[] |
+| Initial water saturation per layer | `initialSaturationPerLayer` | — | — | fraction[] |
+| Cell thickness per layer | `cellDzPerLayer` | `dz` (Vec) | — | m[] |
 
 All parameters are optional when two-phase mode is active. Defaults apply when `threePhaseModeEnabled = false`.
+
+The per-layer arrays (`initialGasSaturationPerLayer`, `initialSaturationPerLayer`, `cellDzPerLayer`) override their scalar equivalents when present. They must have length equal to `nz`. These support scenarios like SPE1 where a gas cap occupies the top layer with different thickness and saturation from the oil zone below.
 
 ---
 

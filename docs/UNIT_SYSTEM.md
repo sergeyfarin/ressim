@@ -125,11 +125,13 @@ GridCell {
 
 ```rust
 ReservoirSimulator::new(nx, ny, nz) {
-    dx: 10.0,    // Cell size x-direction [m]
-    dy: 10.0,    // Cell size y-direction [m]
-    dz: 1.0,     // Cell size z-direction [m]
+    dx: 10.0,         // Cell size x-direction [m]
+    dy: 10.0,         // Cell size y-direction [m]
+    dz: vec![1.0; nz], // Cell size z-direction per layer [m]
 }
 ```
+
+Layer thickness `dz` is stored per layer (`Vec<f64>` of length `nz`). The uniform setter `setCellDimensions(dx, dy, dz)` fills all layers to the same value. The per-layer setter `setCellDimensionsPerLayer(dx, dy, dz_per_layer)` accepts a vector of per-layer thicknesses for non-uniform grids (e.g., SPE1 with layers of 6.1, 9.1, 15.2 m).
 
 Example: 20×10×10 grid = 2000 cells
 - Bulk volume: (20×10 m) × (10×10 m) × (10×1 m) = 200 × 100 × 10 m³ = 200,000 m³

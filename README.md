@@ -29,13 +29,14 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ### Flow Physics
 
-- IMPES pressure-saturation splitting on a 3D Cartesian grid.
+- IMPES pressure-saturation splitting on a 3D Cartesian grid with per-layer cell thickness support.
 - Two-phase oil/water flow with Corey relative permeability.
 - Optional Brooks-Corey oil-water and oil-gas capillary pressure.
 - Optional gravity with density-weighted hydrostatic head.
 - Three-phase oil/water/gas transport with Stone II oil relative permeability, gas Corey curves, explicit gas transport, and gas-phase CFL handling.
 - Correlation-based or tabular black-oil PVT support with bubble-point tracking, Rs liberation/re-dissolution, pressure-dependent mobility, and producing GOR reporting.
-- Peaceman-style well model with BHP or rate control, per-layer completion, dynamic PI updates, and injector / producer switching logic.
+- Peaceman-style well model with BHP or rate control, per-layer completion, dynamic PI updates, and injector / producer switching logic. Well PI uses per-layer cell thickness.
+- Per-layer initial conditions: water saturation, gas saturation, and cell thickness can be specified per z-layer for scenarios with gas caps or non-uniform geology.
 - Adaptive timestep checks based on saturation change, pressure change, and well-rate change limits.
 
 ### Analytical and Diagnostic Surfaces

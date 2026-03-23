@@ -19,6 +19,10 @@ The ordering below follows standard reservoir-engineering practice and the liter
 - Add grid-convergence checks for pressure, Rs, Bo, and liberated-gas behavior in volatile-oil style depletion.
 - Document current black-oil solver safeguards in user-facing physics notes, especially the saturated-region `c_o` fallback used to keep the IMPES pressure solve stable.
 
+Progress:
+- Per-layer cell thickness (`dz` as `Vec<f64>`) and per-layer initial gas saturation are implemented in the Rust solver and wired through the TypeScript worker. This unblocks SPE1 (which requires a gas cap in layer 1 with different thickness from the oil zone).
+- SPE1 scenario definition and published-reference overlay are in progress.
+
 Why first:
 - In the reservoir-simulation literature, black-oil extensions are only meaningful when the pressure equation, PVT coupling, and material-balance behavior are benchmarked against accepted reference problems.
 
