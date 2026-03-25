@@ -82,6 +82,32 @@ function buildGasOilRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[nu
     return buildBenchmarkRunResult({
         spec,
         rateHistory: buildSyntheticGasOilRateHistory(spec.params, 0.35, 0),
+        history: [
+            {
+                time: 1,
+                grid: { pressure: new Float64Array(0), sat_water: new Float64Array(0), sat_oil: new Float64Array(0), sat_gas: new Float64Array(0) },
+                wells: [
+                    { i: 0, j: 0, k: 0, bhp: 600, injector: true },
+                    { i: 9, j: 9, k: 2, bhp: 300, injector: false },
+                ],
+            } as SimulatorSnapshot,
+            {
+                time: 2,
+                grid: { pressure: new Float64Array(0), sat_water: new Float64Array(0), sat_oil: new Float64Array(0), sat_gas: new Float64Array(0) },
+                wells: [
+                    { i: 0, j: 0, k: 0, bhp: 610, injector: true },
+                    { i: 9, j: 9, k: 2, bhp: 280, injector: false },
+                ],
+            } as SimulatorSnapshot,
+            {
+                time: 3,
+                grid: { pressure: new Float64Array(0), sat_water: new Float64Array(0), sat_oil: new Float64Array(0), sat_gas: new Float64Array(0) },
+                wells: [
+                    { i: 0, j: 0, k: 0, bhp: 620, injector: true },
+                    { i: 9, j: 9, k: 2, bhp: 260, injector: false },
+                ],
+            } as SimulatorSnapshot,
+        ],
     });
 }
 
@@ -358,16 +384,36 @@ describe('referenceComparisonModel', () => {
         const scenario = getScenario('spe1_gas_injection');
         const layout = getScenarioChartLayout(scenario!);
 
-        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
+        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
         expect(layout.rateChart?.panels?.diagnostics).toMatchObject({
-            title: 'Pressure / Control Limits',
-            curveKeys: ['avg-pressure-sim', 'published-pressure', 'producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
-            scalePreset: 'diagnostics',
+            title: 'Reservoir Pressure',
+            curveKeys: ['avg-pressure-sim', 'published-pressure'],
+            scalePreset: 'pressure',
+        });
+        expect(layout.rateChart?.panels?.producer_bhp).toMatchObject({
+            title: 'Producer WBHP',
+            curveKeys: ['producer-bhp-sim', 'published-producer-bhp'],
+            scalePreset: 'pressure',
+        });
+        expect(layout.rateChart?.panels?.injector_bhp).toMatchObject({
+            title: 'Injector WBHP',
+            curveKeys: ['injector-bhp-sim', 'published-injector-bhp'],
+            scalePreset: 'pressure',
+        });
+        expect(layout.rateChart?.panels?.control_limits).toMatchObject({
+            title: 'Control-Limit Fraction',
+            curveKeys: ['producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
+            scalePreset: 'fraction',
         });
         expect(layout.rateChart?.panels?.gor).toMatchObject({
             title: 'GOR',
             curveKeys: ['gor-sim', 'published-gor'],
             scalePreset: 'gor',
+        });
+        expect(layout.rateChart?.panels?.oil_rate).toMatchObject({
+            title: 'Oil Rate',
+            curveKeys: ['oil-rate-sim', 'published-oil-rate'],
+            scalePreset: 'rates',
         });
     });
 
@@ -416,9 +462,10 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'gor-sim')?.defaultVisible).toBe(true);
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.borderDash).toEqual([4, 4]);
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.pointRadius).toBe(0);
+        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'producer-bhp-sim')?.borderDash).toBeUndefined();
     });
 
-    it('exposes producer and injector BHP-limit diagnostics on the diagnostics panel', () => {
+    it('exposes producer and injector BHP-limit diagnostics on the control-limits panel', () => {
         const scenario = getScenario('spe1_gas_injection')!;
         const spec = {
             key: 'spe1_control_diag',
@@ -475,9 +522,9 @@ describe('referenceComparisonModel', () => {
             xAxisMode: 'time',
         });
 
-        expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'producer-bhp-limited-sim')?.yAxisID).toBe('y1');
-        expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'injector-bhp-limited-sim')?.yAxisID).toBe('y1');
-        expect(model.panels.diagnostics.series.find((series) => series[0]?.y === 1)?.[1]?.y).toBe(0.5);
+        expect(model.panels.control_limits.curves.find((curve) => curve.curveKey === 'producer-bhp-limited-sim')?.yAxisID).toBe('y');
+        expect(model.panels.control_limits.curves.find((curve) => curve.curveKey === 'injector-bhp-limited-sim')?.yAxisID).toBe('y');
+        expect(model.panels.control_limits.series.find((series) => series[0]?.y === 1)?.[1]?.y).toBe(0.5);
     });
 
     it('shows published reference curves before any SPE1 run completes', () => {
@@ -505,7 +552,104 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'published-pressure')?.label).toBe('Eclipse — Avg Pressure');
+        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'published-producer-bhp')?.label).toBe('Brontosaurus — PROD WBHP');
+        expect(model.panels.injector_bhp.curves.find((curve) => curve.curveKey === 'published-injector-bhp')?.label).toBe('Brontosaurus — INJ WBHP');
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.label).toBe('Eclipse — GOR');
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('Brontosaurus — Oil Rate');
+    });
+
+    it('renders extra SPE1 published overlays as dashed reference curves on the correct panels', () => {
+        const scenario = getScenario('spe1_gas_injection')!;
+        const family = {
+            key: scenario.key,
+            analyticalMethod: 'none',
+            showSweepPanel: false,
+            publishedReferenceSeries: scenario.publishedReferenceSeries,
+        } as unknown as BenchmarkFamily;
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.borderDash).toEqual([4, 4]);
+        expect(model.panels.producer_bhp.curves.find((curve) => curve.curveKey === 'published-producer-bhp')?.borderDash).toEqual([4, 4]);
+        expect(model.panels.injector_bhp.curves.find((curve) => curve.curveKey === 'published-injector-bhp')?.borderDash).toEqual([4, 4]);
+    });
+
+    it('derives simulation producer and injector WBHP series from stored well snapshots', () => {
+        const scenario = getScenario('spe1_gas_injection')!;
+        const spec = {
+            key: 'spe1_wbhp_series',
+            caseKey: 'spe1_wbhp_series',
+            familyKey: 'spe1_wbhp_series',
+            analyticalMethod: 'gas-oil-bl',
+            variantKey: null,
+            variantLabel: null,
+            label: 'SPE1 WBHP Series',
+            description: 'Synthetic SPE1 WBHP extraction test case',
+            params: { ...scenario.params },
+            steps: Number(scenario.params.steps ?? 120),
+            deltaTDays: Number(scenario.params.delta_t_days ?? 5),
+            historyInterval: 1,
+            reference: { kind: 'analytical', source: 'test' },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Synthetic WBHP extraction check',
+        } as BenchmarkRunSpec;
+        const result = buildGasOilRunResult(spec);
+
+        const model = buildReferenceComparisonModel({
+            family: {
+                key: scenario.key,
+                analyticalMethod: 'gas-oil-bl',
+                showSweepPanel: false,
+                publishedReferenceSeries: scenario.publishedReferenceSeries,
+            } as unknown as BenchmarkFamily,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.producer_bhp.series[0]?.map((point) => point.y)).toEqual([300, 280, 260]);
+        expect(model.panels.injector_bhp.series[0]?.map((point) => point.y)).toEqual([600, 610, 620]);
+    });
+
+    it('shows SPE1 oil-rate simulation together with the published oil-rate overlay', () => {
+        const scenario = getScenario('spe1_gas_injection')!;
+        const spec = {
+            key: 'spe1_oil_rate_compare',
+            caseKey: 'spe1_oil_rate_compare',
+            familyKey: 'spe1_oil_rate_compare',
+            analyticalMethod: 'none',
+            variantKey: null,
+            variantLabel: null,
+            label: 'SPE1 Oil Rate Compare',
+            description: 'Synthetic SPE1 oil-rate comparison test case',
+            params: { ...scenario.params },
+            steps: Number(scenario.params.steps ?? 120),
+            deltaTDays: Number(scenario.params.delta_t_days ?? 5),
+            historyInterval: 1,
+            reference: { kind: 'analytical', source: 'test' },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Synthetic SPE1 oil-rate compare check',
+        } as BenchmarkRunSpec;
+        const result = buildGasOilRunResult(spec);
+
+        const model = buildReferenceComparisonModel({
+            family: {
+                key: scenario.key,
+                analyticalMethod: 'none',
+                showSweepPanel: false,
+                publishedReferenceSeries: scenario.publishedReferenceSeries,
+            } as unknown as BenchmarkFamily,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'oil-rate-sim')?.label).toBe('SPE1 Oil Rate Compare Oil Rate');
+        expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('Brontosaurus — Oil Rate');
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {

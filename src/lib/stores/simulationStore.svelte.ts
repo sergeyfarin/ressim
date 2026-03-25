@@ -525,7 +525,10 @@ class SimulationStoreImpl {
             baseCaseKey: sc.key,
             analyticalMethod: resolved.analyticalMethod,
             sensitivityAxes: [],
-            reference: { kind: 'analytical' as const, source: `${sc.key}:analytical` },
+            reference: {
+                kind: 'analytical' as const,
+                source: resolved.analyticalMethod === 'digitized-reference' ? `${sc.key}:digitized-reference` : `${sc.key}:analytical`,
+            },
             displayDefaults: { xAxis, panels },
             stylePolicy: { colorBy: 'case' as const, lineStyleBy: 'quantity-or-reference' as const, separatePressurePanel: true },
             runPolicy: 'compare-to-reference' as const,
@@ -1858,7 +1861,10 @@ class SimulationStoreImpl {
 
         const analyticalMethod = scenario.capabilities.analyticalMethod;
         const baseParams = scenario.params;
-        const analyticalRef = { kind: 'analytical' as const, source: `${scenarioKey}:analytical` };
+        const analyticalRef = {
+            kind: 'analytical' as const,
+            source: analyticalMethod === 'digitized-reference' ? `${scenarioKey}:digitized-reference` : `${scenarioKey}:analytical`,
+        };
 
         const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
 

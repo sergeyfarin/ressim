@@ -234,6 +234,19 @@
             _maxCap: 1,
         },
     };
+    const fractionScales = {
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: 'Fraction' },
+            ticks: { count: 6 },
+            _fraction: true,
+        },
+    };
     const cumulativeVolumesScales = {
         y: {
             type: 'linear',
@@ -311,6 +324,7 @@
         if (scalePreset === 'pressure') return pressureScales;
         if (scalePreset === 'gor') return gorScales;
         if (scalePreset === 'diagnostics') return diagnosticsScales;
+        if (scalePreset === 'fraction') return fractionScales;
         if (scalePreset === 'recovery') return recoveryScales;
         if (scalePreset === 'cumulative_volumes') return cumulativeVolumesScales;
         if (scalePreset === 'cumulative') return cumulativeScales;
@@ -437,6 +451,27 @@
             curveKeys: ['oil-rate-sim'],
             scalePreset: 'rates',
             visible: true,
+            expanded: false,
+        },
+        producer_bhp: {
+            title: 'Producer WBHP',
+            curveKeys: ['producer-bhp-sim', 'published-producer-bhp'],
+            scalePreset: 'pressure',
+            visible: false,
+            expanded: false,
+        },
+        injector_bhp: {
+            title: 'Injector WBHP',
+            curveKeys: ['injector-bhp-sim', 'published-injector-bhp'],
+            scalePreset: 'pressure',
+            visible: false,
+            expanded: false,
+        },
+        control_limits: {
+            title: 'Control-Limit Fraction',
+            curveKeys: ['producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
+            scalePreset: 'fraction',
+            visible: false,
             expanded: false,
         },
         sweep_rf: {

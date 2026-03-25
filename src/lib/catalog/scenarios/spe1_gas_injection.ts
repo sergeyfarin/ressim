@@ -24,8 +24,9 @@ import type { ThreePhaseScalTables } from '../../simulator-types';
  *   which is closer to the deck semantics but still not a full scheduler/well-model implementation
  * - Case 1 disables gas re-dissolution (`DRSDT = 0` semantics), but full schedule/deck semantics are still not implemented
  *
- * Published Eclipse reference data (Case 1, OPM-derived yearly samples) is overlaid on
- * the pressure and GOR panels for visual comparison.
+ * Published benchmark reference data is overlaid for visual comparison:
+ * - OPM-derived yearly samples for average pressure and GOR
+ * - brontosaurus `expected_summary.csv` representative samples for oil rate and well BHP
  *
  * Current verification status:
  * - Pressure mapping is treated as average reservoir pressure versus time.
@@ -135,6 +136,46 @@ const ECLIPSE_GOR: PublishedReferenceSeries = {
     ],
 };
 
+// ── Brontosaurus representative summary samples (converted from FIELD units) ──
+// Source: examples/spe1/expected_output/expected_summary.csv
+// Conversions: FOPR_sm3d = FOPR_stbd × 0.158987
+//              WBHP_bar = WBHP_psia / 14.5038
+const BRONTOSAURUS_OIL_RATE: PublishedReferenceSeries = {
+    panelKey: 'oil_rate',
+    label: 'Brontosaurus — Oil Rate',
+    curveKey: 'published-oil-rate',
+    data: [
+        { x:    0.0, y: 3179.75 },
+        { x:  365.25, y: 3179.75 },
+        { x: 1826.25, y: 3155.9 },
+        { x: 3652.5, y: 2421.38 },
+    ],
+};
+
+const BRONTOSAURUS_PRODUCER_WBHP: PublishedReferenceSeries = {
+    panelKey: 'producer_bhp',
+    label: 'Brontosaurus — PROD WBHP',
+    curveKey: 'published-producer-bhp',
+    data: [
+        { x:    0.0, y: 292.7 },
+        { x:  365.25, y: 268.2 },
+        { x: 1826.25, y: 221.7 },
+        { x: 3652.5, y: 127.6 },
+    ],
+};
+
+const BRONTOSAURUS_INJECTOR_WBHP: PublishedReferenceSeries = {
+    panelKey: 'injector_bhp',
+    label: 'Brontosaurus — INJ WBHP',
+    curveKey: 'published-injector-bhp',
+    data: [
+        { x:    0.0, y: 551.6 },
+        { x:  365.25, y: 589.5 },
+        { x: 1826.25, y: 608.1 },
+        { x: 3652.5, y: 621.5 },
+    ],
+};
+
 export const spe1_gas_injection: Scenario = {
     key: 'spe1_gas_injection',
     label: 'SPE1 Black-Oil Benchmark',
@@ -148,14 +189,20 @@ export const spe1_gas_injection: Scenario = {
         'Odeh, A.S. (1981) "Comparison of Solutions to a Three-Dimensional Black-Oil Reservoir Simulation Problem", JPT, SPE 9723.',
     chartLayoutKey: 'spe1',
     capabilities: {
-        analyticalMethod: 'none',
+        analyticalMethod: 'digitized-reference',
         primaryRateCurve: 'oil-rate',
         showSweepPanel: false,
         hasInjector: true,
         default3DScalar: 'saturation_gas',
         requiresThreePhaseMode: true,
     },
-    publishedReferenceSeries: [ECLIPSE_PRESSURE, ECLIPSE_GOR],
+    publishedReferenceSeries: [
+        ECLIPSE_PRESSURE,
+        ECLIPSE_GOR,
+        BRONTOSAURUS_OIL_RATE,
+        BRONTOSAURUS_PRODUCER_WBHP,
+        BRONTOSAURUS_INJECTOR_WBHP,
+    ],
     params: {
         // ── Grid: 10×10×3, non-uniform dz ──────────────────────────────
         nx: 10, ny: 10, nz: 3,

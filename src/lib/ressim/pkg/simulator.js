@@ -20,7 +20,8 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+     * Cumulative gas material balance error [Sm³] for total gas inventory
+     * (free gas + dissolved gas) in three-phase mode.
      * @returns {number}
      */
     get cumulative_mb_gas_error_m3() {
@@ -526,7 +527,8 @@ export class ReservoirSimulator {
         wasm.__wbg_set_reservoirsimulator_cumulative_mb_error_m3(this.__wbg_ptr, arg0);
     }
     /**
-     * Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+     * Cumulative gas material balance error [Sm³] for total gas inventory
+     * (free gas + dissolved gas) in three-phase mode.
      * @param {number} arg0
      */
     set cumulative_mb_gas_error_m3(arg0) {

@@ -39,6 +39,7 @@ export type AnalyticalMethod =
     | 'buckley-leverett'
     | 'gas-oil-bl'
     | 'depletion'
+    | 'digitized-reference'
     | 'none';
 
 /** Coarse analytical family used by the custom/editor UI. */
@@ -117,6 +118,14 @@ export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOut
         defaultPrimaryRateCurve: 'oil-rate',
         hasTau: true,
         defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: true },
+    },
+    'digitized-reference': {
+        produces: [],
+        supportedRateCurves: ['water-cut', 'gas-cut', 'oil-rate'],
+        nativeXAxis: 'time',
+        defaultPrimaryRateCurve: 'oil-rate',
+        hasTau: false,
+        defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
     },
     'none': {
         produces: [],
@@ -415,7 +424,7 @@ export function getScenarioChartLayout(
     );
 }
 
-const PRIMARY_ANALYTICAL_PANEL_KEYS = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate'] as const;
+const PRIMARY_ANALYTICAL_PANEL_KEYS = ['rates', 'recovery', 'cumulative', 'diagnostics', 'oil_rate', 'producer_bhp', 'injector_bhp', 'control_limits'] as const;
 
 export function hasPrimaryAnalyticalReferenceCurves(layoutConfig: RateChartLayoutConfig): boolean {
     return PRIMARY_ANALYTICAL_PANEL_KEYS.some((panelKey) => (
@@ -446,6 +455,7 @@ export function validateScenarioChartLayout(scenario: Pick<Scenario, 'key' | 'ca
 export function getAnalyticalModeForMethod(method: AnalyticalMethod): AnalyticalMode {
     if (method === 'depletion') return 'depletion';
     if (method === 'none') return 'none';
+    if (method === 'digitized-reference') return 'none';
     return 'waterflood';
 }
 

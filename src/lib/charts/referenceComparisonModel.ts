@@ -76,11 +76,14 @@ export type AnalyticalPreviewVariant = {
 
 type DerivedRunSeries = {
     time: number[];
+    historyTime: number[];
     oilRate: Array<number | null>;
     waterCut: Array<number | null>;
     gasCut: Array<number | null>;
     avgWaterSat: Array<number | null>;
     pressure: Array<number | null>;
+    producerBhp: Array<number | null>;
+    injectorBhp: Array<number | null>;
     recovery: Array<number | null>;
     cumulativeOil: Array<number | null>;
     cumulativeInjection: Array<number | null>;
@@ -241,9 +244,89 @@ function toXYSeries(
     return points;
 }
 
+function interpolateXAxisAtTimes(
+    sourceTimes: Array<number | null>,
+    sourceXAxis: Array<number | null>,
+    targetTimes: Array<number | null>,
+): Array<number | null> {
+    const result: Array<number | null> = [];
+    let previousIndex = -1;
+
+    for (const rawTarget of targetTimes) {
+        if (!Number.isFinite(rawTarget)) {
+            result.push(null);
+            continue;
+        }
+
+        const target = Number(rawTarget);
+        while (previousIndex + 1 < sourceTimes.length) {
+            const nextTime = sourceTimes[previousIndex + 1];
+            if (!Number.isFinite(nextTime) || Number(nextTime) < target) {
+                previousIndex += 1;
+                continue;
+            }
+            break;
+        }
+
+        if (previousIndex < 0) {
+            result.push(Number.isFinite(sourceXAxis[0]) ? Number(sourceXAxis[0]) : null);
+            continue;
+        }
+
+        if (previousIndex + 1 >= sourceTimes.length) {
+            result.push(Number.isFinite(sourceXAxis[previousIndex]) ? Number(sourceXAxis[previousIndex]) : null);
+            continue;
+        }
+
+        const x0 = sourceTimes[previousIndex];
+        const x1 = sourceTimes[previousIndex + 1];
+        const y0 = sourceXAxis[previousIndex];
+        const y1 = sourceXAxis[previousIndex + 1];
+
+        if (!Number.isFinite(x0) || !Number.isFinite(x1) || !Number.isFinite(y0) || !Number.isFinite(y1)) {
+            result.push(Number.isFinite(y0) ? Number(y0) : null);
+            continue;
+        }
+
+        if (Math.abs(Number(x1) - Number(x0)) <= 1e-12) {
+            result.push(Number(y1));
+            continue;
+        }
+
+        const fraction = (target - Number(x0)) / (Number(x1) - Number(x0));
+        result.push(Number(y0) + fraction * (Number(y1) - Number(y0)));
+    }
+
+    return result;
+}
+
+function extractWellBhpHistory(result: BenchmarkRunResult): {
+    historyTime: number[];
+    producerBhp: Array<number | null>;
+    injectorBhp: Array<number | null>;
+} {
+    const historyTime: number[] = [];
+    const producerBhp: Array<number | null> = [];
+    const injectorBhp: Array<number | null> = [];
+
+    for (const snapshot of result.history) {
+        historyTime.push(toFiniteNumber(snapshot.time, 0));
+
+        const wells = Array.isArray(snapshot.wells) ? snapshot.wells : [];
+        const producer = wells.find((well) => well?.injector === false && Number.isFinite(well?.bhp));
+        const injector = wells.find((well) => well?.injector === true && Number.isFinite(well?.bhp));
+
+        producerBhp.push(Number.isFinite(producer?.bhp) ? Number(producer?.bhp) : null);
+        injectorBhp.push(Number.isFinite(injector?.bhp) ? Number(injector?.bhp) : null);
+    }
+
+    return { historyTime, producerBhp, injectorBhp };
+}
+
 function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
     const poreVolume = getPoreVolume(result.params);
     const ooip = getOoip(result.params);
+    const wellBhpHistory = extractWellBhpHistory(result);
     let cumulativeInjection = 0;
     let cumulativeLiquid = 0;
 
@@ -275,6 +358,7 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
 
     return {
         time: result.rateHistory.map((point) => toFiniteNumber(point.time, 0)),
+            historyTime: wellBhpHistory.historyTime || [],
         oilRate: result.rateHistory.map((point) => Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)))),
         waterCut: [...result.watercutSeries],
         gasCut: result.rateHistory.map((point) => {
@@ -288,6 +372,8 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
             return Number.isFinite(value) ? Number(value) : null;
         }),
         pressure: [...result.pressureSeries],
+        producerBhp: wellBhpHistory.producerBhp,
+        injectorBhp: wellBhpHistory.injectorBhp,
         recovery: [...result.recoverySeries],
         cumulativeOil: result.recoverySeries.map((value) => (
             Number.isFinite(value) && ooip > 1e-12 ? Number(value) * ooip : null
@@ -555,7 +641,7 @@ function appendBhpLimitDiagnostics(
         legendSectionLabel: 'Simulation (solid lines):',
         color: '#c2410c',
         borderWidth: input.borderWidth,
-        yAxisID: 'y1',
+        yAxisID: 'y',
         defaultVisible: input.defaultVisible,
     }, input.xValues, input.producerValues);
 
@@ -569,7 +655,7 @@ function appendBhpLimitDiagnostics(
         legendSectionLabel: 'Simulation (solid lines):',
         color: '#0369a1',
         borderWidth: input.borderWidth,
-        yAxisID: 'y1',
+        yAxisID: 'y',
         defaultVisible: input.defaultVisible,
     }, input.xValues, input.injectorValues);
 }
@@ -649,6 +735,9 @@ function suppressPrimaryAnalyticalPanels(
         gor: panels.gor,
         volumes: panels.volumes,
         oil_rate: stripReferenceCurveKeys(panels.oil_rate, excludedCurveKeys),
+        producer_bhp: panels.producer_bhp,
+        injector_bhp: panels.injector_bhp,
+        control_limits: panels.control_limits,
     };
 }
 
@@ -661,6 +750,9 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
+        producer_bhp: createReferenceComparisonPanel(),
+        injector_bhp: createReferenceComparisonPanel(),
+        control_limits: createReferenceComparisonPanel(),
         sweep_rf: null,
         sweep_areal: null,
         sweep_vertical: null,
@@ -682,6 +774,9 @@ function combinePanelMaps(input: {
         gor: input.primary.gor,
         volumes: input.primary.volumes,
         oil_rate: input.primary.oil_rate,
+        producer_bhp: input.primary.producer_bhp,
+        injector_bhp: input.primary.injector_bhp,
+        control_limits: input.primary.control_limits,
         sweep_rf: input.sweep?.rf ?? null,
         sweep_areal: input.sweep?.areal ?? null,
         sweep_vertical: input.sweep?.vertical ?? null,
@@ -1559,6 +1654,9 @@ function buildAnalyticalPreviewPanels(
         gor: { curves: [], series: [] },
         volumes: { curves: [], series: [] },
         oil_rate: { curves: [], series: [] },
+        producer_bhp: { curves: [], series: [] },
+        injector_bhp: { curves: [], series: [] },
+        control_limits: { curves: [], series: [] },
     };
 
     if (variants.length === 0) return panels;
@@ -1729,11 +1827,14 @@ function buildPreviewSweepPanels(input: {
     const referenceColor = getReferenceColor(input.theme);
     const previewDerived: DerivedRunSeries = {
         time: [],
+        historyTime: [],
         oilRate: [],
         waterCut: [],
         gasCut: [],
         avgWaterSat: [],
         pressure: [],
+        producerBhp: [],
+        injectorBhp: [],
         recovery: [],
         cumulativeOil: [],
         cumulativeInjection: [],
@@ -1805,11 +1906,14 @@ function buildSweepPanels(input: {
         const declarationOrder = new Map((input.previewVariantParams ?? []).map((variant, index) => [variant.variantKey, index]));
         const previewDerived = input.orderedResults[0] ? buildDerivedRunSeries(input.orderedResults[0]) : {
             time: [],
+            historyTime: [],
             oilRate: [],
             waterCut: [],
             gasCut: [],
             avgWaterSat: [],
             pressure: [],
+            producerBhp: [],
+            injectorBhp: [],
             recovery: [],
             cumulativeOil: [],
             cumulativeInjection: [],
@@ -1914,6 +2018,9 @@ export function buildReferenceComparisonModel(input: {
         gor: { curves: [], series: [] },
         volumes: { curves: [], series: [] },
         oil_rate: { curves: [], series: [] },
+        producer_bhp: { curves: [], series: [] },
+        injector_bhp: { curves: [], series: [] },
+        control_limits: { curves: [], series: [] },
     };
 
     if (!family || orderedResults.length === 0) {
@@ -2180,6 +2287,7 @@ export function buildReferenceComparisonModel(input: {
         }
 
         if (family.analyticalMethod === 'gas-oil-bl') {
+            const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
             appendSeries(panels.rates, {
                 label: `${result.label} Gas Cut`,
                 curveKey: 'gas-cut-sim',
@@ -2284,7 +2392,33 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.gor);
-            appendBhpLimitDiagnostics(panels.diagnostics, {
+            appendSeries(panels.producer_bhp, {
+                label: `${result.label} Producer WBHP`,
+                curveKey: 'producer-bhp-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, historyXAxis, derived.producerBhp);
+            appendSeries(panels.injector_bhp, {
+                label: `${result.label} Injector WBHP`,
+                curveKey: 'injector-bhp-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, historyXAxis, derived.injectorBhp);
+            appendBhpLimitDiagnostics(panels.control_limits, {
                 label: result.label,
                 caseKey: result.key,
                 toggleLabel: caseLabel,
@@ -2351,6 +2485,24 @@ export function buildReferenceComparisonModel(input: {
             derived.cumulativeOil,
         );
         appendSeries(
+            panels.oil_rate,
+            {
+                label: `${result.label} Oil Rate`,
+                curveKey: 'oil-rate-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            },
+            xValues,
+            derived.oilRate,
+        );
+        appendSeries(
             panels.diagnostics,
             {
                 label: `${result.label} Avg Pressure`,
@@ -2404,7 +2556,44 @@ export function buildReferenceComparisonModel(input: {
             xValues,
             derived.gor,
         );
-        appendBhpLimitDiagnostics(panels.diagnostics, {
+        const historyXAxis = interpolateXAxisAtTimes(derived.time, xValues, derived.historyTime);
+        appendSeries(
+            panels.producer_bhp,
+            {
+                label: `${result.label} Producer WBHP`,
+                curveKey: 'producer-bhp-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            },
+            historyXAxis,
+            derived.producerBhp,
+        );
+        appendSeries(
+            panels.injector_bhp,
+            {
+                label: `${result.label} Injector WBHP`,
+                curveKey: 'injector-bhp-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            },
+            historyXAxis,
+            derived.injectorBhp,
+        );
+        appendBhpLimitDiagnostics(panels.control_limits, {
             label: result.label,
             caseKey: result.key,
             toggleLabel: caseLabel,

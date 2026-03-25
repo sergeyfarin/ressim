@@ -73,6 +73,9 @@ export function resolveProductFamily(input: {
     if (input.benchmarkAnalyticalMethod === 'buckley-leverett' || input.benchmarkAnalyticalMethod === 'gas-oil-bl') {
         return 'waterflood';
     }
+    if (input.benchmarkAnalyticalMethod === 'digitized-reference') {
+        return 'scenario-builder';
+    }
     if (isFetkovichBenchmarkCase(input.benchmarkId ?? null)) {
         return 'type-curves';
     }

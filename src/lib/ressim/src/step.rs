@@ -890,7 +890,7 @@ impl ReservoirSimulator {
         let n_cells = self.nx * self.ny * self.nz;
         // Apply saturation updates with physical clipping
         let mut actual_change_m3 = 0.0;
-        let mut actual_change_gas_m3 = 0.0;
+        let mut actual_change_gas_sc = 0.0;
         for idx in 0..n_cells {
             let vp_m3 = self.pore_volume_m3(idx);
             if vp_m3 <= 0.0 {
@@ -903,6 +903,17 @@ impl ReservoirSimulator {
             if self.three_phase_mode {
                 // Three-phase: update water and gas, derive oil by material balance
                 let sg_old = self.sat_gas[idx];
+                let so_old = self.sat_oil[idx];
+                let p_old = self.pressure[idx];
+                let bg_old = self.get_b_g(p_old).max(1e-9);
+                let bo_old = self.get_b_o(p_old).max(1e-9);
+                let rs_old = self.rs[idx];
+                let old_free_gas_sc = sg_old * vp_m3 / bg_old;
+                let old_dissolved_gas_sc = if self.pvt_table.is_some() {
+                    (so_old * vp_m3 / bo_old) * rs_old
+                } else {
+                    0.0
+                };
                 let delta_sg = delta_gas_m3[idx] / vp_m3;
 
                 let (s_wc, s_or, s_gc, s_gr) =
@@ -973,7 +984,16 @@ impl ReservoirSimulator {
                 self.sat_gas[idx] = if sum > 0.0 { sg_new / sum } else { sg_new };
 
                 actual_change_m3 += (self.sat_water[idx] - sw_old) * vp_m3;
-                actual_change_gas_m3 += (self.sat_gas[idx] - sg_old) * vp_m3;
+                let bg_new = self.get_b_g(p_new[idx]).max(1e-9);
+                let bo_new = self.get_b_o(p_new[idx]).max(1e-9);
+                let new_free_gas_sc = self.sat_gas[idx] * vp_m3 / bg_new;
+                let new_dissolved_gas_sc = if self.pvt_table.is_some() {
+                    (self.sat_oil[idx] * vp_m3 / bo_new) * self.rs[idx]
+                } else {
+                    0.0
+                };
+                actual_change_gas_sc +=
+                    (new_free_gas_sc + new_dissolved_gas_sc) - (old_free_gas_sc + old_dissolved_gas_sc);
             } else {
                 // Two-phase: material balance s_w + s_o = 1
                 let sw_min = self.scal.s_wc;
@@ -996,11 +1016,10 @@ impl ReservoirSimulator {
         let mut total_injection = 0.0;
         let mut total_injection_reservoir = 0.0;
         let mut total_water_injection_reservoir = 0.0;
-        let mut total_gas_injection_reservoir = 0.0;
         let mut total_prod_water_reservoir = 0.0;
-        let mut total_prod_gas_reservoir = 0.0;
         let mut total_prod_gas = 0.0;
         let mut total_prod_dissolved_gas = 0.0;
+        let mut total_gas_injection_sc = 0.0;
         let mut producer_rate_controlled_wells = 0usize;
         let mut injector_rate_controlled_wells = 0usize;
         let mut producer_bhp_limited_wells = 0usize;
@@ -1041,14 +1060,21 @@ impl ReservoirSimulator {
                 };
                 let p_cell = p_new[id];
                 if w.injector {
-                    total_injection -= q_m3_day / self.b_w.max(1e-9);
                     total_injection_reservoir += -q_m3_day;
                     if self.three_phase_mode {
                         match self.injected_fluid {
-                            InjectedFluid::Water => total_water_injection_reservoir += -q_m3_day,
-                            InjectedFluid::Gas => total_gas_injection_reservoir += -q_m3_day,
+                            InjectedFluid::Water => {
+                                total_injection += -q_m3_day / self.b_w.max(1e-9);
+                                total_water_injection_reservoir += -q_m3_day;
+                            }
+                            InjectedFluid::Gas => {
+                                let bg = self.get_b_g(p_cell).max(1e-9);
+                                total_injection += -q_m3_day / bg;
+                                total_gas_injection_sc += -q_m3_day / bg;
+                            }
                         }
                     } else {
+                        total_injection += -q_m3_day / self.b_w.max(1e-9);
                         total_water_injection_reservoir += -q_m3_day;
                     }
                 } else {
@@ -1059,7 +1085,6 @@ impl ReservoirSimulator {
                         (self.frac_flow_water(id), 0.0)
                     };
                     total_prod_water_reservoir += q_m3_day * fw;
-                    total_prod_gas_reservoir += q_m3_day * fg;
                     // Surface rates: divide reservoir volumes by pressure-dependent FVFs
                     let bo = self.get_b_o(p_cell).max(1e-9);
                     let bw = self.b_w.max(1e-9); // Bw essentially constant in black-oil
@@ -1086,10 +1111,13 @@ impl ReservoirSimulator {
         let net_water_added_m3 = (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
-        // Gas material balance (three-phase only): (gas injected − gas produced) should equal ΔSg × Vp
+        // Gas material balance (three-phase only):
+        // (surface gas injected − surface gas produced) should equal the change in total
+        // in-place gas inventory expressed at standard conditions (free gas + dissolved gas).
         if self.three_phase_mode {
-            let net_gas_added_m3 = (total_gas_injection_reservoir - total_prod_gas_reservoir) * dt_days;
-            self.cumulative_mb_gas_error_m3 += net_gas_added_m3 - actual_change_gas_m3;
+            let total_gas_prod_sc = total_prod_gas + total_prod_dissolved_gas;
+            let net_gas_added_sc = (total_gas_injection_sc - total_gas_prod_sc) * dt_days;
+            self.cumulative_mb_gas_error_m3 += net_gas_added_sc - actual_change_gas_sc;
         }
 
         // Report the absolute cumulative error

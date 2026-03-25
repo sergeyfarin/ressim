@@ -941,6 +941,19 @@
             ticks: { count: 6 },
         },
     };
+    const fractionScales = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: "Fraction" },
+            ticks: { count: 6 },
+            _fraction: true,
+        },
+    };
     let allXAxisOptions = $derived<ChartXAxisOption[]>([
         { value: "time", label: "Time" },
         {
@@ -980,6 +993,7 @@
         if (scalePreset === "cumulative_volumes") return cumulativeVolumesScales;
         if (scalePreset === "recovery") return recoveryScales;
         if (scalePreset === "diagnostics") return diagnosticsScales;
+        if (scalePreset === "fraction") return fractionScales;
         return ratesScales;
     }
 
@@ -1051,6 +1065,27 @@
             curveKeys: ["oil-rate-sim", "oil-rate-reference"],
             scalePreset: "rates",
             visible: true,
+            expanded: false,
+        },
+        producer_bhp: {
+            title: "Producer WBHP",
+            curveKeys: ["producer-bhp-sim", "published-producer-bhp"],
+            scalePreset: "pressure",
+            visible: false,
+            expanded: false,
+        },
+        injector_bhp: {
+            title: "Injector WBHP",
+            curveKeys: ["injector-bhp-sim", "published-injector-bhp"],
+            scalePreset: "pressure",
+            visible: false,
+            expanded: false,
+        },
+        control_limits: {
+            title: "Control-Limit Fraction",
+            curveKeys: ["producer-bhp-limited-sim", "injector-bhp-limited-sim"],
+            scalePreset: "fraction",
+            visible: false,
             expanded: false,
         },
         sweep_rf: {
@@ -1374,6 +1409,9 @@
         gor: curveRegistry,
         volumes: curveRegistry,
         oil_rate: curveRegistry,
+        producer_bhp: curveRegistry,
+        injector_bhp: curveRegistry,
+        control_limits: curveRegistry,
         sweep_rf: sweepPanels ? toPanelEntries(sweepPanels.rfCurves, sweepPanels.rfSeries) : [],
         sweep_areal: sweepPanels ? toPanelEntries(sweepPanels.arealCurves, sweepPanels.arealSeries) : [],
         sweep_vertical: sweepPanels ? toPanelEntries(sweepPanels.verticalCurves, sweepPanels.verticalSeries) : [],

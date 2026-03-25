@@ -27,8 +27,9 @@ pub struct TimePointRates {
     /// Average gas saturation (non-zero only in three-phase mode)
     #[serde(default)]
     pub avg_gas_saturation: f64,
-    /// Gas material balance error [m³]: cumulative (gas injection − gas production) vs actual
-    /// in-place gas change. Non-zero only in three-phase mode.
+    /// Gas material balance error [Sm³]: cumulative (surface gas injection − surface gas production)
+    /// vs actual in-place total-gas inventory change expressed at standard conditions.
+    /// Includes both free gas and dissolved gas. Non-zero only in three-phase mode.
     #[serde(default)]
     pub material_balance_error_gas_m3: f64,
     /// Producing gas-oil ratio [Sm³/Sm³]: total surface gas / surface oil at producers.

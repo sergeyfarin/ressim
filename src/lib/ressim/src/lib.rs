@@ -122,7 +122,8 @@ pub struct ReservoirSimulator {
     cumulative_production_m3: f64,
     /// Cumulative water material balance error [m³]
     pub cumulative_mb_error_m3: f64,
-    /// Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+    /// Cumulative gas material balance error [Sm³] for total gas inventory
+    /// (free gas + dissolved gas) in three-phase mode.
     pub cumulative_mb_gas_error_m3: f64,
     target_producer_rate_m3_day: f64,
     target_producer_surface_rate_m3_day: Option<f64>,
@@ -2341,6 +2342,47 @@ mod tests {
         assert!(
             total_gas_produced > 0.0,
             "Expected positive cumulative gas production after gas injection"
+        );
+    }
+
+    #[test]
+    fn gas_injection_surface_totals_use_bg_conversion() {
+        use crate::pvt::{PvtRow, PvtTable};
+
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.10, 0.10, 0.05, 0.05, 0.10,
+            2.0, 2.0, 1.5,
+            0.8, 0.9, 0.7,
+        ).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+        sim.set_initial_pressure(100.0);
+        sim.set_initial_saturation(0.10);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 0.0,
+                bo_m3m3: 1.2,
+                mu_o_cp: 1.0,
+                bg_m3m3: 0.25,
+                mu_g_cp: 0.02,
+            }],
+            sim.pvt.c_o,
+        ));
+        sim.set_well_control_modes("rate".to_string(), "bhp".to_string());
+        sim.set_target_well_surface_rates(120.0, 0.0).unwrap();
+        sim.set_well_bhp_limits(0.0, 1.0e9).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, true).unwrap();
+
+        sim.step(1.0);
+
+        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        assert!(
+            (latest.total_injection - 120.0).abs() < 1e-9,
+            "Expected gas injector surface total to match target surface rate, got {}",
+            latest.total_injection
         );
     }
 

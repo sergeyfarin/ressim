@@ -143,7 +143,8 @@ export class ReservoirSimulator {
      */
     cumulative_mb_error_m3: number;
     /**
-     * Cumulative gas material balance error [m³] (non-zero in three-phase mode)
+     * Cumulative gas material balance error [Sm³] for total gas inventory
+     * (free gas + dissolved gas) in three-phase mode.
      */
     cumulative_mb_gas_error_m3: number;
 }

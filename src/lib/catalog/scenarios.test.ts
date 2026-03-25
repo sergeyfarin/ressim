@@ -307,7 +307,7 @@ describe('affectsAnalytical contract', () => {
 describe('scenario capability validation', () => {
     it('all scenarios with analytical overlays declare analytical overlay grouping on every sensitivity dimension', () => {
         for (const scenario of listScenarios()) {
-            if (scenario.capabilities.analyticalMethod === 'none') continue;
+            if (scenario.capabilities.analyticalMethod === 'none' || scenario.capabilities.analyticalMethod === 'digitized-reference') continue;
             for (const dimension of scenario.sensitivities) {
                 expect(
                     dimension.analyticalOverlayMode,

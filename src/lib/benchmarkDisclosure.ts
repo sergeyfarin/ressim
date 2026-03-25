@@ -128,6 +128,9 @@ function buildReferenceLabel(
     if (analyticalMethod === 'gas-oil-bl') {
         return 'Gas-oil Buckley-Leverett reference solution';
     }
+    if (analyticalMethod === 'digitized-reference') {
+        return 'Published benchmark reference curves';
+    }
     return 'Depletion reference solution';
 }
 

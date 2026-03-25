@@ -255,13 +255,31 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['diagnostics', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
+            panelOrder: ['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
             panels: {
                 diagnostics: {
-                    title: 'Pressure / Control Limits',
-                    curveKeys: ['avg-pressure-sim', 'published-pressure', 'producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
-                    scalePreset: 'diagnostics',
+                    title: 'Reservoir Pressure',
+                    curveKeys: ['avg-pressure-sim', 'published-pressure'],
+                    scalePreset: 'pressure',
                     expanded: true,
+                },
+                producer_bhp: {
+                    title: 'Producer WBHP',
+                    curveKeys: ['producer-bhp-sim', 'published-producer-bhp'],
+                    scalePreset: 'pressure',
+                    expanded: true,
+                },
+                injector_bhp: {
+                    title: 'Injector WBHP',
+                    curveKeys: ['injector-bhp-sim', 'published-injector-bhp'],
+                    scalePreset: 'pressure',
+                    expanded: true,
+                },
+                control_limits: {
+                    title: 'Control-Limit Fraction',
+                    curveKeys: ['producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
+                    scalePreset: 'fraction',
+                    expanded: false,
                 },
                 gor: {
                     title: 'GOR',
@@ -272,7 +290,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                 },
                 oil_rate: {
                     title: 'Oil Rate',
-                    curveKeys: ['oil-rate-sim'],
+                    curveKeys: ['oil-rate-sim', 'published-oil-rate'],
                     scalePreset: 'rates',
                     expanded: true,
                 },
