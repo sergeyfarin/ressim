@@ -313,14 +313,249 @@ impl ReservoirSimulator {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn injector_well_count(&self) -> usize {
         self.wells.iter().filter(|w| w.injector).count()
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn producer_well_count(&self) -> usize {
         self.wells.iter().filter(|w| !w.injector).count()
     }
 
+    fn phase_mobilities_at_pressure(&self, id: usize, pressure_bar: f64) -> (f64, f64) {
+        let krw = self.scal.k_rw(self.sat_water[id]);
+        let kro = self.scal.k_ro(self.sat_water[id]);
+        (
+            krw / self.get_mu_w(pressure_bar),
+            kro / self.get_mu_o_cell(id, pressure_bar),
+        )
+    }
+
+    fn phase_mobilities_3p_at_pressure(&self, id: usize, pressure_bar: f64) -> (f64, f64, f64) {
+        let s = match &self.scal_3p {
+            Some(s) => s,
+            None => {
+                let (w, o) = self.phase_mobilities_at_pressure(id, pressure_bar);
+                return (w, o, 0.0);
+            }
+        };
+        let sw = self.sat_water[id];
+        let sg = self.sat_gas[id];
+        (
+            s.k_rw(sw) / self.get_mu_w(pressure_bar),
+            s.k_ro_stone2(sw, sg) / self.get_mu_o_cell(id, pressure_bar),
+            s.k_rg(sg) / self.get_mu_g(pressure_bar),
+        )
+    }
+
+    fn producer_oil_fraction_at_pressure(&self, id: usize, pressure_bar: f64) -> f64 {
+        if self.three_phase_mode {
+            let (lam_w, lam_o, lam_g) = self.phase_mobilities_3p_at_pressure(id, pressure_bar);
+            let lam_t = (lam_w + lam_o + lam_g).max(f64::EPSILON);
+            (lam_o / lam_t).clamp(0.0, 1.0)
+        } else {
+            let (lam_w, lam_o) = self.phase_mobilities_at_pressure(id, pressure_bar);
+            let lam_t = (lam_w + lam_o).max(f64::EPSILON);
+            (lam_o / lam_t).clamp(0.0, 1.0)
+        }
+    }
+
+    fn completion_rate_for_bhp(&self, well: &Well, pressure_bar: f64, bhp_bar: f64) -> Option<f64> {
+        if !well.productivity_index.is_finite() || !pressure_bar.is_finite() || !bhp_bar.is_finite() {
+            return None;
+        }
+        let raw_rate = well.productivity_index * (pressure_bar - bhp_bar);
+        if !raw_rate.is_finite() {
+            return None;
+        }
+        if well.injector {
+            Some(raw_rate.min(0.0))
+        } else {
+            Some(raw_rate.max(0.0))
+        }
+    }
+
+    fn completion_surface_rate_sc_day(&self, well: &Well, pressure_bar: f64, bhp_bar: f64) -> Option<f64> {
+        let q_m3_day = self.completion_rate_for_bhp(well, pressure_bar, bhp_bar)?;
+        let id = self.idx(well.i, well.j, well.k);
+        if well.injector {
+            let injected_sc_rate = match self.injected_fluid {
+                InjectedFluid::Water => (-q_m3_day) / self.b_w.max(1e-9),
+                InjectedFluid::Gas => (-q_m3_day) / self.get_b_g(pressure_bar).max(1e-9),
+            };
+            Some(injected_sc_rate.max(0.0))
+        } else {
+            let oil_fraction = self.producer_oil_fraction_at_pressure(id, pressure_bar);
+            let oil_rate_sc = q_m3_day * oil_fraction / self.get_b_o_cell(id, pressure_bar).max(1e-9);
+            Some(oil_rate_sc.max(0.0))
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn group_pressures_with_override(&self, well: &Well, pressure_bar: f64) -> Vec<f64> {
+        let mut pressures = self.pressure.clone();
+        let id = self.idx(well.i, well.j, well.k);
+        if id < pressures.len() {
+            pressures[id] = pressure_bar;
+        }
+        pressures
+    }
+
+    fn solve_group_bhp_for_pressures(&self, injector: bool, pressures: &[f64]) -> Option<(f64, bool)> {
+        let use_rate_control = if injector {
+            self.injector_rate_controlled
+        } else {
+            self.producer_rate_controlled
+        };
+        if !use_rate_control {
+            return None;
+        }
+
+        let wells: Vec<&Well> = self.wells.iter().filter(|well| well.injector == injector).collect();
+        if wells.is_empty() {
+            return None;
+        }
+
+        let total_surface_target = if injector {
+            self.target_injector_surface_rate_m3_day
+        } else {
+            self.target_producer_surface_rate_m3_day
+        };
+        let total_reservoir_target = if injector {
+            self.target_injector_rate_m3_day
+        } else {
+            self.target_producer_rate_m3_day
+        };
+
+        let total_rate_for_bhp = |bhp_bar: f64| -> f64 {
+            wells.iter()
+                .filter_map(|well| {
+                    let id = self.idx(well.i, well.j, well.k);
+                    let pressure_bar = pressures[id];
+                    if injector {
+                        match total_surface_target {
+                            Some(_) => self.completion_surface_rate_sc_day(well, pressure_bar, bhp_bar),
+                            None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar).map(|q| (-q).max(0.0)),
+                        }
+                    } else {
+                        match total_surface_target {
+                            Some(_) => self.completion_surface_rate_sc_day(well, pressure_bar, bhp_bar),
+                            None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar),
+                        }
+                    }
+                })
+                .sum()
+        };
+
+        let target_rate = if let Some(surface_target) = total_surface_target {
+            surface_target.max(0.0)
+        } else {
+            total_reservoir_target.max(0.0)
+        };
+
+        let group_min_pressure = wells
+            .iter()
+            .map(|well| pressures[self.idx(well.i, well.j, well.k)])
+            .fold(f64::INFINITY, f64::min);
+        let group_max_pressure = wells
+            .iter()
+            .map(|well| pressures[self.idx(well.i, well.j, well.k)])
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        if !group_min_pressure.is_finite() || !group_max_pressure.is_finite() {
+            return None;
+        }
+
+        if injector {
+            let bhp_limit = self.well_bhp_max;
+            let max_achievable_rate = total_rate_for_bhp(bhp_limit);
+            if target_rate >= max_achievable_rate - 1e-9 {
+                return Some((bhp_limit, true));
+            }
+
+            let mut low = group_min_pressure.min(bhp_limit);
+            let mut high = bhp_limit;
+            for _ in 0..64 {
+                let mid = 0.5 * (low + high);
+                let rate_mid = total_rate_for_bhp(mid);
+                if rate_mid < target_rate {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            Some((0.5 * (low + high), false))
+        } else {
+            let bhp_limit = self.well_bhp_min;
+            let max_achievable_rate = total_rate_for_bhp(bhp_limit);
+            if target_rate >= max_achievable_rate - 1e-9 {
+                return Some((bhp_limit, true));
+            }
+
+            let mut low = bhp_limit;
+            let mut high = group_max_pressure.max(bhp_limit);
+            for _ in 0..64 {
+                let mid = 0.5 * (low + high);
+                let rate_mid = total_rate_for_bhp(mid);
+                if rate_mid > target_rate {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            Some((0.5 * (low + high), false))
+        }
+    }
+
+    pub(crate) fn resolve_well_control_for_pressures(
+        &self,
+        well: &Well,
+        pressures: &[f64],
+    ) -> Option<ResolvedWellControl> {
+        if well.injector && !self.injector_enabled {
+            return Some(ResolvedWellControl {
+                decision: WellControlDecision::Disabled,
+                bhp_limited: false,
+            });
+        }
+
+        let use_rate_control = if well.injector {
+            self.injector_rate_controlled
+        } else {
+            self.producer_rate_controlled
+        };
+
+        let id = self.idx(well.i, well.j, well.k);
+        let pressure_bar = pressures[id];
+
+        if use_rate_control {
+            let (group_bhp, bhp_limited) = self.solve_group_bhp_for_pressures(well.injector, pressures)?;
+            let q_target = self.completion_rate_for_bhp(well, pressure_bar, group_bhp)?;
+            return Some(ResolvedWellControl {
+                decision: if bhp_limited {
+                    WellControlDecision::Bhp { bhp_bar: group_bhp }
+                } else {
+                    WellControlDecision::Rate { q_m3_day: q_target }
+                },
+                bhp_limited,
+            });
+        }
+
+        if !well.productivity_index.is_finite()
+            || !well.bhp.is_finite()
+            || !pressure_bar.is_finite()
+        {
+            return None;
+        }
+
+        Some(ResolvedWellControl {
+            decision: WellControlDecision::Bhp { bhp_bar: well.bhp },
+            bhp_limited: false,
+        })
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn target_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
         if well.injector && !self.injector_enabled {
             return Some(0.0);
@@ -373,79 +608,30 @@ impl ReservoirSimulator {
         None
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn resolve_well_control(
         &self,
         well: &Well,
         pressure_bar: f64,
     ) -> Option<ResolvedWellControl> {
-        if well.injector && !self.injector_enabled {
-            return Some(ResolvedWellControl {
-                decision: WellControlDecision::Disabled,
-                bhp_limited: false,
-            });
-        }
-
-        let use_rate_control = if well.injector {
-            self.injector_rate_controlled
-        } else {
-            self.producer_rate_controlled
-        };
-
-        if use_rate_control {
-            let q_target = self.target_rate_m3_day(well, pressure_bar)?;
-
-            if !well.productivity_index.is_finite()
-                || !well.bhp.is_finite()
-                || !pressure_bar.is_finite()
-            {
-                return None;
-            }
-
-            if well.productivity_index <= f64::EPSILON {
-                return Some(ResolvedWellControl {
-                    decision: WellControlDecision::Rate { q_m3_day: q_target },
-                    bhp_limited: false,
-                });
-            }
-
-            // Rate target implies a dynamic BHP. If it violates limits, switch to BHP-control.
-            let implied_bhp = pressure_bar - (q_target / well.productivity_index);
-            let constrained_bhp = implied_bhp.clamp(self.well_bhp_min, self.well_bhp_max);
-
-            if (constrained_bhp - implied_bhp).abs() > 1e-9 {
-                return Some(ResolvedWellControl {
-                    decision: WellControlDecision::Bhp {
-                        bhp_bar: constrained_bhp,
-                    },
-                    bhp_limited: true,
-                });
-            }
-
-            return Some(ResolvedWellControl {
-                decision: WellControlDecision::Rate { q_m3_day: q_target },
-                bhp_limited: false,
-            });
-        }
-
-        if !well.productivity_index.is_finite()
-            || !well.bhp.is_finite()
-            || !pressure_bar.is_finite()
-        {
-            return None;
-        }
-
-        Some(ResolvedWellControl {
-            decision: WellControlDecision::Bhp { bhp_bar: well.bhp },
-            bhp_limited: false,
-        })
+        let pressures = self.group_pressures_with_override(well, pressure_bar);
+        self.resolve_well_control_for_pressures(well, &pressures)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn well_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
-        match self.resolve_well_control(well, pressure_bar)?.decision {
+        let pressures = self.group_pressures_with_override(well, pressure_bar);
+        self.well_rate_m3_day_for_pressures(well, &pressures)
+    }
+
+    pub(crate) fn well_rate_m3_day_for_pressures(&self, well: &Well, pressures: &[f64]) -> Option<f64> {
+        let id = self.idx(well.i, well.j, well.k);
+        let pressure_bar = pressures[id];
+        match self.resolve_well_control_for_pressures(well, pressures)?.decision {
             WellControlDecision::Disabled => Some(0.0),
             WellControlDecision::Rate { q_m3_day } => Some(q_m3_day),
             WellControlDecision::Bhp { bhp_bar } => {
-                let q_m3_day = well.productivity_index * (pressure_bar - bhp_bar);
+                let q_m3_day = self.completion_rate_for_bhp(well, pressure_bar, bhp_bar)?;
                 if q_m3_day.is_finite() {
                     Some(q_m3_day)
                 } else {
@@ -601,7 +787,7 @@ impl ReservoirSimulator {
                     // Well source terms
                     for w in &self.wells {
                         if w.i == i && w.j == j && w.k == k {
-                            if let Some(control) = self.resolve_well_control(w, self.pressure[id]) {
+                            if let Some(control) = self.resolve_well_control_for_pressures(w, &self.pressure) {
                                 match control.decision {
                                     WellControlDecision::Disabled => {}
                                     WellControlDecision::Rate { q_m3_day } => {
@@ -785,7 +971,7 @@ impl ReservoirSimulator {
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
 
-            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+            if let Some(q_m3_day) = self.well_rate_m3_day_for_pressures(w, p_new.as_slice()) {
                 if self.three_phase_mode {
                     // Three-phase: injection fluid depends on injectedFluid setting;
                     // producers produce at local fractional flow composition.
@@ -858,9 +1044,8 @@ impl ReservoirSimulator {
 
         let mut max_well_rate_rel_change = 0.0;
         for w in &self.wells {
-            let id = self.idx(w.i, w.j, w.k);
-            let q_old = self.well_rate_m3_day(w, self.pressure[id]).unwrap_or(0.0);
-            let q_new = self.well_rate_m3_day(w, p_new[id]).unwrap_or(0.0);
+            let q_old = self.well_rate_m3_day_for_pressures(w, &self.pressure).unwrap_or(0.0);
+            let q_new = self.well_rate_m3_day_for_pressures(w, p_new.as_slice()).unwrap_or(0.0);
 
             let rel = (q_new - q_old).abs() / (q_old.abs() + 1.0);
             if rel > max_well_rate_rel_change {
@@ -1037,7 +1222,7 @@ impl ReservoirSimulator {
 
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            if let Some(control) = self.resolve_well_control(w, p_new[id]) {
+            if let Some(control) = self.resolve_well_control_for_pressures(w, p_new.as_slice()) {
                 let group_rate_controlled = if w.injector {
                     self.injector_rate_controlled
                 } else {
@@ -1133,19 +1318,13 @@ impl ReservoirSimulator {
         // Report the absolute cumulative error
         let mb_error = self.cumulative_mb_error_m3.abs();
 
-        let mut sum_pressure = 0.0;
         let mut sum_sat_water = 0.0;
         let mut sum_sat_gas = 0.0;
         for i in 0..self.nx * self.ny * self.nz {
-            sum_pressure += self.pressure[i];
             sum_sat_water += self.sat_water[i];
             sum_sat_gas += self.sat_gas[i];
         }
-        let avg_reservoir_pressure = if n_cells > 0 {
-            sum_pressure / (n_cells as f64)
-        } else {
-            0.0
-        };
+        let avg_reservoir_pressure = self.average_reservoir_pressure_pv_weighted();
         let avg_water_saturation = if n_cells > 0 {
             sum_sat_water / (n_cells as f64)
         } else {

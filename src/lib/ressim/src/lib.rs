@@ -326,6 +326,27 @@ impl ReservoirSimulator {
         self.dz[k]
     }
 
+    /// Pore-volume-weighted average reservoir pressure [bar].
+    pub(crate) fn average_reservoir_pressure_pv_weighted(&self) -> f64 {
+        let mut weighted_pressure_sum = 0.0;
+        let mut pore_volume_sum = 0.0;
+
+        for id in 0..self.nx * self.ny * self.nz {
+            let pore_volume = self.pore_volume_m3(id);
+            if pore_volume <= 0.0 || !pore_volume.is_finite() {
+                continue;
+            }
+            weighted_pressure_sum += self.pressure[id] * pore_volume;
+            pore_volume_sum += pore_volume;
+        }
+
+        if pore_volume_sum > 0.0 {
+            weighted_pressure_sum / pore_volume_sum
+        } else {
+            0.0
+        }
+    }
+
     /// Create a new reservoir simulator with oil-field units
     /// Grid dimensions: nx, ny, nz (number of cells in each direction)
     /// All parameters use: Pressure [bar], Distance [m], Time [day], Permeability [mD], Viscosity [cP]
@@ -2232,6 +2253,42 @@ mod tests {
         assert!(q < 500.0);
     }
 
+    #[test]
+    fn multi_completion_producer_rate_control_uses_shared_bhp() {
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_rates(0.0, 100.0).unwrap();
+        sim.set_well_bhp_limits(0.0, 300.0).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.add_well(0, 0, 1, 100.0, 0.1, 0.0, false).unwrap();
+
+        let id0 = sim.idx(0, 0, 0);
+        let id1 = sim.idx(0, 0, 1);
+        sim.pressure[id0] = 200.0;
+        sim.pressure[id1] = 180.0;
+
+        let well0 = &sim.wells[0];
+        let well1 = &sim.wells[1];
+        let q0 = sim.well_rate_m3_day(well0, sim.pressure[id0]).unwrap();
+        let q1 = sim.well_rate_m3_day(well1, sim.pressure[id1]).unwrap();
+
+        let bhp0 = sim.pressure[id0] - q0 / well0.productivity_index;
+        let bhp1 = sim.pressure[id1] - q1 / well1.productivity_index;
+
+        assert!(
+            ((q0 + q1) - 100.0).abs() < 1e-6,
+            "Expected producer completions to satisfy the group target, got q0={}, q1={}",
+            q0,
+            q1
+        );
+        assert!(
+            (bhp0 - bhp1).abs() < 1e-9,
+            "Expected all producer completions to share one flowing BHP, got {} and {}",
+            bhp0,
+            bhp1
+        );
+    }
+
     // ── Three-phase tests ────────────────────────────────────────────────────
 
     #[test]
@@ -2522,7 +2579,7 @@ mod tests {
 
         let latest = sim.rate_history.last().expect("rate history should have an entry");
         assert!(
-            (latest.total_injection - 120.0).abs() < 1e-9,
+            (latest.total_injection - 120.0).abs() < 1e-6,
             "Expected gas injector surface total to match target surface rate, got {}",
             latest.total_injection
         );
@@ -2742,6 +2799,33 @@ mod tests {
             (t_z - expected).abs() / expected < 1e-9,
             "Z-transmissibility with non-uniform dz: expected {}, got {}",
             expected, t_z
+        );
+    }
+
+    #[test]
+    fn average_reservoir_pressure_is_pv_weighted() {
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.25);
+        sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![1.0, 9.0])
+            .unwrap();
+
+        let id0 = sim.idx(0, 0, 0);
+        let id1 = sim.idx(0, 0, 1);
+        sim.pressure[id0] = 100.0;
+        sim.pressure[id1] = 200.0;
+
+        let pv0 = sim.pore_volume_m3(id0);
+        let pv1 = sim.pore_volume_m3(id1);
+        let expected = (100.0 * pv0 + 200.0 * pv1) / (pv0 + pv1);
+
+        assert!(
+            (sim.average_reservoir_pressure_pv_weighted() - expected).abs() < 1e-12,
+            "Expected PV-weighted pressure {}, got {}",
+            expected,
+            sim.average_reservoir_pressure_pv_weighted()
+        );
+        assert!(
+            (sim.average_reservoir_pressure_pv_weighted() - 150.0).abs() > 1e-6,
+            "PV-weighted average should differ from arithmetic mean when pore volumes differ"
         );
     }
 }
