@@ -267,6 +267,12 @@ export class ReservoirSimulator {
     /**
      * @param {boolean} enabled
      */
+    setGasRedissolutionEnabled(enabled) {
+        wasm.reservoirsimulator_setGasRedissolutionEnabled(this.__wbg_ptr, enabled);
+    }
+    /**
+     * @param {boolean} enabled
+     */
     setGravityEnabled(enabled) {
         wasm.reservoirsimulator_setGravityEnabled(this.__wbg_ptr, enabled);
     }

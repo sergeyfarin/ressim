@@ -947,7 +947,7 @@ impl ReservoirSimulator {
                         sg_new += effective_delta;
                         so_new -= effective_delta;
                         rs_cell = rs_max;
-                    } else if rs_cell < rs_max && sg_new > 0.0 {
+                    } else if self.gas_redissolution_enabled && rs_cell < rs_max && sg_new > 0.0 {
                         // Dissolve free gas back into undersaturated oil
                         let capacity_rs = rs_max - rs_cell;
                         let v_g_free_sc = (sg_new * vp_m3) / bg_new;

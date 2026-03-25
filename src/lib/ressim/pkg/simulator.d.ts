@@ -68,6 +68,7 @@ export class ReservoirSimulator {
      * Set gas-oil capillary pressure parameters (Brooks-Corey form)
      */
     setGasOilCapillaryParams(p_entry: number, lambda: number): void;
+    setGasRedissolutionEnabled(enabled: boolean): void;
     setGravityEnabled(enabled: boolean): void;
     setInitialGasSaturation(sat_gas: number): void;
     /**
@@ -179,6 +180,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setGasFluidProperties: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setGasOilCapillaryParams: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setGasRedissolutionEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialGasSaturationPerLayer: (a: number, b: number, c: number) => [number, number];

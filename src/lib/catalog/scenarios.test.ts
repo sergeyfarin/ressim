@@ -485,6 +485,7 @@ describe('SPE1 scenario fidelity guards', () => {
         const scenario = getScenario('spe1_gas_injection');
 
         expect(scenario?.params.k_rw_max).toBe(0.00001);
+        expect(scenario?.params.gasRedissolutionEnabled).toBe(false);
         expect((scenario?.params.scalTables as { swof: unknown[]; sgof: unknown[] } | undefined)?.swof).toHaveLength(15);
         expect((scenario?.params.scalTables as { swof: unknown[]; sgof: unknown[] } | undefined)?.sgof).toHaveLength(15);
     });

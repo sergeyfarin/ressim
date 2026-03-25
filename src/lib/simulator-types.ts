@@ -61,6 +61,7 @@ export interface SimulatorCreatePayload {
   pvtMode?: 'constant' | 'black-oil';
   pvtTable?: PvtRow[];
   scalTables?: ThreePhaseScalTables;
+  gasRedissolutionEnabled?: boolean;
 
   // rock / compressibility
   rock_compressibility: number;

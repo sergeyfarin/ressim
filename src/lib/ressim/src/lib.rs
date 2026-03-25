@@ -152,6 +152,8 @@ pub struct ReservoirSimulator {
     pub(crate) pvt_table: Option<pvt::PvtTable>,
     /// Dissolved gas ratio at standard conditions [m³ gas / m³ oil] per cell
     pub(crate) rs: Vec<f64>,
+    /// Whether liberated free gas may dissolve back into oil.
+    pub(crate) gas_redissolution_enabled: bool,
 }
 
 #[wasm_bindgen]
@@ -308,6 +310,7 @@ impl ReservoirSimulator {
             rho_g: 10.0,
             pvt_table: None,
             rs,
+            gas_redissolution_enabled: true,
         }
     }
 
@@ -1090,6 +1093,11 @@ impl ReservoirSimulator {
         self.c_g = c_g;
         self.rho_g = rho_g;
         Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setGasRedissolutionEnabled)]
+    pub fn set_gas_redissolution_enabled(&mut self, enabled: bool) {
+        self.gas_redissolution_enabled = enabled;
     }
 
     /// Set injected fluid type for three-phase mode: "water" or "gas"

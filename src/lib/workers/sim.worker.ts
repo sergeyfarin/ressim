@@ -174,6 +174,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
       'setGasFluidProperties',
       payload.mu_g ?? 0.02, payload.c_g ?? 1e-4, payload.rho_g ?? 10.0,
     );
+    call3p('setGasRedissolutionEnabled', payload.gasRedissolutionEnabled !== false);
     if (payload.pcogEnabled) {
       call3p('setGasOilCapillaryParams', payload.pcogPEntry ?? 0, payload.pcogLambda ?? 2);
     }

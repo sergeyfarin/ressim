@@ -27,6 +27,7 @@ export const reservoirsimulator_setFluidDensities: (a: number, b: number, c: num
 export const reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setGasFluidProperties: (a: number, b: number, c: number, d: number) => [number, number];
 export const reservoirsimulator_setGasOilCapillaryParams: (a: number, b: number, c: number) => [number, number];
+export const reservoirsimulator_setGasRedissolutionEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setGravityEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialGasSaturationPerLayer: (a: number, b: number, c: number) => [number, number];

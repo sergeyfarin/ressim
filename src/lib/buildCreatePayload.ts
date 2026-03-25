@@ -197,5 +197,6 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
       ? state.pvtTable.map((row: any) => ({ ...row }))
       : undefined,
     scalTables: cloneScalTables(state.scalTables),
+    gasRedissolutionEnabled: state.gasRedissolutionEnabled !== false,
   }
 }

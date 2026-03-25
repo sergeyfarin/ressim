@@ -242,6 +242,7 @@ class SimulationStoreImpl {
     threePhaseModeEnabled = $state(false);
     injectedFluid = $state<'water' | 'gas'>('gas');
     initialGasSaturation = $state(0.0);
+    gasRedissolutionEnabled = $state(true);
 
     // Analytical solution
     analyticalMode: 'waterflood' | 'depletion' | 'none' = $state('depletion');
@@ -732,6 +733,7 @@ class SimulationStoreImpl {
             threePhaseModeEnabled: this.threePhaseModeEnabled,
             injectedFluid: this.injectedFluid,
             initialGasSaturation: this.initialGasSaturation,
+            gasRedissolutionEnabled: this.gasRedissolutionEnabled,
         };
     }
 
@@ -791,6 +793,7 @@ class SimulationStoreImpl {
             threePhaseModeEnabled: this.threePhaseModeEnabled,
             injectedFluid: this.injectedFluid,
             initialGasSaturation: this.initialGasSaturation,
+            gasRedissolutionEnabled: this.gasRedissolutionEnabled,
         });
     }
 
@@ -840,6 +843,8 @@ class SimulationStoreImpl {
             pcogLambda: this.pcogLambda,
             injectedFluid: this.injectedFluid,
             initialGasSaturation: this.initialGasSaturation,
+            gasRedissolutionEnabled: this.gasRedissolutionEnabled,
+            gasRedissolutionEnabled: this.gasRedissolutionEnabled,
         });
     }
 
@@ -1700,6 +1705,9 @@ class SimulationStoreImpl {
         }
         if (resolved.initialGasSaturation !== undefined) {
             this.initialGasSaturation = Number(resolved.initialGasSaturation);
+        }
+        if (resolved.gasRedissolutionEnabled !== undefined) {
+            this.gasRedissolutionEnabled = Boolean(resolved.gasRedissolutionEnabled);
         }
 
         // Sync analyticalMode from explicit params first, then legacy params, then inferred defaults.

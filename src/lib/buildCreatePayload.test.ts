@@ -110,4 +110,15 @@ describe('buildCreatePayloadFromState', () => {
     })
     expect(payload.scalTables?.swof).not.toBe(scalTables.swof)
   })
+
+  it('preserves explicit gas redissolution disable flag', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+      gasRedissolutionEnabled: false,
+    }) as SimulatorCreatePayload
+
+    expect(payload.gasRedissolutionEnabled).toBe(false)
+  })
 })

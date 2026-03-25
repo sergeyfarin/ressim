@@ -22,7 +22,7 @@ import type { ThreePhaseScalTables } from '../../simulator-types';
  * - Three-phase oil relperm still uses Stone II interpolation over the exact SWOF/SGOF inputs
  * - Surface-rate controls are converted to reservoir rates from local PVT/state each step,
  *   which is closer to the deck semantics but still not a full scheduler/well-model implementation
- * - DRSDT behavior depends on simulator's Rs update logic
+ * - Case 1 disables gas re-dissolution (`DRSDT = 0` semantics), but full schedule/deck semantics are still not implemented
  *
  * Published Eclipse reference data (Case 1, OPM-derived yearly samples) is overlaid on
  * the pressure and GOR panels for visual comparison.
@@ -210,6 +210,7 @@ export const spe1_gas_injection: Scenario = {
         injectorEnabled: true,
         injectedFluid: 'gas',
         threePhaseModeEnabled: true,
+        gasRedissolutionEnabled: false,
         // Producer at (9,9), layer 2 only (bottom layer)
         producerI: 9, producerJ: 9,
         producerKLayers: [2],

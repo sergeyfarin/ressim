@@ -38,6 +38,7 @@ export type SimulationInputs = {
     mu_g?: number;
     c_g?: number;
     threePhaseModeEnabled?: boolean;
+    gasRedissolutionEnabled?: boolean;
     uniformPermX: number;
     reservoirPorosity: number;
     minPerm: number;
