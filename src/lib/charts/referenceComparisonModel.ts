@@ -185,13 +185,34 @@ function toFiniteNumber(value: unknown, fallback: number): number {
     return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function getLayerThicknesses(params: Record<string, any>): number[] {
+    const nz = Math.max(1, Math.round(toFiniteNumber(params.nz, 1)));
+    const fallback = Math.max(1e-12, toFiniteNumber(params.cellDz, 1));
+    if (!Array.isArray(params.cellDzPerLayer) || params.cellDzPerLayer.length === 0) {
+        return Array.from({ length: nz }, () => fallback);
+    }
+
+    return Array.from({ length: nz }, (_, index) => {
+        const thickness = toFiniteNumber(params.cellDzPerLayer[index], fallback);
+        return thickness > 0 ? thickness : fallback;
+    });
+}
+
+function getTotalThickness(params: Record<string, any>): number {
+    return getLayerThicknesses(params).reduce((sum, thickness) => sum + thickness, 0);
+}
+
+function getAverageLayerThickness(params: Record<string, any>): number {
+    const layers = getLayerThicknesses(params);
+    return layers.reduce((sum, thickness) => sum + thickness, 0) / layers.length;
+}
+
 function getPoreVolume(params: Record<string, any>): number {
     return toFiniteNumber(params.nx, 1)
         * toFiniteNumber(params.ny, 1)
-        * toFiniteNumber(params.nz, 1)
         * toFiniteNumber(params.cellDx, 10)
         * toFiniteNumber(params.cellDy, 10)
-        * toFiniteNumber(params.cellDz, 1)
+        * getTotalThickness(params)
         * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
 }
 
@@ -428,8 +449,7 @@ function buildDepletionReference(
             length: toFiniteNumber(baseResult.params.nx, 1) * toFiniteNumber(baseResult.params.cellDx, 10),
             area: toFiniteNumber(baseResult.params.ny, 1)
                 * toFiniteNumber(baseResult.params.cellDy, 10)
-                * toFiniteNumber(baseResult.params.nz, 1)
-                * toFiniteNumber(baseResult.params.cellDz, 1),
+                * getTotalThickness(baseResult.params),
             porosity: toFiniteNumber(baseResult.params.reservoirPorosity ?? baseResult.params.porosity, 0.2),
         },
         timeHistory: derived.time,
@@ -442,7 +462,7 @@ function buildDepletionReference(
         layerPermsY: Array.isArray(baseResult.params.layerPermsY) ? baseResult.params.layerPermsY.map(Number) : [],
         cellDx: toFiniteNumber(baseResult.params.cellDx, 10),
         cellDy: toFiniteNumber(baseResult.params.cellDy, 10),
-        cellDz: toFiniteNumber(baseResult.params.cellDz, 1),
+        cellDz: getAverageLayerThickness(baseResult.params),
         wellRadius: toFiniteNumber(baseResult.params.well_radius, 0.1),
         wellSkin: toFiniteNumber(baseResult.params.well_skin, 0),
         muO: toFiniteNumber(baseResult.params.mu_o, 1),
@@ -548,6 +568,7 @@ function suppressPrimaryAnalyticalPanels(
         recovery: stripReferenceCurveKeys(panels.recovery, excludedCurveKeys),
         cumulative: stripReferenceCurveKeys(panels.cumulative, excludedCurveKeys),
         diagnostics: stripReferenceCurveKeys(panels.diagnostics, excludedCurveKeys),
+        gor: panels.gor,
         volumes: panels.volumes,
         oil_rate: stripReferenceCurveKeys(panels.oil_rate, excludedCurveKeys),
     };
@@ -559,6 +580,7 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         recovery: createReferenceComparisonPanel(),
         cumulative: createReferenceComparisonPanel(),
         diagnostics: createReferenceComparisonPanel(),
+        gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
         sweep_rf: null,
@@ -579,6 +601,7 @@ function combinePanelMaps(input: {
         recovery: input.primary.recovery,
         cumulative: input.primary.cumulative,
         diagnostics: input.primary.diagnostics,
+        gor: input.primary.gor,
         volumes: input.primary.volumes,
         oil_rate: input.primary.oil_rate,
         sweep_rf: input.sweep?.rf ?? null,
@@ -788,8 +811,7 @@ function computeDepletionTau(params: Record<string, any>): number | null {
                 length: toFiniteNumber(params.nx, 1) * toFiniteNumber(params.cellDx, 10),
                 area: toFiniteNumber(params.ny, 1)
                     * toFiniteNumber(params.cellDy, 10)
-                    * toFiniteNumber(params.nz, 1)
-                    * toFiniteNumber(params.cellDz, 1),
+                    * getTotalThickness(params),
                 porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
             },
             timeHistory: [1],
@@ -802,7 +824,7 @@ function computeDepletionTau(params: Record<string, any>): number | null {
             layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
             cellDx: toFiniteNumber(params.cellDx, 10),
             cellDy: toFiniteNumber(params.cellDy, 10),
-            cellDz: toFiniteNumber(params.cellDz, 1),
+            cellDz: getAverageLayerThickness(params),
             wellRadius: toFiniteNumber(params.well_radius, 0.1),
             wellSkin: toFiniteNumber(params.well_skin, 0),
             muO: toFiniteNumber(params.mu_o, 1),
@@ -1068,7 +1090,7 @@ function buildAnalyticalSweepSeries(
     const rock = extractRockProps(params);
     const fluid = extractFluidProps(params);
     const permeabilities = getLayerPermeabilities(params);
-    const thickness = toFiniteNumber(params.cellDz, 1);
+    const thickness = getAverageLayerThickness(params);
     const visibility = getSweepComponentVisibility(geometry);
     const sweep = computeCombinedSweep(rock, fluid, permeabilities, thickness, 3.0, 200, geometry, method);
     const recovery = computeSweepRecoveryFactor(rock, fluid, permeabilities, thickness, 3.0, 200, geometry, method);
@@ -1389,8 +1411,7 @@ function computeDepletionAnalyticalFromParams(
                 length: toFiniteNumber(params.nx, 1) * toFiniteNumber(params.cellDx, 10),
                 area: toFiniteNumber(params.ny, 1)
                     * toFiniteNumber(params.cellDy, 10)
-                    * toFiniteNumber(params.nz, 1)
-                    * toFiniteNumber(params.cellDz, 1),
+                    * getTotalThickness(params),
                 porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
             },
             timeHistory,
@@ -1403,7 +1424,7 @@ function computeDepletionAnalyticalFromParams(
             layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
             cellDx: toFiniteNumber(params.cellDx, 10),
             cellDy: toFiniteNumber(params.cellDy, 10),
-            cellDz: toFiniteNumber(params.cellDz, 1),
+            cellDz: getAverageLayerThickness(params),
             wellRadius: toFiniteNumber(params.well_radius, 0.1),
             wellSkin: toFiniteNumber(params.well_skin, 0),
             muO: toFiniteNumber(params.mu_o, 1),
@@ -1457,6 +1478,7 @@ function buildAnalyticalPreviewPanels(
         recovery: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
         diagnostics: { curves: [], series: [] },
+        gor: { curves: [], series: [] },
         volumes: { curves: [], series: [] },
         oil_rate: { curves: [], series: [] },
     };
@@ -1807,6 +1829,7 @@ export function buildReferenceComparisonModel(input: {
         recovery: { curves: [], series: [] },
         cumulative: { curves: [], series: [] },
         diagnostics: { curves: [], series: [] },
+        gor: { curves: [], series: [] },
         volumes: { curves: [], series: [] },
         oil_rate: { curves: [], series: [] },
     };
@@ -2046,15 +2069,17 @@ export function buildReferenceComparisonModel(input: {
                 derived.p_z,
             );
             appendSeries(
-                panels.diagnostics,
+                panels.gor,
                 {
                     label: `${result.label} GOR`,
                     curveKey: 'gor-sim',
                     caseKey: result.key,
-                    toggleLabel: 'GOR',
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
                     color,
-                    borderWidth: 1.6,
-                    borderDash: [4, 3],
+                    borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
                     defaultVisible: false,
                 },
@@ -2156,14 +2181,16 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.p_z);
-            appendSeries(panels.diagnostics, {
+            appendSeries(panels.gor, {
                 label: `${result.label} GOR`,
                 curveKey: 'gor-sim',
                 caseKey: result.key,
-                toggleLabel: 'GOR',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
                 color,
-                borderWidth: 1.6,
-                borderDash: [4, 3],
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
                 defaultVisible: false,
             }, xValues, derived.gor);
@@ -2260,15 +2287,17 @@ export function buildReferenceComparisonModel(input: {
             derived.p_z,
         );
         appendSeries(
-            panels.diagnostics,
+            panels.gor,
             {
                 label: `${result.label} GOR`,
                 curveKey: 'gor-sim',
                 caseKey: result.key,
-                toggleLabel: 'GOR',
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
                 color,
-                borderWidth: 1.6,
-                borderDash: [4, 3],
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
                 defaultVisible: false,
             },
@@ -2893,12 +2922,12 @@ export function buildReferenceComparisonModel(input: {
                 toggleGroupKey: 'published-reference',
                 toggleLabel: 'Published reference',
                 legendSection: 'published',
-                legendSectionLabel: 'Published (markers):',
+                legendSectionLabel: 'Published reference (dashed lines):',
                 color: publishedColor,
                 borderWidth: 1.5,
                 borderDash: [4, 4],
                 yAxisID: series.yAxisID ?? 'y',
-                pointRadius: 4,
+                pointRadius: 0,
             }, xVals, yVals);
         }
     }

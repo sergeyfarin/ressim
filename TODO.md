@@ -12,6 +12,17 @@
 - [x] Extend Buckley-Leverett analytical chart wiring so cumulative-oil preview curves and completed-run oil-rate references use the same analytical source.
 - [x] Fix Buckley-Leverett preview recovery normalization so nonzero `initialSaturation` uses OOIP rather than unit pore volume.
 - [ ] Add black-oil comparative-solution validation (`SPE1` / `SPE3` style coverage, or the closest practical subset) and document the acceptance policy.
+  - Review findings to preserve during follow-up work:
+    - Scalar-`cellDz` leakage remains in benchmark/chart normalization paths; `cellDzPerLayer` reaches the simulator core, but PV/OOIP and related review metrics still used the fallback scalar thickness in parts of the UI model.
+    - SPE1 chart wiring violated the chart contract by mixing pressure and GOR in one panel and by styling simulation GOR as dashed instead of solid.
+    - Hard-coded SPE1 published-reference curves are not yet auditable enough; the repo still needs raw-source provenance, variable mapping, unit conversions, and case-variant confirmation.
+    - Per-layer completions currently mean repeated single-cell wells with shared controls, which is sufficient for current one-layer SPE1 wells but is not a general multi-completion-well model.
+    - Validation and regression coverage for `cellDzPerLayer`, per-layer completions, and SPE1 reference-panel wiring remain incomplete above the Rust-core unit-test level.
+  - Recommended implementation order:
+    - Fix thickness normalization in benchmark/chart models first so SPE1 recovery/PV review uses the actual layered geometry.
+    - Refactor SPE1 panels next so each quantity gets its own plot and reference curves use dashed styling consistently.
+    - Reconstruct and check in auditable SPE1 reference provenance before tuning against the comparison curves.
+    - Add focused regression tests for `cellDzPerLayer`, published-reference panel placement, and per-layer completion payload wiring.
   - [x] Per-layer cell thickness (dz) — Rust solver accepts `Vec<f64>` per layer instead of scalar.
   - [x] Per-layer initial gas saturation — Rust `setInitialGasSaturationPerLayer`.
   - [x] Worker wiring — TypeScript payload supports `cellDzPerLayer`, `initialSaturationPerLayer`, `initialGasSaturationPerLayer`.
@@ -19,6 +30,11 @@
   - [x] SPE1 scenario definition with published PVT, SCAL (Corey approximation), grid, and well data.
   - [x] Published reference data overlay — `publishedReferenceSeries` on Scenario type, wired through chart model with scatter markers.
   - [x] SPE1 chart layout (`spe1`) with pressure, GOR, oil rate, gas cut panels.
+  - [x] Fix benchmark/chart thickness normalization so `cellDzPerLayer` drives PV/OOIP-based review metrics instead of falling back to scalar `cellDz`.
+  - [x] Rework SPE1 chart layout to follow the chart convention: one quantity per panel, solid lines for simulation, dashed lines for reference, no mixed pressure/GOR panel.
+  - [ ] Re-verify the SPE1 comparison source and metric mapping (Case 1 vs Case 2, average pressure vs field pressure, producing GOR vs summary-variable equivalent, units, and sampling cadence).
+  - [ ] Add regression tests for SPE1 scenario wiring, published-reference panel placement, and the `cellDzPerLayer` / per-layer completion payload path.
+    - Current coverage now includes `cellDzPerLayer` normalization and the dedicated SPE1 GOR panel/style contract; completion-payload coverage is still missing.
   - [ ] Tune SPE1 rate targets and validate against Eclipse reference (qualitative match expected; exact match requires tabular SCAL).
   - [ ] Add tabular SCAL support to Rust solver (currently Corey-only, SPE1 tables are approximated).
 - [ ] Define the exit criteria for three-phase `experimental` status and add acceptance tests for gas injection and gas-drive scenarios.

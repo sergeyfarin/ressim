@@ -8,13 +8,23 @@ import {
     resolveBenchmarkReferenceComparisons,
 } from './benchmarkRunModel';
 
+function getTotalThickness(params: Record<string, any>) {
+    if (Array.isArray(params.cellDzPerLayer) && params.cellDzPerLayer.length > 0) {
+        return params.cellDzPerLayer.map(Number).reduce((sum: number, thickness: number) => sum + thickness, 0);
+    }
+    return Number(params.nz) * Number(params.cellDz);
+}
+
+function getAverageLayerThickness(params: Record<string, any>) {
+    return getTotalThickness(params) / Number(params.nz);
+}
+
 function buildSyntheticRateHistory(params: Record<string, any>, breakthroughPvi: number, watercut = 0.01) {
     const poreVolume = Number(params.nx)
         * Number(params.ny)
-        * Number(params.nz)
         * Number(params.cellDx)
         * Number(params.cellDy)
-        * Number(params.cellDz)
+        * getTotalThickness(params)
         * Number(params.reservoirPorosity ?? 0.2);
 
     return [
@@ -33,7 +43,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
     const reference = calculateDepletionAnalyticalProduction({
         reservoir: {
             length: Number(params.nx) * Number(params.cellDx),
-            area: Number(params.ny) * Number(params.cellDy) * Number(params.nz) * Number(params.cellDz),
+            area: Number(params.ny) * Number(params.cellDy) * getTotalThickness(params),
             porosity: Number(params.reservoirPorosity ?? 0.2),
         },
         timeHistory,
@@ -46,7 +56,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
         layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
         cellDx: Number(params.cellDx),
         cellDy: Number(params.cellDy),
-        cellDz: Number(params.cellDz),
+        cellDz: getAverageLayerThickness(params),
         wellRadius: Number(params.well_radius ?? 0.1),
         wellSkin: Number(params.well_skin ?? 0),
         muO: Number(params.mu_o ?? 1),
@@ -207,5 +217,41 @@ describe('benchmarkRunModel', () => {
         expect(result.rateHistory[0]?.time).toBe(1);
         expect(result.rateHistory[0]?.total_production_oil).not.toBe(0);
         expect(result.params.mu_o).not.toBe(999);
+    });
+
+    it('uses per-layer dz when computing pore-volume-based benchmark series', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const spec = {
+            ...baseSpec,
+            params: {
+                ...baseSpec.params,
+                nx: 1,
+                ny: 1,
+                nz: 3,
+                cellDx: 10,
+                cellDy: 10,
+                cellDz: 1,
+                cellDzPerLayer: [1, 2, 3],
+                reservoirPorosity: 0.2,
+                initialSaturation: 0.25,
+            },
+        };
+
+        const poreVolume = 1 * 1 * 10 * 10 * 6 * 0.2;
+        const oilRate = 18;
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [{
+                time: 1,
+                total_injection: poreVolume,
+                total_production_liquid: oilRate,
+                total_production_oil: oilRate,
+                avg_reservoir_pressure: 250,
+            }],
+        });
+
+        expect(result.pviSeries[0]).toBeCloseTo(1, 10);
+        expect(result.recoverySeries[0]).toBeCloseTo(oilRate / (poreVolume * (1 - 0.25)), 10);
     });
 });

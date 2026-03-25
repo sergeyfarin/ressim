@@ -888,6 +888,18 @@
             _auto: true,
         },
     };
+    const gorScales = {
+        y: {
+            type: "linear",
+            display: true,
+            position: "left",
+            min: 0,
+            alignToPixels: true,
+            title: { display: true, text: "GOR (Sm³/Sm³)" },
+            ticks: { count: 6 },
+            _auto: true,
+        },
+    };
     const diagnosticsScales = {
         y: {
             type: "linear",
@@ -963,6 +975,7 @@
         if (scalePreset === "sweep_rf") return sweepRFScaleConfig;
         if (scalePreset === "breakthrough") return breakthroughScales;
         if (scalePreset === "pressure") return pressureScales;
+        if (scalePreset === "gor") return gorScales;
         if (scalePreset === "cumulative") return cumulativeScales;
         if (scalePreset === "cumulative_volumes") return cumulativeVolumesScales;
         if (scalePreset === "recovery") return recoveryScales;
@@ -1017,6 +1030,13 @@
             curveLabels: baseDiagnosticsCurves.map((curve) => curve.label),
             scalePreset: "diagnostics",
             visible: true,
+            expanded: false,
+        },
+        gor: {
+            title: "GOR",
+            curveKeys: ["gor-sim", "published-gor"],
+            scalePreset: "gor",
+            visible: false,
             expanded: false,
         },
         volumes: {
@@ -1351,6 +1371,7 @@
         recovery: curveRegistry,
         cumulative: curveRegistry,
         diagnostics: curveRegistry,
+        gor: curveRegistry,
         volumes: curveRegistry,
         oil_rate: curveRegistry,
         sweep_rf: sweepPanels ? toPanelEntries(sweepPanels.rfCurves, sweepPanels.rfSeries) : [],

@@ -194,13 +194,34 @@ function toFiniteNumber(value: unknown, fallback: number): number {
     return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function getLayerThicknesses(params: Record<string, any>): number[] {
+    const nz = Math.max(1, Math.round(toFiniteNumber(params.nz, 1)));
+    const fallback = Math.max(1e-12, toFiniteNumber(params.cellDz, 1));
+    if (!Array.isArray(params.cellDzPerLayer) || params.cellDzPerLayer.length === 0) {
+        return Array.from({ length: nz }, () => fallback);
+    }
+
+    return Array.from({ length: nz }, (_, index) => {
+        const thickness = toFiniteNumber(params.cellDzPerLayer[index], fallback);
+        return thickness > 0 ? thickness : fallback;
+    });
+}
+
+function getTotalThickness(params: Record<string, any>): number {
+    return getLayerThicknesses(params).reduce((sum, thickness) => sum + thickness, 0);
+}
+
+function getAverageLayerThickness(params: Record<string, any>): number {
+    const layers = getLayerThicknesses(params);
+    return layers.reduce((sum, thickness) => sum + thickness, 0) / layers.length;
+}
+
 function getPoreVolume(params: Record<string, any>): number {
     return toFiniteNumber(params.nx, 1)
         * toFiniteNumber(params.ny, 1)
-        * toFiniteNumber(params.nz, 1)
         * toFiniteNumber(params.cellDx, 10)
         * toFiniteNumber(params.cellDy, 10)
-        * toFiniteNumber(params.cellDz, 1)
+        * getTotalThickness(params)
         * toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2);
 }
 
@@ -416,8 +437,7 @@ function buildDepletionAnalyticalDiagnostics(input: {
             length: toFiniteNumber(spec.params.nx, 1) * toFiniteNumber(spec.params.cellDx, 10),
             area: toFiniteNumber(spec.params.ny, 1)
                 * toFiniteNumber(spec.params.cellDy, 10)
-                * toFiniteNumber(spec.params.nz, 1)
-                * toFiniteNumber(spec.params.cellDz, 1),
+                * getTotalThickness(spec.params),
             porosity: toFiniteNumber(spec.params.reservoirPorosity ?? spec.params.porosity, 0.2),
         },
         timeHistory: rateHistory.map((point) => toFiniteNumber(point.time, 0)),
@@ -430,7 +450,7 @@ function buildDepletionAnalyticalDiagnostics(input: {
         layerPermsY: Array.isArray(spec.params.layerPermsY) ? spec.params.layerPermsY.map(Number) : [],
         cellDx: toFiniteNumber(spec.params.cellDx, 10),
         cellDy: toFiniteNumber(spec.params.cellDy, 10),
-        cellDz: toFiniteNumber(spec.params.cellDz, 1),
+        cellDz: getAverageLayerThickness(spec.params),
         wellRadius: toFiniteNumber(spec.params.well_radius, 0.1),
         wellSkin: toFiniteNumber(spec.params.well_skin, 0),
         muO: toFiniteNumber(spec.params.mu_o, 1),

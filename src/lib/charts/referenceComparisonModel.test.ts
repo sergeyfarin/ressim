@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
 import { calculateAnalyticalProduction, computeWelgeMetrics } from '../analytical/fractionalFlow';
+import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from '../catalog/caseCatalog';
+import { getScenario, getScenarioChartLayout } from '../catalog/scenarios';
 import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
+import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
 import { buildReferenceComparisonModel } from './referenceComparisonModel';
+
+function getTotalThickness(params: Record<string, any>) {
+    if (Array.isArray(params.cellDzPerLayer) && params.cellDzPerLayer.length > 0) {
+        return params.cellDzPerLayer.map(Number).reduce((sum: number, thickness: number) => sum + thickness, 0);
+    }
+    return Number(params.nz) * Number(params.cellDz);
+}
 
 function getSweepPanel(
     model: ReturnType<typeof buildReferenceComparisonModel>,
@@ -28,10 +38,9 @@ function buildSyntheticGasOilRateHistory(
 ) {
     const poreVolume = Number(params.nx)
         * Number(params.ny)
-        * Number(params.nz)
         * Number(params.cellDx)
         * Number(params.cellDy)
-        * Number(params.cellDz)
+        * getTotalThickness(params)
         * Number(params.reservoirPorosity ?? 0.2);
 
     const firstInjection = 0.4 * breakthroughPvi * poreVolume;
@@ -83,10 +92,9 @@ function buildSyntheticWaterfloodRateHistory(
 ) {
     const poreVolume = Number(params.nx)
         * Number(params.ny)
-        * Number(params.nz)
         * Number(params.cellDx)
         * Number(params.cellDy)
-        * Number(params.cellDz)
+        * getTotalThickness(params)
         * Number(params.reservoirPorosity ?? 0.2);
 
     const firstInjection = 0.4 * breakthroughPvi * poreVolume;
@@ -126,7 +134,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
     const reference = calculateDepletionAnalyticalProduction({
         reservoir: {
             length: Number(params.nx) * Number(params.cellDx),
-            area: Number(params.ny) * Number(params.cellDy) * Number(params.nz) * Number(params.cellDz),
+            area: Number(params.ny) * Number(params.cellDy) * getTotalThickness(params),
             porosity: Number(params.reservoirPorosity ?? 0.2),
         },
         timeHistory,
@@ -139,7 +147,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
         layerPermsY: Array.isArray(params.layerPermsY) ? params.layerPermsY.map(Number) : [],
         cellDx: Number(params.cellDx),
         cellDy: Number(params.cellDy),
-        cellDz: Number(params.cellDz),
+        cellDz: getTotalThickness(params) / Number(params.nz),
         wellRadius: Number(params.well_radius ?? 0.1),
         wellSkin: Number(params.well_skin ?? 0),
         muO: Number(params.mu_o ?? 1),
@@ -306,6 +314,106 @@ describe('referenceComparisonModel', () => {
                 `${gridVariantResult.label} Avg Pressure`,
             ]),
         );
+    });
+
+    it('uses per-layer dz when reconstructing cumulative oil from recovery series', () => {
+        const family = getBenchmarkFamily('bl_case_a_refined');
+        const [baseSpec] = buildBenchmarkRunSpecs(family!);
+        const spec = {
+            ...baseSpec,
+            params: {
+                ...baseSpec.params,
+                nx: 1,
+                ny: 1,
+                nz: 3,
+                cellDx: 10,
+                cellDy: 10,
+                cellDz: 1,
+                cellDzPerLayer: [1, 2, 3],
+                reservoirPorosity: 0.2,
+                initialSaturation: 0.25,
+            },
+        };
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [{
+                time: 1,
+                total_injection: 120,
+                total_production_liquid: 18,
+                total_production_oil: 18,
+                avg_reservoir_pressure: 250,
+            }],
+        });
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.cumulative.series[0]?.[0]?.y).toBeCloseTo(18, 10);
+    });
+
+    it('builds a dedicated SPE1 GOR panel in the scenario layout', () => {
+        const scenario = getScenario('spe1_gas_injection');
+        const layout = getScenarioChartLayout(scenario!);
+
+        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
+        expect(layout.rateChart?.panels?.diagnostics).toMatchObject({
+            title: 'Average Pressure',
+            curveKeys: ['avg-pressure-sim', 'published-pressure'],
+        });
+        expect(layout.rateChart?.panels?.gor).toMatchObject({
+            title: 'GOR',
+            curveKeys: ['gor-sim', 'published-gor'],
+            scalePreset: 'gor',
+        });
+    });
+
+    it('renders published GOR as dashed reference and simulation GOR as solid', () => {
+        const scenario = getScenario('gas_injection')!;
+        const family = {
+            key: 'gas_injection_test',
+            analyticalMethod: 'gas-oil-bl',
+            showSweepPanel: false,
+            publishedReferenceSeries: [
+                {
+                    panelKey: 'gor',
+                    label: 'Published GOR',
+                    curveKey: 'published-gor',
+                    data: [{ x: 0, y: 200 }],
+                },
+            ],
+        } as unknown as BenchmarkFamily;
+        const spec = {
+            key: 'gas_injection_test',
+            caseKey: 'gas_injection_test',
+            familyKey: 'gas_injection_test',
+            analyticalMethod: 'gas-oil-bl',
+            variantKey: null,
+            variantLabel: null,
+            label: 'Gas Injection Test',
+            description: 'Synthetic gas-injection benchmark test case',
+            params: { ...scenario.params },
+            steps: Number(scenario.params.steps ?? 120),
+            deltaTDays: Number(scenario.params.delta_t_days ?? 5),
+            historyInterval: 1,
+            reference: { kind: 'analytical', source: 'test' },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Synthetic published-reference overlay check',
+        } as BenchmarkRunSpec;
+        const result = buildGasOilRunResult(spec);
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'gor-sim')?.borderDash).toBeUndefined();
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.borderDash).toEqual([4, 4]);
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.pointRadius).toBe(0);
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {

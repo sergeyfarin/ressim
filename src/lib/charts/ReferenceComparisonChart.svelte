@@ -381,6 +381,13 @@
             visible: true,
             expanded: false,
         },
+        gor: {
+            title: 'GOR',
+            curveKeys: ['gor-sim', 'published-gor'],
+            scalePreset: 'gor',
+            visible: false,
+            expanded: false,
+        },
         volumes: {
             title: 'Cum Injection',
             curveKeys: ['cum-injection'],

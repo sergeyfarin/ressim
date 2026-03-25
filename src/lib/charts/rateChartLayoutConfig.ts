@@ -8,7 +8,7 @@ export type RateChartXAxisMode =
     | 'cumInjection'
     | 'cumGas';
 
-export type RateChartPrimaryPanelId = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'volumes' | 'oil_rate';
+export type RateChartPrimaryPanelId = 'rates' | 'recovery' | 'cumulative' | 'diagnostics' | 'gor' | 'volumes' | 'oil_rate';
 
 export type RateChartSweepPanelId =
     | 'sweep_rf'
@@ -27,6 +27,7 @@ export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
     'recovery',
     'cumulative',
     'diagnostics',
+    'gor',
     'volumes',
     'oil_rate',
     'sweep_rf',
@@ -36,7 +37,7 @@ export const DEFAULT_RATE_CHART_PANEL_ORDER: RateChartPanelId[] = [
     'sweep_combined_mobile_oil',
 ];
 
-export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'recovery' | 'sweep' | 'sweep_rf';
+export type RateChartScalePreset = 'rates' | 'cumulative' | 'cumulative_volumes' | 'diagnostics' | 'breakthrough' | 'pressure' | 'gor' | 'recovery' | 'sweep' | 'sweep_rf';
 
 export type RateChartXAxisRangePolicy =
     | { mode: 'data-extent' }

@@ -255,12 +255,19 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['diagnostics', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
+            panelOrder: ['diagnostics', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
             panels: {
                 diagnostics: {
-                    title: 'Average Pressure & GOR',
-                    curveKeys: ['avg-pressure-sim', 'published-pressure', 'gor-sim', 'published-gor'],
+                    title: 'Average Pressure',
+                    curveKeys: ['avg-pressure-sim', 'published-pressure'],
                     scalePreset: 'pressure',
+                    expanded: true,
+                },
+                gor: {
+                    title: 'GOR',
+                    curveKeys: ['gor-sim', 'published-gor'],
+                    scalePreset: 'gor',
+                    visible: true,
                     expanded: true,
                 },
                 oil_rate: {
