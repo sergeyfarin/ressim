@@ -483,14 +483,22 @@ impl ReservoirSimulator {
                     let vp_m3 = self.pore_volume_m3(i);
 
                     // Per-cell total compressibility [1/bar]
-                    // c_t = (c_o * S_o + c_w * S_w [+ c_g * S_g]) + c_r
+                    // Black-oil IMPES (Aziz & Settari Eq. 7.60):
+                    //   c_t = c_rock + So·c_o_eff + Sw·c_w + Sg·c_g
+                    // where c_o_eff = -(1/Bo)dBo/dp + (Bg/Bo)dRs/dp
+                    // includes the dissolved-gas liberation compressibility.
                     let sg_id = self.sat_gas[id];
                     let so_id = if self.three_phase_mode {
                         (1.0 - self.sat_water[id] - sg_id).max(0.0)
                     } else {
                         self.sat_oil[id]
                     };
-                    let c_t = (self.get_c_o(self.pressure[id]) * so_id
+                    let c_o_term = if self.three_phase_mode {
+                        self.get_c_o_effective(self.pressure[id])
+                    } else {
+                        self.get_c_o(self.pressure[id])
+                    };
+                    let c_t = (c_o_term * so_id
                         + self.pvt.c_w * self.sat_water[id]
                         + if self.three_phase_mode { self.get_c_g(self.pressure[id]) * sg_id } else { 0.0 })
                         + self.rock_compressibility;

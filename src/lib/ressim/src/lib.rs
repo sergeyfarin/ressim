@@ -202,9 +202,53 @@ impl ReservoirSimulator {
             self.c_g
         }
     }
+    /// Effective oil compressibility for IMPES accumulation [1/bar].
+    ///
+    /// For black-oil with dissolved gas (Aziz & Settari, Eq. 7.60):
+    ///   c_o_eff = -(1/Bo) dBo/dp  +  (Bg/Bo) dRs/dp
+    ///
+    /// Below bubble point the dissolved-gas term dominates (Bo rises with p
+    /// while gas dissolves), giving a much higher effective compressibility
+    /// than the oil phase alone.  Above bubble point dRs/dp → 0 and the
+    /// formula reduces to standard undersaturated oil compressibility.
+    pub(crate) fn get_c_o_effective(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let dp = 1.0; // 1 bar finite-difference step
+            let p_lo = (p - dp).max(0.0);
+            let row_lo = table.interpolate(p_lo);
+            let row_hi = table.interpolate(p + dp);
+            let row_mid = table.interpolate(p);
+
+            let bo = row_mid.bo_m3m3;
+            let bg = row_mid.bg_m3m3;
+            if bo > 1e-12 {
+                // Standard oil compressibility: -(1/Bo) dBo/dp
+                let dbo_dp = (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp);
+                let c_o = -dbo_dp / bo;
+
+                // Dissolved gas contribution: (Bg/Bo) dRs/dp
+                let drs_dp = (row_hi.rs_m3m3 - row_lo.rs_m3m3) / (2.0 * dp);
+                let c_dg = if bg > 0.0 { (bg / bo) * drs_dp } else { 0.0 };
+
+                let c_eff = c_o + c_dg;
+                if c_eff.is_finite() && c_eff > 0.0 {
+                    return c_eff;
+                }
+            }
+            // Fallback: undersaturated constant
+            self.pvt.c_o
+        } else {
+            self.pvt.c_o
+        }
+    }
+
+    /// Oil density at reservoir conditions [kg/m³].
+    ///
+    /// Accounts for dissolved gas mass:  ρ_o(p) = (ρ_o_sc + Rs(p)·ρ_g_sc) / Bo(p)
     pub(crate) fn get_rho_o(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
-            self.pvt.rho_o / table.interpolate(p).bo_m3m3
+            let row = table.interpolate(p);
+            (self.pvt.rho_o + row.rs_m3m3 * self.rho_g) / row.bo_m3m3
         } else {
             self.pvt.rho_o
         }
@@ -1225,6 +1269,49 @@ mod tests {
         assert!(c_o_above_bubble_point.is_finite());
         assert_eq!(c_o_below_bubble_point, sim.pvt.c_o);
         assert!(c_o_above_bubble_point >= sim.pvt.c_o);
+    }
+
+    #[test]
+    fn effective_oil_compressibility_includes_dissolved_gas_below_bubble_point() {
+        // Below bubble point, Bo increases with pressure and Rs increases with pressure.
+        // The dissolved gas term (Bg/Bo)·dRs/dp should dominate, giving c_o_eff >> c_o_base.
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.pvt.c_o = 1e-5;
+        sim.rho_g = 0.9; // surface gas density for density test
+        sim.pvt_table = Some(pvt::PvtTable::new(
+            vec![
+                pvt::PvtRow { p_bar: 100.0, rs_m3m3:  5.0, bo_m3m3: 1.05,  mu_o_cp: 1.5, bg_m3m3: 0.01,  mu_g_cp: 0.02 },
+                pvt::PvtRow { p_bar: 150.0, rs_m3m3: 15.0, bo_m3m3: 1.12,  mu_o_cp: 1.2, bg_m3m3: 0.006, mu_g_cp: 0.025 },
+                pvt::PvtRow { p_bar: 200.0, rs_m3m3: 15.0, bo_m3m3: 1.119, mu_o_cp: 1.3, bg_m3m3: 0.0045, mu_g_cp: 0.03 },
+            ],
+            sim.pvt.c_o,
+        ));
+
+        // Below bubble point (125 bar): Bo is rising, Rs is rising → dissolved gas term active
+        let c_eff_below = sim.get_c_o_effective(125.0);
+        let c_o_below = sim.get_c_o(125.0);
+        assert!(c_eff_below.is_finite());
+        assert!(c_eff_below > 0.0);
+        // Effective compressibility should be much larger than fallback c_o due to dissolved gas
+        assert!(c_eff_below > c_o_below, "c_o_effective ({c_eff_below}) must exceed c_o ({c_o_below}) below bubble point");
+
+        // Above bubble point (175 bar): Rs is constant → dissolved gas term ≈ 0
+        let c_eff_above = sim.get_c_o_effective(175.0);
+        let c_o_above = sim.get_c_o(175.0);
+        assert!(c_eff_above.is_finite());
+        assert!(c_eff_above > 0.0);
+        // Above bubble point, effective ≈ standard (both come from Bo decline with p)
+        assert!((c_eff_above - c_o_above).abs() / c_o_above < 0.5,
+            "c_o_effective ({c_eff_above}) should be close to c_o ({c_o_above}) above bubble point");
+
+        // Density should include dissolved gas mass: ρ = (ρ_o_sc + Rs·ρ_g_sc) / Bo
+        let rho = sim.get_rho_o(125.0);
+        let row = sim.pvt_table.as_ref().unwrap().interpolate(125.0);
+        let expected = (sim.pvt.rho_o + row.rs_m3m3 * sim.rho_g) / row.bo_m3m3;
+        assert!((rho - expected).abs() < 1e-6, "ρ_o ({rho}) should include dissolved gas ({expected})");
+        // With dissolved gas, density must exceed simple ρ_o_sc / Bo
+        let rho_simple = sim.pvt.rho_o / row.bo_m3m3;
+        assert!(rho > rho_simple, "ρ_o with Rs ({rho}) must exceed dead-oil density ({rho_simple})");
     }
 
     #[test]

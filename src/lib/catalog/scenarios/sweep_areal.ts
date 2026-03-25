@@ -129,12 +129,12 @@ export const sweep_areal: Scenario = {
                 },
                 {
                     key: 'areal_mild_random',
-                    label: 'Mild random  (seeded)',
+                    label: 'Mild random  (50-500 mD)',
                     description: 'Moderate within-layer permeability variation — mild channelling and pattern distortion.',
                     paramPatch: {
                         permMode: 'random',
-                        minPerm: 120,
-                        maxPerm: 280,
+                        minPerm: 50,
+                        maxPerm: 500,
                         useRandomSeed: true,
                         randomSeed: 4201,
                     },
@@ -142,12 +142,12 @@ export const sweep_areal: Scenario = {
                 },
                 {
                     key: 'areal_strong_random',
-                    label: 'Strong random  (seeded)',
+                    label: 'Strong random  (1-1000 mD)',
                     description: 'Strong within-layer variation — pronounced areal bypassing and early preferential flow paths.',
                     paramPatch: {
                         permMode: 'random',
-                        minPerm: 40,
-                        maxPerm: 500,
+                        minPerm: 1,
+                        maxPerm: 1000,
                         useRandomSeed: true,
                         randomSeed: 4202,
                     },
