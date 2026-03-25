@@ -160,8 +160,21 @@ pub struct ReservoirSimulator {
 #[wasm_bindgen]
 impl ReservoirSimulator {
 
+    /// Oil viscosity [cP].  Uses undersaturated correction when cell Rs is tracked.
     pub(crate) fn get_mu_o(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table { table.interpolate(p).mu_o_cp } else { self.pvt.mu_o }
+    }
+    /// Oil viscosity accounting for undersaturation at the given cell.
+    pub(crate) fn get_mu_o_cell(&self, id: usize, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (_, mu) = table.interpolate_oil(p, self.rs[id]);
+                return mu;
+            }
+            table.interpolate(p).mu_o_cp
+        } else {
+            self.pvt.mu_o
+        }
     }
     pub(crate) fn get_mu_w(&self, _p: f64) -> f64 {
         self.pvt.mu_w // Water viscosity is constant for now
@@ -207,12 +220,19 @@ impl ReservoirSimulator {
     /// For black-oil with dissolved gas (Aziz & Settari, Eq. 7.60):
     ///   c_o_eff = -(1/Bo) dBo/dp  +  (Bg/Bo) dRs/dp
     ///
-    /// Below bubble point the dissolved-gas term dominates (Bo rises with p
-    /// while gas dissolves), giving a much higher effective compressibility
-    /// than the oil phase alone.  Above bubble point dRs/dp → 0 and the
-    /// formula reduces to standard undersaturated oil compressibility.
-    pub(crate) fn get_c_o_effective(&self, p: f64) -> f64 {
+    /// The dissolved-gas term is only active when the oil is *saturated*
+    /// (cell Rs ≈ Rs_sat at the current pressure).  When the oil is
+    /// undersaturated (Rs < Rs_sat), dRs/dp = 0 and we use the constant
+    /// undersaturated compressibility c_o.
+    pub(crate) fn get_c_o_effective(&self, p: f64, rs_cell: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
+            // Check if the cell is undersaturated
+            let rs_sat = table.interpolate(p).rs_m3m3;
+            if rs_cell < rs_sat - 1e-6 {
+                // Undersaturated: no gas liberation, standard c_o only
+                return self.pvt.c_o;
+            }
+
             let dp = 1.0; // 1 bar finite-difference step
             let p_lo = (p - dp).max(0.0);
             let row_lo = table.interpolate(p_lo);
@@ -242,7 +262,35 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Oil formation volume factor accounting for undersaturation at the given cell.
+    pub(crate) fn get_b_o_cell(&self, id: usize, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (bo, _) = table.interpolate_oil(p, self.rs[id]);
+                return bo;
+            }
+            table.interpolate(p).bo_m3m3
+        } else {
+            self.b_o
+        }
+    }
+
     /// Oil density at reservoir conditions [kg/m³].
+    ///
+    /// Uses the cell's actual Rs (not the saturated-curve Rs) so that
+    /// undersaturated oil gets the correct density:
+    ///   ρ_o(p, Rs) = (ρ_o_sc + Rs·ρ_g_sc) / Bo(p, Rs)
+    pub(crate) fn get_rho_o_cell(&self, id: usize, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let rs = self.rs[id];
+            let (bo, _) = table.interpolate_oil(p, rs);
+            (self.pvt.rho_o + rs * self.rho_g) / bo
+        } else {
+            self.pvt.rho_o
+        }
+    }
+
+    /// Oil density at reservoir conditions [kg/m³] (pressure-only variant).
     ///
     /// Accounts for dissolved gas mass:  ρ_o(p) = (ρ_o_sc + Rs(p)·ρ_g_sc) / Bo(p)
     pub(crate) fn get_rho_o(&self, p: f64) -> f64 {
@@ -262,14 +310,6 @@ impl ReservoirSimulator {
     }
     pub(crate) fn get_rho_w(&self, _p: f64) -> f64 {
         self.pvt.rho_w
-    }
-
-    pub(crate) fn get_b_o(&self, p: f64) -> f64 {
-        if let Some(table) = &self.pvt_table {
-            table.interpolate(p).bo_m3m3
-        } else {
-            self.b_o // constant fallback
-        }
     }
 
     pub(crate) fn get_b_g(&self, p: f64) -> f64 {
@@ -981,6 +1021,18 @@ impl ReservoirSimulator {
         Ok(())
     }
 
+    /// Override the dissolved-gas ratio for all cells with a uniform value.
+    /// Must be called **after** `setPvtTable` so the Rs array already exists.
+    /// This is used when the reservoir starts undersaturated (Rs < Rs_sat at initial P),
+    /// e.g. SPE1 Case 1 whose RSVD table specifies a constant Rs below saturation.
+    #[wasm_bindgen(js_name = setInitialRs)]
+    pub fn set_initial_rs(&mut self, rs: f64) {
+        let n = self.nx * self.ny * self.nz;
+        for i in 0..n {
+            self.rs[i] = rs;
+        }
+    }
+
     #[wasm_bindgen(js_name = setInitialGasSaturation)]
     pub fn set_initial_gas_saturation(&mut self, sat_gas: f64) {
         let n = self.nx * self.ny * self.nz;
@@ -1288,7 +1340,9 @@ mod tests {
         ));
 
         // Below bubble point (125 bar): Bo is rising, Rs is rising → dissolved gas term active
-        let c_eff_below = sim.get_c_o_effective(125.0);
+        // Pass saturated Rs so the cell is recognized as saturated (gas liberation active)
+        let rs_sat_125 = sim.pvt_table.as_ref().unwrap().interpolate(125.0).rs_m3m3;
+        let c_eff_below = sim.get_c_o_effective(125.0, rs_sat_125);
         let c_o_below = sim.get_c_o(125.0);
         assert!(c_eff_below.is_finite());
         assert!(c_eff_below > 0.0);
@@ -1296,7 +1350,8 @@ mod tests {
         assert!(c_eff_below > c_o_below, "c_o_effective ({c_eff_below}) must exceed c_o ({c_o_below}) below bubble point");
 
         // Above bubble point (175 bar): Rs is constant → dissolved gas term ≈ 0
-        let c_eff_above = sim.get_c_o_effective(175.0);
+        let rs_sat_175 = sim.pvt_table.as_ref().unwrap().interpolate(175.0).rs_m3m3;
+        let c_eff_above = sim.get_c_o_effective(175.0, rs_sat_175);
         let c_o_above = sim.get_c_o(175.0);
         assert!(c_eff_above.is_finite());
         assert!(c_eff_above > 0.0);
@@ -1330,7 +1385,7 @@ mod tests {
         let lambda_w = krw / sim.get_mu_w(200.0);
         let lambda_o = kro / sim.get_mu_o(200.0);
         let oil_fraction = lambda_o / (lambda_w + lambda_o);
-        let expected = 100.0 * sim.get_b_o(200.0) / oil_fraction;
+        let expected = 100.0 * sim.get_b_o_cell(0, 200.0) / oil_fraction;
 
         assert!((q_target - expected).abs() < 1e-9);
     }

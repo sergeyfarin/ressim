@@ -62,6 +62,9 @@ export interface SimulatorCreatePayload {
   pvtTable?: PvtRow[];
   scalTables?: ThreePhaseScalTables;
   gasRedissolutionEnabled?: boolean;
+  /** Initial dissolved-gas ratio [Sm³/Sm³]. When set, overrides the saturated-curve
+   *  default so oil can start undersaturated (e.g. SPE1 RSVD). */
+  initialRs?: number;
 
   // rock / compressibility
   rock_compressibility: number;

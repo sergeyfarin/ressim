@@ -139,7 +139,7 @@ impl ReservoirSimulator {
         let sw = self.sat_water[id];
         let sg = self.sat_gas[id];
         s.k_rw(sw) / self.get_mu_w(self.pressure[id])
-            + s.k_ro_stone2(sw, sg) / self.get_mu_o(self.pressure[id])
+            + s.k_ro_stone2(sw, sg) / self.get_mu_o_cell(id, self.pressure[id])
             + s.k_rg(sg) / self.get_mu_g(self.pressure[id])
     }
 
@@ -156,7 +156,7 @@ impl ReservoirSimulator {
         let sg = self.sat_gas[id];
         (
             s.k_rw(sw) / self.get_mu_w(self.pressure[id]),
-            s.k_ro_stone2(sw, sg) / self.get_mu_o(self.pressure[id]),
+            s.k_ro_stone2(sw, sg) / self.get_mu_o_cell(id, self.pressure[id]),
             s.k_rg(sg) / self.get_mu_g(self.pressure[id]),
         )
     }
@@ -363,7 +363,7 @@ impl ReservoirSimulator {
                 };
                 let oil_fraction = (1.0 - fw - fg).max(1e-6);
                 let reservoir_rate_per_well = surface_rate_per_well
-                    * self.get_b_o(pressure_bar).max(1e-9)
+                    * self.get_b_o_cell(id, pressure_bar).max(1e-9)
                     / oil_fraction;
                 return Some(reservoir_rate_per_well);
             }
@@ -480,7 +480,7 @@ impl ReservoirSimulator {
                     let id = self.idx(i, j, k);
 
                     // Pore volume [m³]
-                    let vp_m3 = self.pore_volume_m3(i);
+                    let vp_m3 = self.pore_volume_m3(id);
 
                     // Per-cell total compressibility [1/bar]
                     // Black-oil IMPES (Aziz & Settari Eq. 7.60):
@@ -494,7 +494,7 @@ impl ReservoirSimulator {
                         self.sat_oil[id]
                     };
                     let c_o_term = if self.three_phase_mode {
-                        self.get_c_o_effective(self.pressure[id])
+                        self.get_c_o_effective(self.pressure[id], self.rs[id])
                     } else {
                         self.get_c_o(self.pressure[id])
                     };
@@ -543,7 +543,8 @@ impl ReservoirSimulator {
                         let pc_j = self.get_capillary_pressure(self.sat_water[*n_id]);
 
                         let grav_w = self.gravity_head_bar(depth_i, depth_j, self.get_rho_w(self.pressure[id]));
-                        let grav_o = self.gravity_head_bar(depth_i, depth_j, self.get_rho_o(self.pressure[id]));
+                        let rho_o = if self.three_phase_mode { self.get_rho_o_cell(id, self.pressure[id]) } else { self.get_rho_o(self.pressure[id]) };
+                        let grav_o = self.gravity_head_bar(depth_i, depth_j, rho_o);
 
                         // Phase potential differences (positive if flowing from i to j)
                         let dphi_o = (p_i - p_j) - grav_o;
@@ -755,21 +756,22 @@ impl ReservoirSimulator {
 
                             // Oil flux to advect Dissolved Gas (Rs)
                             if self.pvt_table.is_some() {
-                                let grav_o = self.gravity_head_bar(depth_i, depth_j, self.get_rho_o(self.pressure[id]));
+                                let rho_o = self.get_rho_o_cell(id, self.pressure[id]);
+                                let grav_o = self.gravity_head_bar(depth_i, depth_j, rho_o);
                                 let dphi_o = (p_i - p_j) - grav_o;
                                 let (_, lam_o_i, _) = self.phase_mobilities_3p(id);
                                 let (_, lam_o_j, _) = self.phase_mobilities_3p(nid);
                                 let lam_o_up = if dphi_o >= 0.0 { lam_o_i } else { lam_o_j };
                                 let t_o = geom_t * lam_o_up;
-                                
+
                                 let oil_flux_res_day = t_o * dphi_o;
-                                let p_upwind = if dphi_o >= 0.0 { p_i } else { p_j };
-                                let oil_flux_sc_day = oil_flux_res_day / self.get_b_o(p_upwind);
-                                
+                                let up_id = if dphi_o >= 0.0 { id } else { nid };
+                                let oil_flux_sc_day = oil_flux_res_day / self.get_b_o_cell(up_id, p_new[up_id]);
+
                                 let rs_upwind = if dphi_o >= 0.0 { self.rs[id] } else { self.rs[nid] };
                                 let dg_flux_sc_day = oil_flux_sc_day * rs_upwind;
                                 let dv_dg_sc = dg_flux_sc_day * dt_days;
-                                
+
                                 delta_dg_sc[id] -= dv_dg_sc;
                                 delta_dg_sc[nid] += dv_dg_sc;
                             }
@@ -802,7 +804,7 @@ impl ReservoirSimulator {
                     
                     if !w.injector && self.pvt_table.is_some() {
                         let q_o_res = q_m3_day * fo;
-                        let q_o_sc = q_o_res / self.get_b_o(p_new[id]);
+                        let q_o_sc = q_o_res / self.get_b_o_cell(id, p_new[id]);
                         let q_dg_sc = q_o_sc * self.rs[id];
                         delta_dg_sc[id] -= q_dg_sc * dt_days;
                     }
@@ -914,7 +916,7 @@ impl ReservoirSimulator {
                 let so_old = self.sat_oil[idx];
                 let p_old = self.pressure[idx];
                 let bg_old = self.get_b_g(p_old).max(1e-9);
-                let bo_old = self.get_b_o(p_old).max(1e-9);
+                let bo_old = self.get_b_o_cell(idx, p_old).max(1e-9);
                 let rs_old = self.rs[idx];
                 let old_free_gas_sc = sg_old * vp_m3 / bg_old;
                 let old_dissolved_gas_sc = if self.pvt_table.is_some() {
@@ -938,13 +940,13 @@ impl ReservoirSimulator {
                 // --- Phase Split: Bubble Point Tracking ---
                 if self.pvt_table.is_some() {
                     let mut rs_cell = self.rs[idx];
-                    let bo_new = self.get_b_o(p_new[idx]);
+                    let bo_new = self.get_b_o_cell(idx, p_new[idx]);
                     let bg_new = self.get_b_g(p_new[idx]);
                     let rs_max = self.pvt_table.as_ref().unwrap().interpolate(p_new[idx]).rs_m3m3;
 
                     // Advect Rs using standard oil volume
                     let so_old = self.sat_oil[idx];
-                    let bo_old = self.get_b_o(self.pressure[idx]);
+                    let bo_old = self.get_b_o_cell(idx, self.pressure[idx]);
                     let v_o_sc_old = (so_old * vp_m3) / bo_old;
                     let v_o_sc_new = (so_new * vp_m3) / bo_new;
                     let v_dg_sc_old = v_o_sc_old * rs_cell;
@@ -993,7 +995,7 @@ impl ReservoirSimulator {
 
                 actual_change_m3 += (self.sat_water[idx] - sw_old) * vp_m3;
                 let bg_new = self.get_b_g(p_new[idx]).max(1e-9);
-                let bo_new = self.get_b_o(p_new[idx]).max(1e-9);
+                let bo_new = self.get_b_o_cell(idx, p_new[idx]).max(1e-9);
                 let new_free_gas_sc = self.sat_gas[idx] * vp_m3 / bg_new;
                 let new_dissolved_gas_sc = if self.pvt_table.is_some() {
                     (self.sat_oil[idx] * vp_m3 / bo_new) * self.rs[idx]
@@ -1094,7 +1096,7 @@ impl ReservoirSimulator {
                     };
                     total_prod_water_reservoir += q_m3_day * fw;
                     // Surface rates: divide reservoir volumes by pressure-dependent FVFs
-                    let bo = self.get_b_o(p_cell).max(1e-9);
+                    let bo = self.get_b_o_cell(id, p_cell).max(1e-9);
                     let bw = self.b_w.max(1e-9); // Bw essentially constant in black-oil
                     let oil_rate_sc = q_m3_day * (1.0 - fw - fg) / bo;
                     let water_rate_sc = q_m3_day * fw / bw;

@@ -258,6 +258,9 @@ export const spe1_gas_injection: Scenario = {
         injectedFluid: 'gas',
         threePhaseModeEnabled: true,
         gasRedissolutionEnabled: false,
+        // OPM RSVD table: constant Rs = 1.270 Mscf/stb = 226.197 Sm³/Sm³
+        // Oil starts undersaturated (bubble point ≈ 277 bar < initial pressure 331 bar)
+        initialRs: 226.197,
         // Producer at (9,9), layer 2 only (bottom layer)
         producerI: 9, producerJ: 9,
         producerKLayers: [2],

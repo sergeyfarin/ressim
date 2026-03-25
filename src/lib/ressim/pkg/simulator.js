@@ -303,6 +303,16 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setInitialPressure(this.__wbg_ptr, pressure);
     }
     /**
+     * Override the dissolved-gas ratio for all cells with a uniform value.
+     * Must be called **after** `setPvtTable` so the Rs array already exists.
+     * This is used when the reservoir starts undersaturated (Rs < Rs_sat at initial P),
+     * e.g. SPE1 Case 1 whose RSVD table specifies a constant Rs below saturation.
+     * @param {number} rs
+     */
+    setInitialRs(rs) {
+        wasm.reservoirsimulator_setInitialRs(this.__wbg_ptr, rs);
+    }
+    /**
      * Set initial water saturation for all grid cells
      * @param {number} sat_water
      */

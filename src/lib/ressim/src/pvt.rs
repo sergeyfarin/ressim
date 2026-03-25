@@ -76,4 +76,62 @@ impl PvtTable {
         }
         self.rows[last_idx].clone() // Fallback
     }
+
+    /// Find the bubble-point pressure for a given dissolved-gas ratio.
+    ///
+    /// Inverse interpolation on the saturated Rs-vs-pressure curve.
+    /// Returns the lowest table pressure if `rs` is below the table minimum,
+    /// and the highest table pressure if `rs` exceeds the table maximum.
+    pub fn bubble_point_pressure(&self, rs: f64) -> f64 {
+        if self.rows.is_empty() {
+            return 0.0;
+        }
+        if rs <= self.rows[0].rs_m3m3 {
+            return self.rows[0].p_bar;
+        }
+        let last = self.rows.len() - 1;
+        if rs >= self.rows[last].rs_m3m3 {
+            return self.rows[last].p_bar;
+        }
+        for i in 0..last {
+            let r0 = &self.rows[i];
+            let r1 = &self.rows[i + 1];
+            if rs >= r0.rs_m3m3 && rs <= r1.rs_m3m3 {
+                let drs = r1.rs_m3m3 - r0.rs_m3m3;
+                if drs < 1e-12 {
+                    return r0.p_bar;
+                }
+                let t = (rs - r0.rs_m3m3) / drs;
+                return r0.p_bar + t * (r1.p_bar - r0.p_bar);
+            }
+        }
+        self.rows[last].p_bar
+    }
+
+    /// Interpolate oil properties accounting for undersaturation.
+    ///
+    /// If the cell's dissolved gas `rs` is below the saturated Rs at pressure `p`,
+    /// the oil is undersaturated: find the bubble-point pressure for `rs`, read
+    /// saturated Bo and μ_o there, then apply undersaturated corrections above it.
+    pub fn interpolate_oil(&self, p: f64, rs: f64) -> (f64, f64) {
+        if self.rows.is_empty() {
+            return (1.0, 1.0);
+        }
+        let rs_sat = self.interpolate(p).rs_m3m3;
+
+        if rs < rs_sat - 1e-6 {
+            // Undersaturated: get bubble-point properties and extrapolate
+            let p_b = self.bubble_point_pressure(rs);
+            let sat = self.interpolate(p_b);
+            let bo = sat.bo_m3m3 * f64::exp(-self.c_o * (p - p_b));
+            // Undersaturated viscosity increases linearly with pressure
+            // (simple model consistent with SPE1 PVTO data)
+            let mu = sat.mu_o_cp * f64::exp(self.c_o * (p - p_b));
+            (bo, mu)
+        } else {
+            // Saturated or above table max: use standard interpolation
+            let row = self.interpolate(p);
+            (row.bo_m3m3, row.mu_o_cp)
+        }
+    }
 }

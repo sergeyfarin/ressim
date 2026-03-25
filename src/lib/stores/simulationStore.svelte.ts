@@ -243,6 +243,8 @@ class SimulationStoreImpl {
     injectedFluid = $state<'water' | 'gas'>('gas');
     initialGasSaturation = $state(0.0);
     gasRedissolutionEnabled = $state(true);
+    /** Initial dissolved-gas ratio override [Sm³/Sm³]; undefined = use saturated curve */
+    initialRs = $state<number | undefined>(undefined);
 
     // Analytical solution
     analyticalMode: 'waterflood' | 'depletion' | 'none' = $state('depletion');
@@ -737,6 +739,7 @@ class SimulationStoreImpl {
             injectedFluid: this.injectedFluid,
             initialGasSaturation: this.initialGasSaturation,
             gasRedissolutionEnabled: this.gasRedissolutionEnabled,
+            initialRs: this.initialRs,
         };
     }
 
@@ -797,6 +800,7 @@ class SimulationStoreImpl {
             injectedFluid: this.injectedFluid,
             initialGasSaturation: this.initialGasSaturation,
             gasRedissolutionEnabled: this.gasRedissolutionEnabled,
+            initialRs: this.initialRs,
         });
     }
 
@@ -847,7 +851,7 @@ class SimulationStoreImpl {
             injectedFluid: this.injectedFluid,
             initialGasSaturation: this.initialGasSaturation,
             gasRedissolutionEnabled: this.gasRedissolutionEnabled,
-            gasRedissolutionEnabled: this.gasRedissolutionEnabled,
+            initialRs: this.initialRs,
         });
     }
 
@@ -1711,6 +1715,9 @@ class SimulationStoreImpl {
         }
         if (resolved.gasRedissolutionEnabled !== undefined) {
             this.gasRedissolutionEnabled = Boolean(resolved.gasRedissolutionEnabled);
+        }
+        if (resolved.initialRs !== undefined) {
+            this.initialRs = Number(resolved.initialRs);
         }
 
         // Sync analyticalMode from explicit params first, then legacy params, then inferred defaults.

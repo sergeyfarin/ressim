@@ -80,6 +80,13 @@ export class ReservoirSimulator {
      */
     setInitialPressure(pressure: number): void;
     /**
+     * Override the dissolved-gas ratio for all cells with a uniform value.
+     * Must be called **after** `setPvtTable` so the Rs array already exists.
+     * This is used when the reservoir starts undersaturated (Rs < Rs_sat at initial P),
+     * e.g. SPE1 Case 1 whose RSVD table specifies a constant Rs below saturation.
+     */
+    setInitialRs(rs: number): void;
+    /**
      * Set initial water saturation for all grid cells
      */
     setInitialSaturation(sat_water: number): void;
@@ -186,6 +193,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialGasSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
+    readonly reservoirsimulator_setInitialRs: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
     readonly reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setInjectedFluid: (a: number, b: number, c: number) => [number, number];

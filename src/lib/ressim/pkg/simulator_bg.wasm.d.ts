@@ -32,6 +32,7 @@ export const reservoirsimulator_setGravityEnabled: (a: number, b: number) => voi
 export const reservoirsimulator_setInitialGasSaturation: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialGasSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setInitialPressure: (a: number, b: number) => void;
+export const reservoirsimulator_setInitialRs: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialSaturation: (a: number, b: number) => void;
 export const reservoirsimulator_setInitialSaturationPerLayer: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setInjectedFluid: (a: number, b: number, c: number) => [number, number];

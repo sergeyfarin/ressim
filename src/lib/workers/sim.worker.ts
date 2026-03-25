@@ -111,6 +111,13 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   if (payload.pvtMode === 'black-oil' && payload.pvtTable && typeof setPvtTable === 'function') {
     setPvtTable.call(simulator, payload.pvtTable);
   }
+  // Override initial Rs after PVT table sets the default saturated values
+  if (payload.initialRs != null) {
+    const setInitialRs = (simulator as any).setInitialRs;
+    if (typeof setInitialRs === 'function') {
+      setInitialRs.call(simulator, Number(payload.initialRs));
+    }
+  }
 
   const setRockProperties = /** @type {any} */ (simulator).setRockProperties;
   if (typeof setRockProperties === 'function') {

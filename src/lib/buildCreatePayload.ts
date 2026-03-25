@@ -198,5 +198,6 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
       : undefined,
     scalTables: cloneScalTables(state.scalTables),
     gasRedissolutionEnabled: state.gasRedissolutionEnabled !== false,
+    initialRs: typeof state.initialRs === 'number' ? state.initialRs : undefined,
   }
 }
