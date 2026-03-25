@@ -167,6 +167,9 @@ function configureSimulator(payload: SimulatorCreatePayload) {
       payload.n_w, payload.n_o, payload.n_g ?? 1.5,
       payload.k_rw_max ?? 1.0, payload.k_ro_max ?? 1.0, payload.k_rg_max ?? 1.0,
     );
+    if (payload.scalTables) {
+      call3p('setThreePhaseScalTables', payload.scalTables);
+    }
     call3p(
       'setGasFluidProperties',
       payload.mu_g ?? 0.02, payload.c_g ?? 1e-4, payload.rho_g ?? 10.0,
@@ -208,6 +211,15 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     const targetInjectorRate = Number(payload.targetInjectorRate ?? 0);
     const targetProducerRate = Number(payload.targetProducerRate ?? targetInjectorRate);
     setTargetWellRates.call(simulator, targetInjectorRate, targetProducerRate);
+  }
+
+  const setTargetWellSurfaceRates = /** @type {any} */ (simulator).setTargetWellSurfaceRates;
+  if (typeof setTargetWellSurfaceRates === 'function') {
+    setTargetWellSurfaceRates.call(
+      simulator,
+      Number(payload.targetInjectorSurfaceRate ?? 0),
+      Number(payload.targetProducerSurfaceRate ?? 0),
+    );
   }
 
   const setWellBhpLimits = /** @type {any} */ (simulator).setWellBhpLimits;

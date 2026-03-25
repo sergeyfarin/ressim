@@ -6,6 +6,8 @@ import type {
     AnalyticalProductionPoint,
     GridState,
     WellState,
+    PvtRow,
+    ThreePhaseScalTables,
 } from '../simulator-types';
 import {
     catalog,
@@ -85,6 +87,21 @@ function isPermMode(value: string): value is 'uniform' | 'random' | 'perLayer' {
 
 function defaultProducerJForGrid(ny: number): number {
     return Math.max(0, ny - 1);
+}
+
+function clonePvtTable(rows: unknown): PvtRow[] | undefined {
+    if (!Array.isArray(rows)) return undefined;
+    return rows.map((row) => ({ ...(row as PvtRow) }));
+}
+
+function cloneScalTables(value: unknown): ThreePhaseScalTables | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const tables = value as ThreePhaseScalTables;
+    if (!Array.isArray(tables.swof) || !Array.isArray(tables.sgof)) return undefined;
+    return {
+        swof: tables.swof.map((row) => ({ ...row })),
+        sgof: tables.sgof.map((row) => ({ ...row })),
+    };
 }
 
 // ---------- Types ----------
@@ -194,6 +211,8 @@ class SimulationStoreImpl {
     injectorEnabled = $state(true);
     targetInjectorRate = $state(350.0);
     targetProducerRate = $state(350.0);
+    targetInjectorSurfaceRate = $state<number | null>(null);
+    targetProducerSurfaceRate = $state<number | null>(null);
     injectorI = $state(0);
     injectorJ = $state(0);
     producerI = $state(14);
@@ -228,6 +247,8 @@ class SimulationStoreImpl {
     analyticalMode: 'waterflood' | 'depletion' | 'none' = $state('depletion');
     analyticalDepletionRateScale = $state(1.0);
     analyticalArpsB = $state(0.0);
+    pvtTableOverride = $state<PvtRow[] | undefined>(undefined);
+    scalTables = $state<ThreePhaseScalTables | undefined>(undefined);
 
     // ===== $state: Simulation Output / Runtime =====
 
@@ -305,6 +326,9 @@ class SimulationStoreImpl {
 
     pvtTable = $derived.by(() => {
         if (this.pvtMode === 'black-oil') {
+            if (this.pvtTableOverride?.length) {
+                return this.pvtTableOverride.map((row) => ({ ...row }));
+            }
             const pMax = Math.max(this.initialPressure * 1.5, Math.max(this.injectorBhp, this.producerBhp) * 1.5, 500);
             return generateBlackOilTable(this.apiGravity, this.gasSpecificGravity, this.reservoirTemperature, this.bubblePoint, pMax);
         }
@@ -619,6 +643,8 @@ class SimulationStoreImpl {
             producerBhp: this.producerBhp,
             targetInjectorRate: this.targetInjectorRate,
             targetProducerRate: this.targetProducerRate,
+            targetInjectorSurfaceRate: this.targetInjectorSurfaceRate,
+            targetProducerSurfaceRate: this.targetProducerSurfaceRate,
         };
     }
 
@@ -635,6 +661,7 @@ class SimulationStoreImpl {
             reservoirPorosity: this.reservoirPorosity,
             pvtMode: this.pvtMode,
             pvtTable: this.pvtTable,
+            scalTables: this.scalTables,
             apiGravity: this.apiGravity,
             gasSpecificGravity: this.gasSpecificGravity,
             reservoirTemperature: this.reservoirTemperature,
@@ -675,6 +702,8 @@ class SimulationStoreImpl {
             injectorEnabled: this.injectorEnabled,
             targetInjectorRate: this.targetInjectorRate,
             targetProducerRate: this.targetProducerRate,
+            targetInjectorSurfaceRate: this.targetInjectorSurfaceRate,
+            targetProducerSurfaceRate: this.targetProducerSurfaceRate,
             injectorI: this.injectorI,
             injectorJ: this.injectorJ,
             producerI: this.producerI,
@@ -720,6 +749,7 @@ class SimulationStoreImpl {
             porosity: this.reservoirPorosity,
             pvtMode: this.pvtMode,
             pvtTable: this.pvtTable,
+            scalTables: this.scalTables,
             mu_w: this.mu_w, mu_o: this.mu_o, c_o: this.c_o, c_w: this.c_w,
             rho_w: this.rho_w, rho_o: this.rho_o,
             rock_compressibility: this.rock_compressibility,
@@ -748,6 +778,8 @@ class SimulationStoreImpl {
             injectorEnabled: this.injectorEnabled,
             targetInjectorRate: this.targetInjectorRate,
             targetProducerRate: this.targetProducerRate,
+            targetInjectorSurfaceRate: this.targetInjectorSurfaceRate ?? undefined,
+            targetProducerSurfaceRate: this.targetProducerSurfaceRate ?? undefined,
             injectorI: this.injectorI, injectorJ: this.injectorJ,
             producerI: this.producerI, producerJ: this.producerJ,
             uniformPermX: this.uniformPermX,
@@ -768,6 +800,8 @@ class SimulationStoreImpl {
             cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
             initialPressure: this.initialPressure, initialSaturation: this.initialSaturation,
             reservoirPorosity: this.reservoirPorosity,
+            pvtTable: this.pvtTable,
+            scalTables: this.scalTables,
             pvtMode: this.pvtMode, apiGravity: this.apiGravity, gasSpecificGravity: this.gasSpecificGravity,
             reservoirTemperature: this.reservoirTemperature, bubblePoint: this.bubblePoint,
             mu_w: this.mu_w, mu_o: this.mu_o, c_o: this.c_o, c_w: this.c_w,
@@ -795,6 +829,8 @@ class SimulationStoreImpl {
             injectorEnabled: this.injectorEnabled,
             targetInjectorRate: this.targetInjectorRate,
             targetProducerRate: this.targetProducerRate,
+            targetInjectorSurfaceRate: this.targetInjectorSurfaceRate,
+            targetProducerSurfaceRate: this.targetProducerSurfaceRate,
             injectorI: this.injectorI, injectorJ: this.injectorJ,
             producerI: this.producerI, producerJ: this.producerJ,
             threePhaseModeEnabled: this.threePhaseModeEnabled,
@@ -1614,6 +1650,8 @@ class SimulationStoreImpl {
         } else {
             this.pvtMode = 'constant';
         }
+        this.pvtTableOverride = clonePvtTable(resolved.pvtTable);
+        this.scalTables = cloneScalTables(resolved.scalTables);
         this.apiGravity = fin(resolved.apiGravity, 30.0);
         this.gasSpecificGravity = fin(resolved.gasSpecificGravity, 0.7);
         this.reservoirTemperature = fin(resolved.reservoirTemperature, 80.0);
@@ -1683,6 +1721,8 @@ class SimulationStoreImpl {
         this.producerBhp = fin(resolved.producerBhp, 100);
         this.targetInjectorRate = fin(resolved.targetInjectorRate, 350);
         this.targetProducerRate = fin(resolved.targetProducerRate, 350);
+        this.targetInjectorSurfaceRate = resolved.targetInjectorSurfaceRate === undefined ? null : fin(resolved.targetInjectorSurfaceRate, 0);
+        this.targetProducerSurfaceRate = resolved.targetProducerSurfaceRate === undefined ? null : fin(resolved.targetProducerSurfaceRate, 0);
         if (resolved.permMode && isPermMode(resolved.permMode)) { this.permMode = resolved.permMode; }
         if (resolved.uniformPermX !== undefined) this.uniformPermX = Number(resolved.uniformPermX);
         if (resolved.uniformPermY !== undefined) this.uniformPermY = Number(resolved.uniformPermY);

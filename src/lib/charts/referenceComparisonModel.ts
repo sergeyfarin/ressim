@@ -90,6 +90,8 @@ type DerivedRunSeries = {
     pvi: Array<number | null>;
     pvp: Array<number | null>;
     gor: Array<number | null>;
+    producerBhpLimitedFraction: Array<number | null>;
+    injectorBhpLimitedFraction: Array<number | null>;
 };
 
 type AnalyticalOverlay = {
@@ -301,6 +303,14 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
         gor: result.rateHistory.map((point) => {
             const value = toFiniteNumber(point.producing_gor as number, 0);
             return value > 0 ? value : null;
+        }),
+        producerBhpLimitedFraction: result.rateHistory.map((point) => {
+            const value = point.producer_bhp_limited_fraction;
+            return Number.isFinite(value) ? Number(value) : null;
+        }),
+        injectorBhpLimitedFraction: result.rateHistory.map((point) => {
+            const value = point.injector_bhp_limited_fraction;
+            return Number.isFinite(value) ? Number(value) : null;
         }),
     };
 }
@@ -520,6 +530,74 @@ function appendSeries(
 ) {
     panel.curves.push(curve);
     panel.series.push(toXYSeries(xValues, yValues));
+}
+
+function appendBhpLimitDiagnostics(
+    panel: ReferenceComparisonPanel,
+    input: {
+        label: string;
+        caseKey: string;
+        toggleLabel: string;
+        borderWidth: number;
+        defaultVisible: boolean;
+        xValues: Array<number | null>;
+        producerValues: Array<number | null>;
+        injectorValues: Array<number | null>;
+    },
+) {
+    appendSeries(panel, {
+        label: `${input.label} Producer BHP-limited`,
+        curveKey: 'producer-bhp-limited-sim',
+        caseKey: input.caseKey,
+        toggleGroupKey: input.caseKey,
+        toggleLabel: input.toggleLabel,
+        legendSection: 'sim',
+        legendSectionLabel: 'Simulation (solid lines):',
+        color: '#c2410c',
+        borderWidth: input.borderWidth,
+        yAxisID: 'y1',
+        defaultVisible: input.defaultVisible,
+    }, input.xValues, input.producerValues);
+
+    appendSeries(panel, {
+        label: `${input.label} Injector BHP-limited`,
+        curveKey: 'injector-bhp-limited-sim',
+        caseKey: input.caseKey,
+        toggleGroupKey: input.caseKey,
+        toggleLabel: input.toggleLabel,
+        legendSection: 'sim',
+        legendSectionLabel: 'Simulation (solid lines):',
+        color: '#0369a1',
+        borderWidth: input.borderWidth,
+        yAxisID: 'y1',
+        defaultVisible: input.defaultVisible,
+    }, input.xValues, input.injectorValues);
+}
+
+function appendPublishedReferenceSeries(
+    panels: Record<RateChartPanelKey, ReferenceComparisonPanel>,
+    family: BenchmarkFamily | null,
+) {
+    if (!family?.publishedReferenceSeries?.length) return;
+
+    const publishedColor = '#e74c3c';
+    for (const series of family.publishedReferenceSeries) {
+        const targetPanel = panels[series.panelKey as RateChartPanelKey];
+        if (!targetPanel) continue;
+        appendSeries(targetPanel, {
+            label: series.label,
+            curveKey: series.curveKey,
+            toggleGroupKey: 'published-reference',
+            toggleLabel: 'Published reference',
+            legendSection: 'published',
+            legendSectionLabel: 'Published reference (dashed lines):',
+            color: publishedColor,
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            yAxisID: series.yAxisID ?? 'y',
+            pointRadius: 0,
+        }, series.data.map((pt) => pt.x), series.data.map((pt) => pt.y));
+    }
 }
 
 function createReferenceComparisonPanel(): ReferenceComparisonPanel {
@@ -1665,6 +1743,8 @@ function buildPreviewSweepPanels(input: {
         pvi: [],
         pvp: [],
         gor: [],
+        producerBhpLimitedFraction: [],
+        injectorBhpLimitedFraction: [],
     };
 
     input.variants.forEach((variant, index) => {
@@ -1739,6 +1819,8 @@ function buildSweepPanels(input: {
             pvi: [],
             pvp: [],
             gor: [],
+            producerBhpLimitedFraction: [],
+            injectorBhpLimitedFraction: [],
         };
         input.pendingPreviewVariants.forEach((variant, fallbackIndex) => {
             const colorIndex = declarationOrder.get(variant.variantKey) ?? (input.orderedResults.length + fallbackIndex);
@@ -1843,7 +1925,10 @@ export function buildReferenceComparisonModel(input: {
                 return {
                     orderedResults,
                     previewCases: [],
-                    panels: combinePanelMaps({ primary: panels }),
+                    panels: (() => {
+                        appendPublishedReferenceSeries(panels, family);
+                        return combinePanelMaps({ primary: panels });
+                    })(),
                     axisMappingWarning: buildAnalyticalAxisWarning({
                         usesRunMappedAnalyticalXAxis: false,
                         hidesPendingAnalyticalWithoutMapping,
@@ -1883,23 +1968,28 @@ export function buildReferenceComparisonModel(input: {
                 return {
                     orderedResults,
                     previewCases,
-                    panels: combinePanelMaps({
-                        primary: suppressPrimaryAnalyticalOverlays
+                    panels: (() => {
+                        const primaryPanels = suppressPrimaryAnalyticalOverlays
                             ? suppressPrimaryAnalyticalPanels(previewPanels)
-                            : previewPanels,
-                        sweep: family?.showSweepPanel === true
-                            ? buildPreviewSweepPanels({
-                                variants,
-                                theme: input.theme ?? 'dark',
-                                geometry: family?.sweepGeometry ?? 'both',
-                                method: family?.sweepAnalyticalMethod ?? 'dykstra-parsons',
-                            })
-                            : emptySweepPanels(),
-                    }),
+                            : previewPanels;
+                        appendPublishedReferenceSeries(primaryPanels, family);
+                        return combinePanelMaps({
+                            primary: primaryPanels,
+                            sweep: family?.showSweepPanel === true
+                                ? buildPreviewSweepPanels({
+                                    variants,
+                                    theme: input.theme ?? 'dark',
+                                    geometry: family?.sweepGeometry ?? 'both',
+                                    method: family?.sweepAnalyticalMethod ?? 'dykstra-parsons',
+                                })
+                                : emptySweepPanels(),
+                        });
+                    })(),
                     axisMappingWarning: null,
                 };
             }
         }
+        appendPublishedReferenceSeries(panels, family);
         return {
             orderedResults,
             previewCases: [],
@@ -2081,7 +2171,7 @@ export function buildReferenceComparisonModel(input: {
                     color,
                     borderWidth: result.variantKey === null ? 2.8 : 2.2,
                     yAxisID: 'y',
-                    defaultVisible: false,
+                    defaultVisible,
                 },
                 xValues,
                 derived.gor,
@@ -2192,8 +2282,18 @@ export function buildReferenceComparisonModel(input: {
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
-                defaultVisible: false,
+                defaultVisible,
             }, xValues, derived.gor);
+            appendBhpLimitDiagnostics(panels.diagnostics, {
+                label: result.label,
+                caseKey: result.key,
+                toggleLabel: caseLabel,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                defaultVisible,
+                xValues,
+                producerValues: derived.producerBhpLimitedFraction,
+                injectorValues: derived.injectorBhpLimitedFraction,
+            });
             return;
         }
 
@@ -2299,11 +2399,21 @@ export function buildReferenceComparisonModel(input: {
                 color,
                 borderWidth: result.variantKey === null ? 2.8 : 2.2,
                 yAxisID: 'y',
-                defaultVisible: false,
+                defaultVisible,
             },
             xValues,
             derived.gor,
         );
+        appendBhpLimitDiagnostics(panels.diagnostics, {
+            label: result.label,
+            caseKey: result.key,
+            toggleLabel: caseLabel,
+            borderWidth: result.variantKey === null ? 2.8 : 2.2,
+            defaultVisible,
+            xValues,
+            producerValues: derived.producerBhpLimitedFraction,
+            injectorValues: derived.injectorBhpLimitedFraction,
+        });
 
         // ── MBE diagnostics (Havlena-Odeh) ─────────────────────────
         if (analyticalMethod === 'depletion') {
@@ -2909,28 +3019,7 @@ export function buildReferenceComparisonModel(input: {
         : panels;
 
     // ── Published reference overlays (static benchmark data) ────────────
-    if (family.publishedReferenceSeries?.length) {
-        const publishedColor = '#e74c3c';
-        for (const series of family.publishedReferenceSeries) {
-            const targetPanel = visiblePanels[series.panelKey as RateChartPanelKey];
-            if (!targetPanel) continue;
-            const xVals = series.data.map((pt) => pt.x);
-            const yVals = series.data.map((pt) => pt.y);
-            appendSeries(targetPanel, {
-                label: series.label,
-                curveKey: series.curveKey,
-                toggleGroupKey: 'published-reference',
-                toggleLabel: 'Published reference',
-                legendSection: 'published',
-                legendSectionLabel: 'Published reference (dashed lines):',
-                color: publishedColor,
-                borderWidth: 1.5,
-                borderDash: [4, 4],
-                yAxisID: series.yAxisID ?? 'y',
-                pointRadius: 0,
-            }, xVals, yVals);
-        }
-    }
+    appendPublishedReferenceSeries(visiblePanels, family);
 
     return {
         orderedResults,

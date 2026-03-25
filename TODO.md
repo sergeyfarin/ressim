@@ -33,10 +33,13 @@
   - [x] Fix benchmark/chart thickness normalization so `cellDzPerLayer` drives PV/OOIP-based review metrics instead of falling back to scalar `cellDz`.
   - [x] Rework SPE1 chart layout to follow the chart convention: one quantity per panel, solid lines for simulation, dashed lines for reference, no mixed pressure/GOR panel.
   - [ ] Re-verify the SPE1 comparison source and metric mapping (Case 1 vs Case 2, average pressure vs field pressure, producing GOR vs summary-variable equivalent, units, and sampling cadence).
+    - Current working mapping is `Avg Pressure vs time` and `producing GOR vs time` for Case 1 yearly samples. ResSim now carries explicit SPE1-style surface-rate targets plus BHP-limit diagnostics, but the control path is still a local PVT/state conversion rather than a full deck scheduler.
+    - Pressure-shape mismatch remains open: published pressure peaks then declines, while the current simulation still misses part of that peak-and-decline shape. Exact OPM PVT plus SWOF/SGOF tables now reach the live simulator; the remaining gap is in the simulator model itself, most likely dissolved-gas/well-control semantics rather than benchmark-input fidelity.
   - [ ] Add regression tests for SPE1 scenario wiring, published-reference panel placement, and the `cellDzPerLayer` / per-layer completion payload path.
-    - Current coverage now includes `cellDzPerLayer` normalization and the dedicated SPE1 GOR panel/style contract; completion-payload coverage is still missing.
+    - Current coverage now includes `cellDzPerLayer` normalization, the dedicated SPE1 GOR panel/style contract, pre-run published-reference visibility, exact SWOF/SGOF payload cloning, and store wiring that preserves scenario-supplied PVT/SCAL tables. Completion-payload coverage is still missing.
   - [ ] Tune SPE1 rate targets and validate against Eclipse reference (qualitative match expected; exact match requires tabular SCAL).
-  - [ ] Add tabular SCAL support to Rust solver (currently Corey-only, SPE1 tables are approximated).
+    - Surface-rate targets and explicit BHP-limit diagnostics are now in place. Exact OPM PVT plus SWOF/SGOF inputs are also in place, and the fine-grid `grid_20` sensitivity carries tighter numerics to reduce stability complaints. Remaining mismatch should be explained by simulator behavior, not by benchmark-specific curve fitting.
+  - [x] Add tabular SCAL support to Rust solver and worker/store payload path so SPE1 can use exact OPM SWOF/SGOF tables.
 - [ ] Define the exit criteria for three-phase `experimental` status and add acceptance tests for gas injection and gas-drive scenarios.
 - [ ] Reconcile all three-phase docs with the implemented state: corrected gas-oil capillary sign, `s_org`, explicit gas material-balance reporting, and remaining oil-phase diagnostic limits.
 - [ ] Add regression tests for comparison-model preview mode, depletion per-variant analytical overlays, and color-index stability.

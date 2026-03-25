@@ -268,12 +268,49 @@
             _auto: true,
         },
     };
+    const gorScales = {
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            min: 0,
+            alignToPixels: true,
+            title: { display: true, text: 'GOR (Sm³/Sm³)' },
+            ticks: { count: 6 },
+            _auto: true,
+        },
+    };
+    const diagnosticsScales = {
+        y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            alignToPixels: true,
+            title: { display: true, text: 'Pressure (bar)' },
+            ticks: { count: 6 },
+            _auto: true,
+        },
+        y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            min: 0,
+            max: 1,
+            alignToPixels: true,
+            title: { display: true, text: 'BHP-limited fraction' },
+            grid: { drawOnChartArea: false },
+            ticks: { count: 6 },
+            _fraction: true,
+        },
+    };
 
     function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
         if (scalePreset === 'sweep') return sweepScales;
         if (scalePreset === 'sweep_rf') return sweepScales;
         if (scalePreset === 'breakthrough') return breakthroughScales;
         if (scalePreset === 'pressure') return pressureScales;
+        if (scalePreset === 'gor') return gorScales;
+        if (scalePreset === 'diagnostics') return diagnosticsScales;
         if (scalePreset === 'recovery') return recoveryScales;
         if (scalePreset === 'cumulative_volumes') return cumulativeVolumesScales;
         if (scalePreset === 'cumulative') return cumulativeScales;

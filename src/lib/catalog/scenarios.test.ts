@@ -479,3 +479,27 @@ describe('scenario capability validation', () => {
         expect(combinedLayout.rateChart?.panels?.sweep_combined_mobile_oil?.visible).toBe(true);
     });
 });
+
+describe('SPE1 scenario fidelity guards', () => {
+    it('ships the exact OPM tabular SCAL inputs in the base case', () => {
+        const scenario = getScenario('spe1_gas_injection');
+
+        expect(scenario?.params.k_rw_max).toBe(0.00001);
+        expect((scenario?.params.scalTables as { swof: unknown[]; sgof: unknown[] } | undefined)?.swof).toHaveLength(15);
+        expect((scenario?.params.scalTables as { swof: unknown[]; sgof: unknown[] } | undefined)?.sgof).toHaveLength(15);
+    });
+
+    it('applies tighter numerics to the fine-grid SPE1 sensitivity', () => {
+        const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_20');
+
+        expect(params).toMatchObject({
+            nx: 20,
+            ny: 20,
+            delta_t_days: 2.5,
+            steps: 1600,
+            max_sat_change_per_step: 0.03,
+            max_pressure_change_per_step: 30,
+            max_well_rate_change_fraction: 0.35,
+        });
+    });
+});

@@ -1,5 +1,100 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SwofRow {
+    pub sw: f64,
+    pub krw: f64,
+    pub krow: f64,
+    pub pcow: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SgofRow {
+    pub sg: f64,
+    pub krg: f64,
+    pub krog: f64,
+    pub pcog: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ThreePhaseScalTables {
+    pub swof: Vec<SwofRow>,
+    pub sgof: Vec<SgofRow>,
+}
+
+impl ThreePhaseScalTables {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_swof_rows(&self.swof)?;
+        validate_sgof_rows(&self.sgof)?;
+        Ok(())
+    }
+}
+
+fn validate_swof_rows(rows: &[SwofRow]) -> Result<(), String> {
+    if rows.len() < 2 {
+        return Err("SWOF table must contain at least two rows".to_string());
+    }
+    let mut previous_sw = -f64::INFINITY;
+    for (index, row) in rows.iter().enumerate() {
+        if !row.sw.is_finite() || !row.krw.is_finite() || !row.krow.is_finite() {
+            return Err(format!("SWOF row {} must contain finite values", index));
+        }
+        if !(0.0..=1.0).contains(&row.sw) || !(0.0..=1.0).contains(&row.krw) || !(0.0..=1.0).contains(&row.krow) {
+            return Err(format!("SWOF row {} must stay within [0, 1]", index));
+        }
+        if row.sw <= previous_sw {
+            return Err(format!("SWOF saturation must be strictly increasing at row {}", index));
+        }
+        previous_sw = row.sw;
+    }
+    Ok(())
+}
+
+fn validate_sgof_rows(rows: &[SgofRow]) -> Result<(), String> {
+    if rows.len() < 2 {
+        return Err("SGOF table must contain at least two rows".to_string());
+    }
+    let mut previous_sg = -f64::INFINITY;
+    for (index, row) in rows.iter().enumerate() {
+        if !row.sg.is_finite() || !row.krg.is_finite() || !row.krog.is_finite() {
+            return Err(format!("SGOF row {} must contain finite values", index));
+        }
+        if !(0.0..=1.0).contains(&row.sg) || !(0.0..=1.0).contains(&row.krg) || !(0.0..=1.0).contains(&row.krog) {
+            return Err(format!("SGOF row {} must stay within [0, 1]", index));
+        }
+        if row.sg <= previous_sg {
+            return Err(format!("SGOF saturation must be strictly increasing at row {}", index));
+        }
+        previous_sg = row.sg;
+    }
+    Ok(())
+}
+
+fn interpolate_piecewise<T>(rows: &[T], x: f64, x_of: fn(&T) -> f64, y_of: fn(&T) -> f64) -> f64 {
+    if rows.is_empty() {
+        return 0.0;
+    }
+    if x <= x_of(&rows[0]) {
+        return y_of(&rows[0]);
+    }
+    for pair in rows.windows(2) {
+        let x0 = x_of(&pair[0]);
+        let x1 = x_of(&pair[1]);
+        if x <= x1 {
+            if (x1 - x0).abs() <= f64::EPSILON {
+                return y_of(&pair[1]);
+            }
+            let fraction = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
+            return y_of(&pair[0]) + fraction * (y_of(&pair[1]) - y_of(&pair[0]));
+        }
+    }
+    if let Some(last) = rows.last() {
+        y_of(last)
+    } else {
+        0.0
+    }
+}
+
 /// Three-phase rock/fluid properties for Stone II relative permeability model.
 /// Oil-water Corey parameters are the same form as `RockFluidProps` (2-phase).
 /// Gas Corey parameters are independent.
@@ -31,11 +126,16 @@ pub struct RockFluidPropsThreePhase {
     pub n_g: f64,
     /// Max gas relative permeability at So = Sorg [dimensionless]
     pub k_rg_max: f64,
+    /// Optional exact tabular SWOF/SGOF data.
+    pub tables: Option<ThreePhaseScalTables>,
 }
 
 impl RockFluidPropsThreePhase {
     /// Water relative permeability — Corey-Brooks (same formula as 2-phase).
     pub fn k_rw(&self, s_w: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise(&tables.swof, s_w, |row| row.sw, |row| row.krw);
+        }
         let s_eff = ((s_w - self.s_wc) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
         self.k_rw_max * s_eff.powf(self.n_w)
     }
@@ -43,6 +143,9 @@ impl RockFluidPropsThreePhase {
     /// Gas relative permeability — Corey-Brooks.
     /// S_g_eff = (S_g − S_gc) / (1 − S_wc − S_gc − S_gr)
     pub fn k_rg(&self, s_g: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise(&tables.sgof, s_g, |row| row.sg, |row| row.krg);
+        }
         let denom = 1.0 - self.s_wc - self.s_gc - self.s_gr;
         if denom <= 0.0 {
             return 0.0;
@@ -54,6 +157,9 @@ impl RockFluidPropsThreePhase {
     /// Oil relative permeability in oil-water 2-phase system (Sg = 0).
     /// k_ro_w = k_ro_max * ((1 − Sw − Sor) / (1 − Swc − Sor))^no
     pub fn k_ro_water(&self, s_w: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise(&tables.swof, s_w, |row| row.sw, |row| row.krow);
+        }
         let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
         self.k_ro_max * s_eff.powf(self.n_o)
     }
@@ -62,6 +168,9 @@ impl RockFluidPropsThreePhase {
     /// S_o_eff = (1 − Swc − Sg − Sorg) / (1 − Swc − Sorg)
     /// Uses s_org (residual oil to gas) as the terminal saturation, not s_gr (trapped gas).
     pub fn k_ro_gas(&self, s_g: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise(&tables.sgof, s_g, |row| row.sg, |row| row.krog);
+        }
         let denom = 1.0 - self.s_wc - self.s_org;
         if denom <= 0.0 {
             return 0.0;

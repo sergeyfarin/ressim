@@ -67,4 +67,47 @@ describe('buildCreatePayloadFromState', () => {
 
     expect(payload.producerJ).toBe(3)
   })
+
+  it('passes through optional surface-rate targets', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+      targetInjectorSurfaceRate: 12,
+      targetProducerSurfaceRate: 34,
+    }) as SimulatorCreatePayload
+
+    expect(payload.targetInjectorSurfaceRate).toBe(12)
+    expect(payload.targetProducerSurfaceRate).toBe(34)
+  })
+
+  it('preserves zero water relperm max for immobile-water cases', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+      k_rw_max: 0,
+    }) as SimulatorCreatePayload
+
+    expect(payload.k_rw_max).toBe(0)
+  })
+
+  it('clones tabular three-phase SCAL inputs', () => {
+    const scalTables = {
+      swof: [{ sw: 0.12, krw: 0, krow: 1, pcow: 0 }],
+      sgof: [{ sg: 0, krg: 0, krog: 1, pcog: 0 }],
+    }
+    const payload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+      scalTables,
+    }) as SimulatorCreatePayload
+
+    expect(payload.scalTables).toEqual({
+      swof: [{ sw: 0.12, krw: 0, krow: 1, pcow: 0 }],
+      sgof: [{ sg: 0, krg: 0, krog: 1, pcog: 0 }],
+    })
+    expect(payload.scalTables?.swof).not.toBe(scalTables.swof)
+  })
 })

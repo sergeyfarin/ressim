@@ -436,6 +436,16 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {number} injector_rate_m3_day
+     * @param {number} producer_rate_m3_day
+     */
+    setTargetWellSurfaceRates(injector_rate_m3_day, producer_rate_m3_day) {
+        const ret = wasm.reservoirsimulator_setTargetWellSurfaceRates(this.__wbg_ptr, injector_rate_m3_day, producer_rate_m3_day);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Enable or disable the three-phase simulation mode
      * @param {boolean} enabled
      */
@@ -461,6 +471,15 @@ export class ReservoirSimulator {
      */
     setThreePhaseRelPermProps(s_wc, s_or, s_gc, s_gr, s_org, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max) {
         const ret = wasm.reservoirsimulator_setThreePhaseRelPermProps(this.__wbg_ptr, s_wc, s_or, s_gc, s_gr, s_org, n_w, n_o, n_g, k_rw_max, k_ro_max, k_rg_max);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {any} table_js
+     */
+    setThreePhaseScalTables(table_js) {
+        const ret = wasm.reservoirsimulator_setThreePhaseScalTables(this.__wbg_ptr, table_js);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

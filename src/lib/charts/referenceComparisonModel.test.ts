@@ -360,8 +360,9 @@ describe('referenceComparisonModel', () => {
 
         expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
         expect(layout.rateChart?.panels?.diagnostics).toMatchObject({
-            title: 'Average Pressure',
-            curveKeys: ['avg-pressure-sim', 'published-pressure'],
+            title: 'Pressure / Control Limits',
+            curveKeys: ['avg-pressure-sim', 'published-pressure', 'producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
+            scalePreset: 'diagnostics',
         });
         expect(layout.rateChart?.panels?.gor).toMatchObject({
             title: 'GOR',
@@ -412,8 +413,99 @@ describe('referenceComparisonModel', () => {
         });
 
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'gor-sim')?.borderDash).toBeUndefined();
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'gor-sim')?.defaultVisible).toBe(true);
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.borderDash).toEqual([4, 4]);
         expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.pointRadius).toBe(0);
+    });
+
+    it('exposes producer and injector BHP-limit diagnostics on the diagnostics panel', () => {
+        const scenario = getScenario('spe1_gas_injection')!;
+        const spec = {
+            key: 'spe1_control_diag',
+            caseKey: 'spe1_control_diag',
+            familyKey: 'spe1_control_diag',
+            analyticalMethod: 'none',
+            variantKey: null,
+            variantLabel: null,
+            label: 'SPE1 Control Diagnostic',
+            description: 'Synthetic SPE1 control diagnostic test case',
+            params: { ...scenario.params },
+            steps: Number(scenario.params.steps ?? 120),
+            deltaTDays: Number(scenario.params.delta_t_days ?? 5),
+            historyInterval: 1,
+            reference: { kind: 'analytical', source: 'test' },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Synthetic BHP-limit overlay check',
+        } as BenchmarkRunSpec;
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [
+                {
+                    time: 5,
+                    total_injection: 100,
+                    total_production_liquid: 90,
+                    total_production_oil: 80,
+                    avg_reservoir_pressure: 300,
+                    producing_gor: 250,
+                    producer_bhp_limited_fraction: 1,
+                    injector_bhp_limited_fraction: 0,
+                },
+                {
+                    time: 10,
+                    total_injection: 120,
+                    total_production_liquid: 85,
+                    total_production_oil: 70,
+                    avg_reservoir_pressure: 290,
+                    producing_gor: 280,
+                    producer_bhp_limited_fraction: 0.5,
+                    injector_bhp_limited_fraction: 1,
+                },
+            ],
+        });
+
+        const model = buildReferenceComparisonModel({
+            family: {
+                key: scenario.key,
+                analyticalMethod: 'none',
+                showSweepPanel: false,
+                publishedReferenceSeries: scenario.publishedReferenceSeries,
+            } as unknown as BenchmarkFamily,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'producer-bhp-limited-sim')?.yAxisID).toBe('y1');
+        expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'injector-bhp-limited-sim')?.yAxisID).toBe('y1');
+        expect(model.panels.diagnostics.series.find((series) => series[0]?.y === 1)?.[1]?.y).toBe(0.5);
+    });
+
+    it('shows published reference curves before any SPE1 run completes', () => {
+        const scenario = getScenario('spe1_gas_injection')!;
+        const family = {
+            key: scenario.key,
+            baseCaseKey: scenario.key,
+            analyticalMethod: 'none',
+            sensitivityAxes: [],
+            reference: { kind: 'analytical', source: `${scenario.key}:published` },
+            displayDefaults: { xAxis: 'time', panels: ['pressure', 'oil-rate', 'cumulative-oil'] },
+            stylePolicy: { colorBy: 'case', lineStyleBy: 'quantity-or-reference', separatePressurePanel: true },
+            runPolicy: 'compare-to-reference',
+            label: scenario.label,
+            description: scenario.description,
+            baseCase: { key: scenario.key, label: scenario.label, description: scenario.description, params: scenario.params },
+            showSweepPanel: false,
+            publishedReferenceSeries: scenario.publishedReferenceSeries,
+        } as BenchmarkFamily;
+
+        const model = buildReferenceComparisonModel({
+            family,
+            results: [],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.diagnostics.curves.find((curve) => curve.curveKey === 'published-pressure')?.label).toBe('Eclipse — Avg Pressure');
+        expect(model.panels.gor.curves.find((curve) => curve.curveKey === 'published-gor')?.label).toBe('Eclipse — GOR');
     });
 
     it('builds depletion overlay panels with reference-solution oil-rate and pressure curves', () => {

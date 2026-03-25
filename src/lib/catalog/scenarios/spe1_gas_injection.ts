@@ -1,4 +1,5 @@
 import type { Scenario, PublishedReferenceSeries } from '../scenarios';
+import type { ThreePhaseScalTables } from '../../simulator-types';
 
 /**
  * SPE1 Comparative Solution Project — Case 1 (DRSDT = 0, no gas re-dissolution).
@@ -18,12 +19,22 @@ import type { Scenario, PublishedReferenceSeries } from '../scenarios';
  * - Gravity in a layered system
  *
  * Approximations vs. the original SPE1 specification:
- * - Corey relperm approximation instead of tabular SGOF/SWOF
- * - Reservoir-condition rate targets (approximate field-to-metric conversion)
+ * - Three-phase oil relperm still uses Stone II interpolation over the exact SWOF/SGOF inputs
+ * - Surface-rate controls are converted to reservoir rates from local PVT/state each step,
+ *   which is closer to the deck semantics but still not a full scheduler/well-model implementation
  * - DRSDT behavior depends on simulator's Rs update logic
  *
- * Published Eclipse reference data (Case 1, OPM test suite) is overlaid on
+ * Published Eclipse reference data (Case 1, OPM-derived yearly samples) is overlaid on
  * the pressure and GOR panels for visual comparison.
+ *
+ * Current verification status:
+ * - Pressure mapping is treated as average reservoir pressure versus time.
+ * - GOR mapping is treated as producing GOR versus time.
+ * - OPM `SPE1CASE1.DATA` confirms the Case 1 controls are:
+ *   `WCONPROD 'PROD' 'OPEN' 'ORAT' 20000 ... 1000 /` and
+ *   `WCONINJE 'INJ' 'GAS' 'OPEN' 'RATE' 100000 ... 9014 /`.
+ * - Well controls now follow the deck's surface-rate intent more closely, but do not yet reproduce the published
+ *   pressure peak-and-decline shape closely enough.
  */
 
 // ── PVT table (SPE1 saturated oil, converted to metric) ────────────────────
@@ -43,6 +54,45 @@ const SPE1_PVT_TABLE = [
     { p_bar: 276.79, rs_m3m3: 226.20, bo_m3m3: 1.695, mu_o_cp: 0.510, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
     { p_bar: 345.73, rs_m3m3: 288.17, bo_m3m3: 1.827, mu_o_cp: 0.449, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
 ];
+
+// Exact SWOF/SGOF inputs from OPM's props_spe1case1b.inc.
+// OPM adds the final Sg = 0.88 row so SWOF first saturation + SGOF last saturation sums to 1.0.
+const SPE1_SCAL_TABLES: ThreePhaseScalTables = {
+    swof: [
+        { sw: 0.12, krw: 0, krow: 1, pcow: 0 },
+        { sw: 0.18, krw: 4.64876033057851e-8, krow: 1, pcow: 0 },
+        { sw: 0.24, krw: 1.86e-7, krow: 0.997, pcow: 0 },
+        { sw: 0.3, krw: 4.18388429752066e-7, krow: 0.98, pcow: 0 },
+        { sw: 0.36, krw: 7.43801652892562e-7, krow: 0.7, pcow: 0 },
+        { sw: 0.42, krw: 1.16219008264463e-6, krow: 0.35, pcow: 0 },
+        { sw: 0.48, krw: 1.67355371900826e-6, krow: 0.2, pcow: 0 },
+        { sw: 0.54, krw: 2.27789256198347e-6, krow: 0.09, pcow: 0 },
+        { sw: 0.6, krw: 2.97520661157025e-6, krow: 0.021, pcow: 0 },
+        { sw: 0.66, krw: 3.7654958677686e-6, krow: 0.01, pcow: 0 },
+        { sw: 0.72, krw: 4.64876033057851e-6, krow: 0.001, pcow: 0 },
+        { sw: 0.78, krw: 5.625e-6, krow: 0.0001, pcow: 0 },
+        { sw: 0.84, krw: 6.69421487603306e-6, krow: 0, pcow: 0 },
+        { sw: 0.91, krw: 8.05914256198347e-6, krow: 0, pcow: 0 },
+        { sw: 1.0, krw: 1e-5, krow: 0, pcow: 0 },
+    ],
+    sgof: [
+        { sg: 0, krg: 0, krog: 1, pcog: 0 },
+        { sg: 0.001, krg: 0, krog: 1, pcog: 0 },
+        { sg: 0.02, krg: 0, krog: 0.997, pcog: 0 },
+        { sg: 0.05, krg: 0.005, krog: 0.98, pcog: 0 },
+        { sg: 0.12, krg: 0.025, krog: 0.7, pcog: 0 },
+        { sg: 0.2, krg: 0.075, krog: 0.35, pcog: 0 },
+        { sg: 0.25, krg: 0.125, krog: 0.2, pcog: 0 },
+        { sg: 0.3, krg: 0.19, krog: 0.09, pcog: 0 },
+        { sg: 0.4, krg: 0.41, krog: 0.021, pcog: 0 },
+        { sg: 0.45, krg: 0.6, krog: 0.01, pcog: 0 },
+        { sg: 0.5, krg: 0.72, krog: 0.001, pcog: 0 },
+        { sg: 0.6, krg: 0.87, krog: 0.0001, pcog: 0 },
+        { sg: 0.7, krg: 0.94, krog: 0, pcog: 0 },
+        { sg: 0.85, krg: 0.98, krog: 0, pcog: 0 },
+        { sg: 0.88, krg: 0.984, krog: 0, pcog: 0 },
+    ],
+};
 
 // ── Eclipse reference data (Case 1, yearly intervals) ──────────────────────
 // Pressure in bar (converted from psia / 14.5038)
@@ -67,7 +117,7 @@ const ECLIPSE_PRESSURE: PublishedReferenceSeries = {
 };
 
 const ECLIPSE_GOR: PublishedReferenceSeries = {
-    panelKey: 'diagnostics',
+    panelKey: 'gor',
     label: 'Eclipse — GOR',
     curveKey: 'published-gor',
     data: [
@@ -83,7 +133,6 @@ const ECLIPSE_GOR: PublishedReferenceSeries = {
         { x: 3285, y: 3318.3 },
         { x: 3650, y: 3824.0 },
     ],
-    yAxisID: 'y1',
 };
 
 export const spe1_gas_injection: Scenario = {
@@ -92,7 +141,7 @@ export const spe1_gas_injection: Scenario = {
     description:
         'SPE Comparative Solution Project #1 (Odeh, 1981): 10×10×3 black-oil reservoir with gas injection. ' +
         'Validates PVT coupling, dissolved-gas tracking, and three-phase transport against published Eclipse results. ' +
-        'Corey relperm approximation — tabular SCAL not yet supported. Reservoir-condition rate targets are approximate conversions from field units.',
+        'Exact OPM SWOF/SGOF tables are supplied. Surface-rate controls now follow the Case 1 deck intent; remaining mismatch, if any, is a simulator-model gap rather than a benchmark-specific curve fit.',
     analyticalMethodSummary:
         'No analytical solution. Comparison is against published Eclipse simulator results from the OPM test suite (SPE1 Case 1).',
     analyticalMethodReference:
@@ -142,15 +191,15 @@ export const spe1_gas_injection: Scenario = {
         pvtMode: 'black-oil',
         pvtTable: SPE1_PVT_TABLE,
 
-        // ── SCAL (Corey approximation of SPE1 tabular data) ────────────
-        // Water is immobile in SPE1 (max krw ≈ 1e-5)
+        // ── SCAL ────────────────────────────────────────────────────────
+        // Exact SWOF/SGOF tables are supplied below; Corey endpoints remain as fallback metadata.
         s_wc: 0.12, s_or: 0.12,
         n_w: 2.0, n_o: 2.5,
-        k_rw_max: 0.0, k_ro_max: 1.0,
-        // Gas-oil Corey fit
+        k_rw_max: 0.00001, k_ro_max: 1.0,
         s_gc: 0.04, s_gr: 0.04, s_org: 0.18,
-        n_g: 1.6,
+        n_g: 1.5,
         k_rg_max: 0.984,
+        scalTables: SPE1_SCAL_TABLES,
 
         // ── Initial conditions ──────────────────────────────────────────
         initialPressure: 331,     // 4800 psia — undersaturated
@@ -169,11 +218,18 @@ export const spe1_gas_injection: Scenario = {
         injectorKLayers: [0],
         well_radius: 0.0762,      // 0.25 ft
         well_skin: 0,
-        // Rate control (approximate reservoir-condition conversions)
+        // Rate control (approximate reservoir-condition conversions of the OPM/Eclipse deck)
+        // Case 1 source deck uses:
+        // - producer ORAT 20,000 STB/d with 1000 psia BHP floor
+        // - injector GAS RATE 100 MMscf/d with 9014 psia BHP ceiling
+        // Surface-rate targets are converted from standard conditions to a dynamic
+        // reservoir-rate target each step using local PVT/state.
         producerControlMode: 'rate',
         injectorControlMode: 'rate',
         targetProducerRate: 5400,  // ≈ 20,000 STB/d × Bo × 0.159
         targetInjectorRate: 12000, // ≈ 100 MMscf/d at reservoir Bg
+        targetProducerSurfaceRate: 3179.74,   // 20,000 STB/d → Sm3/d
+        targetInjectorSurfaceRate: 2_831_680, // 100 MMscf/d → Sm3/d
         producerBhp: 69,           // 1000 psia min BHP
         injectorBhp: 621,          // 9014 psia max BHP
         bhpMin: 69,
@@ -219,10 +275,15 @@ export const spe1_gas_injection: Scenario = {
                 {
                     key: 'grid_20',
                     label: '20×20×3  (fine)',
-                    description: 'Refined grid — 1200 cells, sharper gas front.',
+                    description: 'Refined grid — 1200 cells, sharper gas front, with tighter timestep and control-change limits to keep the fine-grid case stable.',
                     paramPatch: {
                         nx: 20, ny: 20, cellDx: 152.4, cellDy: 152.4,
                         producerI: 19, producerJ: 19,
+                        delta_t_days: 2.5,
+                        steps: 1600,
+                        max_sat_change_per_step: 0.03,
+                        max_pressure_change_per_step: 30,
+                        max_well_rate_change_fraction: 0.35,
                     },
                     affectsAnalytical: false,
                 },

@@ -1,4 +1,4 @@
-import type { SimulatorCreatePayload } from './simulator-types'
+import type { SimulatorCreatePayload, ThreePhaseScalTables } from './simulator-types'
 
 function toFiniteNumber(value: unknown, fallback: number): number {
   const numeric = Number(value)
@@ -33,6 +33,20 @@ function normalizeLayerArray(values: unknown, fallback: number, length: number):
     const value = toFiniteNumber(values[index], fallback)
     return value > 0 ? value : fallback
   })
+}
+
+function cloneScalTables(value: unknown): ThreePhaseScalTables | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  const tables = value as ThreePhaseScalTables
+  if (!Array.isArray(tables.swof) || !Array.isArray(tables.sgof)) {
+    return undefined
+  }
+  return {
+    swof: tables.swof.map((row) => ({ ...row })),
+    sgof: tables.sgof.map((row) => ({ ...row })),
+  }
 }
 
 /**
@@ -113,7 +127,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     s_or: toClamped(state.s_or, 0, 1, 0.1),
     n_w: toMin(state.n_w, 0.01, 2),
     n_o: toMin(state.n_o, 0.01, 2),
-    k_rw_max: toClamped(state.k_rw_max, 0.01, 1, 1.0),
+    k_rw_max: toClamped(state.k_rw_max, 0, 1, 1.0),
     k_ro_max: toClamped(state.k_ro_max, 0.01, 1, 1.0),
 
     max_sat_change_per_step: toClamped(state.max_sat_change_per_step, 0.01, 1, 0.1),
@@ -146,6 +160,8 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     injectorEnabled: Boolean(state.injectorEnabled ?? true),
     targetInjectorRate: toMin(state.targetInjectorRate, 0, 350),
     targetProducerRate: toMin(state.targetProducerRate, 0, 350),
+    targetInjectorSurfaceRate: toMin(state.targetInjectorSurfaceRate, 0, 0),
+    targetProducerSurfaceRate: toMin(state.targetProducerSurfaceRate, 0, 0),
     injectorI,
     injectorJ,
     producerI,
@@ -180,5 +196,6 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     pvtTable: state.pvtMode === 'black-oil' && Array.isArray(state.pvtTable)
       ? state.pvtTable.map((row: any) => ({ ...row }))
       : undefined,
+    scalTables: cloneScalTables(state.scalTables),
   }
 }

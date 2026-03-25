@@ -12,6 +12,25 @@ export interface PvtRow {
     mu_g_cp: number;
 }
 
+export interface SwofRow {
+  sw: number;
+  krw: number;
+  krow: number;
+  pcow?: number;
+}
+
+export interface SgofRow {
+  sg: number;
+  krg: number;
+  krog: number;
+  pcog?: number;
+}
+
+export interface ThreePhaseScalTables {
+  swof: SwofRow[];
+  sgof: SgofRow[];
+}
+
 /** Permutation mode for assigning permeability */
 export type PermMode = 'uniform' | 'random' | 'perLayer' | string;
 
@@ -41,6 +60,7 @@ export interface SimulatorCreatePayload {
 
   pvtMode?: 'constant' | 'black-oil';
   pvtTable?: PvtRow[];
+  scalTables?: ThreePhaseScalTables;
 
   // rock / compressibility
   rock_compressibility: number;
@@ -120,6 +140,8 @@ export interface SimulatorCreatePayload {
   injectorEnabled?: boolean;
   targetInjectorRate?: number;
   targetProducerRate?: number;
+  targetInjectorSurfaceRate?: number;
+  targetProducerSurfaceRate?: number;
   injectorI?: number;
   injectorJ?: number;
   producerI?: number;
@@ -176,6 +198,10 @@ export interface RateHistoryPoint {
   avg_gas_saturation?: number;
   /** Producing GOR [Sm³/Sm³]: (free gas + dissolved gas) / oil at surface */
   producing_gor?: number;
+  /** Fraction of rate-controlled producer completions clamped by BHP limits */
+  producer_bhp_limited_fraction?: number;
+  /** Fraction of rate-controlled injector completions clamped by BHP limits */
+  injector_bhp_limited_fraction?: number;
   // additional fields produced by the simulator may exist
   [key: string]: unknown;
 }

@@ -16,6 +16,11 @@ pub(crate) enum WellControlDecision {
     Bhp { bhp_bar: f64 },
 }
 
+pub(crate) struct ResolvedWellControl {
+    pub(crate) decision: WellControlDecision,
+    pub(crate) bhp_limited: bool,
+}
+
 impl ReservoirSimulator {
     pub(crate) fn calculate_well_productivity_index(
         &self,
@@ -316,7 +321,7 @@ impl ReservoirSimulator {
         self.wells.iter().filter(|w| !w.injector).count()
     }
 
-    fn target_rate_m3_day(&self, well: &Well) -> Option<f64> {
+    pub(crate) fn target_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
         if well.injector && !self.injector_enabled {
             return Some(0.0);
         }
@@ -333,12 +338,34 @@ impl ReservoirSimulator {
                 if n_inj == 0 {
                     return Some(0.0);
                 }
+                if let Some(surface_rate_sc_day) = self.target_injector_surface_rate_m3_day {
+                    let surface_rate_per_well = surface_rate_sc_day / n_inj as f64;
+                    let reservoir_rate_per_well = match self.injected_fluid {
+                        InjectedFluid::Water => surface_rate_per_well * self.b_w.max(1e-9),
+                        InjectedFluid::Gas => surface_rate_per_well * self.get_b_g(pressure_bar).max(1e-9),
+                    };
+                    return Some(-reservoir_rate_per_well);
+                }
                 return Some(-(self.target_injector_rate_m3_day / n_inj as f64));
             }
 
             let n_prod = self.producer_well_count();
             if n_prod == 0 {
                 return Some(0.0);
+            }
+            if let Some(surface_rate_sc_day) = self.target_producer_surface_rate_m3_day {
+                let surface_rate_per_well = surface_rate_sc_day / n_prod as f64;
+                let id = self.idx(well.i, well.j, well.k);
+                let (fw, fg) = if self.three_phase_mode {
+                    (self.frac_flow_water_3p(id), self.frac_flow_gas(id))
+                } else {
+                    (self.frac_flow_water(id), 0.0)
+                };
+                let oil_fraction = (1.0 - fw - fg).max(1e-6);
+                let reservoir_rate_per_well = surface_rate_per_well
+                    * self.get_b_o(pressure_bar).max(1e-9)
+                    / oil_fraction;
+                return Some(reservoir_rate_per_well);
             }
             return Some(self.target_producer_rate_m3_day / n_prod as f64);
         }
@@ -350,9 +377,12 @@ impl ReservoirSimulator {
         &self,
         well: &Well,
         pressure_bar: f64,
-    ) -> Option<WellControlDecision> {
+    ) -> Option<ResolvedWellControl> {
         if well.injector && !self.injector_enabled {
-            return Some(WellControlDecision::Disabled);
+            return Some(ResolvedWellControl {
+                decision: WellControlDecision::Disabled,
+                bhp_limited: false,
+            });
         }
 
         let use_rate_control = if well.injector {
@@ -362,7 +392,7 @@ impl ReservoirSimulator {
         };
 
         if use_rate_control {
-            let q_target = self.target_rate_m3_day(well)?;
+            let q_target = self.target_rate_m3_day(well, pressure_bar)?;
 
             if !well.productivity_index.is_finite()
                 || !well.bhp.is_finite()
@@ -372,7 +402,10 @@ impl ReservoirSimulator {
             }
 
             if well.productivity_index <= f64::EPSILON {
-                return Some(WellControlDecision::Rate { q_m3_day: q_target });
+                return Some(ResolvedWellControl {
+                    decision: WellControlDecision::Rate { q_m3_day: q_target },
+                    bhp_limited: false,
+                });
             }
 
             // Rate target implies a dynamic BHP. If it violates limits, switch to BHP-control.
@@ -380,12 +413,18 @@ impl ReservoirSimulator {
             let constrained_bhp = implied_bhp.clamp(self.well_bhp_min, self.well_bhp_max);
 
             if (constrained_bhp - implied_bhp).abs() > 1e-9 {
-                return Some(WellControlDecision::Bhp {
-                    bhp_bar: constrained_bhp,
+                return Some(ResolvedWellControl {
+                    decision: WellControlDecision::Bhp {
+                        bhp_bar: constrained_bhp,
+                    },
+                    bhp_limited: true,
                 });
             }
 
-            return Some(WellControlDecision::Rate { q_m3_day: q_target });
+            return Some(ResolvedWellControl {
+                decision: WellControlDecision::Rate { q_m3_day: q_target },
+                bhp_limited: false,
+            });
         }
 
         if !well.productivity_index.is_finite()
@@ -395,11 +434,14 @@ impl ReservoirSimulator {
             return None;
         }
 
-        Some(WellControlDecision::Bhp { bhp_bar: well.bhp })
+        Some(ResolvedWellControl {
+            decision: WellControlDecision::Bhp { bhp_bar: well.bhp },
+            bhp_limited: false,
+        })
     }
 
     pub(crate) fn well_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
-        match self.resolve_well_control(well, pressure_bar)? {
+        match self.resolve_well_control(well, pressure_bar)?.decision {
             WellControlDecision::Disabled => Some(0.0),
             WellControlDecision::Rate { q_m3_day } => Some(q_m3_day),
             WellControlDecision::Bhp { bhp_bar } => {
@@ -551,7 +593,7 @@ impl ReservoirSimulator {
                     for w in &self.wells {
                         if w.i == i && w.j == j && w.k == k {
                             if let Some(control) = self.resolve_well_control(w, self.pressure[id]) {
-                                match control {
+                                match control.decision {
                                     WellControlDecision::Disabled => {}
                                     WellControlDecision::Rate { q_m3_day } => {
                                         b_rhs[id] -= q_m3_day;
@@ -959,10 +1001,44 @@ impl ReservoirSimulator {
         let mut total_prod_gas_reservoir = 0.0;
         let mut total_prod_gas = 0.0;
         let mut total_prod_dissolved_gas = 0.0;
+        let mut producer_rate_controlled_wells = 0usize;
+        let mut injector_rate_controlled_wells = 0usize;
+        let mut producer_bhp_limited_wells = 0usize;
+        let mut injector_bhp_limited_wells = 0usize;
 
         for w in &self.wells {
             let id = self.idx(w.i, w.j, w.k);
-            if let Some(q_m3_day) = self.well_rate_m3_day(w, p_new[id]) {
+            if let Some(control) = self.resolve_well_control(w, p_new[id]) {
+                let group_rate_controlled = if w.injector {
+                    self.injector_rate_controlled
+                } else {
+                    self.producer_rate_controlled
+                };
+                if group_rate_controlled {
+                    if w.injector {
+                        injector_rate_controlled_wells += 1;
+                        if control.bhp_limited {
+                            injector_bhp_limited_wells += 1;
+                        }
+                    } else {
+                        producer_rate_controlled_wells += 1;
+                        if control.bhp_limited {
+                            producer_bhp_limited_wells += 1;
+                        }
+                    }
+                }
+
+                let q_m3_day = match control.decision {
+                    WellControlDecision::Disabled => 0.0,
+                    WellControlDecision::Rate { q_m3_day } => q_m3_day,
+                    WellControlDecision::Bhp { bhp_bar } => {
+                        let q_m3_day = w.productivity_index * (p_new[id] - bhp_bar);
+                        if !q_m3_day.is_finite() {
+                            continue;
+                        }
+                        q_m3_day
+                    }
+                };
                 let p_cell = p_new[id];
                 if w.injector {
                     total_injection -= q_m3_day / self.b_w.max(1e-9);
@@ -1050,6 +1126,16 @@ impl ReservoirSimulator {
         } else {
             0.0
         };
+        let producer_bhp_limited_fraction = if producer_rate_controlled_wells > 0 {
+            producer_bhp_limited_wells as f64 / producer_rate_controlled_wells as f64
+        } else {
+            0.0
+        };
+        let injector_bhp_limited_fraction = if injector_rate_controlled_wells > 0 {
+            injector_bhp_limited_wells as f64 / injector_rate_controlled_wells as f64
+        } else {
+            0.0
+        };
 
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
@@ -1065,6 +1151,8 @@ impl ReservoirSimulator {
             total_production_gas: total_gas_sc,
             avg_gas_saturation,
             producing_gor,
+            producer_bhp_limited_fraction,
+            injector_bhp_limited_fraction,
         });
 
         // Advance simulation time

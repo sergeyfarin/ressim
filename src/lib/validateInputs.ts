@@ -49,6 +49,8 @@ export type SimulationInputs = {
     producerBhp: number;
     targetInjectorRate: number;
     targetProducerRate: number;
+    targetInjectorSurfaceRate?: number | null;
+    targetProducerSurfaceRate?: number | null;
 };
 
 export type ValidationState = {

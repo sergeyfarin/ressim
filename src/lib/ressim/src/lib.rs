@@ -31,7 +31,7 @@ mod step;
 mod well;
 
 pub use capillary::{CapillaryPressure, GasOilCapillaryPressure};
-pub use relperm::{RockFluidProps, RockFluidPropsThreePhase};
+pub use relperm::{RockFluidProps, RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables};
 pub use well::{TimePointRates, Well, WellRates};
 
 /// Which fluid the injector injects in three-phase mode.
@@ -109,6 +109,7 @@ pub struct ReservoirSimulator {
     producer_rate_controlled: bool,
     injector_enabled: bool,
     target_injector_rate_m3_day: f64,
+    target_injector_surface_rate_m3_day: Option<f64>,
     /// Minimum BHP constraint [bar] when running in rate mode
     well_bhp_min: f64,
     /// Maximum BHP constraint [bar] when running in rate mode
@@ -124,6 +125,7 @@ pub struct ReservoirSimulator {
     /// Cumulative gas material balance error [m³] (non-zero in three-phase mode)
     pub cumulative_mb_gas_error_m3: f64,
     target_producer_rate_m3_day: f64,
+    target_producer_surface_rate_m3_day: Option<f64>,
     rock_compressibility: f64,
     depth_reference_m: f64,
     b_o: f64,
@@ -281,7 +283,9 @@ impl ReservoirSimulator {
             producer_rate_controlled: false,
             injector_enabled: true,
             target_injector_rate_m3_day: 0.0,
+            target_injector_surface_rate_m3_day: None,
             target_producer_rate_m3_day: 0.0,
+            target_producer_surface_rate_m3_day: None,
             well_bhp_min: -100.0,
             well_bhp_max: 2000.0,
             rock_compressibility: 0.0,
@@ -439,6 +443,35 @@ impl ReservoirSimulator {
 
         self.target_injector_rate_m3_day = injector_rate_m3_day;
         self.target_producer_rate_m3_day = producer_rate_m3_day;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setTargetWellSurfaceRates)]
+    pub fn set_target_well_surface_rates(
+        &mut self,
+        injector_rate_m3_day: f64,
+        producer_rate_m3_day: f64,
+    ) -> Result<(), String> {
+        if !injector_rate_m3_day.is_finite() || !producer_rate_m3_day.is_finite() {
+            return Err("Target well surface rates must be finite numbers".to_string());
+        }
+        if injector_rate_m3_day < 0.0 || producer_rate_m3_day < 0.0 {
+            return Err(format!(
+                "Target well surface rates must be non-negative, got injector={}, producer={}",
+                injector_rate_m3_day, producer_rate_m3_day
+            ));
+        }
+
+        self.target_injector_surface_rate_m3_day = if injector_rate_m3_day > 0.0 {
+            Some(injector_rate_m3_day)
+        } else {
+            None
+        };
+        self.target_producer_surface_rate_m3_day = if producer_rate_m3_day > 0.0 {
+            Some(producer_rate_m3_day)
+        } else {
+            None
+        };
         Ok(())
     }
 
@@ -649,8 +682,8 @@ impl ReservoirSimulator {
             ));
         }
 
-        if k_rw_max <= 0.0 || k_rw_max > 1.0 {
-            return Err(format!("k_rw_max must be in (0, 1], got {}", k_rw_max));
+        if k_rw_max < 0.0 || k_rw_max > 1.0 {
+            return Err(format!("k_rw_max must be in [0, 1], got {}", k_rw_max));
         }
 
         if k_ro_max <= 0.0 || k_ro_max > 1.0 {
@@ -1008,8 +1041,23 @@ impl ReservoirSimulator {
             ));
         }
         self.scal_3p = Some(RockFluidPropsThreePhase {
-            s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max, s_gc, s_gr, s_org, n_g, k_rg_max,
+            s_wc, s_or, n_w, n_o, k_rw_max, k_ro_max, s_gc, s_gr, s_org, n_g, k_rg_max, tables: None,
         });
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setThreePhaseScalTables)]
+    pub fn set_three_phase_scal_tables(&mut self, table_js: JsValue) -> Result<(), JsValue> {
+        let tables: ThreePhaseScalTables = serde_wasm_bindgen::from_value(table_js)?;
+        tables
+            .validate()
+            .map_err(|message| JsValue::from_str(&message))?;
+
+        let scal = self
+            .scal_3p
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("Three-phase relperm props must be configured before SWOF/SGOF tables"))?;
+        scal.tables = Some(tables);
         Ok(())
     }
 
@@ -1168,6 +1216,44 @@ mod tests {
         assert!(c_o_above_bubble_point.is_finite());
         assert_eq!(c_o_below_bubble_point, sim.pvt.c_o);
         assert!(c_o_above_bubble_point >= sim.pvt.c_o);
+    }
+
+    #[test]
+    fn producer_surface_rate_target_converts_using_oil_fraction_and_bo() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.2);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_surface_rates(0.0, 100.0).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let well = sim.wells.first().unwrap();
+        let q_target = sim.target_rate_m3_day(well, 200.0).unwrap();
+        let krw = sim.scal.k_rw(sim.sat_water[0]);
+        let kro = sim.scal.k_ro(sim.sat_water[0]);
+        let lambda_w = krw / sim.get_mu_w(200.0);
+        let lambda_o = kro / sim.get_mu_o(200.0);
+        let oil_fraction = lambda_o / (lambda_w + lambda_o);
+        let expected = 100.0 * sim.get_b_o(200.0) / oil_fraction;
+
+        assert!((q_target - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rate_history_records_bhp_limited_fraction_for_rate_controlled_wells() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.2);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_rates(0.0, 5000.0).unwrap();
+        sim.set_well_bhp_limits(150.0, 300.0).unwrap();
+        sim.add_well(0, 0, 0, 150.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(1.0);
+
+        let point = sim.rate_history.last().unwrap();
+        assert_eq!(point.producer_bhp_limited_fraction, 1.0);
+        assert_eq!(point.injector_bhp_limited_fraction, 0.0);
     }
 
     fn buckley_case_a(
@@ -1507,6 +1593,13 @@ mod tests {
             sim.set_rel_perm_props(f64::NAN, 0.1, 2.0, 2.0, 1.0, 1.0),
             "finite numbers",
         );
+    }
+
+    #[test]
+    fn api_contract_allows_zero_water_relperm_endpoint() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 0.0, 1.0)
+            .expect("k_rw_max = 0 should be accepted for immobile-water cases");
     }
 
     #[test]
@@ -1973,7 +2066,9 @@ mod tests {
             .resolve_well_control(well, pressure)
             .expect("control decision should be available");
 
-        match control {
+        assert!(control.bhp_limited);
+
+        match control.decision {
             WellControlDecision::Bhp { bhp_bar } => {
                 assert!((bhp_bar - 80.0).abs() < 1e-9);
             }
@@ -1995,6 +2090,7 @@ mod tests {
         let rock = RockFluidPropsThreePhase {
             s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
             s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 1.5, k_rg_max: 0.7,
+            tables: None,
         };
 
         // At connate water with no free gas → k_ro should equal k_ro_max
@@ -2051,6 +2147,7 @@ mod tests {
         let rock = RockFluidPropsThreePhase {
             s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
             s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 2.0, k_rg_max: 0.7,
+            tables: None,
         };
 
         // Below and at critical gas saturation → k_rg = 0
@@ -2089,6 +2186,7 @@ mod tests {
         let rock = RockFluidPropsThreePhase {
             s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
             s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 1.5, k_rg_max: 0.7,
+            tables: None,
         };
 
         // When Sg = 0, Stone II must collapse exactly to the oil-water k_ro curve:
@@ -2104,6 +2202,51 @@ mod tests {
                 sw, kro_stone2, kro_ow
             );
         }
+    }
+
+    #[test]
+    fn three_phase_relperm_tables_interpolate_exact_spe1_points() {
+        use crate::relperm::{RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables};
+
+        let rock = RockFluidPropsThreePhase {
+            s_wc: 0.12, s_or: 0.12, n_w: 2.0, n_o: 2.5, k_rw_max: 1e-5, k_ro_max: 1.0,
+            s_gc: 0.04, s_gr: 0.04, s_org: 0.18, n_g: 1.5, k_rg_max: 0.984,
+            tables: Some(ThreePhaseScalTables {
+                swof: vec![
+                    SwofRow { sw: 0.12, krw: 0.0, krow: 1.0, pcow: Some(0.0) },
+                    SwofRow { sw: 0.24, krw: 1.86e-7, krow: 0.997, pcow: Some(0.0) },
+                    SwofRow { sw: 1.0, krw: 1e-5, krow: 0.0, pcow: Some(0.0) },
+                ],
+                sgof: vec![
+                    SgofRow { sg: 0.0, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
+                    SgofRow { sg: 0.5, krg: 0.72, krog: 0.001, pcog: Some(0.0) },
+                    SgofRow { sg: 0.88, krg: 0.984, krog: 0.0, pcog: Some(0.0) },
+                ],
+            }),
+        };
+
+        assert!((rock.k_rw(0.12) - 0.0).abs() < 1e-12);
+        assert!((rock.k_ro_water(0.24) - 0.997).abs() < 1e-12);
+        assert!((rock.k_rg(0.5) - 0.72).abs() < 1e-12);
+        assert!((rock.k_ro_gas(0.5) - 0.001).abs() < 1e-12);
+    }
+
+    #[test]
+    fn three_phase_scal_tables_validate_valid_spe1_fragment() {
+        use crate::relperm::{SgofRow, SwofRow, ThreePhaseScalTables};
+
+        let tables = ThreePhaseScalTables {
+            swof: vec![
+                SwofRow { sw: 0.12, krw: 0.0, krow: 1.0, pcow: Some(0.0) },
+                SwofRow { sw: 1.0, krw: 1e-5, krow: 0.0, pcow: Some(0.0) },
+            ],
+            sgof: vec![
+                SgofRow { sg: 0.0, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
+                SgofRow { sg: 0.88, krg: 0.984, krog: 0.0, pcog: Some(0.0) },
+            ],
+        };
+
+        assert!(tables.validate().is_ok());
     }
 
     /// Build a minimal 3-phase simulator with gas injection for physics tests.

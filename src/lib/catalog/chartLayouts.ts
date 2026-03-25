@@ -258,9 +258,9 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             panelOrder: ['diagnostics', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
             panels: {
                 diagnostics: {
-                    title: 'Average Pressure',
-                    curveKeys: ['avg-pressure-sim', 'published-pressure'],
-                    scalePreset: 'pressure',
+                    title: 'Pressure / Control Limits',
+                    curveKeys: ['avg-pressure-sim', 'published-pressure', 'producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
+                    scalePreset: 'diagnostics',
                     expanded: true,
                 },
                 gor: {

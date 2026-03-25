@@ -36,6 +36,12 @@ pub struct TimePointRates {
     /// Non-zero only in three-phase mode with PVT table.
     #[serde(default)]
     pub producing_gor: f64,
+    /// Fraction of rate-controlled producer completions currently clamped by BHP limits.
+    #[serde(default)]
+    pub producer_bhp_limited_fraction: f64,
+    /// Fraction of rate-controlled injector completions currently clamped by BHP limits.
+    #[serde(default)]
+    pub injector_bhp_limited_fraction: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

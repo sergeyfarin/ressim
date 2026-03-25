@@ -118,6 +118,7 @@ export class ReservoirSimulator {
      */
     setStabilityParams(max_sat_change_per_step: number, max_pressure_change_per_step: number, max_well_rate_change_fraction: number): void;
     setTargetWellRates(injector_rate_m3_day: number, producer_rate_m3_day: number): void;
+    setTargetWellSurfaceRates(injector_rate_m3_day: number, producer_rate_m3_day: number): void;
     /**
      * Enable or disable the three-phase simulation mode
      */
@@ -129,6 +130,7 @@ export class ReservoirSimulator {
      * oil saturation in `k_ro_gas` and gas-oil capillary pressure.
      */
     setThreePhaseRelPermProps(s_wc: number, s_or: number, s_gc: number, s_gr: number, s_org: number, n_w: number, n_o: number, n_g: number, k_rw_max: number, k_ro_max: number, k_rg_max: number): void;
+    setThreePhaseScalTables(table_js: any): void;
     setWellBhpLimits(bhp_min: number, bhp_max: number): void;
     setWellControlModes(injector_mode: string, producer_mode: string): void;
     /**
@@ -194,8 +196,10 @@ export interface InitOutput {
     readonly reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
     readonly reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
+    readonly reservoirsimulator_setTargetWellSurfaceRates: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setThreePhaseModeEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setThreePhaseRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number];
+    readonly reservoirsimulator_setThreePhaseScalTables: (a: number, b: any) => [number, number];
     readonly reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly reservoirsimulator_step: (a: number, b: number) => void;
