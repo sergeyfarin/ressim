@@ -2,7 +2,7 @@ use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
 
-use crate::solver::solve_pcg_with_guess;
+use crate::solver::solve_bicgstab_with_guess;
 use crate::{InjectedFluid, ReservoirSimulator, TimePointRates, Well};
 
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
@@ -10,12 +10,14 @@ use crate::{InjectedFluid, ReservoirSimulator, TimePointRates, Well};
 /// Factor = 9.8692e-16 × 1e3 × 1e5 × 86400 = 8.5269888e-3
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
+#[derive(Clone, Copy)]
 pub(crate) enum WellControlDecision {
     Disabled,
     Rate { q_m3_day: f64 },
     Bhp { bhp_bar: f64 },
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct ResolvedWellControl {
     pub(crate) decision: WellControlDecision,
     pub(crate) bhp_limited: bool,
@@ -211,6 +213,10 @@ impl ReservoirSimulator {
         density_kg_m3 * 9.80665 * (depth_i - depth_j) * 1e-5
     }
 
+    fn interface_density_barrier(&self, rho_i: f64, rho_j: f64) -> f64 {
+        0.5 * (rho_i + rho_j)
+    }
+
     /// Fractional flow of water [dimensionless] = f_w = λ_w / λ_t
     /// Used in upwind scheme for saturation transport
     fn frac_flow_water(&self, id: usize) -> f64 {
@@ -236,13 +242,13 @@ impl ReservoirSimulator {
             self.update_dynamic_well_productivity_indices();
 
             // Calculate fluxes and stability for the remaining time step
-            let (p_new, delta_water_m3, delta_gas_m3, delta_dg_sc, stable_dt_factor, pcg_converged, pcg_iters) =
+            let (p_new, delta_water_m3, delta_free_gas_sc, delta_dg_sc, well_controls, stable_dt_factor, pcg_converged, pcg_iters) =
                 self.calculate_fluxes(remaining_dt);
 
             // Track solver convergence warning
             if !pcg_converged {
                 self.last_solver_warning = format!(
-                    "PCG solver did not converge after {} iterations (t={:.2} days)",
+                    "BiCGSTAB solver did not converge after {} iterations (t={:.2} days)",
                     pcg_iters,
                     self.time_days + time_stepped
                 );
@@ -251,24 +257,26 @@ impl ReservoirSimulator {
             let actual_dt;
             let final_p;
             let final_delta_water_m3;
-            let final_delta_gas_m3;
+            let final_delta_free_gas_sc;
             let final_delta_dg_sc;
+            let final_well_controls;
 
             if stable_dt_factor < 1.0 {
                 // Timestep is too large, reduce it based on CFL condition
                 actual_dt = remaining_dt * stable_dt_factor * 0.9; // Use 90% for safety
 
                 // Re-solve pressure and fluxes with reduced dt for accuracy.
-                let (p_resolv, dw_resolv, dg_resolv, ddg_resolv, _factor2, pcg_conv2, pcg_iters2) =
+                let (p_resolv, dw_resolv, dg_resolv, ddg_resolv, controls_resolv, _factor2, pcg_conv2, pcg_iters2) =
                     self.calculate_fluxes(actual_dt);
                 final_p = p_resolv;
                 final_delta_water_m3 = dw_resolv;
-                final_delta_gas_m3 = dg_resolv;
+                final_delta_free_gas_sc = dg_resolv;
                 final_delta_dg_sc = ddg_resolv;
+                final_well_controls = controls_resolv;
 
                 if !pcg_conv2 {
                     self.last_solver_warning = format!(
-                        "PCG solver did not converge after {} iterations (re-solve, t={:.2} days)",
+                        "BiCGSTAB solver did not converge after {} iterations (re-solve, t={:.2} days)",
                         pcg_iters2,
                         self.time_days + time_stepped
                     );
@@ -278,8 +286,9 @@ impl ReservoirSimulator {
                 actual_dt = remaining_dt;
                 final_p = p_new;
                 final_delta_water_m3 = delta_water_m3;
-                final_delta_gas_m3 = delta_gas_m3;
+                final_delta_free_gas_sc = delta_free_gas_sc;
                 final_delta_dg_sc = delta_dg_sc;
+                final_well_controls = well_controls;
             }
 
             if !actual_dt.is_finite() || actual_dt <= 1e-12 {
@@ -291,12 +300,21 @@ impl ReservoirSimulator {
                 break;
             }
 
+            if !self.pressure_state_is_physical(final_p.as_slice()) {
+                self.last_solver_warning = format!(
+                    "Linear solver produced a non-physical pressure state at t={:.6} days; rejecting step",
+                    self.time_days + time_stepped
+                );
+                break;
+            }
+
             // Update saturations and pressure with the adjusted (or full) timestep
             self.update_saturations_and_pressure(
                 &final_p,
                 &final_delta_water_m3,
-                &final_delta_gas_m3,
+                &final_delta_free_gas_sc,
                 &final_delta_dg_sc,
+                &final_well_controls,
                 actual_dt,
             );
 
@@ -390,6 +408,192 @@ impl ReservoirSimulator {
             let oil_rate_sc = q_m3_day * oil_fraction / self.get_b_o_cell(id, pressure_bar).max(1e-9);
             Some(oil_rate_sc.max(0.0))
         }
+    }
+
+    fn well_transport_rate_from_control(
+        &self,
+        well: &Well,
+        control: ResolvedWellControl,
+        pressure_bar: f64,
+    ) -> Option<f64> {
+        match control.decision {
+            WellControlDecision::Disabled => Some(0.0),
+            WellControlDecision::Rate { q_m3_day } => Some(q_m3_day),
+            WellControlDecision::Bhp { bhp_bar } => {
+                self.completion_rate_for_bhp(well, pressure_bar, bhp_bar)
+            }
+        }
+    }
+
+    fn solve_rs_for_dissolved_gas(
+        &self,
+        pressure_bar: f64,
+        water_saturation: f64,
+        gas_saturation: f64,
+        pore_volume_m3: f64,
+        dissolved_gas_sc: f64,
+        rs_upper: f64,
+    ) -> f64 {
+        let table = match &self.pvt_table {
+            Some(table) => table,
+            None => return 0.0,
+        };
+
+        let target_dissolved_gas_sc = dissolved_gas_sc.max(0.0);
+        if target_dissolved_gas_sc <= 0.0 || rs_upper <= 0.0 {
+            return 0.0;
+        }
+
+        let oil_saturation = (1.0 - water_saturation - gas_saturation).max(0.0);
+        if oil_saturation <= 1e-12 || pore_volume_m3 <= 0.0 {
+            return 0.0;
+        }
+
+        let mut low = 0.0;
+        let mut high = rs_upper.max(0.0);
+        for _ in 0..64 {
+            let mid = 0.5 * (low + high);
+            let (bo_mid, _) = table.interpolate_oil(pressure_bar, mid);
+            let dissolved_mid = (oil_saturation * pore_volume_m3 / bo_mid.max(1e-9)) * mid;
+            if dissolved_mid < target_dissolved_gas_sc {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+
+        0.5 * (low + high)
+    }
+
+    fn split_gas_inventory_after_transport(
+        &self,
+        pressure_bar: f64,
+        pore_volume_m3: f64,
+        water_saturation: f64,
+        transported_free_gas_sc: f64,
+        dissolved_gas_sc: f64,
+    ) -> (f64, f64, f64) {
+        let table = match &self.pvt_table {
+            Some(table) => table,
+            None => {
+                let bg = self.get_b_g(pressure_bar).max(1e-9);
+                let sg = ((transported_free_gas_sc.max(0.0) * bg) / pore_volume_m3.max(1e-9))
+                    .clamp(0.0, (1.0 - water_saturation).max(0.0));
+                let so = (1.0 - water_saturation - sg).max(0.0);
+                return (sg, so, 0.0);
+            }
+        };
+
+        let total_hydrocarbon_saturation = (1.0 - water_saturation).max(0.0);
+        let bg = self.get_b_g(pressure_bar).max(1e-9);
+        let free_gas_sc_transport = transported_free_gas_sc.max(0.0);
+        let sg_transport = ((free_gas_sc_transport * bg) / pore_volume_m3.max(1e-9))
+            .clamp(0.0, total_hydrocarbon_saturation);
+        let so_transport = (total_hydrocarbon_saturation - sg_transport).max(0.0);
+        let dissolved_gas_sc = dissolved_gas_sc.max(0.0);
+
+        let rs_max = table.interpolate(pressure_bar).rs_m3m3.max(0.0);
+        let (bo_sat, _) = table.interpolate_oil(pressure_bar, rs_max);
+        let bo_sat = bo_sat.max(1e-9);
+
+        if !self.gas_redissolution_enabled {
+            let max_dissolved_sc_transport = (so_transport * pore_volume_m3 / bo_sat) * rs_max;
+            if dissolved_gas_sc <= max_dissolved_sc_transport + 1e-9 {
+                let rs = self.solve_rs_for_dissolved_gas(
+                    pressure_bar,
+                    water_saturation,
+                    sg_transport,
+                    pore_volume_m3,
+                    dissolved_gas_sc,
+                    rs_max,
+                );
+                return (sg_transport, so_transport, rs);
+            }
+        }
+
+        let total_gas_sc = free_gas_sc_transport + dissolved_gas_sc;
+        let max_all_dissolved_sc = (total_hydrocarbon_saturation * pore_volume_m3 / bo_sat) * rs_max;
+        if self.gas_redissolution_enabled && total_gas_sc <= max_all_dissolved_sc + 1e-9 {
+            let rs = self.solve_rs_for_dissolved_gas(
+                pressure_bar,
+                water_saturation,
+                0.0,
+                pore_volume_m3,
+                total_gas_sc,
+                rs_max,
+            );
+            return (0.0, total_hydrocarbon_saturation, rs);
+        }
+
+        let denom = (1.0 / bg) - (rs_max / bo_sat);
+        let sg_saturated = if denom.abs() > 1e-12 {
+            ((total_gas_sc / pore_volume_m3) - (total_hydrocarbon_saturation * rs_max / bo_sat)) / denom
+        } else {
+            sg_transport
+        };
+        let sg_lower_bound = if self.gas_redissolution_enabled { 0.0 } else { sg_transport };
+        let sg = sg_saturated.clamp(sg_lower_bound, total_hydrocarbon_saturation);
+        let so = (total_hydrocarbon_saturation - sg).max(0.0);
+        (sg, so, rs_max)
+    }
+
+    fn pressure_state_bounds(&self) -> (f64, f64) {
+        let current_min = self
+            .pressure
+            .iter()
+            .copied()
+            .filter(|p| p.is_finite())
+            .fold(f64::INFINITY, f64::min);
+        let current_max = self
+            .pressure
+            .iter()
+            .copied()
+            .filter(|p| p.is_finite())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let bhp_min = self
+            .wells
+            .iter()
+            .map(|w| w.bhp)
+            .filter(|p| p.is_finite())
+            .fold(f64::INFINITY, f64::min);
+        let bhp_max = self
+            .wells
+            .iter()
+            .map(|w| w.bhp)
+            .filter(|p| p.is_finite())
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let control_min = [self.well_bhp_min]
+            .into_iter()
+            .filter(|p| p.is_finite())
+            .fold(f64::INFINITY, f64::min);
+        let control_max = [self.well_bhp_max]
+            .into_iter()
+            .filter(|p| p.is_finite())
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let reference_min = current_min.min(bhp_min).min(control_min);
+        let reference_max = current_max.max(bhp_max).max(control_max);
+        let swing_allowance = 10.0 * self.max_pressure_change_per_step + 500.0;
+        let lower = if reference_min.is_finite() {
+            (reference_min - swing_allowance).max(1.0)
+        } else {
+            1.0
+        };
+        let upper = if reference_max.is_finite() {
+            reference_max + swing_allowance
+        } else {
+            10_000.0
+        }
+        .min(50_000.0);
+        (lower, upper.max(lower + 1.0))
+    }
+
+    fn pressure_state_is_physical(&self, pressures: &[f64]) -> bool {
+        let (lower, upper) = self.pressure_state_bounds();
+        pressures
+            .iter()
+            .all(|p| p.is_finite() && *p >= lower && *p <= upper)
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -644,10 +848,10 @@ impl ReservoirSimulator {
     fn calculate_fluxes(
         &self,
         delta_t_days: f64,
-    ) -> (DVector<f64>, Vec<f64>, Vec<f64>, Vec<f64>, f64, bool, usize) {
+    ) -> (DVector<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<Option<ResolvedWellControl>>, f64, bool, usize) {
         let n_cells = self.nx * self.ny * self.nz;
         if n_cells == 0 {
-            return (DVector::zeros(0), vec![], vec![], vec![], 1.0, true, 0);
+            return (DVector::zeros(0), vec![], vec![], vec![], vec![], 1.0, true, 0);
         }
         let dt_days = delta_t_days.max(1e-12);
 
@@ -738,9 +942,28 @@ impl ReservoirSimulator {
                         let pc_i = self.get_capillary_pressure(self.sat_water[id]);
                         let pc_j = self.get_capillary_pressure(self.sat_water[*n_id]);
 
-                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.get_rho_w(self.pressure[id]));
-                        let rho_o = if self.three_phase_mode { self.get_rho_o_cell(id, self.pressure[id]) } else { self.get_rho_o(self.pressure[id]) };
-                        let grav_o = self.gravity_head_bar(depth_i, depth_j, rho_o);
+                        let rho_w_i = self.get_rho_w(p_i);
+                        let rho_w_j = self.get_rho_w(p_j);
+                        let grav_w = self.gravity_head_bar(
+                            depth_i,
+                            depth_j,
+                            self.interface_density_barrier(rho_w_i, rho_w_j),
+                        );
+                        let rho_o_i = if self.three_phase_mode {
+                            self.get_rho_o_cell(id, p_i)
+                        } else {
+                            self.get_rho_o(p_i)
+                        };
+                        let rho_o_j = if self.three_phase_mode {
+                            self.get_rho_o_cell(*n_id, p_j)
+                        } else {
+                            self.get_rho_o(p_j)
+                        };
+                        let grav_o = self.gravity_head_bar(
+                            depth_i,
+                            depth_j,
+                            self.interface_density_barrier(rho_o_i, rho_o_j),
+                        );
 
                         // Phase potential differences (positive if flowing from i to j)
                         let dphi_o = (p_i - p_j) - grav_o;
@@ -761,7 +984,13 @@ impl ReservoirSimulator {
                             // Gas potential: P_gas = P_oil + P_cog => dphi_g = dphi_oil + d(P_cog)
                             let pc_og_i = self.get_gas_oil_capillary_pressure(self.sat_gas[id]);
                             let pc_og_j = self.get_gas_oil_capillary_pressure(self.sat_gas[*n_id]);
-                            let grav_g = self.gravity_head_bar(depth_i, depth_j, self.get_rho_g(self.pressure[id]));
+                            let rho_g_i = self.get_rho_g(p_i);
+                            let rho_g_j = self.get_rho_g(p_j);
+                            let grav_g = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(rho_g_i, rho_g_j),
+                            );
                             let dphi_g = (p_i - p_j) + (pc_og_i - pc_og_j) - grav_g;
                             let lam_g_up = if dphi_g >= 0.0 { lam_g_i } else { lam_g_j };
 
@@ -837,18 +1066,18 @@ impl ReservoirSimulator {
         }
         let a_mat: CsMat<f64> = tri.to_csr();
 
-        // Solve pressure equation A*p_new = b with PCG, initial guess = current pressures
+        // Solve pressure equation A*p_new = b with BiCGSTAB, initial guess = current pressures
         let mut x0 = DVector::<f64>::zeros(n_cells);
         for i in 0..n_cells {
             x0[i] = self.pressure[i];
         }
-        let pcg_result = solve_pcg_with_guess(&a_mat, &b_rhs, &diag_inv, &x0, 1e-7, 1000);
+        let pcg_result = solve_bicgstab_with_guess(&a_mat, &b_rhs, &diag_inv, &x0, 1e-7, 1000);
         let p_new = pcg_result.solution;
 
         // Compute phase fluxes and explicit saturation update (upwind fractional flow method)
-        // Track total water and gas volume change [m³] per cell over dt_days
+        // Track water in reservoir m³ and gas in standard m³ over dt_days.
         let mut delta_water_m3 = vec![0.0f64; n_cells];
-        let mut delta_gas_m3 = vec![0.0f64; n_cells];
+        let mut delta_free_gas_sc = vec![0.0f64; n_cells];
         let mut delta_dg_sc = vec![0.0f64; n_cells];
         let mut max_sat_change = 0.0;
 
@@ -879,12 +1108,25 @@ impl ReservoirSimulator {
                         let pc_i = self.get_capillary_pressure(self.sat_water[id]);
                         let pc_j = self.get_capillary_pressure(self.sat_water[nid]);
 
-                        let grav_w = self.gravity_head_bar(depth_i, depth_j, self.get_rho_w(self.pressure[id]));
+                        let rho_w_old_i = self.get_rho_w(self.pressure[id]);
+                        let rho_w_old_j = self.get_rho_w(self.pressure[nid]);
+                        let rho_w_new_i = self.get_rho_w(p_new[id]);
+                        let rho_w_new_j = self.get_rho_w(p_new[nid]);
+                        let grav_w_old = self.gravity_head_bar(
+                            depth_i,
+                            depth_j,
+                            self.interface_density_barrier(rho_w_old_i, rho_w_old_j),
+                        );
+                        let grav_w_new = self.gravity_head_bar(
+                            depth_i,
+                            depth_j,
+                            self.interface_density_barrier(rho_w_new_i, rho_w_new_j),
+                        );
 
                         // Old-pressure potential for upwind direction (matches pressure equation)
-                        let dphi_w_old = (self.pressure[id] - self.pressure[nid]) - (pc_i - pc_j) - grav_w;
+                        let dphi_w_old = (self.pressure[id] - self.pressure[nid]) - (pc_i - pc_j) - grav_w_old;
                         // New-pressure potential for flux magnitude
-                        let dphi_w = (p_new[id] - p_new[nid]) - (pc_i - pc_j) - grav_w;
+                        let dphi_w = (p_new[id] - p_new[nid]) - (pc_i - pc_j) - grav_w_new;
 
                         let (lam_w_i, lam_w_j) = if self.three_phase_mode {
                             let (w_i, _, _) = self.phase_mobilities_3p(id);
@@ -940,12 +1182,25 @@ impl ReservoirSimulator {
 
                             let pc_og_i = self.get_gas_oil_capillary_pressure(self.sat_gas[id]);
                             let pc_og_j = self.get_gas_oil_capillary_pressure(self.sat_gas[nid]);
-                            let grav_g = self.gravity_head_bar(depth_i, depth_j, self.get_rho_g(self.pressure[id]));
+                            let rho_g_old_i = self.get_rho_g(self.pressure[id]);
+                            let rho_g_old_j = self.get_rho_g(self.pressure[nid]);
+                            let rho_g_new_i = self.get_rho_g(p_new[id]);
+                            let rho_g_new_j = self.get_rho_g(p_new[nid]);
+                            let grav_g_old = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(rho_g_old_i, rho_g_old_j),
+                            );
+                            let grav_g_new = self.gravity_head_bar(
+                                depth_i,
+                                depth_j,
+                                self.interface_density_barrier(rho_g_new_i, rho_g_new_j),
+                            );
 
                             // Old-pressure potential for upwind direction
-                            let dphi_g_old = (self.pressure[id] - self.pressure[nid]) + (pc_og_i - pc_og_j) - grav_g;
+                            let dphi_g_old = (self.pressure[id] - self.pressure[nid]) + (pc_og_i - pc_og_j) - grav_g_old;
                             // New-pressure potential for flux magnitude
-                            let dphi_g = (p_new[id] - p_new[nid]) + (pc_og_i - pc_og_j) - grav_g;
+                            let dphi_g = (p_new[id] - p_new[nid]) + (pc_og_i - pc_og_j) - grav_g_new;
 
                             let lam_g_up = if dphi_g_old >= 0.0 {
                                 self.gas_mobility(id)
@@ -957,19 +1212,33 @@ impl ReservoirSimulator {
                                 * self.geometric_transmissibility(id, nid, dim);
                             let t_g = geom_t * lam_g_up;
                             let gas_flux_m3_day = t_g * dphi_g;
-                            let dv_gas = gas_flux_m3_day * dt_days;
+                            let up_id = if dphi_g_old >= 0.0 { id } else { nid };
+                            let gas_flux_sc_day = gas_flux_m3_day / self.get_b_g(self.pressure[up_id]).max(1e-9);
+                            let dv_gas_sc = gas_flux_sc_day * dt_days;
 
-                            delta_gas_m3[id] -= dv_gas;
-                            delta_gas_m3[nid] += dv_gas;
+                            delta_free_gas_sc[id] -= dv_gas_sc;
+                            delta_free_gas_sc[nid] += dv_gas_sc;
 
                             // Oil flux to advect Dissolved Gas (Rs)
                             if self.pvt_table.is_some() {
-                                let rho_o = self.get_rho_o_cell(id, self.pressure[id]);
-                                let grav_o = self.gravity_head_bar(depth_i, depth_j, rho_o);
+                                let rho_o_old_i = self.get_rho_o_cell(id, self.pressure[id]);
+                                let rho_o_old_j = self.get_rho_o_cell(nid, self.pressure[nid]);
+                                let rho_o_new_i = self.get_rho_o_cell(id, p_new[id]);
+                                let rho_o_new_j = self.get_rho_o_cell(nid, p_new[nid]);
+                                let grav_o_old = self.gravity_head_bar(
+                                    depth_i,
+                                    depth_j,
+                                    self.interface_density_barrier(rho_o_old_i, rho_o_old_j),
+                                );
+                                let grav_o_new = self.gravity_head_bar(
+                                    depth_i,
+                                    depth_j,
+                                    self.interface_density_barrier(rho_o_new_i, rho_o_new_j),
+                                );
                                 // Old-pressure potential for oil upwinding
-                                let dphi_o_old = (self.pressure[id] - self.pressure[nid]) - grav_o;
+                                let dphi_o_old = (self.pressure[id] - self.pressure[nid]) - grav_o_old;
                                 // New-pressure potential for oil flux
-                                let dphi_o = (p_new[id] - p_new[nid]) - grav_o;
+                                let dphi_o = (p_new[id] - p_new[nid]) - grav_o_new;
 
                                 let (_, lam_o_i, _) = self.phase_mobilities_3p(id);
                                 let (_, lam_o_j, _) = self.phase_mobilities_3p(nid);
@@ -999,18 +1268,8 @@ impl ReservoirSimulator {
         for (w_idx, w) in self.wells.iter().enumerate() {
             let id = self.idx(w.i, w.j, w.k);
 
-            let q_m3_day = match &well_controls[w_idx] {
-                Some(control) => match &control.decision {
-                    WellControlDecision::Disabled => Some(0.0),
-                    WellControlDecision::Rate { q_m3_day } => Some(*q_m3_day),
-                    WellControlDecision::Bhp { bhp_bar } => {
-                        // BHP wells: rate = PI * (p_new - BHP), consistent with
-                        // the implicit treatment in the pressure matrix
-                        self.completion_rate_for_bhp(w, p_new[id], *bhp_bar)
-                    }
-                },
-                None => None,
-            };
+            let q_m3_day = well_controls[w_idx]
+                .and_then(|control| self.well_transport_rate_from_control(w, control, p_new[id]));
             if let Some(q_m3_day) = q_m3_day {
                 if self.three_phase_mode {
                     // Three-phase: injection fluid depends on injectedFluid setting;
@@ -1026,7 +1285,7 @@ impl ReservoirSimulator {
                         (lam_w / lam_t, lam_g / lam_t, lam_o / lam_t)
                     };
                     delta_water_m3[id] -= q_m3_day * fw * dt_days;
-                    delta_gas_m3[id] -= q_m3_day * fg * dt_days;
+                    delta_free_gas_sc[id] -= q_m3_day * fg * dt_days / self.get_b_g(p_new[id]).max(1e-9);
 
                     if !w.injector && self.pvt_table.is_some() {
                         let q_o_res = q_m3_day * fo;
@@ -1052,7 +1311,7 @@ impl ReservoirSimulator {
             if vp_m3 > 0.0 {
                 let sat_change_w = (delta_water_m3[idx] / vp_m3).abs();
                 let sat_change_g = if self.three_phase_mode {
-                    (delta_gas_m3[idx] / vp_m3).abs()
+                    (delta_free_gas_sc[idx].abs() * self.get_b_g(self.pressure[idx]).max(1e-9) / vp_m3).abs()
                 } else {
                     0.0
                 };
@@ -1106,20 +1365,22 @@ impl ReservoirSimulator {
         (
             p_new,
             delta_water_m3,
-            delta_gas_m3,
+            delta_free_gas_sc,
             delta_dg_sc,
+            well_controls,
             stable_dt_factor,
             pcg_result.converged,
             pcg_result.iterations,
         )
     }
 
-    fn update_saturations_and_pressure(
+    pub(crate) fn update_saturations_and_pressure(
         &mut self,
         p_new: &DVector<f64>,
         delta_water_m3: &Vec<f64>,
-        delta_gas_m3: &Vec<f64>,
+        delta_free_gas_sc: &Vec<f64>,
         delta_dg_sc: &Vec<f64>,
+        well_controls: &[Option<ResolvedWellControl>],
         dt_days: f64,
     ) {
         let n_cells = self.nx * self.ny * self.nz;
@@ -1149,7 +1410,6 @@ impl ReservoirSimulator {
                 } else {
                     0.0
                 };
-                let delta_sg = delta_gas_m3[idx] / vp_m3;
 
                 let (s_wc, s_or, s_gc, s_gr) =
                     if let Some(s) = &self.scal_3p {
@@ -1159,67 +1419,30 @@ impl ReservoirSimulator {
                     };
 
                 let sw_new = (sw_old + delta_sw).clamp(s_wc, 1.0 - s_or - s_gc);
-                let mut sg_new = (sg_old + delta_sg).clamp(0.0, 1.0 - s_wc - s_gr);
-                let mut so_new = (1.0 - sw_new - sg_new).max(0.0);
+                let bg_new = self.get_b_g(p_new[idx]).max(1e-9);
+                let transported_free_gas_sc = (old_free_gas_sc + delta_free_gas_sc[idx]).max(0.0);
+                let mut sg_new = ((transported_free_gas_sc * bg_new) / vp_m3)
+                    .clamp(0.0, 1.0 - s_wc - s_gr);
 
-                // --- Phase Split: Bubble Point Tracking ---
+                // --- Phase split: conservative local gas flash ---
                 if self.pvt_table.is_some() {
-                    let mut rs_cell = self.rs[idx];
-                    let bo_new = self.get_b_o_cell(idx, p_new[idx]);
-                    let bg_new = self.get_b_g(p_new[idx]);
-                    let rs_max = self.pvt_table.as_ref().unwrap().interpolate(p_new[idx]).rs_m3m3;
-
-                    // Advect Rs using standard oil volume
-                    let so_old = self.sat_oil[idx];
-                    let bo_old = self.get_b_o_cell(idx, self.pressure[idx]);
-                    let v_o_sc_old = (so_old * vp_m3) / bo_old;
-                    let v_o_sc_new = (so_new * vp_m3) / bo_new;
-                    let v_dg_sc_old = v_o_sc_old * rs_cell;
-                    let v_dg_sc_new = v_dg_sc_old + delta_dg_sc[idx];
-                    if v_o_sc_new > 0.0 {
-                        rs_cell = v_dg_sc_new / v_o_sc_new;
-                    }
-
-                    // Phase Flash
-                    if rs_cell > rs_max {
-                        // Liberate internal excess dissolved gas
-                        let liberated_rs = rs_cell - rs_max;
-                        let v_g_liberated_sc = liberated_rs * v_o_sc_new;
-                        let v_g_liberated_res = v_g_liberated_sc * bg_new;
-                        
-                        let delta_sg_liberated = v_g_liberated_res / vp_m3;
-                        let effective_delta = delta_sg_liberated.min(so_new); // Prevent negative oil
-
-                        sg_new += effective_delta;
-                        so_new -= effective_delta;
-                        rs_cell = rs_max;
-                    } else if self.gas_redissolution_enabled && rs_cell < rs_max && sg_new > 0.0 {
-                        // Dissolve free gas back into undersaturated oil
-                        let capacity_rs = rs_max - rs_cell;
-                        let v_g_free_sc = (sg_new * vp_m3) / bg_new;
-                        let max_dissolvable_gas_sc = capacity_rs * v_o_sc_new;
-                        
-                        let dissolved_gas_sc = v_g_free_sc.min(max_dissolvable_gas_sc);
-                        let dissolved_gas_res = dissolved_gas_sc * bg_new;
-                        let delta_sg_dissolved = dissolved_gas_res / vp_m3;
-
-                        sg_new -= delta_sg_dissolved;
-                        so_new += delta_sg_dissolved;
-                        if v_o_sc_new > 0.0 {
-                            rs_cell += dissolved_gas_sc / v_o_sc_new;
-                        }
-                    }
+                    let dissolved_gas_sc_transport = (old_dissolved_gas_sc + delta_dg_sc[idx]).max(0.0);
+                    let (sg_resolved, _so_resolved, rs_cell) = self.split_gas_inventory_after_transport(
+                        p_new[idx],
+                        vp_m3,
+                        sw_new,
+                        transported_free_gas_sc,
+                        dissolved_gas_sc_transport,
+                    );
+                    sg_new = sg_resolved;
                     self.rs[idx] = rs_cell;
                 }
 
-                // Re-normalise if floating point causes sum ≠ 1
-                let sum = sw_new + so_new + sg_new;
-                self.sat_water[idx] = if sum > 0.0 { sw_new / sum } else { sw_new };
-                self.sat_oil[idx] = if sum > 0.0 { so_new / sum } else { so_new };
-                self.sat_gas[idx] = if sum > 0.0 { sg_new / sum } else { sg_new };
+                self.sat_water[idx] = sw_new;
+                self.sat_gas[idx] = sg_new.clamp(0.0, (1.0 - sw_new).max(0.0));
+                self.sat_oil[idx] = (1.0 - self.sat_water[idx] - self.sat_gas[idx]).max(0.0);
 
                 actual_change_m3 += (self.sat_water[idx] - sw_old) * vp_m3;
-                let bg_new = self.get_b_g(p_new[idx]).max(1e-9);
                 let bo_new = self.get_b_o_cell(idx, p_new[idx]).max(1e-9);
                 let new_free_gas_sc = self.sat_gas[idx] * vp_m3 / bg_new;
                 let new_dissolved_gas_sc = if self.pvt_table.is_some() {
@@ -1236,7 +1459,6 @@ impl ReservoirSimulator {
                 let sw_new = (sw_old + delta_sw).clamp(sw_min, sw_max);
 
                 actual_change_m3 += (sw_new - sw_old) * vp_m3;
-
                 self.sat_water[idx] = sw_new;
                 self.sat_oil[idx] = 1.0 - sw_new;
             }
@@ -1260,9 +1482,9 @@ impl ReservoirSimulator {
         let mut producer_bhp_limited_wells = 0usize;
         let mut injector_bhp_limited_wells = 0usize;
 
-        for w in &self.wells {
+        for (w_idx, w) in self.wells.iter().enumerate() {
             let id = self.idx(w.i, w.j, w.k);
-            if let Some(control) = self.resolve_well_control_for_pressures(w, p_new.as_slice()) {
+            if let Some(control) = well_controls.get(w_idx).and_then(|control| *control) {
                 let group_rate_controlled = if w.injector {
                     self.injector_rate_controlled
                 } else {
@@ -1282,16 +1504,9 @@ impl ReservoirSimulator {
                     }
                 }
 
-                let q_m3_day = match control.decision {
-                    WellControlDecision::Disabled => 0.0,
-                    WellControlDecision::Rate { q_m3_day } => q_m3_day,
-                    WellControlDecision::Bhp { bhp_bar } => {
-                        let q_m3_day = w.productivity_index * (p_new[id] - bhp_bar);
-                        if !q_m3_day.is_finite() {
-                            continue;
-                        }
-                        q_m3_day
-                    }
+                let q_m3_day = match self.well_transport_rate_from_control(w, control, p_new[id]) {
+                    Some(q_m3_day) if q_m3_day.is_finite() => q_m3_day,
+                    _ => continue,
                 };
                 let p_cell = p_new[id];
                 if w.injector {
@@ -1299,17 +1514,45 @@ impl ReservoirSimulator {
                     if self.three_phase_mode {
                         match self.injected_fluid {
                             InjectedFluid::Water => {
-                                total_injection += -q_m3_day / self.b_w.max(1e-9);
+                                if matches!(control.decision, WellControlDecision::Rate { .. }) {
+                                    if let Some(surface_target_sc_day) = self.target_injector_surface_rate_m3_day {
+                                        total_injection += surface_target_sc_day / self.injector_well_count().max(1) as f64;
+                                    } else {
+                                        total_injection += -q_m3_day / self.b_w.max(1e-9);
+                                    }
+                                } else {
+                                    total_injection += -q_m3_day / self.b_w.max(1e-9);
+                                }
                                 total_water_injection_reservoir += -q_m3_day;
                             }
                             InjectedFluid::Gas => {
-                                let bg = self.get_b_g(p_cell).max(1e-9);
-                                total_injection += -q_m3_day / bg;
-                                total_gas_injection_sc += -q_m3_day / bg;
+                                if matches!(control.decision, WellControlDecision::Rate { .. }) {
+                                    if let Some(surface_target_sc_day) = self.target_injector_surface_rate_m3_day {
+                                        let per_well_target = surface_target_sc_day / self.injector_well_count().max(1) as f64;
+                                        total_injection += per_well_target;
+                                        total_gas_injection_sc += per_well_target;
+                                    } else {
+                                        let bg = self.get_b_g(p_cell).max(1e-9);
+                                        total_injection += -q_m3_day / bg;
+                                        total_gas_injection_sc += -q_m3_day / bg;
+                                    }
+                                } else {
+                                    let bg = self.get_b_g(p_cell).max(1e-9);
+                                    total_injection += -q_m3_day / bg;
+                                    total_gas_injection_sc += -q_m3_day / bg;
+                                }
                             }
                         }
                     } else {
-                        total_injection += -q_m3_day / self.b_w.max(1e-9);
+                        if matches!(control.decision, WellControlDecision::Rate { .. }) {
+                            if let Some(surface_target_sc_day) = self.target_injector_surface_rate_m3_day {
+                                total_injection += surface_target_sc_day / self.injector_well_count().max(1) as f64;
+                            } else {
+                                total_injection += -q_m3_day / self.b_w.max(1e-9);
+                            }
+                        } else {
+                            total_injection += -q_m3_day / self.b_w.max(1e-9);
+                        }
                         total_water_injection_reservoir += -q_m3_day;
                     }
                 } else {

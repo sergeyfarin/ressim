@@ -2,8 +2,8 @@ use nalgebra::DVector;
 use sprs::CsMat;
 use std::f64;
 
-/// Result from PCG solver including convergence info
-pub(crate) struct PcgResult {
+/// Result from the linear solver including convergence info.
+pub(crate) struct LinearSolveResult {
     pub(crate) solution: DVector<f64>,
     pub(crate) converged: bool,
     pub(crate) iterations: usize,
@@ -23,33 +23,41 @@ fn cs_mat_mul_vec(a: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
     y
 }
 
-// PCG solver with initial guess — returns solution, convergence flag, and iteration count
-pub(crate) fn solve_pcg_with_guess(
+fn apply_jacobi_preconditioner(m_inv_diag: &DVector<f64>, rhs: &DVector<f64>) -> DVector<f64> {
+    let mut out = DVector::<f64>::zeros(rhs.len());
+    for i in 0..rhs.len() {
+        out[i] = rhs[i] * m_inv_diag[i];
+    }
+    out
+}
+
+// BiCGSTAB with Jacobi preconditioning. Unlike PCG, this remains valid for the
+// mildly non-symmetric pressure matrices produced by upwinded multiphase flow.
+pub(crate) fn solve_bicgstab_with_guess(
     a: &CsMat<f64>,
     b: &DVector<f64>,
     m_inv_diag: &DVector<f64>,
     x0: &DVector<f64>,
     tolerance: f64,
     max_iter: usize,
-) -> PcgResult {
-    let n = b.len();
+) -> LinearSolveResult {
     let mut x = x0.clone();
     let mut r = b - &cs_mat_mul_vec(a, &x);
-    let mut z = DVector::<f64>::zeros(n);
-    for i in 0..n {
-        z[i] = r[i] * m_inv_diag[i];
-    }
-    let mut p = z.clone();
-    let mut r_dot_z = r.dot(&z);
     let r0_norm = r.norm();
     if r0_norm == 0.0 {
-        return PcgResult {
+        return LinearSolveResult {
             solution: x,
             converged: true,
             iterations: 0,
         };
     }
 
+    let r_hat = r.clone();
+    let mut rho_prev = 1.0;
+    let mut alpha = 1.0;
+    let mut omega = 1.0;
+    let mut v = DVector::<f64>::zeros(b.len());
+    let mut p = DVector::<f64>::zeros(b.len());
     let mut converged = false;
     let mut iter_count = 0;
     for it in 0..max_iter {
@@ -58,32 +66,81 @@ pub(crate) fn solve_pcg_with_guess(
             converged = true;
             break;
         }
-        let q = cs_mat_mul_vec(a, &p);
-        let p_dot_q = p.dot(&q);
-        if p_dot_q.abs() < f64::EPSILON {
+
+        let rho = r_hat.dot(&r);
+        if !rho.is_finite() || rho.abs() < f64::EPSILON {
             converged = false;
             break;
         }
-        let alpha = r_dot_z / p_dot_q;
-        x += alpha * p.clone();
-        let r_new = r - alpha * q;
-        let mut z_new = DVector::<f64>::zeros(n);
-        for i in 0..n {
-            z_new[i] = r_new[i] * m_inv_diag[i];
-        }
-        let r_new_dot_z_new = r_new.dot(&z_new);
-        let beta = if r_dot_z.abs() < f64::EPSILON {
+
+        let beta = if it == 0 {
             0.0
         } else {
-            r_new_dot_z_new / r_dot_z
+            (rho / rho_prev) * (alpha / omega)
         };
-        p = z_new.clone() + beta * p;
-        r = r_new;
-        r_dot_z = r_new_dot_z_new;
+        p = &r + beta * (&p - omega * &v);
+
+        let p_hat = apply_jacobi_preconditioner(m_inv_diag, &p);
+        v = cs_mat_mul_vec(a, &p_hat);
+        let r_hat_dot_v = r_hat.dot(&v);
+        if !r_hat_dot_v.is_finite() || r_hat_dot_v.abs() < f64::EPSILON {
+            converged = false;
+            break;
+        }
+        alpha = rho / r_hat_dot_v;
+        let s = &r - alpha * &v;
+        if s.norm() / r0_norm < tolerance {
+            x += alpha * p_hat;
+            converged = true;
+            break;
+        }
+
+        let s_hat = apply_jacobi_preconditioner(m_inv_diag, &s);
+        let t = cs_mat_mul_vec(a, &s_hat);
+        let t_dot_t = t.dot(&t);
+        if !t_dot_t.is_finite() || t_dot_t.abs() < f64::EPSILON {
+            converged = false;
+            break;
+        }
+        omega = t.dot(&s) / t_dot_t;
+        if !omega.is_finite() || omega.abs() < f64::EPSILON {
+            converged = false;
+            break;
+        }
+
+        x += alpha * p_hat + omega * &s_hat;
+        r = s - omega * t;
+        rho_prev = rho;
     }
-    PcgResult {
+
+    LinearSolveResult {
         solution: x,
         converged,
         iterations: iter_count,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sprs::TriMatI;
+
+    #[test]
+    fn bicgstab_solves_small_nonsymmetric_system() {
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(1, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        let a = tri.to_csr();
+
+        let b = DVector::from_vec(vec![1.0, 1.0]);
+        let x0 = DVector::from_vec(vec![0.0, 0.0]);
+        let m_inv_diag = DVector::from_vec(vec![0.25, 1.0 / 3.0]);
+
+        let result = solve_bicgstab_with_guess(&a, &b, &m_inv_diag, &x0, 1e-10, 100);
+        assert!(result.converged, "BiCGSTAB should converge for a small nonsymmetric system");
+        assert!((result.solution[0] - 0.2).abs() < 1e-8);
+        assert!((result.solution[1] - 0.2).abs() < 1e-8);
     }
 }

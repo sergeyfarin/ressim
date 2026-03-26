@@ -1276,7 +1276,7 @@ impl ReservoirSimulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::step::WellControlDecision;
+    use crate::step::{ResolvedWellControl, WellControlDecision};
 
     struct BuckleyCase {
         name: &'static str,
@@ -2545,6 +2545,72 @@ mod tests {
     }
 
     #[test]
+    fn three_phase_gas_injection_keeps_gas_balance_bounded() {
+        let mut sim = make_3phase_gas_injection_sim(8);
+
+        for _ in 0..40 {
+            sim.step(2.0);
+        }
+
+        let latest = sim.rate_history.last().expect("rate history should have entries");
+        assert!(latest.material_balance_error_gas_m3.is_finite());
+        assert!(
+            latest.material_balance_error_gas_m3 < 5.0e3,
+            "gas material balance drift too large: {} Sm3",
+            latest.material_balance_error_gas_m3
+        );
+    }
+
+    #[test]
+    fn three_phase_gas_injection_keeps_pressures_bounded_under_large_steps() {
+        let mut sim = ReservoirSimulator::new(6, 1, 3, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.10, 0.10, 0.05, 0.05, 0.10,
+            2.0, 2.0, 1.5,
+            0.8, 0.9, 0.7,
+        ).unwrap();
+        sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_initial_pressure(330.0);
+        sim.set_initial_saturation(0.12);
+        sim.set_stability_params(0.05, 75.0, 0.75);
+        sim.pc.p_entry = 0.0;
+        sim.add_well(0, 0, 0, 450.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(5, 0, 2, 150.0, 0.1, 0.0, false).unwrap();
+
+        for _ in 0..12 {
+            sim.step(5.0);
+        }
+
+        for (idx, pressure) in sim.pressure.iter().enumerate() {
+            assert!(pressure.is_finite(), "pressure must remain finite at cell {}", idx);
+            assert!(
+                *pressure > 1.0 && *pressure < 5_000.0,
+                "pressure {} at cell {} escaped the physical envelope",
+                pressure,
+                idx
+            );
+        }
+
+        for (idx, sg) in sim.sat_gas.iter().enumerate() {
+            assert!(sg.is_finite(), "gas saturation must remain finite at cell {}", idx);
+            assert!(
+                *sg >= -1e-9 && *sg <= 1.0 + 1e-9,
+                "gas saturation {} at cell {} escaped bounds",
+                sg,
+                idx
+            );
+        }
+
+        for point in &sim.rate_history {
+            assert!(point.avg_reservoir_pressure.is_finite());
+            assert!(point.avg_reservoir_pressure > 1.0);
+            assert!(point.avg_reservoir_pressure < 5_000.0);
+        }
+    }
+
+    #[test]
     fn gas_injection_surface_totals_use_bg_conversion() {
         use crate::pvt::{PvtRow, PvtTable};
 
@@ -2583,6 +2649,116 @@ mod tests {
             "Expected gas injector surface total to match target surface rate, got {}",
             latest.total_injection
         );
+    }
+
+    #[test]
+    fn below_bubble_point_flash_conserves_total_gas_inventory() {
+        use crate::pvt::{PvtRow, PvtTable};
+        use nalgebra::DVector;
+
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.10, 0.10, 0.05, 0.05, 0.10,
+            2.0, 2.0, 1.5,
+            0.8, 0.9, 0.7,
+        ).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_gas_redissolution_enabled(false);
+        sim.set_initial_pressure(175.0);
+        sim.set_initial_saturation(0.10);
+        sim.set_initial_gas_saturation(0.0);
+        sim.pvt.c_o = 1e-5;
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow { p_bar: 100.0, rs_m3m3: 5.0, bo_m3m3: 1.05,  mu_o_cp: 1.5, bg_m3m3: 0.01,  mu_g_cp: 0.02 },
+                PvtRow { p_bar: 150.0, rs_m3m3: 15.0, bo_m3m3: 1.12,  mu_o_cp: 1.2, bg_m3m3: 0.006, mu_g_cp: 0.025 },
+                PvtRow { p_bar: 200.0, rs_m3m3: 15.0, bo_m3m3: 1.119, mu_o_cp: 1.3, bg_m3m3: 0.0045, mu_g_cp: 0.03 },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_initial_rs(15.0);
+
+        let vp_m3 = sim.pore_volume_m3(0);
+        let p_old = sim.pressure[0];
+        let bg_old = sim.get_b_g(p_old).max(1e-9);
+        let bo_old = sim.get_b_o_cell(0, p_old).max(1e-9);
+        let gas_before_sc = sim.sat_gas[0] * vp_m3 / bg_old
+            + (sim.sat_oil[0] * vp_m3 / bo_old) * sim.rs[0];
+
+        sim.update_saturations_and_pressure(
+            &DVector::from_vec(vec![125.0]),
+            &vec![0.0],
+            &vec![0.0],
+            &vec![0.0],
+            &[],
+            1.0,
+        );
+
+        let p_new = sim.pressure[0];
+        let bg_new = sim.get_b_g(p_new).max(1e-9);
+        let bo_new = sim.get_b_o_cell(0, p_new).max(1e-9);
+        let gas_after_sc = sim.sat_gas[0] * vp_m3 / bg_new
+            + (sim.sat_oil[0] * vp_m3 / bo_new) * sim.rs[0];
+
+        assert!(sim.sat_gas[0] > 0.0, "pressure drop below bubble point should liberate free gas");
+        assert!(
+            (gas_after_sc - gas_before_sc).abs() < 1e-8,
+            "local flash should conserve total gas inventory, before={}, after={}",
+            gas_before_sc,
+            gas_after_sc,
+        );
+    }
+
+    #[test]
+    fn reporting_reuses_transport_control_rates() {
+        use crate::pvt::{PvtRow, PvtTable};
+        use nalgebra::DVector;
+
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.10, 0.10, 0.05, 0.05, 0.10,
+            2.0, 2.0, 1.5,
+            0.8, 0.9, 0.7,
+        ).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_initial_pressure(100.0);
+        sim.set_initial_saturation(0.10);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 0.0,
+                bo_m3m3: 1.2,
+                mu_o_cp: 1.0,
+                bg_m3m3: 0.25,
+                mu_g_cp: 0.02,
+            }],
+            sim.pvt.c_o,
+        ));
+        sim.set_well_control_modes("rate".to_string(), "bhp".to_string());
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, true).unwrap();
+
+        let controls = vec![Some(ResolvedWellControl {
+            decision: WellControlDecision::Rate { q_m3_day: -30.0 },
+            bhp_limited: false,
+        })];
+
+        sim.update_saturations_and_pressure(
+            &DVector::from_vec(vec![300.0]),
+            &vec![0.0],
+            &vec![0.0],
+            &vec![0.0],
+            &controls,
+            1.0,
+        );
+
+        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        assert!(
+            (latest.total_injection - 360.0).abs() < 1e-6,
+            "reporting should reuse the transport rate-control decision, got {}",
+            latest.total_injection,
+        );
+        assert_eq!(latest.injector_bhp_limited_fraction, 0.0);
     }
 
     #[test]
