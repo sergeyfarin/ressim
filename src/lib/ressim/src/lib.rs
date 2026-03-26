@@ -224,42 +224,68 @@ impl ReservoirSimulator {
     /// (cell Rs ≈ Rs_sat at the current pressure).  When the oil is
     /// undersaturated (Rs < Rs_sat), dRs/dp = 0 and we use the constant
     /// undersaturated compressibility c_o.
+    ///
+    /// **Bubble-point smoothing**: IMPES uses OLD-timestep compressibility in the
+    /// pressure equation.  A hard jump from undersaturated c_o (~2e-4) to saturated
+    /// c_o_eff (~1e-3) at the bubble point causes single-step pressure overshoot,
+    /// excessive gas liberation, and positive-feedback instability.  When an
+    /// undersaturated cell is within `max_pressure_change_per_step` of its bubble
+    /// point, we quadratically blend c_o toward the saturated value so the pressure
+    /// solver "sees" the upcoming stiffness increase and avoids overshooting.
     pub(crate) fn get_c_o_effective(&self, p: f64, rs_cell: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
-            // Check if the cell is undersaturated
             let rs_sat = table.interpolate(p).rs_m3m3;
+
+            // Compute the saturated effective compressibility at current pressure.
+            // This is needed both for the saturated path and for bubble-point blending.
+            let c_sat = self.saturated_c_o_eff(table, p);
+
             if rs_cell < rs_sat - 1e-6 {
-                // Undersaturated: no gas liberation, standard c_o only
-                return self.pvt.c_o;
-            }
+                // Undersaturated: check proximity to bubble point
+                let c_unsat = self.pvt.c_o;
+                let p_b = table.bubble_point_pressure(rs_cell);
+                let distance = p - p_b;
+                let margin = self.max_pressure_change_per_step;
 
-            let dp = 1.0; // 1 bar finite-difference step
-            let p_lo = (p - dp).max(0.0);
-            let row_lo = table.interpolate(p_lo);
-            let row_hi = table.interpolate(p + dp);
-            let row_mid = table.interpolate(p);
-
-            let bo = row_mid.bo_m3m3;
-            let bg = row_mid.bg_m3m3;
-            if bo > 1e-12 {
-                // Standard oil compressibility: -(1/Bo) dBo/dp
-                let dbo_dp = (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp);
-                let c_o = -dbo_dp / bo;
-
-                // Dissolved gas contribution: (Bg/Bo) dRs/dp
-                let drs_dp = (row_hi.rs_m3m3 - row_lo.rs_m3m3) / (2.0 * dp);
-                let c_dg = if bg > 0.0 { (bg / bo) * drs_dp } else { 0.0 };
-
-                let c_eff = c_o + c_dg;
-                if c_eff.is_finite() && c_eff > 0.0 {
-                    return c_eff;
+                if distance > 0.0 && distance < margin && c_sat > c_unsat {
+                    // Near bubble point: quadratic blend toward saturated value.
+                    // t = 1 at bubble point, 0 at bubble point + margin.
+                    let t = 1.0 - distance / margin;
+                    let blend = t * t;
+                    return c_unsat + blend * (c_sat - c_unsat);
                 }
+                return c_unsat;
             }
-            // Fallback: undersaturated constant
-            self.pvt.c_o
+
+            c_sat
         } else {
             self.pvt.c_o
         }
+    }
+
+    /// Saturated effective oil compressibility from the PVT table [1/bar].
+    fn saturated_c_o_eff(&self, table: &crate::pvt::PvtTable, p: f64) -> f64 {
+        let dp = 1.0; // 1 bar finite-difference step
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = table.interpolate(p_lo);
+        let row_hi = table.interpolate(p + dp);
+        let row_mid = table.interpolate(p);
+
+        let bo = row_mid.bo_m3m3;
+        let bg = row_mid.bg_m3m3;
+        if bo > 1e-12 {
+            let dbo_dp = (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp);
+            let c_o = -dbo_dp / bo;
+
+            let drs_dp = (row_hi.rs_m3m3 - row_lo.rs_m3m3) / (2.0 * dp);
+            let c_dg = if bg > 0.0 { (bg / bo) * drs_dp } else { 0.0 };
+
+            let c_eff = c_o + c_dg;
+            if c_eff.is_finite() && c_eff > 0.0 {
+                return c_eff;
+            }
+        }
+        self.pvt.c_o
     }
 
     /// Oil formation volume factor accounting for undersaturation at the given cell.
@@ -1388,6 +1414,51 @@ mod tests {
         // With dissolved gas, density must exceed simple ρ_o_sc / Bo
         let rho_simple = sim.pvt.rho_o / row.bo_m3m3;
         assert!(rho > rho_simple, "ρ_o with Rs ({rho}) must exceed dead-oil density ({rho_simple})");
+    }
+
+    #[test]
+    fn bubble_point_blending_smooths_compressibility_near_bubble_point() {
+        // Use SPE1-like PVT where the dissolved gas term dominates (large dRs/dp,
+        // small dBo/dp relative to (Bg/Bo)*dRs/dp), giving c_o_eff >> c_o.
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.pvt.c_o = 2e-4; // undersaturated c_o (SPE1-like)
+        sim.max_pressure_change_per_step = 50.0;
+        sim.pvt_table = Some(pvt::PvtTable::new(
+            vec![
+                pvt::PvtRow { p_bar: 100.0, rs_m3m3: 50.0,  bo_m3m3: 1.30, mu_o_cp: 0.7, bg_m3m3: 0.010, mu_g_cp: 0.020 },
+                pvt::PvtRow { p_bar: 200.0, rs_m3m3: 150.0, bo_m3m3: 1.50, mu_o_cp: 0.5, bg_m3m3: 0.005, mu_g_cp: 0.025 },
+                pvt::PvtRow { p_bar: 300.0, rs_m3m3: 250.0, bo_m3m3: 1.70, mu_o_cp: 0.4, bg_m3m3: 0.004, mu_g_cp: 0.030 },
+            ],
+            sim.pvt.c_o,
+        ));
+
+        // Cell with Rs=150: bubble point = 200 bar
+        let rs_cell = 150.0;
+        let c_unsat = sim.pvt.c_o;
+
+        // Far above bubble point (250 bar, distance=50 = margin) → pure undersaturated c_o
+        let c_far = sim.get_c_o_effective(250.0, rs_cell);
+        assert!((c_far - c_unsat).abs() < 1e-9,
+            "Far from bubble point: should equal c_o={c_unsat}, got {c_far}");
+
+        // Just inside the blending zone (225 bar, distance=25 = 0.5×margin)
+        let c_near = sim.get_c_o_effective(225.0, rs_cell);
+        assert!(c_near > c_unsat,
+            "Near bubble point: should exceed c_o={c_unsat}, got {c_near}");
+
+        // Very close to bubble point (202 bar, distance=2)
+        let c_close = sim.get_c_o_effective(202.0, rs_cell);
+        assert!(c_close > c_near,
+            "Closer to BP: c_o_eff({c_close}) should exceed value at 225 bar ({c_near})");
+
+        // At bubble point (200 bar, rs_cell == rs_sat) → fully saturated
+        let c_at_bp = sim.get_c_o_effective(200.0, rs_cell);
+        assert!(c_at_bp > c_unsat,
+            "At bubble point: should use saturated c_o_eff={c_at_bp} > c_o={c_unsat}");
+
+        // Blending should be monotonically increasing toward bubble point
+        assert!(c_close > c_near && c_near > c_far,
+            "Compressibility should increase monotonically toward bubble point");
     }
 
     #[test]
