@@ -1214,7 +1214,7 @@ impl ReservoirSimulator {
                             let t_g = geom_t * lam_g_up;
                             let gas_flux_m3_day = t_g * dphi_g;
                             let up_id = if dphi_g_old >= 0.0 { id } else { nid };
-                            let gas_flux_sc_day = gas_flux_m3_day / self.get_b_g(self.pressure[up_id]).max(1e-9);
+                            let gas_flux_sc_day = gas_flux_m3_day / self.get_b_g(p_new[up_id]).max(1e-9);
                             let dv_gas_sc = gas_flux_sc_day * dt_days;
 
                             delta_free_gas_sc[id] -= dv_gas_sc;
@@ -1527,21 +1527,11 @@ impl ReservoirSimulator {
                                 total_water_injection_reservoir += -q_m3_day;
                             }
                             InjectedFluid::Gas => {
-                                if matches!(control.decision, WellControlDecision::Rate { .. }) {
-                                    if let Some(surface_target_sc_day) = self.target_injector_surface_rate_m3_day {
-                                        let per_well_target = surface_target_sc_day / self.injector_well_count().max(1) as f64;
-                                        total_injection += per_well_target;
-                                        total_gas_injection_sc += per_well_target;
-                                    } else {
-                                        let bg = self.get_b_g(p_cell).max(1e-9);
-                                        total_injection += -q_m3_day / bg;
-                                        total_gas_injection_sc += -q_m3_day / bg;
-                                    }
-                                } else {
-                                    let bg = self.get_b_g(p_cell).max(1e-9);
-                                    total_injection += -q_m3_day / bg;
-                                    total_gas_injection_sc += -q_m3_day / bg;
-                                }
+                                // Always compute SC rate from the actual reservoir rate
+                                // and Bg at p_new, matching the saturation transport.
+                                let bg = self.get_b_g(p_cell).max(1e-9);
+                                total_injection += -q_m3_day / bg;
+                                total_gas_injection_sc += -q_m3_day / bg;
                             }
                         }
                     } else {
