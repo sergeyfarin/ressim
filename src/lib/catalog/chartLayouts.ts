@@ -255,7 +255,7 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
             xAxisRangePolicy: { mode: 'data-extent' },
             allowLogScale: false,
             logScale: false,
-            panelOrder: ['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
+            panelOrder: ['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'volumes'],
             panels: {
                 diagnostics: {
                     title: 'Reservoir Pressure',
@@ -292,6 +292,13 @@ export const CHART_LAYOUTS: Record<string, RateChartLayoutConfig> = {
                     title: 'Oil Rate',
                     curveKeys: ['oil-rate-sim', 'published-oil-rate'],
                     scalePreset: 'rates',
+                    expanded: true,
+                },
+                injection_rate: {
+                    title: 'Gas Injection Rate',
+                    curveKeys: ['injection-rate-sim', 'published-injection-rate'],
+                    scalePreset: 'rates',
+                    visible: true,
                     expanded: true,
                 },
                 rates: {

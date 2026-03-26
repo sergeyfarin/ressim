@@ -446,6 +446,13 @@
             visible: true,
             expanded: false,
         },
+        injection_rate: {
+            title: 'Injection Rate',
+            curveKeys: ['injection-rate-sim', 'published-injection-rate'],
+            scalePreset: 'rates',
+            visible: true,
+            expanded: false,
+        },
         oil_rate: {
             title: 'Oil Rate',
             curveKeys: ['oil-rate-sim'],

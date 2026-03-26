@@ -384,7 +384,7 @@ describe('referenceComparisonModel', () => {
         const scenario = getScenario('spe1_gas_injection');
         const layout = getScenarioChartLayout(scenario!);
 
-        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
+        expect(layout.rateChart?.panelOrder).toEqual(['diagnostics', 'producer_bhp', 'injector_bhp', 'control_limits', 'gor', 'oil_rate', 'injection_rate', 'rates', 'recovery', 'cumulative', 'volumes']);
         expect(layout.rateChart?.panels?.diagnostics).toMatchObject({
             title: 'Reservoir Pressure',
             curveKeys: ['avg-pressure-sim', 'published-pressure'],
@@ -404,6 +404,11 @@ describe('referenceComparisonModel', () => {
             title: 'Control-Limit Fraction',
             curveKeys: ['producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
             scalePreset: 'fraction',
+        });
+        expect(layout.rateChart?.panels?.injection_rate).toMatchObject({
+            title: 'Gas Injection Rate',
+            curveKeys: ['injection-rate-sim', 'published-injection-rate'],
+            scalePreset: 'rates',
         });
         expect(layout.rateChart?.panels?.gor).toMatchObject({
             title: 'GOR',

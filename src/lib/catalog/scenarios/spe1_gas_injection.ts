@@ -176,6 +176,16 @@ const BRONTOSAURUS_INJECTOR_WBHP: PublishedReferenceSeries = {
     ],
 };
 
+const SPE1_INJECTION_RATE_TARGET: PublishedReferenceSeries = {
+    panelKey: 'injection_rate',
+    label: 'Deck Target — Gas Injection Rate',
+    curveKey: 'published-injection-rate',
+    data: [
+        { x: 0.0, y: 2_831_680 },
+        { x: 3652.5, y: 2_831_680 },
+    ],
+};
+
 export const spe1_gas_injection: Scenario = {
     key: 'spe1_gas_injection',
     label: 'SPE1 Black-Oil Benchmark',
@@ -200,6 +210,7 @@ export const spe1_gas_injection: Scenario = {
         ECLIPSE_PRESSURE,
         ECLIPSE_GOR,
         BRONTOSAURUS_OIL_RATE,
+        SPE1_INJECTION_RATE_TARGET,
         BRONTOSAURUS_PRODUCER_WBHP,
         BRONTOSAURUS_INJECTOR_WBHP,
     ],
@@ -367,6 +378,53 @@ export const spe1_gas_injection: Scenario = {
                     description: 'Moderate vertical restriction — common in layered clastics.',
                     paramPatch: {
                         layerPermsZ: [150, 15, 60],
+                    },
+                    affectsAnalytical: false,
+                },
+            ],
+        },
+        {
+            key: 'delta_t',
+            label: 'Time Step',
+            description: 'Time step convergence study — refine or coarsen the time step while maintaining the same physical domain.',
+            analyticalOverlayMode: 'shared',
+            variants: [
+                {
+                    key: 'delta_t_5',
+                    label: 'Δt = 5 days  (coarse)',
+                    description: 'Coarse time step — larger numerical diffusion, faster gas breakthrough.',
+                    paramPatch: {
+                        delta_t_days: 5,
+                    },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'delta_t_2_5',
+                    label: 'Δt = 2.5 days  (base)',
+                    description: 'Base time step — 2.5 days.',
+                    paramPatch: {
+                        delta_t_days: 2.5,
+                        steps: 1600,
+                    },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'delta_t_1_25',
+                    label: 'Δt = 1.25 days  (fine)',
+                    description: 'Refined time step — 1.25 days, sharper gas front, with tighter timestep and control-change limits to keep the fine-grid case stable.',
+                    paramPatch: {
+                        delta_t_days: 1.25,
+                        steps: 3200,
+                    },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'delta_t_0_25',
+                    label: 'Δt = 0.25 days  (fine)',
+                    description: 'Refined time step — 0.25 days, sharper gas front, with tighter timestep and control-change limits to keep the fine-grid case stable.',
+                    paramPatch: {
+                        delta_t_days: 0.25,
+                        steps: 16000,
                     },
                     affectsAnalytical: false,
                 },

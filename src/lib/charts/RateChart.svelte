@@ -1067,6 +1067,13 @@
             visible: true,
             expanded: false,
         },
+        injection_rate: {
+            title: "Injection Rate",
+            curveKeys: ["injection-rate-sim", "published-injection-rate"],
+            scalePreset: "rates",
+            visible: false,
+            expanded: false,
+        },
         producer_bhp: {
             title: "Producer WBHP",
             curveKeys: ["producer-bhp-sim", "published-producer-bhp"],
@@ -1409,6 +1416,7 @@
         gor: curveRegistry,
         volumes: curveRegistry,
         oil_rate: curveRegistry,
+        injection_rate: curveRegistry,
         producer_bhp: curveRegistry,
         injector_bhp: curveRegistry,
         control_limits: curveRegistry,

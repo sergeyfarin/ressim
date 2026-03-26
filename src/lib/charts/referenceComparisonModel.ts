@@ -78,6 +78,7 @@ type DerivedRunSeries = {
     time: number[];
     historyTime: number[];
     oilRate: Array<number | null>;
+    injectionRate: Array<number | null>;
     waterCut: Array<number | null>;
     gasCut: Array<number | null>;
     avgWaterSat: Array<number | null>;
@@ -358,8 +359,9 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
 
     return {
         time: result.rateHistory.map((point) => toFiniteNumber(point.time, 0)),
-            historyTime: wellBhpHistory.historyTime || [],
+        historyTime: wellBhpHistory.historyTime || [],
         oilRate: result.rateHistory.map((point) => Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)))),
+        injectionRate: result.rateHistory.map((point) => Math.max(0, toFiniteNumber(point.total_injection, 0))),
         waterCut: [...result.watercutSeries],
         gasCut: result.rateHistory.map((point) => {
             const gasRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_gas, 0)));
@@ -735,6 +737,7 @@ function suppressPrimaryAnalyticalPanels(
         gor: panels.gor,
         volumes: panels.volumes,
         oil_rate: stripReferenceCurveKeys(panels.oil_rate, excludedCurveKeys),
+        injection_rate: panels.injection_rate,
         producer_bhp: panels.producer_bhp,
         injector_bhp: panels.injector_bhp,
         control_limits: panels.control_limits,
@@ -750,6 +753,7 @@ function emptyPanelMap(): ReferenceComparisonPanelMap {
         gor: createReferenceComparisonPanel(),
         volumes: createReferenceComparisonPanel(),
         oil_rate: createReferenceComparisonPanel(),
+        injection_rate: createReferenceComparisonPanel(),
         producer_bhp: createReferenceComparisonPanel(),
         injector_bhp: createReferenceComparisonPanel(),
         control_limits: createReferenceComparisonPanel(),
@@ -774,6 +778,7 @@ function combinePanelMaps(input: {
         gor: input.primary.gor,
         volumes: input.primary.volumes,
         oil_rate: input.primary.oil_rate,
+        injection_rate: input.primary.injection_rate,
         producer_bhp: input.primary.producer_bhp,
         injector_bhp: input.primary.injector_bhp,
         control_limits: input.primary.control_limits,
@@ -1654,6 +1659,7 @@ function buildAnalyticalPreviewPanels(
         gor: { curves: [], series: [] },
         volumes: { curves: [], series: [] },
         oil_rate: { curves: [], series: [] },
+        injection_rate: { curves: [], series: [] },
         producer_bhp: { curves: [], series: [] },
         injector_bhp: { curves: [], series: [] },
         control_limits: { curves: [], series: [] },
@@ -1829,6 +1835,7 @@ function buildPreviewSweepPanels(input: {
         time: [],
         historyTime: [],
         oilRate: [],
+        injectionRate: [],
         waterCut: [],
         gasCut: [],
         avgWaterSat: [],
@@ -1908,6 +1915,7 @@ function buildSweepPanels(input: {
             time: [],
             historyTime: [],
             oilRate: [],
+            injectionRate: [],
             waterCut: [],
             gasCut: [],
             avgWaterSat: [],
@@ -2018,6 +2026,7 @@ export function buildReferenceComparisonModel(input: {
         gor: { curves: [], series: [] },
         volumes: { curves: [], series: [] },
         oil_rate: { curves: [], series: [] },
+        injection_rate: { curves: [], series: [] },
         producer_bhp: { curves: [], series: [] },
         injector_bhp: { curves: [], series: [] },
         control_limits: { curves: [], series: [] },
@@ -2212,6 +2221,24 @@ export function buildReferenceComparisonModel(input: {
                 derived.oilRate,
             );
             appendSeries(
+                panels.injection_rate,
+                {
+                    label: `${result.label} Injection Rate`,
+                    curveKey: 'injection-rate-sim',
+                    caseKey: result.key,
+                    toggleGroupKey: result.key,
+                    toggleLabel: caseLabel,
+                    legendSection: 'sim',
+                    legendSectionLabel: 'Simulation (solid lines):',
+                    color,
+                    borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                    yAxisID: 'y',
+                    defaultVisible,
+                },
+                xValues,
+                derived.injectionRate,
+            );
+            appendSeries(
                 panels.volumes,
                 {
                     label: `${result.label} Cum Injection`,
@@ -2340,6 +2367,19 @@ export function buildReferenceComparisonModel(input: {
                 yAxisID: 'y',
                 defaultVisible,
             }, xValues, derived.oilRate);
+            appendSeries(panels.injection_rate, {
+                label: `${result.label} Injection Rate`,
+                curveKey: 'injection-rate-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            }, xValues, derived.injectionRate);
             appendSeries(panels.volumes, {
                 label: `${result.label} Cum Injection`,
                 curveKey: 'cum-injection',
@@ -2501,6 +2541,24 @@ export function buildReferenceComparisonModel(input: {
             },
             xValues,
             derived.oilRate,
+        );
+        appendSeries(
+            panels.injection_rate,
+            {
+                label: `${result.label} Injection Rate`,
+                curveKey: 'injection-rate-sim',
+                caseKey: result.key,
+                toggleGroupKey: result.key,
+                toggleLabel: caseLabel,
+                legendSection: 'sim',
+                legendSectionLabel: 'Simulation (solid lines):',
+                color,
+                borderWidth: result.variantKey === null ? 2.8 : 2.2,
+                yAxisID: 'y',
+                defaultVisible,
+            },
+            xValues,
+            derived.injectionRate,
         );
         appendSeries(
             panels.diagnostics,

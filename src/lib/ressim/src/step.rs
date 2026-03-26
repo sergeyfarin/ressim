@@ -659,6 +659,16 @@ impl ReservoirSimulator {
         let mut b_rhs = DVector::<f64>::zeros(n_cells);
         let mut diag_inv = DVector::<f64>::zeros(n_cells);
 
+        // Pre-compute well control decisions at OLD pressure — used in both
+        // pressure equation assembly and saturation transport for consistency.
+        // Without this, the pressure equation (old p) and saturation update (new p)
+        // can make different rate/BHP decisions, causing oscillations.
+        let well_controls: Vec<Option<ResolvedWellControl>> = self
+            .wells
+            .iter()
+            .map(|w| self.resolve_well_control_for_pressures(w, &self.pressure))
+            .collect();
+
         // Assemble pressure equation: accumulation + transmissibility + well terms
         for k in 0..self.nz {
             for j in 0..self.ny {
@@ -784,11 +794,11 @@ impl ReservoirSimulator {
                         b_rhs[id] += explicit_rhs;
                     }
 
-                    // Well source terms
-                    for w in &self.wells {
+                    // Well source terms (use pre-computed well_controls for consistency)
+                    for (w_idx, w) in self.wells.iter().enumerate() {
                         if w.i == i && w.j == j && w.k == k {
-                            if let Some(control) = self.resolve_well_control_for_pressures(w, &self.pressure) {
-                                match control.decision {
+                            if let Some(ref control) = well_controls[w_idx] {
+                                match &control.decision {
                                     WellControlDecision::Disabled => {}
                                     WellControlDecision::Rate { q_m3_day } => {
                                         b_rhs[id] -= q_m3_day;
@@ -798,7 +808,7 @@ impl ReservoirSimulator {
                                         // q [m³/day] = PI [m³/day/bar] * (p_cell - BHP)
                                         if w.productivity_index.is_finite() && bhp_bar.is_finite() {
                                             diag += w.productivity_index;
-                                            b_rhs[id] += w.productivity_index * bhp_bar;
+                                            b_rhs[id] += w.productivity_index * *bhp_bar;
                                         }
                                     }
                                 }
@@ -842,12 +852,13 @@ impl ReservoirSimulator {
         let mut delta_dg_sc = vec![0.0f64; n_cells];
         let mut max_sat_change = 0.0;
 
-        // Interface fluxes: compute once per neighbor pair and distribute upwind
+        // Interface fluxes: compute once per neighbor pair and distribute upwind.
+        // IMPES consistency: upwind direction from OLD pressure potentials (same as
+        // pressure equation), flux magnitude from NEW pressure gradient.
         for k in 0..self.nz {
             for j in 0..self.ny {
                 for i in 0..self.nx {
                     let id = self.idx(i, j, k);
-                    let p_i = p_new[id];
 
                     // Check neighbors in positive direction to avoid duplicate pairs
                     let mut check = Vec::new();
@@ -862,8 +873,6 @@ impl ReservoirSimulator {
                     }
 
                     for (nid, dim, n_k) in check {
-                        let p_j = p_new[nid];
-
                         let depth_i = self.depth_at_k(k);
                         let depth_j = self.depth_at_k(n_k);
 
@@ -872,12 +881,22 @@ impl ReservoirSimulator {
 
                         let grav_w = self.gravity_head_bar(depth_i, depth_j, self.get_rho_w(self.pressure[id]));
 
-                        let dphi_w = (p_i - p_j) - (pc_i - pc_j) - grav_w;
+                        // Old-pressure potential for upwind direction (matches pressure equation)
+                        let dphi_w_old = (self.pressure[id] - self.pressure[nid]) - (pc_i - pc_j) - grav_w;
+                        // New-pressure potential for flux magnitude
+                        let dphi_w = (p_new[id] - p_new[nid]) - (pc_i - pc_j) - grav_w;
 
-                        let (lam_w_i, _) = self.phase_mobilities(id);
-                        let (lam_w_j, _) = self.phase_mobilities(nid);
+                        let (lam_w_i, lam_w_j) = if self.three_phase_mode {
+                            let (w_i, _, _) = self.phase_mobilities_3p(id);
+                            let (w_j, _, _) = self.phase_mobilities_3p(nid);
+                            (w_i, w_j)
+                        } else {
+                            let (w_i, _) = self.phase_mobilities(id);
+                            let (w_j, _) = self.phase_mobilities(nid);
+                            (w_i, w_j)
+                        };
 
-                        let lam_w_up = if dphi_w >= 0.0 { lam_w_i } else { lam_w_j };
+                        let lam_w_up = if dphi_w_old >= 0.0 { lam_w_i } else { lam_w_j };
 
                         let geom_t =
                             DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
@@ -897,12 +916,12 @@ impl ReservoirSimulator {
         }
 
         // Gas flux loop (three-phase only)
+        // IMPES consistency: upwind from OLD pressure potentials, flux from NEW.
         if self.three_phase_mode {
             for k in 0..self.nz {
                 for j in 0..self.ny {
                     for i in 0..self.nx {
                         let id = self.idx(i, j, k);
-                        let p_i = p_new[id];
 
                         let mut check = Vec::new();
                         if i < self.nx - 1 {
@@ -916,16 +935,19 @@ impl ReservoirSimulator {
                         }
 
                         for (nid, dim, n_k) in check {
-                            let p_j = p_new[nid];
                             let depth_i = self.depth_at_k(k);
                             let depth_j = self.depth_at_k(n_k);
 
                             let pc_og_i = self.get_gas_oil_capillary_pressure(self.sat_gas[id]);
                             let pc_og_j = self.get_gas_oil_capillary_pressure(self.sat_gas[nid]);
                             let grav_g = self.gravity_head_bar(depth_i, depth_j, self.get_rho_g(self.pressure[id]));
-                            let dphi_g = (p_i - p_j) + (pc_og_i - pc_og_j) - grav_g;
 
-                            let lam_g_up = if dphi_g >= 0.0 {
+                            // Old-pressure potential for upwind direction
+                            let dphi_g_old = (self.pressure[id] - self.pressure[nid]) + (pc_og_i - pc_og_j) - grav_g;
+                            // New-pressure potential for flux magnitude
+                            let dphi_g = (p_new[id] - p_new[nid]) + (pc_og_i - pc_og_j) - grav_g;
+
+                            let lam_g_up = if dphi_g_old >= 0.0 {
                                 self.gas_mobility(id)
                             } else {
                                 self.gas_mobility(nid)
@@ -944,17 +966,21 @@ impl ReservoirSimulator {
                             if self.pvt_table.is_some() {
                                 let rho_o = self.get_rho_o_cell(id, self.pressure[id]);
                                 let grav_o = self.gravity_head_bar(depth_i, depth_j, rho_o);
-                                let dphi_o = (p_i - p_j) - grav_o;
+                                // Old-pressure potential for oil upwinding
+                                let dphi_o_old = (self.pressure[id] - self.pressure[nid]) - grav_o;
+                                // New-pressure potential for oil flux
+                                let dphi_o = (p_new[id] - p_new[nid]) - grav_o;
+
                                 let (_, lam_o_i, _) = self.phase_mobilities_3p(id);
                                 let (_, lam_o_j, _) = self.phase_mobilities_3p(nid);
-                                let lam_o_up = if dphi_o >= 0.0 { lam_o_i } else { lam_o_j };
+                                let lam_o_up = if dphi_o_old >= 0.0 { lam_o_i } else { lam_o_j };
                                 let t_o = geom_t * lam_o_up;
 
                                 let oil_flux_res_day = t_o * dphi_o;
-                                let up_id = if dphi_o >= 0.0 { id } else { nid };
+                                let up_id = if dphi_o_old >= 0.0 { id } else { nid };
                                 let oil_flux_sc_day = oil_flux_res_day / self.get_b_o_cell(up_id, p_new[up_id]);
 
-                                let rs_upwind = if dphi_o >= 0.0 { self.rs[id] } else { self.rs[nid] };
+                                let rs_upwind = if dphi_o_old >= 0.0 { self.rs[id] } else { self.rs[nid] };
                                 let dg_flux_sc_day = oil_flux_sc_day * rs_upwind;
                                 let dv_dg_sc = dg_flux_sc_day * dt_days;
 
@@ -967,11 +993,25 @@ impl ReservoirSimulator {
             }
         }
 
-        // Add well explicit contributions using solved pressure
-        for w in &self.wells {
+        // Add well contributions using pre-computed well_controls (same decisions
+        // as pressure equation) but evaluate BHP-well rates at p_new for consistency
+        // with the implicit pressure treatment.
+        for (w_idx, w) in self.wells.iter().enumerate() {
             let id = self.idx(w.i, w.j, w.k);
 
-            if let Some(q_m3_day) = self.well_rate_m3_day_for_pressures(w, p_new.as_slice()) {
+            let q_m3_day = match &well_controls[w_idx] {
+                Some(control) => match &control.decision {
+                    WellControlDecision::Disabled => Some(0.0),
+                    WellControlDecision::Rate { q_m3_day } => Some(*q_m3_day),
+                    WellControlDecision::Bhp { bhp_bar } => {
+                        // BHP wells: rate = PI * (p_new - BHP), consistent with
+                        // the implicit treatment in the pressure matrix
+                        self.completion_rate_for_bhp(w, p_new[id], *bhp_bar)
+                    }
+                },
+                None => None,
+            };
+            if let Some(q_m3_day) = q_m3_day {
                 if self.three_phase_mode {
                     // Three-phase: injection fluid depends on injectedFluid setting;
                     // producers produce at local fractional flow composition.
@@ -987,7 +1027,7 @@ impl ReservoirSimulator {
                     };
                     delta_water_m3[id] -= q_m3_day * fw * dt_days;
                     delta_gas_m3[id] -= q_m3_day * fg * dt_days;
-                    
+
                     if !w.injector && self.pvt_table.is_some() {
                         let q_o_res = q_m3_day * fo;
                         let q_o_sc = q_o_res / self.get_b_o_cell(id, p_new[id]);
