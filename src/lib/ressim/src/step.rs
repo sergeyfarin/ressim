@@ -233,28 +233,14 @@ impl ReservoirSimulator {
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
+        const MAX_PRESSURE_RETRIES_PER_SUBSTEP: u32 = 32;
         let mut substeps = 0;
         self.last_solver_warning = String::new();
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;
-
-            // Dynamic PI update with latest local saturation/mobility before pressure solve
-            self.update_dynamic_well_productivity_indices();
-
-            // Calculate fluxes and stability for the remaining time step
-            let (p_new, delta_water_m3, delta_free_gas_sc, delta_dg_sc, well_controls, stable_dt_factor, pcg_converged, pcg_iters) =
-                self.calculate_fluxes(remaining_dt);
-
-            // Track solver convergence warning
-            if !pcg_converged {
-                self.last_solver_warning = format!(
-                    "BiCGSTAB solver did not converge after {} iterations (t={:.2} days)",
-                    pcg_iters,
-                    self.time_days + time_stepped
-                );
-            }
-
+            let mut trial_dt = remaining_dt;
+            let mut retry_count = 0;
             let actual_dt;
             let final_p;
             let final_delta_water_m3;
@@ -262,51 +248,76 @@ impl ReservoirSimulator {
             let final_delta_dg_sc;
             let final_well_controls;
 
-            if stable_dt_factor < 1.0 {
-                // Timestep is too large, reduce it based on CFL condition
-                actual_dt = remaining_dt * stable_dt_factor * 0.9; // Use 90% for safety
+            loop {
+                // Dynamic PI update with latest local saturation/mobility before pressure solve
+                self.update_dynamic_well_productivity_indices();
 
-                // Re-solve pressure and fluxes with reduced dt for accuracy.
-                let (p_resolv, dw_resolv, dg_resolv, ddg_resolv, controls_resolv, _factor2, pcg_conv2, pcg_iters2) =
-                    self.calculate_fluxes(actual_dt);
-                final_p = p_resolv;
-                final_delta_water_m3 = dw_resolv;
-                final_delta_free_gas_sc = dg_resolv;
-                final_delta_dg_sc = ddg_resolv;
-                final_well_controls = controls_resolv;
+                let (
+                    p_new,
+                    delta_water_m3,
+                    delta_free_gas_sc,
+                    delta_dg_sc,
+                    well_controls,
+                    stable_dt_factor,
+                    pcg_converged,
+                    pcg_iters,
+                ) = self.calculate_fluxes(trial_dt);
 
-                if !pcg_conv2 {
-                    self.last_solver_warning = format!(
-                        "BiCGSTAB solver did not converge after {} iterations (re-solve, t={:.2} days)",
-                        pcg_iters2,
-                        self.time_days + time_stepped
-                    );
+                let pressure_physical = self.pressure_state_is_physical(p_new.as_slice());
+                let solver_retry_factor = if pcg_converged { 1.0 } else { 0.5 };
+                let physics_retry_factor = if pressure_physical { 1.0 } else { 0.5 };
+                let retry_factor = stable_dt_factor
+                    .min(solver_retry_factor)
+                    .min(physics_retry_factor);
+
+                if retry_factor >= 1.0 {
+                    actual_dt = trial_dt;
+                    final_p = p_new;
+                    final_delta_water_m3 = delta_water_m3;
+                    final_delta_free_gas_sc = delta_free_gas_sc;
+                    final_delta_dg_sc = delta_dg_sc;
+                    final_well_controls = well_controls;
+                    break;
                 }
-            } else {
-                // The full remaining timestep is stable
-                actual_dt = remaining_dt;
-                final_p = p_new;
-                final_delta_water_m3 = delta_water_m3;
-                final_delta_free_gas_sc = delta_free_gas_sc;
-                final_delta_dg_sc = delta_dg_sc;
-                final_well_controls = well_controls;
-            }
 
-            if !actual_dt.is_finite() || actual_dt <= 1e-12 {
-                self.last_solver_warning = format!(
-                    "Adaptive timestep collapsed to non-physical dt={} at t={:.6} days",
-                    actual_dt,
-                    self.time_days + time_stepped
-                );
-                break;
-            }
+                let next_dt = trial_dt * retry_factor * 0.9;
+                retry_count += 1;
 
-            if !self.pressure_state_is_physical(final_p.as_slice()) {
-                self.last_solver_warning = format!(
-                    "Linear solver produced a non-physical pressure state at t={:.6} days; rejecting step",
-                    self.time_days + time_stepped
-                );
-                break;
+                if !next_dt.is_finite() || next_dt <= 1e-12 {
+                    self.last_solver_warning = if !pcg_converged {
+                        format!(
+                            "BiCGSTAB solver did not converge after {} iterations and timestep collapsed at t={:.6} days",
+                            pcg_iters,
+                            self.time_days + time_stepped
+                        )
+                    } else {
+                        format!(
+                            "Adaptive timestep collapsed to non-physical dt={} at t={:.6} days",
+                            next_dt,
+                            self.time_days + time_stepped
+                        )
+                    };
+                    return;
+                }
+
+                if retry_count >= MAX_PRESSURE_RETRIES_PER_SUBSTEP {
+                    self.last_solver_warning = if !pcg_converged {
+                        format!(
+                            "BiCGSTAB solver did not converge after {} iterations even after {} retries at t={:.6} days",
+                            pcg_iters,
+                            retry_count,
+                            self.time_days + time_stepped
+                        )
+                    } else {
+                        format!(
+                            "Adaptive timestep exceeded retry budget while recovering a physical pressure state at t={:.6} days",
+                            self.time_days + time_stepped
+                        )
+                    };
+                    return;
+                }
+
+                trial_dt = next_dt;
             }
 
             // Update saturations and pressure with the adjusted (or full) timestep
