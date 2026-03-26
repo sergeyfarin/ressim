@@ -2726,6 +2726,165 @@ mod tests {
         );
     }
 
+    fn make_spe1_like_low_kv_sim() -> ReservoirSimulator {
+        use crate::pvt::{PvtRow, PvtTable};
+        use crate::relperm::{SgofRow, SwofRow, ThreePhaseScalTables};
+
+        let mut sim = ReservoirSimulator::new(10, 10, 3, 0.3);
+        sim.set_cell_dimensions_per_layer(304.8, 304.8, vec![6.096, 9.144, 15.24])
+            .unwrap();
+        sim.set_fluid_properties(0.51, 0.318).unwrap();
+        sim.set_fluid_compressibilities(2.06e-4, 4.67e-5).unwrap();
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow { p_bar: 1.01, rs_m3m3: 0.18, bo_m3m3: 1.062, mu_o_cp: 1.040, bg_m3m3: 0.9361, mu_g_cp: 0.0080 },
+                PvtRow { p_bar: 18.25, rs_m3m3: 16.12, bo_m3m3: 1.150, mu_o_cp: 0.975, bg_m3m3: 0.0679, mu_g_cp: 0.0096 },
+                PvtRow { p_bar: 35.49, rs_m3m3: 32.06, bo_m3m3: 1.207, mu_o_cp: 0.910, bg_m3m3: 0.0352, mu_g_cp: 0.0112 },
+                PvtRow { p_bar: 69.96, rs_m3m3: 66.08, bo_m3m3: 1.295, mu_o_cp: 0.830, bg_m3m3: 0.0179, mu_g_cp: 0.0140 },
+                PvtRow { p_bar: 138.91, rs_m3m3: 113.29, bo_m3m3: 1.435, mu_o_cp: 0.695, bg_m3m3: 0.00906, mu_g_cp: 0.0189 },
+                PvtRow { p_bar: 173.38, rs_m3m3: 138.03, bo_m3m3: 1.500, mu_o_cp: 0.641, bg_m3m3: 0.00727, mu_g_cp: 0.0208 },
+                PvtRow { p_bar: 207.85, rs_m3m3: 165.64, bo_m3m3: 1.565, mu_o_cp: 0.594, bg_m3m3: 0.00607, mu_g_cp: 0.0228 },
+                PvtRow { p_bar: 276.79, rs_m3m3: 226.20, bo_m3m3: 1.695, mu_o_cp: 0.510, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
+                PvtRow { p_bar: 345.73, rs_m3m3: 288.17, bo_m3m3: 1.827, mu_o_cp: 0.449, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_initial_rs(226.197);
+        sim.set_rock_properties(4.35e-5, 2560.0, 1.695, 1.038).unwrap();
+        sim.set_fluid_densities(860.0, 1033.0).unwrap();
+        sim.set_initial_pressure(331.0);
+        sim.set_initial_saturation(0.12);
+        sim.set_capillary_params(0.0, 2.0).unwrap();
+        sim.set_gravity_enabled(true);
+        sim.set_three_phase_rel_perm_props(
+            0.12, 0.12, 0.04, 0.04, 0.18,
+            2.0, 2.5, 1.5,
+            1e-5, 1.0, 0.984,
+        ).unwrap();
+        sim.scal_3p.as_mut().unwrap().tables = Some(ThreePhaseScalTables {
+            swof: vec![
+                SwofRow { sw: 0.12, krw: 0.0, krow: 1.0, pcow: Some(0.0) },
+                SwofRow { sw: 0.18, krw: 4.64876033057851e-8, krow: 1.0, pcow: Some(0.0) },
+                SwofRow { sw: 0.24, krw: 1.86e-7, krow: 0.997, pcow: Some(0.0) },
+                SwofRow { sw: 0.3, krw: 4.18388429752066e-7, krow: 0.98, pcow: Some(0.0) },
+                SwofRow { sw: 0.36, krw: 7.43801652892562e-7, krow: 0.7, pcow: Some(0.0) },
+                SwofRow { sw: 0.42, krw: 1.16219008264463e-6, krow: 0.35, pcow: Some(0.0) },
+                SwofRow { sw: 0.48, krw: 1.67355371900826e-6, krow: 0.2, pcow: Some(0.0) },
+                SwofRow { sw: 0.54, krw: 2.27789256198347e-6, krow: 0.09, pcow: Some(0.0) },
+                SwofRow { sw: 0.6, krw: 2.97520661157025e-6, krow: 0.021, pcow: Some(0.0) },
+                SwofRow { sw: 0.66, krw: 3.7654958677686e-6, krow: 0.01, pcow: Some(0.0) },
+                SwofRow { sw: 0.72, krw: 4.64876033057851e-6, krow: 0.001, pcow: Some(0.0) },
+                SwofRow { sw: 0.78, krw: 5.625e-6, krow: 0.0001, pcow: Some(0.0) },
+                SwofRow { sw: 0.84, krw: 6.69421487603306e-6, krow: 0.0, pcow: Some(0.0) },
+                SwofRow { sw: 0.91, krw: 8.05914256198347e-6, krow: 0.0, pcow: Some(0.0) },
+                SwofRow { sw: 1.0, krw: 1e-5, krow: 0.0, pcow: Some(0.0) },
+            ],
+            sgof: vec![
+                SgofRow { sg: 0.0, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
+                SgofRow { sg: 0.001, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
+                SgofRow { sg: 0.02, krg: 0.0, krog: 0.997, pcog: Some(0.0) },
+                SgofRow { sg: 0.05, krg: 0.005, krog: 0.98, pcog: Some(0.0) },
+                SgofRow { sg: 0.12, krg: 0.025, krog: 0.7, pcog: Some(0.0) },
+                SgofRow { sg: 0.2, krg: 0.075, krog: 0.35, pcog: Some(0.0) },
+                SgofRow { sg: 0.25, krg: 0.125, krog: 0.2, pcog: Some(0.0) },
+                SgofRow { sg: 0.3, krg: 0.19, krog: 0.09, pcog: Some(0.0) },
+                SgofRow { sg: 0.4, krg: 0.41, krog: 0.021, pcog: Some(0.0) },
+                SgofRow { sg: 0.45, krg: 0.6, krog: 0.01, pcog: Some(0.0) },
+                SgofRow { sg: 0.5, krg: 0.72, krog: 0.001, pcog: Some(0.0) },
+                SgofRow { sg: 0.6, krg: 0.87, krog: 0.0001, pcog: Some(0.0) },
+                SgofRow { sg: 0.7, krg: 0.94, krog: 0.0, pcog: Some(0.0) },
+                SgofRow { sg: 0.85, krg: 0.98, krog: 0.0, pcog: Some(0.0) },
+                SgofRow { sg: 0.88, krg: 0.984, krog: 0.0, pcog: Some(0.0) },
+            ],
+        });
+        sim.set_gas_fluid_properties(0.027, 1e-4, 0.854).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_gas_redissolution_enabled(false);
+        sim.set_stability_params(0.05, 50.0, 0.5);
+        sim.set_well_control_modes("rate".to_string(), "rate".to_string());
+        sim.set_target_well_rates(12_000.0, 5_400.0).unwrap();
+        sim.set_target_well_surface_rates(2_831_680.0, 3_179.74).unwrap();
+        sim.set_well_bhp_limits(69.0, 621.0).unwrap();
+        sim.set_permeability_per_layer(
+            vec![500.0, 50.0, 200.0],
+            vec![500.0, 50.0, 200.0],
+            vec![50.0, 5.0, 20.0],
+        ).unwrap();
+        sim.add_well(9, 9, 2, 69.0, 0.0762, 0.0, false).unwrap();
+        sim.add_well(0, 0, 0, 621.0, 0.0762, 0.0, true).unwrap();
+        sim
+    }
+
+    #[test]
+    #[ignore = "debug helper for low-kv injector-cell balance investigation"]
+    fn debug_low_kv_injector_balance_probe() {
+        let mut sim = make_spe1_like_low_kv_sim();
+        for _ in 0..80 {
+            sim.step(5.0);
+        }
+
+        let injector_id = sim.idx(0, 0, 0);
+        let east_id = sim.idx(1, 0, 0);
+        let south_id = sim.idx(0, 1, 0);
+        let down_id = sim.idx(0, 0, 1);
+        let vp = sim.pore_volume_m3(injector_id);
+
+        let (p_new, delta_w, delta_g_sc, delta_dg_sc, controls, stable_dt, converged, iterations) =
+            sim.debug_calculate_fluxes(5.0);
+
+        let injector_control = controls[1].expect("injector control should exist");
+        let control_label = match injector_control.decision {
+            WellControlDecision::Disabled => "disabled".to_string(),
+            WellControlDecision::Rate { q_m3_day } => format!("rate({q_m3_day:.6})"),
+            WellControlDecision::Bhp { bhp_bar } => format!("bhp({bhp_bar:.6})"),
+        };
+        let q_inj_res = match injector_control.decision {
+            WellControlDecision::Rate { q_m3_day } => q_m3_day,
+            WellControlDecision::Bhp { bhp_bar } => {
+                let well = &sim.wells[1];
+                (well.productivity_index * (p_new[injector_id] - bhp_bar)).min(0.0)
+            }
+            WellControlDecision::Disabled => 0.0,
+        };
+        let bg_inj = sim.get_b_g(p_new[injector_id]).max(1e-9);
+        let q_inj_sc = -q_inj_res / bg_inj;
+
+        println!(
+            "injector state before update: p_old={:.6}, p_new={:.6}, sw={:.6}, so={:.6}, sg={:.6}, rs={:.6}, pv={:.6}",
+            sim.pressure[injector_id],
+            p_new[injector_id],
+            sim.sat_water[injector_id],
+            sim.sat_oil[injector_id],
+            sim.sat_gas[injector_id],
+            sim.rs[injector_id],
+            vp,
+        );
+        println!(
+            "neighbors before update: east so={:.6}, sg={:.6}; south so={:.6}, sg={:.6}; down so={:.6}, sg={:.6}",
+            sim.sat_oil[east_id], sim.sat_gas[east_id],
+            sim.sat_oil[south_id], sim.sat_gas[south_id],
+            sim.sat_oil[down_id], sim.sat_gas[down_id],
+        );
+        println!(
+            "flux/source deltas at injector: delta_w_m3={:.6}, delta_g_sc={:.6}, delta_dg_sc={:.6}, delta_sg_equiv={:.6}",
+            delta_w[injector_id],
+            delta_g_sc[injector_id],
+            delta_dg_sc[injector_id],
+            delta_g_sc[injector_id] * bg_inj / vp,
+        );
+        println!(
+            "injector control/rate: q_res={:.6}, q_sc={:.6}, bg={:.9}, control={}, stable_dt={:.6}, converged={}, iterations={}",
+            q_inj_res,
+            q_inj_sc,
+            bg_inj,
+            control_label,
+            stable_dt,
+            converged,
+            iterations,
+        );
+    }
+
     #[test]
     fn below_bubble_point_flash_conserves_total_gas_inventory() {
         use crate::pvt::{PvtRow, PvtTable};

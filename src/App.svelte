@@ -243,6 +243,11 @@
     const output3DCellDz = $derived.by(() => (
         Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz)
     ));
+    const output3DCellDzPerLayer = $derived.by(() => {
+        const raw = activeSelectedReferenceResult?.params.cellDzPerLayer
+            ?? params.cellDzPerLayer;
+        return Array.isArray(raw) ? raw.map((value) => Number(value)) : [];
+    });
     const output3DCurrentIndex = $derived.by(() => {
         if (output3DHistory.length === 0) return -1;
         return Math.max(0, Math.min(runtime.currentIndex, output3DHistory.length - 1));
@@ -760,7 +765,7 @@
                             </div>
                         {/if}
                         {#if ThreeDViewComponent}
-                            {#key `${output3DNx}-${output3DNy}-${output3DNz}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
+                            {#key `${output3DNx}-${output3DNy}-${output3DNz}-${output3DCellDz}-${output3DCellDzPerLayer.join(",")}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
                                 <ThreeDViewComponent
                                     nx={output3DNx}
                                     ny={output3DNy}
@@ -768,6 +773,7 @@
                                     cellDx={output3DCellDx}
                                     cellDy={output3DCellDy}
                                     cellDz={output3DCellDz}
+                                    cellDzPerLayer={output3DCellDzPerLayer}
                                     {theme}
                                     sourceLabel={output3DSourceLabel}
                                     gridState={output3DGridState}

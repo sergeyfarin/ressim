@@ -437,6 +437,7 @@ impl ReservoirSimulator {
         }
     }
 
+
     fn solve_rs_for_dissolved_gas(
         &self,
         pressure_bar: f64,
@@ -1086,11 +1087,12 @@ impl ReservoirSimulator {
         let pcg_result = solve_bicgstab_with_guess(&a_mat, &b_rhs, &diag_inv, &x0, 1e-7, 1000);
         let p_new = pcg_result.solution;
 
-        // Compute phase fluxes and explicit saturation update (upwind fractional flow method)
-        // Track water in reservoir m³ and gas in standard m³ over dt_days.
         let mut delta_water_m3 = vec![0.0f64; n_cells];
         let mut delta_free_gas_sc = vec![0.0f64; n_cells];
         let mut delta_dg_sc = vec![0.0f64; n_cells];
+
+        // Compute phase fluxes and explicit saturation update (upwind fractional flow method)
+        // Track water in reservoir m³ and gas in standard m³ over dt_days.
         let mut max_sat_change = 0.0;
 
         // Interface fluxes: compute once per neighbor pair and distribute upwind.
@@ -1150,7 +1152,11 @@ impl ReservoirSimulator {
                             (w_i, w_j)
                         };
 
-                        let lam_w_up = if dphi_w_old >= 0.0 { lam_w_i } else { lam_w_j };
+                        let lam_w_up = if self.three_phase_mode {
+                            if dphi_w_old >= 0.0 { lam_w_i } else { lam_w_j }
+                        } else {
+                            if dphi_w_old >= 0.0 { lam_w_i } else { lam_w_j }
+                        };
 
                         let geom_t =
                             DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
@@ -1259,7 +1265,8 @@ impl ReservoirSimulator {
 
                                 let oil_flux_res_day = t_o * dphi_o;
                                 let up_id = if dphi_o_old >= 0.0 { id } else { nid };
-                                let oil_flux_sc_day = oil_flux_res_day / self.get_b_o_cell(up_id, p_new[up_id]);
+                                let oil_flux_sc_day =
+                                    oil_flux_res_day / self.get_b_o_cell(up_id, p_new[up_id]).max(1e-9);
 
                                 let rs_upwind = if dphi_o_old >= 0.0 { self.rs[id] } else { self.rs[nid] };
                                 let dg_flux_sc_day = oil_flux_sc_day * rs_upwind;
@@ -1274,9 +1281,6 @@ impl ReservoirSimulator {
             }
         }
 
-        // Add well contributions using pre-computed well_controls (same decisions
-        // as pressure equation) but evaluate BHP-well rates at p_new for consistency
-        // with the implicit pressure treatment.
         for (w_idx, w) in self.wells.iter().enumerate() {
             let id = self.idx(w.i, w.j, w.k);
 
@@ -1284,8 +1288,6 @@ impl ReservoirSimulator {
                 .and_then(|control| self.well_transport_rate_from_control(w, control, p_new[id]));
             if let Some(q_m3_day) = q_m3_day {
                 if self.three_phase_mode {
-                    // Three-phase: injection fluid depends on injectedFluid setting;
-                    // producers produce at local fractional flow composition.
                     let (fw, fg, fo) = if w.injector {
                         match self.injected_fluid {
                             InjectedFluid::Water => (1.0, 0.0, 0.0),
@@ -1297,7 +1299,8 @@ impl ReservoirSimulator {
                         (lam_w / lam_t, lam_g / lam_t, lam_o / lam_t)
                     };
                     delta_water_m3[id] -= q_m3_day * fw * dt_days;
-                    delta_free_gas_sc[id] -= q_m3_day * fg * dt_days / self.get_b_g(p_new[id]).max(1e-9);
+                    delta_free_gas_sc[id] -=
+                        q_m3_day * fg * dt_days / self.get_b_g(p_new[id]).max(1e-9);
 
                     if !w.injector && self.pvt_table.is_some() {
                         let q_o_res = q_m3_day * fo;
@@ -1306,12 +1309,7 @@ impl ReservoirSimulator {
                         delta_dg_sc[id] -= q_dg_sc * dt_days;
                     }
                 } else {
-                    // Two-phase: injectors always inject 100% water
-                    let fw = if w.injector {
-                        1.0
-                    } else {
-                        self.frac_flow_water(id)
-                    };
+                    let fw = if w.injector { 1.0 } else { self.frac_flow_water(id) };
                     delta_water_m3[id] -= q_m3_day * fw * dt_days;
                 }
             }
@@ -1384,6 +1382,14 @@ impl ReservoirSimulator {
             pcg_result.converged,
             pcg_result.iterations,
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn debug_calculate_fluxes(
+        &self,
+        delta_t_days: f64,
+    ) -> (DVector<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<Option<ResolvedWellControl>>, f64, bool, usize) {
+        self.calculate_fluxes(delta_t_days)
     }
 
     pub(crate) fn update_saturations_and_pressure(

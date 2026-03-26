@@ -60,6 +60,7 @@
     export let cellDy: number = 10;
     export let cellDz: number = 1;
     export let gridState: GridState | null = null;
+    export let cellDzPerLayer: number[] = [];
     export let showProperty: PropertyKey = "pressure";
     export let history: HistoryEntry[] = [];
     export let currentIndex: number = -1;
@@ -114,6 +115,16 @@
     const tmpMatrix = new Matrix4();
     const tmpColor = new Color();
     const Z_VISUAL_EXAGGERATION = 10;
+
+    type VisualReservoirMetrics = {
+        cellSizeX: number;
+        cellSizeY: number;
+        layerThicknesses: number[];
+        layerCenters: number[];
+        totalThickness: number;
+        maxLayerThickness: number;
+        topSurfaceZ: number;
+    };
 
     // Fixed color ranges per property to keep legend stable
     // Pressure is intentionally auto-scaled from current values for better contrast.
@@ -182,6 +193,15 @@
         ) {
             const tmp = legendFixedMin;
             legendFixedMin = legendFixedMax;
+            type VisualReservoirMetrics = {
+                cellSizeX: number;
+                cellSizeY: number;
+                layerThicknesses: number[];
+                layerCenters: number[];
+                totalThickness: number;
+                maxLayerThickness: number;
+                topSurfaceZ: number;
+            };
             legendFixedMax = tmp;
         }
     }
@@ -639,7 +659,7 @@
         }
         initThree();
         buildInstancedGrid(true);
-        lastDimsKey = `${nx}|${ny}|${nz}|${cellDx}|${cellDy}|${cellDz}`;
+        lastDimsKey = getDimensionsKey();
         // Initial resize after a short delay to allow layout to settle
         setTimeout(resize, 50);
     });
@@ -679,7 +699,7 @@
     }
 
     $: {
-        const dimsKey = `${nx}|${ny}|${nz}|${cellDx}|${cellDy}|${cellDz}`;
+        const dimsKey = getDimensionsKey();
         if (renderer && scene && dimsKey !== lastDimsKey) {
             buildInstancedGrid(true);
             lastDimsKey = dimsKey;
@@ -693,11 +713,60 @@
         return { x, y, z };
     }
 
-    function fitCameraToReservoir(cellSize: {
-        x: number;
-        y: number;
-        z: number;
-    }): void {
+    function getDimensionsKey(): string {
+        const layerSignature = Array.isArray(cellDzPerLayer)
+            ? cellDzPerLayer
+                  .slice(0, Math.max(0, nz))
+                  .map((value) => String(Number(value)))
+                  .join(",")
+            : "";
+        return `${nx}|${ny}|${nz}|${cellDx}|${cellDy}|${cellDz}|${layerSignature}`;
+    }
+
+    function getVisualReservoirMetrics(): VisualReservoirMetrics {
+        const { x: cellSizeX, y: cellSizeY } = getVisualCellSizes();
+        const fallbackThickness = Math.max(0.001, Number(cellDz) || 1);
+        const layerThicknesses = Array.from(
+            { length: Math.max(0, nz) },
+            (_, k) => {
+                const rawThickness = Array.isArray(cellDzPerLayer)
+                    ? Number(cellDzPerLayer[k])
+                    : Number.NaN;
+                const thickness =
+                    Number.isFinite(rawThickness) && rawThickness > 0
+                        ? rawThickness
+                        : fallbackThickness;
+                return thickness * Z_VISUAL_EXAGGERATION;
+            },
+        );
+        const totalThickness = Math.max(
+            0.001,
+            layerThicknesses.reduce((sum, thickness) => sum + thickness, 0),
+        );
+        const maxLayerThickness = Math.max(
+            0.001,
+            ...layerThicknesses,
+            fallbackThickness * Z_VISUAL_EXAGGERATION,
+        );
+        const layerCenters: number[] = [];
+        let currentTop = totalThickness * 0.5;
+        for (const thickness of layerThicknesses) {
+            layerCenters.push(currentTop - thickness * 0.5);
+            currentTop -= thickness;
+        }
+
+        return {
+            cellSizeX,
+            cellSizeY,
+            layerThicknesses,
+            layerCenters,
+            totalThickness,
+            maxLayerThickness,
+            topSurfaceZ: totalThickness * 0.5,
+        };
+    }
+
+    function fitCameraToReservoir(metrics: VisualReservoirMetrics): void {
         if (!camera || !canvasContainer) return;
 
         const perspectiveCamera = camera as PerspectiveCamera;
@@ -708,9 +777,9 @@
         );
         perspectiveCamera.aspect = aspect;
 
-        const halfX = nx * cellSize.x * 0.5;
-        const halfY = ny * cellSize.y * 0.5;
-        const halfZ = nz * cellSize.z * 0.5;
+        const halfX = nx * metrics.cellSizeX * 0.5;
+        const halfY = ny * metrics.cellSizeY * 0.5;
+        const halfZ = metrics.totalThickness * 0.5;
         const radius = Math.max(
             0.001,
             Math.sqrt(halfX * halfX + halfY * halfY + halfZ * halfZ),
@@ -761,7 +830,7 @@
     let pressureHistoryScanCount = 0;
 
     function getLegendContextKey(property: PropertyKey): string {
-        const dimsKey = `${nx}|${ny}|${nz}|${cellDx}|${cellDy}|${cellDz}`;
+        const dimsKey = getDimensionsKey();
 
         if (property === "pressure") {
             return `${property}|${dimsKey}`;
@@ -1084,6 +1153,9 @@
                     currentGrid.pressure &&
                     cellIndex < currentGrid.pressure.length
                 ) {
+                    const i = cellIndex % nx;
+                    const j = Math.floor(cellIndex / nx) % ny;
+                    const k = Math.floor(cellIndex / (nx * ny));
                     const pressure = Number(
                         currentGrid.pressure?.[cellIndex] ?? 0,
                     );
@@ -1101,10 +1173,19 @@
                     const swLabel = `Sw: ${satWater.toFixed(3)}`;
                     const soLabel = `So: ${satOil.toFixed(3)}`;
                     const sgLabel = `Sg: ${satGas.toFixed(3)}`;
+                    const ijkLabel = `Cell: i=${i}, j=${j}, k=${k}`;
+                    const deckLabel = `Deck: I=${i + 1}, J=${j + 1}, K=${k + 1}`;
+                    const rawIndexLabel = `Index: ${cellIndex}`;
 
                     const bold = (s: string) => `<b>${s}</b>`;
                     const highlightAllPhases = showProperty === "saturation_ternary";
                     tooltipContent =
+                        bold(ijkLabel) +
+                        "<br>" +
+                        deckLabel +
+                        "<br>" +
+                        rawIndexLabel +
+                        "<br>" +
                         (showProperty === "pressure" ? bold(pLabel) : pLabel) +
                         "<br>" +
                         (showProperty === "saturation_water" || highlightAllPhases
@@ -1194,8 +1275,8 @@
         const meshCount = visibleCellIndices.length;
         if (meshCount === 0) return;
 
-        const cellSize = getVisualCellSizes();
-        const geometry = new BoxGeometry(cellSize.x, cellSize.y, cellSize.z);
+        const metrics = getVisualReservoirMetrics();
+        const geometry = new BoxGeometry(1, 1, 1);
 
         const material = new MeshStandardMaterial({
             color: 0xffffff,
@@ -1210,7 +1291,6 @@
         const defaultColor = new Color(0x888888);
         const xOff = (nx - 1) * 0.5;
         const yOff = (ny - 1) * 0.5;
-        const zOff = (nz - 1) * 0.5;
 
         for (let idx = 0; idx < visibleCellIndices.length; idx++) {
             const cellIndex = visibleCellIndices[idx];
@@ -1218,10 +1298,18 @@
             const j = Math.floor(cellIndex / nx) % ny;
             const k = Math.floor(cellIndex / (nx * ny));
 
-            tmpMatrix.makeTranslation(
-                (i - xOff) * cellSize.x,
-                (j - yOff) * cellSize.y,
-                (k - zOff) * cellSize.z,
+            tmpMatrix.makeScale(
+                metrics.cellSizeX,
+                metrics.cellSizeY,
+                metrics.layerThicknesses[k] ?? metrics.maxLayerThickness,
+            );
+            tmpMatrix.setPosition(
+                (i - xOff) * metrics.cellSizeX,
+                (j - yOff) * metrics.cellSizeY,
+                // Simulator/deck indexing uses k=0 as the top layer.
+                // Render with the same vertical ordering and actual layer
+                // thicknesses so the 3D view matches solver geometry.
+                metrics.layerCenters[k] ?? 0,
             );
             mesh.setMatrixAt(idx, tmpMatrix);
             mesh.setColorAt(idx, defaultColor);
@@ -1234,15 +1322,15 @@
         scene.add(mesh);
 
         if (autoFitCamera) {
-            fitCameraToReservoir(cellSize);
+            fitCameraToReservoir(metrics);
         }
 
         // Create a single wireframe outline for the whole reservoir volume
         wireframeGroup = new Group();
         const reservoirGeometry = new BoxGeometry(
-            nx * cellSize.x,
-            ny * cellSize.y,
-            nz * cellSize.z,
+            nx * metrics.cellSizeX,
+            ny * metrics.cellSizeY,
+            metrics.totalThickness,
         );
         const edgesGeometry = new EdgesGeometry(reservoirGeometry);
         reservoirGeometry.dispose();
@@ -1418,15 +1506,14 @@
                 // Draw cylinder from top face (NZ=0) going up
                 const xOff = (nx - 1) * 0.5;
                 const yOff = (ny - 1) * 0.5;
-                const zOff = (nz - 1) * 0.5;
-                const cellSize = getVisualCellSizes();
+                const metrics = getVisualReservoirMetrics();
                 const wellRadius = Math.max(
-                    0.08 * Math.min(cellSize.x, cellSize.y),
+                    0.08 * Math.min(metrics.cellSizeX, metrics.cellSizeY),
                     0.05,
                 );
                 const wellHeight = Math.max(
-                    cellSize.z * 2,
-                    Math.min(cellSize.x, cellSize.y),
+                    metrics.maxLayerThickness * 2,
+                    Math.min(metrics.cellSizeX, metrics.cellSizeY),
                 );
 
                 const wellCylinder = new Mesh(
@@ -1447,12 +1534,9 @@
                 // Rotate cylinder to point along Z-axis instead of Y-axis
                 wellCylinder.rotation.x = Math.PI / 2;
 
-                // Position at top of reservoir (k=0 is at top, so z is maximum)
-                // k=0 corresponds to z = (0 - zOff) * cellSize.z
-                const cellCenterX = (i - xOff) * cellSize.x;
-                const cellCenterY = (j - yOff) * cellSize.y;
-                const topSurfaceZ = (nz - zOff) * cellSize.z - cellSize.z * 0.5;
-                const cellTopZ = topSurfaceZ + wellHeight * 0.5;
+                const cellCenterX = (i - xOff) * metrics.cellSizeX;
+                const cellCenterY = (j - yOff) * metrics.cellSizeY;
+                const cellTopZ = metrics.topSurfaceZ + wellHeight * 0.5;
 
                 wellCylinder.position.set(cellCenterX, cellCenterY, cellTopZ);
                 wellsGroup.add(wellCylinder);

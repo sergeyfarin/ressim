@@ -152,6 +152,7 @@ class SimulationStoreImpl {
     cellDx = $state(10);
     cellDy = $state(10);
     cellDz = $state(1);
+    cellDzPerLayer: number[] = $state([]);
     delta_t_days = $state(0.25);
     steps = $state(20);
     hasUserDeltaTDaysOverride = $state(false);
@@ -662,6 +663,7 @@ class SimulationStoreImpl {
             cellDx: this.cellDx,
             cellDy: this.cellDy,
             cellDz: this.cellDz,
+            cellDzPerLayer: [...this.cellDzPerLayer],
             initialPressure: this.initialPressure,
             initialSaturation: this.initialSaturation,
             reservoirPorosity: this.reservoirPorosity,
@@ -747,12 +749,15 @@ class SimulationStoreImpl {
         this.layerPermsX = normalizeLayerArray(this.layerPermsX, this.uniformPermX, this.nz);
         this.layerPermsY = normalizeLayerArray(this.layerPermsY, this.uniformPermY, this.nz);
         this.layerPermsZ = normalizeLayerArray(this.layerPermsZ, this.uniformPermZ, this.nz);
+        const fallbackThickness = Math.max(1e-12, Number(this.cellDz) || 1);
+        this.cellDzPerLayer = normalizeLayerArray(this.cellDzPerLayer, fallbackThickness, this.nz);
     }
 
     buildCreatePayload(): SimulatorCreatePayload {
         return buildCreatePayloadFromState({
             nx: this.nx, ny: this.ny, nz: this.nz,
             cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
+            cellDzPerLayer: this.cellDzPerLayer,
             initialPressure: this.initialPressure, initialSaturation: this.initialSaturation,
             porosity: this.reservoirPorosity,
             pvtMode: this.pvtMode,
@@ -808,6 +813,7 @@ class SimulationStoreImpl {
         return JSON.stringify({
             nx: this.nx, ny: this.ny, nz: this.nz,
             cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
+            cellDzPerLayer: this.cellDzPerLayer,
             initialPressure: this.initialPressure, initialSaturation: this.initialSaturation,
             reservoirPorosity: this.reservoirPorosity,
             pvtTable: this.pvtTable,
@@ -1651,6 +1657,7 @@ class SimulationStoreImpl {
         this.cellDx = fin(resolved.cellDx, 10);
         this.cellDy = fin(resolved.cellDy, 10);
         this.cellDz = fin(resolved.cellDz, 1);
+        this.cellDzPerLayer = parseLayerValues(resolved.cellDzPerLayer);
         this.delta_t_days = fin(resolved.delta_t_days, 0.25);
         this.steps = Math.max(1, Math.round(fin(resolved.steps, 20)));
         this.max_sat_change_per_step = fin(resolved.max_sat_change_per_step, 0.1);
