@@ -563,6 +563,56 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.oil_rate.curves.find((curve) => curve.curveKey === 'published-oil-rate')?.label).toBe('Brontosaurus — Oil Rate');
     });
 
+    it('suppresses GOR points when oil rate is negligible', () => {
+        const scenario = getScenario('spe1_gas_injection')!;
+        const spec = {
+            key: 'spe1_low_oil_gor_guard',
+            caseKey: 'spe1_low_oil_gor_guard',
+            familyKey: 'spe1_low_oil_gor_guard',
+            analyticalMethod: 'gas-oil-bl',
+            scenarioKey: scenario.key,
+            variantKey: null,
+            variantLabel: null,
+            label: 'SPE1 Low-Oil GOR Guard',
+            description: 'Synthetic SPE1 low-oil GOR test case',
+            params: { ...scenario.params },
+            steps: Number(scenario.params.steps ?? 120),
+            deltaTDays: Number(scenario.params.delta_t_days ?? 5),
+            historyInterval: 1,
+            reference: { kind: 'analytical', source: 'test' },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Synthetic terminal-rate GOR guard',
+        } as BenchmarkRunSpec;
+
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [
+                {
+                    time: 5,
+                    total_injection: 100,
+                    total_production_liquid: 1.5,
+                    total_production_oil: 0.2,
+                    avg_reservoir_pressure: 250,
+                    producing_gor: 2_000_000_000,
+                },
+            ],
+        });
+
+        const model = buildReferenceComparisonModel({
+            family: {
+                key: scenario.key,
+                analyticalMethod: 'none',
+                showSweepPanel: false,
+                publishedReferenceSeries: scenario.publishedReferenceSeries,
+            } as unknown as BenchmarkFamily,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        expect(model.panels.gor.series[0]?.[0]?.y).toBeNull();
+    });
+
     it('renders extra SPE1 published overlays as dashed reference curves on the correct panels', () => {
         const scenario = getScenario('spe1_gas_injection')!;
         const family = {

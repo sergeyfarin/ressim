@@ -98,6 +98,8 @@ type DerivedRunSeries = {
     injectorBhpLimitedFraction: Array<number | null>;
 };
 
+const MIN_GOR_OIL_RATE_SM3_DAY = 10.0;
+
 type AnalyticalOverlay = {
     rates: { label: string; values: Array<number | null> } | null;
     cumulative: {
@@ -389,6 +391,10 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
             poreVolume > 1e-12 && Number.isFinite(value) ? Number(value) / poreVolume : null
         )),
         gor: result.rateHistory.map((point) => {
+            const oilRate = Math.max(0, Math.abs(toFiniteNumber(point.total_production_oil, 0)));
+            if (oilRate <= MIN_GOR_OIL_RATE_SM3_DAY) {
+                return null;
+            }
             const value = toFiniteNumber(point.producing_gor as number, 0);
             return value > 0 ? value : null;
         }),

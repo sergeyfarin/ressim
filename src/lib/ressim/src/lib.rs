@@ -2762,6 +2762,57 @@ mod tests {
     }
 
     #[test]
+    fn producing_gor_is_zero_when_oil_rate_is_negligible() {
+        use crate::pvt::{PvtRow, PvtTable};
+        use nalgebra::DVector;
+
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.10, 0.10, 0.05, 0.05, 0.10,
+            2.0, 2.0, 1.5,
+            0.8, 0.9, 0.7,
+        ).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_initial_pressure(100.0);
+        sim.set_initial_saturation(0.10);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 0.0,
+                bo_m3m3: 1.2,
+                mu_o_cp: 1.0,
+                bg_m3m3: 0.25,
+                mu_g_cp: 0.02,
+            }],
+            sim.pvt.c_o,
+        ));
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let id = sim.idx(0, 0, 0);
+        sim.pressure[id] = 300.0;
+        sim.sat_water[id] = 0.12;
+        sim.sat_gas[id] = 0.879_999;
+        sim.sat_oil[id] = 0.000_001;
+
+        let controls = vec![Some(ResolvedWellControl {
+            decision: WellControlDecision::Bhp { bhp_bar: 100.0 },
+            bhp_limited: false,
+        })];
+
+        sim.update_saturations_and_pressure(
+            &DVector::from_vec(vec![300.0]),
+            &vec![0.0],
+            &vec![0.0],
+            &vec![0.0],
+            &controls,
+            1.0,
+        );
+
+        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        assert_eq!(latest.producing_gor, 0.0);
+    }
+
+    #[test]
     fn three_phase_mode_disabled_sat_gas_stays_zero() {
         // In the default 2-phase mode, sat_gas must remain all zeros and sw+so=1.
         let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);

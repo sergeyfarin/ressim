@@ -9,6 +9,7 @@ use crate::{InjectedFluid, ReservoirSimulator, TimePointRates, Well};
 /// Derivation: 1 mD = 9.8692e-16 m², 1 cP = 1e-3 Pa·s, 1 bar = 1e5 Pa, 1 day = 86400 s
 /// Factor = 9.8692e-16 × 1e3 × 1e5 × 86400 = 8.5269888e-3
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
+const MIN_GOR_OIL_RATE_SC_DAY: f64 = 10.0;
 
 #[derive(Clone, Copy)]
 pub(crate) enum WellControlDecision {
@@ -1621,7 +1622,7 @@ impl ReservoirSimulator {
 
         // Producing GOR [Sm³/Sm³] = (free gas SC + dissolved gas SC) / oil SC
         let total_gas_sc = total_prod_gas + total_prod_dissolved_gas;
-        let producing_gor = if total_prod_oil > 1e-12 {
+        let producing_gor = if total_prod_oil > MIN_GOR_OIL_RATE_SC_DAY {
             total_gas_sc / total_prod_oil
         } else {
             0.0
