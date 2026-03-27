@@ -236,7 +236,7 @@ mod tests {
         );
 
         assert!(report.converged);
-        assert!(report.accepted_state.injector_group_bhp().is_some());
-        assert!(report.accepted_state.producer_group_bhp().is_some());
+        assert_eq!(report.accepted_state.well_bhp.len(), 2);
+        assert_eq!(report.accepted_state.perforation_rates_m3_day.len(), 2);
     }
 }

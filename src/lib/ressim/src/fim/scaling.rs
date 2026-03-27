@@ -6,7 +6,8 @@ pub(crate) struct EquationScaling {
     pub(crate) water: Vec<f64>,
     pub(crate) oil_component: Vec<f64>,
     pub(crate) gas_component: Vec<f64>,
-    pub(crate) well_control: Vec<f64>,
+    pub(crate) well_constraint: Vec<f64>,
+    pub(crate) perforation_flow: Vec<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -15,6 +16,7 @@ pub(crate) struct VariableScaling {
     pub(crate) sw: Vec<f64>,
     pub(crate) hydrocarbon_var: Vec<f64>,
     pub(crate) well_bhp: Vec<f64>,
+    pub(crate) perforation_rate: Vec<f64>,
 }
 
 pub(crate) fn build_equation_scaling(
@@ -26,10 +28,8 @@ pub(crate) fn build_equation_scaling(
     let mut water = Vec::with_capacity(n_cells);
     let mut oil_component = Vec::with_capacity(n_cells);
     let mut gas_component = Vec::with_capacity(n_cells);
-    let mut well_control = Vec::with_capacity(
-        usize::from(state.injector_group_bhp().is_some())
-            + usize::from(state.producer_group_bhp().is_some()),
-    );
+    let mut well_constraint = Vec::with_capacity(state.n_well_unknowns());
+    let mut perforation_flow = Vec::with_capacity(state.n_perforation_unknowns());
 
     let dt_days = dt_days.max(1e-12);
     for idx in 0..n_cells {
@@ -39,18 +39,19 @@ pub(crate) fn build_equation_scaling(
         gas_component.push(pv_over_dt);
     }
 
-    if let Some(bhp_bar) = state.injector_group_bhp() {
-        well_control.push(bhp_bar.abs().max(1.0));
+    for bhp_bar in &state.well_bhp {
+        well_constraint.push(bhp_bar.abs().max(1.0));
     }
-    if let Some(bhp_bar) = state.producer_group_bhp() {
-        well_control.push(bhp_bar.abs().max(1.0));
+    for rate in &state.perforation_rates_m3_day {
+        perforation_flow.push(rate.abs().max(1.0));
     }
 
     EquationScaling {
         water,
         oil_component,
         gas_component,
-        well_control,
+        well_constraint,
+        perforation_flow,
     }
 }
 
@@ -62,10 +63,8 @@ pub(crate) fn build_variable_scaling(
     let mut pressure = Vec::with_capacity(n_cells);
     let mut sw = Vec::with_capacity(n_cells);
     let mut hydrocarbon_var = Vec::with_capacity(n_cells);
-    let mut well_bhp = Vec::with_capacity(
-        usize::from(state.injector_group_bhp().is_some())
-            + usize::from(state.producer_group_bhp().is_some()),
-    );
+    let mut well_bhp = Vec::with_capacity(state.n_well_unknowns());
+    let mut perforation_rate = Vec::with_capacity(state.n_perforation_unknowns());
 
     for cell in &state.cells {
         pressure.push(cell.pressure_bar.abs().max(1.0));
@@ -76,11 +75,11 @@ pub(crate) fn build_variable_scaling(
         });
     }
 
-    if let Some(bhp_bar) = state.injector_group_bhp() {
+    for bhp_bar in &state.well_bhp {
         well_bhp.push(bhp_bar.abs().max(1.0));
     }
-    if let Some(bhp_bar) = state.producer_group_bhp() {
-        well_bhp.push(bhp_bar.abs().max(1.0));
+    for rate in &state.perforation_rates_m3_day {
+        perforation_rate.push(rate.abs().max(1.0));
     }
 
     VariableScaling {
@@ -88,6 +87,7 @@ pub(crate) fn build_variable_scaling(
         sw,
         hydrocarbon_var,
         well_bhp,
+        perforation_rate,
     }
 }
 
@@ -116,8 +116,8 @@ mod tests {
                     regime: HydrocarbonState::Undersaturated,
                 },
             ],
-            injector_group_bhp: Some(350.0),
-            producer_group_bhp: None,
+            well_bhp: vec![350.0],
+            perforation_rates_m3_day: vec![-25.0],
         };
 
         let scaling = build_variable_scaling(&sim, &state);
@@ -125,5 +125,6 @@ mod tests {
         assert_eq!(scaling.sw, vec![1.0, 1.0]);
         assert_eq!(scaling.hydrocarbon_var, vec![1.0, 42.0]);
         assert_eq!(scaling.well_bhp, vec![350.0]);
+        assert_eq!(scaling.perforation_rate, vec![25.0]);
     }
 }

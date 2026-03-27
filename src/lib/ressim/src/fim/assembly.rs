@@ -6,8 +6,8 @@ use crate::fim::scaling::{
 };
 use crate::fim::state::FimState;
 use crate::fim::wells::{
-    collect_perforations, component_rates_sc_day, control_group_residual, control_groups,
-    resolve_well_control, transport_rate_from_control,
+    build_well_topology, perforation_component_rates_sc_day, perforation_rate_residual,
+    FimWellTopology, well_constraint_residual,
 };
 use crate::ReservoirSimulator;
 
@@ -40,18 +40,20 @@ pub(crate) fn assemble_fim_system(
     state: &FimState,
     options: &FimAssemblyOptions,
 ) -> FimAssembly {
+    let topology = build_well_topology(sim);
     let n_unknowns = state.n_unknowns();
     let equation_scaling = build_equation_scaling(sim, state, options.dt_days);
     let variable_scaling = build_variable_scaling(sim, state);
     let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
-    let residual = assemble_residual(sim, previous_state, state, options);
+    let residual = assemble_residual(sim, previous_state, state, &topology, options);
 
     for unknown_idx in 0..n_unknowns {
         let perturbation = finite_difference_step(state, unknown_idx);
         let mut update = DVector::zeros(n_unknowns);
         update[unknown_idx] = perturbation;
         let perturbed_state = state.apply_newton_update(sim, &update, 1.0);
-        let perturbed_residual = assemble_residual(sim, previous_state, &perturbed_state, options);
+        let perturbed_residual =
+            assemble_residual(sim, previous_state, &perturbed_state, &topology, options);
 
         for equation_idx in 0..n_unknowns {
             let jac = (perturbed_residual[equation_idx] - residual[equation_idx]) / perturbation;
@@ -82,12 +84,14 @@ fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
         };
     }
 
-    let bhp_bar = if Some(unknown_idx) == state.injector_group_unknown_offset() {
-        state.injector_group_bhp().unwrap_or(1.0)
-    } else {
-        state.producer_group_bhp().unwrap_or(1.0)
-    };
-    1e-5 * bhp_bar.abs().max(1.0)
+    if unknown_idx < state.n_cell_unknowns() + state.n_well_unknowns() {
+        let well_idx = unknown_idx - state.n_cell_unknowns();
+        let bhp_bar = state.well_bhp[well_idx];
+        return 1e-5 * bhp_bar.abs().max(1.0);
+    }
+
+    let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
+    1e-5 * state.perforation_rates_m3_day[perf_idx].abs().max(1.0)
 }
 
 fn pore_volume_at_state(
@@ -138,6 +142,7 @@ fn assemble_residual(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
     state: &FimState,
+    topology: &FimWellTopology,
     options: &FimAssemblyOptions,
 ) -> DVector<f64> {
     let n_unknowns = state.n_unknowns();
@@ -199,8 +204,9 @@ fn assemble_residual(
     }
 
     if options.include_wells {
-        add_well_source_terms(sim, state, options.dt_days, &mut residual);
-        add_well_control_equations(sim, state, &mut residual);
+        add_well_source_terms(sim, state, topology, options.dt_days, &mut residual);
+        add_well_constraint_equations(sim, state, topology, &mut residual);
+        add_perforation_equations(sim, state, topology, &mut residual);
     }
 
     residual
@@ -209,34 +215,41 @@ fn assemble_residual(
 fn add_well_source_terms(
     sim: &ReservoirSimulator,
     state: &FimState,
+    topology: &FimWellTopology,
     dt_days: f64,
     residual: &mut DVector<f64>,
 ) {
-    for perforation in collect_perforations(sim) {
-        let well = &sim.wells[perforation.well_index];
-        let Some(control) = resolve_well_control(sim, state, well) else {
-            continue;
-        };
+    for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
         let id = perforation.cell_index;
-        let Some(q_m3_day) = transport_rate_from_control(sim, state, well, control) else {
-            continue;
-        };
-
-        let components_sc_day = component_rates_sc_day(sim, state, well, control, q_m3_day);
+        let components_sc_day = perforation_component_rates_sc_day(sim, state, topology, perf_idx);
         for (local_eq, component_rate) in components_sc_day.into_iter().enumerate() {
             residual[equation_offset(id, local_eq)] += component_rate * dt_days;
         }
     }
 }
 
-fn add_well_control_equations(
+fn add_well_constraint_equations(
     sim: &ReservoirSimulator,
     state: &FimState,
+    topology: &FimWellTopology,
     residual: &mut DVector<f64>,
 ) {
-    for group in control_groups(sim, state) {
-        if let Some((equation_idx, group_residual)) = control_group_residual(sim, state, group) {
-            residual[equation_idx] += group_residual;
+    for well_idx in 0..topology.wells.len() {
+        if let Some(well_residual) = well_constraint_residual(sim, state, topology, well_idx) {
+            residual[state.well_equation_offset(well_idx)] += well_residual;
+        }
+    }
+}
+
+fn add_perforation_equations(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    residual: &mut DVector<f64>,
+) {
+    for perf_idx in 0..topology.perforations.len() {
+        if let Some(rate_residual) = perforation_rate_residual(sim, state, topology, perf_idx) {
+            residual[state.perforation_equation_offset(perf_idx)] += rate_residual;
         }
     }
 }
@@ -364,8 +377,8 @@ mod tests {
                     regime: HydrocarbonState::Saturated,
                 },
             ],
-            injector_group_bhp: None,
-            producer_group_bhp: None,
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
         };
 
         let assembly = assemble_fim_system(
@@ -384,7 +397,8 @@ mod tests {
         assert!(assembly.jacobian.nnz() >= 18);
         assert_eq!(assembly.equation_scaling.water.len(), 2);
         assert_eq!(assembly.variable_scaling.pressure.len(), 2);
-        assert!(assembly.equation_scaling.well_control.is_empty());
+        assert!(assembly.equation_scaling.well_constraint.is_empty());
+        assert!(assembly.equation_scaling.perforation_flow.is_empty());
     }
 
     #[test]
@@ -556,9 +570,11 @@ mod tests {
             },
         );
 
-        assert_eq!(state.n_unknowns(), 8);
-        assert_eq!(assembly.residual.len(), 8);
-        assert_eq!(assembly.equation_scaling.well_control.len(), 2);
+        assert_eq!(state.n_unknowns(), 10);
+        assert_eq!(assembly.residual.len(), 10);
+        assert_eq!(assembly.equation_scaling.well_constraint.len(), 2);
+        assert_eq!(assembly.equation_scaling.perforation_flow.len(), 2);
         assert_eq!(assembly.variable_scaling.well_bhp.len(), 2);
+        assert_eq!(assembly.variable_scaling.perforation_rate.len(), 2);
     }
 }

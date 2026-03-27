@@ -1,18 +1,15 @@
+use std::collections::HashMap;
+
 use crate::fim::state::FimState;
-use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
+use crate::well_control::ProducerControlState;
 use crate::{InjectedFluid, ReservoirSimulator, Well};
 
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FimControlGroup {
-    Injector,
-    Producer,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FimPerforation {
-    pub(crate) well_index: usize,
+    pub(crate) well_entry_index: usize,
+    pub(crate) physical_well_index: usize,
     pub(crate) cell_index: usize,
     pub(crate) i: usize,
     pub(crate) j: usize,
@@ -20,23 +17,140 @@ pub(crate) struct FimPerforation {
     pub(crate) injector: bool,
 }
 
-pub(crate) fn collect_perforations(sim: &ReservoirSimulator) -> Vec<FimPerforation> {
-    sim.wells
-        .iter()
-        .enumerate()
-        .map(|(well_index, well)| FimPerforation {
-            well_index,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FimPhysicalWell {
+    pub(crate) representative_well_index: usize,
+    pub(crate) injector: bool,
+    pub(crate) head_i: usize,
+    pub(crate) head_j: usize,
+    pub(crate) perforation_indices: Vec<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FimWellTopology {
+    pub(crate) wells: Vec<FimPhysicalWell>,
+    pub(crate) perforations: Vec<FimPerforation>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct WellGroupingKey {
+    injector: bool,
+    i: usize,
+    j: usize,
+    bhp_bits: u64,
+    radius_bits: u64,
+    skin_bits: u64,
+}
+
+pub(crate) fn build_well_topology(sim: &ReservoirSimulator) -> FimWellTopology {
+    let mut wells = Vec::new();
+    let mut perforations = Vec::with_capacity(sim.wells.len());
+    let mut groups = HashMap::<WellGroupingKey, usize>::new();
+
+    for (well_entry_index, well) in sim.wells.iter().enumerate() {
+        let key = WellGroupingKey {
+            injector: well.injector,
+            i: well.i,
+            j: well.j,
+            bhp_bits: well.bhp.to_bits(),
+            radius_bits: well.well_radius.to_bits(),
+            skin_bits: well.skin.to_bits(),
+        };
+
+        let physical_well_index = *groups.entry(key).or_insert_with(|| {
+            let index = wells.len();
+            wells.push(FimPhysicalWell {
+                representative_well_index: well_entry_index,
+                injector: well.injector,
+                head_i: well.i,
+                head_j: well.j,
+                perforation_indices: Vec::new(),
+            });
+            index
+        });
+
+        let perforation_index = perforations.len();
+        perforations.push(FimPerforation {
+            well_entry_index,
+            physical_well_index,
             cell_index: sim.idx(well.i, well.j, well.k),
             i: well.i,
             j: well.j,
             k: well.k,
             injector: well.injector,
-        })
-        .collect()
+        });
+        wells[physical_well_index]
+            .perforation_indices
+            .push(perforation_index);
+    }
+
+    FimWellTopology { wells, perforations }
 }
 
 fn perforation_well<'a>(sim: &'a ReservoirSimulator, perforation: &FimPerforation) -> &'a Well {
-    &sim.wells[perforation.well_index]
+    &sim.wells[perforation.well_entry_index]
+}
+
+fn physical_well<'a>(sim: &'a ReservoirSimulator, topology: &FimWellTopology, well_idx: usize) -> &'a Well {
+    &sim.wells[topology.wells[well_idx].representative_well_index]
+}
+
+pub(crate) fn physical_well_bhp_target(
+    sim: &ReservoirSimulator,
+    topology: &FimWellTopology,
+    well_idx: usize,
+) -> f64 {
+    physical_well(sim, topology, well_idx).bhp
+}
+
+fn family_anchor_well(topology: &FimWellTopology, injector: bool) -> Option<usize> {
+    topology.wells.iter().position(|well| well.injector == injector)
+}
+
+fn family_rate_controlled(sim: &ReservoirSimulator, injector: bool) -> bool {
+    if injector {
+        sim.injector_rate_controlled && sim.injector_enabled
+    } else {
+        sim.producer_rate_controlled
+    }
+}
+
+fn family_uses_surface_target(sim: &ReservoirSimulator, injector: bool) -> bool {
+    if injector {
+        sim.target_injector_surface_rate_m3_day.is_some()
+    } else {
+        sim.target_producer_surface_rate_m3_day.is_some()
+    }
+}
+
+fn family_target_rate(sim: &ReservoirSimulator, injector: bool) -> Option<f64> {
+    if injector {
+        if !family_rate_controlled(sim, true) {
+            return None;
+        }
+        Some(
+            sim.target_injector_surface_rate_m3_day
+                .unwrap_or(sim.target_injector_rate_m3_day)
+                .max(0.0),
+        )
+    } else {
+        if !family_rate_controlled(sim, false) {
+            return None;
+        }
+        Some(
+            sim.target_producer_surface_rate_m3_day
+                .unwrap_or(sim.target_producer_rate_m3_day)
+                .max(0.0),
+        )
+    }
+}
+
+fn family_bhp_limit(sim: &ReservoirSimulator, injector: bool) -> f64 {
+    if injector {
+        sim.well_bhp_max
+    } else {
+        sim.well_bhp_min
+    }
 }
 
 fn geometric_well_index(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Option<f64> {
@@ -106,12 +220,14 @@ pub(crate) fn producer_control_state(
     }
 }
 
-fn completion_rate_for_bhp(
+pub(crate) fn connection_rate_for_bhp(
     sim: &ReservoirSimulator,
     state: &FimState,
-    perforation: &FimPerforation,
+    topology: &FimWellTopology,
+    perf_idx: usize,
     bhp_bar: f64,
 ) -> Option<f64> {
+    let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
     let id = perforation.cell_index;
     let cell = state.cell(id);
@@ -142,15 +258,16 @@ fn completion_rate_for_bhp(
     })
 }
 
-fn completion_surface_rate_sc_day(
+fn perforation_surface_rate_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
-    perforation: &FimPerforation,
-    bhp_bar: f64,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+    q_m3_day: f64,
 ) -> Option<f64> {
+    let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
     let id = perforation.cell_index;
-    let q_m3_day = completion_rate_for_bhp(sim, state, perforation, bhp_bar)?;
 
     if well.injector {
         return Some(match sim.injected_fluid {
@@ -163,366 +280,127 @@ fn completion_surface_rate_sc_day(
     Some(q_m3_day.max(0.0) * producer.oil_fraction / producer.oil_fvf.max(1e-9))
 }
 
-pub(crate) fn solve_group_bhp(
+fn total_rate_for_family_bhp(
     sim: &ReservoirSimulator,
     state: &FimState,
+    topology: &FimWellTopology,
     injector: bool,
-) -> Option<(f64, bool)> {
-    let use_rate_control = if injector {
-        sim.injector_rate_controlled
-    } else {
-        sim.producer_rate_controlled
-    };
-    if !use_rate_control {
-        return None;
-    }
-
-    let perforations: Vec<FimPerforation> = collect_perforations(sim)
-        .into_iter()
-        .filter(|perforation| perforation.injector == injector)
-        .collect();
-    if perforations.is_empty() {
-        return None;
-    }
-
-    let total_surface_target = if injector {
-        sim.target_injector_surface_rate_m3_day
-    } else {
-        sim.target_producer_surface_rate_m3_day
-    };
-    let total_reservoir_target = if injector {
-        sim.target_injector_rate_m3_day
-    } else {
-        sim.target_producer_rate_m3_day
-    };
-
-    let total_rate_for_bhp = |bhp_bar: f64| -> f64 {
-        perforations
-            .iter()
-            .filter_map(|perforation| {
-                if injector {
-                    match total_surface_target {
-                        Some(_) => completion_surface_rate_sc_day(sim, state, perforation, bhp_bar),
-                        None => completion_rate_for_bhp(sim, state, perforation, bhp_bar)
-                            .map(|q| (-q).max(0.0)),
-                    }
-                } else {
-                    match total_surface_target {
-                        Some(_) => completion_surface_rate_sc_day(sim, state, perforation, bhp_bar),
-                        None => completion_rate_for_bhp(sim, state, perforation, bhp_bar),
-                    }
-                }
-            })
-            .sum()
-    };
-
-    let target_rate = total_surface_target
-        .unwrap_or(total_reservoir_target)
-        .max(0.0);
-    let group_min_pressure = perforations
-        .iter()
-        .map(|perforation| state.cell(perforation.cell_index).pressure_bar)
-        .fold(f64::INFINITY, f64::min);
-    let group_max_pressure = perforations
-        .iter()
-        .map(|perforation| state.cell(perforation.cell_index).pressure_bar)
-        .fold(f64::NEG_INFINITY, f64::max);
-
-    if !group_min_pressure.is_finite() || !group_max_pressure.is_finite() {
-        return None;
-    }
-
-    if injector {
-        let bhp_limit = sim.well_bhp_max;
-        let max_achievable_rate = total_rate_for_bhp(bhp_limit);
-        if target_rate >= max_achievable_rate - 1e-9 {
-            return Some((bhp_limit, true));
-        }
-
-        let mut low = group_min_pressure.min(bhp_limit);
-        let mut high = bhp_limit;
-        for _ in 0..64 {
-            let mid = 0.5 * (low + high);
-            let rate_mid = total_rate_for_bhp(mid);
-            if rate_mid < target_rate {
-                low = mid;
-            } else {
-                high = mid;
-            }
-        }
-        Some((0.5 * (low + high), false))
-    } else {
-        let bhp_limit = sim.well_bhp_min;
-        let max_achievable_rate = total_rate_for_bhp(bhp_limit);
-        if target_rate >= max_achievable_rate - 1e-9 {
-            return Some((bhp_limit, true));
-        }
-
-        let mut low = bhp_limit;
-        let mut high = group_max_pressure.max(bhp_limit);
-        for _ in 0..64 {
-            let mid = 0.5 * (low + high);
-            let rate_mid = total_rate_for_bhp(mid);
-            if rate_mid > target_rate {
-                low = mid;
-            } else {
-                high = mid;
-            }
-        }
-        Some((0.5 * (low + high), false))
-    }
-}
-
-fn control_group_bhp(state: &FimState, group: FimControlGroup) -> Option<f64> {
-    match group {
-        FimControlGroup::Injector => state.injector_group_bhp(),
-        FimControlGroup::Producer => state.producer_group_bhp(),
-    }
-}
-
-pub(crate) fn control_group_equation_offset(
-    state: &FimState,
-    group: FimControlGroup,
-) -> Option<usize> {
-    match group {
-        FimControlGroup::Injector => state.injector_group_unknown_offset(),
-        FimControlGroup::Producer => state.producer_group_unknown_offset(),
-    }
-}
-
-fn group_target_rate(sim: &ReservoirSimulator, group: FimControlGroup) -> Option<f64> {
-    match group {
-        FimControlGroup::Injector => {
-            if !sim.injector_rate_controlled
-                || !sim.injector_enabled
-                || !sim.wells.iter().any(|well| well.injector)
-            {
-                return None;
-            }
-            Some(
-                sim.target_injector_surface_rate_m3_day
-                    .unwrap_or(sim.target_injector_rate_m3_day)
-                    .max(0.0),
-            )
-        }
-        FimControlGroup::Producer => {
-            if !sim.producer_rate_controlled || !sim.wells.iter().any(|well| !well.injector) {
-                return None;
-            }
-            Some(
-                sim.target_producer_surface_rate_m3_day
-                    .unwrap_or(sim.target_producer_rate_m3_day)
-                    .max(0.0),
-            )
-        }
-    }
-}
-
-fn group_bhp_limit(sim: &ReservoirSimulator, group: FimControlGroup) -> f64 {
-    match group {
-        FimControlGroup::Injector => sim.well_bhp_max,
-        FimControlGroup::Producer => sim.well_bhp_min,
-    }
-}
-
-fn group_uses_surface_target(sim: &ReservoirSimulator, group: FimControlGroup) -> bool {
-    match group {
-        FimControlGroup::Injector => sim.target_injector_surface_rate_m3_day.is_some(),
-        FimControlGroup::Producer => sim.target_producer_surface_rate_m3_day.is_some(),
-    }
-}
-
-fn total_rate_for_group_bhp(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    group: FimControlGroup,
     bhp_bar: f64,
 ) -> f64 {
-    let injector = matches!(group, FimControlGroup::Injector);
-    let surface_target = group_uses_surface_target(sim, group);
-    collect_perforations(sim)
-        .into_iter()
-        .filter(|perforation| perforation.injector == injector)
-        .filter_map(|perforation| {
+    let surface_target = family_uses_surface_target(sim, injector);
+    topology
+        .perforations
+        .iter()
+        .enumerate()
+        .filter(|(_, perforation)| perforation.injector == injector)
+        .filter_map(|(perf_idx, _)| {
+            let q_m3_day = connection_rate_for_bhp(sim, state, topology, perf_idx, bhp_bar)?;
             if injector {
                 if surface_target {
-                    completion_surface_rate_sc_day(sim, state, &perforation, bhp_bar)
+                    perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
                 } else {
-                    completion_rate_for_bhp(sim, state, &perforation, bhp_bar)
-                        .map(|q| (-q).max(0.0))
+                    Some((-q_m3_day).max(0.0))
                 }
             } else if surface_target {
-                completion_surface_rate_sc_day(sim, state, &perforation, bhp_bar)
+                perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
             } else {
-                completion_rate_for_bhp(sim, state, &perforation, bhp_bar)
+                Some(q_m3_day.max(0.0))
             }
         })
         .sum()
 }
 
-pub(crate) fn control_groups(sim: &ReservoirSimulator, state: &FimState) -> Vec<FimControlGroup> {
-    let mut groups = Vec::new();
-    if state.injector_group_bhp().is_some()
-        && sim.injector_enabled
-        && sim.wells.iter().any(|well| well.injector)
-    {
-        groups.push(FimControlGroup::Injector);
-    }
-    if state.producer_group_bhp().is_some() && sim.wells.iter().any(|well| !well.injector) {
-        groups.push(FimControlGroup::Producer);
-    }
-    groups
-}
-
-pub(crate) fn control_group_residual(
+fn total_rate_from_unknowns(
     sim: &ReservoirSimulator,
     state: &FimState,
-    group: FimControlGroup,
-) -> Option<(usize, f64)> {
-    let equation_offset = control_group_equation_offset(state, group)?;
-    let bhp_bar = control_group_bhp(state, group)?;
-    let target_rate = group_target_rate(sim, group)?;
-    let bhp_limit = group_bhp_limit(sim, group);
-    let max_achievable_rate = total_rate_for_group_bhp(sim, state, group, bhp_limit);
-    let bhp_limited = target_rate >= max_achievable_rate - 1e-9;
-
-    let residual = if bhp_limited {
-        bhp_bar - bhp_limit
-    } else {
-        total_rate_for_group_bhp(sim, state, group, bhp_bar) - target_rate
-    };
-    Some((equation_offset, residual))
-}
-
-pub(crate) fn resolve_well_control(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    well: &Well,
-) -> Option<ResolvedWellControl> {
-    if well.injector && !sim.injector_enabled {
-        return Some(ResolvedWellControl {
-            decision: WellControlDecision::Disabled,
-            bhp_limited: false,
-            producer_state: None,
-        });
-    }
-
-    let producer_state = if well.injector {
-        None
-    } else {
-        let perforation = FimPerforation {
-            well_index: sim
-                .wells
-                .iter()
-                .position(|candidate| std::ptr::eq(candidate, well))
-                .expect("well must exist in simulator when resolving FIM control"),
-            cell_index: sim.idx(well.i, well.j, well.k),
-            i: well.i,
-            j: well.j,
-            k: well.k,
-            injector: well.injector,
-        };
-        Some(producer_control_state(sim, state, &perforation))
-    };
-
-    let use_rate_control = if well.injector {
-        sim.injector_rate_controlled
-    } else {
-        sim.producer_rate_controlled
-    };
-
-    if use_rate_control {
-        let group = if well.injector {
-            FimControlGroup::Injector
-        } else {
-            FimControlGroup::Producer
-        };
-        let perforation = FimPerforation {
-            well_index: sim
-                .wells
-                .iter()
-                .position(|candidate| std::ptr::eq(candidate, well))
-                .expect("well must exist in simulator when resolving FIM control"),
-            cell_index: sim.idx(well.i, well.j, well.k),
-            i: well.i,
-            j: well.j,
-            k: well.k,
-            injector: well.injector,
-        };
-        let group_bhp = control_group_bhp(state, group)?;
-        let target_rate = group_target_rate(sim, group)?;
-        let bhp_limit = group_bhp_limit(sim, group);
-        let max_achievable_rate = total_rate_for_group_bhp(sim, state, group, bhp_limit);
-        let bhp_limited = target_rate >= max_achievable_rate - 1e-9;
-        let q_target = completion_rate_for_bhp(sim, state, &perforation, group_bhp)?;
-        return Some(ResolvedWellControl {
-            decision: if bhp_limited {
-                WellControlDecision::Bhp { bhp_bar: group_bhp }
+    topology: &FimWellTopology,
+    injector: bool,
+) -> f64 {
+    let surface_target = family_uses_surface_target(sim, injector);
+    topology
+        .perforations
+        .iter()
+        .enumerate()
+        .filter(|(_, perforation)| perforation.injector == injector)
+        .filter_map(|(perf_idx, _)| {
+            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+            if injector {
+                if surface_target {
+                    perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
+                } else {
+                    Some((-q_m3_day).max(0.0))
+                }
+            } else if surface_target {
+                perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
             } else {
-                WellControlDecision::Rate { q_m3_day: q_target }
-            },
-            bhp_limited,
-            producer_state,
+                Some(q_m3_day.max(0.0))
+            }
+        })
+        .sum()
+}
+
+pub(crate) fn well_constraint_residual(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    well_idx: usize,
+) -> Option<f64> {
+    let well = &topology.wells[well_idx];
+    let bhp_bar = state.well_bhp[well_idx];
+
+    if well.injector && !sim.injector_enabled {
+        let anchor_well_idx = family_anchor_well(topology, true)?;
+        return Some(if well_idx == anchor_well_idx {
+            bhp_bar - physical_well_bhp_target(sim, topology, well_idx)
+        } else {
+            bhp_bar - state.well_bhp[anchor_well_idx]
         });
     }
 
-    if !well.bhp.is_finite() {
-        return None;
+    if !family_rate_controlled(sim, well.injector) {
+        return Some(bhp_bar - physical_well_bhp_target(sim, topology, well_idx));
     }
 
-    Some(ResolvedWellControl {
-        decision: WellControlDecision::Bhp { bhp_bar: well.bhp },
-        bhp_limited: false,
-        producer_state,
-    })
+    let anchor_well_idx = family_anchor_well(topology, well.injector)?;
+    if well_idx != anchor_well_idx {
+        return Some(bhp_bar - state.well_bhp[anchor_well_idx]);
+    }
+
+    let target_rate = family_target_rate(sim, well.injector)?;
+    let bhp_limit = family_bhp_limit(sim, well.injector);
+    let max_achievable_rate = total_rate_for_family_bhp(sim, state, topology, well.injector, bhp_limit);
+    if target_rate >= max_achievable_rate - 1e-9 {
+        Some(bhp_bar - bhp_limit)
+    } else {
+        Some(total_rate_from_unknowns(sim, state, topology, well.injector) - target_rate)
+    }
 }
 
-pub(crate) fn transport_rate_from_control(
+pub(crate) fn perforation_rate_residual(
     sim: &ReservoirSimulator,
     state: &FimState,
-    well: &Well,
-    control: ResolvedWellControl,
+    topology: &FimWellTopology,
+    perf_idx: usize,
 ) -> Option<f64> {
-    let perforation = FimPerforation {
-        well_index: sim
-            .wells
-            .iter()
-            .position(|candidate| std::ptr::eq(candidate, well))
-            .expect("well must exist in simulator when evaluating FIM transport rate"),
-        cell_index: sim.idx(well.i, well.j, well.k),
-        i: well.i,
-        j: well.j,
-        k: well.k,
-        injector: well.injector,
-    };
-    match control.decision {
-        WellControlDecision::Disabled => Some(0.0),
-        WellControlDecision::Rate { q_m3_day } => Some(q_m3_day),
-        WellControlDecision::Bhp { bhp_bar } => {
-            completion_rate_for_bhp(sim, state, &perforation, bhp_bar)
-        }
+    let perforation = &topology.perforations[perf_idx];
+    if perforation.injector && !sim.injector_enabled {
+        return Some(state.perforation_rates_m3_day[perf_idx]);
     }
+
+    let bhp_bar = state.well_bhp[perforation.physical_well_index];
+    let q_connection = connection_rate_for_bhp(sim, state, topology, perf_idx, bhp_bar)?;
+    Some(state.perforation_rates_m3_day[perf_idx] - q_connection)
 }
 
-pub(crate) fn component_rates_sc_day(
+pub(crate) fn perforation_component_rates_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
-    well: &Well,
-    control: ResolvedWellControl,
-    q_m3_day: f64,
+    topology: &FimWellTopology,
+    perf_idx: usize,
 ) -> [f64; 3] {
-    let perforation = FimPerforation {
-        well_index: sim
-            .wells
-            .iter()
-            .position(|candidate| std::ptr::eq(candidate, well))
-            .expect("well must exist in simulator when evaluating FIM component rates"),
-        cell_index: sim.idx(well.i, well.j, well.k),
-        i: well.i,
-        j: well.j,
-        k: well.k,
-        injector: well.injector,
-    };
+    let perforation = &topology.perforations[perf_idx];
+    let well = perforation_well(sim, perforation);
+    let q_m3_day = state.perforation_rates_m3_day[perf_idx];
     let id = perforation.cell_index;
     if well.injector {
         return match sim.injected_fluid {
@@ -531,9 +409,7 @@ pub(crate) fn component_rates_sc_day(
         };
     }
 
-    let producer = control
-        .producer_state
-        .unwrap_or_else(|| producer_control_state(sim, state, &perforation));
+    let producer = producer_control_state(sim, state, perforation);
     let water_sc_day = q_m3_day * producer.water_fraction / sim.b_w.max(1e-9);
     let oil_sc_day = q_m3_day * producer.oil_fraction / producer.oil_fvf.max(1e-9);
     let free_gas_sc_day = q_m3_day * producer.gas_fraction / producer.gas_fvf.max(1e-9);
@@ -550,32 +426,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collect_perforations_maps_coordinates_to_correct_cells() {
+    fn topology_maps_coordinates_to_correct_cells() {
         let mut sim = ReservoirSimulator::new(3, 2, 2, 0.2);
         sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
         sim.add_well(2, 1, 1, 50.0, 0.1, 0.0, false).unwrap();
 
-        let perforations = collect_perforations(&sim);
+        let topology = build_well_topology(&sim);
 
-        assert_eq!(perforations.len(), 2);
-        assert_eq!(perforations[0].cell_index, sim.idx(0, 0, 0));
-        assert_eq!(perforations[1].cell_index, sim.idx(2, 1, 1));
-        assert!(perforations[0].injector);
-        assert!(!perforations[1].injector);
+        assert_eq!(topology.perforations.len(), 2);
+        assert_eq!(topology.perforations[0].cell_index, sim.idx(0, 0, 0));
+        assert_eq!(topology.perforations[1].cell_index, sim.idx(2, 1, 1));
+        assert!(topology.perforations[0].injector);
+        assert!(!topology.perforations[1].injector);
+        assert_eq!(topology.wells.len(), 2);
     }
 
     #[test]
-    fn perforations_preserve_distinct_layer_completions() {
+    fn topology_groups_vertical_completions_into_one_physical_well() {
         let mut sim = ReservoirSimulator::new(1, 1, 3, 0.2);
         sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
         sim.add_well(0, 0, 2, 100.0, 0.1, 0.0, false).unwrap();
 
-        let perforations = collect_perforations(&sim);
+        let topology = build_well_topology(&sim);
 
-        assert_eq!(perforations.len(), 2);
-        assert_ne!(perforations[0].cell_index, perforations[1].cell_index);
-        assert_eq!(perforations[0].k, 0);
-        assert_eq!(perforations[1].k, 2);
+        assert_eq!(topology.perforations.len(), 2);
+        assert_eq!(topology.wells.len(), 1);
+        assert_ne!(topology.perforations[0].cell_index, topology.perforations[1].cell_index);
+        assert_eq!(topology.perforations[0].k, 0);
+        assert_eq!(topology.perforations[1].k, 2);
+        assert_eq!(topology.perforations[0].physical_well_index, 0);
+        assert_eq!(topology.perforations[1].physical_well_index, 0);
     }
 
     #[test]
@@ -588,10 +468,10 @@ mod tests {
         let low_sw = FimState::from_simulator(&sim);
         let mut high_sw = low_sw.clone();
         high_sw.cells[0].sw = 0.8;
-        let perforation = collect_perforations(&sim)[0];
+        let topology = build_well_topology(&sim);
 
-        let q_low = completion_rate_for_bhp(&sim, &low_sw, &perforation, 1000.0).unwrap();
-        let q_high = completion_rate_for_bhp(&sim, &high_sw, &perforation, 1000.0).unwrap();
+        let q_low = connection_rate_for_bhp(&sim, &low_sw, &topology, 0, 1000.0).unwrap();
+        let q_high = connection_rate_for_bhp(&sim, &high_sw, &topology, 0, 1000.0).unwrap();
 
         assert!(q_high < q_low);
     }
@@ -603,7 +483,8 @@ mod tests {
         let base = FimState::from_simulator(&sim);
         let mut wet = base.clone();
         wet.cells[0].sw = 0.8;
-        let perforation = collect_perforations(&sim)[0];
+        let topology = build_well_topology(&sim);
+        let perforation = topology.perforations[0];
 
         let base_state = producer_control_state(&sim, &base, &perforation);
         let wet_state = producer_control_state(&sim, &wet, &perforation);
@@ -613,20 +494,18 @@ mod tests {
     }
 
     #[test]
-    fn rate_control_group_residual_vanishes_at_initialized_group_bhp() {
-        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+    fn non_anchor_rate_controlled_wells_share_family_bhp_equation() {
+        let mut sim = ReservoirSimulator::new(2, 1, 2, 0.2);
         sim.set_rate_controlled_wells(true);
-        sim.set_injected_fluid("water").unwrap();
-        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(0, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
         sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
-        let state = FimState::from_simulator(&sim);
 
-        let (_, inj_residual) =
-            control_group_residual(&sim, &state, FimControlGroup::Injector).unwrap();
-        let (_, prod_residual) =
-            control_group_residual(&sim, &state, FimControlGroup::Producer).unwrap();
+        let topology = build_well_topology(&sim);
+        let mut state = FimState::from_simulator(&sim);
+        state.well_bhp[1] += 5.0;
 
-        assert!(inj_residual.abs() < 1e-6);
-        assert!(prod_residual.abs() < 1e-6);
+        let residual = well_constraint_residual(&sim, &state, &topology, 1).unwrap();
+
+        assert!((residual - 5.0).abs() < 1e-9);
     }
 }

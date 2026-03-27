@@ -22,16 +22,16 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.5.0",
     "@types/three": "0.183.1",
-    "@typescript-eslint/parser": "^8.57.1",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@typescript-eslint/parser": "^8.57.2",
+    "@vitest/coverage-v8": "^4.1.2",
     "autoprefixer": "^10.4.27",
     "eslint": "^10.1.0",
     "eslint-plugin-svelte": "^3.16.0",
-    "svelte": "^5.54.1",
+    "svelte": "^5.55.0",
     "tailwindcss": "^4.2.2",
-    "typescript": "^5.9.3",
-    "vite": "8.0.1",
-    "vitest": "^4.1.0"
+    "typescript": "^6.0.2",
+    "vite": "8.0.3",
+    "vitest": "^4.1.2"
   },
   "dependencies": {
     "chart.js": "^4.5.1",
