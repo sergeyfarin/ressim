@@ -65,7 +65,10 @@ mod tests {
 
     #[test]
     fn default_fim_linear_solver_targets_fgmres_cpr() {
-        assert_eq!(FimLinearSolveOptions::default().kind, FimLinearSolverKind::FgmresCpr);
+        assert_eq!(
+            FimLinearSolveOptions::default().kind,
+            FimLinearSolverKind::FgmresCpr
+        );
     }
 
     #[test]
@@ -76,11 +79,7 @@ mod tests {
         let jacobian = tri.to_csr();
         let rhs = DVector::from_vec(vec![4.0, 9.0]);
 
-        let report = solve_linearized_system(
-            &jacobian,
-            &rhs,
-            &FimLinearSolveOptions::default(),
-        );
+        let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default());
 
         assert!(report.converged);
         assert!(report.used_fallback);

@@ -1,9 +1,7 @@
 use nalgebra::DVector;
 
 use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
-use crate::fim::linear::{
-    solve_linearized_system, FimLinearSolveOptions, FimLinearSolveReport,
-};
+use crate::fim::linear::{solve_linearized_system, FimLinearSolveOptions, FimLinearSolveReport};
 use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
 
@@ -49,18 +47,21 @@ fn scaled_update_inf_norm(update: &DVector<f64>) -> f64 {
 
 pub(crate) fn run_fim_timestep(
     sim: &ReservoirSimulator,
-    initial_state: &FimState,
+    previous_state: &FimState,
+    initial_iterate: &FimState,
     dt_days: f64,
     options: &FimNewtonOptions,
 ) -> FimStepReport {
-    let mut state = initial_state.clone();
+    let mut state = initial_iterate.clone();
     let mut last_linear_report = None;
     let mut final_residual_inf_norm = f64::INFINITY;
     let mut final_update_inf_norm = f64::INFINITY;
+    let mut accepted_damping = 1.0;
 
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
             sim,
+            previous_state,
             &state,
             &FimAssemblyOptions {
                 dt_days,
@@ -74,9 +75,6 @@ pub(crate) fn run_fim_timestep(
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution);
         last_linear_report = Some(linear_report.clone());
 
-        // Temporary scaffold: once real assembly and state-update logic land, the
-        // Newton step will apply the damped update to `state`. For the current zero
-        // residual scaffold, convergence is already determined by the assembled system.
         if final_residual_inf_norm <= options.residual_tolerance
             && final_update_inf_norm <= options.update_tolerance
         {
@@ -87,9 +85,35 @@ pub(crate) fn run_fim_timestep(
                 final_residual_inf_norm,
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
-                cutback_factor: 1.0,
+                cutback_factor: accepted_damping,
             };
         }
+
+        let mut damping = 1.0;
+        let mut accepted_state = None;
+        while damping >= options.min_damping {
+            let candidate = state.apply_newton_update(sim, &linear_report.solution, damping);
+            if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
+                accepted_state = Some(candidate);
+                break;
+            }
+            damping *= 0.5;
+        }
+
+        let Some(candidate) = accepted_state else {
+            return FimStepReport {
+                accepted_state: state,
+                converged: false,
+                newton_iterations: iteration + 1,
+                final_residual_inf_norm,
+                final_update_inf_norm,
+                last_linear_report: Some(linear_report),
+                cutback_factor: 0.5,
+            };
+        };
+
+        accepted_damping = damping;
+        state = candidate;
     }
 
     FimStepReport {
@@ -99,7 +123,7 @@ pub(crate) fn run_fim_timestep(
         final_residual_inf_norm,
         final_update_inf_norm,
         last_linear_report,
-        cutback_factor: 0.5,
+        cutback_factor: accepted_damping * 0.5,
     }
 }
 
@@ -115,12 +139,37 @@ mod tests {
         let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         let state = FimState::from_simulator(&sim);
 
-        let report = run_fim_timestep(&sim, &state, 1.0, &FimNewtonOptions::default());
+        let report = run_fim_timestep(&sim, &state, &state, 1.0, &FimNewtonOptions::default());
 
         assert!(report.converged);
         assert_eq!(report.newton_iterations, 1);
         assert_eq!(report.cutback_factor, 1.0);
         assert!(report.final_residual_inf_norm <= 1e-12);
         assert!(report.final_update_inf_norm <= 1e-12);
+    }
+
+    #[test]
+    fn local_closed_system_newton_recovers_previous_state_from_perturbed_iterate() {
+        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        let previous_state = FimState::from_simulator(&sim);
+        let mut iterate = previous_state.clone();
+        iterate.cells[0].pressure_bar += 5.0;
+        iterate.cells[0].sw += 0.02;
+
+        let report = run_fim_timestep(
+            &sim,
+            &previous_state,
+            &iterate,
+            1.0,
+            &FimNewtonOptions::default(),
+        );
+
+        assert!(report.converged);
+        assert!(
+            (report.accepted_state.cells[0].pressure_bar - previous_state.cells[0].pressure_bar)
+                .abs()
+                < 1e-5
+        );
+        assert!((report.accepted_state.cells[0].sw - previous_state.cells[0].sw).abs() < 1e-6);
     }
 }

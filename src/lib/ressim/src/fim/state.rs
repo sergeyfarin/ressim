@@ -1,3 +1,5 @@
+use nalgebra::DVector;
+
 use crate::fim::flash::{classify_cell_regime, resolve_cell_flash};
 use crate::ReservoirSimulator;
 
@@ -73,24 +75,129 @@ impl FimState {
     }
 
     pub(crate) fn classify_regimes(&mut self, sim: &ReservoirSimulator) {
-        for cell in &mut self.cells {
-            let (gas_saturation, rs_sm3_sm3) = match cell.regime {
-                HydrocarbonState::Saturated => (
-                    cell.hydrocarbon_var,
-                    sim.pvt_table
-                        .as_ref()
-                        .map(|table| table.interpolate(cell.pressure_bar).rs_m3m3)
-                        .unwrap_or(0.0),
-                ),
-                HydrocarbonState::Undersaturated => (0.0, cell.hydrocarbon_var),
-            };
-            let regime = classify_cell_regime(sim, cell.pressure_bar, gas_saturation, rs_sm3_sm3);
-            cell.hydrocarbon_var = match regime {
-                HydrocarbonState::Saturated => gas_saturation,
-                HydrocarbonState::Undersaturated => rs_sm3_sm3,
-            };
-            cell.regime = regime;
+        if !sim.three_phase_mode || sim.pvt_table.is_none() {
+            return;
         }
+
+        for idx in 0..self.cells.len() {
+            let cell = self.cells[idx];
+            let rs_sat = sim
+                .pvt_table
+                .as_ref()
+                .map(|table| table.interpolate(cell.pressure_bar).rs_m3m3)
+                .unwrap_or(0.0)
+                .max(0.0);
+
+            match cell.regime {
+                HydrocarbonState::Saturated => {
+                    let gas_saturation = cell.hydrocarbon_var.max(0.0);
+                    if gas_saturation <= 1e-9 {
+                        self.cells[idx].regime = HydrocarbonState::Undersaturated;
+                        self.cells[idx].hydrocarbon_var = rs_sat;
+                    } else {
+                        self.cells[idx].hydrocarbon_var = gas_saturation;
+                    }
+                }
+                HydrocarbonState::Undersaturated => {
+                    let rs_sm3_sm3 = cell.hydrocarbon_var.max(0.0);
+                    let regime = classify_cell_regime(sim, cell.pressure_bar, 0.0, rs_sm3_sm3);
+                    if regime == HydrocarbonState::Undersaturated {
+                        self.cells[idx].hydrocarbon_var = rs_sm3_sm3;
+                        continue;
+                    }
+
+                    let hydrocarbon_saturation = (1.0 - cell.sw).max(0.0);
+                    let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
+                    let bo = sim.get_b_o_for_rs(cell.pressure_bar, rs_sm3_sm3).max(1e-9);
+                    let total_gas_sc = hydrocarbon_saturation * pore_volume_m3 * rs_sm3_sm3 / bo;
+                    let (sg, _so, rs_resolved) = sim.split_gas_inventory_after_transport(
+                        cell.pressure_bar,
+                        pore_volume_m3,
+                        cell.sw,
+                        0.0,
+                        total_gas_sc,
+                    );
+
+                    if sg <= 1e-9 {
+                        self.cells[idx].regime = HydrocarbonState::Undersaturated;
+                        self.cells[idx].hydrocarbon_var = rs_resolved.max(0.0);
+                    } else {
+                        self.cells[idx].regime = HydrocarbonState::Saturated;
+                        self.cells[idx].hydrocarbon_var = sg;
+                    }
+                }
+            }
+        }
+    }
+
+    fn enforce_cell_bounds(&mut self, sim: &ReservoirSimulator, idx: usize) {
+        let cell = &mut self.cells[idx];
+        cell.pressure_bar = cell.pressure_bar.max(1e-6);
+
+        if sim.three_phase_mode {
+            if let Some(scal) = &sim.scal_3p {
+                let oil_floor_no_gas = scal.s_or.max(0.0);
+                cell.sw = cell
+                    .sw
+                    .clamp(scal.s_wc, (1.0 - oil_floor_no_gas).max(scal.s_wc));
+
+                match cell.regime {
+                    HydrocarbonState::Saturated => {
+                        let oil_floor_with_gas = scal.s_org.max(scal.s_or).max(0.0);
+                        let sw_max = (1.0 - oil_floor_with_gas).max(scal.s_wc);
+                        cell.sw = cell.sw.min(sw_max);
+                        let max_sg = (1.0 - cell.sw - oil_floor_with_gas).max(0.0);
+                        cell.hydrocarbon_var = cell.hydrocarbon_var.clamp(0.0, max_sg);
+                    }
+                    HydrocarbonState::Undersaturated => {
+                        cell.hydrocarbon_var = cell.hydrocarbon_var.max(0.0);
+                    }
+                }
+                return;
+            }
+        }
+
+        let oil_floor = sim.scal.s_or.max(0.0);
+        cell.sw = cell
+            .sw
+            .clamp(sim.scal.s_wc, (1.0 - oil_floor).max(sim.scal.s_wc));
+        match cell.regime {
+            HydrocarbonState::Saturated => {
+                let max_sg = (1.0 - cell.sw - oil_floor).max(0.0);
+                cell.hydrocarbon_var = cell.hydrocarbon_var.clamp(0.0, max_sg);
+            }
+            HydrocarbonState::Undersaturated => {
+                cell.hydrocarbon_var = cell.hydrocarbon_var.max(0.0);
+            }
+        }
+    }
+
+    pub(crate) fn apply_newton_update(
+        &self,
+        sim: &ReservoirSimulator,
+        update: &DVector<f64>,
+        damping: f64,
+    ) -> Self {
+        let mut next = self.clone();
+
+        for (idx, cell) in next.cells.iter_mut().enumerate() {
+            let offset = idx * 3;
+            cell.pressure_bar += damping * update[offset];
+            cell.sw += damping * update[offset + 1];
+            cell.hydrocarbon_var += damping * update[offset + 2];
+        }
+
+        for idx in 0..next.cells.len() {
+            next.enforce_cell_bounds(sim, idx);
+        }
+
+        next.classify_regimes(sim);
+
+        for idx in 0..next.cells.len() {
+            next.enforce_cell_bounds(sim, idx);
+        }
+
+        next
     }
 
     pub(crate) fn derive_cell(&self, sim: &ReservoirSimulator, idx: usize) -> FimCellDerived {
@@ -129,10 +236,25 @@ impl FimState {
     pub(crate) fn respects_basic_bounds(&self, sim: &ReservoirSimulator) -> bool {
         self.cells.iter().enumerate().all(|(idx, cell)| {
             let derived = self.derive_cell(sim, idx);
+            let oil_floor = if sim.three_phase_mode {
+                sim.scal_3p
+                    .as_ref()
+                    .map(|scal| {
+                        if derived.sg > 1e-9 {
+                            scal.s_org.max(scal.s_or)
+                        } else {
+                            scal.s_or
+                        }
+                    })
+                    .unwrap_or(sim.scal.s_or)
+            } else {
+                sim.scal.s_or
+            };
             cell.sw >= -1e-9
+                && cell.sw >= sim.scal.s_wc - 1e-9
                 && cell.sw <= 1.0 + 1e-9
                 && derived.sg >= -1e-9
-                && derived.so >= -1e-9
+                && derived.so >= oil_floor - 1e-9
                 && derived.so <= 1.0 + 1e-9
                 && derived.sg <= 1.0 + 1e-9
                 && (cell.sw + derived.so + derived.sg - 1.0).abs() < 1e-6
@@ -232,5 +354,54 @@ mod tests {
         assert!((derived.so - 0.7).abs() < 1e-12);
         assert!(derived.bo > 0.0);
         assert!(derived.bg > 0.0);
+    }
+
+    #[test]
+    fn classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.1,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        let mut state = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 150.0,
+                sw: 0.2,
+                hydrocarbon_var: 30.0,
+                regime: HydrocarbonState::Undersaturated,
+            }],
+        };
+
+        let pore_volume_m3 = sim.pore_volume_m3(0);
+        let bo_before = sim.get_b_o_for_rs(150.0, 30.0);
+        let gas_before_sc = (1.0 - 0.2) * pore_volume_m3 * 30.0 / bo_before;
+
+        state.classify_regimes(&sim);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
+
+        let derived = state.derive_cell(&sim, 0);
+        let gas_after_sc = pore_volume_m3 * derived.sg / derived.bg
+            + pore_volume_m3 * derived.so * derived.rs / derived.bo;
+
+        assert!((gas_after_sc - gas_before_sc).abs() < 1e-6);
+        assert!(derived.sg > 0.0);
     }
 }

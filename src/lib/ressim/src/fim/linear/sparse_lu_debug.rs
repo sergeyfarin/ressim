@@ -65,8 +65,8 @@ pub(super) fn solve(
     let solution = DVector::from_iterator(rhs.len(), (0..rhs.len()).map(|idx| solved[idx]));
     let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
     let residual_norm = residual.norm();
-    let tolerance = options.absolute_tolerance
-        + options.relative_tolerance * rhs.norm().max(f64::EPSILON);
+    let tolerance =
+        options.absolute_tolerance + options.relative_tolerance * rhs.norm().max(f64::EPSILON);
 
     FimLinearSolveReport {
         solution,
