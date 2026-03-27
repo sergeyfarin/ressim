@@ -105,7 +105,16 @@ impl ReservoirSimulator {
         let vp_m3 = self.pore_volume_m3(idx);
         let delta_sw = delta_water_m3 / vp_m3;
         let bg_old = self.get_b_g(state_pressure_bar).max(1e-9);
-        let bo_old = self.get_b_o_cell(idx, state_pressure_bar).max(1e-9);
+        let bo_old = if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (bo, _) = table.interpolate_oil(state_pressure_bar, rs_old);
+                bo.max(1e-9)
+            } else {
+                table.interpolate(state_pressure_bar).bo_m3m3.max(1e-9)
+            }
+        } else {
+            self.b_o.max(1e-9)
+        };
         let old_free_gas_sc = sg_old * vp_m3 / bg_old;
         let old_dissolved_gas_sc = if self.pvt_table.is_some() {
             (so_old * vp_m3 / bo_old) * rs_old

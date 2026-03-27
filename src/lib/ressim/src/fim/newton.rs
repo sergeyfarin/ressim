@@ -23,7 +23,16 @@ impl Default for FimNewtonOptions {
             max_newton_iterations: 12,
             residual_tolerance: 1e-6,
             update_tolerance: 1e-5,
-            min_damping: 1.0 / 64.0,
+            min_damping: {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    1.0 / 1024.0
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    1.0 / 64.0
+                }
+            },
             linear: FimLinearSolveOptions::default(),
         }
     }

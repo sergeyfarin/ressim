@@ -1,15 +1,18 @@
 use nalgebra::DVector;
 use sprs::CsMat;
 
+mod dense_lu_debug;
 mod gmres_block_jacobi;
 mod sparse_lu_debug;
 
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
+const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = 384;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimLinearSolverKind {
     FgmresCpr,
     GmresIlu0,
+    DenseLuDebug,
     SparseLuDebug,
 }
 
@@ -32,7 +35,16 @@ pub(crate) struct FimLinearBlockLayout {
 impl Default for FimLinearSolveOptions {
     fn default() -> Self {
         Self {
-            kind: FimLinearSolverKind::FgmresCpr,
+            kind: {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    FimLinearSolverKind::GmresIlu0
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    FimLinearSolverKind::FgmresCpr
+                }
+            },
             restart: 30,
             max_iterations: 150,
             relative_tolerance: 1e-7,
@@ -64,7 +76,15 @@ pub(crate) fn solve_linearized_system(
         return sparse_lu_debug::solve(jacobian, rhs, options, options.kind != FimLinearSolverKind::SparseLuDebug);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    if options.kind != FimLinearSolverKind::SparseLuDebug
+        && jacobian.rows() <= WASM_DIRECT_SOLVE_ROW_THRESHOLD
+    {
+        return dense_lu_debug::solve(jacobian, rhs, options, true);
+    }
+
     match options.kind {
+        FimLinearSolverKind::DenseLuDebug => dense_lu_debug::solve(jacobian, rhs, options, false),
         FimLinearSolverKind::SparseLuDebug => sparse_lu_debug::solve(jacobian, rhs, options, false),
         FimLinearSolverKind::GmresIlu0 => {
             gmres_block_jacobi::solve(jacobian, rhs, options, layout, false)
