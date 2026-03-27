@@ -448,7 +448,8 @@ impl ReservoirSimulator {
         if let Some(table) = &self.pvt_table {
             return table.d_bg_d_p(p);
         }
-        -self.c_g * self.get_b_g(p)
+        let _ = p;
+        0.0
     }
 
     pub(crate) fn get_d_rs_sat_d_p_for_state(&self, p: f64) -> f64 {
@@ -484,5 +485,18 @@ impl ReservoirSimulator {
                 rho_g_kg_m3: self.rho_g,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bg_derivative_matches_flat_bg_without_pvt_table() {
+        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+
+        assert!((sim.get_b_g(250.0) - 1.0).abs() < 1e-12);
+        assert!(sim.get_d_bg_d_p_for_state(250.0).abs() < 1e-12);
     }
 }

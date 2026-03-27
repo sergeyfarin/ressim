@@ -415,6 +415,55 @@ pub(crate) fn perforation_target_rate_derivative(
     1.0
 }
 
+pub(crate) fn perforation_source_pressure_derivatives_sc_day(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+) -> [f64; 3] {
+    let perforation = &topology.perforations[perf_idx];
+    let well = perforation_well(sim, perforation);
+    if !well.injector {
+        return [0.0, 0.0, 0.0];
+    }
+
+    match sim.injected_fluid {
+        InjectedFluid::Water => [0.0, 0.0, 0.0],
+        InjectedFluid::Gas => {
+            let id = perforation.cell_index;
+            let bg = state.derive_cell(sim, id).bg.max(1e-9);
+            let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
+            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+            [0.0, 0.0, -q_m3_day * dbg_dp / (bg * bg)]
+        }
+    }
+}
+
+pub(crate) fn perforation_surface_rate_pressure_derivative(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+) -> f64 {
+    let perforation = &topology.perforations[perf_idx];
+    let control = physical_well_control(sim, topology, perforation.physical_well_index);
+    let well = perforation_well(sim, perforation);
+    if !control.enabled || !control.uses_surface_target || !well.injector {
+        return 0.0;
+    }
+
+    match sim.injected_fluid {
+        InjectedFluid::Water => 0.0,
+        InjectedFluid::Gas => {
+            let id = perforation.cell_index;
+            let bg = state.derive_cell(sim, id).bg.max(1e-9);
+            let dbg_dp = sim.get_d_bg_d_p_for_state(state.cell(id).pressure_bar);
+            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
+            q_m3_day * dbg_dp / (bg * bg)
+        }
+    }
+}
+
 pub(crate) fn perforation_connection_bhp_derivative(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -455,6 +504,37 @@ pub(crate) fn perforation_connection_bhp_derivative(
         }
     } else if raw_rate > 0.0 {
         active_derivative
+    } else {
+        0.0
+    })
+}
+
+pub(crate) fn perforation_connection_pressure_derivative(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+    bhp_bar: f64,
+) -> Option<f64> {
+    let perforation = &topology.perforations[perf_idx];
+    let well = perforation_well(sim, perforation);
+    if !well.injector || sim.injected_fluid != InjectedFluid::Water {
+        return None;
+    }
+
+    let id = perforation.cell_index;
+    let cell = state.cell(id);
+    let derived = state.derive_cell(sim, id);
+    let mobilities =
+        sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
+    let wi_geom = geometric_well_index(sim, perforation)?;
+    let raw_rate = wi_geom * mobilities.water.max(0.0) * (cell.pressure_bar - bhp_bar);
+    if !raw_rate.is_finite() {
+        return None;
+    }
+
+    Some(if raw_rate < 0.0 {
+        wi_geom * mobilities.water.max(0.0)
     } else {
         0.0
     })
@@ -698,6 +778,8 @@ pub(crate) fn perforation_component_rates_sc_day(
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::DVector;
+
     use super::*;
 
     #[test]
@@ -863,5 +945,64 @@ mod tests {
         assert!(residual.abs() < 1e-6);
         assert!(bhp_slack.abs() < 1e-6);
         assert!(rate_slack > 1e-6);
+    }
+
+    #[test]
+    fn water_injector_connection_pressure_derivative_matches_local_fd() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
+        sim.injector_rate_controlled = false;
+
+        let state = FimState::from_simulator(&sim);
+        let topology = build_well_topology(&sim);
+        let bhp = state.well_bhp[0];
+        let exact = perforation_connection_pressure_derivative(&sim, &state, &topology, 0, bhp).unwrap();
+
+        let mut update = DVector::zeros(state.n_unknowns());
+        let step = 1e-5 * state.cells[0].pressure_bar.abs().max(1.0);
+        update[0] = step;
+        let perturbed = state.apply_newton_update(&sim, &update, 1.0);
+        let base = connection_rate_for_bhp(&sim, &state, &topology, 0, bhp).unwrap();
+        let shifted = connection_rate_for_bhp(&sim, &perturbed, &topology, 0, bhp).unwrap();
+        let fd = (shifted - base) / step;
+
+        assert!((exact - fd).abs() < 1e-6);
+    }
+
+    #[test]
+    fn gas_injector_surface_pressure_derivatives_match_local_fd() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.injector_enabled = true;
+        sim.injector_rate_controlled = true;
+        sim.target_injector_surface_rate_m3_day = Some(200.0);
+
+        let mut state = FimState::from_simulator(&sim);
+        state.perforation_rates_m3_day[0] = -120.0;
+        let topology = build_well_topology(&sim);
+
+        let source_exact = perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[2];
+        let target_exact = perforation_surface_rate_pressure_derivative(&sim, &state, &topology, 0);
+
+        let mut update = DVector::zeros(state.n_unknowns());
+        let step = 1e-5 * state.cells[0].pressure_bar.abs().max(1.0);
+        update[0] = step;
+        let perturbed = state.apply_newton_update(&sim, &update, 1.0);
+
+        let base_source = perforation_component_rates_sc_day(&sim, &state, &topology, 0)[2];
+        let shifted_source = perforation_component_rates_sc_day(&sim, &perturbed, &topology, 0)[2];
+        let source_fd = (shifted_source - base_source) / step;
+
+        let base_target = total_rate_from_unknowns(&sim, &state, &topology, 0);
+        let shifted_target = total_rate_from_unknowns(&sim, &perturbed, &topology, 0);
+        let target_fd = (shifted_target - base_target) / step;
+
+        let source_scale = source_exact.abs().max(source_fd.abs()).max(1e-9);
+        let target_scale = target_exact.abs().max(target_fd.abs()).max(1e-9);
+
+        assert!((source_exact - source_fd).abs() / source_scale < 1e-3);
+        assert!((target_exact - target_fd).abs() / target_scale < 1e-3);
     }
 }
