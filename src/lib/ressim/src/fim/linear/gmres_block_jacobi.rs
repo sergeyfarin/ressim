@@ -377,6 +377,36 @@ fn combine_basis(basis: &[DVector<f64>], coefficients: &DVector<f64>) -> DVector
     update
 }
 
+fn apply_givens_rotation(a: f64, b: f64, cosine: f64, sine: f64) -> (f64, f64) {
+    (cosine * a + sine * b, -sine * a + cosine * b)
+}
+
+fn compute_givens_rotation(a: f64, b: f64) -> (f64, f64) {
+    let radius = a.hypot(b);
+    if radius <= f64::EPSILON {
+        (1.0, 0.0)
+    } else {
+        (a / radius, b / radius)
+    }
+}
+
+fn back_substitute_upper(hessenberg: &DMatrix<f64>, rhs: &DVector<f64>, size: usize) -> DVector<f64> {
+    let mut solution = DVector::zeros(size);
+    for row in (0..size).rev() {
+        let mut sum = rhs[row];
+        for col in row + 1..size {
+            sum -= hessenberg[(row, col)] * solution[col];
+        }
+        let diag = hessenberg[(row, row)];
+        solution[row] = if diag.abs() > f64::EPSILON {
+            sum / diag
+        } else {
+            0.0
+        };
+    }
+    solution
+}
+
 pub(super) fn solve(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
@@ -444,9 +474,16 @@ pub(super) fn solve(
         let mut hessenberg = DMatrix::<f64>::zeros(restart + 1, restart);
         let mut best_solution = solution.clone();
         let mut best_residual = residual_norm;
+        let mut givens_cosines = vec![0.0; restart];
+        let mut givens_sines = vec![0.0; restart];
+        let mut rotated_rhs = DVector::<f64>::zeros(restart + 1);
+        rotated_rhs[0] = beta;
         let mut inner_steps = 0usize;
 
         for inner in 0..restart {
+            if inner >= basis.len() {
+                break;
+            }
             let w = preconditioner.apply(
                 jacobian,
                 &cs_mat_mul_vec(jacobian, &basis[inner]),
@@ -465,16 +502,44 @@ pub(super) fn solve(
                 basis.push(orthogonal / next_norm);
             }
 
-            let rows = inner + 2;
+            for prev in 0..inner {
+                let (rotated_upper, rotated_lower) = apply_givens_rotation(
+                    hessenberg[(prev, inner)],
+                    hessenberg[(prev + 1, inner)],
+                    givens_cosines[prev],
+                    givens_sines[prev],
+                );
+                hessenberg[(prev, inner)] = rotated_upper;
+                hessenberg[(prev + 1, inner)] = rotated_lower;
+            }
+
+            let (cosine, sine) = compute_givens_rotation(
+                hessenberg[(inner, inner)],
+                hessenberg[(inner + 1, inner)],
+            );
+            givens_cosines[inner] = cosine;
+            givens_sines[inner] = sine;
+
+            let (rotated_diag, rotated_subdiag) = apply_givens_rotation(
+                hessenberg[(inner, inner)],
+                hessenberg[(inner + 1, inner)],
+                cosine,
+                sine,
+            );
+            hessenberg[(inner, inner)] = rotated_diag;
+            hessenberg[(inner + 1, inner)] = rotated_subdiag;
+
+            let (rhs_upper, rhs_lower) = apply_givens_rotation(
+                rotated_rhs[inner],
+                rotated_rhs[inner + 1],
+                cosine,
+                sine,
+            );
+            rotated_rhs[inner] = rhs_upper;
+            rotated_rhs[inner + 1] = rhs_lower;
+
             let cols = inner + 1;
-            let h_sub = hessenberg.view((0, 0), (rows, cols)).into_owned();
-            let mut g = DVector::<f64>::zeros(rows);
-            g[0] = beta;
-            let y = h_sub
-                .clone()
-                .svd(true, true)
-                .solve(&g, 1e-12)
-                .unwrap_or_else(|_| DVector::zeros(cols));
+            let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
             let candidate = &solution + combine_basis(&basis[..cols], &y);
             let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
             iterations += 1;

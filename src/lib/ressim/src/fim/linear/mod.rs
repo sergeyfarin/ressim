@@ -4,6 +4,8 @@ use sprs::CsMat;
 mod gmres_block_jacobi;
 mod sparse_lu_debug;
 
+const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimLinearSolverKind {
     FgmresCpr,
@@ -55,6 +57,13 @@ pub(crate) fn solve_linearized_system(
     options: &FimLinearSolveOptions,
     layout: Option<FimLinearBlockLayout>,
 ) -> FimLinearSolveReport {
+    #[cfg(not(target_arch = "wasm32"))]
+    if options.kind == FimLinearSolverKind::FgmresCpr
+        && jacobian.rows() <= DIRECT_SOLVE_ROW_THRESHOLD
+    {
+        return sparse_lu_debug::solve(jacobian, rhs, options, options.kind != FimLinearSolverKind::SparseLuDebug);
+    }
+
     match options.kind {
         FimLinearSolverKind::SparseLuDebug => sparse_lu_debug::solve(jacobian, rhs, options, false),
         FimLinearSolverKind::GmresIlu0 => {
@@ -115,6 +124,23 @@ mod tests {
         tri.add_triplet(1, 1, 3.0);
         let jacobian = tri.to_csr();
         let rhs = DVector::from_vec(vec![4.0, 9.0]);
+
+        let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
+
+        assert!(report.converged);
+        assert!(report.used_fallback);
+        assert_eq!(report.backend_used, FimLinearSolverKind::SparseLuDebug);
+    }
+
+    #[test]
+    fn large_default_fim_system_still_uses_iterative_backend() {
+        let n = DIRECT_SOLVE_ROW_THRESHOLD + 1;
+        let mut tri = TriMatI::<f64, usize>::new((n, n));
+        for idx in 0..n {
+            tri.add_triplet(idx, idx, 2.0);
+        }
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_element(n, 1.0);
 
         let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
 

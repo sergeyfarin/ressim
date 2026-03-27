@@ -180,6 +180,8 @@ export interface SimulatorCreatePayload {
   injectorKLayers?: number[];
   /** Explicit physical wells with stable IDs and grouped completions. */
   wells?: SimulatorWellDefinition[];
+  /** Whether the runtime should use the FIM step path for this simulator instance. */
+  fimEnabled?: boolean;
 }
 
 /** Payload sent with the `run` message */

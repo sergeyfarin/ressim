@@ -29,6 +29,9 @@ struct BuckleyProfileMetrics {
     producer_sw: f64,
     pressure_drop_bar: f64,
     water_sat_l1: f64,
+    final_time_days: f64,
+    history_len: usize,
+    last_solver_warning: String,
 }
 
 fn buckley_case_a(name: &'static str, nx: usize, dt_days: f64, max_steps: usize) -> BuckleyCase {
@@ -255,11 +258,14 @@ fn run_buckley_profile_case(
         producer_sw: sim.sat_water[producer_id],
         pressure_drop_bar,
         water_sat_l1,
+        final_time_days: sim.time_days,
+        history_len: sim.rate_history.len(),
+        last_solver_warning: sim.last_solver_warning.clone(),
     }
 }
 
 #[test]
-#[ignore = "known FIM Buckley parity failure: early-time waterflood remains stalled on the current FIM path; run explicitly while debugging coupled well/transport behavior"]
+#[ignore = "known FIM Buckley parity mismatch: early-time waterflood now advances, but the saturation profile still diverges materially from IMPES; run explicitly while tuning coupled transport/well behavior"]
 fn benchmark_buckley_leverett_case_a_fim_matches_impes_early_profile() {
     let case = buckley_case_a("BL-Case-A-FIM-Early", 24, 0.125, 128);
     let step_count = 8;
@@ -280,7 +286,7 @@ fn benchmark_buckley_leverett_case_a_fim_matches_impes_early_profile() {
         .abs();
 
     println!(
-        "{} early profile: IMPES injPV={:.4}, FIM injPV={:.4}, IMPES avgSw={:.4}, FIM avgSw={:.4}, IMPES prodSw={:.4}, FIM prodSw={:.4}, IMPES dP={:.3}, FIM dP={:.3}, IMPES satL1={:.4}, FIM satL1={:.4}",
+        "{} early profile: IMPES injPV={:.4}, FIM injPV={:.4}, IMPES avgSw={:.4}, FIM avgSw={:.4}, IMPES prodSw={:.4}, FIM prodSw={:.4}, IMPES dP={:.3}, FIM dP={:.3}, IMPES satL1={:.4}, FIM satL1={:.4}, IMPES time={:.4}, FIM time={:.4}, IMPES nHist={}, FIM nHist={}, FIM warning={}",
         case.name,
         impes.cumulative_injection_pv,
         fim.cumulative_injection_pv,
@@ -292,6 +298,11 @@ fn benchmark_buckley_leverett_case_a_fim_matches_impes_early_profile() {
         fim.pressure_drop_bar,
         impes.water_sat_l1,
         fim.water_sat_l1,
+        impes.final_time_days,
+        fim.final_time_days,
+        impes.history_len,
+        fim.history_len,
+        fim.last_solver_warning,
     );
 
     assert!(

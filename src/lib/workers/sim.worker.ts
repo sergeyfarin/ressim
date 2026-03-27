@@ -135,6 +135,11 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
 function configureSimulator(payload: SimulatorCreatePayload) {
   simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
 
+  const setFimEnabled = /** @type {any} */ (simulator).setFimEnabled;
+  if (typeof setFimEnabled === 'function') {
+    setFimEnabled.call(simulator, payload.fimEnabled !== false);
+  }
+
   if (payload.cellDzPerLayer && payload.cellDzPerLayer.length > 0) {
     const setCellDimensionsPerLayer = (simulator as any).setCellDimensionsPerLayer;
     if (typeof setCellDimensionsPerLayer === 'function') {

@@ -3,6 +3,7 @@ import { calculateDepletionAnalyticalProduction } from './analytical/depletionAn
 import { computeWelgeMetrics } from './analytical/fractionalFlow';
 import { getBenchmarkFamily, getBenchmarkVariantsForFamily } from './catalog/caseCatalog';
 import {
+    buildBenchmarkCreatePayload,
     buildBenchmarkRunResult,
     buildBenchmarkRunSpecs,
     resolveBenchmarkReferenceComparisons,
@@ -86,6 +87,19 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
 }
 
 describe('benchmarkRunModel', () => {
+    it('forces benchmark runtime payloads onto the non-FIM path for frontend stability', () => {
+        const payload = buildBenchmarkCreatePayload({
+            nx: 4,
+            ny: 1,
+            nz: 1,
+            reservoirPorosity: 0.2,
+            injectorControlMode: 'pressure',
+            producerControlMode: 'pressure',
+        });
+
+        expect(payload.fimEnabled).toBe(false);
+    });
+
     it('builds deterministic base-plus-variant run specs for BL families', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const variants = getBenchmarkVariantsForFamily('bl_case_a_refined');

@@ -12,6 +12,14 @@ use crate::{InjectedFluid, ReservoirSimulator};
 
 const MIN_GOR_OIL_RATE_SC_DAY: f64 = 10.0;
 
+fn effective_injected_fluid(sim: &ReservoirSimulator) -> InjectedFluid {
+    if sim.three_phase_mode {
+        sim.injected_fluid
+    } else {
+        InjectedFluid::Water
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WellRates {
     pub oil_rate: f64,
@@ -298,7 +306,7 @@ impl ReservoirSimulator {
 
             if perforation.injector {
                 total_injection_reservoir += (-q_m3_day).max(0.0);
-                match self.injected_fluid {
+                match effective_injected_fluid(self) {
                     InjectedFluid::Water => {
                         total_injection += (-components_sc_day[0]).max(0.0);
                         total_water_injection_reservoir += (-q_m3_day).max(0.0);

@@ -88,7 +88,16 @@ pub(crate) fn run_fim_timestep(
 
         if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite()) {
             let mut fallback_options = options.linear;
-            fallback_options.kind = FimLinearSolverKind::SparseLuDebug;
+            fallback_options.kind = {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    FimLinearSolverKind::GmresIlu0
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    FimLinearSolverKind::SparseLuDebug
+                }
+            };
             linear_report = solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
         }
 

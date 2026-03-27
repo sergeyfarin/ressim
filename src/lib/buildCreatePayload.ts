@@ -346,6 +346,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     producerKLayers: Array.isArray(state.producerKLayers) ? [...state.producerKLayers] : undefined,
     injectorKLayers: Array.isArray(state.injectorKLayers) ? [...state.injectorKLayers] : undefined,
     wells,
+    fimEnabled: state.fimEnabled ?? true,
 
     pvtMode: state.pvtMode === 'black-oil' ? 'black-oil' : 'constant',
     pvtTable: state.pvtMode === 'black-oil' && Array.isArray(state.pvtTable)

@@ -102,6 +102,14 @@ fn physical_well<'a>(sim: &'a ReservoirSimulator, topology: &FimWellTopology, we
     &sim.wells[topology.wells[well_idx].representative_well_index]
 }
 
+fn effective_injected_fluid(sim: &ReservoirSimulator) -> InjectedFluid {
+    if sim.three_phase_mode {
+        sim.injected_fluid
+    } else {
+        InjectedFluid::Water
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PhysicalWellControl {
     pub(crate) enabled: bool,
@@ -456,6 +464,27 @@ fn local_phase_sensitivity(
     }
 }
 
+fn injector_connection_mobility(
+    sim: &ReservoirSimulator,
+    local: &LocalPhaseSensitivity,
+) -> (f64, [f64; 3]) {
+    if !sim.three_phase_mode {
+        return (
+            local.mobilities[0] + local.mobilities[1],
+            [
+                local.mobility_derivatives[0][0] + local.mobility_derivatives[1][0],
+                local.mobility_derivatives[0][1] + local.mobility_derivatives[1][1],
+                local.mobility_derivatives[0][2] + local.mobility_derivatives[1][2],
+            ],
+        );
+    }
+
+    match effective_injected_fluid(sim) {
+        InjectedFluid::Water => (local.mobilities[0], local.mobility_derivatives[0]),
+        InjectedFluid::Gas => (local.mobilities[2], local.mobility_derivatives[2]),
+    }
+}
+
 fn producer_rate_sensitivity(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -544,9 +573,13 @@ pub(crate) fn connection_rate_for_bhp(
     let wi_geom = geometric_well_index(sim, perforation)?;
 
     let connection_mobility = if well.injector {
-        match sim.injected_fluid {
-            InjectedFluid::Water => mobilities.water,
-            InjectedFluid::Gas => mobilities.gas,
+        if !sim.three_phase_mode {
+            mobilities.water + mobilities.oil
+        } else {
+            match effective_injected_fluid(sim) {
+                InjectedFluid::Water => mobilities.water,
+                InjectedFluid::Gas => mobilities.gas,
+            }
         }
     } else {
         mobilities.water + mobilities.oil + mobilities.gas
@@ -577,7 +610,7 @@ fn perforation_surface_rate_sc_day(
     let id = perforation.cell_index;
 
     if well.injector {
-        return Some(match sim.injected_fluid {
+        return Some(match effective_injected_fluid(sim) {
             InjectedFluid::Water => (-q_m3_day).max(0.0) / sim.b_w.max(1e-9),
             InjectedFluid::Gas => (-q_m3_day).max(0.0) / state.derive_cell(sim, id).bg.max(1e-9),
         });
@@ -598,7 +631,7 @@ pub(crate) fn perforation_component_rate_derivatives_sc_day(
     let id = perforation.cell_index;
 
     if well.injector {
-        return match sim.injected_fluid {
+        return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [1.0 / sim.b_w.max(1e-9), 0.0, 0.0],
             InjectedFluid::Gas => [0.0, 0.0, 1.0 / state.derive_cell(sim, id).bg.max(1e-9)],
         };
@@ -630,7 +663,7 @@ pub(crate) fn perforation_target_rate_derivative(
 
     if well.injector {
         if control.uses_surface_target {
-            return match sim.injected_fluid {
+            return match effective_injected_fluid(sim) {
                 InjectedFluid::Water => -1.0 / sim.b_w.max(1e-9),
                 InjectedFluid::Gas => -1.0 / state.derive_cell(sim, id).bg.max(1e-9),
             };
@@ -658,7 +691,7 @@ pub(crate) fn perforation_source_pressure_derivatives_sc_day(
         return [0.0, 0.0, 0.0];
     }
 
-    match sim.injected_fluid {
+    match effective_injected_fluid(sim) {
         InjectedFluid::Water => [0.0, 0.0, 0.0],
         InjectedFluid::Gas => {
             let id = perforation.cell_index;
@@ -683,7 +716,7 @@ pub(crate) fn perforation_surface_rate_pressure_derivative(
         return 0.0;
     }
 
-    match sim.injected_fluid {
+    match effective_injected_fluid(sim) {
         InjectedFluid::Water => 0.0,
         InjectedFluid::Gas => {
             let id = perforation.cell_index;
@@ -712,9 +745,13 @@ pub(crate) fn perforation_connection_bhp_derivative(
     let wi_geom = geometric_well_index(sim, perforation)?;
 
     let connection_mobility = if well.injector {
-        match sim.injected_fluid {
-            InjectedFluid::Water => mobilities.water,
-            InjectedFluid::Gas => mobilities.gas,
+        if !sim.three_phase_mode {
+            mobilities.water + mobilities.oil
+        } else {
+            match effective_injected_fluid(sim) {
+                InjectedFluid::Water => mobilities.water,
+                InjectedFluid::Gas => mobilities.gas,
+            }
         }
     } else {
         mobilities.water + mobilities.oil + mobilities.gas
@@ -749,7 +786,7 @@ pub(crate) fn perforation_connection_pressure_derivative(
 ) -> Option<f64> {
     let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
-    if !well.injector || sim.injected_fluid != InjectedFluid::Water {
+    if !well.injector || effective_injected_fluid(sim) != InjectedFluid::Water {
         return None;
     }
 
@@ -759,13 +796,18 @@ pub(crate) fn perforation_connection_pressure_derivative(
     let mobilities =
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
-    let raw_rate = wi_geom * mobilities.water.max(0.0) * (cell.pressure_bar - bhp_bar);
+    let connection_mobility = if !sim.three_phase_mode {
+        (mobilities.water + mobilities.oil).max(0.0)
+    } else {
+        mobilities.water.max(0.0)
+    };
+    let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
     if !raw_rate.is_finite() {
         return None;
     }
 
     Some(if raw_rate < 0.0 {
-        wi_geom * mobilities.water.max(0.0)
+        wi_geom * connection_mobility
     } else {
         0.0
     })
@@ -787,20 +829,8 @@ pub(crate) fn perforation_connection_cell_derivatives(
     let local = local_phase_sensitivity(sim, state, id);
 
     let (connection_mobility, dmob_dp, dmob_dsw, dmob_dh) = if well.injector {
-        match sim.injected_fluid {
-            InjectedFluid::Water => (
-                local.mobilities[0],
-                local.mobility_derivatives[0][0],
-                local.mobility_derivatives[0][1],
-                local.mobility_derivatives[0][2],
-            ),
-            InjectedFluid::Gas => (
-                local.mobilities[2],
-                local.mobility_derivatives[2][0],
-                local.mobility_derivatives[2][1],
-                local.mobility_derivatives[2][2],
-            ),
-        }
+        let (mobility, derivatives) = injector_connection_mobility(sim, &local);
+        (mobility, derivatives[0], derivatives[1], derivatives[2])
     } else {
         (
             local.mobilities[0] + local.mobilities[1] + local.mobilities[2],
@@ -859,7 +889,7 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
         if cell_idx != perforation.cell_index {
             return [[0.0; 3]; 3];
         }
-        return match sim.injected_fluid {
+        return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [[0.0; 3]; 3],
             InjectedFluid::Gas => {
                 let q_m3_day = state.perforation_rates_m3_day[perf_idx];
@@ -910,7 +940,7 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
         if cell_idx != perforation.cell_index {
             return [0.0; 3];
         }
-        return match sim.injected_fluid {
+        return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [0.0; 3],
             InjectedFluid::Gas => {
                 let q_m3_day = state.perforation_rates_m3_day[perf_idx];
@@ -1150,7 +1180,7 @@ pub(crate) fn perforation_component_rates_sc_day(
     let q_m3_day = state.perforation_rates_m3_day[perf_idx];
     let id = perforation.cell_index;
     if well.injector {
-        return match sim.injected_fluid {
+        return match effective_injected_fluid(sim) {
             InjectedFluid::Water => [q_m3_day / sim.b_w.max(1e-9), 0.0, 0.0],
             InjectedFluid::Gas => [0.0, 0.0, q_m3_day / state.derive_cell(sim, id).bg.max(1e-9)],
         };

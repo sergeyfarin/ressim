@@ -81,6 +81,24 @@ describe('buildCreatePayloadFromState', () => {
     expect(payload.targetProducerSurfaceRate).toBe(34)
   })
 
+  it('defaults fimEnabled to true and preserves explicit overrides', () => {
+    const defaultPayload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+    }) as SimulatorCreatePayload
+
+    const disabledPayload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+      fimEnabled: false,
+    }) as SimulatorCreatePayload
+
+    expect(defaultPayload.fimEnabled).toBe(true)
+    expect(disabledPayload.fimEnabled).toBe(false)
+  })
+
   it('preserves zero water relperm max for immobile-water cases', () => {
     const payload = buildCreatePayloadFromState({
       nx: 1,

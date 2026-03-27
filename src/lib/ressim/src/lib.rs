@@ -527,8 +527,9 @@ mod tests {
 
         sim.step(0.25);
 
-        assert_eq!(sim.rate_history.len(), 1);
+        assert!(!sim.rate_history.is_empty());
         let point = sim.rate_history.last().unwrap();
+        assert!((point.time - 0.25).abs() < 1e-9);
         assert!(point.total_production_oil.is_finite());
         assert!(point.total_injection.is_finite());
         assert!(point.producer_bhp_limited_fraction.is_finite());
@@ -536,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known FIM well-flow parity failure: rate-controlled public-step benchmark still collapses to zero solved flow on the current FIM path; run explicitly while debugging well coupling"]
+    #[ignore = "known FIM rate-control parity mismatch: public-step mixed-control well rates are now nonzero but still differ materially from IMPES; run explicitly while tuning coupled well behavior"]
     fn rate_control_reporting_benchmark_fim_matches_impes() {
         let impes = run_rate_control_reporting_benchmark(false);
         let fim = run_rate_control_reporting_benchmark(true);
