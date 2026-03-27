@@ -96,10 +96,11 @@ impl ReservoirSimulator {
                     }
                 }
 
-                let q_m3_day = match self.well_transport_rate_from_control(w, control, self.pressure[id]) {
-                    Some(q_m3_day) if q_m3_day.is_finite() => q_m3_day,
-                    _ => continue,
-                };
+                let q_m3_day =
+                    match self.well_transport_rate_from_control(w, control, self.pressure[id]) {
+                        Some(q_m3_day) if q_m3_day.is_finite() => q_m3_day,
+                        _ => continue,
+                    };
 
                 if w.injector {
                     total_injection_reservoir += -q_m3_day;
@@ -107,8 +108,11 @@ impl ReservoirSimulator {
                         match self.injected_fluid {
                             InjectedFluid::Water => {
                                 if matches!(control.decision, WellControlDecision::Rate { .. }) {
-                                    if let Some(surface_target_sc_day) = self.target_injector_surface_rate_m3_day {
-                                        total_injection += surface_target_sc_day / self.injector_well_count().max(1) as f64;
+                                    if let Some(surface_target_sc_day) =
+                                        self.target_injector_surface_rate_m3_day
+                                    {
+                                        total_injection += surface_target_sc_day
+                                            / self.injector_well_count().max(1) as f64;
                                     } else {
                                         total_injection += -q_m3_day / self.b_w.max(1e-9);
                                     }
@@ -125,8 +129,11 @@ impl ReservoirSimulator {
                         }
                     } else {
                         if matches!(control.decision, WellControlDecision::Rate { .. }) {
-                            if let Some(surface_target_sc_day) = self.target_injector_surface_rate_m3_day {
-                                total_injection += surface_target_sc_day / self.injector_well_count().max(1) as f64;
+                            if let Some(surface_target_sc_day) =
+                                self.target_injector_surface_rate_m3_day
+                            {
+                                total_injection += surface_target_sc_day
+                                    / self.injector_well_count().max(1) as f64;
                             } else {
                                 total_injection += -q_m3_day / self.b_w.max(1e-9);
                             }
@@ -137,7 +144,11 @@ impl ReservoirSimulator {
                     }
                 } else {
                     total_prod_liquid_reservoir += q_m3_day;
-                    let producer_state = self.producer_control_state_from_resolved_control(w, control, &self.pressure);
+                    let producer_state = self.producer_control_state_from_resolved_control(
+                        w,
+                        control,
+                        &self.pressure,
+                    );
                     let (fw, fg) = if self.three_phase_mode {
                         (producer_state.water_fraction, producer_state.gas_fraction)
                     } else {
@@ -164,7 +175,8 @@ impl ReservoirSimulator {
         self.cumulative_injection_m3 += total_water_injection_reservoir * dt_days;
         self.cumulative_production_m3 += total_prod_water_reservoir * dt_days;
 
-        let net_water_added_m3 = (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
+        let net_water_added_m3 =
+            (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
         if self.three_phase_mode {

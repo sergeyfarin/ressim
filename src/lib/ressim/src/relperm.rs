@@ -39,11 +39,17 @@ fn validate_swof_rows(rows: &[SwofRow]) -> Result<(), String> {
         if !row.sw.is_finite() || !row.krw.is_finite() || !row.krow.is_finite() {
             return Err(format!("SWOF row {} must contain finite values", index));
         }
-        if !(0.0..=1.0).contains(&row.sw) || !(0.0..=1.0).contains(&row.krw) || !(0.0..=1.0).contains(&row.krow) {
+        if !(0.0..=1.0).contains(&row.sw)
+            || !(0.0..=1.0).contains(&row.krw)
+            || !(0.0..=1.0).contains(&row.krow)
+        {
             return Err(format!("SWOF row {} must stay within [0, 1]", index));
         }
         if row.sw <= previous_sw {
-            return Err(format!("SWOF saturation must be strictly increasing at row {}", index));
+            return Err(format!(
+                "SWOF saturation must be strictly increasing at row {}",
+                index
+            ));
         }
         previous_sw = row.sw;
     }
@@ -59,11 +65,17 @@ fn validate_sgof_rows(rows: &[SgofRow]) -> Result<(), String> {
         if !row.sg.is_finite() || !row.krg.is_finite() || !row.krog.is_finite() {
             return Err(format!("SGOF row {} must contain finite values", index));
         }
-        if !(0.0..=1.0).contains(&row.sg) || !(0.0..=1.0).contains(&row.krg) || !(0.0..=1.0).contains(&row.krog) {
+        if !(0.0..=1.0).contains(&row.sg)
+            || !(0.0..=1.0).contains(&row.krg)
+            || !(0.0..=1.0).contains(&row.krog)
+        {
             return Err(format!("SGOF row {} must stay within [0, 1]", index));
         }
         if row.sg <= previous_sg {
-            return Err(format!("SGOF saturation must be strictly increasing at row {}", index));
+            return Err(format!(
+                "SGOF saturation must be strictly increasing at row {}",
+                index
+            ));
         }
         previous_sg = row.sg;
     }

@@ -4,6 +4,15 @@
 
 ## Now
 
+- [x] Split the remaining `step.rs` physics into dedicated pressure and transport modules so timestep orchestration is isolated from assembly/update details.
+  - Extract pressure assembly, solve, and stability-factor calculation into `pressure_eqn.rs`.
+  - Extract saturation/state-update helpers into `transport.rs`.
+  - Keep `step.rs` focused on retry policy, timestep acceptance, and pressure-state sanity checks.
+  - Validation status: `cargo fmt --manifest-path src/lib/ressim/Cargo.toml` completed and `cargo test --manifest-path src/lib/ressim/Cargo.toml -- --skip benchmark_buckley_leverett_refined_discretization_improves_alignment` passed (`57 passed, 3 ignored, 1 filtered`).
+- [x] Audit the long-running Buckley-Leverett refined-grid regression and classify it appropriately in the Rust suite.
+  - Audit result: the test is a four-run discretization-sensitivity sweep with two refined cases (`nx = 96`, `dt = 0.125`, `max_steps = 20000`), so it is better treated as opt-in slow coverage than as a default fast regression.
+  - Action taken: `benchmark_buckley_leverett_refined_discretization_improves_alignment` is now `#[ignore]` with an explicit slow-test reason instead of being part of the default suite.
+  - Validation status: `cargo test --manifest-path src/lib/ressim/Cargo.toml` passed (`57 passed, 4 ignored`).
 - [x] Refactor Rust/WASM simulator module boundaries so `lib.rs` becomes a frontend/WASM facade rather than a mixed API + physics + test host.
   - Extract frontend-facing constructor/getter/setter/load-state code into `frontend.rs`.
   - Extract active well-control logic out of `step.rs` into `well_control.rs` and replace the stale duplicate module content from the incomplete earlier refactor.

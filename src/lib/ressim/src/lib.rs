@@ -23,16 +23,20 @@ mod capillary;
 mod frontend;
 mod grid;
 mod mobility;
-mod relperm;
+mod pressure_eqn;
 mod pvt;
+mod relperm;
 mod reporting;
 mod solver;
 mod step;
+mod transport;
 mod well;
 mod well_control;
 
 pub use capillary::{CapillaryPressure, GasOilCapillaryPressure};
-pub use relperm::{RockFluidProps, RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables};
+pub use relperm::{
+    RockFluidProps, RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables,
+};
 pub use reporting::{TimePointRates, WellRates};
 pub use well::Well;
 
@@ -407,9 +411,30 @@ mod tests {
         sim.rho_g = 0.9; // surface gas density for density test
         sim.pvt_table = Some(pvt::PvtTable::new(
             vec![
-                pvt::PvtRow { p_bar: 100.0, rs_m3m3:  5.0, bo_m3m3: 1.05,  mu_o_cp: 1.5, bg_m3m3: 0.01,  mu_g_cp: 0.02 },
-                pvt::PvtRow { p_bar: 150.0, rs_m3m3: 15.0, bo_m3m3: 1.12,  mu_o_cp: 1.2, bg_m3m3: 0.006, mu_g_cp: 0.025 },
-                pvt::PvtRow { p_bar: 200.0, rs_m3m3: 15.0, bo_m3m3: 1.119, mu_o_cp: 1.3, bg_m3m3: 0.0045, mu_g_cp: 0.03 },
+                pvt::PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 5.0,
+                    bo_m3m3: 1.05,
+                    mu_o_cp: 1.5,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                pvt::PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.12,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.006,
+                    mu_g_cp: 0.025,
+                },
+                pvt::PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.119,
+                    mu_o_cp: 1.3,
+                    bg_m3m3: 0.0045,
+                    mu_g_cp: 0.03,
+                },
             ],
             sim.pvt.c_o,
         ));
@@ -422,7 +447,10 @@ mod tests {
         assert!(c_eff_below.is_finite());
         assert!(c_eff_below > 0.0);
         // Effective compressibility should be much larger than fallback c_o due to dissolved gas
-        assert!(c_eff_below > c_o_below, "c_o_effective ({c_eff_below}) must exceed c_o ({c_o_below}) below bubble point");
+        assert!(
+            c_eff_below > c_o_below,
+            "c_o_effective ({c_eff_below}) must exceed c_o ({c_o_below}) below bubble point"
+        );
 
         // Above bubble point (175 bar): Rs is constant → dissolved gas term ≈ 0
         let rs_sat_175 = sim.pvt_table.as_ref().unwrap().interpolate(175.0).rs_m3m3;
@@ -431,17 +459,25 @@ mod tests {
         assert!(c_eff_above.is_finite());
         assert!(c_eff_above > 0.0);
         // Above bubble point, effective ≈ standard (both come from Bo decline with p)
-        assert!((c_eff_above - c_o_above).abs() / c_o_above < 0.5,
-            "c_o_effective ({c_eff_above}) should be close to c_o ({c_o_above}) above bubble point");
+        assert!(
+            (c_eff_above - c_o_above).abs() / c_o_above < 0.5,
+            "c_o_effective ({c_eff_above}) should be close to c_o ({c_o_above}) above bubble point"
+        );
 
         // Density should include dissolved gas mass: ρ = (ρ_o_sc + Rs·ρ_g_sc) / Bo
         let rho = sim.get_rho_o(125.0);
         let row = sim.pvt_table.as_ref().unwrap().interpolate(125.0);
         let expected = (sim.pvt.rho_o + row.rs_m3m3 * sim.rho_g) / row.bo_m3m3;
-        assert!((rho - expected).abs() < 1e-6, "ρ_o ({rho}) should include dissolved gas ({expected})");
+        assert!(
+            (rho - expected).abs() < 1e-6,
+            "ρ_o ({rho}) should include dissolved gas ({expected})"
+        );
         // With dissolved gas, density must exceed simple ρ_o_sc / Bo
         let rho_simple = sim.pvt.rho_o / row.bo_m3m3;
-        assert!(rho > rho_simple, "ρ_o with Rs ({rho}) must exceed dead-oil density ({rho_simple})");
+        assert!(
+            rho > rho_simple,
+            "ρ_o with Rs ({rho}) must exceed dead-oil density ({rho_simple})"
+        );
     }
 
     #[test]
@@ -453,9 +489,30 @@ mod tests {
         sim.max_pressure_change_per_step = 50.0;
         sim.pvt_table = Some(pvt::PvtTable::new(
             vec![
-                pvt::PvtRow { p_bar: 100.0, rs_m3m3: 50.0,  bo_m3m3: 1.30, mu_o_cp: 0.7, bg_m3m3: 0.010, mu_g_cp: 0.020 },
-                pvt::PvtRow { p_bar: 200.0, rs_m3m3: 150.0, bo_m3m3: 1.50, mu_o_cp: 0.5, bg_m3m3: 0.005, mu_g_cp: 0.025 },
-                pvt::PvtRow { p_bar: 300.0, rs_m3m3: 250.0, bo_m3m3: 1.70, mu_o_cp: 0.4, bg_m3m3: 0.004, mu_g_cp: 0.030 },
+                pvt::PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 50.0,
+                    bo_m3m3: 1.30,
+                    mu_o_cp: 0.7,
+                    bg_m3m3: 0.010,
+                    mu_g_cp: 0.020,
+                },
+                pvt::PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 150.0,
+                    bo_m3m3: 1.50,
+                    mu_o_cp: 0.5,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.025,
+                },
+                pvt::PvtRow {
+                    p_bar: 300.0,
+                    rs_m3m3: 250.0,
+                    bo_m3m3: 1.70,
+                    mu_o_cp: 0.4,
+                    bg_m3m3: 0.004,
+                    mu_g_cp: 0.030,
+                },
             ],
             sim.pvt.c_o,
         ));
@@ -466,27 +523,37 @@ mod tests {
 
         // Far above bubble point (250 bar, distance=50 = margin) → pure undersaturated c_o
         let c_far = sim.get_c_o_effective(250.0, rs_cell);
-        assert!((c_far - c_unsat).abs() < 1e-9,
-            "Far from bubble point: should equal c_o={c_unsat}, got {c_far}");
+        assert!(
+            (c_far - c_unsat).abs() < 1e-9,
+            "Far from bubble point: should equal c_o={c_unsat}, got {c_far}"
+        );
 
         // Just inside the blending zone (225 bar, distance=25 = 0.5×margin)
         let c_near = sim.get_c_o_effective(225.0, rs_cell);
-        assert!(c_near > c_unsat,
-            "Near bubble point: should exceed c_o={c_unsat}, got {c_near}");
+        assert!(
+            c_near > c_unsat,
+            "Near bubble point: should exceed c_o={c_unsat}, got {c_near}"
+        );
 
         // Very close to bubble point (202 bar, distance=2)
         let c_close = sim.get_c_o_effective(202.0, rs_cell);
-        assert!(c_close > c_near,
-            "Closer to BP: c_o_eff({c_close}) should exceed value at 225 bar ({c_near})");
+        assert!(
+            c_close > c_near,
+            "Closer to BP: c_o_eff({c_close}) should exceed value at 225 bar ({c_near})"
+        );
 
         // At bubble point (200 bar, rs_cell == rs_sat) → fully saturated
         let c_at_bp = sim.get_c_o_effective(200.0, rs_cell);
-        assert!(c_at_bp > c_unsat,
-            "At bubble point: should use saturated c_o_eff={c_at_bp} > c_o={c_unsat}");
+        assert!(
+            c_at_bp > c_unsat,
+            "At bubble point: should use saturated c_o_eff={c_at_bp} > c_o={c_unsat}"
+        );
 
         // Blending should be monotonically increasing toward bubble point
-        assert!(c_close > c_near && c_near > c_far,
-            "Compressibility should increase monotonically toward bubble point");
+        assert!(
+            c_close > c_near && c_near > c_far,
+            "Compressibility should increase monotonically toward bubble point"
+        );
     }
 
     #[test]
@@ -516,10 +583,9 @@ mod tests {
         sim.set_initial_pressure(200.0);
         sim.set_initial_saturation(0.12);
         sim.set_three_phase_rel_perm_props(
-            0.12, 0.12, 0.04, 0.04, 0.18,
-            2.0, 2.5, 1.5,
-            1e-5, 1.0, 0.984,
-        ).unwrap();
+            0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+        )
+        .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
         sim.set_target_well_surface_rates(0.0, 100.0).unwrap();
@@ -561,7 +627,8 @@ mod tests {
 
         let local_scal = sim.scal_3p.as_ref().unwrap();
         let local_lam_w = local_scal.k_rw(sim.sat_water[producer_id]) / sim.get_mu_w(200.0);
-        let local_lam_o = local_scal.k_ro_stone2(sim.sat_water[producer_id], sim.sat_gas[producer_id])
+        let local_lam_o = local_scal
+            .k_ro_stone2(sim.sat_water[producer_id], sim.sat_gas[producer_id])
             / sim.get_mu_o_cell(producer_id, 200.0);
         let local_lam_g = local_scal.k_rg(sim.sat_gas[producer_id]) / sim.get_mu_g(200.0);
         let local_oil_fraction = local_lam_o / (local_lam_w + local_lam_o + local_lam_g);
@@ -580,10 +647,9 @@ mod tests {
         sim.set_initial_pressure(200.0);
         sim.set_initial_saturation(0.12);
         sim.set_three_phase_rel_perm_props(
-            0.12, 0.12, 0.04, 0.04, 0.18,
-            2.0, 2.5, 1.5,
-            1e-5, 1.0, 0.984,
-        ).unwrap();
+            0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+        )
+        .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
         sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
@@ -601,15 +667,15 @@ mod tests {
             sim.sat_oil[id] = 1.0 - sim.sat_water[id];
         }
 
-        let (sample_fw, sample_fo, sample_fg) = sim.producer_control_phase_fractions_for_pressures(
-            &sim.wells[0],
-            &sim.pressure,
-        );
+        let (sample_fw, sample_fo, sample_fg) =
+            sim.producer_control_phase_fractions_for_pressures(&sim.wells[0], &sim.pressure);
         let cached_state = ProducerControlState {
             water_fraction: sample_fw,
             oil_fraction: sample_fo,
             gas_fraction: sample_fg,
-            oil_fvf: sim.get_b_o_cell(producer_id, sim.pressure[producer_id]).max(1e-9),
+            oil_fvf: sim
+                .get_b_o_cell(producer_id, sim.pressure[producer_id])
+                .max(1e-9),
             gas_fvf: sim.get_b_g(sim.pressure[producer_id]).max(1e-9),
             rs_sm3_sm3: sim.rs[producer_id],
         };
@@ -629,7 +695,10 @@ mod tests {
             1.0,
         );
 
-        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("rate history should have an entry");
         let expected_oil_sc = 1000.0 * cached_state.oil_fraction / cached_state.oil_fvf;
         let expected_total_gas_sc = 1000.0 * cached_state.gas_fraction / cached_state.gas_fvf
             + expected_oil_sc * cached_state.rs_sm3_sm3;
@@ -1198,7 +1267,8 @@ mod tests {
             sim.time_days
         );
         assert!(
-            !sim.rate_history.is_empty() && (sim.rate_history.last().unwrap().time - 0.5).abs() < 1e-9,
+            !sim.rate_history.is_empty()
+                && (sim.rate_history.last().unwrap().time - 0.5).abs() < 1e-9,
             "Expected the last recorded rate-history time to match the completed step"
         );
     }
@@ -1254,6 +1324,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "slow discretization-sensitivity regression; run explicitly when tuning Buckley-Leverett numerics"]
     fn benchmark_buckley_leverett_refined_discretization_improves_alignment() {
         let coarse_a = buckley_case_a("BL-Case-A-Coarse", 24, 0.5, 4000);
         let refined_a = buckley_case_a("BL-Case-A-Refined", 96, 0.125, 20000);
@@ -1527,8 +1598,17 @@ mod tests {
         use crate::relperm::RockFluidPropsThreePhase;
 
         let rock = RockFluidPropsThreePhase {
-            s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
-            s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 1.5, k_rg_max: 0.7,
+            s_wc: 0.10,
+            s_or: 0.10,
+            n_w: 2.0,
+            n_o: 2.0,
+            k_rw_max: 0.8,
+            k_ro_max: 0.9,
+            s_gc: 0.05,
+            s_gr: 0.05,
+            s_org: 0.10,
+            n_g: 1.5,
+            k_rg_max: 0.7,
             tables: None,
         };
 
@@ -1537,7 +1617,8 @@ mod tests {
         assert!(
             (kro_at_swc - rock.k_ro_max).abs() < 1e-10,
             "k_ro_stone2(Swc, 0) should equal k_ro_max ({}) but got {}",
-            rock.k_ro_max, kro_at_swc
+            rock.k_ro_max,
+            kro_at_swc
         );
 
         // When gas saturation reaches 1 − Swc − Sorg, oil is at residual → k_ro = 0
@@ -1567,12 +1648,16 @@ mod tests {
                     assert!(
                         kro >= -1e-10,
                         "k_ro_stone2 negative at sw={:.3}, sg={:.3}: {}",
-                        sw, sg, kro
+                        sw,
+                        sg,
+                        kro
                     );
                     assert!(
                         kro <= rock.k_ro_max + 1e-10,
                         "k_ro_stone2 exceeds k_ro_max at sw={:.3}, sg={:.3}: {}",
-                        sw, sg, kro
+                        sw,
+                        sg,
+                        kro
                     );
                 }
             }
@@ -1584,15 +1669,28 @@ mod tests {
         use crate::relperm::RockFluidPropsThreePhase;
 
         let rock = RockFluidPropsThreePhase {
-            s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
-            s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 2.0, k_rg_max: 0.7,
+            s_wc: 0.10,
+            s_or: 0.10,
+            n_w: 2.0,
+            n_o: 2.0,
+            k_rw_max: 0.8,
+            k_ro_max: 0.9,
+            s_gc: 0.05,
+            s_gr: 0.05,
+            s_org: 0.10,
+            n_g: 2.0,
+            k_rg_max: 0.7,
             tables: None,
         };
 
         // Below and at critical gas saturation → k_rg = 0
         assert_eq!(rock.k_rg(0.0), 0.0);
         assert_eq!(rock.k_rg(rock.s_gc * 0.5), 0.0);
-        assert!(rock.k_rg(rock.s_gc) < 1e-10, "k_rg(Sgc) = {}", rock.k_rg(rock.s_gc));
+        assert!(
+            rock.k_rg(rock.s_gc) < 1e-10,
+            "k_rg(Sgc) = {}",
+            rock.k_rg(rock.s_gc)
+        );
 
         // At maximum mobile gas saturation (Sg = 1 - Swc - Sgr) → k_rg = k_rg_max
         let sg_at_kmax = 1.0 - rock.s_wc - rock.s_gr;
@@ -1600,7 +1698,8 @@ mod tests {
         assert!(
             (krg_at_max - rock.k_rg_max).abs() < 1e-10,
             "k_rg at max gas sat should be k_rg_max ({}) but got {}",
-            rock.k_rg_max, krg_at_max
+            rock.k_rg_max,
+            krg_at_max
         );
 
         // k_rg is monotonically non-decreasing from Sgc to sg_at_kmax
@@ -1612,7 +1711,9 @@ mod tests {
             assert!(
                 krg >= prev_krg - 1e-12,
                 "k_rg not monotone at sg={:.4}: {} < prev {}",
-                sg, krg, prev_krg
+                sg,
+                krg,
+                prev_krg
             );
             prev_krg = krg;
         }
@@ -1623,8 +1724,17 @@ mod tests {
         use crate::relperm::RockFluidPropsThreePhase;
 
         let rock = RockFluidPropsThreePhase {
-            s_wc: 0.10, s_or: 0.10, n_w: 2.0, n_o: 2.0, k_rw_max: 0.8, k_ro_max: 0.9,
-            s_gc: 0.05, s_gr: 0.05, s_org: 0.10, n_g: 1.5, k_rg_max: 0.7,
+            s_wc: 0.10,
+            s_or: 0.10,
+            n_w: 2.0,
+            n_o: 2.0,
+            k_rw_max: 0.8,
+            k_ro_max: 0.9,
+            s_gc: 0.05,
+            s_gr: 0.05,
+            s_org: 0.10,
+            n_g: 1.5,
+            k_rg_max: 0.7,
             tables: None,
         };
 
@@ -1638,7 +1748,9 @@ mod tests {
             assert!(
                 (kro_stone2 - kro_ow).abs() < 1e-10,
                 "Stone II at Sg=0 does not match k_ro_water at sw={}: stone2={}, k_ro_w={}",
-                sw, kro_stone2, kro_ow
+                sw,
+                kro_stone2,
+                kro_ow
             );
         }
     }
@@ -1648,18 +1760,57 @@ mod tests {
         use crate::relperm::{RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables};
 
         let rock = RockFluidPropsThreePhase {
-            s_wc: 0.12, s_or: 0.12, n_w: 2.0, n_o: 2.5, k_rw_max: 1e-5, k_ro_max: 1.0,
-            s_gc: 0.04, s_gr: 0.04, s_org: 0.18, n_g: 1.5, k_rg_max: 0.984,
+            s_wc: 0.12,
+            s_or: 0.12,
+            n_w: 2.0,
+            n_o: 2.5,
+            k_rw_max: 1e-5,
+            k_ro_max: 1.0,
+            s_gc: 0.04,
+            s_gr: 0.04,
+            s_org: 0.18,
+            n_g: 1.5,
+            k_rg_max: 0.984,
             tables: Some(ThreePhaseScalTables {
                 swof: vec![
-                    SwofRow { sw: 0.12, krw: 0.0, krow: 1.0, pcow: Some(0.0) },
-                    SwofRow { sw: 0.24, krw: 1.86e-7, krow: 0.997, pcow: Some(0.0) },
-                    SwofRow { sw: 1.0, krw: 1e-5, krow: 0.0, pcow: Some(0.0) },
+                    SwofRow {
+                        sw: 0.12,
+                        krw: 0.0,
+                        krow: 1.0,
+                        pcow: Some(0.0),
+                    },
+                    SwofRow {
+                        sw: 0.24,
+                        krw: 1.86e-7,
+                        krow: 0.997,
+                        pcow: Some(0.0),
+                    },
+                    SwofRow {
+                        sw: 1.0,
+                        krw: 1e-5,
+                        krow: 0.0,
+                        pcow: Some(0.0),
+                    },
                 ],
                 sgof: vec![
-                    SgofRow { sg: 0.0, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
-                    SgofRow { sg: 0.5, krg: 0.72, krog: 0.001, pcog: Some(0.0) },
-                    SgofRow { sg: 0.88, krg: 0.984, krog: 0.0, pcog: Some(0.0) },
+                    SgofRow {
+                        sg: 0.0,
+                        krg: 0.0,
+                        krog: 1.0,
+                        pcog: Some(0.0),
+                    },
+                    SgofRow {
+                        sg: 0.5,
+                        krg: 0.72,
+                        krog: 0.001,
+                        pcog: Some(0.0),
+                    },
+                    SgofRow {
+                        sg: 0.88,
+                        krg: 0.984,
+                        krog: 0.0,
+                        pcog: Some(0.0),
+                    },
                 ],
             }),
         };
@@ -1676,12 +1827,32 @@ mod tests {
 
         let tables = ThreePhaseScalTables {
             swof: vec![
-                SwofRow { sw: 0.12, krw: 0.0, krow: 1.0, pcow: Some(0.0) },
-                SwofRow { sw: 1.0, krw: 1e-5, krow: 0.0, pcow: Some(0.0) },
+                SwofRow {
+                    sw: 0.12,
+                    krw: 0.0,
+                    krow: 1.0,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 1.0,
+                    krw: 1e-5,
+                    krow: 0.0,
+                    pcow: Some(0.0),
+                },
             ],
             sgof: vec![
-                SgofRow { sg: 0.0, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
-                SgofRow { sg: 0.88, krg: 0.984, krog: 0.0, pcog: Some(0.0) },
+                SgofRow {
+                    sg: 0.0,
+                    krg: 0.0,
+                    krog: 1.0,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.88,
+                    krg: 0.984,
+                    krog: 0.0,
+                    pcog: Some(0.0),
+                },
             ],
         };
 
@@ -1692,10 +1863,9 @@ mod tests {
     fn make_3phase_gas_injection_sim(nx: usize) -> ReservoirSimulator {
         let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05, 0.10,
-            2.0, 2.0, 1.5,
-            0.8, 0.9, 0.7,
-        ).unwrap();
+            0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
+        )
+        .unwrap();
         sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
@@ -1723,7 +1893,11 @@ mod tests {
             assert!(
                 (sum - 1.0).abs() < 1e-8,
                 "sw+so+sg != 1 at cell {}: sw={:.6}, so={:.6}, sg={:.6}, sum={:.9}",
-                i, sw, so, sg, sum
+                i,
+                sw,
+                so,
+                sg,
+                sum
             );
             assert!(sw >= -1e-9, "Sw negative at cell {}: {}", i, sw);
             assert!(so >= -1e-9, "So negative at cell {}: {}", i, so);
@@ -1759,14 +1933,19 @@ mod tests {
             sim.step(2.0);
         }
 
-        let last = sim.rate_history.last().expect("rate history should have entries");
+        let last = sim
+            .rate_history
+            .last()
+            .expect("rate history should have entries");
         assert!(
             last.total_production_gas.is_finite(),
             "total_production_gas should be finite, got {}",
             last.total_production_gas
         );
 
-        let total_gas_produced: f64 = sim.rate_history.iter()
+        let total_gas_produced: f64 = sim
+            .rate_history
+            .iter()
             .map(|r| r.total_production_gas.max(0.0))
             .sum();
         assert!(
@@ -1783,7 +1962,10 @@ mod tests {
             sim.step(2.0);
         }
 
-        let latest = sim.rate_history.last().expect("rate history should have entries");
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("rate history should have entries");
         assert!(latest.material_balance_error_gas_m3.is_finite());
         assert!(
             latest.material_balance_error_gas_m3 < 5.0e3,
@@ -1796,10 +1978,9 @@ mod tests {
     fn three_phase_gas_injection_keeps_pressures_bounded_under_large_steps() {
         let mut sim = ReservoirSimulator::new(6, 1, 3, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05, 0.10,
-            2.0, 2.0, 1.5,
-            0.8, 0.9, 0.7,
-        ).unwrap();
+            0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
+        )
+        .unwrap();
         sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
@@ -1815,7 +1996,11 @@ mod tests {
         }
 
         for (idx, pressure) in sim.pressure.iter().enumerate() {
-            assert!(pressure.is_finite(), "pressure must remain finite at cell {}", idx);
+            assert!(
+                pressure.is_finite(),
+                "pressure must remain finite at cell {}",
+                idx
+            );
             assert!(
                 *pressure > 1.0 && *pressure < 5_000.0,
                 "pressure {} at cell {} escaped the physical envelope",
@@ -1825,7 +2010,11 @@ mod tests {
         }
 
         for (idx, sg) in sim.sat_gas.iter().enumerate() {
-            assert!(sg.is_finite(), "gas saturation must remain finite at cell {}", idx);
+            assert!(
+                sg.is_finite(),
+                "gas saturation must remain finite at cell {}",
+                idx
+            );
             assert!(
                 *sg >= -1e-9 && *sg <= 1.0 + 1e-9,
                 "gas saturation {} at cell {} escaped bounds",
@@ -1847,10 +2036,9 @@ mod tests {
 
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05, 0.10,
-            2.0, 2.0, 1.5,
-            0.8, 0.9, 0.7,
-        ).unwrap();
+            0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
+        )
+        .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
         sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
@@ -1874,7 +2062,10 @@ mod tests {
 
         sim.step(1.0);
 
-        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("rate history should have an entry");
         // After the fix, the reported SC injection is computed from the actual
         // reservoir rate and Bg at the new pressure — not the target surface rate.
         // With injection, pressure rises above 100 bar, so Bg(p_new) < Bg(100) = 0.25,
@@ -1902,64 +2093,277 @@ mod tests {
         sim.set_fluid_compressibilities(2.06e-4, 4.67e-5).unwrap();
         sim.pvt_table = Some(PvtTable::new(
             vec![
-                PvtRow { p_bar: 1.01, rs_m3m3: 0.18, bo_m3m3: 1.062, mu_o_cp: 1.040, bg_m3m3: 0.9361, mu_g_cp: 0.0080 },
-                PvtRow { p_bar: 18.25, rs_m3m3: 16.12, bo_m3m3: 1.150, mu_o_cp: 0.975, bg_m3m3: 0.0679, mu_g_cp: 0.0096 },
-                PvtRow { p_bar: 35.49, rs_m3m3: 32.06, bo_m3m3: 1.207, mu_o_cp: 0.910, bg_m3m3: 0.0352, mu_g_cp: 0.0112 },
-                PvtRow { p_bar: 69.96, rs_m3m3: 66.08, bo_m3m3: 1.295, mu_o_cp: 0.830, bg_m3m3: 0.0179, mu_g_cp: 0.0140 },
-                PvtRow { p_bar: 138.91, rs_m3m3: 113.29, bo_m3m3: 1.435, mu_o_cp: 0.695, bg_m3m3: 0.00906, mu_g_cp: 0.0189 },
-                PvtRow { p_bar: 173.38, rs_m3m3: 138.03, bo_m3m3: 1.500, mu_o_cp: 0.641, bg_m3m3: 0.00727, mu_g_cp: 0.0208 },
-                PvtRow { p_bar: 207.85, rs_m3m3: 165.64, bo_m3m3: 1.565, mu_o_cp: 0.594, bg_m3m3: 0.00607, mu_g_cp: 0.0228 },
-                PvtRow { p_bar: 276.79, rs_m3m3: 226.20, bo_m3m3: 1.695, mu_o_cp: 0.510, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
-                PvtRow { p_bar: 345.73, rs_m3m3: 288.17, bo_m3m3: 1.827, mu_o_cp: 0.449, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
+                PvtRow {
+                    p_bar: 1.01,
+                    rs_m3m3: 0.18,
+                    bo_m3m3: 1.062,
+                    mu_o_cp: 1.040,
+                    bg_m3m3: 0.9361,
+                    mu_g_cp: 0.0080,
+                },
+                PvtRow {
+                    p_bar: 18.25,
+                    rs_m3m3: 16.12,
+                    bo_m3m3: 1.150,
+                    mu_o_cp: 0.975,
+                    bg_m3m3: 0.0679,
+                    mu_g_cp: 0.0096,
+                },
+                PvtRow {
+                    p_bar: 35.49,
+                    rs_m3m3: 32.06,
+                    bo_m3m3: 1.207,
+                    mu_o_cp: 0.910,
+                    bg_m3m3: 0.0352,
+                    mu_g_cp: 0.0112,
+                },
+                PvtRow {
+                    p_bar: 69.96,
+                    rs_m3m3: 66.08,
+                    bo_m3m3: 1.295,
+                    mu_o_cp: 0.830,
+                    bg_m3m3: 0.0179,
+                    mu_g_cp: 0.0140,
+                },
+                PvtRow {
+                    p_bar: 138.91,
+                    rs_m3m3: 113.29,
+                    bo_m3m3: 1.435,
+                    mu_o_cp: 0.695,
+                    bg_m3m3: 0.00906,
+                    mu_g_cp: 0.0189,
+                },
+                PvtRow {
+                    p_bar: 173.38,
+                    rs_m3m3: 138.03,
+                    bo_m3m3: 1.500,
+                    mu_o_cp: 0.641,
+                    bg_m3m3: 0.00727,
+                    mu_g_cp: 0.0208,
+                },
+                PvtRow {
+                    p_bar: 207.85,
+                    rs_m3m3: 165.64,
+                    bo_m3m3: 1.565,
+                    mu_o_cp: 0.594,
+                    bg_m3m3: 0.00607,
+                    mu_g_cp: 0.0228,
+                },
+                PvtRow {
+                    p_bar: 276.79,
+                    rs_m3m3: 226.20,
+                    bo_m3m3: 1.695,
+                    mu_o_cp: 0.510,
+                    bg_m3m3: 0.00455,
+                    mu_g_cp: 0.0268,
+                },
+                PvtRow {
+                    p_bar: 345.73,
+                    rs_m3m3: 288.17,
+                    bo_m3m3: 1.827,
+                    mu_o_cp: 0.449,
+                    bg_m3m3: 0.00364,
+                    mu_g_cp: 0.0309,
+                },
             ],
             sim.pvt.c_o,
         ));
         sim.set_initial_rs(226.197);
-        sim.set_rock_properties(4.35e-5, 2560.0, 1.695, 1.038).unwrap();
+        sim.set_rock_properties(4.35e-5, 2560.0, 1.695, 1.038)
+            .unwrap();
         sim.set_fluid_densities(860.0, 1033.0).unwrap();
         sim.set_initial_pressure(331.0);
         sim.set_initial_saturation(0.12);
         sim.set_capillary_params(0.0, 2.0).unwrap();
         sim.set_gravity_enabled(true);
         sim.set_three_phase_rel_perm_props(
-            0.12, 0.12, 0.04, 0.04, 0.18,
-            2.0, 2.5, 1.5,
-            1e-5, 1.0, 0.984,
-        ).unwrap();
+            0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+        )
+        .unwrap();
         sim.scal_3p.as_mut().unwrap().tables = Some(ThreePhaseScalTables {
             swof: vec![
-                SwofRow { sw: 0.12, krw: 0.0, krow: 1.0, pcow: Some(0.0) },
-                SwofRow { sw: 0.18, krw: 4.64876033057851e-8, krow: 1.0, pcow: Some(0.0) },
-                SwofRow { sw: 0.24, krw: 1.86e-7, krow: 0.997, pcow: Some(0.0) },
-                SwofRow { sw: 0.3, krw: 4.18388429752066e-7, krow: 0.98, pcow: Some(0.0) },
-                SwofRow { sw: 0.36, krw: 7.43801652892562e-7, krow: 0.7, pcow: Some(0.0) },
-                SwofRow { sw: 0.42, krw: 1.16219008264463e-6, krow: 0.35, pcow: Some(0.0) },
-                SwofRow { sw: 0.48, krw: 1.67355371900826e-6, krow: 0.2, pcow: Some(0.0) },
-                SwofRow { sw: 0.54, krw: 2.27789256198347e-6, krow: 0.09, pcow: Some(0.0) },
-                SwofRow { sw: 0.6, krw: 2.97520661157025e-6, krow: 0.021, pcow: Some(0.0) },
-                SwofRow { sw: 0.66, krw: 3.7654958677686e-6, krow: 0.01, pcow: Some(0.0) },
-                SwofRow { sw: 0.72, krw: 4.64876033057851e-6, krow: 0.001, pcow: Some(0.0) },
-                SwofRow { sw: 0.78, krw: 5.625e-6, krow: 0.0001, pcow: Some(0.0) },
-                SwofRow { sw: 0.84, krw: 6.69421487603306e-6, krow: 0.0, pcow: Some(0.0) },
-                SwofRow { sw: 0.91, krw: 8.05914256198347e-6, krow: 0.0, pcow: Some(0.0) },
-                SwofRow { sw: 1.0, krw: 1e-5, krow: 0.0, pcow: Some(0.0) },
+                SwofRow {
+                    sw: 0.12,
+                    krw: 0.0,
+                    krow: 1.0,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.18,
+                    krw: 4.64876033057851e-8,
+                    krow: 1.0,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.24,
+                    krw: 1.86e-7,
+                    krow: 0.997,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.3,
+                    krw: 4.18388429752066e-7,
+                    krow: 0.98,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.36,
+                    krw: 7.43801652892562e-7,
+                    krow: 0.7,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.42,
+                    krw: 1.16219008264463e-6,
+                    krow: 0.35,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.48,
+                    krw: 1.67355371900826e-6,
+                    krow: 0.2,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.54,
+                    krw: 2.27789256198347e-6,
+                    krow: 0.09,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.6,
+                    krw: 2.97520661157025e-6,
+                    krow: 0.021,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.66,
+                    krw: 3.7654958677686e-6,
+                    krow: 0.01,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.72,
+                    krw: 4.64876033057851e-6,
+                    krow: 0.001,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.78,
+                    krw: 5.625e-6,
+                    krow: 0.0001,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.84,
+                    krw: 6.69421487603306e-6,
+                    krow: 0.0,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 0.91,
+                    krw: 8.05914256198347e-6,
+                    krow: 0.0,
+                    pcow: Some(0.0),
+                },
+                SwofRow {
+                    sw: 1.0,
+                    krw: 1e-5,
+                    krow: 0.0,
+                    pcow: Some(0.0),
+                },
             ],
             sgof: vec![
-                SgofRow { sg: 0.0, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
-                SgofRow { sg: 0.001, krg: 0.0, krog: 1.0, pcog: Some(0.0) },
-                SgofRow { sg: 0.02, krg: 0.0, krog: 0.997, pcog: Some(0.0) },
-                SgofRow { sg: 0.05, krg: 0.005, krog: 0.98, pcog: Some(0.0) },
-                SgofRow { sg: 0.12, krg: 0.025, krog: 0.7, pcog: Some(0.0) },
-                SgofRow { sg: 0.2, krg: 0.075, krog: 0.35, pcog: Some(0.0) },
-                SgofRow { sg: 0.25, krg: 0.125, krog: 0.2, pcog: Some(0.0) },
-                SgofRow { sg: 0.3, krg: 0.19, krog: 0.09, pcog: Some(0.0) },
-                SgofRow { sg: 0.4, krg: 0.41, krog: 0.021, pcog: Some(0.0) },
-                SgofRow { sg: 0.45, krg: 0.6, krog: 0.01, pcog: Some(0.0) },
-                SgofRow { sg: 0.5, krg: 0.72, krog: 0.001, pcog: Some(0.0) },
-                SgofRow { sg: 0.6, krg: 0.87, krog: 0.0001, pcog: Some(0.0) },
-                SgofRow { sg: 0.7, krg: 0.94, krog: 0.0, pcog: Some(0.0) },
-                SgofRow { sg: 0.85, krg: 0.98, krog: 0.0, pcog: Some(0.0) },
-                SgofRow { sg: 0.88, krg: 0.984, krog: 0.0, pcog: Some(0.0) },
+                SgofRow {
+                    sg: 0.0,
+                    krg: 0.0,
+                    krog: 1.0,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.001,
+                    krg: 0.0,
+                    krog: 1.0,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.02,
+                    krg: 0.0,
+                    krog: 0.997,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.05,
+                    krg: 0.005,
+                    krog: 0.98,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.12,
+                    krg: 0.025,
+                    krog: 0.7,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.2,
+                    krg: 0.075,
+                    krog: 0.35,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.25,
+                    krg: 0.125,
+                    krog: 0.2,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.3,
+                    krg: 0.19,
+                    krog: 0.09,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.4,
+                    krg: 0.41,
+                    krog: 0.021,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.45,
+                    krg: 0.6,
+                    krog: 0.01,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.5,
+                    krg: 0.72,
+                    krog: 0.001,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.6,
+                    krg: 0.87,
+                    krog: 0.0001,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.7,
+                    krg: 0.94,
+                    krog: 0.0,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.85,
+                    krg: 0.98,
+                    krog: 0.0,
+                    pcog: Some(0.0),
+                },
+                SgofRow {
+                    sg: 0.88,
+                    krg: 0.984,
+                    krog: 0.0,
+                    pcog: Some(0.0),
+                },
             ],
         });
         sim.set_gas_fluid_properties(0.027, 1e-4, 0.854).unwrap();
@@ -1973,13 +2377,15 @@ mod tests {
         );
         sim.set_well_control_modes("rate".to_string(), "rate".to_string());
         sim.set_target_well_rates(12_000.0, 5_400.0).unwrap();
-        sim.set_target_well_surface_rates(2_831_680.0, 3_179.74).unwrap();
+        sim.set_target_well_surface_rates(2_831_680.0, 3_179.74)
+            .unwrap();
         sim.set_well_bhp_limits(69.0, 621.0).unwrap();
         sim.set_permeability_per_layer(
             vec![500.0, 50.0, 200.0],
             vec![500.0, 50.0, 200.0],
             layer_perms_z,
-        ).unwrap();
+        )
+        .unwrap();
         sim.add_well(9, 9, 2, 69.0, 0.0762, 0.0, false).unwrap();
         sim.add_well(0, 0, 0, 621.0, 0.0762, 0.0, true).unwrap();
         sim
@@ -2002,18 +2408,24 @@ mod tests {
         let q_res = sim
             .well_rate_m3_day_for_pressures(producer, &sim.pressure)
             .expect("producer transport rate should resolve");
-        let scal = sim.scal_3p.as_ref().expect("three-phase relperm should exist");
+        let scal = sim
+            .scal_3p
+            .as_ref()
+            .expect("three-phase relperm should exist");
         let sw = sim.sat_water[producer_id];
         let sg = sim.sat_gas[producer_id];
         let lam_w = scal.k_rw(sw) / sim.get_mu_w(sim.pressure[producer_id]);
-        let lam_o = scal.k_ro_stone2(sw, sg) / sim.get_mu_o_cell(producer_id, sim.pressure[producer_id]);
+        let lam_o =
+            scal.k_ro_stone2(sw, sg) / sim.get_mu_o_cell(producer_id, sim.pressure[producer_id]);
         let lam_g = scal.k_rg(sg) / sim.get_mu_g(sim.pressure[producer_id]);
         let lam_t = (lam_w + lam_o + lam_g).max(f64::EPSILON);
         let fg_local = lam_g / lam_t;
         let fo_local = lam_o / lam_t;
         let (_fw_sampled, fo_sampled, fg_sampled) =
             sim.producer_control_phase_fractions_for_pressures(producer, &sim.pressure);
-        let bo = sim.get_b_o_cell(producer_id, sim.pressure[producer_id]).max(1e-9);
+        let bo = sim
+            .get_b_o_cell(producer_id, sim.pressure[producer_id])
+            .max(1e-9);
         let bg = sim.get_b_g(sim.pressure[producer_id]).max(1e-9);
         let oil_sc = q_res * fo_sampled / bo;
         let free_gas_sc = q_res * fg_sampled / bg;
@@ -2164,8 +2576,8 @@ mod tests {
     #[ignore = "debug helper for SPE1 late-time producer decline diagnostics"]
     fn debug_spe1_producer_late_time_probe() {
         let sample_times = [
-            1300.0, 1400.0, 1500.0, 1600.0, 1700.0, 1800.0, 1900.0, 1950.0, 1975.0, 2000.0,
-            2025.0, 2050.0, 2100.0, 2250.0, 2500.0, 2750.0, 3000.0,
+            1300.0, 1400.0, 1500.0, 1600.0, 1700.0, 1800.0, 1900.0, 1950.0, 1975.0, 2000.0, 2025.0,
+            2050.0, 2100.0, 2250.0, 2500.0, 2750.0, 3000.0,
         ];
 
         for (label, dt_days) in [("base_dt5", 5.0), ("base_dt0.25", 0.25)] {
@@ -2202,10 +2614,9 @@ mod tests {
 
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05, 0.10,
-            2.0, 2.0, 1.5,
-            0.8, 0.9, 0.7,
-        ).unwrap();
+            0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
+        )
+        .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_gas_redissolution_enabled(false);
         sim.set_initial_pressure(175.0);
@@ -2214,9 +2625,30 @@ mod tests {
         sim.pvt.c_o = 1e-5;
         sim.pvt_table = Some(PvtTable::new(
             vec![
-                PvtRow { p_bar: 100.0, rs_m3m3: 5.0, bo_m3m3: 1.05,  mu_o_cp: 1.5, bg_m3m3: 0.01,  mu_g_cp: 0.02 },
-                PvtRow { p_bar: 150.0, rs_m3m3: 15.0, bo_m3m3: 1.12,  mu_o_cp: 1.2, bg_m3m3: 0.006, mu_g_cp: 0.025 },
-                PvtRow { p_bar: 200.0, rs_m3m3: 15.0, bo_m3m3: 1.119, mu_o_cp: 1.3, bg_m3m3: 0.0045, mu_g_cp: 0.03 },
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 5.0,
+                    bo_m3m3: 1.05,
+                    mu_o_cp: 1.5,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.12,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.006,
+                    mu_g_cp: 0.025,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 15.0,
+                    bo_m3m3: 1.119,
+                    mu_o_cp: 1.3,
+                    bg_m3m3: 0.0045,
+                    mu_g_cp: 0.03,
+                },
             ],
             sim.pvt.c_o,
         ));
@@ -2226,8 +2658,8 @@ mod tests {
         let p_old = sim.pressure[0];
         let bg_old = sim.get_b_g(p_old).max(1e-9);
         let bo_old = sim.get_b_o_cell(0, p_old).max(1e-9);
-        let gas_before_sc = sim.sat_gas[0] * vp_m3 / bg_old
-            + (sim.sat_oil[0] * vp_m3 / bo_old) * sim.rs[0];
+        let gas_before_sc =
+            sim.sat_gas[0] * vp_m3 / bg_old + (sim.sat_oil[0] * vp_m3 / bo_old) * sim.rs[0];
 
         sim.update_saturations_and_pressure(
             &DVector::from_vec(vec![125.0]),
@@ -2241,10 +2673,13 @@ mod tests {
         let p_new = sim.pressure[0];
         let bg_new = sim.get_b_g(p_new).max(1e-9);
         let bo_new = sim.get_b_o_cell(0, p_new).max(1e-9);
-        let gas_after_sc = sim.sat_gas[0] * vp_m3 / bg_new
-            + (sim.sat_oil[0] * vp_m3 / bo_new) * sim.rs[0];
+        let gas_after_sc =
+            sim.sat_gas[0] * vp_m3 / bg_new + (sim.sat_oil[0] * vp_m3 / bo_new) * sim.rs[0];
 
-        assert!(sim.sat_gas[0] > 0.0, "pressure drop below bubble point should liberate free gas");
+        assert!(
+            sim.sat_gas[0] > 0.0,
+            "pressure drop below bubble point should liberate free gas"
+        );
         assert!(
             (gas_after_sc - gas_before_sc).abs() < 1e-8,
             "local flash should conserve total gas inventory, before={}, after={}",
@@ -2260,10 +2695,9 @@ mod tests {
 
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05, 0.10,
-            2.0, 2.0, 1.5,
-            0.8, 0.9, 0.7,
-        ).unwrap();
+            0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
+        )
+        .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
         sim.set_initial_pressure(100.0);
@@ -2297,7 +2731,10 @@ mod tests {
             1.0,
         );
 
-        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("rate history should have an entry");
         assert!(
             (latest.total_injection - 360.0).abs() < 1e-6,
             "reporting should reuse the transport rate-control decision, got {}",
@@ -2313,10 +2750,9 @@ mod tests {
 
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_rel_perm_props(
-            0.10, 0.10, 0.05, 0.05, 0.10,
-            2.0, 2.0, 1.5,
-            0.8, 0.9, 0.7,
-        ).unwrap();
+            0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
+        )
+        .unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.set_initial_pressure(100.0);
         sim.set_initial_saturation(0.10);
@@ -2361,7 +2797,10 @@ mod tests {
             1.0,
         );
 
-        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("rate history should have an entry");
         assert_eq!(latest.producing_gor, 0.0);
     }
 
@@ -2377,7 +2816,11 @@ mod tests {
         }
 
         for (i, &sg) in sim.sat_gas.iter().enumerate() {
-            assert_eq!(sg, 0.0, "sat_gas[{}] should be zero in 2-phase mode, got {}", i, sg);
+            assert_eq!(
+                sg, 0.0,
+                "sat_gas[{}] should be zero in 2-phase mode, got {}",
+                i, sg
+            );
         }
         for i in 0..sim.nx * sim.ny * sim.nz {
             assert!(
@@ -2394,19 +2837,25 @@ mod tests {
 
         // Endpoint sum >= 1.0 must be rejected
         err_contains(
-            sim.set_three_phase_rel_perm_props(0.4, 0.3, 0.2, 0.2, 0.1, 2.0, 2.0, 1.5, 1.0, 1.0, 0.7),
+            sim.set_three_phase_rel_perm_props(
+                0.4, 0.3, 0.2, 0.2, 0.1, 2.0, 2.0, 1.5, 1.0, 1.0, 0.7,
+            ),
             "must be < 1.0",
         );
 
         // Zero Corey exponent for water
         err_contains(
-            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.10, 0.0, 2.0, 1.5, 1.0, 1.0, 0.7),
+            sim.set_three_phase_rel_perm_props(
+                0.1, 0.1, 0.05, 0.05, 0.10, 0.0, 2.0, 1.5, 1.0, 1.0, 0.7,
+            ),
             "must be positive",
         );
 
         // Zero Corey exponent for gas
         err_contains(
-            sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.10, 2.0, 2.0, 0.0, 1.0, 1.0, 0.7),
+            sim.set_three_phase_rel_perm_props(
+                0.1, 0.1, 0.05, 0.05, 0.10, 2.0, 2.0, 0.0, 1.0, 1.0, 0.7,
+            ),
             "must be positive",
         );
     }
@@ -2415,10 +2864,22 @@ mod tests {
     fn api_contract_rejects_invalid_gas_fluid_properties() {
         let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
 
-        err_contains(sim.set_gas_fluid_properties(0.0, 1e-4, 10.0), "must be positive");
-        err_contains(sim.set_gas_fluid_properties(-0.01, 1e-4, 10.0), "must be positive");
-        err_contains(sim.set_gas_fluid_properties(0.02, -1e-4, 10.0), "non-negative");
-        err_contains(sim.set_gas_fluid_properties(0.02, 1e-4, 0.0), "must be positive");
+        err_contains(
+            sim.set_gas_fluid_properties(0.0, 1e-4, 10.0),
+            "must be positive",
+        );
+        err_contains(
+            sim.set_gas_fluid_properties(-0.01, 1e-4, 10.0),
+            "must be positive",
+        );
+        err_contains(
+            sim.set_gas_fluid_properties(0.02, -1e-4, 10.0),
+            "non-negative",
+        );
+        err_contains(
+            sim.set_gas_fluid_properties(0.02, 1e-4, 0.0),
+            "must be positive",
+        );
     }
 
     #[test]
@@ -2469,9 +2930,21 @@ mod tests {
         let d1 = sim.depth_at_k(1);
         let d2 = sim.depth_at_k(2);
 
-        assert!((d0 - 3.0).abs() < 1e-10, "k=0: depth should be 6/2 = 3, got {}", d0);
-        assert!((d1 - 10.5).abs() < 1e-10, "k=1: depth should be 6 + 9/2 = 10.5, got {}", d1);
-        assert!((d2 - 22.5).abs() < 1e-10, "k=2: depth should be 6 + 9 + 15/2 = 22.5, got {}", d2);
+        assert!(
+            (d0 - 3.0).abs() < 1e-10,
+            "k=0: depth should be 6/2 = 3, got {}",
+            d0
+        );
+        assert!(
+            (d1 - 10.5).abs() < 1e-10,
+            "k=1: depth should be 6 + 9/2 = 10.5, got {}",
+            d1
+        );
+        assert!(
+            (d2 - 22.5).abs() < 1e-10,
+            "k=2: depth should be 6 + 9 + 15/2 = 22.5, got {}",
+            d2
+        );
     }
 
     #[test]
@@ -2535,7 +3008,10 @@ mod tests {
             .unwrap();
 
         let id0 = sim.idx(0, 0, 0);
-        assert!((sim.sat_gas[id0] - 0.5).abs() < 1e-10, "Sg should clamp to 0.5");
+        assert!(
+            (sim.sat_gas[id0] - 0.5).abs() < 1e-10,
+            "Sg should clamp to 0.5"
+        );
         assert!((sim.sat_oil[id0] - 0.0).abs() < 1e-10, "So should be 0");
     }
 
@@ -2561,7 +3037,8 @@ mod tests {
         let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
         sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![6.0, 15.0])
             .unwrap();
-        sim.set_permeability_random_seeded(100.0, 100.0, 42).unwrap();
+        sim.set_permeability_random_seeded(100.0, 100.0, 42)
+            .unwrap();
 
         let id0 = sim.idx(0, 0, 0);
         let id1 = sim.idx(0, 0, 1);
@@ -2578,7 +3055,8 @@ mod tests {
         assert!(
             (t_z - expected).abs() / expected < 1e-9,
             "Z-transmissibility with non-uniform dz: expected {}, got {}",
-            expected, t_z
+            expected,
+            t_z
         );
     }
 

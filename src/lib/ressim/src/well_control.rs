@@ -38,8 +38,14 @@ impl ReservoirSimulator {
                 let decision_matches = matches!(
                     (old_control.decision, new_control.decision),
                     (WellControlDecision::Disabled, WellControlDecision::Disabled)
-                        | (WellControlDecision::Rate { .. }, WellControlDecision::Rate { .. })
-                        | (WellControlDecision::Bhp { .. }, WellControlDecision::Bhp { .. })
+                        | (
+                            WellControlDecision::Rate { .. },
+                            WellControlDecision::Rate { .. }
+                        )
+                        | (
+                            WellControlDecision::Bhp { .. },
+                            WellControlDecision::Bhp { .. }
+                        )
                 );
                 decision_matches && old_control.bhp_limited == new_control.bhp_limited
             }
@@ -105,10 +111,13 @@ impl ReservoirSimulator {
             ));
         }
 
-        Ok(
-            (DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz_at(id) * total_mobility)
-                / denom,
-        )
+        Ok((DARCY_METRIC_FACTOR
+            * 2.0
+            * std::f64::consts::PI
+            * k_avg
+            * self.dz_at(id)
+            * total_mobility)
+            / denom)
     }
 
     pub(crate) fn update_dynamic_well_productivity_indices(&mut self) {
@@ -161,7 +170,8 @@ impl ReservoirSimulator {
                 let id = self.idx(i, j, k);
                 let pressure_bar = pressures.get(id).copied().unwrap_or(self.pressure[id]);
                 if self.three_phase_mode {
-                    let (lam_w, lam_o, lam_g) = self.phase_mobilities_3p_at_pressure(id, pressure_bar);
+                    let (lam_w, lam_o, lam_g) =
+                        self.phase_mobilities_3p_at_pressure(id, pressure_bar);
                     lambda_w_sum += lam_w.max(0.0);
                     lambda_o_sum += lam_o.max(0.0);
                     lambda_g_sum += lam_g.max(0.0);
@@ -212,8 +222,14 @@ impl ReservoirSimulator {
             .unwrap_or_else(|| self.producer_control_state_for_pressures(well, pressures))
     }
 
-    pub(crate) fn completion_rate_for_bhp(&self, well: &Well, pressure_bar: f64, bhp_bar: f64) -> Option<f64> {
-        if !well.productivity_index.is_finite() || !pressure_bar.is_finite() || !bhp_bar.is_finite() {
+    pub(crate) fn completion_rate_for_bhp(
+        &self,
+        well: &Well,
+        pressure_bar: f64,
+        bhp_bar: f64,
+    ) -> Option<f64> {
+        if !well.productivity_index.is_finite() || !pressure_bar.is_finite() || !bhp_bar.is_finite()
+        {
             return None;
         }
         let raw_rate = well.productivity_index * (pressure_bar - bhp_bar);
@@ -263,7 +279,11 @@ impl ReservoirSimulator {
         }
     }
 
-    pub(crate) fn solve_group_bhp_for_pressures(&self, injector: bool, pressures: &[f64]) -> Option<(f64, bool)> {
+    pub(crate) fn solve_group_bhp_for_pressures(
+        &self,
+        injector: bool,
+        pressures: &[f64],
+    ) -> Option<(f64, bool)> {
         let use_rate_control = if injector {
             self.injector_rate_controlled
         } else {
@@ -273,7 +293,11 @@ impl ReservoirSimulator {
             return None;
         }
 
-        let wells: Vec<&Well> = self.wells.iter().filter(|well| well.injector == injector).collect();
+        let wells: Vec<&Well> = self
+            .wells
+            .iter()
+            .filter(|well| well.injector == injector)
+            .collect();
         if wells.is_empty() {
             return None;
         }
@@ -290,18 +314,31 @@ impl ReservoirSimulator {
         };
 
         let total_rate_for_bhp = |bhp_bar: f64| -> f64 {
-            wells.iter()
+            wells
+                .iter()
                 .filter_map(|well| {
                     let id = self.idx(well.i, well.j, well.k);
                     let pressure_bar = pressures[id];
                     if injector {
                         match total_surface_target {
-                            Some(_) => self.completion_surface_rate_sc_day(well, pressures, pressure_bar, bhp_bar),
-                            None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar).map(|q| (-q).max(0.0)),
+                            Some(_) => self.completion_surface_rate_sc_day(
+                                well,
+                                pressures,
+                                pressure_bar,
+                                bhp_bar,
+                            ),
+                            None => self
+                                .completion_rate_for_bhp(well, pressure_bar, bhp_bar)
+                                .map(|q| (-q).max(0.0)),
                         }
                     } else {
                         match total_surface_target {
-                            Some(_) => self.completion_surface_rate_sc_day(well, pressures, pressure_bar, bhp_bar),
+                            Some(_) => self.completion_surface_rate_sc_day(
+                                well,
+                                pressures,
+                                pressure_bar,
+                                bhp_bar,
+                            ),
                             None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar),
                         }
                     }
@@ -397,7 +434,8 @@ impl ReservoirSimulator {
         };
 
         if use_rate_control {
-            let (group_bhp, bhp_limited) = self.solve_group_bhp_for_pressures(well.injector, pressures)?;
+            let (group_bhp, bhp_limited) =
+                self.solve_group_bhp_for_pressures(well.injector, pressures)?;
             let q_target = self.completion_rate_for_bhp(well, pressure_bar, group_bhp)?;
             return Some(ResolvedWellControl {
                 decision: if bhp_limited {
@@ -446,7 +484,9 @@ impl ReservoirSimulator {
                     let surface_rate_per_well = surface_rate_sc_day / n_inj as f64;
                     let reservoir_rate_per_well = match self.injected_fluid {
                         InjectedFluid::Water => surface_rate_per_well * self.b_w.max(1e-9),
-                        InjectedFluid::Gas => surface_rate_per_well * self.get_b_g(pressure_bar).max(1e-9),
+                        InjectedFluid::Gas => {
+                            surface_rate_per_well * self.get_b_g(pressure_bar).max(1e-9)
+                        }
                     };
                     return Some(-reservoir_rate_per_well);
                 }
@@ -461,7 +501,8 @@ impl ReservoirSimulator {
                 let surface_rate_per_well = surface_rate_sc_day / n_prod as f64;
                 let id = self.idx(well.i, well.j, well.k);
                 let pressures = self.group_pressures_with_override(well, pressure_bar);
-                let (_, oil_fraction, _) = self.producer_control_phase_fractions_for_pressures(well, &pressures);
+                let (_, oil_fraction, _) =
+                    self.producer_control_phase_fractions_for_pressures(well, &pressures);
                 let oil_fraction = oil_fraction.max(1e-6);
                 let reservoir_rate_per_well = surface_rate_per_well
                     * self.get_b_o_cell(id, pressure_bar).max(1e-9)
@@ -490,10 +531,17 @@ impl ReservoirSimulator {
         self.well_rate_m3_day_for_pressures(well, &pressures)
     }
 
-    pub(crate) fn well_rate_m3_day_for_pressures(&self, well: &Well, pressures: &[f64]) -> Option<f64> {
+    pub(crate) fn well_rate_m3_day_for_pressures(
+        &self,
+        well: &Well,
+        pressures: &[f64],
+    ) -> Option<f64> {
         let id = self.idx(well.i, well.j, well.k);
         let pressure_bar = pressures[id];
-        match self.resolve_well_control_for_pressures(well, pressures)?.decision {
+        match self
+            .resolve_well_control_for_pressures(well, pressures)?
+            .decision
+        {
             WellControlDecision::Disabled => Some(0.0),
             WellControlDecision::Rate { q_m3_day } => Some(q_m3_day),
             WellControlDecision::Bhp { bhp_bar } => {

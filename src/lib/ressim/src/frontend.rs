@@ -310,12 +310,20 @@ impl ReservoirSimulator {
     }
 
     #[wasm_bindgen(js_name = setCellDimensionsPerLayer)]
-    pub fn set_cell_dimensions_per_layer(&mut self, dx: f64, dy: f64, dz_per_layer: Vec<f64>) -> Result<(), String> {
+    pub fn set_cell_dimensions_per_layer(
+        &mut self,
+        dx: f64,
+        dy: f64,
+        dz_per_layer: Vec<f64>,
+    ) -> Result<(), String> {
         if !dx.is_finite() || !dy.is_finite() {
             return Err("Cell dimensions must be finite numbers".to_string());
         }
         if dx <= 0.0 || dy <= 0.0 {
-            return Err(format!("Cell dimensions must be positive, got dx={}, dy={}", dx, dy));
+            return Err(format!(
+                "Cell dimensions must be positive, got dx={}, dy={}",
+                dx, dy
+            ));
         }
         if dz_per_layer.len() != self.nz {
             return Err(format!(
@@ -326,7 +334,10 @@ impl ReservoirSimulator {
         }
         for (k, &dz_k) in dz_per_layer.iter().enumerate() {
             if !dz_k.is_finite() || dz_k <= 0.0 {
-                return Err(format!("dz for layer {} must be positive and finite, got {}", k, dz_k));
+                return Err(format!(
+                    "dz for layer {} must be positive and finite, got {}",
+                    k, dz_k
+                ));
             }
         }
         self.dx = dx;
@@ -353,7 +364,10 @@ impl ReservoirSimulator {
         }
         for (k, sat) in sw.iter().enumerate() {
             if !sat.is_finite() {
-                return Err(format!("Initial saturation for layer {} must be finite, got {}", k, sat));
+                return Err(format!(
+                    "Initial saturation for layer {} must be finite, got {}",
+                    k, sat
+                ));
             }
             if *sat < 0.0 || *sat > 1.0 {
                 return Err(format!(
@@ -406,7 +420,10 @@ impl ReservoirSimulator {
             ));
         }
         if n_w <= 0.0 || n_o <= 0.0 {
-            return Err(format!("Corey exponents must be positive, got n_w={}, n_o={}", n_w, n_o));
+            return Err(format!(
+                "Corey exponents must be positive, got n_w={}, n_o={}",
+                n_w, n_o
+            ));
         }
         if k_rw_max < 0.0 || k_rw_max > 1.0 {
             return Err(format!("k_rw_max must be in [0, 1], got {}", k_rw_max));
@@ -431,7 +448,10 @@ impl ReservoirSimulator {
             return Err("Fluid densities must be finite numbers".to_string());
         }
         if rho_o <= 0.0 || rho_w <= 0.0 {
-            return Err(format!("Fluid densities must be positive, got rho_o={}, rho_w={}", rho_o, rho_w));
+            return Err(format!(
+                "Fluid densities must be positive, got rho_o={}, rho_w={}",
+                rho_o, rho_w
+            ));
         }
         self.pvt.rho_o = rho_o;
         self.pvt.rho_w = rho_w;
@@ -444,7 +464,10 @@ impl ReservoirSimulator {
             return Err("Fluid viscosities must be finite numbers".to_string());
         }
         if mu_o <= 0.0 || mu_w <= 0.0 {
-            return Err(format!("Fluid viscosities must be positive, got mu_o={}, mu_w={}", mu_o, mu_w));
+            return Err(format!(
+                "Fluid viscosities must be positive, got mu_o={}, mu_w={}",
+                mu_o, mu_w
+            ));
         }
         self.pvt.mu_o = mu_o;
         self.pvt.mu_w = mu_w;
@@ -475,14 +498,24 @@ impl ReservoirSimulator {
         b_o: f64,
         b_w: f64,
     ) -> Result<(), String> {
-        if !c_r.is_finite() || !depth_reference_m.is_finite() || !b_o.is_finite() || !b_w.is_finite() {
+        if !c_r.is_finite()
+            || !depth_reference_m.is_finite()
+            || !b_o.is_finite()
+            || !b_w.is_finite()
+        {
             return Err("Rock properties must be finite numbers".to_string());
         }
         if c_r < 0.0 {
-            return Err(format!("Rock compressibility must be non-negative, got {}", c_r));
+            return Err(format!(
+                "Rock compressibility must be non-negative, got {}",
+                c_r
+            ));
         }
         if b_o <= 0.0 || b_w <= 0.0 {
-            return Err(format!("Volume expansion factors must be positive, got b_o={}, b_w={}", b_o, b_w));
+            return Err(format!(
+                "Volume expansion factors must be positive, got b_o={}, b_w={}",
+                b_o, b_w
+            ));
         }
         self.rock_compressibility = c_r;
         self.depth_reference_m = depth_reference_m;
@@ -497,7 +530,10 @@ impl ReservoirSimulator {
             return Err("Capillary parameters must be finite numbers".to_string());
         }
         if p_entry < 0.0 {
-            return Err(format!("Capillary entry pressure must be non-negative, got {}", p_entry));
+            return Err(format!(
+                "Capillary entry pressure must be non-negative, got {}",
+                p_entry
+            ));
         }
         if lambda <= 0.0 {
             return Err(format!("Capillary lambda must be positive, got {}", lambda));
@@ -513,7 +549,10 @@ impl ReservoirSimulator {
             return Err("Permeability bounds must be finite numbers".to_string());
         }
         if min_perm <= 0.0 || max_perm <= 0.0 {
-            return Err(format!("Permeability bounds must be positive, got min={}, max={}", min_perm, max_perm));
+            return Err(format!(
+                "Permeability bounds must be positive, got min={}, max={}",
+                min_perm, max_perm
+            ));
         }
         if min_perm > max_perm {
             return Err(format!(
@@ -542,7 +581,10 @@ impl ReservoirSimulator {
             return Err("Permeability bounds must be finite numbers".to_string());
         }
         if min_perm <= 0.0 || max_perm <= 0.0 {
-            return Err(format!("Permeability bounds must be positive, got min={}, max={}", min_perm, max_perm));
+            return Err(format!(
+                "Permeability bounds must be positive, got min={}, max={}",
+                min_perm, max_perm
+            ));
         }
         if min_perm > max_perm {
             return Err(format!(
@@ -644,7 +686,10 @@ impl ReservoirSimulator {
         }
         for (k, sat) in sg.iter().enumerate() {
             if !sat.is_finite() {
-                return Err(format!("Initial gas saturation for layer {} must be finite, got {}", k, sat));
+                return Err(format!(
+                    "Initial gas saturation for layer {} must be finite, got {}",
+                    k, sat
+                ));
             }
             if *sat < 0.0 || *sat > 1.0 {
                 return Err(format!(
@@ -735,34 +780,56 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setThreePhaseScalTables)]
     pub fn set_three_phase_scal_tables(&mut self, table_js: JsValue) -> Result<(), JsValue> {
         let tables: ThreePhaseScalTables = serde_wasm_bindgen::from_value(table_js)?;
-        tables.validate().map_err(|message| JsValue::from_str(&message))?;
+        tables
+            .validate()
+            .map_err(|message| JsValue::from_str(&message))?;
 
         let scal = self.scal_3p.as_mut().ok_or_else(|| {
-            JsValue::from_str("Three-phase relperm props must be configured before SWOF/SGOF tables")
+            JsValue::from_str(
+                "Three-phase relperm props must be configured before SWOF/SGOF tables",
+            )
         })?;
         scal.tables = Some(tables);
         Ok(())
     }
 
     #[wasm_bindgen(js_name = setGasOilCapillaryParams)]
-    pub fn set_gas_oil_capillary_params(&mut self, p_entry: f64, lambda: f64) -> Result<(), String> {
+    pub fn set_gas_oil_capillary_params(
+        &mut self,
+        p_entry: f64,
+        lambda: f64,
+    ) -> Result<(), String> {
         if p_entry < 0.0 {
-            return Err(format!("Gas-oil capillary entry pressure must be non-negative, got {}", p_entry));
+            return Err(format!(
+                "Gas-oil capillary entry pressure must be non-negative, got {}",
+                p_entry
+            ));
         }
         if lambda <= 0.0 {
-            return Err(format!("Gas-oil capillary lambda must be positive, got {}", lambda));
+            return Err(format!(
+                "Gas-oil capillary lambda must be positive, got {}",
+                lambda
+            ));
         }
         self.pc_og = Some(GasOilCapillaryPressure { p_entry, lambda });
         Ok(())
     }
 
     #[wasm_bindgen(js_name = setGasFluidProperties)]
-    pub fn set_gas_fluid_properties(&mut self, mu_g: f64, c_g: f64, rho_g: f64) -> Result<(), String> {
+    pub fn set_gas_fluid_properties(
+        &mut self,
+        mu_g: f64,
+        c_g: f64,
+        rho_g: f64,
+    ) -> Result<(), String> {
         if mu_g <= 0.0 {
             return Err(format!("Gas viscosity must be positive, got {}", mu_g));
         }
         if c_g < 0.0 {
-            return Err(format!("Gas compressibility must be non-negative, got {}", c_g));
+            return Err(format!(
+                "Gas compressibility must be non-negative, got {}",
+                c_g
+            ));
         }
         if rho_g <= 0.0 {
             return Err(format!("Gas density must be positive, got {}", rho_g));
@@ -783,7 +850,12 @@ impl ReservoirSimulator {
         self.injected_fluid = match fluid.to_ascii_lowercase().as_str() {
             "water" => InjectedFluid::Water,
             "gas" => InjectedFluid::Gas,
-            other => return Err(format!("Unknown injected fluid '{}'; expected 'water' or 'gas'", other)),
+            other => {
+                return Err(format!(
+                    "Unknown injected fluid '{}'; expected 'water' or 'gas'",
+                    other
+                ))
+            }
         };
         Ok(())
     }

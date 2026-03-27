@@ -17,7 +17,10 @@ impl ReservoirSimulator {
     pub(crate) fn phase_mobilities(&self, id: usize) -> (f64, f64) {
         let krw = self.scal.k_rw(self.sat_water[id]);
         let kro = self.scal.k_ro(self.sat_water[id]);
-        (krw / self.get_mu_w(self.pressure[id]), kro / self.get_mu_o(self.pressure[id]))
+        (
+            krw / self.get_mu_w(self.pressure[id]),
+            kro / self.get_mu_o(self.pressure[id]),
+        )
     }
 
     // ── Three-phase mobility ──────────────────────────────────────────────────
@@ -55,9 +58,9 @@ impl ReservoirSimulator {
 
     /// Gas mobility [1/cP]
     pub(crate) fn gas_mobility(&self, id: usize) -> f64 {
-        self.scal_3p
-            .as_ref()
-            .map_or(0.0, |s| s.k_rg(self.sat_gas[id]) / self.get_mu_g(self.pressure[id]))
+        self.scal_3p.as_ref().map_or(0.0, |s| {
+            s.k_rg(self.sat_gas[id]) / self.get_mu_g(self.pressure[id])
+        })
     }
 
     // ── Mobility at arbitrary pressure (for well calculations) ────────────────
@@ -71,7 +74,11 @@ impl ReservoirSimulator {
         )
     }
 
-    pub(crate) fn phase_mobilities_3p_at_pressure(&self, id: usize, pressure_bar: f64) -> (f64, f64, f64) {
+    pub(crate) fn phase_mobilities_3p_at_pressure(
+        &self,
+        id: usize,
+        pressure_bar: f64,
+    ) -> (f64, f64, f64) {
         let s = match &self.scal_3p {
             Some(s) => s,
             None => {

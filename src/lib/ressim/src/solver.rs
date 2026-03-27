@@ -139,7 +139,10 @@ mod tests {
         let m_inv_diag = DVector::from_vec(vec![0.25, 1.0 / 3.0]);
 
         let result = solve_bicgstab_with_guess(&a, &b, &m_inv_diag, &x0, 1e-10, 100);
-        assert!(result.converged, "BiCGSTAB should converge for a small nonsymmetric system");
+        assert!(
+            result.converged,
+            "BiCGSTAB should converge for a small nonsymmetric system"
+        );
         assert!((result.solution[0] - 0.2).abs() < 1e-8);
         assert!((result.solution[1] - 0.2).abs() < 1e-8);
     }

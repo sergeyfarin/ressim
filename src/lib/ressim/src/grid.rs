@@ -1,7 +1,11 @@
 use crate::ReservoirSimulator;
 
 fn harmonic_mean(a: f64, b: f64) -> f64 {
-    if a + b == 0.0 { 0.0 } else { 2.0 * a * b / (a + b) }
+    if a + b == 0.0 {
+        0.0
+    } else {
+        2.0 * a * b / (a + b)
+    }
 }
 
 impl ReservoirSimulator {
