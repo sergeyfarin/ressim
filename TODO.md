@@ -6,7 +6,8 @@
 
 - [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
   - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
-  - Validation status: `cargo fmt --manifest-path src/lib/ressim/Cargo.toml` completed and `cargo test --manifest-path src/lib/ressim/Cargo.toml` passed (`60 passed, 4 ignored`).
+  - Default-dispatch behavior now automatically falls back from faer sparse LU to BiCGSTAB when factorization fails or the direct-solve residual misses tolerance.
+  - Validation status: `cargo fmt --manifest-path src/lib/ressim/Cargo.toml` completed and `cargo test --manifest-path src/lib/ressim/Cargo.toml` passed (`61 passed, 4 ignored`).
 - [ ] Revisit the ignored Buckley-Leverett refined-grid regression as a potential solver/timestep issue, not just a slow-test classification problem.
   - Current status: the test is ignored in the default suite because it is expensive, but that does not rule out a remaining solver, timestep-control, or convergence issue on the refined path.
   - Follow-up when revisiting: run the refined cases individually with explicit timing/logging and inspect solver retries, accepted substep counts, and convergence behavior before deciding whether the slowness is expected.

@@ -7,6 +7,26 @@ use nalgebra::DVector;
 
 use super::{cs_mat_mul_vec, LinearSolveParams, LinearSolveResult};
 
+#[cfg(test)]
+thread_local! {
+    static FORCE_FAIL_FOR_TESTS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(super) fn with_forced_failure_for_tests<T>(callback: impl FnOnce() -> T) -> T {
+    struct ResetGuard;
+
+    impl Drop for ResetGuard {
+        fn drop(&mut self) {
+            FORCE_FAIL_FOR_TESTS.with(|flag| flag.set(false));
+        }
+    }
+
+    FORCE_FAIL_FOR_TESTS.with(|flag| flag.set(true));
+    let _reset_guard = ResetGuard;
+    callback()
+}
+
 fn build_sparse_row_matrix(matrix: &sprs::CsMat<f64>) -> Option<SparseRowMat<usize, f64>> {
     let mut triplets = Vec::with_capacity(matrix.nnz());
     for (row, vec) in matrix.outer_iterator().enumerate() {
@@ -19,6 +39,15 @@ fn build_sparse_row_matrix(matrix: &sprs::CsMat<f64>) -> Option<SparseRowMat<usi
 }
 
 pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
+    #[cfg(test)]
+    if FORCE_FAIL_FOR_TESTS.with(|flag| flag.get()) {
+        return LinearSolveResult {
+            solution: params.initial_guess.clone(),
+            converged: false,
+            iterations: 0,
+        };
+    }
+
     let Some(matrix) = build_sparse_row_matrix(params.matrix) else {
         return LinearSolveResult {
             solution: params.initial_guess.clone(),

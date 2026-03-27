@@ -15,6 +15,7 @@ impl LinearSolverKind {
     pub(crate) const DEFAULT: Self = Self::FaerSparseLu;
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct LinearSolveParams<'a> {
     pub(crate) matrix: &'a CsMat<f64>,
     pub(crate) rhs: &'a DVector<f64>,
@@ -32,7 +33,23 @@ pub(crate) struct LinearSolveResult {
 }
 
 pub(crate) fn solve_with_default(params: LinearSolveParams<'_>) -> LinearSolveResult {
-    solve_linear_system(LinearSolverKind::DEFAULT, params)
+    let primary = solve_linear_system(LinearSolverKind::DEFAULT, params);
+    if primary.converged || LinearSolverKind::DEFAULT == LinearSolverKind::BiCgStab {
+        return primary;
+    }
+
+    let fallback = solve_linear_system(LinearSolverKind::BiCgStab, params);
+    if fallback.converged {
+        return fallback;
+    }
+
+    if relative_residual_ratio(params.matrix, params.rhs, &fallback.solution)
+        < relative_residual_ratio(params.matrix, params.rhs, &primary.solution)
+    {
+        fallback
+    } else {
+        primary
+    }
 }
 
 pub(crate) fn solve_linear_system(
@@ -64,6 +81,11 @@ fn apply_jacobi_preconditioner(m_inv_diag: &DVector<f64>, rhs: &DVector<f64>) ->
         out[i] = rhs[i] * m_inv_diag[i];
     }
     out
+}
+
+fn relative_residual_ratio(a: &CsMat<f64>, rhs: &DVector<f64>, solution: &DVector<f64>) -> f64 {
+    let residual = rhs - &cs_mat_mul_vec(a, solution);
+    residual.norm() / rhs.norm().max(f64::EPSILON)
 }
 
 #[cfg(test)]
@@ -106,6 +128,29 @@ mod tests {
         assert!(
             result.converged,
             "default linear solver should converge for a small nonsymmetric system"
+        );
+        assert!((result.solution[0] - 0.2).abs() < 1e-8);
+        assert!((result.solution[1] - 0.2).abs() < 1e-8);
+    }
+
+    #[test]
+    fn default_solver_falls_back_to_bicgstab_when_faer_fails() {
+        let (matrix, rhs, m_inv_diag, x0) = small_nonsymmetric_system();
+
+        let result = faer_sparse_lu::with_forced_failure_for_tests(|| {
+            solve_with_default(LinearSolveParams {
+                matrix: &matrix,
+                rhs: &rhs,
+                preconditioner_inv_diag: &m_inv_diag,
+                initial_guess: &x0,
+                tolerance: 1e-10,
+                max_iterations: 100,
+            })
+        });
+
+        assert!(
+            result.converged,
+            "default solver should fall back to BiCGSTAB when faer LU fails"
         );
         assert!((result.solution[0] - 0.2).abs() < 1e-8);
         assert!((result.solution[1] - 0.2).abs() < 1e-8);
