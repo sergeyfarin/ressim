@@ -4,6 +4,16 @@
 
 ## Now
 
+- [ ] Replace the current IMPES timestep path with a fully implicit black-oil FIM path in the Rust core.
+  - Direct-migration constraint: do not keep a long-lived production IMPES/FIM split; temporary scaffolding is acceptable only while the migration branch is incomplete.
+  - Detailed implementation checklist and proposed Rust module/API layout: `docs/FIM_MIGRATION_PLAN.md`.
+  - Current implemented foundation slice: `src/lib/ressim/src/fim/state.rs` and `src/lib/ressim/src/fim/flash.rs` now exist, and `pvt.rs` / `mobility.rs` expose explicit-state helper APIs for future FIM assembly work.
+  - Current implemented assembly slice: `src/lib/ressim/src/fim/scaling.rs` and `src/lib/ressim/src/fim/assembly.rs` now define cell-major unknown/equation ordering, equation/variable scaling, and a compileable coupled-system container ready for real residual/Jacobian contributions.
+  - Current implemented solve slice: `src/lib/ressim/src/fim/linear/` now defines the FIM-specific linear-solver interface and sparse-LU debug backend, and `src/lib/ressim/src/fim/newton.rs` provides a compileable Newton/reporting scaffold around the new coupled-system API.
+  - Known physical gap in the current FIM scaffold to close before production use: bounds checking still enforces only simplex closure (`sw + so + sg = 1`) and finiteness; the real FIM update path must enforce SCAL endpoint bounds (`s_wc`, `s_or`, `s_gc`, `s_gr`, `s_org`) during damping/acceptance, not only after flash reconstruction.
+  - Core cutover target: `step.rs` becomes Newton/timestep orchestration only, `pressure_eqn.rs` and `transport.rs` lose their production stepping roles, and a new coupled FIM residual/Jacobian path owns pressure, phase transport, flash, and well controls together.
+  - Primary-variable target: natural-variable black-oil formulation with pressure + water saturation + (`sg` in saturated cells or `rs` in undersaturated cells), with explicit regime switching and local flash closure inside Newton rather than after transport.
+  - Validation gate: existing Buckley-Leverett, PVT, well-control, gas-balance, boundedness, and reporting regressions must pass through the public step API on the FIM-only path before the migration is considered complete.
 - [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
   - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
   - Default-dispatch behavior now automatically falls back from faer sparse LU to BiCGSTAB when factorization fails or the direct-solve residual misses tolerance.

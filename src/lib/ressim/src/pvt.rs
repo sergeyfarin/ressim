@@ -2,6 +2,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::ReservoirSimulator;
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct OilProps {
+    pub(crate) bo_m3m3: f64,
+    pub(crate) mu_o_cp: f64,
+    pub(crate) rho_o_kg_m3: f64,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct GasProps {
+    pub(crate) bg_m3m3: f64,
+    pub(crate) mu_g_cp: f64,
+    pub(crate) rho_g_kg_m3: f64,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PvtRow {
     pub p_bar: f64,
@@ -136,6 +152,42 @@ impl PvtTable {
             (row.bo_m3m3, row.mu_o_cp)
         }
     }
+
+    pub(crate) fn oil_props_at(&self, p: f64, rs: f64, rho_o_sc: f64, rho_g_sc: f64) -> OilProps {
+        let (bo_m3m3, mu_o_cp) = self.interpolate_oil(p, rs);
+        OilProps {
+            bo_m3m3,
+            mu_o_cp,
+            rho_o_kg_m3: (rho_o_sc + rs * rho_g_sc) / bo_m3m3.max(1e-9),
+        }
+    }
+
+    pub(crate) fn gas_props_at(&self, p: f64, rho_g_sc: f64) -> GasProps {
+        let row = self.interpolate(p);
+        GasProps {
+            bg_m3m3: row.bg_m3m3,
+            mu_g_cp: row.mu_g_cp,
+            rho_g_kg_m3: rho_g_sc / row.bg_m3m3.max(1e-9),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn d_bo_d_p(&self, p: f64, rs: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let (bo_lo, _) = self.interpolate_oil(p_lo, rs);
+        let (bo_hi, _) = self.interpolate_oil(p + dp, rs);
+        (bo_hi - bo_lo) / (2.0 * dp)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn d_rs_sat_d_p(&self, p: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = self.interpolate(p_lo);
+        let row_hi = self.interpolate(p + dp);
+        (row_hi.rs_m3m3 - row_lo.rs_m3m3) / (2.0 * dp)
+    }
 }
 
 impl ReservoirSimulator {
@@ -151,6 +203,19 @@ impl ReservoirSimulator {
         if let Some(table) = &self.pvt_table {
             if self.three_phase_mode {
                 let (_, mu) = table.interpolate_oil(p, self.rs[id]);
+                return mu;
+            }
+            table.interpolate(p).mu_o_cp
+        } else {
+            self.pvt.mu_o
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn get_mu_o_for_rs(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (_, mu) = table.interpolate_oil(p, rs_sm3_sm3);
                 return mu;
             }
             table.interpolate(p).mu_o_cp
@@ -281,6 +346,29 @@ impl ReservoirSimulator {
         }
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn get_b_o_for_rs(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (bo, _) = table.interpolate_oil(p, rs_sm3_sm3);
+                return bo;
+            }
+            table.interpolate(p).bo_m3m3
+        } else {
+            self.b_o
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn get_rho_o_for_rs(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let props = table.oil_props_at(p, rs_sm3_sm3, self.pvt.rho_o, self.rho_g);
+            props.rho_o_kg_m3
+        } else {
+            self.pvt.rho_o
+        }
+    }
+
     pub(crate) fn get_rho_o(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             let row = table.interpolate(p);
@@ -307,6 +395,32 @@ impl ReservoirSimulator {
             table.interpolate(p).bg_m3m3
         } else {
             1.0
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn oil_props_for_state(&self, p: f64, rs_sm3_sm3: f64) -> OilProps {
+        if let Some(table) = &self.pvt_table {
+            table.oil_props_at(p, rs_sm3_sm3, self.pvt.rho_o, self.rho_g)
+        } else {
+            OilProps {
+                bo_m3m3: self.b_o,
+                mu_o_cp: self.pvt.mu_o,
+                rho_o_kg_m3: self.pvt.rho_o,
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn gas_props_for_state(&self, p: f64) -> GasProps {
+        if let Some(table) = &self.pvt_table {
+            table.gas_props_at(p, self.rho_g)
+        } else {
+            GasProps {
+                bg_m3m3: 1.0,
+                mu_g_cp: self.mu_g,
+                rho_g_kg_m3: self.rho_g,
+            }
         }
     }
 }

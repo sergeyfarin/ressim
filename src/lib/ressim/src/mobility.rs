@@ -1,5 +1,13 @@
 use crate::ReservoirSimulator;
 
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PhaseMobilities {
+    pub(crate) water: f64,
+    pub(crate) oil: f64,
+    pub(crate) gas: f64,
+}
+
 impl ReservoirSimulator {
     // ── Two-phase mobility ────────────────────────────────────────────────────
 
@@ -93,6 +101,56 @@ impl ReservoirSimulator {
             s.k_ro_stone2(sw, sg) / self.get_mu_o_cell(id, pressure_bar),
             s.k_rg(sg) / self.get_mu_g(pressure_bar),
         )
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn phase_mobilities_for_state(
+        &self,
+        sw: f64,
+        sg: f64,
+        pressure_bar: f64,
+        rs_sm3_sm3: f64,
+    ) -> PhaseMobilities {
+        if self.three_phase_mode {
+            let s = match &self.scal_3p {
+                Some(s) => s,
+                None => {
+                    let krw = self.scal.k_rw(sw);
+                    let kro = self.scal.k_ro(sw);
+                    return PhaseMobilities {
+                        water: krw / self.get_mu_w(pressure_bar),
+                        oil: kro / self.get_mu_o_for_rs(pressure_bar, rs_sm3_sm3),
+                        gas: 0.0,
+                    };
+                }
+            };
+
+            return PhaseMobilities {
+                water: s.k_rw(sw) / self.get_mu_w(pressure_bar),
+                oil: s.k_ro_stone2(sw, sg) / self.get_mu_o_for_rs(pressure_bar, rs_sm3_sm3),
+                gas: s.k_rg(sg) / self.get_mu_g(pressure_bar),
+            };
+        }
+
+        let krw = self.scal.k_rw(sw);
+        let kro = self.scal.k_ro(sw);
+        PhaseMobilities {
+            water: krw / self.get_mu_w(pressure_bar),
+            oil: kro / self.get_mu_o_for_rs(pressure_bar, rs_sm3_sm3),
+            gas: 0.0,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn total_mobility_for_state(
+        &self,
+        sw: f64,
+        sg: f64,
+        pressure_bar: f64,
+        rs_sm3_sm3: f64,
+    ) -> f64 {
+        let mobilities = self.phase_mobilities_for_state(sw, sg, pressure_bar, rs_sm3_sm3);
+        mobilities.water + mobilities.oil + mobilities.gas
     }
 
     #[allow(dead_code)]

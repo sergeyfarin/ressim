@@ -20,6 +20,7 @@ use std::f64;
 use wasm_bindgen::prelude::*;
 
 mod capillary;
+mod fim;
 mod frontend;
 mod grid;
 mod mobility;
