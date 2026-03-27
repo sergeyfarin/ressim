@@ -662,7 +662,7 @@ export function buildBenchmarkCreatePayload(params: Record<string, any>): Simula
     return buildCreatePayloadFromState({
         ...params,
         porosity: toFiniteNumber(params.reservoirPorosity ?? params.porosity, 0.2),
-        fimEnabled: false,
+        fimEnabled: params.fimEnabled ?? true,
         rateControlledWells: params.rateControlledWells
             ?? (String(params.injectorControlMode ?? 'pressure') === 'rate'
                 && String(params.producerControlMode ?? 'pressure') === 'rate'),

@@ -18,6 +18,12 @@ import {
 } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
+    it('allows scenarios to opt out of FIM from their params definition', () => {
+        const scenario = getScenario('wf_bl1d');
+
+        expect(scenario?.params.fimEnabled).toBe(false);
+    });
+
     it('provides analytical method metadata for every canonical scenario', () => {
         const scenarioKeys = [
             'wf_bl1d',

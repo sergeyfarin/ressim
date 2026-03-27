@@ -34,6 +34,7 @@
     "cellDx": 10,
     "cellDy": 10,
     "cellDz": 1,
+    "fimEnabled": false,
     "delta_t_days": 0.125,
     "steps": 240,
     "max_sat_change_per_step": 0.05,
