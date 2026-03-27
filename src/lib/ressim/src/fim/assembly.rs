@@ -6,7 +6,8 @@ use crate::fim::scaling::{
 };
 use crate::fim::state::FimState;
 use crate::fim::wells::{
-    component_rates_sc_day, resolve_well_control, transport_rate_from_control,
+    component_rates_sc_day, control_group_residual, control_groups, resolve_well_control,
+    transport_rate_from_control,
 };
 use crate::ReservoirSimulator;
 
@@ -45,22 +46,17 @@ pub(crate) fn assemble_fim_system(
     let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
     let residual = assemble_residual(sim, previous_state, state, options);
 
-    for cell_idx in 0..state.cells.len() {
-        let base_cell = state.cell(cell_idx);
-        for local_var in 0..3 {
-            let perturbation = finite_difference_step(base_cell, local_var);
-            let mut update = DVector::zeros(n_unknowns);
-            update[unknown_offset(cell_idx, local_var)] = perturbation;
-            let perturbed_state = state.apply_newton_update(sim, &update, 1.0);
-            let perturbed_residual =
-                assemble_residual(sim, previous_state, &perturbed_state, options);
+    for unknown_idx in 0..n_unknowns {
+        let perturbation = finite_difference_step(state, unknown_idx);
+        let mut update = DVector::zeros(n_unknowns);
+        update[unknown_idx] = perturbation;
+        let perturbed_state = state.apply_newton_update(sim, &update, 1.0);
+        let perturbed_residual = assemble_residual(sim, previous_state, &perturbed_state, options);
 
-            for equation_idx in 0..n_unknowns {
-                let jac =
-                    (perturbed_residual[equation_idx] - residual[equation_idx]) / perturbation;
-                if jac.abs() > 1e-14 {
-                    tri.add_triplet(equation_idx, unknown_offset(cell_idx, local_var), jac);
-                }
+        for equation_idx in 0..n_unknowns {
+            let jac = (perturbed_residual[equation_idx] - residual[equation_idx]) / perturbation;
+            if jac.abs() > 1e-14 {
+                tri.add_triplet(equation_idx, unknown_idx, jac);
             }
         }
     }
@@ -73,13 +69,25 @@ pub(crate) fn assemble_fim_system(
     }
 }
 
-fn finite_difference_step(cell: &crate::fim::state::FimCellState, local_var: usize) -> f64 {
-    match local_var {
-        0 => 1e-5 * cell.pressure_bar.abs().max(1.0),
-        1 => 1e-7,
-        2 => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
-        _ => unreachable!(),
+fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
+    if unknown_idx < state.n_cell_unknowns() {
+        let cell_idx = unknown_idx / 3;
+        let local_var = unknown_idx % 3;
+        let cell = state.cell(cell_idx);
+        return match local_var {
+            0 => 1e-5 * cell.pressure_bar.abs().max(1.0),
+            1 => 1e-7,
+            2 => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
+            _ => unreachable!(),
+        };
     }
+
+    let bhp_bar = if Some(unknown_idx) == state.injector_group_unknown_offset() {
+        state.injector_group_bhp().unwrap_or(1.0)
+    } else {
+        state.producer_group_bhp().unwrap_or(1.0)
+    };
+    1e-5 * bhp_bar.abs().max(1.0)
 }
 
 fn pore_volume_at_state(
@@ -192,6 +200,7 @@ fn assemble_residual(
 
     if options.include_wells {
         add_well_source_terms(sim, state, options.dt_days, &mut residual);
+        add_well_control_equations(sim, state, &mut residual);
     }
 
     residual
@@ -215,6 +224,18 @@ fn add_well_source_terms(
         let components_sc_day = component_rates_sc_day(sim, state, well, control, q_m3_day);
         for (local_eq, component_rate) in components_sc_day.into_iter().enumerate() {
             residual[equation_offset(id, local_eq)] += component_rate * dt_days;
+        }
+    }
+}
+
+fn add_well_control_equations(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    residual: &mut DVector<f64>,
+) {
+    for group in control_groups(sim, state) {
+        if let Some((equation_idx, group_residual)) = control_group_residual(sim, state, group) {
+            residual[equation_idx] += group_residual;
         }
     }
 }
@@ -342,6 +363,8 @@ mod tests {
                     regime: HydrocarbonState::Saturated,
                 },
             ],
+            injector_group_bhp: None,
+            producer_group_bhp: None,
         };
 
         let assembly = assemble_fim_system(
@@ -360,6 +383,7 @@ mod tests {
         assert!(assembly.jacobian.nnz() >= 18);
         assert_eq!(assembly.equation_scaling.water.len(), 2);
         assert_eq!(assembly.variable_scaling.pressure.len(), 2);
+        assert!(assembly.equation_scaling.well_control.is_empty());
     }
 
     #[test]
@@ -510,5 +534,30 @@ mod tests {
             high_sw_assembly.residual[equation_offset(0, 1)]
                 < low_sw_assembly.residual[equation_offset(0, 1)]
         );
+    }
+
+    #[test]
+    fn rate_control_adds_extra_unknowns_and_equations() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        let state = FimState::from_simulator(&sim);
+
+        let assembly = assemble_fim_system(
+            &sim,
+            &state,
+            &state,
+            &FimAssemblyOptions {
+                dt_days: 1.0,
+                include_wells: true,
+            },
+        );
+
+        assert_eq!(state.n_unknowns(), 8);
+        assert_eq!(assembly.residual.len(), 8);
+        assert_eq!(assembly.equation_scaling.well_control.len(), 2);
+        assert_eq!(assembly.variable_scaling.well_bhp.len(), 2);
     }
 }

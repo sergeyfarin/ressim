@@ -35,6 +35,8 @@ pub(crate) struct FimCellDerived {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FimState {
     pub(crate) cells: Vec<FimCellState>,
+    pub(crate) injector_group_bhp: Option<f64>,
+    pub(crate) producer_group_bhp: Option<f64>,
 }
 
 impl FimState {
@@ -59,7 +61,35 @@ impl FimState {
             });
         }
 
-        Self { cells }
+        let injector_group_bhp = if sim.injector_enabled
+            && sim.injector_rate_controlled
+            && sim.wells.iter().any(|well| well.injector)
+        {
+            sim.solve_group_bhp_for_pressures(true, &sim.pressure)
+                .map(|(bhp_bar, _)| bhp_bar)
+                .or(Some(sim.well_bhp_max.max(1e-6)))
+        } else {
+            None
+        };
+
+        let producer_group_bhp =
+            if sim.producer_rate_controlled && sim.wells.iter().any(|well| !well.injector) {
+                sim.solve_group_bhp_for_pressures(false, &sim.pressure)
+                    .map(|(bhp_bar, _)| bhp_bar)
+                    .or(Some(sim.well_bhp_min.max(1e-6)))
+            } else {
+                None
+            };
+
+        Self {
+            cells,
+            injector_group_bhp,
+            producer_group_bhp,
+        }
+    }
+
+    pub(crate) fn n_cell_unknowns(&self) -> usize {
+        self.cells.len() * 3
     }
 
     pub(crate) fn cell(&self, idx: usize) -> &FimCellState {
@@ -71,7 +101,26 @@ impl FimState {
     }
 
     pub(crate) fn n_unknowns(&self) -> usize {
-        self.cells.len() * 3
+        self.n_cell_unknowns()
+            + usize::from(self.injector_group_bhp.is_some())
+            + usize::from(self.producer_group_bhp.is_some())
+    }
+
+    pub(crate) fn injector_group_bhp(&self) -> Option<f64> {
+        self.injector_group_bhp
+    }
+
+    pub(crate) fn producer_group_bhp(&self) -> Option<f64> {
+        self.producer_group_bhp
+    }
+
+    pub(crate) fn injector_group_unknown_offset(&self) -> Option<usize> {
+        self.injector_group_bhp.map(|_| self.n_cell_unknowns())
+    }
+
+    pub(crate) fn producer_group_unknown_offset(&self) -> Option<usize> {
+        self.producer_group_bhp
+            .map(|_| self.n_cell_unknowns() + usize::from(self.injector_group_bhp.is_some()))
     }
 
     pub(crate) fn classify_regimes(&mut self, sim: &ReservoirSimulator) {
@@ -172,6 +221,22 @@ impl FimState {
         }
     }
 
+    fn enforce_control_bounds(&mut self, sim: &ReservoirSimulator) {
+        let pressure_upper = self
+            .cells
+            .iter()
+            .map(|cell| cell.pressure_bar)
+            .fold(sim.well_bhp_max.max(1.0), f64::max)
+            + 500.0;
+
+        if let Some(bhp_bar) = &mut self.injector_group_bhp {
+            *bhp_bar = bhp_bar.clamp(1e-6, pressure_upper.max(sim.well_bhp_max));
+        }
+        if let Some(bhp_bar) = &mut self.producer_group_bhp {
+            *bhp_bar = bhp_bar.clamp(sim.well_bhp_min.max(1e-6), pressure_upper);
+        }
+    }
+
     pub(crate) fn apply_newton_update(
         &self,
         sim: &ReservoirSimulator,
@@ -187,15 +252,28 @@ impl FimState {
             cell.hydrocarbon_var += damping * update[offset + 2];
         }
 
+        if let Some(offset) = self.injector_group_unknown_offset() {
+            if let Some(bhp_bar) = &mut next.injector_group_bhp {
+                *bhp_bar += damping * update[offset];
+            }
+        }
+        if let Some(offset) = self.producer_group_unknown_offset() {
+            if let Some(bhp_bar) = &mut next.producer_group_bhp {
+                *bhp_bar += damping * update[offset];
+            }
+        }
+
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
         }
+        next.enforce_control_bounds(sim);
 
         next.classify_regimes(sim);
 
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
         }
+        next.enforce_control_bounds(sim);
 
         next
     }
@@ -230,10 +308,24 @@ impl FimState {
     pub(crate) fn is_finite(&self) -> bool {
         self.cells.iter().all(|cell| {
             cell.pressure_bar.is_finite() && cell.sw.is_finite() && cell.hydrocarbon_var.is_finite()
-        })
+        }) && self
+            .injector_group_bhp
+            .map(|bhp_bar| bhp_bar.is_finite())
+            .unwrap_or(true)
+            && self
+                .producer_group_bhp
+                .map(|bhp_bar| bhp_bar.is_finite())
+                .unwrap_or(true)
     }
 
     pub(crate) fn respects_basic_bounds(&self, sim: &ReservoirSimulator) -> bool {
+        let pressure_upper = self
+            .cells
+            .iter()
+            .map(|cell| cell.pressure_bar)
+            .fold(sim.well_bhp_max.max(1.0), f64::max)
+            + 500.0;
+
         self.cells.iter().enumerate().all(|(idx, cell)| {
             let derived = self.derive_cell(sim, idx);
             let oil_floor = if sim.three_phase_mode {
@@ -258,7 +350,16 @@ impl FimState {
                 && derived.so <= 1.0 + 1e-9
                 && derived.sg <= 1.0 + 1e-9
                 && (cell.sw + derived.so + derived.sg - 1.0).abs() < 1e-6
-        })
+        }) && self
+            .injector_group_bhp
+            .map(|bhp_bar| bhp_bar >= 1e-6 && bhp_bar <= pressure_upper + 1e-9)
+            .unwrap_or(true)
+            && self
+                .producer_group_bhp
+                .map(|bhp_bar| {
+                    bhp_bar >= sim.well_bhp_min.max(1e-6) - 1e-9 && bhp_bar <= pressure_upper + 1e-9
+                })
+                .unwrap_or(true)
     }
 
     pub(crate) fn write_back_to_simulator(&self, sim: &mut ReservoirSimulator) {
@@ -269,6 +370,17 @@ impl FimState {
             sim.sat_gas[idx] = derived.sg;
             sim.sat_oil[idx] = derived.so;
             sim.rs[idx] = derived.rs;
+        }
+
+        if let Some(bhp_bar) = self.injector_group_bhp {
+            for well in sim.wells.iter_mut().filter(|well| well.injector) {
+                well.bhp = bhp_bar;
+            }
+        }
+        if let Some(bhp_bar) = self.producer_group_bhp {
+            for well in sim.wells.iter_mut().filter(|well| !well.injector) {
+                well.bhp = bhp_bar;
+            }
         }
     }
 }
@@ -347,6 +459,8 @@ mod tests {
                 hydrocarbon_var: 0.1,
                 regime: HydrocarbonState::Saturated,
             }],
+            injector_group_bhp: None,
+            producer_group_bhp: None,
         };
 
         let derived = state.derive_cell(&sim, 0);
@@ -388,6 +502,8 @@ mod tests {
                 hydrocarbon_var: 30.0,
                 regime: HydrocarbonState::Undersaturated,
             }],
+            injector_group_bhp: None,
+            producer_group_bhp: None,
         };
 
         let pore_volume_m3 = sim.pore_volume_m3(0);
@@ -403,5 +519,18 @@ mod tests {
 
         assert!((gas_after_sc - gas_before_sc).abs() < 1e-6);
         assert!(derived.sg > 0.0);
+    }
+
+    #[test]
+    fn from_simulator_initializes_rate_control_group_bhps() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+
+        let state = FimState::from_simulator(&sim);
+        assert!(state.injector_group_bhp().is_some());
+        assert!(state.producer_group_bhp().is_some());
+        assert_eq!(state.n_unknowns(), state.n_cell_unknowns() + 2);
     }
 }

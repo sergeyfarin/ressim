@@ -217,4 +217,26 @@ mod tests {
         );
         assert!((report.accepted_state.cells[0].sw - previous_state.cells[0].sw).abs() < 1e-6);
     }
+
+    #[test]
+    fn rate_controlled_well_bhp_unknown_is_solved_implicitly() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        let previous_state = FimState::from_simulator(&sim);
+
+        let report = run_fim_timestep(
+            &sim,
+            &previous_state,
+            &previous_state,
+            1.0,
+            &FimNewtonOptions::default(),
+        );
+
+        assert!(report.converged);
+        assert!(report.accepted_state.injector_group_bhp().is_some());
+        assert!(report.accepted_state.producer_group_bhp().is_some());
+    }
 }

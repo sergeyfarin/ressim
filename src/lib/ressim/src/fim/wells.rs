@@ -4,6 +4,12 @@ use crate::{InjectedFluid, ReservoirSimulator, Well};
 
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimControlGroup {
+    Injector,
+    Producer,
+}
+
 fn geometric_well_index(sim: &ReservoirSimulator, well: &Well) -> Option<f64> {
     let id = sim.idx(well.i, well.j, well.k);
     let kx = sim.perm_x[id];
@@ -236,6 +242,126 @@ pub(crate) fn solve_group_bhp(
     }
 }
 
+fn control_group_bhp(state: &FimState, group: FimControlGroup) -> Option<f64> {
+    match group {
+        FimControlGroup::Injector => state.injector_group_bhp(),
+        FimControlGroup::Producer => state.producer_group_bhp(),
+    }
+}
+
+pub(crate) fn control_group_equation_offset(
+    state: &FimState,
+    group: FimControlGroup,
+) -> Option<usize> {
+    match group {
+        FimControlGroup::Injector => state.injector_group_unknown_offset(),
+        FimControlGroup::Producer => state.producer_group_unknown_offset(),
+    }
+}
+
+fn group_target_rate(sim: &ReservoirSimulator, group: FimControlGroup) -> Option<f64> {
+    match group {
+        FimControlGroup::Injector => {
+            if !sim.injector_rate_controlled
+                || !sim.injector_enabled
+                || !sim.wells.iter().any(|well| well.injector)
+            {
+                return None;
+            }
+            Some(
+                sim.target_injector_surface_rate_m3_day
+                    .unwrap_or(sim.target_injector_rate_m3_day)
+                    .max(0.0),
+            )
+        }
+        FimControlGroup::Producer => {
+            if !sim.producer_rate_controlled || !sim.wells.iter().any(|well| !well.injector) {
+                return None;
+            }
+            Some(
+                sim.target_producer_surface_rate_m3_day
+                    .unwrap_or(sim.target_producer_rate_m3_day)
+                    .max(0.0),
+            )
+        }
+    }
+}
+
+fn group_bhp_limit(sim: &ReservoirSimulator, group: FimControlGroup) -> f64 {
+    match group {
+        FimControlGroup::Injector => sim.well_bhp_max,
+        FimControlGroup::Producer => sim.well_bhp_min,
+    }
+}
+
+fn group_uses_surface_target(sim: &ReservoirSimulator, group: FimControlGroup) -> bool {
+    match group {
+        FimControlGroup::Injector => sim.target_injector_surface_rate_m3_day.is_some(),
+        FimControlGroup::Producer => sim.target_producer_surface_rate_m3_day.is_some(),
+    }
+}
+
+fn total_rate_for_group_bhp(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    group: FimControlGroup,
+    bhp_bar: f64,
+) -> f64 {
+    let injector = matches!(group, FimControlGroup::Injector);
+    let surface_target = group_uses_surface_target(sim, group);
+    sim.wells
+        .iter()
+        .filter(|well| well.injector == injector)
+        .filter_map(|well| {
+            if injector {
+                if surface_target {
+                    completion_surface_rate_sc_day(sim, state, well, bhp_bar)
+                } else {
+                    completion_rate_for_bhp(sim, state, well, bhp_bar).map(|q| (-q).max(0.0))
+                }
+            } else if surface_target {
+                completion_surface_rate_sc_day(sim, state, well, bhp_bar)
+            } else {
+                completion_rate_for_bhp(sim, state, well, bhp_bar)
+            }
+        })
+        .sum()
+}
+
+pub(crate) fn control_groups(sim: &ReservoirSimulator, state: &FimState) -> Vec<FimControlGroup> {
+    let mut groups = Vec::new();
+    if state.injector_group_bhp().is_some()
+        && sim.injector_enabled
+        && sim.wells.iter().any(|well| well.injector)
+    {
+        groups.push(FimControlGroup::Injector);
+    }
+    if state.producer_group_bhp().is_some() && sim.wells.iter().any(|well| !well.injector) {
+        groups.push(FimControlGroup::Producer);
+    }
+    groups
+}
+
+pub(crate) fn control_group_residual(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    group: FimControlGroup,
+) -> Option<(usize, f64)> {
+    let equation_offset = control_group_equation_offset(state, group)?;
+    let bhp_bar = control_group_bhp(state, group)?;
+    let target_rate = group_target_rate(sim, group)?;
+    let bhp_limit = group_bhp_limit(sim, group);
+    let max_achievable_rate = total_rate_for_group_bhp(sim, state, group, bhp_limit);
+    let bhp_limited = target_rate >= max_achievable_rate - 1e-9;
+
+    let residual = if bhp_limited {
+        bhp_bar - bhp_limit
+    } else {
+        total_rate_for_group_bhp(sim, state, group, bhp_bar) - target_rate
+    };
+    Some((equation_offset, residual))
+}
+
 pub(crate) fn resolve_well_control(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -262,7 +388,16 @@ pub(crate) fn resolve_well_control(
     };
 
     if use_rate_control {
-        let (group_bhp, bhp_limited) = solve_group_bhp(sim, state, well.injector)?;
+        let group = if well.injector {
+            FimControlGroup::Injector
+        } else {
+            FimControlGroup::Producer
+        };
+        let group_bhp = control_group_bhp(state, group)?;
+        let target_rate = group_target_rate(sim, group)?;
+        let bhp_limit = group_bhp_limit(sim, group);
+        let max_achievable_rate = total_rate_for_group_bhp(sim, state, group, bhp_limit);
+        let bhp_limited = target_rate >= max_achievable_rate - 1e-9;
         let q_target = completion_rate_for_bhp(sim, state, well, group_bhp)?;
         return Some(ResolvedWellControl {
             decision: if bhp_limited {
@@ -362,5 +497,23 @@ mod tests {
 
         assert!(wet_state.water_fraction > base_state.water_fraction);
         assert!(wet_state.oil_fraction < base_state.oil_fraction);
+    }
+
+    #[test]
+    fn rate_control_group_residual_vanishes_at_initialized_group_bhp() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        let state = FimState::from_simulator(&sim);
+
+        let (_, inj_residual) =
+            control_group_residual(&sim, &state, FimControlGroup::Injector).unwrap();
+        let (_, prod_residual) =
+            control_group_residual(&sim, &state, FimControlGroup::Producer).unwrap();
+
+        assert!(inj_residual.abs() < 1e-6);
+        assert!(prod_residual.abs() < 1e-6);
     }
 }
