@@ -517,6 +517,45 @@ impl ReservoirSimulator {
         0.0
     }
 
+    pub(crate) fn get_d_rho_o_d_p_for_state(&self, p: f64, rs_sm3_sm3: f64, saturated: bool) -> f64 {
+        if self.pvt_table.is_none() {
+            return 0.0;
+        }
+
+        let bo = self.get_b_o_for_rs(p, rs_sm3_sm3).max(1e-9);
+        let rho_o = self.get_rho_o_for_state(p, rs_sm3_sm3);
+        let d_bo_d_p = self.get_d_bo_d_p_for_state(p, rs_sm3_sm3, saturated);
+        let d_rs_d_p = if saturated {
+            self.get_d_rs_sat_d_p_for_state(p)
+        } else {
+            0.0
+        };
+
+        self.rho_g * d_rs_d_p / bo - rho_o * d_bo_d_p / bo
+    }
+
+    pub(crate) fn get_d_rho_o_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
+        if self.pvt_table.is_none() {
+            return 0.0;
+        }
+
+        let bo = self.get_b_o_for_rs(p, rs_sm3_sm3).max(1e-9);
+        let rho_o = self.get_rho_o_for_state(p, rs_sm3_sm3);
+        let d_bo_d_rs = self.get_d_bo_d_rs_for_state(p, rs_sm3_sm3);
+        self.rho_g / bo - rho_o * d_bo_d_rs / bo
+    }
+
+    pub(crate) fn get_d_rho_g_d_p_for_state(&self, p: f64) -> f64 {
+        if self.pvt_table.is_none() {
+            return 0.0;
+        }
+
+        let bg = self.get_b_g(p).max(1e-9);
+        let rho_g = self.get_rho_g(p);
+        let d_bg_d_p = self.get_d_bg_d_p_for_state(p);
+        -rho_g * d_bg_d_p / bg
+    }
+
     #[allow(dead_code)]
     pub(crate) fn oil_props_for_state(&self, p: f64, rs_sm3_sm3: f64) -> OilProps {
         if let Some(table) = &self.pvt_table {

@@ -213,9 +213,20 @@ impl ReservoirSimulator {
         }
     }
 
+    pub(crate) fn get_d_gas_oil_capillary_pressure_d_sg(&self, s_g: f64) -> f64 {
+        match (&self.pc_og, &self.scal_3p) {
+            (Some(pc), Some(rock)) => pc.d_capillary_pressure_og_d_sg(s_g, rock),
+            _ => 0.0,
+        }
+    }
+
     /// Water-oil capillary pressure [bar] at given water saturation
     pub(crate) fn get_capillary_pressure(&self, s_w: f64) -> f64 {
         self.pc.capillary_pressure(s_w, &self.scal)
+    }
+
+    pub(crate) fn get_d_capillary_pressure_d_sw(&self, s_w: f64) -> f64 {
+        self.pc.d_capillary_pressure_d_sw(s_w, &self.scal)
     }
 
     pub(crate) fn gravity_head_bar(&self, depth_i: f64, depth_j: f64, density_kg_m3: f64) -> f64 {

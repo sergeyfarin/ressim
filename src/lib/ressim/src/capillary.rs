@@ -50,6 +50,20 @@ impl CapillaryPressure {
 
         pc.clamp(0.0, pc_max)
     }
+
+    pub fn d_capillary_pressure_d_sw(&self, s_w: f64, rock: &RockFluidProps) -> f64 {
+        let denom = 1.0 - rock.s_wc - rock.s_or;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+
+        let s_eff = (s_w - rock.s_wc) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+
+        self.p_entry * (-1.0 / self.lambda) * s_eff.powf(-1.0 / self.lambda - 1.0) / denom
+    }
 }
 
 /// Oil-gas capillary pressure: P_cog(S_g) = P_gas − P_oil (gas is non-wetting).
@@ -94,5 +108,20 @@ impl GasOilCapillaryPressure {
         // At s_eff = 1: pc = P_entry; decreases toward 0 only if s_eff > 1 (physically excluded)
         let pc = self.p_entry * s_eff.powf(-1.0 / self.lambda);
         pc.clamp(0.0, pc_max)
+    }
+
+    pub fn d_capillary_pressure_og_d_sg(&self, s_g: f64, rock: &RockFluidPropsThreePhase) -> f64 {
+        let denom = 1.0 - rock.s_wc - rock.s_org;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+
+        let s_o = 1.0 - rock.s_wc - s_g;
+        let s_eff = (s_o - rock.s_org) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+
+        self.p_entry * (1.0 / self.lambda) * s_eff.powf(-1.0 / self.lambda - 1.0) / denom
     }
 }
