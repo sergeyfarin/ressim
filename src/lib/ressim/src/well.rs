@@ -1,51 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct WellRates {
-    pub oil_rate: f64,
-    pub water_rate: f64,
-    pub total_liquid_rate: f64,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct TimePointRates {
-    pub time: f64,
-    pub total_production_oil: f64,
-    pub total_production_liquid: f64,
-    pub total_production_liquid_reservoir: f64,
-    pub total_injection: f64,
-    pub total_injection_reservoir: f64,
-    /// Material balance error [m³]: cumulative (injection - production) vs actual in-place change
-    pub material_balance_error_m3: f64,
-    /// Average reservoir pressure [bar]
-    pub avg_reservoir_pressure: f64,
-    /// Average water saturation
-    pub avg_water_saturation: f64,
-    /// Total gas produced [m³/day] (non-zero only in three-phase mode)
-    #[serde(default)]
-    pub total_production_gas: f64,
-    /// Average gas saturation (non-zero only in three-phase mode)
-    #[serde(default)]
-    pub avg_gas_saturation: f64,
-    /// Gas material balance error [Sm³]: cumulative (surface gas injection − surface gas production)
-    /// vs actual in-place total-gas inventory change expressed at standard conditions.
-    /// Includes both free gas and dissolved gas. Non-zero only in three-phase mode.
-    #[serde(default)]
-    pub material_balance_error_gas_m3: f64,
-    /// Producing gas-oil ratio [Sm³/Sm³]: total surface gas / surface oil at producers.
-    /// Includes both free gas and dissolved gas (Rs) liberated at surface.
-    /// Non-zero only in three-phase mode with PVT table.
-    #[serde(default)]
-    pub producing_gor: f64,
-    /// Fraction of rate-controlled producer completions currently clamped by BHP limits.
-    #[serde(default)]
-    pub producer_bhp_limited_fraction: f64,
-    /// Fraction of rate-controlled injector completions currently clamped by BHP limits.
-    #[serde(default)]
-    pub injector_bhp_limited_fraction: f64,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 pub struct Well {
     /// Cell index i (x-direction)
     pub i: usize,

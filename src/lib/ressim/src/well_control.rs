@@ -1,4 +1,7 @@
-use crate::{InjectedFluid, ReservoirSimulator, Well, DARCY_METRIC_FACTOR};
+use crate::{InjectedFluid, ReservoirSimulator, Well};
+
+/// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
+const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 #[derive(Clone, Copy)]
 pub(crate) enum WellControlDecision {
@@ -11,10 +14,38 @@ pub(crate) enum WellControlDecision {
 pub(crate) struct ResolvedWellControl {
     pub(crate) decision: WellControlDecision,
     pub(crate) bhp_limited: bool,
+    pub(crate) producer_state: Option<ProducerControlState>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ProducerControlState {
+    pub(crate) water_fraction: f64,
+    pub(crate) oil_fraction: f64,
+    pub(crate) gas_fraction: f64,
+    pub(crate) oil_fvf: f64,
+    pub(crate) gas_fvf: f64,
+    pub(crate) rs_sm3_sm3: f64,
 }
 
 impl ReservoirSimulator {
-    // ── Productivity index ────────────────────────────────────────────────────
+    pub(crate) fn well_control_mode_matches(
+        old_control: Option<ResolvedWellControl>,
+        new_control: Option<ResolvedWellControl>,
+    ) -> bool {
+        match (old_control, new_control) {
+            (None, None) => true,
+            (Some(old_control), Some(new_control)) => {
+                let decision_matches = matches!(
+                    (old_control.decision, new_control.decision),
+                    (WellControlDecision::Disabled, WellControlDecision::Disabled)
+                        | (WellControlDecision::Rate { .. }, WellControlDecision::Rate { .. })
+                        | (WellControlDecision::Bhp { .. }, WellControlDecision::Bhp { .. })
+                );
+                decision_matches && old_control.bhp_limited == new_control.bhp_limited
+            }
+            _ => false,
+        }
+    }
 
     pub(crate) fn calculate_well_productivity_index(
         &self,
@@ -74,8 +105,6 @@ impl ReservoirSimulator {
             ));
         }
 
-        // Peaceman's well index formula for metric/bar units (m³, bar, day)
-        // PI = C * 2π * k_avg * h * total_mobility / (ln(r_eq/r_w) + skin)
         Ok(
             (DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * self.dz_at(id) * total_mobility)
                 / denom,
@@ -102,8 +131,6 @@ impl ReservoirSimulator {
         }
     }
 
-    // ── Well counting ─────────────────────────────────────────────────────────
-
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn injector_well_count(&self) -> usize {
         self.wells.iter().filter(|w| w.injector).count()
@@ -114,7 +141,76 @@ impl ReservoirSimulator {
         self.wells.iter().filter(|w| !w.injector).count()
     }
 
-    // ── Rate computation ──────────────────────────────────────────────────────
+    pub(crate) fn producer_control_phase_fractions_for_pressures(
+        &self,
+        well: &Well,
+        pressures: &[f64],
+    ) -> (f64, f64, f64) {
+        let i_min = well.i.saturating_sub(1);
+        let i_max = (well.i + 1).min(self.nx.saturating_sub(1));
+        let j_min = well.j.saturating_sub(1);
+        let j_max = (well.j + 1).min(self.ny.saturating_sub(1));
+        let k = well.k;
+
+        let mut lambda_w_sum = 0.0;
+        let mut lambda_o_sum = 0.0;
+        let mut lambda_g_sum = 0.0;
+
+        for j in j_min..=j_max {
+            for i in i_min..=i_max {
+                let id = self.idx(i, j, k);
+                let pressure_bar = pressures.get(id).copied().unwrap_or(self.pressure[id]);
+                if self.three_phase_mode {
+                    let (lam_w, lam_o, lam_g) = self.phase_mobilities_3p_at_pressure(id, pressure_bar);
+                    lambda_w_sum += lam_w.max(0.0);
+                    lambda_o_sum += lam_o.max(0.0);
+                    lambda_g_sum += lam_g.max(0.0);
+                } else {
+                    let (lam_w, lam_o) = self.phase_mobilities_at_pressure(id, pressure_bar);
+                    lambda_w_sum += lam_w.max(0.0);
+                    lambda_o_sum += lam_o.max(0.0);
+                }
+            }
+        }
+
+        let lambda_total = (lambda_w_sum + lambda_o_sum + lambda_g_sum).max(f64::EPSILON);
+        (
+            (lambda_w_sum / lambda_total).clamp(0.0, 1.0),
+            (lambda_o_sum / lambda_total).clamp(0.0, 1.0),
+            (lambda_g_sum / lambda_total).clamp(0.0, 1.0),
+        )
+    }
+
+    fn producer_control_state_for_pressures(
+        &self,
+        well: &Well,
+        pressures: &[f64],
+    ) -> ProducerControlState {
+        let id = self.idx(well.i, well.j, well.k);
+        let pressure_bar = pressures.get(id).copied().unwrap_or(self.pressure[id]);
+        let (water_fraction, oil_fraction, gas_fraction) =
+            self.producer_control_phase_fractions_for_pressures(well, pressures);
+
+        ProducerControlState {
+            water_fraction,
+            oil_fraction,
+            gas_fraction,
+            oil_fvf: self.get_b_o_cell(id, pressure_bar).max(1e-9),
+            gas_fvf: self.get_b_g(pressure_bar).max(1e-9),
+            rs_sm3_sm3: self.rs[id].max(0.0),
+        }
+    }
+
+    pub(crate) fn producer_control_state_from_resolved_control(
+        &self,
+        well: &Well,
+        control: ResolvedWellControl,
+        pressures: &[f64],
+    ) -> ProducerControlState {
+        control
+            .producer_state
+            .unwrap_or_else(|| self.producer_control_state_for_pressures(well, pressures))
+    }
 
     pub(crate) fn completion_rate_for_bhp(&self, well: &Well, pressure_bar: f64, bhp_bar: f64) -> Option<f64> {
         if !well.productivity_index.is_finite() || !pressure_bar.is_finite() || !bhp_bar.is_finite() {
@@ -131,9 +227,14 @@ impl ReservoirSimulator {
         }
     }
 
-    pub(crate) fn completion_surface_rate_sc_day(&self, well: &Well, pressure_bar: f64, bhp_bar: f64) -> Option<f64> {
+    fn completion_surface_rate_sc_day(
+        &self,
+        well: &Well,
+        pressures: &[f64],
+        pressure_bar: f64,
+        bhp_bar: f64,
+    ) -> Option<f64> {
         let q_m3_day = self.completion_rate_for_bhp(well, pressure_bar, bhp_bar)?;
-        let id = self.idx(well.i, well.j, well.k);
         if well.injector {
             let injected_sc_rate = match self.injected_fluid {
                 InjectedFluid::Water => (-q_m3_day) / self.b_w.max(1e-9),
@@ -141,8 +242,8 @@ impl ReservoirSimulator {
             };
             Some(injected_sc_rate.max(0.0))
         } else {
-            let oil_fraction = self.producer_oil_fraction_at_pressure(id, pressure_bar);
-            let oil_rate_sc = q_m3_day * oil_fraction / self.get_b_o_cell(id, pressure_bar).max(1e-9);
+            let producer_state = self.producer_control_state_for_pressures(well, pressures);
+            let oil_rate_sc = q_m3_day * producer_state.oil_fraction / producer_state.oil_fvf;
             Some(oil_rate_sc.max(0.0))
         }
     }
@@ -161,8 +262,6 @@ impl ReservoirSimulator {
             }
         }
     }
-
-    // ── Group BHP solve ───────────────────────────────────────────────────────
 
     pub(crate) fn solve_group_bhp_for_pressures(&self, injector: bool, pressures: &[f64]) -> Option<(f64, bool)> {
         let use_rate_control = if injector {
@@ -197,12 +296,12 @@ impl ReservoirSimulator {
                     let pressure_bar = pressures[id];
                     if injector {
                         match total_surface_target {
-                            Some(_) => self.completion_surface_rate_sc_day(well, pressure_bar, bhp_bar),
+                            Some(_) => self.completion_surface_rate_sc_day(well, pressures, pressure_bar, bhp_bar),
                             None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar).map(|q| (-q).max(0.0)),
                         }
                     } else {
                         match total_surface_target {
-                            Some(_) => self.completion_surface_rate_sc_day(well, pressure_bar, bhp_bar),
+                            Some(_) => self.completion_surface_rate_sc_day(well, pressures, pressure_bar, bhp_bar),
                             None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar),
                         }
                     }
@@ -270,8 +369,6 @@ impl ReservoirSimulator {
         }
     }
 
-    // ── Control resolution ────────────────────────────────────────────────────
-
     pub(crate) fn resolve_well_control_for_pressures(
         &self,
         well: &Well,
@@ -281,6 +378,7 @@ impl ReservoirSimulator {
             return Some(ResolvedWellControl {
                 decision: WellControlDecision::Disabled,
                 bhp_limited: false,
+                producer_state: None,
             });
         }
 
@@ -292,6 +390,11 @@ impl ReservoirSimulator {
 
         let id = self.idx(well.i, well.j, well.k);
         let pressure_bar = pressures[id];
+        let producer_state = if well.injector {
+            None
+        } else {
+            Some(self.producer_control_state_for_pressures(well, pressures))
+        };
 
         if use_rate_control {
             let (group_bhp, bhp_limited) = self.solve_group_bhp_for_pressures(well.injector, pressures)?;
@@ -303,6 +406,7 @@ impl ReservoirSimulator {
                     WellControlDecision::Rate { q_m3_day: q_target }
                 },
                 bhp_limited,
+                producer_state,
             });
         }
 
@@ -316,10 +420,9 @@ impl ReservoirSimulator {
         Some(ResolvedWellControl {
             decision: WellControlDecision::Bhp { bhp_bar: well.bhp },
             bhp_limited: false,
+            producer_state,
         })
     }
-
-    // ── Query wrappers ────────────────────────────────────────────────────────
 
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn target_rate_m3_day(&self, well: &Well, pressure_bar: f64) -> Option<f64> {
@@ -357,12 +460,9 @@ impl ReservoirSimulator {
             if let Some(surface_rate_sc_day) = self.target_producer_surface_rate_m3_day {
                 let surface_rate_per_well = surface_rate_sc_day / n_prod as f64;
                 let id = self.idx(well.i, well.j, well.k);
-                let (fw, fg) = if self.three_phase_mode {
-                    (self.frac_flow_water_3p(id), self.frac_flow_gas(id))
-                } else {
-                    (self.frac_flow_water(id), 0.0)
-                };
-                let oil_fraction = (1.0 - fw - fg).max(1e-6);
+                let pressures = self.group_pressures_with_override(well, pressure_bar);
+                let (_, oil_fraction, _) = self.producer_control_phase_fractions_for_pressures(well, &pressures);
+                let oil_fraction = oil_fraction.max(1e-6);
                 let reservoir_rate_per_well = surface_rate_per_well
                     * self.get_b_o_cell(id, pressure_bar).max(1e-9)
                     / oil_fraction;
@@ -407,7 +507,7 @@ impl ReservoirSimulator {
         }
     }
 
-    pub(crate) fn group_pressures_with_override(&self, well: &Well, pressure_bar: f64) -> Vec<f64> {
+    fn group_pressures_with_override(&self, well: &Well, pressure_bar: f64) -> Vec<f64> {
         let mut pressures = self.pressure.clone();
         let id = self.idx(well.i, well.j, well.k);
         if id < pressures.len() {

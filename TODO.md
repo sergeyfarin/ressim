@@ -4,6 +4,12 @@
 
 ## Now
 
+- [ ] Refactor Rust/WASM simulator module boundaries so `lib.rs` becomes a frontend/WASM facade rather than a mixed API + physics + test host.
+  - Extract frontend-facing constructor/getter/setter/load-state code into a dedicated Rust interface module.
+  - Extract active well-control logic out of `step.rs` and delete the stale duplicate module content left from the incomplete earlier refactor.
+  - Extract timestep output/reporting generation into a dedicated output module so run outputs are emitted from one place.
+  - Activate the existing mobility helper module (or replace it cleanly) so `step.rs` no longer owns all mobility/capillary/gravity helpers.
+  - Keep the current WASM/TypeScript API stable while reducing file size and improving future extensibility for FIM/compositional/well-schedule upgrades.
 - [x] Apply continuous saturation weighting to the vertical-only simulation sweep path so `E_V` no longer depends on a hard cutoff.
 - [x] Apply continuous saturation weighting to the combined simulation volumetric sweep path so hidden `E_vol` diagnostics do not depend on a hard cutoff.
 - [x] Switch areal simulation sweep from binary swept-column counting to continuous cell weighting, while keeping vertical/combined sweep semantics unchanged.

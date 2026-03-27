@@ -65,7 +65,10 @@ impl ReservoirSimulator {
     pub(crate) fn phase_mobilities_at_pressure(&self, id: usize, pressure_bar: f64) -> (f64, f64) {
         let krw = self.scal.k_rw(self.sat_water[id]);
         let kro = self.scal.k_ro(self.sat_water[id]);
-        (krw / self.get_mu_w(pressure_bar), kro / self.get_mu_o(pressure_bar))
+        (
+            krw / self.get_mu_w(pressure_bar),
+            kro / self.get_mu_o_cell(id, pressure_bar),
+        )
     }
 
     pub(crate) fn phase_mobilities_3p_at_pressure(&self, id: usize, pressure_bar: f64) -> (f64, f64, f64) {
