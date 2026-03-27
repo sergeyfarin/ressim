@@ -1302,7 +1302,7 @@ impl ReservoirSimulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::step::{ResolvedWellControl, WellControlDecision};
+    use crate::step::{ProducerControlState, ResolvedWellControl, WellControlDecision};
 
     struct BuckleyCase {
         name: &'static str,
@@ -1480,6 +1480,138 @@ mod tests {
         let expected = 100.0 * sim.get_b_o_cell(0, 200.0) / oil_fraction;
 
         assert!((q_target - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn producer_surface_rate_target_uses_same_layer_neighborhood_sampling() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.12);
+        sim.set_three_phase_rel_perm_props(
+            0.12, 0.12, 0.04, 0.04, 0.18,
+            2.0, 2.5, 1.5,
+            1e-5, 1.0, 0.984,
+        ).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_surface_rates(0.0, 100.0).unwrap();
+        sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let producer_id = sim.idx(1, 1, 0);
+        let gas_hit_id = producer_id;
+        let left_id = sim.idx(0, 1, 0);
+        let down_id = sim.idx(1, 0, 0);
+        let diag_id = sim.idx(0, 0, 0);
+
+        sim.sat_water = vec![0.12; 4];
+        sim.sat_gas[gas_hit_id] = 0.25;
+        sim.sat_oil[gas_hit_id] = 1.0 - sim.sat_water[gas_hit_id] - sim.sat_gas[gas_hit_id];
+        for id in [left_id, down_id, diag_id] {
+            sim.sat_gas[id] = 0.0;
+            sim.sat_oil[id] = 1.0 - sim.sat_water[id];
+        }
+
+        let well = sim.wells.first().unwrap();
+        let q_target = sim.target_rate_m3_day(well, 200.0).unwrap();
+
+        let neighbor_ids = [gas_hit_id, left_id, down_id, diag_id];
+        let mut lambda_o_sum = 0.0;
+        let mut lambda_total_sum = 0.0;
+        for id in neighbor_ids {
+            let sw = sim.sat_water[id];
+            let sg = sim.sat_gas[id];
+            let scal = sim.scal_3p.as_ref().unwrap();
+            let lam_w = scal.k_rw(sw) / sim.get_mu_w(200.0);
+            let lam_o = scal.k_ro_stone2(sw, sg) / sim.get_mu_o_cell(id, 200.0);
+            let lam_g = scal.k_rg(sg) / sim.get_mu_g(200.0);
+            lambda_o_sum += lam_o;
+            lambda_total_sum += lam_w + lam_o + lam_g;
+        }
+
+        let sampled_oil_fraction = lambda_o_sum / lambda_total_sum;
+        let expected = 100.0 * sim.get_b_o_cell(producer_id, 200.0) / sampled_oil_fraction;
+
+        let local_scal = sim.scal_3p.as_ref().unwrap();
+        let local_lam_w = local_scal.k_rw(sim.sat_water[producer_id]) / sim.get_mu_w(200.0);
+        let local_lam_o = local_scal.k_ro_stone2(sim.sat_water[producer_id], sim.sat_gas[producer_id])
+            / sim.get_mu_o_cell(producer_id, 200.0);
+        let local_lam_g = local_scal.k_rg(sim.sat_gas[producer_id]) / sim.get_mu_g(200.0);
+        let local_oil_fraction = local_lam_o / (local_lam_w + local_lam_o + local_lam_g);
+        let local_only = 100.0 * sim.get_b_o_cell(producer_id, 200.0) / local_oil_fraction;
+
+        assert!((q_target - expected).abs() < 1e-9);
+        assert!(q_target < local_only,
+            "same-layer neighborhood sampling should request less total reservoir withdrawal than local-only sampling when neighboring cells remain oil-rich");
+    }
+
+    #[test]
+    fn producer_reporting_uses_same_sampled_near_well_mixture() {
+        use nalgebra::DVector;
+
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.12);
+        sim.set_three_phase_rel_perm_props(
+            0.12, 0.12, 0.04, 0.04, 0.18,
+            2.0, 2.5, 1.5,
+            1e-5, 1.0, 0.984,
+        ).unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let producer_id = sim.idx(1, 1, 0);
+        let left_id = sim.idx(0, 1, 0);
+        let down_id = sim.idx(1, 0, 0);
+        let diag_id = sim.idx(0, 0, 0);
+
+        sim.sat_water = vec![0.12; 4];
+        sim.sat_gas[producer_id] = 0.25;
+        sim.sat_oil[producer_id] = 1.0 - sim.sat_water[producer_id] - sim.sat_gas[producer_id];
+        for id in [left_id, down_id, diag_id] {
+            sim.sat_gas[id] = 0.0;
+            sim.sat_oil[id] = 1.0 - sim.sat_water[id];
+        }
+
+        let (sample_fw, sample_fo, sample_fg) = sim.producer_control_phase_fractions_for_pressures(
+            &sim.wells[0],
+            &sim.pressure,
+        );
+        let cached_state = ProducerControlState {
+            water_fraction: sample_fw,
+            oil_fraction: sample_fo,
+            gas_fraction: sample_fg,
+            oil_fvf: sim.get_b_o_cell(producer_id, sim.pressure[producer_id]).max(1e-9),
+            gas_fvf: sim.get_b_g(sim.pressure[producer_id]).max(1e-9),
+            rs_sm3_sm3: sim.rs[producer_id],
+        };
+
+        let controls = vec![Some(ResolvedWellControl {
+            decision: WellControlDecision::Rate { q_m3_day: 1000.0 },
+            bhp_limited: false,
+            producer_state: Some(cached_state),
+        })];
+
+        sim.update_saturations_and_pressure(
+            &DVector::from_vec(vec![150.0, 150.0, 150.0, 150.0]),
+            &vec![0.0, 0.0, 0.0, 0.0],
+            &vec![0.0, 0.0, 0.0, 0.0],
+            &vec![0.0, 0.0, 0.0, 0.0],
+            &controls,
+            1.0,
+        );
+
+        let latest = sim.rate_history.last().expect("rate history should have an entry");
+        let expected_oil_sc = 1000.0 * cached_state.oil_fraction / cached_state.oil_fvf;
+        let expected_total_gas_sc = 1000.0 * cached_state.gas_fraction / cached_state.gas_fvf
+            + expected_oil_sc * cached_state.rs_sm3_sm3;
+
+        assert!((latest.total_production_oil - expected_oil_sc).abs() < 1e-9);
+        assert!((latest.total_production_gas - expected_total_gas_sc).abs() < 1e-9);
+        assert!((latest.total_production_liquid_reservoir - 1000.0).abs() < 1e-9);
+        assert!(sample_fo > 0.0 && sample_fo < 1.0);
+        assert!(sample_fg > 0.0);
+        assert!(sample_fw >= 0.0);
     }
 
     #[test]
@@ -2726,7 +2858,12 @@ mod tests {
         );
     }
 
-    fn make_spe1_like_low_kv_sim() -> ReservoirSimulator {
+    fn make_spe1_like_sim(
+        layer_perms_z: Vec<f64>,
+        max_sat_change_per_step: f64,
+        max_pressure_change_per_step: f64,
+        max_well_rate_change_fraction: f64,
+    ) -> ReservoirSimulator {
         use crate::pvt::{PvtRow, PvtTable};
         use crate::relperm::{SgofRow, SwofRow, ThreePhaseScalTables};
 
@@ -2801,7 +2938,11 @@ mod tests {
         sim.set_three_phase_mode_enabled(true);
         sim.set_injected_fluid("gas").unwrap();
         sim.set_gas_redissolution_enabled(false);
-        sim.set_stability_params(0.05, 50.0, 0.5);
+        sim.set_stability_params(
+            max_sat_change_per_step,
+            max_pressure_change_per_step,
+            max_well_rate_change_fraction,
+        );
         sim.set_well_control_modes("rate".to_string(), "rate".to_string());
         sim.set_target_well_rates(12_000.0, 5_400.0).unwrap();
         sim.set_target_well_surface_rates(2_831_680.0, 3_179.74).unwrap();
@@ -2809,11 +2950,78 @@ mod tests {
         sim.set_permeability_per_layer(
             vec![500.0, 50.0, 200.0],
             vec![500.0, 50.0, 200.0],
-            vec![50.0, 5.0, 20.0],
+            layer_perms_z,
         ).unwrap();
         sim.add_well(9, 9, 2, 69.0, 0.0762, 0.0, false).unwrap();
         sim.add_well(0, 0, 0, 621.0, 0.0762, 0.0, true).unwrap();
         sim
+    }
+
+    fn make_spe1_like_base_sim() -> ReservoirSimulator {
+        make_spe1_like_sim(vec![500.0, 50.0, 200.0], 0.05, 50.0, 0.5)
+    }
+
+    fn make_spe1_like_low_kv_sim() -> ReservoirSimulator {
+        make_spe1_like_sim(vec![50.0, 5.0, 20.0], 0.05, 50.0, 0.5)
+    }
+
+    fn producer_breakthrough_snapshot(sim: &ReservoirSimulator) -> String {
+        let producer = &sim.wells[0];
+        let producer_id = sim.idx(producer.i, producer.j, producer.k);
+        let control = sim
+            .resolve_well_control_for_pressures(producer, &sim.pressure)
+            .expect("producer control should resolve");
+        let q_res = sim
+            .well_rate_m3_day_for_pressures(producer, &sim.pressure)
+            .expect("producer transport rate should resolve");
+        let scal = sim.scal_3p.as_ref().expect("three-phase relperm should exist");
+        let sw = sim.sat_water[producer_id];
+        let sg = sim.sat_gas[producer_id];
+        let lam_w = scal.k_rw(sw) / sim.get_mu_w(sim.pressure[producer_id]);
+        let lam_o = scal.k_ro_stone2(sw, sg) / sim.get_mu_o_cell(producer_id, sim.pressure[producer_id]);
+        let lam_g = scal.k_rg(sg) / sim.get_mu_g(sim.pressure[producer_id]);
+        let lam_t = (lam_w + lam_o + lam_g).max(f64::EPSILON);
+        let fg_local = lam_g / lam_t;
+        let fo_local = lam_o / lam_t;
+        let (_fw_sampled, fo_sampled, fg_sampled) =
+            sim.producer_control_phase_fractions_for_pressures(producer, &sim.pressure);
+        let bo = sim.get_b_o_cell(producer_id, sim.pressure[producer_id]).max(1e-9);
+        let bg = sim.get_b_g(sim.pressure[producer_id]).max(1e-9);
+        let oil_sc = q_res * fo_sampled / bo;
+        let free_gas_sc = q_res * fg_sampled / bg;
+        let dissolved_gas_sc = oil_sc * sim.rs[producer_id];
+        let control_label = match control.decision {
+            WellControlDecision::Disabled => "disabled".to_string(),
+            WellControlDecision::Rate { q_m3_day } => format!("rate({q_m3_day:.2})"),
+            WellControlDecision::Bhp { bhp_bar } => format!("bhp({bhp_bar:.2})"),
+        };
+
+        format!(
+            "t={:7.2} d | p={:7.2} bar | sw={:.3} so={:.3} sg={:.3} rs={:.1} | lam_o={:.4} lam_g={:.4} fo_local={:.3} fg_local={:.3} fo_eff={:.3} fg_eff={:.3} | q_res={:8.2} | oil_sc={:7.2} gas_sc={:8.2} gor={:7.1} | ctrl={} | bhp_limited={} | avg_p={:7.2}",
+            sim.time_days,
+            sim.pressure[producer_id],
+            sim.sat_water[producer_id],
+            sim.sat_oil[producer_id],
+            sim.sat_gas[producer_id],
+            sim.rs[producer_id],
+            lam_o,
+            lam_g,
+            fo_local,
+            fg_local,
+            fo_sampled,
+            fg_sampled,
+            q_res,
+            oil_sc,
+            free_gas_sc + dissolved_gas_sc,
+            if oil_sc > 1e-9 {
+                (free_gas_sc + dissolved_gas_sc) / oil_sc
+            } else {
+                0.0
+            },
+            control_label,
+            control.bhp_limited,
+            sim.average_reservoir_pressure_pv_weighted(),
+        )
     }
 
     #[test]
@@ -2883,6 +3091,80 @@ mod tests {
             converged,
             iterations,
         );
+    }
+
+    #[test]
+    #[ignore = "debug helper for SPE1 producer breakthrough diagnostics"]
+    fn debug_spe1_producer_breakthrough_probe() {
+        let sample_times = [
+            700.0, 750.0, 800.0, 850.0, 900.0, 950.0, 1000.0, 1050.0, 1095.0, 1100.0, 1150.0,
+            1200.0, 1250.0,
+        ];
+
+        for (label, dt_days) in [("base_dt5", 5.0), ("base_dt0.25", 0.25)] {
+            let mut sim = make_spe1_like_base_sim();
+            let mut next_sample_idx = 0usize;
+            let mut first_high_gor_reported = false;
+
+            println!("=== {label} ===");
+            while sim.time_days < 1250.0 {
+                sim.step(dt_days);
+                let latest = sim.rate_history.last().expect("rate history should exist");
+
+                if !first_high_gor_reported && latest.producing_gor > 400.0 {
+                    println!(
+                        "first-high-gor: total_gor={:.1}, total_gas_sc={:.2}, oil_sc={:.2}",
+                        latest.producing_gor,
+                        latest.total_production_gas,
+                        latest.total_production_oil,
+                    );
+                    println!("{}", producer_breakthrough_snapshot(&sim));
+                    first_high_gor_reported = true;
+                }
+
+                while next_sample_idx < sample_times.len()
+                    && sim.time_days + 1e-9 >= sample_times[next_sample_idx]
+                {
+                    println!("{}", producer_breakthrough_snapshot(&sim));
+                    next_sample_idx += 1;
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "debug helper for SPE1 late-time producer decline diagnostics"]
+    fn debug_spe1_producer_late_time_probe() {
+        let sample_times = [
+            1300.0, 1400.0, 1500.0, 1600.0, 1700.0, 1800.0, 1900.0, 1950.0, 1975.0, 2000.0,
+            2025.0, 2050.0, 2100.0, 2250.0, 2500.0, 2750.0, 3000.0,
+        ];
+
+        for (label, dt_days) in [("base_dt5", 5.0), ("base_dt0.25", 0.25)] {
+            let mut sim = make_spe1_like_base_sim();
+            let mut next_sample_idx = 0usize;
+
+            println!("=== {label} ===");
+            while sim.time_days < 3000.0 {
+                sim.step(dt_days);
+                let latest = sim.rate_history.last().expect("rate history should exist");
+
+                while next_sample_idx < sample_times.len()
+                    && sim.time_days + 1e-9 >= sample_times[next_sample_idx]
+                {
+                    println!(
+                        "{} | oil_hist={:.2} liq_hist={:.2} gor_hist={:.1} prod_bhp_frac={:.3} warning={}",
+                        producer_breakthrough_snapshot(&sim),
+                        latest.total_production_oil,
+                        latest.total_production_liquid,
+                        latest.producing_gor,
+                        latest.producer_bhp_limited_fraction,
+                        sim.get_last_solver_warning(),
+                    );
+                    next_sample_idx += 1;
+                }
+            }
+        }
     }
 
     #[test]
@@ -2975,6 +3257,7 @@ mod tests {
         let controls = vec![Some(ResolvedWellControl {
             decision: WellControlDecision::Rate { q_m3_day: -30.0 },
             bhp_limited: false,
+            producer_state: None,
         })];
 
         sim.update_saturations_and_pressure(
@@ -3031,6 +3314,14 @@ mod tests {
         let controls = vec![Some(ResolvedWellControl {
             decision: WellControlDecision::Bhp { bhp_bar: 100.0 },
             bhp_limited: false,
+            producer_state: Some(ProducerControlState {
+                water_fraction: 0.12,
+                oil_fraction: 0.000_001,
+                gas_fraction: 0.879_999,
+                oil_fvf: sim.get_b_o_cell(id, sim.pressure[id]).max(1e-9),
+                gas_fvf: sim.get_b_g(sim.pressure[id]).max(1e-9),
+                rs_sm3_sm3: sim.rs[id],
+            }),
         })];
 
         sim.update_saturations_and_pressure(
