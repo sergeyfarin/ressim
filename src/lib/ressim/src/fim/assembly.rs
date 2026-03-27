@@ -4,7 +4,7 @@ use sprs::{CsMat, TriMatI};
 use crate::fim::scaling::{
     build_equation_scaling, build_variable_scaling, EquationScaling, VariableScaling,
 };
-use crate::fim::state::FimState;
+use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{
     build_well_topology, fischer_burmeister_gradient, perforation_component_rate_derivatives_sc_day,
     perforation_component_rate_cell_derivatives_sc_day_by_var, perforation_component_rates_sc_day,
@@ -52,7 +52,7 @@ pub(crate) fn assemble_fim_system(
     let residual = assemble_residual(sim, previous_state, state, &topology, options);
 
     add_exact_accumulation_jacobian(sim, previous_state, state, &mut tri);
-    add_local_flux_jacobian_fd(sim, state, options.dt_days, &mut tri);
+    add_exact_flux_jacobian(sim, state, options.dt_days, &mut tri);
 
     if options.include_wells {
         add_exact_well_source_jacobian(sim, state, &topology, options.dt_days, &mut tri);
@@ -61,9 +61,6 @@ pub(crate) fn assemble_fim_system(
         add_exact_well_constraint_cell_jacobian(sim, state, &topology, &mut tri);
         add_exact_perforation_jacobian(sim, state, &topology, &mut tri);
         add_exact_perforation_cell_pressure_jacobian(sim, state, &topology, &mut tri);
-        add_local_well_source_cell_jacobian_fd(sim, state, &topology, options.dt_days, &mut tri);
-        add_local_well_constraint_cell_jacobian_fd(sim, state, &topology, &mut tri);
-        add_local_perforation_cell_jacobian_fd(sim, state, &topology, &mut tri);
     }
 
     FimAssembly {
@@ -239,6 +236,7 @@ fn add_exact_perforation_cell_pressure_jacobian(
     }
 }
 
+#[cfg(test)]
 fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     debug_assert!(unknown_idx < state.n_cell_unknowns());
     if unknown_idx < state.n_cell_unknowns() {
@@ -256,6 +254,7 @@ fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     unreachable!()
 }
 
+#[cfg(test)]
 fn perturb_cell_unknown(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -291,43 +290,6 @@ fn perforation_control_influence_cells(
         }
     }
     cells
-}
-
-fn well_constraint_influence_cells(
-    sim: &ReservoirSimulator,
-    topology: &FimWellTopology,
-    well_idx: usize,
-) -> Vec<usize> {
-    let mut cells = Vec::new();
-    for &perf_idx in &topology.wells[well_idx].perforation_indices {
-        cells.extend(perforation_control_influence_cells(sim, topology, perf_idx));
-    }
-    cells.sort_unstable();
-    cells.dedup();
-    cells
-}
-
-fn add_local_well_source_cell_jacobian_fd(
-    _sim: &ReservoirSimulator,
-    _state: &FimState,
-    _topology: &FimWellTopology,
-    _dt_days: f64,
-    _tri: &mut TriMatI<f64, usize>,
-) {}
-
-fn add_local_well_constraint_cell_jacobian_fd(
-    _sim: &ReservoirSimulator,
-    _state: &FimState,
-    _topology: &FimWellTopology,
-    _tri: &mut TriMatI<f64, usize>,
-) {}
-
-fn add_local_perforation_cell_jacobian_fd(
-    _sim: &ReservoirSimulator,
-    _state: &FimState,
-    _topology: &FimWellTopology,
-    _tri: &mut TriMatI<f64, usize>,
-) {
 }
 
 fn pore_volume_at_state(
@@ -559,6 +521,184 @@ fn local_cell_step(cell: &crate::fim::state::FimCellState, local_var: usize) -> 
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LocalFluxCellSensitivity {
+    mobilities: [f64; 3],
+    mobility_derivatives: [[f64; 3]; 3],
+    bo: f64,
+    bg: f64,
+    rs: f64,
+    bo_derivatives: [f64; 3],
+    bg_derivatives: [f64; 3],
+    rs_derivatives: [f64; 3],
+    rho_o_derivatives: [f64; 3],
+    rho_g_derivatives: [f64; 3],
+    pcw_derivatives: [f64; 3],
+    pcog_derivatives: [f64; 3],
+}
+
+fn local_flux_cell_sensitivity(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    cell_idx: usize,
+) -> LocalFluxCellSensitivity {
+    let cell = state.cell(cell_idx);
+    let derived = state.derive_cell(sim, cell_idx);
+    let saturated = cell.regime == HydrocarbonState::Saturated;
+
+    let krw = if sim.three_phase_mode {
+        sim.scal_3p
+            .as_ref()
+            .map(|rock| rock.k_rw(cell.sw))
+            .unwrap_or_else(|| sim.scal.k_rw(cell.sw))
+    } else {
+        sim.scal.k_rw(cell.sw)
+    };
+    let dkrw_dsw = if sim.three_phase_mode {
+        sim.scal_3p
+            .as_ref()
+            .map(|rock| rock.d_k_rw_d_sw(cell.sw))
+            .unwrap_or_else(|| sim.scal.d_k_rw_d_sw(cell.sw))
+    } else {
+        sim.scal.d_k_rw_d_sw(cell.sw)
+    };
+
+    let (kro, dkro_dsw, dkro_dsg, krg, dkrg_dsg) = if sim.three_phase_mode {
+        sim.scal_3p
+            .as_ref()
+            .map(|rock| {
+                (
+                    rock.k_ro_stone2(cell.sw, derived.sg),
+                    rock.d_k_ro_stone2_d_sw(cell.sw, derived.sg),
+                    rock.d_k_ro_stone2_d_sg(cell.sw, derived.sg),
+                    rock.k_rg(derived.sg),
+                    rock.d_k_rg_d_sg(derived.sg),
+                )
+            })
+            .unwrap_or_else(|| {
+                (
+                    sim.scal.k_ro(cell.sw),
+                    sim.scal.d_k_ro_d_sw(cell.sw),
+                    0.0,
+                    0.0,
+                    0.0,
+                )
+            })
+    } else {
+        (
+            sim.scal.k_ro(cell.sw),
+            sim.scal.d_k_ro_d_sw(cell.sw),
+            0.0,
+            0.0,
+            0.0,
+        )
+    };
+
+    let mu_w = sim.get_mu_w(cell.pressure_bar).max(1e-9);
+    let mu_o = sim.get_mu_o_for_rs(cell.pressure_bar, derived.rs).max(1e-9);
+    let mu_g = sim.get_mu_g(cell.pressure_bar).max(1e-9);
+    let dmu_o_dp = sim.get_d_mu_o_d_p_for_state(cell.pressure_bar, derived.rs, saturated);
+    let dmu_o_drs = if saturated {
+        0.0
+    } else {
+        sim.get_d_mu_o_d_rs_for_state(cell.pressure_bar, derived.rs)
+    };
+    let dmu_g_dp = sim.get_d_mu_g_d_p_for_state(cell.pressure_bar);
+    let dsg_dh = if saturated { 1.0 } else { 0.0 };
+
+    let bo_derivatives = if saturated {
+        [sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, true), 0.0, 0.0]
+    } else {
+        [
+            sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, false),
+            0.0,
+            sim.get_d_bo_d_rs_for_state(cell.pressure_bar, derived.rs),
+        ]
+    };
+    let bg_derivatives = [sim.get_d_bg_d_p_for_state(cell.pressure_bar), 0.0, 0.0];
+    let rs_derivatives = if saturated {
+        [sim.get_d_rs_sat_d_p_for_state(cell.pressure_bar), 0.0, 0.0]
+    } else {
+        [0.0, 0.0, 1.0]
+    };
+
+    let lambda_w = krw / mu_w;
+    let lambda_o = kro / mu_o;
+    let lambda_g = krg / mu_g;
+
+    let dlam_w = [0.0, dkrw_dsw / mu_w, 0.0];
+    let dlam_o = [
+        -kro * dmu_o_dp / (mu_o * mu_o),
+        dkro_dsw / mu_o,
+        dkro_dsg * dsg_dh / mu_o - kro * dmu_o_drs / (mu_o * mu_o),
+    ];
+    let dlam_g = [
+        -krg * dmu_g_dp / (mu_g * mu_g),
+        0.0,
+        dkrg_dsg * dsg_dh / mu_g,
+    ];
+
+    let rho_o_derivatives = [
+        sim.get_d_rho_o_d_p_for_state(cell.pressure_bar, derived.rs, saturated),
+        0.0,
+        if saturated {
+            0.0
+        } else {
+            sim.get_d_rho_o_d_rs_for_state(cell.pressure_bar, derived.rs)
+        },
+    ];
+    let rho_g_derivatives = [sim.get_d_rho_g_d_p_for_state(cell.pressure_bar), 0.0, 0.0];
+    let pcw_derivatives = [0.0, sim.get_d_capillary_pressure_d_sw(cell.sw), 0.0];
+    let pcog_derivatives = [
+        0.0,
+        0.0,
+        if saturated {
+            sim.get_d_gas_oil_capillary_pressure_d_sg(derived.sg)
+        } else {
+            0.0
+        },
+    ];
+
+    LocalFluxCellSensitivity {
+        mobilities: [lambda_w, lambda_o, lambda_g],
+        mobility_derivatives: [dlam_w, dlam_o, dlam_g],
+        bo: derived.bo.max(1e-9),
+        bg: derived.bg.max(1e-9),
+        rs: derived.rs.max(0.0),
+        bo_derivatives,
+        bg_derivatives,
+        rs_derivatives,
+        rho_o_derivatives,
+        rho_g_derivatives,
+        pcw_derivatives,
+        pcog_derivatives,
+    }
+}
+
+fn gravity_half_coefficient(sim: &ReservoirSimulator, depth_i: f64, depth_j: f64) -> f64 {
+    if sim.gravity_enabled {
+        0.5 * 9.80665 * (depth_i - depth_j) * 1e-5
+    } else {
+        0.0
+    }
+}
+
+fn phase_potential_derivatives(
+    pressure_sign: f64,
+    capillary_sign: f64,
+    capillary_derivatives: [f64; 3],
+    gravity_half_coeff: f64,
+    density_derivatives: [f64; 3],
+) -> [f64; 3] {
+    let mut derivatives = [0.0; 3];
+    derivatives[0] = pressure_sign;
+    for local_var in 0..3 {
+        derivatives[local_var] += capillary_sign * capillary_derivatives[local_var]
+            - gravity_half_coeff * density_derivatives[local_var];
+    }
+    derivatives
+}
+
 fn interface_flux_contribution(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -646,6 +786,164 @@ fn interface_flux_contribution(
     ])
 }
 
+fn add_exact_flux_jacobian(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    dt_days: f64,
+    tri: &mut TriMatI<f64, usize>,
+) {
+    for k in 0..sim.nz {
+        for j in 0..sim.ny {
+            for i in 0..sim.nx {
+                let id = sim.idx(i, j, k);
+
+                if i + 1 < sim.nx {
+                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, sim.idx(i + 1, j, k), 'x', k, k, tri);
+                }
+                if j + 1 < sim.ny {
+                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, sim.idx(i, j + 1, k), 'y', k, k, tri);
+                }
+                if k + 1 < sim.nz {
+                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, sim.idx(i, j, k + 1), 'z', k, k + 1, tri);
+                }
+            }
+        }
+    }
+}
+
+fn add_exact_interface_flux_jacobian(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    dt_days: f64,
+    id_i: usize,
+    id_j: usize,
+    dim: char,
+    k_i: usize,
+    k_j: usize,
+    tri: &mut TriMatI<f64, usize>,
+) {
+    let cell_i = state.cell(id_i);
+    let cell_j = state.cell(id_j);
+    let derived_i = state.derive_cell(sim, id_i);
+    let derived_j = state.derive_cell(sim, id_j);
+    let local_i = local_flux_cell_sensitivity(sim, state, id_i);
+    let local_j = local_flux_cell_sensitivity(sim, state, id_j);
+    let locals = [local_i, local_j];
+
+    let p_i = cell_i.pressure_bar;
+    let p_j = cell_j.pressure_bar;
+    let depth_i = sim.depth_at_k(k_i);
+    let depth_j = sim.depth_at_k(k_j);
+    let geom_t = DARCY_METRIC_FACTOR * sim.geometric_transmissibility(id_i, id_j, dim);
+    if geom_t <= 0.0 {
+        return;
+    }
+
+    let pcw_i = sim.get_capillary_pressure(cell_i.sw);
+    let pcw_j = sim.get_capillary_pressure(cell_j.sw);
+    let pcog_i = sim.get_gas_oil_capillary_pressure(derived_i.sg);
+    let pcog_j = sim.get_gas_oil_capillary_pressure(derived_j.sg);
+    let grav_half = gravity_half_coefficient(sim, depth_i, depth_j);
+    let grav_o = grav_half * (derived_i.rho_o + derived_j.rho_o);
+    let grav_g = grav_half * (derived_i.rho_g + derived_j.rho_g);
+
+    let dphi_w = (p_i - p_j) - (pcw_i - pcw_j);
+    let dphi_o = (p_i - p_j) - grav_o;
+    let dphi_g = (p_i - p_j) + (pcog_i - pcog_j) - grav_g;
+
+    let water_upwind = if dphi_w >= 0.0 { 0 } else { 1 };
+    let oil_upwind = if dphi_o >= 0.0 { 0 } else { 1 };
+    let gas_upwind = if dphi_g >= 0.0 { 0 } else { 1 };
+
+    let lambda_w = locals[water_upwind].mobilities[0];
+    let lambda_o = locals[oil_upwind].mobilities[1];
+    let lambda_g = locals[gas_upwind].mobilities[2];
+    let bo_up = locals[oil_upwind].bo;
+    let bg_up = locals[gas_upwind].bg;
+    let rs_up = locals[oil_upwind].rs;
+    let q_o_sc_day = geom_t * lambda_o * dphi_o / bo_up;
+
+    for (side_idx, cell_idx) in [id_i, id_j].into_iter().enumerate() {
+        let pressure_sign = if side_idx == 0 { 1.0 } else { -1.0 };
+        let dphi_w_derivatives = phase_potential_derivatives(
+            pressure_sign,
+            if side_idx == 0 { -1.0 } else { 1.0 },
+            locals[side_idx].pcw_derivatives,
+            0.0,
+            [0.0; 3],
+        );
+        let dphi_o_derivatives = phase_potential_derivatives(
+            pressure_sign,
+            0.0,
+            [0.0; 3],
+            grav_half,
+            locals[side_idx].rho_o_derivatives,
+        );
+        let dphi_g_derivatives = phase_potential_derivatives(
+            pressure_sign,
+            if side_idx == 0 { 1.0 } else { -1.0 },
+            locals[side_idx].pcog_derivatives,
+            grav_half,
+            locals[side_idx].rho_g_derivatives,
+        );
+
+        for local_var in 0..3 {
+            let mut dq_w_sc_day = geom_t * lambda_w * dphi_w_derivatives[local_var] / sim.b_w.max(1e-9);
+            if side_idx == water_upwind {
+                dq_w_sc_day += geom_t
+                    * locals[side_idx].mobility_derivatives[0][local_var]
+                    * dphi_w
+                    / sim.b_w.max(1e-9);
+            }
+
+            let mut dq_o_sc_day = geom_t * lambda_o * dphi_o_derivatives[local_var] / bo_up;
+            if side_idx == oil_upwind {
+                dq_o_sc_day += geom_t
+                    * locals[side_idx].mobility_derivatives[1][local_var]
+                    * dphi_o
+                    / bo_up;
+                dq_o_sc_day -= geom_t
+                    * lambda_o
+                    * dphi_o
+                    * locals[side_idx].bo_derivatives[local_var]
+                    / (bo_up * bo_up);
+            }
+
+            let mut dq_g_free_sc_day = geom_t * lambda_g * dphi_g_derivatives[local_var] / bg_up;
+            if side_idx == gas_upwind {
+                dq_g_free_sc_day += geom_t
+                    * locals[side_idx].mobility_derivatives[2][local_var]
+                    * dphi_g
+                    / bg_up;
+                dq_g_free_sc_day -= geom_t
+                    * lambda_g
+                    * dphi_g
+                    * locals[side_idx].bg_derivatives[local_var]
+                    / (bg_up * bg_up);
+            }
+
+            let mut dq_g_sc_day = dq_g_free_sc_day + rs_up * dq_o_sc_day;
+            if side_idx == oil_upwind {
+                dq_g_sc_day += q_o_sc_day * locals[side_idx].rs_derivatives[local_var];
+            }
+
+            let derivatives = [dq_w_sc_day * dt_days, dq_o_sc_day * dt_days, dq_g_sc_day * dt_days];
+            let column = unknown_offset(cell_idx, local_var);
+            for eq_side in 0..2 {
+                let row_cell = if eq_side == 0 { id_i } else { id_j };
+                let sign = if eq_side == 0 { 1.0 } else { -1.0 };
+                for component in 0..3 {
+                    let value = sign * derivatives[component];
+                    if value.abs() > 1e-14 {
+                        tri.add_triplet(equation_offset(row_cell, component), column, value);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 fn add_local_flux_jacobian_fd(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -671,6 +969,7 @@ fn add_local_flux_jacobian_fd(
     }
 }
 
+#[cfg(test)]
 fn add_interface_flux_jacobian_fd(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -793,6 +1092,7 @@ fn add_interface_flux(
 #[cfg(test)]
 mod tests {
     use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
+    use crate::pvt::{PvtRow, PvtTable};
     use crate::ReservoirSimulator;
 
     use super::*;
@@ -921,6 +1221,79 @@ mod tests {
         assert!(water_sum.abs() < 1e-9);
         assert!(oil_sum.abs() < 1e-9);
         assert!(gas_sum.abs() < 1e-9);
+    }
+
+    #[test]
+    fn exact_vertical_flux_jacobian_matches_local_fd_oracle() {
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_gravity_enabled(true);
+        sim.set_capillary_params(4.0, 2.0).unwrap();
+        sim.set_gas_oil_capillary_params(3.0, 1.8).unwrap();
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.4,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.03,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 25.0,
+                    bo_m3m3: 1.05,
+                    mu_o_cp: 1.1,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.025,
+                },
+                PvtRow {
+                    p_bar: 300.0,
+                    rs_m3m3: 40.0,
+                    bo_m3m3: 0.95,
+                    mu_o_cp: 0.95,
+                    bg_m3m3: 0.006,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+
+        let mut state = FimState::from_simulator(&sim);
+        state.cells[0].pressure_bar = 260.0;
+        state.cells[0].sw = 0.28;
+        state.cells[0].hydrocarbon_var = 0.08;
+        state.cells[0].regime = HydrocarbonState::Saturated;
+        state.cells[1].pressure_bar = 185.0;
+        state.cells[1].sw = 0.44;
+        state.cells[1].hydrocarbon_var = 0.14;
+        state.cells[1].regime = HydrocarbonState::Saturated;
+
+        let mut exact = TriMatI::<f64, usize>::new((state.n_unknowns(), state.n_unknowns()));
+        add_exact_flux_jacobian(&sim, &state, 1.0, &mut exact);
+        let exact = exact.to_csr();
+
+        let mut fd = TriMatI::<f64, usize>::new((state.n_unknowns(), state.n_unknowns()));
+        add_local_flux_jacobian_fd(&sim, &state, 1.0, &mut fd);
+        let fd = fd.to_csr();
+
+        for row in 0..state.n_cell_unknowns() {
+            for col in 0..state.n_cell_unknowns() {
+                let exact_value = jacobian_value(&exact, row, col);
+                let fd_value = jacobian_value(&fd, row, col);
+                let tolerance = 2e-3 * exact_value.abs().max(fd_value.abs()).max(1.0);
+                assert!(
+                    (exact_value - fd_value).abs() <= tolerance,
+                    "flux jacobian mismatch at ({}, {}): exact={}, fd={}, tol={}",
+                    row,
+                    col,
+                    exact_value,
+                    fd_value,
+                    tolerance
+                );
+            }
+        }
     }
 
     #[test]

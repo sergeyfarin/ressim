@@ -523,7 +523,7 @@ impl ReservoirSimulator {
         }
 
         let bo = self.get_b_o_for_rs(p, rs_sm3_sm3).max(1e-9);
-        let rho_o = self.get_rho_o_for_state(p, rs_sm3_sm3);
+        let rho_o = self.oil_props_for_state(p, rs_sm3_sm3).rho_o_kg_m3;
         let d_bo_d_p = self.get_d_bo_d_p_for_state(p, rs_sm3_sm3, saturated);
         let d_rs_d_p = if saturated {
             self.get_d_rs_sat_d_p_for_state(p)
@@ -540,7 +540,7 @@ impl ReservoirSimulator {
         }
 
         let bo = self.get_b_o_for_rs(p, rs_sm3_sm3).max(1e-9);
-        let rho_o = self.get_rho_o_for_state(p, rs_sm3_sm3);
+        let rho_o = self.oil_props_for_state(p, rs_sm3_sm3).rho_o_kg_m3;
         let d_bo_d_rs = self.get_d_bo_d_rs_for_state(p, rs_sm3_sm3);
         self.rho_g / bo - rho_o * d_bo_d_rs / bo
     }

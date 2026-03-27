@@ -13,6 +13,8 @@ struct BlockJacobiPreconditioner {
     cell_block_inverses: Vec<DMatrix<f64>>,
     scalar_tail_start: usize,
     scalar_inv_diag: Vec<f64>,
+    pressure_restriction: Vec<Vec<f64>>,
+    pressure_prolongation: Vec<Vec<f64>>,
     pressure_rows: Vec<Vec<(usize, f64)>>,
     pressure_l_rows: Vec<Vec<(usize, f64)>>,
     pressure_u_diag: Vec<f64>,
@@ -26,6 +28,8 @@ impl BlockJacobiPreconditioner {
             cell_block_inverses: Vec::new(),
             scalar_tail_start: n,
             scalar_inv_diag: Vec::new(),
+            pressure_restriction: Vec::new(),
+            pressure_prolongation: Vec::new(),
             pressure_rows: Vec::new(),
             pressure_l_rows: Vec::new(),
             pressure_u_diag: Vec::new(),
@@ -84,16 +88,24 @@ impl BlockJacobiPreconditioner {
     }
 
     fn extract_pressure_rhs(&self, residual: &DVector<f64>) -> DVector<f64> {
-        DVector::from_iterator(
-            self.pressure_u_diag.len(),
-            (0..self.pressure_u_diag.len()).map(|cell_idx| residual[cell_idx * self.cell_block_size]),
-        )
+        let mut rhs = DVector::zeros(self.pressure_u_diag.len());
+        for cell_idx in 0..self.pressure_u_diag.len() {
+            let start = cell_idx * self.cell_block_size;
+            let mut value = 0.0;
+            for local in 0..self.cell_block_size {
+                value += self.pressure_restriction[cell_idx][local] * residual[start + local];
+            }
+            rhs[cell_idx] = value;
+        }
+        rhs
     }
 
     fn add_pressure_correction(&self, result: &mut DVector<f64>, pressure_correction: &DVector<f64>) {
         for (cell_idx, correction) in pressure_correction.iter().enumerate() {
-            let pressure_idx = cell_idx * self.cell_block_size;
-            result[pressure_idx] += correction;
+            let start = cell_idx * self.cell_block_size;
+            for local in 0..self.cell_block_size {
+                result[start + local] += self.pressure_prolongation[cell_idx][local] * correction;
+            }
         }
     }
 
@@ -239,6 +251,8 @@ fn build_block_jacobi_preconditioner(
             cell_block_inverses: Vec::new(),
             scalar_tail_start: 0,
             scalar_inv_diag,
+            pressure_restriction: Vec::new(),
+            pressure_prolongation: Vec::new(),
             pressure_rows: Vec::new(),
             pressure_l_rows: Vec::new(),
             pressure_u_diag: Vec::new(),
@@ -247,7 +261,6 @@ fn build_block_jacobi_preconditioner(
     };
 
     let mut cell_block_inverses = Vec::with_capacity(layout.cell_block_count);
-    let mut pressure_rows = Vec::with_capacity(layout.cell_block_count);
     for block_idx in 0..layout.cell_block_count {
         let start = block_idx * layout.cell_block_size;
         let mut block = DMatrix::zeros(layout.cell_block_size, layout.cell_block_size);
@@ -270,23 +283,52 @@ fn build_block_jacobi_preconditioner(
             fallback
         });
         cell_block_inverses.push(inverse);
+    }
 
-        let pressure_row_index = start;
-        let row_entries = matrix
-            .outer_view(pressure_row_index)
-            .map(|view| {
-                view.iter()
-                    .filter_map(|(col_idx, value)| {
-                        if col_idx < layout.scalar_tail_start && col_idx % layout.cell_block_size == 0 {
-                            Some((col_idx / layout.cell_block_size, *value))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        pressure_rows.push(row_entries);
+    let pressure_restriction = cell_block_inverses
+        .iter()
+        .map(|inverse| (0..layout.cell_block_size).map(|local| inverse[(0, local)]).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let pressure_prolongation = cell_block_inverses
+        .iter()
+        .map(|inverse| (0..layout.cell_block_size).map(|local| inverse[(local, 0)]).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+    let mut pressure_rows = Vec::with_capacity(layout.cell_block_count);
+    for block_idx in 0..layout.cell_block_count {
+        let start = block_idx * layout.cell_block_size;
+        let restriction = &pressure_restriction[block_idx];
+        let mut coefficients = std::collections::BTreeMap::<usize, f64>::new();
+
+        for local_row in 0..layout.cell_block_size {
+            let row_idx = start + local_row;
+            let row_weight = restriction[local_row];
+            if row_weight.abs() <= f64::EPSILON {
+                continue;
+            }
+
+            if let Some(view) = matrix.outer_view(row_idx) {
+                for (col_idx, value) in view.iter() {
+                    if col_idx >= layout.scalar_tail_start {
+                        continue;
+                    }
+                    let neighbor_block = col_idx / layout.cell_block_size;
+                    let neighbor_local = col_idx % layout.cell_block_size;
+                    let prolongation = pressure_prolongation[neighbor_block][neighbor_local];
+                    if prolongation.abs() <= f64::EPSILON {
+                        continue;
+                    }
+                    *coefficients.entry(neighbor_block).or_insert(0.0) += row_weight * value * prolongation;
+                }
+            }
+        }
+
+        pressure_rows.push(
+            coefficients
+                .into_iter()
+                .filter(|(_, value)| value.abs() > 1e-14)
+                .collect::<Vec<_>>(),
+        );
     }
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) = factorize_pressure_ilu0(&pressure_rows);
 
@@ -306,6 +348,8 @@ fn build_block_jacobi_preconditioner(
         cell_block_inverses,
         scalar_tail_start: layout.scalar_tail_start,
         scalar_inv_diag,
+        pressure_restriction,
+        pressure_prolongation,
         pressure_rows,
         pressure_l_rows,
         pressure_u_diag,
@@ -471,5 +515,40 @@ pub(super) fn solve(
         final_residual_norm: final_residual,
         used_fallback,
         backend_used,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::DVector;
+    use sprs::TriMatI;
+
+    use super::*;
+
+    #[test]
+    fn pressure_projection_updates_entire_local_block() {
+        let mut tri = TriMatI::<f64, usize>::new((3, 3));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(1, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 1.0);
+        let matrix = tri.to_csr();
+
+        let preconditioner = build_block_jacobi_preconditioner(
+            &matrix,
+            Some(FimLinearBlockLayout {
+                cell_block_count: 1,
+                cell_block_size: 3,
+                scalar_tail_start: 3,
+            }),
+        );
+
+        let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0]);
+        let applied = preconditioner.apply(&matrix, &rhs, true);
+
+        assert!(applied[0].abs() > 1e-12);
+        assert!(applied[1].abs() > 1e-12);
+        assert!(applied[2].abs() < 1e-12);
     }
 }
