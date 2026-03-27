@@ -180,6 +180,30 @@ impl PvtTable {
         (bo_hi - bo_lo) / (2.0 * dp)
     }
 
+    pub(crate) fn d_bo_d_rs(&self, p: f64, rs: f64) -> f64 {
+        let drs = 1.0;
+        let rs_lo = (rs - drs).max(0.0);
+        let (bo_lo, _) = self.interpolate_oil(p, rs_lo);
+        let (bo_hi, _) = self.interpolate_oil(p, rs + drs);
+        (bo_hi - bo_lo) / (2.0 * drs)
+    }
+
+    pub(crate) fn d_bo_sat_d_p(&self, p: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = self.interpolate(p_lo);
+        let row_hi = self.interpolate(p + dp);
+        (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp)
+    }
+
+    pub(crate) fn d_bg_d_p(&self, p: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = self.interpolate(p_lo);
+        let row_hi = self.interpolate(p + dp);
+        (row_hi.bg_m3m3 - row_lo.bg_m3m3) / (2.0 * dp)
+    }
+
     #[allow(dead_code)]
     pub(crate) fn d_rs_sat_d_p(&self, p: f64) -> f64 {
         let dp = 1.0;
@@ -396,6 +420,44 @@ impl ReservoirSimulator {
         } else {
             1.0
         }
+    }
+
+    pub(crate) fn get_d_bo_d_p_for_state(&self, p: f64, rs_sm3_sm3: f64, saturated: bool) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                if saturated {
+                    return table.d_bo_sat_d_p(p);
+                }
+                return table.d_bo_d_p(p, rs_sm3_sm3);
+            }
+            return table.d_bo_sat_d_p(p);
+        }
+        -self.pvt.c_o * self.b_o
+    }
+
+    pub(crate) fn get_d_bo_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                return table.d_bo_d_rs(p, rs_sm3_sm3);
+            }
+        }
+        0.0
+    }
+
+    pub(crate) fn get_d_bg_d_p_for_state(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            return table.d_bg_d_p(p);
+        }
+        -self.c_g * self.get_b_g(p)
+    }
+
+    pub(crate) fn get_d_rs_sat_d_p_for_state(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                return table.d_rs_sat_d_p(p);
+            }
+        }
+        0.0
     }
 
     #[allow(dead_code)]

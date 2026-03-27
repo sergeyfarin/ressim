@@ -13,6 +13,8 @@ struct BlockJacobiPreconditioner {
     cell_block_inverses: Vec<DMatrix<f64>>,
     scalar_tail_start: usize,
     scalar_inv_diag: Vec<f64>,
+    pressure_diag: Vec<f64>,
+    pressure_rows: Vec<Vec<(usize, f64)>>,
 }
 
 impl BlockJacobiPreconditioner {
@@ -22,10 +24,12 @@ impl BlockJacobiPreconditioner {
             cell_block_inverses: Vec::new(),
             scalar_tail_start: n,
             scalar_inv_diag: Vec::new(),
+            pressure_diag: Vec::new(),
+            pressure_rows: Vec::new(),
         }
     }
 
-    fn apply(&self, vector: &DVector<f64>) -> DVector<f64> {
+    fn apply_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
         let mut result = DVector::zeros(vector.len());
 
         for (block_idx, inverse) in self.cell_block_inverses.iter().enumerate() {
@@ -49,6 +53,57 @@ impl BlockJacobiPreconditioner {
         }
 
         result
+    }
+
+    fn apply(
+        &self,
+        matrix: &CsMat<f64>,
+        vector: &DVector<f64>,
+        use_pressure_correction: bool,
+    ) -> DVector<f64> {
+        let mut result = self.apply_stage_one(vector);
+
+        if use_pressure_correction && !self.pressure_diag.is_empty() && self.cell_block_size > 0 {
+            let stage_one_residual = vector - &cs_mat_mul_vec(matrix, &result);
+            let pressure_rhs = DVector::from_iterator(
+                self.pressure_diag.len(),
+                (0..self.pressure_diag.len())
+                    .map(|cell_idx| stage_one_residual[cell_idx * self.cell_block_size]),
+            );
+            let pressure_correction = self.solve_pressure_correction(&pressure_rhs, 3);
+            for (cell_idx, correction) in pressure_correction.iter().enumerate() {
+                let pressure_idx = cell_idx * self.cell_block_size;
+                result[pressure_idx] += correction;
+            }
+        }
+
+        result
+    }
+
+    fn solve_pressure_correction(&self, rhs: &DVector<f64>, iterations: usize) -> DVector<f64> {
+        let mut solution = DVector::zeros(rhs.len());
+        let mut next = DVector::zeros(rhs.len());
+
+        for _ in 0..iterations {
+            for row_idx in 0..rhs.len() {
+                let diag = self.pressure_diag[row_idx];
+                if diag.abs() <= f64::EPSILON {
+                    next[row_idx] = rhs[row_idx];
+                    continue;
+                }
+
+                let mut sum = rhs[row_idx];
+                for &(col_idx, value) in &self.pressure_rows[row_idx] {
+                    if col_idx != row_idx {
+                        sum -= value * solution[col_idx];
+                    }
+                }
+                next[row_idx] = sum / diag;
+            }
+            std::mem::swap(&mut solution, &mut next);
+        }
+
+        solution
     }
 }
 
@@ -79,10 +134,14 @@ fn build_block_jacobi_preconditioner(
             cell_block_inverses: Vec::new(),
             scalar_tail_start: 0,
             scalar_inv_diag,
+            pressure_diag: Vec::new(),
+            pressure_rows: Vec::new(),
         };
     };
 
     let mut cell_block_inverses = Vec::with_capacity(layout.cell_block_count);
+    let mut pressure_diag = Vec::with_capacity(layout.cell_block_count);
+    let mut pressure_rows = Vec::with_capacity(layout.cell_block_count);
     for block_idx in 0..layout.cell_block_count {
         let start = block_idx * layout.cell_block_size;
         let mut block = DMatrix::zeros(layout.cell_block_size, layout.cell_block_size);
@@ -105,6 +164,24 @@ fn build_block_jacobi_preconditioner(
             fallback
         });
         cell_block_inverses.push(inverse);
+        pressure_diag.push(block[(0, 0)]);
+
+        let pressure_row_index = start;
+        let row_entries = matrix
+            .outer_view(pressure_row_index)
+            .map(|view| {
+                view.iter()
+                    .filter_map(|(col_idx, value)| {
+                        if col_idx < layout.scalar_tail_start && col_idx % layout.cell_block_size == 0 {
+                            Some((col_idx / layout.cell_block_size, *value))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        pressure_rows.push(row_entries);
     }
 
     let scalar_inv_diag = (layout.scalar_tail_start..matrix.rows())
@@ -123,6 +200,8 @@ fn build_block_jacobi_preconditioner(
         cell_block_inverses,
         scalar_tail_start: layout.scalar_tail_start,
         scalar_inv_diag,
+        pressure_diag,
+        pressure_rows,
     }
 }
 
@@ -170,6 +249,7 @@ pub(super) fn solve(
     let tolerance = options.absolute_tolerance
         + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
     let preconditioner = build_block_jacobi_preconditioner(jacobian, layout);
+    let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
     let mut iterations = 0usize;
 
@@ -187,7 +267,8 @@ pub(super) fn solve(
             };
         }
 
-        let preconditioned_residual = preconditioner.apply(&residual);
+        let preconditioned_residual =
+            preconditioner.apply(jacobian, &residual, use_pressure_correction);
         let beta = preconditioned_residual.norm();
         if beta <= tolerance {
             return FimLinearSolveReport {
@@ -208,7 +289,11 @@ pub(super) fn solve(
         let mut inner_steps = 0usize;
 
         for inner in 0..restart {
-            let w = preconditioner.apply(&cs_mat_mul_vec(jacobian, &basis[inner]));
+            let w = preconditioner.apply(
+                jacobian,
+                &cs_mat_mul_vec(jacobian, &basis[inner]),
+                use_pressure_correction,
+            );
             let mut orthogonal = w;
             for prev in 0..=inner {
                 let coeff = basis[prev].dot(&orthogonal);

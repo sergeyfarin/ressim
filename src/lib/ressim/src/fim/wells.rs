@@ -356,6 +356,110 @@ fn perforation_surface_rate_sc_day(
     Some(q_m3_day.max(0.0) * producer.oil_fraction / producer.oil_fvf.max(1e-9))
 }
 
+pub(crate) fn perforation_component_rate_derivatives_sc_day(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+) -> [f64; 3] {
+    let perforation = &topology.perforations[perf_idx];
+    let well = perforation_well(sim, perforation);
+    let id = perforation.cell_index;
+
+    if well.injector {
+        return match sim.injected_fluid {
+            InjectedFluid::Water => [1.0 / sim.b_w.max(1e-9), 0.0, 0.0],
+            InjectedFluid::Gas => [0.0, 0.0, 1.0 / state.derive_cell(sim, id).bg.max(1e-9)],
+        };
+    }
+
+    let producer = producer_control_state(sim, state, perforation);
+    [
+        producer.water_fraction / sim.b_w.max(1e-9),
+        producer.oil_fraction / producer.oil_fvf.max(1e-9),
+        producer.gas_fraction / producer.gas_fvf.max(1e-9)
+            + producer.oil_fraction / producer.oil_fvf.max(1e-9) * producer.rs_sm3_sm3,
+    ]
+}
+
+pub(crate) fn perforation_target_rate_derivative(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+) -> f64 {
+    let perforation = &topology.perforations[perf_idx];
+    let control = physical_well_control(sim, topology, perforation.physical_well_index);
+    let well = perforation_well(sim, perforation);
+    let id = perforation.cell_index;
+
+    if !control.enabled {
+        return 0.0;
+    }
+
+    if well.injector {
+        if control.uses_surface_target {
+            return match sim.injected_fluid {
+                InjectedFluid::Water => -1.0 / sim.b_w.max(1e-9),
+                InjectedFluid::Gas => -1.0 / state.derive_cell(sim, id).bg.max(1e-9),
+            };
+        }
+        return -1.0;
+    }
+
+    if control.uses_surface_target {
+        let producer = producer_control_state(sim, state, perforation);
+        return producer.oil_fraction / producer.oil_fvf.max(1e-9);
+    }
+
+    1.0
+}
+
+pub(crate) fn perforation_connection_bhp_derivative(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+    bhp_bar: f64,
+) -> Option<f64> {
+    let perforation = &topology.perforations[perf_idx];
+    let well = perforation_well(sim, perforation);
+    let id = perforation.cell_index;
+    let cell = state.cell(id);
+    let derived = state.derive_cell(sim, id);
+    let mobilities =
+        sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
+    let wi_geom = geometric_well_index(sim, perforation)?;
+
+    let connection_mobility = if well.injector {
+        match sim.injected_fluid {
+            InjectedFluid::Water => mobilities.water,
+            InjectedFluid::Gas => mobilities.gas,
+        }
+    } else {
+        mobilities.water + mobilities.oil + mobilities.gas
+    }
+    .max(0.0);
+
+    let active_derivative = -wi_geom * connection_mobility;
+    let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
+    if !raw_rate.is_finite() {
+        return None;
+    }
+
+    Some(if well.injector {
+        if raw_rate < 0.0 {
+            active_derivative
+        } else {
+            0.0
+        }
+    } else if raw_rate > 0.0 {
+        active_derivative
+    } else {
+        0.0
+    })
+}
+
 fn total_rate_for_well_bhp(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -489,6 +593,15 @@ pub(crate) fn solve_well_bhp_from_target(
 
 fn fischer_burmeister(a: f64, b: f64) -> f64 {
     (a * a + b * b).sqrt() - a - b
+}
+
+pub(crate) fn fischer_burmeister_gradient(a: f64, b: f64) -> (f64, f64) {
+    let norm = (a * a + b * b).sqrt();
+    if norm <= 1e-12 {
+        (-1.0, -1.0)
+    } else {
+        (a / norm - 1.0, b / norm - 1.0)
+    }
 }
 
 pub(crate) fn well_control_slacks(
