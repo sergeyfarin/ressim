@@ -12,7 +12,6 @@ export class ReservoirSimulator {
         wasm.__wbg_reservoirsimulator_free(ptr, 0);
     }
     /**
-     * Cumulative water material balance error [m³]
      * @returns {number}
      */
     get cumulative_mb_error_m3() {
@@ -20,8 +19,6 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * Cumulative gas material balance error [Sm³] for total gas inventory
-     * (free gas + dissolved gas) in three-phase mode.
      * @returns {number}
      */
     get cumulative_mb_gas_error_m3() {
@@ -29,20 +26,6 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * Add a well to the simulator
-     * Parameters in oil-field units:
-     * - i, j, k: grid cell indices (must be within grid bounds)
-     * - bhp: bottom-hole pressure [bar] (must be finite, typical: -100 to 2000 bar)
-     * - well_radius: wellbore radius [m]
-     * - skin: skin factor [dimensionless]
-     * - injector: true for injector (injects fluid), false for producer (extracts fluid)
-     *
-     * Returns Ok(()) on success, or Err(message) if parameters are invalid.
-     * Invalid parameters include:
-     * - Out-of-bounds grid indices
-     * - NaN or Inf values in bhp or pi
-     * - Negative productivity index
-     * - BHP outside reasonable range
      * @param {number} i
      * @param {number} j
      * @param {number} k
@@ -65,7 +48,6 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * Get last solver warning message (empty string if no warning)
      * @returns {string}
      */
     getLastSolverWarning() {
@@ -97,7 +79,6 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * Get dissolved gas ratio array [m3/m3]
      * @returns {Float64Array}
      */
     getRs() {
@@ -107,7 +88,6 @@ export class ReservoirSimulator {
         return v1;
     }
     /**
-     * Get gas saturation array (zeros when running in 2-phase mode)
      * @returns {Float64Array}
      */
     getSatGas() {
@@ -149,7 +129,6 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
-     * Load the entire state to continue simulation without re-computing from step 0
      * @param {number} time_days
      * @param {any} grid_state
      * @param {any} well_state
@@ -198,8 +177,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set cell dimensions with per-layer thickness in the z-direction.
-     * `dz_per_layer` must have length equal to nz.
      * @param {number} dx
      * @param {number} dy
      * @param {Float64Array} dz_per_layer
@@ -243,7 +220,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set gas fluid properties for three-phase mode
      * @param {number} mu_g
      * @param {number} c_g
      * @param {number} rho_g
@@ -255,7 +231,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set gas-oil capillary pressure parameters (Brooks-Corey form)
      * @param {number} p_entry
      * @param {number} lambda
      */
@@ -284,7 +259,6 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setInitialGasSaturation(this.__wbg_ptr, sat_gas);
     }
     /**
-     * Set initial gas saturation per z-layer (three-phase mode)
      * @param {Float64Array} sg
      */
     setInitialGasSaturationPerLayer(sg) {
@@ -296,31 +270,24 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set initial pressure for all grid cells
      * @param {number} pressure
      */
     setInitialPressure(pressure) {
         wasm.reservoirsimulator_setInitialPressure(this.__wbg_ptr, pressure);
     }
     /**
-     * Override the dissolved-gas ratio for all cells with a uniform value.
-     * Must be called **after** `setPvtTable` so the Rs array already exists.
-     * This is used when the reservoir starts undersaturated (Rs < Rs_sat at initial P),
-     * e.g. SPE1 Case 1 whose RSVD table specifies a constant Rs below saturation.
      * @param {number} rs
      */
     setInitialRs(rs) {
         wasm.reservoirsimulator_setInitialRs(this.__wbg_ptr, rs);
     }
     /**
-     * Set initial water saturation for all grid cells
      * @param {number} sat_water
      */
     setInitialSaturation(sat_water) {
         wasm.reservoirsimulator_setInitialSaturation(this.__wbg_ptr, sat_water);
     }
     /**
-     * Set initial water saturation per z-layer
      * @param {Float64Array} sw
      */
     setInitialSaturationPerLayer(sw) {
@@ -332,7 +299,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set injected fluid type for three-phase mode: "water" or "gas"
      * @param {string} fluid
      */
     setInjectedFluid(fluid) {
@@ -350,7 +316,6 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setInjectorEnabled(this.__wbg_ptr, enabled);
     }
     /**
-     * Set permeability per layer
      * @param {Float64Array} perms_x
      * @param {Float64Array} perms_y
      * @param {Float64Array} perms_z
@@ -368,7 +333,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set permeability with random distribution
      * @param {number} min_perm
      * @param {number} max_perm
      */
@@ -379,7 +343,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set permeability with deterministic random distribution using a fixed seed
      * @param {number} min_perm
      * @param {number} max_perm
      * @param {bigint} seed
@@ -391,7 +354,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set initial gas saturation for all grid cells (three-phase mode)
      * @param {any} table_js
      */
     setPvtTable(table_js) {
@@ -407,7 +369,6 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setRateControlledWells(this.__wbg_ptr, enabled);
     }
     /**
-     * Set relative permeability properties
      * @param {number} s_wc
      * @param {number} s_or
      * @param {number} n_w
@@ -434,7 +395,6 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Set stability parameters for the simulation
      * @param {number} max_sat_change_per_step
      * @param {number} max_pressure_change_per_step
      * @param {number} max_well_rate_change_fraction
@@ -463,17 +423,12 @@ export class ReservoirSimulator {
         }
     }
     /**
-     * Enable or disable the three-phase simulation mode
      * @param {boolean} enabled
      */
     setThreePhaseModeEnabled(enabled) {
         wasm.reservoirsimulator_setThreePhaseModeEnabled(this.__wbg_ptr, enabled);
     }
     /**
-     * Set three-phase relative permeability parameters (Stone II model).
-     * `s_org` is the residual oil saturation in a gas flood (typically ≥ `s_or`).
-     * It is distinct from `s_gr` (trapped residual gas) and is used as the terminal
-     * oil saturation in `k_ro_gas` and gas-oil capillary pressure.
      * @param {number} s_wc
      * @param {number} s_or
      * @param {number} s_gc
@@ -523,22 +478,18 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setWellControlModes(this.__wbg_ptr, ptr0, len0, ptr1, len1);
     }
     /**
-     * Advance simulator by target timestep [days]
      * @param {number} target_dt_days
      */
     step(target_dt_days) {
         wasm.reservoirsimulator_step(this.__wbg_ptr, target_dt_days);
     }
     /**
-     * Cumulative water material balance error [m³]
      * @param {number} arg0
      */
     set cumulative_mb_error_m3(arg0) {
         wasm.__wbg_set_reservoirsimulator_cumulative_mb_error_m3(this.__wbg_ptr, arg0);
     }
     /**
-     * Cumulative gas material balance error [Sm³] for total gas inventory
-     * (free gas + dissolved gas) in three-phase mode.
      * @param {number} arg0
      */
     set cumulative_mb_gas_error_m3(arg0) {
