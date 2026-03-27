@@ -75,11 +75,11 @@ export const sweep_combined: Scenario = {
         capillaryLambda: 2,
         // Grid: 21×21×5 five-spot + 5 layers, 420 m × 420 m × 20 m
         // Base: moderate heterogeneity (V_DP ≈ 0.5) + moderate mobility (M ≈ 2)
-        nx: 42,
-        ny: 42,
+        nx: 21,
+        ny: 21,
         nz: 5,
-        cellDx: 10,
-        cellDy: 10,
+        cellDx: 20,
+        cellDy: 20,
         cellDz: 4,
         permMode: 'perLayer',
         uniformPermX: 100,
@@ -101,8 +101,8 @@ export const sweep_combined: Scenario = {
         targetProducerRate: 0,
         injectorI: 0,
         injectorJ: 0,
-        producerI: 41,
-        producerJ: 41,
+        producerI: 20,
+        producerJ: 20,
         well_radius: 0.1,
         well_skin: 0,
         // Numerics

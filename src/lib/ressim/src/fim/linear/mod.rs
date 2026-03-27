@@ -60,8 +60,8 @@ pub(crate) fn solve_linearized_system(
         FimLinearSolverKind::GmresIlu0 => {
             gmres_block_jacobi::solve(jacobian, rhs, options, layout, false)
         }
-        // CPR is still pending, but the default FIM path now uses the iterative
-        // GMRES + block-Jacobi backend instead of falling straight back to sparse LU.
+        // CPR is still incomplete, but the default FIM path now uses a pressure-first
+        // two-stage iterative backend instead of falling straight back to sparse LU.
         FimLinearSolverKind::FgmresCpr => {
             gmres_block_jacobi::solve(jacobian, rhs, options, layout, true)
         }
