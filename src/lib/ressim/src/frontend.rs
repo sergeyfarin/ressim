@@ -89,7 +89,7 @@ impl ReservoirSimulator {
             pvt_table: None,
             rs,
             gas_redissolution_enabled: true,
-            fim_enabled: false,
+            fim_enabled: true,
         }
     }
 

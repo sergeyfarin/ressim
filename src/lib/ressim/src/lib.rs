@@ -232,6 +232,7 @@ mod tests {
     #[test]
     fn adaptive_timestep_produces_multiple_substeps_for_strong_flow() {
         let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+        sim.set_fim_enabled(false);
         sim.set_permeability_random(100_000.0, 100_000.0).unwrap();
         sim.set_stability_params(0.01, 75.0, 0.75);
         sim.add_well(0, 0, 0, 700.0, 0.1, 0.0, true).unwrap();
@@ -430,6 +431,25 @@ mod tests {
     }
 
     #[test]
+    fn default_step_path_reports_rate_controlled_well_state() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_surface_rates(0.0, 50.0).unwrap();
+        sim.set_well_bhp_limits(50.0, 500.0).unwrap();
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(0.25);
+
+        assert_eq!(sim.rate_history.len(), 1);
+        let point = sim.rate_history.last().unwrap();
+        assert!(point.total_production_oil.is_finite());
+        assert!(point.total_injection.is_finite());
+        assert!(point.producer_bhp_limited_fraction.is_finite());
+        assert!(point.injector_bhp_limited_fraction.is_finite());
+    }
+
+    #[test]
     fn api_contract_rejects_invalid_permeability_inputs() {
         let mut sim = ReservoirSimulator::new(2, 2, 2, 0.2);
         err_contains(
@@ -455,6 +475,7 @@ mod tests {
         // Setup: high permeability + large dt forces stable_dt_factor < 1.0
         // triggering the re-solve path in step_internal
         let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);
+        sim.set_fim_enabled(false);
         sim.set_permeability_random_seeded(100_000.0, 100_000.0, 42)
             .unwrap();
         sim.set_stability_params(0.02, 50.0, 0.5);
@@ -876,6 +897,7 @@ mod tests {
     #[test]
     fn three_phase_gas_injection_increases_avg_gas_saturation() {
         let mut sim = make_3phase_gas_injection_sim(5);
+        sim.set_fim_enabled(false);
 
         let n = sim.nx * sim.ny * sim.nz;
         let avg_sg_initial: f64 = sim.sat_gas.iter().sum::<f64>() / n as f64;
@@ -896,6 +918,7 @@ mod tests {
     #[test]
     fn three_phase_rate_history_records_gas_production() {
         let mut sim = make_3phase_gas_injection_sim(5);
+        sim.set_fim_enabled(false);
 
         for _ in 0..20 {
             sim.step(2.0);
@@ -925,6 +948,7 @@ mod tests {
     #[test]
     fn three_phase_gas_injection_keeps_gas_balance_bounded() {
         let mut sim = make_3phase_gas_injection_sim(8);
+        sim.set_fim_enabled(false);
 
         for _ in 0..40 {
             sim.step(2.0);

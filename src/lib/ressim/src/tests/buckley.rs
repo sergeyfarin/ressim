@@ -142,6 +142,7 @@ fn buckley_reference_breakthrough_pv(case: &BuckleyCase) -> f64 {
 
 fn run_buckley_case(case: &BuckleyCase) -> BuckleyMetrics {
     let mut sim = ReservoirSimulator::new(case.nx, 1, 1, 0.2);
+    sim.set_fim_enabled(false);
     sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o, 1.0, 1.0)
         .unwrap();
     sim.set_initial_saturation(case.s_wc);
