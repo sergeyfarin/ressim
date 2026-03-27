@@ -208,6 +208,12 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @param {boolean} enabled
+     */
+    setFimEnabled(enabled) {
+        wasm.reservoirsimulator_setFimEnabled(this.__wbg_ptr, enabled);
+    }
+    /**
      * @param {number} c_o
      * @param {number} c_w
      */

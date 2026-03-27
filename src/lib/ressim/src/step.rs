@@ -1,9 +1,17 @@
 use std::f64;
 
+use crate::fim::newton::{run_fim_timestep, FimNewtonOptions};
+use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
+use crate::well_control::ResolvedWellControl;
 
 impl ReservoirSimulator {
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
+        if self.fim_enabled {
+            self.step_internal_fim(target_dt_days);
+            return;
+        }
+
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
         const MAX_PRESSURE_RETRIES_PER_SUBSTEP: u32 = 32;
@@ -112,6 +120,116 @@ impl ReservoirSimulator {
                 target_dt_days
             );
         }
+    }
+
+    fn step_internal_fim(&mut self, target_dt_days: f64) {
+        let mut time_stepped = 0.0;
+        const MAX_SUBSTEPS: u32 = 100_000;
+        const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 32;
+        let mut substeps = 0;
+        self.last_solver_warning = String::new();
+
+        while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
+            let remaining_dt = target_dt_days - time_stepped;
+            let mut trial_dt = remaining_dt;
+            let mut retry_count = 0;
+
+            loop {
+                let previous_state = FimState::from_simulator(self);
+                let report = run_fim_timestep(
+                    self,
+                    &previous_state,
+                    &previous_state,
+                    trial_dt,
+                    &FimNewtonOptions::default(),
+                );
+
+                if report.converged {
+                    let water_before = self.total_water_inventory_m3();
+                    let gas_before = self.total_gas_inventory_sc();
+                    report.accepted_state.write_back_to_simulator(self);
+                    self.update_dynamic_well_productivity_indices();
+                    let water_after = self.total_water_inventory_m3();
+                    let gas_after = self.total_gas_inventory_sc();
+                    let controls = self.resolve_current_well_controls();
+                    self.record_step_report(
+                        &controls,
+                        trial_dt,
+                        water_after - water_before,
+                        gas_after - gas_before,
+                    );
+                    self.time_days += trial_dt;
+                    time_stepped += trial_dt;
+                    substeps += 1;
+                    break;
+                }
+
+                let retry_factor = report.cutback_factor.min(0.5);
+                let next_dt = trial_dt * retry_factor * 0.9;
+                retry_count += 1;
+
+                if !next_dt.is_finite() || next_dt <= 1e-12 {
+                    self.last_solver_warning = format!(
+                        "FIM Newton step collapsed timestep at t={:.6} days after {} iterations",
+                        self.time_days + time_stepped,
+                        report.newton_iterations
+                    );
+                    return;
+                }
+
+                if retry_count >= MAX_NEWTON_RETRIES_PER_SUBSTEP {
+                    self.last_solver_warning = format!(
+                        "FIM Newton step exceeded retry budget at t={:.6} days after {} retries",
+                        self.time_days + time_stepped,
+                        retry_count
+                    );
+                    return;
+                }
+
+                trial_dt = next_dt;
+            }
+        }
+
+        if substeps == MAX_SUBSTEPS && time_stepped < target_dt_days {
+            self.last_solver_warning = format!(
+                "FIM adaptive timestep hit MAX_SUBSTEPS before completing requested dt (advanced {:.6} of {:.6} days)",
+                time_stepped,
+                target_dt_days
+            );
+        }
+    }
+
+    fn resolve_current_well_controls(&self) -> Vec<Option<ResolvedWellControl>> {
+        self.wells
+            .iter()
+            .map(|well| self.resolve_well_control_for_pressures(well, &self.pressure))
+            .collect()
+    }
+
+    fn total_water_inventory_m3(&self) -> f64 {
+        (0..self.nx * self.ny * self.nz)
+            .map(|idx| self.sat_water[idx] * self.pore_volume_m3(idx))
+            .sum()
+    }
+
+    fn total_gas_inventory_sc(&self) -> f64 {
+        if !self.three_phase_mode {
+            return 0.0;
+        }
+
+        (0..self.nx * self.ny * self.nz)
+            .map(|idx| {
+                let pore_volume_m3 = self.pore_volume_m3(idx).max(1e-9);
+                let free_gas_sc = self.sat_gas[idx] * pore_volume_m3 / self.get_b_g(self.pressure[idx]).max(1e-9);
+                let dissolved_gas_sc = if self.pvt_table.is_some() {
+                    self.sat_oil[idx] * pore_volume_m3 * self.rs[idx]
+                        / self.get_b_o_cell(idx, self.pressure[idx]).max(1e-9)
+                } else {
+                    0.0
+                };
+                free_gas_sc + dissolved_gas_sc
+            })
+            .sum()
     }
 
     fn solve_rs_for_dissolved_gas(
@@ -289,5 +407,27 @@ impl ReservoirSimulator {
         pressures
             .iter()
             .all(|p| p.is_finite() && *p >= lower && *p <= upper)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ReservoirSimulator;
+
+    #[test]
+    fn fim_enabled_step_advances_time_and_records_history_for_closed_system() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+
+        let pressure_before = sim.pressure[0];
+        let sw_before = sim.sat_water[0];
+
+        sim.step_internal(1.0);
+
+        assert!((sim.time_days - 1.0).abs() < 1e-12);
+        assert_eq!(sim.rate_history.len(), 1);
+        assert!((sim.pressure[0] - pressure_before).abs() < 1e-12);
+        assert!((sim.sat_water[0] - sw_before).abs() < 1e-12);
+        assert!(sim.last_solver_warning.is_empty());
     }
 }

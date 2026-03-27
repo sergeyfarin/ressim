@@ -132,6 +132,7 @@ pub struct ReservoirSimulator {
     pub(crate) pvt_table: Option<pvt::PvtTable>,
     pub(crate) rs: Vec<f64>,
     pub(crate) gas_redissolution_enabled: bool,
+    pub(crate) fim_enabled: bool,
 }
 
 #[cfg(test)]
@@ -191,6 +192,41 @@ mod tests {
 
         let water_after = total_water_volume(&sim);
         assert!((water_after - water_before).abs() < 1e-6);
+    }
+
+    #[test]
+    fn water_mass_balance_sanity_without_wells_on_fim_branch() {
+        let mut sim = ReservoirSimulator::new(4, 4, 1, 0.2);
+        sim.set_fim_enabled(true);
+        let water_before = total_water_volume(&sim);
+
+        sim.step(1.0);
+
+        let water_after = total_water_volume(&sim);
+        assert!((water_after - water_before).abs() < 1e-6);
+        assert!((sim.time_days - 1.0).abs() < 1e-12);
+        assert_eq!(sim.rate_history.len(), 1);
+    }
+
+    #[test]
+    fn fim_branch_advances_simple_well_case_with_finite_state() {
+        let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(2, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(0.25);
+
+        assert!((sim.time_days - 0.25).abs() < 1e-12);
+        assert_eq!(sim.rate_history.len(), 1);
+        assert!(sim.last_solver_warning.is_empty());
+
+        for i in 0..sim.nx * sim.ny * sim.nz {
+            assert!(sim.pressure[i].is_finite());
+            assert!(sim.sat_water[i].is_finite());
+            assert!(sim.sat_oil[i].is_finite());
+            assert!(sim.sat_gas[i].is_finite());
+        }
     }
 
     #[test]

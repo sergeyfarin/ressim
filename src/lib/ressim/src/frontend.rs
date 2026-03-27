@@ -89,6 +89,7 @@ impl ReservoirSimulator {
             pvt_table: None,
             rs,
             gas_redissolution_enabled: true,
+            fim_enabled: false,
         }
     }
 
@@ -257,6 +258,11 @@ impl ReservoirSimulator {
 
     pub fn step(&mut self, target_dt_days: f64) {
         self.step_internal(target_dt_days);
+    }
+
+    #[wasm_bindgen(js_name = setFimEnabled)]
+    pub fn set_fim_enabled(&mut self, enabled: bool) {
+        self.fim_enabled = enabled;
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]

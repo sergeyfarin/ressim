@@ -26,6 +26,7 @@ export class ReservoirSimulator {
     setCapillaryParams(p_entry: number, lambda: number): void;
     setCellDimensions(dx: number, dy: number, dz: number): void;
     setCellDimensionsPerLayer(dx: number, dy: number, dz_per_layer: Float64Array): void;
+    setFimEnabled(enabled: boolean): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
     setFluidProperties(mu_o: number, mu_w: number): void;
@@ -91,6 +92,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setCapillaryParams: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number, c: number, d: number, e: number) => [number, number];
+    readonly reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];
