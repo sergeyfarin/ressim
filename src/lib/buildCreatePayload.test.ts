@@ -121,4 +121,56 @@ describe('buildCreatePayloadFromState', () => {
 
     expect(payload.gasRedissolutionEnabled).toBe(false)
   })
+
+  it('synthesizes explicit well definitions with stable ids from legacy fields', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 10,
+      ny: 10,
+      nz: 3,
+      producerI: 9,
+      producerJ: 9,
+      producerKLayers: [2],
+      injectorI: 0,
+      injectorJ: 0,
+      injectorKLayers: [0],
+      injectorControlMode: 'rate',
+      producerControlMode: 'rate',
+      targetInjectorSurfaceRate: 200,
+      targetProducerSurfaceRate: 100,
+      injectorEnabled: true,
+    }) as SimulatorCreatePayload
+
+    expect(payload.wells).toEqual([
+      {
+        id: 'producer-main',
+        injector: false,
+        bhp: 100,
+        wellRadius: 0.1,
+        skin: 0,
+        completions: [{ i: 9, j: 9, k: 2 }],
+        schedule: {
+          controlMode: 'rate',
+          targetRate: 350,
+          targetSurfaceRate: 100,
+          bhpLimit: undefined,
+          enabled: true,
+        },
+      },
+      {
+        id: 'injector-main',
+        injector: true,
+        bhp: 500,
+        wellRadius: 0.1,
+        skin: 0,
+        completions: [{ i: 0, j: 0, k: 0 }],
+        schedule: {
+          controlMode: 'rate',
+          targetRate: 350,
+          targetSurfaceRate: 200,
+          bhpLimit: undefined,
+          enabled: true,
+        },
+      },
+    ])
+  })
 })

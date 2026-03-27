@@ -1,7 +1,9 @@
 use nalgebra::DVector;
 
 use crate::fim::flash::{classify_cell_regime, resolve_cell_flash};
-use crate::fim::wells::{build_well_topology, connection_rate_for_bhp, physical_well_bhp_target};
+use crate::fim::wells::{
+    build_well_topology, connection_rate_for_bhp, physical_well_control, solve_well_bhp_from_target,
+};
 use crate::ReservoirSimulator;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,51 +65,27 @@ impl FimState {
             });
         }
 
-        let injector_group_bhp = if sim.injector_enabled && sim.injector_rate_controlled {
-            sim.solve_group_bhp_for_pressures(true, &sim.pressure)
-                .map(|(bhp_bar, _)| bhp_bar)
-                .or(Some(sim.well_bhp_max.max(1e-6)))
-        } else {
-            None
-        };
-        let producer_group_bhp = if sim.producer_rate_controlled {
-            sim.solve_group_bhp_for_pressures(false, &sim.pressure)
-                .map(|(bhp_bar, _)| bhp_bar)
-                .or(Some(sim.well_bhp_min.max(1e-6)))
-        } else {
-            None
-        };
-
-        let well_bhp: Vec<f64> = topology
-            .wells
-            .iter()
-            .enumerate()
-            .map(|(well_idx, well)| {
-                if well.injector {
-                    injector_group_bhp.unwrap_or_else(|| {
-                        physical_well_bhp_target(sim, &topology, well_idx).max(1e-6)
-                    })
-                } else {
-                    producer_group_bhp.unwrap_or_else(|| {
-                        physical_well_bhp_target(sim, &topology, well_idx)
-                            .max(sim.well_bhp_min.max(1e-6))
-                    })
-                }
-            })
-            .collect();
-
         let mut state = Self {
             cells,
-            well_bhp,
+            well_bhp: topology
+                .wells
+                .iter()
+                .enumerate()
+                .map(|(well_idx, _)| physical_well_control(sim, &topology, well_idx).bhp_target)
+                .collect(),
             perforation_rates_m3_day: vec![0.0; topology.perforations.len()],
         };
+
+        for well_idx in 0..topology.wells.len() {
+            if let Some((bhp_bar, _)) = solve_well_bhp_from_target(sim, &state, &topology, well_idx) {
+                state.well_bhp[well_idx] = bhp_bar;
+            }
+        }
 
         for perf_idx in 0..topology.perforations.len() {
             let well_idx = topology.perforations[perf_idx].physical_well_index;
             let bhp_bar = state.well_bhp[well_idx];
-            state.perforation_rates_m3_day[perf_idx] = if topology.perforations[perf_idx].injector
-                && !sim.injector_enabled
-            {
+            state.perforation_rates_m3_day[perf_idx] = if !physical_well_control(sim, &topology, well_idx).enabled {
                 0.0
             } else {
                 connection_rate_for_bhp(sim, &state, &topology, perf_idx, bhp_bar).unwrap_or(0.0)
@@ -265,10 +243,11 @@ impl FimState {
             + 500.0;
 
         for (well_idx, bhp_bar) in self.well_bhp.iter_mut().enumerate() {
+            let control = physical_well_control(sim, &topology, well_idx);
             if topology.wells[well_idx].injector {
-                *bhp_bar = bhp_bar.clamp(1e-6, pressure_upper.max(sim.well_bhp_max));
+                *bhp_bar = bhp_bar.clamp(1e-6, pressure_upper.max(control.bhp_limit.max(sim.well_bhp_max)));
             } else {
-                *bhp_bar = bhp_bar.clamp(sim.well_bhp_min.max(1e-6), pressure_upper);
+                *bhp_bar = bhp_bar.clamp(control.bhp_limit.min(sim.well_bhp_min).max(1e-6), pressure_upper);
             }
         }
     }
@@ -384,10 +363,11 @@ impl FimState {
                 && derived.sg <= 1.0 + 1e-9
                 && (cell.sw + derived.so + derived.sg - 1.0).abs() < 1e-6
         }) && self.well_bhp.iter().enumerate().all(|(well_idx, bhp_bar)| {
+            let control = physical_well_control(sim, &topology, well_idx);
             if topology.wells[well_idx].injector {
                 *bhp_bar >= 1e-6 - 1e-9 && *bhp_bar <= pressure_upper + 1e-9
             } else {
-                *bhp_bar >= sim.well_bhp_min.max(1e-6) - 1e-9
+                *bhp_bar >= control.bhp_limit.min(sim.well_bhp_min).max(1e-6) - 1e-9
                     && *bhp_bar <= pressure_upper + 1e-9
             }
         })

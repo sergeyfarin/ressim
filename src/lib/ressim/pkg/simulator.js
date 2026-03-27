@@ -33,6 +33,24 @@ export class ReservoirSimulator {
      * @param {number} well_radius
      * @param {number} skin
      * @param {boolean} injector
+     * @param {string} physical_well_id
+     */
+    addWellWithId(i, j, k, bhp, well_radius, skin, injector, physical_well_id) {
+        const ptr0 = passStringToWasm0(physical_well_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_addWellWithId(this.__wbg_ptr, i, j, k, bhp, well_radius, skin, injector, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @param {number} i
+     * @param {number} j
+     * @param {number} k
+     * @param {number} bhp
+     * @param {number} well_radius
+     * @param {number} skin
+     * @param {boolean} injector
      */
     add_well(i, j, k, bhp, well_radius, skin, injector) {
         const ret = wasm.reservoirsimulator_add_well(this.__wbg_ptr, i, j, k, bhp, well_radius, skin, injector);
@@ -476,6 +494,24 @@ export class ReservoirSimulator {
         const ptr1 = passStringToWasm0(producer_mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
         wasm.reservoirsimulator_setWellControlModes(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+    }
+    /**
+     * @param {string} physical_well_id
+     * @param {string} control_mode
+     * @param {number} target_rate_m3_day
+     * @param {number} target_surface_rate_m3_day
+     * @param {number} bhp_limit
+     * @param {boolean} enabled
+     */
+    setWellSchedule(physical_well_id, control_mode, target_rate_m3_day, target_surface_rate_m3_day, bhp_limit, enabled) {
+        const ptr0 = passStringToWasm0(physical_well_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(control_mode, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.reservoirsimulator_setWellSchedule(this.__wbg_ptr, ptr0, len0, ptr1, len1, target_rate_m3_day, target_surface_rate_m3_day, bhp_limit, enabled);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * @param {number} target_dt_days

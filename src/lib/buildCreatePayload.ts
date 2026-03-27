@@ -1,4 +1,10 @@
-import type { SimulatorCreatePayload, ThreePhaseScalTables } from './simulator-types'
+import type {
+  SimulatorCreatePayload,
+  SimulatorWellCompletion,
+  SimulatorWellDefinition,
+  SimulatorWellSchedule,
+  ThreePhaseScalTables,
+} from './simulator-types'
 
 function toFiniteNumber(value: unknown, fallback: number): number {
   const numeric = Number(value)
@@ -49,6 +55,95 @@ function cloneScalTables(value: unknown): ThreePhaseScalTables | undefined {
   }
 }
 
+function normalizeCompletionLayers(values: unknown, nz: number): number[] {
+  if (!Array.isArray(values) || values.length === 0) {
+    return Array.from({ length: nz }, (_, index) => index)
+  }
+
+  const seen = new Set<number>()
+  const normalized: number[] = []
+  for (const raw of values) {
+    const layer = toIntRange(raw, 0, nz - 1, 0)
+    if (seen.has(layer)) continue
+    seen.add(layer)
+    normalized.push(layer)
+  }
+  return normalized
+}
+
+function buildLegacyWellDefinitions(input: {
+  nx: number;
+  ny: number;
+  nz: number;
+  injectorI: number;
+  injectorJ: number;
+  producerI: number;
+  producerJ: number;
+  producerKLayers?: unknown;
+  injectorKLayers?: unknown;
+  well_radius: number;
+  well_skin: number;
+  producerBhp: number;
+  injectorBhp: number;
+  injectorEnabled: boolean;
+  injectorControlMode: 'pressure' | 'rate';
+  producerControlMode: 'pressure' | 'rate';
+  targetInjectorRate: number;
+  targetProducerRate: number;
+  targetInjectorSurfaceRate: number;
+  targetProducerSurfaceRate: number;
+  bhpMin?: number;
+  bhpMax?: number;
+}): SimulatorWellDefinition[] {
+  const producerCompletions: SimulatorWellCompletion[] = normalizeCompletionLayers(
+    input.producerKLayers,
+    input.nz,
+  ).map((k) => ({ i: input.producerI, j: input.producerJ, k }))
+
+  const wells: SimulatorWellDefinition[] = [
+    {
+      id: 'producer-main',
+      injector: false,
+      bhp: input.producerBhp,
+      wellRadius: input.well_radius,
+      skin: input.well_skin,
+      completions: producerCompletions,
+      schedule: {
+        controlMode: input.producerControlMode,
+        targetRate: input.targetProducerRate,
+        targetSurfaceRate: input.targetProducerSurfaceRate,
+        bhpLimit: input.bhpMin,
+        enabled: true,
+      } satisfies SimulatorWellSchedule,
+    },
+  ]
+
+  if (input.injectorEnabled) {
+    const injectorCompletions: SimulatorWellCompletion[] = normalizeCompletionLayers(
+      input.injectorKLayers,
+      input.nz,
+    ).map((k) => ({ i: input.injectorI, j: input.injectorJ, k }))
+
+    wells.push({
+      id: 'injector-main',
+      injector: true,
+      bhp: input.injectorBhp,
+      wellRadius: input.well_radius,
+      skin: input.well_skin,
+      completions: injectorCompletions,
+      schedule: {
+        controlMode: input.injectorControlMode,
+        targetRate: input.targetInjectorRate,
+        targetSurfaceRate: input.targetInjectorSurfaceRate,
+        bhpLimit: input.bhpMax,
+        enabled: input.injectorEnabled,
+      } satisfies SimulatorWellSchedule,
+    })
+  }
+
+  return wells
+}
+
 /**
  * Build a SimulatorCreatePayload from plain UI state. Kept pure so it can be
  * unit-tested and type-checked independently of the Svelte component.
@@ -97,6 +192,65 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
   const injectorJ = toIntRange(state.injectorJ, 0, ny - 1, 0)
   const producerI = toIntRange(state.producerI, 0, nx - 1, nx - 1)
   const producerJ = toIntRange(state.producerJ, 0, ny - 1, defaultProducerJForGrid(ny))
+  const well_radius = toMin(state.well_radius, 0.0001, 0.1)
+  const well_skin = toFiniteNumber(state.well_skin, 0)
+  const injectorBhp = toMin(state.injectorBhp, 0.1, 500)
+  const producerBhp = toMin(state.producerBhp, 0.1, 100)
+  const targetInjectorRate = toMin(state.targetInjectorRate, 0, 350)
+  const targetProducerRate = toMin(state.targetProducerRate, 0, 350)
+  const targetInjectorSurfaceRate = toMin(state.targetInjectorSurfaceRate, 0, 0)
+  const targetProducerSurfaceRate = toMin(state.targetProducerSurfaceRate, 0, 0)
+  const injectorEnabled = Boolean(state.injectorEnabled ?? true)
+  const wells = Array.isArray(state.wells)
+    ? state.wells.map((well) => ({
+      id: String(well.id),
+      injector: Boolean(well.injector),
+      bhp: toFiniteNumber(well.bhp, Boolean(well.injector) ? injectorBhp : producerBhp),
+      wellRadius: toMin(well.wellRadius, 0.0001, well_radius),
+      skin: toFiniteNumber(well.skin, well_skin),
+      completions: Array.isArray(well.completions)
+        ? well.completions.map((completion) => ({
+          i: toIntRange(completion.i, 0, nx - 1, 0),
+          j: toIntRange(completion.j, 0, ny - 1, 0),
+          k: toIntRange(completion.k, 0, nz - 1, 0),
+        }))
+        : [],
+      schedule: well.schedule
+        ? {
+          controlMode: well.schedule.controlMode === 'rate' ? 'rate' : 'pressure',
+          targetRate: well.schedule.targetRate != null ? toMin(well.schedule.targetRate, 0, 0) : undefined,
+          targetSurfaceRate: well.schedule.targetSurfaceRate != null
+            ? toMin(well.schedule.targetSurfaceRate, 0, 0)
+            : undefined,
+          bhpLimit: well.schedule.bhpLimit != null ? toFiniteNumber(well.schedule.bhpLimit, 0) : undefined,
+          enabled: well.schedule.enabled !== false,
+        }
+        : undefined,
+    }))
+    : buildLegacyWellDefinitions({
+      nx,
+      ny,
+      nz,
+      injectorI,
+      injectorJ,
+      producerI,
+      producerJ,
+      producerKLayers: state.producerKLayers,
+      injectorKLayers: state.injectorKLayers,
+      well_radius,
+      well_skin,
+      producerBhp,
+      injectorBhp,
+      injectorEnabled,
+      injectorControlMode,
+      producerControlMode,
+      targetInjectorRate,
+      targetProducerRate,
+      targetInjectorSurfaceRate,
+      targetProducerSurfaceRate,
+      bhpMin: state.bhpMin != null ? toFiniteNumber(state.bhpMin, producerBhp) : undefined,
+      bhpMax: state.bhpMax != null ? toFiniteNumber(state.bhpMax, injectorBhp) : undefined,
+    })
 
   return {
     nx,
@@ -149,19 +303,19 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     permsY,
     permsZ,
 
-    well_radius: toMin(state.well_radius, 0.0001, 0.1),
-    well_skin: toFiniteNumber(state.well_skin, 0),
-    injectorBhp: toMin(state.injectorBhp, 0.1, 500),
-    producerBhp: toMin(state.producerBhp, 0.1, 100),
+    well_radius,
+    well_skin,
+    injectorBhp,
+    producerBhp,
 
     rateControlledWells: Boolean(state.rateControlledWells ?? false),
     injectorControlMode,
     producerControlMode,
-    injectorEnabled: Boolean(state.injectorEnabled ?? true),
-    targetInjectorRate: toMin(state.targetInjectorRate, 0, 350),
-    targetProducerRate: toMin(state.targetProducerRate, 0, 350),
-    targetInjectorSurfaceRate: toMin(state.targetInjectorSurfaceRate, 0, 0),
-    targetProducerSurfaceRate: toMin(state.targetProducerSurfaceRate, 0, 0),
+    injectorEnabled,
+    targetInjectorRate,
+    targetProducerRate,
+    targetInjectorSurfaceRate,
+    targetProducerSurfaceRate,
     injectorI,
     injectorJ,
     producerI,
@@ -191,6 +345,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     // Per-layer well completions
     producerKLayers: Array.isArray(state.producerKLayers) ? [...state.producerKLayers] : undefined,
     injectorKLayers: Array.isArray(state.injectorKLayers) ? [...state.injectorKLayers] : undefined,
+    wells,
 
     pvtMode: state.pvtMode === 'black-oil' ? 'black-oil' : 'constant',
     pvtTable: state.pvtMode === 'black-oil' && Array.isArray(state.pvtTable)

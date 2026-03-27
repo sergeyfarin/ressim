@@ -1,7 +1,9 @@
 use nalgebra::DVector;
 
 use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
-use crate::fim::linear::{solve_linearized_system, FimLinearSolveOptions, FimLinearSolveReport};
+use crate::fim::linear::{
+    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+};
 use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
 
@@ -71,7 +73,16 @@ pub(crate) fn run_fim_timestep(
         final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual));
 
         let rhs = -&assembly.residual;
-        let linear_report = solve_linearized_system(&assembly.jacobian, &rhs, &options.linear);
+        let linear_report = solve_linearized_system(
+            &assembly.jacobian,
+            &rhs,
+            &options.linear,
+            Some(FimLinearBlockLayout {
+                cell_block_count: state.cells.len(),
+                cell_block_size: 3,
+                scalar_tail_start: state.n_cell_unknowns(),
+            }),
+        );
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution);
         last_linear_report = Some(linear_report.clone());
 

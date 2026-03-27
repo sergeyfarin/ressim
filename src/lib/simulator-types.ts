@@ -31,6 +31,30 @@ export interface ThreePhaseScalTables {
   sgof: SgofRow[];
 }
 
+export interface SimulatorWellCompletion {
+  i: number;
+  j: number;
+  k: number;
+}
+
+export interface SimulatorWellSchedule {
+  controlMode?: 'pressure' | 'rate';
+  targetRate?: number;
+  targetSurfaceRate?: number;
+  bhpLimit?: number;
+  enabled?: boolean;
+}
+
+export interface SimulatorWellDefinition {
+  id: string;
+  injector: boolean;
+  bhp: number;
+  wellRadius: number;
+  skin: number;
+  completions: SimulatorWellCompletion[];
+  schedule?: SimulatorWellSchedule;
+}
+
 /** Permutation mode for assigning permeability */
 export type PermMode = 'uniform' | 'random' | 'perLayer' | string;
 
@@ -154,6 +178,8 @@ export interface SimulatorCreatePayload {
   producerKLayers?: number[];
   /** Layer indices for injector completions (default: all layers). */
   injectorKLayers?: number[];
+  /** Explicit physical wells with stable IDs and grouped completions. */
+  wells?: SimulatorWellDefinition[];
 }
 
 /** Payload sent with the `run` message */
@@ -176,6 +202,8 @@ export interface GridState {
 }
 
 export interface WellStateEntry {
+  physical_well_id?: string;
+  schedule?: SimulatorWellSchedule;
   i: number;
   j: number;
   k: number;

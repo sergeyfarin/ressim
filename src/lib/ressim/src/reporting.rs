@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
-use crate::well_control::{ResolvedWellControl, WellControlDecision};
+use crate::well_control::ResolvedWellControl;
 use crate::{InjectedFluid, ReservoirSimulator};
 
 const MIN_GOR_OIL_RATE_SC_DAY: f64 = 10.0;
@@ -42,10 +44,10 @@ pub struct TimePointRates {
     /// Non-zero only in three-phase mode with PVT table.
     #[serde(default)]
     pub producing_gor: f64,
-    /// Fraction of rate-controlled producer completions currently clamped by BHP limits.
+    /// Fraction of rate-controlled producer physical wells currently clamped by BHP limits.
     #[serde(default)]
     pub producer_bhp_limited_fraction: f64,
-    /// Fraction of rate-controlled injector completions currently clamped by BHP limits.
+    /// Fraction of rate-controlled injector physical wells currently clamped by BHP limits.
     #[serde(default)]
     pub injector_bhp_limited_fraction: f64,
 }
@@ -93,16 +95,14 @@ impl ReservoirSimulator {
         let mut injector_rate_controlled_wells = 0usize;
         let mut producer_bhp_limited_wells = 0usize;
         let mut injector_bhp_limited_wells = 0usize;
+        let mut counted_control_groups = HashSet::new();
 
         for (w_idx, w) in self.wells.iter().enumerate() {
             let id = self.idx(w.i, w.j, w.k);
             if let Some(control) = well_controls.get(w_idx).and_then(|control| *control) {
-                let group_rate_controlled = if w.injector {
-                    self.injector_rate_controlled
-                } else {
-                    self.producer_rate_controlled
-                };
-                if group_rate_controlled {
+                let control_config = self.well_control_config(w);
+                let group_key = self.well_control_group_key(w);
+                if control_config.rate_controlled && counted_control_groups.insert(group_key) {
                     if w.injector {
                         injector_rate_controlled_wells += 1;
                         if control.bhp_limited {
@@ -127,18 +127,7 @@ impl ReservoirSimulator {
                     if self.three_phase_mode {
                         match self.injected_fluid {
                             InjectedFluid::Water => {
-                                if matches!(control.decision, WellControlDecision::Rate { .. }) {
-                                    if let Some(surface_target_sc_day) =
-                                        self.target_injector_surface_rate_m3_day
-                                    {
-                                        total_injection += surface_target_sc_day
-                                            / self.injector_well_count().max(1) as f64;
-                                    } else {
-                                        total_injection += -q_m3_day / self.b_w.max(1e-9);
-                                    }
-                                } else {
-                                    total_injection += -q_m3_day / self.b_w.max(1e-9);
-                                }
+                                total_injection += -q_m3_day / self.b_w.max(1e-9);
                                 total_water_injection_reservoir += -q_m3_day;
                             }
                             InjectedFluid::Gas => {
@@ -148,18 +137,7 @@ impl ReservoirSimulator {
                             }
                         }
                     } else {
-                        if matches!(control.decision, WellControlDecision::Rate { .. }) {
-                            if let Some(surface_target_sc_day) =
-                                self.target_injector_surface_rate_m3_day
-                            {
-                                total_injection += surface_target_sc_day
-                                    / self.injector_well_count().max(1) as f64;
-                            } else {
-                                total_injection += -q_m3_day / self.b_w.max(1e-9);
-                            }
-                        } else {
-                            total_injection += -q_m3_day / self.b_w.max(1e-9);
-                        }
+                        total_injection += -q_m3_day / self.b_w.max(1e-9);
                         total_water_injection_reservoir += -q_m3_day;
                     }
                 } else {

@@ -5,6 +5,7 @@ use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
 use crate::pvt;
+use crate::well::WellSchedule;
 use crate::{
     CapillaryPressure, FluidProperties, GasOilCapillaryPressure, InjectedFluid, ReservoirSimulator,
     RockFluidProps, RockFluidPropsThreePhase, ThreePhaseScalTables, TimePointRates, Well,
@@ -91,7 +92,7 @@ impl ReservoirSimulator {
         }
     }
 
-    pub fn add_well(
+    fn add_well_internal(
         &mut self,
         i: usize,
         j: usize,
@@ -100,6 +101,7 @@ impl ReservoirSimulator {
         well_radius: f64,
         skin: f64,
         injector: bool,
+        physical_well_id: Option<String>,
     ) -> Result<(), String> {
         if i >= self.nx || j >= self.ny || k >= self.nz {
             return Err(format!(
@@ -123,6 +125,8 @@ impl ReservoirSimulator {
         let cell_id = self.idx(i, j, k);
         let pi = self.calculate_well_productivity_index(cell_id, well_radius, skin)?;
         let well = Well {
+            physical_well_id,
+            schedule: WellSchedule::default(),
             i,
             j,
             k,
@@ -134,6 +138,108 @@ impl ReservoirSimulator {
         };
         well.validate(self.nx, self.ny, self.nz)?;
         self.wells.push(well);
+        Ok(())
+    }
+
+    pub fn add_well(
+        &mut self,
+        i: usize,
+        j: usize,
+        k: usize,
+        bhp: f64,
+        well_radius: f64,
+        skin: f64,
+        injector: bool,
+    ) -> Result<(), String> {
+        self.add_well_internal(i, j, k, bhp, well_radius, skin, injector, None)
+    }
+
+    #[wasm_bindgen(js_name = addWellWithId)]
+    pub fn add_well_with_id(
+        &mut self,
+        i: usize,
+        j: usize,
+        k: usize,
+        bhp: f64,
+        well_radius: f64,
+        skin: f64,
+        injector: bool,
+        physical_well_id: String,
+    ) -> Result<(), String> {
+        self.add_well_internal(
+            i,
+            j,
+            k,
+            bhp,
+            well_radius,
+            skin,
+            injector,
+            Some(physical_well_id),
+        )
+    }
+
+    #[wasm_bindgen(js_name = setWellSchedule)]
+    pub fn set_well_schedule(
+        &mut self,
+        physical_well_id: String,
+        control_mode: String,
+        target_rate_m3_day: f64,
+        target_surface_rate_m3_day: f64,
+        bhp_limit: f64,
+        enabled: bool,
+    ) -> Result<(), String> {
+        let well_id = physical_well_id.trim();
+        if well_id.is_empty() {
+            return Err("Physical well id must not be empty".to_string());
+        }
+
+        let normalized_control_mode = match control_mode.trim().to_ascii_lowercase().as_str() {
+            "rate" => "rate",
+            "pressure" | "" => "pressure",
+            other => {
+                return Err(format!(
+                    "Well control mode must be 'pressure' or 'rate', got: {}",
+                    other
+                ))
+            }
+        };
+
+        let target_rate_m3_day = if target_rate_m3_day.is_finite() && target_rate_m3_day >= 0.0 {
+            Some(target_rate_m3_day)
+        } else {
+            None
+        };
+        let target_surface_rate_m3_day = if target_surface_rate_m3_day.is_finite()
+            && target_surface_rate_m3_day >= 0.0
+        {
+            Some(target_surface_rate_m3_day)
+        } else {
+            None
+        };
+        let bhp_limit = if bhp_limit.is_finite() {
+            Some(bhp_limit)
+        } else {
+            None
+        };
+
+        let mut updated_any = false;
+        for well in self.wells.iter_mut() {
+            if well.physical_well_id.as_deref() == Some(well_id) {
+                well.schedule = WellSchedule {
+                    control_mode: Some(normalized_control_mode.to_string()),
+                    target_rate_m3_day,
+                    target_surface_rate_m3_day,
+                    bhp_limit,
+                    enabled,
+                };
+                updated_any = true;
+            }
+        }
+
+        if !updated_any {
+            return Err(format!("No well found for physical well id '{}'", well_id));
+        }
+
         Ok(())
     }
 

@@ -5,6 +5,7 @@ import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from '../charts/referenceComparisonModel';
 import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './caseCatalog';
+import { getScenario } from './scenarios';
 
 type BenchmarkParams = Record<string, unknown>;
 
@@ -43,6 +44,52 @@ function applyPermeability(simulator: ReservoirSimulator, params: BenchmarkParam
     : Array.from({ length: nz }, () => Number(params.uniformPermZ ?? 10));
 
   simulator.setPermeabilityPerLayer(new Float64Array(permsX), new Float64Array(permsY), new Float64Array(permsZ));
+}
+
+function configureWorkerStyleWells(simulator: ReservoirSimulator, params: BenchmarkParams) {
+  const nx = Number(params.nx);
+  const ny = Number(params.ny);
+  const nz = Number(params.nz);
+
+  const producerI = Number(params.producerI ?? (nx - 1));
+  const producerJ = Number(params.producerJ ?? 0);
+  const injectorI = Number(params.injectorI ?? 0);
+  const injectorJ = Number(params.injectorJ ?? 0);
+  const producerBhp = Number(params.producerBhp ?? 100);
+  const injectorBhp = Number(params.injectorBhp ?? 500);
+
+  const producerKLayers = Array.isArray(params.producerKLayers)
+    ? Array.from(params.producerKLayers as ArrayLike<number>)
+    : Array.from({ length: nz }, (_, k) => k);
+  const injectorKLayers = Array.isArray(params.injectorKLayers)
+    ? Array.from(params.injectorKLayers as ArrayLike<number>)
+    : Array.from({ length: nz }, (_, k) => k);
+
+  for (const k of producerKLayers) {
+    simulator.add_well(
+      producerI,
+      producerJ,
+      Number(k),
+      producerBhp,
+      Number(params.well_radius ?? 0.1),
+      Number(params.well_skin ?? 0),
+      false,
+    );
+  }
+
+  if (Boolean(params.injectorEnabled ?? true)) {
+    for (const k of injectorKLayers) {
+      simulator.add_well(
+        injectorI,
+        injectorJ,
+        Number(k),
+        injectorBhp,
+        Number(params.well_radius ?? 0.1),
+        Number(params.well_skin ?? 0),
+        true,
+      );
+    }
+  }
 }
 
 function measureBreakthroughPvi(params: BenchmarkParams, watercutThreshold = 0.01) {
@@ -307,5 +354,49 @@ describe('frontend benchmark preset runtime coverage', () => {
     );
 
     expect(distinctSeries.size).toBe(3);
+  });
+
+  it('respects SPE1 per-layer completion arrays when instantiating runtime wells', async () => {
+    await ensureWasmReady();
+
+    const scenario = getScenario('spe1_gas_injection');
+    expect(scenario).not.toBeNull();
+
+    const params = scenario!.params as BenchmarkParams;
+    const simulator = new ReservoirSimulator(
+      Number(params.nx),
+      Number(params.ny),
+      Number(params.nz),
+      Number(params.reservoirPorosity ?? 0.2),
+    );
+
+    configureWorkerStyleWells(simulator, params);
+
+    const wells = simulator.getWellState() as Array<Record<string, unknown>>;
+    const producerCompletions = wells
+      .filter((well) => well.injector === false)
+      .map((well) => ({
+        i: Number(well.i),
+        j: Number(well.j),
+        k: Number(well.k),
+        injector: Boolean(well.injector),
+      }));
+    const injectorCompletions = wells
+      .filter((well) => well.injector === true)
+      .map((well) => ({
+        i: Number(well.i),
+        j: Number(well.j),
+        k: Number(well.k),
+        injector: Boolean(well.injector),
+      }));
+
+    expect(producerCompletions).toEqual([
+      { i: 9, j: 9, k: 2, injector: false },
+    ]);
+    expect(injectorCompletions).toEqual([
+      { i: 0, j: 0, k: 0, injector: true },
+    ]);
+
+    simulator.free();
   });
 });

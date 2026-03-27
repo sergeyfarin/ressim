@@ -1,5 +1,5 @@
 import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
-import type { SimulatorCreatePayload, WorkerRunPayload } from '../simulator-types';
+import type { SimulatorCreatePayload, SimulatorWellDefinition, WorkerRunPayload } from '../simulator-types';
 
 let wasmReady = false;
 let simulator: ReservoirSimulator | null = null;
@@ -44,6 +44,56 @@ function formatWorkerError(error: unknown): string {
 
 function post(type: string, payload: Record<string, any> = {}): void {
   self.postMessage({ type, ...payload });
+}
+
+function addWellCompletion(
+  simulator: ReservoirSimulator,
+  well: SimulatorWellDefinition,
+  completion: { i: number; j: number; k: number },
+): void {
+  const addWellWithId = (simulator as any).addWellWithId;
+  if (typeof addWellWithId === 'function') {
+    addWellWithId.call(
+      simulator,
+      completion.i,
+      completion.j,
+      completion.k,
+      Number(well.bhp),
+      Number(well.wellRadius),
+      Number(well.skin),
+      Boolean(well.injector),
+      String(well.id),
+    );
+    return;
+  }
+
+  simulator.add_well(
+    completion.i,
+    completion.j,
+    completion.k,
+    Number(well.bhp),
+    Number(well.wellRadius),
+    Number(well.skin),
+    Boolean(well.injector),
+  );
+}
+
+function applyWellSchedule(simulator: ReservoirSimulator, well: SimulatorWellDefinition): void {
+  const setWellSchedule = (simulator as any).setWellSchedule;
+  if (typeof setWellSchedule !== 'function') {
+    return;
+  }
+
+  const schedule = well.schedule;
+  setWellSchedule.call(
+    simulator,
+    String(well.id),
+    String(schedule?.controlMode ?? 'pressure'),
+    Number(schedule?.targetRate ?? Number.NaN),
+    Number(schedule?.targetSurfaceRate ?? Number.NaN),
+    Number(schedule?.bhpLimit ?? Number.NaN),
+    schedule?.enabled !== false,
+  );
 }
 
 function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Record<string, any> = {}): Record<string, any> {
@@ -263,21 +313,58 @@ function configureSimulator(payload: SimulatorCreatePayload) {
   const producerBhp = Number(payload.producerBhp ?? 100);
   const injectorBhp = Number(payload.injectorBhp ?? 500);
 
-  const producerKLayers: number[] = Array.isArray(payload.producerKLayers)
-    ? payload.producerKLayers
-    : Array.from({ length: payload.nz }, (_, i) => i);
-  const injectorKLayers: number[] = Array.isArray(payload.injectorKLayers)
-    ? payload.injectorKLayers
-    : Array.from({ length: payload.nz }, (_, i) => i);
+  const explicitWells: SimulatorWellDefinition[] = Array.isArray(payload.wells) && payload.wells.length > 0
+    ? payload.wells
+    : [
+        {
+          id: 'producer-main',
+          injector: false,
+          bhp: producerBhp,
+          wellRadius: payload.well_radius,
+          skin: payload.well_skin,
+          completions: (Array.isArray(payload.producerKLayers)
+            ? payload.producerKLayers
+            : Array.from({ length: payload.nz }, (_, i) => i)
+          ).map((k) => ({ i: producerI, j: producerJ, k })),
+          schedule: {
+            controlMode: payload.producerControlMode === 'rate' ? 'rate' : 'pressure',
+            targetRate: payload.targetProducerRate,
+            targetSurfaceRate: payload.targetProducerSurfaceRate,
+            bhpLimit: payload.bhpMin,
+            enabled: true,
+          },
+        },
+        ...(Boolean(payload.injectorEnabled ?? true)
+          ? [{
+              id: 'injector-main',
+              injector: true,
+              bhp: injectorBhp,
+              wellRadius: payload.well_radius,
+              skin: payload.well_skin,
+              completions: (Array.isArray(payload.injectorKLayers)
+                ? payload.injectorKLayers
+                : Array.from({ length: payload.nz }, (_, i) => i)
+              ).map((k) => ({ i: injectorI, j: injectorJ, k })),
+              schedule: {
+                controlMode: payload.injectorControlMode === 'rate' ? 'rate' : 'pressure',
+                targetRate: payload.targetInjectorRate,
+                targetSurfaceRate: payload.targetInjectorSurfaceRate,
+                bhpLimit: payload.bhpMax,
+                enabled: payload.injectorEnabled !== false,
+              },
+            }]
+          : []),
+      ];
 
   try {
-    for (const k of producerKLayers) {
-      simulator.add_well(producerI, producerJ, k, producerBhp, payload.well_radius, payload.well_skin, false);
-    }
-    if (Boolean(payload.injectorEnabled ?? true)) {
-      for (const k of injectorKLayers) {
-        simulator.add_well(injectorI, injectorJ, k, injectorBhp, payload.well_radius, payload.well_skin, true);
+    for (const well of explicitWells) {
+      if (well.schedule?.enabled === false) {
+        continue;
       }
+      for (const completion of well.completions) {
+        addWellCompletion(simulator, well, completion);
+      }
+      applyWellSchedule(simulator, well);
     }
   } catch (err: any) {
     throw new Error(`Failed to configure wells: ${err?.message || err}`);

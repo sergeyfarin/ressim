@@ -1,7 +1,52 @@
 use serde::{Deserialize, Serialize};
 
+fn default_well_schedule_enabled() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WellSchedule {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_rate_m3_day: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_surface_rate_m3_day: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bhp_limit: Option<f64>,
+    #[serde(default = "default_well_schedule_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for WellSchedule {
+    fn default() -> Self {
+        Self {
+            control_mode: None,
+            target_rate_m3_day: None,
+            target_surface_rate_m3_day: None,
+            bhp_limit: None,
+            enabled: true,
+        }
+    }
+}
+
+impl WellSchedule {
+    pub fn has_explicit_control(&self) -> bool {
+        self.control_mode.is_some()
+            || self.target_rate_m3_day.is_some()
+            || self.target_surface_rate_m3_day.is_some()
+            || self.bhp_limit.is_some()
+            || !self.enabled
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Well {
+    /// Stable physical-well identifier shared by all completions of the same well.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical_well_id: Option<String>,
+    #[serde(default)]
+    pub schedule: WellSchedule,
     /// Cell index i (x-direction)
     pub i: usize,
     /// Cell index j (y-direction)
@@ -77,6 +122,43 @@ impl Well {
                 "BHP out of reasonable range [-100, 2000] bar, got: {}",
                 self.bhp
             ));
+        }
+
+        if let Some(well_id) = &self.physical_well_id {
+            if well_id.trim().is_empty() {
+                return Err("Physical well id must not be empty when provided".to_string());
+            }
+        }
+
+        if let Some(control_mode) = &self.schedule.control_mode {
+            let normalized = control_mode.trim().to_ascii_lowercase();
+            if normalized != "pressure" && normalized != "rate" {
+                return Err(format!(
+                    "Well control mode must be 'pressure' or 'rate', got: {}",
+                    control_mode
+                ));
+            }
+        }
+        if let Some(target_rate) = self.schedule.target_rate_m3_day {
+            if !target_rate.is_finite() || target_rate < 0.0 {
+                return Err(format!(
+                    "Well target reservoir rate must be finite and non-negative, got: {}",
+                    target_rate
+                ));
+            }
+        }
+        if let Some(target_surface_rate) = self.schedule.target_surface_rate_m3_day {
+            if !target_surface_rate.is_finite() || target_surface_rate < 0.0 {
+                return Err(format!(
+                    "Well target surface rate must be finite and non-negative, got: {}",
+                    target_surface_rate
+                ));
+            }
+        }
+        if let Some(bhp_limit) = self.schedule.bhp_limit {
+            if !bhp_limit.is_finite() {
+                return Err(format!("Well BHP limit must be finite, got: {}", bhp_limit));
+            }
         }
 
         Ok(())

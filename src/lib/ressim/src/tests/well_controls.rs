@@ -172,6 +172,70 @@ fn rate_history_records_bhp_limited_fraction_for_rate_controlled_wells() {
 }
 
 #[test]
+fn explicit_per_well_schedule_overrides_family_control_modes() {
+    let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+    sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+    sim.add_well_with_id(0, 0, 0, 90.0, 0.1, 0.0, false, "prod-a".to_string())
+        .unwrap();
+    sim.add_well_with_id(1, 0, 0, 110.0, 0.1, 0.0, false, "prod-b".to_string())
+        .unwrap();
+    sim.set_well_schedule(
+        "prod-a".to_string(),
+        "rate".to_string(),
+        10.0,
+        f64::NAN,
+        60.0,
+        true,
+    )
+    .unwrap();
+
+    let control_a = sim
+        .resolve_well_control_for_pressures(&sim.wells[0], &sim.pressure)
+        .unwrap();
+    let control_b = sim
+        .resolve_well_control_for_pressures(&sim.wells[1], &sim.pressure)
+        .unwrap();
+
+    assert!(!control_a.bhp_limited);
+    assert!(!control_b.bhp_limited);
+    match control_a.decision {
+        WellControlDecision::Rate { q_m3_day } => assert!(q_m3_day > 0.0),
+        _ => panic!("producer A should remain rate-controlled"),
+    }
+    match control_b.decision {
+        WellControlDecision::Bhp { bhp_bar } => assert!((bhp_bar - 110.0).abs() < 1e-9),
+        _ => panic!("producer B should remain pressure-controlled"),
+    }
+}
+
+#[test]
+fn reporting_counts_only_rate_controlled_physical_wells() {
+    let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+    sim.set_initial_pressure(200.0);
+    sim.set_initial_saturation(0.2);
+    sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+    sim.add_well_with_id(0, 0, 0, 150.0, 0.1, 0.0, false, "prod-a".to_string())
+        .unwrap();
+    sim.add_well_with_id(1, 0, 0, 110.0, 0.1, 0.0, false, "prod-b".to_string())
+        .unwrap();
+    sim.set_well_schedule(
+        "prod-a".to_string(),
+        "rate".to_string(),
+        5000.0,
+        f64::NAN,
+        150.0,
+        true,
+    )
+    .unwrap();
+
+    sim.step(1.0);
+
+    let point = sim.rate_history.last().unwrap();
+    assert_eq!(point.producer_bhp_limited_fraction, 1.0);
+    assert_eq!(point.injector_bhp_limited_fraction, 0.0);
+}
+
+#[test]
 fn dynamic_pi_increases_with_higher_water_saturation() {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
     sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)

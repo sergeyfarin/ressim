@@ -1,6 +1,7 @@
 use nalgebra::DVector;
 use sprs::CsMat;
 
+mod gmres_block_jacobi;
 mod sparse_lu_debug;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,6 +18,13 @@ pub(crate) struct FimLinearSolveOptions {
     pub(crate) max_iterations: usize,
     pub(crate) relative_tolerance: f64,
     pub(crate) absolute_tolerance: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FimLinearBlockLayout {
+    pub(crate) cell_block_count: usize,
+    pub(crate) cell_block_size: usize,
+    pub(crate) scalar_tail_start: usize,
 }
 
 impl Default for FimLinearSolveOptions {
@@ -45,13 +53,17 @@ pub(crate) fn solve_linearized_system(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
     options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
 ) -> FimLinearSolveReport {
     match options.kind {
         FimLinearSolverKind::SparseLuDebug => sparse_lu_debug::solve(jacobian, rhs, options, false),
-        // Temporary scaffold for the target FIM architecture: route through the
-        // sparse-LU debug backend until GMRES/CPR and ILU are implemented.
-        FimLinearSolverKind::FgmresCpr | FimLinearSolverKind::GmresIlu0 => {
-            sparse_lu_debug::solve(jacobian, rhs, options, true)
+        FimLinearSolverKind::GmresIlu0 => {
+            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false)
+        }
+        // CPR is still pending, but the default FIM path now uses the iterative
+        // GMRES + block-Jacobi backend instead of falling straight back to sparse LU.
+        FimLinearSolverKind::FgmresCpr => {
+            gmres_block_jacobi::solve(jacobian, rhs, options, layout, true)
         }
     }
 }
@@ -72,19 +84,42 @@ mod tests {
     }
 
     #[test]
-    fn target_fim_solver_kinds_temporarily_report_sparse_lu_fallback() {
+    fn gmsres_ilu0_backend_solves_simple_system_iteratively() {
         let mut tri = TriMatI::<f64, usize>::new((2, 2));
         tri.add_triplet(0, 0, 2.0);
         tri.add_triplet(1, 1, 3.0);
         let jacobian = tri.to_csr();
         let rhs = DVector::from_vec(vec![4.0, 9.0]);
 
-        let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default());
+        let report = solve_linearized_system(
+            &jacobian,
+            &rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::GmresIlu0,
+                ..FimLinearSolveOptions::default()
+            },
+            None,
+        );
+
+        assert!(report.converged);
+        assert!(!report.used_fallback);
+        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
+        assert!((report.solution[0] - 2.0).abs() < 1e-12);
+        assert!((report.solution[1] - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn default_fim_solver_uses_iterative_fallback_before_sparse_lu() {
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_vec(vec![4.0, 9.0]);
+
+        let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
 
         assert!(report.converged);
         assert!(report.used_fallback);
-        assert_eq!(report.backend_used, FimLinearSolverKind::SparseLuDebug);
-        assert!((report.solution[0] - 2.0).abs() < 1e-12);
-        assert!((report.solution[1] - 3.0).abs() < 1e-12);
+        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
     }
 }
