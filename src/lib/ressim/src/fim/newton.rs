@@ -54,7 +54,7 @@ pub(crate) fn run_fim_timestep(
 ) -> FimStepReport {
     let mut state = initial_iterate.clone();
     let mut last_linear_report = None;
-    let mut final_residual_inf_norm = f64::INFINITY;
+    let mut final_residual_inf_norm: Option<f64>;
     let mut final_update_inf_norm = f64::INFINITY;
     let mut accepted_damping = 1.0;
 
@@ -68,21 +68,21 @@ pub(crate) fn run_fim_timestep(
                 include_wells: true,
             },
         );
-        final_residual_inf_norm = scaled_residual_inf_norm(&assembly.residual);
+        final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual));
 
         let rhs = -&assembly.residual;
         let linear_report = solve_linearized_system(&assembly.jacobian, &rhs, &options.linear);
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution);
         last_linear_report = Some(linear_report.clone());
 
-        if final_residual_inf_norm <= options.residual_tolerance
+        if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
             && final_update_inf_norm <= options.update_tolerance
         {
             return FimStepReport {
                 accepted_state: state,
                 converged: true,
                 newton_iterations: iteration + 1,
-                final_residual_inf_norm,
+                final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
                 cutback_factor: accepted_damping,
@@ -105,7 +105,7 @@ pub(crate) fn run_fim_timestep(
                 accepted_state: state,
                 converged: false,
                 newton_iterations: iteration + 1,
-                final_residual_inf_norm,
+                final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
                 cutback_factor: 0.5,
@@ -116,11 +116,33 @@ pub(crate) fn run_fim_timestep(
         state = candidate;
     }
 
+    let final_assembly = assemble_fim_system(
+        sim,
+        previous_state,
+        &state,
+        &FimAssemblyOptions {
+            dt_days,
+            include_wells: true,
+        },
+    );
+    final_residual_inf_norm = Some(scaled_residual_inf_norm(&final_assembly.residual));
+    if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance {
+        return FimStepReport {
+            accepted_state: state,
+            converged: true,
+            newton_iterations: options.max_newton_iterations,
+            final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
+            final_update_inf_norm,
+            last_linear_report,
+            cutback_factor: accepted_damping,
+        };
+    }
+
     FimStepReport {
         accepted_state: state,
         converged: false,
         newton_iterations: options.max_newton_iterations,
-        final_residual_inf_norm,
+        final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
         final_update_inf_norm,
         last_linear_report,
         cutback_factor: accepted_damping * 0.5,
@@ -130,6 +152,7 @@ pub(crate) fn run_fim_timestep(
 #[cfg(test)]
 mod tests {
     use crate::fim::state::FimState;
+    use crate::pvt::{PvtRow, PvtTable};
     use crate::ReservoirSimulator;
 
     use super::*;
@@ -150,7 +173,29 @@ mod tests {
 
     #[test]
     fn local_closed_system_newton_recovers_previous_state_from_perturbed_iterate() {
-        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.1,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
         let previous_state = FimState::from_simulator(&sim);
         let mut iterate = previous_state.clone();
         iterate.cells[0].pressure_bar += 5.0;

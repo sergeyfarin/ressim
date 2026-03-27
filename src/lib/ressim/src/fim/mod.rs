@@ -6,3 +6,4 @@ pub(crate) mod linear;
 pub(crate) mod newton;
 pub(crate) mod scaling;
 pub(crate) mod state;
+pub(crate) mod wells;
