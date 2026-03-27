@@ -9,6 +9,11 @@ fn harmonic_mean(a: f64, b: f64) -> f64 {
 }
 
 impl ReservoirSimulator {
+    pub(crate) fn dz_at(&self, id: usize) -> f64 {
+        let k = id / (self.nx * self.ny);
+        self.dz[k]
+    }
+
     pub fn pore_volume_m3(&self, id: usize) -> f64 {
         self.dx * self.dy * self.dz_at(id) * self.porosity[id]
     }

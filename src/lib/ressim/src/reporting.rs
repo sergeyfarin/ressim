@@ -51,6 +51,26 @@ pub struct TimePointRates {
 }
 
 impl ReservoirSimulator {
+    pub(crate) fn average_reservoir_pressure_pv_weighted(&self) -> f64 {
+        let mut weighted_pressure_sum = 0.0;
+        let mut pore_volume_sum = 0.0;
+
+        for id in 0..self.nx * self.ny * self.nz {
+            let pore_volume = self.pore_volume_m3(id);
+            if pore_volume <= 0.0 || !pore_volume.is_finite() {
+                continue;
+            }
+            weighted_pressure_sum += self.pressure[id] * pore_volume;
+            pore_volume_sum += pore_volume;
+        }
+
+        if pore_volume_sum > 0.0 {
+            weighted_pressure_sum / pore_volume_sum
+        } else {
+            0.0
+        }
+    }
+
     pub(crate) fn record_step_report(
         &mut self,
         well_controls: &[Option<ResolvedWellControl>],

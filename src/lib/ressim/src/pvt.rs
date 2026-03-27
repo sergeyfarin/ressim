@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::ReservoirSimulator;
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PvtRow {
     pub p_bar: f64,
@@ -132,6 +134,179 @@ impl PvtTable {
             // Saturated or above table max: use standard interpolation
             let row = self.interpolate(p);
             (row.bo_m3m3, row.mu_o_cp)
+        }
+    }
+}
+
+impl ReservoirSimulator {
+    pub(crate) fn get_mu_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            table.interpolate(p).mu_o_cp
+        } else {
+            self.pvt.mu_o
+        }
+    }
+
+    pub(crate) fn get_mu_o_cell(&self, id: usize, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (_, mu) = table.interpolate_oil(p, self.rs[id]);
+                return mu;
+            }
+            table.interpolate(p).mu_o_cp
+        } else {
+            self.pvt.mu_o
+        }
+    }
+
+    pub(crate) fn get_mu_w(&self, _p: f64) -> f64 {
+        self.pvt.mu_w
+    }
+
+    pub(crate) fn get_mu_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            table.interpolate(p).mu_g_cp
+        } else {
+            self.mu_g
+        }
+    }
+
+    pub(crate) fn get_c_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let dp = 1.0;
+            let p_minus = if p > dp { p - dp } else { 0.0 };
+            let b1 = table.interpolate(p_minus).bo_m3m3;
+            let b2 = table.interpolate(p + dp).bo_m3m3;
+            let bo = table.interpolate(p).bo_m3m3;
+            if bo > 1e-12 {
+                let derived_c_o = (-1.0 / bo) * (b2 - b1) / (2.0 * dp);
+                if derived_c_o.is_finite() && derived_c_o > 0.0 {
+                    derived_c_o.max(self.pvt.c_o)
+                } else {
+                    self.pvt.c_o
+                }
+            } else {
+                self.pvt.c_o
+            }
+        } else {
+            self.pvt.c_o
+        }
+    }
+
+    pub(crate) fn get_c_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let dp = 1.0;
+            let p_minus = if p > dp { p - dp } else { 0.0 };
+            let b1 = table.interpolate(p_minus).bg_m3m3;
+            let b2 = table.interpolate(p + dp).bg_m3m3;
+            let bg = table.interpolate(p).bg_m3m3;
+            if bg > 1e-12 {
+                (-1.0 / bg) * (b2 - b1) / (2.0 * dp)
+            } else {
+                self.c_g
+            }
+        } else {
+            self.c_g
+        }
+    }
+
+    pub(crate) fn get_c_o_effective(&self, p: f64, rs_cell: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let rs_sat = table.interpolate(p).rs_m3m3;
+            let c_sat = self.saturated_c_o_eff(table, p);
+
+            if rs_cell < rs_sat - 1e-6 {
+                let c_unsat = self.pvt.c_o;
+                let p_b = table.bubble_point_pressure(rs_cell);
+                let distance = p - p_b;
+                let margin = self.max_pressure_change_per_step;
+
+                if distance > 0.0 && distance < margin && c_sat > c_unsat {
+                    let t = 1.0 - distance / margin;
+                    let blend = t * t;
+                    return c_unsat + blend * (c_sat - c_unsat);
+                }
+                return c_unsat;
+            }
+
+            c_sat
+        } else {
+            self.pvt.c_o
+        }
+    }
+
+    fn saturated_c_o_eff(&self, table: &PvtTable, p: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = table.interpolate(p_lo);
+        let row_hi = table.interpolate(p + dp);
+        let row_mid = table.interpolate(p);
+
+        let bo = row_mid.bo_m3m3;
+        let bg = row_mid.bg_m3m3;
+        if bo > 1e-12 {
+            let dbo_dp = (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp);
+            let c_o = -dbo_dp / bo;
+
+            let drs_dp = (row_hi.rs_m3m3 - row_lo.rs_m3m3) / (2.0 * dp);
+            let c_dg = if bg > 0.0 { (bg / bo) * drs_dp } else { 0.0 };
+
+            let c_eff = c_o + c_dg;
+            if c_eff.is_finite() && c_eff > 0.0 {
+                return c_eff;
+            }
+        }
+        self.pvt.c_o
+    }
+
+    pub(crate) fn get_b_o_cell(&self, id: usize, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (bo, _) = table.interpolate_oil(p, self.rs[id]);
+                return bo;
+            }
+            table.interpolate(p).bo_m3m3
+        } else {
+            self.b_o
+        }
+    }
+
+    pub(crate) fn get_rho_o_cell(&self, id: usize, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let rs = self.rs[id];
+            let (bo, _) = table.interpolate_oil(p, rs);
+            (self.pvt.rho_o + rs * self.rho_g) / bo
+        } else {
+            self.pvt.rho_o
+        }
+    }
+
+    pub(crate) fn get_rho_o(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            let row = table.interpolate(p);
+            (self.pvt.rho_o + row.rs_m3m3 * self.rho_g) / row.bo_m3m3
+        } else {
+            self.pvt.rho_o
+        }
+    }
+
+    pub(crate) fn get_rho_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            self.rho_g / table.interpolate(p).bg_m3m3
+        } else {
+            self.rho_g
+        }
+    }
+
+    pub(crate) fn get_rho_w(&self, _p: f64) -> f64 {
+        self.pvt.rho_w
+    }
+
+    pub(crate) fn get_b_g(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            table.interpolate(p).bg_m3m3
+        } else {
+            1.0
         }
     }
 }

@@ -4,6 +4,9 @@
 
 ## Now
 
+- [ ] Revisit the ignored Buckley-Leverett refined-grid regression as a potential solver/timestep issue, not just a slow-test classification problem.
+  - Current status: the test is ignored in the default suite because it is expensive, but that does not rule out a remaining solver, timestep-control, or convergence issue on the refined path.
+  - Follow-up when revisiting: run the refined cases individually with explicit timing/logging and inspect solver retries, accepted substep counts, and convergence behavior before deciding whether the slowness is expected.
 - [x] Split the remaining `step.rs` physics into dedicated pressure and transport modules so timestep orchestration is isolated from assembly/update details.
   - Extract pressure assembly, solve, and stability-factor calculation into `pressure_eqn.rs`.
   - Extract saturation/state-update helpers into `transport.rs`.
