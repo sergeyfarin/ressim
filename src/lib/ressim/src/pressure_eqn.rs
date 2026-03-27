@@ -2,7 +2,7 @@ use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
 
-use crate::solver::solve_bicgstab_with_guess;
+use crate::solvers::{solve_with_default, LinearSolveParams};
 use crate::well_control::{ResolvedWellControl, WellControlDecision};
 use crate::{InjectedFluid, ReservoirSimulator};
 
@@ -227,7 +227,14 @@ impl ReservoirSimulator {
         for i in 0..n_cells {
             x0[i] = self.pressure[i];
         }
-        let solver_result = solve_bicgstab_with_guess(&a_mat, &b_rhs, &diag_inv, &x0, 1e-7, 1000);
+        let solver_result = solve_with_default(LinearSolveParams {
+            matrix: &a_mat,
+            rhs: &b_rhs,
+            preconditioner_inv_diag: &diag_inv,
+            initial_guess: &x0,
+            tolerance: 1e-7,
+            max_iterations: 1000,
+        });
         let p_new = solver_result.solution;
 
         let mut delta_water_m3 = vec![0.0f64; n_cells];

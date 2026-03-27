@@ -4,12 +4,16 @@
 
 ## Now
 
+- [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
+  - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
+  - Validation status: `cargo fmt --manifest-path src/lib/ressim/Cargo.toml` completed and `cargo test --manifest-path src/lib/ressim/Cargo.toml` passed (`60 passed, 4 ignored`).
 - [ ] Revisit the ignored Buckley-Leverett refined-grid regression as a potential solver/timestep issue, not just a slow-test classification problem.
   - Current status: the test is ignored in the default suite because it is expensive, but that does not rule out a remaining solver, timestep-control, or convergence issue on the refined path.
   - Follow-up when revisiting: run the refined cases individually with explicit timing/logging and inspect solver retries, accepted substep counts, and convergence behavior before deciding whether the slowness is expected.
 - [ ] Continue moving embedded Rust test groups out of `lib.rs` into dedicated domain test modules.
   - First slice: Buckley-Leverett benchmark helpers and tests should live in their own test module rather than inside the crate root file.
-  - Follow-up slices: split remaining PVT/property tests, well-control tests, and three-phase physics tests by domain so `lib.rs` stays a crate root instead of a mixed runtime/test container.
+  - Current status: Buckley-Leverett, PVT/property, and well-control/productivity tests now live in dedicated test modules.
+  - Follow-up slices: split the remaining runtime/API/stability tests, geometry/reporting tests, and three-phase physics tests by domain so `lib.rs` stays a crate root instead of a mixed runtime/test container.
 - [x] Split the remaining `step.rs` physics into dedicated pressure and transport modules so timestep orchestration is isolated from assembly/update details.
   - Extract pressure assembly, solve, and stability-factor calculation into `pressure_eqn.rs`.
   - Extract saturation/state-update helpers into `transport.rs`.

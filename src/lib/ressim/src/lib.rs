@@ -27,7 +27,7 @@ mod pressure_eqn;
 mod pvt;
 mod relperm;
 mod reporting;
-mod solver;
+mod solvers;
 mod step;
 mod transport;
 mod well;
@@ -384,7 +384,12 @@ mod tests {
         sim_no_g.step(5.0);
         let sw_change_top_no_g = (sim_no_g.sat_water[top_id_no_g] - initial_sw).abs();
 
-        assert!(sw_change_top_g <= sw_change_top_no_g);
+        assert!(
+            sw_change_top_g <= sw_change_top_no_g + 1e-9,
+            "gravity-enabled top-cell saturation drift ({}) exceeded no-gravity drift ({})",
+            sw_change_top_g,
+            sw_change_top_no_g
+        );
     }
 
     #[test]

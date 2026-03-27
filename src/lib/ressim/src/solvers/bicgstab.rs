@@ -1,48 +1,14 @@
-use nalgebra::DVector;
-use sprs::CsMat;
 use std::f64;
 
-/// Result from the linear solver including convergence info.
-pub(crate) struct LinearSolveResult {
-    pub(crate) solution: DVector<f64>,
-    pub(crate) converged: bool,
-    pub(crate) iterations: usize,
-}
+use nalgebra::DVector;
 
-// --- Helper: sparse matrix-vector multiply ---
-fn cs_mat_mul_vec(a: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
-    let n = a.rows();
-    let mut y = DVector::<f64>::zeros(n);
-    for (row, vec) in a.outer_iterator().enumerate() {
-        let mut sum = 0.0;
-        for (&col, &val) in vec.indices().iter().zip(vec.data().iter()) {
-            sum += val * x[col];
-        }
-        y[row] = sum;
-    }
-    y
-}
-
-fn apply_jacobi_preconditioner(m_inv_diag: &DVector<f64>, rhs: &DVector<f64>) -> DVector<f64> {
-    let mut out = DVector::<f64>::zeros(rhs.len());
-    for i in 0..rhs.len() {
-        out[i] = rhs[i] * m_inv_diag[i];
-    }
-    out
-}
+use super::{apply_jacobi_preconditioner, cs_mat_mul_vec, LinearSolveParams, LinearSolveResult};
 
 // BiCGSTAB with Jacobi preconditioning. Unlike PCG, this remains valid for the
 // mildly non-symmetric pressure matrices produced by upwinded multiphase flow.
-pub(crate) fn solve_bicgstab_with_guess(
-    a: &CsMat<f64>,
-    b: &DVector<f64>,
-    m_inv_diag: &DVector<f64>,
-    x0: &DVector<f64>,
-    tolerance: f64,
-    max_iter: usize,
-) -> LinearSolveResult {
-    let mut x = x0.clone();
-    let mut r = b - &cs_mat_mul_vec(a, &x);
+pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
+    let mut x = params.initial_guess.clone();
+    let mut r = params.rhs - &cs_mat_mul_vec(params.matrix, &x);
     let r0_norm = r.norm();
     if r0_norm == 0.0 {
         return LinearSolveResult {
@@ -56,13 +22,13 @@ pub(crate) fn solve_bicgstab_with_guess(
     let mut rho_prev = 1.0;
     let mut alpha = 1.0;
     let mut omega = 1.0;
-    let mut v = DVector::<f64>::zeros(b.len());
-    let mut p = DVector::<f64>::zeros(b.len());
+    let mut v = DVector::<f64>::zeros(params.rhs.len());
+    let mut p = DVector::<f64>::zeros(params.rhs.len());
     let mut converged = false;
     let mut iter_count = 0;
-    for it in 0..max_iter {
+    for it in 0..params.max_iterations {
         iter_count = it + 1;
-        if r.norm() / r0_norm < tolerance {
+        if r.norm() / r0_norm < params.tolerance {
             converged = true;
             break;
         }
@@ -80,8 +46,8 @@ pub(crate) fn solve_bicgstab_with_guess(
         };
         p = &r + beta * (&p - omega * &v);
 
-        let p_hat = apply_jacobi_preconditioner(m_inv_diag, &p);
-        v = cs_mat_mul_vec(a, &p_hat);
+        let p_hat = apply_jacobi_preconditioner(params.preconditioner_inv_diag, &p);
+        v = cs_mat_mul_vec(params.matrix, &p_hat);
         let r_hat_dot_v = r_hat.dot(&v);
         if !r_hat_dot_v.is_finite() || r_hat_dot_v.abs() < f64::EPSILON {
             converged = false;
@@ -89,14 +55,14 @@ pub(crate) fn solve_bicgstab_with_guess(
         }
         alpha = rho / r_hat_dot_v;
         let s = &r - alpha * &v;
-        if s.norm() / r0_norm < tolerance {
+        if s.norm() / r0_norm < params.tolerance {
             x += alpha * p_hat;
             converged = true;
             break;
         }
 
-        let s_hat = apply_jacobi_preconditioner(m_inv_diag, &s);
-        let t = cs_mat_mul_vec(a, &s_hat);
+        let s_hat = apply_jacobi_preconditioner(params.preconditioner_inv_diag, &s);
+        let t = cs_mat_mul_vec(params.matrix, &s_hat);
         let t_dot_t = t.dot(&t);
         if !t_dot_t.is_finite() || t_dot_t.abs() < f64::EPSILON {
             converged = false;
@@ -122,8 +88,10 @@ pub(crate) fn solve_bicgstab_with_guess(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use nalgebra::DVector;
     use sprs::TriMatI;
+
+    use super::*;
 
     #[test]
     fn bicgstab_solves_small_nonsymmetric_system() {
@@ -132,13 +100,20 @@ mod tests {
         tri.add_triplet(0, 1, 1.0);
         tri.add_triplet(1, 0, 2.0);
         tri.add_triplet(1, 1, 3.0);
-        let a = tri.to_csr();
+        let matrix = tri.to_csr();
 
-        let b = DVector::from_vec(vec![1.0, 1.0]);
-        let x0 = DVector::from_vec(vec![0.0, 0.0]);
-        let m_inv_diag = DVector::from_vec(vec![0.25, 1.0 / 3.0]);
+        let rhs = DVector::from_vec(vec![1.0, 1.0]);
+        let initial_guess = DVector::from_vec(vec![0.0, 0.0]);
+        let preconditioner_inv_diag = DVector::from_vec(vec![0.25, 1.0 / 3.0]);
 
-        let result = solve_bicgstab_with_guess(&a, &b, &m_inv_diag, &x0, 1e-10, 100);
+        let result = solve(&LinearSolveParams {
+            matrix: &matrix,
+            rhs: &rhs,
+            preconditioner_inv_diag: &preconditioner_inv_diag,
+            initial_guess: &initial_guess,
+            tolerance: 1e-10,
+            max_iterations: 100,
+        });
         assert!(
             result.converged,
             "BiCGSTAB should converge for a small nonsymmetric system"

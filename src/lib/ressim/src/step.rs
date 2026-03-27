@@ -31,12 +31,12 @@ impl ReservoirSimulator {
                     delta_dg_sc,
                     well_controls,
                     stable_dt_factor,
-                    pcg_converged,
-                    pcg_iters,
+                    solver_converged,
+                    solver_iterations,
                 ) = self.calculate_fluxes(trial_dt);
 
                 let pressure_physical = self.pressure_state_is_physical(p_new.as_slice());
-                let solver_retry_factor = if pcg_converged { 1.0 } else { 0.5 };
+                let solver_retry_factor = if solver_converged { 1.0 } else { 0.5 };
                 let physics_retry_factor = if pressure_physical { 1.0 } else { 0.5 };
                 let retry_factor = stable_dt_factor
                     .min(solver_retry_factor)
@@ -56,10 +56,10 @@ impl ReservoirSimulator {
                 retry_count += 1;
 
                 if !next_dt.is_finite() || next_dt <= 1e-12 {
-                    self.last_solver_warning = if !pcg_converged {
+                    self.last_solver_warning = if !solver_converged {
                         format!(
-                            "BiCGSTAB solver did not converge after {} iterations and timestep collapsed at t={:.6} days",
-                            pcg_iters,
+                            "Linear solver did not converge after {} iterations and timestep collapsed at t={:.6} days",
+                            solver_iterations,
                             self.time_days + time_stepped
                         )
                     } else {
@@ -73,10 +73,10 @@ impl ReservoirSimulator {
                 }
 
                 if retry_count >= MAX_PRESSURE_RETRIES_PER_SUBSTEP {
-                    self.last_solver_warning = if !pcg_converged {
+                    self.last_solver_warning = if !solver_converged {
                         format!(
-                            "BiCGSTAB solver did not converge after {} iterations even after {} retries at t={:.6} days",
-                            pcg_iters,
+                            "Linear solver did not converge after {} iterations even after {} retries at t={:.6} days",
+                            solver_iterations,
                             retry_count,
                             self.time_days + time_stepped
                         )
