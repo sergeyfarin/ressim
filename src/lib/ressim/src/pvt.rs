@@ -204,6 +204,38 @@ impl PvtTable {
         (row_hi.bg_m3m3 - row_lo.bg_m3m3) / (2.0 * dp)
     }
 
+    pub(crate) fn d_mu_o_d_p(&self, p: f64, rs: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let (_, mu_lo) = self.interpolate_oil(p_lo, rs);
+        let (_, mu_hi) = self.interpolate_oil(p + dp, rs);
+        (mu_hi - mu_lo) / (2.0 * dp)
+    }
+
+    pub(crate) fn d_mu_o_sat_d_p(&self, p: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = self.interpolate(p_lo);
+        let row_hi = self.interpolate(p + dp);
+        (row_hi.mu_o_cp - row_lo.mu_o_cp) / (2.0 * dp)
+    }
+
+    pub(crate) fn d_mu_o_d_rs(&self, p: f64, rs: f64) -> f64 {
+        let drs = 1.0;
+        let rs_lo = (rs - drs).max(0.0);
+        let (_, mu_lo) = self.interpolate_oil(p, rs_lo);
+        let (_, mu_hi) = self.interpolate_oil(p, rs + drs);
+        (mu_hi - mu_lo) / (2.0 * drs)
+    }
+
+    pub(crate) fn d_mu_g_d_p(&self, p: f64) -> f64 {
+        let dp = 1.0;
+        let p_lo = (p - dp).max(0.0);
+        let row_lo = self.interpolate(p_lo);
+        let row_hi = self.interpolate(p + dp);
+        (row_hi.mu_g_cp - row_lo.mu_g_cp) / (2.0 * dp)
+    }
+
     #[allow(dead_code)]
     pub(crate) fn d_rs_sat_d_p(&self, p: f64) -> f64 {
         let dp = 1.0;
@@ -457,6 +489,30 @@ impl ReservoirSimulator {
             if self.three_phase_mode {
                 return table.d_rs_sat_d_p(p);
             }
+        }
+        0.0
+    }
+
+    pub(crate) fn get_d_mu_o_d_p_for_state(&self, p: f64, rs_sm3_sm3: f64, saturated: bool) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            if saturated {
+                return table.d_mu_o_sat_d_p(p);
+            }
+            return table.d_mu_o_d_p(p, rs_sm3_sm3);
+        }
+        0.0
+    }
+
+    pub(crate) fn get_d_mu_o_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            return table.d_mu_o_d_rs(p, rs_sm3_sm3);
+        }
+        0.0
+    }
+
+    pub(crate) fn get_d_mu_g_d_p_for_state(&self, p: f64) -> f64 {
+        if let Some(table) = &self.pvt_table {
+            return table.d_mu_g_d_p(p);
         }
         0.0
     }

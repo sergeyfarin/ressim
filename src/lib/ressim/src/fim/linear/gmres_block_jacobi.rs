@@ -65,30 +65,41 @@ impl BlockJacobiPreconditioner {
 
         if use_pressure_correction && !self.pressure_diag.is_empty() && self.cell_block_size > 0 {
             let stage_one_residual = vector - &cs_mat_mul_vec(matrix, &result);
-            let pressure_rhs = DVector::from_iterator(
-                self.pressure_diag.len(),
-                (0..self.pressure_diag.len())
-                    .map(|cell_idx| stage_one_residual[cell_idx * self.cell_block_size]),
-            );
-            let pressure_correction = self.solve_pressure_correction(&pressure_rhs, 3);
-            for (cell_idx, correction) in pressure_correction.iter().enumerate() {
-                let pressure_idx = cell_idx * self.cell_block_size;
-                result[pressure_idx] += correction;
-            }
+            let pressure_correction =
+                self.solve_pressure_correction(&self.extract_pressure_rhs(&stage_one_residual), 2);
+            self.add_pressure_correction(&mut result, &pressure_correction);
+
+            // Apply one more global block solve after pressure correction so the
+            // transport/well unknowns respond to the corrected pressure field.
+            let corrected_residual = vector - &cs_mat_mul_vec(matrix, &result);
+            result += self.apply_stage_one(&corrected_residual);
         }
 
         result
     }
 
+    fn extract_pressure_rhs(&self, residual: &DVector<f64>) -> DVector<f64> {
+        DVector::from_iterator(
+            self.pressure_diag.len(),
+            (0..self.pressure_diag.len()).map(|cell_idx| residual[cell_idx * self.cell_block_size]),
+        )
+    }
+
+    fn add_pressure_correction(&self, result: &mut DVector<f64>, pressure_correction: &DVector<f64>) {
+        for (cell_idx, correction) in pressure_correction.iter().enumerate() {
+            let pressure_idx = cell_idx * self.cell_block_size;
+            result[pressure_idx] += correction;
+        }
+    }
+
     fn solve_pressure_correction(&self, rhs: &DVector<f64>, iterations: usize) -> DVector<f64> {
         let mut solution = DVector::zeros(rhs.len());
-        let mut next = DVector::zeros(rhs.len());
 
         for _ in 0..iterations {
             for row_idx in 0..rhs.len() {
                 let diag = self.pressure_diag[row_idx];
                 if diag.abs() <= f64::EPSILON {
-                    next[row_idx] = rhs[row_idx];
+                    solution[row_idx] = rhs[row_idx];
                     continue;
                 }
 
@@ -98,9 +109,24 @@ impl BlockJacobiPreconditioner {
                         sum -= value * solution[col_idx];
                     }
                 }
-                next[row_idx] = sum / diag;
+                solution[row_idx] = sum / diag;
             }
-            std::mem::swap(&mut solution, &mut next);
+
+            for row_idx in (0..rhs.len()).rev() {
+                let diag = self.pressure_diag[row_idx];
+                if diag.abs() <= f64::EPSILON {
+                    solution[row_idx] = rhs[row_idx];
+                    continue;
+                }
+
+                let mut sum = rhs[row_idx];
+                for &(col_idx, value) in &self.pressure_rows[row_idx] {
+                    if col_idx != row_idx {
+                        sum -= value * solution[col_idx];
+                    }
+                }
+                solution[row_idx] = sum / diag;
+            }
         }
 
         solution
@@ -232,6 +258,12 @@ pub(super) fn solve(
     layout: Option<FimLinearBlockLayout>,
     used_fallback: bool,
 ) -> FimLinearSolveReport {
+    let backend_used = if options.kind == FimLinearSolverKind::FgmresCpr {
+        FimLinearSolverKind::FgmresCpr
+    } else {
+        FimLinearSolverKind::GmresIlu0
+    };
+
     if jacobian.rows() == 0 {
         return FimLinearSolveReport {
             solution: DVector::zeros(0),
@@ -239,7 +271,7 @@ pub(super) fn solve(
             iterations: 0,
             final_residual_norm: 0.0,
             used_fallback,
-            backend_used: FimLinearSolverKind::GmresIlu0,
+            backend_used,
         };
     }
 
@@ -263,7 +295,7 @@ pub(super) fn solve(
                 iterations,
                 final_residual_norm: residual_norm,
                 used_fallback,
-                backend_used: FimLinearSolverKind::GmresIlu0,
+                backend_used,
             };
         }
 
@@ -277,7 +309,7 @@ pub(super) fn solve(
                 iterations,
                 final_residual_norm: residual_norm,
                 used_fallback,
-                backend_used: FimLinearSolverKind::GmresIlu0,
+                backend_used,
             };
         }
 
@@ -334,7 +366,7 @@ pub(super) fn solve(
                     iterations,
                     final_residual_norm: candidate_residual,
                     used_fallback,
-                    backend_used: FimLinearSolverKind::GmresIlu0,
+                    backend_used,
                 };
             }
 
@@ -356,6 +388,6 @@ pub(super) fn solve(
         iterations,
         final_residual_norm: final_residual,
         used_fallback,
-        backend_used: FimLinearSolverKind::GmresIlu0,
+        backend_used,
     }
 }

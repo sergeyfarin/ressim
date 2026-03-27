@@ -107,6 +107,44 @@ fn interpolate_piecewise<T>(rows: &[T], x: f64, x_of: fn(&T) -> f64, y_of: fn(&T
     }
 }
 
+fn interpolate_piecewise_slope<T>(
+    rows: &[T],
+    x: f64,
+    x_of: fn(&T) -> f64,
+    y_of: fn(&T) -> f64,
+) -> f64 {
+    if rows.len() < 2 {
+        return 0.0;
+    }
+    if x <= x_of(&rows[0]) {
+        let x0 = x_of(&rows[0]);
+        let x1 = x_of(&rows[1]);
+        let y0 = y_of(&rows[0]);
+        let y1 = y_of(&rows[1]);
+        let dx = x1 - x0;
+        return if dx.abs() > f64::EPSILON { (y1 - y0) / dx } else { 0.0 };
+    }
+    for pair in rows.windows(2) {
+        let x0 = x_of(&pair[0]);
+        let x1 = x_of(&pair[1]);
+        if x <= x1 {
+            let dx = x1 - x0;
+            return if dx.abs() > f64::EPSILON {
+                (y_of(&pair[1]) - y_of(&pair[0])) / dx
+            } else {
+                0.0
+            };
+        }
+    }
+    let last = rows.len() - 1;
+    let x0 = x_of(&rows[last - 1]);
+    let x1 = x_of(&rows[last]);
+    let y0 = y_of(&rows[last - 1]);
+    let y1 = y_of(&rows[last]);
+    let dx = x1 - x0;
+    if dx.abs() > f64::EPSILON { (y1 - y0) / dx } else { 0.0 }
+}
+
 /// Three-phase rock/fluid properties for Stone II relative permeability model.
 /// Oil-water Corey parameters are the same form as `RockFluidProps` (2-phase).
 /// Gas Corey parameters are independent.
@@ -152,6 +190,21 @@ impl RockFluidPropsThreePhase {
         self.k_rw_max * s_eff.powf(self.n_w)
     }
 
+    pub fn d_k_rw_d_sw(&self, s_w: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_slope(&tables.swof, s_w, |row| row.sw, |row| row.krw);
+        }
+        let denom = 1.0 - self.s_wc - self.s_or;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = (s_w - self.s_wc) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+        self.k_rw_max * self.n_w * s_eff.powf(self.n_w - 1.0) / denom
+    }
+
     /// Gas relative permeability — Corey-Brooks.
     /// S_g_eff = (S_g − S_gc) / (1 − S_wc − S_gc − S_gr)
     pub fn k_rg(&self, s_g: f64) -> f64 {
@@ -166,6 +219,21 @@ impl RockFluidPropsThreePhase {
         self.k_rg_max * s_eff.powf(self.n_g)
     }
 
+    pub fn d_k_rg_d_sg(&self, s_g: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_slope(&tables.sgof, s_g, |row| row.sg, |row| row.krg);
+        }
+        let denom = 1.0 - self.s_wc - self.s_gc - self.s_gr;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = (s_g - self.s_gc) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+        self.k_rg_max * self.n_g * s_eff.powf(self.n_g - 1.0) / denom
+    }
+
     /// Oil relative permeability in oil-water 2-phase system (Sg = 0).
     /// k_ro_w = k_ro_max * ((1 − Sw − Sor) / (1 − Swc − Sor))^no
     pub fn k_ro_water(&self, s_w: f64) -> f64 {
@@ -174,6 +242,21 @@ impl RockFluidPropsThreePhase {
         }
         let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
         self.k_ro_max * s_eff.powf(self.n_o)
+    }
+
+    pub fn d_k_ro_water_d_sw(&self, s_w: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_slope(&tables.swof, s_w, |row| row.sw, |row| row.krow);
+        }
+        let denom = 1.0 - self.s_wc - self.s_or;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = (1.0 - s_w - self.s_or) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+        -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
     }
 
     /// Oil relative permeability in oil-gas 2-phase system (Sw = Swc).
@@ -191,6 +274,21 @@ impl RockFluidPropsThreePhase {
         self.k_ro_max * s_eff.powf(self.n_o)
     }
 
+    pub fn d_k_ro_gas_d_sg(&self, s_g: f64) -> f64 {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_slope(&tables.sgof, s_g, |row| row.sg, |row| row.krog);
+        }
+        let denom = 1.0 - self.s_wc - self.s_org;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = (1.0 - self.s_wc - s_g - self.s_org) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+        -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
+    }
+
     /// Three-phase oil relative permeability — Stone II model.
     /// k_ro = k_ro_max * [ (k_ro_w/k_ro_max + k_rw) * (k_ro_g/k_ro_max + k_rg) − k_rw − k_rg ]
     /// Clamped to [0, k_ro_max].
@@ -202,6 +300,40 @@ impl RockFluidPropsThreePhase {
         let krg = self.k_rg(s_g);
         let val = kro_max * ((kro_w / kro_max + krw) * (kro_g / kro_max + krg) - krw - krg);
         val.clamp(0.0, kro_max)
+    }
+
+    pub fn d_k_ro_stone2_d_sw(&self, s_w: f64, s_g: f64) -> f64 {
+        let kro_max = self.k_ro_max;
+        let kro_w = self.k_ro_water(s_w);
+        let kro_g = self.k_ro_gas(s_g);
+        let krw = self.k_rw(s_w);
+        let krg = self.k_rg(s_g);
+        let val = kro_max * ((kro_w / kro_max + krw) * (kro_g / kro_max + krg) - krw - krg);
+        if val <= 0.0 || val >= kro_max {
+            return 0.0;
+        }
+
+        let d_kro_w = self.d_k_ro_water_d_sw(s_w);
+        let d_krw = self.d_k_rw_d_sw(s_w);
+        let b = kro_g / kro_max + krg;
+        kro_max * ((d_kro_w / kro_max + d_krw) * b - d_krw)
+    }
+
+    pub fn d_k_ro_stone2_d_sg(&self, s_w: f64, s_g: f64) -> f64 {
+        let kro_max = self.k_ro_max;
+        let kro_w = self.k_ro_water(s_w);
+        let kro_g = self.k_ro_gas(s_g);
+        let krw = self.k_rw(s_w);
+        let krg = self.k_rg(s_g);
+        let val = kro_max * ((kro_w / kro_max + krw) * (kro_g / kro_max + krg) - krw - krg);
+        if val <= 0.0 || val >= kro_max {
+            return 0.0;
+        }
+
+        let a = kro_w / kro_max + krw;
+        let d_kro_g = self.d_k_ro_gas_d_sg(s_g);
+        let d_krg = self.d_k_rg_d_sg(s_g);
+        kro_max * (a * (d_kro_g / kro_max + d_krg) - d_krg)
     }
 }
 
@@ -244,11 +376,35 @@ impl RockFluidProps {
         self.k_rw_max * s_eff.powf(self.n_w)
     }
 
+    pub fn d_k_rw_d_sw(&self, s_w: f64) -> f64 {
+        let denom = 1.0 - self.s_wc - self.s_or;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = (s_w - self.s_wc) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+        self.k_rw_max * self.n_w * s_eff.powf(self.n_w - 1.0) / denom
+    }
+
     /// Oil relative permeability [dimensionless] using Corey-Brooks correlation
     /// k_ro(Sw) = kro_max * ((1 - Sw - Sor) / (1 - Swc - Sor))^no
     /// Returns 0 for Sw >= 1-Sor (critical water saturation), kro_max for Sw <= Swc
     pub fn k_ro(&self, s_w: f64) -> f64 {
         let s_eff = ((1.0 - s_w - self.s_or) / (1.0 - self.s_wc - self.s_or)).clamp(0.0, 1.0);
         self.k_ro_max * s_eff.powf(self.n_o)
+    }
+
+    pub fn d_k_ro_d_sw(&self, s_w: f64) -> f64 {
+        let denom = 1.0 - self.s_wc - self.s_or;
+        if denom <= 0.0 {
+            return 0.0;
+        }
+        let s_eff = (1.0 - s_w - self.s_or) / denom;
+        if !(0.0..1.0).contains(&s_eff) {
+            return 0.0;
+        }
+        -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
     }
 }

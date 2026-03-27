@@ -120,6 +120,6 @@ mod tests {
 
         assert!(report.converged);
         assert!(report.used_fallback);
-        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
+        assert_eq!(report.backend_used, FimLinearSolverKind::FgmresCpr);
     }
 }

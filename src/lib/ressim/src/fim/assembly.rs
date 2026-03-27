@@ -7,9 +7,9 @@ use crate::fim::scaling::{
 use crate::fim::state::FimState;
 use crate::fim::wells::{
     build_well_topology, fischer_burmeister_gradient, perforation_component_rate_derivatives_sc_day,
-    perforation_component_rates_sc_day, perforation_connection_bhp_derivative,
-    perforation_connection_pressure_derivative, perforation_rate_residual,
-    perforation_source_pressure_derivatives_sc_day, perforation_surface_rate_pressure_derivative,
+    perforation_component_rate_cell_derivatives_sc_day_by_var, perforation_component_rates_sc_day,
+    perforation_connection_bhp_derivative, perforation_connection_cell_derivatives,
+    perforation_rate_residual, perforation_surface_rate_cell_derivatives_sc_day,
     perforation_target_rate_derivative, physical_well_control, well_constraint_residual,
     well_control_slacks, FimWellTopology,
 };
@@ -56,9 +56,9 @@ pub(crate) fn assemble_fim_system(
 
     if options.include_wells {
         add_exact_well_source_jacobian(sim, state, &topology, options.dt_days, &mut tri);
-        add_exact_well_source_cell_pressure_jacobian(sim, state, &topology, options.dt_days, &mut tri);
+        add_exact_well_source_cell_jacobian(sim, state, &topology, options.dt_days, &mut tri);
         add_exact_well_constraint_jacobian(sim, state, &topology, &mut tri);
-        add_exact_well_constraint_cell_pressure_jacobian(sim, state, &topology, &mut tri);
+        add_exact_well_constraint_cell_jacobian(sim, state, &topology, &mut tri);
         add_exact_perforation_jacobian(sim, state, &topology, &mut tri);
         add_exact_perforation_cell_pressure_jacobian(sim, state, &topology, &mut tri);
         add_local_well_source_cell_jacobian_fd(sim, state, &topology, options.dt_days, &mut tri);
@@ -94,7 +94,7 @@ fn add_exact_well_source_jacobian(
     }
 }
 
-fn add_exact_well_source_cell_pressure_jacobian(
+fn add_exact_well_source_cell_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
@@ -102,13 +102,18 @@ fn add_exact_well_source_cell_pressure_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for perf_idx in 0..topology.perforations.len() {
-        let cell_idx = topology.perforations[perf_idx].cell_index;
-        let column = unknown_offset(cell_idx, 0);
-        let derivatives = perforation_source_pressure_derivatives_sc_day(sim, state, topology, perf_idx);
-        for (local_eq, derivative) in derivatives.into_iter().enumerate() {
-            let value = derivative * dt_days;
-            if value.abs() > 1e-14 {
-                tri.add_triplet(equation_offset(cell_idx, local_eq), column, value);
+        let row_cell = topology.perforations[perf_idx].cell_index;
+        for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
+            let derivatives =
+                perforation_component_rate_cell_derivatives_sc_day_by_var(sim, state, topology, perf_idx, cell_idx);
+            for (local_var, component_derivatives) in derivatives.into_iter().enumerate() {
+                let column = unknown_offset(cell_idx, local_var);
+                for (local_eq, derivative) in component_derivatives.into_iter().enumerate() {
+                    let value = derivative * dt_days;
+                    if value.abs() > 1e-14 {
+                        tri.add_triplet(equation_offset(row_cell, local_eq), column, value);
+                    }
+                }
             }
         }
     }
@@ -151,7 +156,7 @@ fn add_exact_well_constraint_jacobian(
     }
 }
 
-fn add_exact_well_constraint_cell_pressure_jacobian(
+fn add_exact_well_constraint_cell_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
@@ -159,7 +164,7 @@ fn add_exact_well_constraint_cell_pressure_jacobian(
 ) {
     for well_idx in 0..topology.wells.len() {
         let control = physical_well_control(sim, topology, well_idx);
-        if !topology.wells[well_idx].injector || !control.enabled || !control.rate_controlled || !control.uses_surface_target {
+        if !control.enabled || !control.rate_controlled || !control.uses_surface_target {
             continue;
         }
 
@@ -169,11 +174,15 @@ fn add_exact_well_constraint_cell_pressure_jacobian(
         let (_, dphi_db) = fischer_burmeister_gradient(bhp_slack, rate_slack);
         let row = state.well_equation_offset(well_idx);
         for &perf_idx in &topology.wells[well_idx].perforation_indices {
-            let cell_idx = topology.perforations[perf_idx].cell_index;
-            let derivative = perforation_surface_rate_pressure_derivative(sim, state, topology, perf_idx);
-            let value = -dphi_db * derivative;
-            if value.abs() > 1e-14 {
-                tri.add_triplet(row, unknown_offset(cell_idx, 0), value);
+            for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
+                let derivatives =
+                    perforation_surface_rate_cell_derivatives_sc_day(sim, state, topology, perf_idx, cell_idx);
+                for (local_var, derivative) in derivatives.into_iter().enumerate() {
+                    let value = -dphi_db * derivative;
+                    if value.abs() > 1e-14 {
+                        tri.add_triplet(row, unknown_offset(cell_idx, local_var), value);
+                    }
+                }
             }
         }
     }
@@ -213,17 +222,19 @@ fn add_exact_perforation_cell_pressure_jacobian(
     for perf_idx in 0..topology.perforations.len() {
         let well_idx = topology.perforations[perf_idx].physical_well_index;
         let bhp_bar = state.well_bhp[well_idx];
-        let Some(connection_dp) =
-            perforation_connection_pressure_derivative(sim, state, topology, perf_idx, bhp_bar)
+        let Some(connection_derivatives) =
+            perforation_connection_cell_derivatives(sim, state, topology, perf_idx, bhp_bar)
         else {
             continue;
         };
 
         let row = state.perforation_equation_offset(perf_idx);
-        let column = unknown_offset(topology.perforations[perf_idx].cell_index, 0);
-        let value = -connection_dp;
-        if value.abs() > 1e-14 {
-            tri.add_triplet(row, column, value);
+        let cell_idx = topology.perforations[perf_idx].cell_index;
+        for (local_var, derivative) in connection_derivatives.into_iter().enumerate() {
+            let value = -derivative;
+            if value.abs() > 1e-14 {
+                tri.add_triplet(row, unknown_offset(cell_idx, local_var), value);
+            }
         }
     }
 }
@@ -297,100 +308,26 @@ fn well_constraint_influence_cells(
 }
 
 fn add_local_well_source_cell_jacobian_fd(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    topology: &FimWellTopology,
-    dt_days: f64,
-    tri: &mut TriMatI<f64, usize>,
-) {
-    for perf_idx in 0..topology.perforations.len() {
-        if topology.perforations[perf_idx].injector {
-            continue;
-        }
-
-        let base = perforation_component_rates_sc_day(sim, state, topology, perf_idx);
-        let row_cell = topology.perforations[perf_idx].cell_index;
-
-        for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
-            for local_var in 0..3 {
-                let (perturbation, perturbed_state) = perturb_cell_unknown(sim, state, cell_idx, local_var);
-                let perturbed =
-                    perforation_component_rates_sc_day(sim, &perturbed_state, topology, perf_idx);
-                let column = unknown_offset(cell_idx, local_var);
-                for component in 0..3 {
-                    let derivative = (perturbed[component] - base[component]) * dt_days / perturbation;
-                    if derivative.abs() > 1e-14 {
-                        tri.add_triplet(equation_offset(row_cell, component), column, derivative);
-                    }
-                }
-            }
-        }
-    }
-}
+    _sim: &ReservoirSimulator,
+    _state: &FimState,
+    _topology: &FimWellTopology,
+    _dt_days: f64,
+    _tri: &mut TriMatI<f64, usize>,
+) {}
 
 fn add_local_well_constraint_cell_jacobian_fd(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    topology: &FimWellTopology,
-    tri: &mut TriMatI<f64, usize>,
-) {
-    for well_idx in 0..topology.wells.len() {
-        if topology.wells[well_idx].injector {
-            continue;
-        }
-
-        let control = physical_well_control(sim, topology, well_idx);
-        if !control.enabled || !control.rate_controlled || !control.uses_surface_target {
-            continue;
-        }
-
-        let Some(base) = well_constraint_residual(sim, state, topology, well_idx) else {
-            continue;
-        };
-        let row = state.well_equation_offset(well_idx);
-        for cell_idx in well_constraint_influence_cells(sim, topology, well_idx) {
-            for local_var in 0..3 {
-                let (perturbation, perturbed_state) = perturb_cell_unknown(sim, state, cell_idx, local_var);
-                let Some(perturbed) = well_constraint_residual(sim, &perturbed_state, topology, well_idx) else {
-                    continue;
-                };
-                let derivative = (perturbed - base) / perturbation;
-                if derivative.abs() > 1e-14 {
-                    tri.add_triplet(row, unknown_offset(cell_idx, local_var), derivative);
-                }
-            }
-        }
-    }
-}
+    _sim: &ReservoirSimulator,
+    _state: &FimState,
+    _topology: &FimWellTopology,
+    _tri: &mut TriMatI<f64, usize>,
+) {}
 
 fn add_local_perforation_cell_jacobian_fd(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    topology: &FimWellTopology,
-    tri: &mut TriMatI<f64, usize>,
+    _sim: &ReservoirSimulator,
+    _state: &FimState,
+    _topology: &FimWellTopology,
+    _tri: &mut TriMatI<f64, usize>,
 ) {
-    for perf_idx in 0..topology.perforations.len() {
-        let Some(base) = perforation_rate_residual(sim, state, topology, perf_idx) else {
-            continue;
-        };
-
-        let row = state.perforation_equation_offset(perf_idx);
-        let cell_idx = topology.perforations[perf_idx].cell_index;
-        for local_var in 0..3 {
-            if topology.perforations[perf_idx].injector && sim.injected_fluid == crate::InjectedFluid::Water && local_var == 0 {
-                continue;
-            }
-
-            let (perturbation, perturbed_state) = perturb_cell_unknown(sim, state, cell_idx, local_var);
-            let Some(perturbed) = perforation_rate_residual(sim, &perturbed_state, topology, perf_idx) else {
-                continue;
-            };
-            let derivative = (perturbed - base) / perturbation;
-            if derivative.abs() > 1e-14 {
-                tri.add_triplet(row, unknown_offset(cell_idx, local_var), derivative);
-            }
-        }
-    }
 }
 
 fn pore_volume_at_state(
@@ -1154,6 +1091,152 @@ mod tests {
         let row = state.perforation_equation_offset(0);
         let col = unknown_offset(0, 0);
         assert!((jacobian_value(&assembly.jacobian, row, col) - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn producer_perforation_row_has_exact_local_connection_derivatives() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        state.cells[0].pressure_bar = 220.0;
+        state.cells[0].sw = 0.25;
+        state.cells[0].hydrocarbon_var = 0.15;
+
+        let topology = build_well_topology(&sim);
+        let expected = crate::fim::wells::perforation_connection_cell_derivatives(
+            &sim,
+            &state,
+            &topology,
+            0,
+            state.well_bhp[0],
+        )
+        .unwrap();
+
+        let assembly = assemble_fim_system(
+            &sim,
+            &state,
+            &state,
+            &FimAssemblyOptions {
+                dt_days: 1.0,
+                include_wells: true,
+            },
+        );
+
+        let row = state.perforation_equation_offset(0);
+        for (local_var, derivative) in expected.into_iter().enumerate() {
+            let value = jacobian_value(&assembly.jacobian, row, unknown_offset(0, local_var));
+            assert!((value + derivative).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn producer_source_row_matches_exact_neighborhood_derivative() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        state.cells[sim.idx(1, 1, 0)].pressure_bar = 220.0;
+        state.cells[sim.idx(1, 1, 0)].sw = 0.25;
+        state.cells[sim.idx(1, 1, 0)].hydrocarbon_var = 0.15;
+        state.perforation_rates_m3_day[0] = 40.0;
+
+        let topology = build_well_topology(&sim);
+        let expected = crate::fim::wells::perforation_component_rate_cell_derivatives_sc_day_by_var(
+            &sim,
+            &state,
+            &topology,
+            0,
+            sim.idx(1, 1, 0),
+        );
+
+        let assembly = assemble_fim_system(
+            &sim,
+            &state,
+            &state,
+            &FimAssemblyOptions {
+                dt_days: 1.0,
+                include_wells: true,
+            },
+        );
+        let baseline = assemble_fim_system(
+            &sim,
+            &state,
+            &state,
+            &FimAssemblyOptions {
+                dt_days: 1.0,
+                include_wells: false,
+            },
+        );
+
+        let row_cell = sim.idx(1, 1, 0);
+        for local_var in 0..3 {
+            let col = unknown_offset(row_cell, local_var);
+            for component in 0..3 {
+                let row = equation_offset(row_cell, component);
+                let value =
+                    jacobian_value(&assembly.jacobian, row, col) - jacobian_value(&baseline.jacobian, row, col);
+                assert!((value - expected[local_var][component]).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn producer_control_row_matches_exact_surface_rate_derivative() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.producer_rate_controlled = true;
+        sim.target_producer_surface_rate_m3_day = Some(25.0);
+        sim.target_producer_rate_m3_day = 25.0;
+        sim.well_bhp_min = 50.0;
+
+        let mut state = FimState::from_simulator(&sim);
+        state.cells[sim.idx(1, 1, 0)].pressure_bar = 220.0;
+        state.cells[sim.idx(1, 1, 0)].sw = 0.25;
+        state.cells[sim.idx(1, 1, 0)].hydrocarbon_var = 0.15;
+        state.perforation_rates_m3_day[0] = 40.0;
+
+        let topology = build_well_topology(&sim);
+        let (bhp_slack, rate_slack) = crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
+        let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(bhp_slack, rate_slack);
+        let d_surface = crate::fim::wells::perforation_surface_rate_cell_derivatives_sc_day(
+            &sim,
+            &state,
+            &topology,
+            0,
+            sim.idx(1, 1, 0),
+        );
+
+        let assembly = assemble_fim_system(
+            &sim,
+            &state,
+            &state,
+            &FimAssemblyOptions {
+                dt_days: 1.0,
+                include_wells: true,
+            },
+        );
+
+        let row = state.well_equation_offset(0);
+        for (local_var, derivative) in d_surface.into_iter().enumerate() {
+            let value = jacobian_value(&assembly.jacobian, row, unknown_offset(sim.idx(1, 1, 0), local_var));
+            assert!((value + dphi_db * derivative).abs() < 1e-9);
+        }
     }
 
     #[test]
