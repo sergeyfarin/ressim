@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{InjectedFluid, ReservoirSimulator, Well};
 
 /// Conversion factor from mD·m²/(m·cP) to m³/day/bar.
@@ -163,16 +161,6 @@ impl ReservoirSimulator {
                 well.productivity_index = pi;
             }
         }
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn injector_well_count(&self) -> usize {
-        self.wells.iter().filter(|w| w.injector).count()
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn producer_well_count(&self) -> usize {
-        self.wells.iter().filter(|w| !w.injector).count()
     }
 
     pub(crate) fn well_control_group_key(&self, well: &Well) -> WellControlGroupKey {
@@ -513,133 +501,6 @@ impl ReservoirSimulator {
         }
     }
 
-    pub(crate) fn solve_group_bhp_for_pressures(
-        &self,
-        injector: bool,
-        pressures: &[f64],
-    ) -> Option<(f64, bool)> {
-        let use_rate_control = if injector {
-            self.injector_rate_controlled
-        } else {
-            self.producer_rate_controlled
-        };
-        if !use_rate_control {
-            return None;
-        }
-
-        let wells: Vec<&Well> = self
-            .wells
-            .iter()
-            .filter(|well| well.injector == injector)
-            .collect();
-        if wells.is_empty() {
-            return None;
-        }
-
-        let total_surface_target = if injector {
-            self.target_injector_surface_rate_m3_day
-        } else {
-            self.target_producer_surface_rate_m3_day
-        };
-        let total_reservoir_target = if injector {
-            self.target_injector_rate_m3_day
-        } else {
-            self.target_producer_rate_m3_day
-        };
-
-        let total_rate_for_bhp = |bhp_bar: f64| -> f64 {
-            wells
-                .iter()
-                .filter_map(|well| {
-                    let id = self.idx(well.i, well.j, well.k);
-                    let pressure_bar = pressures[id];
-                    if injector {
-                        match total_surface_target {
-                            Some(_) => self.completion_surface_rate_sc_day(
-                                well,
-                                pressures,
-                                pressure_bar,
-                                bhp_bar,
-                            ),
-                            None => self
-                                .completion_rate_for_bhp(well, pressure_bar, bhp_bar)
-                                .map(|q| (-q).max(0.0)),
-                        }
-                    } else {
-                        match total_surface_target {
-                            Some(_) => self.completion_surface_rate_sc_day(
-                                well,
-                                pressures,
-                                pressure_bar,
-                                bhp_bar,
-                            ),
-                            None => self.completion_rate_for_bhp(well, pressure_bar, bhp_bar),
-                        }
-                    }
-                })
-                .sum()
-        };
-
-        let target_rate = if let Some(surface_target) = total_surface_target {
-            surface_target.max(0.0)
-        } else {
-            total_reservoir_target.max(0.0)
-        };
-
-        let group_min_pressure = wells
-            .iter()
-            .map(|well| pressures[self.idx(well.i, well.j, well.k)])
-            .fold(f64::INFINITY, f64::min);
-        let group_max_pressure = wells
-            .iter()
-            .map(|well| pressures[self.idx(well.i, well.j, well.k)])
-            .fold(f64::NEG_INFINITY, f64::max);
-
-        if !group_min_pressure.is_finite() || !group_max_pressure.is_finite() {
-            return None;
-        }
-
-        if injector {
-            let bhp_limit = self.well_bhp_max;
-            let max_achievable_rate = total_rate_for_bhp(bhp_limit);
-            if target_rate >= max_achievable_rate - 1e-9 {
-                return Some((bhp_limit, true));
-            }
-
-            let mut low = group_min_pressure.min(bhp_limit);
-            let mut high = bhp_limit;
-            for _ in 0..64 {
-                let mid = 0.5 * (low + high);
-                let rate_mid = total_rate_for_bhp(mid);
-                if rate_mid < target_rate {
-                    low = mid;
-                } else {
-                    high = mid;
-                }
-            }
-            Some((0.5 * (low + high), false))
-        } else {
-            let bhp_limit = self.well_bhp_min;
-            let max_achievable_rate = total_rate_for_bhp(bhp_limit);
-            if target_rate >= max_achievable_rate - 1e-9 {
-                return Some((bhp_limit, true));
-            }
-
-            let mut low = bhp_limit;
-            let mut high = group_max_pressure.max(bhp_limit);
-            for _ in 0..64 {
-                let mid = 0.5 * (low + high);
-                let rate_mid = total_rate_for_bhp(mid);
-                if rate_mid > target_rate {
-                    low = mid;
-                } else {
-                    high = mid;
-                }
-            }
-            Some((0.5 * (low + high), false))
-        }
-    }
-
     pub(crate) fn resolve_well_control_for_pressures(
         &self,
         well: &Well,
@@ -755,16 +616,5 @@ impl ReservoirSimulator {
             pressures[id] = pressure_bar;
         }
         pressures
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn rate_controlled_physical_well_count(&self, injector: bool) -> usize {
-        let mut seen = HashSet::new();
-        self.wells
-            .iter()
-            .filter(|well| well.injector == injector)
-            .filter(|well| self.well_control_config(well).rate_controlled)
-            .filter(|well| seen.insert(self.well_control_group_key(well)))
-            .count()
     }
 }
