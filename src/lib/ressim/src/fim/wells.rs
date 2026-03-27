@@ -10,8 +10,38 @@ pub(crate) enum FimControlGroup {
     Producer,
 }
 
-fn geometric_well_index(sim: &ReservoirSimulator, well: &Well) -> Option<f64> {
-    let id = sim.idx(well.i, well.j, well.k);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FimPerforation {
+    pub(crate) well_index: usize,
+    pub(crate) cell_index: usize,
+    pub(crate) i: usize,
+    pub(crate) j: usize,
+    pub(crate) k: usize,
+    pub(crate) injector: bool,
+}
+
+pub(crate) fn collect_perforations(sim: &ReservoirSimulator) -> Vec<FimPerforation> {
+    sim.wells
+        .iter()
+        .enumerate()
+        .map(|(well_index, well)| FimPerforation {
+            well_index,
+            cell_index: sim.idx(well.i, well.j, well.k),
+            i: well.i,
+            j: well.j,
+            k: well.k,
+            injector: well.injector,
+        })
+        .collect()
+}
+
+fn perforation_well<'a>(sim: &'a ReservoirSimulator, perforation: &FimPerforation) -> &'a Well {
+    &sim.wells[perforation.well_index]
+}
+
+fn geometric_well_index(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Option<f64> {
+    let well = perforation_well(sim, perforation);
+    let id = perforation.cell_index;
     let kx = sim.perm_x[id];
     let ky = sim.perm_y[id];
     if !kx.is_finite() || !ky.is_finite() || kx <= 0.0 || ky <= 0.0 {
@@ -37,13 +67,13 @@ fn geometric_well_index(sim: &ReservoirSimulator, well: &Well) -> Option<f64> {
 pub(crate) fn producer_control_state(
     sim: &ReservoirSimulator,
     state: &FimState,
-    well: &Well,
+    perforation: &FimPerforation,
 ) -> ProducerControlState {
-    let i_min = well.i.saturating_sub(1);
-    let i_max = (well.i + 1).min(sim.nx.saturating_sub(1));
-    let j_min = well.j.saturating_sub(1);
-    let j_max = (well.j + 1).min(sim.ny.saturating_sub(1));
-    let k = well.k;
+    let i_min = perforation.i.saturating_sub(1);
+    let i_max = (perforation.i + 1).min(sim.nx.saturating_sub(1));
+    let j_min = perforation.j.saturating_sub(1);
+    let j_max = (perforation.j + 1).min(sim.ny.saturating_sub(1));
+    let k = perforation.k;
 
     let mut lambda_w_sum = 0.0;
     let mut lambda_o_sum = 0.0;
@@ -63,7 +93,7 @@ pub(crate) fn producer_control_state(
     }
 
     let lambda_total = (lambda_w_sum + lambda_o_sum + lambda_g_sum).max(f64::EPSILON);
-    let id = sim.idx(well.i, well.j, well.k);
+    let id = perforation.cell_index;
     let derived = state.derive_cell(sim, id);
 
     ProducerControlState {
@@ -79,15 +109,16 @@ pub(crate) fn producer_control_state(
 fn completion_rate_for_bhp(
     sim: &ReservoirSimulator,
     state: &FimState,
-    well: &Well,
+    perforation: &FimPerforation,
     bhp_bar: f64,
 ) -> Option<f64> {
-    let id = sim.idx(well.i, well.j, well.k);
+    let well = perforation_well(sim, perforation);
+    let id = perforation.cell_index;
     let cell = state.cell(id);
     let derived = state.derive_cell(sim, id);
     let mobilities =
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
-    let wi_geom = geometric_well_index(sim, well)?;
+    let wi_geom = geometric_well_index(sim, perforation)?;
 
     let connection_mobility = if well.injector {
         match sim.injected_fluid {
@@ -114,11 +145,12 @@ fn completion_rate_for_bhp(
 fn completion_surface_rate_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
-    well: &Well,
+    perforation: &FimPerforation,
     bhp_bar: f64,
 ) -> Option<f64> {
-    let id = sim.idx(well.i, well.j, well.k);
-    let q_m3_day = completion_rate_for_bhp(sim, state, well, bhp_bar)?;
+    let well = perforation_well(sim, perforation);
+    let id = perforation.cell_index;
+    let q_m3_day = completion_rate_for_bhp(sim, state, perforation, bhp_bar)?;
 
     if well.injector {
         return Some(match sim.injected_fluid {
@@ -127,7 +159,7 @@ fn completion_surface_rate_sc_day(
         });
     }
 
-    let producer = producer_control_state(sim, state, well);
+    let producer = producer_control_state(sim, state, perforation);
     Some(q_m3_day.max(0.0) * producer.oil_fraction / producer.oil_fvf.max(1e-9))
 }
 
@@ -145,12 +177,11 @@ pub(crate) fn solve_group_bhp(
         return None;
     }
 
-    let wells: Vec<&Well> = sim
-        .wells
-        .iter()
-        .filter(|well| well.injector == injector)
+    let perforations: Vec<FimPerforation> = collect_perforations(sim)
+        .into_iter()
+        .filter(|perforation| perforation.injector == injector)
         .collect();
-    if wells.is_empty() {
+    if perforations.is_empty() {
         return None;
     }
 
@@ -166,19 +197,19 @@ pub(crate) fn solve_group_bhp(
     };
 
     let total_rate_for_bhp = |bhp_bar: f64| -> f64 {
-        wells
+        perforations
             .iter()
-            .filter_map(|well| {
+            .filter_map(|perforation| {
                 if injector {
                     match total_surface_target {
-                        Some(_) => completion_surface_rate_sc_day(sim, state, well, bhp_bar),
-                        None => completion_rate_for_bhp(sim, state, well, bhp_bar)
+                        Some(_) => completion_surface_rate_sc_day(sim, state, perforation, bhp_bar),
+                        None => completion_rate_for_bhp(sim, state, perforation, bhp_bar)
                             .map(|q| (-q).max(0.0)),
                     }
                 } else {
                     match total_surface_target {
-                        Some(_) => completion_surface_rate_sc_day(sim, state, well, bhp_bar),
-                        None => completion_rate_for_bhp(sim, state, well, bhp_bar),
+                        Some(_) => completion_surface_rate_sc_day(sim, state, perforation, bhp_bar),
+                        None => completion_rate_for_bhp(sim, state, perforation, bhp_bar),
                     }
                 }
             })
@@ -188,13 +219,13 @@ pub(crate) fn solve_group_bhp(
     let target_rate = total_surface_target
         .unwrap_or(total_reservoir_target)
         .max(0.0);
-    let group_min_pressure = wells
+    let group_min_pressure = perforations
         .iter()
-        .map(|well| state.cell(sim.idx(well.i, well.j, well.k)).pressure_bar)
+        .map(|perforation| state.cell(perforation.cell_index).pressure_bar)
         .fold(f64::INFINITY, f64::min);
-    let group_max_pressure = wells
+    let group_max_pressure = perforations
         .iter()
-        .map(|well| state.cell(sim.idx(well.i, well.j, well.k)).pressure_bar)
+        .map(|perforation| state.cell(perforation.cell_index).pressure_bar)
         .fold(f64::NEG_INFINITY, f64::max);
 
     if !group_min_pressure.is_finite() || !group_max_pressure.is_finite() {
@@ -309,20 +340,21 @@ fn total_rate_for_group_bhp(
 ) -> f64 {
     let injector = matches!(group, FimControlGroup::Injector);
     let surface_target = group_uses_surface_target(sim, group);
-    sim.wells
-        .iter()
-        .filter(|well| well.injector == injector)
-        .filter_map(|well| {
+    collect_perforations(sim)
+        .into_iter()
+        .filter(|perforation| perforation.injector == injector)
+        .filter_map(|perforation| {
             if injector {
                 if surface_target {
-                    completion_surface_rate_sc_day(sim, state, well, bhp_bar)
+                    completion_surface_rate_sc_day(sim, state, &perforation, bhp_bar)
                 } else {
-                    completion_rate_for_bhp(sim, state, well, bhp_bar).map(|q| (-q).max(0.0))
+                    completion_rate_for_bhp(sim, state, &perforation, bhp_bar)
+                        .map(|q| (-q).max(0.0))
                 }
             } else if surface_target {
-                completion_surface_rate_sc_day(sim, state, well, bhp_bar)
+                completion_surface_rate_sc_day(sim, state, &perforation, bhp_bar)
             } else {
-                completion_rate_for_bhp(sim, state, well, bhp_bar)
+                completion_rate_for_bhp(sim, state, &perforation, bhp_bar)
             }
         })
         .sum()
@@ -378,7 +410,19 @@ pub(crate) fn resolve_well_control(
     let producer_state = if well.injector {
         None
     } else {
-        Some(producer_control_state(sim, state, well))
+        let perforation = FimPerforation {
+            well_index: sim
+                .wells
+                .iter()
+                .position(|candidate| std::ptr::eq(candidate, well))
+                .expect("well must exist in simulator when resolving FIM control"),
+            cell_index: sim.idx(well.i, well.j, well.k),
+            i: well.i,
+            j: well.j,
+            k: well.k,
+            injector: well.injector,
+        };
+        Some(producer_control_state(sim, state, &perforation))
     };
 
     let use_rate_control = if well.injector {
@@ -393,12 +437,24 @@ pub(crate) fn resolve_well_control(
         } else {
             FimControlGroup::Producer
         };
+        let perforation = FimPerforation {
+            well_index: sim
+                .wells
+                .iter()
+                .position(|candidate| std::ptr::eq(candidate, well))
+                .expect("well must exist in simulator when resolving FIM control"),
+            cell_index: sim.idx(well.i, well.j, well.k),
+            i: well.i,
+            j: well.j,
+            k: well.k,
+            injector: well.injector,
+        };
         let group_bhp = control_group_bhp(state, group)?;
         let target_rate = group_target_rate(sim, group)?;
         let bhp_limit = group_bhp_limit(sim, group);
         let max_achievable_rate = total_rate_for_group_bhp(sim, state, group, bhp_limit);
         let bhp_limited = target_rate >= max_achievable_rate - 1e-9;
-        let q_target = completion_rate_for_bhp(sim, state, well, group_bhp)?;
+        let q_target = completion_rate_for_bhp(sim, state, &perforation, group_bhp)?;
         return Some(ResolvedWellControl {
             decision: if bhp_limited {
                 WellControlDecision::Bhp { bhp_bar: group_bhp }
@@ -427,10 +483,24 @@ pub(crate) fn transport_rate_from_control(
     well: &Well,
     control: ResolvedWellControl,
 ) -> Option<f64> {
+    let perforation = FimPerforation {
+        well_index: sim
+            .wells
+            .iter()
+            .position(|candidate| std::ptr::eq(candidate, well))
+            .expect("well must exist in simulator when evaluating FIM transport rate"),
+        cell_index: sim.idx(well.i, well.j, well.k),
+        i: well.i,
+        j: well.j,
+        k: well.k,
+        injector: well.injector,
+    };
     match control.decision {
         WellControlDecision::Disabled => Some(0.0),
         WellControlDecision::Rate { q_m3_day } => Some(q_m3_day),
-        WellControlDecision::Bhp { bhp_bar } => completion_rate_for_bhp(sim, state, well, bhp_bar),
+        WellControlDecision::Bhp { bhp_bar } => {
+            completion_rate_for_bhp(sim, state, &perforation, bhp_bar)
+        }
     }
 }
 
@@ -441,7 +511,19 @@ pub(crate) fn component_rates_sc_day(
     control: ResolvedWellControl,
     q_m3_day: f64,
 ) -> [f64; 3] {
-    let id = sim.idx(well.i, well.j, well.k);
+    let perforation = FimPerforation {
+        well_index: sim
+            .wells
+            .iter()
+            .position(|candidate| std::ptr::eq(candidate, well))
+            .expect("well must exist in simulator when evaluating FIM component rates"),
+        cell_index: sim.idx(well.i, well.j, well.k),
+        i: well.i,
+        j: well.j,
+        k: well.k,
+        injector: well.injector,
+    };
+    let id = perforation.cell_index;
     if well.injector {
         return match sim.injected_fluid {
             InjectedFluid::Water => [q_m3_day / sim.b_w.max(1e-9), 0.0, 0.0],
@@ -451,7 +533,7 @@ pub(crate) fn component_rates_sc_day(
 
     let producer = control
         .producer_state
-        .unwrap_or_else(|| producer_control_state(sim, state, well));
+        .unwrap_or_else(|| producer_control_state(sim, state, &perforation));
     let water_sc_day = q_m3_day * producer.water_fraction / sim.b_w.max(1e-9);
     let oil_sc_day = q_m3_day * producer.oil_fraction / producer.oil_fvf.max(1e-9);
     let free_gas_sc_day = q_m3_day * producer.gas_fraction / producer.gas_fvf.max(1e-9);
@@ -468,6 +550,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn collect_perforations_maps_coordinates_to_correct_cells() {
+        let mut sim = ReservoirSimulator::new(3, 2, 2, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(2, 1, 1, 50.0, 0.1, 0.0, false).unwrap();
+
+        let perforations = collect_perforations(&sim);
+
+        assert_eq!(perforations.len(), 2);
+        assert_eq!(perforations[0].cell_index, sim.idx(0, 0, 0));
+        assert_eq!(perforations[1].cell_index, sim.idx(2, 1, 1));
+        assert!(perforations[0].injector);
+        assert!(!perforations[1].injector);
+    }
+
+    #[test]
+    fn perforations_preserve_distinct_layer_completions() {
+        let mut sim = ReservoirSimulator::new(1, 1, 3, 0.2);
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.add_well(0, 0, 2, 100.0, 0.1, 0.0, false).unwrap();
+
+        let perforations = collect_perforations(&sim);
+
+        assert_eq!(perforations.len(), 2);
+        assert_ne!(perforations[0].cell_index, perforations[1].cell_index);
+        assert_eq!(perforations[0].k, 0);
+        assert_eq!(perforations[1].k, 2);
+    }
+
+    #[test]
     fn water_injector_bhp_rate_uses_iterate_water_mobility() {
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_injected_fluid("water").unwrap();
@@ -477,9 +588,10 @@ mod tests {
         let low_sw = FimState::from_simulator(&sim);
         let mut high_sw = low_sw.clone();
         high_sw.cells[0].sw = 0.8;
+        let perforation = collect_perforations(&sim)[0];
 
-        let q_low = completion_rate_for_bhp(&sim, &low_sw, &sim.wells[0], 1000.0).unwrap();
-        let q_high = completion_rate_for_bhp(&sim, &high_sw, &sim.wells[0], 1000.0).unwrap();
+        let q_low = completion_rate_for_bhp(&sim, &low_sw, &perforation, 1000.0).unwrap();
+        let q_high = completion_rate_for_bhp(&sim, &high_sw, &perforation, 1000.0).unwrap();
 
         assert!(q_high < q_low);
     }
@@ -491,9 +603,10 @@ mod tests {
         let base = FimState::from_simulator(&sim);
         let mut wet = base.clone();
         wet.cells[0].sw = 0.8;
+        let perforation = collect_perforations(&sim)[0];
 
-        let base_state = producer_control_state(&sim, &base, &sim.wells[0]);
-        let wet_state = producer_control_state(&sim, &wet, &sim.wells[0]);
+        let base_state = producer_control_state(&sim, &base, &perforation);
+        let wet_state = producer_control_state(&sim, &wet, &perforation);
 
         assert!(wet_state.water_fraction > base_state.water_fraction);
         assert!(wet_state.oil_fraction < base_state.oil_fraction);

@@ -6,8 +6,8 @@ use crate::fim::scaling::{
 };
 use crate::fim::state::FimState;
 use crate::fim::wells::{
-    component_rates_sc_day, control_group_residual, control_groups, resolve_well_control,
-    transport_rate_from_control,
+    collect_perforations, component_rates_sc_day, control_group_residual, control_groups,
+    resolve_well_control, transport_rate_from_control,
 };
 use crate::ReservoirSimulator;
 
@@ -212,11 +212,12 @@ fn add_well_source_terms(
     dt_days: f64,
     residual: &mut DVector<f64>,
 ) {
-    for well in &sim.wells {
+    for perforation in collect_perforations(sim) {
+        let well = &sim.wells[perforation.well_index];
         let Some(control) = resolve_well_control(sim, state, well) else {
             continue;
         };
-        let id = sim.idx(well.i, well.j, well.k);
+        let id = perforation.cell_index;
         let Some(q_m3_day) = transport_rate_from_control(sim, state, well, control) else {
             continue;
         };
