@@ -88,6 +88,7 @@ impl ReservoirSimulator {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn producer_oil_fraction_at_pressure(&self, id: usize, pressure_bar: f64) -> f64 {
         if self.three_phase_mode {
             let (lam_w, lam_o, lam_g) = self.phase_mobilities_3p_at_pressure(id, pressure_bar);
@@ -103,6 +104,7 @@ impl ReservoirSimulator {
     // ── Fractional flow ───────────────────────────────────────────────────────
 
     /// Fractional flow of gas = λ_g / λ_t (three-phase)
+    #[allow(dead_code)]
     pub(crate) fn frac_flow_gas(&self, id: usize) -> f64 {
         let lam_g = self.gas_mobility(id);
         let lam_t = self.total_mobility_3p(id);
@@ -114,6 +116,7 @@ impl ReservoirSimulator {
     }
 
     /// Fractional flow of water in three-phase system = λ_w / λ_t
+    #[allow(dead_code)]
     pub(crate) fn frac_flow_water_3p(&self, id: usize) -> f64 {
         let lam_t = self.total_mobility_3p(id);
         if lam_t <= 0.0 {
