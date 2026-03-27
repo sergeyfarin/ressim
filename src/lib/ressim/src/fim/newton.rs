@@ -3,6 +3,7 @@ use nalgebra::DVector;
 use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
 use crate::fim::linear::{
     solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind,
 };
 use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
@@ -59,6 +60,11 @@ pub(crate) fn run_fim_timestep(
     let mut final_residual_inf_norm: Option<f64>;
     let mut final_update_inf_norm = f64::INFINITY;
     let mut accepted_damping = 1.0;
+    let block_layout = Some(FimLinearBlockLayout {
+        cell_block_count: state.cells.len(),
+        cell_block_size: 3,
+        scalar_tail_start: state.n_cell_unknowns(),
+    });
 
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
@@ -73,16 +79,19 @@ pub(crate) fn run_fim_timestep(
         final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual));
 
         let rhs = -&assembly.residual;
-        let linear_report = solve_linearized_system(
+        let mut linear_report = solve_linearized_system(
             &assembly.jacobian,
             &rhs,
             &options.linear,
-            Some(FimLinearBlockLayout {
-                cell_block_count: state.cells.len(),
-                cell_block_size: 3,
-                scalar_tail_start: state.n_cell_unknowns(),
-            }),
+            block_layout,
         );
+
+        if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite()) {
+            let mut fallback_options = options.linear;
+            fallback_options.kind = FimLinearSolverKind::SparseLuDebug;
+            linear_report = solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
+        }
+
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution);
         last_linear_report = Some(linear_report.clone());
 

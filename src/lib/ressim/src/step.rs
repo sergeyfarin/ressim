@@ -3,7 +3,6 @@ use std::f64;
 use crate::fim::newton::{run_fim_timestep, FimNewtonOptions};
 use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
-use crate::well_control::ResolvedWellControl;
 
 impl ReservoirSimulator {
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
@@ -151,9 +150,8 @@ impl ReservoirSimulator {
                     self.update_dynamic_well_productivity_indices();
                     let water_after = self.total_water_inventory_m3();
                     let gas_after = self.total_gas_inventory_sc();
-                    let controls = self.resolve_current_well_controls();
-                    self.record_step_report(
-                        &controls,
+                    self.record_fim_step_report(
+                        &report.accepted_state,
                         trial_dt,
                         water_after - water_before,
                         gas_after - gas_before,
@@ -197,13 +195,6 @@ impl ReservoirSimulator {
                 target_dt_days
             );
         }
-    }
-
-    fn resolve_current_well_controls(&self) -> Vec<Option<ResolvedWellControl>> {
-        self.wells
-            .iter()
-            .map(|well| self.resolve_well_control_for_pressures(well, &self.pressure))
-            .collect()
     }
 
     fn total_water_inventory_m3(&self) -> f64 {

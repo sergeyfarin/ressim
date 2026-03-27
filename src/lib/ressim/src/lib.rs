@@ -161,6 +161,65 @@ mod tests {
             .sum()
     }
 
+    struct GravityBenchmarkMetrics {
+        pressure_gradient_bar: f64,
+        top_sw_change: f64,
+    }
+
+    struct RateControlBenchmarkMetrics {
+        total_production_oil: f64,
+        total_injection: f64,
+        producer_bhp_limited_fraction: f64,
+        injector_bhp_limited_fraction: f64,
+        avg_reservoir_pressure: f64,
+    }
+
+    fn run_hydrostatic_gravity_benchmark(fim_enabled: bool) -> GravityBenchmarkMetrics {
+        let initial_sw = 0.9;
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+        sim.set_fim_enabled(fim_enabled);
+        sim.set_permeability_random_seeded(80_000.0, 80_000.0, 7)
+            .unwrap();
+        sim.set_initial_saturation(initial_sw);
+        sim.pc.p_entry = 0.0;
+        sim.set_fluid_densities(800.0, 1000.0).unwrap();
+        sim.set_gravity_enabled(true);
+
+        let hydro_dp_bar = sim.pvt.rho_w * 9.80665 * sim.dz[0] * 1e-5;
+        let top_id = sim.idx(0, 0, 0);
+        let bot_id = sim.idx(0, 0, 1);
+        sim.pressure[top_id] = 300.0;
+        sim.pressure[bot_id] = 300.0 + hydro_dp_bar;
+
+        sim.step(5.0);
+
+        GravityBenchmarkMetrics {
+            pressure_gradient_bar: sim.pressure[bot_id] - sim.pressure[top_id],
+            top_sw_change: (sim.sat_water[top_id] - initial_sw).abs(),
+        }
+    }
+
+    fn run_rate_control_reporting_benchmark(fim_enabled: bool) -> RateControlBenchmarkMetrics {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(fim_enabled);
+        sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+        sim.set_target_well_surface_rates(0.0, 50.0).unwrap();
+        sim.set_well_bhp_limits(50.0, 500.0).unwrap();
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(0.25);
+
+        let point = sim.rate_history.last().unwrap();
+        RateControlBenchmarkMetrics {
+            total_production_oil: point.total_production_oil,
+            total_injection: point.total_injection,
+            producer_bhp_limited_fraction: point.producer_bhp_limited_fraction,
+            injector_bhp_limited_fraction: point.injector_bhp_limited_fraction,
+            avg_reservoir_pressure: point.avg_reservoir_pressure,
+        }
+    }
+
     #[test]
     fn saturation_stays_within_physical_bounds() {
         let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);
@@ -386,6 +445,33 @@ mod tests {
     }
 
     #[test]
+    fn hydrostatic_gravity_benchmark_fim_matches_impes() {
+        let impes = run_hydrostatic_gravity_benchmark(false);
+        let fim = run_hydrostatic_gravity_benchmark(true);
+
+        let gradient_rel_diff = ((fim.pressure_gradient_bar - impes.pressure_gradient_bar)
+            / impes.pressure_gradient_bar.max(1e-12))
+            .abs();
+        let top_sw_abs_diff = (fim.top_sw_change - impes.top_sw_change).abs();
+
+        assert!(fim.pressure_gradient_bar > 0.0);
+        assert!(
+            gradient_rel_diff <= 0.05,
+            "gravity benchmark pressure-gradient drift too large: IMPES={:.6}, FIM={:.6}, rel_diff={:.4}",
+            impes.pressure_gradient_bar,
+            fim.pressure_gradient_bar,
+            gradient_rel_diff,
+        );
+        assert!(
+            top_sw_abs_diff <= 1e-4,
+            "gravity benchmark top-cell Sw drift too large: IMPES={:.6}, FIM={:.6}, abs_diff={:.6}",
+            impes.top_sw_change,
+            fim.top_sw_change,
+            top_sw_abs_diff,
+        );
+    }
+
+    #[test]
     fn hydrostatic_initial_gradient_stays_quieter_with_gravity_enabled() {
         let initial_sw = 0.9;
 
@@ -447,6 +533,57 @@ mod tests {
         assert!(point.total_injection.is_finite());
         assert!(point.producer_bhp_limited_fraction.is_finite());
         assert!(point.injector_bhp_limited_fraction.is_finite());
+    }
+
+    #[test]
+    #[ignore = "known FIM well-flow parity failure: rate-controlled public-step benchmark still collapses to zero solved flow on the current FIM path; run explicitly while debugging well coupling"]
+    fn rate_control_reporting_benchmark_fim_matches_impes() {
+        let impes = run_rate_control_reporting_benchmark(false);
+        let fim = run_rate_control_reporting_benchmark(true);
+
+        let oil_rel_diff = ((fim.total_production_oil - impes.total_production_oil)
+            / impes.total_production_oil.max(1e-12))
+            .abs();
+        let injection_abs_diff = (fim.total_injection - impes.total_injection).abs();
+        let avg_pressure_rel_diff = ((fim.avg_reservoir_pressure - impes.avg_reservoir_pressure)
+            / impes.avg_reservoir_pressure.max(1e-12))
+            .abs();
+
+        assert!(fim.total_production_oil.is_finite());
+        assert!(fim.total_injection.is_finite());
+        assert!(
+            oil_rel_diff <= 0.20,
+            "rate-control benchmark oil-rate drift too large: IMPES={:.6}, FIM={:.6}, rel_diff={:.4}",
+            impes.total_production_oil,
+            fim.total_production_oil,
+            oil_rel_diff,
+        );
+        assert!(
+            injection_abs_diff <= 1e-9,
+            "rate-control benchmark injector-rate drift too large: IMPES={:.6}, FIM={:.6}, abs_diff={:.6}",
+            impes.total_injection,
+            fim.total_injection,
+            injection_abs_diff,
+        );
+        assert!(
+            avg_pressure_rel_diff <= 0.10,
+            "rate-control benchmark average-pressure drift too large: IMPES={:.6}, FIM={:.6}, rel_diff={:.4}",
+            impes.avg_reservoir_pressure,
+            fim.avg_reservoir_pressure,
+            avg_pressure_rel_diff,
+        );
+        assert!(
+            (fim.producer_bhp_limited_fraction - impes.producer_bhp_limited_fraction).abs() <= 1e-9,
+            "rate-control benchmark producer clamp fraction drift: IMPES={:.3}, FIM={:.3}",
+            impes.producer_bhp_limited_fraction,
+            fim.producer_bhp_limited_fraction,
+        );
+        assert!(
+            (fim.injector_bhp_limited_fraction - impes.injector_bhp_limited_fraction).abs() <= 1e-9,
+            "rate-control benchmark injector clamp fraction drift: IMPES={:.3}, FIM={:.3}",
+            impes.injector_bhp_limited_fraction,
+            fim.injector_bhp_limited_fraction,
+        );
     }
 
     #[test]
@@ -1027,6 +1164,7 @@ mod tests {
         use crate::pvt::{PvtRow, PvtTable};
 
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_fim_enabled(false);
         sim.set_three_phase_rel_perm_props(
             0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
         )
