@@ -311,8 +311,8 @@ export const spe1_gas_injection: Scenario = {
 
         // ── Numerics ────────────────────────────────────────────────────
         fimEnabled: true,
-        delta_t_days: 5,
-        steps: 800,               // 4000 days coverage
+        delta_t_days: 30,
+        steps: 120,               // 4000 days coverage
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 20,
         max_well_rate_change_fraction: 0.2,

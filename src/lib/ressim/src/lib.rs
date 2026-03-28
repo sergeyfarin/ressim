@@ -1669,7 +1669,7 @@ mod tests {
         let mut sim = make_spe1_like_base_sim();
         sim.set_fim_enabled(true);
         for _ in 0..5 {
-            sim.step(0.25);
+            sim.step(1.0);
             assert!(
                 sim.last_solver_warning.is_empty(),
                 "FIM solver warning at t={}: {}",
@@ -1678,8 +1678,8 @@ mod tests {
             );
         }
         assert!(
-            sim.time_days > 1.0,
-            "Simulation should advance past 1 day, got {}",
+            sim.time_days >= 5.0 - 1e-9,
+            "Simulation should advance to 5 days, got {}",
             sim.time_days
         );
     }

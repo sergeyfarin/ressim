@@ -127,10 +127,18 @@ impl ReservoirSimulator {
         const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 32;
         let mut substeps = 0;
         self.last_solver_warning = String::new();
+        let mut last_successful_dt = target_dt_days;
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;
-            let mut trial_dt = remaining_dt;
+            // Start from last successful dt (with modest growth), not the full remaining time.
+            // This avoids wasting Newton iterations on timesteps that are too large.
+            let initial_trial = if substeps == 0 {
+                remaining_dt
+            } else {
+                remaining_dt.min(last_successful_dt * 1.5)
+            };
+            let mut trial_dt = initial_trial;
             let mut retry_count = 0;
 
             loop {
@@ -158,6 +166,7 @@ impl ReservoirSimulator {
                     );
                     self.time_days += trial_dt;
                     time_stepped += trial_dt;
+                    last_successful_dt = trial_dt;
                     substeps += 1;
                     break;
                 }

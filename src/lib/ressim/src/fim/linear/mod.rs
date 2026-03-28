@@ -6,7 +6,7 @@ mod gmres_block_jacobi;
 mod sparse_lu_debug;
 
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
-const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = 384;
+const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimLinearSolverKind {
