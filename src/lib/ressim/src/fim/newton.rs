@@ -14,6 +14,9 @@ pub(crate) struct FimNewtonOptions {
     pub(crate) residual_tolerance: f64,
     pub(crate) update_tolerance: f64,
     pub(crate) min_damping: f64,
+    pub(crate) max_pressure_change_bar: f64,
+    pub(crate) max_saturation_change: f64,
+    pub(crate) max_rs_change_fraction: f64,
     pub(crate) linear: FimLinearSolveOptions,
 }
 
@@ -24,6 +27,10 @@ impl Default for FimNewtonOptions {
             residual_tolerance: 1e-5,
             update_tolerance: 1e-3,
             min_damping: 1.0 / 64.0,
+            // Generous limits — only prevent gross overshoot, not convergence-limiting.
+            max_pressure_change_bar: 500.0,
+            max_saturation_change: 0.5,
+            max_rs_change_fraction: 1.0,
             linear: FimLinearSolveOptions::default(),
         }
     }
@@ -38,6 +45,61 @@ pub(crate) struct FimStepReport {
     pub(crate) final_update_inf_norm: f64,
     pub(crate) last_linear_report: Option<FimLinearSolveReport>,
     pub(crate) cutback_factor: f64,
+}
+
+/// Appleyard chop: compute the largest damping factor such that no cell variable
+/// exceeds its per-iteration limit. Returns a value in (0, 1].
+fn appleyard_damping(
+    state: &FimState,
+    update: &DVector<f64>,
+    options: &FimNewtonOptions,
+) -> f64 {
+    let mut max_damping = 1.0_f64;
+    let n_cells = state.cells.len();
+
+    for idx in 0..n_cells {
+        let offset = idx * 3;
+        let cell = state.cell(idx);
+
+        // Pressure
+        let dp = update[offset].abs();
+        if dp > 1e-12 {
+            max_damping = max_damping.min(options.max_pressure_change_bar / dp);
+        }
+
+        // Water saturation
+        let dsw = update[offset + 1].abs();
+        if dsw > 1e-12 {
+            max_damping = max_damping.min(options.max_saturation_change / dsw);
+        }
+
+        // Hydrocarbon variable (Sg or Rs)
+        let dh = update[offset + 2].abs();
+        if dh > 1e-12 {
+            match cell.regime {
+                crate::fim::state::HydrocarbonState::Saturated => {
+                    // Sg: limit absolute change
+                    max_damping = max_damping.min(options.max_saturation_change / dh);
+                }
+                crate::fim::state::HydrocarbonState::Undersaturated => {
+                    // Rs: limit relative change
+                    let rs_scale = cell.hydrocarbon_var.abs().max(1.0);
+                    max_damping = max_damping.min(options.max_rs_change_fraction * rs_scale / dh);
+                }
+            }
+        }
+    }
+
+    // Well BHP: same pressure limit
+    let well_offset = state.n_cell_unknowns();
+    for well_idx in 0..state.n_well_unknowns() {
+        let dbhp = update[well_offset + well_idx].abs();
+        if dbhp > 1e-12 {
+            max_damping = max_damping.min(options.max_pressure_change_bar / dbhp);
+        }
+    }
+
+    max_damping.clamp(options.min_damping, 1.0)
 }
 
 fn scaled_residual_inf_norm(
@@ -182,7 +244,7 @@ pub(crate) fn run_fim_timestep(
             };
         }
 
-        let mut damping = 1.0;
+        let mut damping = appleyard_damping(&state, &linear_report.solution, options);
         let mut accepted_state = None;
         while damping >= options.min_damping {
             let candidate = state.apply_newton_update(sim, &linear_report.solution, damping);

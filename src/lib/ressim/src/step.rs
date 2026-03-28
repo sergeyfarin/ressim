@@ -124,25 +124,26 @@ impl ReservoirSimulator {
     fn step_internal_fim(&mut self, target_dt_days: f64) {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
-        const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 32;
+        const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 16;
+        const TIMESTEP_GROWTH_FACTOR: f64 = 2.0;
+        const TIMESTEP_CUT_FACTOR: f64 = 0.5;
         let mut substeps = 0;
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;
-            // Start from last successful dt (with modest growth), not the full remaining time.
-            // This avoids wasting Newton iterations on timesteps that are too large.
             let initial_trial = if substeps == 0 {
                 remaining_dt
             } else {
-                remaining_dt.min(last_successful_dt * 1.5)
+                remaining_dt.min(last_successful_dt * TIMESTEP_GROWTH_FACTOR)
             };
             let mut trial_dt = initial_trial;
             let mut retry_count = 0;
+            // Build state once; it doesn't change across retries (only dt changes).
+            let previous_state = FimState::from_simulator(self);
 
             loop {
-                let previous_state = FimState::from_simulator(self);
                 let report = run_fim_timestep(
                     self,
                     &previous_state,
@@ -171,8 +172,8 @@ impl ReservoirSimulator {
                     break;
                 }
 
-                let retry_factor = report.cutback_factor.min(0.5);
-                let next_dt = trial_dt * retry_factor * 0.9;
+                // Simple halving — predictable and doesn't over-cut.
+                let next_dt = trial_dt * TIMESTEP_CUT_FACTOR;
                 retry_count += 1;
 
                 if !next_dt.is_finite() || next_dt <= 1e-12 {
