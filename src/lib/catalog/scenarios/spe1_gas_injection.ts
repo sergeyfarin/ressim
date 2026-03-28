@@ -310,7 +310,7 @@ export const spe1_gas_injection: Scenario = {
         gravityEnabled: true,      // layered system with density differences
 
         // ── Numerics ────────────────────────────────────────────────────
-        fimEnabled: true,
+        fimEnabled: false,
         delta_t_days: 30,
         steps: 120,               // 4000 days coverage
         max_sat_change_per_step: 0.05,
