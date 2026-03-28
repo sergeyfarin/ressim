@@ -150,6 +150,7 @@ impl ReservoirSimulator {
         let mut substeps = 0;
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
+        let mut last_substep_used_retry = false;
 
         fim_trace!(verbose, "FIM step: target_dt={:.6} days, t={:.6} days", target_dt_days, self.time_days);
 
@@ -161,7 +162,12 @@ impl ReservoirSimulator {
             let initial_trial = if substeps == 0 {
                 remaining_dt
             } else {
-                remaining_dt.min(last_successful_dt * TIMESTEP_GROWTH_FACTOR)
+                let growth_seed = if last_substep_used_retry {
+                    last_successful_dt
+                } else {
+                    last_successful_dt * TIMESTEP_GROWTH_FACTOR
+                };
+                remaining_dt.min(growth_seed)
             };
             let mut trial_dt = initial_trial;
             let mut retry_count = 0;
@@ -198,6 +204,7 @@ impl ReservoirSimulator {
                     self.time_days += trial_dt;
                     time_stepped += trial_dt;
                     last_successful_dt = trial_dt;
+                    last_substep_used_retry = retry_count > 0;
                     substeps += 1;
                     break;
                 }

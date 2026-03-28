@@ -24,6 +24,11 @@ pub(crate) struct FimAssembly {
     pub(crate) variable_scaling: VariableScaling,
 }
 
+pub(crate) struct FimResidualAssembly {
+    pub(crate) residual: DVector<f64>,
+    pub(crate) equation_scaling: EquationScaling,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimAssemblyOptions<'a> {
     pub(crate) dt_days: f64,
@@ -85,6 +90,33 @@ pub(crate) fn assemble_fim_system(
         jacobian: tri.to_csr(),
         equation_scaling,
         variable_scaling,
+    }
+}
+
+pub(crate) fn assemble_fim_residual(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    options: &FimAssemblyOptions,
+) -> FimResidualAssembly {
+    let owned_topology;
+    let topology = if let Some(cached) = options.topology {
+        cached
+    } else {
+        owned_topology = build_well_topology(sim);
+        &owned_topology
+    };
+    let n_cells = state.cells.len();
+    let equation_scaling = build_equation_scaling(sim, state, topology, options.dt_days);
+    let derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| state.derive_cell(sim, idx)).collect();
+    let prev_derived: Vec<FimCellDerived> = (0..n_cells)
+        .map(|idx| previous_state.derive_cell(sim, idx))
+        .collect();
+    let residual = assemble_residual(sim, previous_state, state, topology, options, &derived, &prev_derived);
+
+    FimResidualAssembly {
+        residual,
+        equation_scaling,
     }
 }
 

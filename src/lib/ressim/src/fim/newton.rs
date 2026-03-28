@@ -1,6 +1,6 @@
 use nalgebra::DVector;
 
-use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
+use crate::fim::assembly::{assemble_fim_residual, assemble_fim_system, FimAssemblyOptions};
 use crate::fim::linear::{
     solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind,
@@ -47,6 +47,24 @@ impl Default for FimNewtonOptions {
             verbose: false,
         }
     }
+}
+
+fn newton_step_converged(
+    residual_inf_norm: f64,
+    update_inf_norm: f64,
+    options: &FimNewtonOptions,
+) -> bool {
+    let residual_ok = residual_inf_norm <= options.residual_tolerance;
+    let update_ok = update_inf_norm <= options.update_tolerance;
+    let modest_update = update_inf_norm <= options.update_tolerance * 5.0;
+
+    // Multidimensional gas cases can reach a state where the residual is already
+    // materially below tolerance while the scaled update stays marginally above
+    // the update gate. Continuing Newton from that point can kick the iterate
+    // out of the local basin and force pathological timestep cutbacks.
+    (residual_ok && update_ok)
+        || (residual_ok && modest_update)
+        || residual_inf_norm <= options.residual_tolerance * 0.1
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -253,11 +271,14 @@ pub(crate) fn run_fim_timestep(
         last_linear_report = Some(linear_report.clone());
 
         // Accept convergence if both residual and update are below tolerance,
-        // OR if residual alone is very tight (handles well-switching oscillations
-        // where the update stays "large" but the system is already well-balanced).
-        let converged = (final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
-            && final_update_inf_norm <= options.update_tolerance)
-            || final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance * 0.01;
+        // or if the residual is already an order of magnitude tighter than the
+        // nominal target and further Newton iterations would only destabilize the
+        // local iterate.
+        let converged = newton_step_converged(
+            final_residual_inf_norm.unwrap_or(f64::INFINITY),
+            final_update_inf_norm,
+            options,
+        );
         if converged {
             fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}",
                 iteration, current_norm, final_update_inf_norm, linear_report.iterations,
@@ -278,12 +299,30 @@ pub(crate) fn run_fim_timestep(
         let mut damping = appleyard_damping(&state, &linear_report.solution, options);
         let initial_damping = damping;
         let mut accepted_state = None;
+        let mut accepted_candidate_residual = None;
         let mut damping_cuts = 0u32;
         while damping >= options.min_damping {
             let candidate = state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
             if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
-                accepted_state = Some(candidate);
-                break;
+                let candidate_assembly = assemble_fim_residual(
+                    sim,
+                    previous_state,
+                    &candidate,
+                    &FimAssemblyOptions {
+                        dt_days,
+                        include_wells: true,
+                        topology: Some(&topology),
+                    },
+                );
+                let candidate_residual = scaled_residual_inf_norm(
+                    &candidate_assembly.residual,
+                    &candidate_assembly.equation_scaling,
+                );
+                if candidate_residual < current_norm {
+                    accepted_candidate_residual = Some(candidate_residual);
+                    accepted_state = Some(candidate);
+                    break;
+                }
             }
             damping *= 0.5;
             damping_cuts += 1;
@@ -296,7 +335,28 @@ pub(crate) fn run_fim_timestep(
             if stagnation_count > 0 { format!(" stag={}", stagnation_count) } else { String::new() });
 
         let Some(candidate) = accepted_state else {
-            fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — all candidates non-finite or out of bounds", iteration);
+            let near_converged_without_improving_step = current_norm <= options.residual_tolerance * 2.0
+                && final_update_inf_norm <= options.update_tolerance * 10.0;
+            if near_converged_without_improving_step {
+                fim_trace!(
+                    options.verbose,
+                    "    iter {:>2}: NEAR-CONVERGED without improving damping step, accepting current iterate res={:.3e} upd={:.3e}",
+                    iteration,
+                    current_norm,
+                    final_update_inf_norm
+                );
+                state.classify_regimes(sim);
+                return FimStepReport {
+                    accepted_state: state,
+                    converged: true,
+                    newton_iterations: iteration + 1,
+                    final_residual_inf_norm: current_norm,
+                    final_update_inf_norm,
+                    last_linear_report: Some(linear_report),
+                    cutback_factor: accepted_damping,
+                };
+            }
+            fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — no damped candidate was both admissible and residual-improving", iteration);
             return FimStepReport {
                 accepted_state: state,
                 converged: false,
@@ -309,6 +369,15 @@ pub(crate) fn run_fim_timestep(
         };
 
         accepted_damping = damping;
+        if let Some(candidate_residual) = accepted_candidate_residual {
+            fim_trace!(
+                options.verbose,
+                "    iter {:>2}: accepted damped candidate residual={:.3e} (from {:.3e})",
+                iteration,
+                candidate_residual,
+                current_norm
+            );
+        }
         state = candidate;
     }
 
@@ -371,6 +440,41 @@ mod tests {
         assert_eq!(report.cutback_factor, 1.0);
         assert!(report.final_residual_inf_norm <= 1e-12);
         assert!(report.final_update_inf_norm <= 1e-12);
+    }
+
+    #[test]
+    fn very_tight_residual_can_converge_without_update_gate() {
+        let options = FimNewtonOptions::default();
+
+        assert!(newton_step_converged(2.259e-7, 1.371e-3, &options));
+    }
+
+    #[test]
+    fn residual_below_tolerance_accepts_modest_update_overshoot() {
+        let options = FimNewtonOptions::default();
+
+        assert!(newton_step_converged(3.614e-6, 4.135e-3, &options));
+    }
+
+    #[test]
+    fn residual_only_gate_does_not_accept_loose_residuals() {
+        let options = FimNewtonOptions::default();
+
+        assert!(!newton_step_converged(1.100e-5, 1.371e-3, &options));
+        assert!(!newton_step_converged(3.614e-6, 5.100e-3, &options));
+    }
+
+    #[test]
+    fn near_converged_fallback_requires_small_residual_and_update() {
+        let options = FimNewtonOptions::default();
+        let accepts = |residual: f64, update: f64| {
+            residual <= options.residual_tolerance * 2.0
+                && update <= options.update_tolerance * 10.0
+        };
+
+        assert!(accepts(1.446e-5, 6.442e-3));
+        assert!(!accepts(2.500e-5, 6.442e-3));
+        assert!(!accepts(1.446e-5, 1.200e-2));
     }
 
     #[test]
