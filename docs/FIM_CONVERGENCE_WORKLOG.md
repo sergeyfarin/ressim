@@ -385,3 +385,51 @@ Implemented a second Newton-side cleanup in `fim/newton.rs`:
 - explicit well-manifold drift is no longer the dominant convergence failure
 - non-improving Newton candidates are no longer allowed to worsen an already good iterate
 - the next likely leverage point is timestep-growth policy or a slightly more explicit near-converged acceptance rule for doubled-step retries, not another broad well/perforation fix
+
+## Timestep Controller Gap Analysis
+
+### Comparison with OPM Flow / mature FIM simulators
+
+A systematic comparison of the current timestep controller (`step.rs`) against OPM Flow and MRST identified five gaps between this implementation and mature FIM simulators. Three of these are in the outer timestep loop and can be fixed without touching the Newton solver itself.
+
+### Gap 1: blind 2× growth — no Newton feedback
+
+The current controller always doubles after a successful substep (`last_successful_dt * 2.0`). It has no awareness of how hard the Newton solve was.
+
+OPM Flow uses a convergence-history-based estimator: if the solve used many iterations or heavy damping, growth is cautious (1.1×–1.3×); if the solve was easy (1–2 iterations), growth is aggressive (up to 2×). The typical formula is `growth = clamp(target_iters / actual_iters, 1.0, max_growth)`.
+
+This is the primary cause of the breakthrough substep explosion documented in the waterflood diagnostic notes. The pattern is:
+- a doubled step lands just above tolerance, fails
+- halving succeeds, then immediately doubles into another failure
+- this oscillation between two nearby dt values burns hundreds of substeps
+
+### Gap 2: no post-step saturation/pressure change limiting
+
+After an accepted FIM substep, the controller does not inspect the saturation or pressure change that actually occurred. The IMPES solver in this same codebase already computes `sat_factor`, `pressure_factor`, and `rate_factor` after each pressure solve to throttle the next trial dt.
+
+OPM/Eclipse uses `DSMAXDT` (typically 0.1–0.2 max saturation change per step) and `DPMAX` (typically 200–300 bar) as post-step dt suggestions. If the accepted step produced a large saturation swing, the next trial is scaled down proportionally instead of blindly doubled.
+
+At water breakthrough, saturation in the breakthrough cell can change by 0.3–0.5 in a single accepted step, but the controller has no awareness of this.
+
+### Gap 3: Newton cutback factor is computed but ignored
+
+The Newton solver computes a `cutback_factor` reflecting how badly the solve failed: stagnation returns 0.25, damping failure returns 0.5, max-iterations returns `accepted_damping * 0.5`. But the outer loop always cuts by exactly 0.5, ignoring this information.
+
+When Newton stagnates early (suggesting 0.25), the outer loop only cuts by 0.5, requiring an extra failed retry. When the solver nearly converged (suggesting ~0.9), the outer loop over-cuts to 0.5.
+
+### Remaining gaps (deferred)
+
+- **ILU(0) pressure preconditioner instead of AMG**: degrades with grid size, causes linear solver failures that cascade into timestep cuts. Medium effort, deferred.
+- **Full Jacobian reassembly during line search**: each damped candidate does a full `assemble_fim_system` instead of a cheaper residual-only evaluation. Multiplies cost per Newton iteration by 2–4×. Medium effort, deferred.
+
+## Phase 1 Fix: Adaptive Timestep Controller
+
+### Design
+
+Three changes to `step_internal_fim_impl`, all in the outer substep loop:
+
+1. **Newton-iteration-aware growth**: replace the fixed `2.0` growth factor with `clamp(TARGET_NEWTON_ITERS / actual_iters, 1.0, MAX_GROWTH)`. Target iterations = 6 (the "easy" midpoint of a max-20 loop). A step that converged in 1 iteration grows by 2×; a step that needed 12 iterations grows by 1.0× (no growth).
+
+2. **Post-step saturation/pressure change limiting**: after accepting a step, compute max |ΔSw| and max |ΔP| between old and new state. If max |ΔSw| exceeds a target (0.2), scale the next suggested dt down by `target / actual_change`. Same for pressure with a target of 200 bar. This caps the growth suggestion independently of the Newton iteration count.
+
+3. **Newton cutback factor**: on failure, use `trial_dt * report.cutback_factor` instead of `trial_dt * 0.5`. This lets the Newton solver communicate how aggressively to cut.

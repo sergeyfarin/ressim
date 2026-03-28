@@ -145,11 +145,14 @@ impl ReservoirSimulator {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
         const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 16;
-        const TIMESTEP_GROWTH_FACTOR: f64 = 2.0;
-        const TIMESTEP_CUT_FACTOR: f64 = 0.5;
+        const MAX_GROWTH: f64 = 2.0;
+        const TARGET_NEWTON_ITERS: f64 = 6.0;
+        const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
+        const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
         let mut substeps = 0;
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
+        let mut last_growth_factor = MAX_GROWTH;
 
         fim_trace!(verbose, "FIM step: target_dt={:.6} days, t={:.6} days", target_dt_days, self.time_days);
 
@@ -161,7 +164,7 @@ impl ReservoirSimulator {
             let initial_trial = if substeps == 0 {
                 remaining_dt
             } else {
-                remaining_dt.min(last_successful_dt * TIMESTEP_GROWTH_FACTOR)
+                remaining_dt.min(last_successful_dt * last_growth_factor)
             };
             let mut trial_dt = initial_trial;
             let mut retry_count = 0;
@@ -180,9 +183,36 @@ impl ReservoirSimulator {
                 );
 
                 if report.converged {
-                    fim_trace!(verbose, "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} upd={:.3e}",
+                    // Compute max saturation and pressure change for adaptive growth.
+                    let mut max_dsat: f64 = 0.0;
+                    let mut max_dp: f64 = 0.0;
+                    for (idx, new_cell) in report.accepted_state.cells.iter().enumerate() {
+                        let old_cell = &previous_state.cells[idx];
+                        max_dsat = max_dsat.max((new_cell.sw - old_cell.sw).abs());
+                        max_dp = max_dp.max((new_cell.pressure_bar - old_cell.pressure_bar).abs());
+                    }
+
+                    // Newton-iteration-aware growth: easy steps grow fast, hard steps barely grow.
+                    let iteration_growth = (TARGET_NEWTON_ITERS / report.newton_iterations as f64)
+                        .clamp(1.0, MAX_GROWTH);
+                    // Saturation-change-based growth: scale down if sat change exceeded target.
+                    let sat_growth = if max_dsat > TARGET_MAX_SAT_CHANGE {
+                        TARGET_MAX_SAT_CHANGE / max_dsat
+                    } else {
+                        MAX_GROWTH
+                    };
+                    // Pressure-change-based growth: scale down if pressure change exceeded target.
+                    let pressure_growth = if max_dp > TARGET_MAX_PRESSURE_CHANGE_BAR {
+                        TARGET_MAX_PRESSURE_CHANGE_BAR / max_dp
+                    } else {
+                        MAX_GROWTH
+                    };
+                    last_growth_factor = iteration_growth.min(sat_growth).min(pressure_growth).clamp(1.0, MAX_GROWTH);
+
+                    fim_trace!(verbose, "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
                         substeps, trial_dt, report.newton_iterations,
-                        report.final_residual_inf_norm, report.final_update_inf_norm);
+                        report.final_residual_inf_norm, report.final_update_inf_norm,
+                        max_dsat, max_dp, last_growth_factor);
                     let water_before = self.total_water_inventory_m3();
                     let gas_before = self.total_gas_inventory_sc();
                     report.accepted_state.write_back_to_simulator(self);
@@ -202,8 +232,8 @@ impl ReservoirSimulator {
                     break;
                 }
 
-                // Simple halving — predictable and doesn't over-cut.
-                let next_dt = trial_dt * TIMESTEP_CUT_FACTOR;
+                // Use Newton-reported cutback factor instead of fixed 0.5.
+                let next_dt = trial_dt * report.cutback_factor.clamp(0.1, 0.5);
                 retry_count += 1;
 
                 fim_trace!(verbose, "  substep {}: FAILED (iters={} res={:.3e} upd={:.3e} cutback={:.2}) → next_dt={:.6}",
