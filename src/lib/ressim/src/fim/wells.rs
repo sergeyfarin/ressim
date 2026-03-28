@@ -1065,17 +1065,19 @@ pub(crate) fn solve_well_bhp_from_target(
     }
 }
 
+/// Regularized Fischer-Burmeister NCP function.
+/// Adding ε² inside the sqrt makes the function C¹ at the origin,
+/// removing the Jacobian discontinuity at the well control switching point
+/// (where both BHP slack and rate slack approach zero simultaneously).
+const FB_EPSILON: f64 = 1e-6;
+
 fn fischer_burmeister(a: f64, b: f64) -> f64 {
-    (a * a + b * b).sqrt() - a - b
+    (a * a + b * b + 2.0 * FB_EPSILON * FB_EPSILON).sqrt() - a - b
 }
 
 pub(crate) fn fischer_burmeister_gradient(a: f64, b: f64) -> (f64, f64) {
-    let norm = (a * a + b * b).sqrt();
-    if norm <= 1e-12 {
-        (-1.0, -1.0)
-    } else {
-        (a / norm - 1.0, b / norm - 1.0)
-    }
+    let norm = (a * a + b * b + 2.0 * FB_EPSILON * FB_EPSILON).sqrt();
+    (a / norm - 1.0, b / norm - 1.0)
 }
 
 pub(crate) fn well_control_slacks(

@@ -233,9 +233,13 @@ pub(crate) fn run_fim_timestep(
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution, &assembly.variable_scaling);
         last_linear_report = Some(linear_report.clone());
 
-        if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
-            && final_update_inf_norm <= options.update_tolerance
-        {
+        // Accept convergence if both residual and update are below tolerance,
+        // OR if residual alone is very tight (handles well-switching oscillations
+        // where the update stays "large" but the system is already well-balanced).
+        let converged = (final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
+            && final_update_inf_norm <= options.update_tolerance)
+            || final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance * 0.01;
+        if converged {
             // Reclassify regimes now that Newton has converged with frozen regime map.
             state.classify_regimes(sim);
             return FimStepReport {
