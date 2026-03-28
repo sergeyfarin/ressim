@@ -171,8 +171,6 @@ fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> b
     const PRESSURE_EPS: f64 = 1e-12;
     const SATURATION_EPS: f64 = 1e-12;
     const RS_EPS: f64 = 1e-12;
-    const WELL_BHP_EPS: f64 = 1e-12;
-    const PERF_RATE_EPS: f64 = 1e-12;
 
     previous_state
         .cells
@@ -184,16 +182,6 @@ fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> b
                 || (current.hydrocarbon_var - previous.hydrocarbon_var).abs() > RS_EPS
                 || current.regime != previous.regime
         })
-        || previous_state
-            .well_bhp
-            .iter()
-            .zip(state.well_bhp.iter())
-            .any(|(previous, current)| (current - previous).abs() > WELL_BHP_EPS)
-        || previous_state
-            .perforation_rates_m3_day
-            .iter()
-            .zip(state.perforation_rates_m3_day.iter())
-            .any(|(previous, current)| (current - previous).abs() > PERF_RATE_EPS)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

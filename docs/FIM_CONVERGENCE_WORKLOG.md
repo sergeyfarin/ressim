@@ -566,6 +566,7 @@ Interpretation:
 1. **Include well / perforation couplings in the coarse pressure system**
   - highest-value CPR correction for this codebase
   - directly aligned with OPM-style `add_wells = true`
+  - March 28 implementation note: a naive attempt to append scalar-tail unknowns directly into the current coarse system (identity restriction/prolongation for tail variables, direct row injection into the extracted coarse matrix) was tested and then reverted. It regressed SPE1 early-time behavior: the focused `spe1_fim_gas_injection_creates_free_gas` regression failed (`max_sg = 0` at 10 days) and the filtered native SPE1 trace fell back into repeated tiny accepted substeps. Conclusion: this item still needs to be done, but not as a simple identity-tail augmentation. The likely correct direction is a more Schur-consistent well-aware coarse system rather than bolting the raw scalar tail onto the current pressure extractor.
 
 2. **Replace the current ILU(0)-class coarse solve with AMG or at least a materially stronger multilevel pressure solver**
   - this is the main expected lever for the 3D / breakthrough performance cliff
