@@ -314,7 +314,7 @@ export const spe1_gas_injection: Scenario = {
         delta_t_days: 5,
         steps: 800,               // 4000 days coverage
         max_sat_change_per_step: 0.05,
-        max_pressure_change_per_step: 2,
+        max_pressure_change_per_step: 20,
         max_well_rate_change_fraction: 0.2,
     },
     sensitivities: [

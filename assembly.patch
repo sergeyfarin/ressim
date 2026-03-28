@@ -1,0 +1,11 @@
+--- src/lib/ressim/src/fim/assembly.rs
++++ src/lib/ressim/src/fim/assembly.rs
+@@ -16,7 +16,7 @@ pub(crate) fn assemble_fim_system(
+ ) -> FimAssembly {
+     let topology = build_well_topology(sim);
+     let n_unknowns = state.n_unknowns();
+-    let equation_scaling = build_equation_scaling(sim, state, options.dt_days);
++    let equation_scaling = build_equation_scaling(sim, state, &topology, options.dt_days);
+     let variable_scaling = build_variable_scaling(sim, state);
+ 
+     let include_accumulation = options.dt_days > 0.0;

@@ -1,0 +1,41 @@
+--- src/lib/ressim/src/fim/scaling.rs
++++ src/lib/ressim/src/fim/scaling.rs
+@@ -1,5 +1,7 @@
+ use crate::fim::state::{FimState, HydrocarbonState};
+ use crate::ReservoirSimulator;
++use crate::fim::topology::FimWellTopology;
++use crate::fim::wells::{physical_well_control, well_control_slacks};
+ 
+ #[derive(Clone, Debug, PartialEq)]
+ pub(crate) struct EquationScaling {
+@@ -21,6 +23,7 @@ pub(crate) struct VariableScaling {
+ pub(crate) fn build_equation_scaling(
+     sim: &ReservoirSimulator,
+     state: &FimState,
++    topology: &FimWellTopology,
+     dt_days: f64,
+ ) -> EquationScaling {
+     let n_cells = state.cells.len();
+@@ -39,8 +42,20 @@ pub(crate) fn build_equation_scaling(
+         gas_component.push(pv_over_dt / bg);
+     }
+ 
+-    for bhp_bar in &state.well_bhp {
+-        well_constraint.push(bhp_bar.abs().max(1.0));
++    for well_idx in 0..state.n_well_unknowns() {
++        let bhp_bar = state.well_bhp[well_idx];
++        let control = physical_well_control(sim, topology, well_idx);
++        if control.rate_controlled {
++            if let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx) {
++                if bhp_slack > rate_slack {
++                    well_constraint.push(control.target_rate.unwrap_or(1.0).max(1.0));
++                } else {
++                    well_constraint.push(bhp_bar.abs().max(1.0));
++                }
++                continue;
++            }
++        }
++        well_constraint.push(bhp_bar.abs().max(1.0));
+     }
+     for rate in &state.perforation_rates_m3_day {
+         perforation_flow.push(rate.abs().max(1.0));

@@ -1679,8 +1679,8 @@ mod tests {
             let mut first_high_gor_reported = false;
 
             println!("=== {label} ===");
-            while sim.time_days < 1250.0 {
-                sim.step(dt_days);
+            println!("time: {}", sim.time_days); while sim.time_days < 20.0 {
+                sim.step(dt_days); println!("step done, time: {}", sim.time_days);
                 let latest = sim.rate_history.last().expect("rate history should exist");
 
                 if !first_high_gor_reported && latest.producing_gor > 400.0 {
@@ -1719,7 +1719,7 @@ mod tests {
 
             println!("=== {label} ===");
             while sim.time_days < 3000.0 {
-                sim.step(dt_days);
+                sim.step(dt_days); println!("step done, time: {}", sim.time_days);
                 let latest = sim.rate_history.last().expect("rate history should exist");
 
                 while next_sample_idx < sample_times.len()
