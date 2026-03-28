@@ -165,6 +165,177 @@ fn scaled_update_inf_norm(
     max_norm
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResidualRowFamily {
+    Water,
+    OilComponent,
+    GasComponent,
+    WellConstraint,
+    PerforationFlow,
+}
+
+impl ResidualRowFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Water => "water",
+            Self::OilComponent => "oil",
+            Self::GasComponent => "gas",
+            Self::WellConstraint => "well",
+            Self::PerforationFlow => "perf",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ResidualFamilyPeak {
+    family: ResidualRowFamily,
+    scaled_value: f64,
+    row: usize,
+    item_index: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ResidualFamilyDiagnostics {
+    water: ResidualFamilyPeak,
+    oil_component: ResidualFamilyPeak,
+    gas_component: ResidualFamilyPeak,
+    well_constraint: Option<ResidualFamilyPeak>,
+    perforation_flow: Option<ResidualFamilyPeak>,
+    global: ResidualFamilyPeak,
+}
+
+fn update_family_peak(
+    current: &mut Option<ResidualFamilyPeak>,
+    family: ResidualRowFamily,
+    scaled_value: f64,
+    row: usize,
+    item_index: usize,
+) {
+    let scaled_value = if scaled_value.is_finite() {
+        scaled_value
+    } else {
+        f64::INFINITY
+    };
+    let candidate = ResidualFamilyPeak {
+        family,
+        scaled_value,
+        row,
+        item_index,
+    };
+    if current.is_none_or(|existing| candidate.scaled_value > existing.scaled_value) {
+        *current = Some(candidate);
+    }
+}
+
+fn residual_family_diagnostics(
+    residual: &DVector<f64>,
+    scaling: &crate::fim::scaling::EquationScaling,
+) -> ResidualFamilyDiagnostics {
+    let n_cells = scaling.water.len();
+    let mut water = None;
+    let mut oil_component = None;
+    let mut gas_component = None;
+    let mut well_constraint = None;
+    let mut perforation_flow = None;
+
+    for i in 0..n_cells {
+        update_family_peak(
+            &mut water,
+            ResidualRowFamily::Water,
+            residual[i * 3].abs() / scaling.water[i],
+            i * 3,
+            i,
+        );
+        update_family_peak(
+            &mut oil_component,
+            ResidualRowFamily::OilComponent,
+            residual[i * 3 + 1].abs() / scaling.oil_component[i],
+            i * 3 + 1,
+            i,
+        );
+        update_family_peak(
+            &mut gas_component,
+            ResidualRowFamily::GasComponent,
+            residual[i * 3 + 2].abs() / scaling.gas_component[i],
+            i * 3 + 2,
+            i,
+        );
+    }
+
+    let mut offset = n_cells * 3;
+    for i in 0..scaling.well_constraint.len() {
+        update_family_peak(
+            &mut well_constraint,
+            ResidualRowFamily::WellConstraint,
+            residual[offset + i].abs() / scaling.well_constraint[i],
+            offset + i,
+            i,
+        );
+    }
+    offset += scaling.well_constraint.len();
+    for i in 0..scaling.perforation_flow.len() {
+        update_family_peak(
+            &mut perforation_flow,
+            ResidualRowFamily::PerforationFlow,
+            residual[offset + i].abs() / scaling.perforation_flow[i],
+            offset + i,
+            i,
+        );
+    }
+
+    let water = water.expect("residual diagnostics require at least one cell");
+    let oil_component = oil_component.expect("residual diagnostics require at least one cell");
+    let gas_component = gas_component.expect("residual diagnostics require at least one cell");
+    let mut global = water;
+    for peak in [Some(oil_component), Some(gas_component), well_constraint, perforation_flow]
+        .into_iter()
+        .flatten()
+    {
+        if peak.scaled_value > global.scaled_value {
+            global = peak;
+        }
+    }
+
+    ResidualFamilyDiagnostics {
+        water,
+        oil_component,
+        gas_component,
+        well_constraint,
+        perforation_flow,
+        global,
+    }
+}
+
+fn residual_family_trace(diagnostics: &ResidualFamilyDiagnostics) -> String {
+    let mut parts = vec![
+        format!(
+            "water={:.3e}@cell{}",
+            diagnostics.water.scaled_value, diagnostics.water.item_index
+        ),
+        format!(
+            "oil={:.3e}@cell{}",
+            diagnostics.oil_component.scaled_value, diagnostics.oil_component.item_index
+        ),
+        format!(
+            "gas={:.3e}@cell{}",
+            diagnostics.gas_component.scaled_value, diagnostics.gas_component.item_index
+        ),
+    ];
+    if let Some(peak) = diagnostics.well_constraint {
+        parts.push(format!("well={:.3e}@well{}", peak.scaled_value, peak.item_index));
+    }
+    if let Some(peak) = diagnostics.perforation_flow {
+        parts.push(format!("perf={:.3e}@perf{}", peak.scaled_value, peak.item_index));
+    }
+    parts.push(format!(
+        "top={} row={} item={}",
+        diagnostics.global.family.label(),
+        diagnostics.global.row,
+        diagnostics.global.item_index
+    ));
+    parts.join(" ")
+}
+
 pub(crate) fn run_fim_timestep(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -200,13 +371,15 @@ pub(crate) fn run_fim_timestep(
             },
         );
         final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling));
+        let residual_diagnostics = residual_family_diagnostics(&assembly.residual, &assembly.equation_scaling);
 
         // Early termination: if residual is not decreasing, bail out to trigger timestep cut.
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
             stagnation_count += 1;
             if stagnation_count >= 3 {
-                fim_trace!(options.verbose, "    iter {:>2}: STAGNATION (count={}) res={:.3e} — bailing out", iteration, stagnation_count, current_norm);
+                fim_trace!(options.verbose, "    iter {:>2}: STAGNATION (count={}) res={:.3e} fam=[{}] — bailing out",
+                    iteration, stagnation_count, current_norm, residual_family_trace(&residual_diagnostics));
                 return FimStepReport {
                     accepted_state: state,
                     converged: false,
@@ -259,9 +432,9 @@ pub(crate) fn run_fim_timestep(
             && final_update_inf_norm <= options.update_tolerance)
             || final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance * 0.01;
         if converged {
-            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}",
+            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{} fam=[{}]",
                 iteration, current_norm, final_update_inf_norm, linear_report.iterations,
-                if used_fallback { " [fallback]" } else { "" });
+                if used_fallback { " [fallback]" } else { "" }, residual_family_trace(&residual_diagnostics));
             // Reclassify regimes now that Newton has converged with frozen regime map.
             state.classify_regimes(sim);
             return FimStepReport {
@@ -289,11 +462,12 @@ pub(crate) fn run_fim_timestep(
             damping_cuts += 1;
         }
 
-        fim_trace!(options.verbose, "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) linear_iters={}{}{}",
+        fim_trace!(options.verbose, "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) linear_iters={}{}{} fam=[{}]",
             iteration, current_norm, final_update_inf_norm, damping, initial_damping, damping_cuts,
             linear_report.iterations,
             if used_fallback { " [fallback]" } else { "" },
-            if stagnation_count > 0 { format!(" stag={}", stagnation_count) } else { String::new() });
+            if stagnation_count > 0 { format!(" stag={}", stagnation_count) } else { String::new() },
+            residual_family_trace(&residual_diagnostics));
 
         let Some(candidate) = accepted_state else {
             fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — all candidates non-finite or out of bounds", iteration);
@@ -323,8 +497,10 @@ pub(crate) fn run_fim_timestep(
         },
     );
     final_residual_inf_norm = Some(scaled_residual_inf_norm(&final_assembly.residual, &final_assembly.equation_scaling));
+    let final_residual_diagnostics = residual_family_diagnostics(&final_assembly.residual, &final_assembly.equation_scaling);
     if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance {
-        fim_trace!(options.verbose, "    post-loop: CONVERGED on final residual check res={:.3e}", final_residual_inf_norm.unwrap_or(f64::INFINITY));
+        fim_trace!(options.verbose, "    post-loop: CONVERGED on final residual check res={:.3e} fam=[{}]",
+            final_residual_inf_norm.unwrap_or(f64::INFINITY), residual_family_trace(&final_residual_diagnostics));
         state.classify_regimes(sim);
         return FimStepReport {
             accepted_state: state,
@@ -337,8 +513,9 @@ pub(crate) fn run_fim_timestep(
         };
     }
 
-    fim_trace!(options.verbose, "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e}",
-        options.max_newton_iterations, final_residual_inf_norm.unwrap_or(f64::INFINITY), final_update_inf_norm);
+    fim_trace!(options.verbose, "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e} fam=[{}]",
+        options.max_newton_iterations, final_residual_inf_norm.unwrap_or(f64::INFINITY), final_update_inf_norm,
+        residual_family_trace(&final_residual_diagnostics));
 
     FimStepReport {
         accepted_state: state,
@@ -353,6 +530,9 @@ pub(crate) fn run_fim_timestep(
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::DVector;
+
+    use crate::fim::scaling::EquationScaling;
     use crate::fim::state::FimState;
     use crate::pvt::{PvtRow, PvtTable};
     use crate::ReservoirSimulator;
@@ -440,5 +620,34 @@ mod tests {
         assert!(report.converged);
         assert_eq!(report.accepted_state.well_bhp.len(), 2);
         assert_eq!(report.accepted_state.perforation_rates_m3_day.len(), 2);
+    }
+
+    #[test]
+    fn residual_family_diagnostics_reports_global_peak_family() {
+        let residual = DVector::from_vec(vec![5.0, 12.0, 8.0, 4.0, 9.0, 6.0, 3.0, 40.0, 1.0]);
+        let scaling = EquationScaling {
+            water: vec![10.0, 10.0],
+            oil_component: vec![10.0, 10.0],
+            gas_component: vec![10.0, 10.0],
+            well_constraint: vec![10.0, 5.0],
+            perforation_flow: vec![2.0],
+        };
+
+        let diagnostics = residual_family_diagnostics(&residual, &scaling);
+
+        assert_eq!(diagnostics.water.item_index, 0);
+        assert!((diagnostics.water.scaled_value - 0.5).abs() < 1e-12);
+        assert_eq!(diagnostics.oil_component.item_index, 0);
+        assert!((diagnostics.oil_component.scaled_value - 1.2).abs() < 1e-12);
+        assert_eq!(diagnostics.gas_component.item_index, 0);
+        assert!((diagnostics.gas_component.scaled_value - 0.8).abs() < 1e-12);
+        assert_eq!(diagnostics.well_constraint.expect("well peak").item_index, 1);
+        assert!((diagnostics.well_constraint.expect("well peak").scaled_value - 8.0).abs() < 1e-12);
+        assert_eq!(diagnostics.perforation_flow.expect("perf peak").item_index, 0);
+        assert!((diagnostics.perforation_flow.expect("perf peak").scaled_value - 0.5).abs() < 1e-12);
+        assert_eq!(diagnostics.global.family, ResidualRowFamily::WellConstraint);
+        assert_eq!(diagnostics.global.row, 7);
+        assert_eq!(diagnostics.global.item_index, 1);
+        assert!((diagnostics.global.scaled_value - 8.0).abs() < 1e-12);
     }
 }

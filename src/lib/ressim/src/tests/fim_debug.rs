@@ -40,6 +40,32 @@ fn build_waterflood_pressure(nx: usize, ny: usize, nz: usize) -> ReservoirSimula
     sim
 }
 
+/// Frontend `sweep_areal` analog: 21×21×1 pressure-controlled five-spot.
+fn build_areal_sweep_pressure() -> ReservoirSimulator {
+    let mut sim = ReservoirSimulator::new(21, 21, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions(20.0, 20.0, 10.0).unwrap();
+    sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
+    sim.set_initial_pressure(300.0);
+    sim.set_initial_saturation(0.1);
+    sim.set_fluid_properties(1.0, 0.5).unwrap();
+    sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+    sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_permeability_per_layer(vec![200.0], vec![200.0], vec![20.0])
+        .unwrap();
+    sim.set_stability_params(0.01, 50.0, 1.0);
+    sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+    sim.set_target_well_rates(0.0, 0.0).unwrap();
+    sim.set_well_bhp_limits(100.0, 500.0).unwrap();
+    sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+    sim.add_well(20, 20, 0, 100.0, 0.1, 0.0, false).unwrap();
+    sim
+}
+
 /// Two-phase waterflood, rate-controlled wells.
 fn build_waterflood_rate(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
@@ -187,6 +213,25 @@ fn run_verbose(label: &str, sim: &mut ReservoirSimulator, dt_days: f64, n_steps:
     for step in 0..n_steps {
         eprintln!("─── outer step {}/{} at t={:.4} days ───", step + 1, n_steps, sim.time_days);
         sim.step_fim_verbose(dt_days);
+        if let Some(point) = sim.rate_history.last() {
+            let water_rate = (point.total_production_liquid - point.total_production_oil).max(0.0);
+            let watercut = if point.total_production_liquid > 1e-12 {
+                (water_rate / point.total_production_liquid).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            eprintln!(
+                "    summary: time={:.2}d oil={:.2} water={:.2} liq={:.2} wc={:.4} avg_p={:.2} bhp_lim(prod/inj)=({:.2}/{:.2})",
+                point.time,
+                point.total_production_oil,
+                water_rate,
+                point.total_production_liquid,
+                watercut,
+                point.avg_reservoir_pressure,
+                point.producer_bhp_limited_fraction,
+                point.injector_bhp_limited_fraction,
+            );
+        }
         if !sim.last_solver_warning.is_empty() {
             eprintln!("*** WARNING: {}", sim.last_solver_warning);
             break;
@@ -303,6 +348,13 @@ fn fim_debug_wf_bt_12x12() {
 fn fim_debug_wf_bt_12x12x3() {
     let mut sim = build_waterflood_pressure(12, 12, 3);
     run_verbose("wf_bt_12x12x3", &mut sim, 1.0, 30);
+}
+
+#[test]
+#[ignore = "native FIM debug: frontend sweep_areal baseline 21×21×1"]
+fn fim_debug_sweep_areal() {
+    let mut sim = build_areal_sweep_pressure();
+    run_verbose("sweep_areal_21x21x1", &mut sim, 5.0, 50);
 }
 
 // ─── SPE1 depletion (three-phase, 10×10×3) ─────────────────────────────────

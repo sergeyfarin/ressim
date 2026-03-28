@@ -23,6 +23,7 @@ SCENARIOS=(
   "wf_bt_48              fim_debug_wf_bt_48"
   "wf_bt_12x12           fim_debug_wf_bt_12x12"
   "wf_bt_12x12x3         fim_debug_wf_bt_12x12x3"
+  "sweep_areal          fim_debug_sweep_areal"
   # SPE1 depletion (three-phase)
   "spe1                  fim_debug_spe1_depletion"
   # Gas injection
@@ -57,6 +58,7 @@ usage() {
   printf "  %-20s %s\n" "wf_bt_48"     "1D breakthrough 48×1×1"
   printf "  %-20s %s\n" "wf_bt_12x12"  "2D breakthrough 12×12×1"
   printf "  %-20s %s\n" "wf_bt_12x12x3""3D breakthrough 12×12×3"
+  printf "  %-20s %s\n" "sweep_areal"  "Frontend areal sweep baseline 21×21×1"
   printf "  %-20s %s\n" "spe1"         "SPE1 depletion 10×10×3 (three-phase)"
   printf "  %-20s %s\n" "gas_24"       "1D gas injection 24×1×1"
   printf "  %-20s %s\n" "gas_12x12"    "2D gas injection 12×12×1"
@@ -81,8 +83,12 @@ TARGET="$1"
 run_scenario() {
   local name="$1"
   local test_fn="$2"
+  local exact_test_fn="$test_fn"
+  if [[ "$test_fn" == fim_debug_* ]]; then
+    exact_test_fn="tests::fim_debug::$test_fn"
+  fi
   echo "▶ Running scenario: $name ($test_fn)"
-  cargo test --release "$test_fn" -- --ignored --nocapture
+  cargo test --release "$exact_test_fn" -- --ignored --exact --nocapture
   echo ""
 }
 
