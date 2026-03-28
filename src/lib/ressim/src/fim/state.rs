@@ -245,8 +245,7 @@ impl FimState {
         }
     }
 
-    fn enforce_control_bounds(&mut self, sim: &ReservoirSimulator) {
-        let topology = build_well_topology(sim);
+    fn enforce_control_bounds(&mut self, sim: &ReservoirSimulator, topology: &crate::fim::wells::FimWellTopology) {
         let pressure_upper = self
             .cells
             .iter()
@@ -271,7 +270,8 @@ impl FimState {
         update: &DVector<f64>,
         damping: f64,
     ) -> Self {
-        let mut next = self.apply_raw_update(sim, update, damping);
+        let topology = build_well_topology(sim);
+        let mut next = self.apply_raw_update(sim, update, damping, &topology);
         next.classify_regimes(sim);
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
@@ -286,8 +286,9 @@ impl FimState {
         sim: &ReservoirSimulator,
         update: &DVector<f64>,
         damping: f64,
+        topology: &crate::fim::wells::FimWellTopology,
     ) -> Self {
-        self.apply_raw_update(sim, update, damping)
+        self.apply_raw_update(sim, update, damping, topology)
     }
 
     fn apply_raw_update(
@@ -295,6 +296,7 @@ impl FimState {
         sim: &ReservoirSimulator,
         update: &DVector<f64>,
         damping: f64,
+        topology: &crate::fim::wells::FimWellTopology,
     ) -> Self {
         let mut next = self.clone();
 
@@ -318,7 +320,7 @@ impl FimState {
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
         }
-        next.enforce_control_bounds(sim);
+        next.enforce_control_bounds(sim, topology);
 
         next
     }

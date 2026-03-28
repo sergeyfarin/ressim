@@ -25,9 +25,10 @@ pub(crate) struct FimAssembly {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct FimAssemblyOptions {
+pub(crate) struct FimAssemblyOptions<'a> {
     pub(crate) dt_days: f64,
     pub(crate) include_wells: bool,
+    pub(crate) topology: Option<&'a FimWellTopology>,
 }
 
 pub(crate) fn unknown_offset(cell_idx: usize, local_var: usize) -> usize {
@@ -44,7 +45,13 @@ pub(crate) fn assemble_fim_system(
     state: &FimState,
     options: &FimAssemblyOptions,
 ) -> FimAssembly {
-    let topology = build_well_topology(sim);
+    let owned_topology;
+    let topology = if let Some(cached) = options.topology {
+        cached
+    } else {
+        owned_topology = build_well_topology(sim);
+        &owned_topology
+    };
     let n_cells = state.cells.len();
     let n_unknowns = state.n_unknowns();
     let equation_scaling = build_equation_scaling(sim, state, &topology, options.dt_days);
@@ -1151,6 +1158,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
 
@@ -1179,6 +1187,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
 
@@ -1197,6 +1206,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
 
@@ -1218,6 +1228,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
 
@@ -1327,6 +1338,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
         let assembly = assemble_fim_system(
@@ -1336,6 +1348,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1370,6 +1383,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
         let high_sw_assembly = assemble_fim_system(
@@ -1379,6 +1393,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1408,6 +1423,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1433,6 +1449,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 2.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1473,6 +1490,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1513,6 +1531,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1555,6 +1574,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
         let baseline = assemble_fim_system(
@@ -1564,6 +1584,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
 
@@ -1620,6 +1641,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1653,6 +1675,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1674,6 +1697,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1697,6 +1721,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                topology: None,
             },
         );
 
@@ -1727,6 +1752,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 
@@ -1755,6 +1781,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                topology: None,
             },
         );
 

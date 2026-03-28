@@ -80,8 +80,8 @@ export const sweep_areal: Scenario = {
         delta_t_days: 5,
         steps: 50,
         max_sat_change_per_step: 0.01,
-        max_pressure_change_per_step: 25,
-        max_well_rate_change_fraction: 0.75,
+        max_pressure_change_per_step: 50,
+        max_well_rate_change_fraction: 1.0,
         gravityEnabled: false,
     },
     sensitivities: [

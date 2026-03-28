@@ -174,6 +174,9 @@ SPE1 FIM was extremely slow on WASM. Combined 3.3× native speedup (13.5× from 
 6. **Appleyard chop** (`newton.rs`): Per-variable Newton damping limits (ΔP ≤ 500 bar, ΔSw ≤ 0.5, ΔRs ≤ 100%). Prevents gross overshoots without strangling convergence. Generous limits — safety net, not convergence control.
 7. **Timestep control overhaul** (`step.rs`): Previous scheme used cutback_factor from Newton (0.225×) and slow 1.5× growth, causing catastrophic timestep collapse (1108 substeps/30 days). Fixed: simple 0.5× halving, 2.0× growth, state built once outside retry loop. Result: 48 substeps/30 days.
 - Full SPE1 run (3600 days): ~6 min native release, ~31k substeps. ECLIPSE runs this at dt=30 with internal refinement.
+8. **GMRES: Givens residual estimate** (`gmres_block_jacobi.rs`): Inner loop was computing a full matrix-vector product + back-substitution + basis combination at every iteration just for a convergence check. Replaced with `|rotated_rhs[inner+1]|` — the Givens rotation already gives the residual estimate for free. Solution is only constructed when convergence is detected or at restart boundary.
+9. **CPR enabled on WASM** (`linear/mod.rs`): WASM was using `GmresIlu0` (no pressure correction) while native used `FgmresCpr`. For pressure-dominated problems (waterflood), missing CPR means many more GMRES iterations. No platform reason to disable it.
+10. **Well topology cached in Newton loop** (`newton.rs`, `state.rs`, `assembly.rs`): `build_well_topology()` was rebuilt per Newton iteration (in assembly) and per damping attempt (in `enforce_control_bounds`). Now built once in `run_fim_timestep` and passed through.
 
 ### FIM Performance — Future Improvements
 The remaining gap to ECLIPSE (dt=30 converges, we average ~0.1 day substeps) is in Newton convergence radius. Ranked by expected impact:

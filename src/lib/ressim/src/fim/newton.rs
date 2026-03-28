@@ -6,6 +6,7 @@ use crate::fim::linear::{
     FimLinearSolverKind,
 };
 use crate::fim::state::FimState;
+use crate::fim::wells::build_well_topology;
 use crate::ReservoirSimulator;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -171,6 +172,7 @@ pub(crate) fn run_fim_timestep(
         cell_block_size: 3,
         scalar_tail_start: state.n_cell_unknowns(),
     });
+    let topology = build_well_topology(sim);
 
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
@@ -180,6 +182,7 @@ pub(crate) fn run_fim_timestep(
             &FimAssemblyOptions {
                 dt_days,
                 include_wells: true,
+                topology: Some(&topology),
             },
         );
         final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling));
@@ -249,7 +252,7 @@ pub(crate) fn run_fim_timestep(
         let mut damping = appleyard_damping(&state, &linear_report.solution, options);
         let mut accepted_state = None;
         while damping >= options.min_damping {
-            let candidate = state.apply_newton_update_frozen(sim, &linear_report.solution, damping);
+            let candidate = state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
             if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
                 accepted_state = Some(candidate);
                 break;
@@ -280,6 +283,7 @@ pub(crate) fn run_fim_timestep(
         &FimAssemblyOptions {
             dt_days,
             include_wells: true,
+            topology: Some(&topology),
         },
     );
     final_residual_inf_norm = Some(scaled_residual_inf_norm(&final_assembly.residual, &final_assembly.equation_scaling));

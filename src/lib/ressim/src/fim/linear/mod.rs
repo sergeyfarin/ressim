@@ -35,16 +35,7 @@ pub(crate) struct FimLinearBlockLayout {
 impl Default for FimLinearSolveOptions {
     fn default() -> Self {
         Self {
-            kind: {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    FimLinearSolverKind::GmresIlu0
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    FimLinearSolverKind::FgmresCpr
-                }
-            },
+            kind: FimLinearSolverKind::FgmresCpr,
             restart: 30,
             max_iterations: 150,
             relative_tolerance: 1e-7,

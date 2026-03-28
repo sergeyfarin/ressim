@@ -473,7 +473,7 @@ pub(super) fn solve(
         basis.push(preconditioned_residual / beta);
         let mut hessenberg = DMatrix::<f64>::zeros(restart + 1, restart);
         let mut best_solution = solution.clone();
-        let mut best_residual = residual_norm;
+        let best_residual = residual_norm;
         let mut givens_cosines = vec![0.0; restart];
         let mut givens_sines = vec![0.0; restart];
         let mut rotated_rhs = DVector::<f64>::zeros(restart + 1);
@@ -538,30 +538,34 @@ pub(super) fn solve(
             rotated_rhs[inner] = rhs_upper;
             rotated_rhs[inner + 1] = rhs_lower;
 
-            let cols = inner + 1;
-            let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
-            let candidate = &solution + combine_basis(&basis[..cols], &y);
-            let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
             iterations += 1;
-            inner_steps = cols;
+            inner_steps = inner + 1;
 
-            if candidate_residual < best_residual {
-                best_residual = candidate_residual;
-                best_solution = candidate.clone();
-            }
+            // Use the Givens rotation residual estimate instead of computing
+            // a full matrix-vector product at every inner iteration.
+            let estimated_residual = rotated_rhs[inner + 1].abs();
 
-            if candidate_residual <= tolerance || iterations >= max_iterations {
-                return FimLinearSolveReport {
-                    solution: candidate,
-                    converged: candidate_residual <= tolerance,
-                    iterations,
-                    final_residual_norm: candidate_residual,
-                    used_fallback,
-                    backend_used,
-                };
-            }
+            if estimated_residual <= tolerance || iterations >= max_iterations || next_norm <= f64::EPSILON {
+                // Construct the actual solution only when we need it.
+                let cols = inner + 1;
+                let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
+                let candidate = &solution + combine_basis(&basis[..cols], &y);
+                let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
 
-            if next_norm <= f64::EPSILON {
+                if candidate_residual <= tolerance || iterations >= max_iterations {
+                    return FimLinearSolveReport {
+                        solution: candidate,
+                        converged: candidate_residual <= tolerance,
+                        iterations,
+                        final_residual_norm: candidate_residual,
+                        used_fallback,
+                        backend_used,
+                    };
+                }
+
+                if candidate_residual < best_residual {
+                    best_solution = candidate;
+                }
                 break;
             }
         }
