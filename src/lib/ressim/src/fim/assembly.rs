@@ -1121,6 +1121,128 @@ mod tests {
             .unwrap_or(0.0)
     }
 
+    fn build_rate_controlled_waterflood_fd_fixture(
+    ) -> (ReservoirSimulator, FimState, FimState, FimAssemblyOptions<'static>) {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow { p_bar: 100.0, rs_m3m3: 10.0, bo_m3m3: 1.2, mu_o_cp: 1.4, bg_m3m3: 0.02, mu_g_cp: 0.03 },
+                PvtRow { p_bar: 200.0, rs_m3m3: 20.0, bo_m3m3: 1.1, mu_o_cp: 1.2, bg_m3m3: 0.01, mu_g_cp: 0.025 },
+                PvtRow { p_bar: 400.0, rs_m3m3: 40.0, bo_m3m3: 1.0, mu_o_cp: 1.0, bg_m3m3: 0.005, mu_g_cp: 0.02 },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(10.0, 10.0).unwrap();
+        sim.well_bhp_min = 20.0;
+        sim.well_bhp_max = 600.0;
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        for cell in state.cells.iter_mut() {
+            cell.hydrocarbon_var = 0.05;
+        }
+        state.cells[0].pressure_bar = 310.0;
+        state.cells[1].pressure_bar = 280.0;
+        state.cells[0].sw = 0.35;
+        state.perforation_rates_m3_day[0] = -5.0;
+        state.perforation_rates_m3_day[1] = 8.0;
+
+        let topology = build_well_topology(&sim);
+        let owned_topology = Box::new(topology);
+        let topology_ref: &'static FimWellTopology = Box::leak(owned_topology);
+        let options = FimAssemblyOptions {
+            dt_days: 1.0,
+            include_wells: true,
+            topology: Some(topology_ref),
+        };
+
+        (sim, previous_state, state, options)
+    }
+
+    fn assert_full_system_fd_matches_for_columns(columns: &[usize]) {
+        let (sim, previous_state, state, options) = build_rate_controlled_waterflood_fd_fixture();
+        let assembly = assemble_fim_system(&sim, &previous_state, &state, &options);
+        let n = assembly.residual.len();
+
+        let mut max_error = 0.0_f64;
+        let mut worst_entry = (0usize, 0usize, 0.0_f64, 0.0_f64);
+
+        for &col in columns {
+            let mut state_plus = state.clone();
+            let mut state_minus = state.clone();
+            let n_cells = state.cells.len();
+            let n_wells = state.n_well_unknowns();
+
+            let h = if col < n_cells * 3 {
+                let cell_idx = col / 3;
+                let local_var = col % 3;
+                let step = match local_var {
+                    0 => 1e-4 * state.cells[cell_idx].pressure_bar.abs().max(1.0),
+                    1 => 1e-6,
+                    2 => 1e-6 * state.cells[cell_idx].hydrocarbon_var.abs().max(1.0),
+                    _ => unreachable!(),
+                };
+                match local_var {
+                    0 => {
+                        state_plus.cells[cell_idx].pressure_bar += step;
+                        state_minus.cells[cell_idx].pressure_bar -= step;
+                    }
+                    1 => {
+                        state_plus.cells[cell_idx].sw += step;
+                        state_minus.cells[cell_idx].sw -= step;
+                    }
+                    2 => {
+                        state_plus.cells[cell_idx].hydrocarbon_var += step;
+                        state_minus.cells[cell_idx].hydrocarbon_var -= step;
+                    }
+                    _ => unreachable!(),
+                }
+                step
+            } else if col < n_cells * 3 + n_wells {
+                let well_idx = col - n_cells * 3;
+                let step = 1e-4 * state.well_bhp[well_idx].abs().max(1.0);
+                state_plus.well_bhp[well_idx] += step;
+                state_minus.well_bhp[well_idx] -= step;
+                step
+            } else {
+                let perf_idx = col - n_cells * 3 - n_wells;
+                let step = 1e-4 * state.perforation_rates_m3_day[perf_idx].abs().max(0.1);
+                state_plus.perforation_rates_m3_day[perf_idx] += step;
+                state_minus.perforation_rates_m3_day[perf_idx] -= step;
+                step
+            };
+
+            let r_plus = assemble_fim_system(&sim, &previous_state, &state_plus, &options).residual;
+            let r_minus = assemble_fim_system(&sim, &previous_state, &state_minus, &options).residual;
+
+            for row in 0..n {
+                let fd_value = (r_plus[row] - r_minus[row]) / (2.0 * h);
+                let exact_value = jacobian_value(&assembly.jacobian, row, col);
+                let scale = exact_value.abs().max(fd_value.abs()).max(1e-6);
+                let error = (exact_value - fd_value).abs() / scale;
+                if error > max_error {
+                    max_error = error;
+                    worst_entry = (row, col, exact_value, fd_value);
+                }
+                assert!(
+                    error < 5e-2,
+                    "Jacobian mismatch at (row={}, col={}): exact={:.6e}, fd={:.6e}, rel_error={:.3e}",
+                    row, col, exact_value, fd_value, error
+                );
+            }
+        }
+
+        eprintln!(
+            "sampled full_system_jacobian FD check: max_rel_error={:.3e} at ({}, {}): exact={:.6e} fd={:.6e}",
+            max_error, worst_entry.0, worst_entry.1, worst_entry.2, worst_entry.3
+        );
+    }
+
     #[test]
     fn offsets_follow_cell_major_three_unknown_layout() {
         assert_eq!(unknown_offset(0, 0), 0);
@@ -1806,4 +1928,63 @@ mod tests {
         assert!((block[0][1] - pv / sim.b_w).abs() < 1e-12);
         assert!(block[0][2].abs() < 1e-12);
     }
+
+    /// Full-system finite-difference Jacobian verification.
+    /// Perturbs every unknown (cell states, well BHP, perforation rates) and
+    /// compares the numerical derivative of the full residual against the
+    /// analytical Jacobian. This catches any sign error or missing coupling.
+    #[test]
+    #[ignore = "Expensive test that can be enabled for debugging specific Jacobian issues"]
+    fn full_system_jacobian_matches_fd_for_rate_controlled_waterflood() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow { p_bar: 100.0, rs_m3m3: 10.0, bo_m3m3: 1.2, mu_o_cp: 1.4, bg_m3m3: 0.02, mu_g_cp: 0.03 },
+                PvtRow { p_bar: 200.0, rs_m3m3: 20.0, bo_m3m3: 1.1, mu_o_cp: 1.2, bg_m3m3: 0.01, mu_g_cp: 0.025 },
+                PvtRow { p_bar: 400.0, rs_m3m3: 40.0, bo_m3m3: 1.0, mu_o_cp: 1.0, bg_m3m3: 0.005, mu_g_cp: 0.02 },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(10.0, 10.0).unwrap();
+        sim.well_bhp_min = 20.0;
+        sim.well_bhp_max = 600.0;
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        // Perturb from equilibrium so residual is nonzero.
+        // Keep saturations **away from boundaries** so FD central differences
+        // don't hit the clamp at Sg=0 or So=S_or.
+        for cell in state.cells.iter_mut() {
+            cell.hydrocarbon_var = 0.05; // small non-zero Sg
+        }
+        state.cells[0].pressure_bar = 310.0;
+        state.cells[1].pressure_bar = 280.0;
+        state.cells[0].sw = 0.35;
+        state.perforation_rates_m3_day[0] = -5.0;
+        state.perforation_rates_m3_day[1] = 8.0;
+
+        let dt_days = 1.0;
+        let topology = build_well_topology(&sim);
+        let options = FimAssemblyOptions {
+            dt_days,
+            include_wells: true,
+            topology: Some(&topology),
+        };
+
+        let assembly = assemble_fim_system(&sim, &previous_state, &state, &options);
+        let _n = assembly.residual.len();
+        assert_full_system_fd_matches_for_columns(&(0..10).collect::<Vec<_>>());
+    }
+
+    #[test]
+    #[ignore = "diagnostic: sampled full-system central-FD Jacobian"]
+    fn representative_full_system_jacobian_columns_match_fd_for_rate_controlled_waterflood() {
+        assert_full_system_fd_matches_for_columns(&[0, 1, 2, 6, 8, 9]);
+    }
+
 }

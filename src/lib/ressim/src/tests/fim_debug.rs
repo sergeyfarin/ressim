@@ -82,6 +82,17 @@ fn build_spe1_depletion() -> ReservoirSimulator {
 
 /// Three-phase gas injection into an oil reservoir.
 fn build_gas_injection(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
+    build_gas_injection_variant(nx, ny, nz, nz > 1, true, true)
+}
+
+fn build_gas_injection_variant(
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    gravity_enabled: bool,
+    capillary_enabled: bool,
+    rate_controlled: bool,
+) -> ReservoirSimulator {
     use crate::pvt::{PvtRow, PvtTable};
 
     let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.25);
@@ -94,8 +105,12 @@ fn build_gas_injection(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
     sim.set_rock_properties(4e-5, 2500.0, 1.2, 1.0).unwrap();
     sim.set_fluid_densities(850.0, 1020.0).unwrap();
     sim.set_gas_fluid_properties(0.02, 1e-4, 0.8).unwrap();
-    sim.set_capillary_params(0.0, 2.0).unwrap();
-    sim.set_gravity_enabled(nz > 1);
+    if capillary_enabled {
+        sim.set_capillary_params(0.0, 2.0).unwrap();
+    } else {
+        sim.set_capillary_params(0.0, 1e-6).unwrap();
+    }
+    sim.set_gravity_enabled(gravity_enabled);
     sim.set_permeability_per_layer(
         vec![500.0; nz],
         vec![500.0; nz],
@@ -148,9 +163,14 @@ fn build_gas_injection(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator {
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_redissolution_enabled(false);
     sim.set_stability_params(0.05, 75.0, 0.75);
-    sim.set_rate_controlled_wells(true);
-    sim.set_well_control_modes("rate".to_string(), "rate".to_string());
-    sim.set_target_well_rates(500.0, 200.0).unwrap();
+    sim.set_rate_controlled_wells(rate_controlled);
+    if rate_controlled {
+        sim.set_well_control_modes("rate".to_string(), "rate".to_string());
+        sim.set_target_well_rates(500.0, 200.0).unwrap();
+    } else {
+        sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+        sim.set_target_well_rates(0.0, 0.0).unwrap();
+    }
     sim.set_well_bhp_limits(50.0, 400.0).unwrap();
     sim.add_well(0, 0, 0, 350.0, 0.1, 0.0, true).unwrap();
     sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
@@ -322,4 +342,25 @@ fn fim_debug_gas_12x12x3() {
 fn fim_debug_gas_10x10x3() {
     let mut sim = build_gas_injection(10, 10, 3);
     run_verbose("gas_10x10x3", &mut sim, 2.0, 15);
+}
+
+#[test]
+#[ignore = "native FIM debug: gas injection 10×10×3 without gravity"]
+fn fim_debug_gas_10x10x3_no_gravity() {
+    let mut sim = build_gas_injection_variant(10, 10, 3, false, true, true);
+    run_verbose("gas_10x10x3_no_gravity", &mut sim, 2.0, 15);
+}
+
+#[test]
+#[ignore = "native FIM debug: gas injection 10×10×3 without capillary"]
+fn fim_debug_gas_10x10x3_no_capillary() {
+    let mut sim = build_gas_injection_variant(10, 10, 3, true, false, true);
+    run_verbose("gas_10x10x3_no_capillary", &mut sim, 2.0, 15);
+}
+
+#[test]
+#[ignore = "native FIM debug: gas injection 10×10×3 pressure-controlled wells"]
+fn fim_debug_gas_10x10x3_pressure() {
+    let mut sim = build_gas_injection_variant(10, 10, 3, true, true, false);
+    run_verbose("gas_10x10x3_pressure", &mut sim, 2.0, 15);
 }
