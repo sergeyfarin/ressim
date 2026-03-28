@@ -353,3 +353,35 @@ Implemented a first solver-side change in `fim/state.rs`:
   - water breakthrough difficulty is back in the reservoir cell equations
   - gas still has a separate remaining issue, but it now looks more like cell/well-control stagnation than catastrophic well/perforation inconsistency
 - This is good progress because the dominant failure mode is now closer to the actual physical/coupled stiffness rather than a bad well iterate.
+
+## Next Newton Slice: Residual-First Entry Acceptance And Strict Backtracking
+
+Implemented a second Newton-side cleanup in `fim/newton.rs`:
+
+- if a retry enters Newton with residual already at or near tolerance, accept that iterate immediately instead of forcing another linear solve just to satisfy the update norm
+- damped trial states are now required to reduce the residual before they are allowed to advance the iterate
+- if no residual-reducing damped state exists and the current residual is already inside the small entry guard band, the solver accepts the current iterate rather than walking into a stagnation loop
+
+### Why this was needed
+
+- the previous damping path still accepted the best finite candidate even when every candidate made the residual worse
+- that was exactly what the remaining gas tiny-step traces were doing: a nearly converged state at the doubled timestep was being kicked to a much worse state, after which the solve stagnated on the well row
+- the water breakthrough traces showed a milder version of the same issue: after one good reduction, later damped candidates sometimes failed to improve further and the solve spent extra iterations sitting on an almost converged cell-row plateau
+
+### Observed effect
+
+- `gas_10x10x3` no longer escalates from a near-converged doubled-step entry state into the old `well row=900` stagnation shelf; those retries now fail fast on the first Newton iteration and immediately cut back
+- the same gas case now accepts the smaller retry step in one iteration via the residual-entry guard (`res ≈ 1.446e-5`)
+- `wf_bt_12x12x3` still shows a small doubled-step residual plateau in the cell rows, but the solver now rejects non-improving candidates instead of marching through repeated stagnant Newton iterations; perforation dominance remains absent
+
+### Updated interpretation
+
+- the remaining bottleneck is now less about bad Newton state acceptance and more about timestep growth repeatedly proposing a slightly-too-large external substep
+- the gas case still has a small doubled-step entry residual (`~5.8e-5`) above the current guard band, so timestep growth oscillates between two nearby substep sizes instead of collapsing into the older multi-iteration well-row failure
+- the water breakthrough case shows the same structural pattern in the reservoir rows: doubled steps can land on a low residual plateau just above tolerance, then cut back cleanly
+
+### Practical status after this slice
+
+- explicit well-manifold drift is no longer the dominant convergence failure
+- non-improving Newton candidates are no longer allowed to worsen an already good iterate
+- the next likely leverage point is timestep-growth policy or a slightly more explicit near-converged acceptance rule for doubled-step retries, not another broad well/perforation fix
