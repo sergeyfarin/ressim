@@ -167,6 +167,35 @@ fn scaled_update_inf_norm(
     max_norm
 }
 
+fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> bool {
+    const PRESSURE_EPS: f64 = 1e-12;
+    const SATURATION_EPS: f64 = 1e-12;
+    const RS_EPS: f64 = 1e-12;
+    const WELL_BHP_EPS: f64 = 1e-12;
+    const PERF_RATE_EPS: f64 = 1e-12;
+
+    previous_state
+        .cells
+        .iter()
+        .zip(state.cells.iter())
+        .any(|(previous, current)| {
+            (current.pressure_bar - previous.pressure_bar).abs() > PRESSURE_EPS
+                || (current.sw - previous.sw).abs() > SATURATION_EPS
+                || (current.hydrocarbon_var - previous.hydrocarbon_var).abs() > RS_EPS
+                || current.regime != previous.regime
+        })
+        || previous_state
+            .well_bhp
+            .iter()
+            .zip(state.well_bhp.iter())
+            .any(|(previous, current)| (current - previous).abs() > WELL_BHP_EPS)
+        || previous_state
+            .perforation_rates_m3_day
+            .iter()
+            .zip(state.perforation_rates_m3_day.iter())
+            .any(|(previous, current)| (current - previous).abs() > PERF_RATE_EPS)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResidualRowFamily {
     Water,
@@ -444,6 +473,7 @@ pub(crate) fn run_fim_timestep(
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let converged_on_entry = current_norm <= options.residual_tolerance
             || (iteration == 0
+            && iterate_has_material_change(previous_state, &state)
                 && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR);
         if converged_on_entry {
             final_update_inf_norm = 0.0;
@@ -526,7 +556,9 @@ pub(crate) fn run_fim_timestep(
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution, &assembly.variable_scaling);
         last_linear_report = Some(linear_report.clone());
 
-        let converged = final_update_inf_norm <= options.update_tolerance;
+        let converged = final_update_inf_norm <= options.update_tolerance
+            && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
+            && iterate_has_material_change(previous_state, &state);
         if converged {
             fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{} fam=[{}]{}",
                 iteration, current_norm, final_update_inf_norm, linear_report.iterations,
@@ -595,7 +627,9 @@ pub(crate) fn run_fim_timestep(
                 .unwrap_or_default());
 
         let Some(candidate) = accepted_state else {
-            if current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR {
+            if current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
+                && iterate_has_material_change(previous_state, &state)
+            {
                 final_update_inf_norm = 0.0;
                 fim_trace!(options.verbose, "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e}{} fam=[{}]{}",
                     iteration, current_norm,
@@ -824,6 +858,47 @@ mod tests {
         assert_eq!(report.newton_iterations, 1);
         assert!((report.accepted_state.well_bhp[0] - iterate.well_bhp[0]).abs() < 1e-15);
         assert_eq!(report.final_update_inf_norm, 0.0);
+    }
+
+    #[test]
+    fn entry_guard_does_not_accept_unchanged_previous_state() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+        let previous_state = FimState::from_simulator(&sim);
+
+        let assembly = assemble_fim_system(
+            &sim,
+            &previous_state,
+            &previous_state,
+            &FimAssemblyOptions {
+                dt_days: 0.01,
+                include_wells: true,
+                topology: None,
+            },
+        );
+        let residual_norm = scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
+        assert!(residual_norm.is_finite() && residual_norm > 0.0);
+
+        let options = FimNewtonOptions {
+            residual_tolerance: residual_norm * 0.75,
+            ..FimNewtonOptions::default()
+        };
+
+        let report = run_fim_timestep(&sim, &previous_state, &previous_state, 0.01, &options);
+
+        assert!(
+            !report.converged || iterate_has_material_change(&previous_state, &report.accepted_state),
+            "unchanged previous state must not be accepted as converged inside the residual guard band"
+        );
+        if report.converged {
+            assert!(
+                report.final_update_inf_norm > 0.0,
+                "guarded residual acceptance should not report a zero-update shortcut for an unchanged previous state"
+            );
+        }
     }
 
     #[test]

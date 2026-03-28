@@ -433,3 +433,146 @@ Three changes to `step_internal_fim_impl`, all in the outer substep loop:
 2. **Post-step saturation/pressure change limiting**: after accepting a step, compute max |ΔSw| and max |ΔP| between old and new state. If max |ΔSw| exceeds a target (0.2), scale the next suggested dt down by `target / actual_change`. Same for pressure with a target of 200 bar. This caps the growth suggestion independently of the Newton iteration count.
 
 3. **Newton cutback factor**: on failure, use `trial_dt * report.cutback_factor` instead of `trial_dt * 0.5`. This lets the Newton solver communicate how aggressively to cut.
+
+## Follow-Up Audit: SPE1 Gas Regression And 3D/Breakthrough Slowness
+
+### SPE1 gas audit status
+
+- Added a focused regression in `src/lib/ressim/src/lib.rs`: `spe1_fim_gas_injection_creates_free_gas`.
+- Current result: the Rust-core FIM path does create free gas under SPE1 gas injection. The regression passes and verifies all of the following after 10 one-day steps:
+  - injector-cell `Sg` becomes positive
+  - average `Sg` increases from its initial value
+  - total gas inventory increases
+- That means the currently checked-in Rust FIM core does **not** reproduce a blanket “gas saturation stays flat” failure.
+- The remaining user-visible symptom is therefore more likely one of these:
+  - gas remains very localized near the injector for some time, so field-wide `Sg` changes are visually subtle
+  - a frontend/runtime presentation issue makes the saturation field look static even though the core state changes
+  - an earlier local branch had a transient regression that is no longer present in the current workspace
+
+### Strong new clue on the remaining slowness
+
+The case-size pattern now points very strongly at the linear solver backend, not just timestep policy.
+
+Representative coupled-system sizes (`3 * n_cells + n_wells + n_perforations`):
+
+- `wf_bt_48x1x1`: `148` rows → native direct solve
+- `wf_bt_12x12x1`: `436` rows → native direct solve
+- `gas_10x10x3`: `904` rows → iterative backend on native
+- `spe1_10x10x3`: `904` rows → iterative backend on native
+- `wf_bt_12x12x3`: `1300` rows → iterative backend
+- `sweep_areal_21x21x1`: `1327` rows → iterative backend
+
+This matches the observed symptom surprisingly well:
+
+- 1D and modest 2D cases are fast even at breakthrough because they stay below the native direct-solve threshold (`512` rows)
+- the first “slightly more complicated” cases fall off that cliff and switch to the current iterative `FgmresCpr` path
+- the difficult breakthrough / 3D cases are exactly the ones that spend most of their time in that iterative path
+
+### Comparison against OPM Flow
+
+Public OPM guidance describes the default Flow linear path as BiCGSTAB with CPRW, where the pressure coarse system is normally handled by AMG and the full system uses an ILU-type fine smoother. OPM also exposes explicit tuning of linear reduction targets and maximum iterations, and documents that the linear solver failing to reduce the residual forces timestep cuts.
+
+Our current implementation is materially weaker than that:
+
+- the pressure coarse system is built from block-based restriction/prolongation plus a tiny in-house ILU(0), not AMG
+- the pressure correction does only a fixed small number of defect-correction sweeps (`2`)
+- the fine-stage preconditioner is block-Jacobi over the `3×3` cell blocks plus scalar diagonal scaling for the tail
+- the pressure extractor explicitly drops all scalar-tail couplings (`if col_idx >= layout.scalar_tail_start { continue; }`), so well/BHP/perforation unknowns are **not** present in the coarse pressure system at all
+
+That last point is important. OPM’s public CPRW examples explicitly mention `add_wells = true`; our extractor currently omits those couplings from the pressure coarse solve. In well-driven breakthrough problems, that omission is a plausible reason the iterative backend degrades exactly when well/cell coupling becomes dominant.
+
+### Updated interpretation
+
+- The adaptive timestep controller improvements were worth doing; they removed obvious outer-loop waste.
+- But the remaining case-size-dependent slowdown is now best explained as a **linear-solver / preconditioner quality problem** interacting with breakthrough nonlinearity, not as a pure timestep heuristic issue.
+- More precisely:
+  - small cases are fast because they avoid the iterative backend entirely
+  - large/breakthrough/well-driven cases are slow because they hit an iterative backend whose CPR stage is still much weaker than OPM-style CPRW/AMG and currently excludes well-tail couplings from the coarse pressure system
+
+### Immediate implication
+
+- Do not treat the remaining slowdown as evidence that the earlier well-manifold or Newton-acceptance fixes were wrong.
+- The next high-leverage solver work is likely in the linear backend, especially coarse pressure construction / well inclusion, rather than another broad nonlinear rewrite.
+
+## Follow-Up Audit: Iterative CPR Path And SPE1 Gas Pinning
+
+### Research-backed CPR improvement targets
+
+Comparison against public OPM Flow guidance and standard CPR practice points to four specific weaknesses in the current iterative backend:
+
+1. **Wells are excluded from the coarse pressure system**
+  - Current code in `fim/linear/gmres_block_jacobi.rs` drops every coupling whose column is in the scalar tail:
+    - `if col_idx >= layout.scalar_tail_start { continue; }`
+  - In this formulation the scalar tail contains well BHP and perforation-rate unknowns, so the extracted pressure system ignores well/facility couplings entirely.
+  - Public OPM CPRW guidance explicitly exposes `add_wells = true`; in well-driven black-oil problems that is the expected production configuration.
+
+2. **The coarse pressure solver is ILU(0)-class instead of AMG-class**
+  - The current extracted pressure system is solved by a small in-house ILU-style factorization plus a fixed low number of defect-correction sweeps.
+  - That is qualitatively weaker than the AMG-backed coarse solve described in OPM CPRW documentation and is expected to degrade with grid size / anisotropy.
+
+3. **Pressure restriction/prolongation are heuristic local-block inverses, not explicit IMPES-style weights**
+  - The current implementation derives restriction/prolongation from the first row / first column of each local `3×3` inverse.
+  - This is serviceable as a placeholder, but it is not the same as a documented `true-IMPES` or `quasi-IMPES` pressure extractor.
+
+4. **The coarse pressure correction budget is fixed and tiny**
+  - `solve_pressure_correction(..., 2)` hardcodes two correction sweeps with no convergence-based stop.
+  - That makes the CPR stage cheap, but also very easy to under-solve on the hard cases that most need it.
+
+### Real solver bug found and fixed
+
+While auditing the SPE1 slowdown, a separate nonlinear acceptance bug was confirmed in `fim/newton.rs`.
+
+#### Symptom
+
+- SPE1-like debug traces showed repeated accepted substeps with:
+  - tiny dt (`~0.019531 d` in the captured run)
+  - `upd = 0.000e0`
+  - effectively zero state change
+- Time advanced anyway, creating the exact user-visible pattern of gas appearing pinned near the injector while the simulation became extremely slow.
+
+#### Root cause
+
+Two guarded acceptance paths could accept an iterate that was still equal to the previously accepted state:
+
+1. iteration-0 residual-entry guard
+2. the "reject non-improving damped candidates but accept current residual inside guard band" fallback
+
+There was also an update-based convergence path that could accept a zero-update Newton solve even though the residual was only inside the loose guard band, not actually converged in a physically meaningful sense.
+
+#### Fix
+
+- Added a material-change check in `fim/newton.rs` so these guarded acceptance paths only accept iterates that have genuinely moved away from the previous accepted state.
+- Added focused regression coverage:
+  - `entry_guard_does_not_accept_unchanged_previous_state`
+
+### Measured impact on SPE1 debug trace
+
+Before this fix, the first SPE1 outer step could collapse into a long sequence of no-op accepted substeps around `dt ≈ 0.019531 d`.
+
+After the fix, the same filtered native trace improved materially:
+
+- outer step 1 now cuts from `10 d` down to a real accepted step of `0.3125 d`, then grows back through `0.23`, `0.47`, `0.53`, `0.95` day-class substeps
+- outer step 2 accepts `0.625`, `1.25`, `0.47`, `0.23`, `0.70`, `1.41`, `2.11` day-class substeps instead of getting trapped on a no-op micro-step shelf
+- the case is still slower than it should be, but it is no longer dominated by advancing time on unchanged states
+
+Interpretation:
+
+- the user-reported SPE1 "gas is locked in the injector cell and the simulation is extremely slow" symptom was partly real physics/coupling difficulty and partly this acceptance bug
+- the bug fix removes one artificial source of gas-plume pinning by ensuring accepted timesteps actually correspond to state advancement
+- the remaining slowness is still primarily in the iterative CPR path, not in a literal zero-transport gas bug
+
+### Current best-practice improvement order
+
+1. **Include well / perforation couplings in the coarse pressure system**
+  - highest-value CPR correction for this codebase
+  - directly aligned with OPM-style `add_wells = true`
+
+2. **Replace the current ILU(0)-class coarse solve with AMG or at least a materially stronger multilevel pressure solver**
+  - this is the main expected lever for the 3D / breakthrough performance cliff
+
+3. **Replace the current inverse-first-row pressure extractor with an explicit IMPES-style or quasi-IMPES pressure weighting**
+  - makes the coarse system more physically meaningful and more comparable to industry CPR practice
+
+4. **Add CPR diagnostics before deeper tuning**
+  - report linear iterations, final linear residual, whether the coarse solve is used, and possibly a pressure-coarse residual reduction metric
+  - this will make future native and wasm traces far more informative without resorting to huge raw debug logs

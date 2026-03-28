@@ -1687,6 +1687,65 @@ mod tests {
     }
 
     #[test]
+    fn spe1_fim_gas_injection_creates_free_gas() {
+        let mut sim = make_spe1_like_base_sim();
+        sim.set_fim_enabled(true);
+
+        let total_gas_inventory_sc = |sim: &ReservoirSimulator| -> f64 {
+            (0..sim.nx * sim.ny * sim.nz)
+                .map(|idx| {
+                    let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
+                    let free_gas_sc =
+                        sim.sat_gas[idx] * pore_volume_m3 / sim.get_b_g(sim.pressure[idx]).max(1e-9);
+                    let dissolved_gas_sc = if sim.pvt_table.is_some() {
+                        sim.sat_oil[idx] * pore_volume_m3 * sim.rs[idx]
+                            / sim.get_b_o_cell(idx, sim.pressure[idx]).max(1e-9)
+                    } else {
+                        0.0
+                    };
+                    free_gas_sc + dissolved_gas_sc
+                })
+                .sum()
+        };
+
+        let initial_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
+        let injector_id = sim.idx(0, 0, 0);
+        let initial_total_gas_sc = total_gas_inventory_sc(&sim);
+
+        for _ in 0..10 {
+            sim.step(1.0);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "FIM solver warning at t={}: {}",
+                sim.time_days,
+                sim.last_solver_warning
+            );
+        }
+
+        let final_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
+        let final_total_gas_sc = total_gas_inventory_sc(&sim);
+
+        assert!(
+            sim.sat_gas[injector_id] > 1e-6,
+            "injector cell should contain free gas after FIM gas injection, got sg={} at t={} days",
+            sim.sat_gas[injector_id],
+            sim.time_days
+        );
+        assert!(
+            final_avg_sg > initial_avg_sg + 1e-8,
+            "average gas saturation should increase under FIM gas injection, before={}, after={}",
+            initial_avg_sg,
+            final_avg_sg
+        );
+        assert!(
+            final_total_gas_sc > initial_total_gas_sc + 1.0,
+            "total gas inventory should increase under FIM gas injection, before={}, after={}",
+            initial_total_gas_sc,
+            final_total_gas_sc
+        );
+    }
+
+    #[test]
     #[ignore = "debug helper for SPE1 producer breakthrough diagnostics"]
     fn debug_spe1_producer_breakthrough_probe() {
         let sample_times = [
