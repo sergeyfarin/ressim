@@ -567,9 +567,29 @@ Interpretation:
   - highest-value CPR correction for this codebase
   - directly aligned with OPM-style `add_wells = true`
   - March 28 implementation note: a naive attempt to append scalar-tail unknowns directly into the current coarse system (identity restriction/prolongation for tail variables, direct row injection into the extracted coarse matrix) was tested and then reverted. It regressed SPE1 early-time behavior: the focused `spe1_fim_gas_injection_creates_free_gas` regression failed (`max_sg = 0` at 10 days) and the filtered native SPE1 trace fell back into repeated tiny accepted substeps. Conclusion: this item still needs to be done, but not as a simple identity-tail augmentation. The likely correct direction is a more Schur-consistent well-aware coarse system rather than bolting the raw scalar tail onto the current pressure extractor.
+  - March 28 follow-up implementation: the current `fim/linear/gmres_block_jacobi.rs` now keeps a pressure-only coarse system but adds scalar-tail influence through an approximate Schur correction. The preconditioner builds a tail-block inverse, projects tail-to-pressure couplings, augments the coarse pressure operator with `-A_ct D^-1 A_tc`-style terms, and augments the coarse RHS with `-A_ct D^-1 r_t`.
+  - Focused validation on the active branch:
+    - `pressure_projection_updates_entire_local_block` passes
+    - `pressure_rhs_accounts_for_tail_schur_coupling` passes
+    - `large_default_fim_system_still_uses_iterative_backend` passes
+    - `entry_guard_does_not_accept_unchanged_previous_state` passes
+    - `spe1_fim_first_steps_converge_without_stall` passes
+    - `spe1_fim_gas_injection_creates_free_gas` passes
+  - Measured native SPE1 trace after the Schur-style change: correctness is better than the pre-fix no-op-acceptance state, but timestep fragmentation is still substantial. The first outer step still cuts from `10 d` to an accepted `0.3125 d`, and the second outer step still collapses as low as `0.09375 d` before recovering.
+  - Current conclusion: step 1 is now implemented in a materially better form than the reverted naive tail augmentation, and it is worth keeping because it preserves focused SPE1 behavior and CPR unit coverage. It is not, by itself, enough to remove the practical SPE1 slowdown. The next leverage is still a stronger coarse pressure solve and better CPR diagnostics, not more scalar-tail bolting.
 
 2. **Replace the current ILU(0)-class coarse solve with AMG or at least a materially stronger multilevel pressure solver**
   - this is the main expected lever for the 3D / breakthrough performance cliff
+  - March 28 implementation: `fim/linear/gmres_block_jacobi.rs` now upgrades the extracted pressure stage from a fixed two-sweep ILU defect correction to a stronger hybrid solve. For moderate coarse systems (currently up to `512` pressure rows), the extracted pressure matrix is inverted once during preconditioner build and the CPR pressure stage uses that exact dense coarse solve. Larger coarse systems fall back to a residual-based ILU defect-correction loop with a higher iteration budget instead of the previous hardcoded two sweeps.
+  - Focused validation on the active branch:
+    - `pressure_projection_updates_entire_local_block` passes
+    - `pressure_rhs_accounts_for_tail_schur_coupling` passes
+    - `pressure_correction_uses_exact_dense_inverse_when_small` passes
+    - `large_default_fim_system_still_uses_iterative_backend` passes
+    - `spe1_fim_first_steps_converge_without_stall` passes
+    - `spe1_fim_gas_injection_creates_free_gas` passes
+  - Measured impact on a representative 3D breakthrough trace (`wf_bt_12x12x3`): the stronger coarse pressure solve does not materially remove timestep fragmentation by itself. The first outer step still cuts from `1 d` down to `0.015625 d`, later shelves around repeated `0.002768 d` accepted substeps, and then drops again to `0.001384 d`.
+  - Current conclusion: this step is still worth keeping because it removes one obvious weakness in the CPR stage and, for the current case sizes, effectively rules out “the coarse pressure solve is just too under-solved” as the sole explanation. But the remaining slowdown is now pointing more strongly at coarse-system quality and outer-step policy than at raw coarse-solver strength alone.
 
 3. **Replace the current inverse-first-row pressure extractor with an explicit IMPES-style or quasi-IMPES pressure weighting**
   - makes the coarse system more physically meaningful and more comparable to industry CPR practice
