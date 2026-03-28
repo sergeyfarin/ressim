@@ -158,13 +158,8 @@
 - In black-oil three-phase mode, `get_c_o_effective()` replaces `get_c_o()` for the IMPES accumulation term. It includes the dissolved-gas compressibility `(Bg/Bo)·dRs/dp` which is the dominant compressibility contributor below bubble point. The original `get_c_o()` (with positive-value clamping) is still used for two-phase mode where dissolved-gas effects are not modeled.
 - Water and gas cumulative material-balance errors are reported explicitly in three-phase mode. Oil is still the residual phase in diagnostics.
 
-### Interruption Note (SPE1 FIM Stall Diagnosis)
-During the verification of the SPE1 Gas Injection case under FIM, the simulation hung during the Newton solve iterations early in the run.
-- **Root Cause Verified**: The specific issue blocking Newton's progress was within the Fischer-Burmeister formulation in `well_constraint_residual` (`src/lib/ressim/src/fim/wells.rs`). The formulation natively mixed `bhp_slack` (scale 10^2) and `rate_slack` (scale 10^6) together unscaled. This generated numerically explosive residuals and gradients preventing the Newton loop from reaching the tolerance.
-- **Patches Made**:
-  1. *Residual Scaling*: Updated `well_constraint_residual` to use `scaled_bhp_slack = bhp_slack / limit` and `scaled_rate_slack = rate_slack / target_rate`.
-  2. *Gradient Scaling (Chain Rule)*: The unscaled slacks are sent through the FB gradient in `src/lib/ressim/src/fim/assembly.rs`, and the corresponding `dphi_da_scaled / limit` logic was applied.
-  3. *Conditioning*: Adjusted `well_constraint` equation scaling layout in `src/lib/ressim/src/fim/scaling.rs` to allow FB iterations to reach global tolerance realistically (temporarily changed to target an effective `1e-3` relative norm for FB equations).
-- **Next Slice**:
-  - Verify and clean up the debug scaling thresholds pushed into `src/lib/ressim/src/fim/scaling.rs`.
-  - Remove debug prints out of `src/lib/ressim/src/lib.rs` (`println!("step done, time: {}", sim.time_days);`) and make sure the remaining `spe1_producer` breakthrough benchmarks correctly pass with `sim.set_fim_enabled(true)`.
+### SPE1 FIM Stall — Resolved
+The SPE1 Gas Injection case stalled during Newton iterations early in the FIM run. Two root causes were identified and fixed:
+1. **Gas injector mobility was zero** (`wells.rs`): 3-phase injectors used only the injected phase's mobility (`krg=0` at `Sg=0`). Fixed: all injectors now use total mobility (consistent with 2-phase path). Injected component tracked separately via `perforation_component_rates_sc_day`.
+2. **Fischer-Burmeister slacks were unscaled** (`wells.rs`, `assembly.rs`, `scaling.rs`): `bhp_slack` ~O(100 bar) vs `rate_slack` ~O(10^6 Sm³/d) caused `∂FB/∂rate → 0`, killing Newton sensitivity to rate changes. Fixed: slacks normalized by `bhp_limit` and `target_rate` before FB evaluation; Jacobian chain rule updated; equation scaling set to 1.0.
+- Regression test `spe1_fim_first_steps_converge_without_stall` added. All 20 FIM assembly Jacobian verification tests pass.

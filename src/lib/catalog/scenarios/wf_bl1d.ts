@@ -209,5 +209,28 @@ export const wf_bl1d: Scenario = {
                 },
             ],
         },
+        {
+            key: 'solver',
+            label: 'Solver',
+            description: 'Numerical convergence study. The Buckley-Leverett analytical solution is the same — only the simulation solver is modified.',
+            analyticalOverlayMode: 'shared',
+            chartLayoutKeyOverride: 'waterflood',
+            variants: [
+                {
+                    key: 'FIM',
+                    label: 'FIM Solver',
+                    description: 'Fully implicit method — robust, less diffusive than IMPES, sharper front on coarse grids.',
+                    paramPatch: { fimEnabled: true },
+                    affectsAnalytical: false,
+                },
+                {
+                    key: 'IMPES',
+                    label: 'IMPES Solver',
+                    description: 'Implicit pressure, explicit saturation method — less robust, more diffusive than FIM, smeared front on coarse grids.',
+                    paramPatch: { fimEnabled: false },
+                    affectsAnalytical: false,
+                },
+            ],
+        },
     ],
 };

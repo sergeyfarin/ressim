@@ -1665,6 +1665,26 @@ mod tests {
     }
 
     #[test]
+    fn spe1_fim_first_steps_converge_without_stall() {
+        let mut sim = make_spe1_like_base_sim();
+        sim.set_fim_enabled(true);
+        for _ in 0..5 {
+            sim.step(0.25);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "FIM solver warning at t={}: {}",
+                sim.time_days,
+                sim.last_solver_warning
+            );
+        }
+        assert!(
+            sim.time_days > 1.0,
+            "Simulation should advance past 1 day, got {}",
+            sim.time_days
+        );
+    }
+
+    #[test]
     #[ignore = "debug helper for SPE1 producer breakthrough diagnostics"]
     fn debug_spe1_producer_breakthrough_probe() {
         let sample_times = [
