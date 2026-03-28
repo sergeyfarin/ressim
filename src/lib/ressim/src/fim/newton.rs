@@ -20,6 +20,115 @@ macro_rules! fim_trace {
 }
 
 const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
+const LINEAR_GOOD_CPR_REDUCTION_RATIO: f64 = 1e-6;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimRetryFailureClass {
+    LinearBad,
+    NonlinearBad,
+    Mixed,
+}
+
+impl FimRetryFailureClass {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::LinearBad => "linear-bad",
+            Self::NonlinearBad => "nonlinear-bad",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FimRetryFailureDiagnostics {
+    pub(crate) class: FimRetryFailureClass,
+    pub(crate) dominant_family_label: &'static str,
+    pub(crate) dominant_row: usize,
+    pub(crate) dominant_item_index: usize,
+    pub(crate) linear_iterations: Option<usize>,
+    pub(crate) used_linear_fallback: bool,
+    pub(crate) cpr_average_reduction_ratio: Option<f64>,
+}
+
+fn linear_report_trace_suffix(report: &FimLinearSolveReport) -> String {
+    let Some(cpr) = &report.cpr_diagnostics else {
+        return String::new();
+    };
+
+    let solver = match cpr.coarse_solver {
+        crate::fim::linear::FimPressureCoarseSolverKind::ExactDense => "dense",
+        crate::fim::linear::FimPressureCoarseSolverKind::IluDefectCorrection => "ilu",
+    };
+
+    format!(
+        " cpr=[rows={} solver={} apps={} avg_rr={:.3e} last_rr={:.3e}]",
+        cpr.coarse_rows,
+        solver,
+        cpr.coarse_applications,
+        cpr.average_reduction_ratio,
+        cpr.last_reduction_ratio,
+    )
+}
+
+fn classify_retry_failure(
+    linear_report: Option<&FimLinearSolveReport>,
+    residual_diagnostics: &ResidualFamilyDiagnostics,
+) -> FimRetryFailureDiagnostics {
+    let used_linear_fallback = linear_report.is_some_and(|report| {
+        matches!(
+            report.backend_used,
+            FimLinearSolverKind::DenseLuDebug | FimLinearSolverKind::SparseLuDebug
+        )
+    });
+    let cpr_average_reduction_ratio = linear_report
+        .and_then(|report| report.cpr_diagnostics.as_ref())
+        .map(|diagnostics| diagnostics.average_reduction_ratio);
+    let class = if let Some(report) = linear_report {
+        if !report.converged || used_linear_fallback {
+            FimRetryFailureClass::LinearBad
+        } else if cpr_average_reduction_ratio
+            .map(|ratio| ratio <= LINEAR_GOOD_CPR_REDUCTION_RATIO)
+            .unwrap_or(true)
+        {
+            FimRetryFailureClass::NonlinearBad
+        } else {
+            FimRetryFailureClass::Mixed
+        }
+    } else {
+        FimRetryFailureClass::Mixed
+    };
+
+    FimRetryFailureDiagnostics {
+        class,
+        dominant_family_label: residual_diagnostics.global.family.label(),
+        dominant_row: residual_diagnostics.global.row,
+        dominant_item_index: residual_diagnostics.global.item_index,
+        linear_iterations: linear_report.map(|report| report.iterations),
+        used_linear_fallback,
+        cpr_average_reduction_ratio,
+    }
+}
+
+fn retry_failure_trace_suffix(diagnostics: &FimRetryFailureDiagnostics) -> String {
+    let mut parts = vec![format!(
+        " retry=[class={} dom={} row={} item={}",
+        diagnostics.class.label(),
+        diagnostics.dominant_family_label,
+        diagnostics.dominant_row,
+        diagnostics.dominant_item_index,
+    )];
+    if let Some(linear_iterations) = diagnostics.linear_iterations {
+        parts.push(format!(" linear_iters={}", linear_iterations));
+    }
+    if diagnostics.used_linear_fallback {
+        parts.push(" fallback=true".to_string());
+    }
+    if let Some(ratio) = diagnostics.cpr_average_reduction_ratio {
+        parts.push(format!(" cpr_avg_rr={:.3e}", ratio));
+    }
+    parts.push("]".to_string());
+    parts.join("")
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimNewtonOptions {
@@ -59,6 +168,7 @@ pub(crate) struct FimStepReport {
     pub(crate) final_residual_inf_norm: f64,
     pub(crate) final_update_inf_norm: f64,
     pub(crate) last_linear_report: Option<FimLinearSolveReport>,
+    pub(crate) failure_diagnostics: Option<FimRetryFailureDiagnostics>,
     pub(crate) cutback_factor: f64,
 }
 
@@ -485,6 +595,7 @@ pub(crate) fn run_fim_timestep(
                 final_residual_inf_norm: current_norm,
                 final_update_inf_norm,
                 last_linear_report,
+                failure_diagnostics: None,
                 cutback_factor: accepted_damping,
             };
         }
@@ -493,12 +604,14 @@ pub(crate) fn run_fim_timestep(
         if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
             stagnation_count += 1;
             if stagnation_count >= 3 {
-                fim_trace!(options.verbose, "    iter {:>2}: STAGNATION (count={}) res={:.3e} fam=[{}]{} — bailing out",
+                let failure_diagnostics = classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
+                fim_trace!(options.verbose, "    iter {:>2}: STAGNATION (count={}) res={:.3e} fam=[{}]{}{} — bailing out",
                     iteration, stagnation_count, current_norm, residual_family_trace(&residual_diagnostics),
                     residual_detail
                         .as_ref()
                         .map(|detail| format!(" detail=[{}]", detail))
-                        .unwrap_or_default());
+                        .unwrap_or_default(),
+                    retry_failure_trace_suffix(&failure_diagnostics));
                 return FimStepReport {
                     accepted_state: state,
                     converged: false,
@@ -506,6 +619,7 @@ pub(crate) fn run_fim_timestep(
                     final_residual_inf_norm: current_norm,
                     final_update_inf_norm,
                     last_linear_report,
+                    failure_diagnostics: Some(failure_diagnostics),
                     cutback_factor: 0.25,
                 };
             }
@@ -548,9 +662,9 @@ pub(crate) fn run_fim_timestep(
             && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
             && iterate_has_material_change(previous_state, &state);
         if converged {
-            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{} fam=[{}]{}",
+            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}]{}",
                 iteration, current_norm, final_update_inf_norm, linear_report.iterations,
-                if used_fallback { " [fallback]" } else { "" }, residual_family_trace(&residual_diagnostics),
+                if used_fallback { " [fallback]" } else { "" }, linear_report_trace_suffix(&linear_report), residual_family_trace(&residual_diagnostics),
                 residual_detail
                     .as_ref()
                     .map(|detail| format!(" detail=[{}]", detail))
@@ -564,6 +678,7 @@ pub(crate) fn run_fim_timestep(
                 final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
+                failure_diagnostics: None,
                 cutback_factor: accepted_damping,
             };
         }
@@ -602,11 +717,12 @@ pub(crate) fn run_fim_timestep(
             damping_cuts += 1;
         }
 
-        fim_trace!(options.verbose, "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} linear_iters={}{}{} fam=[{}]{}",
+        fim_trace!(options.verbose, "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} linear_iters={}{}{}{} fam=[{}]{}",
             iteration, current_norm, final_update_inf_norm, damping, initial_damping, damping_cuts,
             best_candidate_norm,
             linear_report.iterations,
             if used_fallback { " [fallback]" } else { "" },
+            linear_report_trace_suffix(&linear_report),
             if stagnation_count > 0 { format!(" stag={}", stagnation_count) } else { String::new() },
             residual_family_trace(&residual_diagnostics),
             residual_detail
@@ -639,10 +755,12 @@ pub(crate) fn run_fim_timestep(
                     final_residual_inf_norm: current_norm,
                     final_update_inf_norm,
                     last_linear_report: Some(linear_report),
+                    failure_diagnostics: None,
                     cutback_factor: accepted_damping,
                 };
             }
-            fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — no residual-reducing candidate (best={:.3e}, current={:.3e})", iteration, best_candidate_norm, current_norm);
+            let failure_diagnostics = classify_retry_failure(Some(&linear_report), &residual_diagnostics);
+            fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — no residual-reducing candidate (best={:.3e}, current={:.3e}){}", iteration, best_candidate_norm, current_norm, retry_failure_trace_suffix(&failure_diagnostics));
             return FimStepReport {
                 accepted_state: state,
                 converged: false,
@@ -650,6 +768,7 @@ pub(crate) fn run_fim_timestep(
                 final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
+                failure_diagnostics: Some(failure_diagnostics),
                 cutback_factor: 0.5,
             };
         };
@@ -686,17 +805,20 @@ pub(crate) fn run_fim_timestep(
             final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
             final_update_inf_norm,
             last_linear_report,
+            failure_diagnostics: None,
             cutback_factor: accepted_damping,
         };
     }
 
-    fim_trace!(options.verbose, "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e} fam=[{}]{}",
+    let failure_diagnostics = classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
+    fim_trace!(options.verbose, "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e} fam=[{}]{}{}",
         options.max_newton_iterations, final_residual_inf_norm.unwrap_or(f64::INFINITY), final_update_inf_norm,
         residual_family_trace(&final_residual_diagnostics),
         final_residual_detail
             .as_ref()
             .map(|detail| format!(" detail=[{}]", detail))
-            .unwrap_or_default());
+            .unwrap_or_default(),
+        retry_failure_trace_suffix(&failure_diagnostics));
 
     FimStepReport {
         accepted_state: state,
@@ -705,6 +827,7 @@ pub(crate) fn run_fim_timestep(
         final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
         final_update_inf_norm,
         last_linear_report,
+        failure_diagnostics: Some(failure_diagnostics),
         cutback_factor: accepted_damping * 0.5,
     }
 }
@@ -916,5 +1039,103 @@ mod tests {
         assert_eq!(diagnostics.global.row, 7);
         assert_eq!(diagnostics.global.item_index, 1);
         assert!((diagnostics.global.scaled_value - 8.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn failure_classification_marks_clean_cpr_failure_as_nonlinear_bad() {
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 1.0,
+                row: 0,
+                item_index: 0,
+            },
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 0.5,
+                row: 1,
+                item_index: 0,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.25,
+                row: 2,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 1.0,
+                row: 0,
+                item_index: 0,
+            },
+        };
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: true,
+            iterations: 12,
+            final_residual_norm: 1e-12,
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::FgmresCpr,
+            cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
+                coarse_rows: 10,
+                coarse_solver: crate::fim::linear::FimPressureCoarseSolverKind::ExactDense,
+                coarse_applications: 4,
+                average_reduction_ratio: 1e-12,
+                last_reduction_ratio: 1e-12,
+            }),
+        };
+
+        let classified = classify_retry_failure(Some(&report), &diagnostics);
+
+        assert_eq!(classified.class, FimRetryFailureClass::NonlinearBad);
+        assert_eq!(classified.dominant_family_label, "water");
+    }
+
+    #[test]
+    fn failure_classification_marks_fallback_path_as_linear_bad() {
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 0.1,
+                row: 0,
+                item_index: 0,
+            },
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 1.0,
+                row: 1,
+                item_index: 0,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.0,
+                row: 2,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 1.0,
+                row: 1,
+                item_index: 0,
+            },
+        };
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: true,
+            iterations: 1,
+            final_residual_norm: 1e-8,
+            used_fallback: true,
+            backend_used: FimLinearSolverKind::SparseLuDebug,
+            cpr_diagnostics: None,
+        };
+
+        let classified = classify_retry_failure(Some(&report), &diagnostics);
+
+        assert_eq!(classified.class, FimRetryFailureClass::LinearBad);
+        assert!(classified.used_linear_fallback);
     }
 }

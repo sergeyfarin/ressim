@@ -4,7 +4,8 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    FimCprDiagnostics, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind, FimPressureCoarseSolverKind,
 };
 
 const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
@@ -26,6 +27,42 @@ struct BlockJacobiPreconditioner {
     pressure_l_rows: Vec<Vec<(usize, f64)>>,
     pressure_u_diag: Vec<f64>,
     pressure_u_rows: Vec<Vec<(usize, f64)>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct PressureCorrectionAccumulator {
+    applications: usize,
+    accumulated_reduction_ratio: f64,
+    last_reduction_ratio: f64,
+}
+
+impl PressureCorrectionAccumulator {
+    fn record(&mut self, reduction_ratio: f64) {
+        self.applications += 1;
+        self.accumulated_reduction_ratio += reduction_ratio;
+        self.last_reduction_ratio = reduction_ratio;
+    }
+
+    fn build_report(&self, preconditioner: &BlockJacobiPreconditioner) -> Option<FimCprDiagnostics> {
+        let coarse_solver = preconditioner.pressure_coarse_solver_kind()?;
+        if self.applications == 0 {
+            return Some(FimCprDiagnostics {
+                coarse_rows: preconditioner.pressure_rows.len(),
+                coarse_solver,
+                coarse_applications: 0,
+                average_reduction_ratio: 1.0,
+                last_reduction_ratio: 1.0,
+            });
+        }
+
+        Some(FimCprDiagnostics {
+            coarse_rows: preconditioner.pressure_rows.len(),
+            coarse_solver,
+            coarse_applications: self.applications,
+            average_reduction_ratio: self.accumulated_reduction_ratio / self.applications as f64,
+            last_reduction_ratio: self.last_reduction_ratio,
+        })
+    }
 }
 
 impl BlockJacobiPreconditioner {
@@ -78,12 +115,15 @@ impl BlockJacobiPreconditioner {
         matrix: &CsMat<f64>,
         vector: &DVector<f64>,
         use_pressure_correction: bool,
-    ) -> DVector<f64> {
+    ) -> (DVector<f64>, Option<f64>) {
         let mut result = DVector::zeros(vector.len());
+        let mut pressure_reduction_ratio = None;
 
         if use_pressure_correction && !self.pressure_u_diag.is_empty() && self.cell_block_size > 0 {
-            let pressure_correction = self.solve_pressure_correction(&self.extract_pressure_rhs(vector));
+            let (pressure_correction, reduction_ratio) =
+                self.solve_pressure_correction(&self.extract_pressure_rhs(vector));
             self.add_pressure_correction(&mut result, &pressure_correction);
+            pressure_reduction_ratio = Some(reduction_ratio);
 
             // Follow the pressure solve with the global block smoother so the
             // transport and well unknowns respond to the pressure update.
@@ -93,7 +133,7 @@ impl BlockJacobiPreconditioner {
             result = self.apply_stage_one(vector);
         }
 
-        result
+        (result, pressure_reduction_ratio)
     }
 
     fn extract_pressure_rhs(&self, residual: &DVector<f64>) -> DVector<f64> {
@@ -133,9 +173,17 @@ impl BlockJacobiPreconditioner {
         }
     }
 
-    fn solve_pressure_correction(&self, rhs: &DVector<f64>) -> DVector<f64> {
+    fn solve_pressure_correction(&self, rhs: &DVector<f64>) -> (DVector<f64>, f64) {
+        let rhs_norm = rhs.norm();
         if let Some(inverse) = &self.pressure_dense_inverse {
-            return inverse * rhs;
+            let solution = inverse * rhs;
+            let residual = rhs - &self.pressure_mat_vec(&solution);
+            let reduction_ratio = if rhs_norm > f64::EPSILON {
+                residual.norm() / rhs_norm
+            } else {
+                0.0
+            };
+            return (solution, reduction_ratio);
         }
 
         let mut solution = DVector::zeros(rhs.len());
@@ -150,7 +198,24 @@ impl BlockJacobiPreconditioner {
             solution += delta;
         }
 
-        solution
+        let residual = rhs - &self.pressure_mat_vec(&solution);
+        let reduction_ratio = if rhs_norm > f64::EPSILON {
+            residual.norm() / rhs_norm
+        } else {
+            0.0
+        };
+
+        (solution, reduction_ratio)
+    }
+
+    fn pressure_coarse_solver_kind(&self) -> Option<FimPressureCoarseSolverKind> {
+        if self.pressure_rows.is_empty() {
+            None
+        } else if self.pressure_dense_inverse.is_some() {
+            Some(FimPressureCoarseSolverKind::ExactDense)
+        } else {
+            Some(FimPressureCoarseSolverKind::IluDefectCorrection)
+        }
     }
 
     fn pressure_mat_vec(&self, x: &DVector<f64>) -> DVector<f64> {
@@ -294,6 +359,43 @@ fn invert_pressure_block(pressure_rows: &[Vec<(usize, f64)>]) -> Option<DMatrix<
     matrix.try_inverse()
 }
 
+fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>) {
+    let size = block.nrows();
+    let mut restriction = vec![0.0; size];
+    let mut prolongation = vec![0.0; size];
+    if size == 0 {
+        return (restriction, prolongation);
+    }
+
+    restriction[0] = 1.0;
+    prolongation[0] = 1.0;
+    if size == 1 {
+        return (restriction, prolongation);
+    }
+
+    let transport_size = size - 1;
+    let mut transport_block = DMatrix::zeros(transport_size, transport_size);
+    for row in 0..transport_size {
+        for col in 0..transport_size {
+            transport_block[(row, col)] = block[(row + 1, col + 1)];
+        }
+    }
+    let transport_inverse = invert_tail_block(&transport_block);
+
+    for local in 0..transport_size {
+        let mut restriction_weight = 0.0;
+        let mut prolongation_weight = 0.0;
+        for inner in 0..transport_size {
+            restriction_weight += block[(0, inner + 1)] * transport_inverse[(inner, local)];
+            prolongation_weight += transport_inverse[(local, inner)] * block[(inner + 1, 0)];
+        }
+        restriction[local + 1] = -restriction_weight;
+        prolongation[local + 1] = -prolongation_weight;
+    }
+
+    (restriction, prolongation)
+}
+
 fn build_block_jacobi_preconditioner(
     matrix: &CsMat<f64>,
     layout: Option<FimLinearBlockLayout>,
@@ -327,6 +429,8 @@ fn build_block_jacobi_preconditioner(
     };
 
     let mut cell_block_inverses = Vec::with_capacity(layout.cell_block_count);
+    let mut pressure_restriction = Vec::with_capacity(layout.cell_block_count);
+    let mut pressure_prolongation = Vec::with_capacity(layout.cell_block_count);
     for block_idx in 0..layout.cell_block_count {
         let start = block_idx * layout.cell_block_size;
         let mut block = DMatrix::zeros(layout.cell_block_size, layout.cell_block_size);
@@ -349,16 +453,11 @@ fn build_block_jacobi_preconditioner(
             fallback
         });
         cell_block_inverses.push(inverse);
-    }
 
-    let pressure_restriction = cell_block_inverses
-        .iter()
-        .map(|inverse| (0..layout.cell_block_size).map(|local| inverse[(0, local)]).collect::<Vec<_>>())
-        .collect::<Vec<_>>();
-    let pressure_prolongation = cell_block_inverses
-        .iter()
-        .map(|inverse| (0..layout.cell_block_size).map(|local| inverse[(local, 0)]).collect::<Vec<_>>())
-        .collect::<Vec<_>>();
+        let (restriction, prolongation) = build_pressure_transfer_weights(&block);
+        pressure_restriction.push(restriction);
+        pressure_prolongation.push(prolongation);
+    }
 
     let scalar_tail_count = matrix.rows().saturating_sub(layout.scalar_tail_start);
     let tail_inverse = if scalar_tail_count > 0 {
@@ -554,6 +653,7 @@ pub(super) fn solve(
             final_residual_norm: 0.0,
             used_fallback,
             backend_used,
+            cpr_diagnostics: None,
         };
     }
 
@@ -566,6 +666,7 @@ pub(super) fn solve(
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
     let mut iterations = 0usize;
+    let mut pressure_correction_stats = PressureCorrectionAccumulator::default();
 
     while iterations < max_iterations {
         let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
@@ -578,11 +679,15 @@ pub(super) fn solve(
                 final_residual_norm: residual_norm,
                 used_fallback,
                 backend_used,
+                cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
             };
         }
 
-        let preconditioned_residual =
+        let (preconditioned_residual, pressure_reduction_ratio) =
             preconditioner.apply(jacobian, &residual, use_pressure_correction);
+        if let Some(reduction_ratio) = pressure_reduction_ratio {
+            pressure_correction_stats.record(reduction_ratio);
+        }
         let beta = preconditioned_residual.norm();
         if beta <= tolerance {
             return FimLinearSolveReport {
@@ -592,6 +697,7 @@ pub(super) fn solve(
                 final_residual_norm: residual_norm,
                 used_fallback,
                 backend_used,
+                cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
             };
         }
 
@@ -610,11 +716,14 @@ pub(super) fn solve(
             if inner >= basis.len() {
                 break;
             }
-            let w = preconditioner.apply(
+            let (w, pressure_reduction_ratio) = preconditioner.apply(
                 jacobian,
                 &cs_mat_mul_vec(jacobian, &basis[inner]),
                 use_pressure_correction,
             );
+            if let Some(reduction_ratio) = pressure_reduction_ratio {
+                pressure_correction_stats.record(reduction_ratio);
+            }
             let mut orthogonal = w;
             for prev in 0..=inner {
                 let coeff = basis[prev].dot(&orthogonal);
@@ -686,6 +795,7 @@ pub(super) fn solve(
                         final_residual_norm: candidate_residual,
                         used_fallback,
                         backend_used,
+                        cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
                     };
                 }
 
@@ -710,6 +820,7 @@ pub(super) fn solve(
         final_residual_norm: final_residual,
         used_fallback,
         backend_used,
+        cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
     }
 }
 
@@ -740,7 +851,7 @@ mod tests {
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0]);
-        let applied = preconditioner.apply(&matrix, &rhs, true);
+        let (applied, _) = preconditioner.apply(&matrix, &rhs, true);
 
         assert!(applied[0].abs() > 1e-12);
         assert!(applied[1].abs() > 1e-12);
@@ -798,9 +909,61 @@ mod tests {
         assert!(preconditioner.pressure_dense_inverse.is_some());
 
         let rhs = DVector::from_vec(vec![1.0, -2.0]);
-        let correction = preconditioner.solve_pressure_correction(&rhs);
+        let (correction, _) = preconditioner.solve_pressure_correction(&rhs);
         let residual = rhs - preconditioner.pressure_mat_vec(&correction);
 
         assert!(residual.norm() < 1e-10);
+    }
+
+    #[test]
+    fn cpr_report_exposes_coarse_diagnostics() {
+        let mut tri = TriMatI::<f64, usize>::new((6, 6));
+        for idx in 0..6 {
+            tri.add_triplet(idx, idx, 2.0 + idx as f64);
+        }
+        tri.add_triplet(0, 3, -0.5);
+        tri.add_triplet(3, 0, -0.25);
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_element(6, 1.0);
+
+        let report = solve(
+            &matrix,
+            &rhs,
+            &FimLinearSolveOptions::default(),
+            Some(FimLinearBlockLayout {
+                cell_block_count: 2,
+                cell_block_size: 3,
+                scalar_tail_start: 6,
+            }),
+            true,
+        );
+
+        let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
+        assert_eq!(diagnostics.coarse_rows, 2);
+        assert_eq!(diagnostics.coarse_solver, FimPressureCoarseSolverKind::ExactDense);
+        assert!(diagnostics.coarse_applications > 0);
+        assert!(diagnostics.average_reduction_ratio <= 1.0);
+    }
+
+    #[test]
+    fn pressure_transfer_weights_follow_local_schur_elimination() {
+        let block = DMatrix::from_row_slice(
+            3,
+            3,
+            &[
+                4.0, 1.0, 0.0,
+                2.0, 3.0, 0.0,
+                0.0, 0.0, 1.0,
+            ],
+        );
+
+        let (restriction, prolongation) = build_pressure_transfer_weights(&block);
+
+        assert!((restriction[0] - 1.0).abs() < 1e-12);
+        assert!((restriction[1] + 1.0 / 3.0).abs() < 1e-12);
+        assert!(restriction[2].abs() < 1e-12);
+        assert!((prolongation[0] - 1.0).abs() < 1e-12);
+        assert!((prolongation[1] + 2.0 / 3.0).abs() < 1e-12);
+        assert!(prolongation[2].abs() < 1e-12);
     }
 }

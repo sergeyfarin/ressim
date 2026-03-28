@@ -1,6 +1,7 @@
 use std::f64;
 
 use crate::fim::newton::{run_fim_timestep, FimNewtonOptions};
+use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
 
@@ -150,6 +151,9 @@ impl ReservoirSimulator {
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
         const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
         let mut substeps = 0;
+        let mut linear_bad_retries = 0usize;
+        let mut nonlinear_bad_retries = 0usize;
+        let mut mixed_retries = 0usize;
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
@@ -236,9 +240,29 @@ impl ReservoirSimulator {
                 let next_dt = trial_dt * report.cutback_factor.clamp(0.1, 0.5);
                 retry_count += 1;
 
-                fim_trace!(verbose, "  substep {}: FAILED (iters={} res={:.3e} upd={:.3e} cutback={:.2}) → next_dt={:.6}",
+                if let Some(failure_diagnostics) = &report.failure_diagnostics {
+                    match failure_diagnostics.class {
+                        FimRetryFailureClass::LinearBad => linear_bad_retries += 1,
+                        FimRetryFailureClass::NonlinearBad => nonlinear_bad_retries += 1,
+                        FimRetryFailureClass::Mixed => mixed_retries += 1,
+                    }
+                }
+
+                fim_trace!(verbose, "  substep {}: FAILED (iters={} res={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
                     substeps, report.newton_iterations, report.final_residual_inf_norm,
-                    report.final_update_inf_norm, report.cutback_factor, next_dt);
+                    report.final_update_inf_norm, report.cutback_factor,
+                    report
+                        .failure_diagnostics
+                        .as_ref()
+                        .map(|diagnostics| {
+                            format!(
+                                " [retry_class={} dom={}]",
+                                diagnostics.class.label(),
+                                diagnostics.dominant_family_label,
+                            )
+                        })
+                        .unwrap_or_default(),
+                    next_dt);
 
                 if !next_dt.is_finite() || next_dt <= 1e-12 {
                     fim_trace!(verbose, "  ABORT: timestep collapsed to {:.3e}", next_dt);
@@ -275,6 +299,10 @@ impl ReservoirSimulator {
 
         fim_trace!(verbose, "FIM step done: {} substeps, advanced {:.6} of {:.6} days",
             substeps, time_stepped, target_dt_days);
+        if linear_bad_retries + nonlinear_bad_retries + mixed_retries > 0 {
+            fim_trace!(verbose, "FIM retry summary: linear-bad={} nonlinear-bad={} mixed={}",
+                linear_bad_retries, nonlinear_bad_retries, mixed_retries);
+        }
     }
 
     fn total_water_inventory_m3(&self) -> f64 {

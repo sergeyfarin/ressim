@@ -16,6 +16,12 @@ pub(crate) enum FimLinearSolverKind {
     SparseLuDebug,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimPressureCoarseSolverKind {
+    ExactDense,
+    IluDefectCorrection,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimLinearSolveOptions {
     pub(crate) kind: FimLinearSolverKind,
@@ -52,6 +58,16 @@ pub(crate) struct FimLinearSolveReport {
     pub(crate) final_residual_norm: f64,
     pub(crate) used_fallback: bool,
     pub(crate) backend_used: FimLinearSolverKind,
+    pub(crate) cpr_diagnostics: Option<FimCprDiagnostics>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FimCprDiagnostics {
+    pub(crate) coarse_rows: usize,
+    pub(crate) coarse_solver: FimPressureCoarseSolverKind,
+    pub(crate) coarse_applications: usize,
+    pub(crate) average_reduction_ratio: f64,
+    pub(crate) last_reduction_ratio: f64,
 }
 
 pub(crate) fn solve_linearized_system(

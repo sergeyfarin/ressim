@@ -593,7 +593,22 @@ Interpretation:
 
 3. **Replace the current inverse-first-row pressure extractor with an explicit IMPES-style or quasi-IMPES pressure weighting**
   - makes the coarse system more physically meaningful and more comparable to industry CPR practice
+  - March 28 implementation: `fim/linear/gmres_block_jacobi.rs` now builds the per-cell pressure transfer weights from an explicit local Schur reduction of the cell block instead of reusing the first row and first column of the full `3×3` block inverse. The new restriction is `[1, -A_pt A_tt^-1]` and the prolongation is `[1; -A_tt^-1 A_tp]`, which is a more explicit quasi-IMPES-style pressure extractor for this natural-variable block layout.
+  - Focused validation on the active branch:
+    - `pressure_transfer_weights_follow_local_schur_elimination` passes
+    - `pressure_projection_updates_entire_local_block` passes
+    - `pressure_rhs_accounts_for_tail_schur_coupling` passes
+    - `spe1_fim_first_steps_converge_without_stall` passes
+    - `spe1_fim_gas_injection_creates_free_gas` passes
+  - Measured impact on the representative 3D breakthrough trace: the qualitative retry pattern is still bad. The early outer-step cutback ladder is still `1 d -> 0.5 -> 0.25 -> 0.125 -> 0.0625 -> 0.015625`, and the later shelf around repeated `0.002768 d` retries still appears.
+  - Current conclusion: this is a cleaner and more defensible coarse extractor than the old inverse-entry heuristic, and it belongs in the codebase. But it does not, by itself, remove the breakthrough retry shelf.
 
 4. **Add CPR diagnostics before deeper tuning**
   - report linear iterations, final linear residual, whether the coarse solve is used, and possibly a pressure-coarse residual reduction metric
   - this will make future native and wasm traces far more informative without resorting to huge raw debug logs
+  - March 28 implementation: `FimLinearSolveReport` now carries CPR diagnostics, and the verbose Newton trace prints them as `cpr=[rows=... solver=... apps=... avg_rr=... last_rr=...]` on iterative CPR iterations.
+  - Focused validation on the active branch:
+    - `cpr_report_exposes_coarse_diagnostics` passes
+    - existing CPR unit and SPE1 regressions remain green
+  - Measured result on `wf_bt_12x12x3`: the diagnostics are highly informative. On the hard early retries the extracted coarse system has `rows=432`, uses the exact dense coarse solve, and reports average coarse-stage reduction ratios on the order of `1e-14` to `1e-13`. In other words, the current coarse stage is already solving the extracted pressure system essentially to machine precision on this case.
+  - Current conclusion: the remaining fragmentation on this representative case is not well explained by an under-solved coarse pressure stage anymore. The dominant failures now look like nonlinear damping / outer-step shelf behavior in the reservoir rows after a very effective coarse correction, so the next best leverage is probably outside raw coarse-solve strength.

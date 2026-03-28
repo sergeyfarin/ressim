@@ -46,6 +46,7 @@ pub(super) fn solve(
             final_residual_norm: rhs.norm(),
             used_fallback,
             backend_used: FimLinearSolverKind::SparseLuDebug,
+            cpr_diagnostics: None,
         };
     };
 
@@ -57,6 +58,7 @@ pub(super) fn solve(
             final_residual_norm: rhs.norm(),
             used_fallback,
             backend_used: FimLinearSolverKind::SparseLuDebug,
+            cpr_diagnostics: None,
         };
     };
 
@@ -75,5 +77,6 @@ pub(super) fn solve(
         final_residual_norm: residual_norm,
         used_fallback,
         backend_used: FimLinearSolverKind::SparseLuDebug,
+        cpr_diagnostics: None,
     }
 }
