@@ -6,6 +6,12 @@ use crate::fim::wells::{
 };
 use crate::ReservoirSimulator;
 
+const WELL_BHP_MANIFOLD_BLEND: f64 = 0.9;
+const WELL_BHP_TRUST_RADIUS_BAR: f64 = 25.0;
+const WELL_RATE_MANIFOLD_BLEND: f64 = 0.75;
+const WELL_RATE_TRUST_RADIUS_FRAC: f64 = 0.1;
+const WELL_RATE_TRUST_RADIUS_MIN_M3_DAY: f64 = 250.0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HydrocarbonState {
     Saturated,
@@ -263,6 +269,54 @@ impl FimState {
         }
     }
 
+    fn relax_well_state_toward_local_consistency(
+        &mut self,
+        sim: &ReservoirSimulator,
+        topology: &crate::fim::wells::FimWellTopology,
+    ) {
+        for well_idx in 0..topology.wells.len() {
+            let control = physical_well_control(sim, topology, well_idx);
+            let consistent_bhp = if !control.enabled {
+                Some(control.bhp_target)
+            } else if control.rate_controlled {
+                solve_well_bhp_from_target(sim, self, topology, well_idx).map(|(bhp_bar, _)| bhp_bar)
+            } else {
+                Some(control.bhp_target)
+            };
+
+            let Some(consistent_bhp) = consistent_bhp else {
+                continue;
+            };
+
+            let proposed_bhp = self.well_bhp[well_idx];
+            let blended_bhp = proposed_bhp + WELL_BHP_MANIFOLD_BLEND * (consistent_bhp - proposed_bhp);
+            self.well_bhp[well_idx] = (consistent_bhp
+                + (blended_bhp - consistent_bhp)
+                    .clamp(-WELL_BHP_TRUST_RADIUS_BAR, WELL_BHP_TRUST_RADIUS_BAR))
+                .max(1e-6);
+
+            for &perf_idx in &topology.wells[well_idx].perforation_indices {
+                let consistent_q = if !control.enabled {
+                    0.0
+                } else {
+                    connection_rate_for_bhp(sim, self, topology, perf_idx, self.well_bhp[well_idx]).unwrap_or(0.0)
+                };
+                let proposed_q = self.perforation_rates_m3_day[perf_idx];
+                let blended_q = proposed_q + WELL_RATE_MANIFOLD_BLEND * (consistent_q - proposed_q);
+                let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
+                    .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
+                let q = consistent_q + (blended_q - consistent_q).clamp(-trust_radius, trust_radius);
+                self.perforation_rates_m3_day[perf_idx] = if !control.enabled {
+                    0.0
+                } else if topology.wells[well_idx].injector {
+                    q.min(0.0)
+                } else {
+                    q.max(0.0)
+                };
+            }
+        }
+    }
+
     /// Apply Newton update with regime reclassification (for use outside Newton loop).
     pub(crate) fn apply_newton_update(
         &self,
@@ -320,6 +374,8 @@ impl FimState {
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
         }
+        next.enforce_control_bounds(sim, topology);
+        next.relax_well_state_toward_local_consistency(sim, topology);
         next.enforce_control_bounds(sim, topology);
 
         next
@@ -414,6 +470,8 @@ impl FimState {
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::DVector;
+
     use crate::pvt::{PvtRow, PvtTable};
     use crate::ReservoirSimulator;
 
@@ -595,6 +653,29 @@ mod tests {
         state.cells[0].regime = HydrocarbonState::Saturated;
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);
+    }
+
+    #[test]
+    fn apply_newton_update_frozen_limits_well_overshoot_toward_local_consistency() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.injector_rate_controlled = false;
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[state.well_bhp_unknown_offset(0)] = 400.0;
+        update[state.perforation_rate_unknown_offset(0)] = 100_000.0;
+
+        let updated = state.apply_newton_update_frozen(&sim, &update, 1.0, &topology);
+        let consistent_q = connection_rate_for_bhp(&sim, &updated, &topology, 0, updated.well_bhp[0]).unwrap();
+        let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
+            .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
+
+        assert!((updated.well_bhp[0] - 500.0).abs() <= WELL_BHP_TRUST_RADIUS_BAR + 1e-9);
+        assert!(updated.perforation_rates_m3_day[0] <= 0.0);
+        assert!((updated.perforation_rates_m3_day[0] - consistent_q).abs() <= trust_radius + 1e-9);
     }
 
     #[test]

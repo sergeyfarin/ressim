@@ -270,3 +270,86 @@ The perforation detail trace now also reports a frozen-cell locally consistent w
 
 - `test-native.sh` now runs the native debug tests with exact Rust test names, so one scenario no longer accidentally executes substring-matched variants.
 - The native debug runner now prints a compact per-outer-step summary after each accepted external step.
+
+## Industry Comparison Check
+
+Before changing the solver, the proposed direction was checked against public implementations and documentation for industry-style fully implicit simulators.
+
+### OPM Flow / Eclipse-style facility model
+
+- OPM Flow describes itself as a fully implicit black-oil simulator with industry-standard well and facility controls, including BHP, THP, and surface/reservoir rate constraints.
+- The public OPM well-model code shows that wells are not treated as unconstrained auxiliary variables that are allowed to drift arbitrarily during the global Newton loop.
+- Instead, the well block is maintained as an explicit coupled subsystem with its own equations and update controls:
+  - the well equations are assembled as a separate local block (`StandardWellEquations`)
+  - the global system applies the well Schur complement (`r = r - C D^-1 Rw`) and later recovers the well update from the local solve (`D^-1`)
+  - well primary variables are updated with explicit step limits, including a relative BHP limit (`dbhp_max_rel_`) and limits on fraction changes
+  - for operability, THP, and potential calculations, OPM repeatedly solves or iterates the well equations at fixed or guessed BHP values to obtain a locally consistent well state before using it
+- This is consistent with the idea that the well unknowns should stay close to a locally consistent manifold. The mature approach is not "let the global Newton iterate throw BHP/rates far away and hope the next residual pull fixes it". It is closer to "preserve a robust local well solve and bounded well-variable updates inside the coupled FIM framework".
+
+### MRST fully implicit AD models
+
+- MRST’s AD core describes its black-oil solvers as fully implicit, industry-standard, and validated against commercial simulators.
+- In the standard fully implicit black-oil path, MRST inserts well equations directly into the coupled AD system rather than treating wells as a late explicit correction.
+- The public MRST well equations show the same structure as the standard black-oil formulation:
+  - explicit well unknowns such as `bhp`, `qWs`, `qOs`, and `qGs`
+  - connection equations of the form `q - WI * lambda * drawdown`
+  - control closure equations for BHP/rate constraints
+- MRST also contains older and experimental paths that solve local well equations separately (`solveLocalWellEqs`) or discuss explicit-well variants. Those exist as special/experimental handling, not as the preferred robust fully implicit production formulation.
+
+### What this means for the proposed fix
+
+- The proposed next step is directionally aligned with industry practice, with one important refinement.
+- "Keep `(bhp, q_perf)` close to the frozen-cell-consistent local manifold" is the right intent.
+- The industry-style version of that idea is usually one of these:
+  - bounded Newton updates on well variables, often tighter than cell-variable updates
+  - a local well solve / well-block recovery embedded in each nonlinear iteration
+  - Schur-complement elimination of the well block from the reservoir solve, followed by recovery of a locally consistent well update
+  - control switching / operability logic that reinitializes the well state from a locally consistent BHP-constrained or target-constrained solution when needed
+- The less industry-aligned version would be an ad hoc projection that silently overwrites well unknowns in a way that breaks Newton consistency.
+- So the evidence argues for moving to solution mode, but to do it in a structured way:
+  - either reduce/eliminate the explicit perforation-rate drift through well-block recovery,
+  - or apply explicit well-variable damping / trust-region limits tied to the local well solve,
+  - rather than bolting on a purely residual-side correction.
+
+### Practical conclusion
+
+- Public OPM and MRST evidence both support the same conclusion:
+  - robust FIM implementations keep the well subsystem tightly controlled and locally consistent during nonlinear iterations.
+- That supports the current diagnosis and justifies making the next solver change in the well/perforation update path rather than continuing broad residual instrumentation.
+
+## First Solution Slice: Local Well Trust Region
+
+Implemented a first solver-side change in `fim/state.rs`:
+
+- after each raw Newton trial update, the explicit well variables are relaxed toward a locally consistent single-well state derived from the current cell state
+- BHP is pulled toward the locally consistent BHP with a bounded trust radius
+- perforation rates are pulled toward the corresponding connection-law rates and sign-clamped by injector/producer role
+- this is intentionally a bounded well-update step, not a full algebraic elimination of the well block
+
+### Why this is the right first slice
+
+- It matches the industry comparison better than letting explicit well unknowns drift arbitrarily:
+  - mature simulators use bounded well updates and/or local well-block recovery
+- It is much smaller in scope than a full Schur-complement or explicit well-block elimination refactor
+- It directly targets the diagnosed failure mode: large distance between the iterate and the local well/perforation manifold
+
+### Immediate effect on diagnostics
+
+- `wf_bt_12x12x1`:
+  - the hard retry window is no longer perforation-row dominated
+  - dominant stalled rows are now back in the cell equations, with perforation residuals reduced to near-zero levels during the retries that previously blew up in `perf0`
+- `wf_bt_12x12x3`:
+  - same structural improvement as the 2D case
+  - injector/producer perforation rows no longer dominate the failing window, except for already tiny near-converged traces where the perforation residual is numerically negligible
+- `gas_10x10x3`:
+  - the catastrophic perforation-manifold failures were suppressed
+  - the dominant residual remains the injector-side gas cell row, and in later small-step regimes some retries now stall on the well-control row rather than the perforation row
+
+### Updated interpretation after the first fix
+
+- The first fix appears to have done what it was supposed to do:
+  - remove the large explicit-well drift as the dominant nonlinear bottleneck
+- The remaining bottleneck is now cleaner:
+  - water breakthrough difficulty is back in the reservoir cell equations
+  - gas still has a separate remaining issue, but it now looks more like cell/well-control stagnation than catastrophic well/perforation inconsistency
+- This is good progress because the dominant failure mode is now closer to the actual physical/coupled stiffness rather than a bad well iterate.

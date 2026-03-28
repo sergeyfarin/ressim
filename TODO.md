@@ -7,6 +7,7 @@
 - [ ] Replace the current IMPES timestep path with a fully implicit black-oil FIM path in the Rust core.
   - Active convergence investigation now lives in `docs/FIM_CONVERGENCE_WORKLOG.md` instead of this tracker.
   - Current status: diagnostic phase has isolated the dominant failure to explicit well/perforation unknowns drifting away from the frozen-cell-consistent local well manifold, with 3D water breakthrough showing the same pattern as the earlier 2D water and gas cases.
+  - March 2026 solver status: a first well-variable trust-region slice is now in place in `src/lib/ressim/src/fim/state.rs`. It removes perforation-row dominance from the water-breakthrough retries and suppresses the catastrophic gas well-manifold failures, leaving a cleaner remaining bottleneck in the reservoir cell equations and smaller well-row stagnation.
   - Direct-migration constraint: do not keep a long-lived production IMPES/FIM split; temporary scaffolding is acceptable only while the migration branch is incomplete.
   - Detailed implementation checklist and proposed Rust module/API layout: `docs/FIM_MIGRATION_PLAN.md`.
   - Current implemented foundation slice: `src/lib/ressim/src/fim/state.rs` and `src/lib/ressim/src/fim/flash.rs` now exist, and `pvt.rs` / `mobility.rs` expose explicit-state helper APIs for future FIM assembly work.
