@@ -9,6 +9,16 @@ use crate::fim::state::FimState;
 use crate::fim::wells::build_well_topology;
 use crate::ReservoirSimulator;
 
+/// Diagnostic print macro — compiles to nothing on WASM, prints to stderr on native.
+macro_rules! fim_trace {
+    ($verbose:expr, $($arg:tt)*) => {
+        #[cfg(not(target_arch = "wasm32"))]
+        if $verbose {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimNewtonOptions {
     pub(crate) max_newton_iterations: usize,
@@ -19,6 +29,7 @@ pub(crate) struct FimNewtonOptions {
     pub(crate) max_saturation_change: f64,
     pub(crate) max_rs_change_fraction: f64,
     pub(crate) linear: FimLinearSolveOptions,
+    pub(crate) verbose: bool,
 }
 
 impl Default for FimNewtonOptions {
@@ -33,6 +44,7 @@ impl Default for FimNewtonOptions {
             max_saturation_change: 0.5,
             max_rs_change_fraction: 1.0,
             linear: FimLinearSolveOptions::default(),
+            verbose: false,
         }
     }
 }
@@ -174,6 +186,8 @@ pub(crate) fn run_fim_timestep(
     });
     let topology = build_well_topology(sim);
 
+    fim_trace!(options.verbose, "  Newton: dt={:.6} days, n_cells={}, n_wells={}", dt_days, state.cells.len(), state.n_well_unknowns());
+
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
             sim,
@@ -192,6 +206,7 @@ pub(crate) fn run_fim_timestep(
         if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
             stagnation_count += 1;
             if stagnation_count >= 3 {
+                fim_trace!(options.verbose, "    iter {:>2}: STAGNATION (count={}) res={:.3e} — bailing out", iteration, stagnation_count, current_norm);
                 return FimStepReport {
                     accepted_state: state,
                     converged: false,
@@ -215,7 +230,10 @@ pub(crate) fn run_fim_timestep(
             block_layout,
         );
 
+        let mut used_fallback = false;
         if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite()) {
+            fim_trace!(options.verbose, "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback",
+                iteration, linear_report.converged, linear_report.solution.iter().all(|v| v.is_finite()));
             let mut fallback_options = options.linear;
             fallback_options.kind = {
                 #[cfg(target_arch = "wasm32")]
@@ -228,6 +246,7 @@ pub(crate) fn run_fim_timestep(
                 }
             };
             linear_report = solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
+            used_fallback = true;
         }
 
         final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution, &assembly.variable_scaling);
@@ -240,6 +259,9 @@ pub(crate) fn run_fim_timestep(
             && final_update_inf_norm <= options.update_tolerance)
             || final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance * 0.01;
         if converged {
+            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}",
+                iteration, current_norm, final_update_inf_norm, linear_report.iterations,
+                if used_fallback { " [fallback]" } else { "" });
             // Reclassify regimes now that Newton has converged with frozen regime map.
             state.classify_regimes(sim);
             return FimStepReport {
@@ -254,7 +276,9 @@ pub(crate) fn run_fim_timestep(
         }
 
         let mut damping = appleyard_damping(&state, &linear_report.solution, options);
+        let initial_damping = damping;
         let mut accepted_state = None;
+        let mut damping_cuts = 0u32;
         while damping >= options.min_damping {
             let candidate = state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
             if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
@@ -262,9 +286,17 @@ pub(crate) fn run_fim_timestep(
                 break;
             }
             damping *= 0.5;
+            damping_cuts += 1;
         }
 
+        fim_trace!(options.verbose, "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) linear_iters={}{}{}",
+            iteration, current_norm, final_update_inf_norm, damping, initial_damping, damping_cuts,
+            linear_report.iterations,
+            if used_fallback { " [fallback]" } else { "" },
+            if stagnation_count > 0 { format!(" stag={}", stagnation_count) } else { String::new() });
+
         let Some(candidate) = accepted_state else {
+            fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — all candidates non-finite or out of bounds", iteration);
             return FimStepReport {
                 accepted_state: state,
                 converged: false,
@@ -292,6 +324,7 @@ pub(crate) fn run_fim_timestep(
     );
     final_residual_inf_norm = Some(scaled_residual_inf_norm(&final_assembly.residual, &final_assembly.equation_scaling));
     if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance {
+        fim_trace!(options.verbose, "    post-loop: CONVERGED on final residual check res={:.3e}", final_residual_inf_norm.unwrap_or(f64::INFINITY));
         state.classify_regimes(sim);
         return FimStepReport {
             accepted_state: state,
@@ -303,6 +336,9 @@ pub(crate) fn run_fim_timestep(
             cutback_factor: accepted_damping,
         };
     }
+
+    fim_trace!(options.verbose, "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e}",
+        options.max_newton_iterations, final_residual_inf_norm.unwrap_or(f64::INFINITY), final_update_inf_norm);
 
     FimStepReport {
         accepted_state: state,

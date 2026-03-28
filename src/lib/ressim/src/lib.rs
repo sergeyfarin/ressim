@@ -140,6 +140,8 @@ mod tests {
     use super::*;
     use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
     mod buckley;
+    #[cfg(not(target_arch = "wasm32"))]
+    mod fim_debug;
     mod pvt_properties;
     mod well_controls;
 
