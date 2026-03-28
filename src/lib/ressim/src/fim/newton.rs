@@ -233,6 +233,8 @@ pub(crate) fn run_fim_timestep(
         if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
             && final_update_inf_norm <= options.update_tolerance
         {
+            // Reclassify regimes now that Newton has converged with frozen regime map.
+            state.classify_regimes(sim);
             return FimStepReport {
                 accepted_state: state,
                 converged: true,
@@ -247,7 +249,7 @@ pub(crate) fn run_fim_timestep(
         let mut damping = appleyard_damping(&state, &linear_report.solution, options);
         let mut accepted_state = None;
         while damping >= options.min_damping {
-            let candidate = state.apply_newton_update(sim, &linear_report.solution, damping);
+            let candidate = state.apply_newton_update_frozen(sim, &linear_report.solution, damping);
             if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
                 accepted_state = Some(candidate);
                 break;
@@ -282,6 +284,7 @@ pub(crate) fn run_fim_timestep(
     );
     final_residual_inf_norm = Some(scaled_residual_inf_norm(&final_assembly.residual, &final_assembly.equation_scaling));
     if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance {
+        state.classify_regimes(sim);
         return FimStepReport {
             accepted_state: state,
             converged: true,

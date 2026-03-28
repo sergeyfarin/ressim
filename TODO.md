@@ -178,7 +178,7 @@ SPE1 FIM was extremely slow on WASM. Combined 3.3× native speedup (13.5× from 
 ### FIM Performance — Future Improvements
 The remaining gap to ECLIPSE (dt=30 converges, we average ~0.1 day substeps) is in Newton convergence radius. Ranked by expected impact:
 
-1. **Variable switching with hysteresis (Sg ↔ Rs)**: Our `classify_regimes()` can flip cells between saturated/undersaturated within a single Newton solve, causing non-smooth Jacobian jumps at the bubble point. ECLIPSE freezes the regime map within a Newton solve and uses hysteresis bands to prevent flip-flop. This is likely the #1 convergence blocker for SPE1 where the gas front passes through many cells near bubble point. *Note: an attempt was made (stashed) but caused correctness regressions — needs careful implementation with test coverage across regime transitions.*
+1. ~~**Variable switching with hysteresis (Sg ↔ Rs)**~~: **DONE.** Newton loop now uses `apply_newton_update_frozen()` to keep the regime map frozen within a solve. `classify_regimes()` is called only after convergence, with hysteresis bands: Saturated→Undersaturated requires Sg < 1e-4 (not just ≤0), Undersaturated→Saturated requires Rs > 1.01×Rs_sat. Tests added for both hysteresis directions.
 
 2. **Newton initial guess via extrapolation**: Currently each substep starts from the previous converged state. Linear extrapolation from last 2 converged states would give Newton a better starting point, especially when the solution is evolving smoothly between substeps. Low-risk but moderate impact — mostly helps with smooth evolution, less with the hard phase-front steps.
 

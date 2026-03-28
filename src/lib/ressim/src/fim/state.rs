@@ -140,6 +140,13 @@ impl FimState {
             return;
         }
 
+        // Hysteresis band: cells must clearly cross the regime boundary before
+        // switching, preventing chatter near the bubble point / zero-gas line.
+        //   Saturated→Undersaturated: Sg must drop below SG_LOWER (not just ≤0)
+        //   Undersaturated→Saturated: Rs must exceed Rs_sat by RS_OVERSHOOT_FRAC
+        const SG_LOWER: f64 = 1e-4;
+        const RS_OVERSHOOT_FRAC: f64 = 0.01; // 1% above Rs_sat
+
         for idx in 0..self.cells.len() {
             let cell = self.cells[idx];
             let rs_sat = sim
@@ -152,7 +159,8 @@ impl FimState {
             match cell.regime {
                 HydrocarbonState::Saturated => {
                     let gas_saturation = cell.hydrocarbon_var.max(0.0);
-                    if gas_saturation <= 1e-9 {
+                    if gas_saturation <= SG_LOWER {
+                        // Gas has essentially disappeared — switch to undersaturated.
                         self.cells[idx].regime = HydrocarbonState::Undersaturated;
                         self.cells[idx].hydrocarbon_var = rs_sat;
                     } else {
@@ -161,12 +169,16 @@ impl FimState {
                 }
                 HydrocarbonState::Undersaturated => {
                     let rs_sm3_sm3 = cell.hydrocarbon_var.max(0.0);
-                    let regime = classify_cell_regime(sim, cell.pressure_bar, 0.0, rs_sm3_sm3);
-                    if regime == HydrocarbonState::Undersaturated {
-                        self.cells[idx].hydrocarbon_var = rs_sm3_sm3;
+                    // Only switch to Saturated when Rs clearly exceeds the saturation
+                    // limit — not on small numerical noise near the bubble point.
+                    let rs_threshold = rs_sat * (1.0 + RS_OVERSHOOT_FRAC);
+                    if rs_sm3_sm3 < rs_threshold {
+                        // Clamp Rs to saturation limit.
+                        self.cells[idx].hydrocarbon_var = rs_sm3_sm3.min(rs_sat);
                         continue;
                     }
 
+                    // Rs clearly oversaturated — flash to determine free gas.
                     let hydrocarbon_saturation = (1.0 - cell.sw).max(0.0);
                     let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
                     let bo = sim.get_b_o_for_rs(cell.pressure_bar, rs_sm3_sm3).max(1e-9);
@@ -179,9 +191,9 @@ impl FimState {
                         total_gas_sc,
                     );
 
-                    if sg <= 1e-9 {
+                    if sg <= SG_LOWER {
                         self.cells[idx].regime = HydrocarbonState::Undersaturated;
-                        self.cells[idx].hydrocarbon_var = rs_resolved.max(0.0);
+                        self.cells[idx].hydrocarbon_var = rs_resolved.max(0.0).min(rs_sat);
                     } else {
                         self.cells[idx].regime = HydrocarbonState::Saturated;
                         self.cells[idx].hydrocarbon_var = sg;
@@ -252,7 +264,33 @@ impl FimState {
         }
     }
 
+    /// Apply Newton update with regime reclassification (for use outside Newton loop).
     pub(crate) fn apply_newton_update(
+        &self,
+        sim: &ReservoirSimulator,
+        update: &DVector<f64>,
+        damping: f64,
+    ) -> Self {
+        let mut next = self.apply_raw_update(sim, update, damping);
+        next.classify_regimes(sim);
+        for idx in 0..next.cells.len() {
+            next.enforce_cell_bounds(sim, idx);
+        }
+        next
+    }
+
+    /// Apply Newton update WITHOUT regime reclassification — keeps the regime map
+    /// frozen so the Jacobian stays smooth within a Newton solve.
+    pub(crate) fn apply_newton_update_frozen(
+        &self,
+        sim: &ReservoirSimulator,
+        update: &DVector<f64>,
+        damping: f64,
+    ) -> Self {
+        self.apply_raw_update(sim, update, damping)
+    }
+
+    fn apply_raw_update(
         &self,
         sim: &ReservoirSimulator,
         update: &DVector<f64>,
@@ -276,12 +314,6 @@ impl FimState {
             let offset = self.perforation_rate_unknown_offset(perf_idx);
             next.perforation_rates_m3_day[perf_idx] += damping * update[offset];
         }
-
-        for idx in 0..next.cells.len() {
-            next.enforce_cell_bounds(sim, idx);
-        }
-
-        next.classify_regimes(sim);
 
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
@@ -512,6 +544,107 @@ mod tests {
 
         assert!((gas_after_sc - gas_before_sc).abs() < 1e-6);
         assert!(derived.sg > 0.0);
+    }
+
+    #[test]
+    fn classify_regimes_hysteresis_keeps_saturated_near_zero_gas() {
+        // A saturated cell with tiny Sg (below hysteresis band but above zero)
+        // should NOT flip to undersaturated — this prevents chatter.
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.1,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+
+        // Sg = 1e-3 is above the 1e-4 hysteresis band — should stay Saturated.
+        let mut state = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 150.0,
+                sw: 0.2,
+                hydrocarbon_var: 1e-3,
+                regime: HydrocarbonState::Saturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        state.classify_regimes(&sim);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
+
+        // Sg = 1e-5 is below the 1e-4 hysteresis band — should flip to Undersaturated.
+        state.cells[0].hydrocarbon_var = 1e-5;
+        state.cells[0].regime = HydrocarbonState::Saturated;
+        state.classify_regimes(&sim);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);
+    }
+
+    #[test]
+    fn classify_regimes_hysteresis_keeps_undersaturated_near_bubble_point() {
+        // An undersaturated cell with Rs just at Rs_sat (within hysteresis band)
+        // should NOT flip to saturated — only when Rs clearly exceeds Rs_sat.
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.1,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+
+        // At p=150, Rs_sat=15. Rs=15 is exactly at bubble point — should stay Undersaturated.
+        let mut state = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 150.0,
+                sw: 0.2,
+                hydrocarbon_var: 15.0,
+                regime: HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        state.classify_regimes(&sim);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);
+        // Rs should be clamped to Rs_sat
+        assert!(state.cells[0].hydrocarbon_var <= 15.0 + 1e-12);
+
+        // Rs = 15.2 (>1% above Rs_sat=15) — should now switch to Saturated.
+        state.cells[0].hydrocarbon_var = 15.2;
+        state.cells[0].regime = HydrocarbonState::Undersaturated;
+        state.classify_regimes(&sim);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
+        assert!(state.cells[0].hydrocarbon_var > 0.0); // has free gas
     }
 
     #[test]
