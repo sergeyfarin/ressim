@@ -163,3 +163,29 @@ The SPE1 Gas Injection case stalled during Newton iterations early in the FIM ru
 1. **Gas injector mobility was zero** (`wells.rs`): 3-phase injectors used only the injected phase's mobility (`krg=0` at `Sg=0`). Fixed: all injectors now use total mobility (consistent with 2-phase path). Injected component tracked separately via `perforation_component_rates_sc_day`.
 2. **Fischer-Burmeister slacks were unscaled** (`wells.rs`, `assembly.rs`, `scaling.rs`): `bhp_slack` ~O(100 bar) vs `rate_slack` ~O(10^6 Sm³/d) caused `∂FB/∂rate → 0`, killing Newton sensitivity to rate changes. Fixed: slacks normalized by `bhp_limit` and `target_rate` before FB evaluation; Jacobian chain rule updated; equation scaling set to 1.0.
 - Regression test `spe1_fim_first_steps_converge_without_stall` added. All 20 FIM assembly Jacobian verification tests pass.
+
+### FIM Performance Optimization — Applied
+SPE1 FIM was extremely slow on WASM. Combined 3.3× native speedup (13.5× from original) through:
+1. **Lightweight `respects_basic_bounds()`** (`state.rs`): Replaced full PVT flash per cell with arithmetic bounds check. Was called per damping attempt (up to 10× per Newton iteration).
+2. **Removed redundant `enforce_control_bounds()`** (`state.rs`): Was called twice in `apply_newton_update()`, each rebuilding well topology. Now called once.
+3. **Early Newton termination** (`newton.rs`): If residual stagnates (≥95% of previous) for 3+ iterations, bail early with `cutback_factor=0.25` instead of wasting remaining iterations.
+4. **Assembly caching** (`assembly.rs`): Pre-compute `FimCellDerived` and `LocalFluxCellSensitivity` once per Newton iteration. Previously `derive_cell()` was called 4-6× per interface (residual + Jacobian). For 10×10×3 grid: ~4000 calls reduced to ~300.
+5. **Unified min_damping** (`newton.rs`): Removed WASM-specific `1/1024` (10 halvings); both paths now use `1/64` (6 halvings).
+- Remaining bottleneck: our Newton requires ~0.25-day substeps for SPE1. ECLIPSE runs SPE1 at dt=30 days (with internal refinement) — the gap is algorithmic, not implementation speed.
+
+### FIM Performance — Future Improvements
+The fundamental issue is Newton convergence radius: our solver needs ~0.25-day substeps where ECLIPSE converges at 30 days. This is ~100× gap that can't be closed by micro-optimization. Candidate algorithmic improvements, roughly ordered by expected impact:
+
+1. **Newton initial guess via extrapolation**: Currently each substep starts Newton from the previous converged state (zero-order extrapolation). Linear or quadratic extrapolation from the last 2-3 converged states would place the initial iterate closer to the solution, widening the convergence basin for larger dt. This is standard in commercial simulators and low-risk to implement.
+
+2. **Timestep-size-aware damping / line search**: Instead of blind halving, use a merit function (e.g. residual norm of the candidate) to accept larger damped steps. A Armijo-type backtracking line search would avoid over-cutting and allow more aggressive initial steps.
+
+3. **Variable switching (Sg ↔ Rs)**: Our current regime classification happens in `classify_regimes()` after each Newton update, which can cause oscillation at the bubble point (Sg flips between 0 and small positive). Commercial simulators use smooth variable switching with a transition zone, or carry both variables with a complementarity constraint. This would improve convergence near phase boundaries — exactly the SPE1 scenario (gas front moving through undersaturated oil).
+
+4. **CPR preconditioning (complete the FGMRES-CPR path)**: The current CPR path is incomplete — it falls back to block-Jacobi + ILU0 for the pressure stage. True CPR with AMG or ILU on the pressure-reduced system would give mesh-independent linear convergence, enabling larger grids without linear solver breakdown.
+
+5. **IMPES predictor for Newton initial guess**: Run one cheap IMPES-style pressure solve + explicit saturation update to get a much better initial iterate for Newton. This is a "predictor-corrector" approach used in some simulators. Would require the existing IMPES pressure solver to be callable from the FIM path.
+
+6. **Jacobian reuse / lagged Jacobian**: For consecutive Newton iterations where the state hasn't changed much, reuse the Jacobian from the previous iteration (or update only the changed rows). Trades convergence rate for assembly cost. Most effective when assembly dominates solve time (smaller grids, WASM).
+
+7. **Appleyard chop / physical trust region**: Limit per-iteration changes in primary variables (e.g. |ΔSw| ≤ 0.2, |ΔP| ≤ 50 bar) as a smarter alternative to global damping. Standard in ECLIPSE and most commercial simulators. Prevents Newton from overshooting into non-physical regions without needing expensive damping line search.

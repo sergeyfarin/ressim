@@ -4,7 +4,7 @@ use sprs::{CsMat, TriMatI};
 use crate::fim::scaling::{
     build_equation_scaling, build_variable_scaling, EquationScaling, VariableScaling,
 };
-use crate::fim::state::{FimState, HydrocarbonState};
+use crate::fim::state::{FimCellDerived, FimState, HydrocarbonState};
 use crate::fim::wells::{
     build_well_topology, fischer_burmeister_gradient, perforation_component_rate_derivatives_sc_day,
     perforation_component_rate_cell_derivatives_sc_day_by_var, perforation_component_rates_sc_day,
@@ -45,14 +45,24 @@ pub(crate) fn assemble_fim_system(
     options: &FimAssemblyOptions,
 ) -> FimAssembly {
     let topology = build_well_topology(sim);
+    let n_cells = state.cells.len();
     let n_unknowns = state.n_unknowns();
     let equation_scaling = build_equation_scaling(sim, state, &topology, options.dt_days);
     let variable_scaling = build_variable_scaling(sim, state);
-    let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
-    let residual = assemble_residual(sim, previous_state, state, &topology, options);
 
-    add_exact_accumulation_jacobian(sim, previous_state, state, &mut tri);
-    add_exact_flux_jacobian(sim, state, options.dt_days, &mut tri);
+    // Pre-compute derived properties for all cells (avoids redundant PVT lookups).
+    let derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| state.derive_cell(sim, idx)).collect();
+    let prev_derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| previous_state.derive_cell(sim, idx)).collect();
+    // Pre-compute local flux sensitivities for the Jacobian (each cell appears in ~5 interfaces).
+    let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
+        .map(|idx| local_flux_cell_sensitivity(sim, state, idx, &derived[idx]))
+        .collect();
+
+    let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
+    let residual = assemble_residual(sim, previous_state, state, &topology, options, &derived, &prev_derived);
+
+    add_exact_accumulation_jacobian(sim, previous_state, state, &derived, &mut tri);
+    add_exact_flux_jacobian(sim, state, options.dt_days, &derived, &sensitivities, &mut tri);
 
     if options.include_wells {
         add_exact_well_source_jacobian(sim, state, &topology, options.dt_days, &mut tri);
@@ -313,10 +323,10 @@ fn cell_component_inventory_sc(
     previous_state: &FimState,
     state: &FimState,
     cell_idx: usize,
+    derived: &FimCellDerived,
 ) -> [f64; 3] {
     let pore_volume_m3 = pore_volume_at_state(sim, previous_state, state, cell_idx).max(1e-9);
     let cell = state.cell(cell_idx);
-    let derived = state.derive_cell(sim, cell_idx);
 
     let water_sc = pore_volume_m3 * cell.sw / sim.b_w.max(1e-9);
     let oil_sc = pore_volume_m3 * derived.so / derived.bo.max(1e-9);
@@ -330,9 +340,11 @@ fn cell_accumulation_residual(
     previous_state: &FimState,
     state: &FimState,
     cell_idx: usize,
+    derived: &FimCellDerived,
+    prev_derived: &FimCellDerived,
 ) -> [f64; 3] {
-    let current = cell_component_inventory_sc(sim, previous_state, state, cell_idx);
-    let previous = cell_component_inventory_sc(sim, previous_state, previous_state, cell_idx);
+    let current = cell_component_inventory_sc(sim, previous_state, state, cell_idx, derived);
+    let previous = cell_component_inventory_sc(sim, previous_state, previous_state, cell_idx, prev_derived);
     [
         current[0] - previous[0],
         current[1] - previous[1],
@@ -345,27 +357,21 @@ fn cell_accumulation_jacobian_block(
     previous_state: &FimState,
     state: &FimState,
     cell_idx: usize,
+    derived: &FimCellDerived,
 ) -> [[f64; 3]; 3] {
     let pore_volume_m3 = pore_volume_at_state(sim, previous_state, state, cell_idx).max(1e-9);
     let d_pore_volume_d_p = pore_volume_m3 * sim.rock_compressibility;
     let cell = state.cell(cell_idx);
-    let flash = crate::fim::flash::resolve_cell_flash(
-        sim,
-        cell.pressure_bar,
-        cell.sw,
-        cell.hydrocarbon_var,
-        cell.regime,
-    );
     let bw = sim.b_w.max(1e-9);
-    let bo = sim.get_b_o_for_rs(cell.pressure_bar, flash.rs).max(1e-9);
-    let bg = sim.get_b_g(cell.pressure_bar).max(1e-9);
+    let bo = derived.bo.max(1e-9);
+    let bg = derived.bg.max(1e-9);
 
-    let saturated = flash.regime == crate::fim::state::HydrocarbonState::Saturated;
-    let d_bo_d_p = sim.get_d_bo_d_p_for_state(cell.pressure_bar, flash.rs, saturated);
+    let saturated = cell.regime == HydrocarbonState::Saturated;
+    let d_bo_d_p = sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, saturated);
     let d_bo_d_rs = if saturated {
         0.0
     } else {
-        sim.get_d_bo_d_rs_for_state(cell.pressure_bar, flash.rs)
+        sim.get_d_bo_d_rs_for_state(cell.pressure_bar, derived.rs)
     };
     let d_bg_d_p = sim.get_d_bg_d_p_for_state(cell.pressure_bar);
     let d_rs_sat_d_p = if saturated {
@@ -374,28 +380,28 @@ fn cell_accumulation_jacobian_block(
         0.0
     };
 
-    let (d_so_d_sw, d_so_d_h, d_sg_d_h, d_rs_d_h) = match flash.regime {
-        crate::fim::state::HydrocarbonState::Saturated => (-1.0, -1.0, 1.0, 0.0),
-        crate::fim::state::HydrocarbonState::Undersaturated => (-1.0, 0.0, 0.0, 1.0),
+    let (d_so_d_sw, d_so_d_h, d_sg_d_h, d_rs_d_h) = match cell.regime {
+        HydrocarbonState::Saturated => (-1.0, -1.0, 1.0, 0.0),
+        HydrocarbonState::Undersaturated => (-1.0, 0.0, 0.0, 1.0),
     };
 
-    let oil_inventory = pore_volume_m3 * flash.so / bo;
+    let oil_inventory = pore_volume_m3 * derived.so / bo;
     let d_water_d_p = d_pore_volume_d_p * cell.sw / bw;
     let d_water_d_sw = pore_volume_m3 / bw;
 
-    let d_oil_d_p = d_pore_volume_d_p * flash.so / bo
-        - pore_volume_m3 * flash.so * d_bo_d_p / (bo * bo);
+    let d_oil_d_p = d_pore_volume_d_p * derived.so / bo
+        - pore_volume_m3 * derived.so * d_bo_d_p / (bo * bo);
     let d_oil_d_sw = pore_volume_m3 * d_so_d_sw / bo;
     let d_oil_d_h = pore_volume_m3 * d_so_d_h / bo
-        - pore_volume_m3 * flash.so * d_bo_d_rs * d_rs_d_h / (bo * bo);
+        - pore_volume_m3 * derived.so * d_bo_d_rs * d_rs_d_h / (bo * bo);
 
-    let d_free_gas_d_p = d_pore_volume_d_p * flash.sg / bg
-        - pore_volume_m3 * flash.sg * d_bg_d_p / (bg * bg);
+    let d_free_gas_d_p = d_pore_volume_d_p * derived.sg / bg
+        - pore_volume_m3 * derived.sg * d_bg_d_p / (bg * bg);
     let d_free_gas_d_h = pore_volume_m3 * d_sg_d_h / bg;
 
-    let d_gas_d_p = d_free_gas_d_p + d_oil_d_p * flash.rs + oil_inventory * d_rs_sat_d_p;
-    let d_gas_d_sw = d_oil_d_sw * flash.rs;
-    let d_gas_d_h = d_free_gas_d_h + d_oil_d_h * flash.rs + oil_inventory * d_rs_d_h;
+    let d_gas_d_p = d_free_gas_d_p + d_oil_d_p * derived.rs + oil_inventory * d_rs_sat_d_p;
+    let d_gas_d_sw = d_oil_d_sw * derived.rs;
+    let d_gas_d_h = d_free_gas_d_h + d_oil_d_h * derived.rs + oil_inventory * d_rs_d_h;
 
     [
         [d_water_d_p, d_water_d_sw, 0.0],
@@ -410,8 +416,10 @@ fn assemble_residual(
     state: &FimState,
     topology: &FimWellTopology,
     options: &FimAssemblyOptions,
+    derived: &[FimCellDerived],
+    prev_derived: &[FimCellDerived],
 ) -> DVector<f64> {
-    assemble_residual_with_flags(sim, previous_state, state, topology, options, true, true)
+    assemble_residual_with_flags(sim, previous_state, state, topology, options, true, true, derived, prev_derived)
 }
 
 fn assemble_residual_with_flags(
@@ -422,13 +430,15 @@ fn assemble_residual_with_flags(
     options: &FimAssemblyOptions,
     include_accumulation: bool,
     include_flux: bool,
+    derived: &[FimCellDerived],
+    prev_derived: &[FimCellDerived],
 ) -> DVector<f64> {
     let n_unknowns = state.n_unknowns();
     let mut residual = DVector::zeros(n_unknowns);
 
     if include_accumulation {
         for cell_idx in 0..state.cells.len() {
-            let accumulation = cell_accumulation_residual(sim, previous_state, state, cell_idx);
+            let accumulation = cell_accumulation_residual(sim, previous_state, state, cell_idx, &derived[cell_idx], &prev_derived[cell_idx]);
             for local_eq in 0..3 {
                 residual[equation_offset(cell_idx, local_eq)] += accumulation[local_eq];
             }
@@ -442,42 +452,24 @@ fn assemble_residual_with_flags(
                     let id = sim.idx(i, j, k);
 
                     if i + 1 < sim.nx {
+                        let id_j = sim.idx(i + 1, j, k);
                         add_interface_flux(
-                            sim,
-                            state,
-                            options.dt_days,
-                            id,
-                            sim.idx(i + 1, j, k),
-                            'x',
-                            k,
-                            k,
-                            &mut residual,
+                            sim, state, options.dt_days, id, id_j, 'x', k, k,
+                            &derived[id], &derived[id_j], &mut residual,
                         );
                     }
                     if j + 1 < sim.ny {
+                        let id_j = sim.idx(i, j + 1, k);
                         add_interface_flux(
-                            sim,
-                            state,
-                            options.dt_days,
-                            id,
-                            sim.idx(i, j + 1, k),
-                            'y',
-                            k,
-                            k,
-                            &mut residual,
+                            sim, state, options.dt_days, id, id_j, 'y', k, k,
+                            &derived[id], &derived[id_j], &mut residual,
                         );
                     }
                     if k + 1 < sim.nz {
+                        let id_j = sim.idx(i, j, k + 1);
                         add_interface_flux(
-                            sim,
-                            state,
-                            options.dt_days,
-                            id,
-                            sim.idx(i, j, k + 1),
-                            'z',
-                            k,
-                            k + 1,
-                            &mut residual,
+                            sim, state, options.dt_days, id, id_j, 'z', k, k + 1,
+                            &derived[id], &derived[id_j], &mut residual,
                         );
                     }
                 }
@@ -498,10 +490,11 @@ fn add_exact_accumulation_jacobian(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
     state: &FimState,
+    derived: &[FimCellDerived],
     tri: &mut TriMatI<f64, usize>,
 ) {
     for cell_idx in 0..state.cells.len() {
-        let block = cell_accumulation_jacobian_block(sim, previous_state, state, cell_idx);
+        let block = cell_accumulation_jacobian_block(sim, previous_state, state, cell_idx, &derived[cell_idx]);
         for (local_eq, row_values) in block.into_iter().enumerate() {
             for (local_var, value) in row_values.into_iter().enumerate() {
                 if value.abs() > 1e-14 {
@@ -545,9 +538,9 @@ fn local_flux_cell_sensitivity(
     sim: &ReservoirSimulator,
     state: &FimState,
     cell_idx: usize,
+    derived: &FimCellDerived,
 ) -> LocalFluxCellSensitivity {
     let cell = state.cell(cell_idx);
-    let derived = state.derive_cell(sim, cell_idx);
     let saturated = cell.regime == HydrocarbonState::Saturated;
 
     let krw = if sim.three_phase_mode {
@@ -712,11 +705,11 @@ fn interface_flux_contribution(
     dim: char,
     k_i: usize,
     k_j: usize,
+    derived_i: &FimCellDerived,
+    derived_j: &FimCellDerived,
 ) -> Option<[[f64; 3]; 2]> {
     let cell_i = state.cell(id_i);
     let cell_j = state.cell(id_j);
-    let derived_i = state.derive_cell(sim, id_i);
-    let derived_j = state.derive_cell(sim, id_j);
 
     let p_i = cell_i.pressure_bar;
     let p_j = cell_j.pressure_bar;
@@ -794,6 +787,8 @@ fn add_exact_flux_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
     dt_days: f64,
+    derived: &[FimCellDerived],
+    sensitivities: &[LocalFluxCellSensitivity],
     tri: &mut TriMatI<f64, usize>,
 ) {
     for k in 0..sim.nz {
@@ -802,13 +797,16 @@ fn add_exact_flux_jacobian(
                 let id = sim.idx(i, j, k);
 
                 if i + 1 < sim.nx {
-                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, sim.idx(i + 1, j, k), 'x', k, k, tri);
+                    let id_j = sim.idx(i + 1, j, k);
+                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, id_j, 'x', k, k, &derived[id], &derived[id_j], &sensitivities[id], &sensitivities[id_j], tri);
                 }
                 if j + 1 < sim.ny {
-                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, sim.idx(i, j + 1, k), 'y', k, k, tri);
+                    let id_j = sim.idx(i, j + 1, k);
+                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, id_j, 'y', k, k, &derived[id], &derived[id_j], &sensitivities[id], &sensitivities[id_j], tri);
                 }
                 if k + 1 < sim.nz {
-                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, sim.idx(i, j, k + 1), 'z', k, k + 1, tri);
+                    let id_j = sim.idx(i, j, k + 1);
+                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, id_j, 'z', k, k + 1, &derived[id], &derived[id_j], &sensitivities[id], &sensitivities[id_j], tri);
                 }
             }
         }
@@ -824,14 +822,14 @@ fn add_exact_interface_flux_jacobian(
     dim: char,
     k_i: usize,
     k_j: usize,
+    derived_i: &FimCellDerived,
+    derived_j: &FimCellDerived,
+    local_i: &LocalFluxCellSensitivity,
+    local_j: &LocalFluxCellSensitivity,
     tri: &mut TriMatI<f64, usize>,
 ) {
     let cell_i = state.cell(id_i);
     let cell_j = state.cell(id_j);
-    let derived_i = state.derive_cell(sim, id_i);
-    let derived_j = state.derive_cell(sim, id_j);
-    let local_i = local_flux_cell_sensitivity(sim, state, id_i);
-    let local_j = local_flux_cell_sensitivity(sim, state, id_j);
     let locals = [local_i, local_j];
 
     let p_i = cell_i.pressure_bar;
@@ -985,7 +983,9 @@ fn add_interface_flux_jacobian_fd(
     k_j: usize,
     tri: &mut TriMatI<f64, usize>,
 ) {
-    let Some(base_flux) = interface_flux_contribution(sim, state, dt_days, id_i, id_j, dim, k_i, k_j) else {
+    let base_derived_i = state.derive_cell(sim, id_i);
+    let base_derived_j = state.derive_cell(sim, id_j);
+    let Some(base_flux) = interface_flux_contribution(sim, state, dt_days, id_i, id_j, dim, k_i, k_j, &base_derived_i, &base_derived_j) else {
         return;
     };
 
@@ -1001,6 +1001,8 @@ fn add_interface_flux_jacobian_fd(
                 _ => unreachable!(),
             }
 
+            let perturbed_derived_i = perturbed_state.derive_cell(sim, id_i);
+            let perturbed_derived_j = perturbed_state.derive_cell(sim, id_j);
             let Some(perturbed_flux) = interface_flux_contribution(
                 sim,
                 &perturbed_state,
@@ -1010,6 +1012,8 @@ fn add_interface_flux_jacobian_fd(
                 dim,
                 k_i,
                 k_j,
+                &perturbed_derived_i,
+                &perturbed_derived_j,
             ) else {
                 continue;
             };
@@ -1081,9 +1085,11 @@ fn add_interface_flux(
     dim: char,
     k_i: usize,
     k_j: usize,
+    derived_i: &FimCellDerived,
+    derived_j: &FimCellDerived,
     residual: &mut DVector<f64>,
 ) {
-    let Some(flux) = interface_flux_contribution(sim, state, dt_days, id_i, id_j, dim, k_i, k_j) else {
+    let Some(flux) = interface_flux_contribution(sim, state, dt_days, id_i, id_j, dim, k_i, k_j, derived_i, derived_j) else {
         return;
     };
 
@@ -1274,8 +1280,13 @@ mod tests {
         state.cells[1].hydrocarbon_var = 0.14;
         state.cells[1].regime = HydrocarbonState::Saturated;
 
+        let n_cells = state.cells.len();
+        let derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| state.derive_cell(&sim, idx)).collect();
+        let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
+            .map(|idx| local_flux_cell_sensitivity(&sim, &state, idx, &derived[idx]))
+            .collect();
         let mut exact = TriMatI::<f64, usize>::new((state.n_unknowns(), state.n_unknowns()));
-        add_exact_flux_jacobian(&sim, &state, 1.0, &mut exact);
+        add_exact_flux_jacobian(&sim, &state, 1.0, &derived, &sensitivities, &mut exact);
         let exact = exact.to_csr();
 
         let mut fd = TriMatI::<f64, usize>::new((state.n_unknowns(), state.n_unknowns()));
@@ -1760,7 +1771,8 @@ mod tests {
         let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         let previous_state = FimState::from_simulator(&sim);
         let state = previous_state.clone();
-        let block = cell_accumulation_jacobian_block(&sim, &previous_state, &state, 0);
+        let d = state.derive_cell(&sim, 0);
+        let block = cell_accumulation_jacobian_block(&sim, &previous_state, &state, 0, &d);
         let pv = sim.pore_volume_m3(0).max(1e-9);
 
         assert!((block[0][0] - pv * sim.rock_compressibility * state.cells[0].sw / sim.b_w).abs() < 1e-12);
