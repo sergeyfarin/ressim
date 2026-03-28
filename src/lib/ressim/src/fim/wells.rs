@@ -465,24 +465,21 @@ fn local_phase_sensitivity(
 }
 
 fn injector_connection_mobility(
-    sim: &ReservoirSimulator,
+    _sim: &ReservoirSimulator,
     local: &LocalPhaseSensitivity,
 ) -> (f64, [f64; 3]) {
-    if !sim.three_phase_mode {
-        return (
-            local.mobilities[0] + local.mobilities[1],
-            [
-                local.mobility_derivatives[0][0] + local.mobility_derivatives[1][0],
-                local.mobility_derivatives[0][1] + local.mobility_derivatives[1][1],
-                local.mobility_derivatives[0][2] + local.mobility_derivatives[1][2],
-            ],
-        );
-    }
-
-    match effective_injected_fluid(sim) {
-        InjectedFluid::Water => (local.mobilities[0], local.mobility_derivatives[0]),
-        InjectedFluid::Gas => (local.mobilities[2], local.mobility_derivatives[2]),
-    }
+    // Use total mobility for injectors. This ensures non-zero injectivity even
+    // when the injected phase has zero saturation in the cell (e.g. gas injection
+    // into an oil-saturated cell where krg=0). The injected component is tracked
+    // separately via perforation_component_rates_sc_day.
+    (
+        local.mobilities[0] + local.mobilities[1] + local.mobilities[2],
+        [
+            local.mobility_derivatives[0][0] + local.mobility_derivatives[1][0] + local.mobility_derivatives[2][0],
+            local.mobility_derivatives[0][1] + local.mobility_derivatives[1][1] + local.mobility_derivatives[2][1],
+            local.mobility_derivatives[0][2] + local.mobility_derivatives[1][2] + local.mobility_derivatives[2][2],
+        ],
+    )
 }
 
 fn producer_rate_sensitivity(
@@ -572,19 +569,8 @@ pub(crate) fn connection_rate_for_bhp(
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
 
-    let connection_mobility = if well.injector {
-        if !sim.three_phase_mode {
-            mobilities.water + mobilities.oil
-        } else {
-            match effective_injected_fluid(sim) {
-                InjectedFluid::Water => mobilities.water,
-                InjectedFluid::Gas => mobilities.gas,
-            }
-        }
-    } else {
-        mobilities.water + mobilities.oil + mobilities.gas
-    }
-    .max(0.0);
+    let connection_mobility =
+        (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
 
     let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
     if !raw_rate.is_finite() {
@@ -744,19 +730,8 @@ pub(crate) fn perforation_connection_bhp_derivative(
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
 
-    let connection_mobility = if well.injector {
-        if !sim.three_phase_mode {
-            mobilities.water + mobilities.oil
-        } else {
-            match effective_injected_fluid(sim) {
-                InjectedFluid::Water => mobilities.water,
-                InjectedFluid::Gas => mobilities.gas,
-            }
-        }
-    } else {
-        mobilities.water + mobilities.oil + mobilities.gas
-    }
-    .max(0.0);
+    let connection_mobility =
+        (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
 
     let active_derivative = -wi_geom * connection_mobility;
     let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
@@ -786,7 +761,7 @@ pub(crate) fn perforation_connection_pressure_derivative(
 ) -> Option<f64> {
     let perforation = &topology.perforations[perf_idx];
     let well = perforation_well(sim, perforation);
-    if !well.injector || effective_injected_fluid(sim) != InjectedFluid::Water {
+    if !well.injector {
         return None;
     }
 
@@ -796,11 +771,8 @@ pub(crate) fn perforation_connection_pressure_derivative(
     let mobilities =
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
-    let connection_mobility = if !sim.three_phase_mode {
-        (mobilities.water + mobilities.oil).max(0.0)
-    } else {
-        mobilities.water.max(0.0)
-    };
+    let connection_mobility =
+        (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
     let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
     if !raw_rate.is_finite() {
         return None;
@@ -1149,7 +1121,9 @@ pub(crate) fn well_constraint_residual(
     }
 
     let (bhp_slack, rate_slack) = well_control_slacks(sim, state, topology, well_idx)?;
-    Some(fischer_burmeister(bhp_slack, rate_slack))
+    let bhp_scale = control.bhp_limit.abs().max(1.0);
+    let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
+    Some(fischer_burmeister(bhp_slack / bhp_scale, rate_slack / rate_scale))
 }
 
 pub(crate) fn perforation_rate_residual(

@@ -135,9 +135,11 @@ fn add_exact_well_constraint_jacobian(
         let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx) else {
             continue;
         };
-        let (dphi_da, dphi_db) = fischer_burmeister_gradient(bhp_slack, rate_slack);
+        let bhp_scale = control.bhp_limit.abs().max(1.0);
+        let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
+        let (dphi_da, dphi_db) = fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
         let dslack_dbhp = if topology.wells[well_idx].injector { -1.0 } else { 1.0 };
-        let bhp_value = dphi_da * dslack_dbhp;
+        let bhp_value = dphi_da * dslack_dbhp / bhp_scale;
         if bhp_value.abs() > 1e-14 {
             tri.add_triplet(row, column_bhp, bhp_value);
         }
@@ -145,7 +147,7 @@ fn add_exact_well_constraint_jacobian(
         for &perf_idx in &topology.wells[well_idx].perforation_indices {
             let column = state.perforation_rate_unknown_offset(perf_idx);
             let dactual_dq = perforation_target_rate_derivative(sim, state, topology, perf_idx);
-            let value = -dphi_db * dactual_dq;
+            let value = -dphi_db * dactual_dq / rate_scale;
             if value.abs() > 1e-14 {
                 tri.add_triplet(row, column, value);
             }
@@ -168,14 +170,16 @@ fn add_exact_well_constraint_cell_jacobian(
         let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx) else {
             continue;
         };
-        let (_, dphi_db) = fischer_burmeister_gradient(bhp_slack, rate_slack);
+        let bhp_scale = control.bhp_limit.abs().max(1.0);
+        let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
+        let (_, dphi_db) = fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
         let row = state.well_equation_offset(well_idx);
         for &perf_idx in &topology.wells[well_idx].perforation_indices {
             for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
                 let derivatives =
                     perforation_surface_rate_cell_derivatives_sc_day(sim, state, topology, perf_idx, cell_idx);
                 for (local_var, derivative) in derivatives.into_iter().enumerate() {
-                    let value = -dphi_db * derivative;
+                    let value = -dphi_db * derivative / rate_scale;
                     if value.abs() > 1e-14 {
                         tri.add_triplet(row, unknown_offset(cell_idx, local_var), value);
                     }
@@ -1585,8 +1589,11 @@ mod tests {
         state.perforation_rates_m3_day[0] = 40.0;
 
         let topology = build_well_topology(&sim);
+        let control = crate::fim::wells::physical_well_control(&sim, &topology, 0);
         let (bhp_slack, rate_slack) = crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
-        let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(bhp_slack, rate_slack);
+        let bhp_scale = control.bhp_limit.abs().max(1.0);
+        let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
+        let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
         let d_surface = crate::fim::wells::perforation_surface_rate_cell_derivatives_sc_day(
             &sim,
             &state,
@@ -1608,7 +1615,7 @@ mod tests {
         let row = state.well_equation_offset(0);
         for (local_var, derivative) in d_surface.into_iter().enumerate() {
             let value = jacobian_value(&assembly.jacobian, row, unknown_offset(sim.idx(1, 1, 0), local_var));
-            assert!((value + dphi_db * derivative).abs() < 1e-9);
+            assert!((value + dphi_db * derivative / rate_scale).abs() < 1e-9);
         }
     }
 
