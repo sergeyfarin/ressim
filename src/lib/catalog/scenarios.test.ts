@@ -496,6 +496,18 @@ describe('SPE1 scenario fidelity guards', () => {
         expect((scenario?.params.scalTables as { swof: unknown[]; sgof: unknown[] } | undefined)?.sgof).toHaveLength(15);
     });
 
+    it('uses an undersaturated c_o consistent with the SPE1 PVTO 9014.7 psia continuation for Rs = 1.27', () => {
+        const scenario = getScenario('spe1_gas_injection');
+        const pBubble = 4014.7 / 14.5038;
+        const boBubble = 1.695;
+        const pUndersat = 9014.7 / 14.5038;
+        const boUndersat = 1.579;
+
+        const expectedCo = -Math.log(boUndersat / boBubble) / (pUndersat - pBubble);
+
+        expect(scenario?.params.c_o).toBeCloseTo(expectedCo, 6);
+    });
+
     it('applies tighter numerics to the fine-grid SPE1 sensitivity', () => {
         const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_20');
 

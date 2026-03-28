@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::ReservoirSimulator;
 
+const PVTO_RS_TOLERANCE: f64 = 1e-6;
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct OilProps {
@@ -30,22 +32,72 @@ pub struct PvtRow {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PvtTable {
+    /// Original flat PVTO-style rows in input order.
     pub rows: Vec<PvtRow>,
+    saturated_rows: Vec<PvtRow>,
+    oil_branches: Vec<PvtOilBranch>,
     /// Base oil compressibility above bubble point [1/bar]
     pub c_o: f64,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct PvtOilBranch {
+    rs_m3m3: f64,
+    rows: Vec<PvtRow>,
+}
+
 impl PvtTable {
-    pub fn new(mut rows: Vec<PvtRow>, c_o: f64) -> Self {
-        rows.sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
-        Self { rows, c_o }
+    pub fn new(rows: Vec<PvtRow>, c_o: f64) -> Self {
+        let mut oil_branches = Self::build_oil_branches(&rows);
+        oil_branches.sort_by(|a, b| a.rs_m3m3.partial_cmp(&b.rs_m3m3).unwrap());
+
+        let mut saturated_rows = oil_branches
+            .iter()
+            .filter_map(|branch| branch.rows.first().cloned())
+            .collect::<Vec<_>>();
+        saturated_rows.sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
+
+        Self {
+            rows,
+            saturated_rows,
+            oil_branches,
+            c_o,
+        }
     }
 
-    /// Interpolate PVT properties for a given pressure.
-    /// Extrapolates using constant compressibility for points above the table max pressure.
-    pub fn interpolate(&self, p: f64) -> PvtRow {
-        if self.rows.is_empty() {
-            // Fallback flat properties if initialized empty
+    fn build_oil_branches(rows: &[PvtRow]) -> Vec<PvtOilBranch> {
+        let mut branches: Vec<PvtOilBranch> = Vec::new();
+
+        for row in rows {
+            if let Some(branch) = branches.last_mut() {
+                let same_rs = (row.rs_m3m3 - branch.rs_m3m3).abs() <= PVTO_RS_TOLERANCE;
+                let higher_pressure = branch
+                    .rows
+                    .last()
+                    .map(|prev| row.p_bar >= prev.p_bar - 1e-9)
+                    .unwrap_or(true);
+
+                if same_rs && higher_pressure {
+                    branch.rows.push(row.clone());
+                    continue;
+                }
+            }
+
+            branches.push(PvtOilBranch {
+                rs_m3m3: row.rs_m3m3,
+                rows: vec![row.clone()],
+            });
+        }
+
+        for branch in &mut branches {
+            branch.rows.sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
+        }
+
+        branches
+    }
+
+    fn interpolate_rows(rows: &[PvtRow], p: f64, c_o: f64) -> PvtRow {
+        if rows.is_empty() {
             return PvtRow {
                 p_bar: p,
                 rs_m3m3: 0.0,
@@ -56,26 +108,23 @@ impl PvtTable {
             };
         }
 
-        if p <= self.rows[0].p_bar {
-            return self.rows[0].clone();
+        if p <= rows[0].p_bar {
+            return rows[0].clone();
         }
 
-        let last_idx = self.rows.len() - 1;
-        if p >= self.rows[last_idx].p_bar {
-            let last = &self.rows[last_idx];
+        let last_idx = rows.len() - 1;
+        if p >= rows[last_idx].p_bar {
+            let last = &rows[last_idx];
             let mut extrapolated = last.clone();
             extrapolated.p_bar = p;
-            // Above table pressure usually means undersaturated oil compression.
-            extrapolated.bo_m3m3 = last.bo_m3m3 * f64::exp(-self.c_o * (p - last.p_bar));
-            // Simple gas extrapolation: bg inversely proportional to P, ignoring z-factor curve changes
+            extrapolated.bo_m3m3 = last.bo_m3m3 * f64::exp(-c_o * (p - last.p_bar));
             extrapolated.bg_m3m3 = last.bg_m3m3 * (last.p_bar / p);
             return extrapolated;
         }
 
-        // Linear interpolation
         for i in 0..last_idx {
-            let r0 = &self.rows[i];
-            let r1 = &self.rows[i + 1];
+            let r0 = &rows[i];
+            let r1 = &rows[i + 1];
             if p >= r0.p_bar && p <= r1.p_bar {
                 let dp = r1.p_bar - r0.p_bar;
                 if dp < 1e-6 {
@@ -92,7 +141,76 @@ impl PvtTable {
                 };
             }
         }
-        self.rows[last_idx].clone() // Fallback
+
+        rows[last_idx].clone()
+    }
+
+    fn branch_props(branch: &PvtOilBranch, p: f64, c_o: f64) -> (f64, f64) {
+        let rows = &branch.rows;
+        if rows.is_empty() {
+            return (1.0, 1.0);
+        }
+        if rows.len() == 1 {
+            let row = &rows[0];
+            let bo = row.bo_m3m3 * f64::exp(-c_o * (p - row.p_bar));
+            let mu = row.mu_o_cp * f64::exp(c_o * (p - row.p_bar));
+            return (bo, mu);
+        }
+        if p <= rows[0].p_bar {
+            return (rows[0].bo_m3m3, rows[0].mu_o_cp);
+        }
+
+        for pair in rows.windows(2) {
+            let r0 = &pair[0];
+            let r1 = &pair[1];
+            if p >= r0.p_bar && p <= r1.p_bar {
+                let dp = r1.p_bar - r0.p_bar;
+                if dp.abs() < 1e-9 {
+                    return (r0.bo_m3m3, r0.mu_o_cp);
+                }
+                let t = (p - r0.p_bar) / dp;
+                return (
+                    r0.bo_m3m3 + t * (r1.bo_m3m3 - r0.bo_m3m3),
+                    r0.mu_o_cp + t * (r1.mu_o_cp - r0.mu_o_cp),
+                );
+            }
+        }
+
+        let last = &rows[rows.len() - 1];
+        let prev = &rows[rows.len() - 2];
+        let dp = (last.p_bar - prev.p_bar).max(1e-9);
+        let t = (p - last.p_bar) / dp;
+        (
+            last.bo_m3m3 + t * (last.bo_m3m3 - prev.bo_m3m3),
+            last.mu_o_cp + t * (last.mu_o_cp - prev.mu_o_cp),
+        )
+    }
+
+    fn branch_bounds(&self, rs: f64) -> Option<(&PvtOilBranch, &PvtOilBranch)> {
+        let first = self.oil_branches.first()?;
+        let last = self.oil_branches.last()?;
+        if rs <= first.rs_m3m3 + PVTO_RS_TOLERANCE {
+            return Some((first, first));
+        }
+        if rs >= last.rs_m3m3 - PVTO_RS_TOLERANCE {
+            return Some((last, last));
+        }
+
+        for pair in self.oil_branches.windows(2) {
+            let low = &pair[0];
+            let high = &pair[1];
+            if rs >= low.rs_m3m3 - PVTO_RS_TOLERANCE && rs <= high.rs_m3m3 + PVTO_RS_TOLERANCE {
+                return Some((low, high));
+            }
+        }
+
+        Some((last, last))
+    }
+
+    /// Interpolate PVT properties for a given pressure.
+    /// Extrapolates using constant compressibility for points above the table max pressure.
+    pub fn interpolate(&self, p: f64) -> PvtRow {
+        Self::interpolate_rows(&self.saturated_rows, p, self.c_o)
     }
 
     /// Find the bubble-point pressure for a given dissolved-gas ratio.
@@ -101,29 +219,29 @@ impl PvtTable {
     /// Returns the lowest table pressure if `rs` is below the table minimum,
     /// and the highest table pressure if `rs` exceeds the table maximum.
     pub fn bubble_point_pressure(&self, rs: f64) -> f64 {
-        if self.rows.is_empty() {
+        if self.saturated_rows.is_empty() {
             return 0.0;
         }
-        if rs <= self.rows[0].rs_m3m3 {
-            return self.rows[0].p_bar;
+        if rs <= self.oil_branches[0].rs_m3m3 {
+            return self.oil_branches[0].rows[0].p_bar;
         }
-        let last = self.rows.len() - 1;
-        if rs >= self.rows[last].rs_m3m3 {
-            return self.rows[last].p_bar;
+        let last = self.oil_branches.len() - 1;
+        if rs >= self.oil_branches[last].rs_m3m3 {
+            return self.oil_branches[last].rows[0].p_bar;
         }
         for i in 0..last {
-            let r0 = &self.rows[i];
-            let r1 = &self.rows[i + 1];
+            let r0 = &self.oil_branches[i];
+            let r1 = &self.oil_branches[i + 1];
             if rs >= r0.rs_m3m3 && rs <= r1.rs_m3m3 {
                 let drs = r1.rs_m3m3 - r0.rs_m3m3;
                 if drs < 1e-12 {
-                    return r0.p_bar;
+                    return r0.rows[0].p_bar;
                 }
                 let t = (rs - r0.rs_m3m3) / drs;
-                return r0.p_bar + t * (r1.p_bar - r0.p_bar);
+                return r0.rows[0].p_bar + t * (r1.rows[0].p_bar - r0.rows[0].p_bar);
             }
         }
-        self.rows[last].p_bar
+        self.oil_branches[last].rows[0].p_bar
     }
 
     /// Interpolate oil properties accounting for undersaturation.
@@ -132,25 +250,31 @@ impl PvtTable {
     /// the oil is undersaturated: find the bubble-point pressure for `rs`, read
     /// saturated Bo and μ_o there, then apply undersaturated corrections above it.
     pub fn interpolate_oil(&self, p: f64, rs: f64) -> (f64, f64) {
-        if self.rows.is_empty() {
+        if self.saturated_rows.is_empty() {
             return (1.0, 1.0);
         }
-        let rs_sat = self.interpolate(p).rs_m3m3;
+        let sat_row = self.interpolate(p);
+        let rs_sat = sat_row.rs_m3m3;
 
-        if rs < rs_sat - 1e-6 {
-            // Undersaturated: get bubble-point properties and extrapolate
-            let p_b = self.bubble_point_pressure(rs);
-            let sat = self.interpolate(p_b);
-            let bo = sat.bo_m3m3 * f64::exp(-self.c_o * (p - p_b));
-            // Undersaturated viscosity increases linearly with pressure
-            // (simple model consistent with SPE1 PVTO data)
-            let mu = sat.mu_o_cp * f64::exp(self.c_o * (p - p_b));
-            (bo, mu)
-        } else {
-            // Saturated or above table max: use standard interpolation
-            let row = self.interpolate(p);
-            (row.bo_m3m3, row.mu_o_cp)
+        if rs >= rs_sat - 1e-6 {
+            return (sat_row.bo_m3m3, sat_row.mu_o_cp);
         }
+
+        if let Some((low, high)) = self.branch_bounds(rs) {
+            let (bo_low, mu_low) = Self::branch_props(low, p, self.c_o);
+            if (high.rs_m3m3 - low.rs_m3m3).abs() <= PVTO_RS_TOLERANCE {
+                return (bo_low, mu_low);
+            }
+
+            let (bo_high, mu_high) = Self::branch_props(high, p, self.c_o);
+            let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
+            return (
+                bo_low + t * (bo_high - bo_low),
+                mu_low + t * (mu_high - mu_low),
+            );
+        }
+
+        (sat_row.bo_m3m3, sat_row.mu_o_cp)
     }
 
     pub(crate) fn oil_props_at(&self, p: f64, rs: f64, rho_o_sc: f64, rho_g_sc: f64) -> OilProps {
@@ -340,7 +464,7 @@ impl ReservoirSimulator {
                 let c_unsat = self.pvt.c_o;
                 let p_b = table.bubble_point_pressure(rs_cell);
                 let distance = p - p_b;
-                let margin = self.max_pressure_change_per_step;
+                let margin = 5.0;
 
                 if distance > 0.0 && distance < margin && c_sat > c_unsat {
                     let t = 1.0 - distance / margin;

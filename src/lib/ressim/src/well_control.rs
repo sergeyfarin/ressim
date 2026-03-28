@@ -460,10 +460,14 @@ impl ReservoirSimulator {
             return None;
         }
 
+        // Hysteresis margin: stay BHP-limited until achievable rate exceeds
+        // target by this fraction, preventing control mode oscillation.
+        let bhp_margin = target_rate * 0.05;
+
         if well.injector {
             let bhp_limit = config.bhp_limit;
             let max_achievable_rate = self.total_rate_for_well_bhp(well, pressures, bhp_limit);
-            if target_rate >= max_achievable_rate - 1e-9 {
+            if target_rate >= max_achievable_rate - bhp_margin {
                 return Some((bhp_limit, true));
             }
 
@@ -482,7 +486,7 @@ impl ReservoirSimulator {
         } else {
             let bhp_limit = config.bhp_limit;
             let max_achievable_rate = self.total_rate_for_well_bhp(well, pressures, bhp_limit);
-            if target_rate >= max_achievable_rate - 1e-9 {
+            if target_rate >= max_achievable_rate - bhp_margin {
                 return Some((bhp_limit, true));
             }
 

@@ -34,9 +34,14 @@ pub(crate) fn build_equation_scaling(
     let dt_days = dt_days.max(1e-12);
     for idx in 0..n_cells {
         let pv_over_dt = (sim.pore_volume_m3(idx) / dt_days).abs().max(1.0);
-        water.push(pv_over_dt);
-        oil_component.push(pv_over_dt);
-        gas_component.push(pv_over_dt);
+        let cell = state.cells[idx];
+        let bo = sim.get_b_o_cell(idx, cell.pressure_bar).max(1e-9);
+        let bg = sim.get_b_g(cell.pressure_bar).max(1e-9);
+        let bw = sim.b_w.max(1e-9);
+
+        water.push(pv_over_dt / bw);
+        oil_component.push(pv_over_dt / bo);
+        gas_component.push(pv_over_dt / bg);
     }
 
     for bhp_bar in &state.well_bhp {

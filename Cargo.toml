@@ -1,3 +1,4 @@
 # ressim/Cargo.toml
 [workspace]
 members = ["src/lib/ressim"]
+resolver = "2"

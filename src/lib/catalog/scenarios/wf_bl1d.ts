@@ -68,7 +68,7 @@ export const wf_bl1d: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        fimEnabled: false,
+        fimEnabled: true,
         delta_t_days: 0.25,
         steps: 200,
         max_sat_change_per_step: 0.05,

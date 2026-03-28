@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Instant;
 
 struct BuckleyCase {
     name: &'static str,
@@ -262,6 +263,56 @@ fn run_buckley_profile_case(
         history_len: sim.rate_history.len(),
         last_solver_warning: sim.last_solver_warning.clone(),
     }
+}
+
+fn build_exact_wasm_probe_simulator(nx: usize) -> ReservoirSimulator {
+    let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
+    sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
+    sim.set_initial_pressure(300.0);
+    sim.set_initial_saturation(0.1);
+    sim.set_fluid_properties(1.0, 0.5).unwrap();
+    sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+    sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_capillary_params(0.0, 2.0).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_permeability_per_layer(vec![2000.0], vec![2000.0], vec![200.0])
+        .unwrap();
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+    sim.set_target_well_rates(0.0, 0.0).unwrap();
+    sim.set_well_bhp_limits(100.0, 500.0).unwrap();
+    sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+    sim.add_well(nx - 1, 0, 0, 100.0, 0.1, 0.0, false)
+        .unwrap();
+    sim
+}
+
+#[test]
+#[ignore = "manual native single-step probe for comparing native vs wasm FIM behavior"]
+fn native_single_step_fim_probe_case_a_24_cells() {
+    let nx = 24;
+    let mut sim = build_exact_wasm_probe_simulator(nx);
+
+    let started = Instant::now();
+    sim.step(0.25);
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1_000.0;
+    let last = sim
+        .rate_history
+        .last()
+        .expect("rate history should have an entry after one step");
+
+    println!(
+        "{{\"nx\":{},\"ms\":{:.3},\"time\":{:.6},\"warning\":\"{}\",\"history\":{}}}",
+        nx,
+        elapsed_ms,
+        last.time,
+        sim.last_solver_warning.replace('"', "\\\""),
+        sim.rate_history.len(),
+    );
 }
 
 #[test]

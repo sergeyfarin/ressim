@@ -1672,8 +1672,9 @@ mod tests {
             1200.0, 1250.0,
         ];
 
-        for (label, dt_days) in [("base_dt5", 5.0), ("base_dt0.25", 0.25)] {
+        for (label, dt_days) in [("base_dt0.25_fim", 0.25)] {
             let mut sim = make_spe1_like_base_sim();
+            sim.set_fim_enabled(true);
             let mut next_sample_idx = 0usize;
             let mut first_high_gor_reported = false;
 
@@ -1711,8 +1712,9 @@ mod tests {
             2050.0, 2100.0, 2250.0, 2500.0, 2750.0, 3000.0,
         ];
 
-        for (label, dt_days) in [("base_dt5", 5.0), ("base_dt0.25", 0.25)] {
+        for (label, dt_days) in [("base_dt0.25_fim", 0.25)] {
             let mut sim = make_spe1_like_base_sim();
+            sim.set_fim_enabled(true);
             let mut next_sample_idx = 0usize;
 
             println!("=== {label} ===");

@@ -38,12 +38,15 @@ import type { ThreePhaseScalTables } from '../../simulator-types';
  *   pressure peak-and-decline shape closely enough.
  */
 
-// ── PVT table (SPE1 saturated oil, converted to metric) ────────────────────
+// ── PVT table (SPE1 PVTO rows, converted to metric) ─────────────────────────
 // Conversions: P_bar = P_psia / 14.5038
 //              Rs_m3m3 = Rs_Mscf_stb × 178.108
 //              Bo_m3m3 = Bo_rb_stb (dimensionless, same numeric value)
 //              Bg_m3m3 = Bg_rb_Mscf × 0.158987 / 28.3168
 //              μ_o, μ_g unchanged (cP)
+// Repeated-Rs rows encode undersaturated PVTO continuations above bubble point.
+// The scalar c_o remains as a fallback for branches without explicit continuation
+// data and for pressures above the tabulated continuation range.
 const SPE1_PVT_TABLE = [
     { p_bar:   1.01, rs_m3m3:   0.18, bo_m3m3: 1.062, mu_o_cp: 1.040, bg_m3m3: 0.9361, mu_g_cp: 0.0080 },
     { p_bar:  18.25, rs_m3m3:  16.12, bo_m3m3: 1.150, mu_o_cp: 0.975, bg_m3m3: 0.0679, mu_g_cp: 0.0096 },
@@ -53,7 +56,9 @@ const SPE1_PVT_TABLE = [
     { p_bar: 173.38, rs_m3m3: 138.03, bo_m3m3: 1.500, mu_o_cp: 0.641, bg_m3m3: 0.00727, mu_g_cp: 0.0208 },
     { p_bar: 207.85, rs_m3m3: 165.64, bo_m3m3: 1.565, mu_o_cp: 0.594, bg_m3m3: 0.00607, mu_g_cp: 0.0228 },
     { p_bar: 276.79, rs_m3m3: 226.20, bo_m3m3: 1.695, mu_o_cp: 0.510, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
+    { p_bar: 621.54, rs_m3m3: 226.20, bo_m3m3: 1.579, mu_o_cp: 0.740, bg_m3m3: 0.00455, mu_g_cp: 0.0268 },
     { p_bar: 345.73, rs_m3m3: 288.17, bo_m3m3: 1.827, mu_o_cp: 0.449, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
+    { p_bar: 621.54, rs_m3m3: 288.17, bo_m3m3: 1.737, mu_o_cp: 0.631, bg_m3m3: 0.00364, mu_g_cp: 0.0309 },
 ];
 
 // Exact SWOF/SGOF inputs from OPM's props_spe1case1b.inc.
@@ -235,7 +240,7 @@ export const spe1_gas_injection: Scenario = {
         mu_w: 0.318,
         mu_o: 0.51,      // at initial conditions (from PVT table at ~330 bar)
         mu_g: 0.027,     // at initial conditions
-        c_o: 2.06e-4,    // undersaturated oil compressibility (from SPE1 undersaturated data)
+        c_o: 2.06e-4,    // fallback undersaturated c_o for PVTO branches without explicit continuation rows
         c_w: 4.67e-5,    // 3.22e-6 psi⁻¹ → bar⁻¹
         c_g: 1e-4,       // gas compressibility (approximate)
         rho_w: 1033,
@@ -284,12 +289,13 @@ export const spe1_gas_injection: Scenario = {
         // Case 1 source deck uses:
         // - producer ORAT 20,000 STB/d with 1000 psia BHP floor
         // - injector GAS RATE 100 MMscf/d with 9014 psia BHP ceiling
-        // Surface-rate targets are converted from standard conditions to a dynamic
-        // reservoir-rate target each step using local PVT/state.
+        // Surface-rate targets are the authoritative deck-matching controls.
+        // The legacy reservoir-rate fields below are retained only as fallback/context;
+        // WASM rate control uses the pressure-dependent surface-rate conversion path.
         producerControlMode: 'rate',
         injectorControlMode: 'rate',
-        targetProducerRate: 5400,  // ≈ 20,000 STB/d × Bo × 0.159
-        targetInjectorRate: 12000, // ≈ 100 MMscf/d at reservoir Bg
+        targetProducerRate: 5400,  // legacy fallback only; dynamic reservoir withdrawal is solved from the surface target
+        targetInjectorRate: 12000, // legacy fallback only; dynamic reservoir injection is solved from the surface target
         targetProducerSurfaceRate: 3179.74,   // 20,000 STB/d → Sm3/d
         targetInjectorSurfaceRate: 2_831_680, // 100 MMscf/d → Sm3/d
         producerBhp: 69,           // 1000 psia min BHP
@@ -304,11 +310,12 @@ export const spe1_gas_injection: Scenario = {
         gravityEnabled: true,      // layered system with density differences
 
         // ── Numerics ────────────────────────────────────────────────────
+        fimEnabled: true,
         delta_t_days: 5,
         steps: 800,               // 4000 days coverage
         max_sat_change_per_step: 0.05,
-        max_pressure_change_per_step: 50,
-        max_well_rate_change_fraction: 0.5,
+        max_pressure_change_per_step: 2,
+        max_well_rate_change_fraction: 0.2,
     },
     sensitivities: [
         {
