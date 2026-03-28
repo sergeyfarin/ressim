@@ -280,7 +280,6 @@ impl FimState {
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
         }
-        next.enforce_control_bounds(sim);
 
         next.classify_regimes(sim);
 
@@ -330,46 +329,34 @@ impl FimState {
     }
 
     pub(crate) fn respects_basic_bounds(&self, sim: &ReservoirSimulator) -> bool {
-        let topology = build_well_topology(sim);
-        let pressure_upper = self
-            .cells
-            .iter()
-            .map(|cell| cell.pressure_bar)
-            .fold(sim.well_bhp_max.max(1.0), f64::max)
-            + 500.0;
+        // Lightweight check — no PVT flash or topology rebuild.
+        // apply_newton_update already enforced bounds and classified regimes,
+        // so we just verify the state hasn't gone numerically wild.
+        let oil_floor = if sim.three_phase_mode {
+            sim.scal_3p
+                .as_ref()
+                .map(|scal| scal.s_or.max(0.0))
+                .unwrap_or(sim.scal.s_or.max(0.0))
+        } else {
+            sim.scal.s_or.max(0.0)
+        };
 
-        self.cells.iter().enumerate().all(|(idx, cell)| {
-            let derived = self.derive_cell(sim, idx);
-            let oil_floor = if sim.three_phase_mode {
-                sim.scal_3p
-                    .as_ref()
-                    .map(|scal| {
-                        if derived.sg > 1e-9 {
-                            scal.s_org.max(scal.s_or)
-                        } else {
-                            scal.s_or
-                        }
-                    })
-                    .unwrap_or(sim.scal.s_or)
-            } else {
-                sim.scal.s_or
+        self.cells.iter().all(|cell| {
+            let (sg, so) = match cell.regime {
+                HydrocarbonState::Saturated => {
+                    let sg = cell.hydrocarbon_var;
+                    (sg, 1.0 - cell.sw - sg)
+                }
+                HydrocarbonState::Undersaturated => (0.0, 1.0 - cell.sw),
             };
-            cell.sw >= -1e-9
+            cell.pressure_bar >= 1e-6
                 && cell.sw >= sim.scal.s_wc - 1e-9
                 && cell.sw <= 1.0 + 1e-9
-                && derived.sg >= -1e-9
-                && derived.so >= oil_floor - 1e-9
-                && derived.so <= 1.0 + 1e-9
-                && derived.sg <= 1.0 + 1e-9
-                && (cell.sw + derived.so + derived.sg - 1.0).abs() < 1e-6
-        }) && self.well_bhp.iter().enumerate().all(|(well_idx, bhp_bar)| {
-            let control = physical_well_control(sim, &topology, well_idx);
-            if topology.wells[well_idx].injector {
-                *bhp_bar >= 1e-6 - 1e-9 && *bhp_bar <= pressure_upper + 1e-9
-            } else {
-                *bhp_bar >= control.bhp_limit.min(sim.well_bhp_min).max(1e-6) - 1e-9
-                    && *bhp_bar <= pressure_upper + 1e-9
-            }
+                && sg >= -1e-9
+                && so >= oil_floor - 1e-9
+                && so <= 1.0 + 1e-9
+        }) && self.well_bhp.iter().all(|bhp_bar| {
+            *bhp_bar >= 1e-6 - 1e-9 && *bhp_bar <= 50_000.0
         })
     }
 

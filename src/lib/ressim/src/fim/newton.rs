@@ -23,16 +23,7 @@ impl Default for FimNewtonOptions {
             max_newton_iterations: 20,
             residual_tolerance: 1e-5,
             update_tolerance: 1e-3,
-            min_damping: {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    1.0 / 1024.0
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    1.0 / 64.0
-                }
-            },
+            min_damping: 1.0 / 64.0,
             linear: FimLinearSolveOptions::default(),
         }
     }
@@ -111,6 +102,8 @@ pub(crate) fn run_fim_timestep(
     let mut final_residual_inf_norm: Option<f64>;
     let mut final_update_inf_norm = f64::INFINITY;
     let mut accepted_damping = 1.0;
+    let mut prev_residual_norm = f64::INFINITY;
+    let mut stagnation_count: u32 = 0;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -128,6 +121,26 @@ pub(crate) fn run_fim_timestep(
             },
         );
         final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling));
+
+        // Early termination: if residual is not decreasing, bail out to trigger timestep cut.
+        let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
+        if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
+            stagnation_count += 1;
+            if stagnation_count >= 3 {
+                return FimStepReport {
+                    accepted_state: state,
+                    converged: false,
+                    newton_iterations: iteration + 1,
+                    final_residual_inf_norm: current_norm,
+                    final_update_inf_norm,
+                    last_linear_report,
+                    cutback_factor: 0.25,
+                };
+            }
+        } else {
+            stagnation_count = 0;
+        }
+        prev_residual_norm = current_norm;
 
         let rhs = -&assembly.residual;
         let mut linear_report = solve_linearized_system(

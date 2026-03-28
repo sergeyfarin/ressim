@@ -1685,6 +1685,23 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "long benchmark"]
+    fn bench_spe1_fim_20_days() {
+        let mut sim = make_spe1_like_base_sim();
+        sim.set_fim_enabled(true);
+        for i in 0..80 {
+            sim.step(0.25);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "Warning at step {}: {}",
+                i,
+                sim.last_solver_warning
+            );
+        }
+        assert!(sim.time_days >= 20.0 - 1e-9);
+    }
+
+    #[test]
     #[ignore = "debug helper for SPE1 producer breakthrough diagnostics"]
     fn debug_spe1_producer_breakthrough_probe() {
         let sample_times = [
