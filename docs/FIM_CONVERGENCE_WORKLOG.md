@@ -184,6 +184,88 @@ Conclusion: the dramatic slowdown is tightly localized around the first water br
   - water breakthrough case: perforation-flow residual becomes the dominant row during the hard retry window
 - The shared theme is still coupled well/cell nonlinearity at breakthrough, but the dominant equation family depends on the physics regime.
 
+## Perforation Detail Trace
+
+The Newton trace now emits an extra detail block whenever a perforation-flow row is the dominant residual family.
+
+### What it reports
+
+- perforation index and physical-well index
+- injector/producer flag
+- perforation unknown rate `q`
+- clipped connection rate `conn`
+- raw connection rate `raw = WI * mobility * drawdown`
+- `WI`, total connection mobility, drawdown, cell pressure, and BHP
+- when applicable, parent-well target rate, current total well rate from unknowns, and the current BHP/rate slacks
+
+### Water breakthrough finding
+
+- In the hard `wf_bt_12x12x1` retries, the injector perforation row (`perf0`) becomes dominant.
+- The important pattern is not just that the perforation row is large; it is why:
+  - the unknown perforation rate `q` often remains far smaller in magnitude than the connection law wants
+  - examples from the trace show `q` in the range of roughly `-40` to `-1200 m3/d`, while the connection law simultaneously wants `-7e3` to `-2.6e4 m3/d`
+- That creates very large residuals in the perforation row even when the cell residuals are already much smaller.
+
+### Gas-case finding
+
+- In the gas case, perforation dominance appears later than the injector gas-row dominance, but when it does appear the same structural mismatch is visible.
+- In the milder gas retries, the perforation unknown is held at the control target (`q ≈ -500`) while the connection law wants only about `-300`, leaving a persistent perforation residual around `0.35–0.45` in scaled units.
+- In the pathological gas retries, the same row can blow up catastrophically because the connection law goes non-physical:
+  - examples show `p_cell → 0`, `bhp → 400–900`, and raw connection rates of order `-6e5` to `-1.6e6 m3/d`
+
+### Working systematic interpretation
+
+- This strengthens the case that there is a shared systematic issue, not two unrelated bugs.
+- The common failure mechanism is in the coupled well/perforation solve:
+  - the well-control part of the system keeps the perforation unknowns close to a control-implied total rate,
+  - while the perforation connection relation `q = WI * mobility * drawdown` can demand a materially different rate,
+  - and near breakthrough that mismatch can become the dominant nonlinear bottleneck.
+- Water and gas differ in which equation family becomes dominant first, but both can fall into the same well/perforation inconsistency once the solve gets into the hard regime.
+
+## Frozen-Cell Well Consistency Check
+
+The perforation detail trace now also reports a frozen-cell locally consistent well state for the parent well:
+
+- `frozen_bhp`: the BHP that makes the current cell state locally consistent with the active well control
+- `frozen_q`: the connection-law perforation rate at that frozen-cell-consistent BHP
+- `dq = q - frozen_q`
+- for rate-controlled wells, `frozen_well_rate` and whether the consistent state is already BHP-limited
+
+### What this separates
+
+- It distinguishes two different failure modes that previously looked similar in the row-family trace:
+  - the Newton iterate can be far away from the local well/perforation manifold even with cell states frozen,
+  - or it can already be close to that manifold and the remaining difficulty is the coupled cell/BHP interaction itself.
+
+### Pressure-controlled water breakthrough
+
+- In both `wf_bt_12x12x1` and `wf_bt_12x12x3`, the frozen-cell-consistent injector state is simply `bhp = 500 bar`, and the corresponding connection-law perforation rates are still very large in magnitude.
+- Representative 1D/2D breakthrough traces show `frozen_q` of roughly `-7e3` to `-2.6e4 m3/d` while the actual perforation unknown remains between about `-1200` and `+600 m3/d`.
+- Representative 3D traces show the same pattern on both injector and producer perforations:
+  - injector examples: `q ≈ -3.2e2` or even positive while `frozen_q ≈ -1.6e4` to `-2.0e4`
+  - producer examples: `q ≈ 0` while `frozen_q ≈ +3.4e3` to `+6.5e3`
+- That means the difficult water-breakthrough retries are not just small complementarity or scaling defects; the current iterate is genuinely far from the local pressure-controlled well/perforation manifold.
+
+### Gas case split
+
+- The gas case now separates into two sub-regimes.
+- Mild perforation-dominant plateau:
+  - `frozen_bhp` differs from the iterate by only about `0.1–0.3 bar`
+  - `frozen_q ≈ -500 m3/d`, matching the current perforation unknown almost exactly
+  - the remaining perforation residual comes from a relatively small BHP mismatch that keeps the connection rate near `-300` instead of `-500`
+- Catastrophic gas retries:
+  - the iterate can move to `bhp = 300–900 bar` with `p_cell -> 0`, while the frozen-cell-consistent state still wants `bhp ≈ 0.28 bar` and `q ≈ -500 m3/d`
+  - in that regime the Newton iterate is again far from the local well/perforation manifold, not just slightly misaligned with it
+
+### Updated interpretation
+
+- The diagnostic evidence is now strong enough to separate symptom from mechanism.
+- Shared mechanism:
+  - hard failures in pressure-controlled water breakthrough and catastrophic gas retries are large-distance-to-local-manifold failures in the explicit well unknowns
+- Secondary mechanism:
+  - the milder gas plateau is a smaller BHP-coupling/stagnation problem near an otherwise reasonable local well state
+- This is enough evidence to move from pure diagnosis toward a fix aimed at keeping `(bhp, q_perf)` closer to the frozen-cell-consistent well manifold during Newton updates, instead of letting the explicit well unknowns wander far away and asking later iterations to recover.
+
 ## Diagnostic Infrastructure Notes
 
 - `test-native.sh` now runs the native debug tests with exact Rust test names, so one scenario no longer accidentally executes substring-matched variants.
