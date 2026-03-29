@@ -37,7 +37,6 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
 
 ### Diagnostic clutter
 
-- `src/lib/ressim/src/tests/fim_debug.rs` is useful but oversized and functions as a scenario catalog, benchmark harness, and convergence probe all at once.
 - `src/lib/ressim/src/lib.rs` still contains ignored debug helpers for SPE1 and injector-balance probes.
 - `src/lib/ressim/src/tests/fim_spe1_bug.rs` appears stale and not part of the canonical test surface.
 
@@ -49,7 +48,7 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
 ### Code-surface ambiguity
 
 - `src/lib/ressim/src/fim/mod.rs` still uses `#![allow(dead_code)]`, which hides unused FIM code instead of making it explicit.
-- native-only verbose tooling such as `step_fim_verbose()` exists, but its intended use is not documented as part of the diagnostic workflow.
+- the canonical wasm diagnostic path now owns deep solver traces, so older references to native-only verbose tooling should be treated as historical context, not active workflow.
 
 ## Recommended Cleanup Sequence
 
@@ -97,14 +96,11 @@ Target files:
 
 - `src/lib/ressim/src/tests/spe1_fim.rs`
   - keep as the home for stable SPE1/FIM regressions
-- `src/lib/ressim/src/tests/fim_debug.rs`
-  - keep only if it still provides unique value after wasm diagnostics are upgraded
-  - otherwise fold useful coverage into the wasm-first workflow
 - `src/lib/ressim/src/tests/fim_spe1_bug.rs`
   - either delete if stale, move useful content into `spe1_fim.rs`, or convert into a documented ignored diagnostic
 - `src/lib/ressim/src/lib.rs` ignored debug helpers
   - move them into a dedicated diagnostics file or remove them if superseded
-  - also files `test_import.mjs`, `test-native.sh`, `test-wasm-spe1-short.sh`, `test-wasm-spe1.js`, `test-wasm.sh`, `test.sh`
+  - also files `test_import.mjs`, `test-wasm-spe1-short.sh`, `test-wasm-spe1.js`, `test-wasm.sh`, `test.sh`
 
 End-state rule: no debug-only probe should live in `lib.rs` and tests should not sit in `lib.rs` they should be in dedicated files not to clutter it, tests and probes should all be in separate dedicated files.
 
@@ -141,8 +137,8 @@ End-state rule: no undocumented experimental patch files in the repository root.
    - start with `src/lib/ressim/src/fim/mod.rs`
    - replace broad suppression with targeted `allow(dead_code)` only where justified
 
-2. Document native-only verbose helpers.
-   - `step_fim_verbose()` should either be documented as a diagnostic entry point or gated more explicitly
+2. Document the wasm-first deep diagnostic path.
+  - `test-wasm.sh` and `scripts/fim-wasm-diagnostic.mjs` should be the documented entry points for structured summaries and per-Newton traces
 
 3. Add a short module-level note to `src/lib/ressim/src/fim/mod.rs`.
    - state current role of the module tree
@@ -167,7 +163,6 @@ Keep:
 
 - `src/lib/ressim/src/fim/`
 - `src/lib/ressim/src/tests/spe1_fim.rs`
-- `src/lib/ressim/src/tests/fim_debug.rs`
 - `docs/FIM_CONVERGENCE_WORKLOG.md`
 - `docs/FIM_MIGRATION_PLAN.md`
 
@@ -191,7 +186,7 @@ Cleanup is complete when all of the following are true:
 - all FIM tests are clearly categorized as regression or diagnostic
 - no debug-only probe remains embedded in `lib.rs`
 - no unexplained backup or patch artifact remains in the repository root
-- the default workflow for FIM debugging and validation is written down in one place
+- the default workflow for FIM debugging and validation is written down in one place and points to the wasm-first diagnostic runner
 
 ## Recommended Order Of Execution
 

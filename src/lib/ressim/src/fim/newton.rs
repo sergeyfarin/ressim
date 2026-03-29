@@ -7,7 +7,7 @@ use crate::fim::linear::{
     solve_linearized_system,
 };
 use crate::fim::state::FimState;
-use crate::fim::wells::{build_well_topology, perforation_residual_diagnostics};
+use crate::fim::wells::{build_well_topology, perforation_residual_diagnostics, physical_well_control};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
@@ -557,6 +557,90 @@ fn global_material_balance_trace(diagnostics: &GlobalMaterialBalanceDiagnostics)
     )
 }
 
+fn cell_index_to_ijk(sim: &ReservoirSimulator, cell_idx: usize) -> (usize, usize, usize) {
+    let cells_per_layer = sim.nx * sim.ny;
+    let k = cell_idx / cells_per_layer;
+    let in_layer = cell_idx % cells_per_layer;
+    let j = in_layer / sim.nx;
+    let i = in_layer % sim.nx;
+    (i, j, k)
+}
+
+fn cell_residual_detail_trace(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    peak: &ResidualFamilyPeak,
+) -> Option<String> {
+    let cell_idx = peak.item_index;
+    if cell_idx >= state.cells.len() {
+        return None;
+    }
+    let (i, j, k) = cell_index_to_ijk(sim, cell_idx);
+    let cell = state.cell(cell_idx);
+    let derived = state.derive_cell(sim, cell_idx);
+    let equation = match peak.family {
+        ResidualRowFamily::Water => "water",
+        ResidualRowFamily::OilComponent => "oil",
+        ResidualRowFamily::GasComponent => "gas",
+        _ => return None,
+    };
+
+    Some(format!(
+        "eq={} cell{}=({}, {}, {}) p={:.3} sw={:.4} so={:.4} sg={:.4} rs={:.4} regime={:?}",
+        equation,
+        cell_idx,
+        i,
+        j,
+        k,
+        cell.pressure_bar,
+        cell.sw,
+        derived.so,
+        derived.sg,
+        derived.rs,
+        cell.regime,
+    ))
+}
+
+fn well_constraint_detail_trace(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    peak: &ResidualFamilyPeak,
+) -> Option<String> {
+    let well_idx = peak.item_index;
+    let well_topology = topology.wells.get(well_idx)?;
+    let representative = &sim.wells[well_topology.representative_well_index];
+    let control = physical_well_control(sim, topology, well_idx);
+    let decision = if !control.enabled {
+        "disabled".to_string()
+    } else if control.rate_controlled {
+        if control.uses_surface_target {
+            "rate(surface)".to_string()
+        } else {
+            "rate(reservoir)".to_string()
+        }
+    } else {
+        "bhp".to_string()
+    };
+
+    Some(format!(
+        "well{} id={} inj={} head=({}, {}) bhp={:.3} mode={} target={} bhp_limit={:.3} nperf={}",
+        well_idx,
+        representative.physical_well_id.as_deref().unwrap_or("<legacy>"),
+        well_topology.injector,
+        well_topology.head_i,
+        well_topology.head_j,
+        state.well_bhp.get(well_idx).copied().unwrap_or(representative.bhp),
+        decision,
+        control
+            .target_rate
+            .map(|value| format!("{:.3e}", value))
+            .unwrap_or_else(|| "none".to_string()),
+        control.bhp_limit,
+        well_topology.perforation_indices.len(),
+    ))
+}
+
 fn residual_family_detail_trace(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -564,6 +648,14 @@ fn residual_family_detail_trace(
     diagnostics: &ResidualFamilyDiagnostics,
 ) -> Option<String> {
     match diagnostics.global.family {
+        ResidualRowFamily::Water
+        | ResidualRowFamily::OilComponent
+        | ResidualRowFamily::GasComponent => {
+            cell_residual_detail_trace(sim, state, &diagnostics.global)
+        }
+        ResidualRowFamily::WellConstraint => {
+            well_constraint_detail_trace(sim, state, topology, &diagnostics.global)
+        }
         ResidualRowFamily::PerforationFlow => {
             let detail = perforation_residual_diagnostics(
                 sim,
@@ -623,7 +715,6 @@ fn residual_family_detail_trace(
             }
             Some(parts.join(" "))
         }
-        _ => None,
     }
 }
 

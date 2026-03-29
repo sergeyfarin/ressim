@@ -17,6 +17,8 @@ The original cleanup plan described Phase 2 as a test classification step, but t
 
 Because of that, Phase 2 should be executed as a staged migration with explicit review gates.
 
+Status update after execution: the wasm diagnostic path now exposes deep per-Newton and retry traces, the native-only harness was removed, and this plan remains as the record of how that migration was staged.
+
 ## Phase 2 Goals
 
 - classify every FIM-related test or probe into one of:
@@ -42,10 +44,6 @@ Because of that, Phase 2 should be executed as a staged migration with explicit 
     - `debug_low_kv_injector_balance_probe`
     - `debug_spe1_producer_breakthrough_probe`
     - `debug_spe1_producer_late_time_probe`
-- `src/lib/ressim/src/tests/fim_debug.rs`
-  - real native-only ignored diagnostic harness
-  - currently holds many scenario builders and many scenario-specific entry points
-  - verbose output is emitted through `step_fim_verbose()` and `eprintln!`
 - `src/lib/ressim/src/tests/fim_spe1_bug.rs`
   - ad hoc one-off repro using direct prints
   - likely obsolete or in need of conversion into a maintained diagnostic
@@ -55,7 +53,6 @@ Because of that, Phase 2 should be executed as a staged migration with explicit 
 ### Helper scripts and scratch files
 
 - maintained-looking scripts:
-  - `test-native.sh`
   - `test-wasm.sh`
 - likely scratch or broken exploratory files:
   - `test-wasm-spe1-short.sh`
@@ -105,8 +102,6 @@ Proposed default:
 
 - `src/lib/ressim/src/tests/spe1_fim.rs`
   - becomes the maintained home for stable SPE1/FIM regressions
-- `src/lib/ressim/src/tests/fim_debug.rs`
-  - remains the native-only diagnostic harness, but with reduced verbosity and clearer purpose
 - `src/lib/ressim/src/tests/fim_spe1_bug.rs`
   - either deleted or replaced by a documented diagnostic file only if it still adds unique signal
 
@@ -117,6 +112,11 @@ Approved default:
 - keep one canonical wasm diagnostic script with switches for scenario, grid, settings, and diagnostic level
 - do not keep a native script unless it proves unique value after the wasm diagnostic path exists
 - remove broken or scratch workflow files rather than preserving them as undocumented history
+
+Executed outcome:
+
+- the canonical wasm path gained deep trace capture through the simulator API
+- `test-native.sh` and the native-only debug harness were removed
 
 Desired script behavior:
 
@@ -177,24 +177,14 @@ Rule:
 
 ### Slice 4: Rationalize `fim_debug.rs`
 
-Keep only the parts that still add real value, and reduce noise:
+Executed outcome:
 
-- document intended use
-- group scenarios more clearly
-- cut needless always-on verbosity where possible
-- preserve only the scenario entry points that still add diagnostic value
-- merge repetitive probes where behavior can be switched by parameters instead of duplicated test bodies
-
-Potential follow-up split if needed:
-
-- separate scenario builders from scenario entry points
-- separate waterflood, gas, and SPE1 diagnostics into smaller files
+- replaced by the wasm-first diagnostic runner rather than further trimming the native harness
 
 ### Slice 5: Classify helper scripts and replace them with one canonical wasm entry point
 
 Audit and classify:
 
-- `test-native.sh`
 - `test-wasm.sh`
 - `test-wasm-spe1-short.sh`
 - `test-wasm-spe1.js`
@@ -230,10 +220,8 @@ This is the approved starting direction for execution, subject only to item-by-i
 | `src/lib/ressim/src/lib.rs` `spe1_fim_gas_injection_creates_free_gas` | real regression in wrong file | production regression | move to `src/lib/ressim/src/tests/spe1_fim.rs` |
 | `src/lib/ressim/src/lib.rs` `spe1_fim_coarse_grid_reaches_producer_gas_breakthrough` | real regression candidate but not short on 2D/3D-style follow-up workloads | production regression | move to `src/lib/ressim/src/tests/spe1_fim.rs`, but classify outside the short default set |
 | `src/lib/ressim/src/lib.rs` debug probes | ignored probes in crate root | ignored diagnostic or obsolete probe | move or delete individually |
-| `src/lib/ressim/src/tests/fim_debug.rs` | active native harness | ignored diagnostic or migration source | trim, consolidate, and keep only if wasm does not fully replace it |
 | `src/lib/ressim/src/tests/fim_spe1_bug.rs` | ad hoc print-heavy repro | obsolete probe unless unique value proven | likely delete |
 | `src/lib/ressim/src/tests/spe1_fim.rs` | disconnected stub | n/a | convert into the real regression module |
-| `test-native.sh` | maintained native runner | candidate for deletion | keep only if unique value survives wasm diagnostic upgrade |
 | `test-wasm.sh` | maintained wasm runner | canonical diagnostic workflow | keep, expand, and promote |
 | `test-wasm-spe1-short.sh` | broken scratch writer | obsolete probe | delete |
 | `test-wasm-spe1.js` | scratch note file | obsolete probe | delete |
@@ -246,7 +234,7 @@ This is the approved starting direction for execution, subject only to item-by-i
 2. Design the canonical wasm diagnostic path so diagnostics are available without relying on native.
 3. Delete clearly broken scratch files as early as possible.
 4. Move stable FIM regressions and remaining useful diagnostics out of `lib.rs`.
-5. Trim or remove native-only infrastructure once wasm coverage is sufficient.
+5. Remove native-only infrastructure once wasm coverage is sufficient.
 
 ## Confirmed Decisions
 
