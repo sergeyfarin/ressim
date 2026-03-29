@@ -1210,7 +1210,11 @@ mod tests {
         );
     }
 
-    fn make_spe1_like_sim(
+    fn make_spe1_like_grid_sim(
+        nx: usize,
+        ny: usize,
+        producer_i: usize,
+        producer_j: usize,
         layer_perms_z: Vec<f64>,
         max_sat_change_per_step: f64,
         max_pressure_change_per_step: f64,
@@ -1219,8 +1223,10 @@ mod tests {
         use crate::pvt::{PvtRow, PvtTable};
         use crate::relperm::{SgofRow, SwofRow, ThreePhaseScalTables};
 
-        let mut sim = ReservoirSimulator::new(10, 10, 3, 0.3);
-        sim.set_cell_dimensions_per_layer(304.8, 304.8, vec![6.096, 9.144, 15.24])
+        let mut sim = ReservoirSimulator::new(nx, ny, 3, 0.3);
+        let cell_dx = 3048.0 / nx as f64;
+        let cell_dy = 3048.0 / ny as f64;
+        sim.set_cell_dimensions_per_layer(cell_dx, cell_dy, vec![6.096, 9.144, 15.24])
             .unwrap();
         sim.set_fluid_properties(0.51, 0.318).unwrap();
         sim.set_fluid_compressibilities(2.06e-4, 4.67e-5).unwrap();
@@ -1519,9 +1525,28 @@ mod tests {
             layer_perms_z,
         )
         .unwrap();
-        sim.add_well(9, 9, 2, 69.0, 0.0762, 0.0, false).unwrap();
+        sim.add_well(producer_i, producer_j, 2, 69.0, 0.0762, 0.0, false)
+            .unwrap();
         sim.add_well(0, 0, 0, 621.0, 0.0762, 0.0, true).unwrap();
         sim
+    }
+
+    fn make_spe1_like_sim(
+        layer_perms_z: Vec<f64>,
+        max_sat_change_per_step: f64,
+        max_pressure_change_per_step: f64,
+        max_well_rate_change_fraction: f64,
+    ) -> ReservoirSimulator {
+        make_spe1_like_grid_sim(
+            10,
+            10,
+            9,
+            9,
+            layer_perms_z,
+            max_sat_change_per_step,
+            max_pressure_change_per_step,
+            max_well_rate_change_fraction,
+        )
     }
 
     fn make_spe1_like_base_sim() -> ReservoirSimulator {
@@ -1746,6 +1771,45 @@ mod tests {
             "total gas inventory should increase under FIM gas injection, before={}, after={}",
             initial_total_gas_sc,
             final_total_gas_sc
+        );
+    }
+
+    #[test]
+    fn spe1_fim_coarse_grid_reaches_producer_gas_breakthrough() {
+        let mut sim = make_spe1_like_grid_sim(5, 5, 4, 4, vec![500.0, 50.0, 200.0], 0.05, 20.0, 0.2);
+        sim.set_fim_enabled(true);
+
+        let producer_id = sim.idx(4, 4, 2);
+        let mut breakthrough_time_days = None;
+        let mut previous_producer_sg = sim.sat_gas[producer_id];
+        let mut last_gor = 0.0;
+
+        for _ in 0..120 {
+            sim.step(30.0);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "FIM solver warning at t={}: {}",
+                sim.time_days,
+                sim.last_solver_warning
+            );
+
+            let rate_point = sim.rate_history.last().expect("rate history should exist");
+            last_gor = rate_point.producing_gor;
+            if sim.sat_gas[producer_id] > 1e-4 || last_gor > 50.0 {
+                breakthrough_time_days = Some(sim.time_days);
+                break;
+            }
+
+            previous_producer_sg = sim.sat_gas[producer_id];
+        }
+
+        assert!(
+            breakthrough_time_days.is_some(),
+            "coarse SPE1 grid should reach producer gas breakthrough within 3600 days; final producer sg={}, previous producer sg={}, final gor={}, final time={}",
+            sim.sat_gas[producer_id],
+            previous_producer_sg,
+            last_gor,
+            sim.time_days,
         );
     }
 

@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
-import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
+import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from '../charts/referenceComparisonModel';
 import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './caseCatalog';
-import { getScenario } from './scenarios';
+import { getScenario, getScenarioWithVariantParams } from './scenarios';
+import type { SimulatorCreatePayload, SimulatorWellDefinition } from '../simulator-types';
 
 type BenchmarkParams = Record<string, unknown>;
 
@@ -90,6 +91,186 @@ function configureWorkerStyleWells(simulator: ReservoirSimulator, params: Benchm
       );
     }
   }
+}
+
+function configureSimulatorFromPayload(payload: SimulatorCreatePayload, applySchedules = true): ReservoirSimulator {
+  const simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
+  const call = (name: string, ...args: unknown[]) => {
+    const fn = (simulator as unknown as Record<string, unknown>)[name];
+    if (typeof fn === 'function') {
+      return (fn as (...inner: unknown[]) => unknown).call(simulator, ...args);
+    }
+    return undefined;
+  };
+
+  call('setFimEnabled', payload.fimEnabled !== false);
+  if (payload.cellDzPerLayer && payload.cellDzPerLayer.length > 0) {
+    call('setCellDimensionsPerLayer', Number(payload.cellDx), Number(payload.cellDy), new Float64Array(payload.cellDzPerLayer));
+  } else {
+    call('setCellDimensions', Number(payload.cellDx), Number(payload.cellDy), Number(payload.cellDz));
+  }
+  call('setFluidProperties', Number(payload.mu_o), Number(payload.mu_w));
+  call('setFluidCompressibilities', Number(payload.c_o), Number(payload.c_w));
+  if (payload.pvtMode === 'black-oil' && payload.pvtTable) {
+    call('setPvtTable', payload.pvtTable);
+  }
+  if (payload.initialRs != null) {
+    call('setInitialRs', Number(payload.initialRs));
+  }
+  call(
+    'setRockProperties',
+    Number(payload.rock_compressibility),
+    Number(payload.depth_reference),
+    Number(payload.volume_expansion_o),
+    Number(payload.volume_expansion_w),
+  );
+  call('setFluidDensities', Number(payload.rho_o), Number(payload.rho_w));
+  simulator.setInitialPressure(payload.initialPressure);
+  if (payload.initialSaturationPerLayer && payload.initialSaturationPerLayer.length > 0) {
+    call('setInitialSaturationPerLayer', new Float64Array(payload.initialSaturationPerLayer));
+  } else {
+    simulator.setInitialSaturation(payload.initialSaturation);
+  }
+  call('setCapillaryParams', Boolean(payload.capillaryEnabled) ? Number(payload.capillaryPEntry) : 0, Number(payload.capillaryLambda));
+  call('setGravityEnabled', Boolean(payload.gravityEnabled));
+  simulator.setRelPermProps(payload.s_wc, payload.s_or, payload.n_w, payload.n_o, payload.k_rw_max ?? 1.0, payload.k_ro_max ?? 1.0);
+
+  if (payload.threePhaseModeEnabled) {
+    call('setThreePhaseModeEnabled', true);
+    call(
+      'setThreePhaseRelPermProps',
+      payload.s_wc,
+      payload.s_or,
+      payload.s_gc ?? 0.05,
+      payload.s_gr ?? 0.05,
+      payload.s_org ?? 0.15,
+      payload.n_w,
+      payload.n_o,
+      payload.n_g ?? 1.5,
+      payload.k_rw_max ?? 1.0,
+      payload.k_ro_max ?? 1.0,
+      payload.k_rg_max ?? 1.0,
+    );
+    if (payload.scalTables) {
+      call('setThreePhaseScalTables', payload.scalTables);
+    }
+    call('setGasFluidProperties', payload.mu_g ?? 0.02, payload.c_g ?? 1e-4, payload.rho_g ?? 10.0);
+    call('setGasRedissolutionEnabled', payload.gasRedissolutionEnabled !== false);
+    if (payload.pcogEnabled) {
+      call('setGasOilCapillaryParams', payload.pcogPEntry ?? 0, payload.pcogLambda ?? 2);
+    }
+    call('setInjectedFluid', payload.injectedFluid ?? 'gas');
+    if (payload.initialGasSaturationPerLayer && payload.initialGasSaturationPerLayer.length > 0) {
+      call('setInitialGasSaturationPerLayer', new Float64Array(payload.initialGasSaturationPerLayer));
+    } else if ((payload.initialGasSaturation ?? 0) > 0) {
+      call('setInitialGasSaturation', payload.initialGasSaturation);
+    }
+  }
+
+  call(
+    'setStabilityParams',
+    payload.max_sat_change_per_step,
+    payload.max_pressure_change_per_step,
+    payload.max_well_rate_change_fraction,
+  );
+  call('setWellControlModes', String(payload.injectorControlMode ?? 'pressure'), String(payload.producerControlMode ?? 'pressure'));
+  call('setTargetWellRates', Number(payload.targetInjectorRate ?? 0), Number(payload.targetProducerRate ?? 0));
+  call('setTargetWellSurfaceRates', Number(payload.targetInjectorSurfaceRate ?? 0), Number(payload.targetProducerSurfaceRate ?? 0));
+
+  const producerBhp = Number(payload.producerBhp ?? 100);
+  const injectorBhp = Number(payload.injectorBhp ?? 500);
+  const prodIsRate = String(payload.producerControlMode ?? 'pressure') === 'rate';
+  const bhpMin = Number(payload.bhpMin ?? (prodIsRate ? 0 : Math.min(producerBhp, injectorBhp)));
+  const bhpMax = Number(payload.bhpMax ?? Math.max(producerBhp, injectorBhp));
+  call('setWellBhpLimits', bhpMin, bhpMax);
+
+  simulator.setPermeabilityPerLayer(new Float64Array(payload.permsX), new Float64Array(payload.permsY), new Float64Array(payload.permsZ));
+
+  const explicitWells: SimulatorWellDefinition[] = Array.isArray(payload.wells) && payload.wells.length > 0
+    ? payload.wells
+    : [
+        {
+          id: 'producer-main',
+          injector: false,
+          bhp: producerBhp,
+          wellRadius: payload.well_radius,
+          skin: payload.well_skin,
+          completions: (Array.isArray(payload.producerKLayers)
+            ? payload.producerKLayers
+            : Array.from({ length: payload.nz }, (_, i) => i)
+          ).map((k) => ({ i: Number(payload.producerI ?? (payload.nx - 1)), j: Number(payload.producerJ ?? 0), k })),
+          schedule: {
+            controlMode: payload.producerControlMode === 'rate' ? 'rate' : 'pressure',
+            targetRate: payload.targetProducerRate,
+            targetSurfaceRate: payload.targetProducerSurfaceRate,
+            bhpLimit: payload.bhpMin,
+            enabled: true,
+          },
+        },
+        ...(payload.injectorEnabled === false ? [] : [{
+          id: 'injector-main',
+          injector: true,
+          bhp: injectorBhp,
+          wellRadius: payload.well_radius,
+          skin: payload.well_skin,
+          completions: (Array.isArray(payload.injectorKLayers)
+            ? payload.injectorKLayers
+            : Array.from({ length: payload.nz }, (_, i) => i)
+          ).map((k) => ({ i: Number(payload.injectorI ?? 0), j: Number(payload.injectorJ ?? 0), k })),
+          schedule: {
+            controlMode: payload.injectorControlMode === 'rate' ? 'rate' : 'pressure',
+            targetRate: payload.targetInjectorRate,
+            targetSurfaceRate: payload.targetInjectorSurfaceRate,
+            bhpLimit: payload.bhpMax,
+            enabled: true,
+          },
+        }]),
+      ];
+
+  for (const well of explicitWells) {
+    if (well.schedule?.enabled === false) continue;
+    for (const completion of well.completions) {
+      const addWellWithId = (simulator as unknown as Record<string, unknown>).addWellWithId;
+      if (typeof addWellWithId === 'function') {
+        (addWellWithId as (...args: unknown[]) => unknown).call(
+          simulator,
+          completion.i,
+          completion.j,
+          completion.k,
+          Number(well.bhp),
+          Number(well.wellRadius),
+          Number(well.skin),
+          Boolean(well.injector),
+          String(well.id),
+        );
+      } else {
+        simulator.add_well(
+          completion.i,
+          completion.j,
+          completion.k,
+          Number(well.bhp),
+          Number(well.wellRadius),
+          Number(well.skin),
+          Boolean(well.injector),
+        );
+      }
+    }
+
+    const setWellSchedule = (simulator as unknown as Record<string, unknown>).setWellSchedule;
+    if (applySchedules && typeof setWellSchedule === 'function') {
+      (setWellSchedule as (...args: unknown[]) => unknown).call(
+        simulator,
+        String(well.id),
+        String(well.schedule?.controlMode ?? 'pressure'),
+        Number(well.schedule?.targetRate ?? Number.NaN),
+        Number(well.schedule?.targetSurfaceRate ?? Number.NaN),
+        Number(well.schedule?.bhpLimit ?? Number.NaN),
+        well.schedule?.enabled !== false,
+      );
+    }
+  }
+
+  return simulator;
 }
 
 function measureBreakthroughPvi(params: BenchmarkParams, watercutThreshold = 0.01) {
@@ -398,5 +579,100 @@ describe('frontend benchmark preset runtime coverage', () => {
     ]);
 
     simulator.free();
+  });
+
+  it('WASM bindings create free gas for a minimal three-phase gas-injection case', async () => {
+    await ensureWasmReady();
+
+    const simulator = new ReservoirSimulator(5, 1, 1, 0.2);
+    simulator.setThreePhaseRelPermProps(0.1, 0.1, 0.05, 0.05, 0.1, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7);
+    simulator.setGasFluidProperties(0.02, 1e-4, 10.0);
+    simulator.setThreePhaseModeEnabled(true);
+    simulator.setInjectedFluid('gas');
+    simulator.setInitialPressure(200);
+    simulator.setInitialSaturation(0.1);
+    simulator.add_well(0, 0, 0, 400, 0.1, 0, true);
+    simulator.add_well(4, 0, 0, 100, 0.1, 0, false);
+
+    for (let step = 0; step < 20; step += 1) {
+      simulator.step(2.0);
+    }
+
+    const maxSg = Math.max(...Array.from(simulator.getSatGas()));
+    simulator.free();
+
+    expect(maxSg).toBeGreaterThan(1e-6);
+  });
+
+  it('the exact coarse SPE1 payload creates free gas if explicit schedules are skipped', async () => {
+    await ensureWasmReady();
+
+    const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_5');
+    const payload = buildBenchmarkCreatePayload(params);
+    const simulator = configureSimulatorFromPayload(payload, false);
+
+    for (let step = 0; step < 6; step += 1) {
+      simulator.step(Number(payload.delta_t_days));
+    }
+
+    const maxSg = Math.max(...Array.from(simulator.getSatGas()));
+    const totalInjection = simulator.getRateHistory().reduce(
+      (sum, point) => sum + Math.max(0, Number(point.total_injection ?? 0)),
+      0,
+    );
+    simulator.free();
+
+    expect(totalInjection).toBeGreaterThan(1);
+    expect(maxSg).toBeGreaterThan(1e-6);
+  });
+
+  it('keeps the coarse SPE1 grid advancing to producer gas breakthrough in the WASM runtime path', async () => {
+    await ensureWasmReady();
+
+    const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_5');
+    const payload = buildBenchmarkCreatePayload(params);
+    const simulator = configureSimulatorFromPayload(payload);
+    const producerIndex = ((2 * payload.ny) + Number(payload.producerJ ?? 0)) * payload.nx + Number(payload.producerI ?? (payload.nx - 1));
+    const injectorIndex = Number(payload.injectorI ?? 0);
+    const initialRs = Number(simulator.getRs()[producerIndex] ?? Number.NaN);
+
+    let breakthroughTime: number | null = null;
+    let lastProducerSg = 0;
+    let lastGor = 0;
+    let lastInjection = 0;
+    let maxSg = 0;
+    let injectorSg = 0;
+
+    for (let step = 0; step < Number(payload.steps); step += 1) {
+      simulator.step(Number(payload.delta_t_days));
+
+      const satGas = simulator.getSatGas();
+      const producerSg = Number(satGas[producerIndex] ?? 0);
+      const latestRate = simulator.getRateHistory().at(-1);
+      lastProducerSg = producerSg;
+      lastGor = Number(latestRate?.producing_gor ?? 0);
+      lastInjection = Number(latestRate?.total_injection ?? 0);
+      injectorSg = Number(satGas[injectorIndex] ?? 0);
+      maxSg = Math.max(maxSg, ...Array.from(satGas));
+
+      if (producerSg > 1e-4 || lastGor > 50) {
+        breakthroughTime = simulator.get_time();
+        break;
+      }
+    }
+
+    const finalWarning = simulator.getLastSolverWarning();
+    simulator.free();
+
+    expect(initialRs).toBeCloseTo(226.197, 3);
+    expect(lastInjection).toBeGreaterThan(1);
+    expect(maxSg).toBeGreaterThan(1e-6);
+    expect(injectorSg).toBeGreaterThan(1e-6);
+    expect({ breakthroughTime, finalWarning, lastProducerSg, lastGor }).toEqual(
+      expect.objectContaining({
+        breakthroughTime: expect.any(Number),
+        finalWarning: '',
+      }),
+    );
   });
 });

@@ -612,3 +612,16 @@ Interpretation:
     - existing CPR unit and SPE1 regressions remain green
   - Measured result on `wf_bt_12x12x3`: the diagnostics are highly informative. On the hard early retries the extracted coarse system has `rows=432`, uses the exact dense coarse solve, and reports average coarse-stage reduction ratios on the order of `1e-14` to `1e-13`. In other words, the current coarse stage is already solving the extracted pressure system essentially to machine precision on this case.
   - Current conclusion: the remaining fragmentation on this representative case is not well explained by an under-solved coarse pressure stage anymore. The dominant failures now look like nonlinear damping / outer-step shelf behavior in the reservoir rows after a very effective coarse correction, so the next best leverage is probably outside raw coarse-solve strength.
+
+  5. **Classify failed retries as linear-bad vs nonlinear-bad before pushing CPR further**
+    - March 28 implementation: `fim/newton.rs` now classifies failed retries as `linear-bad`, `nonlinear-bad`, or `mixed` using the final dominant residual family together with the actual backend used by the last linear solve, and `step.rs` now prints a per-outer-step retry summary.
+    - Focused validation on the active branch:
+      - `failure_classification_marks_clean_cpr_failure_as_nonlinear_bad` passes
+      - `failure_classification_marks_fallback_path_as_linear_bad` passes
+      - `cpr_report_exposes_coarse_diagnostics` still passes
+    - Measured result on the corrected `wf_bt_12x12x3` rerun: the first outer step reports `linear-bad=11`, `nonlinear-bad=83`, `mixed=0`.
+    - Structure of that split:
+      - the first few cutbacks from `1 d` down to `0.015625 d` include a short linear-bad phase
+      - after that, the long accepted-substep shelf around `0.005536 d`, `0.002768 d`, and finally `0.001384 d` is overwhelmingly `nonlinear-bad`
+      - the dominant family in that shelf is usually a reservoir row (`oil` first, then later many `water` labels), not a direct-solver fallback event
+    - Current conclusion: on the representative hard 3D breakthrough case, the remaining retry explosion is now mostly a nonlinear / timestep-acceptance problem rather than a coarse-pressure under-solve problem. Additional CPR strengthening may still help the short early linear-bad window, but it is unlikely to remove the practical low-`dt` shelf by itself. The next highest-value work should target outer-step policy, near-stagnant retry acceptance/cutback rules, or a cheap residual-based nonlinear acceptance slice.
