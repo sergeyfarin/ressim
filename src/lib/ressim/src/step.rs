@@ -5,17 +5,29 @@ use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
 use crate::fim::state::FimState;
 
-/// Diagnostic print macro — compiles to nothing on WASM, prints to stderr on native.
+/// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
-    ($verbose:expr, $($arg:tt)*) => {
+    ($sim:expr, $verbose:expr, $($arg:tt)*) => {{
+        let line = format!($($arg)*);
+        $sim.append_fim_trace_line(&line);
         #[cfg(not(target_arch = "wasm32"))]
         if $verbose {
-            eprintln!($($arg)*);
+            eprintln!("{}", line);
         }
-    };
+    }};
 }
 
 impl ReservoirSimulator {
+    pub(crate) fn append_fim_trace_line(&mut self, line: &str) {
+        if !self.capture_fim_trace {
+            return;
+        }
+        if !self.last_fim_trace.is_empty() {
+            self.last_fim_trace.push('\n');
+        }
+        self.last_fim_trace.push_str(line);
+    }
+
     pub(crate) fn step_internal(&mut self, target_dt_days: f64) {
         if self.fim_enabled {
             self.step_internal_fim(target_dt_days);
@@ -135,12 +147,6 @@ impl ReservoirSimulator {
         self.step_internal_fim_impl(target_dt_days, false);
     }
 
-    /// Native-only entry point: runs the same FIM timestep loop with diagnostic output.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn step_fim_verbose(&mut self, target_dt_days: f64) {
-        self.step_internal_fim_impl(target_dt_days, true);
-    }
-
     fn step_internal_fim_impl(&mut self, target_dt_days: f64, verbose: bool) {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
@@ -158,6 +164,7 @@ impl ReservoirSimulator {
         let mut last_growth_factor = MAX_GROWTH;
 
         fim_trace!(
+            self,
             verbose,
             "FIM step: target_dt={:.6} days, t={:.6} days",
             target_dt_days,
@@ -181,6 +188,7 @@ impl ReservoirSimulator {
 
             loop {
                 fim_trace!(
+                    self,
                     verbose,
                     "  substep {}: trial_dt={:.6} (retry={})",
                     substeps,
@@ -227,6 +235,7 @@ impl ReservoirSimulator {
                         .clamp(1.0, MAX_GROWTH);
 
                     fim_trace!(
+                        self,
                         verbose,
                         "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
                         substeps,
@@ -271,6 +280,7 @@ impl ReservoirSimulator {
                 }
 
                 fim_trace!(
+                    self,
                     verbose,
                     "  substep {}: FAILED (iters={} res={:.3e} mb={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
                     substeps,
@@ -294,7 +304,7 @@ impl ReservoirSimulator {
                 );
 
                 if !next_dt.is_finite() || next_dt <= 1e-12 {
-                    fim_trace!(verbose, "  ABORT: timestep collapsed to {:.3e}", next_dt);
+                    fim_trace!(self, verbose, "  ABORT: timestep collapsed to {:.3e}", next_dt);
                     self.last_solver_warning = format!(
                         "FIM Newton step collapsed timestep at t={:.6} days after {} iterations",
                         self.time_days + time_stepped,
@@ -305,6 +315,7 @@ impl ReservoirSimulator {
 
                 if retry_count >= MAX_NEWTON_RETRIES_PER_SUBSTEP {
                     fim_trace!(
+                        self,
                         verbose,
                         "  ABORT: exceeded retry budget ({} retries)",
                         retry_count
@@ -322,7 +333,7 @@ impl ReservoirSimulator {
         }
 
         if substeps == MAX_SUBSTEPS && time_stepped < target_dt_days {
-            fim_trace!(verbose, "  ABORT: hit MAX_SUBSTEPS={}", MAX_SUBSTEPS);
+            fim_trace!(self, verbose, "  ABORT: hit MAX_SUBSTEPS={}", MAX_SUBSTEPS);
             self.last_solver_warning = format!(
                 "FIM adaptive timestep hit MAX_SUBSTEPS before completing requested dt (advanced {:.6} of {:.6} days)",
                 time_stepped, target_dt_days
@@ -330,6 +341,7 @@ impl ReservoirSimulator {
         }
 
         fim_trace!(
+            self,
             verbose,
             "FIM step done: {} substeps, advanced {:.6} of {:.6} days",
             substeps,
@@ -338,6 +350,7 @@ impl ReservoirSimulator {
         );
         if linear_bad_retries + nonlinear_bad_retries + mixed_retries > 0 {
             fim_trace!(
+                self,
                 verbose,
                 "FIM retry summary: linear-bad={} nonlinear-bad={} mixed={}",
                 linear_bad_retries,

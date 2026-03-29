@@ -9,14 +9,16 @@ use crate::fim::linear::{
 use crate::fim::state::FimState;
 use crate::fim::wells::{build_well_topology, perforation_residual_diagnostics};
 
-/// Diagnostic print macro — compiles to nothing on WASM, prints to stderr on native.
+/// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
-    ($verbose:expr, $($arg:tt)*) => {
+    ($sim:expr, $verbose:expr, $($arg:tt)*) => {{
+        let line = format!($($arg)*);
+        $sim.append_fim_trace_line(&line);
         #[cfg(not(target_arch = "wasm32"))]
         if $verbose {
-            eprintln!($($arg)*);
+            eprintln!("{}", line);
         }
-    };
+    }};
 }
 
 const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
@@ -687,7 +689,7 @@ fn accepted_state_meets_convergence(
 }
 
 pub(crate) fn run_fim_timestep(
-    sim: &ReservoirSimulator,
+    sim: &mut ReservoirSimulator,
     previous_state: &FimState,
     initial_iterate: &FimState,
     dt_days: f64,
@@ -709,6 +711,7 @@ pub(crate) fn run_fim_timestep(
     let topology = build_well_topology(sim);
 
     fim_trace!(
+        sim,
         options.verbose,
         "  Newton: dt={:.6} days, n_cells={}, n_wells={}",
         dt_days,
@@ -773,6 +776,7 @@ pub(crate) fn run_fim_timestep(
                 )
             {
                 fim_trace!(
+                    sim,
                     options.verbose,
                     "    iter {:>2}: CONVERGED on residual check res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}",
                     iteration,
@@ -811,6 +815,7 @@ pub(crate) fn run_fim_timestep(
                 &accepted_diagnostics.residual_diagnostics,
             );
             fim_trace!(
+                sim,
                 options.verbose,
                 "    iter {:>2}: POST-CLASSIFICATION REJECTED res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}{}",
                 iteration,
@@ -850,6 +855,7 @@ pub(crate) fn run_fim_timestep(
                 let failure_diagnostics =
                     classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
                 fim_trace!(
+                    sim,
                     options.verbose,
                     "    iter {:>2}: STAGNATION (count={}) res={:.3e} fam=[{}]{}{} — bailing out",
                     iteration,
@@ -887,6 +893,7 @@ pub(crate) fn run_fim_timestep(
         if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
         {
             fim_trace!(
+                sim,
                 options.verbose,
                 "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback",
                 iteration,
@@ -933,6 +940,7 @@ pub(crate) fn run_fim_timestep(
                 material_balance_limit,
             ) {
                 fim_trace!(
+                    sim,
                     options.verbose,
                     "    iter {:>2}: CONVERGED res={:.3e} mb={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}] mb=[{}]{}",
                     iteration,
@@ -970,6 +978,7 @@ pub(crate) fn run_fim_timestep(
                 &accepted_diagnostics.residual_diagnostics,
             );
             fim_trace!(
+                sim,
                 options.verbose,
                 "    iter {:>2}: POST-CLASSIFICATION REJECTED res={:.3e} mb={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}] mb=[{}]{}{}",
                 iteration,
@@ -1038,6 +1047,7 @@ pub(crate) fn run_fim_timestep(
         }
 
         fim_trace!(
+            sim,
             options.verbose,
             "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} linear_iters={}{}{}{} fam=[{}]{}",
             iteration,
@@ -1080,6 +1090,7 @@ pub(crate) fn run_fim_timestep(
                 ) {
                     final_update_inf_norm = 0.0;
                     fim_trace!(
+                        sim,
                         options.verbose,
                         "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}",
                         iteration,
@@ -1118,6 +1129,7 @@ pub(crate) fn run_fim_timestep(
                     &accepted_diagnostics.residual_diagnostics,
                 );
                 fim_trace!(
+                    sim,
                     options.verbose,
                     "    iter {:>2}: POST-CLASSIFICATION REJECTED after non-improving candidates res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}{}",
                     iteration,
@@ -1154,6 +1166,7 @@ pub(crate) fn run_fim_timestep(
             let failure_diagnostics =
                 classify_retry_failure(Some(&linear_report), &residual_diagnostics);
             fim_trace!(
+                sim,
                 options.verbose,
                 "    iter {:>2}: DAMPING FAILED — no residual-reducing candidate (best={:.3e}, current={:.3e}){}",
                 iteration,
@@ -1206,6 +1219,7 @@ pub(crate) fn run_fim_timestep(
         && final_material_balance_inf_norm <= options.material_balance_tolerance
     {
         fim_trace!(
+            sim,
             options.verbose,
             "    post-loop: CONVERGED on final residual check res={:.3e} mb={:.3e} fam=[{}] mb=[{}]{}",
             final_residual_inf_norm.unwrap_or(f64::INFINITY),
@@ -1233,6 +1247,7 @@ pub(crate) fn run_fim_timestep(
     let failure_diagnostics =
         classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
     fim_trace!(
+        sim,
         options.verbose,
         "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} mb={:.3e} upd={:.3e} fam=[{}] mb=[{}]{}{}",
         options.max_newton_iterations,
@@ -1275,10 +1290,10 @@ mod tests {
 
     #[test]
     fn zero_residual_scaffold_converges_in_one_newton_step() {
-        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         let state = FimState::from_simulator(&sim);
 
-        let report = run_fim_timestep(&sim, &state, &state, 1.0, &FimNewtonOptions::default());
+        let report = run_fim_timestep(&mut sim, &state, &state, 1.0, &FimNewtonOptions::default());
 
         assert!(report.converged);
         assert_eq!(report.newton_iterations, 1);
@@ -1319,7 +1334,7 @@ mod tests {
         iterate.cells[0].sw += 0.02;
 
         let report = run_fim_timestep(
-            &sim,
+            &mut sim,
             &previous_state,
             &iterate,
             1.0,
@@ -1345,7 +1360,7 @@ mod tests {
         let previous_state = FimState::from_simulator(&sim);
 
         let report = run_fim_timestep(
-            &sim,
+            &mut sim,
             &previous_state,
             &previous_state,
             1.0,
@@ -1389,7 +1404,7 @@ mod tests {
             ..FimNewtonOptions::default()
         };
 
-        let report = run_fim_timestep(&sim, &previous_state, &iterate, 1.0, &options);
+    let report = run_fim_timestep(&mut sim, &previous_state, &iterate, 1.0, &options);
 
         assert!(report.converged);
         assert!(report.newton_iterations <= 2);
@@ -1433,7 +1448,7 @@ mod tests {
             ..FimNewtonOptions::default()
         };
 
-        let report = run_fim_timestep(&sim, &previous_state, &previous_state, 0.01, &options);
+    let report = run_fim_timestep(&mut sim, &previous_state, &previous_state, 0.01, &options);
 
         assert!(
             !report.converged

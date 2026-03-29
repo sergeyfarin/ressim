@@ -109,8 +109,8 @@ Examples:
   node scripts/fim-wasm-diagnostic.mjs --preset water-rate --control rate --grid 24x1x1
 
 Current diagnostic granularity:
-  The wasm path exposes structured outer-step summaries and solver warnings.
-  It does not yet expose per-Newton or per-line-search traces.
+  summary = structured outer-step summaries and solver warnings.
+  step = per-step summaries plus captured per-Newton and retry traces from the FIM solver.
 `);
 }
 
@@ -462,6 +462,7 @@ function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
     sgMax: sgRange.max,
     rsMin: rsRange.min,
     rsMax: rsRange.max,
+    fimTraceLineCount: sim.getFimTrace().split('\n').filter(Boolean).length,
     cumulativeMbErrorM3: sim.cumulative_mb_error_m3,
     cumulativeMbGasErrorM3: sim.cumulative_mb_gas_error_m3,
   };
@@ -483,6 +484,15 @@ function printStepSummary(record) {
       record.warning ? `warning=${record.warning}` : 'warning=none',
     ].join(' | '),
   );
+}
+
+function printFimTrace(trace) {
+  if (!trace.trim()) {
+    return;
+  }
+  for (const line of trace.trimEnd().split('\n')) {
+    console.error(`  ${line}`);
+  }
 }
 
 async function main() {
@@ -508,12 +518,18 @@ async function main() {
   for (let outerStep = 1; outerStep <= options.steps; outerStep += 1) {
     const historyBefore = sim.getRateHistory().length;
     const stepStarted = performance.now();
-    sim.step(options.dt);
+    let fimTrace = '';
+    if (options.diagnostic === 'step') {
+      fimTrace = sim.stepWithDiagnostics(options.dt);
+    } else {
+      sim.step(options.dt);
+    }
     const outerMs = performance.now() - stepStarted;
     const record = snapshot(sim, outerStep, outerMs, historyBefore);
     stepRecords.push(record);
     if (options.diagnostic === 'step') {
       printStepSummary(record);
+      printFimTrace(fimTrace);
     }
     if (record.warning) {
       break;

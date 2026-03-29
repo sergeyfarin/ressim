@@ -13,6 +13,7 @@
     - clearly broken scratch wasm helper files were removed in the first Phase 2 pass
     - stable SPE1/FIM smoke regressions were moved out of `src/lib/ressim/src/lib.rs` into `src/lib/ressim/src/tests/spe1_fim.rs`
     - crate-root debug probes, `src/lib/ressim/src/tests/fim_spe1_bug.rs`, and the redundant manual `test.sh` helper were removed from the active surface
+    - deep per-Newton FIM traces are now exposed through the canonical wasm diagnostic path, and the temporary native-only harness has been removed
   - Canonical sources after cleanup:
     - `TODO.md` keeps only actionable open FIM tasks and short status bullets.
     - `docs/FIM_CONVERGENCE_WORKLOG.md` keeps active investigation notes only.
@@ -27,7 +28,7 @@
   - Expected deliverables:
     - one short `docs/FIM_STATUS.md` or equivalent current-state summary
     - slimmer `TODO.md` FIM section with only active items
-    - dedicated home for native-only FIM diagnostics
+    - one canonical wasm-first FIM diagnostic workflow with deep trace support
     - removal or documented quarantine of stale experimental artifacts
 
 - [ ] Replace the current IMPES timestep path with a fully implicit black-oil FIM path in the Rust core.

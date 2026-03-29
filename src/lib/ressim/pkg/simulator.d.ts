@@ -7,6 +7,7 @@ export class ReservoirSimulator {
     addWellWithId(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean, physical_well_id: string): void;
     add_well(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean): void;
     getDimensions(): any;
+    getFimTrace(): string;
     getLastSolverWarning(): string;
     getPressures(): Float64Array;
     getRateHistory(): any;
@@ -59,6 +60,7 @@ export class ReservoirSimulator {
     setWellControlModes(injector_mode: string, producer_mode: string): void;
     setWellSchedule(physical_well_id: string, control_mode: string, target_rate_m3_day: number, target_surface_rate_m3_day: number, bhp_limit: number, enabled: boolean): void;
     step(target_dt_days: number): void;
+    stepWithDiagnostics(target_dt_days: number): string;
     cumulative_mb_error_m3: number;
     cumulative_mb_gas_error_m3: number;
 }
@@ -78,6 +80,7 @@ export interface InitOutput {
     readonly reservoirsimulator_addWellWithId: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number];
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
+    readonly reservoirsimulator_getFimTrace: (a: number) => [number, number];
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
@@ -125,6 +128,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly reservoirsimulator_setWellSchedule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
     readonly reservoirsimulator_step: (a: number, b: number) => void;
+    readonly reservoirsimulator_stepWithDiagnostics: (a: number, b: number) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

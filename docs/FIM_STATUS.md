@@ -51,7 +51,7 @@ Short regression checks worth keeping near the day-to-day baseline:
 Diagnostic entry points for deeper convergence work:
 
 - canonical wasm diagnostic runner: `test-wasm.sh` backed by `scripts/fim-wasm-diagnostic.mjs`
-- native-only ignored diagnostics in `src/lib/ressim/src/tests/fim_debug.rs` remain temporary and should be removed unless wasm still lacks equivalent diagnostic coverage
+- deep solver traces now come from the wasm diagnostic runner itself via the new captured FIM trace path
 
 ## Phase 2 Status
 
@@ -60,9 +60,10 @@ Diagnostic entry points for deeper convergence work:
 - Clearly broken scratch workflow files have been removed in the first execution pass.
 - Stable SPE1/FIM smoke regressions have been extracted into `src/lib/ressim/src/tests/spe1_fim.rs`.
 - A canonical wasm diagnostic path now exists for waterflood and gas presets, multiple grids, and injector-only or producer-only or both well layouts.
-- Current wasm diagnostic granularity is structured outer-step summaries plus solver warnings; per-Newton diagnostics would still require additional wasm-facing instrumentation rather than keeping the native path by default.
+- The canonical wasm runner now also exposes captured per-Newton and retry traces through `stepWithDiagnostics()` / `getFimTrace()`.
 - Crate-root debug probes, the ad hoc `fim_spe1_bug.rs` file, and the redundant manual `test.sh` script have been removed from the active surface.
-- Remaining Phase 2 work is concentrated in trimming `src/lib/ressim/src/tests/fim_debug.rs` and deciding whether `test-native.sh` still has any unique value.
+- The temporary native-only harness and `test-native.sh` were removed once wasm gained equivalent deep-trace coverage.
+- Remaining Phase 2 work is now keeping the single wasm-first workflow current and using it for convergence follow-up.
 
 ## Current Working Rules
 

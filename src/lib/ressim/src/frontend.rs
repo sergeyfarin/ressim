@@ -75,6 +75,8 @@ impl ReservoirSimulator {
             b_w: 1.0,
             rate_history: Vec::new(),
             last_solver_warning: String::new(),
+            last_fim_trace: String::new(),
+            capture_fim_trace: false,
             cumulative_injection_m3: 0.0,
             cumulative_production_m3: 0.0,
             cumulative_mb_error_m3: 0.0,
@@ -256,7 +258,18 @@ impl ReservoirSimulator {
     }
 
     pub fn step(&mut self, target_dt_days: f64) {
+        self.capture_fim_trace = false;
+        self.last_fim_trace.clear();
         self.step_internal(target_dt_days);
+    }
+
+    #[wasm_bindgen(js_name = stepWithDiagnostics)]
+    pub fn step_with_diagnostics(&mut self, target_dt_days: f64) -> String {
+        self.capture_fim_trace = true;
+        self.last_fim_trace.clear();
+        self.step_internal(target_dt_days);
+        self.capture_fim_trace = false;
+        self.last_fim_trace.clone()
     }
 
     #[wasm_bindgen(js_name = setFimEnabled)]
@@ -389,6 +402,11 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = getLastSolverWarning)]
     pub fn get_last_solver_warning(&self) -> String {
         self.last_solver_warning.clone()
+    }
+
+    #[wasm_bindgen(js_name = getFimTrace)]
+    pub fn get_fim_trace(&self) -> String {
+        self.last_fim_trace.clone()
     }
 
     #[wasm_bindgen(js_name = getDimensions)]
@@ -745,6 +763,9 @@ impl ReservoirSimulator {
         self.sat_oil = grid_data.sat_oil;
         self.wells = wells;
         self.rate_history = rate_history_vec;
+        self.last_solver_warning.clear();
+        self.last_fim_trace.clear();
+        self.capture_fim_trace = false;
 
         if let Some(last) = self.rate_history.last() {
             self.cumulative_injection_m3 = last.total_injection_reservoir;

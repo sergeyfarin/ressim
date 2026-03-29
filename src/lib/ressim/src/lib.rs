@@ -110,6 +110,8 @@ pub struct ReservoirSimulator {
     well_bhp_min: f64,
     well_bhp_max: f64,
     last_solver_warning: String,
+    last_fim_trace: String,
+    capture_fim_trace: bool,
     cumulative_injection_m3: f64,
     cumulative_production_m3: f64,
     pub cumulative_mb_error_m3: f64,
@@ -140,8 +142,6 @@ mod tests {
     use super::*;
     use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
     mod buckley;
-    #[cfg(not(target_arch = "wasm32"))]
-    mod fim_debug;
     mod pvt_properties;
     mod spe1_fim;
     mod well_controls;

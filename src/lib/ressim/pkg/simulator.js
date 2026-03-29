@@ -68,6 +68,21 @@ export class ReservoirSimulator {
     /**
      * @returns {string}
      */
+    getFimTrace() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.reservoirsimulator_getFimTrace(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
     getLastSolverWarning() {
         let deferred1_0;
         let deferred1_1;
@@ -524,6 +539,22 @@ export class ReservoirSimulator {
      */
     step(target_dt_days) {
         wasm.reservoirsimulator_step(this.__wbg_ptr, target_dt_days);
+    }
+    /**
+     * @param {number} target_dt_days
+     * @returns {string}
+     */
+    stepWithDiagnostics(target_dt_days) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.reservoirsimulator_stepWithDiagnostics(this.__wbg_ptr, target_dt_days);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @param {number} arg0

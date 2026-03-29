@@ -21,7 +21,6 @@ It is the working classification table used to drive cleanup execution.
 | `src/lib/ressim/src/tests/spe1_fim.rs` `spe1_fim_gas_injection_creates_free_gas` | maintained FIM smoke regression in dedicated file | production regression | keep in `src/lib/ressim/src/tests/spe1_fim.rs` | cross-target |
 | `src/lib/ressim/src/tests/spe1_fim.rs` `spe1_fim_coarse_grid_reaches_producer_gas_breakthrough` | maintained regression in dedicated file, but not short enough for the default baseline | production regression | keep in `src/lib/ressim/src/tests/spe1_fim.rs`, outside the short default set | cross-target |
 | `src/lib/ressim/src/lib.rs` former crate-root debug probes | redundant ignored debug probes previously embedded in the crate root | obsolete probe | deleted during Phase 2 cleanup | removed from crate root |
-| `src/lib/ressim/src/tests/fim_debug.rs` | large native-only diagnostic harness | ignored diagnostic or migration source | trim, consolidate, and keep only the unique scenarios that survive wasm diagnostic replacement | native-only today |
 | `src/lib/ressim/src/tests/fim_spe1_bug.rs` | ad hoc print-heavy repro | obsolete probe | deleted during Phase 2 cleanup | removed |
 | `src/lib/ressim/src/tests/spe1_fim.rs` | dedicated regression module | production regression container | keep as the home for stable SPE1/FIM regressions | cross-target |
 
@@ -31,7 +30,6 @@ It is the working classification table used to drive cleanup execution.
 | --- | --- | --- | --- | --- |
 | `test-wasm.sh` | wrapper for the canonical wasm diagnostic runner | canonical diagnostic workflow | keep as the shell entry point over `scripts/fim-wasm-diagnostic.mjs` | default wasm-first path |
 | `test.sh` | manual wasm snippet superseded by the canonical runner | obsolete probe | deleted during Phase 2 cleanup | replaced by `test-wasm.sh` and `scripts/fim-wasm-diagnostic.mjs` |
-| `test-native.sh` | maintained native scenario runner | candidate for deletion | keep temporarily during migration, then delete unless wasm cannot replace it | now considered non-default |
 | `test-wasm-spe1-short.sh` | broken scratch script that writes an invalid Rust stub | obsolete probe | deleted in first Phase 2 pass | scratch artifact |
 | `test-wasm-spe1.js` | scratch note file, not a maintained runner | obsolete probe | deleted in first Phase 2 pass | scratch artifact |
 | `test_import.mjs` | import probe with no documented workflow role | obsolete probe | deleted in first Phase 2 pass | scratch artifact |
@@ -60,6 +58,5 @@ Keep outside the short default set:
 
 ## Immediate Next Actions
 
-1. trim or delete native-only infrastructure once the wasm path covers the same needs
-2. rationalize `src/lib/ressim/src/tests/fim_debug.rs` so only unique diagnostic value remains
-3. decide whether `test-native.sh` still has any unique role after the wasm diagnostic path grows further
+1. keep extending the canonical wasm diagnostic runner instead of reintroducing target-specific probes
+2. keep the short default baseline focused on true regressions rather than verbose diagnostics

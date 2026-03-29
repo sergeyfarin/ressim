@@ -564,20 +564,4 @@ impl ReservoirSimulator {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn debug_calculate_fluxes(
-        &self,
-        delta_t_days: f64,
-    ) -> (
-        DVector<f64>,
-        Vec<f64>,
-        Vec<f64>,
-        Vec<f64>,
-        Vec<Option<ResolvedWellControl>>,
-        f64,
-        bool,
-        usize,
-    ) {
-        self.calculate_fluxes(delta_t_days)
-    }
 }

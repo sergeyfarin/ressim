@@ -10,6 +10,7 @@ export const set_panic_hook: () => void;
 export const reservoirsimulator_addWellWithId: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number];
 export const reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
 export const reservoirsimulator_getDimensions: (a: number) => any;
+export const reservoirsimulator_getFimTrace: (a: number) => [number, number];
 export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
 export const reservoirsimulator_getPressures: (a: number) => [number, number];
 export const reservoirsimulator_getRateHistory: (a: number) => any;
@@ -57,6 +58,7 @@ export const reservoirsimulator_setWellBhpLimits: (a: number, b: number, c: numb
 export const reservoirsimulator_setWellControlModes: (a: number, b: number, c: number, d: number, e: number) => void;
 export const reservoirsimulator_setWellSchedule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
 export const reservoirsimulator_step: (a: number, b: number) => void;
+export const reservoirsimulator_stepWithDiagnostics: (a: number, b: number) => [number, number];
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_exn_store: (a: number) => void;
