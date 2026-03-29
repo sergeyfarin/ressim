@@ -26,6 +26,50 @@ pub(crate) struct FimAssembly {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CellResidualBreakdown {
+    pub(crate) accumulation: f64,
+    pub(crate) x_minus: f64,
+    pub(crate) x_plus: f64,
+    pub(crate) y_minus: f64,
+    pub(crate) y_plus: f64,
+    pub(crate) z_minus: f64,
+    pub(crate) z_plus: f64,
+    pub(crate) well_source: f64,
+    pub(crate) total: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PhaseFluxDiagnostic {
+    pub(crate) dphi: f64,
+    pub(crate) upwind_cell_idx: usize,
+    pub(crate) mobility: f64,
+    pub(crate) flux: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FacePhaseDiagnostics {
+    pub(crate) water: PhaseFluxDiagnostic,
+    pub(crate) oil: PhaseFluxDiagnostic,
+    pub(crate) gas: PhaseFluxDiagnostic,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CellFacePhaseDiagnostics {
+    pub(crate) x_minus: Option<FacePhaseDiagnostics>,
+    pub(crate) x_plus: Option<FacePhaseDiagnostics>,
+    pub(crate) y_minus: Option<FacePhaseDiagnostics>,
+    pub(crate) y_plus: Option<FacePhaseDiagnostics>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct InterfaceFluxTerms {
+    dphi: [f64; 3],
+    upwind_cell_idx: [usize; 3],
+    mobility: [f64; 3],
+    flux_sc_day: [f64; 3],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimAssemblyOptions<'a> {
     pub(crate) dt_days: f64,
     pub(crate) include_wells: bool,
@@ -400,6 +444,282 @@ fn cell_accumulation_residual(
         current[1] - previous[1],
         current[2] - previous[2],
     ]
+}
+
+pub(crate) fn cell_equation_residual_breakdown(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    topology: &FimWellTopology,
+    dt_days: f64,
+    cell_idx: usize,
+    component: usize,
+) -> Option<CellResidualBreakdown> {
+    if cell_idx >= state.cells.len() || component >= 3 {
+        return None;
+    }
+
+    let derived_cell = state.derive_cell(sim, cell_idx);
+    let prev_derived_cell = previous_state.derive_cell(sim, cell_idx);
+    let accumulation = cell_accumulation_residual(
+        sim,
+        previous_state,
+        state,
+        cell_idx,
+        &derived_cell,
+        &prev_derived_cell,
+    )[component];
+
+    let cells_per_layer = sim.nx * sim.ny;
+    let k = cell_idx / cells_per_layer;
+    let in_layer = cell_idx % cells_per_layer;
+    let j = in_layer / sim.nx;
+    let i = in_layer % sim.nx;
+
+    let mut breakdown = CellResidualBreakdown {
+        accumulation,
+        x_minus: 0.0,
+        x_plus: 0.0,
+        y_minus: 0.0,
+        y_plus: 0.0,
+        z_minus: 0.0,
+        z_plus: 0.0,
+        well_source: 0.0,
+        total: 0.0,
+    };
+
+    if i > 0 {
+        let neighbor = sim.idx(i - 1, j, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        if let Some(flux) = interface_flux_contribution(
+            sim,
+            state,
+            dt_days,
+            neighbor,
+            cell_idx,
+            'x',
+            k,
+            k,
+            &derived_neighbor,
+            &derived_cell,
+        ) {
+            breakdown.x_minus = flux[1][component];
+        }
+    }
+    if i + 1 < sim.nx {
+        let neighbor = sim.idx(i + 1, j, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        if let Some(flux) = interface_flux_contribution(
+            sim,
+            state,
+            dt_days,
+            cell_idx,
+            neighbor,
+            'x',
+            k,
+            k,
+            &derived_cell,
+            &derived_neighbor,
+        ) {
+            breakdown.x_plus = flux[0][component];
+        }
+    }
+    if j > 0 {
+        let neighbor = sim.idx(i, j - 1, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        if let Some(flux) = interface_flux_contribution(
+            sim,
+            state,
+            dt_days,
+            neighbor,
+            cell_idx,
+            'y',
+            k,
+            k,
+            &derived_neighbor,
+            &derived_cell,
+        ) {
+            breakdown.y_minus = flux[1][component];
+        }
+    }
+    if j + 1 < sim.ny {
+        let neighbor = sim.idx(i, j + 1, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        if let Some(flux) = interface_flux_contribution(
+            sim,
+            state,
+            dt_days,
+            cell_idx,
+            neighbor,
+            'y',
+            k,
+            k,
+            &derived_cell,
+            &derived_neighbor,
+        ) {
+            breakdown.y_plus = flux[0][component];
+        }
+    }
+    if k > 0 {
+        let neighbor = sim.idx(i, j, k - 1);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        if let Some(flux) = interface_flux_contribution(
+            sim,
+            state,
+            dt_days,
+            neighbor,
+            cell_idx,
+            'z',
+            k - 1,
+            k,
+            &derived_neighbor,
+            &derived_cell,
+        ) {
+            breakdown.z_minus = flux[1][component];
+        }
+    }
+    if k + 1 < sim.nz {
+        let neighbor = sim.idx(i, j, k + 1);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        if let Some(flux) = interface_flux_contribution(
+            sim,
+            state,
+            dt_days,
+            cell_idx,
+            neighbor,
+            'z',
+            k,
+            k + 1,
+            &derived_cell,
+            &derived_neighbor,
+        ) {
+            breakdown.z_plus = flux[0][component];
+        }
+    }
+
+    for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
+        if perforation.cell_index == cell_idx {
+            breakdown.well_source +=
+                perforation_component_rates_sc_day(sim, state, topology, perf_idx)[component]
+                    * dt_days;
+        }
+    }
+
+    breakdown.total = breakdown.accumulation
+        + breakdown.x_minus
+        + breakdown.x_plus
+        + breakdown.y_minus
+        + breakdown.y_plus
+        + breakdown.z_minus
+        + breakdown.z_plus
+        + breakdown.well_source;
+
+    Some(breakdown)
+}
+
+pub(crate) fn cell_face_phase_flux_diagnostics(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    dt_days: f64,
+    cell_idx: usize,
+) -> Option<CellFacePhaseDiagnostics> {
+    if cell_idx >= state.cells.len() {
+        return None;
+    }
+
+    let derived_cell = state.derive_cell(sim, cell_idx);
+    let cells_per_layer = sim.nx * sim.ny;
+    let k = cell_idx / cells_per_layer;
+    let in_layer = cell_idx % cells_per_layer;
+    let j = in_layer / sim.nx;
+    let i = in_layer % sim.nx;
+
+    let x_minus = if i > 0 {
+        let neighbor = sim.idx(i - 1, j, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        oriented_face_phase_diagnostics(
+            sim,
+            state,
+            dt_days,
+            neighbor,
+            cell_idx,
+            'x',
+            k,
+            k,
+            &derived_neighbor,
+            &derived_cell,
+            1,
+        )
+    } else {
+        None
+    };
+
+    let x_plus = if i + 1 < sim.nx {
+        let neighbor = sim.idx(i + 1, j, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        oriented_face_phase_diagnostics(
+            sim,
+            state,
+            dt_days,
+            cell_idx,
+            neighbor,
+            'x',
+            k,
+            k,
+            &derived_cell,
+            &derived_neighbor,
+            0,
+        )
+    } else {
+        None
+    };
+
+    let y_minus = if j > 0 {
+        let neighbor = sim.idx(i, j - 1, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        oriented_face_phase_diagnostics(
+            sim,
+            state,
+            dt_days,
+            neighbor,
+            cell_idx,
+            'y',
+            k,
+            k,
+            &derived_neighbor,
+            &derived_cell,
+            1,
+        )
+    } else {
+        None
+    };
+
+    let y_plus = if j + 1 < sim.ny {
+        let neighbor = sim.idx(i, j + 1, k);
+        let derived_neighbor = state.derive_cell(sim, neighbor);
+        oriented_face_phase_diagnostics(
+            sim,
+            state,
+            dt_days,
+            cell_idx,
+            neighbor,
+            'y',
+            k,
+            k,
+            &derived_cell,
+            &derived_neighbor,
+            0,
+        )
+    } else {
+        None
+    };
+
+    Some(CellFacePhaseDiagnostics {
+        x_minus,
+        x_plus,
+        y_minus,
+        y_plus,
+    })
 }
 
 fn cell_accumulation_jacobian_block(
@@ -812,6 +1132,29 @@ fn interface_flux_contribution(
     derived_i: &FimCellDerived,
     derived_j: &FimCellDerived,
 ) -> Option<[[f64; 3]; 2]> {
+    let terms = interface_flux_terms(sim, state, id_i, id_j, dim, k_i, k_j, derived_i, derived_j)?;
+    let flux_sc = [
+        terms.flux_sc_day[0] * dt_days,
+        terms.flux_sc_day[1] * dt_days,
+        terms.flux_sc_day[2] * dt_days,
+    ];
+    Some([
+        [flux_sc[0], flux_sc[1], flux_sc[2]],
+        [-flux_sc[0], -flux_sc[1], -flux_sc[2]],
+    ])
+}
+
+fn interface_flux_terms(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    id_i: usize,
+    id_j: usize,
+    dim: char,
+    k_i: usize,
+    k_j: usize,
+    derived_i: &FimCellDerived,
+    derived_j: &FimCellDerived,
+) -> Option<InterfaceFluxTerms> {
     let cell_i = state.cell(id_i);
     let cell_j = state.cell(id_j);
 
@@ -854,37 +1197,76 @@ fn interface_flux_contribution(
     let mobilities_j = sim.phase_mobilities_for_state(cell_j.sw, derived_j.sg, p_j, derived_j.rs);
 
     let water_upstream = if dphi_w >= 0.0 {
-        (derived_i, mobilities_i)
+        (id_i, derived_i, mobilities_i)
     } else {
-        (derived_j, mobilities_j)
+        (id_j, derived_j, mobilities_j)
     };
     let oil_upstream = if dphi_o >= 0.0 {
-        (derived_i, mobilities_i)
+        (id_i, derived_i, mobilities_i)
     } else {
-        (derived_j, mobilities_j)
+        (id_j, derived_j, mobilities_j)
     };
     let gas_upstream = if dphi_g >= 0.0 {
-        (derived_i, mobilities_i)
+        (id_i, derived_i, mobilities_i)
     } else {
-        (derived_j, mobilities_j)
+        (id_j, derived_j, mobilities_j)
     };
 
-    let q_w_sc_day = geom_t * water_upstream.1.water * dphi_w / sim.b_w.max(1e-9);
-    let q_o_res_day = geom_t * oil_upstream.1.oil * dphi_o;
-    let q_o_sc_day = q_o_res_day / oil_upstream.0.bo.max(1e-9);
-    let q_g_free_sc_day = geom_t * gas_upstream.1.gas * dphi_g / gas_upstream.0.bg.max(1e-9);
-    let q_g_dissolved_sc_day = q_o_sc_day * oil_upstream.0.rs;
+    let q_w_sc_day = geom_t * water_upstream.2.water * dphi_w / sim.b_w.max(1e-9);
+    let q_o_res_day = geom_t * oil_upstream.2.oil * dphi_o;
+    let q_o_sc_day = q_o_res_day / oil_upstream.1.bo.max(1e-9);
+    let q_g_free_sc_day = geom_t * gas_upstream.2.gas * dphi_g / gas_upstream.1.bg.max(1e-9);
+    let q_g_dissolved_sc_day = q_o_sc_day * oil_upstream.1.rs;
     let q_g_sc_day = q_g_free_sc_day + q_g_dissolved_sc_day;
 
-    let flux_sc = [
-        q_w_sc_day * dt_days,
-        q_o_sc_day * dt_days,
-        q_g_sc_day * dt_days,
-    ];
-    Some([
-        [flux_sc[0], flux_sc[1], flux_sc[2]],
-        [-flux_sc[0], -flux_sc[1], -flux_sc[2]],
-    ])
+    Some(InterfaceFluxTerms {
+        dphi: [dphi_w, dphi_o, dphi_g],
+        upwind_cell_idx: [water_upstream.0, oil_upstream.0, gas_upstream.0],
+        mobility: [
+            water_upstream.2.water,
+            oil_upstream.2.oil,
+            gas_upstream.2.gas,
+        ],
+        flux_sc_day: [q_w_sc_day, q_o_sc_day, q_g_sc_day],
+    })
+}
+
+fn oriented_face_phase_diagnostics(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    dt_days: f64,
+    id_i: usize,
+    id_j: usize,
+    dim: char,
+    k_i: usize,
+    k_j: usize,
+    derived_i: &FimCellDerived,
+    derived_j: &FimCellDerived,
+    target_side: usize,
+) -> Option<FacePhaseDiagnostics> {
+    let terms = interface_flux_terms(sim, state, id_i, id_j, dim, k_i, k_j, derived_i, derived_j)?;
+    let sign = if target_side == 0 { 1.0 } else { -1.0 };
+
+    Some(FacePhaseDiagnostics {
+        water: PhaseFluxDiagnostic {
+            dphi: terms.dphi[0],
+            upwind_cell_idx: terms.upwind_cell_idx[0],
+            mobility: terms.mobility[0],
+            flux: sign * terms.flux_sc_day[0] * dt_days,
+        },
+        oil: PhaseFluxDiagnostic {
+            dphi: terms.dphi[1],
+            upwind_cell_idx: terms.upwind_cell_idx[1],
+            mobility: terms.mobility[1],
+            flux: sign * terms.flux_sc_day[1] * dt_days,
+        },
+        gas: PhaseFluxDiagnostic {
+            dphi: terms.dphi[2],
+            upwind_cell_idx: terms.upwind_cell_idx[2],
+            mobility: terms.mobility[2],
+            flux: sign * terms.flux_sc_day[2] * dt_days,
+        },
+    })
 }
 
 fn add_exact_flux_jacobian(

@@ -563,5 +563,4 @@ impl ReservoirSimulator {
             solver_result.iterations,
         )
     }
-
 }

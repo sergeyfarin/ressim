@@ -40,6 +40,7 @@
     - FIM implementation remains active and incomplete.
     - The latest validated baseline keeps the `DRSDT = 0` gas-split fix and the tightened no-op Newton-acceptance fix.
     - Hard coupled convergence and timestep-fragmentation behavior are still unresolved on the harder waterflood and gas-injection cases.
+    - Hotspot tracing for the hard `12x12x3` waterflood case now includes per-face phase diagnostics (`dphi`, upwind donor, mobility, signed flux) for the dominant cell's lateral faces on the canonical wasm path.
   - Immediate follow-up after the cleanup pass:
     - classify FIM regressions versus diagnostics
     - move or remove debug-only probes still outside dedicated diagnostic files

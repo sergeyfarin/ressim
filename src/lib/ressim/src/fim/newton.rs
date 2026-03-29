@@ -1,13 +1,18 @@
 use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
-use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
+use crate::fim::assembly::{
+    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FimAssemblyOptions, PhaseFluxDiagnostic,
+    assemble_fim_system, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
+};
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
     solve_linearized_system,
 };
 use crate::fim::state::FimState;
-use crate::fim::wells::{build_well_topology, perforation_residual_diagnostics, physical_well_control};
+use crate::fim::wells::{
+    build_well_topology, perforation_residual_diagnostics, physical_well_control,
+};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
@@ -566,9 +571,54 @@ fn cell_index_to_ijk(sim: &ReservoirSimulator, cell_idx: usize) -> (usize, usize
     (i, j, k)
 }
 
+fn format_phase_flux_diagnostic(
+    sim: &ReservoirSimulator,
+    label: &str,
+    diagnostic: &PhaseFluxDiagnostic,
+) -> String {
+    let (i, j, k) = cell_index_to_ijk(sim, diagnostic.upwind_cell_idx);
+    format!(
+        "{}(dphi={:.3e},up=({}, {}, {}),mob={:.3e},flux={:.3e})",
+        label, diagnostic.dphi, i, j, k, diagnostic.mobility, diagnostic.flux,
+    )
+}
+
+fn format_face_phase_diagnostics(
+    sim: &ReservoirSimulator,
+    label: &str,
+    diagnostics: Option<&FacePhaseDiagnostics>,
+) -> String {
+    match diagnostics {
+        Some(face) => format!(
+            "{}=[{} {} {}]",
+            label,
+            format_phase_flux_diagnostic(sim, "w", &face.water),
+            format_phase_flux_diagnostic(sim, "o", &face.oil),
+            format_phase_flux_diagnostic(sim, "g", &face.gas),
+        ),
+        None => format!("{}=[boundary]", label),
+    }
+}
+
+fn format_cell_face_phase_diagnostics(
+    sim: &ReservoirSimulator,
+    diagnostics: &CellFacePhaseDiagnostics,
+) -> String {
+    [
+        format_face_phase_diagnostics(sim, "x-", diagnostics.x_minus.as_ref()),
+        format_face_phase_diagnostics(sim, "x+", diagnostics.x_plus.as_ref()),
+        format_face_phase_diagnostics(sim, "y-", diagnostics.y_minus.as_ref()),
+        format_face_phase_diagnostics(sim, "y+", diagnostics.y_plus.as_ref()),
+    ]
+    .join(" ")
+}
+
 fn cell_residual_detail_trace(
     sim: &ReservoirSimulator,
+    previous_state: &FimState,
     state: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    dt_days: f64,
     peak: &ResidualFamilyPeak,
 ) -> Option<String> {
     let cell_idx = peak.item_index;
@@ -584,9 +634,25 @@ fn cell_residual_detail_trace(
         ResidualRowFamily::GasComponent => "gas",
         _ => return None,
     };
+    let component = match peak.family {
+        ResidualRowFamily::Water => 0,
+        ResidualRowFamily::OilComponent => 1,
+        ResidualRowFamily::GasComponent => 2,
+        _ => return None,
+    };
+    let breakdown = cell_equation_residual_breakdown(
+        sim,
+        previous_state,
+        state,
+        topology,
+        dt_days,
+        cell_idx,
+        component,
+    )?;
+    let face_diagnostics = cell_face_phase_flux_diagnostics(sim, state, dt_days, cell_idx)?;
 
     Some(format!(
-        "eq={} cell{}=({}, {}, {}) p={:.3} sw={:.4} so={:.4} sg={:.4} rs={:.4} regime={:?}",
+        "eq={} cell{}=({}, {}, {}) p={:.3} sw={:.4} so={:.4} sg={:.4} rs={:.4} regime={:?} accum={:.3e} x-={:.3e} x+={:.3e} y-={:.3e} y+={:.3e} z-={:.3e} z+={:.3e} well={:.3e} total={:.3e} faces={}",
         equation,
         cell_idx,
         i,
@@ -598,6 +664,16 @@ fn cell_residual_detail_trace(
         derived.sg,
         derived.rs,
         cell.regime,
+        breakdown.accumulation,
+        breakdown.x_minus,
+        breakdown.x_plus,
+        breakdown.y_minus,
+        breakdown.y_plus,
+        breakdown.z_minus,
+        breakdown.z_plus,
+        breakdown.well_source,
+        breakdown.total,
+        format_cell_face_phase_diagnostics(sim, &face_diagnostics),
     ))
 }
 
@@ -626,11 +702,18 @@ fn well_constraint_detail_trace(
     Some(format!(
         "well{} id={} inj={} head=({}, {}) bhp={:.3} mode={} target={} bhp_limit={:.3} nperf={}",
         well_idx,
-        representative.physical_well_id.as_deref().unwrap_or("<legacy>"),
+        representative
+            .physical_well_id
+            .as_deref()
+            .unwrap_or("<legacy>"),
         well_topology.injector,
         well_topology.head_i,
         well_topology.head_j,
-        state.well_bhp.get(well_idx).copied().unwrap_or(representative.bhp),
+        state
+            .well_bhp
+            .get(well_idx)
+            .copied()
+            .unwrap_or(representative.bhp),
         decision,
         control
             .target_rate
@@ -643,16 +726,23 @@ fn well_constraint_detail_trace(
 
 fn residual_family_detail_trace(
     sim: &ReservoirSimulator,
+    previous_state: &FimState,
     state: &FimState,
     topology: &crate::fim::wells::FimWellTopology,
+    dt_days: f64,
     diagnostics: &ResidualFamilyDiagnostics,
 ) -> Option<String> {
     match diagnostics.global.family {
         ResidualRowFamily::Water
         | ResidualRowFamily::OilComponent
-        | ResidualRowFamily::GasComponent => {
-            cell_residual_detail_trace(sim, state, &diagnostics.global)
-        }
+        | ResidualRowFamily::GasComponent => cell_residual_detail_trace(
+            sim,
+            previous_state,
+            state,
+            topology,
+            dt_days,
+            &diagnostics.global,
+        ),
         ResidualRowFamily::WellConstraint => {
             well_constraint_detail_trace(sim, state, topology, &diagnostics.global)
         }
@@ -743,8 +833,14 @@ fn evaluate_accepted_state_convergence(
         scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
     let residual_diagnostics =
         residual_family_diagnostics(&assembly.residual, &assembly.equation_scaling);
-    let residual_detail =
-        residual_family_detail_trace(sim, &state, topology, &residual_diagnostics);
+    let residual_detail = residual_family_detail_trace(
+        sim,
+        previous_state,
+        &state,
+        topology,
+        dt_days,
+        &residual_diagnostics,
+    );
     let material_balance_diagnostics =
         global_material_balance_diagnostics(&assembly.residual, &assembly.equation_scaling);
 
@@ -828,8 +924,14 @@ pub(crate) fn run_fim_timestep(
         ));
         let residual_diagnostics =
             residual_family_diagnostics(&assembly.residual, &assembly.equation_scaling);
-        let residual_detail =
-            residual_family_detail_trace(sim, &state, &topology, &residual_diagnostics);
+        let residual_detail = residual_family_detail_trace(
+            sim,
+            previous_state,
+            &state,
+            &topology,
+            dt_days,
+            &residual_diagnostics,
+        );
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let materially_changed = iterate_has_material_change(previous_state, &state);
@@ -1299,8 +1401,14 @@ pub(crate) fn run_fim_timestep(
     ));
     let final_residual_diagnostics =
         residual_family_diagnostics(&final_assembly.residual, &final_assembly.equation_scaling);
-    let final_residual_detail =
-        residual_family_detail_trace(sim, &state, &topology, &final_residual_diagnostics);
+    let final_residual_detail = residual_family_detail_trace(
+        sim,
+        previous_state,
+        &state,
+        &topology,
+        dt_days,
+        &final_residual_diagnostics,
+    );
     let final_material_balance_diagnostics = global_material_balance_diagnostics(
         &final_assembly.residual,
         &final_assembly.equation_scaling,
@@ -1495,7 +1603,7 @@ mod tests {
             ..FimNewtonOptions::default()
         };
 
-    let report = run_fim_timestep(&mut sim, &previous_state, &iterate, 1.0, &options);
+        let report = run_fim_timestep(&mut sim, &previous_state, &iterate, 1.0, &options);
 
         assert!(report.converged);
         assert!(report.newton_iterations <= 2);
@@ -1539,7 +1647,7 @@ mod tests {
             ..FimNewtonOptions::default()
         };
 
-    let report = run_fim_timestep(&mut sim, &previous_state, &previous_state, 0.01, &options);
+        let report = run_fim_timestep(&mut sim, &previous_state, &previous_state, 0.01, &options);
 
         assert!(
             !report.converged

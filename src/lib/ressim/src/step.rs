@@ -304,7 +304,12 @@ impl ReservoirSimulator {
                 );
 
                 if !next_dt.is_finite() || next_dt <= 1e-12 {
-                    fim_trace!(self, verbose, "  ABORT: timestep collapsed to {:.3e}", next_dt);
+                    fim_trace!(
+                        self,
+                        verbose,
+                        "  ABORT: timestep collapsed to {:.3e}",
+                        next_dt
+                    );
                     self.last_solver_warning = format!(
                         "FIM Newton step collapsed timestep at t={:.6} days after {} iterations",
                         self.time_days + time_stepped,
