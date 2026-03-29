@@ -7,6 +7,12 @@
 - [ ] Run a focused FIM cleanup pass before more convergence tuning.
   - Goal: reduce duplicated status/docs, isolate diagnostics, and remove stale artifacts so the next convergence iteration works from one clear baseline.
   - Concrete execution plan: `docs/FIM_CLEANUP_PLAN.md`.
+  - Phase 2 execution status:
+    - classification inventory is now checked in at `docs/FIM_TEST_CLASSIFICATION.md`
+    - wasm is the approved default diagnostic target
+    - clearly broken scratch wasm helper files were removed in the first Phase 2 pass
+    - stable SPE1/FIM smoke regressions were moved out of `src/lib/ressim/src/lib.rs` into `src/lib/ressim/src/tests/spe1_fim.rs`
+    - crate-root debug probes, `src/lib/ressim/src/tests/fim_spe1_bug.rs`, and the redundant manual `test.sh` helper were removed from the active surface
   - Canonical sources after cleanup:
     - `TODO.md` keeps only actionable open FIM tasks and short status bullets.
     - `docs/FIM_CONVERGENCE_WORKLOG.md` keeps active investigation notes only.

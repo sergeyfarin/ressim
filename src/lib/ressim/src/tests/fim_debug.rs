@@ -172,7 +172,8 @@ fn build_gas_injection_variant(
     sim.set_three_phase_rel_perm_props(0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95)
         .unwrap();
     sim.set_three_phase_mode_enabled(true);
-    let _ = sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 0.8);
+    let _ = sim
+        .set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 0.8);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_redissolution_enabled(false);
     sim.set_stability_params(0.05, 75.0, 0.75);

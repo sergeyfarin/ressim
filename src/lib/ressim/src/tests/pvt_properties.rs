@@ -526,7 +526,11 @@ fn drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas() {
         Some(base_rs),
     );
 
-    assert!(sg > 1e-6, "excess dissolved gas should flash to free gas when DRSDT=0; sg={}", sg);
+    assert!(
+        sg > 1e-6,
+        "excess dissolved gas should flash to free gas when DRSDT=0; sg={}",
+        sg
+    );
     assert!(
         (rs - base_rs).abs() < 1e-6,
         "resolved Rs should stay pinned to the DRSDT=0 base value; rs={}",

@@ -73,6 +73,8 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
 
 ## Phase 2: Test and Diagnostic Classification
 
+Execution plan for review before implementation: `docs/FIM_PHASE2_EXECUTION_PLAN.md`.
+
 Classify each FIM-related test into exactly one of these buckets:
 
 - production regression
@@ -81,9 +83,13 @@ Classify each FIM-related test into exactly one of these buckets:
 
 Review apporach to rust native target. It was used for testing, but often slightly different inputs used which causes wrong investigation of wasm failing, while never confirmed always was logic issue. Native target not required for production was used for testing only. It is useful sometimes for diagnostic, but if it causes more issues, then let's always diagnose using wasm
 
+Approved direction: wasm is now the default diagnostic target. Native-only diagnostics should be removed unless they provide unique value that cannot be exposed from wasm.
+
 And remember there are also frontend scenarios `src/lib/catalog/scenarios` that could be used for testing, but some of them slow to run, especially for long periods (`src/lib/catalog/scenarios/spe1_gas_injection.ts` and `src/lib/catalog/scenarios/sweep_combined.ts` are useful but will be very very slow)
 
 Some tests are overly verbose, printing every substep, every iteration - make it difficult to use for diagnostic.
+
+Approved direction: keep diagnostics switchable and structured, but do not make per-substep and per-iteration spam the default behavior.
 
 
 
@@ -92,8 +98,8 @@ Target files:
 - `src/lib/ressim/src/tests/spe1_fim.rs`
   - keep as the home for stable SPE1/FIM regressions
 - `src/lib/ressim/src/tests/fim_debug.rs`
-  - keep as the native-only diagnostic harness
-  - document how to run it and what it is for
+  - keep only if it still provides unique value after wasm diagnostics are upgraded
+  - otherwise fold useful coverage into the wasm-first workflow
 - `src/lib/ressim/src/tests/fim_spe1_bug.rs`
   - either delete if stale, move useful content into `spe1_fim.rs`, or convert into a documented ignored diagnostic
 - `src/lib/ressim/src/lib.rs` ignored debug helpers
@@ -101,6 +107,8 @@ Target files:
   - also files `test_import.mjs`, `test-native.sh`, `test-wasm-spe1-short.sh`, `test-wasm-spe1.js`, `test-wasm.sh`, `test.sh`
 
 End-state rule: no debug-only probe should live in `lib.rs` and tests should not sit in `lib.rs` they should be in dedicated files not to clutter it, tests and probes should all be in separate dedicated files.
+
+Preferred script end-state: one canonical wasm diagnostic script with switches for scenarios, grids, settings, and diagnostic verbosity. Delete broken scratch files immediately.
 
 
 ## Phase 3: Artifact Cleanup
@@ -149,7 +157,7 @@ Suggested baseline categories:
 - flash/regime unit regressions
 - assembly/Jacobian exactness tests
 - one or two short SPE1/FIM smoke regressions
-- one native-only diagnostic path for deeper convergence traces
+- one diagnostic path that is wasm-first; native is only acceptable if it still provides unique value
 
 End-state rule: when an edit makes convergence better or worse, the comparison set is fixed and documented.
 

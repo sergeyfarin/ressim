@@ -1489,15 +1489,29 @@ mod tests {
 
         assert!((&full.residual - &residual_only.residual).amax() <= 1e-12);
         assert!(full.equation_scaling.water == residual_only.equation_scaling.water);
-        assert!(full.equation_scaling.oil_component == residual_only.equation_scaling.oil_component);
-        assert!(full.equation_scaling.gas_component == residual_only.equation_scaling.gas_component);
-        assert!(full.equation_scaling.well_constraint == residual_only.equation_scaling.well_constraint);
-        assert!(full.equation_scaling.perforation_flow == residual_only.equation_scaling.perforation_flow);
+        assert!(
+            full.equation_scaling.oil_component == residual_only.equation_scaling.oil_component
+        );
+        assert!(
+            full.equation_scaling.gas_component == residual_only.equation_scaling.gas_component
+        );
+        assert!(
+            full.equation_scaling.well_constraint == residual_only.equation_scaling.well_constraint
+        );
+        assert!(
+            full.equation_scaling.perforation_flow
+                == residual_only.equation_scaling.perforation_flow
+        );
         assert!(full.variable_scaling.pressure == residual_only.variable_scaling.pressure);
         assert!(full.variable_scaling.sw == residual_only.variable_scaling.sw);
-        assert!(full.variable_scaling.hydrocarbon_var == residual_only.variable_scaling.hydrocarbon_var);
+        assert!(
+            full.variable_scaling.hydrocarbon_var == residual_only.variable_scaling.hydrocarbon_var
+        );
         assert!(full.variable_scaling.well_bhp == residual_only.variable_scaling.well_bhp);
-        assert!(full.variable_scaling.perforation_rate == residual_only.variable_scaling.perforation_rate);
+        assert!(
+            full.variable_scaling.perforation_rate
+                == residual_only.variable_scaling.perforation_rate
+        );
         assert_eq!(residual_only.jacobian.nnz(), 0);
     }
 
