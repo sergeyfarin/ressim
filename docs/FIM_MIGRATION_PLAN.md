@@ -1,5 +1,8 @@
 # FIM Migration Plan
 
+This document is the target-architecture and implementation-plan document for the FIM cutover.
+Use `docs/FIM_STATUS.md` for the current solver status and `docs/FIM_CONVERGENCE_WORKLOG.md` for live debugging notes.
+
 This document is the concrete implementation checklist for replacing the current IMPES timestep path with a fully implicit black-oil FIM path in the Rust core.
 
 It is intentionally direct-cutover oriented:

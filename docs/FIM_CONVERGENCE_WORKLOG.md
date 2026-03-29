@@ -1,5 +1,10 @@
 # FIM Convergence Worklog
 
+This file is the active investigation log for live FIM convergence work.
+
+Use `docs/FIM_STATUS.md` for the current consolidated solver status.
+Use this worklog only for active observations, reproductions, traces, and next hypotheses while an issue is still live.
+
 This file is the working document for the March 2026 FIM convergence investigation.
 Keep active observations, reproductions, diagnostics, and next hypotheses here until the issue is resolved.
 
