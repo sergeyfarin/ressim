@@ -44,6 +44,7 @@
     - Decoupling Newton line-search damping from outer timestep retry policy did not resolve the hard `12x12x3` waterflood fragmentation; the case still advanced 1 day in about `1973` substeps and remains dominated by `nonlinear-bad` water residual retries.
     - External comparison on `2026-03-29` across OPM, MRST, JutulDarcy, DuMux, MOOSE, openDARTS, and the SPE overview article reinforced the same priority order: fix residual/Jacobian consistency first, then strengthen nonlinear globalization, then improve well-aware CPR, and only then revisit timestep heuristics.
     - The water-gravity term mismatch in the exact interface Jacobian was patched on `2026-03-29` and validated; focused Rust FIM regressions still passed, but the hard wasm `wf_p_12x12x3` repro did not improve and instead worsened slightly to about `2063` substeps/day, with the dominant failure classification shifting from water to oil.
+    - A stricter Armijo-like sufficient-decrease rule now gates Newton candidate acceptance independently of timestep retry policy; focused Rust regressions still passed, and the hard wasm `wf_p_12x12x3` repro improved materially to `1491` substeps/day (`linear-bad=7 nonlinear-bad=1483 mixed=0`), though the case is still dominated by water-family nonlinear retries.
   - Immediate follow-up after the cleanup pass:
     - classify FIM regressions versus diagnostics
     - move or remove debug-only probes still outside dedicated diagnostic files

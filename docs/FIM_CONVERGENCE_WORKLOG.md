@@ -142,6 +142,25 @@ Interpretation:
 - The patch fixed a real consistency gap, but it was not the main driver of the micro-substep spiral.
 - The dominant nonlinear bottleneck moved rather than disappearing, which makes the next best target the Newton acceptance/globalization path rather than another small flux-term correction.
 
+## Validation Update - 2026-03-29 stronger Newton sufficient decrease
+
+- Change made: Newton candidate acceptance now requires an Armijo-like sufficient decrease instead of accepting any finite residual improvement, while outer retry-factor policy remains separate from damping.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml sufficient_decrease_rule_requires_more_than_any_improvement` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml failure_classification_marks_fallback_path_as_linear_bad` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - hard repro `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json` still fragments, but materially less than the previous baseline
+- New observed hard-repro outcome:
+  - `FIM step done: 1491 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=7 nonlinear-bad=1483 mixed=0`
+  - repeated failed doubled steps are again dominated by `dom=water`, with failure traces now reporting both `cand_res` and the sufficient-decrease `cand_target`
+
+Interpretation:
+
+- The stronger acceptance rule is the first change in this sequence that materially reduced the micro-substep spiral on the hard wasm case.
+- The remaining failure pattern is still overwhelmingly nonlinear and still concentrated in the same near-converged doubled-step retry cycle, so the next best lever remains bounded update controls rather than timestep heuristics.
+
 ## Added Diagnostics
 
 ### Native debug scenarios

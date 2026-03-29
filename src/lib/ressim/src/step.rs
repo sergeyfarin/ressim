@@ -173,6 +173,8 @@ impl ReservoirSimulator {
 
         let mut newton_options = FimNewtonOptions::default();
         newton_options.verbose = verbose;
+        newton_options.max_saturation_change = TARGET_MAX_SAT_CHANGE;
+        newton_options.max_pressure_change_bar = TARGET_MAX_PRESSURE_CHANGE_BAR;
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;

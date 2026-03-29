@@ -29,6 +29,10 @@ macro_rules! fim_trace {
 const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
 const NOOP_ENTRY_EXACT_FACTOR: f64 = 1e-3;
 const LINEAR_GOOD_CPR_REDUCTION_RATIO: f64 = 1e-6;
+const NEWTON_SUFFICIENT_DECREASE_FRACTION: f64 = 0.05;
+const NEWTON_SUFFICIENT_DECREASE_TOL_FACTOR: f64 = 2.0;
+const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
+const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -160,9 +164,8 @@ impl Default for FimNewtonOptions {
             material_balance_tolerance: 1e-5,
             update_tolerance: 1e-3,
             min_damping: 1.0 / 64.0,
-            // Generous limits — only prevent gross overshoot, not convergence-limiting.
-            max_pressure_change_bar: 500.0,
-            max_saturation_change: 0.5,
+            max_pressure_change_bar: DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR,
+            max_saturation_change: DEFAULT_MAX_NEWTON_SATURATION_CHANGE,
             max_rs_change_fraction: 1.0,
             linear: FimLinearSolveOptions::default(),
             verbose: false,
@@ -214,17 +217,24 @@ fn appleyard_damping(state: &FimState, update: &DVector<f64>, options: &FimNewto
         }
 
         // Hydrocarbon variable (Sg or Rs)
-        let dh = update[offset + 2].abs();
-        if dh > 1e-12 {
+        let dh = update[offset + 2];
+        if dh.abs() > 1e-12 {
             match cell.regime {
                 crate::fim::state::HydrocarbonState::Saturated => {
-                    // Sg: limit absolute change
-                    max_damping = max_damping.min(options.max_saturation_change / dh);
+                    // Sg: limit absolute change.
+                    max_damping = max_damping.min(options.max_saturation_change / dh.abs());
+
+                    // So = 1 - Sw - Sg, so bound the implied oil-saturation move too.
+                    let dso = (update[offset + 1] + dh).abs();
+                    if dso > 1e-12 {
+                        max_damping = max_damping.min(options.max_saturation_change / dso);
+                    }
                 }
                 crate::fim::state::HydrocarbonState::Undersaturated => {
-                    // Rs: limit relative change
+                    // Rs: limit relative change.
                     let rs_scale = cell.hydrocarbon_var.abs().max(1.0);
-                    max_damping = max_damping.min(options.max_rs_change_fraction * rs_scale / dh);
+                    max_damping =
+                        max_damping.min(options.max_rs_change_fraction * rs_scale / dh.abs());
                 }
             }
         }
@@ -240,6 +250,64 @@ fn appleyard_damping(state: &FimState, update: &DVector<f64>, options: &FimNewto
     }
 
     max_damping.clamp(options.min_damping, 1.0)
+}
+
+fn cell_phase_saturations(cell: &crate::fim::state::FimCellState) -> (f64, f64, f64) {
+    match cell.regime {
+        crate::fim::state::HydrocarbonState::Saturated => {
+            let sw = cell.sw;
+            let sg = cell.hydrocarbon_var;
+            let so = 1.0 - sw - sg;
+            (sw, so, sg)
+        }
+        crate::fim::state::HydrocarbonState::Undersaturated => {
+            let sw = cell.sw;
+            let so = 1.0 - sw;
+            (sw, so, 0.0)
+        }
+    }
+}
+
+fn state_update_change_bounds(previous_state: &FimState, candidate_state: &FimState) -> (f64, f64) {
+    let mut max_pressure_change = 0.0_f64;
+    let mut max_saturation_change = 0.0_f64;
+
+    for (previous_cell, candidate_cell) in previous_state
+        .cells
+        .iter()
+        .zip(candidate_state.cells.iter())
+    {
+        max_pressure_change = max_pressure_change
+            .max((candidate_cell.pressure_bar - previous_cell.pressure_bar).abs());
+
+        let previous_phase_saturations = cell_phase_saturations(previous_cell);
+        let candidate_phase_saturations = cell_phase_saturations(candidate_cell);
+        max_saturation_change = max_saturation_change
+            .max((candidate_phase_saturations.0 - previous_phase_saturations.0).abs())
+            .max((candidate_phase_saturations.1 - previous_phase_saturations.1).abs())
+            .max((candidate_phase_saturations.2 - previous_phase_saturations.2).abs());
+    }
+
+    for (previous_bhp, candidate_bhp) in previous_state
+        .well_bhp
+        .iter()
+        .zip(candidate_state.well_bhp.iter())
+    {
+        max_pressure_change = max_pressure_change.max((candidate_bhp - previous_bhp).abs());
+    }
+
+    (max_pressure_change, max_saturation_change)
+}
+
+fn candidate_respects_update_bounds(
+    previous_state: &FimState,
+    candidate_state: &FimState,
+    options: &FimNewtonOptions,
+) -> bool {
+    let (max_pressure_change, max_saturation_change) =
+        state_update_change_bounds(previous_state, candidate_state);
+    max_pressure_change <= options.max_pressure_change_bar + 1e-9
+        && max_saturation_change <= options.max_saturation_change + 1e-9
 }
 
 fn scaled_residual_inf_norm(
@@ -883,6 +951,29 @@ fn accepted_state_meets_convergence(
         && diagnostics.material_balance_inf_norm <= material_balance_limit
 }
 
+fn sufficient_decrease_target(current_norm: f64, residual_tolerance: f64, damping: f64) -> f64 {
+    if !current_norm.is_finite() {
+        return f64::INFINITY;
+    }
+    let residual_floor = residual_tolerance * NEWTON_SUFFICIENT_DECREASE_TOL_FACTOR;
+    if current_norm <= residual_floor {
+        return current_norm;
+    }
+    let required_drop =
+        NEWTON_SUFFICIENT_DECREASE_FRACTION * damping * (current_norm - residual_floor);
+    current_norm - required_drop
+}
+
+fn candidate_has_sufficient_decrease(
+    candidate_norm: f64,
+    current_norm: f64,
+    residual_tolerance: f64,
+    damping: f64,
+) -> bool {
+    candidate_norm.is_finite()
+        && candidate_norm <= sufficient_decrease_target(current_norm, residual_tolerance, damping)
+}
+
 pub(crate) fn run_fim_timestep(
     sim: &mut ReservoirSimulator,
     previous_state: &FimState,
@@ -1217,11 +1308,21 @@ pub(crate) fn run_fim_timestep(
         let initial_damping = damping;
         let mut accepted_state = None;
         let mut best_candidate_norm = f64::INFINITY;
+        let mut best_candidate_target = f64::INFINITY;
+        let mut best_candidate_pressure_change = f64::INFINITY;
+        let mut best_candidate_saturation_change = f64::INFINITY;
         let mut damping_cuts = 0u32;
         while damping >= options.min_damping {
+            let candidate_target =
+                sufficient_decrease_target(current_norm, options.residual_tolerance, damping);
             let candidate =
                 state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
-            if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
+            let (candidate_pressure_change, candidate_saturation_change) =
+                state_update_change_bounds(&state, &candidate);
+            if candidate.is_finite()
+                && candidate.respects_basic_bounds(sim)
+                && candidate_respects_update_bounds(&state, &candidate, options)
+            {
                 let candidate_assembly = assemble_fim_system(
                     sim,
                     previous_state,
@@ -1239,8 +1340,16 @@ pub(crate) fn run_fim_timestep(
                 );
                 if candidate_norm.is_finite() && candidate_norm < best_candidate_norm {
                     best_candidate_norm = candidate_norm;
+                    best_candidate_target = candidate_target;
+                    best_candidate_pressure_change = candidate_pressure_change;
+                    best_candidate_saturation_change = candidate_saturation_change;
                 }
-                if candidate_norm.is_finite() && candidate_norm < current_norm {
+                if candidate_has_sufficient_decrease(
+                    candidate_norm,
+                    current_norm,
+                    options.residual_tolerance,
+                    damping,
+                ) {
                     accepted_state = Some(candidate);
                     break;
                 }
@@ -1252,7 +1361,7 @@ pub(crate) fn run_fim_timestep(
         fim_trace!(
             sim,
             options.verbose,
-            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} linear_iters={}{}{}{} fam=[{}]{}",
+            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} cand_target={:.3e} cand_dP={:.2} cand_dS={:.4} linear_iters={}{}{}{} fam=[{}]{}",
             iteration,
             current_norm,
             final_update_inf_norm,
@@ -1260,6 +1369,9 @@ pub(crate) fn run_fim_timestep(
             initial_damping,
             damping_cuts,
             best_candidate_norm,
+            best_candidate_target,
+            best_candidate_pressure_change,
+            best_candidate_saturation_change,
             linear_report.iterations,
             if used_fallback { " [fallback]" } else { "" },
             linear_report_trace_suffix(&linear_report),
@@ -1373,10 +1485,13 @@ pub(crate) fn run_fim_timestep(
             fim_trace!(
                 sim,
                 options.verbose,
-                "    iter {:>2}: DAMPING FAILED — no residual-reducing candidate (best={:.3e}, current={:.3e}){}",
+                "    iter {:>2}: DAMPING FAILED — no sufficiently decreasing bounded candidate (best={:.3e}, target={:.3e}, current={:.3e}, best_dP={:.2}, best_dS={:.4}){}",
                 iteration,
                 best_candidate_norm,
+                best_candidate_target,
                 current_norm,
+                best_candidate_pressure_change,
+                best_candidate_saturation_change,
                 retry_failure_trace_suffix(&failure_diagnostics)
             );
             return FimStepReport {
@@ -1833,5 +1948,84 @@ mod tests {
 
         assert_eq!(classified.class, FimRetryFailureClass::LinearBad);
         assert!(classified.used_linear_fallback);
+    }
+
+    #[test]
+    fn sufficient_decrease_rule_requires_more_than_any_improvement() {
+        let current_norm = 10.0;
+        let residual_tolerance = 1.0;
+        let damping = 1.0;
+
+        let target = sufficient_decrease_target(current_norm, residual_tolerance, damping);
+
+        assert!(target < current_norm);
+        assert!(!candidate_has_sufficient_decrease(
+            current_norm - 1e-3,
+            current_norm,
+            residual_tolerance,
+            damping,
+        ));
+        assert!(candidate_has_sufficient_decrease(
+            target,
+            current_norm,
+            residual_tolerance,
+            damping,
+        ));
+    }
+
+    #[test]
+    fn appleyard_damping_limits_combined_oil_saturation_change() {
+        let state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.0,
+                sw: 0.2,
+                hydrocarbon_var: 0.2,
+                regime: crate::fim::state::HydrocarbonState::Saturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[1] = 0.15;
+        update[2] = 0.15;
+
+        let damping = appleyard_damping(&state, &update, &FimNewtonOptions::default());
+
+        assert!((damping - (2.0 / 3.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn candidate_update_bounds_include_oil_saturation_change() {
+        let previous_state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.0,
+                sw: 0.2,
+                hydrocarbon_var: 0.2,
+                regime: crate::fim::state::HydrocarbonState::Saturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        let candidate_state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.0,
+                sw: 0.35,
+                hydrocarbon_var: 0.35,
+                regime: crate::fim::state::HydrocarbonState::Saturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+
+        let (max_pressure_change, max_saturation_change) =
+            state_update_change_bounds(&previous_state, &candidate_state);
+
+        assert_eq!(max_pressure_change, 0.0);
+        assert!((max_saturation_change - 0.3).abs() < 1e-12);
+        assert!(!candidate_respects_update_bounds(
+            &previous_state,
+            &candidate_state,
+            &FimNewtonOptions::default(),
+        ));
     }
 }
