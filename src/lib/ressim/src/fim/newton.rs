@@ -33,6 +33,7 @@ const NEWTON_SUFFICIENT_DECREASE_FRACTION: f64 = 0.05;
 const NEWTON_SUFFICIENT_DECREASE_TOL_FACTOR: f64 = 2.0;
 const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
 const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.2;
+const NEWTON_GUARD_EQUIVALENT_RESIDUAL_RELAXATION: f64 = 1e-3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -974,6 +975,16 @@ fn candidate_has_sufficient_decrease(
         && candidate_norm <= sufficient_decrease_target(current_norm, residual_tolerance, damping)
 }
 
+fn candidate_has_guard_band_equivalent_residual(
+    candidate_norm: f64,
+    current_norm: f64,
+    residual_tolerance: f64,
+) -> bool {
+    candidate_norm.is_finite()
+        && current_norm <= residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
+        && candidate_norm <= current_norm * (1.0 + NEWTON_GUARD_EQUIVALENT_RESIDUAL_RELAXATION)
+}
+
 pub(crate) fn run_fim_timestep(
     sim: &mut ReservoirSimulator,
     previous_state: &FimState,
@@ -1307,6 +1318,7 @@ pub(crate) fn run_fim_timestep(
         let mut damping = appleyard_damping(&state, &linear_report.solution, options);
         let initial_damping = damping;
         let mut accepted_state = None;
+        let mut accepted_via_guard_equivalence = false;
         let mut best_candidate_norm = f64::INFINITY;
         let mut best_candidate_target = f64::INFINITY;
         let mut best_candidate_pressure_change = f64::INFINITY;
@@ -1338,6 +1350,8 @@ pub(crate) fn run_fim_timestep(
                     &candidate_assembly.residual,
                     &candidate_assembly.equation_scaling,
                 );
+                let candidate_materially_changed =
+                    iterate_has_material_change(previous_state, &candidate);
                 if candidate_norm.is_finite() && candidate_norm < best_candidate_norm {
                     best_candidate_norm = candidate_norm;
                     best_candidate_target = candidate_target;
@@ -1353,6 +1367,17 @@ pub(crate) fn run_fim_timestep(
                     accepted_state = Some(candidate);
                     break;
                 }
+                if candidate_materially_changed
+                    && candidate_has_guard_band_equivalent_residual(
+                        candidate_norm,
+                        current_norm,
+                        options.residual_tolerance,
+                    )
+                {
+                    accepted_via_guard_equivalence = true;
+                    accepted_state = Some(candidate);
+                    break;
+                }
             }
             damping *= 0.5;
             damping_cuts += 1;
@@ -1361,7 +1386,7 @@ pub(crate) fn run_fim_timestep(
         fim_trace!(
             sim,
             options.verbose,
-            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} cand_target={:.3e} cand_dP={:.2} cand_dS={:.4} linear_iters={}{}{}{} fam=[{}]{}",
+            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} cand_target={:.3e} cand_dP={:.2} cand_dS={:.4} linear_iters={}{}{}{}{} fam=[{}]{}",
             iteration,
             current_norm,
             final_update_inf_norm,
@@ -1379,6 +1404,11 @@ pub(crate) fn run_fim_timestep(
                 format!(" stag={}", stagnation_count)
             } else {
                 String::new()
+            },
+            if accepted_via_guard_equivalence {
+                " [guard-equiv]"
+            } else {
+                ""
             },
             residual_family_trace(&residual_diagnostics),
             residual_detail
@@ -1970,6 +2000,31 @@ mod tests {
             current_norm,
             residual_tolerance,
             damping,
+        ));
+    }
+
+    #[test]
+    fn guard_band_equivalent_residual_allows_numerically_equal_candidate() {
+        let residual_tolerance = 1e-5;
+        let current_norm = residual_tolerance;
+        let candidate_norm = current_norm * (1.0 + 5.0e-4);
+
+        assert!(candidate_has_guard_band_equivalent_residual(
+            candidate_norm,
+            current_norm,
+            residual_tolerance,
+        ));
+    }
+
+    #[test]
+    fn guard_band_equivalent_residual_rejects_candidate_outside_guard_band() {
+        let residual_tolerance = 1e-5;
+        let current_norm = residual_tolerance * 3.0;
+
+        assert!(!candidate_has_guard_band_equivalent_residual(
+            current_norm,
+            current_norm,
+            residual_tolerance,
         ));
     }
 

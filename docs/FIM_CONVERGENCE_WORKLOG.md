@@ -161,6 +161,48 @@ Interpretation:
 - The stronger acceptance rule is the first change in this sequence that materially reduced the micro-substep spiral on the hard wasm case.
 - The remaining failure pattern is still overwhelmingly nonlinear and still concentrated in the same near-converged doubled-step retry cycle, so the next best lever remains bounded update controls rather than timestep heuristics.
 
+## Validation Update - 2026-03-29 bounded Newton pressure/saturation updates
+
+- Change made: the Newton damping path now uses the same `200 bar / 0.2 sat` trust-radius targets as the outer timestep driver, limits implied oil-saturation movement in saturated cells (`So = 1 - Sw - Sg`), and rejects damped candidates that exceed explicit pressure/saturation bounds before residual acceptance.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml appleyard_damping_limits_combined_oil_saturation_change` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml candidate_update_bounds_include_oil_saturation_change` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml sufficient_decrease_rule_requires_more_than_any_improvement` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - hard repro `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json` still fragments and regressed slightly versus the sufficient-decrease-only baseline
+- New observed hard-repro outcome:
+  - `FIM step done: 1570 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=6 nonlinear-bad=1564 mixed=0`
+  - the repeated failed doubled-step loop now reports `cand_dP=0.00` and `cand_dS=0.0000` alongside the residual trace, indicating the bounded-update controls are not what is blocking acceptance in that near-converged retry cycle
+
+Interpretation:
+
+- The bounded-update controls are implemented correctly and cover a real gap: the old chop could limit `ΔSw` and `ΔSg` individually without limiting the implied `ΔSo`.
+- On the current hard waterflood repro, however, the remaining micro-substep loop is not being driven by large pressure or saturation moves. The near-failure candidates are already effectively zero-change states, so the next lever should move away from tighter state bounds and toward the residual/convergence logic around those near-no-op doubled-step retries.
+
+## Validation Update - 2026-03-29 guard-band equivalent material-candidate acceptance
+
+- Change made: inside the Newton damping loop, materially changed candidates are now allowed through when the iterate is already inside the residual guard band and the candidate residual is only numerically equivalent to the current residual. This is intentionally narrower than loosening unchanged-state acceptance: unchanged iterates are still blocked by the no-op guards.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml entry_guard_does_not_accept_unchanged_previous_state` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml guard_band_equivalent_residual_allows_numerically_equal_candidate` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml guard_band_equivalent_residual_rejects_candidate_outside_guard_band` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_gas_injection_creates_free_gas` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_coarse_grid_reaches_producer_gas_breakthrough` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - hard repro `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json` improved dramatically
+- New observed hard-repro outcome:
+  - `FIM step done: 138 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=6 nonlinear-bad=128 mixed=0`
+  - the trace now shows repeated `[guard-equiv]` hits on the previously problematic doubled-step retries, followed by a second Newton iteration that converges instead of cutting the timestep immediately
+
+Interpretation:
+
+- This directly addresses the remaining micro-substep spiral without reopening the old no-op acceptance bug: unchanged states are still rejected, but materially changed candidates no longer get bounced just because their residual is worse only at roundoff level.
+- The improvement is large enough that the next priority should stay on the linear/preconditioning side rather than further convergence-guard tweaking unless a new regression appears.
+
 ## Added Diagnostics
 
 ### Native debug scenarios
