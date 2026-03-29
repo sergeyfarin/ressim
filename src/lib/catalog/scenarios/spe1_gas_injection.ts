@@ -325,6 +325,15 @@ export const spe1_gas_injection: Scenario = {
             analyticalOverlayMode: 'shared',
             variants: [
                 {
+                    key: 'grid_2',
+                    label: '2×2×3  (coarse)',
+                    description: 'Coarse grid — larger numerical diffusion, faster gas breakthrough.',
+                    paramPatch: {
+                        nx: 2, ny: 2, cellDx: 1524, cellDy: 1524,
+                        producerI: 1, producerJ: 1,
+                    },
+                    affectsAnalytical: false,
+                },{
                     key: 'grid_5',
                     label: '5×5×3  (coarse)',
                     description: 'Coarse grid — larger numerical diffusion, faster gas breakthrough.',

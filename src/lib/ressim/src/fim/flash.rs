@@ -15,6 +15,7 @@ pub(crate) fn classify_cell_regime(
     pressure_bar: f64,
     gas_saturation: f64,
     rs_sm3_sm3: f64,
+    drsdt0_base_rs: Option<f64>,
 ) -> HydrocarbonState {
     if !sim.three_phase_mode {
         return HydrocarbonState::Saturated;
@@ -27,7 +28,10 @@ pub(crate) fn classify_cell_regime(
     if gas_saturation > 1e-9 {
         HydrocarbonState::Saturated
     } else {
-        let rs_sat = table.interpolate(pressure_bar).rs_m3m3;
+        let mut rs_sat = table.interpolate(pressure_bar).rs_m3m3;
+        if let Some(base_rs) = drsdt0_base_rs {
+            rs_sat = rs_sat.min(base_rs);
+        }
         if rs_sm3_sm3 < rs_sat - 1e-6 {
             HydrocarbonState::Undersaturated
         } else {
@@ -42,6 +46,7 @@ pub(crate) fn resolve_cell_flash(
     sw: f64,
     hydrocarbon_var: f64,
     regime: HydrocarbonState,
+    drsdt0_base_rs: Option<f64>,
 ) -> FimFlashResult {
     let total_hydrocarbon_saturation = (1.0 - sw).max(0.0);
     let bubble_point_bar = sim
@@ -73,11 +78,15 @@ pub(crate) fn resolve_cell_flash(
     match regime {
         HydrocarbonState::Saturated => {
             let sg = hydrocarbon_var.clamp(0.0, total_hydrocarbon_saturation);
+            let mut rs = table.interpolate(pressure_bar).rs_m3m3;
+            if let Some(base_rs) = drsdt0_base_rs {
+                rs = rs.min(base_rs);
+            }
             FimFlashResult {
                 regime,
                 so: (1.0 - sw - sg).max(0.0),
                 sg,
-                rs: table.interpolate(pressure_bar).rs_m3m3,
+                rs,
                 bubble_point_bar,
             }
         }
@@ -124,7 +133,7 @@ mod tests {
             sim.pvt.c_o,
         ));
 
-        let regime = classify_cell_regime(&sim, 150.0, 0.0, 12.0);
+        let regime = classify_cell_regime(&sim, 150.0, 0.0, 12.0, None);
         assert_eq!(regime, HydrocarbonState::Undersaturated);
     }
 }

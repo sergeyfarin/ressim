@@ -29,6 +29,7 @@ pub(crate) struct FimAssembly {
 pub(crate) struct FimAssemblyOptions<'a> {
     pub(crate) dt_days: f64,
     pub(crate) include_wells: bool,
+    pub(crate) assemble_residual_only: bool,
     pub(crate) topology: Option<&'a FimWellTopology>,
 }
 
@@ -65,12 +66,6 @@ pub(crate) fn assemble_fim_system(
     let prev_derived: Vec<FimCellDerived> = (0..n_cells)
         .map(|idx| previous_state.derive_cell(sim, idx))
         .collect();
-    // Pre-compute local flux sensitivities for the Jacobian (each cell appears in ~5 interfaces).
-    let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
-        .map(|idx| local_flux_cell_sensitivity(sim, state, idx, &derived[idx]))
-        .collect();
-
-    let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
     let residual = assemble_residual(
         sim,
         previous_state,
@@ -80,6 +75,22 @@ pub(crate) fn assemble_fim_system(
         &derived,
         &prev_derived,
     );
+
+    if options.assemble_residual_only {
+        return FimAssembly {
+            residual,
+            jacobian: TriMatI::<f64, usize>::new((n_unknowns, n_unknowns)).to_csr(),
+            equation_scaling,
+            variable_scaling,
+        };
+    }
+
+    // Pre-compute local flux sensitivities for the Jacobian (each cell appears in ~5 interfaces).
+    let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
+        .map(|idx| local_flux_cell_sensitivity(sim, state, idx, &derived[idx]))
+        .collect();
+
+    let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
 
     add_exact_accumulation_jacobian(sim, previous_state, state, &derived, &mut tri);
     add_exact_flux_jacobian(
@@ -1354,6 +1365,7 @@ mod tests {
         let options = FimAssemblyOptions {
             dt_days: 1.0,
             include_wells: true,
+            assemble_residual_only: false,
             topology: Some(topology_ref),
         };
 
@@ -1445,6 +1457,51 @@ mod tests {
     }
 
     #[test]
+    fn residual_only_assembly_matches_full_residual_for_rate_controlled_waterflood() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 300.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        state.cells[0].pressure_bar = 280.0;
+        state.cells[1].pressure_bar = 180.0;
+        state.cells[0].sw = 0.35;
+        state.cells[1].sw = 0.45;
+        state.perforation_rates_m3_day[0] = -15.0;
+        state.perforation_rates_m3_day[1] = 12.0;
+
+        let full_options = FimAssemblyOptions {
+            dt_days: 1.0,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: None,
+        };
+        let residual_only_options = FimAssemblyOptions {
+            assemble_residual_only: true,
+            ..full_options
+        };
+
+        let full = assemble_fim_system(&sim, &previous_state, &state, &full_options);
+        let residual_only =
+            assemble_fim_system(&sim, &previous_state, &state, &residual_only_options);
+
+        assert!((&full.residual - &residual_only.residual).amax() <= 1e-12);
+        assert!(full.equation_scaling.water == residual_only.equation_scaling.water);
+        assert!(full.equation_scaling.oil_component == residual_only.equation_scaling.oil_component);
+        assert!(full.equation_scaling.gas_component == residual_only.equation_scaling.gas_component);
+        assert!(full.equation_scaling.well_constraint == residual_only.equation_scaling.well_constraint);
+        assert!(full.equation_scaling.perforation_flow == residual_only.equation_scaling.perforation_flow);
+        assert!(full.variable_scaling.pressure == residual_only.variable_scaling.pressure);
+        assert!(full.variable_scaling.sw == residual_only.variable_scaling.sw);
+        assert!(full.variable_scaling.hydrocarbon_var == residual_only.variable_scaling.hydrocarbon_var);
+        assert!(full.variable_scaling.well_bhp == residual_only.variable_scaling.well_bhp);
+        assert!(full.variable_scaling.perforation_rate == residual_only.variable_scaling.perforation_rate);
+        assert_eq!(residual_only.jacobian.nnz(), 0);
+    }
+
+    #[test]
     fn offsets_follow_cell_major_three_unknown_layout() {
         assert_eq!(unknown_offset(0, 0), 0);
         assert_eq!(unknown_offset(0, 2), 2);
@@ -1481,6 +1538,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1510,6 +1568,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1529,6 +1588,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1551,6 +1611,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1663,6 +1724,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1673,6 +1735,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1708,6 +1771,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1718,6 +1782,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1748,6 +1813,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1774,6 +1840,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 2.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1815,6 +1882,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1856,6 +1924,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1899,6 +1968,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1909,6 +1979,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1970,6 +2041,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -2005,6 +2077,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -2027,6 +2100,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -2051,6 +2125,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: false,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -2086,6 +2161,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -2115,6 +2191,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -2209,6 +2286,7 @@ mod tests {
         let options = FimAssemblyOptions {
             dt_days,
             include_wells: true,
+            assemble_residual_only: false,
             topology: Some(&topology),
         };
 

@@ -57,7 +57,8 @@ impl FimState {
         for idx in 0..n_cells {
             let pressure_bar = sim.pressure[idx];
             let sw = sim.sat_water[idx];
-            let regime = classify_cell_regime(sim, pressure_bar, sim.sat_gas[idx], sim.rs[idx]);
+            let drsdt0_base_rs = if !sim.gas_redissolution_enabled { Some(sim.rs[idx]) } else { None };
+            let regime = classify_cell_regime(sim, pressure_bar, sim.sat_gas[idx], sim.rs[idx], drsdt0_base_rs);
             let hydrocarbon_var = match regime {
                 HydrocarbonState::Saturated => sim.sat_gas[idx],
                 HydrocarbonState::Undersaturated => sim.rs[idx],
@@ -158,12 +159,15 @@ impl FimState {
 
         for idx in 0..self.cells.len() {
             let cell = self.cells[idx];
-            let rs_sat = sim
+            let mut rs_sat = sim
                 .pvt_table
                 .as_ref()
                 .map(|table| table.interpolate(cell.pressure_bar).rs_m3m3)
                 .unwrap_or(0.0)
                 .max(0.0);
+            if !sim.gas_redissolution_enabled {
+                rs_sat = rs_sat.min(sim.rs[idx]);
+            }
 
             match cell.regime {
                 HydrocarbonState::Saturated => {
@@ -414,12 +418,14 @@ impl FimState {
 
     pub(crate) fn derive_cell(&self, sim: &ReservoirSimulator, idx: usize) -> FimCellDerived {
         let cell = self.cell(idx);
+        let drsdt0_base_rs = if !sim.gas_redissolution_enabled { Some(sim.rs[idx]) } else { None };
         let flash = resolve_cell_flash(
             sim,
             cell.pressure_bar,
             cell.sw,
             cell.hydrocarbon_var,
             cell.regime,
+            drsdt0_base_rs,
         );
         let oil = sim.oil_props_for_state(cell.pressure_bar, flash.rs);
         let gas = sim.gas_props_for_state(cell.pressure_bar);

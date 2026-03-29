@@ -172,6 +172,7 @@ fn build_gas_injection_variant(
     sim.set_three_phase_rel_perm_props(0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95)
         .unwrap();
     sim.set_three_phase_mode_enabled(true);
+    let _ = sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 0.8);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_redissolution_enabled(false);
     sim.set_stability_params(0.05, 75.0, 0.75);
@@ -419,4 +420,49 @@ fn fim_debug_gas_10x10x3_no_capillary() {
 fn fim_debug_gas_10x10x3_pressure() {
     let mut sim = build_gas_injection_variant(10, 10, 3, true, true, false);
     run_verbose("gas_10x10x3_pressure", &mut sim, 2.0, 15);
+}
+#[test]
+fn test_gas_injection_drsdt_0() {
+    use crate::ReservoirSimulator;
+    let mut sim = ReservoirSimulator::new(2, 2, 1, 0.3);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions(300.0, 300.0, 10.0);
+    sim.set_three_phase_mode_enabled(true);
+    let _ = sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 0.8);
+    sim.set_gas_redissolution_enabled(false);
+    sim.set_injected_fluid("gas");
+    sim.set_initial_pressure(331.0);
+    sim.set_initial_saturation(0.12);
+    sim.set_initial_gas_saturation(0.0);
+    sim.set_initial_rs(226.0); // undersaturated
+    
+    // Some PVT to allow saturated evaluation
+    use crate::pvt::{PvtRow, PvtTable};
+    sim.pvt_table = Some(PvtTable::new(vec![
+        PvtRow { p_bar: 100.0, rs_m3m3: 100.0, bo_m3m3: 1.1, mu_o_cp: 1.0, bg_m3m3: 0.1, mu_g_cp: 0.02 },
+        PvtRow { p_bar: 277.0, rs_m3m3: 226.0, bo_m3m3: 1.2, mu_o_cp: 0.8, bg_m3m3: 0.02, mu_g_cp: 0.02 },
+        PvtRow { p_bar: 400.0, rs_m3m3: 350.0, bo_m3m3: 1.3, mu_o_cp: 0.6, bg_m3m3: 0.01, mu_g_cp: 0.02 },
+    ], 1e-5));
+    
+    sim.add_well_with_id(0, 0, 0, 600.0, 0.1, 0.0, true, "INJ".to_string());
+    sim.set_well_schedule("INJ".to_string(), "rate".to_string(), f64::NAN, 1e6, 600.0, true);
+    
+    sim.add_well_with_id(1, 1, 0, 100.0, 0.1, 0.0, false, "PROD".to_string());
+    sim.set_well_schedule("PROD".to_string(), "pressure".to_string(), f64::NAN, f64::NAN, 100.0, true);
+    
+    println!("Before: Sg={} Rs={}", sim.sat_gas[0], sim.rs[0]);
+    // Enable logging
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
+    sim.step(1.0);
+    println!("After: INJ={:?} PROD={:?}", sim.well_rate_m3_day(&sim.wells[0], sim.pressure[0]), sim.well_rate_m3_day(&sim.wells[1], sim.pressure[3]));
+    for i in 0..4 {
+        println!("Cell {}: Sg={} Rs={} P={}", i, sim.sat_gas[i], sim.rs[i], sim.pressure[i]);
+    }
+}
+#[test]
+fn test_gas_injection_rate_print() {
+    // just dummy
 }

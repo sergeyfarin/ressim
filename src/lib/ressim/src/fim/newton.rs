@@ -636,6 +636,7 @@ fn evaluate_accepted_state_convergence(
         &FimAssemblyOptions {
             dt_days,
             include_wells: true,
+            assemble_residual_only: false,
             topology: Some(topology),
         },
     );
@@ -719,6 +720,7 @@ pub(crate) fn run_fim_timestep(
             &FimAssemblyOptions {
                 dt_days,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: Some(&topology),
             },
         );
@@ -992,6 +994,7 @@ pub(crate) fn run_fim_timestep(
                     &FimAssemblyOptions {
                         dt_days,
                         include_wells: true,
+                        assemble_residual_only: true,
                         topology: Some(&topology),
                     },
                 );
@@ -1154,6 +1157,7 @@ pub(crate) fn run_fim_timestep(
         &FimAssemblyOptions {
             dt_days,
             include_wells: true,
+            assemble_residual_only: false,
             topology: Some(&topology),
         },
     );
@@ -1341,6 +1345,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 1.0,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
@@ -1382,6 +1387,7 @@ mod tests {
             &FimAssemblyOptions {
                 dt_days: 0.01,
                 include_wells: true,
+                assemble_residual_only: false,
                 topology: None,
             },
         );
