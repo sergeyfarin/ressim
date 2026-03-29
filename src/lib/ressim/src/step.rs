@@ -267,8 +267,9 @@ impl ReservoirSimulator {
                     break;
                 }
 
-                // Use Newton-reported cutback factor instead of fixed 0.5.
-                let next_dt = trial_dt * report.cutback_factor.clamp(0.1, 0.5);
+                // Use Newton-reported retry factor; this is separate from any
+                // inner Newton line-search damping used on accepted iterates.
+                let next_dt = trial_dt * report.retry_factor.clamp(0.1, 0.5);
                 retry_count += 1;
 
                 if let Some(failure_diagnostics) = &report.failure_diagnostics {
@@ -282,13 +283,13 @@ impl ReservoirSimulator {
                 fim_trace!(
                     self,
                     verbose,
-                    "  substep {}: FAILED (iters={} res={:.3e} mb={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
+                    "  substep {}: FAILED (iters={} res={:.3e} mb={:.3e} upd={:.3e} retry_factor={:.2}){} → next_dt={:.6}",
                     substeps,
                     report.newton_iterations,
                     report.final_residual_inf_norm,
                     report.final_material_balance_inf_norm,
                     report.final_update_inf_norm,
-                    report.cutback_factor,
+                    report.retry_factor,
                     report
                         .failure_diagnostics
                         .as_ref()

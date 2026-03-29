@@ -1374,10 +1374,11 @@ fn add_exact_interface_flux_jacobian(
     let pcog_i = sim.get_gas_oil_capillary_pressure(derived_i.sg);
     let pcog_j = sim.get_gas_oil_capillary_pressure(derived_j.sg);
     let grav_half = gravity_half_coefficient(sim, depth_i, depth_j);
+    let grav_w = grav_half * (derived_i.rho_w + derived_j.rho_w);
     let grav_o = grav_half * (derived_i.rho_o + derived_j.rho_o);
     let grav_g = grav_half * (derived_i.rho_g + derived_j.rho_g);
 
-    let dphi_w = (p_i - p_j) - (pcw_i - pcw_j);
+    let dphi_w = (p_i - p_j) - (pcw_i - pcw_j) - grav_w;
     let dphi_o = (p_i - p_j) - grav_o;
     let dphi_g = (p_i - p_j) + (pcog_i - pcog_j) - grav_g;
 

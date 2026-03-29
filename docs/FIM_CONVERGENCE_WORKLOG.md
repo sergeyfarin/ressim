@@ -92,6 +92,56 @@ Conclusion: full-system central FD is useful as a deep diagnostic, but not as th
 
 The most likely next target is the equation family that causes the jump from a tiny iteration-0 residual to the iteration-1 plateau.
 
+## External Solver Comparison - 2026-03-29
+
+Cross-checks against OPM, MRST, JutulDarcy, DuMux, MOOSE, openDARTS, and the SPE overview article did not point to a hidden timestep trick that would plausibly solve the current pathology by itself.
+
+### Main recurring ideas
+
+- OPM, MRST, JutulDarcy, and DuMux all keep timestep adaptation logically separate from Newton line-search damping.
+- DuMux, MRST, JutulDarcy, and MOOSE all expose stronger Newton globalization than the current local binary accept-or-cut path here:
+  - backtracking line search
+  - relaxation/dampening
+  - bounded or chopped updates
+  - iteration-count-aware timestep selection
+- JutulDarcy and OPM both expose stronger CPR variants for well-coupled systems than the current reservoir-only reduced pressure path here.
+- DuMux reduces residual/Jacobian drift risk by routing assembly through a more unified assembler interface and optionally numeric differentiation / partial reassembly.
+- openDARTS is useful mainly as an example of explicit iteration accounting, engine/operator separation, and strong diagnostic surfacing of Newton and linear iteration counts, but the public docs were not detailed enough to extract a concrete nonlinear fix beyond that.
+
+### Implication for the current `wf_p_12x12x3` hotspot
+
+- The previous recommendation still holds: do not spend the next slice on more timestep heuristics.
+- The most credible next fixes are still:
+  1. residual/Jacobian consistency corrections
+  2. stronger Newton globalization / bounded updates
+  3. better well-aware CPR after the nonlinear path is less fragile
+
+### Prioritized next plan
+
+1. Fix the identified water-gravity mismatch between residual and exact Jacobian face terms and validate on the hard wasm repro.
+2. If fragmentation remains, replace the current residual-improved acceptance rule with a stronger sufficient-decrease backtracking rule.
+3. Add explicit update limits for pressure and saturation in the Newton candidate path instead of relying only on reject/retry.
+4. Revisit the CPR reduction so wells and tail variables influence the pressure stage for large coupled systems.
+5. Only after those steps, retune timestep growth and cutback targets using iteration-count feedback.
+
+## Validation Update - 2026-03-29 water-gravity Jacobian patch
+
+- Change made: the exact interface Jacobian now includes the missing water gravity term in `dphi_w`, matching the residual-side water potential expression.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml zero_residual_scaffold_converges_in_one_newton_step -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture` passed
+  - wasm rebuild succeeded
+  - hard repro `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json` still fragmented badly
+- New observed hard-repro outcome:
+  - `FIM step done: 2063 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=6 nonlinear-bad=2057 mixed=0`
+  - repeated failed doubled steps now reported `dom=oil` instead of the earlier dominant `dom=water`
+
+Interpretation:
+
+- The patch fixed a real consistency gap, but it was not the main driver of the micro-substep spiral.
+- The dominant nonlinear bottleneck moved rather than disappearing, which makes the next best target the Newton acceptance/globalization path rather than another small flux-term correction.
+
 ## Added Diagnostics
 
 ### Native debug scenarios

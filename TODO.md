@@ -41,10 +41,19 @@
     - The latest validated baseline keeps the `DRSDT = 0` gas-split fix and the tightened no-op Newton-acceptance fix.
     - Hard coupled convergence and timestep-fragmentation behavior are still unresolved on the harder waterflood and gas-injection cases.
     - Hotspot tracing for the hard `12x12x3` waterflood case now includes per-face phase diagnostics (`dphi`, upwind donor, mobility, signed flux) for the dominant cell's lateral faces on the canonical wasm path.
+    - Decoupling Newton line-search damping from outer timestep retry policy did not resolve the hard `12x12x3` waterflood fragmentation; the case still advanced 1 day in about `1973` substeps and remains dominated by `nonlinear-bad` water residual retries.
+    - External comparison on `2026-03-29` across OPM, MRST, JutulDarcy, DuMux, MOOSE, openDARTS, and the SPE overview article reinforced the same priority order: fix residual/Jacobian consistency first, then strengthen nonlinear globalization, then improve well-aware CPR, and only then revisit timestep heuristics.
+    - The water-gravity term mismatch in the exact interface Jacobian was patched on `2026-03-29` and validated; focused Rust FIM regressions still passed, but the hard wasm `wf_p_12x12x3` repro did not improve and instead worsened slightly to about `2063` substeps/day, with the dominant failure classification shifting from water to oil.
   - Immediate follow-up after the cleanup pass:
     - classify FIM regressions versus diagnostics
     - move or remove debug-only probes still outside dedicated diagnostic files
     - define the short canonical regression set for day-to-day FIM edits
+  - Prioritized convergence plan:
+    1. Fix the known residual/Jacobian inconsistency in the water-face gravity term and re-run the hard `wf_p_12x12x3` wasm repro plus focused Rust FIM regressions.
+    2. Tighten Newton acceptance/globalization to require a stronger sufficient decrease than the current binary residual-improved check, while keeping timestep retry policy separate from damping.
+    3. Add bounded update controls in the same Newton path for pressure and saturation changes, following the same direction used by MRST, JutulDarcy, and DuMux.
+    4. Upgrade the CPR path toward a well-aware pressure stage for larger FIM systems, closer to CPRW-style handling instead of a reservoir-only coarse pressure system.
+    5. Revisit adaptive timestep growth/cutback only after steps 1 to 4, using target-iteration heuristics rather than line-search side effects.
 - [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
   - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
   - Default-dispatch behavior now automatically falls back from faer sparse LU to BiCGSTAB when factorization fails or the direct-solve residual misses tolerance.

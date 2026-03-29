@@ -180,7 +180,15 @@ pub(crate) struct FimStepReport {
     pub(crate) final_update_inf_norm: f64,
     pub(crate) last_linear_report: Option<FimLinearSolveReport>,
     pub(crate) failure_diagnostics: Option<FimRetryFailureDiagnostics>,
-    pub(crate) cutback_factor: f64,
+    pub(crate) retry_factor: f64,
+}
+
+fn retry_factor_for_failure(diagnostics: Option<&FimRetryFailureDiagnostics>) -> f64 {
+    match diagnostics.map(|diagnostics| diagnostics.class) {
+        Some(FimRetryFailureClass::LinearBad) => 0.25,
+        Some(FimRetryFailureClass::NonlinearBad) | Some(FimRetryFailureClass::Mixed) => 0.5,
+        None => 0.5,
+    }
 }
 
 /// Appleyard chop: compute the largest damping factor such that no cell variable
@@ -887,7 +895,6 @@ pub(crate) fn run_fim_timestep(
     let mut final_residual_inf_norm: Option<f64>;
     let mut final_material_balance_inf_norm = f64::INFINITY;
     let mut final_update_inf_norm = f64::INFINITY;
-    let mut accepted_damping = 1.0;
     let mut prev_residual_norm = f64::INFINITY;
     let mut stagnation_count: u32 = 0;
     let block_layout = Some(FimLinearBlockLayout {
@@ -999,7 +1006,7 @@ pub(crate) fn run_fim_timestep(
                     final_update_inf_norm,
                     last_linear_report,
                     failure_diagnostics: None,
-                    cutback_factor: accepted_damping,
+                    retry_factor: 1.0,
                 };
             }
 
@@ -1007,6 +1014,7 @@ pub(crate) fn run_fim_timestep(
                 last_linear_report.as_ref(),
                 &accepted_diagnostics.residual_diagnostics,
             );
+            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
                 sim,
                 options.verbose,
@@ -1037,7 +1045,7 @@ pub(crate) fn run_fim_timestep(
                 final_update_inf_norm,
                 last_linear_report,
                 failure_diagnostics: Some(failure_diagnostics),
-                cutback_factor: accepted_damping * 0.5,
+                retry_factor,
             };
         }
 
@@ -1047,6 +1055,7 @@ pub(crate) fn run_fim_timestep(
             if stagnation_count >= 3 {
                 let failure_diagnostics =
                     classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
+                let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
                 fim_trace!(
                     sim,
                     options.verbose,
@@ -1070,7 +1079,7 @@ pub(crate) fn run_fim_timestep(
                     final_update_inf_norm,
                     last_linear_report,
                     failure_diagnostics: Some(failure_diagnostics),
-                    cutback_factor: 0.25,
+                    retry_factor,
                 };
             }
         } else {
@@ -1162,7 +1171,7 @@ pub(crate) fn run_fim_timestep(
                     final_update_inf_norm,
                     last_linear_report: Some(linear_report),
                     failure_diagnostics: None,
-                    cutback_factor: accepted_damping,
+                    retry_factor: 1.0,
                 };
             }
 
@@ -1170,6 +1179,7 @@ pub(crate) fn run_fim_timestep(
                 Some(&linear_report),
                 &accepted_diagnostics.residual_diagnostics,
             );
+            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
                 sim,
                 options.verbose,
@@ -1199,7 +1209,7 @@ pub(crate) fn run_fim_timestep(
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
                 failure_diagnostics: Some(failure_diagnostics),
-                cutback_factor: accepted_damping * 0.5,
+                retry_factor,
             };
         }
 
@@ -1314,13 +1324,14 @@ pub(crate) fn run_fim_timestep(
                         final_update_inf_norm,
                         last_linear_report: Some(linear_report),
                         failure_diagnostics: None,
-                        cutback_factor: accepted_damping,
+                        retry_factor: 1.0,
                     };
                 }
                 let failure_diagnostics = classify_retry_failure(
                     Some(&linear_report),
                     &accepted_diagnostics.residual_diagnostics,
                 );
+                let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
                 fim_trace!(
                     sim,
                     options.verbose,
@@ -1353,11 +1364,12 @@ pub(crate) fn run_fim_timestep(
                     final_update_inf_norm,
                     last_linear_report: Some(linear_report),
                     failure_diagnostics: Some(failure_diagnostics),
-                    cutback_factor: accepted_damping * 0.5,
+                    retry_factor,
                 };
             }
             let failure_diagnostics =
                 classify_retry_failure(Some(&linear_report), &residual_diagnostics);
+            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
                 sim,
                 options.verbose,
@@ -1376,11 +1388,10 @@ pub(crate) fn run_fim_timestep(
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
                 failure_diagnostics: Some(failure_diagnostics),
-                cutback_factor: 0.5,
+                retry_factor,
             };
         };
 
-        accepted_damping = damping;
         state = candidate;
     }
 
@@ -1439,12 +1450,13 @@ pub(crate) fn run_fim_timestep(
             final_update_inf_norm,
             last_linear_report,
             failure_diagnostics: None,
-            cutback_factor: accepted_damping,
+            retry_factor: 1.0,
         };
     }
 
     let failure_diagnostics =
         classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
+    let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
     fim_trace!(
         sim,
         options.verbose,
@@ -1471,7 +1483,7 @@ pub(crate) fn run_fim_timestep(
         final_update_inf_norm,
         last_linear_report,
         failure_diagnostics: Some(failure_diagnostics),
-        cutback_factor: accepted_damping * 0.5,
+        retry_factor,
     }
 }
 
@@ -1496,7 +1508,7 @@ mod tests {
 
         assert!(report.converged);
         assert_eq!(report.newton_iterations, 1);
-        assert_eq!(report.cutback_factor, 1.0);
+        assert_eq!(report.retry_factor, 1.0);
         assert!(report.final_residual_inf_norm <= 1e-12);
         assert!(report.final_material_balance_inf_norm <= 1e-12);
         assert!(report.final_update_inf_norm <= 1e-12);
