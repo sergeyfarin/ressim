@@ -228,11 +228,12 @@ impl ReservoirSimulator {
 
                     fim_trace!(
                         verbose,
-                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
+                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
                         substeps,
                         trial_dt,
                         report.newton_iterations,
                         report.final_residual_inf_norm,
+                        report.final_material_balance_inf_norm,
                         report.final_update_inf_norm,
                         max_dsat,
                         max_dp,
@@ -271,10 +272,11 @@ impl ReservoirSimulator {
 
                 fim_trace!(
                     verbose,
-                    "  substep {}: FAILED (iters={} res={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
+                    "  substep {}: FAILED (iters={} res={:.3e} mb={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
                     substeps,
                     report.newton_iterations,
                     report.final_residual_inf_norm,
+                    report.final_material_balance_inf_norm,
                     report.final_update_inf_norm,
                     report.cutback_factor,
                     report

@@ -134,6 +134,7 @@ fn retry_failure_trace_suffix(diagnostics: &FimRetryFailureDiagnostics) -> Strin
 pub(crate) struct FimNewtonOptions {
     pub(crate) max_newton_iterations: usize,
     pub(crate) residual_tolerance: f64,
+    pub(crate) material_balance_tolerance: f64,
     pub(crate) update_tolerance: f64,
     pub(crate) min_damping: f64,
     pub(crate) max_pressure_change_bar: f64,
@@ -148,6 +149,7 @@ impl Default for FimNewtonOptions {
         Self {
             max_newton_iterations: 20,
             residual_tolerance: 1e-5,
+            material_balance_tolerance: 1e-5,
             update_tolerance: 1e-3,
             min_damping: 1.0 / 64.0,
             // Generous limits — only prevent gross overshoot, not convergence-limiting.
@@ -166,6 +168,7 @@ pub(crate) struct FimStepReport {
     pub(crate) converged: bool,
     pub(crate) newton_iterations: usize,
     pub(crate) final_residual_inf_norm: f64,
+    pub(crate) final_material_balance_inf_norm: f64,
     pub(crate) final_update_inf_norm: f64,
     pub(crate) last_linear_report: Option<FimLinearSolveReport>,
     pub(crate) failure_diagnostics: Option<FimRetryFailureDiagnostics>,
@@ -288,6 +291,25 @@ fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> b
                 || (current.hydrocarbon_var - previous.hydrocarbon_var).abs() > RS_EPS
                 || current.regime != previous.regime
         })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct GlobalMaterialBalanceDiagnostics {
+    water: f64,
+    oil_component: f64,
+    gas_component: f64,
+    global_family: ResidualRowFamily,
+    global_value: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct AcceptedStateConvergenceDiagnostics {
+    state: FimState,
+    residual_inf_norm: f64,
+    residual_diagnostics: ResidualFamilyDiagnostics,
+    residual_detail: Option<String>,
+    material_balance_inf_norm: f64,
+    material_balance_diagnostics: GlobalMaterialBalanceDiagnostics,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -472,6 +494,61 @@ fn residual_family_trace(diagnostics: &ResidualFamilyDiagnostics) -> String {
     parts.join(" ")
 }
 
+fn normalized_material_balance(component_sum: f64, component_scaling: &[f64]) -> f64 {
+    let denominator = component_scaling.iter().copied().sum::<f64>().abs().max(1.0);
+    component_sum.abs() / denominator
+}
+
+fn global_material_balance_diagnostics(
+    residual: &DVector<f64>,
+    scaling: &crate::fim::scaling::EquationScaling,
+) -> GlobalMaterialBalanceDiagnostics {
+    let n_cells = scaling.water.len();
+    let mut water_sum = 0.0_f64;
+    let mut oil_component_sum = 0.0_f64;
+    let mut gas_component_sum = 0.0_f64;
+
+    for i in 0..n_cells {
+        water_sum += residual[i * 3];
+        oil_component_sum += residual[i * 3 + 1];
+        gas_component_sum += residual[i * 3 + 2];
+    }
+
+    let water = normalized_material_balance(water_sum, &scaling.water);
+    let oil_component = normalized_material_balance(oil_component_sum, &scaling.oil_component);
+    let gas_component = normalized_material_balance(gas_component_sum, &scaling.gas_component);
+
+    let mut global_family = ResidualRowFamily::Water;
+    let mut global_value = water;
+    for (family, value) in [
+        (ResidualRowFamily::OilComponent, oil_component),
+        (ResidualRowFamily::GasComponent, gas_component),
+    ] {
+        if value > global_value {
+            global_family = family;
+            global_value = value;
+        }
+    }
+
+    GlobalMaterialBalanceDiagnostics {
+        water,
+        oil_component,
+        gas_component,
+        global_family,
+        global_value,
+    }
+}
+
+fn global_material_balance_trace(diagnostics: &GlobalMaterialBalanceDiagnostics) -> String {
+    format!(
+        "water={:.3e} oil={:.3e} gas={:.3e} top={}",
+        diagnostics.water,
+        diagnostics.oil_component,
+        diagnostics.gas_component,
+        diagnostics.global_family.label(),
+    )
+}
+
 fn residual_family_detail_trace(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -542,6 +619,68 @@ fn residual_family_detail_trace(
     }
 }
 
+fn evaluate_accepted_state_convergence(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    candidate_state: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    dt_days: f64,
+) -> AcceptedStateConvergenceDiagnostics {
+    let mut state = candidate_state.clone();
+    state.classify_regimes(sim);
+
+    let assembly = assemble_fim_system(
+        sim,
+        previous_state,
+        &state,
+        &FimAssemblyOptions {
+            dt_days,
+            include_wells: true,
+            topology: Some(topology),
+        },
+    );
+    let residual_inf_norm =
+        scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
+    let residual_diagnostics =
+        residual_family_diagnostics(&assembly.residual, &assembly.equation_scaling);
+    let residual_detail = residual_family_detail_trace(sim, &state, topology, &residual_diagnostics);
+    let material_balance_diagnostics =
+        global_material_balance_diagnostics(&assembly.residual, &assembly.equation_scaling);
+
+    AcceptedStateConvergenceDiagnostics {
+        state,
+        residual_inf_norm,
+        residual_diagnostics,
+        residual_detail,
+        material_balance_inf_norm: material_balance_diagnostics.global_value,
+        material_balance_diagnostics,
+    }
+}
+
+fn convergence_limits(
+    options: &FimNewtonOptions,
+    use_guard_band: bool,
+) -> (f64, f64) {
+    let factor = if use_guard_band {
+        ENTRY_RESIDUAL_GUARD_FACTOR
+    } else {
+        1.0
+    };
+    (
+        options.residual_tolerance * factor,
+        options.material_balance_tolerance * factor,
+    )
+}
+
+fn accepted_state_meets_convergence(
+    diagnostics: &AcceptedStateConvergenceDiagnostics,
+    residual_limit: f64,
+    material_balance_limit: f64,
+) -> bool {
+    diagnostics.residual_inf_norm <= residual_limit
+        && diagnostics.material_balance_inf_norm <= material_balance_limit
+}
+
 pub(crate) fn run_fim_timestep(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -552,6 +691,7 @@ pub(crate) fn run_fim_timestep(
     let mut state = initial_iterate.clone();
     let mut last_linear_report = None;
     let mut final_residual_inf_norm: Option<f64>;
+    let mut final_material_balance_inf_norm = f64::INFINITY;
     let mut final_update_inf_norm = f64::INFINITY;
     let mut accepted_damping = 1.0;
     let mut prev_residual_norm = f64::INFINITY;
@@ -598,32 +738,87 @@ pub(crate) fn run_fim_timestep(
                 && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR);
         if converged_on_entry {
             final_update_inf_norm = 0.0;
+            let use_guard_band = current_norm > options.residual_tolerance;
+            let (residual_limit, material_balance_limit) =
+                convergence_limits(options, use_guard_band);
+            let accepted_diagnostics = evaluate_accepted_state_convergence(
+                sim,
+                previous_state,
+                &state,
+                &topology,
+                dt_days,
+            );
+            if accepted_state_meets_convergence(
+                &accepted_diagnostics,
+                residual_limit,
+                material_balance_limit,
+            ) {
+                fim_trace!(
+                    options.verbose,
+                    "    iter {:>2}: CONVERGED on residual check res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}",
+                    iteration,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    if use_guard_band {
+                        format!(" (entry guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
+                    } else {
+                        String::new()
+                    },
+                    residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                    global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                    accepted_diagnostics
+                        .residual_detail
+                        .as_ref()
+                        .map(|detail| format!(" detail=[{}]", detail))
+                        .unwrap_or_default()
+                );
+                return FimStepReport {
+                    accepted_state: accepted_diagnostics.state,
+                    converged: true,
+                    newton_iterations: iteration + 1,
+                    final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                    final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
+                    final_update_inf_norm,
+                    last_linear_report,
+                    failure_diagnostics: None,
+                    cutback_factor: accepted_damping,
+                };
+            }
+
+            let failure_diagnostics = classify_retry_failure(
+                last_linear_report.as_ref(),
+                &accepted_diagnostics.residual_diagnostics,
+            );
             fim_trace!(
                 options.verbose,
-                "    iter {:>2}: CONVERGED on residual check res={:.3e}{} fam=[{}]{}",
+                "    iter {:>2}: POST-CLASSIFICATION REJECTED res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}{}",
                 iteration,
-                current_norm,
-                if current_norm > options.residual_tolerance {
+                accepted_diagnostics.residual_inf_norm,
+                accepted_diagnostics.material_balance_inf_norm,
+                if use_guard_band {
                     format!(" (entry guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
                 } else {
                     String::new()
                 },
-                residual_family_trace(&residual_diagnostics),
-                residual_detail
+                residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                accepted_diagnostics
+                    .residual_detail
                     .as_ref()
                     .map(|detail| format!(" detail=[{}]", detail))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                retry_failure_trace_suffix(&failure_diagnostics)
             );
-            state.classify_regimes(sim);
             return FimStepReport {
-                accepted_state: state,
-                converged: true,
+                accepted_state: accepted_diagnostics.state,
+                converged: false,
                 newton_iterations: iteration + 1,
-                final_residual_inf_norm: current_norm,
+                final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report,
-                failure_diagnostics: None,
-                cutback_factor: accepted_damping,
+                failure_diagnostics: Some(failure_diagnostics),
+                cutback_factor: accepted_damping * 0.5,
             };
         }
 
@@ -651,6 +846,7 @@ pub(crate) fn run_fim_timestep(
                     converged: false,
                     newton_iterations: iteration + 1,
                     final_residual_inf_norm: current_norm,
+                    final_material_balance_inf_norm,
                     final_update_inf_norm,
                     last_linear_report,
                     failure_diagnostics: Some(failure_diagnostics),
@@ -700,32 +896,83 @@ pub(crate) fn run_fim_timestep(
             && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
             && iterate_has_material_change(previous_state, &state);
         if converged {
+            let use_guard_band = current_norm > options.residual_tolerance;
+            let (residual_limit, material_balance_limit) =
+                convergence_limits(options, use_guard_band);
+            let accepted_diagnostics = evaluate_accepted_state_convergence(
+                sim,
+                previous_state,
+                &state,
+                &topology,
+                dt_days,
+            );
+            if accepted_state_meets_convergence(
+                &accepted_diagnostics,
+                residual_limit,
+                material_balance_limit,
+            ) {
+                fim_trace!(
+                    options.verbose,
+                    "    iter {:>2}: CONVERGED res={:.3e} mb={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}] mb=[{}]{}",
+                    iteration,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    final_update_inf_norm,
+                    linear_report.iterations,
+                    if used_fallback { " [fallback]" } else { "" },
+                    linear_report_trace_suffix(&linear_report),
+                    residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                    global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                    accepted_diagnostics
+                        .residual_detail
+                        .as_ref()
+                        .map(|detail| format!(" detail=[{}]", detail))
+                        .unwrap_or_default()
+                );
+                return FimStepReport {
+                    accepted_state: accepted_diagnostics.state,
+                    converged: true,
+                    newton_iterations: iteration + 1,
+                    final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                    final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
+                    final_update_inf_norm,
+                    last_linear_report: Some(linear_report),
+                    failure_diagnostics: None,
+                    cutback_factor: accepted_damping,
+                };
+            }
+
+            let failure_diagnostics =
+                classify_retry_failure(Some(&linear_report), &accepted_diagnostics.residual_diagnostics);
             fim_trace!(
                 options.verbose,
-                "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}]{}",
+                "    iter {:>2}: POST-CLASSIFICATION REJECTED res={:.3e} mb={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}] mb=[{}]{}{}",
                 iteration,
-                current_norm,
+                accepted_diagnostics.residual_inf_norm,
+                accepted_diagnostics.material_balance_inf_norm,
                 final_update_inf_norm,
                 linear_report.iterations,
                 if used_fallback { " [fallback]" } else { "" },
                 linear_report_trace_suffix(&linear_report),
-                residual_family_trace(&residual_diagnostics),
-                residual_detail
+                residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                accepted_diagnostics
+                    .residual_detail
                     .as_ref()
                     .map(|detail| format!(" detail=[{}]", detail))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                retry_failure_trace_suffix(&failure_diagnostics)
             );
-            // Reclassify regimes now that Newton has converged with frozen regime map.
-            state.classify_regimes(sim);
             return FimStepReport {
-                accepted_state: state,
-                converged: true,
+                accepted_state: accepted_diagnostics.state,
+                converged: false,
                 newton_iterations: iteration + 1,
-                final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
+                final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
-                failure_diagnostics: None,
-                cutback_factor: accepted_damping,
+                failure_diagnostics: Some(failure_diagnostics),
+                cutback_factor: accepted_damping * 0.5,
             };
         }
 
@@ -793,33 +1040,84 @@ pub(crate) fn run_fim_timestep(
             if current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
                 && iterate_has_material_change(previous_state, &state)
             {
-                final_update_inf_norm = 0.0;
+                let accepted_diagnostics = evaluate_accepted_state_convergence(
+                    sim,
+                    previous_state,
+                    &state,
+                    &topology,
+                    dt_days,
+                );
+                if accepted_state_meets_convergence(
+                    &accepted_diagnostics,
+                    options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR,
+                    options.material_balance_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR,
+                ) {
+                    final_update_inf_norm = 0.0;
+                    fim_trace!(
+                        options.verbose,
+                        "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}",
+                        iteration,
+                        accepted_diagnostics.residual_inf_norm,
+                        accepted_diagnostics.material_balance_inf_norm,
+                        if accepted_diagnostics.residual_inf_norm > options.residual_tolerance {
+                            format!(" (guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
+                        } else {
+                            String::new()
+                        },
+                        residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                        global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                        accepted_diagnostics
+                            .residual_detail
+                            .as_ref()
+                            .map(|detail| format!(" detail=[{}]", detail))
+                            .unwrap_or_default()
+                    );
+                    return FimStepReport {
+                        accepted_state: accepted_diagnostics.state,
+                        converged: true,
+                        newton_iterations: iteration + 1,
+                        final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                        final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
+                        final_update_inf_norm,
+                        last_linear_report: Some(linear_report),
+                        failure_diagnostics: None,
+                        cutback_factor: accepted_damping,
+                    };
+                }
+                let failure_diagnostics = classify_retry_failure(
+                    Some(&linear_report),
+                    &accepted_diagnostics.residual_diagnostics,
+                );
                 fim_trace!(
                     options.verbose,
-                    "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e}{} fam=[{}]{}",
+                    "    iter {:>2}: POST-CLASSIFICATION REJECTED after non-improving candidates res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}{}",
                     iteration,
-                    current_norm,
-                    if current_norm > options.residual_tolerance {
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    if accepted_diagnostics.residual_inf_norm > options.residual_tolerance {
                         format!(" (guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
                     } else {
                         String::new()
                     },
-                    residual_family_trace(&residual_diagnostics),
-                    residual_detail
+                    residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                    global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                    accepted_diagnostics
+                        .residual_detail
                         .as_ref()
                         .map(|detail| format!(" detail=[{}]", detail))
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
+                    retry_failure_trace_suffix(&failure_diagnostics)
                 );
-                state.classify_regimes(sim);
                 return FimStepReport {
-                    accepted_state: state,
-                    converged: true,
+                    accepted_state: accepted_diagnostics.state,
+                    converged: false,
                     newton_iterations: iteration + 1,
-                    final_residual_inf_norm: current_norm,
+                    final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                    final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
                     final_update_inf_norm,
                     last_linear_report: Some(linear_report),
-                    failure_diagnostics: None,
-                    cutback_factor: accepted_damping,
+                    failure_diagnostics: Some(failure_diagnostics),
+                    cutback_factor: accepted_damping * 0.5,
                 };
             }
             let failure_diagnostics =
@@ -837,6 +1135,7 @@ pub(crate) fn run_fim_timestep(
                 converged: false,
                 newton_iterations: iteration + 1,
                 final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
+                final_material_balance_inf_norm,
                 final_update_inf_norm,
                 last_linear_report: Some(linear_report),
                 failure_diagnostics: Some(failure_diagnostics),
@@ -866,23 +1165,30 @@ pub(crate) fn run_fim_timestep(
         residual_family_diagnostics(&final_assembly.residual, &final_assembly.equation_scaling);
     let final_residual_detail =
         residual_family_detail_trace(sim, &state, &topology, &final_residual_diagnostics);
-    if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance {
+    let final_material_balance_diagnostics =
+        global_material_balance_diagnostics(&final_assembly.residual, &final_assembly.equation_scaling);
+    final_material_balance_inf_norm = final_material_balance_diagnostics.global_value;
+    if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
+        && final_material_balance_inf_norm <= options.material_balance_tolerance
+    {
         fim_trace!(
             options.verbose,
-            "    post-loop: CONVERGED on final residual check res={:.3e} fam=[{}]{}",
+            "    post-loop: CONVERGED on final residual check res={:.3e} mb={:.3e} fam=[{}] mb=[{}]{}",
             final_residual_inf_norm.unwrap_or(f64::INFINITY),
+            final_material_balance_inf_norm,
             residual_family_trace(&final_residual_diagnostics),
+            global_material_balance_trace(&final_material_balance_diagnostics),
             final_residual_detail
                 .as_ref()
                 .map(|detail| format!(" detail=[{}]", detail))
                 .unwrap_or_default()
         );
-        state.classify_regimes(sim);
         return FimStepReport {
             accepted_state: state,
             converged: true,
             newton_iterations: options.max_newton_iterations,
             final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
+            final_material_balance_inf_norm,
             final_update_inf_norm,
             last_linear_report,
             failure_diagnostics: None,
@@ -894,11 +1200,13 @@ pub(crate) fn run_fim_timestep(
         classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
     fim_trace!(
         options.verbose,
-        "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e} fam=[{}]{}{}",
+        "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} mb={:.3e} upd={:.3e} fam=[{}] mb=[{}]{}{}",
         options.max_newton_iterations,
         final_residual_inf_norm.unwrap_or(f64::INFINITY),
+        final_material_balance_inf_norm,
         final_update_inf_norm,
         residual_family_trace(&final_residual_diagnostics),
+        global_material_balance_trace(&final_material_balance_diagnostics),
         final_residual_detail
             .as_ref()
             .map(|detail| format!(" detail=[{}]", detail))
@@ -911,6 +1219,7 @@ pub(crate) fn run_fim_timestep(
         converged: false,
         newton_iterations: options.max_newton_iterations,
         final_residual_inf_norm: final_residual_inf_norm.unwrap_or(f64::INFINITY),
+        final_material_balance_inf_norm,
         final_update_inf_norm,
         last_linear_report,
         failure_diagnostics: Some(failure_diagnostics),
@@ -941,6 +1250,7 @@ mod tests {
         assert_eq!(report.newton_iterations, 1);
         assert_eq!(report.cutback_factor, 1.0);
         assert!(report.final_residual_inf_norm <= 1e-12);
+        assert!(report.final_material_balance_inf_norm <= 1e-12);
         assert!(report.final_update_inf_norm <= 1e-12);
     }
 
@@ -1047,9 +1357,13 @@ mod tests {
         let report = run_fim_timestep(&sim, &previous_state, &iterate, 1.0, &options);
 
         assert!(report.converged);
-        assert_eq!(report.newton_iterations, 1);
-        assert!((report.accepted_state.well_bhp[0] - iterate.well_bhp[0]).abs() < 1e-15);
+        assert!(report.newton_iterations <= 2);
         assert_eq!(report.final_update_inf_norm, 0.0);
+        assert!(report.final_residual_inf_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR);
+        assert!(
+            report.final_material_balance_inf_norm
+                <= options.material_balance_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
+        );
     }
 
     #[test]
@@ -1136,6 +1450,26 @@ mod tests {
         assert_eq!(diagnostics.global.row, 7);
         assert_eq!(diagnostics.global.item_index, 1);
         assert!((diagnostics.global.scaled_value - 8.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn global_material_balance_diagnostics_normalizes_component_sums() {
+        let residual = DVector::from_vec(vec![1.0, -4.0, 9.0, 3.0, 6.0, -3.0, 50.0, -20.0, 7.0]);
+        let scaling = EquationScaling {
+            water: vec![10.0, 10.0],
+            oil_component: vec![10.0, 10.0],
+            gas_component: vec![10.0, 10.0],
+            well_constraint: vec![5.0, 5.0],
+            perforation_flow: vec![2.0],
+        };
+
+        let diagnostics = global_material_balance_diagnostics(&residual, &scaling);
+
+        assert!((diagnostics.water - 0.2).abs() < 1e-12);
+        assert!((diagnostics.oil_component - 0.1).abs() < 1e-12);
+        assert!((diagnostics.gas_component - 0.3).abs() < 1e-12);
+        assert_eq!(diagnostics.global_family, ResidualRowFamily::GasComponent);
+        assert!((diagnostics.global_value - 0.3).abs() < 1e-12);
     }
 
     #[test]
