@@ -203,6 +203,27 @@ Interpretation:
 - This directly addresses the remaining micro-substep spiral without reopening the old no-op acceptance bug: unchanged states are still rejected, but materially changed candidates no longer get bounced just because their residual is worse only at roundoff level.
 - The improvement is large enough that the next priority should stay on the linear/preconditioning side rather than further convergence-guard tweaking unless a new regression appears.
 
+## Validation Update - 2026-03-29 CPR tail prolongation into well/scalar unknowns
+
+- Change made: the CPR pressure correction now prolongates directly into the scalar tail block using the same local Schur data already used to build the coarse pressure system, so well-BHP and perforation-rate unknowns receive an explicit coarse-stage update instead of depending entirely on the post-pressure smoother.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml pressure_projection_updates_tail_unknowns_from_coarse_correction` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml pressure_rhs_accounts_for_tail_schur_coupling` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml cpr_report_exposes_coarse_diagnostics` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_gas_injection_creates_free_gas` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_coarse_grid_reaches_producer_gas_breakthrough` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - hard repro `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json` remained effectively unchanged
+- New observed hard-repro outcome:
+  - `FIM step done: 138 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=6 nonlinear-bad=128 mixed=0`
+
+Interpretation:
+
+- The explicit tail prolongation is worth keeping because it makes the CPR stage more internally consistent and more well-aware without harming the validated gas/water-front propagation tests.
+- On the current hard waterflood repro it does not materially change the retry shelf, which suggests the remaining bottleneck is not simply “the coarse pressure stage fails to move tail unknowns.” The next productive slice should target coarse-system quality or outer-step policy rather than this specific prolongation path.
+
 ## Added Diagnostics
 
 ### Native debug scenarios

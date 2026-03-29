@@ -20,6 +20,7 @@ struct BlockJacobiPreconditioner {
     scalar_inv_diag: Vec<f64>,
     tail_inverse: DMatrix<f64>,
     pressure_tail_coupling: Vec<Vec<f64>>,
+    pressure_tail_prolongation: Vec<Vec<f64>>,
     pressure_restriction: Vec<Vec<f64>>,
     pressure_prolongation: Vec<Vec<f64>>,
     pressure_rows: Vec<Vec<(usize, f64)>>,
@@ -77,6 +78,7 @@ impl BlockJacobiPreconditioner {
             scalar_inv_diag: Vec::new(),
             tail_inverse: DMatrix::zeros(0, 0),
             pressure_tail_coupling: Vec::new(),
+            pressure_tail_prolongation: Vec::new(),
             pressure_restriction: Vec::new(),
             pressure_prolongation: Vec::new(),
             pressure_rows: Vec::new(),
@@ -176,6 +178,18 @@ impl BlockJacobiPreconditioner {
             for local in 0..self.cell_block_size {
                 result[start + local] += self.pressure_prolongation[cell_idx][local] * correction;
             }
+        }
+
+        for (tail_idx, prolongation_row) in self.pressure_tail_prolongation.iter().enumerate() {
+            let idx = self.scalar_tail_start + tail_idx;
+            if idx >= result.len() {
+                continue;
+            }
+            let mut correction = 0.0;
+            for (cell_idx, weight) in prolongation_row.iter().enumerate() {
+                correction += weight * pressure_correction[cell_idx];
+            }
+            result[idx] += correction;
         }
     }
 
@@ -436,6 +450,7 @@ fn build_block_jacobi_preconditioner(
             scalar_inv_diag,
             tail_inverse: DMatrix::zeros(0, 0),
             pressure_tail_coupling: Vec::new(),
+            pressure_tail_prolongation: Vec::new(),
             pressure_restriction: Vec::new(),
             pressure_prolongation: Vec::new(),
             pressure_rows: Vec::new(),
@@ -571,6 +586,22 @@ fn build_block_jacobi_preconditioner(
         );
         pressure_tail_coupling.push(tail_coupling);
     }
+
+    let mut pressure_tail_prolongation =
+        vec![vec![0.0; layout.cell_block_count]; scalar_tail_count];
+    if scalar_tail_count > 0 {
+        for tail_row in 0..scalar_tail_count {
+            for coarse_col in 0..layout.cell_block_count {
+                let mut value = 0.0;
+                for inner_tail in 0..scalar_tail_count {
+                    value += tail_inverse[(tail_row, inner_tail)]
+                        * tail_to_pressure[inner_tail][coarse_col];
+                }
+                pressure_tail_prolongation[tail_row][coarse_col] = -value;
+            }
+        }
+    }
+
     let pressure_dense_inverse = invert_pressure_block(&pressure_rows);
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
@@ -593,6 +624,7 @@ fn build_block_jacobi_preconditioner(
         scalar_inv_diag,
         tail_inverse,
         pressure_tail_coupling,
+        pressure_tail_prolongation,
         pressure_restriction,
         pressure_prolongation,
         pressure_rows,
@@ -904,6 +936,33 @@ mod tests {
         let coarse_rhs = preconditioner.extract_pressure_rhs(&rhs);
 
         assert!(coarse_rhs[0].abs() > 1e-12);
+    }
+
+    #[test]
+    fn pressure_projection_updates_tail_unknowns_from_coarse_correction() {
+        let mut tri = TriMatI::<f64, usize>::new((4, 4));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 3, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 1.0);
+        tri.add_triplet(3, 0, 3.0);
+        tri.add_triplet(3, 3, 5.0);
+        let matrix = tri.to_csr();
+
+        let preconditioner = build_block_jacobi_preconditioner(
+            &matrix,
+            Some(FimLinearBlockLayout {
+                cell_block_count: 1,
+                cell_block_size: 3,
+                scalar_tail_start: 3,
+            }),
+        );
+
+        let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0, 0.0]);
+        let (applied, _) = preconditioner.apply(&matrix, &rhs, true);
+
+        assert!(applied[0].abs() > 1e-12);
+        assert!(applied[3].abs() > 1e-12);
     }
 
     #[test]
