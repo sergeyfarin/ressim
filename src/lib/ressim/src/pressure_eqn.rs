@@ -2,7 +2,7 @@ use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 use std::f64;
 
-use crate::solvers::{solve_with_default, LinearSolveParams};
+use crate::solvers::{LinearSolveParams, solve_with_default};
 use crate::well_control::{ResolvedWellControl, WellControlDecision};
 use crate::{InjectedFluid, ReservoirSimulator};
 

@@ -2,7 +2,7 @@ use std::f64;
 
 use nalgebra::DVector;
 
-use super::{apply_jacobi_preconditioner, cs_mat_mul_vec, LinearSolveParams, LinearSolveResult};
+use super::{LinearSolveParams, LinearSolveResult, apply_jacobi_preconditioner, cs_mat_mul_vec};
 
 // BiCGSTAB with Jacobi preconditioning. Unlike PCG, this remains valid for the
 // mildly non-symmetric pressure matrices produced by upwinded multiphase flow.

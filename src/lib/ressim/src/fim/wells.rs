@@ -91,14 +91,21 @@ pub(crate) fn build_well_topology(sim: &ReservoirSimulator) -> FimWellTopology {
             .push(perforation_index);
     }
 
-    FimWellTopology { wells, perforations }
+    FimWellTopology {
+        wells,
+        perforations,
+    }
 }
 
 fn perforation_well<'a>(sim: &'a ReservoirSimulator, perforation: &FimPerforation) -> &'a Well {
     &sim.wells[perforation.well_entry_index]
 }
 
-fn physical_well<'a>(sim: &'a ReservoirSimulator, topology: &FimWellTopology, well_idx: usize) -> &'a Well {
+fn physical_well<'a>(
+    sim: &'a ReservoirSimulator,
+    topology: &FimWellTopology,
+    well_idx: usize,
+) -> &'a Well {
     &sim.wells[topology.wells[well_idx].representative_well_index]
 }
 
@@ -437,7 +444,11 @@ fn local_phase_sensitivity(
     let mu_g = sim.get_mu_g(cell.pressure_bar).max(1e-9);
 
     let bo_derivatives = if saturated {
-        [sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, true), 0.0, 0.0]
+        [
+            sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, true),
+            0.0,
+            0.0,
+        ]
     } else {
         [
             sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, false),
@@ -500,9 +511,15 @@ fn injector_connection_mobility(
     (
         local.mobilities[0] + local.mobilities[1] + local.mobilities[2],
         [
-            local.mobility_derivatives[0][0] + local.mobility_derivatives[1][0] + local.mobility_derivatives[2][0],
-            local.mobility_derivatives[0][1] + local.mobility_derivatives[1][1] + local.mobility_derivatives[2][1],
-            local.mobility_derivatives[0][2] + local.mobility_derivatives[1][2] + local.mobility_derivatives[2][2],
+            local.mobility_derivatives[0][0]
+                + local.mobility_derivatives[1][0]
+                + local.mobility_derivatives[2][0],
+            local.mobility_derivatives[0][1]
+                + local.mobility_derivatives[1][1]
+                + local.mobility_derivatives[2][1],
+            local.mobility_derivatives[0][2]
+                + local.mobility_derivatives[1][2]
+                + local.mobility_derivatives[2][2],
         ],
     )
 }
@@ -543,24 +560,28 @@ fn producer_rate_sensitivity(
     let mut gas_fraction_derivatives = [0.0; 3];
     for local_var in 0..3 {
         let d_total = d_lambda_w[local_var] + d_lambda_o[local_var] + d_lambda_g[local_var];
-        water_fraction_derivatives[local_var] =
-            (d_lambda_w[local_var] * lambda_total - lambda_w_sum * d_total) / (lambda_total * lambda_total);
-        oil_fraction_derivatives[local_var] =
-            (d_lambda_o[local_var] * lambda_total - lambda_o_sum * d_total) / (lambda_total * lambda_total);
-        gas_fraction_derivatives[local_var] =
-            (d_lambda_g[local_var] * lambda_total - lambda_g_sum * d_total) / (lambda_total * lambda_total);
+        water_fraction_derivatives[local_var] = (d_lambda_w[local_var] * lambda_total
+            - lambda_w_sum * d_total)
+            / (lambda_total * lambda_total);
+        oil_fraction_derivatives[local_var] = (d_lambda_o[local_var] * lambda_total
+            - lambda_o_sum * d_total)
+            / (lambda_total * lambda_total);
+        gas_fraction_derivatives[local_var] = (d_lambda_g[local_var] * lambda_total
+            - lambda_g_sum * d_total)
+            / (lambda_total * lambda_total);
     }
 
     let local_completion = local_phase_sensitivity(sim, state, perforation.cell_index);
-    let (oil_fvf_derivatives, gas_fvf_derivatives, rs_derivatives) = if influenced_cell_idx == perforation.cell_index {
-        (
-            local_completion.bo_derivatives,
-            local_completion.bg_derivatives,
-            local_completion.rs_derivatives,
-        )
-    } else {
-        ([0.0; 3], [0.0; 3], [0.0; 3])
-    };
+    let (oil_fvf_derivatives, gas_fvf_derivatives, rs_derivatives) =
+        if influenced_cell_idx == perforation.cell_index {
+            (
+                local_completion.bo_derivatives,
+                local_completion.bg_derivatives,
+                local_completion.rs_derivatives,
+            )
+        } else {
+            ([0.0; 3], [0.0; 3], [0.0; 3])
+        };
 
     ProducerRateSensitivity {
         water_fraction,
@@ -594,8 +615,7 @@ pub(crate) fn connection_rate_for_bhp(
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
 
-    let connection_mobility =
-        (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
+    let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
 
     let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
     if !raw_rate.is_finite() {
@@ -755,8 +775,7 @@ pub(crate) fn perforation_connection_bhp_derivative(
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
 
-    let connection_mobility =
-        (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
+    let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
 
     let active_derivative = -wi_geom * connection_mobility;
     let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
@@ -796,8 +815,7 @@ pub(crate) fn perforation_connection_pressure_derivative(
     let mobilities =
         sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
     let wi_geom = geometric_well_index(sim, perforation)?;
-    let connection_mobility =
-        (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
+    let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
     let raw_rate = wi_geom * connection_mobility * (cell.pressure_bar - bhp_bar);
     if !raw_rate.is_finite() {
         return None;
@@ -848,7 +866,11 @@ pub(crate) fn perforation_connection_cell_derivatives(
         return None;
     }
 
-    let active = if well.injector { raw_rate < 0.0 } else { raw_rate > 0.0 };
+    let active = if well.injector {
+        raw_rate < 0.0
+    } else {
+        raw_rate > 0.0
+    };
     if !active {
         return Some([0.0, 0.0, 0.0]);
     }
@@ -892,7 +914,11 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
                 let q_m3_day = state.perforation_rates_m3_day[perf_idx];
                 let local = local_phase_sensitivity(sim, state, cell_idx);
                 [
-                    [0.0, 0.0, -q_m3_day * local.bg_derivatives[0] / (local.bg * local.bg)],
+                    [
+                        0.0,
+                        0.0,
+                        -q_m3_day * local.bg_derivatives[0] / (local.bg * local.bg),
+                    ],
                     [0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0],
                 ]
@@ -942,7 +968,11 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
             InjectedFluid::Gas => {
                 let q_m3_day = state.perforation_rates_m3_day[perf_idx];
                 let local = local_phase_sensitivity(sim, state, cell_idx);
-                [q_m3_day * local.bg_derivatives[0] / (local.bg * local.bg), 0.0, 0.0]
+                [
+                    q_m3_day * local.bg_derivatives[0] / (local.bg * local.bg),
+                    0.0,
+                    0.0,
+                ]
             }
         };
     }
@@ -1038,11 +1068,19 @@ pub(crate) fn solve_well_bhp_from_target(
     let target_rate = control.target_rate?;
     let min_pressure = perforation_indices
         .iter()
-        .map(|&perf_idx| state.cell(topology.perforations[perf_idx].cell_index).pressure_bar)
+        .map(|&perf_idx| {
+            state
+                .cell(topology.perforations[perf_idx].cell_index)
+                .pressure_bar
+        })
         .fold(f64::INFINITY, f64::min);
     let max_pressure = perforation_indices
         .iter()
-        .map(|&perf_idx| state.cell(topology.perforations[perf_idx].cell_index).pressure_bar)
+        .map(|&perf_idx| {
+            state
+                .cell(topology.perforations[perf_idx].cell_index)
+                .pressure_bar
+        })
         .fold(f64::NEG_INFINITY, f64::max);
 
     if !min_pressure.is_finite() || !max_pressure.is_finite() {
@@ -1051,7 +1089,8 @@ pub(crate) fn solve_well_bhp_from_target(
 
     if injector {
         let bhp_limit = control.bhp_limit;
-        let max_achievable_rate = total_rate_for_well_bhp(sim, state, topology, well_idx, bhp_limit);
+        let max_achievable_rate =
+            total_rate_for_well_bhp(sim, state, topology, well_idx, bhp_limit);
         if target_rate >= max_achievable_rate - 1e-9 {
             return Some((bhp_limit, true));
         }
@@ -1070,7 +1109,8 @@ pub(crate) fn solve_well_bhp_from_target(
         Some((0.5 * (low + high), false))
     } else {
         let bhp_limit = control.bhp_limit;
-        let max_achievable_rate = total_rate_for_well_bhp(sim, state, topology, well_idx, bhp_limit);
+        let max_achievable_rate =
+            total_rate_for_well_bhp(sim, state, topology, well_idx, bhp_limit);
         if target_rate >= max_achievable_rate - 1e-9 {
             return Some((bhp_limit, true));
         }
@@ -1150,7 +1190,10 @@ pub(crate) fn well_constraint_residual(
     let (bhp_slack, rate_slack) = well_control_slacks(sim, state, topology, well_idx)?;
     let bhp_scale = control.bhp_limit.abs().max(1.0);
     let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
-    Some(fischer_burmeister(bhp_slack / bhp_scale, rate_slack / rate_scale))
+    Some(fischer_burmeister(
+        bhp_slack / bhp_scale,
+        rate_slack / rate_scale,
+    ))
 }
 
 pub(crate) fn perforation_rate_residual(
@@ -1205,24 +1248,26 @@ pub(crate) fn perforation_residual_diagnostics(
     } else {
         None
     };
-    let (target_rate_sc_day, actual_well_rate_sc_day, bhp_slack, rate_slack) = if control.enabled && control.rate_controlled {
-        let target_rate_sc_day = control.target_rate;
-        let actual_well_rate_sc_day = Some(total_rate_from_unknowns(
-            sim,
-            state,
-            topology,
-            perforation.physical_well_index,
-        ));
-        let (bhp_slack, rate_slack) = well_control_slacks(
-            sim,
-            state,
-            topology,
-            perforation.physical_well_index,
-        )?;
-        (target_rate_sc_day, actual_well_rate_sc_day, Some(bhp_slack), Some(rate_slack))
-    } else {
-        (None, None, None, None)
-    };
+    let (target_rate_sc_day, actual_well_rate_sc_day, bhp_slack, rate_slack) =
+        if control.enabled && control.rate_controlled {
+            let target_rate_sc_day = control.target_rate;
+            let actual_well_rate_sc_day = Some(total_rate_from_unknowns(
+                sim,
+                state,
+                topology,
+                perforation.physical_well_index,
+            ));
+            let (bhp_slack, rate_slack) =
+                well_control_slacks(sim, state, topology, perforation.physical_well_index)?;
+            (
+                target_rate_sc_day,
+                actual_well_rate_sc_day,
+                Some(bhp_slack),
+                Some(rate_slack),
+            )
+        } else {
+            (None, None, None, None)
+        };
     let (
         frozen_consistent_bhp_bar,
         frozen_consistent_perf_rate_m3_day,
@@ -1345,7 +1390,10 @@ mod tests {
 
         assert_eq!(topology.perforations.len(), 2);
         assert_eq!(topology.wells.len(), 1);
-        assert_ne!(topology.perforations[0].cell_index, topology.perforations[1].cell_index);
+        assert_ne!(
+            topology.perforations[0].cell_index,
+            topology.perforations[1].cell_index
+        );
         assert_eq!(topology.perforations[0].k, 0);
         assert_eq!(topology.perforations[1].k, 2);
         assert_eq!(topology.perforations[0].physical_well_index, 0);
@@ -1410,10 +1458,24 @@ mod tests {
             .unwrap();
         sim.add_well_with_id(1, 0, 0, 50.0, 0.1, 0.0, false, "prod-b".to_string())
             .unwrap();
-        sim.set_well_schedule("prod-a".to_string(), "rate".to_string(), 10.0, f64::NAN, 40.0, true)
-            .unwrap();
-        sim.set_well_schedule("prod-b".to_string(), "pressure".to_string(), f64::NAN, f64::NAN, 35.0, true)
-            .unwrap();
+        sim.set_well_schedule(
+            "prod-a".to_string(),
+            "rate".to_string(),
+            10.0,
+            f64::NAN,
+            40.0,
+            true,
+        )
+        .unwrap();
+        sim.set_well_schedule(
+            "prod-b".to_string(),
+            "pressure".to_string(),
+            f64::NAN,
+            f64::NAN,
+            35.0,
+            true,
+        )
+        .unwrap();
 
         let topology = build_well_topology(&sim);
         let mut state = FimState::from_simulator(&sim);
@@ -1431,10 +1493,24 @@ mod tests {
             .unwrap();
         sim.add_well_with_id(1, 0, 0, 100.0, 0.1, 0.0, false, "prod-b".to_string())
             .unwrap();
-        sim.set_well_schedule("prod-a".to_string(), "rate".to_string(), 25.0, f64::NAN, 60.0, true)
-            .unwrap();
-        sim.set_well_schedule("prod-b".to_string(), "rate".to_string(), 5.0, f64::NAN, 60.0, true)
-            .unwrap();
+        sim.set_well_schedule(
+            "prod-a".to_string(),
+            "rate".to_string(),
+            25.0,
+            f64::NAN,
+            60.0,
+            true,
+        )
+        .unwrap();
+        sim.set_well_schedule(
+            "prod-b".to_string(),
+            "rate".to_string(),
+            5.0,
+            f64::NAN,
+            60.0,
+            true,
+        )
+        .unwrap();
 
         let topology = build_well_topology(&sim);
         let state = FimState::from_simulator(&sim);
@@ -1494,7 +1570,8 @@ mod tests {
         let state = FimState::from_simulator(&sim);
         let topology = build_well_topology(&sim);
         let bhp = state.well_bhp[0];
-        let exact = perforation_connection_pressure_derivative(&sim, &state, &topology, 0, bhp).unwrap();
+        let exact =
+            perforation_connection_pressure_derivative(&sim, &state, &topology, 0, bhp).unwrap();
 
         let mut update = DVector::zeros(state.n_unknowns());
         let step = 1e-5 * state.cells[0].pressure_bar.abs().max(1.0);
@@ -1520,7 +1597,8 @@ mod tests {
         state.perforation_rates_m3_day[0] = -120.0;
         let topology = build_well_topology(&sim);
 
-        let source_exact = perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[2];
+        let source_exact =
+            perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[2];
         let target_exact = perforation_surface_rate_pressure_derivative(&sim, &state, &topology, 0);
 
         let mut update = DVector::zeros(state.n_unknowns());
@@ -1561,7 +1639,8 @@ mod tests {
 
         let topology = build_well_topology(&sim);
         let bhp = state.well_bhp[0];
-        let exact = perforation_connection_cell_derivatives(&sim, &state, &topology, 0, bhp).unwrap();
+        let exact =
+            perforation_connection_cell_derivatives(&sim, &state, &topology, 0, bhp).unwrap();
         let base = connection_rate_for_bhp(&sim, &state, &topology, 0, bhp).unwrap();
 
         for local_var in 0..3 {

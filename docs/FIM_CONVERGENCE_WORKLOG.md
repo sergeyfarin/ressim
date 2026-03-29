@@ -625,3 +625,143 @@ Interpretation:
       - after that, the long accepted-substep shelf around `0.005536 d`, `0.002768 d`, and finally `0.001384 d` is overwhelmingly `nonlinear-bad`
       - the dominant family in that shelf is usually a reservoir row (`oil` first, then later many `water` labels), not a direct-solver fallback event
     - Current conclusion: on the representative hard 3D breakthrough case, the remaining retry explosion is now mostly a nonlinear / timestep-acceptance problem rather than a coarse-pressure under-solve problem. Additional CPR strengthening may still help the short early linear-bad window, but it is unlikely to remove the practical low-`dt` shelf by itself. The next highest-value work should target outer-step policy, near-stagnant retry acceptance/cutback rules, or a cheap residual-based nonlinear acceptance slice.
+
+## Comprehensive FIM Review vs OPM / Open-Source Simulators (March 29)
+
+Full code inspection of the FIM implementation, comparing against OPM Flow, MRST, and standard black-oil FIM practice. Focus on convergence pathology and the SPE1 gas stall bug.
+
+### Architecture Comparison
+
+| Aspect | This Implementation | OPM Flow |
+|--------|-------------------|----------|
+| Variable set | P, Sw, Sg/Rs per cell | P, Sw, Sg/Rs/Rv per cell |
+| Well coupling | Full global system + post-update relaxation | Schur complement elimination |
+| Phase transition | Frozen during Newton, hysteresis band post-Newton | Variable substitution, immediate at bubble point |
+| Material balance | Not explicitly checked at convergence | MB + CNV dual criterion |
+| Damping | Appleyard + residual line search | Appleyard chops only (tighter limits) |
+| Linear solver | FGMRES-CPR with ILU/dense pressure coarse | BiCGSTAB-CPR with AMG pressure coarse |
+| Timestep control | Newton-feedback adaptive growth | Similar + DSMAXDT/DPMAX limits |
+
+The overall formulation (molar conservation for water/oil/gas components, upstream-weighted inter-cell flux, well perforation equations, Fischer-Burmeister complementarity for rate control) is structurally sound and comparable to industry practice. The differences are in secondary mechanisms, not in the core discretization.
+
+### Verified Correct
+
+The following areas were inspected in detail and found to be consistent:
+
+- **Residual vs Jacobian gravity formulation**: `interface_density_barrier(rho_i, rho_j)` = `0.5 * (rho_i + rho_j)` and `gravity_head_bar(d_i, d_j, density)` = `density * g * dz * 1e-5`, which is algebraically identical to `gravity_half_coefficient * (rho_i + rho_j)` used in the Jacobian. No inconsistency.
+- **Water gravity Jacobian omission is correct**: `get_rho_w(p)` returns a constant (ignores pressure), so water density has zero derivatives w.r.t. all state variables. Passing zero gravity derivatives for water is intentional, not a bug.
+- **Accumulation Jacobian**: Pore volume pressure derivative `d_pv/dP = pv * cr` correctly differentiates `pv_ref * exp(cr * (P - P_prev))`. Previous-state inventory is constant w.r.t. Newton unknowns.
+- **Dissolved gas flux**: `q_g_dissolved = q_o_sc * Rs_upstream` with Jacobian correctly including both `Rs * d(q_o)/d(var)` and `q_o * d(Rs)/d(var)` terms, with the latter applied only on the upstream side.
+- **Oil FVF derivatives**: `d_bo_sat_d_p` for saturated (total derivative along bubble curve) vs `d_bo_d_p` at fixed Rs for undersaturated, plus `d_bo_d_rs` for undersaturated. Correct chain rule treatment.
+- **Mobility Jacobian**: `local_flux_cell_sensitivity` and `phase_mobilities_for_state` use identical SCAL table functions and viscosity functions. Quotient-rule derivatives for `kr/mu` are correct.
+- **Gas equation undersaturated regime**: `d_gas/d_h = d_oil/d_h * Rs + oil_inventory * 1` correctly captures that h = Rs in undersaturated regime, with Bo(Rs) dependency handled through the d_oil_d_h term.
+
+### BUG FOUND: Material Balance Violation in Rs Clamping — Likely Gas Stall Root Cause
+
+**Location**: `fim/state.rs`, `classify_regimes()`, lines 176–185.
+
+```rust
+HydrocarbonState::Undersaturated => {
+    let rs_sm3_sm3 = cell.hydrocarbon_var.max(0.0);
+    let rs_threshold = rs_sat * (1.0 + RS_OVERSHOOT_FRAC); // 1.01 * Rs_sat
+    if rs_sm3_sm3 < rs_threshold {
+        self.cells[idx].hydrocarbon_var = rs_sm3_sm3.min(rs_sat); // ← CLAMP
+        continue;
+    }
+    // flash only happens if Rs > 1.01 * Rs_sat
+}
+```
+
+#### Mechanism
+
+When Newton converges with Rs between Rs_sat and 1.01 × Rs_sat, the `min(rs_sat)` clamp silently discards the excess dissolved gas. Over many small timesteps, this creates a one-way valve:
+
+1. Gas flows into an undersaturated cell via inter-cell flux
+2. Newton (with frozen regime = Undersaturated) increases Rs slightly above Rs_sat to accommodate the incoming gas
+3. Post-Newton `classify_regimes` clamps Rs back to Rs_sat
+4. The excess dissolved gas inventory is lost — no free gas is created, no mass is conserved
+5. Next timestep starts from the damaged state — repeat
+
+#### Why this matches the observed SPE1 gas stall
+
+Near the gas front, cells receive small increments of gas per timestep. With adaptive timestepping producing small dt values near the front, each step may only push Rs slightly above Rs_sat — enough to get clamped but not enough to exceed the 1.01× threshold. The gas front stalls because downstream cells can never nucleate free gas. Gas appears to grow near the injector (where the flux is large enough to push Rs well past the 1% band) but then stops advancing.
+
+#### How OPM handles this
+
+OPM Flow uses **immediate variable substitution** at Rs = Rs_sat — no hysteresis band. The moment Rs reaches Rs_sat, the primary variable switches from Rs to Sg. Any excess dissolved gas is converted to free gas through the flash calculation. Material balance is preserved exactly.
+
+MRST's fully implicit AD path similarly does not use a hysteresis band for undersaturated → saturated transitions. The standard formulation switches variables as soon as Rs ≥ Rs_sat(P).
+
+#### Interaction with frozen-regime Newton
+
+The frozen-regime strategy (keeping Saturated/Undersaturated fixed during Newton) is defensible and used in industry. But combined with the clamping bug, it creates a pathological interaction: Newton solves correctly for Rs > Rs_sat, then the post-convergence classification destroys the result by clamping. If the regime could switch within Newton (as in OPM's variable substitution), the solver would directly compute the correct Sg value and the post-classification would be a no-op.
+
+#### Suggested fix directions
+
+1. **Remove the hysteresis band for Undersaturated → Saturated** (match OPM): switch immediately when Rs ≥ Rs_sat. This is the simplest fix and the industry-standard approach.
+2. **Flash instead of clamp**: when Rs is in the band (Rs_sat < Rs < 1.01 × Rs_sat), perform the flash calculation and convert excess to Sg anyway, instead of discarding. Keep the hysteresis only for Saturated → Undersaturated (where Sg dropping below 1e-4 is already handled correctly).
+3. **Carry the Rs excess forward**: keep the cell undersaturated but do not clamp Rs to Rs_sat — let it sit slightly above Rs_sat. This preserves mass but may cause the frozen-regime Jacobian to see a slightly unphysical state.
+
+Option 1 is recommended. The Saturated → Undersaturated hysteresis (Sg < 1e-4) is benign because it only delays removing negligible free gas. The Undersaturated → Saturated hysteresis is harmful because it prevents gas appearance and violates material balance.
+
+#### Suggested diagnostic to confirm
+
+Add a per-timestep check that computes total gas inventory before and after `classify_regimes`:
+
+```rust
+// Before classify_regimes:
+let gas_inventory_before = sum over cells of (pv * Sg / Bg + pv * So * Rs / Bo);
+// After classify_regimes:
+let gas_inventory_after = sum over cells of (pv * Sg / Bg + pv * So * Rs / Bo);
+if (gas_inventory_before - gas_inventory_after).abs() > 1e-6 {
+    eprintln!("classify_regimes lost {:.6e} Sm3 gas", gas_inventory_before - gas_inventory_after);
+}
+```
+
+If this fires on the SPE1 gas case, the diagnosis is confirmed.
+
+### Issue: No Global Material Balance Convergence Check
+
+**Location**: `fim/newton.rs`, convergence acceptance paths.
+
+The Newton solver checks convergence via scaled infinity norms of the residual and update. This is equivalent to OPM's CNV (Component Normalized Volume) check — the maximum per-cell residual. However, OPM also requires a **MB (Mass Balance)** check: the sum of all residuals per component over the entire domain, normalized by total fluid volume.
+
+The MB check catches cases where per-cell residuals are individually small but don't sum to zero — meaning the global conservation equations are not actually satisfied. This is particularly important when regime transitions or clamping operations modify the state after the Newton solve.
+
+Adding a global mass balance check would provide a safety net against the Rs clamping bug and similar state-modification errors. If the sum of gas-component residuals is nonzero after acceptance, the step should be rejected regardless of per-cell convergence.
+
+### Issue: Full Assembly During Line Search
+
+**Location**: `fim/newton.rs`, lines 694–703 (damping loop).
+
+Each damped trial candidate calls `assemble_fim_system`, which builds both the residual and the full Jacobian. Only the residual norm is needed for the line search acceptance decision. The Jacobian is discarded. This multiplies the cost of each Newton iteration by `(1 + number_of_damping_trials)`.
+
+OPM Flow does not use a residual-based line search — it relies on Appleyard chops alone with tighter per-variable limits. The chops are cheaper because they don't require residual evaluation.
+
+**Fix**: The `assemble_residual` function already exists as a separate path (used by the FD test helpers). Adding an `assemble_residual_only` option to `FimAssemblyOptions` that skips Jacobian construction would halve the cost of the line search without changing convergence behavior.
+
+### Issue: Convergence Criteria Compared to OPM
+
+OPM Flow uses two separate convergence criteria that must both be satisfied:
+
+- **CNV** (per-cell): max over all cells of `|residual_i| / (pv_i / (dt * B_alpha))`. Similar to the current scaled infinity norm.
+- **MB** (global): `|sum(residual_i)| / (total_fluid_volume / (dt * B_alpha))` per component. Catches global conservation failures.
+
+The current implementation only has the CNV-equivalent check. Adding the MB check would be a small incremental change with disproportionate value for catching material balance problems.
+
+### Remaining Convergence Bottleneck: Nonlinear Stagnation After Breakthrough
+
+The worklog's earlier sections thoroughly document the retry failure classification as overwhelmingly `nonlinear-bad` on representative 3D cases. The dominant family is reservoir-row (oil, then water), not well/perforation after the trust-radius fix.
+
+From the OPM comparison, two remaining gaps are likely contributors to this pattern:
+
+1. **Tighter Appleyard chops without line search**: OPM typically limits ΔSw to ~0.2 and ΔP to ~200 bar per Newton iteration (compared to 0.5 and 500 bar here). The tighter limits reduce the need for line search entirely. The current generous limits combined with a residual-based line search can still accept states that are locally improving but globally far from convergence.
+
+2. **Schur-complement well elimination**: By algebraically eliminating well unknowns from the reservoir system, the Newton update for cell variables is never contaminated by well-variable drift. The current relaxation approach is an approximation of this but does not fully prevent well-cell cross-contamination in the Newton direction.
+
+### Recommended Next Steps (Priority Order)
+
+1. **Fix Rs clamping material balance violation**: Remove the 1% hysteresis band for Undersaturated → Saturated, or flash instead of clamp. This is the most likely root cause of the gas stall.
+2. **Add residual-only assembly for line search**: Skip Jacobian in damping loop candidates. Straightforward cost reduction.
+3. **Add global mass balance convergence check**: Sum-of-residuals per component. Safety net against state-modification errors.
+4. **Consider Schur complement for well block**: Eliminates well-variable drift as a convergence concern. Larger effort but aligned with industry practice.

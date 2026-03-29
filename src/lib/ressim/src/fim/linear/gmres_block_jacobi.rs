@@ -43,7 +43,10 @@ impl PressureCorrectionAccumulator {
         self.last_reduction_ratio = reduction_ratio;
     }
 
-    fn build_report(&self, preconditioner: &BlockJacobiPreconditioner) -> Option<FimCprDiagnostics> {
+    fn build_report(
+        &self,
+        preconditioner: &BlockJacobiPreconditioner,
+    ) -> Option<FimCprDiagnostics> {
         let coarse_solver = preconditioner.pressure_coarse_solver_kind()?;
         if self.applications == 0 {
             return Some(FimCprDiagnostics {
@@ -90,10 +93,8 @@ impl BlockJacobiPreconditioner {
         for (block_idx, inverse) in self.cell_block_inverses.iter().enumerate() {
             let start = block_idx * self.cell_block_size;
             let end = start + self.cell_block_size;
-            let block = DVector::from_iterator(
-                self.cell_block_size,
-                (start..end).map(|idx| vector[idx]),
-            );
+            let block =
+                DVector::from_iterator(self.cell_block_size, (start..end).map(|idx| vector[idx]));
             let solved = inverse * block;
             for local in 0..self.cell_block_size {
                 result[start + local] = solved[local];
@@ -155,7 +156,8 @@ impl BlockJacobiPreconditioner {
                 value += self.pressure_restriction[cell_idx][local] * residual[start + local];
             }
             if let Some(tail_rhs) = &tail_rhs {
-                for (tail_idx, coupling) in self.pressure_tail_coupling[cell_idx].iter().enumerate() {
+                for (tail_idx, coupling) in self.pressure_tail_coupling[cell_idx].iter().enumerate()
+                {
                     value -= coupling * tail_rhs[tail_idx];
                 }
             }
@@ -164,7 +166,11 @@ impl BlockJacobiPreconditioner {
         rhs
     }
 
-    fn add_pressure_correction(&self, result: &mut DVector<f64>, pressure_correction: &DVector<f64>) {
+    fn add_pressure_correction(
+        &self,
+        result: &mut DVector<f64>,
+        pressure_correction: &DVector<f64>,
+    ) {
         for (cell_idx, correction) in pressure_correction.iter().enumerate() {
             let start = cell_idx * self.cell_block_size;
             for local in 0..self.cell_block_size {
@@ -296,7 +302,11 @@ fn factorize_pressure_ilu0(
                 sum -= l_ik * row_entry(&u_rows[k], col_idx);
             }
             let diag: f64 = u_diag[col_idx];
-            let l_value = if diag.abs() > f64::EPSILON { sum / diag } else { 0.0 };
+            let l_value = if diag.abs() > f64::EPSILON {
+                sum / diag
+            } else {
+                0.0
+            };
             l_rows[row_idx].push((col_idx, l_value));
         }
 
@@ -305,7 +315,11 @@ fn factorize_pressure_ilu0(
             u_diag_value -= l_ik * row_entry(&u_rows[k], row_idx);
         }
         if u_diag_value.abs() <= f64::EPSILON {
-            u_diag_value = if diag_entry.abs() > f64::EPSILON { diag_entry } else { 1.0 };
+            u_diag_value = if diag_entry.abs() > f64::EPSILON {
+                diag_entry
+            } else {
+                1.0
+            };
         }
         u_diag[row_idx] = u_diag_value;
 
@@ -324,7 +338,11 @@ fn factorize_pressure_ilu0(
 fn matrix_value(matrix: &CsMat<f64>, row: usize, col: usize) -> f64 {
     matrix
         .outer_view(row)
-        .and_then(|view| view.iter().find(|(index, _)| *index == col).map(|(_, value)| *value))
+        .and_then(|view| {
+            view.iter()
+                .find(|(index, _)| *index == col)
+                .map(|(_, value)| *value)
+        })
         .unwrap_or(0.0)
 }
 
@@ -522,13 +540,15 @@ fn build_block_jacobi_preconditioner(
                     if prolongation.abs() <= f64::EPSILON {
                         continue;
                     }
-                    *coefficients.entry(neighbor_block).or_insert(0.0) += row_weight * value * prolongation;
+                    *coefficients.entry(neighbor_block).or_insert(0.0) +=
+                        row_weight * value * prolongation;
                 }
             }
         }
 
         if scalar_tail_count > 0 {
-            let schur_weights = DVector::from_vec(tail_coupling.clone()).transpose() * &tail_inverse;
+            let schur_weights =
+                DVector::from_vec(tail_coupling.clone()).transpose() * &tail_inverse;
             for tail_idx in 0..scalar_tail_count {
                 let weight = schur_weights[(0, tail_idx)];
                 if weight.abs() <= f64::EPSILON {
@@ -552,7 +572,8 @@ fn build_block_jacobi_preconditioner(
         pressure_tail_coupling.push(tail_coupling);
     }
     let pressure_dense_inverse = invert_pressure_block(&pressure_rows);
-    let (pressure_l_rows, pressure_u_diag, pressure_u_rows) = factorize_pressure_ilu0(&pressure_rows);
+    let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
+        factorize_pressure_ilu0(&pressure_rows);
 
     let scalar_inv_diag = (layout.scalar_tail_start..matrix.rows())
         .map(|idx| {
@@ -615,7 +636,11 @@ fn compute_givens_rotation(a: f64, b: f64) -> (f64, f64) {
     }
 }
 
-fn back_substitute_upper(hessenberg: &DMatrix<f64>, rhs: &DVector<f64>, size: usize) -> DVector<f64> {
+fn back_substitute_upper(
+    hessenberg: &DMatrix<f64>,
+    rhs: &DVector<f64>,
+    size: usize,
+) -> DVector<f64> {
     let mut solution = DVector::zeros(size);
     for row in (0..size).rev() {
         let mut sum = rhs[row];
@@ -660,8 +685,8 @@ pub(super) fn solve(
     let restart = options.restart.max(2);
     let max_iterations = options.max_iterations.max(restart);
     let rhs_norm = rhs.norm();
-    let tolerance = options.absolute_tolerance
-        + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
+    let tolerance =
+        options.absolute_tolerance + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
     let preconditioner = build_block_jacobi_preconditioner(jacobian, layout);
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
@@ -748,10 +773,8 @@ pub(super) fn solve(
                 hessenberg[(prev + 1, inner)] = rotated_lower;
             }
 
-            let (cosine, sine) = compute_givens_rotation(
-                hessenberg[(inner, inner)],
-                hessenberg[(inner + 1, inner)],
-            );
+            let (cosine, sine) =
+                compute_givens_rotation(hessenberg[(inner, inner)], hessenberg[(inner + 1, inner)]);
             givens_cosines[inner] = cosine;
             givens_sines[inner] = sine;
 
@@ -764,12 +787,8 @@ pub(super) fn solve(
             hessenberg[(inner, inner)] = rotated_diag;
             hessenberg[(inner + 1, inner)] = rotated_subdiag;
 
-            let (rhs_upper, rhs_lower) = apply_givens_rotation(
-                rotated_rhs[inner],
-                rotated_rhs[inner + 1],
-                cosine,
-                sine,
-            );
+            let (rhs_upper, rhs_lower) =
+                apply_givens_rotation(rotated_rhs[inner], rotated_rhs[inner + 1], cosine, sine);
             rotated_rhs[inner] = rhs_upper;
             rotated_rhs[inner + 1] = rhs_lower;
 
@@ -780,7 +799,10 @@ pub(super) fn solve(
             // a full matrix-vector product at every inner iteration.
             let estimated_residual = rotated_rhs[inner + 1].abs();
 
-            if estimated_residual <= tolerance || iterations >= max_iterations || next_norm <= f64::EPSILON {
+            if estimated_residual <= tolerance
+                || iterations >= max_iterations
+                || next_norm <= f64::EPSILON
+            {
                 // Construct the actual solution only when we need it.
                 let cols = inner + 1;
                 let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
@@ -940,22 +962,17 @@ mod tests {
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
         assert_eq!(diagnostics.coarse_rows, 2);
-        assert_eq!(diagnostics.coarse_solver, FimPressureCoarseSolverKind::ExactDense);
+        assert_eq!(
+            diagnostics.coarse_solver,
+            FimPressureCoarseSolverKind::ExactDense
+        );
         assert!(diagnostics.coarse_applications > 0);
         assert!(diagnostics.average_reduction_ratio <= 1.0);
     }
 
     #[test]
     fn pressure_transfer_weights_follow_local_schur_elimination() {
-        let block = DMatrix::from_row_slice(
-            3,
-            3,
-            &[
-                4.0, 1.0, 0.0,
-                2.0, 3.0, 0.0,
-                0.0, 0.0, 1.0,
-            ],
-        );
+        let block = DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0]);
 
         let (restriction, prolongation) = build_pressure_transfer_weights(&block);
 

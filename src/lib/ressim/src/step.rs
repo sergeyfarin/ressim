@@ -1,9 +1,9 @@
 use std::f64;
 
-use crate::fim::newton::{run_fim_timestep, FimNewtonOptions};
-use crate::fim::newton::FimRetryFailureClass;
-use crate::fim::state::FimState;
 use crate::ReservoirSimulator;
+use crate::fim::newton::FimRetryFailureClass;
+use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
+use crate::fim::state::FimState;
 
 /// Diagnostic print macro — compiles to nothing on WASM, prints to stderr on native.
 macro_rules! fim_trace {
@@ -126,8 +126,7 @@ impl ReservoirSimulator {
         if substeps == MAX_SUBSTEPS && time_stepped < target_dt_days {
             self.last_solver_warning = format!(
                 "Adaptive timestep hit MAX_SUBSTEPS before completing requested dt (advanced {:.6} of {:.6} days)",
-                time_stepped,
-                target_dt_days
+                time_stepped, target_dt_days
             );
         }
     }
@@ -158,7 +157,12 @@ impl ReservoirSimulator {
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
 
-        fim_trace!(verbose, "FIM step: target_dt={:.6} days, t={:.6} days", target_dt_days, self.time_days);
+        fim_trace!(
+            verbose,
+            "FIM step: target_dt={:.6} days, t={:.6} days",
+            target_dt_days,
+            self.time_days
+        );
 
         let mut newton_options = FimNewtonOptions::default();
         newton_options.verbose = verbose;
@@ -176,7 +180,13 @@ impl ReservoirSimulator {
             let previous_state = FimState::from_simulator(self);
 
             loop {
-                fim_trace!(verbose, "  substep {}: trial_dt={:.6} (retry={})", substeps, trial_dt, retry_count);
+                fim_trace!(
+                    verbose,
+                    "  substep {}: trial_dt={:.6} (retry={})",
+                    substeps,
+                    trial_dt,
+                    retry_count
+                );
 
                 let report = run_fim_timestep(
                     self,
@@ -211,12 +221,23 @@ impl ReservoirSimulator {
                     } else {
                         MAX_GROWTH
                     };
-                    last_growth_factor = iteration_growth.min(sat_growth).min(pressure_growth).clamp(1.0, MAX_GROWTH);
+                    last_growth_factor = iteration_growth
+                        .min(sat_growth)
+                        .min(pressure_growth)
+                        .clamp(1.0, MAX_GROWTH);
 
-                    fim_trace!(verbose, "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
-                        substeps, trial_dt, report.newton_iterations,
-                        report.final_residual_inf_norm, report.final_update_inf_norm,
-                        max_dsat, max_dp, last_growth_factor);
+                    fim_trace!(
+                        verbose,
+                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
+                        substeps,
+                        trial_dt,
+                        report.newton_iterations,
+                        report.final_residual_inf_norm,
+                        report.final_update_inf_norm,
+                        max_dsat,
+                        max_dp,
+                        last_growth_factor
+                    );
                     let water_before = self.total_water_inventory_m3();
                     let gas_before = self.total_gas_inventory_sc();
                     report.accepted_state.write_back_to_simulator(self);
@@ -248,9 +269,14 @@ impl ReservoirSimulator {
                     }
                 }
 
-                fim_trace!(verbose, "  substep {}: FAILED (iters={} res={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
-                    substeps, report.newton_iterations, report.final_residual_inf_norm,
-                    report.final_update_inf_norm, report.cutback_factor,
+                fim_trace!(
+                    verbose,
+                    "  substep {}: FAILED (iters={} res={:.3e} upd={:.3e} cutback={:.2}){} → next_dt={:.6}",
+                    substeps,
+                    report.newton_iterations,
+                    report.final_residual_inf_norm,
+                    report.final_update_inf_norm,
+                    report.cutback_factor,
                     report
                         .failure_diagnostics
                         .as_ref()
@@ -262,7 +288,8 @@ impl ReservoirSimulator {
                             )
                         })
                         .unwrap_or_default(),
-                    next_dt);
+                    next_dt
+                );
 
                 if !next_dt.is_finite() || next_dt <= 1e-12 {
                     fim_trace!(verbose, "  ABORT: timestep collapsed to {:.3e}", next_dt);
@@ -275,7 +302,11 @@ impl ReservoirSimulator {
                 }
 
                 if retry_count >= MAX_NEWTON_RETRIES_PER_SUBSTEP {
-                    fim_trace!(verbose, "  ABORT: exceeded retry budget ({} retries)", retry_count);
+                    fim_trace!(
+                        verbose,
+                        "  ABORT: exceeded retry budget ({} retries)",
+                        retry_count
+                    );
                     self.last_solver_warning = format!(
                         "FIM Newton step exceeded retry budget at t={:.6} days after {} retries",
                         self.time_days + time_stepped,
@@ -292,16 +323,25 @@ impl ReservoirSimulator {
             fim_trace!(verbose, "  ABORT: hit MAX_SUBSTEPS={}", MAX_SUBSTEPS);
             self.last_solver_warning = format!(
                 "FIM adaptive timestep hit MAX_SUBSTEPS before completing requested dt (advanced {:.6} of {:.6} days)",
-                time_stepped,
-                target_dt_days
+                time_stepped, target_dt_days
             );
         }
 
-        fim_trace!(verbose, "FIM step done: {} substeps, advanced {:.6} of {:.6} days",
-            substeps, time_stepped, target_dt_days);
+        fim_trace!(
+            verbose,
+            "FIM step done: {} substeps, advanced {:.6} of {:.6} days",
+            substeps,
+            time_stepped,
+            target_dt_days
+        );
         if linear_bad_retries + nonlinear_bad_retries + mixed_retries > 0 {
-            fim_trace!(verbose, "FIM retry summary: linear-bad={} nonlinear-bad={} mixed={}",
-                linear_bad_retries, nonlinear_bad_retries, mixed_retries);
+            fim_trace!(
+                verbose,
+                "FIM retry summary: linear-bad={} nonlinear-bad={} mixed={}",
+                linear_bad_retries,
+                nonlinear_bad_retries,
+                mixed_retries
+            );
         }
     }
 
@@ -319,7 +359,8 @@ impl ReservoirSimulator {
         (0..self.nx * self.ny * self.nz)
             .map(|idx| {
                 let pore_volume_m3 = self.pore_volume_m3(idx).max(1e-9);
-                let free_gas_sc = self.sat_gas[idx] * pore_volume_m3 / self.get_b_g(self.pressure[idx]).max(1e-9);
+                let free_gas_sc =
+                    self.sat_gas[idx] * pore_volume_m3 / self.get_b_g(self.pressure[idx]).max(1e-9);
                 let dissolved_gas_sc = if self.pvt_table.is_some() {
                     self.sat_oil[idx] * pore_volume_m3 * self.rs[idx]
                         / self.get_b_o_cell(idx, self.pressure[idx]).max(1e-9)

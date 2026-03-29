@@ -1,10 +1,10 @@
 use nalgebra::DVector;
 
+use crate::ReservoirSimulator;
 use crate::fim::flash::{classify_cell_regime, resolve_cell_flash};
 use crate::fim::wells::{
     build_well_topology, connection_rate_for_bhp, physical_well_control, solve_well_bhp_from_target,
 };
-use crate::ReservoirSimulator;
 
 const WELL_BHP_MANIFOLD_BLEND: f64 = 0.9;
 const WELL_BHP_TRUST_RADIUS_BAR: f64 = 25.0;
@@ -83,7 +83,8 @@ impl FimState {
         };
 
         for well_idx in 0..topology.wells.len() {
-            if let Some((bhp_bar, _)) = solve_well_bhp_from_target(sim, &state, &topology, well_idx) {
+            if let Some((bhp_bar, _)) = solve_well_bhp_from_target(sim, &state, &topology, well_idx)
+            {
                 state.well_bhp[well_idx] = bhp_bar;
             }
         }
@@ -91,11 +92,13 @@ impl FimState {
         for perf_idx in 0..topology.perforations.len() {
             let well_idx = topology.perforations[perf_idx].physical_well_index;
             let bhp_bar = state.well_bhp[well_idx];
-            state.perforation_rates_m3_day[perf_idx] = if !physical_well_control(sim, &topology, well_idx).enabled {
-                0.0
-            } else {
-                connection_rate_for_bhp(sim, &state, &topology, perf_idx, bhp_bar).unwrap_or(0.0)
-            };
+            state.perforation_rates_m3_day[perf_idx] =
+                if !physical_well_control(sim, &topology, well_idx).enabled {
+                    0.0
+                } else {
+                    connection_rate_for_bhp(sim, &state, &topology, perf_idx, bhp_bar)
+                        .unwrap_or(0.0)
+                };
         }
 
         state
@@ -146,12 +149,12 @@ impl FimState {
             return;
         }
 
-        // Hysteresis band: cells must clearly cross the regime boundary before
-        // switching, preventing chatter near the bubble point / zero-gas line.
-        //   Saturated→Undersaturated: Sg must drop below SG_LOWER (not just ≤0)
-        //   Undersaturated→Saturated: Rs must exceed Rs_sat by RS_OVERSHOOT_FRAC
+        // Saturated cells keep any physically required free gas. Undersaturated
+        // cells switch as soon as Rs materially exceeds Rs_sat so excess
+        // dissolved gas is flashed instead of being silently clamped away.
         const SG_LOWER: f64 = 1e-4;
-        const RS_OVERSHOOT_FRAC: f64 = 0.01; // 1% above Rs_sat
+        const SG_SWITCH_TOL: f64 = 1e-12;
+        const RS_SWITCH_TOL: f64 = 1e-6;
 
         for idx in 0..self.cells.len() {
             let cell = self.cells[idx];
@@ -165,30 +168,15 @@ impl FimState {
             match cell.regime {
                 HydrocarbonState::Saturated => {
                     let gas_saturation = cell.hydrocarbon_var.max(0.0);
-                    if gas_saturation <= SG_LOWER {
-                        // Gas has essentially disappeared — switch to undersaturated.
-                        self.cells[idx].regime = HydrocarbonState::Undersaturated;
-                        self.cells[idx].hydrocarbon_var = rs_sat;
-                    } else {
+                    if gas_saturation > SG_LOWER {
                         self.cells[idx].hydrocarbon_var = gas_saturation;
-                    }
-                }
-                HydrocarbonState::Undersaturated => {
-                    let rs_sm3_sm3 = cell.hydrocarbon_var.max(0.0);
-                    // Only switch to Saturated when Rs clearly exceeds the saturation
-                    // limit — not on small numerical noise near the bubble point.
-                    let rs_threshold = rs_sat * (1.0 + RS_OVERSHOOT_FRAC);
-                    if rs_sm3_sm3 < rs_threshold {
-                        // Clamp Rs to saturation limit.
-                        self.cells[idx].hydrocarbon_var = rs_sm3_sm3.min(rs_sat);
                         continue;
                     }
 
-                    // Rs clearly oversaturated — flash to determine free gas.
-                    let hydrocarbon_saturation = (1.0 - cell.sw).max(0.0);
+                    let derived = self.derive_cell(sim, idx);
                     let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
-                    let bo = sim.get_b_o_for_rs(cell.pressure_bar, rs_sm3_sm3).max(1e-9);
-                    let total_gas_sc = hydrocarbon_saturation * pore_volume_m3 * rs_sm3_sm3 / bo;
+                    let total_gas_sc = pore_volume_m3 * derived.sg / derived.bg.max(1e-9)
+                        + pore_volume_m3 * derived.so * derived.rs / derived.bo.max(1e-9);
                     let (sg, _so, rs_resolved) = sim.split_gas_inventory_after_transport(
                         cell.pressure_bar,
                         pore_volume_m3,
@@ -197,7 +185,36 @@ impl FimState {
                         total_gas_sc,
                     );
 
-                    if sg <= SG_LOWER {
+                    if sg <= SG_SWITCH_TOL {
+                        self.cells[idx].regime = HydrocarbonState::Undersaturated;
+                        self.cells[idx].hydrocarbon_var = rs_resolved.max(0.0).min(rs_sat);
+                    } else {
+                        self.cells[idx].regime = HydrocarbonState::Saturated;
+                        self.cells[idx].hydrocarbon_var = sg;
+                    }
+                }
+                HydrocarbonState::Undersaturated => {
+                    let rs_sm3_sm3 = cell.hydrocarbon_var.max(0.0);
+                    if rs_sm3_sm3 <= rs_sat + RS_SWITCH_TOL {
+                        self.cells[idx].hydrocarbon_var = rs_sm3_sm3.min(rs_sat);
+                        continue;
+                    }
+
+                    // Rs exceeded the saturated value: resolve the flash
+                    // immediately so excess dissolved gas becomes free gas.
+                    let derived = self.derive_cell(sim, idx);
+                    let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
+                    let total_gas_sc =
+                        pore_volume_m3 * derived.so * derived.rs / derived.bo.max(1e-9);
+                    let (sg, _so, rs_resolved) = sim.split_gas_inventory_after_transport(
+                        cell.pressure_bar,
+                        pore_volume_m3,
+                        cell.sw,
+                        0.0,
+                        total_gas_sc,
+                    );
+
+                    if sg <= SG_SWITCH_TOL {
                         self.cells[idx].regime = HydrocarbonState::Undersaturated;
                         self.cells[idx].hydrocarbon_var = rs_resolved.max(0.0).min(rs_sat);
                     } else {
@@ -251,7 +268,11 @@ impl FimState {
         }
     }
 
-    fn enforce_control_bounds(&mut self, sim: &ReservoirSimulator, topology: &crate::fim::wells::FimWellTopology) {
+    fn enforce_control_bounds(
+        &mut self,
+        sim: &ReservoirSimulator,
+        topology: &crate::fim::wells::FimWellTopology,
+    ) {
         let pressure_upper = self
             .cells
             .iter()
@@ -262,9 +283,15 @@ impl FimState {
         for (well_idx, bhp_bar) in self.well_bhp.iter_mut().enumerate() {
             let control = physical_well_control(sim, &topology, well_idx);
             if topology.wells[well_idx].injector {
-                *bhp_bar = bhp_bar.clamp(1e-6, pressure_upper.max(control.bhp_limit.max(sim.well_bhp_max)));
+                *bhp_bar = bhp_bar.clamp(
+                    1e-6,
+                    pressure_upper.max(control.bhp_limit.max(sim.well_bhp_max)),
+                );
             } else {
-                *bhp_bar = bhp_bar.clamp(control.bhp_limit.min(sim.well_bhp_min).max(1e-6), pressure_upper);
+                *bhp_bar = bhp_bar.clamp(
+                    control.bhp_limit.min(sim.well_bhp_min).max(1e-6),
+                    pressure_upper,
+                );
             }
         }
     }
@@ -279,7 +306,8 @@ impl FimState {
             let consistent_bhp = if !control.enabled {
                 Some(control.bhp_target)
             } else if control.rate_controlled {
-                solve_well_bhp_from_target(sim, self, topology, well_idx).map(|(bhp_bar, _)| bhp_bar)
+                solve_well_bhp_from_target(sim, self, topology, well_idx)
+                    .map(|(bhp_bar, _)| bhp_bar)
             } else {
                 Some(control.bhp_target)
             };
@@ -289,23 +317,26 @@ impl FimState {
             };
 
             let proposed_bhp = self.well_bhp[well_idx];
-            let blended_bhp = proposed_bhp + WELL_BHP_MANIFOLD_BLEND * (consistent_bhp - proposed_bhp);
+            let blended_bhp =
+                proposed_bhp + WELL_BHP_MANIFOLD_BLEND * (consistent_bhp - proposed_bhp);
             self.well_bhp[well_idx] = (consistent_bhp
                 + (blended_bhp - consistent_bhp)
                     .clamp(-WELL_BHP_TRUST_RADIUS_BAR, WELL_BHP_TRUST_RADIUS_BAR))
-                .max(1e-6);
+            .max(1e-6);
 
             for &perf_idx in &topology.wells[well_idx].perforation_indices {
                 let consistent_q = if !control.enabled {
                     0.0
                 } else {
-                    connection_rate_for_bhp(sim, self, topology, perf_idx, self.well_bhp[well_idx]).unwrap_or(0.0)
+                    connection_rate_for_bhp(sim, self, topology, perf_idx, self.well_bhp[well_idx])
+                        .unwrap_or(0.0)
                 };
                 let proposed_q = self.perforation_rates_m3_day[perf_idx];
                 let blended_q = proposed_q + WELL_RATE_MANIFOLD_BLEND * (consistent_q - proposed_q);
                 let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
                     .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
-                let q = consistent_q + (blended_q - consistent_q).clamp(-trust_radius, trust_radius);
+                let q =
+                    consistent_q + (blended_q - consistent_q).clamp(-trust_radius, trust_radius);
                 self.perforation_rates_m3_day[perf_idx] = if !control.enabled {
                     0.0
                 } else if topology.wells[well_idx].injector {
@@ -445,9 +476,10 @@ impl FimState {
                 && sg >= -1e-9
                 && so >= oil_floor - 1e-9
                 && so <= 1.0 + 1e-9
-        }) && self.well_bhp.iter().all(|bhp_bar| {
-            *bhp_bar >= 1e-6 - 1e-9 && *bhp_bar <= 50_000.0
-        })
+        }) && self
+            .well_bhp
+            .iter()
+            .all(|bhp_bar| *bhp_bar >= 1e-6 - 1e-9 && *bhp_bar <= 50_000.0)
     }
 
     pub(crate) fn write_back_to_simulator(&self, sim: &mut ReservoirSimulator) {
@@ -472,8 +504,8 @@ impl FimState {
 mod tests {
     use nalgebra::DVector;
 
-    use crate::pvt::{PvtRow, PvtTable};
     use crate::ReservoirSimulator;
+    use crate::pvt::{PvtRow, PvtTable};
 
     use super::*;
 
@@ -608,8 +640,8 @@ mod tests {
 
     #[test]
     fn classify_regimes_hysteresis_keeps_saturated_near_zero_gas() {
-        // A saturated cell with tiny Sg (below hysteresis band but above zero)
-        // should NOT flip to undersaturated — this prevents chatter.
+        // A saturated cell with tiny but physically required free gas should
+        // remain saturated instead of silently dropping that gas inventory.
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(PvtTable::new(
@@ -648,11 +680,13 @@ mod tests {
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
 
-        // Sg = 1e-5 is below the 1e-4 hysteresis band — should flip to Undersaturated.
+        // Even at very small free-gas saturation, the transition should not
+        // discard gas inventory just because the cell is near the zero-gas line.
         state.cells[0].hydrocarbon_var = 1e-5;
         state.cells[0].regime = HydrocarbonState::Saturated;
         state.classify_regimes(&sim);
-        assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
+        assert!(state.cells[0].hydrocarbon_var > 0.0);
     }
 
     #[test]
@@ -669,7 +703,8 @@ mod tests {
         update[state.perforation_rate_unknown_offset(0)] = 100_000.0;
 
         let updated = state.apply_newton_update_frozen(&sim, &update, 1.0, &topology);
-        let consistent_q = connection_rate_for_bhp(&sim, &updated, &topology, 0, updated.well_bhp[0]).unwrap();
+        let consistent_q =
+            connection_rate_for_bhp(&sim, &updated, &topology, 0, updated.well_bhp[0]).unwrap();
         let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
             .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
 
@@ -679,11 +714,12 @@ mod tests {
     }
 
     #[test]
-    fn classify_regimes_hysteresis_keeps_undersaturated_near_bubble_point() {
-        // An undersaturated cell with Rs just at Rs_sat (within hysteresis band)
-        // should NOT flip to saturated — only when Rs clearly exceeds Rs_sat.
+    fn classify_regimes_switches_immediately_when_rs_exceeds_rs_sat() {
+        // Once Rs exceeds Rs_sat, even slightly, the excess gas should be
+        // flashed instead of being clamped away.
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         sim.set_three_phase_mode_enabled(true);
+        sim.set_gas_redissolution_enabled(false);
         sim.pvt_table = Some(PvtTable::new(
             vec![
                 PvtRow {
@@ -719,15 +755,24 @@ mod tests {
         };
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);
-        // Rs should be clamped to Rs_sat
         assert!(state.cells[0].hydrocarbon_var <= 15.0 + 1e-12);
 
-        // Rs = 15.2 (>1% above Rs_sat=15) — should now switch to Saturated.
-        state.cells[0].hydrocarbon_var = 15.2;
+        let pore_volume_m3 = sim.pore_volume_m3(0);
+        let bo_before = sim.get_b_o_for_rs(150.0, 15.01);
+        let gas_before_sc = (1.0 - 0.2) * pore_volume_m3 * 15.01 / bo_before;
+
+        // Rs = 15.01 is only 0.067% above Rs_sat=15. The old 1% hysteresis
+        // would clamp this back to Rs_sat and lose gas inventory.
+        state.cells[0].hydrocarbon_var = 15.01;
         state.cells[0].regime = HydrocarbonState::Undersaturated;
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
-        assert!(state.cells[0].hydrocarbon_var > 0.0); // has free gas
+
+        let derived = state.derive_cell(&sim, 0);
+        let gas_after_sc = pore_volume_m3 * derived.sg / derived.bg
+            + pore_volume_m3 * derived.so * derived.rs / derived.bo;
+        assert!((gas_after_sc - gas_before_sc).abs() < 1e-6);
+        assert!(derived.sg > 0.0);
     }
 
     #[test]

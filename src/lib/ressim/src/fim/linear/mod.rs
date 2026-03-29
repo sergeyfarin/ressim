@@ -80,7 +80,12 @@ pub(crate) fn solve_linearized_system(
     if options.kind == FimLinearSolverKind::FgmresCpr
         && jacobian.rows() <= DIRECT_SOLVE_ROW_THRESHOLD
     {
-        return sparse_lu_debug::solve(jacobian, rhs, options, options.kind != FimLinearSolverKind::SparseLuDebug);
+        return sparse_lu_debug::solve(
+            jacobian,
+            rhs,
+            options,
+            options.kind != FimLinearSolverKind::SparseLuDebug,
+        );
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -152,7 +157,8 @@ mod tests {
         let jacobian = tri.to_csr();
         let rhs = DVector::from_vec(vec![4.0, 9.0]);
 
-        let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
+        let report =
+            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
 
         assert!(report.converged);
         assert!(report.used_fallback);
@@ -169,7 +175,8 @@ mod tests {
         let jacobian = tri.to_csr();
         let rhs = DVector::from_element(n, 1.0);
 
-        let report = solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
+        let report =
+            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
 
         assert!(report.converged);
         assert!(report.used_fallback);

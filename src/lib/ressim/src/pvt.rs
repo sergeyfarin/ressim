@@ -90,7 +90,9 @@ impl PvtTable {
         }
 
         for branch in &mut branches {
-            branch.rows.sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
+            branch
+                .rows
+                .sort_by(|a, b| a.p_bar.partial_cmp(&b.p_bar).unwrap());
         }
 
         branches
@@ -641,7 +643,12 @@ impl ReservoirSimulator {
         0.0
     }
 
-    pub(crate) fn get_d_rho_o_d_p_for_state(&self, p: f64, rs_sm3_sm3: f64, saturated: bool) -> f64 {
+    pub(crate) fn get_d_rho_o_d_p_for_state(
+        &self,
+        p: f64,
+        rs_sm3_sm3: f64,
+        saturated: bool,
+    ) -> f64 {
         if self.pvt_table.is_none() {
             return 0.0;
         }

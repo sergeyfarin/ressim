@@ -453,7 +453,7 @@ mod tests {
 
         let gradient_rel_diff = ((fim.pressure_gradient_bar - impes.pressure_gradient_bar)
             / impes.pressure_gradient_bar.max(1e-12))
-            .abs();
+        .abs();
         let top_sw_abs_diff = (fim.top_sw_change - impes.top_sw_change).abs();
 
         assert!(fim.pressure_gradient_bar > 0.0);
@@ -546,11 +546,11 @@ mod tests {
 
         let oil_rel_diff = ((fim.total_production_oil - impes.total_production_oil)
             / impes.total_production_oil.max(1e-12))
-            .abs();
+        .abs();
         let injection_abs_diff = (fim.total_injection - impes.total_injection).abs();
         let avg_pressure_rel_diff = ((fim.avg_reservoir_pressure - impes.avg_reservoir_pressure)
             / impes.avg_reservoir_pressure.max(1e-12))
-            .abs();
+        .abs();
 
         assert!(fim.total_production_oil.is_finite());
         assert!(fim.total_injection.is_finite());
@@ -1668,9 +1668,12 @@ mod tests {
         );
         println!(
             "neighbors before update: east so={:.6}, sg={:.6}; south so={:.6}, sg={:.6}; down so={:.6}, sg={:.6}",
-            sim.sat_oil[east_id], sim.sat_gas[east_id],
-            sim.sat_oil[south_id], sim.sat_gas[south_id],
-            sim.sat_oil[down_id], sim.sat_gas[down_id],
+            sim.sat_oil[east_id],
+            sim.sat_gas[east_id],
+            sim.sat_oil[south_id],
+            sim.sat_gas[south_id],
+            sim.sat_oil[down_id],
+            sim.sat_gas[down_id],
         );
         println!(
             "flux/source deltas at injector: delta_w_m3={:.6}, delta_g_sc={:.6}, delta_dg_sc={:.6}, delta_sg_equiv={:.6}",
@@ -1681,13 +1684,7 @@ mod tests {
         );
         println!(
             "injector control/rate: q_res={:.6}, q_sc={:.6}, bg={:.9}, control={}, stable_dt={:.6}, converged={}, iterations={}",
-            q_inj_res,
-            q_inj_sc,
-            bg_inj,
-            control_label,
-            stable_dt,
-            converged,
-            iterations,
+            q_inj_res, q_inj_sc, bg_inj, control_label, stable_dt, converged, iterations,
         );
     }
 
@@ -1720,8 +1717,8 @@ mod tests {
             (0..sim.nx * sim.ny * sim.nz)
                 .map(|idx| {
                     let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
-                    let free_gas_sc =
-                        sim.sat_gas[idx] * pore_volume_m3 / sim.get_b_g(sim.pressure[idx]).max(1e-9);
+                    let free_gas_sc = sim.sat_gas[idx] * pore_volume_m3
+                        / sim.get_b_g(sim.pressure[idx]).max(1e-9);
                     let dissolved_gas_sc = if sim.pvt_table.is_some() {
                         sim.sat_oil[idx] * pore_volume_m3 * sim.rs[idx]
                             / sim.get_b_o_cell(idx, sim.pressure[idx]).max(1e-9)
@@ -1748,11 +1745,7 @@ mod tests {
 
         let final_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
         let final_total_gas_sc = total_gas_inventory_sc(&sim);
-        let max_sg = sim
-            .sat_gas
-            .iter()
-            .copied()
-            .fold(0.0_f64, f64::max);
+        let max_sg = sim.sat_gas.iter().copied().fold(0.0_f64, f64::max);
 
         assert!(
             max_sg > 1e-6,
@@ -1776,7 +1769,8 @@ mod tests {
 
     #[test]
     fn spe1_fim_coarse_grid_reaches_producer_gas_breakthrough() {
-        let mut sim = make_spe1_like_grid_sim(5, 5, 4, 4, vec![500.0, 50.0, 200.0], 0.05, 20.0, 0.2);
+        let mut sim =
+            make_spe1_like_grid_sim(5, 5, 4, 4, vec![500.0, 50.0, 200.0], 0.05, 20.0, 0.2);
         sim.set_fim_enabled(true);
 
         let producer_id = sim.idx(4, 4, 2);
@@ -1828,8 +1822,10 @@ mod tests {
             let mut first_high_gor_reported = false;
 
             println!("=== {label} ===");
-            println!("time: {}", sim.time_days); while sim.time_days < 20.0 {
-                sim.step(dt_days); println!("step done, time: {}", sim.time_days);
+            println!("time: {}", sim.time_days);
+            while sim.time_days < 20.0 {
+                sim.step(dt_days);
+                println!("step done, time: {}", sim.time_days);
                 let latest = sim.rate_history.last().expect("rate history should exist");
 
                 if !first_high_gor_reported && latest.producing_gor > 400.0 {
@@ -1868,7 +1864,8 @@ mod tests {
 
             println!("=== {label} ===");
             while sim.time_days < 3000.0 {
-                sim.step(dt_days); println!("step done, time: {}", sim.time_days);
+                sim.step(dt_days);
+                println!("step done, time: {}", sim.time_days);
                 let latest = sim.rate_history.last().expect("rate history should exist");
 
                 while next_sample_idx < sample_times.len()

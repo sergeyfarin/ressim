@@ -271,8 +271,14 @@ fn hybrid_undersaturated_spe1_branch_matches_legacy_initial_bo_and_mu() {
     let expected_mu = mu_bubble * f64::exp(co * (p_initial - p_bubble));
     let (bo, mu) = table.interpolate_oil(p_initial, branch_rs);
 
-    assert!((bo - expected_bo).abs() < 1e-12, "hybrid Bo mismatch: {bo} vs {expected_bo}");
-    assert!((mu - expected_mu).abs() < 1e-12, "hybrid mu mismatch: {mu} vs {expected_mu}");
+    assert!(
+        (bo - expected_bo).abs() < 1e-12,
+        "hybrid Bo mismatch: {bo} vs {expected_bo}"
+    );
+    assert!(
+        (mu - expected_mu).abs() < 1e-12,
+        "hybrid mu mismatch: {mu} vs {expected_mu}"
+    );
 }
 
 #[test]
@@ -386,8 +392,14 @@ fn tabular_undersaturated_pvto_matches_spe1_initial_bo_and_mu_for_rs_127_branch(
     let expected_mu = mu_bubble + t * (mu_undersat - mu_bubble);
     let (bo, mu) = table.interpolate_oil(p_initial, branch_rs);
 
-    assert!((bo - expected_bo).abs() < 1e-12, "tabular Bo mismatch: {bo} vs {expected_bo}");
-    assert!((mu - expected_mu).abs() < 1e-12, "tabular mu mismatch: {mu} vs {expected_mu}");
+    assert!(
+        (bo - expected_bo).abs() < 1e-12,
+        "tabular Bo mismatch: {bo} vs {expected_bo}"
+    );
+    assert!(
+        (mu - expected_mu).abs() < 1e-12,
+        "tabular mu mismatch: {mu} vs {expected_mu}"
+    );
 }
 
 #[test]

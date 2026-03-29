@@ -78,8 +78,10 @@ fn producer_surface_rate_target_uses_same_layer_neighborhood_sampling() {
     let local_only = 100.0 * sim.get_b_o_cell(producer_id, 200.0) / local_oil_fraction;
 
     assert!((q_target - expected).abs() < 1e-9);
-    assert!(q_target < local_only,
-        "same-layer neighborhood sampling should request less total reservoir withdrawal than local-only sampling when neighboring cells remain oil-rich");
+    assert!(
+        q_target < local_only,
+        "same-layer neighborhood sampling should request less total reservoir withdrawal than local-only sampling when neighboring cells remain oil-rich"
+    );
 }
 
 #[test]

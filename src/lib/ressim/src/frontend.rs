@@ -1,6 +1,6 @@
-use rand::rngs::StdRng;
 use rand::RngExt;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -201,7 +201,7 @@ impl ReservoirSimulator {
                 return Err(format!(
                     "Well control mode must be 'pressure' or 'rate', got: {}",
                     other
-                ))
+                ));
             }
         };
 
@@ -210,13 +210,12 @@ impl ReservoirSimulator {
         } else {
             None
         };
-        let target_surface_rate_m3_day = if target_surface_rate_m3_day.is_finite()
-            && target_surface_rate_m3_day >= 0.0
-        {
-            Some(target_surface_rate_m3_day)
-        } else {
-            None
-        };
+        let target_surface_rate_m3_day =
+            if target_surface_rate_m3_day.is_finite() && target_surface_rate_m3_day >= 0.0 {
+                Some(target_surface_rate_m3_day)
+            } else {
+                None
+            };
         let bhp_limit = if bhp_limit.is_finite() {
             Some(bhp_limit)
         } else {
@@ -966,7 +965,7 @@ impl ReservoirSimulator {
                 return Err(format!(
                     "Unknown injected fluid '{}'; expected 'water' or 'gas'",
                     other
-                ))
+                ));
             }
         };
         Ok(())

@@ -1,11 +1,11 @@
 use std::f64;
 
+use faer::Col;
 use faer::linalg::solvers::Solve;
 use faer::sparse::{SparseRowMat, Triplet};
-use faer::Col;
 use nalgebra::DVector;
 
-use super::{cs_mat_mul_vec, LinearSolveParams, LinearSolveResult};
+use super::{LinearSolveParams, LinearSolveResult, cs_mat_mul_vec};
 
 #[cfg(test)]
 thread_local! {

@@ -286,8 +286,7 @@ fn build_exact_wasm_probe_simulator(nx: usize) -> ReservoirSimulator {
     sim.set_target_well_rates(0.0, 0.0).unwrap();
     sim.set_well_bhp_limits(100.0, 500.0).unwrap();
     sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
-    sim.add_well(nx - 1, 0, 0, 100.0, 0.1, 0.0, false)
-        .unwrap();
+    sim.add_well(nx - 1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
     sim
 }
 
@@ -326,15 +325,14 @@ fn benchmark_buckley_leverett_case_a_fim_matches_impes_early_profile() {
 
     let injection_rel_diff = ((fim.cumulative_injection_pv - impes.cumulative_injection_pv)
         / impes.cumulative_injection_pv.max(1e-12))
-        .abs();
+    .abs();
     let avg_sw_abs_diff = (fim.avg_sw - impes.avg_sw).abs();
     let producer_sw_abs_diff = (fim.producer_sw - impes.producer_sw).abs();
     let pressure_drop_rel_diff = ((fim.pressure_drop_bar - impes.pressure_drop_bar)
         / impes.pressure_drop_bar.max(1e-12))
-        .abs();
-    let transport_activity_rel_diff = ((fim.water_sat_l1 - impes.water_sat_l1)
-        / impes.water_sat_l1.max(1e-12))
-        .abs();
+    .abs();
+    let transport_activity_rel_diff =
+        ((fim.water_sat_l1 - impes.water_sat_l1) / impes.water_sat_l1.max(1e-12)).abs();
 
     println!(
         "{} early profile: IMPES injPV={:.4}, FIM injPV={:.4}, IMPES avgSw={:.4}, FIM avgSw={:.4}, IMPES prodSw={:.4}, FIM prodSw={:.4}, IMPES dP={:.3}, FIM dP={:.3}, IMPES satL1={:.4}, FIM satL1={:.4}, IMPES time={:.4}, FIM time={:.4}, IMPES nHist={}, FIM nHist={}, FIM warning={}",

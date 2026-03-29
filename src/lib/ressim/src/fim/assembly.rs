@@ -1,19 +1,20 @@
 use nalgebra::DVector;
 use sprs::{CsMat, TriMatI};
 
+use crate::ReservoirSimulator;
 use crate::fim::scaling::{
-    build_equation_scaling, build_variable_scaling, EquationScaling, VariableScaling,
+    EquationScaling, VariableScaling, build_equation_scaling, build_variable_scaling,
 };
 use crate::fim::state::{FimCellDerived, FimState, HydrocarbonState};
 use crate::fim::wells::{
-    build_well_topology, fischer_burmeister_gradient, perforation_component_rate_derivatives_sc_day,
-    perforation_component_rate_cell_derivatives_sc_day_by_var, perforation_component_rates_sc_day,
+    FimWellTopology, build_well_topology, fischer_burmeister_gradient,
+    perforation_component_rate_cell_derivatives_sc_day_by_var,
+    perforation_component_rate_derivatives_sc_day, perforation_component_rates_sc_day,
     perforation_connection_bhp_derivative, perforation_connection_cell_derivatives,
     perforation_rate_residual, perforation_surface_rate_cell_derivatives_sc_day,
     perforation_target_rate_derivative, physical_well_control, well_constraint_residual,
-    well_control_slacks, FimWellTopology,
+    well_control_slacks,
 };
-use crate::ReservoirSimulator;
 
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
@@ -58,18 +59,37 @@ pub(crate) fn assemble_fim_system(
     let variable_scaling = build_variable_scaling(sim, state);
 
     // Pre-compute derived properties for all cells (avoids redundant PVT lookups).
-    let derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| state.derive_cell(sim, idx)).collect();
-    let prev_derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| previous_state.derive_cell(sim, idx)).collect();
+    let derived: Vec<FimCellDerived> = (0..n_cells)
+        .map(|idx| state.derive_cell(sim, idx))
+        .collect();
+    let prev_derived: Vec<FimCellDerived> = (0..n_cells)
+        .map(|idx| previous_state.derive_cell(sim, idx))
+        .collect();
     // Pre-compute local flux sensitivities for the Jacobian (each cell appears in ~5 interfaces).
     let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
         .map(|idx| local_flux_cell_sensitivity(sim, state, idx, &derived[idx]))
         .collect();
 
     let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
-    let residual = assemble_residual(sim, previous_state, state, &topology, options, &derived, &prev_derived);
+    let residual = assemble_residual(
+        sim,
+        previous_state,
+        state,
+        &topology,
+        options,
+        &derived,
+        &prev_derived,
+    );
 
     add_exact_accumulation_jacobian(sim, previous_state, state, &derived, &mut tri);
-    add_exact_flux_jacobian(sim, state, options.dt_days, &derived, &sensitivities, &mut tri);
+    add_exact_flux_jacobian(
+        sim,
+        state,
+        options.dt_days,
+        &derived,
+        &sensitivities,
+        &mut tri,
+    );
 
     if options.include_wells {
         add_exact_well_source_jacobian(sim, state, &topology, options.dt_days, &mut tri);
@@ -98,7 +118,8 @@ fn add_exact_well_source_jacobian(
     for perf_idx in 0..topology.perforations.len() {
         let column = state.perforation_rate_unknown_offset(perf_idx);
         let cell_idx = topology.perforations[perf_idx].cell_index;
-        let derivatives = perforation_component_rate_derivatives_sc_day(sim, state, topology, perf_idx);
+        let derivatives =
+            perforation_component_rate_derivatives_sc_day(sim, state, topology, perf_idx);
         for (local_eq, derivative) in derivatives.into_iter().enumerate() {
             let value = derivative * dt_days;
             if value.abs() > 1e-14 {
@@ -118,8 +139,9 @@ fn add_exact_well_source_cell_jacobian(
     for perf_idx in 0..topology.perforations.len() {
         let row_cell = topology.perforations[perf_idx].cell_index;
         for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
-            let derivatives =
-                perforation_component_rate_cell_derivatives_sc_day_by_var(sim, state, topology, perf_idx, cell_idx);
+            let derivatives = perforation_component_rate_cell_derivatives_sc_day_by_var(
+                sim, state, topology, perf_idx, cell_idx,
+            );
             for (local_var, component_derivatives) in derivatives.into_iter().enumerate() {
                 let column = unknown_offset(cell_idx, local_var);
                 for (local_eq, derivative) in component_derivatives.into_iter().enumerate() {
@@ -149,13 +171,19 @@ fn add_exact_well_constraint_jacobian(
             continue;
         }
 
-        let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx) else {
+        let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx)
+        else {
             continue;
         };
         let bhp_scale = control.bhp_limit.abs().max(1.0);
         let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
-        let (dphi_da, dphi_db) = fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
-        let dslack_dbhp = if topology.wells[well_idx].injector { -1.0 } else { 1.0 };
+        let (dphi_da, dphi_db) =
+            fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
+        let dslack_dbhp = if topology.wells[well_idx].injector {
+            -1.0
+        } else {
+            1.0
+        };
         let bhp_value = dphi_da * dslack_dbhp / bhp_scale;
         if bhp_value.abs() > 1e-14 {
             tri.add_triplet(row, column_bhp, bhp_value);
@@ -184,17 +212,20 @@ fn add_exact_well_constraint_cell_jacobian(
             continue;
         }
 
-        let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx) else {
+        let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx)
+        else {
             continue;
         };
         let bhp_scale = control.bhp_limit.abs().max(1.0);
         let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
-        let (_, dphi_db) = fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
+        let (_, dphi_db) =
+            fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
         let row = state.well_equation_offset(well_idx);
         for &perf_idx in &topology.wells[well_idx].perforation_indices {
             for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
-                let derivatives =
-                    perforation_surface_rate_cell_derivatives_sc_day(sim, state, topology, perf_idx, cell_idx);
+                let derivatives = perforation_surface_rate_cell_derivatives_sc_day(
+                    sim, state, topology, perf_idx, cell_idx,
+                );
                 for (local_var, derivative) in derivatives.into_iter().enumerate() {
                     let value = -dphi_db * derivative / rate_scale;
                     if value.abs() > 1e-14 {
@@ -351,7 +382,8 @@ fn cell_accumulation_residual(
     prev_derived: &FimCellDerived,
 ) -> [f64; 3] {
     let current = cell_component_inventory_sc(sim, previous_state, state, cell_idx, derived);
-    let previous = cell_component_inventory_sc(sim, previous_state, previous_state, cell_idx, prev_derived);
+    let previous =
+        cell_component_inventory_sc(sim, previous_state, previous_state, cell_idx, prev_derived);
     [
         current[0] - previous[0],
         current[1] - previous[1],
@@ -396,14 +428,14 @@ fn cell_accumulation_jacobian_block(
     let d_water_d_p = d_pore_volume_d_p * cell.sw / bw;
     let d_water_d_sw = pore_volume_m3 / bw;
 
-    let d_oil_d_p = d_pore_volume_d_p * derived.so / bo
-        - pore_volume_m3 * derived.so * d_bo_d_p / (bo * bo);
+    let d_oil_d_p =
+        d_pore_volume_d_p * derived.so / bo - pore_volume_m3 * derived.so * d_bo_d_p / (bo * bo);
     let d_oil_d_sw = pore_volume_m3 * d_so_d_sw / bo;
     let d_oil_d_h = pore_volume_m3 * d_so_d_h / bo
         - pore_volume_m3 * derived.so * d_bo_d_rs * d_rs_d_h / (bo * bo);
 
-    let d_free_gas_d_p = d_pore_volume_d_p * derived.sg / bg
-        - pore_volume_m3 * derived.sg * d_bg_d_p / (bg * bg);
+    let d_free_gas_d_p =
+        d_pore_volume_d_p * derived.sg / bg - pore_volume_m3 * derived.sg * d_bg_d_p / (bg * bg);
     let d_free_gas_d_h = pore_volume_m3 * d_sg_d_h / bg;
 
     let d_gas_d_p = d_free_gas_d_p + d_oil_d_p * derived.rs + oil_inventory * d_rs_sat_d_p;
@@ -426,7 +458,17 @@ fn assemble_residual(
     derived: &[FimCellDerived],
     prev_derived: &[FimCellDerived],
 ) -> DVector<f64> {
-    assemble_residual_with_flags(sim, previous_state, state, topology, options, true, true, derived, prev_derived)
+    assemble_residual_with_flags(
+        sim,
+        previous_state,
+        state,
+        topology,
+        options,
+        true,
+        true,
+        derived,
+        prev_derived,
+    )
 }
 
 fn assemble_residual_with_flags(
@@ -445,7 +487,14 @@ fn assemble_residual_with_flags(
 
     if include_accumulation {
         for cell_idx in 0..state.cells.len() {
-            let accumulation = cell_accumulation_residual(sim, previous_state, state, cell_idx, &derived[cell_idx], &prev_derived[cell_idx]);
+            let accumulation = cell_accumulation_residual(
+                sim,
+                previous_state,
+                state,
+                cell_idx,
+                &derived[cell_idx],
+                &prev_derived[cell_idx],
+            );
             for local_eq in 0..3 {
                 residual[equation_offset(cell_idx, local_eq)] += accumulation[local_eq];
             }
@@ -461,22 +510,49 @@ fn assemble_residual_with_flags(
                     if i + 1 < sim.nx {
                         let id_j = sim.idx(i + 1, j, k);
                         add_interface_flux(
-                            sim, state, options.dt_days, id, id_j, 'x', k, k,
-                            &derived[id], &derived[id_j], &mut residual,
+                            sim,
+                            state,
+                            options.dt_days,
+                            id,
+                            id_j,
+                            'x',
+                            k,
+                            k,
+                            &derived[id],
+                            &derived[id_j],
+                            &mut residual,
                         );
                     }
                     if j + 1 < sim.ny {
                         let id_j = sim.idx(i, j + 1, k);
                         add_interface_flux(
-                            sim, state, options.dt_days, id, id_j, 'y', k, k,
-                            &derived[id], &derived[id_j], &mut residual,
+                            sim,
+                            state,
+                            options.dt_days,
+                            id,
+                            id_j,
+                            'y',
+                            k,
+                            k,
+                            &derived[id],
+                            &derived[id_j],
+                            &mut residual,
                         );
                     }
                     if k + 1 < sim.nz {
                         let id_j = sim.idx(i, j, k + 1);
                         add_interface_flux(
-                            sim, state, options.dt_days, id, id_j, 'z', k, k + 1,
-                            &derived[id], &derived[id_j], &mut residual,
+                            sim,
+                            state,
+                            options.dt_days,
+                            id,
+                            id_j,
+                            'z',
+                            k,
+                            k + 1,
+                            &derived[id],
+                            &derived[id_j],
+                            &mut residual,
                         );
                     }
                 }
@@ -501,7 +577,13 @@ fn add_exact_accumulation_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for cell_idx in 0..state.cells.len() {
-        let block = cell_accumulation_jacobian_block(sim, previous_state, state, cell_idx, &derived[cell_idx]);
+        let block = cell_accumulation_jacobian_block(
+            sim,
+            previous_state,
+            state,
+            cell_idx,
+            &derived[cell_idx],
+        );
         for (local_eq, row_values) in block.into_iter().enumerate() {
             for (local_var, value) in row_values.into_iter().enumerate() {
                 if value.abs() > 1e-14 {
@@ -611,7 +693,11 @@ fn local_flux_cell_sensitivity(
     let dsg_dh = if saturated { 1.0 } else { 0.0 };
 
     let bo_derivatives = if saturated {
-        [sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, true), 0.0, 0.0]
+        [
+            sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, true),
+            0.0,
+            0.0,
+        ]
     } else {
         [
             sim.get_d_bo_d_p_for_state(cell.pressure_bar, derived.rs, false),
@@ -805,15 +891,57 @@ fn add_exact_flux_jacobian(
 
                 if i + 1 < sim.nx {
                     let id_j = sim.idx(i + 1, j, k);
-                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, id_j, 'x', k, k, &derived[id], &derived[id_j], &sensitivities[id], &sensitivities[id_j], tri);
+                    add_exact_interface_flux_jacobian(
+                        sim,
+                        state,
+                        dt_days,
+                        id,
+                        id_j,
+                        'x',
+                        k,
+                        k,
+                        &derived[id],
+                        &derived[id_j],
+                        &sensitivities[id],
+                        &sensitivities[id_j],
+                        tri,
+                    );
                 }
                 if j + 1 < sim.ny {
                     let id_j = sim.idx(i, j + 1, k);
-                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, id_j, 'y', k, k, &derived[id], &derived[id_j], &sensitivities[id], &sensitivities[id_j], tri);
+                    add_exact_interface_flux_jacobian(
+                        sim,
+                        state,
+                        dt_days,
+                        id,
+                        id_j,
+                        'y',
+                        k,
+                        k,
+                        &derived[id],
+                        &derived[id_j],
+                        &sensitivities[id],
+                        &sensitivities[id_j],
+                        tri,
+                    );
                 }
                 if k + 1 < sim.nz {
                     let id_j = sim.idx(i, j, k + 1);
-                    add_exact_interface_flux_jacobian(sim, state, dt_days, id, id_j, 'z', k, k + 1, &derived[id], &derived[id_j], &sensitivities[id], &sensitivities[id_j], tri);
+                    add_exact_interface_flux_jacobian(
+                        sim,
+                        state,
+                        dt_days,
+                        id,
+                        id_j,
+                        'z',
+                        k,
+                        k + 1,
+                        &derived[id],
+                        &derived[id_j],
+                        &sensitivities[id],
+                        &sensitivities[id_j],
+                        tri,
+                    );
                 }
             }
         }
@@ -897,38 +1025,30 @@ fn add_exact_interface_flux_jacobian(
         );
 
         for local_var in 0..3 {
-            let mut dq_w_sc_day = geom_t * lambda_w * dphi_w_derivatives[local_var] / sim.b_w.max(1e-9);
+            let mut dq_w_sc_day =
+                geom_t * lambda_w * dphi_w_derivatives[local_var] / sim.b_w.max(1e-9);
             if side_idx == water_upwind {
-                dq_w_sc_day += geom_t
-                    * locals[side_idx].mobility_derivatives[0][local_var]
-                    * dphi_w
-                    / sim.b_w.max(1e-9);
+                dq_w_sc_day +=
+                    geom_t * locals[side_idx].mobility_derivatives[0][local_var] * dphi_w
+                        / sim.b_w.max(1e-9);
             }
 
             let mut dq_o_sc_day = geom_t * lambda_o * dphi_o_derivatives[local_var] / bo_up;
             if side_idx == oil_upwind {
-                dq_o_sc_day += geom_t
-                    * locals[side_idx].mobility_derivatives[1][local_var]
-                    * dphi_o
-                    / bo_up;
-                dq_o_sc_day -= geom_t
-                    * lambda_o
-                    * dphi_o
-                    * locals[side_idx].bo_derivatives[local_var]
-                    / (bo_up * bo_up);
+                dq_o_sc_day +=
+                    geom_t * locals[side_idx].mobility_derivatives[1][local_var] * dphi_o / bo_up;
+                dq_o_sc_day -=
+                    geom_t * lambda_o * dphi_o * locals[side_idx].bo_derivatives[local_var]
+                        / (bo_up * bo_up);
             }
 
             let mut dq_g_free_sc_day = geom_t * lambda_g * dphi_g_derivatives[local_var] / bg_up;
             if side_idx == gas_upwind {
-                dq_g_free_sc_day += geom_t
-                    * locals[side_idx].mobility_derivatives[2][local_var]
-                    * dphi_g
-                    / bg_up;
-                dq_g_free_sc_day -= geom_t
-                    * lambda_g
-                    * dphi_g
-                    * locals[side_idx].bg_derivatives[local_var]
-                    / (bg_up * bg_up);
+                dq_g_free_sc_day +=
+                    geom_t * locals[side_idx].mobility_derivatives[2][local_var] * dphi_g / bg_up;
+                dq_g_free_sc_day -=
+                    geom_t * lambda_g * dphi_g * locals[side_idx].bg_derivatives[local_var]
+                        / (bg_up * bg_up);
             }
 
             let mut dq_g_sc_day = dq_g_free_sc_day + rs_up * dq_o_sc_day;
@@ -936,7 +1056,11 @@ fn add_exact_interface_flux_jacobian(
                 dq_g_sc_day += q_o_sc_day * locals[side_idx].rs_derivatives[local_var];
             }
 
-            let derivatives = [dq_w_sc_day * dt_days, dq_o_sc_day * dt_days, dq_g_sc_day * dt_days];
+            let derivatives = [
+                dq_w_sc_day * dt_days,
+                dq_o_sc_day * dt_days,
+                dq_g_sc_day * dt_days,
+            ];
             let column = unknown_offset(cell_idx, local_var);
             for eq_side in 0..2 {
                 let row_cell = if eq_side == 0 { id_i } else { id_j };
@@ -965,13 +1089,43 @@ fn add_local_flux_jacobian_fd(
                 let id = sim.idx(i, j, k);
 
                 if i + 1 < sim.nx {
-                    add_interface_flux_jacobian_fd(sim, state, dt_days, id, sim.idx(i + 1, j, k), 'x', k, k, tri);
+                    add_interface_flux_jacobian_fd(
+                        sim,
+                        state,
+                        dt_days,
+                        id,
+                        sim.idx(i + 1, j, k),
+                        'x',
+                        k,
+                        k,
+                        tri,
+                    );
                 }
                 if j + 1 < sim.ny {
-                    add_interface_flux_jacobian_fd(sim, state, dt_days, id, sim.idx(i, j + 1, k), 'y', k, k, tri);
+                    add_interface_flux_jacobian_fd(
+                        sim,
+                        state,
+                        dt_days,
+                        id,
+                        sim.idx(i, j + 1, k),
+                        'y',
+                        k,
+                        k,
+                        tri,
+                    );
                 }
                 if k + 1 < sim.nz {
-                    add_interface_flux_jacobian_fd(sim, state, dt_days, id, sim.idx(i, j, k + 1), 'z', k, k + 1, tri);
+                    add_interface_flux_jacobian_fd(
+                        sim,
+                        state,
+                        dt_days,
+                        id,
+                        sim.idx(i, j, k + 1),
+                        'z',
+                        k,
+                        k + 1,
+                        tri,
+                    );
                 }
             }
         }
@@ -992,7 +1146,18 @@ fn add_interface_flux_jacobian_fd(
 ) {
     let base_derived_i = state.derive_cell(sim, id_i);
     let base_derived_j = state.derive_cell(sim, id_j);
-    let Some(base_flux) = interface_flux_contribution(sim, state, dt_days, id_i, id_j, dim, k_i, k_j, &base_derived_i, &base_derived_j) else {
+    let Some(base_flux) = interface_flux_contribution(
+        sim,
+        state,
+        dt_days,
+        id_i,
+        id_j,
+        dim,
+        k_i,
+        k_j,
+        &base_derived_i,
+        &base_derived_j,
+    ) else {
         return;
     };
 
@@ -1029,9 +1194,9 @@ fn add_interface_flux_jacobian_fd(
             for eq_side in 0..2 {
                 let row_cell = if eq_side == 0 { id_i } else { id_j };
                 for component in 0..3 {
-                    let derivative =
-                        (perturbed_flux[eq_side][component] - base_flux[eq_side][component])
-                            / perturbation;
+                    let derivative = (perturbed_flux[eq_side][component]
+                        - base_flux[eq_side][component])
+                        / perturbation;
                     if derivative.abs() > 1e-14 {
                         tri.add_triplet(equation_offset(row_cell, component), column, derivative);
                     }
@@ -1096,7 +1261,9 @@ fn add_interface_flux(
     derived_j: &FimCellDerived,
     residual: &mut DVector<f64>,
 ) {
-    let Some(flux) = interface_flux_contribution(sim, state, dt_days, id_i, id_j, dim, k_i, k_j, derived_i, derived_j) else {
+    let Some(flux) = interface_flux_contribution(
+        sim, state, dt_days, id_i, id_j, dim, k_i, k_j, derived_i, derived_j,
+    ) else {
         return;
     };
 
@@ -1108,29 +1275,58 @@ fn add_interface_flux(
 
 #[cfg(test)]
 mod tests {
+    use crate::ReservoirSimulator;
     use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
     use crate::pvt::{PvtRow, PvtTable};
-    use crate::ReservoirSimulator;
 
     use super::*;
 
     fn jacobian_value(matrix: &CsMat<f64>, row: usize, col: usize) -> f64 {
         matrix
             .outer_view(row)
-            .and_then(|view| view.iter().find(|(index, _)| *index == col).map(|(_, value)| *value))
+            .and_then(|view| {
+                view.iter()
+                    .find(|(index, _)| *index == col)
+                    .map(|(_, value)| *value)
+            })
             .unwrap_or(0.0)
     }
 
-    fn build_rate_controlled_waterflood_fd_fixture(
-    ) -> (ReservoirSimulator, FimState, FimState, FimAssemblyOptions<'static>) {
+    fn build_rate_controlled_waterflood_fd_fixture() -> (
+        ReservoirSimulator,
+        FimState,
+        FimState,
+        FimAssemblyOptions<'static>,
+    ) {
         let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
         sim.set_injected_fluid("water").unwrap();
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(PvtTable::new(
             vec![
-                PvtRow { p_bar: 100.0, rs_m3m3: 10.0, bo_m3m3: 1.2, mu_o_cp: 1.4, bg_m3m3: 0.02, mu_g_cp: 0.03 },
-                PvtRow { p_bar: 200.0, rs_m3m3: 20.0, bo_m3m3: 1.1, mu_o_cp: 1.2, bg_m3m3: 0.01, mu_g_cp: 0.025 },
-                PvtRow { p_bar: 400.0, rs_m3m3: 40.0, bo_m3m3: 1.0, mu_o_cp: 1.0, bg_m3m3: 0.005, mu_g_cp: 0.02 },
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.4,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.03,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.025,
+                },
+                PvtRow {
+                    p_bar: 400.0,
+                    rs_m3m3: 40.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
             ],
             sim.pvt.c_o,
         ));
@@ -1218,7 +1414,8 @@ mod tests {
             };
 
             let r_plus = assemble_fim_system(&sim, &previous_state, &state_plus, &options).residual;
-            let r_minus = assemble_fim_system(&sim, &previous_state, &state_minus, &options).residual;
+            let r_minus =
+                assemble_fim_system(&sim, &previous_state, &state_minus, &options).residual;
 
             for row in 0..n {
                 let fd_value = (r_plus[row] - r_minus[row]) / (2.0 * h);
@@ -1232,7 +1429,11 @@ mod tests {
                 assert!(
                     error < 5e-2,
                     "Jacobian mismatch at (row={}, col={}): exact={:.6e}, fd={:.6e}, rel_error={:.3e}",
-                    row, col, exact_value, fd_value, error
+                    row,
+                    col,
+                    exact_value,
+                    fd_value,
+                    error
                 );
             }
         }
@@ -1414,7 +1615,9 @@ mod tests {
         state.cells[1].regime = HydrocarbonState::Saturated;
 
         let n_cells = state.cells.len();
-        let derived: Vec<FimCellDerived> = (0..n_cells).map(|idx| state.derive_cell(&sim, idx)).collect();
+        let derived: Vec<FimCellDerived> = (0..n_cells)
+            .map(|idx| state.derive_cell(&sim, idx))
+            .collect();
         let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
             .map(|idx| local_flux_cell_sensitivity(&sim, &state, idx, &derived[idx]))
             .collect();
@@ -1715,8 +1918,8 @@ mod tests {
             let col = unknown_offset(row_cell, local_var);
             for component in 0..3 {
                 let row = equation_offset(row_cell, component);
-                let value =
-                    jacobian_value(&assembly.jacobian, row, col) - jacobian_value(&baseline.jacobian, row, col);
+                let value = jacobian_value(&assembly.jacobian, row, col)
+                    - jacobian_value(&baseline.jacobian, row, col);
                 assert!((value - expected[local_var][component]).abs() < 1e-9);
             }
         }
@@ -1744,10 +1947,14 @@ mod tests {
 
         let topology = build_well_topology(&sim);
         let control = crate::fim::wells::physical_well_control(&sim, &topology, 0);
-        let (bhp_slack, rate_slack) = crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
+        let (bhp_slack, rate_slack) =
+            crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
         let bhp_scale = control.bhp_limit.abs().max(1.0);
         let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
-        let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
+        let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(
+            bhp_slack / bhp_scale,
+            rate_slack / rate_scale,
+        );
         let d_surface = crate::fim::wells::perforation_surface_rate_cell_derivatives_sc_day(
             &sim,
             &state,
@@ -1769,7 +1976,11 @@ mod tests {
 
         let row = state.well_equation_offset(0);
         for (local_var, derivative) in d_surface.into_iter().enumerate() {
-            let value = jacobian_value(&assembly.jacobian, row, unknown_offset(sim.idx(1, 1, 0), local_var));
+            let value = jacobian_value(
+                &assembly.jacobian,
+                row,
+                unknown_offset(sim.idx(1, 1, 0), local_var),
+            );
             assert!((value + dphi_db * derivative / rate_scale).abs() < 1e-9);
         }
     }
@@ -1784,10 +1995,7 @@ mod tests {
         state.perforation_rates_m3_day[0] = -120.0;
         let topology = build_well_topology(&sim);
         let expected = crate::fim::wells::perforation_source_pressure_derivatives_sc_day(
-            &sim,
-            &state,
-            &topology,
-            0,
+            &sim, &state, &topology, 0,
         )[2];
 
         let assembly = assemble_fim_system(
@@ -1851,8 +2059,12 @@ mod tests {
         let col_cell1_pressure = unknown_offset(1, 0);
         let col_cell2_pressure = unknown_offset(2, 0);
 
-        assert!(jacobian_value(&assembly.jacobian, row_cell0_water, col_cell1_pressure).abs() > 1e-12);
-        assert!(jacobian_value(&assembly.jacobian, row_cell0_water, col_cell2_pressure).abs() < 1e-12);
+        assert!(
+            jacobian_value(&assembly.jacobian, row_cell0_water, col_cell1_pressure).abs() > 1e-12
+        );
+        assert!(
+            jacobian_value(&assembly.jacobian, row_cell0_water, col_cell2_pressure).abs() < 1e-12
+        );
     }
 
     #[test]
@@ -1924,7 +2136,10 @@ mod tests {
         let block = cell_accumulation_jacobian_block(&sim, &previous_state, &state, 0, &d);
         let pv = sim.pore_volume_m3(0).max(1e-9);
 
-        assert!((block[0][0] - pv * sim.rock_compressibility * state.cells[0].sw / sim.b_w).abs() < 1e-12);
+        assert!(
+            (block[0][0] - pv * sim.rock_compressibility * state.cells[0].sw / sim.b_w).abs()
+                < 1e-12
+        );
         assert!((block[0][1] - pv / sim.b_w).abs() < 1e-12);
         assert!(block[0][2].abs() < 1e-12);
     }
@@ -1941,9 +2156,30 @@ mod tests {
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(PvtTable::new(
             vec![
-                PvtRow { p_bar: 100.0, rs_m3m3: 10.0, bo_m3m3: 1.2, mu_o_cp: 1.4, bg_m3m3: 0.02, mu_g_cp: 0.03 },
-                PvtRow { p_bar: 200.0, rs_m3m3: 20.0, bo_m3m3: 1.1, mu_o_cp: 1.2, bg_m3m3: 0.01, mu_g_cp: 0.025 },
-                PvtRow { p_bar: 400.0, rs_m3m3: 40.0, bo_m3m3: 1.0, mu_o_cp: 1.0, bg_m3m3: 0.005, mu_g_cp: 0.02 },
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.4,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.03,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.025,
+                },
+                PvtRow {
+                    p_bar: 400.0,
+                    rs_m3m3: 40.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
             ],
             sim.pvt.c_o,
         ));
@@ -1986,5 +2222,4 @@ mod tests {
     fn representative_full_system_jacobian_columns_match_fd_for_rate_controlled_waterflood() {
         assert_full_system_fd_matches_for_columns(&[0, 1, 2, 6, 8, 9]);
     }
-
 }

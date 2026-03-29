@@ -1,5 +1,5 @@
-use crate::fim::state::HydrocarbonState;
 use crate::ReservoirSimulator;
+use crate::fim::state::HydrocarbonState;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimFlashResult {
@@ -93,8 +93,8 @@ pub(crate) fn resolve_cell_flash(
 
 #[cfg(test)]
 mod tests {
-    use crate::pvt::{PvtRow, PvtTable};
     use crate::ReservoirSimulator;
+    use crate::pvt::{PvtRow, PvtTable};
 
     use super::*;
 

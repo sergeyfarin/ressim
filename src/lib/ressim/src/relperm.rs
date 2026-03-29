@@ -122,7 +122,11 @@ fn interpolate_piecewise_slope<T>(
         let y0 = y_of(&rows[0]);
         let y1 = y_of(&rows[1]);
         let dx = x1 - x0;
-        return if dx.abs() > f64::EPSILON { (y1 - y0) / dx } else { 0.0 };
+        return if dx.abs() > f64::EPSILON {
+            (y1 - y0) / dx
+        } else {
+            0.0
+        };
     }
     for pair in rows.windows(2) {
         let x0 = x_of(&pair[0]);
@@ -142,7 +146,11 @@ fn interpolate_piecewise_slope<T>(
     let y0 = y_of(&rows[last - 1]);
     let y1 = y_of(&rows[last]);
     let dx = x1 - x0;
-    if dx.abs() > f64::EPSILON { (y1 - y0) / dx } else { 0.0 }
+    if dx.abs() > f64::EPSILON {
+        (y1 - y0) / dx
+    } else {
+        0.0
+    }
 }
 
 /// Three-phase rock/fluid properties for Stone II relative permeability model.

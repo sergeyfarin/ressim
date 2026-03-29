@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::relperm::RockFluidPropsThreePhase;
 use crate::RockFluidProps;
+use crate::relperm::RockFluidPropsThreePhase;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct CapillaryPressure {

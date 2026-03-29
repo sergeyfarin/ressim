@@ -1,13 +1,13 @@
 use nalgebra::DVector;
 
-use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
+use crate::ReservoirSimulator;
+use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
 use crate::fim::linear::{
-    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    solve_linearized_system,
 };
 use crate::fim::state::FimState;
 use crate::fim::wells::{build_well_topology, perforation_residual_diagnostics};
-use crate::ReservoirSimulator;
 
 /// Diagnostic print macro — compiles to nothing on WASM, prints to stderr on native.
 macro_rules! fim_trace {
@@ -174,11 +174,7 @@ pub(crate) struct FimStepReport {
 
 /// Appleyard chop: compute the largest damping factor such that no cell variable
 /// exceeds its per-iteration limit. Returns a value in (0, 1].
-fn appleyard_damping(
-    state: &FimState,
-    update: &DVector<f64>,
-    options: &FimNewtonOptions,
-) -> f64 {
+fn appleyard_damping(state: &FimState, update: &DVector<f64>, options: &FimNewtonOptions) -> f64 {
     let mut max_damping = 1.0_f64;
     let n_cells = state.cells.len();
 
@@ -416,9 +412,14 @@ fn residual_family_diagnostics(
     let oil_component = oil_component.expect("residual diagnostics require at least one cell");
     let gas_component = gas_component.expect("residual diagnostics require at least one cell");
     let mut global = water;
-    for peak in [Some(oil_component), Some(gas_component), well_constraint, perforation_flow]
-        .into_iter()
-        .flatten()
+    for peak in [
+        Some(oil_component),
+        Some(gas_component),
+        well_constraint,
+        perforation_flow,
+    ]
+    .into_iter()
+    .flatten()
     {
         if peak.scaled_value > global.scaled_value {
             global = peak;
@@ -451,10 +452,16 @@ fn residual_family_trace(diagnostics: &ResidualFamilyDiagnostics) -> String {
         ),
     ];
     if let Some(peak) = diagnostics.well_constraint {
-        parts.push(format!("well={:.3e}@well{}", peak.scaled_value, peak.item_index));
+        parts.push(format!(
+            "well={:.3e}@well{}",
+            peak.scaled_value, peak.item_index
+        ));
     }
     if let Some(peak) = diagnostics.perforation_flow {
-        parts.push(format!("perf={:.3e}@perf{}", peak.scaled_value, peak.item_index));
+        parts.push(format!(
+            "perf={:.3e}@perf{}",
+            peak.scaled_value, peak.item_index
+        ));
     }
     parts.push(format!(
         "top={} row={} item={}",
@@ -473,7 +480,12 @@ fn residual_family_detail_trace(
 ) -> Option<String> {
     match diagnostics.global.family {
         ResidualRowFamily::PerforationFlow => {
-            let detail = perforation_residual_diagnostics(sim, state, topology, diagnostics.global.item_index)?;
+            let detail = perforation_residual_diagnostics(
+                sim,
+                state,
+                topology,
+                diagnostics.global.item_index,
+            )?;
             let mut parts = vec![
                 format!(
                     "perf{} well{} inj={} q={:.3e} conn={:.3e} raw={:.3e}",
@@ -551,7 +563,13 @@ pub(crate) fn run_fim_timestep(
     });
     let topology = build_well_topology(sim);
 
-    fim_trace!(options.verbose, "  Newton: dt={:.6} days, n_cells={}, n_wells={}", dt_days, state.cells.len(), state.n_well_unknowns());
+    fim_trace!(
+        options.verbose,
+        "  Newton: dt={:.6} days, n_cells={}, n_wells={}",
+        dt_days,
+        state.cells.len(),
+        state.n_well_unknowns()
+    );
 
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
@@ -564,19 +582,27 @@ pub(crate) fn run_fim_timestep(
                 topology: Some(&topology),
             },
         );
-        final_residual_inf_norm = Some(scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling));
-        let residual_diagnostics = residual_family_diagnostics(&assembly.residual, &assembly.equation_scaling);
-        let residual_detail = residual_family_detail_trace(sim, &state, &topology, &residual_diagnostics);
+        final_residual_inf_norm = Some(scaled_residual_inf_norm(
+            &assembly.residual,
+            &assembly.equation_scaling,
+        ));
+        let residual_diagnostics =
+            residual_family_diagnostics(&assembly.residual, &assembly.equation_scaling);
+        let residual_detail =
+            residual_family_detail_trace(sim, &state, &topology, &residual_diagnostics);
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let converged_on_entry = current_norm <= options.residual_tolerance
             || (iteration == 0
-            && iterate_has_material_change(previous_state, &state)
+                && iterate_has_material_change(previous_state, &state)
                 && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR);
         if converged_on_entry {
             final_update_inf_norm = 0.0;
-            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED on residual check res={:.3e}{} fam=[{}]{}",
-                iteration, current_norm,
+            fim_trace!(
+                options.verbose,
+                "    iter {:>2}: CONVERGED on residual check res={:.3e}{} fam=[{}]{}",
+                iteration,
+                current_norm,
                 if current_norm > options.residual_tolerance {
                     format!(" (entry guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
                 } else {
@@ -586,7 +612,8 @@ pub(crate) fn run_fim_timestep(
                 residual_detail
                     .as_ref()
                     .map(|detail| format!(" detail=[{}]", detail))
-                    .unwrap_or_default());
+                    .unwrap_or_default()
+            );
             state.classify_regimes(sim);
             return FimStepReport {
                 accepted_state: state,
@@ -604,14 +631,21 @@ pub(crate) fn run_fim_timestep(
         if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
             stagnation_count += 1;
             if stagnation_count >= 3 {
-                let failure_diagnostics = classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
-                fim_trace!(options.verbose, "    iter {:>2}: STAGNATION (count={}) res={:.3e} fam=[{}]{}{} — bailing out",
-                    iteration, stagnation_count, current_norm, residual_family_trace(&residual_diagnostics),
+                let failure_diagnostics =
+                    classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
+                fim_trace!(
+                    options.verbose,
+                    "    iter {:>2}: STAGNATION (count={}) res={:.3e} fam=[{}]{}{} — bailing out",
+                    iteration,
+                    stagnation_count,
+                    current_norm,
+                    residual_family_trace(&residual_diagnostics),
                     residual_detail
                         .as_ref()
                         .map(|detail| format!(" detail=[{}]", detail))
                         .unwrap_or_default(),
-                    retry_failure_trace_suffix(&failure_diagnostics));
+                    retry_failure_trace_suffix(&failure_diagnostics)
+                );
                 return FimStepReport {
                     accepted_state: state,
                     converged: false,
@@ -629,17 +663,19 @@ pub(crate) fn run_fim_timestep(
         prev_residual_norm = current_norm;
 
         let rhs = -&assembly.residual;
-        let mut linear_report = solve_linearized_system(
-            &assembly.jacobian,
-            &rhs,
-            &options.linear,
-            block_layout,
-        );
+        let mut linear_report =
+            solve_linearized_system(&assembly.jacobian, &rhs, &options.linear, block_layout);
 
         let mut used_fallback = false;
-        if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite()) {
-            fim_trace!(options.verbose, "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback",
-                iteration, linear_report.converged, linear_report.solution.iter().all(|v| v.is_finite()));
+        if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
+        {
+            fim_trace!(
+                options.verbose,
+                "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback",
+                iteration,
+                linear_report.converged,
+                linear_report.solution.iter().all(|v| v.is_finite())
+            );
             let mut fallback_options = options.linear;
             fallback_options.kind = {
                 #[cfg(target_arch = "wasm32")]
@@ -651,24 +687,34 @@ pub(crate) fn run_fim_timestep(
                     FimLinearSolverKind::SparseLuDebug
                 }
             };
-            linear_report = solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
+            linear_report =
+                solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
             used_fallback = true;
         }
 
-        final_update_inf_norm = scaled_update_inf_norm(&linear_report.solution, &assembly.variable_scaling);
+        final_update_inf_norm =
+            scaled_update_inf_norm(&linear_report.solution, &assembly.variable_scaling);
         last_linear_report = Some(linear_report.clone());
 
         let converged = final_update_inf_norm <= options.update_tolerance
             && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
             && iterate_has_material_change(previous_state, &state);
         if converged {
-            fim_trace!(options.verbose, "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}]{}",
-                iteration, current_norm, final_update_inf_norm, linear_report.iterations,
-                if used_fallback { " [fallback]" } else { "" }, linear_report_trace_suffix(&linear_report), residual_family_trace(&residual_diagnostics),
+            fim_trace!(
+                options.verbose,
+                "    iter {:>2}: CONVERGED res={:.3e} upd={:.3e} linear_iters={}{}{} fam=[{}]{}",
+                iteration,
+                current_norm,
+                final_update_inf_norm,
+                linear_report.iterations,
+                if used_fallback { " [fallback]" } else { "" },
+                linear_report_trace_suffix(&linear_report),
+                residual_family_trace(&residual_diagnostics),
                 residual_detail
                     .as_ref()
                     .map(|detail| format!(" detail=[{}]", detail))
-                    .unwrap_or_default());
+                    .unwrap_or_default()
+            );
             // Reclassify regimes now that Newton has converged with frozen regime map.
             state.classify_regimes(sim);
             return FimStepReport {
@@ -689,7 +735,8 @@ pub(crate) fn run_fim_timestep(
         let mut best_candidate_norm = f64::INFINITY;
         let mut damping_cuts = 0u32;
         while damping >= options.min_damping {
-            let candidate = state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
+            let candidate =
+                state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
             if candidate.is_finite() && candidate.respects_basic_bounds(sim) {
                 let candidate_assembly = assemble_fim_system(
                     sim,
@@ -717,26 +764,41 @@ pub(crate) fn run_fim_timestep(
             damping_cuts += 1;
         }
 
-        fim_trace!(options.verbose, "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} linear_iters={}{}{}{} fam=[{}]{}",
-            iteration, current_norm, final_update_inf_norm, damping, initial_damping, damping_cuts,
+        fim_trace!(
+            options.verbose,
+            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} linear_iters={}{}{}{} fam=[{}]{}",
+            iteration,
+            current_norm,
+            final_update_inf_norm,
+            damping,
+            initial_damping,
+            damping_cuts,
             best_candidate_norm,
             linear_report.iterations,
             if used_fallback { " [fallback]" } else { "" },
             linear_report_trace_suffix(&linear_report),
-            if stagnation_count > 0 { format!(" stag={}", stagnation_count) } else { String::new() },
+            if stagnation_count > 0 {
+                format!(" stag={}", stagnation_count)
+            } else {
+                String::new()
+            },
             residual_family_trace(&residual_diagnostics),
             residual_detail
                 .as_ref()
                 .map(|detail| format!(" detail=[{}]", detail))
-                .unwrap_or_default());
+                .unwrap_or_default()
+        );
 
         let Some(candidate) = accepted_state else {
             if current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
                 && iterate_has_material_change(previous_state, &state)
             {
                 final_update_inf_norm = 0.0;
-                fim_trace!(options.verbose, "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e}{} fam=[{}]{}",
-                    iteration, current_norm,
+                fim_trace!(
+                    options.verbose,
+                    "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e}{} fam=[{}]{}",
+                    iteration,
+                    current_norm,
                     if current_norm > options.residual_tolerance {
                         format!(" (guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
                     } else {
@@ -746,7 +808,8 @@ pub(crate) fn run_fim_timestep(
                     residual_detail
                         .as_ref()
                         .map(|detail| format!(" detail=[{}]", detail))
-                        .unwrap_or_default());
+                        .unwrap_or_default()
+                );
                 state.classify_regimes(sim);
                 return FimStepReport {
                     accepted_state: state,
@@ -759,8 +822,16 @@ pub(crate) fn run_fim_timestep(
                     cutback_factor: accepted_damping,
                 };
             }
-            let failure_diagnostics = classify_retry_failure(Some(&linear_report), &residual_diagnostics);
-            fim_trace!(options.verbose, "    iter {:>2}: DAMPING FAILED — no residual-reducing candidate (best={:.3e}, current={:.3e}){}", iteration, best_candidate_norm, current_norm, retry_failure_trace_suffix(&failure_diagnostics));
+            let failure_diagnostics =
+                classify_retry_failure(Some(&linear_report), &residual_diagnostics);
+            fim_trace!(
+                options.verbose,
+                "    iter {:>2}: DAMPING FAILED — no residual-reducing candidate (best={:.3e}, current={:.3e}){}",
+                iteration,
+                best_candidate_norm,
+                current_norm,
+                retry_failure_trace_suffix(&failure_diagnostics)
+            );
             return FimStepReport {
                 accepted_state: state,
                 converged: false,
@@ -787,16 +858,25 @@ pub(crate) fn run_fim_timestep(
             topology: Some(&topology),
         },
     );
-    final_residual_inf_norm = Some(scaled_residual_inf_norm(&final_assembly.residual, &final_assembly.equation_scaling));
-    let final_residual_diagnostics = residual_family_diagnostics(&final_assembly.residual, &final_assembly.equation_scaling);
-    let final_residual_detail = residual_family_detail_trace(sim, &state, &topology, &final_residual_diagnostics);
+    final_residual_inf_norm = Some(scaled_residual_inf_norm(
+        &final_assembly.residual,
+        &final_assembly.equation_scaling,
+    ));
+    let final_residual_diagnostics =
+        residual_family_diagnostics(&final_assembly.residual, &final_assembly.equation_scaling);
+    let final_residual_detail =
+        residual_family_detail_trace(sim, &state, &topology, &final_residual_diagnostics);
     if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance {
-        fim_trace!(options.verbose, "    post-loop: CONVERGED on final residual check res={:.3e} fam=[{}]{}",
-            final_residual_inf_norm.unwrap_or(f64::INFINITY), residual_family_trace(&final_residual_diagnostics),
+        fim_trace!(
+            options.verbose,
+            "    post-loop: CONVERGED on final residual check res={:.3e} fam=[{}]{}",
+            final_residual_inf_norm.unwrap_or(f64::INFINITY),
+            residual_family_trace(&final_residual_diagnostics),
             final_residual_detail
                 .as_ref()
                 .map(|detail| format!(" detail=[{}]", detail))
-                .unwrap_or_default());
+                .unwrap_or_default()
+        );
         state.classify_regimes(sim);
         return FimStepReport {
             accepted_state: state,
@@ -810,15 +890,21 @@ pub(crate) fn run_fim_timestep(
         };
     }
 
-    let failure_diagnostics = classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
-    fim_trace!(options.verbose, "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e} fam=[{}]{}{}",
-        options.max_newton_iterations, final_residual_inf_norm.unwrap_or(f64::INFINITY), final_update_inf_norm,
+    let failure_diagnostics =
+        classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
+    fim_trace!(
+        options.verbose,
+        "    post-loop: NOT CONVERGED after {} iterations, res={:.3e} upd={:.3e} fam=[{}]{}{}",
+        options.max_newton_iterations,
+        final_residual_inf_norm.unwrap_or(f64::INFINITY),
+        final_update_inf_norm,
         residual_family_trace(&final_residual_diagnostics),
         final_residual_detail
             .as_ref()
             .map(|detail| format!(" detail=[{}]", detail))
             .unwrap_or_default(),
-        retry_failure_trace_suffix(&failure_diagnostics));
+        retry_failure_trace_suffix(&failure_diagnostics)
+    );
 
     FimStepReport {
         accepted_state: state,
@@ -836,11 +922,11 @@ pub(crate) fn run_fim_timestep(
 mod tests {
     use nalgebra::DVector;
 
-    use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
+    use crate::ReservoirSimulator;
+    use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
     use crate::fim::scaling::EquationScaling;
     use crate::fim::state::FimState;
     use crate::pvt::{PvtRow, PvtTable};
-    use crate::ReservoirSimulator;
 
     use super::*;
 
@@ -948,7 +1034,8 @@ mod tests {
                 topology: None,
             },
         );
-        let residual_norm = scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
+        let residual_norm =
+            scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
         assert!(residual_norm.is_finite() && residual_norm > 0.0);
 
         let options = FimNewtonOptions {
@@ -957,13 +1044,7 @@ mod tests {
             ..FimNewtonOptions::default()
         };
 
-        let report = run_fim_timestep(
-            &sim,
-            &previous_state,
-            &iterate,
-            1.0,
-            &options,
-        );
+        let report = run_fim_timestep(&sim, &previous_state, &iterate, 1.0, &options);
 
         assert!(report.converged);
         assert_eq!(report.newton_iterations, 1);
@@ -990,7 +1071,8 @@ mod tests {
                 topology: None,
             },
         );
-        let residual_norm = scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
+        let residual_norm =
+            scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
         assert!(residual_norm.is_finite() && residual_norm > 0.0);
 
         let options = FimNewtonOptions {
@@ -1001,7 +1083,8 @@ mod tests {
         let report = run_fim_timestep(&sim, &previous_state, &previous_state, 0.01, &options);
 
         assert!(
-            !report.converged || iterate_has_material_change(&previous_state, &report.accepted_state),
+            !report.converged
+                || iterate_has_material_change(&previous_state, &report.accepted_state),
             "unchanged previous state must not be accepted as converged inside the residual guard band"
         );
         if report.converged {
@@ -1031,10 +1114,24 @@ mod tests {
         assert!((diagnostics.oil_component.scaled_value - 1.2).abs() < 1e-12);
         assert_eq!(diagnostics.gas_component.item_index, 0);
         assert!((diagnostics.gas_component.scaled_value - 0.8).abs() < 1e-12);
-        assert_eq!(diagnostics.well_constraint.expect("well peak").item_index, 1);
+        assert_eq!(
+            diagnostics.well_constraint.expect("well peak").item_index,
+            1
+        );
         assert!((diagnostics.well_constraint.expect("well peak").scaled_value - 8.0).abs() < 1e-12);
-        assert_eq!(diagnostics.perforation_flow.expect("perf peak").item_index, 0);
-        assert!((diagnostics.perforation_flow.expect("perf peak").scaled_value - 0.5).abs() < 1e-12);
+        assert_eq!(
+            diagnostics.perforation_flow.expect("perf peak").item_index,
+            0
+        );
+        assert!(
+            (diagnostics
+                .perforation_flow
+                .expect("perf peak")
+                .scaled_value
+                - 0.5)
+                .abs()
+                < 1e-12
+        );
         assert_eq!(diagnostics.global.family, ResidualRowFamily::WellConstraint);
         assert_eq!(diagnostics.global.row, 7);
         assert_eq!(diagnostics.global.item_index, 1);

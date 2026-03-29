@@ -24,12 +24,8 @@ fn build_waterflood_pressure(nx: usize, ny: usize, nz: usize) -> ReservoirSimula
     sim.set_fluid_densities(800.0, 1000.0).unwrap();
     sim.set_capillary_params(0.0, 2.0).unwrap();
     sim.set_gravity_enabled(nz > 1);
-    sim.set_permeability_per_layer(
-        vec![2000.0; nz],
-        vec![2000.0; nz],
-        vec![200.0; nz],
-    )
-    .unwrap();
+    sim.set_permeability_per_layer(vec![2000.0; nz], vec![2000.0; nz], vec![200.0; nz])
+        .unwrap();
     sim.set_stability_params(0.05, 75.0, 0.75);
     sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
     sim.set_target_well_rates(0.0, 0.0).unwrap();
@@ -81,12 +77,8 @@ fn build_waterflood_rate(nx: usize, ny: usize, nz: usize) -> ReservoirSimulator 
     sim.set_fluid_densities(800.0, 1000.0).unwrap();
     sim.set_capillary_params(0.0, 2.0).unwrap();
     sim.set_gravity_enabled(nz > 1);
-    sim.set_permeability_per_layer(
-        vec![2000.0; nz],
-        vec![2000.0; nz],
-        vec![200.0; nz],
-    )
-    .unwrap();
+    sim.set_permeability_per_layer(vec![2000.0; nz], vec![2000.0; nz], vec![200.0; nz])
+        .unwrap();
     sim.set_stability_params(0.05, 75.0, 0.75);
     sim.set_rate_controlled_wells(true);
     sim.set_injected_fluid("water").unwrap();
@@ -137,12 +129,8 @@ fn build_gas_injection_variant(
         sim.set_capillary_params(0.0, 1e-6).unwrap();
     }
     sim.set_gravity_enabled(gravity_enabled);
-    sim.set_permeability_per_layer(
-        vec![500.0; nz],
-        vec![500.0; nz],
-        vec![50.0; nz],
-    )
-    .unwrap();
+    sim.set_permeability_per_layer(vec![500.0; nz], vec![500.0; nz], vec![50.0; nz])
+        .unwrap();
     sim.pvt_table = Some(PvtTable::new(
         vec![
             PvtRow {
@@ -181,10 +169,8 @@ fn build_gas_injection_variant(
         sim.pvt.c_o,
     ));
     sim.set_initial_rs(80.0);
-    sim.set_three_phase_rel_perm_props(
-        0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_redissolution_enabled(false);
@@ -207,11 +193,24 @@ fn build_gas_injection_variant(
 // ─── Runner ──────────────────────────────────────────────────────────────────
 
 fn run_verbose(label: &str, sim: &mut ReservoirSimulator, dt_days: f64, n_steps: usize) {
-    eprintln!("═══ {} ═══  (nx={} ny={} nz={}, cells={}, dt={}, steps={})",
-        label, sim.nx, sim.ny, sim.nz, sim.nx * sim.ny * sim.nz, dt_days, n_steps);
+    eprintln!(
+        "═══ {} ═══  (nx={} ny={} nz={}, cells={}, dt={}, steps={})",
+        label,
+        sim.nx,
+        sim.ny,
+        sim.nz,
+        sim.nx * sim.ny * sim.nz,
+        dt_days,
+        n_steps
+    );
     let started = Instant::now();
     for step in 0..n_steps {
-        eprintln!("─── outer step {}/{} at t={:.4} days ───", step + 1, n_steps, sim.time_days);
+        eprintln!(
+            "─── outer step {}/{} at t={:.4} days ───",
+            step + 1,
+            n_steps,
+            sim.time_days
+        );
         sim.step_fim_verbose(dt_days);
         if let Some(point) = sim.rate_history.last() {
             let water_rate = (point.total_production_liquid - point.total_production_oil).max(0.0);
@@ -238,8 +237,13 @@ fn run_verbose(label: &str, sim: &mut ReservoirSimulator, dt_days: f64, n_steps:
         }
     }
     let elapsed = started.elapsed();
-    eprintln!("═══ {} done: t={:.4} days, {} history entries, {:.1} ms ═══\n",
-        label, sim.time_days, sim.rate_history.len(), elapsed.as_secs_f64() * 1000.0);
+    eprintln!(
+        "═══ {} done: t={:.4} days, {} history entries, {:.1} ms ═══\n",
+        label,
+        sim.time_days,
+        sim.rate_history.len(),
+        elapsed.as_secs_f64() * 1000.0
+    );
 }
 
 // ─── 1D waterflood (pressure-controlled) ────────────────────────────────────
