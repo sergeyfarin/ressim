@@ -81,6 +81,12 @@ Classify each FIM-related test into exactly one of these buckets:
 
 Review apporach to rust native target. It was used for testing, but often slightly different inputs used which causes wrong investigation of wasm failing, while never confirmed always was logic issue. Native target not required for production was used for testing only. It is useful sometimes for diagnostic, but if it causes more issues, then let's always diagnose using wasm
 
+And remember there are also frontend scenarios `src/lib/catalog/scenarios` that could be used for testing, but some of them slow to run, especially for long periods (`src/lib/catalog/scenarios/spe1_gas_injection.ts` and `src/lib/catalog/scenarios/sweep_combined.ts` are useful but will be very very slow)
+
+Some tests are overly verbose, printing every substep, every iteration - make it difficult to use for diagnostic.
+
+
+
 Target files:
 
 - `src/lib/ressim/src/tests/spe1_fim.rs`
@@ -92,10 +98,10 @@ Target files:
   - either delete if stale, move useful content into `spe1_fim.rs`, or convert into a documented ignored diagnostic
 - `src/lib/ressim/src/lib.rs` ignored debug helpers
   - move them into a dedicated diagnostics file or remove them if superseded
-  - also files `patch_assembly.sh`, `patch_newton.sh`, `patch_scaling.sh`, `patch_wells.sh`,  
-  `test_import.mjs`, `test-native.sh`, `test-wasm-spe1-short.sh`, `test-wasm-spe1.js`, `test-wasm.sh`, `test.sh`
+  - also files `test_import.mjs`, `test-native.sh`, `test-wasm-spe1-short.sh`, `test-wasm-spe1.js`, `test-wasm.sh`, `test.sh`
 
-End-state rule: no debug-only probe should live in `lib.rs`.
+End-state rule: no debug-only probe should live in `lib.rs` and tests should not sit in `lib.rs` they should be in dedicated files not to clutter it, tests and probes should all be in separate dedicated files.
+
 
 ## Phase 3: Artifact Cleanup
 
