@@ -34,17 +34,17 @@ pub(crate) fn build_equation_scaling(
     let mut well_constraint = Vec::with_capacity(state.n_well_unknowns());
     let mut perforation_flow = Vec::with_capacity(state.n_perforation_unknowns());
 
-    let dt_days = dt_days.max(1e-12);
+        let dt_days = dt_days.max(1e-12);
     for idx in 0..n_cells {
-        let pv_over_dt = (sim.pore_volume_m3(idx) / dt_days).abs().max(1.0);
+            let pv_over_dt = (sim.pore_volume_m3(idx) / dt_days).abs().max(1.0);
         let cell = state.cells[idx];
         let bo = sim.get_b_o_cell(idx, cell.pressure_bar).max(1e-9);
         let bg = sim.get_b_g(cell.pressure_bar).max(1e-9);
         let bw = sim.b_w.max(1e-9);
 
-        water.push(pv_over_dt / bw);
-        oil_component.push(pv_over_dt / bo);
-        gas_component.push(pv_over_dt / bg);
+            water.push(pv_over_dt / bw);
+            oil_component.push(pv_over_dt / bo);
+            gas_component.push(pv_over_dt / bg);
     }
 
     for well_idx in 0..state.n_well_unknowns() {

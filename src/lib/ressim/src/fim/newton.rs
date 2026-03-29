@@ -20,6 +20,7 @@ macro_rules! fim_trace {
 }
 
 const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
+const NOOP_ENTRY_EXACT_FACTOR: f64 = 1e-3;
 const LINEAR_GOOD_CPR_REDUCTION_RATIO: f64 = 1e-6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -734,10 +735,15 @@ pub(crate) fn run_fim_timestep(
             residual_family_detail_trace(sim, &state, &topology, &residual_diagnostics);
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
-        let converged_on_entry = current_norm <= options.residual_tolerance
-            || (iteration == 0
-                && iterate_has_material_change(previous_state, &state)
-                && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR);
+        let materially_changed = iterate_has_material_change(previous_state, &state);
+        let converged_on_entry = if iteration == 0 && !materially_changed {
+            current_norm <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR
+        } else {
+            current_norm <= options.residual_tolerance
+                || (iteration == 0
+                    && materially_changed
+                    && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR)
+        };
         if converged_on_entry {
             final_update_inf_norm = 0.0;
             let use_guard_band = current_norm > options.residual_tolerance;
@@ -750,7 +756,14 @@ pub(crate) fn run_fim_timestep(
                 &topology,
                 dt_days,
             );
-            if accepted_state_meets_convergence(
+            let unchanged_entry_is_effectively_exact = iteration != 0
+                || materially_changed
+                || (accepted_diagnostics.residual_inf_norm
+                    <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR
+                    && accepted_diagnostics.material_balance_inf_norm
+                        <= options.material_balance_tolerance * NOOP_ENTRY_EXACT_FACTOR);
+            if unchanged_entry_is_effectively_exact
+                && accepted_state_meets_convergence(
                 &accepted_diagnostics,
                 residual_limit,
                 material_balance_limit,

@@ -187,6 +187,11 @@ impl FimState {
                         cell.sw,
                         0.0,
                         total_gas_sc,
+                        if sim.gas_redissolution_enabled {
+                            None
+                        } else {
+                            Some(sim.rs[idx])
+                        },
                     );
 
                     if sg <= SG_SWITCH_TOL {
@@ -216,6 +221,11 @@ impl FimState {
                         cell.sw,
                         0.0,
                         total_gas_sc,
+                        if sim.gas_redissolution_enabled {
+                            None
+                        } else {
+                            Some(sim.rs[idx])
+                        },
                     );
 
                     if sg <= SG_SWITCH_TOL {

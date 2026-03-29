@@ -452,6 +452,7 @@ fn transported_free_gas_does_not_redissolve_into_oil_when_disabled() {
         water_saturation,
         transported_free_gas_sc,
         dissolved_gas_sc,
+        None,
     );
 
     let bg = sim.get_b_g(pressure_bar).max(1e-9);
@@ -470,5 +471,65 @@ fn transported_free_gas_does_not_redissolve_into_oil_when_disabled() {
         "transported free gas should remain free when redissolution is disabled: free_after_sc={} transported_free_gas_sc={}",
         free_after_sc,
         transported_free_gas_sc,
+    );
+}
+
+#[test]
+fn drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas() {
+    let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_gas_redissolution_enabled(false);
+    sim.pvt_table = Some(pvt::PvtTable::new(
+        vec![
+            pvt::PvtRow {
+                p_bar: 100.0,
+                rs_m3m3: 100.0,
+                bo_m3m3: 1.1,
+                mu_o_cp: 1.0,
+                bg_m3m3: 0.1,
+                mu_g_cp: 0.02,
+            },
+            pvt::PvtRow {
+                p_bar: 277.0,
+                rs_m3m3: 226.0,
+                bo_m3m3: 1.2,
+                mu_o_cp: 0.8,
+                bg_m3m3: 0.004,
+                mu_g_cp: 0.02,
+            },
+            pvt::PvtRow {
+                p_bar: 400.0,
+                rs_m3m3: 350.0,
+                bo_m3m3: 1.3,
+                mu_o_cp: 0.6,
+                bg_m3m3: 0.003,
+                mu_g_cp: 0.02,
+            },
+        ],
+        sim.pvt.c_o,
+    ));
+
+    let pressure_bar = 331.0;
+    let water_saturation = 0.12;
+    let pore_volume_m3 = sim.pore_volume_m3(0);
+    let base_rs = 226.0;
+    let bo = sim.get_b_o_for_rs(pressure_bar, base_rs).max(1e-9);
+    let oil_sc = ((1.0 - water_saturation) * pore_volume_m3) / bo;
+    let dissolved_gas_sc = oil_sc * (base_rs + 25.0);
+
+    let (sg, _so, rs) = sim.split_gas_inventory_after_transport(
+        pressure_bar,
+        pore_volume_m3,
+        water_saturation,
+        0.0,
+        dissolved_gas_sc,
+        Some(base_rs),
+    );
+
+    assert!(sg > 1e-6, "excess dissolved gas should flash to free gas when DRSDT=0; sg={}", sg);
+    assert!(
+        (rs - base_rs).abs() < 1e-6,
+        "resolved Rs should stay pinned to the DRSDT=0 base value; rs={}",
+        rs,
     );
 }

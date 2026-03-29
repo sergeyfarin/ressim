@@ -421,6 +421,7 @@ impl ReservoirSimulator {
         water_saturation: f64,
         transported_free_gas_sc: f64,
         dissolved_gas_sc: f64,
+        drsdt0_base_rs: Option<f64>,
     ) -> (f64, f64, f64) {
         let table = match &self.pvt_table {
             Some(table) => table,
@@ -442,11 +443,19 @@ impl ReservoirSimulator {
         let dissolved_gas_sc = dissolved_gas_sc.max(0.0);
 
         let rs_max = table.interpolate(pressure_bar).rs_m3m3.max(0.0);
-        let (bo_sat, _) = table.interpolate_oil(pressure_bar, rs_max);
-        let bo_sat = bo_sat.max(1e-9);
+        let rs_dissolution_cap = if self.gas_redissolution_enabled {
+            rs_max
+        } else {
+            drsdt0_base_rs
+                .map(|base_rs| base_rs.max(0.0).min(rs_max))
+                .unwrap_or(rs_max)
+        };
+        let (bo_dissolution_cap, _) = table.interpolate_oil(pressure_bar, rs_dissolution_cap);
+        let bo_dissolution_cap = bo_dissolution_cap.max(1e-9);
 
         if !self.gas_redissolution_enabled {
-            let max_dissolved_sc_transport = (so_transport * pore_volume_m3 / bo_sat) * rs_max;
+            let max_dissolved_sc_transport =
+                (so_transport * pore_volume_m3 / bo_dissolution_cap) * rs_dissolution_cap;
             if dissolved_gas_sc <= max_dissolved_sc_transport + 1e-9 {
                 let rs = self.solve_rs_for_dissolved_gas(
                     pressure_bar,
@@ -454,15 +463,21 @@ impl ReservoirSimulator {
                     sg_transport,
                     pore_volume_m3,
                     dissolved_gas_sc,
-                    rs_max,
+                    rs_dissolution_cap,
                 );
                 return (sg_transport, so_transport, rs);
             }
         }
 
         let total_gas_sc = free_gas_sc_transport + dissolved_gas_sc;
+        let (rs_saturated, bo_saturated) = if self.gas_redissolution_enabled {
+            let (bo_sat, _) = table.interpolate_oil(pressure_bar, rs_max);
+            (rs_max, bo_sat.max(1e-9))
+        } else {
+            (rs_dissolution_cap, bo_dissolution_cap)
+        };
         let max_all_dissolved_sc =
-            (total_hydrocarbon_saturation * pore_volume_m3 / bo_sat) * rs_max;
+            (total_hydrocarbon_saturation * pore_volume_m3 / bo_saturated) * rs_saturated;
         if self.gas_redissolution_enabled && total_gas_sc <= max_all_dissolved_sc + 1e-9 {
             let rs = self.solve_rs_for_dissolved_gas(
                 pressure_bar,
@@ -470,14 +485,15 @@ impl ReservoirSimulator {
                 0.0,
                 pore_volume_m3,
                 total_gas_sc,
-                rs_max,
+                rs_saturated,
             );
             return (0.0, total_hydrocarbon_saturation, rs);
         }
 
-        let denom = (1.0 / bg) - (rs_max / bo_sat);
+        let denom = (1.0 / bg) - (rs_saturated / bo_saturated);
         let sg_saturated = if denom.abs() > 1e-12 {
-            ((total_gas_sc / pore_volume_m3) - (total_hydrocarbon_saturation * rs_max / bo_sat))
+            ((total_gas_sc / pore_volume_m3)
+                - (total_hydrocarbon_saturation * rs_saturated / bo_saturated))
                 / denom
         } else {
             sg_transport
@@ -489,7 +505,7 @@ impl ReservoirSimulator {
         };
         let sg = sg_saturated.clamp(sg_lower_bound, total_hydrocarbon_saturation);
         let so = (total_hydrocarbon_saturation - sg).max(0.0);
-        (sg, so, rs_max)
+        (sg, so, rs_saturated)
     }
 
     fn pressure_state_bounds(&self) -> (f64, f64) {

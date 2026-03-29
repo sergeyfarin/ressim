@@ -142,6 +142,11 @@ impl ReservoirSimulator {
                 sw_new,
                 transported_free_gas_sc,
                 dissolved_gas_sc_transport,
+                if self.gas_redissolution_enabled {
+                    None
+                } else {
+                    Some(rs_old)
+                },
             );
             sg_new = sg_resolved;
             rs_new = rs_cell;

@@ -90,13 +90,46 @@ pub(crate) fn resolve_cell_flash(
                 bubble_point_bar,
             }
         }
-        HydrocarbonState::Undersaturated => FimFlashResult {
-            regime,
-            so: total_hydrocarbon_saturation,
-            sg: 0.0,
-            rs: hydrocarbon_var.max(0.0),
-            bubble_point_bar,
-        },
+        HydrocarbonState::Undersaturated => {
+            let mut rs_cap = table.interpolate(pressure_bar).rs_m3m3.max(0.0);
+            if let Some(base_rs) = drsdt0_base_rs {
+                rs_cap = rs_cap.min(base_rs.max(0.0));
+            }
+
+            let rs_trial = hydrocarbon_var.max(0.0);
+            if rs_trial <= rs_cap + 1e-6 {
+                return FimFlashResult {
+                    regime,
+                    so: total_hydrocarbon_saturation,
+                    sg: 0.0,
+                    rs: rs_trial,
+                    bubble_point_bar,
+                };
+            }
+
+            let bo_trial = sim.get_b_o_for_rs(pressure_bar, rs_trial).max(1e-9);
+            let dissolved_gas_sc = total_hydrocarbon_saturation * rs_trial / bo_trial;
+            let (sg, so, rs) = sim.split_gas_inventory_after_transport(
+                pressure_bar,
+                1.0,
+                sw,
+                0.0,
+                dissolved_gas_sc,
+                drsdt0_base_rs,
+            );
+
+            FimFlashResult {
+                regime: if sg > 1e-12 {
+                    HydrocarbonState::Saturated
+                } else {
+                    HydrocarbonState::Undersaturated
+                },
+                so,
+                sg,
+                rs,
+                bubble_point_bar,
+            }
+        }
     }
 }
 
