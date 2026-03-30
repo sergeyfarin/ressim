@@ -163,8 +163,8 @@ export interface SimulatorCreatePayload {
   injectorBhp: number;
   producerBhp: number;
   rateControlledWells?: boolean;
-  injectorControlMode?: string;
-  producerControlMode?: string;
+  injectorControlMode?: 'pressure' | 'rate';
+  producerControlMode?: 'pressure' | 'rate';
   injectorEnabled?: boolean;
   targetInjectorRate?: number;
   targetProducerRate?: number;
@@ -245,6 +245,7 @@ export interface SimulatorSnapshot {
   wells: WellState;
   time: number;
   rateHistory?: RateHistoryPoint[];
+  rateHistoryDelta?: RateHistoryPoint[];
   solverWarning?: string | null;
   recordHistory?: boolean;
   stepIndex?: number;

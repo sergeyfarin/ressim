@@ -224,7 +224,7 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
             : undefined,
           bhpLimit: well.schedule.bhpLimit != null ? toFiniteNumber(well.schedule.bhpLimit, 0) : undefined,
           enabled: well.schedule.enabled !== false,
-        }
+        } satisfies SimulatorWellSchedule
         : undefined,
     }))
     : buildLegacyWellDefinitions({

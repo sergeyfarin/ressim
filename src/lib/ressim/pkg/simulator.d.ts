@@ -8,9 +8,11 @@ export class ReservoirSimulator {
     add_well(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean): void;
     getDimensions(): any;
     getFimTrace(): string;
+    getGridState(): any;
     getLastSolverWarning(): string;
     getPressures(): Float64Array;
     getRateHistory(): any;
+    getRateHistorySince(start_index: number): any;
     getRs(): Float64Array;
     getSatGas(): Float64Array;
     getSatOil(): Float64Array;
@@ -81,9 +83,11 @@ export interface InitOutput {
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
     readonly reservoirsimulator_getFimTrace: (a: number) => [number, number];
+    readonly reservoirsimulator_getGridState: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;
+    readonly reservoirsimulator_getRateHistorySince: (a: number, b: number) => any;
     readonly reservoirsimulator_getRs: (a: number) => [number, number];
     readonly reservoirsimulator_getSatGas: (a: number) => [number, number];
     readonly reservoirsimulator_getSatOil: (a: number) => [number, number];

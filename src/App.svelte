@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
-    import FractionalFlow from "./lib/analytical/FractionalFlow.svelte";
-    import DepletionAnalytical from "./lib/analytical/DepletionAnalytical.svelte";
+    import { calculateDepletionAnalyticalProduction, type DepletionAnalyticalMeta, type DepletionAnalyticalPoint } from "./lib/analytical/depletionAnalytical";
+    import { calculateAnalyticalProduction, type AnalyticalPoint as FractionalFlowAnalyticalPoint, type FluidProps, type RockProps } from "./lib/analytical/fractionalFlow";
     import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
@@ -43,16 +43,65 @@
     // True only for sweep scenarios — reads from scenario capabilities.
     const showSweepPanel = $derived(scenario.activeScenarioObject?.capabilities.showSweepPanel ?? false);
 
+    type AppAnalyticalMeta = DepletionAnalyticalMeta | {
+        mode: "waterflood" | "none";
+        shapeFactor: number | null;
+        shapeLabel: string;
+        q0?: number;
+        tau?: number;
+    };
+    type AppAnalyticalPoint = FractionalFlowAnalyticalPoint | DepletionAnalyticalPoint;
+    type OutputSelectionProfile = {
+        gridState: typeof runtime.gridStateRaw;
+        nx: number;
+        ny: number;
+        nz: number;
+        cellDx: number;
+        cellDy: number;
+        cellDz: number;
+        simTime: number;
+        injectionRate: number;
+        scenarioMode: "waterflood" | "depletion" | "none";
+        sourceLabel: string;
+        producerJ: number;
+        initialSaturation: number;
+        rockProps: RockProps;
+        fluidProps: FluidProps;
+    };
+    type Output3DSelection = {
+        history: typeof runtime.history;
+        nx: number;
+        ny: number;
+        nz: number;
+        cellDx: number;
+        cellDy: number;
+        cellDz: number;
+        cellDzPerLayer: number[];
+        gridState: typeof runtime.gridStateRaw;
+        wellState: typeof runtime.wellStateRaw;
+        replayTime: number | null;
+        currentIndex: number;
+        sourceLabel: string;
+    };
+    const EMPTY_ANALYTICAL_OUTPUT: { production: AppAnalyticalPoint[]; meta: AppAnalyticalMeta } = {
+        production: [],
+        meta: {
+            mode: "none",
+            shapeFactor: null,
+            shapeLabel: "",
+        },
+    };
+
     // Simulation sweep efficiency time series — computed from per-cell saturation snapshots.
     // Only populated for sweep-domain scenarios; null otherwise.
     type SimSweepPoint = { time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null };
     const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
         if (!showSweepPanel || runtime.history.length === 0) return null;
-        if (!outputProfileRockProps || !outputProfileFluidProps) return null;
+        if (!selectedOutputProfile.rockProps || !selectedOutputProfile.fluidProps) return null;
         const { nx, ny, nz, initialSaturation } = params;
         const sweptThreshold = computeSweepSaturationWindow(
-            outputProfileRockProps,
-            outputProfileFluidProps,
+            selectedOutputProfile.rockProps,
+            selectedOutputProfile.fluidProps,
             initialSaturation,
         );
         const result: SimSweepPoint[] = [{ time: 0, eA: sweepGeometry === 'both' ? null : 0, eV: sweepGeometry === 'both' ? null : 0, eVol: 0, mobileOilRecovered: sweepGeometry === 'both' ? 0 : null }];
@@ -87,13 +136,13 @@
             ?? 'dykstra-parsons';
     });
     const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
-        if (!showSweepPanel || !outputProfileRockProps || !outputProfileFluidProps) return null;
+        if (!showSweepPanel || !selectedOutputProfile.rockProps || !selectedOutputProfile.fluidProps) return null;
         const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
             ? params.layerPermsX
             : params.nz > 1
                 ? Array.from({ length: params.nz }, () => params.uniformPermX)
                 : [params.uniformPermX];
-        return computeSweepRecoveryFactor(outputProfileRockProps, outputProfileFluidProps, perms, params.cellDz, 3.0, 200, sweepGeometry, sweepAnalyticalMethod);
+        return computeSweepRecoveryFactor(selectedOutputProfile.rockProps, selectedOutputProfile.fluidProps, perms, params.cellDz, 3.0, 200, sweepGeometry, sweepAnalyticalMethod);
     });
 
     // True when any active sensitivity variant is declared to affect the analytical solution.
@@ -170,108 +219,132 @@
         if (!activePrimaryComparisonResultKey) return null;
         return activeReferenceResults.find((result) => result.key === activePrimaryComparisonResultKey) ?? null;
     });
-    const outputProfileGridState = $derived.by(() => (
-        activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null
-    ));
-    const outputProfileNx = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.nx ?? params.nx)
-    ));
-    const outputProfileNy = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.ny ?? params.ny)
-    ));
-    const outputProfileNz = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.nz ?? params.nz)
-    ));
-    const outputProfileCellDx = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx)
-    ));
-    const outputProfileCellDy = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy)
-    ));
-    const outputProfileCellDz = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz)
-    ));
-    const outputProfileSimTime = $derived.by(() => (
-        activeSelectedReferenceResult?.finalSnapshot?.time
-        ?? Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.time ?? runtime.simTime)
-    ));
-    const outputProfileInjectionRate = $derived.by(() => (
-        Math.max(0, Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.total_injection ?? runtime.latestInjectionRate ?? 0))
-    ));
-    const outputProfileScenarioMode = $derived.by(() => (
-        activeSelectedReferenceResult?.analyticalMethod === "depletion" ? "depletion" : params.analyticalMode
-    ));
-    const outputProfileSourceLabel = $derived.by(() => (
-        activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
-    ));
-    const outputProfileProducerJ = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.producerJ ?? params.producerJ)
-    ));
-    const outputProfileInitialSaturation = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.initialSaturation ?? params.initialSaturation)
-    ));
-    const outputProfileRockProps = $derived.by(() => ({
-        s_wc: Number(activeSelectedReferenceResult?.params.s_wc ?? params.s_wc),
-        s_or: Number(activeSelectedReferenceResult?.params.s_or ?? params.s_or),
-        n_w: Number(activeSelectedReferenceResult?.params.n_w ?? params.n_w),
-        n_o: Number(activeSelectedReferenceResult?.params.n_o ?? params.n_o),
-        k_rw_max: Number(activeSelectedReferenceResult?.params.k_rw_max ?? params.k_rw_max),
-        k_ro_max: Number(activeSelectedReferenceResult?.params.k_ro_max ?? params.k_ro_max),
+    const selectedOutputProfile = $derived.by((): OutputSelectionProfile => ({
+        gridState: activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null,
+        nx: Number(activeSelectedReferenceResult?.params.nx ?? params.nx),
+        ny: Number(activeSelectedReferenceResult?.params.ny ?? params.ny),
+        nz: Number(activeSelectedReferenceResult?.params.nz ?? params.nz),
+        cellDx: Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx),
+        cellDy: Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy),
+        cellDz: Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz),
+        simTime:
+            activeSelectedReferenceResult?.finalSnapshot?.time
+            ?? Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.time ?? runtime.simTime),
+        injectionRate: Math.max(0, Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.total_injection ?? runtime.latestInjectionRate ?? 0)),
+        scenarioMode: activeSelectedReferenceResult?.analyticalMethod === "depletion" ? "depletion" : params.analyticalMode,
+        sourceLabel: activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime",
+        producerJ: Number(activeSelectedReferenceResult?.params.producerJ ?? params.producerJ),
+        initialSaturation: Number(activeSelectedReferenceResult?.params.initialSaturation ?? params.initialSaturation),
+        rockProps: {
+            s_wc: Number(activeSelectedReferenceResult?.params.s_wc ?? params.s_wc),
+            s_or: Number(activeSelectedReferenceResult?.params.s_or ?? params.s_or),
+            n_w: Number(activeSelectedReferenceResult?.params.n_w ?? params.n_w),
+            n_o: Number(activeSelectedReferenceResult?.params.n_o ?? params.n_o),
+            k_rw_max: Number(activeSelectedReferenceResult?.params.k_rw_max ?? params.k_rw_max),
+            k_ro_max: Number(activeSelectedReferenceResult?.params.k_ro_max ?? params.k_ro_max),
+        },
+        fluidProps: {
+            mu_w: Number(activeSelectedReferenceResult?.params.mu_w ?? params.mu_w),
+            mu_o: Number(activeSelectedReferenceResult?.params.mu_o ?? params.mu_o),
+        },
     }));
-    const outputProfileFluidProps = $derived.by(() => ({
-        mu_w: Number(activeSelectedReferenceResult?.params.mu_w ?? params.mu_w),
-        mu_o: Number(activeSelectedReferenceResult?.params.mu_o ?? params.mu_o),
-    }));
-    const output3DHistory = $derived.by(() => (
-        activeSelectedReferenceResult?.history ?? runtime.history
-    ));
-    const output3DNx = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.nx ?? params.nx)
-    ));
-    const output3DNy = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.ny ?? params.ny)
-    ));
-    const output3DNz = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.nz ?? params.nz)
-    ));
-    const output3DCellDx = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx)
-    ));
-    const output3DCellDy = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy)
-    ));
-    const output3DCellDz = $derived.by(() => (
-        Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz)
-    ));
-    const output3DCellDzPerLayer = $derived.by(() => {
-        const raw = activeSelectedReferenceResult?.params.cellDzPerLayer
+    const selectedOutput3D = $derived.by((): Output3DSelection => {
+        const history = activeSelectedReferenceResult?.history ?? runtime.history;
+        const currentIndex = history.length === 0
+            ? -1
+            : Math.max(0, Math.min(runtime.currentIndex, history.length - 1));
+        const cellDzPerLayerRaw = activeSelectedReferenceResult?.params.cellDzPerLayer
             ?? params.cellDzPerLayer;
-        return Array.isArray(raw) ? raw.map((value) => Number(value)) : [];
+        return {
+            history,
+            nx: Number(activeSelectedReferenceResult?.params.nx ?? params.nx),
+            ny: Number(activeSelectedReferenceResult?.params.ny ?? params.ny),
+            nz: Number(activeSelectedReferenceResult?.params.nz ?? params.nz),
+            cellDx: Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx),
+            cellDy: Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy),
+            cellDz: Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz),
+            cellDzPerLayer: Array.isArray(cellDzPerLayerRaw)
+                ? cellDzPerLayerRaw.map((value) => Number(value))
+                : [],
+            gridState: activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null,
+            wellState: activeSelectedReferenceResult?.finalSnapshot?.wells ?? runtime.wellStateRaw ?? null,
+            replayTime:
+                currentIndex >= 0 && currentIndex < history.length
+                    ? history[currentIndex]?.time ?? null
+                    : activeSelectedReferenceResult?.finalSnapshot?.time ?? runtime.replayTime,
+            currentIndex,
+            sourceLabel: activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime",
+        };
     });
-    const output3DCurrentIndex = $derived.by(() => {
-        if (output3DHistory.length === 0) return -1;
-        return Math.max(0, Math.min(runtime.currentIndex, output3DHistory.length - 1));
-    });
-    const output3DGridState = $derived.by(() => (
-        activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null
-    ));
-    const output3DWellState = $derived.by(() => (
-        activeSelectedReferenceResult?.finalSnapshot?.wells ?? runtime.wellStateRaw ?? null
-    ));
-    const output3DReplayTime = $derived.by(() => {
-        if (
-            output3DHistory.length > 0
-            && output3DCurrentIndex >= 0
-            && output3DCurrentIndex < output3DHistory.length
-        ) {
-            return output3DHistory[output3DCurrentIndex]?.time ?? null;
+    const liveAnalyticalOutput = $derived.by((): { production: AppAnalyticalPoint[]; meta: AppAnalyticalMeta } => {
+        const timeHistory = runtime.rateHistory.map((point) => point.time);
+        if (timeHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
+
+        if (params.analyticalMode === "waterflood") {
+            return {
+                production: calculateAnalyticalProduction(
+                    {
+                        s_wc: params.s_wc,
+                        s_or: params.s_or,
+                        n_w: params.n_w,
+                        n_o: params.n_o,
+                        k_rw_max: params.k_rw_max,
+                        k_ro_max: params.k_ro_max,
+                    },
+                    { mu_w: params.mu_w, mu_o: params.mu_o },
+                    params.initialSaturation,
+                    timeHistory,
+                    runtime.rateHistory.map((point) => Number(point.total_injection ?? 0)),
+                    params.nx * params.cellDx * params.ny * params.cellDy * params.nz * params.cellDz * params.reservoirPorosity,
+                ),
+                meta: {
+                    mode: "waterflood",
+                    shapeFactor: null,
+                    shapeLabel: "",
+                },
+            };
         }
 
-        return activeSelectedReferenceResult?.finalSnapshot?.time ?? runtime.replayTime;
+        if (params.analyticalMode === "depletion") {
+            return calculateDepletionAnalyticalProduction({
+                reservoir: {
+                    length: params.nx * params.cellDx,
+                    area: params.ny * params.cellDy * params.nz * params.cellDz,
+                    porosity: params.reservoirPorosity,
+                },
+                timeHistory,
+                initialSaturation: params.initialSaturation,
+                nz: params.nz,
+                permMode: params.permMode,
+                uniformPermX: params.uniformPermX,
+                uniformPermY: params.uniformPermY,
+                layerPermsX: params.layerPermsX,
+                layerPermsY: params.layerPermsY,
+                cellDx: params.cellDx,
+                cellDy: params.cellDy,
+                cellDz: params.cellDz,
+                wellRadius: params.well_radius,
+                wellSkin: params.well_skin,
+                muO: params.mu_o,
+                sWc: params.s_wc,
+                sOr: params.s_or,
+                nO: params.n_o,
+                c_o: params.c_o,
+                c_w: params.c_w,
+                cRock: params.rock_compressibility,
+                initialPressure: params.initialPressure,
+                producerBhp: params.producerBhp,
+                depletionRateScale: params.analyticalDepletionRateScale,
+                arpsB: params.analyticalArpsB,
+                nx: params.nx,
+                ny: params.ny,
+                producerI: params.producerI,
+                producerJ: params.producerJ,
+            });
+        }
+
+        return EMPTY_ANALYTICAL_OUTPUT;
     });
-    const output3DSourceLabel = $derived.by(() => (
-        activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime"
-    ));
     const default3DProperty = $derived.by(() => {
         if (activeSelectedReferenceResult) {
             const resultParams = activeSelectedReferenceResult.params ?? {};
@@ -458,83 +531,6 @@
 
     <!-- Main Content — z-[2] ensures it renders above both layers and gradient overlay -->
     <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-2">
-        <!-- Hidden component for analytical calculations -->
-        <FractionalFlow
-            rockProps={{
-                s_wc: params.s_wc,
-                s_or: params.s_or,
-                n_w: params.n_w,
-                n_o: params.n_o,
-                k_rw_max: params.k_rw_max,
-                k_ro_max: params.k_ro_max,
-            }}
-            fluidProps={{ mu_w: params.mu_w, mu_o: params.mu_o }}
-            initialSaturation={params.initialSaturation}
-            timeHistory={runtime.rateHistory.map((point) => point.time)}
-            injectionRateSeries={runtime.rateHistory.map((point) =>
-                Number(point.total_injection ?? 0),
-            )}
-            reservoir={{
-                length: params.nx * params.cellDx,
-                area: params.ny * params.cellDy * params.nz * params.cellDz,
-                porosity: params.reservoirPorosity,
-            }}
-            scenarioMode={params.analyticalMode}
-            onAnalyticalData={(detail) => {
-                if (params.analyticalMode === "waterflood") {
-                    runtime.analyticalProductionData = detail.production;
-                }
-            }}
-            onAnalyticalMeta={(detail) => {
-                if (params.analyticalMode === "waterflood") {
-                    runtime.analyticalMeta = detail;
-                }
-            }}
-        />
-
-        <DepletionAnalytical
-            enabled={params.analyticalMode === "depletion"}
-            timeHistory={runtime.rateHistory.map((point) => point.time)}
-            reservoir={{
-                length: params.nx * params.cellDx,
-                area: params.ny * params.cellDy * params.nz * params.cellDz,
-                porosity: params.reservoirPorosity,
-            }}
-            initialSaturation={params.initialSaturation}
-            nz={params.nz}
-            permMode={params.permMode}
-            uniformPermX={params.uniformPermX}
-            uniformPermY={params.uniformPermY}
-            layerPermsX={params.layerPermsX}
-            layerPermsY={params.layerPermsY}
-            cellDx={params.cellDx}
-            cellDy={params.cellDy}
-            cellDz={params.cellDz}
-            wellRadius={params.well_radius}
-            wellSkin={params.well_skin}
-            muO={params.mu_o}
-            sWc={params.s_wc}
-            sOr={params.s_or}
-            nO={params.n_o}
-            c_o={params.c_o}
-            c_w={params.c_w}
-            cRock={params.rock_compressibility}
-            initialPressure={params.initialPressure}
-            producerBhp={params.producerBhp}
-            depletionRateScale={params.analyticalDepletionRateScale}
-            arpsB={params.analyticalArpsB}
-            onAnalyticalData={(detail) => {
-                if (params.analyticalMode === "depletion") {
-                    runtime.analyticalProductionData = detail.production;
-                }
-            }}
-            onAnalyticalMeta={(detail) => {
-                if (params.analyticalMode === "depletion") {
-                    runtime.analyticalMeta = detail;
-                }
-            }}
-        />
-
         <!-- Header -->
         <header
             class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
@@ -689,7 +685,7 @@
                     {:else if RateChartComponent}
                         <RateChartComponent
                             rateHistory={runtime.rateHistory}
-                            analyticalProductionData={runtime.analyticalProductionData}
+                            analyticalProductionData={liveAnalyticalOutput.production}
                             avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}
                             avgWaterSaturationSeries={runtime.avgWaterSaturationSeries}
                             ooipM3={params.ooipM3}
@@ -697,10 +693,10 @@
                             activeMode={scenario.activeMode}
                             activeCase={scenario.activeCase}
                             {theme}
-                            analyticalMeta={runtime.analyticalMeta}
+                            analyticalMeta={liveAnalyticalOutput.meta}
                             layoutConfig={activeRateChartLayoutConfig}
-                            rockProps={outputProfileRockProps}
-                            fluidProps={outputProfileFluidProps}
+                            rockProps={selectedOutputProfile.rockProps}
+                            fluidProps={selectedOutputProfile.fluidProps}
                             layerPermeabilities={params.permMode === 'perLayer' && params.layerPermsX.length > 1
                                 ? params.layerPermsX
                                 : params.nz > 1
@@ -765,28 +761,28 @@
                             </div>
                         {/if}
                         {#if ThreeDViewComponent}
-                            {#key `${output3DNx}-${output3DNy}-${output3DNz}-${output3DCellDz}-${output3DCellDzPerLayer.join(",")}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
+                            {#key `${selectedOutput3D.nx}-${selectedOutput3D.ny}-${selectedOutput3D.nz}-${selectedOutput3D.cellDz}-${selectedOutput3D.cellDzPerLayer.join(",")}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
                                 <ThreeDViewComponent
-                                    nx={output3DNx}
-                                    ny={output3DNy}
-                                    nz={output3DNz}
-                                    cellDx={output3DCellDx}
-                                    cellDy={output3DCellDy}
-                                    cellDz={output3DCellDz}
-                                    cellDzPerLayer={output3DCellDzPerLayer}
+                                    nx={selectedOutput3D.nx}
+                                    ny={selectedOutput3D.ny}
+                                    nz={selectedOutput3D.nz}
+                                    cellDx={selectedOutput3D.cellDx}
+                                    cellDy={selectedOutput3D.cellDy}
+                                    cellDz={selectedOutput3D.cellDz}
+                                    cellDzPerLayer={selectedOutput3D.cellDzPerLayer}
                                     {theme}
-                                    sourceLabel={output3DSourceLabel}
-                                    gridState={output3DGridState}
+                                    sourceLabel={selectedOutput3D.sourceLabel}
+                                    gridState={selectedOutput3D.gridState}
                                     bind:showProperty
                                     bind:legendFixedMin
                                     bind:legendFixedMax
-                                    s_wc={outputProfileRockProps.s_wc}
-                                    s_or={outputProfileRockProps.s_or}
-                                    currentIndex={output3DCurrentIndex}
-                                    replayTime={output3DReplayTime}
+                                    s_wc={selectedOutputProfile.rockProps.s_wc}
+                                    s_or={selectedOutputProfile.rockProps.s_or}
+                                    currentIndex={selectedOutput3D.currentIndex}
+                                    replayTime={selectedOutput3D.replayTime}
                                     onApplyHistoryIndex={handleApplyOutputHistoryIndex}
-                                    history={output3DHistory}
-                                    wellState={output3DWellState}
+                                    history={selectedOutput3D.history}
+                                    wellState={selectedOutput3D.wellState}
                                 />
                             {/key}
                         {:else}

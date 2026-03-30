@@ -1181,7 +1181,11 @@ class SimulationStoreImpl {
         this.gridStateRaw = message.grid;
         this.wellStateRaw = message.wells;
         this.simTime = message.time;
-        this.rateHistory = message.rateHistory ?? [];
+        if (Array.isArray(message.rateHistory)) {
+            this.rateHistory = message.rateHistory;
+        } else if (Array.isArray(message.rateHistoryDelta) && message.rateHistoryDelta.length > 0) {
+            this.rateHistory = [...this.rateHistory, ...message.rateHistoryDelta];
+        }
         const newSolverWarning = message.solverWarning || '';
         if (newSolverWarning && !this.latestStepSolverWarning) {
             // new convergence hit (rising edge)

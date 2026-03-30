@@ -11,9 +11,11 @@ export const reservoirsimulator_addWellWithId: (a: number, b: number, c: number,
 export const reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
 export const reservoirsimulator_getDimensions: (a: number) => any;
 export const reservoirsimulator_getFimTrace: (a: number) => [number, number];
+export const reservoirsimulator_getGridState: (a: number) => any;
 export const reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
 export const reservoirsimulator_getPressures: (a: number) => [number, number];
 export const reservoirsimulator_getRateHistory: (a: number) => any;
+export const reservoirsimulator_getRateHistorySince: (a: number, b: number) => any;
 export const reservoirsimulator_getRs: (a: number) => [number, number];
 export const reservoirsimulator_getSatGas: (a: number) => [number, number];
 export const reservoirsimulator_getSatOil: (a: number) => [number, number];

@@ -1,10 +1,11 @@
 import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
-import type { SimulatorCreatePayload, SimulatorWellDefinition, WorkerRunPayload } from '../simulator-types';
+import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule, WorkerRunPayload } from '../simulator-types';
 
 let wasmReady = false;
 let simulator: ReservoirSimulator | null = null;
 let isRunning = false;
 let stopRequested = false;
+let lastRateHistoryLen = 0;
 
 function buildRunProfile(batchStart: number, stepMsTotal: number, completedSteps: number, snapshotsSent: number) {
   return {
@@ -102,18 +103,11 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
   }
 
   const extractStart = performance.now();
-  const getSatGas = (simulator as unknown as Record<string, unknown>).getSatGas;
-  const grid = {
-    pressure: simulator.getPressures(),
-    sat_water: simulator.getSatWater(),
-    sat_oil: simulator.getSatOil(),
-    sat_gas: typeof getSatGas === 'function'
-      ? (getSatGas as () => Float64Array).call(simulator)
-      : new Float64Array(simulator.getPressures().length),
-  };
+  const grid = simulator.getGridState();
   const wells = simulator.getWellState();
   const time = simulator.get_time();
-  const rateHistory = simulator.getRateHistory();
+  const rateHistoryDelta = simulator.getRateHistorySince(lastRateHistoryLen) as Array<Record<string, unknown>>;
+  lastRateHistoryLen += rateHistoryDelta.length;
   const solverWarning = simulator.getLastSolverWarning();
   const extractMs = performance.now() - extractStart;
 
@@ -121,7 +115,7 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
     grid,
     wells,
     time,
-    rateHistory,
+    rateHistoryDelta,
     solverWarning,
     recordHistory,
     stepIndex,
@@ -134,6 +128,7 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
 
 function configureSimulator(payload: SimulatorCreatePayload) {
   simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
+  lastRateHistoryLen = 0;
 
   const setFimEnabled = /** @type {any} */ (simulator).setFimEnabled;
   if (typeof setFimEnabled === 'function') {
@@ -337,7 +332,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
             targetSurfaceRate: payload.targetProducerSurfaceRate,
             bhpLimit: payload.bhpMin,
             enabled: true,
-          },
+          } satisfies SimulatorWellSchedule,
         },
         ...(Boolean(payload.injectorEnabled ?? true)
           ? [{
@@ -356,7 +351,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
                 targetSurfaceRate: payload.targetInjectorSurfaceRate,
                 bhpLimit: payload.bhpMax,
                 enabled: payload.injectorEnabled !== false,
-              },
+              } satisfies SimulatorWellSchedule,
             }]
           : []),
       ];
@@ -442,6 +437,7 @@ self.onmessage = async (event) => {
               lastHistory.wells,
               rateHistoryPayload
             );
+            lastRateHistoryLen = rateHistoryPayload.length;
           }
         }
       }
@@ -536,6 +532,7 @@ self.onmessage = async (event) => {
 
     if (type === 'dispose') {
       simulator = null;
+      lastRateHistoryLen = 0;
       close();
     }
   } catch (error) {

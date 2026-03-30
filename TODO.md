@@ -162,13 +162,21 @@
 - [ ] Add regression tests for comparison-model preview mode, depletion per-variant analytical overlays, and color-index stability.
 - [ ] Add a guard test for the duplicated undersaturated `c_o = 1e-5 /bar` assumption shared by the black-oil PVT generator and material-balance helper.
 - [ ] Fix chart x-axis endpoint generation for cumulative/time modes: prepend zero anchors where appropriate and snap shared x-range/ticks to round values so Chart.js does not expose floating residues like `0.006` or `70.00000000006`.
+- [x] Reduce Rust/WASM snapshot extraction overhead by bundling grid-state reads and exposing incremental rate-history extraction.
+  - `ReservoirSimulator` now exposes `getGridState()` so the worker no longer pulls pressure / water / oil / gas through four separate getters.
+  - `ReservoirSimulator` now exposes `getRateHistorySince(startIndex)` and the worker/store append deltas instead of reserializing the full rate-history tail on every state post.
+- [ ] Move sweep-efficiency reporting into Rust step reports so the UI does not recompute full history × full grid on every render.
+  - Follow-up after the extraction pass: extend `record_step_report()` with sweep diagnostics keyed off the active geometry / well pattern, then switch `App.svelte` / chart wiring to consume those reported series.
+- [x] Restore repo-wide TypeScript typecheck health for explicit well schedule typing and stale debug scripts.
+  - Fixed: narrowed `injectorControlMode` / `producerControlMode` in `SimulatorCreatePayload` from `string` to `'pressure' | 'rate'`; added `satisfies SimulatorWellSchedule` to inline schedule literals in `buildCreatePayload.ts`, `sim.worker.ts`, `benchmarkPresetRuntime.test.ts`, and `debug-spe1-grid5.ts`; replaced `payload.delta_t_days` / `payload.steps` references (removed fields) with reads from the raw `params` record; added `@ts-nocheck` to `debug-spe1-gas.ts` (stale WASM API calls).
+  - `npm run typecheck` now passes clean.
 
 ## Next
 
 - [ ] Enforce analytical-method semantics at the scenario type level so sweep scenarios cannot accidentally inherit Buckley-Leverett-style primary curves or disclosure rules.
 - [ ] Generalize the `sweep_combined` analytical-method toggle into a reusable sweep-method framework.
 - [ ] Collapse the remaining legacy benchmark layer into the scenario system where practical.
-- [ ] Extract a typed output-selection view model from `App.svelte` for charts, 3D output, and analytical helpers.
+- [x] Extract a typed output-selection view model from `App.svelte` for charts, 3D output, and analytical helpers.
 - [ ] Decide whether `SwProfileChart` should be restored as a maintained output or removed completely.
 - [ ] Document `sweep_areal` explicitly as a quarter-five-spot style interpretation with no-flow outer boundaries.
 

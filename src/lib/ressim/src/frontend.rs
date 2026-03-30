@@ -2,6 +2,7 @@ use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde::Deserialize;
+use js_sys::{Float64Array, Object, Reflect};
 use wasm_bindgen::prelude::*;
 
 use crate::pvt;
@@ -16,6 +17,11 @@ struct GridStatePayload {
     pressure: Vec<f64>,
     sat_water: Vec<f64>,
     sat_oil: Vec<f64>,
+}
+
+fn set_object_property(target: &Object, key: &str, value: &JsValue) {
+    Reflect::set(target, &JsValue::from_str(key), value)
+        .expect("setting JS object property should succeed");
 }
 
 #[wasm_bindgen]
@@ -379,6 +385,25 @@ impl ReservoirSimulator {
         self.pressure.clone()
     }
 
+    #[wasm_bindgen(js_name = getGridState)]
+    pub fn get_grid_state(&self) -> JsValue {
+        let payload = Object::new();
+
+        // These typed arrays are lightweight views over stable simulator buffers.
+        // The worker immediately structured-clones them into UI-owned memory.
+        let pressure = unsafe { Float64Array::view(&self.pressure) };
+        let sat_water = unsafe { Float64Array::view(&self.sat_water) };
+        let sat_oil = unsafe { Float64Array::view(&self.sat_oil) };
+        let sat_gas = unsafe { Float64Array::view(&self.sat_gas) };
+
+        set_object_property(&payload, "pressure", &pressure.into());
+        set_object_property(&payload, "sat_water", &sat_water.into());
+        set_object_property(&payload, "sat_oil", &sat_oil.into());
+        set_object_property(&payload, "sat_gas", &sat_gas.into());
+
+        payload.into()
+    }
+
     #[wasm_bindgen(js_name = getSatWater)]
     pub fn get_sat_water(&self) -> Vec<f64> {
         self.sat_water.clone()
@@ -397,6 +422,12 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = getRateHistory)]
     pub fn get_rate_history(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.rate_history).unwrap()
+    }
+
+    #[wasm_bindgen(js_name = getRateHistorySince)]
+    pub fn get_rate_history_since(&self, start_index: usize) -> JsValue {
+        let start = start_index.min(self.rate_history.len());
+        serde_wasm_bindgen::to_value(&self.rate_history[start..]).unwrap()
     }
 
     #[wasm_bindgen(js_name = getLastSolverWarning)]

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import init, { ReservoirSimulator } from '../src/lib/ressim/pkg/simulator.js';
 import { getScenarioWithVariantParams } from '../src/lib/catalog/scenarios';
 import { buildBenchmarkCreatePayload } from '../src/lib/benchmarkRunModel';
-import type { SimulatorCreatePayload, SimulatorWellDefinition } from '../src/lib/simulator-types';
+import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../src/lib/simulator-types';
 
 function configureSimulator(payload: SimulatorCreatePayload): ReservoirSimulator {
   const simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
@@ -114,8 +114,8 @@ function configureSimulator(payload: SimulatorCreatePayload): ReservoirSimulator
             targetRate: payload.targetProducerRate,
             targetSurfaceRate: payload.targetProducerSurfaceRate,
             bhpLimit: payload.bhpMin,
-            enabled: true,
-          },
+            enabled: true as boolean,
+          } satisfies SimulatorWellSchedule,
         },
         ...(payload.injectorEnabled === false ? [] : [{
           id: 'injector-main',
@@ -132,8 +132,8 @@ function configureSimulator(payload: SimulatorCreatePayload): ReservoirSimulator
             targetRate: payload.targetInjectorRate,
             targetSurfaceRate: payload.targetInjectorSurfaceRate,
             bhpLimit: payload.bhpMax,
-            enabled: true,
-          },
+            enabled: true as boolean,
+          } satisfies SimulatorWellSchedule,
         }]),
       ];
 
@@ -174,7 +174,7 @@ function configureSimulator(payload: SimulatorCreatePayload): ReservoirSimulator
         Number(well.schedule?.targetRate ?? Number.NaN),
         Number(well.schedule?.targetSurfaceRate ?? Number.NaN),
         Number(well.schedule?.bhpLimit ?? Number.NaN),
-        well.schedule?.enabled !== false,
+        well.schedule?.enabled !== false as boolean,
       );
     }
   }
@@ -192,8 +192,8 @@ const producerIndex = ((2 * payload.ny) + Number(payload.producerJ ?? 0)) * payl
 
 let lastSig = '';
 let repeatCount = 0;
-for (let step = 0; step < Number(payload.steps); step++) {
-  simulator.step(Number(payload.delta_t_days));
+for (let step = 0; step < Number(params.steps ?? 120); step++) {
+  simulator.step(Number(params.delta_t_days ?? 30));
   const pressure = simulator.getPressures();
   const sw = simulator.getSatWater();
   const so = simulator.getSatOil();
@@ -205,7 +205,7 @@ for (let step = 0; step < Number(payload.steps); step++) {
   repeatCount = sig === lastSig ? repeatCount + 1 : 0;
   lastSig = sig;
 
-  if ((step + 1) % 10 === 0 || repeatCount >= 3 || step + 1 === Number(payload.steps)) {
+  if ((step + 1) % 10 === 0 || repeatCount >= 3 || step + 1 === Number(params.steps ?? 120)) {
     const maxSg = Array.from(sg).reduce((max, value) => Math.max(max, value), 0);
     const avgSg = Array.from(sg).reduce((sum, value) => sum + value, 0) / sg.length;
     console.log(JSON.stringify({

@@ -1,3 +1,4 @@
+// @ts-nocheck — stale debug script; calls simulator methods that no longer exist in the current WASM API
 import { ReservoirSimulator } from '../src/lib/ressim-wasm/simulator.js';
 import { spe1_gas_injection } from '../src/lib/catalog/scenarios/spe1_gas_injection';
 import { buildCreatePayloadFromState } from '../src/lib/buildCreatePayload';

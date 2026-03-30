@@ -81,6 +81,13 @@ export class ReservoirSimulator {
         }
     }
     /**
+     * @returns {any}
+     */
+    getGridState() {
+        const ret = wasm.reservoirsimulator_getGridState(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {string}
      */
     getLastSolverWarning() {
@@ -109,6 +116,14 @@ export class ReservoirSimulator {
      */
     getRateHistory() {
         const ret = wasm.reservoirsimulator_getRateHistory(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} start_index
+     * @returns {any}
+     */
+    getRateHistorySince(start_index) {
+        const ret = wasm.reservoirsimulator_getRateHistorySince(this.__wbg_ptr, start_index);
         return ret;
     }
     /**
@@ -742,6 +757,10 @@ function __wbg_get_imports() {
         __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
             arg0[arg1] = arg2;
         },
+        __wbg_set_991082a7a49971cf: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
+            return ret;
+        }, arguments); },
         __wbg_value_d5b248ce8419bd1b: function(arg0) {
             const ret = arg0.value;
             return ret;
@@ -752,11 +771,16 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(Slice(F64)) -> NamedExternref("Float64Array")`.
+            const ret = getArrayF64FromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_cast_0000000000000003: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
         },
-        __wbindgen_cast_0000000000000003: function(arg0) {
+        __wbindgen_cast_0000000000000004: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return ret;

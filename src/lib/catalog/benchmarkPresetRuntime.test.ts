@@ -6,7 +6,7 @@ import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRun
 import { buildReferenceComparisonModel } from '../charts/referenceComparisonModel';
 import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './caseCatalog';
 import { getScenario, getScenarioWithVariantParams } from './scenarios';
-import type { SimulatorCreatePayload, SimulatorWellDefinition } from '../simulator-types';
+import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../simulator-types';
 
 type BenchmarkParams = Record<string, unknown>;
 
@@ -204,8 +204,8 @@ function configureSimulatorFromPayload(payload: SimulatorCreatePayload, applySch
             targetRate: payload.targetProducerRate,
             targetSurfaceRate: payload.targetProducerSurfaceRate,
             bhpLimit: payload.bhpMin,
-            enabled: true,
-          },
+            enabled: true as boolean,
+          } satisfies SimulatorWellSchedule,
         },
         ...(payload.injectorEnabled === false ? [] : [{
           id: 'injector-main',
@@ -222,8 +222,8 @@ function configureSimulatorFromPayload(payload: SimulatorCreatePayload, applySch
             targetRate: payload.targetInjectorRate,
             targetSurfaceRate: payload.targetInjectorSurfaceRate,
             bhpLimit: payload.bhpMax,
-            enabled: true,
-          },
+            enabled: true as boolean,
+          } satisfies SimulatorWellSchedule,
         }]),
       ];
 
@@ -265,7 +265,7 @@ function configureSimulatorFromPayload(payload: SimulatorCreatePayload, applySch
         Number(well.schedule?.targetRate ?? Number.NaN),
         Number(well.schedule?.targetSurfaceRate ?? Number.NaN),
         Number(well.schedule?.bhpLimit ?? Number.NaN),
-        well.schedule?.enabled !== false,
+        well.schedule?.enabled !== false as boolean,
       );
     }
   }
@@ -612,12 +612,12 @@ describe('frontend benchmark preset runtime coverage', () => {
     const simulator = configureSimulatorFromPayload(payload, false);
 
     for (let step = 0; step < 6; step += 1) {
-      simulator.step(Number(payload.delta_t_days));
+      simulator.step(Number(params.delta_t_days ?? 30));
     }
 
     const maxSg = Math.max(...Array.from(simulator.getSatGas()));
     const totalInjection = simulator.getRateHistory().reduce(
-      (sum, point) => sum + Math.max(0, Number(point.total_injection ?? 0)),
+      (sum: number, point: Record<string, unknown>) => sum + Math.max(0, Number(point.total_injection ?? 0)),
       0,
     );
     simulator.free();
@@ -643,8 +643,8 @@ describe('frontend benchmark preset runtime coverage', () => {
     let maxSg = 0;
     let injectorSg = 0;
 
-    for (let step = 0; step < Number(payload.steps); step += 1) {
-      simulator.step(Number(payload.delta_t_days));
+    for (let step = 0; step < Number(params.steps ?? 120); step += 1) {
+      simulator.step(Number(params.delta_t_days ?? 30));
 
       const satGas = simulator.getSatGas();
       const producerSg = Number(satGas[producerIndex] ?? 0);

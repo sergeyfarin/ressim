@@ -1107,6 +1107,7 @@ dependencies = [
  "console_error_panic_hook",
  "faer",
  "getrandom",
+ "js-sys",
  "nalgebra",
  "rand",
  "serde",
