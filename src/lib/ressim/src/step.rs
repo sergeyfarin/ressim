@@ -296,7 +296,7 @@ impl ReservoirSimulator {
         const TARGET_NEWTON_ITERS: f64 = 8.0;
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
         const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
-        const RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES: u32 = 2;
+        const RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES: u32 = 4;
         let mut substeps = 0;
         let mut linear_bad_retries = 0usize;
         let mut nonlinear_bad_retries = 0usize;
@@ -806,8 +806,14 @@ mod tests {
     #[test]
     fn retry_acceptance_freezes_growth_until_clean_success_budget_is_spent() {
         let mut cooldown = FimGrowthCooldown::default();
-        cooldown.note_retry_accepted(0.25, 2);
+        cooldown.note_retry_accepted(0.25, 4);
 
+        assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
+
+        cooldown.note_clean_accepted();
+        assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
+
+        cooldown.note_clean_accepted();
         assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
 
         cooldown.note_clean_accepted();
@@ -820,7 +826,7 @@ mod tests {
     #[test]
     fn cooldown_clamp_never_exceeds_remaining_dt() {
         let mut cooldown = FimGrowthCooldown::default();
-        cooldown.note_retry_accepted(0.25, 2);
+        cooldown.note_retry_accepted(0.25, 4);
 
         assert_eq!(cooldown.clamp_trial_dt(0.5, 0.1), 0.1);
     }
@@ -831,12 +837,12 @@ mod tests {
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
         cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 2);
+        cooldown.note_retry_accepted(0.25, 4);
+        assert_eq!(cooldown.clean_successes_remaining, 4);
 
         cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 3);
+        cooldown.note_retry_accepted(0.25, 4);
+        assert_eq!(cooldown.clean_successes_remaining, 5);
         assert!(cooldown.trace_suffix().contains("repeats=2"));
     }
 
@@ -853,16 +859,16 @@ mod tests {
             429,
             143,
         ));
-        cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 3);
+        cooldown.note_retry_accepted(0.25, 4);
+        assert_eq!(cooldown.clean_successes_remaining, 5);
 
         cooldown.note_retry_failure(&failure_diagnostics(
             FimRetryFailureClass::NonlinearBad,
             297,
             99,
         ));
-        cooldown.note_retry_accepted(0.2, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 2);
+        cooldown.note_retry_accepted(0.2, 4);
+        assert_eq!(cooldown.clean_successes_remaining, 4);
         assert!(cooldown.trace_suffix().contains("row=297"));
     }
 
@@ -870,9 +876,9 @@ mod tests {
     fn linear_failure_does_not_seed_hotspot_memory() {
         let mut cooldown = FimGrowthCooldown::default();
         cooldown.note_retry_failure(&failure_diagnostics(FimRetryFailureClass::LinearBad, 10, 3));
-        cooldown.note_retry_accepted(0.25, 2);
+        cooldown.note_retry_accepted(0.25, 4);
 
-        assert_eq!(cooldown.clean_successes_remaining, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 4);
         assert!(!cooldown.trace_suffix().contains("hotspot="));
     }
 
@@ -882,16 +888,20 @@ mod tests {
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
         cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_accepted(0.25, 2);
+        cooldown.note_retry_accepted(0.25, 4);
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
         cooldown.note_clean_accepted();
         cooldown.note_clean_accepted();
 
         assert_eq!(cooldown.hotspot_repeat_failures, 1);
 
         cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 3);
+        cooldown.note_retry_accepted(0.25, 4);
+        assert_eq!(cooldown.clean_successes_remaining, 5);
 
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
         cooldown.note_clean_accepted();
         cooldown.note_clean_accepted();
         cooldown.note_clean_accepted();

@@ -76,6 +76,16 @@
     - Prototype a stronger failure-memory timestep policy for repeated hotspot shelves, not just the current two-clean-step global cooldown.
     - `used_fallback` semantics were audited and fixed on `2026-03-31`; the earlier `linear-bad` replay majority was a reporting artifact, and the corrected canonical water shelves are back to pure `nonlinear-bad` retries.
     - A first hotspot-aware failure-memory pass is now implemented in `step.rs`, but the tuned canonical day-1 `wf_p_12x12x3` replay remained effectively neutral (`140` substeps, `nonlinear-bad=6`); next follow-up is to retune how hotspot memory accumulates across repeated regrow-fail cycles.
+    - Three changes on `2026-03-31`: OPM-aligned timestep growth (1.25×/0.75× clamp replacing old 2.0× floor), gas saturation change tracking alongside Sw, and trust-region inflection-point chop in Appleyard damping (Wang & Tchelepi 2013). Result: **130 substeps, linear-bad=4, nonlinear-bad=30** on canonical `wf_p_12x12x3`. Nonlinear-bad reduced 77%. The remaining 30 retries are a rigid 3-substep oscillation at the breakthrough boundary cell (11,11,0): accept-accept-fail repeating as 1.25× growth periodically crosses the front-local nonlinear threshold.
+    - **Correctness alert**: 3 pre-existing tests failing in HEAD — `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`, `classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`, `gas_injector_surface_pressure_derivatives_match_local_fd`. The first two directly verify the Rs-switch fix. These failures are the most likely explanation for the FIM vs IMPES parity gap on depletion cases documented in the worklog. Must fix before further convergence tuning.
+  - **Next priority items** (updated 2026-03-31):
+    1. Fix the 3 failing classify_regimes and gas_injector derivative tests — correctness gate
+       Active slice: restore these regressions first, add a `dep_pss` FIM-vs-IMPES smoke test, then retune cooldown hold and Newton globalization in the same pass so convergence work stays behind a correctness guard.
+       Updated correctness strategy: do not rely only on IMPES parity for depletion. Keep one default closed-system invariant check in the fast suite, and use explicit timestep-refinement plus late-time Dietz probes to catch silent FIM depletion errors without assuming IMPES is authoritative.
+    2. Add FIM vs IMPES parity smoke test for `dep_pss` — correctness baseline
+    3. Hotspot-aware cooldown: freeze regrowth at the proven-failed dt rather than 2-step global cooldown — targets the 3-substep oscillation
+    4. Replace residual line search with tighter Appleyard-only globalization (OPM style, ΔSw≤0.1) — eliminates 6 residual assemblies per accepted substep
+    5. Variable substitution for Undersaturated→Saturated phase transition — fixes accuracy and gas stall root cause
 - [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
   - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
   - Default-dispatch behavior now automatically falls back from faer sparse LU to BiCGSTAB when factorization fails or the direct-solve residual misses tolerance.

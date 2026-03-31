@@ -142,6 +142,7 @@ mod tests {
     use super::*;
     use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
     mod buckley;
+    mod depletion;
     mod pvt_properties;
     mod spe1_fim;
     mod well_controls;

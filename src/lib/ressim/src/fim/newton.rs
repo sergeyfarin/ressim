@@ -30,11 +30,8 @@ const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
 const NOOP_ENTRY_EXACT_FACTOR: f64 = 1e-3;
 const STRONG_CPR_AVERAGE_REDUCTION_RATIO: f64 = 0.25;
 const STRONG_CPR_LAST_REDUCTION_RATIO: f64 = 0.5;
-const NEWTON_SUFFICIENT_DECREASE_FRACTION: f64 = 0.05;
-const NEWTON_SUFFICIENT_DECREASE_TOL_FACTOR: f64 = 2.0;
 const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
-const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.2;
-const NEWTON_GUARD_EQUIVALENT_RESIDUAL_RELAXATION: f64 = 1e-3;
+const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -376,7 +373,7 @@ fn appleyard_damping(
                 if side_before * side_after < 0.0 {
                     // Cross detected: chop so update stops exactly at inflection point.
                     let dist = (sw_inflect - cell.sw).abs();
-                    let chop = (dist / dsw_signed.abs()).clamp(options.min_damping, max_damping);
+                    let chop = (dist / dsw_signed.abs()).clamp(0.0, max_damping);
                     max_damping = max_damping.min(chop);
                 }
             }
@@ -415,7 +412,7 @@ fn appleyard_damping(
         }
     }
 
-    max_damping.clamp(options.min_damping, 1.0)
+    max_damping.clamp(0.0, 1.0)
 }
 
 fn cell_phase_saturations(cell: &crate::fim::state::FimCellState) -> (f64, f64, f64) {
@@ -1117,39 +1114,6 @@ fn accepted_state_meets_convergence(
         && diagnostics.material_balance_inf_norm <= material_balance_limit
 }
 
-fn sufficient_decrease_target(current_norm: f64, residual_tolerance: f64, damping: f64) -> f64 {
-    if !current_norm.is_finite() {
-        return f64::INFINITY;
-    }
-    let residual_floor = residual_tolerance * NEWTON_SUFFICIENT_DECREASE_TOL_FACTOR;
-    if current_norm <= residual_floor {
-        return current_norm;
-    }
-    let required_drop =
-        NEWTON_SUFFICIENT_DECREASE_FRACTION * damping * (current_norm - residual_floor);
-    current_norm - required_drop
-}
-
-fn candidate_has_sufficient_decrease(
-    candidate_norm: f64,
-    current_norm: f64,
-    residual_tolerance: f64,
-    damping: f64,
-) -> bool {
-    candidate_norm.is_finite()
-        && candidate_norm <= sufficient_decrease_target(current_norm, residual_tolerance, damping)
-}
-
-fn candidate_has_guard_band_equivalent_residual(
-    candidate_norm: f64,
-    current_norm: f64,
-    residual_tolerance: f64,
-) -> bool {
-    candidate_norm.is_finite()
-        && current_norm <= residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
-        && candidate_norm <= current_norm * (1.0 + NEWTON_GUARD_EQUIVALENT_RESIDUAL_RELAXATION)
-}
-
 pub(crate) fn run_fim_timestep(
     sim: &mut ReservoirSimulator,
     previous_state: &FimState,
@@ -1485,101 +1449,45 @@ pub(crate) fn run_fim_timestep(
             };
         }
 
-        let mut damping = appleyard_damping(sim, &state, &linear_report.solution, options);
-        let initial_damping = damping;
-        let mut accepted_state = None;
-        let mut accepted_via_guard_equivalence = false;
-        let mut best_candidate_norm = f64::INFINITY;
-        let mut best_candidate_target = f64::INFINITY;
-        let mut best_candidate_pressure_change = f64::INFINITY;
-        let mut best_candidate_saturation_change = f64::INFINITY;
-        let mut damping_cuts = 0u32;
-        while damping >= options.min_damping {
-            let candidate_target =
-                sufficient_decrease_target(current_norm, options.residual_tolerance, damping);
-            let candidate =
-                state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
-            let (candidate_pressure_change, candidate_saturation_change) =
-                state_update_change_bounds(&state, &candidate);
-            if candidate.is_finite()
-                && candidate.respects_basic_bounds(sim)
-                && candidate_respects_update_bounds(&state, &candidate, options)
-            {
-                let candidate_assembly = assemble_fim_system(
-                    sim,
-                    previous_state,
-                    &candidate,
-                    &FimAssemblyOptions {
-                        dt_days,
-                        include_wells: true,
-                        assemble_residual_only: true,
-                        topology: Some(&topology),
-                    },
-                );
-                let candidate_norm = scaled_residual_inf_norm(
-                    &candidate_assembly.residual,
-                    &candidate_assembly.equation_scaling,
-                );
-                let candidate_materially_changed =
-                    iterate_has_material_change(previous_state, &candidate);
-                if candidate_norm.is_finite() && candidate_norm < best_candidate_norm {
-                    best_candidate_norm = candidate_norm;
-                    best_candidate_target = candidate_target;
-                    best_candidate_pressure_change = candidate_pressure_change;
-                    best_candidate_saturation_change = candidate_saturation_change;
-                }
-                if candidate_has_sufficient_decrease(
-                    candidate_norm,
-                    current_norm,
-                    options.residual_tolerance,
-                    damping,
-                ) {
-                    accepted_state = Some(candidate);
-                    break;
-                }
-                if candidate_materially_changed
-                    && candidate_has_guard_band_equivalent_residual(
-                        candidate_norm,
-                        current_norm,
-                        options.residual_tolerance,
-                    )
-                {
-                    accepted_via_guard_equivalence = true;
-                    accepted_state = Some(candidate);
-                    break;
-                }
-            }
-            damping *= 0.5;
-            damping_cuts += 1;
-        }
-
-        fim_trace!(
-            sim,
-            options.verbose,
-            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} (init={:.4}, cuts={}) cand_res={:.3e} cand_target={:.3e} cand_dP={:.2} cand_dS={:.4} linear_iters={}{}{}{}{} fam=[{}]{}",
-            iteration,
-            current_norm,
-            final_update_inf_norm,
-            damping,
-            initial_damping,
-            damping_cuts,
-            best_candidate_norm,
-            best_candidate_target,
-            best_candidate_pressure_change,
-            best_candidate_saturation_change,
-            linear_report.iterations,
-            if used_fallback { " [fallback]" } else { "" },
-            linear_report_trace_suffix(&linear_report, options.linear.kind),
+        let damping = appleyard_damping(sim, &state, &linear_report.solution, options);
+        let candidate =
+            state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
+        let (candidate_pressure_change, candidate_saturation_change) =
+            state_update_change_bounds(&state, &candidate);
+        let candidate_is_valid = damping.is_finite()
+            && damping > 0.0
+            && iterate_has_material_change(&state, &candidate)
+            && candidate.is_finite()
+            && candidate.respects_basic_bounds(sim)
+            && candidate_respects_update_bounds(&state, &candidate, options);
+        let iteration_suffix = format!(
+            "{}{}",
             if stagnation_count > 0 {
                 format!(" stag={}", stagnation_count)
             } else {
                 String::new()
             },
-            if accepted_via_guard_equivalence {
-                " [guard-equiv]"
+            if !candidate_is_valid {
+                " [invalid-step]"
             } else {
                 ""
-            },
+            }
+        );
+
+        fim_trace!(
+            sim,
+            options.verbose,
+            "    iter {:>2}: res={:.3e} upd={:.3e} damp={:.4} step_dP={:.2} step_dS={:.4} linear_iters={}{}{}{} fam=[{}]{}",
+            iteration,
+            current_norm,
+            final_update_inf_norm,
+            damping,
+            candidate_pressure_change,
+            candidate_saturation_change,
+            linear_report.iterations,
+            if used_fallback { " [fallback]" } else { "" },
+            linear_report_trace_suffix(&linear_report, options.linear.kind),
+            iteration_suffix,
             residual_family_trace(&residual_diagnostics),
             residual_detail
                 .as_ref()
@@ -1587,111 +1495,18 @@ pub(crate) fn run_fim_timestep(
                 .unwrap_or_default()
         );
 
-        let Some(candidate) = accepted_state else {
-            if current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
-                && iterate_has_material_change(previous_state, &state)
-            {
-                let accepted_diagnostics = evaluate_accepted_state_convergence(
-                    sim,
-                    previous_state,
-                    &state,
-                    &topology,
-                    dt_days,
-                );
-                if accepted_state_meets_convergence(
-                    &accepted_diagnostics,
-                    options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR,
-                    options.material_balance_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR,
-                ) {
-                    final_update_inf_norm = 0.0;
-                    fim_trace!(
-                        sim,
-                        options.verbose,
-                        "    iter {:>2}: CONVERGED after rejecting non-improving candidates res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}",
-                        iteration,
-                        accepted_diagnostics.residual_inf_norm,
-                        accepted_diagnostics.material_balance_inf_norm,
-                        if accepted_diagnostics.residual_inf_norm > options.residual_tolerance {
-                            format!(" (guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
-                        } else {
-                            String::new()
-                        },
-                        residual_family_trace(&accepted_diagnostics.residual_diagnostics),
-                        global_material_balance_trace(
-                            &accepted_diagnostics.material_balance_diagnostics
-                        ),
-                        accepted_diagnostics
-                            .residual_detail
-                            .as_ref()
-                            .map(|detail| format!(" detail=[{}]", detail))
-                            .unwrap_or_default()
-                    );
-                    return FimStepReport {
-                        accepted_state: accepted_diagnostics.state,
-                        converged: true,
-                        newton_iterations: iteration + 1,
-                        final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
-                        final_material_balance_inf_norm: accepted_diagnostics
-                            .material_balance_inf_norm,
-                        final_update_inf_norm,
-                        last_linear_report: Some(linear_report),
-                        failure_diagnostics: None,
-                        retry_factor: 1.0,
-                    };
-                }
-                let failure_diagnostics = classify_retry_failure(
-                    Some(&linear_report),
-                    &accepted_diagnostics.residual_diagnostics,
-                );
-                let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
-                fim_trace!(
-                    sim,
-                    options.verbose,
-                    "    iter {:>2}: POST-CLASSIFICATION REJECTED after non-improving candidates res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}{}",
-                    iteration,
-                    accepted_diagnostics.residual_inf_norm,
-                    accepted_diagnostics.material_balance_inf_norm,
-                    if accepted_diagnostics.residual_inf_norm > options.residual_tolerance {
-                        format!(" (guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
-                    } else {
-                        String::new()
-                    },
-                    residual_family_trace(&accepted_diagnostics.residual_diagnostics),
-                    global_material_balance_trace(
-                        &accepted_diagnostics.material_balance_diagnostics
-                    ),
-                    accepted_diagnostics
-                        .residual_detail
-                        .as_ref()
-                        .map(|detail| format!(" detail=[{}]", detail))
-                        .unwrap_or_default(),
-                    retry_failure_trace_suffix(&failure_diagnostics)
-                );
-                return FimStepReport {
-                    accepted_state: accepted_diagnostics.state,
-                    converged: false,
-                    newton_iterations: iteration + 1,
-                    final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
-                    final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
-                    final_update_inf_norm,
-                    last_linear_report: Some(linear_report),
-                    failure_diagnostics: Some(failure_diagnostics),
-                    retry_factor,
-                };
-            }
+        if !candidate_is_valid {
             let failure_diagnostics =
                 classify_retry_failure(Some(&linear_report), &residual_diagnostics);
             let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
                 sim,
                 options.verbose,
-                "    iter {:>2}: DAMPING FAILED — no sufficiently decreasing bounded candidate (best={:.3e}, target={:.3e}, current={:.3e}, best_dP={:.2}, best_dS={:.4}){}",
+                "    iter {:>2}: DAMPING FAILED — invalid bounded Appleyard candidate (current={:.3e}, step_dP={:.2}, step_dS={:.4}){}",
                 iteration,
-                best_candidate_norm,
-                best_candidate_target,
                 current_norm,
-                best_candidate_pressure_change,
-                best_candidate_saturation_change,
+                candidate_pressure_change,
+                candidate_saturation_change,
                 retry_failure_trace_suffix(&failure_diagnostics)
             );
             return FimStepReport {
@@ -1705,7 +1520,7 @@ pub(crate) fn run_fim_timestep(
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
             };
-        };
+        }
 
         state = candidate;
     }
@@ -1896,53 +1711,6 @@ mod tests {
         assert!(report.converged);
         assert_eq!(report.accepted_state.well_bhp.len(), 2);
         assert_eq!(report.accepted_state.perforation_rates_m3_day.len(), 2);
-    }
-
-    #[test]
-    fn residual_tolerance_short_circuits_before_large_update_check() {
-        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
-        sim.set_rate_controlled_wells(true);
-        sim.set_injected_fluid("water").unwrap();
-        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
-        let previous_state = FimState::from_simulator(&sim);
-        let mut iterate = previous_state.clone();
-        iterate.well_bhp[0] += 1e-3;
-
-        let assembly = assemble_fim_system(
-            &sim,
-            &previous_state,
-            &iterate,
-            &FimAssemblyOptions {
-                dt_days: 1.0,
-                include_wells: true,
-                assemble_residual_only: false,
-                topology: None,
-            },
-        );
-        let residual_norm =
-            scaled_residual_inf_norm(&assembly.residual, &assembly.equation_scaling);
-        assert!(residual_norm.is_finite() && residual_norm > 0.0);
-
-        let options = FimNewtonOptions {
-            residual_tolerance: residual_norm * 0.75,
-            update_tolerance: -1.0,
-            ..FimNewtonOptions::default()
-        };
-
-        let report = run_fim_timestep(&mut sim, &previous_state, &iterate, 1.0, &options);
-
-        assert!(report.converged);
-        assert!(report.newton_iterations <= 2);
-        assert_eq!(report.final_update_inf_norm, 0.0);
-        assert!(
-            report.final_residual_inf_norm
-                <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
-        );
-        assert!(
-            report.final_material_balance_inf_norm
-                <= options.material_balance_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
-        );
     }
 
     #[test]
@@ -2251,54 +2019,6 @@ mod tests {
     }
 
     #[test]
-    fn sufficient_decrease_rule_requires_more_than_any_improvement() {
-        let current_norm = 10.0;
-        let residual_tolerance = 1.0;
-        let damping = 1.0;
-
-        let target = sufficient_decrease_target(current_norm, residual_tolerance, damping);
-
-        assert!(target < current_norm);
-        assert!(!candidate_has_sufficient_decrease(
-            current_norm - 1e-3,
-            current_norm,
-            residual_tolerance,
-            damping,
-        ));
-        assert!(candidate_has_sufficient_decrease(
-            target,
-            current_norm,
-            residual_tolerance,
-            damping,
-        ));
-    }
-
-    #[test]
-    fn guard_band_equivalent_residual_allows_numerically_equal_candidate() {
-        let residual_tolerance = 1e-5;
-        let current_norm = residual_tolerance;
-        let candidate_norm = current_norm * (1.0 + 5.0e-4);
-
-        assert!(candidate_has_guard_band_equivalent_residual(
-            candidate_norm,
-            current_norm,
-            residual_tolerance,
-        ));
-    }
-
-    #[test]
-    fn guard_band_equivalent_residual_rejects_candidate_outside_guard_band() {
-        let residual_tolerance = 1e-5;
-        let current_norm = residual_tolerance * 3.0;
-
-        assert!(!candidate_has_guard_band_equivalent_residual(
-            current_norm,
-            current_norm,
-            residual_tolerance,
-        ));
-    }
-
-    #[test]
     fn appleyard_damping_limits_combined_oil_saturation_change() {
         let state = FimState {
             cells: vec![crate::fim::state::FimCellState {
@@ -2317,7 +2037,7 @@ mod tests {
         let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         let damping = appleyard_damping(&sim, &state, &update, &FimNewtonOptions::default());
 
-        assert!((damping - (2.0 / 3.0)).abs() < 1e-12);
+        assert!((damping - (1.0 / 3.0)).abs() < 1e-12);
     }
 
     #[test]

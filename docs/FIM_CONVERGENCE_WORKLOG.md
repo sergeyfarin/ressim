@@ -1332,3 +1332,79 @@ From the OPM comparison, two remaining gaps are likely contributors to this patt
 2. **Add residual-only assembly for line search**: Skip Jacobian in damping loop candidates. Straightforward cost reduction.
 3. **Add global mass balance convergence check**: Sum-of-residuals per component. Safety net against state-modification errors.
 4. **Consider Schur complement for well block**: Eliminates well-variable drift as a convergence concern. Larger effort but aligned with industry practice.
+
+## Session 2026-03-31: Inflection-Point Chop, OPM Growth Rates, and Architecture Review
+
+### Changes implemented
+
+Three changes were made in this session:
+
+1. **OPM-aligned timestep growth policy** (`step.rs`):
+   - `MAX_GROWTH` reduced from 2.0 → 1.25 (matches OPM `growth_rate`)
+   - `MIN_GROWTH` = 0.75 added (matches OPM `decay_rate`): allows dt shrinkage after hard successful steps
+   - `TARGET_NEWTON_ITERS` raised from 6.0 → 8.0 (matches OPM target)
+   - Removed the floor at 1.0 in the growth clamp, so hard steps now actively shrink dt
+
+2. **Gas saturation change tracking** (`step.rs`):
+   - Growth limiter previously only tracked |ΔSw|; now also tracks |ΔSg| in saturated cells
+   - Relevant for three-phase cases where the gas front was unconstrained
+
+3. **Trust-region inflection-point chop** (`newton.rs`):
+   - Added `fw_at_sw()` and `fw_inflection_point_sw()` helpers to compute the water fractional-flow inflection point via 16-point sampling of the fw(Sw) curve
+   - Modified `appleyard_damping()` to prevent Sw from crossing the fw inflection point in a single Newton iteration (Wang & Tchelepi 2013 trust-region approach)
+   - Also fixed the test call site (`appleyard_damping_limits_combined_oil_saturation_change`) to pass `&sim`
+
+### Measured results on canonical wf_p_12x12x3 (1 day, wasm)
+
+- Baseline entering session: **138 substeps, linear-bad=6, nonlinear-bad=128**
+- After all three changes: **130 substeps, linear-bad=4, nonlinear-bad=30**
+- Retry reduction: 77% improvement in nonlinear-bad
+
+### Remaining retry pattern (fully characterized)
+
+The remaining 30 nonlinear-bad retries follow a rigid 3-substep cycle in the post-breakthrough region (substeps ~87-129):
+
+```
+substep N:    ACCEPTED dt=D      iters=2  (guard-equiv)
+substep N+1:  ACCEPTED dt=1.25D  iters=2  (guard-equiv)
+substep N+2:  FAILED   dt=1.56D  iters=1  DAMPING FAILED → retry at 0.78D
+substep N+2:  ACCEPTED dt=0.78D  iters=2
+```
+
+The failing step has `iters=1, res=~8e-6` (just 60% above tolerance `1e-5`) with `DAMPING FAILED: no sufficiently decreasing bounded candidate`. The hotspot is always `cell(11,11,0)` — the top-right corner boundary cell at `Sw≈0.10`, at the water breakthrough front. The inflection-point chop does not help here because the Newton direction is fundamentally non-descending at that dt, not crossing a basin boundary.
+
+Interpretation: The front-local nonlinearity at the corner cell creates a minimum viable dt below which the step is easy (2 iters) and above which Newton can't descend. The 1.25× growth periodically crosses that threshold, and the 0.50 retry factor drops back below it. The system is stuck in a stable oscillation that no amount of Newton globalization can fully remove — only dt policy can.
+
+### Correctness alert: 3 failing tests
+
+Three pre-existing tests in the current HEAD are failing:
+- `fim::state::tests::classify_regimes_switches_immediately_when_rs_exceeds_rs_sat` — FAILED
+- `fim::state::tests::classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat` — FAILED
+- `fim::wells::tests::gas_injector_surface_pressure_derivatives_match_local_fd` — FAILED
+
+The first two tests directly verify the Rs-switch correctness fix documented earlier in this worklog. Their failure means the Rs clamping fix is broken. This is the most likely explanation for FIM vs IMPES parity gaps on depletion cases (`dep_pss`, `dep_decline`) documented in the correctness review (lines 19-33 of this file).
+
+**These failures must be investigated and fixed before further convergence tuning.**
+
+### Architecture review: is an OPM rewrite viable?
+
+The March 29 comprehensive review confirmed the Jacobian, residual, and physical model are correct. The gaps are in secondary mechanisms. Selective adoption of OPM patterns (in priority order):
+
+| Approach | Effort | Expected value |
+|---|---|---|
+| Fix failing classify_regimes tests (Rs correctness) | Small | Accuracy |
+| Add FIM vs IMPES parity test for dep_pss | Small | Correctness baseline |
+| Appleyard-only globalization (no line search, tighter limits ΔSw≤0.1) | Medium | ~60% per-substep speedup |
+| Hotspot-aware cooldown: freeze growth at last_failure_dt | Small | Fix 30 remaining nonlinear-bad |
+| Variable substitution for Undersaturated→Saturated transition | Medium | Accuracy + gas convergence |
+| Well Schur complement elimination | Large | Fundamental well coupling fix |
+
+A full OPM rewrite is not recommended — the core formulation is verified correct and a rewrite would risk breaking the things that work. Selective component replacement is the right path.
+
+### Priority order for next work
+
+1. **Correctness first**: Investigate and fix the 3 failing tests, especially the classify_regimes failures
+2. **Correctness baseline**: Add a dep_pss FIM vs IMPES parity smoke test
+3. **Convergence**: Hotspot-aware cooldown policy (smaller scoped change)
+4. **Convergence**: Replace line search with tighter Appleyard-only (OPM-style Newton globalization)
+5. **Correctness + convergence**: Variable substitution for phase transitions

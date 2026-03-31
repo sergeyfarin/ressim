@@ -169,15 +169,12 @@ impl FimState {
 
         for idx in 0..self.cells.len() {
             let cell = self.cells[idx];
-            let mut rs_sat = sim
+            let rs_sat = sim
                 .pvt_table
                 .as_ref()
                 .map(|table| table.interpolate(cell.pressure_bar).rs_m3m3)
                 .unwrap_or(0.0)
                 .max(0.0);
-            if !sim.gas_redissolution_enabled {
-                rs_sat = rs_sat.min(sim.rs[idx]);
-            }
 
             match cell.regime {
                 HydrocarbonState::Saturated => {
@@ -222,28 +219,13 @@ impl FimState {
                     // Rs exceeded the saturated value: resolve the flash
                     // immediately so excess dissolved gas becomes free gas.
                     let derived = self.derive_cell(sim, idx);
-                    let pore_volume_m3 = sim.pore_volume_m3(idx).max(1e-9);
-                    let total_gas_sc =
-                        pore_volume_m3 * derived.so * derived.rs / derived.bo.max(1e-9);
-                    let (sg, _so, rs_resolved) = sim.split_gas_inventory_after_transport(
-                        cell.pressure_bar,
-                        pore_volume_m3,
-                        cell.sw,
-                        0.0,
-                        total_gas_sc,
-                        if sim.gas_redissolution_enabled {
-                            None
-                        } else {
-                            Some(sim.rs[idx])
-                        },
-                    );
 
-                    if sg <= SG_SWITCH_TOL {
+                    if derived.sg <= SG_SWITCH_TOL {
                         self.cells[idx].regime = HydrocarbonState::Undersaturated;
-                        self.cells[idx].hydrocarbon_var = rs_resolved.max(0.0).min(rs_sat);
+                        self.cells[idx].hydrocarbon_var = derived.rs.max(0.0).min(rs_sat);
                     } else {
                         self.cells[idx].regime = HydrocarbonState::Saturated;
-                        self.cells[idx].hydrocarbon_var = sg;
+                        self.cells[idx].hydrocarbon_var = derived.sg;
                     }
                 }
             }
@@ -380,7 +362,7 @@ impl FimState {
         damping: f64,
     ) -> Self {
         let topology = build_well_topology(sim);
-        let mut next = self.apply_raw_update(sim, update, damping, &topology);
+        let mut next = self.apply_raw_update(sim, update, damping, &topology, false);
         next.classify_regimes(sim);
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
@@ -397,7 +379,7 @@ impl FimState {
         damping: f64,
         topology: &crate::fim::wells::FimWellTopology,
     ) -> Self {
-        self.apply_raw_update(sim, update, damping, topology)
+        self.apply_raw_update(sim, update, damping, topology, true)
     }
 
     fn apply_raw_update(
@@ -406,6 +388,7 @@ impl FimState {
         update: &DVector<f64>,
         damping: f64,
         topology: &crate::fim::wells::FimWellTopology,
+        relax_well_state: bool,
     ) -> Self {
         let mut next = self.clone();
 
@@ -430,8 +413,10 @@ impl FimState {
             next.enforce_cell_bounds(sim, idx);
         }
         next.enforce_control_bounds(sim, topology);
-        next.relax_well_state_toward_local_consistency(sim, topology);
-        next.enforce_control_bounds(sim, topology);
+        if relax_well_state {
+            next.relax_well_state_toward_local_consistency(sim, topology);
+            next.enforce_control_bounds(sim, topology);
+        }
 
         next
     }
