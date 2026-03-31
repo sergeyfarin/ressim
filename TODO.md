@@ -67,6 +67,10 @@
     2. Improve the iterative near-threshold path further only if new evidence shows CPR coarse solves, restart policy, or smoothing are still leaving measurable runtime on the table after the threshold alignment.
     3. Revisit cooldown tuning only after step 2 if the clamp is clearly too conservative or too weak on the main repro set.
     4. Revisit more targeted nonlinear controls only after steps 1 to 3; if needed, prefer oscillation-triggered localized trust-region behavior over another globally stricter damping rule.
+  - Focus items from the latest review:
+    - Audit retry-failure classification in `fim/newton.rs`: the current `LINEAR_GOOD_CPR_REDUCTION_RATIO = 1e-6` split is likely too blunt and may still label weak-CPR shelves as `nonlinear-bad`.
+    - Add canonical trace counters for Newton damping activity on hard shelves: inflection-point chops, accepted damping level, and best-candidate residual shelf depth.
+    - Prototype a stronger failure-memory timestep policy for repeated hotspot shelves, not just the current two-clean-step global cooldown.
 - [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
   - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
   - Default-dispatch behavior now automatically falls back from faer sparse LU to BiCGSTAB when factorization fails or the direct-solve residual misses tolerance.

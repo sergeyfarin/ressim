@@ -456,6 +456,35 @@ Interpretation:
 3. Revisit cooldown tuning only after step 2 if the current two-clean-step hold proves too conservative or too weak.
 4. If nonlinear controls are still needed after that, prefer localized oscillation-triggered trust-region behavior over another globally stricter damping rule.
 
+## Implementation Update - 2026-03-31 retry-failure classification audit
+
+- Code change:
+  - `src/lib/ressim/src/fim/newton.rs`
+
+- What changed:
+  - retry classification no longer treats every direct backend (`dense-lu` / `sparse-lu`) as if it were a fallback path; it now keys fallback detection off `report.used_fallback`
+  - clean converged direct solves are now classified as `nonlinear-bad`, which is the intended meaning when the linear stage has already been resolved accurately
+  - `fgmres-cpr` retries now need a materially strong coarse-pressure signal before being labeled `nonlinear-bad`
+    - current rule: `coarse_applications > 0`, `avg_rr <= 0.25`, and `last_rr <= 0.5`
+  - weaker CPR behavior is now classified as `mixed` instead of being collapsed into the old single-threshold split
+  - retry trace suffix now includes both `cpr_avg_rr` and `cpr_last_rr`
+
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml failure_classification_ -- --nocapture` passed
+  - focused regressions now cover:
+    - clean strong-CPR path -> `nonlinear-bad`
+    - clean direct backend path -> `nonlinear-bad`
+    - explicit fallback path -> `linear-bad`
+    - weak CPR path -> `mixed`
+
+Interpretation:
+
+- The old classifier had a real defect: on small/direct systems it could mislabel a clean direct linear solve as a linear fallback problem just because the backend label was direct.
+- The new split is still intentionally simple, but it is materially more trustworthy for the next diagnostic slice:
+  - direct-solve cases are no longer polluted by false `linear-bad` labels
+  - CPR cases with only mediocre pressure-stage reduction will no longer be over-read as purely nonlinear shelves
+- The next replay pass should use the updated retry labels to decide whether the remaining hard shelves are still predominantly nonlinear after this audit or whether some windows are actually landing in `mixed` territory and should redirect effort back toward CPR quality.
+
 ## Implementation Update - 2026-03-31 wasm threshold alignment for moderate grids
 
 - Code change:

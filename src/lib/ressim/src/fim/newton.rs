@@ -28,7 +28,8 @@ macro_rules! fim_trace {
 
 const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
 const NOOP_ENTRY_EXACT_FACTOR: f64 = 1e-3;
-const LINEAR_GOOD_CPR_REDUCTION_RATIO: f64 = 1e-6;
+const STRONG_CPR_AVERAGE_REDUCTION_RATIO: f64 = 0.25;
+const STRONG_CPR_LAST_REDUCTION_RATIO: f64 = 0.5;
 const NEWTON_SUFFICIENT_DECREASE_FRACTION: f64 = 0.05;
 const NEWTON_SUFFICIENT_DECREASE_TOL_FACTOR: f64 = 2.0;
 const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
@@ -61,6 +62,7 @@ pub(crate) struct FimRetryFailureDiagnostics {
     pub(crate) linear_iterations: Option<usize>,
     pub(crate) used_linear_fallback: bool,
     pub(crate) cpr_average_reduction_ratio: Option<f64>,
+    pub(crate) cpr_last_reduction_ratio: Option<f64>,
 }
 
 fn linear_report_trace_suffix(
@@ -100,25 +102,41 @@ fn classify_retry_failure(
     linear_report: Option<&FimLinearSolveReport>,
     residual_diagnostics: &ResidualFamilyDiagnostics,
 ) -> FimRetryFailureDiagnostics {
-    let used_linear_fallback = linear_report.is_some_and(|report| {
-        matches!(
-            report.backend_used,
-            FimLinearSolverKind::DenseLuDebug | FimLinearSolverKind::SparseLuDebug
-        )
-    });
+    let used_linear_fallback = linear_report.is_some_and(|report| report.used_fallback);
     let cpr_average_reduction_ratio = linear_report
         .and_then(|report| report.cpr_diagnostics.as_ref())
         .map(|diagnostics| diagnostics.average_reduction_ratio);
+    let cpr_last_reduction_ratio = linear_report
+        .and_then(|report| report.cpr_diagnostics.as_ref())
+        .map(|diagnostics| diagnostics.last_reduction_ratio);
     let class = if let Some(report) = linear_report {
         if !report.converged || used_linear_fallback {
             FimRetryFailureClass::LinearBad
-        } else if cpr_average_reduction_ratio
-            .map(|ratio| ratio <= LINEAR_GOOD_CPR_REDUCTION_RATIO)
-            .unwrap_or(true)
-        {
-            FimRetryFailureClass::NonlinearBad
         } else {
-            FimRetryFailureClass::Mixed
+            match report.backend_used {
+                FimLinearSolverKind::DenseLuDebug | FimLinearSolverKind::SparseLuDebug => {
+                    FimRetryFailureClass::NonlinearBad
+                }
+                FimLinearSolverKind::FgmresCpr => {
+                    let cpr_is_strong = report
+                        .cpr_diagnostics
+                        .as_ref()
+                        .map(|diagnostics| {
+                            diagnostics.coarse_applications > 0
+                                && diagnostics.average_reduction_ratio
+                                    <= STRONG_CPR_AVERAGE_REDUCTION_RATIO
+                                && diagnostics.last_reduction_ratio
+                                    <= STRONG_CPR_LAST_REDUCTION_RATIO
+                        })
+                        .unwrap_or(false);
+                    if cpr_is_strong {
+                        FimRetryFailureClass::NonlinearBad
+                    } else {
+                        FimRetryFailureClass::Mixed
+                    }
+                }
+                FimLinearSolverKind::GmresIlu0 => FimRetryFailureClass::Mixed,
+            }
         }
     } else {
         FimRetryFailureClass::Mixed
@@ -132,6 +150,7 @@ fn classify_retry_failure(
         linear_iterations: linear_report.map(|report| report.iterations),
         used_linear_fallback,
         cpr_average_reduction_ratio,
+        cpr_last_reduction_ratio,
     }
 }
 
@@ -151,6 +170,9 @@ fn retry_failure_trace_suffix(diagnostics: &FimRetryFailureDiagnostics) -> Strin
     }
     if let Some(ratio) = diagnostics.cpr_average_reduction_ratio {
         parts.push(format!(" cpr_avg_rr={:.3e}", ratio));
+    }
+    if let Some(ratio) = diagnostics.cpr_last_reduction_ratio {
+        parts.push(format!(" cpr_last_rr={:.3e}", ratio));
     }
     parts.push("]".to_string());
     parts.join("")
@@ -2079,6 +2101,106 @@ mod tests {
 
         assert_eq!(classified.class, FimRetryFailureClass::NonlinearBad);
         assert_eq!(classified.dominant_family_label, "water");
+        assert_eq!(classified.cpr_last_reduction_ratio, Some(1e-12));
+    }
+
+    #[test]
+    fn failure_classification_marks_direct_backend_as_nonlinear_bad_when_clean() {
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 1.0,
+                row: 0,
+                item_index: 0,
+            },
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 0.5,
+                row: 1,
+                item_index: 0,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.25,
+                row: 2,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 1.0,
+                row: 0,
+                item_index: 0,
+            },
+        };
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: true,
+            iterations: 3,
+            final_residual_norm: 1e-12,
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::DenseLuDebug,
+            cpr_diagnostics: None,
+        };
+
+        let classified = classify_retry_failure(Some(&report), &diagnostics);
+
+        assert_eq!(classified.class, FimRetryFailureClass::NonlinearBad);
+        assert!(!classified.used_linear_fallback);
+    }
+
+    #[test]
+    fn failure_classification_marks_weak_cpr_as_mixed() {
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 1.0,
+                row: 0,
+                item_index: 0,
+            },
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 0.5,
+                row: 1,
+                item_index: 0,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.25,
+                row: 2,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 1.0,
+                row: 0,
+                item_index: 0,
+            },
+        };
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: true,
+            iterations: 12,
+            final_residual_norm: 1e-12,
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::FgmresCpr,
+            cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
+                coarse_rows: 10,
+                coarse_solver: crate::fim::linear::FimPressureCoarseSolverKind::ExactDense,
+                coarse_applications: 4,
+                average_reduction_ratio: 0.6,
+                last_reduction_ratio: 0.8,
+            }),
+        };
+
+        let classified = classify_retry_failure(Some(&report), &diagnostics);
+
+        assert_eq!(classified.class, FimRetryFailureClass::Mixed);
+        assert_eq!(classified.cpr_average_reduction_ratio, Some(0.6));
+        assert_eq!(classified.cpr_last_reduction_ratio, Some(0.8));
     }
 
     #[test]
