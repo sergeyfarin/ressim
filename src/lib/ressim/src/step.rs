@@ -1,6 +1,7 @@
 use std::f64;
 
 use crate::ReservoirSimulator;
+use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
 use crate::fim::state::{FimState, HydrocarbonState};
@@ -15,6 +16,61 @@ macro_rules! fim_trace {
             eprintln!("{}", line);
         }
     }};
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct FimGrowthCooldown {
+    cap_dt_days: Option<f64>,
+    clean_successes_remaining: u32,
+}
+
+impl FimGrowthCooldown {
+    fn clamp_trial_dt(self, trial_dt_days: f64, remaining_dt_days: f64) -> f64 {
+        self.cap_dt_days
+            .map(|cap_dt_days| trial_dt_days.min(cap_dt_days))
+            .unwrap_or(trial_dt_days)
+            .min(remaining_dt_days)
+    }
+
+    fn note_retry_accepted(&mut self, accepted_dt_days: f64, clean_successes_required: u32) {
+        self.cap_dt_days = Some(accepted_dt_days);
+        self.clean_successes_remaining = clean_successes_required;
+    }
+
+    fn note_clean_accepted(&mut self) {
+        if self.clean_successes_remaining == 0 {
+            return;
+        }
+
+        self.clean_successes_remaining -= 1;
+        if self.clean_successes_remaining == 0 {
+            self.cap_dt_days = None;
+        }
+    }
+
+    fn trace_suffix(self) -> String {
+        self.cap_dt_days
+            .map(|cap_dt_days| {
+                format!(
+                    " cooldown_cap={:.6} clean_left={}",
+                    cap_dt_days, self.clean_successes_remaining
+                )
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn fim_linear_report_step_suffix(linear_report: Option<&FimLinearSolveReport>) -> String {
+    linear_report
+        .map(|report| {
+            format!(
+                " lin=[used={} rows={} direct_thr={}]",
+                report.backend_used.label(),
+                report.solution.len(),
+                active_direct_solve_row_threshold(),
+            )
+        })
+        .unwrap_or_default()
 }
 
 impl ReservoirSimulator {
@@ -162,6 +218,7 @@ impl ReservoirSimulator {
         const TARGET_NEWTON_ITERS: f64 = 8.0;
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
         const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
+        const RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES: u32 = 2;
         let mut substeps = 0;
         let mut linear_bad_retries = 0usize;
         let mut nonlinear_bad_retries = 0usize;
@@ -169,6 +226,7 @@ impl ReservoirSimulator {
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
+        let mut growth_cooldown = FimGrowthCooldown::default();
 
         fim_trace!(
             self,
@@ -185,10 +243,20 @@ impl ReservoirSimulator {
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;
-            let initial_trial = if substeps == 0 {
+            let proposed_trial = if substeps == 0 {
                 remaining_dt
             } else {
                 remaining_dt.min(last_successful_dt * last_growth_factor)
+            };
+            let initial_trial = growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt);
+            let cooldown_trace = if initial_trial + 1e-12 < proposed_trial {
+                format!(
+                    " [cooldown-clamped from {:.6}{}]",
+                    proposed_trial,
+                    growth_cooldown.trace_suffix()
+                )
+            } else {
+                growth_cooldown.trace_suffix()
             };
             let mut trial_dt = initial_trial;
             let mut retry_count = 0;
@@ -199,10 +267,15 @@ impl ReservoirSimulator {
                 fim_trace!(
                     self,
                     verbose,
-                    "  substep {}: trial_dt={:.6} (retry={})",
+                    "  substep {}: trial_dt={:.6} (retry={}){}",
                     substeps,
                     trial_dt,
-                    retry_count
+                    retry_count,
+                    if retry_count == 0 {
+                        cooldown_trace.as_str()
+                    } else {
+                        ""
+                    }
                 );
 
                 let report = run_fim_timestep(
@@ -265,10 +338,17 @@ impl ReservoirSimulator {
                         .min(pressure_growth)
                         .clamp(MIN_GROWTH, MAX_GROWTH);
 
+                    if retry_count > 0 {
+                        growth_cooldown
+                            .note_retry_accepted(trial_dt, RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES);
+                    } else {
+                        growth_cooldown.note_clean_accepted();
+                    }
+
                     fim_trace!(
                         self,
                         verbose,
-                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}",
+                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}{}{}",
                         substeps,
                         trial_dt,
                         report.newton_iterations,
@@ -277,7 +357,9 @@ impl ReservoirSimulator {
                         report.final_update_inf_norm,
                         max_dsat,
                         max_dp,
-                        last_growth_factor
+                        last_growth_factor,
+                        growth_cooldown.trace_suffix(),
+                        fim_linear_report_step_suffix(report.last_linear_report.as_ref())
                     );
                     let water_before = self.total_water_inventory_m3();
                     let gas_before = self.total_gas_inventory_sc();
@@ -314,7 +396,7 @@ impl ReservoirSimulator {
                 fim_trace!(
                     self,
                     verbose,
-                    "  substep {}: FAILED (iters={} res={:.3e} mb={:.3e} upd={:.3e} retry_factor={:.2}){} → next_dt={:.6}",
+                    "  substep {}: FAILED (iters={} res={:.3e} mb={:.3e} upd={:.3e} retry_factor={:.2}){}{} → next_dt={:.6}",
                     substeps,
                     report.newton_iterations,
                     report.final_residual_inf_norm,
@@ -332,6 +414,7 @@ impl ReservoirSimulator {
                             )
                         })
                         .unwrap_or_default(),
+                    fim_linear_report_step_suffix(report.last_linear_report.as_ref()),
                     next_dt
                 );
 
@@ -620,7 +703,30 @@ impl ReservoirSimulator {
 
 #[cfg(test)]
 mod tests {
+    use super::FimGrowthCooldown;
     use crate::ReservoirSimulator;
+
+    #[test]
+    fn retry_acceptance_freezes_growth_until_clean_success_budget_is_spent() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
+
+        cooldown.note_clean_accepted();
+        assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
+
+        cooldown.note_clean_accepted();
+        assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.3125);
+    }
+
+    #[test]
+    fn cooldown_clamp_never_exceeds_remaining_dt() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(cooldown.clamp_trial_dt(0.5, 0.1), 0.1);
+    }
 
     #[test]
     fn fim_enabled_step_advances_time_and_records_history_for_closed_system() {

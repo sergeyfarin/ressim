@@ -7,7 +7,7 @@ use crate::fim::assembly::{
 };
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    solve_linearized_system,
+    active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::FimState;
 use crate::fim::wells::{
@@ -63,9 +63,18 @@ pub(crate) struct FimRetryFailureDiagnostics {
     pub(crate) cpr_average_reduction_ratio: Option<f64>,
 }
 
-fn linear_report_trace_suffix(report: &FimLinearSolveReport) -> String {
+fn linear_report_trace_suffix(
+    report: &FimLinearSolveReport,
+    requested_kind: FimLinearSolverKind,
+) -> String {
     let Some(cpr) = &report.cpr_diagnostics else {
-        return String::new();
+        return format!(
+            " lin=[req={} used={} rows={} direct_thr={}]",
+            requested_kind.label(),
+            report.backend_used.label(),
+            report.solution.len(),
+            active_direct_solve_row_threshold(),
+        );
     };
 
     let solver = match cpr.coarse_solver {
@@ -74,7 +83,11 @@ fn linear_report_trace_suffix(report: &FimLinearSolveReport) -> String {
     };
 
     format!(
-        " cpr=[rows={} solver={} apps={} avg_rr={:.3e} last_rr={:.3e}]",
+        " lin=[req={} used={} rows={} direct_thr={}] cpr=[rows={} solver={} apps={} avg_rr={:.3e} last_rr={:.3e}]",
+        requested_kind.label(),
+        report.backend_used.label(),
+        report.solution.len(),
+        active_direct_solve_row_threshold(),
         cpr.coarse_rows,
         solver,
         cpr.coarse_applications,
@@ -1139,10 +1152,14 @@ pub(crate) fn run_fim_timestep(
     fim_trace!(
         sim,
         options.verbose,
-        "  Newton: dt={:.6} days, n_cells={}, n_wells={}",
+        "  Newton: dt={:.6} days, n_cells={}, n_wells={}, n_perfs={}, n_rows={}, req_lin={}, direct_thr={}",
         dt_days,
         state.cells.len(),
-        state.n_well_unknowns()
+        state.n_well_unknowns(),
+        state.n_perforation_unknowns(),
+        state.n_unknowns(),
+        options.linear.kind.label(),
+        active_direct_solve_row_threshold()
     );
 
     for iteration in 0..options.max_newton_iterations {
@@ -1383,7 +1400,7 @@ pub(crate) fn run_fim_timestep(
                     final_update_inf_norm,
                     linear_report.iterations,
                     if used_fallback { " [fallback]" } else { "" },
-                    linear_report_trace_suffix(&linear_report),
+                    linear_report_trace_suffix(&linear_report, options.linear.kind),
                     residual_family_trace(&accepted_diagnostics.residual_diagnostics),
                     global_material_balance_trace(
                         &accepted_diagnostics.material_balance_diagnostics
@@ -1422,7 +1439,7 @@ pub(crate) fn run_fim_timestep(
                 final_update_inf_norm,
                 linear_report.iterations,
                 if used_fallback { " [fallback]" } else { "" },
-                linear_report_trace_suffix(&linear_report),
+                linear_report_trace_suffix(&linear_report, options.linear.kind),
                 residual_family_trace(&accepted_diagnostics.residual_diagnostics),
                 global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
                 accepted_diagnostics
@@ -1529,7 +1546,7 @@ pub(crate) fn run_fim_timestep(
             best_candidate_saturation_change,
             linear_report.iterations,
             if used_fallback { " [fallback]" } else { "" },
-            linear_report_trace_suffix(&linear_report),
+            linear_report_trace_suffix(&linear_report, options.linear.kind),
             if stagnation_count > 0 {
                 format!(" stag={}", stagnation_count)
             } else {

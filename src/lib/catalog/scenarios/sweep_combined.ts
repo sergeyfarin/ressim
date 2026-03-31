@@ -106,6 +106,7 @@ export const sweep_combined: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
+        fimEnabled: false,
         delta_t_days: 0.25,
         steps: 750,
         max_sat_change_per_step: 0.05,

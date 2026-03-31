@@ -16,6 +16,29 @@ pub(crate) enum FimLinearSolverKind {
     SparseLuDebug,
 }
 
+impl FimLinearSolverKind {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::FgmresCpr => "fgmres-cpr",
+            Self::GmresIlu0 => "gmres-ilu0",
+            Self::DenseLuDebug => "dense-lu",
+            Self::SparseLuDebug => "sparse-lu",
+        }
+    }
+}
+
+pub(crate) const fn active_direct_solve_row_threshold() -> usize {
+    #[cfg(target_arch = "wasm32")]
+    {
+        WASM_DIRECT_SOLVE_ROW_THRESHOLD
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        DIRECT_SOLVE_ROW_THRESHOLD
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimPressureCoarseSolverKind {
     ExactDense,

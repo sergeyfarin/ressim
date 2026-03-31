@@ -1,8 +1,8 @@
+use js_sys::{Float64Array, Object, Reflect};
 use rand::RngExt;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde::Deserialize;
-use js_sys::{Float64Array, Object, Reflect};
 use wasm_bindgen::prelude::*;
 
 use crate::pvt;
