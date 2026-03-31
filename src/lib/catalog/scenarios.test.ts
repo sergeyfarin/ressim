@@ -339,12 +339,15 @@ describe('scenario capability validation', () => {
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['shape_factor', 'per-result'],
             ['skin', 'per-result'],
-            ['permeability', 'per-result'],
             ['compressibility', 'per-result'],
+            ['timestep', 'shared'],
+            ['grid_refinement', 'shared'],
         ]);
         expect(getScenario('dep_decline')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['permeability', 'per-result'],
+            ['skin', 'per-result'],
             ['timestep', 'shared'],
+            ['grid_refinement', 'shared'],
         ]);
         expect(getScenario('dep_arps')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['arps_b', 'per-result'],
@@ -519,6 +522,47 @@ describe('SPE1 scenario fidelity guards', () => {
             max_sat_change_per_step: 0.03,
             max_pressure_change_per_step: 30,
             max_well_rate_change_fraction: 0.35,
+        });
+    });
+});
+
+describe('depletion scenario fidelity guards', () => {
+    it('uses resolution-oriented numerical sensitivities for the bounded PSS case', () => {
+        const fineTimestep = getScenarioWithVariantParams('dep_pss', 'timestep', 'dt_fine');
+        const fineGrid = getScenarioWithVariantParams('dep_pss', 'grid_refinement', 'grid_fine');
+
+        expect(fineTimestep).toMatchObject({
+            delta_t_days: 0.05,
+            steps: 320,
+        });
+        expect(fineGrid).toMatchObject({
+            nx: 35,
+            ny: 35,
+            cellDx: 12,
+            cellDy: 12,
+            producerI: 17,
+            producerJ: 17,
+        });
+    });
+
+    it('keeps Fetkovich decline sensitivities in a numerically resolved range', () => {
+        const highPerm = getScenarioWithVariantParams('dep_decline', 'permeability', 'perm_good');
+        const coarseGrid = getScenarioWithVariantParams('dep_decline', 'grid_refinement', 'grid_coarse');
+        const coarseTimestep = getScenarioWithVariantParams('dep_decline', 'timestep', 'timestep_large');
+
+        expect(highPerm).toMatchObject({
+            uniformPermX: 40,
+            uniformPermY: 40,
+            uniformPermZ: 4,
+        });
+        expect(coarseGrid).toMatchObject({
+            nx: 24,
+            cellDx: 20,
+            producerI: 23,
+        });
+        expect(coarseTimestep).toMatchObject({
+            delta_t_days: 0.25,
+            steps: 96,
         });
     });
 });

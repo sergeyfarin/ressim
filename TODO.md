@@ -70,6 +70,7 @@
   - Focus items from the latest review:
     - Depletion correctness now needs to stay in scope alongside convergence: March 2026 review of `dep_pss` / `dep_decline` showed that FIM can be materially wrong even when it finishes cleanly, so future FIM work should carry simple depletion parity checks and not treat “no warnings” as sufficient.
     - `dep_pss` permeability sensitivity on the `log(rate)` vs `tD` chart is not a clean physics-only comparison yet: March 2026 checks showed the apparent slope split shrinks toward the analytical common trend as `delta_t_days` is reduced, so the current spread mixes true transient/PSS mismatch with coarse timestep resolution in the fast high-perm cases.
+    - The depletion catalog was rebalanced on `2026-03-31`: `dep_pss` now focuses on bounded-flow shape/storage physics plus timestep and grid checks, while `dep_decline` owns the clean late-time PI sensitivities (permeability and skin) with matched longer, better-resolved base runtimes and benchmark seeds.
     - Audit retry-failure classification in `fim/newton.rs`: the current `LINEAR_GOOD_CPR_REDUCTION_RATIO = 1e-6` split is likely too blunt and may still label weak-CPR shelves as `nonlinear-bad`.
     - Add canonical trace counters for Newton damping activity on hard shelves: inflection-point chops, accepted damping level, and best-candidate residual shelf depth.
     - Prototype a stronger failure-memory timestep policy for repeated hotspot shelves, not just the current two-clean-step global cooldown.

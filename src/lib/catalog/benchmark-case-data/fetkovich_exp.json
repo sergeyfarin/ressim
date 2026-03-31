@@ -22,8 +22,8 @@
     "uniformPermX": 20,
     "analyticalDepletionStartDays": 1,
     "fimEnabled": false,
-    "steps": 100,
-    "delta_t_days": 5,
+    "steps": 240,
+    "delta_t_days": 0.1,
     "producerI": 47,
     "producerJ": 0
   }

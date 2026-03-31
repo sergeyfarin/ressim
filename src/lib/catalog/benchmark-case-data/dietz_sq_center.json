@@ -21,8 +21,8 @@
     "permMode": "uniform",
     "uniformPermX": 50,
     "fimEnabled": false,
-    "steps": 50,
-    "delta_t_days": 1,
+    "steps": 160,
+    "delta_t_days": 0.1,
     "producerI": 10,
     "producerJ": 10
   }
