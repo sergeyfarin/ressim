@@ -5,7 +5,18 @@
       "WebFetch(domain:link.springer.com)",
       "WebSearch",
       "WebFetch(domain:suetri-b.stanford.edu)",
-      "WebFetch(domain:sciencedirect.com)"
+      "WebFetch(domain:sciencedirect.com)",
+      "Bash(git -C /home/reken/Repos/ressim status --short)",
+      "Bash(git -C /home/reken/Repos/ressim diff HEAD -- src/lib/ressim/src/fim/newton.rs)",
+      "Bash(git -C /home/reken/Repos/ressim log --oneline -5)",
+      "Bash(git -C /home/reken/Repos/ressim show 325e19b --stat)",
+      "Bash(git -C /home/reken/Repos/ressim log --oneline -5 -- src/lib/ressim/src/fim/newton.rs src/lib/ressim/src/step.rs)",
+      "Bash(git -C /home/reken/Repos/ressim show 325e19b --name-only)",
+      "Bash(git -C /home/reken/Repos/ressim log --oneline -8 -- src/lib/ressim/src/fim/state.rs)",
+      "Bash(git -C /home/reken/Repos/ressim show HEAD:src/lib/ressim/src/fim/newton.rs)",
+      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json)",
+      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --no-json)",
+      "Bash(bash ./scripts/build-wasm.sh)"
     ]
   }
 }

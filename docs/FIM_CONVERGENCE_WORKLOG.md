@@ -224,6 +224,102 @@ Interpretation:
 - The explicit tail prolongation is worth keeping because it makes the CPR stage more internally consistent and more well-aware without harming the validated gas/water-front propagation tests.
 - On the current hard waterflood repro it does not materially change the retry shelf, which suggests the remaining bottleneck is not simply “the coarse pressure stage fails to move tail unknowns.” The next productive slice should target coarse-system quality or outer-step policy rather than this specific prolongation path.
 
+## Validation Update - 2026-03-31 reviewed head and current hard-case baseline
+
+- Commit review summary:
+  - `325e19b` is the latest materially relevant FIM commit.
+  - `d58c35b` is mostly frontend/runtime plumbing and is not materially relevant to the current FIM convergence issue.
+- Relevant solver changes in `325e19b`:
+  - `src/lib/ressim/src/fim/newton.rs` now clips water-saturation moves against the water fractional-flow inflection point inside `appleyard_damping(...)`.
+  - `src/lib/ressim/src/step.rs` now uses a more conservative OPM-like growth rule (`MAX_GROWTH = 1.25`, `MIN_GROWTH = 0.75`, target Newton iterations `8`) and includes gas saturation in the accepted-step growth estimate.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_gas_injection_creates_free_gas -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_coarse_grid_reaches_producer_gas_breakthrough -- --nocapture` passed
+  - wasm rebuild succeeded
+  - hard repro `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json` improved again
+- New observed hard-repro outcome:
+  - `FIM step done: 130 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=4 nonlinear-bad=30 mixed=0`
+
+Interpretation:
+
+- The reviewed head is a net improvement over the earlier `138`-substep baseline.
+- The cheap static water-inflection clip is useful, but it is not the full adaptive interface-local trust-region idea from the recent OnePetro article. It is better viewed as a safe local guard than as the end-state nonlinear strategy.
+
+## Current dominant retry pattern - 2026-03-31
+
+- The old inner-Newton no-op acceptance bug is no longer the main driver of the retry shelf.
+- The remaining deterministic pattern on the hard waterflood repro is:
+  1. a reduced retry timestep is accepted in 1-2 Newton iterations
+  2. the controller immediately regrows by about `1.25x`
+  3. the next trial lands in the same hotspot, stagnates after a few Newton iterations, and fails
+  4. the timestep is cut back and the cycle repeats
+
+Interpretation:
+
+- The next highest-value convergence change is now outer-step policy, not another generic Newton acceptance tweak.
+- The specific gap is lack of failure memory or cooldown in timestep growth. Once a `dt` has just failed at a given state/front location, the controller should not immediately regrow back into the same failing regime after one easy retry acceptance.
+
+## Bounded scaling investigation - 2026-03-31
+
+User priority for this slice was broader than the hard repro:
+
+- reduce substeps on cases that should not require heavy fragmentation
+- understand why moderate grids like `10x10x3` become impractically slow
+- keep all larger-grid probing bounded and safe
+
+### Healthy bounded reference
+
+- Command:
+  - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 24x1x1 --steps 1 --dt 1 --diagnostic step --no-json`
+- Observed outcome:
+  - `FIM step done: 5 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=1 nonlinear-bad=0 mixed=0`
+
+Interpretation:
+
+- The current solver can still advance a simple 1D waterflood day in a small number of substeps.
+- That rules out a blanket statement like “the current growth policy always fragments 1-day steps.”
+
+### Bounded 3D moderate-grid trace
+
+- Command used for a bounded probe:
+  - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 10x10x3 --steps 1 --dt 1 --diagnostic step --no-json`
+- Observed tail behavior during the bounded capture:
+  - `n_cells = 300`
+  - repeated accept/regrow/fail ladders at tiny `dt`
+  - failures classified as `linear-bad`, but with the same near-stagnant local residual pattern already seen on the hard waterflood case
+  - the bounded capture was still deep into hundreds of substeps at very small `dt`
+
+Interpretation:
+
+- The remaining 3D substep explosion is not just a runtime issue caused by a slower linear solve.
+- Even at a moderate `300` cells, the 3D case is still trapped in the same local retry/regrow loop, so there is still a real nonlinear/front-local convergence problem to address.
+
+## Linear-backend threshold diagnosis - 2026-03-31
+
+- Confirmed in `src/lib/ressim/src/fim/linear/mod.rs`:
+  - native direct threshold: `512` coupled rows
+  - wasm direct threshold: `1024` coupled rows
+- Coupled rows are roughly:
+  - `3 * n_cells + n_wells + n_perforations`
+
+Implications:
+
+- `10x10x3` with two wells already sits around the wasm direct-threshold neighborhood and above the native direct-threshold neighborhood.
+- That creates a real backend cliff for runtime/scaling independent of the nonlinear retry problem.
+- For user-reported `5x5x3 -> 10x10x3` pain, the likely picture is mixed:
+  - nonlinear/front-local failure memory is still missing, so the solver takes far too many substeps
+  - backend dispatch also crosses into a more expensive regime earlier than the grid size alone would suggest
+
+## Current recommendation order - 2026-03-31
+
+1. Add failure-memory-aware timestep growth cooldown in `step.rs` so recently failed timesteps are not immediately regrown.
+2. Expose row count and backend-used information in the canonical wasm diagnostic output so the threshold cliff can be measured directly on moderate grids.
+3. Revisit the moderate-system linear/coarse solve strategy after the cooldown slice, because near-threshold dispatch is likely part of the runtime cliff even when convergence improves.
+4. If stronger nonlinear controls are still needed after that, prefer an oscillation-triggered localized trust-region approach over another globally stricter damping rule.
+
 ## Added Diagnostics
 
 ### Native debug scenarios
