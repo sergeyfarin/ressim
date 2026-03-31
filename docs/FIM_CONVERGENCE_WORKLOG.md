@@ -247,6 +247,65 @@ Interpretation:
 - The reviewed head is a net improvement over the earlier `138`-substep baseline.
 - The cheap static water-inflection clip is useful, but it is not the full adaptive interface-local trust-region idea from the recent OnePetro article. It is better viewed as a safe local guard than as the end-state nonlinear strategy.
 
+## Validation Update - 2026-03-31 checkpoint scan/replay workflow for mid-run shelves
+
+- Change made: the canonical wasm diagnostic path now supports a cheap `outer` scan plus checkpoint save/load, so long scenarios can be scanned for expensive windows and only the interesting outer steps need full Newton replay.
+- Validation:
+  - water checkpoint/restart was validated on `water-pressure --grid 5x5x3`
+  - gas checkpoint/restart was validated on `gas-rate --grid 4x1x1`
+  - bounded long-window scans then ran on:
+    - `water-pressure --grid 5x5x3 --steps 8 --dt 0.25 --diagnostic outer`
+    - `water-pressure --grid 12x12x3 --steps 6 --dt 1 --diagnostic outer`
+    - `gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer`
+  - targeted replays then ran from saved checkpoints on:
+    - `wf_p_5x5x3` around day `0.75 -> 1.00`
+    - `wf_p_12x12x3` around day `1.00 -> 2.00`
+    - `gas_10x10x3` around day `1.00 -> 1.25`
+
+### Scan findings
+
+- `wf_p_5x5x3`
+  - day `0.25`: `~1.20 s`, `history+=409`
+  - day `0.50`: `~1.82 s`, `history+=625`
+  - day `0.75`: `~2.52 s`, `history+=779`
+  - day `1.00`: `~1.18 s`, `history+=340`
+  - days `1.25-2.00`: only `~4-8 ms`, `history+=1`
+- `wf_p_12x12x3`
+  - day `1.00`: `~69.4 s`, `history+=137`
+  - day `2.00`: `~79.3 s`, `history+=1219`
+  - day `3.00`: `~77.8 s`, `history+=927`
+  - day `4.00`: `~15.0 s`, `history+=28`
+  - days `5.00-6.00`: `~1.0-1.4 s`, `history+=1`
+- `gas_10x10x3`
+  - days `0.25-1.50`: stays in the `~1.0-2.3 s` range with only `3-11` history points per outer step and no warnings
+
+Interpretation:
+
+- The hard water shelf is not purely a day-`1` phenomenon; the worst replay target is later, at days `2-3`.
+- The small-grid water case is front-loaded. Once the front passes the early difficult window, the remaining outer steps become nearly trivial.
+- The representative gas case does have later nonlinear stress, but it does not currently show the same catastrophic outer-step fragmentation as the hard water case.
+
+### Replay findings
+
+- `wf_p_5x5x3` replay from day `0.75 -> 1.00`
+  - still uses `dense-lu` at `229` rows
+  - no warning or hard failure signature appeared in the replayed window
+  - the expensive step is dominated by hundreds of tiny accepted substeps with low residuals and low per-substep work, not by repeated catastrophic retries
+- `gas_10x10x3` replay from day `1.00 -> 1.25`
+  - stays on `fgmres-cpr` at `904` rows with healthy CPR residuals
+  - one initial `nonlinear-bad` gas-dominated failure occurs on the full `0.25 d` attempt, but the retry ladder resolves quickly (`0.125`, `0.09375`, `0.03125`) and the step finishes with `linear-bad=0`, `nonlinear-bad=1`
+  - this points more toward a localized nonlinear shelf than to iterative linear failure
+- `wf_p_12x12x3` replay from day `1.00 -> 2.00`
+  - stays on `fgmres-cpr` at `1300` rows
+  - repeated failed doubled steps are still dominated by a water-family hotspot at boundary cell `143` (`(11,11,0)`, row `429`)
+  - the characteristic trace is: very small residual, `[guard-equiv]`, then stagnation after several nearly identical damped candidates, then retry to a slightly smaller `dt`
+  - the replayed step ends with `linear-bad=3`, `nonlinear-bad=242`, `mixed=0`
+
+Interpretation:
+
+- The remaining hard `12x12x3` shelf is now localized as a true front-local nonlinear staircase rather than a hidden CPR breakdown. Linear solves remain healthy enough to keep advancing, but Newton keeps revisiting nearly equivalent tiny-step water-front states on the same boundary hotspot.
+- The next nonlinear slice should therefore target this oscillatory near-front acceptance pattern directly, while continuing to use the checkpoint workflow to sample later windows instead of assuming the main shelf starts at day `0`.
+
 ## Current dominant retry pattern - 2026-03-31
 
 - The old inner-Newton no-op acceptance bug is no longer the main driver of the retry shelf.
@@ -301,7 +360,7 @@ Interpretation:
 
 - Confirmed in `src/lib/ressim/src/fim/linear/mod.rs`:
   - native direct threshold: `512` coupled rows
-  - wasm direct threshold: `1024` coupled rows
+  - wasm direct threshold during the first trace pass: `1024` coupled rows
 - Coupled rows are roughly:
   - `3 * n_cells + n_wells + n_perforations`
 
@@ -319,6 +378,122 @@ Implications:
 2. Expose row count and backend-used information in the canonical wasm diagnostic output so the threshold cliff can be measured directly on moderate grids.
 3. Revisit the moderate-system linear/coarse solve strategy after the cooldown slice, because near-threshold dispatch is likely part of the runtime cliff even when convergence improves.
 4. If stronger nonlinear controls are still needed after that, prefer an oscillation-triggered localized trust-region approach over another globally stricter damping rule.
+
+## Implementation Update - 2026-03-31 cooldown plus canonical backend diagnostics
+
+- Code changes:
+  - `src/lib/ressim/src/step.rs`
+    - added a small failure-memory-aware growth cooldown state
+    - accepted retry steps now freeze regrowth at the proven-safe accepted `dt`
+    - the cap is released only after two clean accepted steps without another retry
+    - step-level accept/fail trace lines now include the actual linear backend used plus row count and active direct threshold
+  - `src/lib/ressim/src/fim/linear/mod.rs`
+    - added backend labels plus a helper for the active direct-solve row threshold
+  - `src/lib/ressim/src/fim/newton.rs`
+    - Newton trace now prints `n_perfs`, total coupled rows, requested linear backend, active direct threshold, and the actual backend used on each linear solve
+
+- Validation:
+  - `cargo fmt --manifest-path src/lib/ressim/Cargo.toml` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml retry_acceptance_freezes_growth_until_clean_success_budget_is_spent -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml cooldown_clamp_never_exceeds_remaining_dt -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture` passed
+  - `bash ./scripts/build-wasm.sh` succeeded
+
+### Healthy 1D diagnostic after the trace upgrade
+
+- `wf_p_24x1x1` now clearly reports:
+  - `n_rows = 76`
+  - `req_lin = fgmres-cpr`
+  - `used = dense-lu`
+  - `direct_thr = 1024`
+- It still completes the 1-day step in `5` substeps with `linear-bad=1 nonlinear-bad=0 mixed=0`.
+
+Interpretation:
+
+- The canonical wasm trace now makes it explicit when a case is safely under the wasm direct threshold.
+- This is the reference pattern for a healthy small system.
+
+### Hard 3D diagnostic after the trace upgrade
+
+- `wf_p_12x12x3` now clearly reports:
+  - `n_rows = 1300`
+  - `req_lin = fgmres-cpr`
+  - `used = fgmres-cpr`
+  - `direct_thr = 1024`
+  - explicit cooldown lines such as:
+    - `trial_dt=0.000663 (retry=0) [cooldown-clamped from 0.000829 cooldown_cap=0.000663 clean_left=2]`
+- Latest rerun retry summary:
+  - `linear-bad=4 nonlinear-bad=21 mixed=0`
+
+Interpretation:
+
+- The new trace confirms the hard 3D case is not a near-threshold direct-solve case on wasm; it is already firmly in the iterative CPR path.
+- That means the new diagnostic is already useful for design decisions: for this case, improving near-threshold direct/iterative dispatch alone will not eliminate the retry shelf.
+- The cooldown is doing its intended job. The trace now shows the controller holding the accepted retry `dt` for two clean solves before allowing regrowth again, instead of immediately stepping back into the last failed `dt`.
+
+## Updated recommendation order - 2026-03-31
+
+1. Use the new canonical trace on moderate-grid cases near the threshold cliff (`5x5x3`, `10x10x3`, similar waterfloods) to determine whether they are still using direct solve or already paying CPR cost.
+2. Improve the moderate-system linear/coarse solve path using that evidence, rather than guessing a new threshold or backend dispatch policy.
+3. Revisit cooldown tuning only after step 2 if the current two-clean-step hold proves too conservative or too weak.
+4. If nonlinear controls are still needed after that, prefer localized oscillation-triggered trust-region behavior over another globally stricter damping rule.
+
+## Implementation Update - 2026-03-31 wasm threshold alignment for moderate grids
+
+- Code change:
+  - `src/lib/ressim/src/fim/linear/mod.rs`
+    - aligned the wasm direct-solve row threshold with the native threshold at `512`
+    - factored the target-aware direct-dispatch choice into a small helper so the handoff is explicit and testable
+    - added regressions covering the wasm handoff above `512` rows and the explicit sparse-LU override case
+
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml wasm_target_` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml large_default_fim_system_still_uses_iterative_backend` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall` passed
+  - `bash ./scripts/build-wasm.sh` succeeded
+
+### Moderate-grid canonical wasm comparison after the threshold change
+
+- `wf_p_5x5x3`
+  - coupled rows: `229`
+  - backend before: `dense-lu`
+  - backend after: `dense-lu`
+  - bounded 1-day wasm diagnostic:
+    - before: `outer_ms = 6751.7`, `history += 2159`
+    - after: `outer_ms = 6172.5`, `history += 2159`
+- `wf_p_10x10x3`
+  - coupled rows: `904`
+  - backend before: `dense-lu`
+  - backend after: `fgmres-cpr`
+  - bounded 1-day wasm diagnostic:
+    - before: `outer_ms = 102085.9`, `history += 755`
+    - after: `outer_ms = 17167.1`, `history += 563`
+  - representative updated Newton header / linear trace:
+    - `n_rows = 904`
+    - `req_lin = fgmres-cpr`
+    - `used = fgmres-cpr`
+    - `direct_thr = 512`
+    - `linear_iters = 10..12` with CPR diagnostics instead of the previous `dense-lu` fallback path
+
+Interpretation:
+
+- The canonical moderate-grid trace confirmed the original diagnosis: the old wasm `1024` direct threshold was too high and was keeping `10x10x3` on the wrong backend.
+- Lowering the wasm threshold to `512` removes that moderate-grid backend cliff without perturbing genuinely small direct-solve cases like `5x5x3`.
+- The remaining `5x5x3` pain is not a backend-dispatch issue. It is still dominated by the same local nonlinear/front retry ladder and therefore points back to timestep/globalization behavior rather than linear-dispatch policy.
+
+### Hard-case sanity check after the threshold change
+
+- `wf_p_12x12x3` remains on CPR as expected:
+  - `n_rows = 1300`
+  - `used = fgmres-cpr`
+  - `direct_thr = 512`
+  - bounded 1-day wasm diagnostic remained in the same general regime with `outer_ms = 69380.2` and `history += 137`
+
+Updated next focus:
+
+1. Revisit the remaining small-grid and hard-3D nonlinear/front-local retry shelves now that the wasm moderate-grid backend handoff is corrected.
+2. Only revisit the iterative near-threshold backend details again if new evidence shows CPR coarse solves or restart policy are now the dominant runtime cost.
+3. Revisit cooldown tuning after that if the two-clean-step hold is clearly leaving performance on the table.
 
 ## Added Diagnostics
 

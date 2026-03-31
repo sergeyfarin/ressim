@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import process from 'node:process';
 import init, { ReservoirSimulator } from '../src/lib/ressim/pkg/simulator.js';
 
@@ -97,7 +98,11 @@ Options:
   --control <mode>          pressure | rate
   --gravity <bool>          true | false
   --capillary <bool>        true | false
-  --diagnostic <mode>       quiet | summary | step
+  --diagnostic <mode>       quiet | summary | outer | step
+  --checkpoint-in <file>    Load simulator state checkpoint before running
+  --checkpoint-out <file>   Save simulator state checkpoint after the run
+  --checkpoint-every <n>    Save a checkpoint every n outer steps
+  --checkpoint-dir <dir>    Directory used with --checkpoint-every
   --json                    Emit final JSON summary to stdout (default true)
   --no-json                 Suppress final JSON summary
   --list                    List presets
@@ -110,6 +115,7 @@ Examples:
 
 Current diagnostic granularity:
   summary = structured outer-step summaries and solver warnings.
+  outer = per-outer-step summaries without full Newton traces.
   step = per-step summaries plus captured per-Newton and retry traces from the FIM solver.
 `);
 }
@@ -204,6 +210,22 @@ function parseArgs(argv) {
         options.diagnostic = next;
         index += 1;
         break;
+      case '--checkpoint-in':
+        options.checkpointIn = next;
+        index += 1;
+        break;
+      case '--checkpoint-out':
+        options.checkpointOut = next;
+        index += 1;
+        break;
+      case '--checkpoint-every':
+        options.checkpointEvery = Number(next);
+        index += 1;
+        break;
+      case '--checkpoint-dir':
+        options.checkpointDir = next;
+        index += 1;
+        break;
       case '--json':
         options.emitJson = true;
         break;
@@ -240,14 +262,65 @@ function buildOptions(parsed) {
   if (!['pressure', 'rate'].includes(resolved.control)) {
     throw new Error(`Unsupported control mode: ${resolved.control}`);
   }
-  if (!['quiet', 'summary', 'step'].includes(resolved.diagnostic)) {
+  if (!['quiet', 'summary', 'outer', 'step'].includes(resolved.diagnostic)) {
     throw new Error(`Unsupported diagnostic mode: ${resolved.diagnostic}`);
+  }
+  if (resolved.checkpointEvery != null) {
+    if (!Number.isFinite(resolved.checkpointEvery) || resolved.checkpointEvery <= 0) {
+      throw new Error('checkpoint-every must be a positive integer');
+    }
+    if (!resolved.checkpointDir) {
+      throw new Error('checkpoint-dir is required when checkpoint-every is set');
+    }
   }
   if (resolved.gravity == null) {
     resolved.gravity = resolved.nz > 1;
   }
   resolved.presetConfig = preset;
   return resolved;
+}
+
+async function readCheckpoint(filePath) {
+  const raw = await readFile(filePath, 'utf8');
+  const checkpoint = JSON.parse(raw);
+  if (!checkpoint?.grid || !checkpoint?.wells || !Array.isArray(checkpoint?.rateHistory)) {
+    throw new Error(`Invalid checkpoint payload: ${filePath}`);
+  }
+  return checkpoint;
+}
+
+function buildCheckpoint(sim, options, lastRecord) {
+  const grid = sim.getGridState();
+  return {
+    preset: options.preset,
+    grid: {
+      pressure: Array.from(grid.pressure ?? []),
+      sat_water: Array.from(grid.sat_water ?? []),
+      sat_oil: Array.from(grid.sat_oil ?? []),
+      sat_gas: Array.from(grid.sat_gas ?? []),
+      rs: Array.from(sim.getRs()),
+    },
+    wells: sim.getWellState(),
+    rateHistory: sim.getRateHistory(),
+    timeDays: sim.get_time(),
+    lastRecord,
+    options: {
+      grid: { nx: options.nx, ny: options.ny, nz: options.nz },
+      wells: options.wells,
+      control: options.control,
+      gravity: options.gravity,
+      capillary: options.capillary,
+      dt: options.dt,
+    },
+  };
+}
+
+async function writeCheckpoint(filePath, checkpoint) {
+  await writeFile(filePath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf8');
+}
+
+function checkpointPath(dir, outerStep) {
+  return `${dir.replace(/\/$/, '')}/step-${String(outerStep).padStart(4, '0')}.json`;
 }
 
 function configureCommonTwoPhase(sim, options, overrides = {}) {
@@ -513,6 +586,20 @@ async function main() {
   const sim = new ReservoirSimulator(options.nx, options.ny, options.nz, 0.2);
   options.presetConfig.configure(sim, options);
 
+  if (options.checkpointIn) {
+    const checkpoint = await readCheckpoint(options.checkpointIn);
+    sim.loadState(
+      checkpoint.timeDays,
+      checkpoint.grid,
+      checkpoint.wells,
+      checkpoint.rateHistory,
+    );
+  }
+
+  if (options.checkpointDir) {
+    await mkdir(options.checkpointDir, { recursive: true });
+  }
+
   const stepRecords = [];
   const started = performance.now();
   for (let outerStep = 1; outerStep <= options.steps; outerStep += 1) {
@@ -530,10 +617,31 @@ async function main() {
     if (options.diagnostic === 'step') {
       printStepSummary(record);
       printFimTrace(fimTrace);
+    } else if (options.diagnostic === 'outer') {
+      printStepSummary(record);
     }
+
+    if (
+      options.checkpointEvery != null
+      && outerStep % options.checkpointEvery === 0
+      && options.checkpointDir
+    ) {
+      await writeCheckpoint(
+        checkpointPath(options.checkpointDir, outerStep),
+        buildCheckpoint(sim, options, record),
+      );
+    }
+
     if (record.warning) {
       break;
     }
+  }
+
+  if (options.checkpointOut) {
+    await writeCheckpoint(
+      options.checkpointOut,
+      buildCheckpoint(sim, options, stepRecords.at(-1) ?? null),
+    );
   }
 
   const result = {

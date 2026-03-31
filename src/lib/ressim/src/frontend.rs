@@ -17,6 +17,8 @@ struct GridStatePayload {
     pressure: Vec<f64>,
     sat_water: Vec<f64>,
     sat_oil: Vec<f64>,
+    sat_gas: Option<Vec<f64>>,
+    rs: Option<Vec<f64>>,
 }
 
 fn set_object_property(target: &Object, key: &str, value: &JsValue) {
@@ -395,11 +397,13 @@ impl ReservoirSimulator {
         let sat_water = unsafe { Float64Array::view(&self.sat_water) };
         let sat_oil = unsafe { Float64Array::view(&self.sat_oil) };
         let sat_gas = unsafe { Float64Array::view(&self.sat_gas) };
+        let rs = unsafe { Float64Array::view(&self.rs) };
 
         set_object_property(&payload, "pressure", &pressure.into());
         set_object_property(&payload, "sat_water", &sat_water.into());
         set_object_property(&payload, "sat_oil", &sat_oil.into());
         set_object_property(&payload, "sat_gas", &sat_gas.into());
+        set_object_property(&payload, "rs", &rs.into());
 
         payload.into()
     }
@@ -788,10 +792,42 @@ impl ReservoirSimulator {
             )));
         }
 
+        if grid_data
+            .sat_gas
+            .as_ref()
+            .is_some_and(|sat_gas| sat_gas.len() != expected_cells)
+        {
+            return Err(JsValue::from_str(&format!(
+                "Mismatch grid size. Expected {}, got sat_gas len: {}",
+                expected_cells,
+                grid_data
+                    .sat_gas
+                    .as_ref()
+                    .map(|sat_gas| sat_gas.len())
+                    .unwrap_or(0)
+            )));
+        }
+
+        if grid_data
+            .rs
+            .as_ref()
+            .is_some_and(|rs| rs.len() != expected_cells)
+        {
+            return Err(JsValue::from_str(&format!(
+                "Mismatch grid size. Expected {}, got rs len: {}",
+                expected_cells,
+                grid_data.rs.as_ref().map(|rs| rs.len()).unwrap_or(0)
+            )));
+        }
+
         self.time_days = time_days;
         self.pressure = grid_data.pressure;
         self.sat_water = grid_data.sat_water;
         self.sat_oil = grid_data.sat_oil;
+        self.sat_gas = grid_data
+            .sat_gas
+            .unwrap_or_else(|| vec![0.0; expected_cells]);
+        self.rs = grid_data.rs.unwrap_or_else(|| vec![0.0; expected_cells]);
         self.wells = wells;
         self.rate_history = rate_history_vec;
         self.last_solver_warning.clear();

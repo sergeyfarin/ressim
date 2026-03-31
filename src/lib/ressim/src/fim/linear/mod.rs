@@ -6,7 +6,7 @@ mod gmres_block_jacobi;
 mod sparse_lu_debug;
 
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
-const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = 1024;
+const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = DIRECT_SOLVE_ROW_THRESHOLD;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimLinearSolverKind {
@@ -36,6 +36,28 @@ pub(crate) const fn active_direct_solve_row_threshold() -> usize {
     #[cfg(not(target_arch = "wasm32"))]
     {
         DIRECT_SOLVE_ROW_THRESHOLD
+    }
+}
+
+const fn direct_solve_row_threshold_for_target(is_wasm: bool) -> usize {
+    if is_wasm {
+        WASM_DIRECT_SOLVE_ROW_THRESHOLD
+    } else {
+        DIRECT_SOLVE_ROW_THRESHOLD
+    }
+}
+
+fn should_force_direct_solve(
+    requested_kind: FimLinearSolverKind,
+    row_count: usize,
+    is_wasm: bool,
+) -> bool {
+    if is_wasm {
+        requested_kind != FimLinearSolverKind::SparseLuDebug
+            && row_count <= direct_solve_row_threshold_for_target(true)
+    } else {
+        requested_kind == FimLinearSolverKind::FgmresCpr
+            && row_count <= direct_solve_row_threshold_for_target(false)
     }
 }
 
@@ -100,9 +122,7 @@ pub(crate) fn solve_linearized_system(
     layout: Option<FimLinearBlockLayout>,
 ) -> FimLinearSolveReport {
     #[cfg(not(target_arch = "wasm32"))]
-    if options.kind == FimLinearSolverKind::FgmresCpr
-        && jacobian.rows() <= DIRECT_SOLVE_ROW_THRESHOLD
-    {
+    if should_force_direct_solve(options.kind, jacobian.rows(), false) {
         return sparse_lu_debug::solve(
             jacobian,
             rhs,
@@ -112,9 +132,7 @@ pub(crate) fn solve_linearized_system(
     }
 
     #[cfg(target_arch = "wasm32")]
-    if options.kind != FimLinearSolverKind::SparseLuDebug
-        && jacobian.rows() <= WASM_DIRECT_SOLVE_ROW_THRESHOLD
-    {
+    if should_force_direct_solve(options.kind, jacobian.rows(), true) {
         return dense_lu_debug::solve(jacobian, rhs, options, true);
     }
 
@@ -204,5 +222,29 @@ mod tests {
         assert!(report.converged);
         assert!(report.used_fallback);
         assert_eq!(report.backend_used, FimLinearSolverKind::FgmresCpr);
+    }
+
+    #[test]
+    fn wasm_target_hands_off_direct_backend_above_512_rows() {
+        assert_eq!(direct_solve_row_threshold_for_target(true), 512);
+        assert!(should_force_direct_solve(
+            FimLinearSolverKind::FgmresCpr,
+            512,
+            true,
+        ));
+        assert!(!should_force_direct_solve(
+            FimLinearSolverKind::FgmresCpr,
+            513,
+            true,
+        ));
+    }
+
+    #[test]
+    fn wasm_target_still_respects_explicit_sparse_lu_choice() {
+        assert!(!should_force_direct_solve(
+            FimLinearSolverKind::SparseLuDebug,
+            32,
+            true,
+        ));
     }
 }
