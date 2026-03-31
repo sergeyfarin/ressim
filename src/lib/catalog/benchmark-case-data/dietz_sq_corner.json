@@ -20,6 +20,7 @@
     "initialPressure": 300,
     "permMode": "uniform",
     "uniformPermX": 50,
+    "fimEnabled": false,
     "steps": 50,
     "delta_t_days": 1,
     "producerI": 0,

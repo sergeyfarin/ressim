@@ -13,7 +13,24 @@ Keep active observations, reproductions, diagnostics, and next hypotheses here u
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.
 - Main repro case: `gas_10x10x3`.
 - Related symptom: similar fragmentation also appears on water cases, especially 3D pressure-controlled waterfloods.
+- Additional scope note from the March 2026 depletion review: current FIM work is not only about timestep convergence. The active FIM path also has correctness/parity gaps on simpler depletion-style cases where convergence warnings may stay quiet while rates and pressures still differ materially from the validated IMPES path.
 - Non-goal: treating this as a pure tolerance-tuning problem before the nonlinear source is localized.
+
+## Correctness Follow-up - 2026-03-31 depletion review
+
+- Cross-check outcome:
+  - direct depletion probes on `dep_pss` and `dep_decline` showed that FIM can produce materially different oil-rate and pressure responses from IMPES even when both runs complete without solver warnings
+  - the gap is much larger than the expected analytical-vs-simulation model mismatch on these cases; it is a solver-path correctness issue, not just a chart/reference issue
+  - this is consistent with the already-ignored mixed-control parity regression in `src/lib/ressim/src/lib.rs`
+- Interpretation:
+  - the current FIM backlog must explicitly track correctness/parity in addition to convergence and runtime
+  - “no retry spiral” is not sufficient evidence that a FIM timestep path is acceptable for benchmark-style cases
+- Suggested follow-up tests for the FIM workstream:
+  - add a depletion parity smoke test for a simple single-producer closed system: compare FIM vs IMPES on total oil production, average pressure, and first-step rate for a bounded depletion case like `dep_pss`
+  - add a late-time depletion-tail parity test for the Fetkovich-style slab: compare FIM vs IMPES after the early transient window, not only at the first accepted point
+  - promote the existing ignored mixed-control parity benchmark into the canonical “correctness” bucket for FIM work instead of treating it as a side diagnostic
+  - add a benchmark-payload routing guard so literature depletion seeds cannot silently fall back to FIM when the intended validated path is IMPES
+  - when investigating future FIM fixes, record both convergence counters and a small correctness summary (`q_o`, `p_avg`, control mode / BHP-limit fraction) on the same repro step
 
 ## Reproduction Summary
 
@@ -258,6 +275,61 @@ Interpretation:
     - `water-pressure --grid 12x12x3 --steps 6 --dt 1 --diagnostic outer`
     - `gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer`
   - targeted replays then ran from saved checkpoints on:
+
+## Validation Update - 2026-03-31 used_fallback semantic audit and corrected canonical shelf replay
+
+- Change made:
+  - audited `used_fallback` end-to-end across Newton retry classification and linear solver reporting
+  - fixed `src/lib/ressim/src/fim/linear/mod.rs` so normal requested-backend dispatch no longer marks `used_fallback=true`
+  - fixed `src/lib/ressim/src/fim/newton.rs` so only Newton's real retry-time fallback path sets `linear_report.used_fallback = true`
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml default_fim_solver_uses_iterative_fallback_before_sparse_lu -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml large_default_fim_system_still_uses_iterative_backend -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml failure_classification_ -- --nocapture` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - canonical wasm replays reran on:
+    - `water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json`
+    - `water-pressure --grid 10x10x3 --steps 1 --dt 1 --diagnostic step --no-json`
+- Corrected observed outcomes after the semantic fix:
+  - `wf_p_12x12x3`: `FIM step done: 137 substeps, advanced 1.000000 of 1.000000 days`
+  - `wf_p_12x12x3`: retry counts are `nonlinear-bad=6`, `linear-bad=0`, `mixed=0`
+  - `wf_p_10x10x3`: `FIM step done: 563 substeps, advanced 1.000000 of 1.000000 days`
+  - `wf_p_10x10x3`: retry counts are `nonlinear-bad=6`, `linear-bad=0`, `mixed=0`
+  - failed retries now show strong CPR reduction without any bogus fallback signal; representative failure traces remain damping failures on water-dominated hotspot rows with CPR reduction ratios around `1e-13` to `1e-14`
+
+Interpretation:
+
+- The earlier replay result that suggested a `linear-bad` majority on the water shelves was a reporting artifact caused by overloaded `used_fallback` semantics.
+- With corrected semantics, the canonical shelves are again cleanly dominated by nonlinear retry failures, and the linear/CPR path no longer looks like the next bottleneck on these cases.
+- The next productive slice should move back to nonlinear/timestep policy at the hotspot shelf, specifically a stronger repeated-hotspot failure-memory controller rather than more generic CPR tuning.
+
+## Implementation Update - 2026-03-31 hotspot-aware timestep memory
+
+- Change made:
+  - extended `src/lib/ressim/src/step.rs` so timestep cooldown now tracks the dominant nonlinear retry hotspot (`family`, `row`, `item`) instead of treating every retry identically
+  - repeated nonlinear failures on the same hotspot can now lengthen the regrowth hold budget, while linear-bad failures explicitly do not seed hotspot memory
+  - hotspot memory now decays separately from the immediate cooldown cap after clean accepted steps without retry
+  - added focused unit coverage for:
+    - repeated same-hotspot extension
+    - hotspot reset on a different failure site
+    - linear failures not seeding hotspot memory
+    - hotspot-memory decay after clean steps
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml hotspot -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml cooldown -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture` passed earlier in the same implementation pass
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - canonical wasm replay reran on `water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json`
+- Observed canonical outcome after tuning the first hotspot-memory pass:
+  - `FIM step done: 140 substeps, advanced 1.000000 of 1.000000 days`
+  - retry counts remain `nonlinear-bad=6`, `linear-bad=0`, `mixed=0`
+  - the tuned replay mostly reported `repeats=1`, so the stronger repeated-hotspot branch did not materially engage on the canonical day-1 shelf
+
+Interpretation:
+
+- The control-path plumbing is now in place: timestep policy can react to dominant retry hotspots instead of only a generic retry/no-retry signal.
+- On the current day-1 canonical hard shelf, however, the first tuned policy is effectively neutral to slightly conservative: it does not reduce the number of nonlinear retries and does not yet beat the earlier `137-138` substep baseline.
+- The next tuning slice should focus on when hotspot memory is allowed to accumulate across regrow-fail cycles, because the current tuned pass is still not engaging the repeated-hotspot branch enough on the main repro.
     - `wf_p_5x5x3` around day `0.75 -> 1.00`
     - `wf_p_12x12x3` around day `1.00 -> 2.00`
     - `gas_10x10x3` around day `1.00 -> 1.25`
@@ -484,6 +556,46 @@ Interpretation:
   - direct-solve cases are no longer polluted by false `linear-bad` labels
   - CPR cases with only mediocre pressure-stage reduction will no longer be over-read as purely nonlinear shelves
 - The next replay pass should use the updated retry labels to decide whether the remaining hard shelves are still predominantly nonlinear after this audit or whether some windows are actually landing in `mixed` territory and should redirect effort back toward CPR quality.
+
+## Validation Update - 2026-03-31 replay after retry-classification audit
+
+- Validation:
+  - rebuilt wasm via `bash ./scripts/build-wasm.sh`
+  - replayed canonical water shelves:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json`
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 10x10x3 --steps 1 --dt 1 --diagnostic step --no-json`
+
+### Updated retry summaries
+
+- `wf_p_12x12x3`
+  - `FIM step done: 156 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=17 nonlinear-bad=2 mixed=0`
+- `wf_p_10x10x3`
+  - `FIM step done: 740 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=91 nonlinear-bad=2 mixed=0`
+
+### Trace-level observations
+
+- Both cases still fail on the same producer-corner water rows (`cell143` on `12x12x3`, `cell99` on `10x10x3`) during the retry/regrow shelf.
+- CPR reduction remains numerically strong on the failing retries:
+  - representative `12x12x3` failed retry: `cpr_avg_rr ≈ 1e-13`, `cpr_last_rr ≈ 1e-14`
+  - representative `10x10x3` failed retry: `cpr_avg_rr ≈ 1e-13`, `cpr_last_rr ≈ 1e-14`
+- Despite that, the failure suffix now reports `fallback=true` on the failed retries, which is what flips those events into `linear-bad`.
+- The same failing retries still show the old structural pattern:
+  - tiny candidate state changes (`cand_dP ≈ 0`, `cand_dS ≈ 1e-4`)
+  - no sufficiently decreasing candidate at the regrown `dt`
+  - immediate acceptance again after cutback and cooldown clamp
+
+Interpretation:
+
+- The classification audit changed the headline diagnosis: the remaining shelves are no longer reading as predominantly `nonlinear-bad`.
+- But the new traces also exposed a likely next audit target: the meaning of `used_fallback` / `fallback=true` on these retries needs to be checked carefully, because the same trace line still shows `used=fgmres-cpr` with extremely strong CPR reduction.
+- So the next highest-value slice is not another timestep tweak yet. It is to audit the linear-report semantics around fallback and failed retry classification:
+  - determine whether these retries are genuinely hitting the direct fallback path and still failing afterward
+  - or whether `used_fallback` is being latched more broadly than intended on the failing Newton path
+- After that audit, the path should split cleanly:
+  - if fallback is real, move next toward CPR / linear-backend quality
+  - if fallback semantics are overstated, return to hotspot-aware timestep memory with better confidence
 
 ## Implementation Update - 2026-03-31 wasm threshold alignment for moderate grids
 

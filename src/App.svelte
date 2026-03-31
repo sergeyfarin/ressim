@@ -313,6 +313,7 @@
                     porosity: params.reservoirPorosity,
                 },
                 timeHistory,
+                minTimeDays: params.analyticalDepletionStartDays,
                 initialSaturation: params.initialSaturation,
                 nz: params.nz,
                 permMode: params.permMode,

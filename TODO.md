@@ -68,9 +68,13 @@
     3. Revisit cooldown tuning only after step 2 if the clamp is clearly too conservative or too weak on the main repro set.
     4. Revisit more targeted nonlinear controls only after steps 1 to 3; if needed, prefer oscillation-triggered localized trust-region behavior over another globally stricter damping rule.
   - Focus items from the latest review:
+    - Depletion correctness now needs to stay in scope alongside convergence: March 2026 review of `dep_pss` / `dep_decline` showed that FIM can be materially wrong even when it finishes cleanly, so future FIM work should carry simple depletion parity checks and not treat “no warnings” as sufficient.
+    - `dep_pss` permeability sensitivity on the `log(rate)` vs `tD` chart is not a clean physics-only comparison yet: March 2026 checks showed the apparent slope split shrinks toward the analytical common trend as `delta_t_days` is reduced, so the current spread mixes true transient/PSS mismatch with coarse timestep resolution in the fast high-perm cases.
     - Audit retry-failure classification in `fim/newton.rs`: the current `LINEAR_GOOD_CPR_REDUCTION_RATIO = 1e-6` split is likely too blunt and may still label weak-CPR shelves as `nonlinear-bad`.
     - Add canonical trace counters for Newton damping activity on hard shelves: inflection-point chops, accepted damping level, and best-candidate residual shelf depth.
     - Prototype a stronger failure-memory timestep policy for repeated hotspot shelves, not just the current two-clean-step global cooldown.
+    - `used_fallback` semantics were audited and fixed on `2026-03-31`; the earlier `linear-bad` replay majority was a reporting artifact, and the corrected canonical water shelves are back to pure `nonlinear-bad` retries.
+    - A first hotspot-aware failure-memory pass is now implemented in `step.rs`, but the tuned canonical day-1 `wf_p_12x12x3` replay remained effectively neutral (`140` substeps, `nonlinear-bad=6`); next follow-up is to retune how hotspot memory accumulates across repeated regrow-fail cycles.
 - [x] Refactor the Rust linear solver into a `solvers/` module tree and add faer sparse LU as the default backend.
   - Keep BiCGSTAB available behind the shared dispatcher so frontend solver selection can be added later without another core refactor.
   - Default-dispatch behavior now automatically falls back from faer sparse LU to BiCGSTAB when factorization fails or the direct-solve residual misses tolerance.
@@ -186,6 +190,9 @@
 
 ## Next
 
+- [x] Route depletion presets and depletion benchmark seeds through IMPES by default instead of silently falling back to FIM.
+  - Root cause found during the March 2026 depletion review: `buildCreatePayload.ts` already forwards `state.fimEnabled`, but `simulationStore.svelte.ts` did not own/reset that field, so scenario-level solver intent could be dropped and depletion cases could end up on the unfinished FIM path.
+  - Applied to `dep_pss`, `dep_decline`, `dep_arps`, and the Dietz/Fetkovich depletion benchmark seeds so analytical-versus-simulation review uses the current validated solver path.
 - [ ] Enforce analytical-method semantics at the scenario type level so sweep scenarios cannot accidentally inherit Buckley-Leverett-style primary curves or disclosure rules.
 - [ ] Generalize the `sweep_combined` analytical-method toggle into a reusable sweep-method framework.
 - [ ] Collapse the remaining legacy benchmark layer into the scenario system where practical.

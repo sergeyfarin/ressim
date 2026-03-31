@@ -91,6 +91,7 @@ export const dep_arps: Scenario = {
         // Analytical: default b = 0.4 as starting point for layered match
         analyticalArpsB: 0.4,
         // Numerics
+        fimEnabled: false,
         delta_t_days: 0.25,
         steps: 250,
         max_sat_change_per_step: 0.05,

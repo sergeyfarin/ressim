@@ -3,8 +3,8 @@ import type { Scenario } from '../scenarios';
 export const dep_decline: Scenario = {
     key: 'dep_decline',
     label: 'Fetkovich Decline (Oil)',
-    description: 'Constant-BHP production from a finite reservoir. PI sets the initial rate level; total compressibility c_t sets the decline duration. Displayed on log-time axes to reveal the exponential trend.',
-    analyticalMethodSummary: 'Fetkovich exponential decline — rate and recovery reference curves for constant-BHP depletion, updated for active skin and permeability.',
+    description: 'Constant-BHP production from a finite reservoir. The simulator shows an early transient near the producer before the bounded system settles into boundary-dominated exponential decline. The analytical overlay is intentionally clipped to that late-time window and displayed on log-time axes.',
+    analyticalMethodSummary: 'Fetkovich exponential decline — late-time boundary-dominated rate and recovery reference curves for constant-BHP depletion, updated for active skin and permeability.',
     analyticalMethodReference: 'Fetkovich (1971).',
     chartLayoutKey: 'fetkovich',
     defaultSensitivityDimensionKey: 'permeability',
@@ -69,7 +69,9 @@ export const dep_decline: Scenario = {
         producerJ: 0,
         well_radius: 0.1,
         well_skin: 0,
+        analyticalDepletionStartDays: 1,
         // Numerics
+        fimEnabled: false,
         delta_t_days: 0.25,
         steps: 250,
         max_sat_change_per_step: 0.05,

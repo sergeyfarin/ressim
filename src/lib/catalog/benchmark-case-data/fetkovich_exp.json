@@ -20,6 +20,8 @@
     "initialPressure": 1500,
     "permMode": "uniform",
     "uniformPermX": 20,
+    "analyticalDepletionStartDays": 1,
+    "fimEnabled": false,
     "steps": 100,
     "delta_t_days": 5,
     "producerI": 47,

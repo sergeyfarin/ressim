@@ -53,6 +53,16 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
   });
 
+  it('persists solver selection from scenario params into runtime payload state', () => {
+    expect(storeSource).toMatch(/fimEnabled = \$state\(true\)/);
+    expect(storeSource).toMatch(/this\.fimEnabled = resolved\.fimEnabled !== false;/);
+  });
+
+  it('persists depletion analytical late-time clipping settings from scenario params', () => {
+    expect(storeSource).toMatch(/analyticalDepletionStartDays = \$state\(0\.0\)/);
+    expect(storeSource).toMatch(/this\.analyticalDepletionStartDays = fin\(resolved\.analyticalDepletionStartDays, 0\.0\);/);
+  });
+
   it('clears stale reference comparisons when sensitivity selection changes', () => {
     expect(storeSource).toMatch(/selectSensitivityDimension\(dimensionKey: string\)/);
     expect(storeSource).toMatch(/if \(this\.referenceSweepRunning \|\| this\.activeReferenceRunSpec\) return;/);

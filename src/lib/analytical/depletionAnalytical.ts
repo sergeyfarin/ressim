@@ -24,6 +24,7 @@ export type DepletionAnalyticalMeta = {
 export type DepletionAnalyticalParams = {
     reservoir: ReservoirGeometry | null | undefined;
     timeHistory: number[];
+    minTimeDays?: number;
     initialSaturation: number;
     nz: number;
     permMode: string;
@@ -151,6 +152,7 @@ export function calculateDepletionAnalyticalProduction(
     const {
         reservoir,
         timeHistory,
+        minTimeDays,
         initialSaturation,
         nz,
         permMode,
@@ -282,8 +284,12 @@ export function calculateDepletionAnalyticalProduction(
     // production, multiphase flow, or heterogeneous reservoirs — Arps (1945).
     const b = Math.max(0, Math.min(1, params.arpsB ?? 0));
 
-    const production = timeHistory.map((timeValue) => {
+    const minAnalyticalTime = Math.max(0, Number(minTimeDays) || 0);
+    const production = timeHistory.flatMap((timeValue) => {
         const time = Math.max(0, Number(timeValue) || 0);
+        if (time < minAnalyticalTime) {
+            return [];
+        }
         let oilRate: number;
         let cumulativeOil: number;
 
@@ -315,13 +321,13 @@ export function calculateDepletionAnalyticalProduction(
         // P_avg = P_bhp + q(t)/PI = P_bhp + ΔP · q(t)/q_i
         const avgPressure = producerBhp + pressureDrop * (q0 > 0 ? oilRate / q0 : 0);
 
-        return {
+        return [{
             time,
             oilRate,
             waterRate: 0,
             cumulativeOil,
             avgPressure,
-        };
+        }];
     });
 
     return {

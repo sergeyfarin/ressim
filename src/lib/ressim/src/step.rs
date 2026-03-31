@@ -3,7 +3,7 @@ use std::f64;
 use crate::ReservoirSimulator;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
-use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
+use crate::fim::newton::{FimNewtonOptions, FimRetryFailureDiagnostics, run_fim_timestep};
 use crate::fim::state::{FimState, HydrocarbonState};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -22,9 +22,42 @@ macro_rules! fim_trace {
 struct FimGrowthCooldown {
     cap_dt_days: Option<f64>,
     clean_successes_remaining: u32,
+    hotspot: Option<FimRetryHotspot>,
+    hotspot_repeat_failures: u32,
+    hotspot_clean_successes_without_retry: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FimRetryHotspot {
+    dominant_family_label: &'static str,
+    dominant_row: usize,
+    dominant_item_index: usize,
+}
+
+impl FimRetryHotspot {
+    fn from_failure(failure_diagnostics: &FimRetryFailureDiagnostics) -> Option<Self> {
+        match failure_diagnostics.class {
+            FimRetryFailureClass::LinearBad => None,
+            FimRetryFailureClass::NonlinearBad | FimRetryFailureClass::Mixed => Some(Self {
+                dominant_family_label: failure_diagnostics.dominant_family_label,
+                dominant_row: failure_diagnostics.dominant_row,
+                dominant_item_index: failure_diagnostics.dominant_item_index,
+            }),
+        }
+    }
 }
 
 impl FimGrowthCooldown {
+    const HOTSPOT_MEMORY_CLEAR_CLEAN_SUCCESSES: u32 = 2;
+
+    fn extra_clean_successes_for_repeated_hotspot(self) -> u32 {
+        match self.hotspot_repeat_failures {
+            0 | 1 => 0,
+            2 | 3 => 1,
+            _ => 2,
+        }
+    }
+
     fn clamp_trial_dt(self, trial_dt_days: f64, remaining_dt_days: f64) -> f64 {
         self.cap_dt_days
             .map(|cap_dt_days| trial_dt_days.min(cap_dt_days))
@@ -32,28 +65,73 @@ impl FimGrowthCooldown {
             .min(remaining_dt_days)
     }
 
+    fn clear_hotspot_memory(&mut self) {
+        self.hotspot = None;
+        self.hotspot_repeat_failures = 0;
+        self.hotspot_clean_successes_without_retry = 0;
+    }
+
+    fn note_retry_failure(&mut self, failure_diagnostics: &FimRetryFailureDiagnostics) {
+        let Some(hotspot) = FimRetryHotspot::from_failure(failure_diagnostics) else {
+            self.clear_hotspot_memory();
+            return;
+        };
+
+        if self.hotspot == Some(hotspot) {
+            self.hotspot_repeat_failures = self.hotspot_repeat_failures.saturating_add(1);
+        } else {
+            self.hotspot = Some(hotspot);
+            self.hotspot_repeat_failures = 1;
+        }
+        self.hotspot_clean_successes_without_retry = 0;
+    }
+
     fn note_retry_accepted(&mut self, accepted_dt_days: f64, clean_successes_required: u32) {
         self.cap_dt_days = Some(accepted_dt_days);
-        self.clean_successes_remaining = clean_successes_required;
+        let extra_clean_successes = self.extra_clean_successes_for_repeated_hotspot();
+        self.clean_successes_remaining = clean_successes_required + extra_clean_successes;
+        self.hotspot_clean_successes_without_retry = 0;
     }
 
     fn note_clean_accepted(&mut self) {
-        if self.clean_successes_remaining == 0 {
+        if self.clean_successes_remaining > 0 {
+            self.clean_successes_remaining -= 1;
+            if self.clean_successes_remaining == 0 {
+                self.cap_dt_days = None;
+            }
             return;
         }
 
-        self.clean_successes_remaining -= 1;
-        if self.clean_successes_remaining == 0 {
-            self.cap_dt_days = None;
+        if self.hotspot.is_some() {
+            self.hotspot_clean_successes_without_retry += 1;
+            if self.hotspot_clean_successes_without_retry
+                >= Self::HOTSPOT_MEMORY_CLEAR_CLEAN_SUCCESSES
+            {
+                self.clear_hotspot_memory();
+            }
         }
     }
 
     fn trace_suffix(self) -> String {
         self.cap_dt_days
             .map(|cap_dt_days| {
+                let hotspot_trace = self
+                    .hotspot
+                    .map(|hotspot| {
+                        format!(
+                            " hotspot={} row={} item={} repeats={} clear_left={}",
+                            hotspot.dominant_family_label,
+                            hotspot.dominant_row,
+                            hotspot.dominant_item_index,
+                            self.hotspot_repeat_failures,
+                            Self::HOTSPOT_MEMORY_CLEAR_CLEAN_SUCCESSES
+                                .saturating_sub(self.hotspot_clean_successes_without_retry),
+                        )
+                    })
+                    .unwrap_or_default();
                 format!(
-                    " cooldown_cap={:.6} clean_left={}",
-                    cap_dt_days, self.clean_successes_remaining
+                    " cooldown_cap={:.6} clean_left={}{}",
+                    cap_dt_days, self.clean_successes_remaining, hotspot_trace
                 )
             })
             .unwrap_or_default()
@@ -386,6 +464,7 @@ impl ReservoirSimulator {
                 retry_count += 1;
 
                 if let Some(failure_diagnostics) = &report.failure_diagnostics {
+                    growth_cooldown.note_retry_failure(failure_diagnostics);
                     match failure_diagnostics.class {
                         FimRetryFailureClass::LinearBad => linear_bad_retries += 1,
                         FimRetryFailureClass::NonlinearBad => nonlinear_bad_retries += 1,
@@ -705,6 +784,24 @@ impl ReservoirSimulator {
 mod tests {
     use super::FimGrowthCooldown;
     use crate::ReservoirSimulator;
+    use crate::fim::newton::{FimRetryFailureClass, FimRetryFailureDiagnostics};
+
+    fn failure_diagnostics(
+        class: FimRetryFailureClass,
+        dominant_row: usize,
+        dominant_item_index: usize,
+    ) -> FimRetryFailureDiagnostics {
+        FimRetryFailureDiagnostics {
+            class,
+            dominant_family_label: "water",
+            dominant_row,
+            dominant_item_index,
+            linear_iterations: Some(12),
+            used_linear_fallback: false,
+            cpr_average_reduction_ratio: Some(1e-13),
+            cpr_last_reduction_ratio: Some(1e-14),
+        }
+    }
 
     #[test]
     fn retry_acceptance_freezes_growth_until_clean_success_budget_is_spent() {
@@ -726,6 +823,82 @@ mod tests {
         cooldown.note_retry_accepted(0.25, 2);
 
         assert_eq!(cooldown.clamp_trial_dt(0.5, 0.1), 0.1);
+    }
+
+    #[test]
+    fn repeated_same_hotspot_extends_growth_cooldown_budget() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 2);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 3);
+        assert!(cooldown.trace_suffix().contains("repeats=2"));
+    }
+
+    #[test]
+    fn changing_hotspot_resets_extra_growth_cooldown_budget() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_failure(&failure_diagnostics(
+            FimRetryFailureClass::NonlinearBad,
+            429,
+            143,
+        ));
+        cooldown.note_retry_failure(&failure_diagnostics(
+            FimRetryFailureClass::NonlinearBad,
+            429,
+            143,
+        ));
+        cooldown.note_retry_accepted(0.25, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 3);
+
+        cooldown.note_retry_failure(&failure_diagnostics(
+            FimRetryFailureClass::NonlinearBad,
+            297,
+            99,
+        ));
+        cooldown.note_retry_accepted(0.2, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 2);
+        assert!(cooldown.trace_suffix().contains("row=297"));
+    }
+
+    #[test]
+    fn linear_failure_does_not_seed_hotspot_memory() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_failure(&failure_diagnostics(FimRetryFailureClass::LinearBad, 10, 3));
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(cooldown.clean_successes_remaining, 2);
+        assert!(!cooldown.trace_suffix().contains("hotspot="));
+    }
+
+    #[test]
+    fn hotspot_memory_persists_across_release_and_decays_after_clean_steps() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 1);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 3);
+
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+
+        assert!(cooldown.hotspot.is_none());
     }
 
     #[test]

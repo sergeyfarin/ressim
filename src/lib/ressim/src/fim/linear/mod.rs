@@ -123,17 +123,12 @@ pub(crate) fn solve_linearized_system(
 ) -> FimLinearSolveReport {
     #[cfg(not(target_arch = "wasm32"))]
     if should_force_direct_solve(options.kind, jacobian.rows(), false) {
-        return sparse_lu_debug::solve(
-            jacobian,
-            rhs,
-            options,
-            options.kind != FimLinearSolverKind::SparseLuDebug,
-        );
+        return sparse_lu_debug::solve(jacobian, rhs, options, false);
     }
 
     #[cfg(target_arch = "wasm32")]
     if should_force_direct_solve(options.kind, jacobian.rows(), true) {
-        return dense_lu_debug::solve(jacobian, rhs, options, true);
+        return dense_lu_debug::solve(jacobian, rhs, options, false);
     }
 
     match options.kind {
@@ -145,7 +140,7 @@ pub(crate) fn solve_linearized_system(
         // CPR is still incomplete, but the default FIM path now uses a pressure-first
         // two-stage iterative backend instead of falling straight back to sparse LU.
         FimLinearSolverKind::FgmresCpr => {
-            gmres_block_jacobi::solve(jacobian, rhs, options, layout, true)
+            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false)
         }
     }
 }
@@ -202,7 +197,7 @@ mod tests {
             solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
 
         assert!(report.converged);
-        assert!(report.used_fallback);
+        assert!(!report.used_fallback);
         assert_eq!(report.backend_used, FimLinearSolverKind::SparseLuDebug);
     }
 
@@ -220,7 +215,7 @@ mod tests {
             solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
 
         assert!(report.converged);
-        assert!(report.used_fallback);
+        assert!(!report.used_fallback);
         assert_eq!(report.backend_used, FimLinearSolverKind::FgmresCpr);
     }
 

@@ -246,11 +246,13 @@ class SimulationStoreImpl {
     gasRedissolutionEnabled = $state(true);
     /** Initial dissolved-gas ratio override [Sm³/Sm³]; undefined = use saturated curve */
     initialRs = $state<number | undefined>(undefined);
+    fimEnabled = $state(true);
 
     // Analytical solution
     analyticalMode: 'waterflood' | 'depletion' | 'none' = $state('depletion');
     analyticalDepletionRateScale = $state(1.0);
     analyticalArpsB = $state(0.0);
+    analyticalDepletionStartDays = $state(0.0);
     pvtTableOverride = $state<PvtRow[] | undefined>(undefined);
     scalTables = $state<ThreePhaseScalTables | undefined>(undefined);
 
@@ -726,6 +728,7 @@ class SimulationStoreImpl {
             analyticalMode: this.analyticalMode,
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
             analyticalArpsB: this.analyticalArpsB,
+            analyticalDepletionStartDays: this.analyticalDepletionStartDays,
             s_gc: this.s_gc,
             s_gr: this.s_gr,
             s_org: this.s_org,
@@ -869,6 +872,7 @@ class SimulationStoreImpl {
             analyticalMode: this.analyticalMode,
             analyticalDepletionRateScale: this.analyticalDepletionRateScale,
             analyticalArpsB: this.analyticalArpsB,
+            analyticalDepletionStartDays: this.analyticalDepletionStartDays,
         });
     }
 
@@ -1730,6 +1734,7 @@ class SimulationStoreImpl {
         if (resolved.initialRs !== undefined) {
             this.initialRs = Number(resolved.initialRs);
         }
+        this.fimEnabled = resolved.fimEnabled !== false;
 
         // Sync analyticalMode from explicit params first, then legacy params, then inferred defaults.
         // When resolvedAnalyticalMode is undefined (not specified in params), keep the current value
@@ -1744,6 +1749,7 @@ class SimulationStoreImpl {
         }
         this.analyticalDepletionRateScale = fin(resolved.analyticalDepletionRateScale, 1.0);
         this.analyticalArpsB = fin(resolved.analyticalArpsB, 0.0);
+        this.analyticalDepletionStartDays = fin(resolved.analyticalDepletionStartDays, 0.0);
         this.injectorControlMode = resolved.injectorControlMode === 'rate' ? 'rate' : 'pressure';
         this.producerControlMode = resolved.producerControlMode === 'rate' ? 'rate' : 'pressure';
         this.injectorBhp = fin(resolved.injectorBhp, 400);

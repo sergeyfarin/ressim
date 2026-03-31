@@ -84,10 +84,10 @@ export const sweep_combined: Scenario = {
         permMode: 'perLayer',
         uniformPermX: 100,
         uniformPermY: 100,
-        uniformPermZ: 10,
+        uniformPermZ: 0,
         layerPermsX: [1000, 150, 5, 60, 40],
         layerPermsY: [1000, 150, 5, 60, 40],
-        layerPermsZ: [100, 15, .5, 6, 4],
+        // layerPermsZ: [100, 15, .5, 6, 4],
         // Initial conditions
         initialPressure: 300,
         initialSaturation: 0.1,
@@ -107,8 +107,8 @@ export const sweep_combined: Scenario = {
         well_skin: 0,
         // Numerics
         fimEnabled: false,
-        delta_t_days: 0.25,
-        steps: 750,
+        delta_t_days: 5.0,
+        steps: 200,
         max_sat_change_per_step: 0.05,
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,

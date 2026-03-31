@@ -68,6 +68,7 @@ export const dep_pss: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
+        fimEnabled: false,
         delta_t_days: 1,
         steps: 50,
         max_sat_change_per_step: 0.05,

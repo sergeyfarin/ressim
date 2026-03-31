@@ -740,6 +740,59 @@ describe('referenceComparisonModel', () => {
         expect(model.panels.rates.series.at(-1)?.at(-1)?.x).toBeGreaterThan(0);
     });
 
+    it('clips Fetkovich analytical overlays to the configured late-time window', () => {
+        const scenario = getScenario('dep_decline');
+        const spec: BenchmarkRunSpec = {
+            key: scenario!.key,
+            caseKey: scenario!.key,
+            familyKey: scenario!.key,
+            analyticalMethod: scenario!.capabilities.analyticalMethod,
+            variantKey: null,
+            variantLabel: null,
+            label: scenario!.label,
+            description: scenario!.description,
+            params: scenario!.params,
+            steps: Number(scenario!.params.steps),
+            deltaTDays: Number(scenario!.params.delta_t_days),
+            historyInterval: 1,
+            reference: { kind: 'analytical', source: `${scenario!.key}:analytical` },
+            comparisonMetric: null,
+            breakthroughCriterion: null,
+            comparisonMeaning: 'Scenario depletion reference.',
+        };
+        const result = buildBenchmarkRunResult({
+            spec,
+            rateHistory: [
+                { time: 0.25, total_injection: 0, total_production_liquid: 42.277857340482505, total_production_oil: 42.277857340482505, avg_reservoir_pressure: 422.01393374377955 },
+                { time: 1, total_injection: 0, total_production_liquid: 43.63585819060618, total_production_oil: 43.63585819060618, avg_reservoir_pressure: 545.7189581144349 },
+                { time: 12.5, total_injection: 0, total_production_liquid: 0.004185734753701691, total_production_oil: 0.004185734753701691, avg_reservoir_pressure: 50.0477020420299 },
+            ],
+        });
+
+        const model = buildReferenceComparisonModel({
+            family: {
+                key: scenario!.key,
+                label: scenario!.label,
+                description: scenario!.description,
+                analyticalMethod: scenario!.capabilities.analyticalMethod,
+                chartLayoutKey: scenario!.chartLayoutKey,
+                chartLayoutPatch: scenario!.chartLayoutPatch,
+                showSweepPanel: false,
+                sweepGeometry: null,
+                publishedReferenceSeries: scenario!.publishedReferenceSeries,
+            } as unknown as BenchmarkFamily,
+            results: [result],
+            xAxisMode: 'time',
+        });
+
+        const referenceCurveIndex = model.panels.rates.curves.findIndex((curve) => curve.curveKey === 'oil-rate-reference');
+        expect(referenceCurveIndex).toBeGreaterThanOrEqual(0);
+        const referenceSeries = model.panels.rates.series[referenceCurveIndex];
+        expect(referenceSeries).toBeDefined();
+        expect(referenceSeries.every((point) => (point.x ?? 0) >= 1)).toBe(true);
+        expect(referenceSeries[0]?.x).toBe(1);
+    });
+
     it('uses theme-aware reference-solution colors so overlays stay visible in both themes', () => {
         const family = getBenchmarkFamily('bl_case_a_refined');
         const [baseSpec] = buildBenchmarkRunSpecs(family!);

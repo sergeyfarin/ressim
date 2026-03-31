@@ -1387,6 +1387,7 @@ pub(crate) fn run_fim_timestep(
             linear_report =
                 solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
             used_fallback = true;
+            linear_report.used_fallback = true;
         }
 
         final_update_inf_norm =
