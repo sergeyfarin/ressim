@@ -3,7 +3,7 @@ use std::f64;
 use crate::ReservoirSimulator;
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
-use crate::fim::state::FimState;
+use crate::fim::state::{FimState, HydrocarbonState};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
@@ -151,8 +151,15 @@ impl ReservoirSimulator {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
         const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 16;
-        const MAX_GROWTH: f64 = 2.0;
-        const TARGET_NEWTON_ITERS: f64 = 6.0;
+        // Growth rate matches OPM Flow's default (1.25×) — prevents the "double and fail"
+        // oscillation at breakthrough where 2× growth would repeatedly overshoot.
+        const MAX_GROWTH: f64 = 1.25;
+        // Allow shrinkage after very hard successful steps (OPM decay_rate = 0.75).
+        // This prevents dt from being too large right after a barely-converged step.
+        const MIN_GROWTH: f64 = 0.75;
+        // Target Newton iterations for growth estimation — matches OPM target_newton_iters.
+        // Steps using fewer iterations than this grow; steps using more shrink.
+        const TARGET_NEWTON_ITERS: f64 = 8.0;
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
         const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
         let mut substeps = 0;
@@ -208,17 +215,37 @@ impl ReservoirSimulator {
 
                 if report.converged {
                     // Compute max saturation and pressure change for adaptive growth.
+                    // Track all three phase saturations so gas-front dynamics limit growth
+                    // correctly (previously only Sw was tracked, missing gas saturation changes).
                     let mut max_dsat: f64 = 0.0;
                     let mut max_dp: f64 = 0.0;
                     for (idx, new_cell) in report.accepted_state.cells.iter().enumerate() {
                         let old_cell = &previous_state.cells[idx];
                         max_dsat = max_dsat.max((new_cell.sw - old_cell.sw).abs());
                         max_dp = max_dp.max((new_cell.pressure_bar - old_cell.pressure_bar).abs());
+                        // Also track gas saturation change: hydrocarbon_var = Sg in Saturated regime.
+                        let old_sg = match old_cell.regime {
+                            HydrocarbonState::Saturated => old_cell.hydrocarbon_var.max(0.0),
+                            HydrocarbonState::Undersaturated => 0.0,
+                        };
+                        let new_sg = match new_cell.regime {
+                            HydrocarbonState::Saturated => new_cell.hydrocarbon_var.max(0.0),
+                            HydrocarbonState::Undersaturated => 0.0,
+                        };
+                        max_dsat = max_dsat.max((new_sg - old_sg).abs());
+                        let _ = idx; // suppress unused warning
                     }
 
-                    // Newton-iteration-aware growth: easy steps grow fast, hard steps barely grow.
+                    // Newton-iteration-aware growth/shrinkage (matches OPM AdaptiveTimeStepping):
+                    //   target_iters / actual_iters:
+                    //     < 1 → hard step, dt shrinks toward MIN_GROWTH
+                    //     = 1 → neutral, dt unchanged
+                    //     > 1 → easy step, dt grows toward MAX_GROWTH
+                    // Unlike the previous version (floor at 1.0), this allows dt to shrink
+                    // after hard successful steps, preventing the "barely converge then
+                    // immediately overshoot" pattern at breakthrough.
                     let iteration_growth = (TARGET_NEWTON_ITERS / report.newton_iterations as f64)
-                        .clamp(1.0, MAX_GROWTH);
+                        .clamp(MIN_GROWTH, MAX_GROWTH);
                     // Saturation-change-based growth: scale down if sat change exceeded target.
                     let sat_growth = if max_dsat > TARGET_MAX_SAT_CHANGE {
                         TARGET_MAX_SAT_CHANGE / max_dsat
@@ -231,15 +258,17 @@ impl ReservoirSimulator {
                     } else {
                         MAX_GROWTH
                     };
+                    // Final growth: minimum of all constraints, clamped to [MIN_GROWTH, MAX_GROWTH].
+                    // Removing the old floor at 1.0 allows dt to shrink for hard steps.
                     last_growth_factor = iteration_growth
                         .min(sat_growth)
                         .min(pressure_growth)
-                        .clamp(1.0, MAX_GROWTH);
+                        .clamp(MIN_GROWTH, MAX_GROWTH);
 
                     fim_trace!(
                         self,
                         verbose,
-                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSw={:.4} max_dP={:.2} growth={:.3}",
+                        "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}",
                         substeps,
                         trial_dt,
                         report.newton_iterations,

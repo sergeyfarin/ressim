@@ -195,9 +195,119 @@ fn retry_factor_for_failure(diagnostics: Option<&FimRetryFailureDiagnostics>) ->
     }
 }
 
+/// Compute the water fractional flow fw = λ_w / (λ_w + λ_o + λ_g) at a given Sw.
+///
+/// Holds Sg and pressure fixed (from `cell`). Used only for inflection-point detection,
+/// not for residual/Jacobian assembly — so it uses cell.pressure_bar and cell.regime to
+/// find the gas saturation but evaluates kr at the given `sw`.
+fn fw_at_sw(sim: &ReservoirSimulator, cell: &crate::fim::state::FimCellState, sw: f64) -> f64 {
+    let sg = match cell.regime {
+        crate::fim::state::HydrocarbonState::Saturated => cell.hydrocarbon_var.max(0.0),
+        crate::fim::state::HydrocarbonState::Undersaturated => 0.0,
+    };
+    let p = cell.pressure_bar;
+    let mu_w = sim.get_mu_w(p);
+    let mu_o = sim.get_mu_o(p);
+
+    let (lambda_w, lambda_o, lambda_g) = if sim.three_phase_mode {
+        if let Some(scal) = &sim.scal_3p {
+            let lw = scal.k_rw(sw) / mu_w;
+            let lo = scal.k_ro_stone2(sw, sg) / mu_o;
+            let lg = scal.k_rg(sg) / sim.get_mu_g(p);
+            (lw, lo, lg)
+        } else {
+            let lw = sim.scal.k_rw(sw) / mu_w;
+            let lo = sim.scal.k_ro(sw) / mu_o;
+            (lw, lo, 0.0)
+        }
+    } else {
+        let lw = sim.scal.k_rw(sw) / mu_w;
+        let lo = sim.scal.k_ro(sw) / mu_o;
+        (lw, lo, 0.0)
+    };
+
+    let lambda_t = lambda_w + lambda_o + lambda_g;
+    if lambda_t < 1e-15 {
+        0.0
+    } else {
+        lambda_w / lambda_t
+    }
+}
+
+/// Find the inflection point of fw(Sw) for a cell — the Sw at which dfw/dSw is maximum.
+///
+/// The inflection point divides the fractional-flow curve into two convergence basins.
+/// Newton iterations that cross this boundary can diverge or converge slowly (Wang &
+/// Tchelepi, 2013). Sampling at N_SAMPLES points and finding the maximum slope is
+/// sufficient because the fw curve for standard Corey/tabular kr has a single inflection.
+///
+/// Returns None if the physical saturation range is degenerate or the fw curve is monotone
+/// without a detectable inflection (e.g., very favorable mobility ratio).
+fn fw_inflection_point_sw(
+    sim: &ReservoirSimulator,
+    cell: &crate::fim::state::FimCellState,
+) -> Option<f64> {
+    const N_SAMPLES: usize = 16;
+    const MIN_RANGE: f64 = 1e-4;
+
+    let sg = match cell.regime {
+        crate::fim::state::HydrocarbonState::Saturated => cell.hydrocarbon_var.max(0.0),
+        crate::fim::state::HydrocarbonState::Undersaturated => 0.0,
+    };
+
+    let (swc, sor) = if sim.three_phase_mode {
+        sim.scal_3p
+            .as_ref()
+            .map_or((sim.scal.s_wc, sim.scal.s_or), |s| (s.s_wc, s.s_or))
+    } else {
+        (sim.scal.s_wc, sim.scal.s_or)
+    };
+
+    let sw_lo = swc;
+    let sw_hi = (1.0 - sor - sg).min(1.0 - swc * 0.5);
+    if sw_hi - sw_lo < MIN_RANGE {
+        return None;
+    }
+
+    // Sample fw and find the segment with the steepest slope (= inflection point location).
+    let dsw = (sw_hi - sw_lo) / N_SAMPLES as f64;
+    let mut max_slope = 0.0_f64;
+    let mut best_sw = None;
+
+    for i in 0..N_SAMPLES {
+        let sw_a = sw_lo + i as f64 * dsw;
+        let sw_b = sw_a + dsw;
+        let fw_a = fw_at_sw(sim, cell, sw_a);
+        let fw_b = fw_at_sw(sim, cell, sw_b);
+        let slope = (fw_b - fw_a) / dsw;
+        if slope > max_slope {
+            max_slope = slope;
+            best_sw = Some(0.5 * (sw_a + sw_b));
+        }
+    }
+
+    // Only meaningful if the fw curve actually curves — skip nearly flat regions.
+    if max_slope < 1e-6 {
+        return None;
+    }
+
+    best_sw
+}
+
 /// Appleyard chop: compute the largest damping factor such that no cell variable
 /// exceeds its per-iteration limit. Returns a value in (0, 1].
-fn appleyard_damping(state: &FimState, update: &DVector<f64>, options: &FimNewtonOptions) -> f64 {
+///
+/// Also enforces the trust-region boundary at the fw inflection point (Wang & Tchelepi,
+/// 2013): if a Newton update would move Sw across the inflection point, the damping is
+/// chopped to keep the iterate on the same side. This prevents Newton from jumping into
+/// the wrong convergence basin of the fractional-flow curve, which is the primary source
+/// of nonlinear stagnation near water-breakthrough fronts.
+fn appleyard_damping(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    update: &DVector<f64>,
+    options: &FimNewtonOptions,
+) -> f64 {
     let mut max_damping = 1.0_f64;
     let n_cells = state.cells.len();
 
@@ -211,10 +321,30 @@ fn appleyard_damping(state: &FimState, update: &DVector<f64>, options: &FimNewto
             max_damping = max_damping.min(options.max_pressure_change_bar / dp);
         }
 
-        // Water saturation
+        // Water saturation — standard Appleyard limit.
         let dsw = update[offset + 1].abs();
         if dsw > 1e-12 {
             max_damping = max_damping.min(options.max_saturation_change / dsw);
+        }
+
+        // Trust-region boundary at the fw inflection point (water).
+        // If the full update would cross the inflection point, chop so Sw lands at it.
+        // This guides Newton to stay within one convergence basin of the fractional-flow
+        // curve and prevents the stagnation plateau observed at breakthrough.
+        let dsw_signed = update[offset + 1];
+        if dsw_signed.abs() > 1e-12 {
+            if let Some(sw_inflect) = fw_inflection_point_sw(sim, cell) {
+                let sw_full = cell.sw + max_damping * dsw_signed;
+                // Check if the damped step would cross the inflection point.
+                let side_before = cell.sw - sw_inflect;
+                let side_after = sw_full - sw_inflect;
+                if side_before * side_after < 0.0 {
+                    // Cross detected: chop so update stops exactly at inflection point.
+                    let dist = (sw_inflect - cell.sw).abs();
+                    let chop = (dist / dsw_signed.abs()).clamp(options.min_damping, max_damping);
+                    max_damping = max_damping.min(chop);
+                }
+            }
         }
 
         // Hydrocarbon variable (Sg or Rs)
@@ -1315,7 +1445,7 @@ pub(crate) fn run_fim_timestep(
             };
         }
 
-        let mut damping = appleyard_damping(&state, &linear_report.solution, options);
+        let mut damping = appleyard_damping(sim, &state, &linear_report.solution, options);
         let initial_damping = damping;
         let mut accepted_state = None;
         let mut accepted_via_guard_equivalence = false;
@@ -2044,7 +2174,8 @@ mod tests {
         update[1] = 0.15;
         update[2] = 0.15;
 
-        let damping = appleyard_damping(&state, &update, &FimNewtonOptions::default());
+        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        let damping = appleyard_damping(&sim, &state, &update, &FimNewtonOptions::default());
 
         assert!((damping - (2.0 / 3.0)).abs() < 1e-12);
     }

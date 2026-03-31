@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:onepetro.org)",
+      "WebFetch(domain:link.springer.com)",
+      "WebSearch",
+      "WebFetch(domain:suetri-b.stanford.edu)",
+      "WebFetch(domain:sciencedirect.com)"
+    ]
+  }
+}
