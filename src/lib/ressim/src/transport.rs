@@ -263,9 +263,16 @@ impl ReservoirSimulator {
                 actual_change_m3 += (sw_new - sw_old) * vp_m3;
                 self.sat_water[idx] = sw_new;
                 self.sat_oil[idx] = 1.0 - sw_new;
+                self.sat_gas[idx] = 0.0;
+                self.rs[idx] = 0.0;
             }
 
             self.pressure[idx] = p_new[idx];
+        }
+
+        if !self.three_phase_mode {
+            self.sat_gas.fill(0.0);
+            self.rs.fill(0.0);
         }
 
         self.record_step_report(

@@ -1995,7 +1995,10 @@ mod tests {
 
     #[test]
     fn intercell_flux_is_component_conservative() {
-        let sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.pvt.c_o = 0.0;
+        sim.pvt.c_w = 0.0;
+        sim.rock_compressibility = 0.0;
         let previous_state = FimState::from_simulator(&sim);
         let mut state = previous_state.clone();
         state.cells[0].pressure_bar = 250.0;

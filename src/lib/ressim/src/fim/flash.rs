@@ -60,7 +60,17 @@ pub(crate) fn resolve_cell_flash(
         })
         .unwrap_or(pressure_bar);
 
-    if !sim.three_phase_mode || sim.pvt_table.is_none() {
+    if !sim.three_phase_mode {
+        return FimFlashResult {
+            regime,
+            so: total_hydrocarbon_saturation,
+            sg: 0.0,
+            rs: 0.0,
+            bubble_point_bar,
+        };
+    }
+
+    if sim.pvt_table.is_none() {
         let sg = match regime {
             HydrocarbonState::Saturated => hydrocarbon_var.clamp(0.0, total_hydrocarbon_saturation),
             HydrocarbonState::Undersaturated => 0.0,

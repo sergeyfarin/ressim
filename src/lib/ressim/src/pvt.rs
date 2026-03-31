@@ -373,6 +373,14 @@ impl PvtTable {
 }
 
 impl ReservoirSimulator {
+    fn base_oil_fvf(&self, p: f64) -> f64 {
+        (self.b_o * f64::exp(-self.pvt.c_o * p)).max(1e-9)
+    }
+
+    fn base_oil_density(&self, p: f64) -> f64 {
+        self.pvt.rho_o / self.base_oil_fvf(p)
+    }
+
     pub(crate) fn get_mu_o(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             table.interpolate(p).mu_o_cp
@@ -514,7 +522,7 @@ impl ReservoirSimulator {
             }
             table.interpolate(p).bo_m3m3
         } else {
-            self.b_o
+            self.base_oil_fvf(p)
         }
     }
 
@@ -524,7 +532,7 @@ impl ReservoirSimulator {
             let (bo, _) = table.interpolate_oil(p, rs);
             (self.pvt.rho_o + rs * self.rho_g) / bo
         } else {
-            self.pvt.rho_o
+            self.base_oil_density(p)
         }
     }
 
@@ -537,7 +545,7 @@ impl ReservoirSimulator {
             }
             table.interpolate(p).bo_m3m3
         } else {
-            self.b_o
+            self.base_oil_fvf(p)
         }
     }
 
@@ -547,7 +555,7 @@ impl ReservoirSimulator {
             let props = table.oil_props_at(p, rs_sm3_sm3, self.pvt.rho_o, self.rho_g);
             props.rho_o_kg_m3
         } else {
-            self.pvt.rho_o
+            self.base_oil_density(p)
         }
     }
 
@@ -556,7 +564,7 @@ impl ReservoirSimulator {
             let row = table.interpolate(p);
             (self.pvt.rho_o + row.rs_m3m3 * self.rho_g) / row.bo_m3m3
         } else {
-            self.pvt.rho_o
+            self.base_oil_density(p)
         }
     }
 
@@ -590,7 +598,7 @@ impl ReservoirSimulator {
             }
             return table.d_bo_sat_d_p(p);
         }
-        -self.pvt.c_o * self.b_o
+        -self.pvt.c_o * self.base_oil_fvf(p)
     }
 
     pub(crate) fn get_d_bo_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
@@ -693,9 +701,9 @@ impl ReservoirSimulator {
             table.oil_props_at(p, rs_sm3_sm3, self.pvt.rho_o, self.rho_g)
         } else {
             OilProps {
-                bo_m3m3: self.b_o,
+                bo_m3m3: self.base_oil_fvf(p),
                 mu_o_cp: self.pvt.mu_o,
-                rho_o_kg_m3: self.pvt.rho_o,
+                rho_o_kg_m3: self.base_oil_density(p),
             }
         }
     }
@@ -717,6 +725,25 @@ impl ReservoirSimulator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_table_oil_props_respect_base_compressibility() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.b_o = 1.0;
+        sim.pvt.c_o = 1e-5;
+
+        let oil_lo = sim.oil_props_for_state(100.0, 0.0);
+        let oil_hi = sim.oil_props_for_state(300.0, 0.0);
+
+        assert!(oil_hi.bo_m3m3 < oil_lo.bo_m3m3);
+        assert!(oil_hi.rho_o_kg_m3 > oil_lo.rho_o_kg_m3);
+
+        let expected_bo_hi = f64::exp(-sim.pvt.c_o * 300.0);
+        assert!((oil_hi.bo_m3m3 - expected_bo_hi).abs() < 1e-12);
+
+        let derivative = sim.get_d_bo_d_p_for_state(300.0, 0.0, false);
+        assert!((derivative + sim.pvt.c_o * oil_hi.bo_m3m3).abs() < 1e-12);
+    }
 
     #[test]
     fn bg_derivative_matches_flat_bg_without_pvt_table() {
