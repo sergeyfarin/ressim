@@ -379,6 +379,24 @@ Implications:
 3. Revisit the moderate-system linear/coarse solve strategy after the cooldown slice, because near-threshold dispatch is likely part of the runtime cliff even when convergence improves.
 4. If stronger nonlinear controls are still needed after that, prefer an oscillation-triggered localized trust-region approach over another globally stricter damping rule.
 
+## Validation Update - 2026-03-31 repeated-hotspot guard-equiv suppression experiment
+
+- Change made: added a narrow Newton-side experiment in `src/lib/ressim/src/fim/newton.rs` that suppressed guard-band-equivalent acceptance when the same residual hotspot repeated under stagnation with tiny candidate state changes.
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml repeated_same_hotspot_guard_equiv_is_suppressed_when_stagnating -- --nocapture` passed while the experiment was present
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_ -- --nocapture` passed (`3 passed`)
+  - checkpoint replay of the canonical hard shelf ran via `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --checkpoint-in /tmp/fim-scan-wf12/step-0001.json --steps 1 --dt 1 --diagnostic step --no-json`
+- Observed hard-replay outcome with the experiment enabled:
+  - `FIM step done: 1219 substeps, advanced 1.000000 of 1.000000 days`
+  - `FIM retry summary: linear-bad=3 nonlinear-bad=242 mixed=0`
+  - the trace still recycled through the same boundary-water hotspot at `row=429`, `cell143=(11,11,0)` and still accepted repeated `[guard-equiv]` steps into the same micro-substep shelf
+
+Interpretation:
+
+- This hook did not move the actual hard-case metric at all. The shelf remained identical to the established replay baseline, so repeated-hotspot guard-equiv suppression is not the missing control.
+- Because the experiment added solver complexity without measurable benefit, it was removed after validation rather than left in place behind dead logic.
+- The next nonlinear slice should target a different mechanism than guard-equiv suppression, most likely outer-step memory/trust behavior or a more explicit localized oscillation detector that changes timestep policy rather than only candidate acceptance.
+
 ## Implementation Update - 2026-03-31 cooldown plus canonical backend diagnostics
 
 - Code changes:
