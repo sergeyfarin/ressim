@@ -1,4 +1,5 @@
 use crate::ReservoirSimulator;
+use super::fixtures::make_closed_gas_depletion_single_cell_sim;
 
 #[test]
 fn physics_pvt_flash_no_table_oil_compressibility_consistent() {
@@ -51,6 +52,36 @@ fn physics_pvt_flash_two_phase_zero_gas_exact() {
             (sim.sat_water[idx] + sim.sat_oil[idx] - 1.0).abs() < 1e-8,
             "sw + so should remain 1 in 2-phase FIM mode at cell {}",
             idx
+        );
+    }
+}
+
+#[test]
+fn physics_pvt_flash_tabular_bg_derivative_consistent() {
+    // Use the gas depletion fixture which has a 3-point tabular PVT: Bg goes from 0.012 at 100
+    // bar to 0.006 at 200 bar to 0.004 at 300 bar.  The analytic derivative from the table must
+    // match a central finite difference to machine precision (linear interpolation → exact FD).
+    let sim = make_closed_gas_depletion_single_cell_sim();
+
+    let dp = 1e-3;
+    for p in [125.0, 150.0, 175.0, 250.0] {
+        let bg_lo = sim.get_b_g(p - dp);
+        let bg_hi = sim.get_b_g(p + dp);
+        let fd = (bg_hi - bg_lo) / (2.0 * dp);
+        let analytic = sim.get_d_bg_d_p_for_state(p);
+
+        assert!(
+            analytic < 0.0,
+            "dBg/dp should be negative at p={} (Bg decreases with rising pressure), got {}",
+            p,
+            analytic
+        );
+        assert!(
+            (analytic - fd).abs() < 1e-8,
+            "tabular dBg/dp mismatch at p={}: analytic={:.10}, fd={:.10}",
+            p,
+            analytic,
+            fd
         );
     }
 }

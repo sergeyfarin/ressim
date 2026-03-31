@@ -33,3 +33,36 @@ fn physics_waterflood_1d_mass_conservative() {
         latest.material_balance_error_m3
     );
 }
+
+#[test]
+fn physics_waterflood_1d_injector_saturation_increases() {
+    let mut sim = make_short_waterflood_1d_sim();
+    let injector = sim.idx(0, 0, 0);
+    let mut prev_sw = sim.sat_water[injector];
+
+    for _ in 0..12 {
+        sim.step(0.25);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "1D waterflood emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+        let sw = sim.sat_water[injector];
+        assert!(
+            sw >= prev_sw - 1e-9,
+            "injector cell Sw must not decrease during waterflood: \
+             prev={:.6}, now={:.6} at t={}",
+            prev_sw,
+            sw,
+            sim.time_days
+        );
+        prev_sw = sw;
+    }
+
+    assert!(
+        prev_sw > 0.3,
+        "injector cell Sw should reach significant water saturation after injection, got {:.4}",
+        prev_sw
+    );
+}

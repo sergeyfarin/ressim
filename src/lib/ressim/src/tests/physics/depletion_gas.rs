@@ -1,4 +1,4 @@
-use super::fixtures::make_closed_gas_depletion_single_cell_sim;
+use super::fixtures::{make_closed_gas_depletion_single_cell_sim, total_gas_inventory_sc_all_cells};
 
 #[test]
 fn physics_depletion_gas_single_cell_timestep_stable() {
@@ -71,4 +71,48 @@ fn physics_depletion_gas_single_cell_runs_with_positive_gas_rate() {
     assert!(latest.avg_reservoir_pressure.is_finite());
     assert!(sim.sat_gas[0].is_finite());
     assert!(sim.sat_gas[0] >= 0.0);
+}
+
+#[test]
+fn physics_depletion_gas_single_cell_closed_system_monotone() {
+    let mut sim = make_closed_gas_depletion_single_cell_sim();
+    let mut prev_gas_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+    let mut prev_pressure = sim.pressure[0];
+
+    for _ in 0..8 {
+        sim.step(0.005);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "single-cell gas depletion emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("gas depletion should record history");
+        let gas_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+
+        assert!(
+            latest.total_production_gas > 0.0,
+            "gas rate must remain positive during closed depletion at t={}",
+            sim.time_days
+        );
+        assert!(
+            latest.avg_reservoir_pressure <= prev_pressure + 1e-9,
+            "pressure must not increase during closed gas depletion: prev={:.4}, now={:.4}",
+            prev_pressure,
+            latest.avg_reservoir_pressure
+        );
+        assert!(
+            gas_inventory_sc <= prev_gas_inventory_sc + 1e-4,
+            "gas SC inventory must not increase during closed depletion: prev={:.4}, now={:.4}",
+            prev_gas_inventory_sc,
+            gas_inventory_sc
+        );
+
+        prev_gas_inventory_sc = gas_inventory_sc;
+        prev_pressure = latest.avg_reservoir_pressure;
+    }
 }
