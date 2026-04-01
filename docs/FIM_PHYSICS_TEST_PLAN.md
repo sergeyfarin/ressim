@@ -300,6 +300,14 @@ Add family files and fast tests for:
 4. gas flood 1D
 5. gas-cap vertical column
 
+Phase 2 completeness audit after the first migration pass:
+
+1. edge-case sweeps across initial saturation, permeability, PVT response, and SCAL shape should live inside the existing Phase 2 family modules before Phase 3 adds bigger geometries
+2. the current gas-cap family is still primarily a gravity/hydrostatic sanity family; a true free-gas gas-cap runtime case with oil-gas capillary entry pressure is still missing
+3. capillary coverage is currently stronger at local/API level than at runtime scenario level; add at least one runtime case where nonzero entry pressure measurably changes migration, front behavior, or gas-cap support relative to the zero-capillary baseline
+4. well/source scenario checks now cover same-state reporting and gas-rate conversion, but shared-BHP multi-completion and Peaceman-law consistency still largely live in `well_controls.rs`
+5. anisotropy and heterogeneous geometry outcomes remain Phase 3 work, not Phase 2 regressions
+
 ### Phase 3: Add Geometry And Heterogeneity
 
 Add:
@@ -313,6 +321,7 @@ Already done as prep while reducing legacy sprawl:
 1. thin-column gas-cap gravity sanity checks already live in dedicated physics modules instead of `lib.rs`
 2. 1D gas-flood saturation-closure and large-step bounded-state checks already moved into the gas-flood family module
 3. Phase 3 should build on these by adding true 2D/3D sweep and anisotropy cases rather than redoing the same 1D/column coverage
+4. the highest-value remaining gaps after the Phase 2 audit are true runtime capillary-direction checks and geometry/anisotropy outcome checks, not more duplicate nominal 1D cases
 
 ### Phase 4: Add Slower Refinement And Analytical Probes
 
@@ -347,6 +356,8 @@ These should be added before more convergence tuning:
 4. 1D short waterflood material-balance test
 5. 1D short gas-flood material-balance test
 6. 1D vertical gas-cap gravity-on vs gravity-off comparison
+7. one runtime capillary-entry case where nonzero `pc` or `pc_og` measurably changes migration, front advance, or gas-cap support relative to the zero-capillary baseline
+8. one explicit anisotropy outcome case (`k_z / k_h`) before declaring geometry coverage complete
 
 ## Exit Criterion For Physics-First Gate
 
@@ -357,3 +368,4 @@ Before prioritizing more convergence tuning, the following should be true:
 3. at least one small 2D and one small 3D physics sanity case are green
 4. ignored refinement probes no longer show first-order contradictions in the main family cases
 5. any remaining mismatch is clearly benchmark/model-alignment work, not basic conservation or phase-accounting failure
+6. gravity and capillary are both exercised by at least one runtime scenario test in addition to local/unit checks

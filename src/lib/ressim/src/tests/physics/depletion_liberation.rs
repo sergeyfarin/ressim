@@ -1,6 +1,7 @@
 use super::fixtures::{
-    flash_below_bubble_point, make_below_bubble_point_flash_sim, total_gas_inventory_sc,
-    total_gas_inventory_sc_all_cells,
+    cumulative_component_production_sc, flash_below_bubble_point,
+    make_below_bubble_point_flash_sim, total_component_inventory_sc_all_cells,
+    total_gas_inventory_sc, total_gas_inventory_sc_all_cells,
 };
 
 fn assert_below_bubble_point_flash_conserves_total_gas_inventory(gas_redissolution_enabled: bool) {
@@ -87,4 +88,53 @@ fn physics_depletion_liberation_fim_stepping_liberates_gas() {
 #[test]
 fn physics_depletion_liberation_inventory_conserved_with_redissolution() {
     assert_below_bubble_point_flash_conserves_total_gas_inventory(true);
+}
+
+#[test]
+fn physics_depletion_liberation_component_balances_close_across_phase_transition() {
+    let mut sim = make_below_bubble_point_flash_sim(false);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
+    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+
+    let initial = total_component_inventory_sc_all_cells(&sim);
+
+    for _ in 0..5 {
+        sim.step(1.0);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "liberation component-balance case emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+    }
+
+    let final_inventory = total_component_inventory_sc_all_cells(&sim);
+    let produced = cumulative_component_production_sc(&sim);
+
+    let water_accounted = final_inventory.water_sc + produced.water_sc;
+    let oil_accounted = final_inventory.oil_sc + produced.oil_sc;
+    let gas_accounted = final_inventory.gas_sc + produced.gas_sc;
+
+    assert!(
+        (water_accounted - initial.water_sc).abs() <= initial.water_sc.max(1.0) * 1e-6,
+        "water balance drift too large across liberation transition: initial={:.6}, final+prod={:.6}",
+        initial.water_sc,
+        water_accounted
+    );
+    assert!(
+        (oil_accounted - initial.oil_sc).abs() <= initial.oil_sc.max(1.0) * 5e-3,
+        "oil balance drift too large across liberation transition: initial={:.6}, final+prod={:.6}",
+        initial.oil_sc,
+        oil_accounted
+    );
+    assert!(
+        (gas_accounted - initial.gas_sc).abs() <= initial.gas_sc.max(1.0) * 1e-2,
+        "gas balance drift too large across liberation transition: initial={:.6}, final+prod={:.6}",
+        initial.gas_sc,
+        gas_accounted
+    );
 }

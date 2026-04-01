@@ -1,6 +1,37 @@
 use super::fixtures::{make_3phase_gas_injection_sim, total_gas_inventory_sc_all_cells};
 use crate::ReservoirSimulator;
 
+#[derive(Clone, Copy)]
+struct GasFloodCase {
+    name: &'static str,
+    initial_sw: f64,
+    perm_md: f64,
+    mu_g_cp: f64,
+    c_g: f64,
+    n_g: f64,
+    gas_oil_pc_entry_bar: f64,
+}
+
+fn make_gas_flood_case(case: GasFloodCase) -> ReservoirSimulator {
+    let mut sim = make_3phase_gas_injection_sim(8, true);
+    sim.set_three_phase_rel_perm_props(
+        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, case.n_g, 0.8, 0.9, 0.7,
+    )
+    .unwrap();
+    sim.set_initial_saturation(case.initial_sw);
+    sim.set_gas_fluid_properties(case.mu_g_cp, case.c_g, 10.0)
+        .unwrap();
+    sim.set_permeability_random_seeded(case.perm_md, case.perm_md, 42)
+        .unwrap();
+    if case.gas_oil_pc_entry_bar > 0.0 {
+        sim.set_gas_oil_capillary_params(case.gas_oil_pc_entry_bar, 1.8)
+            .unwrap();
+    } else {
+        sim.pc_og = None;
+    }
+    sim
+}
+
 #[test]
 fn physics_gas_flood_1d_creates_free_gas_and_keeps_balance_bounded() {
     let mut sim = make_3phase_gas_injection_sim(8, true);
@@ -133,5 +164,94 @@ fn physics_gas_flood_large_steps_keep_state_bounded() {
         assert!(point.avg_reservoir_pressure.is_finite());
         assert!(point.avg_reservoir_pressure > 1.0);
         assert!(point.avg_reservoir_pressure < 5_000.0);
+    }
+}
+
+#[test]
+fn physics_gas_flood_case_matrix_remains_bounded_across_sat_perm_pvt_and_capillary_ranges() {
+    let cases = [
+        GasFloodCase {
+            name: "base",
+            initial_sw: 0.10,
+            perm_md: 2_000.0,
+            mu_g_cp: 0.02,
+            c_g: 1e-4,
+            n_g: 1.5,
+            gas_oil_pc_entry_bar: 0.0,
+        },
+        GasFloodCase {
+            name: "slower gas with entry pressure",
+            initial_sw: 0.15,
+            perm_md: 500.0,
+            mu_g_cp: 0.03,
+            c_g: 1.5e-4,
+            n_g: 2.0,
+            gas_oil_pc_entry_bar: 3.0,
+        },
+        GasFloodCase {
+            name: "more mobile gas",
+            initial_sw: 0.06,
+            perm_md: 5_000.0,
+            mu_g_cp: 0.015,
+            c_g: 7e-5,
+            n_g: 1.2,
+            gas_oil_pc_entry_bar: 1.0,
+        },
+    ];
+
+    for case in cases {
+        let mut sim = make_gas_flood_case(case);
+        let initial_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
+
+        for _ in 0..10 {
+            sim.step(1.0);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "{} gas flood emitted solver warning at t={}: {}",
+                case.name,
+                sim.time_days,
+                sim.last_solver_warning
+            );
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("gas flood case matrix should record history");
+        let final_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
+
+        assert!(
+            final_avg_sg > initial_avg_sg + 1e-8,
+            "{} average Sg should increase: initial={:.6}, final={:.6}",
+            case.name,
+            initial_avg_sg,
+            final_avg_sg
+        );
+        assert!(latest.total_production_gas.is_finite());
+        assert!(latest.producing_gor.is_finite());
+        assert!(
+            latest.material_balance_error_gas_m3 < 8.0e3,
+            "{} gas MB drift too large: {} Sm3",
+            case.name,
+            latest.material_balance_error_gas_m3
+        );
+
+        for (idx, (&sw, (&so, &sg))) in sim
+            .sat_water
+            .iter()
+            .zip(sim.sat_oil.iter().zip(sim.sat_gas.iter()))
+            .enumerate()
+        {
+            let sum = sw + so + sg;
+            assert!(
+                (sum - 1.0).abs() < 1e-8,
+                "{} saturation closure failed at cell {}: sw={:.6}, so={:.6}, sg={:.6}",
+                case.name,
+                idx,
+                sw,
+                so,
+                sg
+            );
+        }
     }
 }
