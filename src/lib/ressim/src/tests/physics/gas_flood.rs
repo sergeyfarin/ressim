@@ -1,4 +1,7 @@
-use super::fixtures::{make_3phase_gas_injection_sim, total_gas_inventory_sc_all_cells};
+use super::fixtures::{
+    cumulative_component_production_sc, make_3phase_gas_injection_sim,
+    total_component_inventory_sc_all_cells, total_gas_inventory_sc_all_cells,
+};
 use super::super::make_spe1_like_grid_sim;
 use crate::ReservoirSimulator;
 
@@ -46,6 +49,19 @@ fn cumulative_gas_production_sc(sim: &ReservoirSimulator) -> f64 {
     cumulative_gas
 }
 
+fn cumulative_gas_injection_sc(sim: &ReservoirSimulator) -> f64 {
+    let mut cumulative_gas = 0.0;
+    let mut previous_time_days = 0.0;
+
+    for point in &sim.rate_history {
+        let dt_days = point.time - previous_time_days;
+        previous_time_days = point.time;
+        cumulative_gas += point.total_injection.max(0.0) * dt_days;
+    }
+
+    cumulative_gas
+}
+
 #[test]
 fn physics_gas_flood_1d_creates_free_gas_and_keeps_balance_bounded() {
     let mut sim = make_3phase_gas_injection_sim(8, true);
@@ -87,6 +103,51 @@ fn physics_gas_flood_1d_creates_free_gas_and_keeps_balance_bounded() {
         latest.material_balance_error_gas_m3 < 5.0e3,
         "1D gas flood gas MB drift too large: {} Sm3",
         latest.material_balance_error_gas_m3
+    );
+}
+
+#[test]
+fn physics_gas_flood_1d_short_material_balance_matches_inventory_change() {
+    let mut sim = make_3phase_gas_injection_sim(8, true);
+    let initial_inventory = total_component_inventory_sc_all_cells(&sim);
+
+    for _ in 0..8 {
+        sim.step(0.5);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "short 1D gas flood MB case emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+    }
+
+    let final_inventory = total_component_inventory_sc_all_cells(&sim);
+    let produced = cumulative_component_production_sc(&sim);
+    let injected_gas_sc = cumulative_gas_injection_sc(&sim);
+
+    let water_accounted = final_inventory.water_sc + produced.water_sc;
+    let oil_accounted = final_inventory.oil_sc + produced.oil_sc;
+    let gas_accounted = final_inventory.gas_sc + produced.gas_sc;
+    let expected_gas_sc = initial_inventory.gas_sc + injected_gas_sc;
+
+    assert!(
+        (water_accounted - initial_inventory.water_sc).abs()
+            <= initial_inventory.water_sc.max(1.0) * 5e-6,
+        "short 1D gas flood water balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_inventory.water_sc,
+        water_accounted
+    );
+    assert!(
+        (oil_accounted - initial_inventory.oil_sc).abs() <= initial_inventory.oil_sc.max(1.0) * 5e-3,
+        "short 1D gas flood oil balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_inventory.oil_sc,
+        oil_accounted
+    );
+    assert!(
+        (gas_accounted - expected_gas_sc).abs() <= expected_gas_sc.max(1.0) * 1e-2,
+        "short 1D gas flood gas balance drift too large: initial+inj={:.6}, final+prod={:.6}",
+        expected_gas_sc,
+        gas_accounted
     );
 }
 

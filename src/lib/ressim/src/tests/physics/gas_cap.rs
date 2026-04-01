@@ -307,6 +307,103 @@ fn physics_gas_cap_free_gas_runtime_capillary_entry_changes_gas_cap_support() {
 }
 
 #[test]
+fn physics_gas_cap_free_gas_runtime_gravity_on_vs_off_changes_delivery() {
+    let mut gravity_on = make_free_gas_cap_runtime_sim(0.0);
+    let mut gravity_off = make_free_gas_cap_runtime_sim(0.0);
+    gravity_off.set_gravity_enabled(false);
+
+    let initial_on = total_component_inventory_sc_all_cells(&gravity_on);
+    let initial_off = total_component_inventory_sc_all_cells(&gravity_off);
+
+    for _ in 0..8 {
+        gravity_on.step(0.5);
+        gravity_off.step(0.5);
+
+        assert!(
+            gravity_on.last_solver_warning.is_empty(),
+            "free-gas gas-cap gravity-on case emitted solver warning at t={}: {}",
+            gravity_on.time_days,
+            gravity_on.last_solver_warning
+        );
+        assert!(
+            gravity_off.last_solver_warning.is_empty(),
+            "free-gas gas-cap gravity-off case emitted solver warning at t={}: {}",
+            gravity_off.time_days,
+            gravity_off.last_solver_warning
+        );
+    }
+
+    let top_id = gravity_on.idx(0, 0, 0);
+    let bottom_id = gravity_on.idx(0, 0, 2);
+    let produced_on = cumulative_component_production_sc(&gravity_on);
+    let produced_off = cumulative_component_production_sc(&gravity_off);
+    let final_on = total_component_inventory_sc_all_cells(&gravity_on);
+    let final_off = total_component_inventory_sc_all_cells(&gravity_off);
+
+    assert!(
+        (gravity_on.sat_gas[bottom_id] - gravity_off.sat_gas[bottom_id]).abs() > 1e-2,
+        "gravity-on gas-cap runtime should measurably change producer-layer gas arrival: on={:.6}, off={:.6}",
+        gravity_on.sat_gas[bottom_id],
+        gravity_off.sat_gas[bottom_id]
+    );
+    assert!(
+        (produced_on.gas_sc - produced_off.gas_sc).abs() > 1e-1,
+        "gravity-on gas-cap runtime should measurably change gas delivery to the producer over the short horizon: on={:.6}, off={:.6}",
+        produced_on.gas_sc,
+        produced_off.gas_sc
+    );
+    assert!(
+        gravity_on.sat_gas[top_id].is_finite() && gravity_off.sat_gas[top_id].is_finite(),
+        "cap-layer gas saturation should remain finite under gravity-on/off runtime comparison"
+    );
+
+    let on_water_accounted = final_on.water_sc + produced_on.water_sc;
+    let on_oil_accounted = final_on.oil_sc + produced_on.oil_sc;
+    let on_gas_accounted = final_on.gas_sc + produced_on.gas_sc;
+    let off_water_accounted = final_off.water_sc + produced_off.water_sc;
+    let off_oil_accounted = final_off.oil_sc + produced_off.oil_sc;
+    let off_gas_accounted = final_off.gas_sc + produced_off.gas_sc;
+
+    assert!(
+        (on_water_accounted - initial_on.water_sc).abs() <= initial_on.water_sc.max(1.0) * 5e-6,
+        "gravity-on water balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_on.water_sc,
+        on_water_accounted
+    );
+    assert!(
+        (on_oil_accounted - initial_on.oil_sc).abs() <= initial_on.oil_sc.max(1.0) * 5e-3,
+        "gravity-on oil balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_on.oil_sc,
+        on_oil_accounted
+    );
+    assert!(
+        (on_gas_accounted - initial_on.gas_sc).abs() <= initial_on.gas_sc.max(1.0) * 1e-2,
+        "gravity-on gas balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_on.gas_sc,
+        on_gas_accounted
+    );
+
+    assert!(
+        (off_water_accounted - initial_off.water_sc).abs() <= initial_off.water_sc.max(1.0) * 5e-6,
+        "gravity-off water balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_off.water_sc,
+        off_water_accounted
+    );
+    assert!(
+        (off_oil_accounted - initial_off.oil_sc).abs() <= initial_off.oil_sc.max(1.0) * 5e-3,
+        "gravity-off oil balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_off.oil_sc,
+        off_oil_accounted
+    );
+    assert!(
+        (off_gas_accounted - initial_off.gas_sc).abs() <= initial_off.gas_sc.max(1.0) * 1e-2,
+        "gravity-off gas balance drift too large: initial={:.6}, final+prod={:.6}",
+        initial_off.gas_sc,
+        off_gas_accounted
+    );
+}
+
+#[test]
 #[ignore = "explicit refinement probe: gravity-column evolution should stay stable under coarse-vs-fine timesteps"]
 fn physics_gas_cap_gravity_column_timestep_refinement_keeps_profile_stable() {
     let case = GravityColumnCase {

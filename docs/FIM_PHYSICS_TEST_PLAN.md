@@ -366,17 +366,23 @@ Current progress:
 
 ## Immediate Next Tests To Add
 
-These should be added before more convergence tuning:
+The original immediate-next physics holes are now covered in the owning family modules:
 
-1. producer well/source/reporting consistency in a 1-cell oil depletion fixture
-2. single-cell gas depletion storage and material-balance test
-3. single-cell depletion-with-liberation total-gas conservation test with and without redissolution
-4. 1D short waterflood material-balance test
-5. 1D short gas-flood material-balance test
-6. 1D vertical gas-cap gravity-on vs gravity-off comparison
-7. one runtime capillary-entry case where nonzero `pc` or `pc_og` measurably changes migration, front advance, or gas-cap support relative to the zero-capillary baseline
-8. one explicit anisotropy outcome case (`k_z / k_h`) before declaring geometry coverage complete
-9. one refined geometry probe with row count safely above the direct-solve threshold so the iterative backend path is covered explicitly
+1. 1-cell oil-depletion producer well/source/reporting consistency now lives in `physics/wells_sources.rs`
+2. single-cell gas-depletion storage and material-balance coverage now lives in `physics/depletion_gas.rs`
+3. single-cell depletion-with-liberation total-gas conservation with and without redissolution now lives in `physics/depletion_liberation.rs`
+4. short 1D waterflood material-balance coverage now lives in `physics/waterflood.rs`
+5. short 1D gas-flood material-balance coverage now lives in `physics/gas_flood.rs`
+6. runtime gas-cap gravity-on vs gravity-off comparison now lives in `physics/gas_cap.rs`
+7. runtime capillary-entry gas-cap comparison now lives in `physics/gas_cap.rs`
+8. explicit anisotropy outcome coverage now lives in `physics/geometry_anisotropy.rs`
+9. the refined geometry probe that crosses the iterative linear-backend path now lives in `physics/geometry_anisotropy.rs`
+
+The next highest-value additions before more convergence tuning are:
+
+1. tighten direct transmissibility / face-flux oracles so geometry coverage is not only outcome-based
+2. promote at least one benchmark-parity probe per major family from diagnostic envelope to true acceptance check as the known model-alignment gaps close
+3. add stronger runtime oil-component material-balance reporting or keep expanding family-owned inventory tests until that reporting exists
 
 ## Exit Criterion For Physics-First Gate
 

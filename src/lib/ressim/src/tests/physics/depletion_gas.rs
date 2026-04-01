@@ -144,6 +144,75 @@ fn physics_depletion_gas_single_cell_runs_with_positive_gas_rate() {
 }
 
 #[test]
+fn physics_depletion_gas_single_cell_storage_and_material_balance_close() {
+    let mut sim = make_closed_gas_depletion_single_cell_sim();
+    let initial_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+
+    for _ in 0..8 {
+        sim.step(0.005);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "single-cell gas depletion storage case emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+    }
+
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("single-cell gas depletion storage case should record history");
+    let final_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+    let cumulative_gas_sc = cumulative_gas_production_sc(&sim);
+    let accounted_gas_sc = final_inventory_sc + cumulative_gas_sc;
+    let gas_balance_rel_diff =
+        ((accounted_gas_sc - initial_inventory_sc) / initial_inventory_sc.max(1e-12)).abs();
+
+    assert!(
+        latest.total_production_gas > 0.0,
+        "single-cell gas depletion should keep producing gas, got {}",
+        latest.total_production_gas
+    );
+    assert!(
+        final_inventory_sc <= initial_inventory_sc + 1e-4,
+        "single-cell gas depletion should not create in-place gas inventory: initial={:.6}, final={:.6}",
+        initial_inventory_sc,
+        final_inventory_sc
+    );
+    assert!(
+        latest.material_balance_error_gas_m3.is_finite(),
+        "single-cell gas depletion gas MB diagnostic should stay finite, got {}",
+        latest.material_balance_error_gas_m3
+    );
+    assert!(
+        gas_balance_rel_diff <= 0.15,
+        "single-cell gas depletion material balance envelope drift too large: initial={:.6}, final+prod={:.6}, rel_diff={:.4}",
+        initial_inventory_sc,
+        accounted_gas_sc,
+        gas_balance_rel_diff
+    );
+}
+
+#[test]
+fn physics_depletion_gas_single_cell_storage_tracks_bg_response() {
+    let mut high_pressure = make_closed_gas_depletion_single_cell_sim();
+    let mut low_pressure = make_closed_gas_depletion_single_cell_sim();
+
+    high_pressure.pressure[0] = 300.0;
+    low_pressure.pressure[0] = 100.0;
+
+    let high_pressure_inventory_sc = total_gas_inventory_sc_all_cells(&high_pressure);
+    let low_pressure_inventory_sc = total_gas_inventory_sc_all_cells(&low_pressure);
+
+    assert!(
+        high_pressure_inventory_sc > low_pressure_inventory_sc,
+        "single-cell gas storage should scale with Bg(p): high-pressure inventory={:.6}, low-pressure inventory={:.6}",
+        high_pressure_inventory_sc,
+        low_pressure_inventory_sc
+    );
+}
+
+#[test]
 fn physics_depletion_gas_single_cell_closed_system_monotone() {
     let mut sim = make_closed_gas_depletion_single_cell_sim();
     let mut prev_gas_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
