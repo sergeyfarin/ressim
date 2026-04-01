@@ -138,3 +138,77 @@ fn physics_depletion_liberation_component_balances_close_across_phase_transition
         gas_accounted
     );
 }
+
+#[test]
+#[ignore = "explicit refinement probe: liberation-through-bubble-point should stay stable under coarse-vs-fine timesteps"]
+fn physics_depletion_liberation_timestep_refinement_keeps_transition_accounting_stable() {
+    let mut coarse = make_below_bubble_point_flash_sim(false);
+    coarse.set_fim_enabled(true);
+    coarse.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
+    coarse.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    coarse.set_gravity_enabled(false);
+    coarse.set_stability_params(0.05, 75.0, 0.75);
+    coarse.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+
+    let mut fine = make_below_bubble_point_flash_sim(false);
+    fine.set_fim_enabled(true);
+    fine.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
+    fine.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    fine.set_gravity_enabled(false);
+    fine.set_stability_params(0.05, 75.0, 0.75);
+    fine.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+
+    for _ in 0..5 {
+        coarse.step(1.0);
+        assert!(
+            coarse.last_solver_warning.is_empty(),
+            "coarse liberation refinement case emitted solver warning at t={}: {}",
+            coarse.time_days,
+            coarse.last_solver_warning
+        );
+    }
+    for _ in 0..10 {
+        fine.step(0.5);
+        assert!(
+            fine.last_solver_warning.is_empty(),
+            "fine liberation refinement case emitted solver warning at t={}: {}",
+            fine.time_days,
+            fine.last_solver_warning
+        );
+    }
+
+    let coarse_final = total_component_inventory_sc_all_cells(&coarse);
+    let fine_final = total_component_inventory_sc_all_cells(&fine);
+    let coarse_produced = cumulative_component_production_sc(&coarse);
+    let fine_produced = cumulative_component_production_sc(&fine);
+
+    let coarse_gas_accounted = coarse_final.gas_sc + coarse_produced.gas_sc;
+    let fine_gas_accounted = fine_final.gas_sc + fine_produced.gas_sc;
+    let gas_accounted_rel_diff =
+        ((coarse_gas_accounted - fine_gas_accounted) / fine_gas_accounted.max(1e-12)).abs();
+    let sg_abs_diff = (coarse.sat_gas[0] - fine.sat_gas[0]).abs();
+    let pressure_rel_diff = ((coarse.pressure[0] - fine.pressure[0]) / fine.pressure[0].max(1e-12))
+        .abs();
+
+    assert!(
+        gas_accounted_rel_diff <= 0.03,
+        "liberation transition gas accounting drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_gas_accounted,
+        fine_gas_accounted,
+        gas_accounted_rel_diff
+    );
+    assert!(
+        sg_abs_diff <= 0.03,
+        "liberation transition free-gas saturation drift too large under timestep refinement: coarse={:.6}, fine={:.6}, abs_diff={:.6}",
+        coarse.sat_gas[0],
+        fine.sat_gas[0],
+        sg_abs_diff
+    );
+    assert!(
+        pressure_rel_diff <= 0.03,
+        "liberation transition pressure drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse.pressure[0],
+        fine.pressure[0],
+        pressure_rel_diff
+    );
+}

@@ -323,6 +323,14 @@ Already done as prep while reducing legacy sprawl:
 3. Phase 3 should build on these by adding true 2D/3D sweep and anisotropy cases rather than redoing the same 1D/column coverage
 4. the highest-value remaining gaps after the Phase 2 audit are true runtime capillary-direction checks and geometry/anisotropy outcome checks, not more duplicate nominal 1D cases
 
+Phase 3 start criteria and coverage shape:
+
+1. keep at least one fast 2D areal heterogeneity case for waterflood and one for gas flood, with explicit directional expectations such as high-perm streaks advancing fronts faster than flanks
+2. keep at least one fast 3D layered anisotropy case where changing `k_z / k_h` measurably changes vertical communication or gravity segregation speed in the expected direction
+3. add at least one ignored refined geometry case with enough cells to exercise the iterative linear backend instead of only the small direct-solve path
+4. prefer paired fast and slow variants of the same physical idea so default regressions stay cheap while refined probes still cover larger systems
+5. base the gravity-segregation expectations on classical unstable-to-stable segregation behavior, as used in industry examples such as MRST gravity-segregation demonstrations, and base heterogeneity expectations on standard high-perm-streak sweep ordering used in black-oil benchmark practice
+
 ### Phase 4: Add Slower Refinement And Analytical Probes
 
 Add ignored probes for:
@@ -331,6 +339,14 @@ Add ignored probes for:
 2. selected grid refinement checks
 3. late-time analytical comparisons
 4. future benchmark parity probes
+
+Phase 4 kickoff status:
+
+1. the depletion-oil family now owns the ignored `dep_pss` timestep-refinement probe and a late-time Dietz comparison diagnostic, instead of leaving those probes only in the legacy depletion test module
+2. the waterflood, gas-flood, gas-depletion, liberation, and gas-cap families now each have an ignored coarse-vs-fine refinement probe attached directly to the owning family fixture
+3. the waterflood family now owns the Buckley early-profile parity probe and the refined-discretization benchmark probe, and the gas-flood family now owns the larger-grid SPE1-like gas-injection breakthrough probe that used to live outside the family modules
+4. both the late-time Dietz probe and the Buckley early-profile parity probe should currently be treated as diagnostic envelopes, not as solved acceptance gates: the repo still shows known model-alignment mismatch there, so these probes are meant to catch catastrophic regressions while that gap stays open
+5. the next Phase 4 slice should focus on any remaining slower benchmark-parity and larger-grid probes that still live outside the family modules or remain only as legacy diagnostics
 
 Already done as prep while reducing legacy sprawl:
 
@@ -343,7 +359,9 @@ Current progress:
 
 1. PVT/flash, depletion oil, depletion gas, liberation, gas flood, gas cap, and well/source scenario checks have already started moving out of `lib.rs`
 2. duplicate gravity, two-phase zero-gas, gas-flood scenario, and gas-specific reporting checks were already consolidated into family modules where they fit better
-3. the remaining Phase 5 work should focus on runtime/API tests that truly belong in `lib.rs` versus additional scenario-scale physics checks that still need domain homes
+3. the last mixed crate-root runtime/API, three-phase, and geometry/reporting groups now live in dedicated domain files: `src/lib/ressim/src/tests/runtime_api.rs`, `src/lib/ressim/src/tests/three_phase.rs`, and `src/lib/ressim/src/tests/geometry_api.rs`
+4. `src/lib/ressim/src/lib.rs` now keeps only shared test helpers plus explicit benchmark fixture builders used by submodules such as the SPE1-like gas-injection probes
+5. the remaining non-family files outside `src/lib/ressim/src/tests/physics/` are intentional benchmark or API-contract homes, not leftover scenario-scale physics tests waiting for a family owner
 
 
 ## Immediate Next Tests To Add
@@ -358,6 +376,7 @@ These should be added before more convergence tuning:
 6. 1D vertical gas-cap gravity-on vs gravity-off comparison
 7. one runtime capillary-entry case where nonzero `pc` or `pc_og` measurably changes migration, front advance, or gas-cap support relative to the zero-capillary baseline
 8. one explicit anisotropy outcome case (`k_z / k_h`) before declaring geometry coverage complete
+9. one refined geometry probe with row count safely above the direct-solve threshold so the iterative backend path is covered explicitly
 
 ## Exit Criterion For Physics-First Gate
 
@@ -369,3 +388,4 @@ Before prioritizing more convergence tuning, the following should be true:
 4. ignored refinement probes no longer show first-order contradictions in the main family cases
 5. any remaining mismatch is clearly benchmark/model-alignment work, not basic conservation or phase-accounting failure
 6. gravity and capillary are both exercised by at least one runtime scenario test in addition to local/unit checks
+7. geometry coverage includes both a cheap default case and at least one larger ignored case that crosses the iterative linear-backend path

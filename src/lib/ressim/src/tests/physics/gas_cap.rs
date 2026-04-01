@@ -305,3 +305,68 @@ fn physics_gas_cap_free_gas_runtime_capillary_entry_changes_gas_cap_support() {
         with_cap_gas_accounted
     );
 }
+
+#[test]
+#[ignore = "explicit refinement probe: gravity-column evolution should stay stable under coarse-vs-fine timesteps"]
+fn physics_gas_cap_gravity_column_timestep_refinement_keeps_profile_stable() {
+    let case = GravityColumnCase {
+        name: "refinement moderate capillary",
+        perm_md: 20_000.0,
+        initial_sw: 0.85,
+        pc_entry_bar: 2.0,
+    };
+    let mut coarse = run_gravity_column_case(case, true);
+    let mut fine = run_gravity_column_case(case, true);
+
+    coarse.step(2.0);
+    assert!(
+        coarse.last_solver_warning.is_empty(),
+        "coarse gas-cap refinement case emitted solver warning at t={}: {}",
+        coarse.time_days,
+        coarse.last_solver_warning
+    );
+    for _ in 0..4 {
+        fine.step(0.5);
+        assert!(
+            fine.last_solver_warning.is_empty(),
+            "fine gas-cap refinement case emitted solver warning at t={}: {}",
+            fine.time_days,
+            fine.last_solver_warning
+        );
+    }
+
+    let coarse_top_pressure = coarse.pressure[coarse.idx(0, 0, 0)];
+    let fine_top_pressure = fine.pressure[fine.idx(0, 0, 0)];
+    let coarse_bottom_pressure = coarse.pressure[coarse.idx(0, 0, 2)];
+    let fine_bottom_pressure = fine.pressure[fine.idx(0, 0, 2)];
+    let coarse_top_sw = coarse.sat_water[coarse.idx(0, 0, 0)];
+    let fine_top_sw = fine.sat_water[fine.idx(0, 0, 0)];
+
+    let top_pressure_rel_diff =
+        ((coarse_top_pressure - fine_top_pressure) / fine_top_pressure.max(1e-12)).abs();
+    let bottom_pressure_rel_diff =
+        ((coarse_bottom_pressure - fine_bottom_pressure) / fine_bottom_pressure.max(1e-12)).abs();
+    let top_sw_abs_diff = (coarse_top_sw - fine_top_sw).abs();
+
+    assert!(
+        top_pressure_rel_diff <= 0.01,
+        "gas-cap gravity-column top-pressure drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_top_pressure,
+        fine_top_pressure,
+        top_pressure_rel_diff
+    );
+    assert!(
+        bottom_pressure_rel_diff <= 0.01,
+        "gas-cap gravity-column bottom-pressure drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_bottom_pressure,
+        fine_bottom_pressure,
+        bottom_pressure_rel_diff
+    );
+    assert!(
+        top_sw_abs_diff <= 0.01,
+        "gas-cap gravity-column top-cell Sw drift too large under timestep refinement: coarse={:.6}, fine={:.6}, abs_diff={:.6}",
+        coarse_top_sw,
+        fine_top_sw,
+        top_sw_abs_diff
+    );
+}

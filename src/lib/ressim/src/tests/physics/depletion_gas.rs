@@ -57,6 +57,19 @@ fn make_gas_depletion_case(case: GasDepletionCase) -> crate::ReservoirSimulator 
     sim
 }
 
+fn cumulative_gas_production_sc(sim: &crate::ReservoirSimulator) -> f64 {
+    let mut cumulative_gas = 0.0;
+    let mut previous_time_days = 0.0;
+
+    for point in &sim.rate_history {
+        let dt_days = point.time - previous_time_days;
+        previous_time_days = point.time;
+        cumulative_gas += point.total_production_gas.max(0.0) * dt_days;
+    }
+
+    cumulative_gas
+}
+
 #[test]
 fn physics_depletion_gas_single_cell_timestep_stable() {
     let mut coarse = make_closed_gas_depletion_single_cell_sim();
@@ -258,4 +271,65 @@ fn physics_depletion_gas_case_matrix_stays_physical_across_sat_perm_pvt_and_scal
             sim.sat_gas[0]
         );
     }
+}
+
+#[test]
+#[ignore = "explicit refinement probe: single-cell gas depletion should stay stable under a longer coarse-vs-fine horizon"]
+fn physics_depletion_gas_single_cell_timestep_refinement_keeps_inventory_stable() {
+    let mut coarse = make_closed_gas_depletion_single_cell_sim();
+    let mut fine = make_closed_gas_depletion_single_cell_sim();
+
+    for _ in 0..8 {
+        coarse.step(0.005);
+        assert!(
+            coarse.last_solver_warning.is_empty(),
+            "coarse single-cell gas depletion emitted solver warning at t={}: {}",
+            coarse.time_days,
+            coarse.last_solver_warning
+        );
+    }
+    for _ in 0..16 {
+        fine.step(0.0025);
+        assert!(
+            fine.last_solver_warning.is_empty(),
+            "fine single-cell gas depletion emitted solver warning at t={}: {}",
+            fine.time_days,
+            fine.last_solver_warning
+        );
+    }
+
+    let coarse_last = coarse.rate_history.last().expect("coarse gas depletion should record history");
+    let fine_last = fine.rate_history.last().expect("fine gas depletion should record history");
+    let coarse_inventory = total_gas_inventory_sc_all_cells(&coarse);
+    let fine_inventory = total_gas_inventory_sc_all_cells(&fine);
+    let coarse_cum_gas = cumulative_gas_production_sc(&coarse);
+    let fine_cum_gas = cumulative_gas_production_sc(&fine);
+
+    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure - fine_last.avg_reservoir_pressure)
+        / fine_last.avg_reservoir_pressure.max(1e-12))
+    .abs();
+    let inventory_rel_diff = ((coarse_inventory - fine_inventory) / fine_inventory.max(1e-12)).abs();
+    let cumulative_gas_rel_diff = ((coarse_cum_gas - fine_cum_gas) / fine_cum_gas.max(1e-12)).abs();
+
+    assert!(
+        pressure_rel_diff <= 0.02,
+        "single-cell gas depletion avg-pressure drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_last.avg_reservoir_pressure,
+        fine_last.avg_reservoir_pressure,
+        pressure_rel_diff
+    );
+    assert!(
+        inventory_rel_diff <= 0.03,
+        "single-cell gas depletion inventory drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_inventory,
+        fine_inventory,
+        inventory_rel_diff
+    );
+    assert!(
+        cumulative_gas_rel_diff <= 0.05,
+        "single-cell gas depletion cumulative-gas drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_cum_gas,
+        fine_cum_gas,
+        cumulative_gas_rel_diff
+    );
 }

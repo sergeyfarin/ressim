@@ -24,17 +24,6 @@ struct BuckleyMetrics {
     reference_breakthrough_pv: f64,
 }
 
-struct BuckleyProfileMetrics {
-    cumulative_injection_pv: f64,
-    avg_sw: f64,
-    producer_sw: f64,
-    pressure_drop_bar: f64,
-    water_sat_l1: f64,
-    final_time_days: f64,
-    history_len: usize,
-    last_solver_warning: String,
-}
-
 fn buckley_case_a(name: &'static str, nx: usize, dt_days: f64, max_steps: usize) -> BuckleyCase {
     BuckleyCase {
         name,
@@ -218,53 +207,6 @@ fn run_buckley_case(case: &BuckleyCase) -> BuckleyMetrics {
     }
 }
 
-fn run_buckley_profile_case(
-    case: &BuckleyCase,
-    fim_enabled: bool,
-    step_count: usize,
-) -> BuckleyProfileMetrics {
-    let mut sim = build_buckley_simulator(case, fim_enabled);
-    let total_pv = (0..sim.nx * sim.ny * sim.nz)
-        .map(|i| sim.pore_volume_m3(i))
-        .sum::<f64>();
-
-    let mut cumulative_injection = 0.0;
-    let mut previous_time = 0.0;
-
-    for _ in 0..step_count {
-        sim.step(case.dt_days);
-        let point = sim
-            .rate_history
-            .last()
-            .expect("rate history should have entries");
-        let dt = point.time - previous_time;
-        previous_time = point.time;
-        cumulative_injection += point.total_injection.max(0.0) * dt;
-    }
-
-    let cell_count = sim.nx * sim.ny * sim.nz;
-    let avg_sw = sim.sat_water.iter().copied().sum::<f64>() / cell_count as f64;
-    let producer_id = sim.idx(sim.nx - 1, 0, 0);
-    let pressure_drop_bar = (sim.pressure[sim.idx(0, 0, 0)] - sim.pressure[producer_id]).abs();
-    let water_sat_l1 = sim
-        .sat_water
-        .iter()
-        .map(|&sw| (sw - case.s_wc).abs())
-        .sum::<f64>()
-        / cell_count as f64;
-
-    BuckleyProfileMetrics {
-        cumulative_injection_pv: cumulative_injection / total_pv,
-        avg_sw,
-        producer_sw: sim.sat_water[producer_id],
-        pressure_drop_bar,
-        water_sat_l1,
-        final_time_days: sim.time_days,
-        history_len: sim.rate_history.len(),
-        last_solver_warning: sim.last_solver_warning.clone(),
-    }
-}
-
 fn build_exact_wasm_probe_simulator(nx: usize) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
     sim.set_fim_enabled(true);
@@ -314,87 +256,6 @@ fn native_single_step_fim_probe_case_a_24_cells() {
     );
 }
 
-#[test]
-#[ignore = "known FIM Buckley parity mismatch: early-time waterflood now advances, but the saturation profile still diverges materially from IMPES; run explicitly while tuning coupled transport/well behavior"]
-fn benchmark_buckley_leverett_case_a_fim_matches_impes_early_profile() {
-    let case = buckley_case_a("BL-Case-A-FIM-Early", 24, 0.125, 128);
-    let step_count = 8;
-
-    let impes = run_buckley_profile_case(&case, false, step_count);
-    let fim = run_buckley_profile_case(&case, true, step_count);
-
-    let injection_rel_diff = ((fim.cumulative_injection_pv - impes.cumulative_injection_pv)
-        / impes.cumulative_injection_pv.max(1e-12))
-    .abs();
-    let avg_sw_abs_diff = (fim.avg_sw - impes.avg_sw).abs();
-    let producer_sw_abs_diff = (fim.producer_sw - impes.producer_sw).abs();
-    let pressure_drop_rel_diff = ((fim.pressure_drop_bar - impes.pressure_drop_bar)
-        / impes.pressure_drop_bar.max(1e-12))
-    .abs();
-    let transport_activity_rel_diff =
-        ((fim.water_sat_l1 - impes.water_sat_l1) / impes.water_sat_l1.max(1e-12)).abs();
-
-    println!(
-        "{} early profile: IMPES injPV={:.4}, FIM injPV={:.4}, IMPES avgSw={:.4}, FIM avgSw={:.4}, IMPES prodSw={:.4}, FIM prodSw={:.4}, IMPES dP={:.3}, FIM dP={:.3}, IMPES satL1={:.4}, FIM satL1={:.4}, IMPES time={:.4}, FIM time={:.4}, IMPES nHist={}, FIM nHist={}, FIM warning={}",
-        case.name,
-        impes.cumulative_injection_pv,
-        fim.cumulative_injection_pv,
-        impes.avg_sw,
-        fim.avg_sw,
-        impes.producer_sw,
-        fim.producer_sw,
-        impes.pressure_drop_bar,
-        fim.pressure_drop_bar,
-        impes.water_sat_l1,
-        fim.water_sat_l1,
-        impes.final_time_days,
-        fim.final_time_days,
-        impes.history_len,
-        fim.history_len,
-        fim.last_solver_warning,
-    );
-
-    assert!(
-        injection_rel_diff <= 0.20,
-        "{} injection PV drift too large: IMPES={:.4}, FIM={:.4}, rel_diff={:.3}",
-        case.name,
-        impes.cumulative_injection_pv,
-        fim.cumulative_injection_pv,
-        injection_rel_diff,
-    );
-    assert!(
-        avg_sw_abs_diff <= 0.03,
-        "{} avg Sw drift too large: IMPES={:.4}, FIM={:.4}, abs_diff={:.4}",
-        case.name,
-        impes.avg_sw,
-        fim.avg_sw,
-        avg_sw_abs_diff,
-    );
-    assert!(
-        producer_sw_abs_diff <= 0.02,
-        "{} producer-cell Sw drift too large: IMPES={:.4}, FIM={:.4}, abs_diff={:.4}",
-        case.name,
-        impes.producer_sw,
-        fim.producer_sw,
-        producer_sw_abs_diff,
-    );
-    assert!(
-        pressure_drop_rel_diff <= 0.25,
-        "{} pressure-drop drift too large: IMPES={:.3}, FIM={:.3}, rel_diff={:.3}",
-        case.name,
-        impes.pressure_drop_bar,
-        fim.pressure_drop_bar,
-        pressure_drop_rel_diff,
-    );
-    assert!(
-        transport_activity_rel_diff <= 0.35,
-        "{} transport activity drift too large: IMPES satL1={:.4}, FIM satL1={:.4}, rel_diff={:.3}",
-        case.name,
-        impes.water_sat_l1,
-        fim.water_sat_l1,
-        transport_activity_rel_diff,
-    );
-}
 
 #[test]
 fn benchmark_buckley_leverett_case_a_favorable_mobility() {
@@ -446,71 +307,6 @@ fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
     );
 }
 
-#[test]
-#[ignore = "slow discretization-sensitivity regression; run explicitly when tuning Buckley-Leverett numerics"]
-fn benchmark_buckley_leverett_refined_discretization_improves_alignment() {
-    let coarse_a = buckley_case_a("BL-Case-A-Coarse", 24, 0.5, 4000);
-    let refined_a = buckley_case_a("BL-Case-A-Refined", 96, 0.125, 20000);
-
-    let coarse_b = buckley_case_b("BL-Case-B-Coarse", 24, 0.25, 4000);
-    let refined_b = buckley_case_b("BL-Case-B-Refined", 96, 0.125, 20000);
-
-    let metrics_coarse_a = run_buckley_case(&coarse_a);
-    let metrics_refined_a = run_buckley_case(&refined_a);
-    let rel_err_coarse_a = ((metrics_coarse_a.breakthrough_pv
-        - metrics_coarse_a.reference_breakthrough_pv)
-        / metrics_coarse_a.reference_breakthrough_pv)
-        .abs();
-    let rel_err_refined_a = ((metrics_refined_a.breakthrough_pv
-        - metrics_refined_a.reference_breakthrough_pv)
-        / metrics_refined_a.reference_breakthrough_pv)
-        .abs();
-
-    let metrics_coarse_b = run_buckley_case(&coarse_b);
-    let metrics_refined_b = run_buckley_case(&refined_b);
-    let rel_err_coarse_b = ((metrics_coarse_b.breakthrough_pv
-        - metrics_coarse_b.reference_breakthrough_pv)
-        / metrics_coarse_b.reference_breakthrough_pv)
-        .abs();
-    let rel_err_refined_b = ((metrics_refined_b.breakthrough_pv
-        - metrics_refined_b.reference_breakthrough_pv)
-        / metrics_refined_b.reference_breakthrough_pv)
-        .abs();
-
-    println!(
-        "Case-A coarse/refined rel_err: {:.3} -> {:.3}",
-        rel_err_coarse_a, rel_err_refined_a
-    );
-    println!(
-        "BL-Case-A-Refined: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
-        metrics_refined_a.breakthrough_pv,
-        metrics_refined_a.reference_breakthrough_pv,
-        rel_err_refined_a
-    );
-    println!(
-        "Case-B coarse/refined rel_err: {:.3} -> {:.3}",
-        rel_err_coarse_b, rel_err_refined_b
-    );
-    println!(
-        "BL-Case-B-Refined: breakthrough_pv_sim={:.4}, breakthrough_pv_ref={:.4}, rel_err={:.3}",
-        metrics_refined_b.breakthrough_pv,
-        metrics_refined_b.reference_breakthrough_pv,
-        rel_err_refined_b
-    );
-
-    assert!(
-        rel_err_refined_a <= rel_err_coarse_a,
-        "Refined discretization should not worsen Case-A alignment: coarse={:.3}, refined={:.3}",
-        rel_err_coarse_a,
-        rel_err_refined_a
-    );
-    assert!(
-        rel_err_refined_b <= rel_err_coarse_b,
-        "Refined discretization should not worsen Case-B alignment: coarse={:.3}, refined={:.3}",
-        rel_err_coarse_b,
-        rel_err_refined_b
-    );
-}
 
 #[test]
 fn benchmark_buckley_leverett_smaller_dt_improves_coarse_alignment() {

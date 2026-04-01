@@ -1,4 +1,5 @@
 use super::fixtures::{make_3phase_gas_injection_sim, total_gas_inventory_sc_all_cells};
+use super::super::make_spe1_like_grid_sim;
 use crate::ReservoirSimulator;
 
 #[derive(Clone, Copy)]
@@ -30,6 +31,19 @@ fn make_gas_flood_case(case: GasFloodCase) -> ReservoirSimulator {
         sim.pc_og = None;
     }
     sim
+}
+
+fn cumulative_gas_production_sc(sim: &ReservoirSimulator) -> f64 {
+    let mut cumulative_gas = 0.0;
+    let mut previous_time_days = 0.0;
+
+    for point in &sim.rate_history {
+        let dt_days = point.time - previous_time_days;
+        previous_time_days = point.time;
+        cumulative_gas += point.total_production_gas.max(0.0) * dt_days;
+    }
+
+    cumulative_gas
 }
 
 #[test]
@@ -254,4 +268,107 @@ fn physics_gas_flood_case_matrix_remains_bounded_across_sat_perm_pvt_and_capilla
             );
         }
     }
+}
+
+#[test]
+#[ignore = "explicit refinement probe: short 1D gas flood should stay directionally stable under timestep refinement"]
+fn physics_gas_flood_1d_timestep_refinement_keeps_breakthrough_ordering_stable() {
+    let mut coarse = make_3phase_gas_injection_sim(8, true);
+    let mut fine = make_3phase_gas_injection_sim(8, true);
+
+    for _ in 0..16 {
+        coarse.step(1.0);
+        assert!(
+            coarse.last_solver_warning.is_empty(),
+            "coarse 1D gas flood emitted solver warning at t={}: {}",
+            coarse.time_days,
+            coarse.last_solver_warning
+        );
+    }
+    for _ in 0..32 {
+        fine.step(0.5);
+        assert!(
+            fine.last_solver_warning.is_empty(),
+            "fine 1D gas flood emitted solver warning at t={}: {}",
+            fine.time_days,
+            fine.last_solver_warning
+        );
+    }
+
+    let coarse_last = coarse.rate_history.last().expect("coarse gas flood should record history");
+    let fine_last = fine.rate_history.last().expect("fine gas flood should record history");
+    let coarse_avg_sg = coarse.sat_gas.iter().copied().sum::<f64>() / coarse.sat_gas.len() as f64;
+    let fine_avg_sg = fine.sat_gas.iter().copied().sum::<f64>() / fine.sat_gas.len() as f64;
+    let coarse_cum_gas = cumulative_gas_production_sc(&coarse);
+    let fine_cum_gas = cumulative_gas_production_sc(&fine);
+
+    let avg_sg_abs_diff = (coarse_avg_sg - fine_avg_sg).abs();
+    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure - fine_last.avg_reservoir_pressure)
+        / fine_last.avg_reservoir_pressure.max(1e-12))
+    .abs();
+    let cumulative_gas_rel_diff = ((coarse_cum_gas - fine_cum_gas) / fine_cum_gas.max(1e-12)).abs();
+
+    assert!(
+        avg_sg_abs_diff <= 0.03,
+        "1D gas flood average Sg drift too large under timestep refinement: coarse={:.6}, fine={:.6}, abs_diff={:.6}",
+        coarse_avg_sg,
+        fine_avg_sg,
+        avg_sg_abs_diff
+    );
+    assert!(
+        pressure_rel_diff <= 0.05,
+        "1D gas flood avg-pressure drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_last.avg_reservoir_pressure,
+        fine_last.avg_reservoir_pressure,
+        pressure_rel_diff
+    );
+    assert!(
+        cumulative_gas_rel_diff <= 0.10,
+        "1D gas flood cumulative-gas drift too large under timestep refinement: coarse={:.6}, fine={:.6}, rel_diff={:.4}",
+        coarse_cum_gas,
+        fine_cum_gas,
+        cumulative_gas_rel_diff
+    );
+    assert!(coarse_last.material_balance_error_gas_m3 <= 8.0e3);
+    assert!(fine_last.material_balance_error_gas_m3 <= 8.0e3);
+}
+
+#[test]
+#[ignore = "larger-grid benchmark probe: coarse SPE1-like gas injection should still reach producer gas breakthrough"]
+fn physics_gas_flood_spe1_coarse_grid_reaches_producer_gas_breakthrough() {
+    let mut sim = make_spe1_like_grid_sim(5, 5, 4, 4, vec![500.0, 50.0, 200.0], 0.05, 20.0, 0.2);
+    sim.set_fim_enabled(true);
+
+    let producer_id = sim.idx(4, 4, 2);
+    let mut breakthrough_time_days = None;
+    let mut previous_producer_sg = sim.sat_gas[producer_id];
+    let mut last_gor = 0.0;
+
+    for _ in 0..120 {
+        sim.step(30.0);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "SPE1-like gas-flood probe emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+
+        let rate_point = sim.rate_history.last().expect("rate history should exist");
+        last_gor = rate_point.producing_gor;
+        if sim.sat_gas[producer_id] > 1e-4 || last_gor > 50.0 {
+            breakthrough_time_days = Some(sim.time_days);
+            break;
+        }
+
+        previous_producer_sg = sim.sat_gas[producer_id];
+    }
+
+    assert!(
+        breakthrough_time_days.is_some(),
+        "coarse SPE1-like gas-flood probe should reach producer gas breakthrough within 3600 days; final producer sg={}, previous producer sg={}, final gor={}, final time={}",
+        sim.sat_gas[producer_id],
+        previous_producer_sg,
+        last_gor,
+        sim.time_days,
+    );
 }
