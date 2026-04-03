@@ -38,7 +38,7 @@ pub use capillary::{CapillaryPressure, GasOilCapillaryPressure};
 pub use relperm::{
     RockFluidProps, RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables,
 };
-pub use reporting::{TimePointRates, WellRates};
+pub use reporting::{SweepConfig, TimePointRates, WellRates};
 pub use well::Well;
 
 /// Which fluid the injector injects in three-phase mode.
@@ -135,6 +135,7 @@ pub struct ReservoirSimulator {
     pub(crate) rs: Vec<f64>,
     pub(crate) gas_redissolution_enabled: bool,
     pub(crate) fim_enabled: bool,
+    pub(crate) sweep_config: Option<SweepConfig>,
 }
 
 #[cfg(test)]

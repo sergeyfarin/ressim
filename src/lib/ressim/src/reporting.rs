@@ -12,6 +12,104 @@ use crate::{InjectedFluid, ReservoirSimulator};
 
 const MIN_GOR_OIL_RATE_SC_DAY: f64 = 10.0;
 
+/// Configuration for sweep efficiency diagnostics computed per time step.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SweepConfig {
+    /// Which sweep components are physically meaningful: "areal", "vertical", or "both".
+    pub geometry: String,
+    /// Water saturation threshold above which a cell is considered swept.
+    pub swept_threshold: f64,
+    /// Initial oil saturation (used for mobile oil recovered in "both" mode).
+    pub initial_oil_saturation: f64,
+    /// Residual oil saturation S_or.
+    pub residual_oil_saturation: f64,
+}
+
+/// Per-step sweep efficiency metrics appended to each `TimePointRates` entry.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SweepMetrics {
+    /// Areal sweep efficiency (None for "both" geometry).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e_a: Option<f64>,
+    /// Vertical sweep efficiency (None for "both" geometry).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e_v: Option<f64>,
+    /// Volumetric sweep efficiency.
+    pub e_vol: f64,
+    /// Fraction of initial mobile oil recovered (Some only for "both" geometry).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mobile_oil_recovered: Option<f64>,
+}
+
+fn compute_sweep_metrics(sim: &ReservoirSimulator, config: &SweepConfig) -> SweepMetrics {
+    let nx = sim.nx;
+    let ny = sim.ny;
+    let nz = sim.nz;
+    let threshold = config.swept_threshold;
+
+    let mut swept_cells = 0.0_f64;
+    let mut swept_columns = 0.0_f64;
+
+    for j in 0..ny {
+        for i in 0..nx {
+            let mut column_weight = 0.0_f64;
+            for k in 0..nz {
+                let sw = sim.sat_water[k * nx * ny + j * nx + i];
+                let weight = if sw > threshold { 1.0 } else { 0.0 };
+                swept_cells += weight;
+                column_weight = column_weight.max(weight);
+            }
+            swept_columns += column_weight;
+        }
+    }
+
+    let total = (nx * ny * nz) as f64;
+    let e_vol = if total > 0.0 { swept_cells / total } else { 0.0 };
+    let e_a_raw = if (nx * ny) > 0 {
+        swept_columns / (nx * ny) as f64
+    } else {
+        0.0
+    };
+
+    match config.geometry.as_str() {
+        "areal" => SweepMetrics {
+            e_a: Some(e_a_raw),
+            e_v: Some(1.0),
+            e_vol,
+            mobile_oil_recovered: None,
+        },
+        "vertical" => SweepMetrics {
+            e_a: Some(1.0),
+            e_v: Some(e_vol),
+            e_vol,
+            mobile_oil_recovered: None,
+        },
+        _ => {
+            // "both" or unknown: eA/eV are null, compute mobile oil recovered
+            let initial_mobile_per_cell =
+                (config.initial_oil_saturation - config.residual_oil_saturation).max(0.0);
+            let initial_mobile = total * initial_mobile_per_cell;
+            let mobile_oil_recovered = if initial_mobile > 1e-12 {
+                let remaining: f64 = sim
+                    .sat_oil
+                    .iter()
+                    .take(nx * ny * nz)
+                    .map(|&so| (so - config.residual_oil_saturation).max(0.0))
+                    .sum();
+                (1.0 - remaining / initial_mobile).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            SweepMetrics {
+                e_a: None,
+                e_v: None,
+                e_vol,
+                mobile_oil_recovered: Some(mobile_oil_recovered),
+            }
+        }
+    }
+}
+
 fn effective_injected_fluid(sim: &ReservoirSimulator) -> InjectedFluid {
     if sim.three_phase_mode {
         sim.injected_fluid
@@ -63,6 +161,9 @@ pub struct TimePointRates {
     /// Fraction of rate-controlled injector physical wells currently clamped by BHP limits.
     #[serde(default)]
     pub injector_bhp_limited_fraction: f64,
+    /// Sweep efficiency diagnostics (present when sweep config is set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sweep: Option<SweepMetrics>,
 }
 
 impl ReservoirSimulator {
@@ -234,6 +335,11 @@ impl ReservoirSimulator {
             0.0
         };
 
+        let sweep = self
+            .sweep_config
+            .as_ref()
+            .map(|cfg| compute_sweep_metrics(self, cfg));
+
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
             total_production_oil: total_prod_oil,
@@ -250,6 +356,7 @@ impl ReservoirSimulator {
             producing_gor,
             producer_bhp_limited_fraction,
             injector_bhp_limited_fraction,
+            sweep,
         });
     }
 
@@ -377,6 +484,11 @@ impl ReservoirSimulator {
             0.0
         };
 
+        let sweep = self
+            .sweep_config
+            .as_ref()
+            .map(|cfg| compute_sweep_metrics(self, cfg));
+
         self.rate_history.push(TimePointRates {
             time: self.time_days + dt_days,
             total_production_oil: total_prod_oil,
@@ -393,6 +505,7 @@ impl ReservoirSimulator {
             producing_gor,
             producer_bhp_limited_fraction,
             injector_bhp_limited_fraction,
+            sweep,
         });
     }
 }

@@ -9,7 +9,8 @@ use crate::pvt;
 use crate::well::WellSchedule;
 use crate::{
     CapillaryPressure, FluidProperties, GasOilCapillaryPressure, InjectedFluid, ReservoirSimulator,
-    RockFluidProps, RockFluidPropsThreePhase, ThreePhaseScalTables, TimePointRates, Well,
+    RockFluidProps, RockFluidPropsThreePhase, SweepConfig, ThreePhaseScalTables, TimePointRates,
+    Well,
 };
 
 #[derive(Deserialize)]
@@ -100,6 +101,7 @@ impl ReservoirSimulator {
             rs,
             gas_redissolution_enabled: true,
             fim_enabled: true,
+            sweep_config: None,
         }
     }
 
@@ -1042,6 +1044,21 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setGasRedissolutionEnabled)]
     pub fn set_gas_redissolution_enabled(&mut self, enabled: bool) {
         self.gas_redissolution_enabled = enabled;
+    }
+
+    /// Configure sweep efficiency diagnostics to be computed every step.
+    /// Accepts a JSON object matching `SweepConfig`: `{ geometry, swept_threshold,
+    /// initial_oil_saturation, residual_oil_saturation }`.
+    /// Pass `null`/`undefined` to disable sweep computation.
+    #[wasm_bindgen(js_name = setSweepConfig)]
+    pub fn set_sweep_config(&mut self, config_js: JsValue) -> Result<(), JsValue> {
+        if config_js.is_null() || config_js.is_undefined() {
+            self.sweep_config = None;
+            return Ok(());
+        }
+        let config: SweepConfig = serde_wasm_bindgen::from_value(config_js)?;
+        self.sweep_config = Some(config);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = setInjectedFluid)]

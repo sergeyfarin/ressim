@@ -194,6 +194,41 @@ fn physics_depletion_gas_single_cell_storage_and_material_balance_close() {
 }
 
 #[test]
+fn physics_depletion_gas_gentle_case_keeps_per_step_material_balance_tight() {
+    let mut sim = make_closed_gas_depletion_single_cell_sim();
+    sim.set_permeability_per_layer(vec![20.0], vec![20.0], vec![20.0])
+        .unwrap();
+    sim.wells[0].bhp = 210.0;
+
+    let initial_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+
+    for _ in 0..5 {
+        sim.step(0.005);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "gentle gas depletion MB case emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+
+        let gas_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+        let cumulative_gas_sc = cumulative_gas_production_sc(&sim);
+        let accounted_gas_sc = gas_inventory_sc + cumulative_gas_sc;
+        let gas_balance_rel_diff =
+            ((accounted_gas_sc - initial_inventory_sc) / initial_inventory_sc.max(1e-12)).abs();
+
+        assert!(
+            gas_balance_rel_diff <= 1e-3,
+            "gentle gas depletion per-step MB drift too large at t={:.4}: initial={:.6}, inventory+prod={:.6}, rel_diff={:.6}",
+            sim.time_days,
+            initial_inventory_sc,
+            accounted_gas_sc,
+            gas_balance_rel_diff
+        );
+    }
+}
+
+#[test]
 fn physics_depletion_gas_single_cell_storage_tracks_bg_response() {
     let mut high_pressure = make_closed_gas_depletion_single_cell_sim();
     let mut low_pressure = make_closed_gas_depletion_single_cell_sim();

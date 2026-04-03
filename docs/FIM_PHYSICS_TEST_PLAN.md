@@ -384,6 +384,35 @@ The next highest-value additions before more convergence tuning are:
 2. promote at least one benchmark-parity probe per major family from diagnostic envelope to true acceptance check as the known model-alignment gaps close
 3. add stronger runtime oil-component material-balance reporting or keep expanding family-owned inventory tests until that reporting exists
 
+Comprehensive gap review (2026-04-02) identified four critical missing tests not covered by the
+Phases 1–4 above.  These are prerequisites for convergence work.  Full gap analysis is in
+`docs/FIM_TEST_COMPLETENESS_REVIEW.md`:
+
+1. **Jacobian FD consistency** — assemble Jacobian and residual, perturb each unknown, verify
+   `(R(x+h) - R(x)) / h ≈ J[:, col]` to 1e-4 relative.  Helpers already exist in `assembly.rs`.
+   Cover saturated and undersaturated regimes, plus well BHP and perforation-rate unknowns.
+
+2. **Local flux conservation oracle** — 2-cell grid, no wells, no accumulation: verify
+   `R[eq(0,c)] + R[eq(1,c)] == 0` for each component.  Tests the fundamental FD conservation
+   property independent of scenario outcomes.
+
+3. **Transmissibility formula oracle** — known k, A, dx; assert face flux from
+   `cell_face_phase_flux_diagnostics` matches `T * dp * (kro/mu_o)` analytically.
+
+4. **Peaceman WI oracle** — at known conditions, assert `perforation_component_rates_sc_day` oil
+   rate matches `WI * dp * kro / (mu_o * Bo)` to 1e-6 relative.
+
+Additional lower-priority gaps documented in `FIM_TEST_COMPLETENESS_REVIEW.md`:
+
+- Water accumulation Bw denominator oracle (Tier 0)
+- Undersaturated Rs stays constant (Tier 0)
+- Gas flux Rs-weighted oil term sign (Tier 0)
+- Gravity term magnitude vs hydrostatic formula (Tier 0)
+- Rate-controlled injector in FIM Newton path (Tier 1)
+- Multi-perforation well shared BHP (Tier 1)
+- Tighten MB tolerances from 5–15% to ≤1% in fast suite (tolerance upgrade)
+- Fix gas flood absolute MB limit (currently 5000 Sm3 with no relative bound)
+
 ## Exit Criterion For Physics-First Gate
 
 Before prioritizing more convergence tuning, the following should be true:

@@ -1,3 +1,5 @@
+use nalgebra::DVector;
+
 use super::fixtures::{
     cumulative_component_production_sc, flash_below_bubble_point,
     make_below_bubble_point_flash_sim, total_component_inventory_sc_all_cells,
@@ -132,11 +134,45 @@ fn physics_depletion_liberation_component_balances_close_across_phase_transition
         oil_accounted
     );
     assert!(
-        (gas_accounted - initial.gas_sc).abs() <= initial.gas_sc.max(1.0) * 1e-2,
+        (gas_accounted - initial.gas_sc).abs() <= initial.gas_sc.max(1.0) * 1e-3,
         "gas balance drift too large across liberation transition: initial={:.6}, final+prod={:.6}",
         initial.gas_sc,
         gas_accounted
     );
+}
+
+#[test]
+fn physics_depletion_liberation_undersaturated_rs_stays_constant() {
+    let mut sim = make_below_bubble_point_flash_sim(false);
+    let initial_rs = sim.rs[0];
+    assert_eq!(sim.sat_gas[0], 0.0, "undersaturated constancy case should start with no free gas");
+
+    for pressure_bar in [174.0, 173.0, 172.0, 171.0, 170.0] {
+        sim.update_saturations_and_pressure(
+            &DVector::from_vec(vec![pressure_bar]),
+            &vec![0.0],
+            &vec![0.0],
+            &vec![0.0],
+            &[],
+            0.1,
+        );
+        assert!(
+            sim.pressure[0] > 150.0,
+            "undersaturated Rs constancy case should stay above bubble point, got p={:.6}",
+            sim.pressure[0]
+        );
+        assert!(
+            (sim.rs[0] - initial_rs).abs() <= 1e-12,
+            "Rs should remain constant while the cell stays undersaturated: initial={:.12}, current={:.12}",
+            initial_rs,
+            sim.rs[0]
+        );
+        assert!(
+            sim.sat_gas[0].abs() <= 1e-5,
+            "free gas should remain numerically zero while the cell stays undersaturated, got Sg={:.12}",
+            sim.sat_gas[0]
+        );
+    }
 }
 
 #[test]

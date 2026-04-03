@@ -91,6 +91,9 @@ fn physics_gas_flood_1d_creates_free_gas_and_keeps_balance_bounded() {
         .iter()
         .map(|point| point.total_production_gas.max(0.0))
         .sum();
+    let injected_gas_sc = cumulative_gas_injection_sc(&sim);
+    let expected_gas_sc = initial_gas_sc + injected_gas_sc;
+    let relative_gas_mb = latest.material_balance_error_gas_m3 / expected_gas_sc.max(1.0);
 
     assert!(max_sg > 1e-6);
     assert!(final_gas_sc > initial_gas_sc + 1.0);
@@ -100,9 +103,11 @@ fn physics_gas_flood_1d_creates_free_gas_and_keeps_balance_bounded() {
     assert!(latest.producing_gor.is_finite());
     assert!(cumulative_gas_produced_sc > 0.0);
     assert!(
-        latest.material_balance_error_gas_m3 < 5.0e3,
-        "1D gas flood gas MB drift too large: {} Sm3",
-        latest.material_balance_error_gas_m3
+        relative_gas_mb < 0.01,
+        "1D gas flood gas MB drift too large: abs={:.6} Sm3, expected={:.6} Sm3, rel={:.6}",
+        latest.material_balance_error_gas_m3,
+        expected_gas_sc,
+        relative_gas_mb
     );
 }
 
@@ -118,6 +123,22 @@ fn physics_gas_flood_1d_short_material_balance_matches_inventory_change() {
             "short 1D gas flood MB case emitted solver warning at t={}: {}",
             sim.time_days,
             sim.last_solver_warning
+        );
+        let gas_inventory_sc = total_component_inventory_sc_all_cells(&sim).gas_sc;
+        let cumulative_gas_injected_sc = cumulative_gas_injection_sc(&sim);
+        let cumulative_gas_produced_sc = cumulative_gas_production_sc(&sim);
+        let expected_gas_sc = initial_inventory.gas_sc + cumulative_gas_injected_sc;
+        let gas_accounted_sc = gas_inventory_sc + cumulative_gas_produced_sc;
+        let gas_balance_rel_diff =
+            ((gas_accounted_sc - expected_gas_sc) / expected_gas_sc.max(1.0)).abs();
+
+        assert!(
+            gas_balance_rel_diff <= 1e-3,
+            "short 1D gas flood per-step gas MB drift too large at t={:.4}: expected={:.6}, inventory+prod={:.6}, rel_diff={:.6}",
+            sim.time_days,
+            expected_gas_sc,
+            gas_accounted_sc,
+            gas_balance_rel_diff
         );
     }
 

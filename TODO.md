@@ -4,6 +4,44 @@
 
 ## Now
 
+- [ ] Add the four highest-priority correctness tests before any further convergence tuning.
+  - Full analysis and all gaps documented in `docs/FIM_TEST_COMPLETENESS_REVIEW.md` (2026-04-02).
+  - GAP-4 regression status: `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`,
+    `classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`, and
+    `gas_injector_surface_pressure_derivatives_match_local_fd` were revalidated green on 2026-04-02.
+  - P1 new tests (in order):
+     1. Jacobian FD acceptance coverage is now in `src/lib/ressim/src/fim/assembly.rs` via
+       `full_system_jacobian_matches_fd_for_single_cell_depletion` and
+       `full_system_jacobian_matches_fd_for_mixed_saturated_and_undersaturated_cells`.
+       Local flux conservation coverage is now also in `src/lib/ressim/src/fim/assembly.rs` via
+       `residual_only_two_cell_flux_is_component_conservative_for_oil_water` and
+       `residual_only_two_cell_flux_is_component_conservative_for_three_phase_gas`.
+       Direct transmissibility formula coverage is now in `src/lib/ressim/src/fim/assembly_tests.rs`
+       via `direct_transmissibility_formula_matches_homogeneous_two_cell_oil_flux` and
+       `direct_transmissibility_formula_matches_heterogeneous_two_cell_oil_flux`.
+       Remaining new-test priority starts at the Peaceman connection-law oracle.
+     2. Peaceman connection-law coverage is now in
+       `src/lib/ressim/src/tests/physics/wells_sources.rs` via
+       `physics_wells_sources_peaceman_connection_law_matches_analytical_wi`.
+       Undersaturated-`Rs` constancy coverage is now in
+       `src/lib/ressim/src/tests/physics/depletion_liberation.rs` via
+       `physics_depletion_liberation_undersaturated_rs_stays_constant`.
+      Remaining immediate correctness priorities now start with the multi-perforation well and
+       gravity correctness oracles. Dissolved-gas assembly-flux coverage is now in
+       `src/lib/ressim/src/fim/assembly_tests.rs` via
+       `gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign`.
+      Rate-controlled injector FIM coverage is now in
+       `src/lib/ressim/src/tests/physics/wells_sources.rs` via
+       `physics_wells_sources_rate_controlled_injector_fim_path_converges`.
+     3. Water-accumulation `Bw` denominator coverage is now in
+       `src/lib/ressim/src/fim/assembly_tests.rs` via
+       `water_accumulation_residual_scales_with_bw_denominator`, alongside the existing
+       `accumulation_block_has_exact_water_derivatives` Jacobian check.
+      Gas depletion, liberation, the short gas-flood path, and the broader gas-flood smoke case now
+      all use relative default material-balance gates.
+  - Convergence work (hotspot memory, Appleyard damping, CPR) resumes only after these 4 pass.
+  - See `docs/FIM_TEST_COMPLETENESS_REVIEW.md` for the full gap list and the exit-criterion verdict.
+
 - [ ] Run a focused FIM cleanup pass before more convergence tuning.
   - Goal: reduce duplicated status/docs, isolate diagnostics, and remove stale artifacts so the next convergence iteration works from one clear baseline.
   - Concrete execution plan: `docs/FIM_CLEANUP_PLAN.md`.
@@ -12,6 +50,7 @@
     - wasm is the approved default diagnostic target
     - clearly broken scratch wasm helper files were removed in the first Phase 2 pass
     - stable SPE1/FIM smoke regressions were moved out of `src/lib/ressim/src/lib.rs` into `src/lib/ressim/src/tests/spe1_fim.rs`
+    - FIM assembly white-box tests were moved out of `src/lib/ressim/src/fim/assembly.rs` into `src/lib/ressim/src/fim/assembly_tests.rs`, and `src/lib/ressim/src/tests/README.md` now documents where crate-level versus module-internal tests belong
     - crate-root debug probes, `src/lib/ressim/src/tests/fim_spe1_bug.rs`, and the redundant manual `test.sh` helper were removed from the active surface
     - deep per-Newton FIM traces are now exposed through the canonical wasm diagnostic path, and the temporary native-only harness has been removed
   - Canonical sources after cleanup:
@@ -77,10 +116,10 @@
     - `used_fallback` semantics were audited and fixed on `2026-03-31`; the earlier `linear-bad` replay majority was a reporting artifact, and the corrected canonical water shelves are back to pure `nonlinear-bad` retries.
     - A first hotspot-aware failure-memory pass is now implemented in `step.rs`, but the tuned canonical day-1 `wf_p_12x12x3` replay remained effectively neutral (`140` substeps, `nonlinear-bad=6`); next follow-up is to retune how hotspot memory accumulates across repeated regrow-fail cycles.
     - Three changes on `2026-03-31`: OPM-aligned timestep growth (1.25×/0.75× clamp replacing old 2.0× floor), gas saturation change tracking alongside Sw, and trust-region inflection-point chop in Appleyard damping (Wang & Tchelepi 2013). Result: **130 substeps, linear-bad=4, nonlinear-bad=30** on canonical `wf_p_12x12x3`. Nonlinear-bad reduced 77%. The remaining 30 retries are a rigid 3-substep oscillation at the breakthrough boundary cell (11,11,0): accept-accept-fail repeating as 1.25× growth periodically crosses the front-local nonlinear threshold.
-    - **Correctness alert**: 3 pre-existing tests failing in HEAD — `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`, `classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`, `gas_injector_surface_pressure_derivatives_match_local_fd`. The first two directly verify the Rs-switch fix. These failures are the most likely explanation for the FIM vs IMPES parity gap on depletion cases documented in the worklog. Must fix before further convergence tuning.
+     - Correctness alert resolved on 2026-04-02: `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`, `classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`, and `gas_injector_surface_pressure_derivatives_match_local_fd` were re-run and are green in HEAD. Keep them in the default gate; they are no longer an active blocker.
   - **Next priority items** (updated 2026-03-31):
-    1. Fix the 3 failing classify_regimes and gas_injector derivative tests — correctness gate
-       Active slice: restore these regressions first, add a `dep_pss` FIM-vs-IMPES smoke test, then retune cooldown hold and Newton globalization in the same pass so convergence work stays behind a correctness guard.
+     1. Maintain the now-green classify_regimes and gas-injector derivative regressions while adding the next explicit correctness oracles.
+       Active slice: keep these regressions green, add a `dep_pss` FIM-vs-IMPES smoke test, then retune cooldown hold and Newton globalization in the same pass so convergence work stays behind a correctness guard.
        Updated correctness strategy: do not rely only on IMPES parity for depletion. Keep one default closed-system invariant check in the fast suite, and use explicit timestep-refinement plus late-time Dietz probes to catch silent FIM depletion errors without assuming IMPES is authoritative.
       Latest depletion probe status: the default closed-system invariant test is green, the root-cause non-table oil-storage bug is fixed, and the explicit `dep_pss` timestep-refinement probe now passes. The remaining explicit solver-independent gap is the late-time Dietz analytical mismatch.
       Root cause found and fixed (2026-03-31): the no-PVT oil-property path in `src/lib/ressim/src/pvt.rs` reconstructed FIM oil states with constant `B_o = self.b_o`, so oil compressibility never entered the FIM accumulation residual for depletion cases without a PVT table. The Jacobian still assumed nonzero `dB_o/dP`, which made the local cell-plus-well depletion solve behave as if it had roughly rock-only storage and drove overly large pressure drops.
