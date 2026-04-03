@@ -4,6 +4,10 @@
 
 ## Now
 
+- [x] Fix frontend worker WASM initialization so simulator creation does not fail with `reservoirsimulator_new` undefined.
+  - Root cause: `src/lib/workers/sim.worker.ts` assumed the wasm-bindgen wrapper auto-initialized at import time, but the generated `src/lib/ressim/pkg/simulator.js` still requires explicit default-init in the worker context.
+  - Fix: run a one-time `initWasm()` gate before worker `ready`/`create`, then install the panic hook and proceed with simulator construction.
+
 - [ ] Add the four highest-priority correctness tests before any further convergence tuning.
   - Full analysis and all gaps documented in `docs/FIM_TEST_COMPLETENESS_REVIEW.md` (2026-04-02).
   - GAP-4 regression status: `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`,

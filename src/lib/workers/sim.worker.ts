@@ -1,4 +1,4 @@
-import { ReservoirSimulator } from '../ressim/pkg/simulator.js';
+import initWasm, { ReservoirSimulator, set_panic_hook } from '../ressim/pkg/simulator.js';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule, WorkerRunPayload } from '../simulator-types';
 
 let wasmReady = false;
@@ -6,6 +6,26 @@ let simulator: ReservoirSimulator | null = null;
 let isRunning = false;
 let stopRequested = false;
 let lastRateHistoryLen = 0;
+let wasmInitPromise: Promise<void> | null = null;
+
+async function ensureWasmReady(): Promise<void> {
+  if (wasmReady) {
+    return;
+  }
+
+  if (!wasmInitPromise) {
+    wasmInitPromise = (async () => {
+      await initWasm();
+      set_panic_hook();
+      wasmReady = true;
+    })().catch((error) => {
+      wasmInitPromise = null;
+      throw error;
+    });
+  }
+
+  await wasmInitPromise;
+}
 
 function buildRunProfile(batchStart: number, stepMsTotal: number, completedSteps: number, snapshotsSent: number) {
   return {
@@ -394,14 +414,13 @@ self.onmessage = async (event) => {
     }
 
     if (type === 'init') {
-      // wasm-bindgen 0.2.117 bundler target: WASM is auto-initialized at module import time by Vite.
-      wasmReady = true;
+      await ensureWasmReady();
       post('ready');
       return;
     }
 
     if (type === 'create') {
-      wasmReady = true;
+      await ensureWasmReady();
 
       try {
         configureSimulator(payload);
