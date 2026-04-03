@@ -757,7 +757,7 @@ class SimulationStoreImpl {
     }
 
     buildCreatePayload(): SimulatorCreatePayload {
-        return buildCreatePayloadFromState({
+        const payload = buildCreatePayloadFromState({
             nx: this.nx, ny: this.ny, nz: this.nz,
             cellDx: this.cellDx, cellDy: this.cellDy, cellDz: this.cellDz,
             cellDzPerLayer: this.cellDzPerLayer,
@@ -810,6 +810,24 @@ class SimulationStoreImpl {
             gasRedissolutionEnabled: this.gasRedissolutionEnabled,
             initialRs: this.initialRs,
         });
+
+        const sc = this.activeScenarioObject;
+        if (sc && !this.isCustomMode) {
+            const resolved = resolveCapabilities(sc.capabilities);
+            if (resolved.showSweepPanel && resolved.sweepGeometry) {
+                const sw0 = payload.initialSaturation;
+                const movable = Math.max(0, 1 - payload.s_wc - payload.s_or);
+                payload.sweepConfig = {
+                    geometry: resolved.sweepGeometry,
+                    // 20% of movable range above connate — swept cells, not artefacts
+                    swept_threshold: payload.s_wc + 0.2 * movable,
+                    initial_oil_saturation: Math.max(0, 1 - sw0),
+                    residual_oil_saturation: payload.s_or,
+                };
+            }
+        }
+
+        return payload;
     }
 
     buildModelResetKey() {

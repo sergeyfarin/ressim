@@ -5,11 +5,13 @@
   "files": [
     "simulator_bg.wasm",
     "simulator.js",
+    "simulator_bg.js",
     "simulator.d.ts"
   ],
   "main": "simulator.js",
   "types": "simulator.d.ts",
   "sideEffects": [
+    "./simulator.js",
     "./snippets/*"
   ]
 }

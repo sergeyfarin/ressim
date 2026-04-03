@@ -182,6 +182,20 @@ export interface SimulatorCreatePayload {
   wells?: SimulatorWellDefinition[];
   /** Whether the runtime should use the FIM step path for this simulator instance. */
   fimEnabled?: boolean;
+  /**
+   * When present, the simulator will compute sweep efficiency diagnostics every step.
+   * Populated by buildCreatePayload when the scenario has showSweepPanel = true.
+   */
+  sweepConfig?: {
+    /** 'areal', 'vertical', or 'both' */
+    geometry: string;
+    /** Water saturation threshold above which a cell is counted as swept. */
+    swept_threshold: number;
+    /** Initial oil saturation (= 1 - Swi) for mobile-oil-recovered calculation. */
+    initial_oil_saturation: number;
+    /** Residual oil saturation S_or. */
+    residual_oil_saturation: number;
+  };
 }
 
 /** Payload sent with the `run` message */
@@ -236,6 +250,17 @@ export interface RateHistoryPoint {
   producer_bhp_limited_fraction?: number;
   /** Fraction of rate-controlled injector completions clamped by BHP limits */
   injector_bhp_limited_fraction?: number;
+  /** Sweep efficiency diagnostics (present when sweep config is set on the simulator) */
+  sweep?: {
+    /** Areal sweep efficiency [0-1]. Null for 'both' geometry. */
+    e_a?: number;
+    /** Vertical sweep efficiency [0-1]. Null for 'both' geometry. */
+    e_v?: number;
+    /** Volumetric sweep efficiency [0-1]. */
+    e_vol: number;
+    /** Fraction of initial mobile oil recovered [0-1]. Some only for 'both' geometry. */
+    mobile_oil_recovered?: number;
+  };
   // additional fields produced by the simulator may exist
   [key: string]: unknown;
 }

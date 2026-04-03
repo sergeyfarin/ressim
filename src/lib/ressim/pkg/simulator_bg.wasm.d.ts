@@ -51,6 +51,7 @@ export const reservoirsimulator_setRateControlledWells: (a: number, b: number) =
 export const reservoirsimulator_setRelPermProps: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const reservoirsimulator_setRockProperties: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const reservoirsimulator_setStabilityParams: (a: number, b: number, c: number, d: number) => void;
+export const reservoirsimulator_setSweepConfig: (a: number, b: any) => [number, number];
 export const reservoirsimulator_setTargetWellRates: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setTargetWellSurfaceRates: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setThreePhaseModeEnabled: (a: number, b: number) => void;

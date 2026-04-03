@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
-import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
+// wasm-bindgen 0.2.117 bundler target no longer exports init — bootstrap manually for Node.js.
+import * as bg from '../ressim/pkg/simulator_bg.js';
+const { ReservoirSimulator } = bg as unknown as { ReservoirSimulator: typeof import('../ressim/pkg/simulator.js').ReservoirSimulator };
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from '../charts/referenceComparisonModel';
@@ -15,7 +17,11 @@ let wasmReady: Promise<unknown> | null = null;
 async function ensureWasmReady() {
   if (!wasmReady) {
     wasmReady = readFile(new URL('../ressim/pkg/simulator_bg.wasm', import.meta.url)).then(
-      (wasmBytes) => init({ module_or_path: wasmBytes }),
+      async (wasmBytes) => {
+        const { instance } = await WebAssembly.instantiate(wasmBytes, { './simulator_bg.js': bg });
+        (bg as unknown as Record<string, (val: unknown) => void>).__wbg_set_wasm(instance.exports);
+        (instance.exports as Record<string, (() => void) | undefined>).__wbindgen_start?.();
+      },
     );
   }
   await wasmReady;

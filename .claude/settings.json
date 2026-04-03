@@ -16,7 +16,9 @@
       "Bash(git -C /home/reken/Repos/ressim show HEAD:src/lib/ressim/src/fim/newton.rs)",
       "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json)",
       "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --no-json)",
-      "Bash(bash ./scripts/build-wasm.sh)"
+      "Bash(bash ./scripts/build-wasm.sh)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(node --experimental-wasm-modules -e ':*)"
     ]
   }
 }

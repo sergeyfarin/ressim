@@ -1,4 +1,4 @@
-import init, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
+import { ReservoirSimulator } from '../ressim/pkg/simulator.js';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule, WorkerRunPayload } from '../simulator-types';
 
 let wasmReady = false;
@@ -306,6 +306,13 @@ function configureSimulator(payload: SimulatorCreatePayload) {
     simulator.setPermeabilityPerLayer(new Float64Array(payload.permsX), new Float64Array(payload.permsY), new Float64Array(payload.permsZ));
   }
 
+  if (payload.sweepConfig) {
+    const setSweepConfig = (simulator as any).setSweepConfig;
+    if (typeof setSweepConfig === 'function') {
+      setSweepConfig.call(simulator, payload.sweepConfig);
+    }
+  }
+
   const producerI = Number(payload.producerI ?? (payload.nx - 1));
   const producerJ = Number(payload.producerJ ?? 0);
   const injectorI = Number(payload.injectorI ?? 0);
@@ -387,19 +394,14 @@ self.onmessage = async (event) => {
     }
 
     if (type === 'init') {
-      if (!wasmReady) {
-        await init();
-        wasmReady = true;
-      }
+      // wasm-bindgen 0.2.117 bundler target: WASM is auto-initialized at module import time by Vite.
+      wasmReady = true;
       post('ready');
       return;
     }
 
     if (type === 'create') {
-      if (!wasmReady) {
-        await init();
-        wasmReady = true;
-      }
+      wasmReady = true;
 
       try {
         configureSimulator(payload);
