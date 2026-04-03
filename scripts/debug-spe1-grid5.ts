@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 // wasm-bindgen 0.2.117 bundler target no longer exports init — bootstrap manually for Node.js.
-import * as bg from '../src/lib/ressim/pkg/simulator_bg.js';
-const { ReservoirSimulator } = bg as unknown as { ReservoirSimulator: typeof import('../src/lib/ressim/pkg/simulator.js').ReservoirSimulator };
+// Import from simulator_bg.js (no static .wasm import) with types from simulator_bg.d.ts.
+import { ReservoirSimulator, __wbg_set_wasm } from '../src/lib/ressim/pkg/simulator_bg.js';
+import * as bgNamespace from '../src/lib/ressim/pkg/simulator_bg.js';
 import { getScenarioWithVariantParams } from '../src/lib/catalog/scenarios';
 import { buildBenchmarkCreatePayload } from '../src/lib/benchmarkRunModel';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../src/lib/simulator-types';
@@ -185,8 +186,8 @@ function configureSimulator(payload: SimulatorCreatePayload): ReservoirSimulator
 }
 
 const wasmBytes = await readFile(new URL('../src/lib/ressim/pkg/simulator_bg.wasm', import.meta.url));
-const { instance } = await WebAssembly.instantiate(wasmBytes, { './simulator_bg.js': bg });
-(bg as unknown as Record<string, (val: unknown) => void>).__wbg_set_wasm(instance.exports);
+const { instance } = await WebAssembly.instantiate(wasmBytes, { './simulator_bg.js': bgNamespace });
+__wbg_set_wasm(instance.exports as WebAssembly.Exports);
 (instance.exports as Record<string, (() => void) | undefined>).__wbindgen_start?.();
 
 const params = getScenarioWithVariantParams('spe1_gas_injection', 'grid', 'grid_5');

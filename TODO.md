@@ -248,8 +248,13 @@
 - [x] Reduce Rust/WASM snapshot extraction overhead by bundling grid-state reads and exposing incremental rate-history extraction.
   - `ReservoirSimulator` now exposes `getGridState()` so the worker no longer pulls pressure / water / oil / gas through four separate getters.
   - `ReservoirSimulator` now exposes `getRateHistorySince(startIndex)` and the worker/store append deltas instead of reserializing the full rate-history tail on every state post.
-- [ ] Move sweep-efficiency reporting into Rust step reports so the UI does not recompute full history × full grid on every render.
-  - Follow-up after the extraction pass: extend `record_step_report()` with sweep diagnostics keyed off the active geometry / well pattern, then switch `App.svelte` / chart wiring to consume those reported series.
+- [x] Move sweep-efficiency reporting into Rust step reports so the UI does not recompute full history × full grid on every render.
+  - `SweepConfig` (geometry, swept_threshold, initial/residual oil saturation) and `SweepMetrics` (e_a, e_v, e_vol, mobile_oil_recovered) are now defined in `reporting.rs`.
+  - `compute_sweep_metrics()` runs in both `record_step_report()` (IMPES) and `record_fim_step_report()` (FIM); solver-agnostic.
+  - `setSweepConfig(json)` WASM setter added to `frontend.rs`; the store's `buildCreatePayload()` now appends `sweepConfig` when the scenario has `showSweepPanel`.
+  - `RateHistoryPoint.sweep` added to `simulator-types.ts`.
+  - wasm-bindgen 0.2.117 bundler-target `init` removal handled: worker no longer calls `init()`; test and debug scripts bootstrap WASM via `WebAssembly.instantiate` + `__wbg_set_wasm`; `simulator_bg.d.ts` created for type declarations.
+  - **Still pending:** delete `sweepEfficiencySimSeries` O(n²) `$derived` from `App.svelte` and update `referenceComparisonModel.ts` to read `.sweep` from rate-history instead of recomputing per-entry.
 - [x] Restore repo-wide TypeScript typecheck health for explicit well schedule typing and stale debug scripts.
   - Fixed: narrowed `injectorControlMode` / `producerControlMode` in `SimulatorCreatePayload` from `string` to `'pressure' | 'rate'`; added `satisfies SimulatorWellSchedule` to inline schedule literals in `buildCreatePayload.ts`, `sim.worker.ts`, `benchmarkPresetRuntime.test.ts`, and `debug-spe1-grid5.ts`; replaced `payload.delta_t_days` / `payload.steps` references (removed fields) with reads from the raw `params` record; added `@ts-nocheck` to `debug-spe1-gas.ts` (stale WASM API calls).
   - `npm run typecheck` now passes clean.

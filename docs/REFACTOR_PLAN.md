@@ -264,29 +264,33 @@ That is addressed in Phase 2.
 
 ---
 
-### Phase 1 — Move Sweep Metrics to Rust (2-3 days)
+### Phase 1 — Move Sweep Metrics to Rust ✓ COMPLETE
 
 **Goal:** Eliminate the O(n²) `sweepEfficiencySimSeries` derived in App.svelte.
 Rust computes eA, eV, eVol, mobileOilRecovered per step in `record_step_report()`.
 
-This is independent of all other phases. Do it early because it has a clear before/after benchmark.
+**Rust changes (done):**
 
-**Rust changes:**
+- `src/lib/ressim/src/reporting.rs` — new `SweepConfig` struct (geometry, swept_threshold, initial/residual oil saturation) + `SweepMetrics` struct + optional `sweep: Option<SweepMetrics>` on `TimePointRates`. Binary threshold sweep computed in `compute_sweep_metrics()`. Called in BOTH `record_step_report()` (IMPES) AND `record_fim_step_report()` (FIM) — solver-agnostic.
+- `src/lib/ressim/src/lib.rs` — added `sweep_config: Option<SweepConfig>` field.
+- `src/lib/ressim/src/frontend.rs` — added `setSweepConfig(config_js: JsValue)` WASM setter.
+- Rebuilt WASM pkg (wasm-bindgen 0.2.117 bundler target).
 
-- `src/lib/ressim/src/reporting.rs` — add optional `sweep: Option<SweepReport>` to
-  `TimePointRates`. Populate when `sweep_geometry` is configured on the simulator.
-- `src/lib/ressim/src/lib.rs` — add `sweep_geometry: Option<SweepGeometry>` field.
-- `src/lib/ressim/src/frontend.rs` — add `setSweepGeometry(json)` setter.
-- Rebuild WASM pkg.
+**TypeScript changes (done):**
 
-**TypeScript changes:**
+- [src/lib/simulator-types.ts](src/lib/simulator-types.ts) — added `sweepConfig?` to `SimulatorCreatePayload`; added `sweep?: { e_a?, e_v?, e_vol, mobile_oil_recovered? }` to `RateHistoryPoint`.
+- [src/lib/stores/simulationStore.svelte.ts](src/lib/stores/simulationStore.svelte.ts) — `buildCreatePayload()` now appends `sweepConfig` using scenario capabilities + threshold = `s_wc + 0.2 × movable_range`.
+- [src/lib/workers/sim.worker.ts](src/lib/workers/sim.worker.ts) — calls `setSweepConfig(payload.sweepConfig)` if present; removed stale `init()` call (wasm-bindgen 0.2.117 auto-init).
+- [src/lib/ressim/pkg/simulator_bg.d.ts](src/lib/ressim/pkg/simulator_bg.d.ts) — created hand-maintained ambient declarations for `simulator_bg.js` (re-exports `simulator.d.ts` + `__wbg_set_wasm`) enabling Node.js WASM bootstrap.
+- [src/lib/catalog/benchmarkPresetRuntime.test.ts](src/lib/catalog/benchmarkPresetRuntime.test.ts) — updated WASM init to use Node.js manual bootstrap (`WebAssembly.instantiate` + `__wbg_set_wasm`).
+- [scripts/debug-spe1-grid5.ts](scripts/debug-spe1-grid5.ts) — same Node.js WASM bootstrap update.
 
-- [src/lib/workers/sim.worker.ts](src/lib/workers/sim.worker.ts) — call `setSweepGeometry()` during `configureSimulator()` if scenario has `sweepGeometry` capability.
-- [src/lib/simulator-types.ts](src/lib/simulator-types.ts) — add `sweep?` to `TimePointRates` / `RateHistoryPoint`.
-- [src/App.svelte](src/App.svelte) — delete `sweepEfficiencySimSeries` `$derived` entirely; read sweep data from `runtime.rateHistory`.
-- [src/lib/charts/referenceComparisonModel.ts](src/lib/charts/referenceComparisonModel.ts) — read sweep series from rate history, not from separately-computed JS series.
+**What is NOT yet done (next step):**
 
-**Verification:** `sweep_areal`, `sweep_vertical`, `sweep_combined` scenarios show identical sweep efficiency charts. `cargo test` passes.
+- [src/App.svelte](src/App.svelte) — `sweepEfficiencySimSeries` `$derived` still present; should be deleted in favour of reading `.sweep` from rate history.
+- [src/lib/charts/referenceComparisonModel.ts](src/lib/charts/referenceComparisonModel.ts) — sweep series should read from `rateHistory[i].sweep` instead of calling `computeSimSweepDiagnosticsForGeometry()` per history entry.
+
+**Verification:** 188 Rust tests pass. TypeScript typecheck clean. 523/530 TypeScript tests pass (7 pre-existing failures unrelated to these changes).
 
 ---
 

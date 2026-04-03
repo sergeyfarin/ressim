@@ -2,7 +2,7 @@ import { calculateDepletionAnalyticalProduction } from '../analytical/depletionA
 import { calculateMaterialBalance } from '../analytical/materialBalance';
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
-import { computeCombinedSweep, computeSimSweepDiagnosticsForGeometry, computeSweepSaturationWindow, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
+import { computeCombinedSweep, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
 import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
@@ -1190,58 +1190,31 @@ function buildSimulationSweepSeries(
     showAreal: boolean;
     showVertical: boolean;
 } {
-    const nx = Math.max(1, Math.floor(toFiniteNumber(result.params.nx, 1)));
-    const ny = Math.max(1, Math.floor(toFiniteNumber(result.params.ny, 1)));
-    const nz = Math.max(1, Math.floor(toFiniteNumber(result.params.nz, 1)));
-    const rock = extractRockProps(result.params);
-    const fluid = extractFluidProps(result.params);
-    const initialSw = toFiniteNumber(result.params.initialSaturation, rock.s_wc);
-    const sweptThreshold = computeSweepSaturationWindow(rock, fluid, initialSw);
     const visibility = getSweepComponentVisibility(geometry);
-
-    const snapshots = [...result.history];
-    if (result.finalSnapshot) {
-        const lastTime = snapshots.at(-1)?.time;
-        if (lastTime == null || Math.abs(lastTime - result.finalSnapshot.time) > 1e-9) {
-            snapshots.push(result.finalSnapshot);
-        }
-    }
 
     const areal: XYPoint[] = geometry === 'both' ? [] : [{ x: 0, y: 0 }];
     const vertical: XYPoint[] = geometry === 'both' ? [] : [{ x: 0, y: 0 }];
     const combined: XYPoint[] = [{ x: 0, y: 0 }];
     const combinedMobileOil: XYPoint[] = geometry === 'both' ? [{ x: 0, y: 0 }] : [];
-    const initialOilSaturation = Math.max(0, 1 - initialSw);
-    const residualOilSaturation = toFiniteNumber(result.params.s_or, rock.s_or);
 
-    snapshots.forEach((snapshot) => {
-        const pvi = mapSweepTimeToPvi(result, Number(snapshot.time));
-        if (!Number.isFinite(pvi)) return;
+    for (let i = 0; i < result.rateHistory.length; i++) {
+        const sweep = result.rateHistory[i].sweep;
+        if (!sweep) continue;
+        const pvi = result.pviSeries[i] ?? null;
+        if (pvi == null || !Number.isFinite(pvi)) continue;
         const selectedXAxis = mapPviSeriesToXAxis([pvi], derived, xAxisMode, tau)[0];
-        if (!Number.isFinite(selectedXAxis)) return;
-        const satWater = snapshot.grid?.sat_water;
-        const satOil = snapshot.grid?.sat_oil;
-        if (!satWater || satWater.length === 0) return;
-        const sweep = computeSimSweepDiagnosticsForGeometry(satWater, satOil, nx, ny, nz, sweptThreshold, {
-            geometry,
-            injectorI: toFiniteNumber(result.params.injectorI, 0),
-            injectorJ: toFiniteNumber(result.params.injectorJ, 0),
-            producerI: toFiniteNumber(result.params.producerI, Math.max(0, nx - 1)),
-            producerJ: toFiniteNumber(result.params.producerJ, Math.max(0, ny - 1)),
-            cellDx: toFiniteNumber(result.params.cellDx, 1),
-            cellDy: toFiniteNumber(result.params.cellDy, 1),
-        }, initialOilSaturation, residualOilSaturation);
-        if (sweep.eA != null) {
-            areal.push({ x: Number(selectedXAxis), y: sweep.eA });
+        if (!Number.isFinite(selectedXAxis)) continue;
+        if (sweep.e_a != null) {
+            areal.push({ x: Number(selectedXAxis), y: sweep.e_a });
         }
-        if (sweep.eV != null) {
-            vertical.push({ x: Number(selectedXAxis), y: sweep.eV });
+        if (sweep.e_v != null) {
+            vertical.push({ x: Number(selectedXAxis), y: sweep.e_v });
         }
-        combined.push({ x: Number(selectedXAxis), y: sweep.eVol });
-        if (geometry === 'both') {
-            combinedMobileOil.push({ x: Number(selectedXAxis), y: sweep.mobileOilRecovered });
+        combined.push({ x: Number(selectedXAxis), y: sweep.e_vol });
+        if (geometry === 'both' && sweep.mobile_oil_recovered != null) {
+            combinedMobileOil.push({ x: Number(selectedXAxis), y: sweep.mobile_oil_recovered });
         }
-    });
+    }
 
     const sweepRfXValues = mapPviSeriesToXAxis(result.pviSeries, derived, xAxisMode, tau);
 

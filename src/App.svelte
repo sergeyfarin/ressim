@@ -7,7 +7,7 @@
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
     import { getScenarioChartLayout, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
-    import { computeSimSweepDiagnosticsForGeometry, computeSweepSaturationWindow, computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import { computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
@@ -92,35 +92,23 @@
         },
     };
 
-    // Simulation sweep efficiency time series — computed from per-cell saturation snapshots.
+    // Simulation sweep efficiency time series — read from rate history (computed by Rust per-step).
     // Only populated for sweep-domain scenarios; null otherwise.
     type SimSweepPoint = { time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null };
     const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
-        if (!showSweepPanel || runtime.history.length === 0) return null;
-        if (!selectedOutputProfile.rockProps || !selectedOutputProfile.fluidProps) return null;
-        const { nx, ny, nz, initialSaturation } = params;
-        const sweptThreshold = computeSweepSaturationWindow(
-            selectedOutputProfile.rockProps,
-            selectedOutputProfile.fluidProps,
-            initialSaturation,
-        );
-        const result: SimSweepPoint[] = [{ time: 0, eA: sweepGeometry === 'both' ? null : 0, eV: sweepGeometry === 'both' ? null : 0, eVol: 0, mobileOilRecovered: sweepGeometry === 'both' ? 0 : null }];
-        for (const entry of runtime.history) {
-            const sw = entry.grid?.sat_water;
-            const so = entry.grid?.sat_oil;
-            if (!sw || sw.length !== nx * ny * nz) continue;
-            const { eA, eV, eVol, mobileOilRecovered } = computeSimSweepDiagnosticsForGeometry(sw, so, nx, ny, nz, sweptThreshold, {
-                geometry: sweepGeometry,
-                injectorI: params.injectorI,
-                injectorJ: params.injectorJ,
-                producerI: params.producerI,
-                producerJ: params.producerJ,
-                cellDx: params.cellDx,
-                cellDy: params.cellDy,
-            }, Math.max(0, 1 - initialSaturation), params.s_or);
-            result.push({ time: entry.time, eA, eV, eVol, mobileOilRecovered });
+        if (!showSweepPanel || runtime.rateHistory.length === 0) return null;
+        const points: SimSweepPoint[] = [{ time: 0, eA: sweepGeometry === 'both' ? null : 0, eV: sweepGeometry === 'both' ? null : 0, eVol: 0, mobileOilRecovered: sweepGeometry === 'both' ? 0 : null }];
+        for (const p of runtime.rateHistory) {
+            if (!p.sweep) continue;
+            points.push({
+                time: p.time,
+                eA: p.sweep.e_a ?? null,
+                eV: p.sweep.e_v ?? null,
+                eVol: p.sweep.e_vol,
+                mobileOilRecovered: p.sweep.mobile_oil_recovered ?? null,
+            });
         }
-        return result.length > 0 ? result : null;
+        return points.length > 1 ? points : null;
     });
 
     // Analytical recovery factor for sweep scenarios: RF = E_vol(Craig+DP) × E_D_BL(PVI_local).
