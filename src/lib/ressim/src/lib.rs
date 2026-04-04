@@ -115,6 +115,7 @@ pub struct ReservoirSimulator {
     cumulative_injection_m3: f64,
     cumulative_production_m3: f64,
     pub cumulative_mb_error_m3: f64,
+    cumulative_mb_oil_error_m3: f64,
     pub cumulative_mb_gas_error_m3: f64,
     target_producer_rate_m3_day: f64,
     target_producer_surface_rate_m3_day: Option<f64>,

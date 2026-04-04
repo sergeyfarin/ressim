@@ -10,8 +10,8 @@ const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 fn kro_at_initial_sw() -> f64 {
     let mobile_range = (1.0 - DEP_PSS_SWC - DEP_PSS_SOR).max(1e-9);
-    let effective_sw = ((super::fixtures::DEP_PSS_INITIAL_SW - DEP_PSS_SWC) / mobile_range)
-        .clamp(0.0, 1.0);
+    let effective_sw =
+        ((super::fixtures::DEP_PSS_INITIAL_SW - DEP_PSS_SWC) / mobile_range).clamp(0.0, 1.0);
     (1.0 - effective_sw).powf(DEP_PSS_NO)
 }
 
@@ -55,15 +55,15 @@ fn dietz_pss_reference(time_days: f64, producer_i: usize, producer_j: usize) -> 
         * (super::fixtures::DEP_PSS_INITIAL_PRESSURE_BAR
             - super::fixtures::DEP_PSS_PRODUCER_BHP_BAR);
     let oil_rate_sc_day = q0 * (-time_days / tau_days.max(1e-9)).exp();
-    let avg_pressure_bar = super::fixtures::DEP_PSS_PRODUCER_BHP_BAR
-        + oil_rate_sc_day / productivity_index.max(1e-12);
+    let avg_pressure_bar =
+        super::fixtures::DEP_PSS_PRODUCER_BHP_BAR + oil_rate_sc_day / productivity_index.max(1e-12);
     (oil_rate_sc_day, avg_pressure_bar)
 }
 
 use super::fixtures::{
     DEP_PSS_INITIAL_PRESSURE_BAR, collect_depletion_snapshots,
     make_closed_depletion_single_cell_sim, make_closed_depletion_single_cell_sim_with_storage,
-    make_dep_pss_like_sim, run_single_cell_local_newton,
+    make_dep_pss_like_sim, run_single_cell_local_newton, total_component_inventory_sc_all_cells,
 };
 
 fn cumulative_reservoir_withdrawal_and_pressure_work_proxy(
@@ -152,6 +152,62 @@ fn physics_depletion_oil_single_cell_timestep_stable() {
 }
 
 #[test]
+fn physics_depletion_oil_fim_single_step_reports_direct_oil_mb() {
+    let mut sim = make_closed_depletion_single_cell_sim();
+    let initial_inventory = total_component_inventory_sc_all_cells(&sim);
+
+    sim.step(0.1);
+
+    assert!(
+        sim.last_solver_warning.is_empty(),
+        "single-step FIM oil MB case emitted solver warning: {}",
+        sim.last_solver_warning
+    );
+
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("single-step FIM oil MB case should record history");
+    let final_inventory = total_component_inventory_sc_all_cells(&sim);
+    let dt_days = latest.time;
+    let actual_oil_inventory_drop_sc = initial_inventory.oil_sc - final_inventory.oil_sc;
+    let reported_oil_sc = latest.total_production_oil * dt_days;
+    let direct_oil_mb_error_sc = (reported_oil_sc - actual_oil_inventory_drop_sc).abs();
+
+    assert!(
+        latest.material_balance_error_oil_m3.is_finite(),
+        "single-step FIM oil MB field must stay finite: reported_field={:.6}, history_len={}, latest_time={:.6}, reported_oil_sc={:.6}, inventory_drop_sc={:.6}, direct_abs_diff={:.6}",
+        latest.material_balance_error_oil_m3,
+        sim.rate_history.len(),
+        latest.time,
+        reported_oil_sc,
+        actual_oil_inventory_drop_sc,
+        direct_oil_mb_error_sc
+    );
+    assert!(
+        reported_oil_sc.is_finite() && actual_oil_inventory_drop_sc.is_finite(),
+        "single-step FIM oil MB oracle inputs must stay finite: reported={:.6}, inventory_drop={:.6}, abs_diff={:.6}",
+        reported_oil_sc,
+        actual_oil_inventory_drop_sc,
+        direct_oil_mb_error_sc
+    );
+    assert!(
+        (latest.material_balance_error_oil_m3 - direct_oil_mb_error_sc).abs() <= 1e-9,
+        "reported oil MB field should equal the direct single-step oracle: field={:.12}, oracle={:.12}",
+        latest.material_balance_error_oil_m3,
+        direct_oil_mb_error_sc
+    );
+    assert!(
+        reported_oil_sc > 0.0,
+        "single-step FIM oil MB oracle should exercise nonzero reported oil production"
+    );
+    assert!(
+        actual_oil_inventory_drop_sc > 0.0,
+        "single-step FIM oil MB oracle should exercise nonzero oil inventory depletion"
+    );
+}
+
+#[test]
 fn physics_depletion_oil_closed_system_monotone() {
     let sim = make_dep_pss_like_sim(0.1, 8);
     let snapshots = collect_depletion_snapshots(&sim);
@@ -193,8 +249,16 @@ fn physics_depletion_oil_higher_oil_compressibility_cushions_pressure_drop() {
         high_storage.last_solver_warning
     );
 
-    let low_pressure = low_storage.rate_history.last().unwrap().avg_reservoir_pressure;
-    let high_pressure = high_storage.rate_history.last().unwrap().avg_reservoir_pressure;
+    let low_pressure = low_storage
+        .rate_history
+        .last()
+        .unwrap()
+        .avg_reservoir_pressure;
+    let high_pressure = high_storage
+        .rate_history
+        .last()
+        .unwrap()
+        .avg_reservoir_pressure;
 
     assert!(
         high_pressure > low_pressure + 1e-3,
@@ -278,8 +342,16 @@ fn physics_depletion_oil_rock_compressibility_adds_storage_response() {
         compressible_rock.last_solver_warning
     );
 
-    let stiff_pressure = stiff_rock.rate_history.last().unwrap().avg_reservoir_pressure;
-    let compressible_pressure = compressible_rock.rate_history.last().unwrap().avg_reservoir_pressure;
+    let stiff_pressure = stiff_rock
+        .rate_history
+        .last()
+        .unwrap()
+        .avg_reservoir_pressure;
+    let compressible_pressure = compressible_rock
+        .rate_history
+        .last()
+        .unwrap()
+        .avg_reservoir_pressure;
 
     assert!(
         compressible_pressure > stiff_pressure + 1e-3,
@@ -368,9 +440,9 @@ fn physics_depletion_oil_dep_pss_late_time_matches_dietz_reference_smoke() {
         let (reference_rate, reference_pressure) = dietz_pss_reference(snapshot.time_days, 10, 10);
         let rate_rel_diff =
             ((snapshot.oil_rate_sc_day - reference_rate) / reference_rate.max(1e-12)).abs();
-        let pressure_rel_diff =
-            ((snapshot.avg_pressure_bar - reference_pressure) / reference_pressure.max(1e-12))
-                .abs();
+        let pressure_rel_diff = ((snapshot.avg_pressure_bar - reference_pressure)
+            / reference_pressure.max(1e-12))
+        .abs();
 
         max_rate_rel_diff = max_rate_rel_diff.max(rate_rel_diff);
         max_pressure_rel_diff = max_pressure_rel_diff.max(pressure_rel_diff);

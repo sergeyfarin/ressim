@@ -82,8 +82,7 @@ fn build_2d_areal_waterflood_streak_sim(nx: usize, ny: usize) -> ReservoirSimula
 
     for j in 0..ny {
         sim.add_well(0, j, 0, 500.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(nx - 1, j, 0, 100.0, 0.1, 0.0, false)
-            .unwrap();
+        sim.add_well(nx - 1, j, 0, 100.0, 0.1, 0.0, false).unwrap();
     }
 
     sim
@@ -93,10 +92,8 @@ fn build_2d_areal_gas_flood_streak_sim(nx: usize, ny: usize) -> ReservoirSimulat
     let mut sim = ReservoirSimulator::new(nx, ny, 1, 0.2);
     sim.set_fim_enabled(true);
     sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_redissolution_enabled(false);
@@ -127,17 +124,22 @@ fn build_2d_areal_gas_flood_streak_sim(nx: usize, ny: usize) -> ReservoirSimulat
 
     for j in 0..ny {
         sim.add_well(0, j, 0, 400.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(nx - 1, j, 0, 100.0, 0.1, 0.0, false)
-            .unwrap();
+        sim.add_well(nx - 1, j, 0, 100.0, 0.1, 0.0, false).unwrap();
     }
 
     sim
 }
 
-fn build_3d_layered_waterflood_kz_sim(nx: usize, ny: usize, nz: usize, kz_md: f64) -> ReservoirSimulator {
+fn build_3d_layered_waterflood_kz_sim(
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    kz_md: f64,
+) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
     sim.set_fim_enabled(true);
-    sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![2.0; nz]).unwrap();
+    sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![2.0; nz])
+        .unwrap();
     sim.set_rel_perm_props(0.10, 0.10, 2.0, 2.0, 1.0, 1.0)
         .unwrap();
     sim.set_initial_pressure(300.0);
@@ -163,7 +165,8 @@ fn build_3d_layered_waterflood_kz_sim(nx: usize, ny: usize, nz: usize, kz_md: f6
 
     let mid_layer = nz / 2;
     for j in 0..ny {
-        sim.add_well(0, j, mid_layer, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(0, j, mid_layer, 500.0, 0.1, 0.0, true)
+            .unwrap();
         sim.add_well(nx - 1, j, mid_layer, 100.0, 0.1, 0.0, false)
             .unwrap();
     }
@@ -171,14 +174,18 @@ fn build_3d_layered_waterflood_kz_sim(nx: usize, ny: usize, nz: usize, kz_md: f6
     sim
 }
 
-fn build_3d_vertical_gas_segregation_sim(nx: usize, ny: usize, nz: usize, kz_md: f64) -> ReservoirSimulator {
+fn build_3d_vertical_gas_segregation_sim(
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    kz_md: f64,
+) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
     sim.set_fim_enabled(true);
-    sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![2.0; nz]).unwrap();
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_cell_dimensions_per_layer(10.0, 10.0, vec![2.0; nz])
+        .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_gas_redissolution_enabled(false);
     sim.set_initial_pressure(250.0);
@@ -225,13 +232,15 @@ fn physics_geometry_waterflood_2d_high_perm_streak_advances_front_faster() {
 
     let center_row_sw = row_average_water_saturation(&sim, streak_row);
     let flank_row_sw = 0.5
-        * (row_average_water_saturation(&sim, 0)
-            + row_average_water_saturation(&sim, sim.ny - 1));
+        * (row_average_water_saturation(&sim, 0) + row_average_water_saturation(&sim, sim.ny - 1));
     let center_downstream = sim.sat_water[sim.idx(sim.nx - 3, streak_row, 0)];
     let flank_downstream = 0.5
         * (sim.sat_water[sim.idx(sim.nx - 3, 0, 0)]
             + sim.sat_water[sim.idx(sim.nx - 3, sim.ny - 1, 0)]);
-    let latest = sim.rate_history.last().expect("2D waterflood should record history");
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("2D waterflood should record history");
 
     assert!(
         center_row_sw > flank_row_sw + 0.02,
@@ -266,14 +275,16 @@ fn physics_geometry_gas_flood_2d_high_perm_streak_advances_gas_front_faster() {
     }
 
     let center_row_sg = row_average_gas_saturation(&sim, streak_row);
-    let flank_row_sg = 0.5
-        * (row_average_gas_saturation(&sim, 0)
-            + row_average_gas_saturation(&sim, sim.ny - 1));
+    let flank_row_sg =
+        0.5 * (row_average_gas_saturation(&sim, 0) + row_average_gas_saturation(&sim, sim.ny - 1));
     let center_downstream = sim.sat_gas[sim.idx(sim.nx - 3, streak_row, 0)];
     let flank_downstream = 0.5
         * (sim.sat_gas[sim.idx(sim.nx - 3, 0, 0)]
             + sim.sat_gas[sim.idx(sim.nx - 3, sim.ny - 1, 0)]);
-    let latest = sim.rate_history.last().expect("2D gas flood should record history");
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("2D gas flood should record history");
 
     assert!(
         center_row_sg > flank_row_sg + 0.01,
@@ -304,8 +315,7 @@ fn physics_geometry_waterflood_3d_high_kz_spreads_front_across_layers() {
     }
 
     let low_off_layer_sw = 0.5
-        * (layer_average_water_saturation(&low_kz, 0)
-            + layer_average_water_saturation(&low_kz, 2));
+        * (layer_average_water_saturation(&low_kz, 0) + layer_average_water_saturation(&low_kz, 2));
     let high_off_layer_sw = 0.5
         * (layer_average_water_saturation(&high_kz, 0)
             + layer_average_water_saturation(&high_kz, 2));
@@ -375,8 +385,7 @@ fn physics_geometry_waterflood_2d_refined_streak_uses_iterative_backend_and_keep
 
     let center_row_sw = row_average_water_saturation(&sim, streak_row);
     let flank_row_sw = 0.5
-        * (row_average_water_saturation(&sim, 0)
-            + row_average_water_saturation(&sim, sim.ny - 1));
+        * (row_average_water_saturation(&sim, 0) + row_average_water_saturation(&sim, sim.ny - 1));
     assert!(
         center_row_sw > flank_row_sw + 0.01,
         "refined high-perm streak should still advance the water front faster: center={:.6}, flank={:.6}",

@@ -20,7 +20,7 @@
   - Root cause: `src/lib/workers/sim.worker.ts` assumed the wasm-bindgen wrapper auto-initialized at import time, but the generated `src/lib/ressim/pkg/simulator.js` still requires explicit default-init in the worker context.
   - Fix: run a one-time `initWasm()` gate before worker `ready`/`create`, then install the panic hook and proceed with simulator construction.
 
-- [ ] Add the four highest-priority correctness tests before any further convergence tuning.
+- [x] Add the four highest-priority correctness tests before any further convergence tuning.
   - Full analysis and all gaps documented in `docs/FIM_TEST_COMPLETENESS_REVIEW.md` (2026-04-02).
   - GAP-4 regression status: `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`,
     `classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`, and
@@ -45,7 +45,10 @@
       Multi-perforation shared-BHP coverage is now in
        `src/lib/ressim/src/tests/physics/wells_sources.rs` via
        `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility`.
-      Remaining immediate correctness priority is the oil MB diagnostic.
+      Oil MB diagnostic coverage is now first-class in `TimePointRates` via
+      `material_balance_error_oil_m3`, with direct single-step FIM oracle coverage in
+      `src/lib/ressim/src/tests/physics/depletion_oil.rs` via
+      `physics_depletion_oil_fim_single_step_reports_direct_oil_mb`.
       Dissolved-gas assembly-flux coverage is now in
        `src/lib/ressim/src/fim/assembly_tests.rs` via
        `gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign`.
@@ -58,7 +61,8 @@
        `accumulation_block_has_exact_water_derivatives` Jacobian check.
       Gas depletion, liberation, the short gas-flood path, and the broader gas-flood smoke case now
       all use relative default material-balance gates.
-  - Convergence work (hotspot memory, Appleyard damping, CPR) resumes only after these 4 pass.
+  - Convergence work (hotspot memory, Appleyard damping, CPR) can now resume behind the expanded
+    correctness gate; GAP-13 was closed on 2026-04-04.
   - See `docs/FIM_TEST_COMPLETENESS_REVIEW.md` for the full gap list and the exit-criterion verdict.
 
 - [ ] Run a focused FIM cleanup pass before more convergence tuning.
@@ -153,7 +157,7 @@
       Phase 2 status (2026-03-31): dedicated `physics_depletion_gas`, `physics_waterflood`, `physics_gas_flood`, and `physics_gas_cap` tests are now in place, and overlapping gravity/flash/two-phase checks were moved out of `lib.rs` into the physics modules.
       Phase 2 range-audit follow-up (2026-04-01): add compact case matrices across initial saturation, permeability, PVT response, and SCAL shape inside the Phase 2 families before moving on to Phase 3 geometry work.
       Remaining fast-suite runtime gaps after the audit: a true free-gas gas-cap case with oil-gas capillary entry pressure, one runtime capillary-direction check, and explicit anisotropy / heterogeneity outcome tests.
-      Material-balance audit note (2026-04-01): runtime reporting has explicit water and gas MB diagnostics, and gas MB already includes dissolved-plus-free gas, but oil is not yet a first-class reported component balance. Keep component-inventory tests in the physics suite until/unless `TimePointRates` grows explicit oil-component MB reporting.
+      Material-balance audit note (2026-04-04): runtime reporting now has explicit water, oil, and gas MB diagnostics. Keep component-inventory tests in the physics suite as an independent oracle even though `TimePointRates` now reports `material_balance_error_oil_m3`.
       Pressure-work / storage audit note (2026-04-01): add cheap depletion probes that treat stronger drawdown and higher compressive storage as monotonic sanity checks only. These are pressure-work proxies, not true energy-balance tests, because the model has no thermal/energy equation.
       Phase 3 kickoff note (2026-04-01): geometry/anisotropy coverage should pair fast 2D or 3D outcome checks with at least one ignored refined case that crosses the large-row iterative backend path. Current code switches away from direct solve above 512 rows on native and wasm, so refined geometry probes should exceed that by margin rather than assume the older 1024-row note.
       Phase 4 kickoff note (2026-04-01): ignored family-owned refinement probes now exist for depletion oil, depletion gas, liberation, waterflood, gas flood, and gas cap; the `dep_pss` late-time Dietz check now lives with the depletion-oil family as a diagnostic envelope; and the Buckley parity/refined-grid probes plus the larger-grid SPE1-like gas-injection breakthrough probe now live with the waterflood and gas-flood families instead of older mixed test files. The Phase 4 ownership cleanup is now complete; any remaining non-family files are explicit benchmark or diagnostic homes rather than orphaned scenario coverage.

@@ -170,6 +170,7 @@ impl ReservoirSimulator {
         let (well_source_water_m3_day, well_source_free_gas_sc_day, well_source_dg_sc_day) =
             self.accumulate_well_source_deltas(p_new, well_controls);
         let mut actual_change_m3 = 0.0;
+        let mut actual_oil_removed_sc = 0.0;
         let mut actual_change_gas_sc = 0.0;
         for idx in 0..n_cells {
             let vp_m3 = self.pore_volume_m3(idx);
@@ -187,9 +188,10 @@ impl ReservoirSimulator {
                 let bg_old = self.get_b_g(p_old).max(1e-9);
                 let bo_old = self.get_b_o_cell(idx, p_old).max(1e-9);
                 let rs_old = self.rs[idx];
+                let old_oil_sc = so_old * vp_m3 / bo_old;
                 let old_free_gas_sc = sg_old * vp_m3 / bg_old;
                 let old_dissolved_gas_sc = if self.pvt_table.is_some() {
-                    (so_old * vp_m3 / bo_old) * rs_old
+                    old_oil_sc * rs_old
                 } else {
                     0.0
                 };
@@ -247,9 +249,11 @@ impl ReservoirSimulator {
                 actual_change_m3 += (sw_new - sw_old) * vp_m3;
                 let bg_new = self.get_b_g(p_new[idx]).max(1e-9);
                 let bo_new = self.get_b_o_cell(idx, p_new[idx]).max(1e-9);
+                let new_oil_sc = so_new * vp_m3 / bo_new;
+                actual_oil_removed_sc += old_oil_sc - new_oil_sc;
                 let new_free_gas_sc = sg_new * vp_m3 / bg_new;
                 let new_dissolved_gas_sc = if self.pvt_table.is_some() {
-                    (so_new * vp_m3 / bo_new) * rs_new
+                    new_oil_sc * rs_new
                 } else {
                     0.0
                 };
@@ -258,11 +262,19 @@ impl ReservoirSimulator {
             } else {
                 let sw_min = self.scal.s_wc;
                 let sw_max = 1.0 - self.scal.s_or;
+                let p_old = self.pressure[idx];
+                let so_old = self.sat_oil[idx];
+                let bo_old = self.get_b_o_cell(idx, p_old).max(1e-9);
+                let old_oil_sc = so_old * vp_m3 / bo_old;
                 let sw_new = (sw_old + delta_sw).clamp(sw_min, sw_max);
+                let so_new = 1.0 - sw_new;
+                let bo_new = self.get_b_o_cell(idx, p_new[idx]).max(1e-9);
+                let new_oil_sc = so_new * vp_m3 / bo_new;
 
                 actual_change_m3 += (sw_new - sw_old) * vp_m3;
+                actual_oil_removed_sc += old_oil_sc - new_oil_sc;
                 self.sat_water[idx] = sw_new;
-                self.sat_oil[idx] = 1.0 - sw_new;
+                self.sat_oil[idx] = so_new;
                 self.sat_gas[idx] = 0.0;
                 self.rs[idx] = 0.0;
             }
@@ -279,6 +291,7 @@ impl ReservoirSimulator {
             well_controls,
             dt_days,
             actual_change_m3,
+            actual_oil_removed_sc,
             actual_change_gas_sc,
         );
         self.time_days += dt_days;

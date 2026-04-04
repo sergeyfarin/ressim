@@ -11,10 +11,11 @@ question of when correctness work is complete enough to prioritize convergence t
 ## Summary verdict
 
 The test suite is substantially built out through Phases 1–4 of the plan. Fast family regressions
-exist for all nine coverage families. The primary remaining targeted gap now falls into one category:
+exist for all nine coverage families, and the previously last targeted reporting gap is now closed:
 
-1. **Oil MB remains a second-class diagnostic** — oil balance still has to be reconstructed from
-   rates plus inventory rather than read as a first-class runtime field.
+1. **Oil MB is now a first-class diagnostic** — `TimePointRates` now reports
+   `material_balance_error_oil_m3`, and the fast suite includes a direct single-step FIM oil
+   inventory oracle.
 
 The previously reported GAP-4 regressions are green in HEAD: the two Rs-switch tests in
 `fim/state.rs` and the gas-injector surface-pressure derivative test in `fim/wells.rs` now pass.
@@ -356,21 +357,24 @@ new oracle checks the absolute magnitude directly.
 
 ---
 
-### GAP-13: Oil-component MB diagnostic in rate history
+### GAP-13 (CLOSED 2026-04-04): Oil-component MB diagnostic in rate history
 
-**What it is**: `TimePointRates` has explicit `material_balance_error_m3` (water) and
-`material_balance_error_gas_m3` (gas) fields.  Oil MB is not tracked as a first-class field.
-The physics tests compute oil MB by integrating cumulative production from rate history, which
-is an indirect check.
+**Previous gap**: `TimePointRates` had explicit `material_balance_error_m3` (water) and
+`material_balance_error_gas_m3` (gas) fields, but oil MB was not tracked as a first-class field.
+The physics tests computed oil MB by integrating cumulative production from rate history, which
+was only an indirect check.
 
-**Why it matters**: If the oil production rate is misreported but the oil MB check passes
-because cumulative integration compensates for short windows, a systematic oil reporting error
-can be present for a long time.
+**Why it mattered**: If the oil production rate was misreported but the oil MB check passed
+because cumulative integration compensated for short windows, a systematic oil reporting error
+could remain hidden for a long time.
 
-**Recommended action**: This is not a test gap per se (adding a field requires a code change),
-but the absence means oil MB checking will always require a full inventory scan.  Note this as
-a known weak point.  Until then, add at least one test that directly computes `delta_oil_inventory
-/ dt_days` and compares it to `reported_oil_rate * Bo` for a single step.
+**What was changed**: `src/lib/ressim/src/reporting.rs` now records
+`material_balance_error_oil_m3` on every `TimePointRates` entry for both IMPES and FIM paths,
+using the same cumulative source-minus-inventory pattern already used for water and gas.
+`src/lib/ressim/src/tests/physics/depletion_oil.rs` now contains the non-ignored acceptance test
+`physics_depletion_oil_fim_single_step_reports_direct_oil_mb`, which runs a real FIM step on the
+single-cell depletion fixture and verifies that the reported oil MB field matches the direct
+inventory-drop oracle at single-step resolution.
 
 ---
 
@@ -407,7 +411,7 @@ hole and aligns the broader gas-flood smoke test with the relative-MB policy use
 | P3 | `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility` | wells | 1 | Closed 2026-04-03 |
 | P3 | Tighten gas depletion MB to <1e-3 relative | depletion gas | 1 | Tolerance upgrade |
 | P3 | Tighten gas flood MB to <1e-3 relative per step | gas flood | 1 | Tolerance upgrade |
-| P4 | Oil-rate-to-delta-inventory per-step check | all | 2 | Substitute for missing oil MB field |
+| P4 | Oil-rate-to-delta-inventory per-step check | all | 2 | Closed 2026-04-04 by first-class oil MB field + single-step oracle |
 
 ---
 

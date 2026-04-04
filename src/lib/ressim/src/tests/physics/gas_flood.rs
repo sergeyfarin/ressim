@@ -1,8 +1,8 @@
+use super::super::make_spe1_like_grid_sim;
 use super::fixtures::{
     cumulative_component_production_sc, make_3phase_gas_injection_sim,
     total_component_inventory_sc_all_cells, total_gas_inventory_sc_all_cells,
 };
-use super::super::make_spe1_like_grid_sim;
 use crate::ReservoirSimulator;
 
 #[derive(Clone, Copy)]
@@ -159,7 +159,8 @@ fn physics_gas_flood_1d_short_material_balance_matches_inventory_change() {
         water_accounted
     );
     assert!(
-        (oil_accounted - initial_inventory.oil_sc).abs() <= initial_inventory.oil_sc.max(1.0) * 5e-3,
+        (oil_accounted - initial_inventory.oil_sc).abs()
+            <= initial_inventory.oil_sc.max(1.0) * 5e-3,
         "short 1D gas flood oil balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_inventory.oil_sc,
         oil_accounted
@@ -212,10 +213,8 @@ fn physics_gas_flood_saturation_sum_stays_physical() {
 fn physics_gas_flood_large_steps_keep_state_bounded() {
     let mut sim = ReservoirSimulator::new(6, 1, 3, 0.2);
     sim.set_fim_enabled(true);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
@@ -237,7 +236,11 @@ fn physics_gas_flood_large_steps_keep_state_bounded() {
     }
 
     for (idx, pressure) in sim.pressure.iter().enumerate() {
-        assert!(pressure.is_finite(), "pressure must remain finite at cell {}", idx);
+        assert!(
+            pressure.is_finite(),
+            "pressure must remain finite at cell {}",
+            idx
+        );
         assert!(
             *pressure > 1.0 && *pressure < 5_000.0,
             "pressure {} at cell {} escaped the physical envelope",
@@ -247,7 +250,11 @@ fn physics_gas_flood_large_steps_keep_state_bounded() {
     }
 
     for (idx, sg) in sim.sat_gas.iter().enumerate() {
-        assert!(sg.is_finite(), "gas saturation must remain finite at cell {}", idx);
+        assert!(
+            sg.is_finite(),
+            "gas saturation must remain finite at cell {}",
+            idx
+        );
         assert!(
             *sg >= -1e-9 && *sg <= 1.0 + 1e-9,
             "gas saturation {} at cell {} escaped bounds",
@@ -377,15 +384,22 @@ fn physics_gas_flood_1d_timestep_refinement_keeps_breakthrough_ordering_stable()
         );
     }
 
-    let coarse_last = coarse.rate_history.last().expect("coarse gas flood should record history");
-    let fine_last = fine.rate_history.last().expect("fine gas flood should record history");
+    let coarse_last = coarse
+        .rate_history
+        .last()
+        .expect("coarse gas flood should record history");
+    let fine_last = fine
+        .rate_history
+        .last()
+        .expect("fine gas flood should record history");
     let coarse_avg_sg = coarse.sat_gas.iter().copied().sum::<f64>() / coarse.sat_gas.len() as f64;
     let fine_avg_sg = fine.sat_gas.iter().copied().sum::<f64>() / fine.sat_gas.len() as f64;
     let coarse_cum_gas = cumulative_gas_production_sc(&coarse);
     let fine_cum_gas = cumulative_gas_production_sc(&fine);
 
     let avg_sg_abs_diff = (coarse_avg_sg - fine_avg_sg).abs();
-    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure - fine_last.avg_reservoir_pressure)
+    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure
+        - fine_last.avg_reservoir_pressure)
         / fine_last.avg_reservoir_pressure.max(1e-12))
     .abs();
     let cumulative_gas_rel_diff = ((coarse_cum_gas - fine_cum_gas) / fine_cum_gas.max(1e-12)).abs();

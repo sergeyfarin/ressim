@@ -22,9 +22,21 @@ fn per_layer_dz_affects_pore_volume_and_depth() {
     let d1 = sim.depth_at_k(1);
     let d2 = sim.depth_at_k(2);
 
-    assert!((d0 - 3.0).abs() < 1e-10, "k=0: depth should be 3, got {}", d0);
-    assert!((d1 - 10.5).abs() < 1e-10, "k=1: depth should be 10.5, got {}", d1);
-    assert!((d2 - 22.5).abs() < 1e-10, "k=2: depth should be 22.5, got {}", d2);
+    assert!(
+        (d0 - 3.0).abs() < 1e-10,
+        "k=0: depth should be 3, got {}",
+        d0
+    );
+    assert!(
+        (d1 - 10.5).abs() < 1e-10,
+        "k=1: depth should be 10.5, got {}",
+        d1
+    );
+    assert!(
+        (d2 - 22.5).abs() < 1e-10,
+        "k=2: depth should be 22.5, got {}",
+        d2
+    );
 }
 
 #[test]

@@ -89,6 +89,7 @@ impl ReservoirSimulator {
             cumulative_injection_m3: 0.0,
             cumulative_production_m3: 0.0,
             cumulative_mb_error_m3: 0.0,
+            cumulative_mb_oil_error_m3: 0.0,
             cumulative_mb_gas_error_m3: 0.0,
             scal_3p: None,
             pc_og: None,

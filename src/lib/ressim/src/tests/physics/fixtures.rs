@@ -149,8 +149,17 @@ pub(super) fn run_single_cell_local_newton(
 ) -> LocalNewtonDiagnostics {
     let mut sim = make_closed_depletion_single_cell_sim();
     let previous_state = FimState::from_simulator(&sim);
-    let report = run_fim_timestep(&mut sim, &previous_state, &previous_state, dt_days, &options);
-    assert!(report.converged, "single-cell local Newton diagnostic should converge");
+    let report = run_fim_timestep(
+        &mut sim,
+        &previous_state,
+        &previous_state,
+        dt_days,
+        &options,
+    );
+    assert!(
+        report.converged,
+        "single-cell local Newton diagnostic should converge"
+    );
 
     let assembly = assemble_fim_system(
         &sim,
@@ -197,10 +206,8 @@ pub(super) fn make_below_bubble_point_flash_sim(
     gas_redissolution_enabled: bool,
 ) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_gas_redissolution_enabled(gas_redissolution_enabled);
     sim.set_initial_pressure(175.0);
@@ -264,10 +271,8 @@ pub(super) fn make_closed_gas_depletion_single_cell_sim() -> ReservoirSimulator 
     sim.set_fim_enabled(true);
     sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
         .unwrap();
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_gas_redissolution_enabled(false);
     sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
@@ -341,10 +346,8 @@ pub(super) fn make_short_waterflood_1d_sim() -> ReservoirSimulator {
 pub(super) fn make_3phase_gas_injection_sim(nx: usize, fim_enabled: bool) -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(nx, 1, 1, 0.2);
     sim.set_fim_enabled(fim_enabled);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
@@ -375,7 +378,9 @@ pub(super) fn total_gas_inventory_sc_all_cells(sim: &ReservoirSimulator) -> f64 
         .sum()
 }
 
-pub(super) fn total_component_inventory_sc_all_cells(sim: &ReservoirSimulator) -> ComponentInventorySc {
+pub(super) fn total_component_inventory_sc_all_cells(
+    sim: &ReservoirSimulator,
+) -> ComponentInventorySc {
     let mut water_sc = 0.0;
     let mut oil_sc = 0.0;
     let mut gas_sc = 0.0;
@@ -434,10 +439,8 @@ pub(super) fn make_free_gas_cap_runtime_sim(gas_oil_pc_entry_bar: f64) -> Reserv
     sim.set_fim_enabled(true);
     sim.set_cell_dimensions_per_layer(20.0, 20.0, vec![8.0, 8.0, 8.0])
         .unwrap();
-    sim.set_three_phase_rel_perm_props(
-        0.12, 0.10, 0.04, 0.02, 0.14, 2.0, 2.2, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.12, 0.10, 0.04, 0.02, 0.14, 2.0, 2.2, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_gas_redissolution_enabled(false);
     sim.set_fluid_properties(1.1, 0.5).unwrap();
@@ -450,8 +453,12 @@ pub(super) fn make_free_gas_cap_runtime_sim(gas_oil_pc_entry_bar: f64) -> Reserv
     sim.set_initial_rs(0.0);
     sim.set_gravity_enabled(true);
     sim.set_stability_params(0.05, 75.0, 0.75);
-    sim.set_permeability_per_layer(vec![400.0, 400.0, 400.0], vec![400.0, 400.0, 400.0], vec![250.0, 250.0, 250.0])
-        .unwrap();
+    sim.set_permeability_per_layer(
+        vec![400.0, 400.0, 400.0],
+        vec![400.0, 400.0, 400.0],
+        vec![250.0, 250.0, 250.0],
+    )
+    .unwrap();
     sim.set_capillary_params(0.0, 2.0).unwrap();
     if gas_oil_pc_entry_bar > 0.0 {
         sim.set_gas_oil_capillary_params(gas_oil_pc_entry_bar, 1.8)

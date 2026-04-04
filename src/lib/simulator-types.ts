@@ -243,6 +243,9 @@ export interface RateHistoryPoint {
   total_production_oil?: number;
   total_production_liquid?: number;
   total_injection?: number;
+  material_balance_error_m3?: number;
+  material_balance_error_oil_m3?: number;
+  material_balance_error_gas_m3?: number;
   avg_reservoir_pressure?: number;
   avg_pressure?: number;
   avg_water_saturation?: number;

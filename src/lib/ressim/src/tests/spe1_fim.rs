@@ -79,4 +79,3 @@ fn spe1_fim_gas_injection_creates_free_gas() {
         final_total_gas_sc
     );
 }
-

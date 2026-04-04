@@ -53,7 +53,8 @@ fn make_waterflood_case(case: WaterfloodCase) -> crate::ReservoirSimulator {
     sim.set_rel_perm_props(case.s_wc, case.s_or, case.n_w, case.n_o, 1.0, 1.0)
         .unwrap();
     sim.set_initial_saturation(case.initial_sw);
-    sim.set_fluid_properties(case.mu_o_cp, case.mu_w_cp).unwrap();
+    sim.set_fluid_properties(case.mu_o_cp, case.mu_w_cp)
+        .unwrap();
     sim.set_capillary_params(case.pc_entry_bar, 2.0).unwrap();
     sim.set_permeability_random_seeded(case.perm_md, case.perm_md, 42)
         .unwrap();
@@ -73,7 +74,12 @@ fn cumulative_oil_production_sc(sim: &crate::ReservoirSimulator) -> f64 {
     cumulative_oil
 }
 
-fn buckley_case_a(name: &'static str, nx: usize, dt_days: f64, max_steps: usize) -> BuckleyBenchmarkCase {
+fn buckley_case_a(
+    name: &'static str,
+    nx: usize,
+    dt_days: f64,
+    max_steps: usize,
+) -> BuckleyBenchmarkCase {
     BuckleyBenchmarkCase {
         name,
         nx,
@@ -92,7 +98,12 @@ fn buckley_case_a(name: &'static str, nx: usize, dt_days: f64, max_steps: usize)
     }
 }
 
-fn buckley_case_b(name: &'static str, nx: usize, dt_days: f64, max_steps: usize) -> BuckleyBenchmarkCase {
+fn buckley_case_b(
+    name: &'static str,
+    nx: usize,
+    dt_days: f64,
+    max_steps: usize,
+) -> BuckleyBenchmarkCase {
     BuckleyBenchmarkCase {
         name,
         nx,
@@ -150,13 +161,7 @@ fn buckley_reference_breakthrough_pv(case: &BuckleyBenchmarkCase) -> f64 {
 
     while s <= s_max {
         let fw = corey_fractional_flow(
-            s,
-            case.s_wc,
-            case.s_or,
-            case.n_w,
-            case.n_o,
-            case.mu_w,
-            case.mu_o,
+            s, case.s_wc, case.s_or, case.n_w, case.n_o, case.mu_w, case.mu_o,
         );
         let slope = fw / (s - sw_init);
         if slope > best_slope && slope.is_finite() {
@@ -227,7 +232,10 @@ fn run_buckley_case(case: &BuckleyBenchmarkCase) -> BuckleyBenchmarkMetrics {
 
     for _ in 0..case.max_steps {
         sim.step(case.dt_days);
-        let point = sim.rate_history.last().expect("rate history should have entries");
+        let point = sim
+            .rate_history
+            .last()
+            .expect("rate history should have entries");
         let dt = point.time - previous_time;
         previous_time = point.time;
         cumulative_injection += point.total_injection.max(0.0) * dt;
@@ -269,7 +277,10 @@ fn run_buckley_profile_case(
 
     for _ in 0..step_count {
         sim.step(case.dt_days);
-        let point = sim.rate_history.last().expect("rate history should have entries");
+        let point = sim
+            .rate_history
+            .last()
+            .expect("rate history should have entries");
         let dt = point.time - previous_time;
         previous_time = point.time;
         cumulative_injection += point.total_injection.max(0.0) * dt;
@@ -366,7 +377,8 @@ fn physics_waterflood_1d_injector_saturation_increases() {
 }
 
 #[test]
-fn physics_waterflood_case_matrix_respects_mass_and_front_direction_across_scal_and_capillary_ranges() {
+fn physics_waterflood_case_matrix_respects_mass_and_front_direction_across_scal_and_capillary_ranges()
+ {
     let cases = [
         WaterfloodCase {
             name: "base",
@@ -408,7 +420,8 @@ fn physics_waterflood_case_matrix_respects_mass_and_front_direction_across_scal_
 
     for case in cases {
         let mut sim = make_waterflood_case(case);
-        let initial_avg_sw = sim.sat_water.iter().copied().sum::<f64>() / sim.sat_water.len() as f64;
+        let initial_avg_sw =
+            sim.sat_water.iter().copied().sum::<f64>() / sim.sat_water.len() as f64;
         let injector_cell = sim.idx(0, 0, 0);
         let producer_cell = sim.idx(sim.nx - 1, 0, 0);
 
@@ -479,15 +492,23 @@ fn physics_waterflood_1d_timestep_refinement_keeps_front_and_balance_stable() {
         );
     }
 
-    let coarse_avg_sw = coarse.sat_water.iter().copied().sum::<f64>() / coarse.sat_water.len() as f64;
+    let coarse_avg_sw =
+        coarse.sat_water.iter().copied().sum::<f64>() / coarse.sat_water.len() as f64;
     let fine_avg_sw = fine.sat_water.iter().copied().sum::<f64>() / fine.sat_water.len() as f64;
-    let coarse_last = coarse.rate_history.last().expect("coarse waterflood should record history");
-    let fine_last = fine.rate_history.last().expect("fine waterflood should record history");
+    let coarse_last = coarse
+        .rate_history
+        .last()
+        .expect("coarse waterflood should record history");
+    let fine_last = fine
+        .rate_history
+        .last()
+        .expect("fine waterflood should record history");
     let coarse_cum_oil = cumulative_oil_production_sc(&coarse);
     let fine_cum_oil = cumulative_oil_production_sc(&fine);
 
     let avg_sw_abs_diff = (coarse_avg_sw - fine_avg_sw).abs();
-    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure - fine_last.avg_reservoir_pressure)
+    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure
+        - fine_last.avg_reservoir_pressure)
         / fine_last.avg_reservoir_pressure.max(1e-12))
     .abs();
     let cumulative_oil_rel_diff = ((coarse_cum_oil - fine_cum_oil) / fine_cum_oil.max(1e-12)).abs();
@@ -603,19 +624,23 @@ fn physics_waterflood_buckley_refined_discretization_improves_alignment() {
 
     let metrics_coarse_a = run_buckley_case(&coarse_a);
     let metrics_refined_a = run_buckley_case(&refined_a);
-    let rel_err_coarse_a = ((metrics_coarse_a.breakthrough_pv - metrics_coarse_a.reference_breakthrough_pv)
+    let rel_err_coarse_a = ((metrics_coarse_a.breakthrough_pv
+        - metrics_coarse_a.reference_breakthrough_pv)
         / metrics_coarse_a.reference_breakthrough_pv)
         .abs();
-    let rel_err_refined_a = ((metrics_refined_a.breakthrough_pv - metrics_refined_a.reference_breakthrough_pv)
+    let rel_err_refined_a = ((metrics_refined_a.breakthrough_pv
+        - metrics_refined_a.reference_breakthrough_pv)
         / metrics_refined_a.reference_breakthrough_pv)
         .abs();
 
     let metrics_coarse_b = run_buckley_case(&coarse_b);
     let metrics_refined_b = run_buckley_case(&refined_b);
-    let rel_err_coarse_b = ((metrics_coarse_b.breakthrough_pv - metrics_coarse_b.reference_breakthrough_pv)
+    let rel_err_coarse_b = ((metrics_coarse_b.breakthrough_pv
+        - metrics_coarse_b.reference_breakthrough_pv)
         / metrics_coarse_b.reference_breakthrough_pv)
         .abs();
-    let rel_err_refined_b = ((metrics_refined_b.breakthrough_pv - metrics_refined_b.reference_breakthrough_pv)
+    let rel_err_refined_b = ((metrics_refined_b.breakthrough_pv
+        - metrics_refined_b.reference_breakthrough_pv)
         / metrics_refined_b.reference_breakthrough_pv)
         .abs();
 

@@ -233,8 +233,17 @@ struct LocalNewtonDiagnostics {
 fn run_single_cell_local_newton(dt_days: f64, options: FimNewtonOptions) -> LocalNewtonDiagnostics {
     let mut sim = make_closed_depletion_single_cell_sim();
     let previous_state = FimState::from_simulator(&sim);
-    let report = run_fim_timestep(&mut sim, &previous_state, &previous_state, dt_days, &options);
-    assert!(report.converged, "single-cell local Newton diagnostic should converge");
+    let report = run_fim_timestep(
+        &mut sim,
+        &previous_state,
+        &previous_state,
+        dt_days,
+        &options,
+    );
+    assert!(
+        report.converged,
+        "single-cell local Newton diagnostic should converge"
+    );
 
     let topology = build_well_topology(&sim);
     let assembly = assemble_fim_system(
@@ -551,12 +560,13 @@ fn dep_pss_fim_refinement_diagnostics_trace_rate_loss() {
         );
     }
 
-    let coarse_last = coarse_steps.last().expect("coarse diagnostics should exist");
+    let coarse_last = coarse_steps
+        .last()
+        .expect("coarse diagnostics should exist");
     let fine_last = fine_steps.last().expect("fine diagnostics should exist");
     eprintln!(
         "final coarse_bhp={:.6} fine_bhp={:.6}",
-        coarse_last.producer_bhp_bar,
-        fine_last.producer_bhp_bar,
+        coarse_last.producer_bhp_bar, fine_last.producer_bhp_bar,
     );
 }
 

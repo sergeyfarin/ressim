@@ -440,15 +440,18 @@ impl ReservoirSimulator {
                         fim_linear_report_step_suffix(report.last_linear_report.as_ref())
                     );
                     let water_before = self.total_water_inventory_m3();
+                    let oil_before = self.total_oil_inventory_sc();
                     let gas_before = self.total_gas_inventory_sc();
                     report.accepted_state.write_back_to_simulator(self);
                     self.update_dynamic_well_productivity_indices();
                     let water_after = self.total_water_inventory_m3();
+                    let oil_after = self.total_oil_inventory_sc();
                     let gas_after = self.total_gas_inventory_sc();
                     self.record_fim_step_report(
                         &report.accepted_state,
                         trial_dt,
                         water_after - water_before,
+                        oil_before - oil_after,
                         gas_after - gas_before,
                     );
                     self.time_days += trial_dt;
@@ -562,6 +565,16 @@ impl ReservoirSimulator {
     fn total_water_inventory_m3(&self) -> f64 {
         (0..self.nx * self.ny * self.nz)
             .map(|idx| self.sat_water[idx] * self.pore_volume_m3(idx))
+            .sum()
+    }
+
+    fn total_oil_inventory_sc(&self) -> f64 {
+        (0..self.nx * self.ny * self.nz)
+            .map(|idx| {
+                let pore_volume_m3 = self.pore_volume_m3(idx).max(1e-9);
+                let bo = self.get_b_o_cell(idx, self.pressure[idx]).max(1e-9);
+                self.sat_oil[idx] * pore_volume_m3 / bo
+            })
             .sum()
     }
 

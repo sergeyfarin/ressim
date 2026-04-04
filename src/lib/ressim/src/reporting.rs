@@ -64,7 +64,11 @@ fn compute_sweep_metrics(sim: &ReservoirSimulator, config: &SweepConfig) -> Swee
     }
 
     let total = (nx * ny * nz) as f64;
-    let e_vol = if total > 0.0 { swept_cells / total } else { 0.0 };
+    let e_vol = if total > 0.0 {
+        swept_cells / total
+    } else {
+        0.0
+    };
     let e_a_raw = if (nx * ny) > 0 {
         swept_columns / (nx * ny) as f64
     } else {
@@ -135,6 +139,13 @@ pub struct TimePointRates {
     pub total_injection_reservoir: f64,
     /// Material balance error [m³]: cumulative (injection - production) vs actual in-place change
     pub material_balance_error_m3: f64,
+    /// Oil reporting/material-balance diagnostic [Sm³]: cumulative reported oil production vs
+    /// actual stock-tank oil inventory depletion.
+    /// Current runtime scenarios do not inject oil, so this is the first-class direct diagnostic
+    /// for whether reported oil production is tracking inventory change. Serialized with a default
+    /// to preserve hydration of older histories.
+    #[serde(default)]
+    pub material_balance_error_oil_m3: f64,
     /// Average reservoir pressure [bar]
     pub avg_reservoir_pressure: f64,
     /// Average water saturation
@@ -192,6 +203,7 @@ impl ReservoirSimulator {
         well_controls: &[Option<ResolvedWellControl>],
         dt_days: f64,
         actual_change_m3: f64,
+        actual_oil_removed_sc: f64,
         actual_change_gas_sc: f64,
     ) {
         let n_cells = self.nx * self.ny * self.nz;
@@ -291,6 +303,9 @@ impl ReservoirSimulator {
             (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
+        let produced_oil_sc = total_prod_oil * dt_days;
+        self.cumulative_mb_oil_error_m3 += produced_oil_sc - actual_oil_removed_sc;
+
         if self.three_phase_mode {
             let total_gas_prod_sc = total_prod_gas + total_prod_dissolved_gas;
             let net_gas_added_sc = (total_gas_injection_sc - total_gas_prod_sc) * dt_days;
@@ -348,6 +363,7 @@ impl ReservoirSimulator {
             total_injection,
             total_injection_reservoir,
             material_balance_error_m3: mb_error,
+            material_balance_error_oil_m3: self.cumulative_mb_oil_error_m3.abs(),
             material_balance_error_gas_m3: self.cumulative_mb_gas_error_m3.abs(),
             avg_reservoir_pressure,
             avg_water_saturation,
@@ -365,6 +381,7 @@ impl ReservoirSimulator {
         state: &FimState,
         dt_days: f64,
         actual_change_m3: f64,
+        actual_oil_removed_sc: f64,
         actual_change_gas_sc: f64,
     ) {
         let n_cells = self.nx * self.ny * self.nz;
@@ -442,6 +459,9 @@ impl ReservoirSimulator {
             (total_water_injection_reservoir - total_prod_water_reservoir) * dt_days;
         self.cumulative_mb_error_m3 += net_water_added_m3 - actual_change_m3;
 
+        let produced_oil_sc = total_prod_oil * dt_days;
+        self.cumulative_mb_oil_error_m3 += produced_oil_sc - actual_oil_removed_sc;
+
         if self.three_phase_mode {
             let net_gas_added_sc = (total_gas_injection_sc - total_prod_gas) * dt_days;
             self.cumulative_mb_gas_error_m3 += net_gas_added_sc - actual_change_gas_sc;
@@ -497,6 +517,7 @@ impl ReservoirSimulator {
             total_injection,
             total_injection_reservoir,
             material_balance_error_m3: mb_error,
+            material_balance_error_oil_m3: self.cumulative_mb_oil_error_m3.abs(),
             avg_reservoir_pressure,
             avg_water_saturation,
             total_production_gas: total_prod_gas,

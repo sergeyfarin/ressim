@@ -218,13 +218,13 @@ fn rate_control_reporting_benchmark_fim_matches_impes() {
     let impes = run_rate_control_reporting_benchmark(false);
     let fim = run_rate_control_reporting_benchmark(true);
 
-    let oil_rel_diff =
-        ((fim.total_production_oil - impes.total_production_oil) / impes.total_production_oil.max(1e-12))
-            .abs();
+    let oil_rel_diff = ((fim.total_production_oil - impes.total_production_oil)
+        / impes.total_production_oil.max(1e-12))
+    .abs();
     let injection_abs_diff = (fim.total_injection - impes.total_injection).abs();
     let avg_pressure_rel_diff = ((fim.avg_reservoir_pressure - impes.avg_reservoir_pressure)
         / impes.avg_reservoir_pressure.max(1e-12))
-        .abs();
+    .abs();
 
     assert!(fim.total_production_oil.is_finite());
     assert!(fim.total_injection.is_finite());
@@ -304,7 +304,11 @@ fn pressure_resolve_on_substep_produces_physical_results() {
     );
 
     for i in 0..sim.nx * sim.ny * sim.nz {
-        assert!(sim.pressure[i].is_finite(), "Pressure not finite at cell {}", i);
+        assert!(
+            sim.pressure[i].is_finite(),
+            "Pressure not finite at cell {}",
+            i
+        );
         assert!(sim.sat_water[i].is_finite(), "Sw not finite at cell {}", i);
         assert!(
             sim.sat_water[i] >= sim.scal.s_wc - 1e-9,
@@ -332,6 +336,10 @@ fn pressure_resolve_on_substep_produces_physical_results() {
         assert!(
             entry.material_balance_error_m3.is_finite(),
             "MB error not finite"
+        );
+        assert!(
+            entry.material_balance_error_oil_m3.is_finite(),
+            "oil MB error not finite"
         );
     }
 }

@@ -262,7 +262,8 @@ fn physics_gas_cap_free_gas_runtime_capillary_entry_changes_gas_cap_support() {
     let top_id = no_capillary.idx(0, 0, 0);
     let bottom_id = no_capillary.idx(0, 0, 2);
 
-    let bottom_sg_delta = (with_capillary.sat_gas[bottom_id] - no_capillary.sat_gas[bottom_id]).abs();
+    let bottom_sg_delta =
+        (with_capillary.sat_gas[bottom_id] - no_capillary.sat_gas[bottom_id]).abs();
     let top_sg_delta = (with_capillary.sat_gas[top_id] - no_capillary.sat_gas[top_id]).abs();
 
     let no_cap_gas_produced = cumulative_component_production_sc(&no_capillary).gas_sc;
@@ -302,38 +303,44 @@ fn physics_gas_cap_free_gas_runtime_capillary_entry_changes_gas_cap_support() {
     let with_cap_gas_accounted = final_with_cap.gas_sc + produced_with_cap.gas_sc;
 
     assert!(
-        (no_cap_water_accounted - initial_no_cap.water_sc).abs() <= initial_no_cap.water_sc.max(1.0) * 5e-6,
+        (no_cap_water_accounted - initial_no_cap.water_sc).abs()
+            <= initial_no_cap.water_sc.max(1.0) * 5e-6,
         "zero-capillary water balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_no_cap.water_sc,
         no_cap_water_accounted
     );
     assert!(
-        (no_cap_oil_accounted - initial_no_cap.oil_sc).abs() <= initial_no_cap.oil_sc.max(1.0) * 5e-3,
+        (no_cap_oil_accounted - initial_no_cap.oil_sc).abs()
+            <= initial_no_cap.oil_sc.max(1.0) * 5e-3,
         "zero-capillary oil balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_no_cap.oil_sc,
         no_cap_oil_accounted
     );
     assert!(
-        (no_cap_gas_accounted - initial_no_cap.gas_sc).abs() <= initial_no_cap.gas_sc.max(1.0) * 1e-2,
+        (no_cap_gas_accounted - initial_no_cap.gas_sc).abs()
+            <= initial_no_cap.gas_sc.max(1.0) * 1e-2,
         "zero-capillary gas balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_no_cap.gas_sc,
         no_cap_gas_accounted
     );
 
     assert!(
-        (with_cap_water_accounted - initial_with_cap.water_sc).abs() <= initial_with_cap.water_sc.max(1.0) * 5e-6,
+        (with_cap_water_accounted - initial_with_cap.water_sc).abs()
+            <= initial_with_cap.water_sc.max(1.0) * 5e-6,
         "capillary-entry water balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_with_cap.water_sc,
         with_cap_water_accounted
     );
     assert!(
-        (with_cap_oil_accounted - initial_with_cap.oil_sc).abs() <= initial_with_cap.oil_sc.max(1.0) * 5e-3,
+        (with_cap_oil_accounted - initial_with_cap.oil_sc).abs()
+            <= initial_with_cap.oil_sc.max(1.0) * 5e-3,
         "capillary-entry oil balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_with_cap.oil_sc,
         with_cap_oil_accounted
     );
     assert!(
-        (with_cap_gas_accounted - initial_with_cap.gas_sc).abs() <= initial_with_cap.gas_sc.max(1.0) * 1e-2,
+        (with_cap_gas_accounted - initial_with_cap.gas_sc).abs()
+            <= initial_with_cap.gas_sc.max(1.0) * 1e-2,
         "capillary-entry gas balance drift too large: initial={:.6}, final+prod={:.6}",
         initial_with_cap.gas_sc,
         with_cap_gas_accounted

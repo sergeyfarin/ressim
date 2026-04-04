@@ -1,5 +1,5 @@
-use crate::ReservoirSimulator;
 use super::fixtures::make_closed_gas_depletion_single_cell_sim;
+use crate::ReservoirSimulator;
 
 #[test]
 fn physics_pvt_flash_no_table_oil_compressibility_consistent() {

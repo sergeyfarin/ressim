@@ -1,4 +1,6 @@
-use super::fixtures::{make_closed_gas_depletion_single_cell_sim, total_gas_inventory_sc_all_cells};
+use super::fixtures::{
+    make_closed_gas_depletion_single_cell_sim, total_gas_inventory_sc_all_cells,
+};
 use crate::pvt::{PvtRow, PvtTable};
 
 #[derive(Clone, Copy)]
@@ -402,17 +404,25 @@ fn physics_depletion_gas_single_cell_timestep_refinement_keeps_inventory_stable(
         );
     }
 
-    let coarse_last = coarse.rate_history.last().expect("coarse gas depletion should record history");
-    let fine_last = fine.rate_history.last().expect("fine gas depletion should record history");
+    let coarse_last = coarse
+        .rate_history
+        .last()
+        .expect("coarse gas depletion should record history");
+    let fine_last = fine
+        .rate_history
+        .last()
+        .expect("fine gas depletion should record history");
     let coarse_inventory = total_gas_inventory_sc_all_cells(&coarse);
     let fine_inventory = total_gas_inventory_sc_all_cells(&fine);
     let coarse_cum_gas = cumulative_gas_production_sc(&coarse);
     let fine_cum_gas = cumulative_gas_production_sc(&fine);
 
-    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure - fine_last.avg_reservoir_pressure)
+    let pressure_rel_diff = ((coarse_last.avg_reservoir_pressure
+        - fine_last.avg_reservoir_pressure)
         / fine_last.avg_reservoir_pressure.max(1e-12))
     .abs();
-    let inventory_rel_diff = ((coarse_inventory - fine_inventory) / fine_inventory.max(1e-12)).abs();
+    let inventory_rel_diff =
+        ((coarse_inventory - fine_inventory) / fine_inventory.max(1e-12)).abs();
     let cumulative_gas_rel_diff = ((coarse_cum_gas - fine_cum_gas) / fine_cum_gas.max(1e-12)).abs();
 
     assert!(

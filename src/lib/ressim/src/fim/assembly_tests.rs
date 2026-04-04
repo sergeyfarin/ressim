@@ -86,7 +86,8 @@ fn build_closed_depletion_fd_fixture() -> (ReservoirSimulator, FimState, FimStat
     sim.set_initial_gas_saturation(0.89);
     sim.set_initial_rs(0.0);
     sim.set_gravity_enabled(false);
-    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+        .unwrap();
     sim.pvt_table = Some(PvtTable::new(
         vec![
             PvtRow {
@@ -284,7 +285,10 @@ fn full_system_jacobian_matches_fd_for_single_cell_depletion() {
 
 #[test]
 fn full_system_jacobian_matches_fd_for_mixed_saturated_and_undersaturated_cells() {
-    assert_full_system_fd_matches_for_fixture(&(0..10).collect::<Vec<_>>(), build_mixed_regime_fd_fixture);
+    assert_full_system_fd_matches_for_fixture(
+        &(0..10).collect::<Vec<_>>(),
+        build_mixed_regime_fd_fixture,
+    );
 }
 
 #[test]
@@ -321,13 +325,21 @@ fn residual_only_assembly_matches_full_residual_for_rate_controlled_waterflood()
     assert!(full.equation_scaling.water == residual_only.equation_scaling.water);
     assert!(full.equation_scaling.oil_component == residual_only.equation_scaling.oil_component);
     assert!(full.equation_scaling.gas_component == residual_only.equation_scaling.gas_component);
-    assert!(full.equation_scaling.well_constraint == residual_only.equation_scaling.well_constraint);
-    assert!(full.equation_scaling.perforation_flow == residual_only.equation_scaling.perforation_flow);
+    assert!(
+        full.equation_scaling.well_constraint == residual_only.equation_scaling.well_constraint
+    );
+    assert!(
+        full.equation_scaling.perforation_flow == residual_only.equation_scaling.perforation_flow
+    );
     assert!(full.variable_scaling.pressure == residual_only.variable_scaling.pressure);
     assert!(full.variable_scaling.sw == residual_only.variable_scaling.sw);
-    assert!(full.variable_scaling.hydrocarbon_var == residual_only.variable_scaling.hydrocarbon_var);
+    assert!(
+        full.variable_scaling.hydrocarbon_var == residual_only.variable_scaling.hydrocarbon_var
+    );
     assert!(full.variable_scaling.well_bhp == residual_only.variable_scaling.well_bhp);
-    assert!(full.variable_scaling.perforation_rate == residual_only.variable_scaling.perforation_rate);
+    assert!(
+        full.variable_scaling.perforation_rate == residual_only.variable_scaling.perforation_rate
+    );
     assert_eq!(residual_only.jacobian.nnz(), 0);
 }
 
@@ -479,8 +491,10 @@ fn residual_only_two_cell_flux_is_component_conservative_for_oil_water() {
     assert!((assembly.residual[equation_offset(0, 1)] - cell0_oil.total).abs() < 1e-12);
     assert!((assembly.residual[equation_offset(1, 1)] - cell1_oil.total).abs() < 1e-12);
 
-    let water_sum = assembly.residual[equation_offset(0, 0)] + assembly.residual[equation_offset(1, 0)];
-    let oil_sum = assembly.residual[equation_offset(0, 1)] + assembly.residual[equation_offset(1, 1)];
+    let water_sum =
+        assembly.residual[equation_offset(0, 0)] + assembly.residual[equation_offset(1, 0)];
+    let oil_sum =
+        assembly.residual[equation_offset(0, 1)] + assembly.residual[equation_offset(1, 1)];
 
     assert!(water_sum.abs() < 1e-12);
     assert!(oil_sum.abs() < 1e-12);
@@ -561,7 +575,8 @@ fn residual_only_two_cell_flux_is_component_conservative_for_three_phase_gas() {
     assert!((assembly.residual[equation_offset(0, 2)] - cell0_gas.total).abs() < 1e-12);
     assert!((assembly.residual[equation_offset(1, 2)] - cell1_gas.total).abs() < 1e-12);
 
-    let gas_sum = assembly.residual[equation_offset(0, 2)] + assembly.residual[equation_offset(1, 2)];
+    let gas_sum =
+        assembly.residual[equation_offset(0, 2)] + assembly.residual[equation_offset(1, 2)];
     assert!(gas_sum.abs() < 1e-12);
 }
 
@@ -661,12 +676,14 @@ fn gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign() {
 fn direct_transmissibility_formula_matches_homogeneous_two_cell_oil_flux() {
     let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
     sim.set_cell_dimensions(20.0, 10.0, 5.0).unwrap();
-    sim.set_rel_perm_props(0.10, 0.10, 2.0, 2.0, 1.0, 1.0).unwrap();
+    sim.set_rel_perm_props(0.10, 0.10, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
     sim.set_initial_pressure(200.0);
     sim.set_initial_saturation(0.20);
     sim.set_gravity_enabled(false);
     sim.set_capillary_params(0.0, 2.0).unwrap();
-    sim.set_permeability_per_layer(vec![150.0], vec![150.0], vec![150.0]).unwrap();
+    sim.set_permeability_per_layer(vec![150.0], vec![150.0], vec![150.0])
+        .unwrap();
 
     let mut state = FimState::from_simulator(&sim);
     state.cells[0].pressure_bar = 300.0;
@@ -676,7 +693,10 @@ fn direct_transmissibility_formula_matches_homogeneous_two_cell_oil_flux() {
 
     let diagnostics = cell_face_phase_flux_diagnostics(&sim, &state, 1.0, 0)
         .expect("cell 0 face diagnostics should exist");
-    let oil = diagnostics.x_plus.expect("cell 0 should have an x+ face").oil;
+    let oil = diagnostics
+        .x_plus
+        .expect("cell 0 should have an x+ face")
+        .oil;
 
     let area = sim.dy * sim.dz_at(0);
     let expected_t = sim.perm_x[0] * area / sim.dx;
@@ -684,7 +704,11 @@ fn direct_transmissibility_formula_matches_homogeneous_two_cell_oil_flux() {
         * expected_t
         * (state.cells[0].pressure_bar - state.cells[1].pressure_bar)
         * oil.mobility
-        / sim.get_b_o_cell(oil.upwind_cell_idx, state.cells[oil.upwind_cell_idx].pressure_bar)
+        / sim
+            .get_b_o_cell(
+                oil.upwind_cell_idx,
+                state.cells[oil.upwind_cell_idx].pressure_bar,
+            )
             .max(1e-9);
 
     assert_eq!(oil.upwind_cell_idx, 0);
@@ -696,7 +720,8 @@ fn direct_transmissibility_formula_matches_homogeneous_two_cell_oil_flux() {
 fn direct_transmissibility_formula_matches_heterogeneous_two_cell_oil_flux() {
     let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
     sim.set_cell_dimensions(20.0, 10.0, 5.0).unwrap();
-    sim.set_rel_perm_props(0.10, 0.10, 2.0, 2.0, 1.0, 1.0).unwrap();
+    sim.set_rel_perm_props(0.10, 0.10, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
     sim.set_initial_pressure(200.0);
     sim.set_initial_saturation(0.25);
     sim.set_gravity_enabled(false);
@@ -712,7 +737,10 @@ fn direct_transmissibility_formula_matches_heterogeneous_two_cell_oil_flux() {
 
     let diagnostics = cell_face_phase_flux_diagnostics(&sim, &state, 1.0, 0)
         .expect("cell 0 face diagnostics should exist");
-    let oil = diagnostics.x_plus.expect("cell 0 should have an x+ face").oil;
+    let oil = diagnostics
+        .x_plus
+        .expect("cell 0 should have an x+ face")
+        .oil;
 
     let area = sim.dy * sim.dz_at(0);
     let harmonic_k = 2.0 * sim.perm_x[0] * sim.perm_x[1] / (sim.perm_x[0] + sim.perm_x[1]);
@@ -721,7 +749,11 @@ fn direct_transmissibility_formula_matches_heterogeneous_two_cell_oil_flux() {
         * expected_t
         * (state.cells[0].pressure_bar - state.cells[1].pressure_bar)
         * oil.mobility
-        / sim.get_b_o_cell(oil.upwind_cell_idx, state.cells[oil.upwind_cell_idx].pressure_bar)
+        / sim
+            .get_b_o_cell(
+                oil.upwind_cell_idx,
+                state.cells[oil.upwind_cell_idx].pressure_bar,
+            )
             .max(1e-9);
 
     assert_eq!(oil.upwind_cell_idx, 0);
@@ -843,8 +875,14 @@ fn water_injector_adds_negative_water_source_term() {
 
     assert!(baseline.residual.norm() <= 1e-12);
     assert!(assembly.residual[equation_offset(0, 0)] < baseline.residual[equation_offset(0, 0)]);
-    assert!((assembly.residual[equation_offset(0, 1)] - baseline.residual[equation_offset(0, 1)]).abs() < 1e-12);
-    assert!((assembly.residual[equation_offset(0, 2)] - baseline.residual[equation_offset(0, 2)]).abs() < 1e-12);
+    assert!(
+        (assembly.residual[equation_offset(0, 1)] - baseline.residual[equation_offset(0, 1)]).abs()
+            < 1e-12
+    );
+    assert!(
+        (assembly.residual[equation_offset(0, 2)] - baseline.residual[equation_offset(0, 2)]).abs()
+            < 1e-12
+    );
 }
 
 #[test]
@@ -878,8 +916,14 @@ fn producer_source_uses_iterate_state_phase_split() {
         },
     );
 
-    assert!(high_sw_assembly.residual[equation_offset(0, 0)] > low_sw_assembly.residual[equation_offset(0, 0)]);
-    assert!(high_sw_assembly.residual[equation_offset(0, 1)] < low_sw_assembly.residual[equation_offset(0, 1)]);
+    assert!(
+        high_sw_assembly.residual[equation_offset(0, 0)]
+            > low_sw_assembly.residual[equation_offset(0, 0)]
+    );
+    assert!(
+        high_sw_assembly.residual[equation_offset(0, 1)]
+            < low_sw_assembly.residual[equation_offset(0, 1)]
+    );
 }
 
 #[test]
@@ -935,7 +979,10 @@ fn well_source_and_perforation_rows_have_exact_q_coupling_entries() {
     let water_row = equation_offset(0, 0);
 
     assert!((jacobian_value(&assembly.jacobian, perf_row, q_column) - 1.0).abs() < 1e-12);
-    assert!((jacobian_value(&assembly.jacobian, water_row, q_column) - 2.0 / sim.b_w.max(1e-9)).abs() < 1e-12);
+    assert!(
+        (jacobian_value(&assembly.jacobian, water_row, q_column) - 2.0 / sim.b_w.max(1e-9)).abs()
+            < 1e-12
+    );
 }
 
 #[test]
@@ -947,7 +994,14 @@ fn water_injector_perforation_row_has_exact_pressure_derivative() {
 
     let state = FimState::from_simulator(&sim);
     let topology = build_well_topology(&sim);
-    let expected = -crate::fim::wells::perforation_connection_pressure_derivative(&sim, &state, &topology, 0, state.well_bhp[0]).unwrap();
+    let expected = -crate::fim::wells::perforation_connection_pressure_derivative(
+        &sim,
+        &state,
+        &topology,
+        0,
+        state.well_bhp[0],
+    )
+    .unwrap();
 
     let assembly = assemble_fim_system(
         &sim,
@@ -969,8 +1023,10 @@ fn water_injector_perforation_row_has_exact_pressure_derivative() {
 #[test]
 fn producer_perforation_row_has_exact_local_connection_derivatives() {
     let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
-    sim.set_three_phase_rel_perm_props(0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984)
-        .unwrap();
+    sim.set_three_phase_rel_perm_props(
+        0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+    )
+    .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
@@ -980,7 +1036,14 @@ fn producer_perforation_row_has_exact_local_connection_derivatives() {
     state.cells[0].hydrocarbon_var = 0.15;
 
     let topology = build_well_topology(&sim);
-    let expected = crate::fim::wells::perforation_connection_cell_derivatives(&sim, &state, &topology, 0, state.well_bhp[0]).unwrap();
+    let expected = crate::fim::wells::perforation_connection_cell_derivatives(
+        &sim,
+        &state,
+        &topology,
+        0,
+        state.well_bhp[0],
+    )
+    .unwrap();
 
     let assembly = assemble_fim_system(
         &sim,
@@ -1004,8 +1067,10 @@ fn producer_perforation_row_has_exact_local_connection_derivatives() {
 #[test]
 fn producer_source_row_matches_exact_neighborhood_derivative() {
     let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
-    sim.set_three_phase_rel_perm_props(0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984)
-        .unwrap();
+    sim.set_three_phase_rel_perm_props(
+        0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+    )
+    .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
 
@@ -1016,7 +1081,13 @@ fn producer_source_row_matches_exact_neighborhood_derivative() {
     state.perforation_rates_m3_day[0] = 40.0;
 
     let topology = build_well_topology(&sim);
-    let expected = crate::fim::wells::perforation_component_rate_cell_derivatives_sc_day_by_var(&sim, &state, &topology, 0, sim.idx(1, 1, 0));
+    let expected = crate::fim::wells::perforation_component_rate_cell_derivatives_sc_day_by_var(
+        &sim,
+        &state,
+        &topology,
+        0,
+        sim.idx(1, 1, 0),
+    );
 
     let assembly = assemble_fim_system(
         &sim,
@@ -1046,7 +1117,8 @@ fn producer_source_row_matches_exact_neighborhood_derivative() {
         let col = unknown_offset(row_cell, local_var);
         for component in 0..3 {
             let row = equation_offset(row_cell, component);
-            let value = jacobian_value(&assembly.jacobian, row, col) - jacobian_value(&baseline.jacobian, row, col);
+            let value = jacobian_value(&assembly.jacobian, row, col)
+                - jacobian_value(&baseline.jacobian, row, col);
             assert!((value - expected[local_var][component]).abs() < 1e-9);
         }
     }
@@ -1055,8 +1127,10 @@ fn producer_source_row_matches_exact_neighborhood_derivative() {
 #[test]
 fn producer_control_row_matches_exact_surface_rate_derivative() {
     let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
-    sim.set_three_phase_rel_perm_props(0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984)
-        .unwrap();
+    sim.set_three_phase_rel_perm_props(
+        0.12, 0.12, 0.04, 0.04, 0.18, 2.0, 2.5, 1.5, 1e-5, 1.0, 0.984,
+    )
+    .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
     sim.producer_rate_controlled = true;
@@ -1072,11 +1146,21 @@ fn producer_control_row_matches_exact_surface_rate_derivative() {
 
     let topology = build_well_topology(&sim);
     let control = crate::fim::wells::physical_well_control(&sim, &topology, 0);
-    let (bhp_slack, rate_slack) = crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
+    let (bhp_slack, rate_slack) =
+        crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
     let bhp_scale = control.bhp_limit.abs().max(1.0);
     let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
-    let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
-    let d_surface = crate::fim::wells::perforation_surface_rate_cell_derivatives_sc_day(&sim, &state, &topology, 0, sim.idx(1, 1, 0));
+    let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(
+        bhp_slack / bhp_scale,
+        rate_slack / rate_scale,
+    );
+    let d_surface = crate::fim::wells::perforation_surface_rate_cell_derivatives_sc_day(
+        &sim,
+        &state,
+        &topology,
+        0,
+        sim.idx(1, 1, 0),
+    );
 
     let assembly = assemble_fim_system(
         &sim,
@@ -1092,7 +1176,11 @@ fn producer_control_row_matches_exact_surface_rate_derivative() {
 
     let row = state.well_equation_offset(0);
     for (local_var, derivative) in d_surface.into_iter().enumerate() {
-        let value = jacobian_value(&assembly.jacobian, row, unknown_offset(sim.idx(1, 1, 0), local_var));
+        let value = jacobian_value(
+            &assembly.jacobian,
+            row,
+            unknown_offset(sim.idx(1, 1, 0), local_var),
+        );
         assert!((value + dphi_db * derivative / rate_scale).abs() < 1e-9);
     }
 }
@@ -1106,7 +1194,9 @@ fn gas_injector_source_row_has_exact_pressure_conversion_derivative() {
     let mut state = FimState::from_simulator(&sim);
     state.perforation_rates_m3_day[0] = -120.0;
     let topology = build_well_topology(&sim);
-    let expected = crate::fim::wells::perforation_source_pressure_derivatives_sc_day(&sim, &state, &topology, 0)[2];
+    let expected = crate::fim::wells::perforation_source_pressure_derivatives_sc_day(
+        &sim, &state, &topology, 0,
+    )[2];
 
     let assembly = assemble_fim_system(
         &sim,
@@ -1247,7 +1337,9 @@ fn accumulation_block_has_exact_water_derivatives() {
     let block = cell_accumulation_jacobian_block(&sim, &previous_state, &state, 0, &d);
     let pv = sim.pore_volume_m3(0).max(1e-9);
 
-    assert!((block[0][0] - pv * sim.rock_compressibility * state.cells[0].sw / sim.b_w).abs() < 1e-12);
+    assert!(
+        (block[0][0] - pv * sim.rock_compressibility * state.cells[0].sw / sim.b_w).abs() < 1e-12
+    );
     assert!((block[0][1] - pv / sim.b_w).abs() < 1e-12);
     assert!(block[0][2].abs() < 1e-12);
 }
@@ -1255,12 +1347,22 @@ fn accumulation_block_has_exact_water_derivatives() {
 #[test]
 fn water_accumulation_residual_scales_with_bw_denominator() {
     let mut bw1 = ReservoirSimulator::new(1, 1, 1, 0.2);
-    bw1.set_rock_properties(bw1.rock_compressibility, bw1.depth_reference_m, bw1.b_o, 1.0)
-        .unwrap();
+    bw1.set_rock_properties(
+        bw1.rock_compressibility,
+        bw1.depth_reference_m,
+        bw1.b_o,
+        1.0,
+    )
+    .unwrap();
 
     let mut bw2 = ReservoirSimulator::new(1, 1, 1, 0.2);
-    bw2.set_rock_properties(bw2.rock_compressibility, bw2.depth_reference_m, bw2.b_o, 2.0)
-        .unwrap();
+    bw2.set_rock_properties(
+        bw2.rock_compressibility,
+        bw2.depth_reference_m,
+        bw2.b_o,
+        2.0,
+    )
+    .unwrap();
 
     let previous_state_bw1 = FimState::from_simulator(&bw1);
     let previous_state_bw2 = FimState::from_simulator(&bw2);
@@ -1301,11 +1403,17 @@ fn water_accumulation_residual_scales_with_bw_denominator() {
 #[test]
 #[ignore = "Expensive test that can be enabled for debugging specific Jacobian issues"]
 fn full_system_jacobian_matches_fd_for_rate_controlled_waterflood() {
-    assert_full_system_fd_matches_for_fixture(&(0..10).collect::<Vec<_>>(), build_rate_controlled_waterflood_fd_fixture);
+    assert_full_system_fd_matches_for_fixture(
+        &(0..10).collect::<Vec<_>>(),
+        build_rate_controlled_waterflood_fd_fixture,
+    );
 }
 
 #[test]
 #[ignore = "diagnostic: sampled full-system central-FD Jacobian"]
 fn representative_full_system_jacobian_columns_match_fd_for_rate_controlled_waterflood() {
-    assert_full_system_fd_matches_for_fixture(&[0, 1, 2, 6, 8, 9], build_rate_controlled_waterflood_fd_fixture);
+    assert_full_system_fd_matches_for_fixture(
+        &[0, 1, 2, 6, 8, 9],
+        build_rate_controlled_waterflood_fd_fixture,
+    );
 }

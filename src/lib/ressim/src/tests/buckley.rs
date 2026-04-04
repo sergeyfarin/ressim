@@ -256,7 +256,6 @@ fn native_single_step_fim_probe_case_a_24_cells() {
     );
 }
 
-
 #[test]
 fn benchmark_buckley_leverett_case_a_favorable_mobility() {
     let case = buckley_case_a("BL-Case-A", 24, 0.5, 4000);
@@ -306,7 +305,6 @@ fn benchmark_buckley_leverett_case_b_more_adverse_mobility() {
         case.rel_tol_breakthrough_pv,
     );
 }
-
 
 #[test]
 fn benchmark_buckley_leverett_smaller_dt_improves_coarse_alignment() {

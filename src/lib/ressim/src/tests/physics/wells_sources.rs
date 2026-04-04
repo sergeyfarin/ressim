@@ -74,14 +74,17 @@ fn physics_wells_sources_single_cell_producer_reporting_matches_local_source_sta
         0.1,
         &FimNewtonOptions::default(),
     );
-    assert!(report.converged, "single-cell producer consistency case should converge");
+    assert!(
+        report.converged,
+        "single-cell producer consistency case should converge"
+    );
 
     let topology = build_well_topology(&sim);
     let perf_idx = topology.wells[0].perforation_indices[0];
     let component_rates =
         perforation_component_rates_sc_day(&sim, &report.accepted_state, &topology, perf_idx);
 
-    sim.record_fim_step_report(&report.accepted_state, 0.1, 0.0, 0.0);
+    sim.record_fim_step_report(&report.accepted_state, 0.1, 0.0, 0.0, 0.0);
     let latest = sim
         .rate_history
         .last()
@@ -107,10 +110,8 @@ fn physics_wells_sources_single_cell_producer_reporting_matches_local_source_sta
 #[test]
 fn physics_wells_sources_transport_reporting_reuses_rate_control_decision() {
     let mut sim = crate::ReservoirSimulator::new(1, 1, 1, 0.2);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_initial_pressure(100.0);
@@ -160,10 +161,8 @@ fn physics_wells_sources_transport_reporting_reuses_rate_control_decision() {
 fn physics_wells_sources_rate_controlled_injector_fim_path_converges() {
     let mut sim = crate::ReservoirSimulator::new(1, 1, 1, 0.2);
     sim.set_fim_enabled(true);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
@@ -195,7 +194,10 @@ fn physics_wells_sources_rate_controlled_injector_fim_path_converges() {
         &FimNewtonOptions::default(),
     );
 
-    assert!(report.converged, "rate-controlled injector FIM case should converge");
+    assert!(
+        report.converged,
+        "rate-controlled injector FIM case should converge"
+    );
 
     let topology = build_well_topology(&sim);
     assert_eq!(topology.wells.len(), 1);
@@ -219,13 +221,30 @@ fn physics_wells_sources_rate_controlled_injector_fim_path_converges() {
     let relative_rate_error =
         (actual_surface_rate - target_surface_rate).abs() / target_surface_rate.max(1.0);
 
-    assert!(well_residual.abs() < 1e-6, "well constraint residual should be near zero, got {}", well_residual);
-    assert!(perf_residual.abs() < 1e-6, "perforation residual should be near zero, got {}", perf_residual);
+    assert!(
+        well_residual.abs() < 1e-6,
+        "well constraint residual should be near zero, got {}",
+        well_residual
+    );
+    assert!(
+        perf_residual.abs() < 1e-6,
+        "perforation residual should be near zero, got {}",
+        perf_residual
+    );
     assert!(diagnostics.enabled);
     assert!(diagnostics.injector);
-    assert!(diagnostics.bhp_slack.expect("injector should report BHP slack") > 0.0);
     assert!(
-        diagnostics.rate_slack.expect("injector should report rate slack").abs() < 1e-4,
+        diagnostics
+            .bhp_slack
+            .expect("injector should report BHP slack")
+            > 0.0
+    );
+    assert!(
+        diagnostics
+            .rate_slack
+            .expect("injector should report rate slack")
+            .abs()
+            < 1e-4,
         "rate slack should be near zero, got {:?} with actual={} target={} bhp={} bhp_slack={:?}",
         diagnostics.rate_slack,
         actual_surface_rate,
@@ -233,10 +252,18 @@ fn physics_wells_sources_rate_controlled_injector_fim_path_converges() {
         diagnostics.bhp_bar,
         diagnostics.bhp_slack
     );
-    assert!(component_rates[2] < 0.0, "gas injector should add negative source to the residual sign convention");
-    assert!(relative_rate_error < 0.05, "injector surface rate should stay within 5% of target, got actual={} target={}", actual_surface_rate, target_surface_rate);
+    assert!(
+        component_rates[2] < 0.0,
+        "gas injector should add negative source to the residual sign convention"
+    );
+    assert!(
+        relative_rate_error < 0.05,
+        "injector surface rate should stay within 5% of target, got actual={} target={}",
+        actual_surface_rate,
+        target_surface_rate
+    );
 
-    sim.record_fim_step_report(&report.accepted_state, 0.1, 0.0, 0.0);
+    sim.record_fim_step_report(&report.accepted_state, 0.1, 0.0, 0.0, 0.0);
     let latest = sim
         .rate_history
         .last()
@@ -276,10 +303,28 @@ fn physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility
     sim.set_rate_controlled_wells(true);
     sim.set_target_well_rates(0.0, 35.0).unwrap();
     sim.set_well_bhp_limits(0.0, 1.0e9).unwrap();
-    sim.add_well_with_id(0, 0, 0, 120.0, 0.1, 0.0, false, "dual-layer-prod".to_string())
-        .unwrap();
-    sim.add_well_with_id(0, 0, 1, 120.0, 0.1, 0.0, false, "dual-layer-prod".to_string())
-        .unwrap();
+    sim.add_well_with_id(
+        0,
+        0,
+        0,
+        120.0,
+        0.1,
+        0.0,
+        false,
+        "dual-layer-prod".to_string(),
+    )
+    .unwrap();
+    sim.add_well_with_id(
+        0,
+        0,
+        1,
+        120.0,
+        0.1,
+        0.0,
+        false,
+        "dual-layer-prod".to_string(),
+    )
+    .unwrap();
 
     let state = FimState::from_simulator(&sim);
     let topology = build_well_topology(&sim);
@@ -318,22 +363,27 @@ fn physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility
     assert!(perf_residual1.abs() < 1e-6);
     assert!((state.perforation_rates_m3_day[perf0] - q0).abs() < 1e-8);
     assert!((state.perforation_rates_m3_day[perf1] - q1).abs() < 1e-8);
-    assert!((q0 - q1).abs() > 1e-6, "layered completions should split rate unevenly");
+    assert!(
+        (q0 - q1).abs() > 1e-6,
+        "layered completions should split rate unevenly"
+    );
 
     let total_connection_rate = q0 + q1;
-    let total_perforation_rate = state.perforation_rates_m3_day[perf0]
-        + state.perforation_rates_m3_day[perf1];
+    let total_perforation_rate =
+        state.perforation_rates_m3_day[perf0] + state.perforation_rates_m3_day[perf1];
 
     assert!((total_perforation_rate - total_connection_rate).abs() < 1e-8);
     assert!(
-        (diagnostics0.actual_well_rate_sc_day
+        (diagnostics0
+            .actual_well_rate_sc_day
             .expect("first perforation should report actual well rate")
             - total_connection_rate)
             .abs()
             < 1e-8
     );
     assert!(
-        (diagnostics1.actual_well_rate_sc_day
+        (diagnostics1
+            .actual_well_rate_sc_day
             .expect("second perforation should report actual well rate")
             - total_connection_rate)
             .abs()
@@ -345,10 +395,8 @@ fn physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility
 fn physics_wells_sources_gas_injection_surface_totals_use_bg_conversion() {
     let mut sim = crate::ReservoirSimulator::new(1, 1, 1, 0.2);
     sim.set_fim_enabled(false);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_injected_fluid("gas").unwrap();
     sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
@@ -386,10 +434,8 @@ fn physics_wells_sources_gas_injection_surface_totals_use_bg_conversion() {
 #[test]
 fn physics_wells_sources_producing_gor_is_zero_when_oil_rate_is_negligible() {
     let mut sim = crate::ReservoirSimulator::new(1, 1, 1, 0.2);
-    sim.set_three_phase_rel_perm_props(
-        0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7,
-    )
-    .unwrap();
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
     sim.set_three_phase_mode_enabled(true);
     sim.set_initial_pressure(100.0);
     sim.set_initial_saturation(0.10);

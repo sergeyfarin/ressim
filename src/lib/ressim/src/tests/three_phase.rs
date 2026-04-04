@@ -232,10 +232,22 @@ fn api_contract_rejects_invalid_three_phase_relperm_parameters() {
 fn api_contract_rejects_invalid_gas_fluid_properties() {
     let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
 
-    err_contains(sim.set_gas_fluid_properties(0.0, 1e-4, 10.0), "must be positive");
-    err_contains(sim.set_gas_fluid_properties(-0.01, 1e-4, 10.0), "must be positive");
-    err_contains(sim.set_gas_fluid_properties(0.02, -1e-4, 10.0), "non-negative");
-    err_contains(sim.set_gas_fluid_properties(0.02, 1e-4, 0.0), "must be positive");
+    err_contains(
+        sim.set_gas_fluid_properties(0.0, 1e-4, 10.0),
+        "must be positive",
+    );
+    err_contains(
+        sim.set_gas_fluid_properties(-0.01, 1e-4, 10.0),
+        "must be positive",
+    );
+    err_contains(
+        sim.set_gas_fluid_properties(0.02, -1e-4, 10.0),
+        "non-negative",
+    );
+    err_contains(
+        sim.set_gas_fluid_properties(0.02, 1e-4, 0.0),
+        "must be positive",
+    );
 }
 
 #[test]

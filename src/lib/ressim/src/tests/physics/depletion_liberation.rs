@@ -40,14 +40,19 @@ fn physics_depletion_liberation_inventory_conserved_without_redissolution() {
 fn physics_depletion_liberation_fim_stepping_liberates_gas() {
     let mut sim = make_below_bubble_point_flash_sim(false);
     sim.set_fim_enabled(true);
-    sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
-    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
+        .unwrap();
+    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+        .unwrap();
     sim.set_gravity_enabled(false);
     sim.set_stability_params(0.05, 75.0, 0.75);
     sim.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
 
     let gas_initial_sc = total_gas_inventory_sc_all_cells(&sim);
-    assert_eq!(sim.sat_gas[0], 0.0, "should start with no free gas at bubble point");
+    assert_eq!(
+        sim.sat_gas[0], 0.0,
+        "should start with no free gas at bubble point"
+    );
 
     for _ in 0..5 {
         sim.step(1.0);
@@ -96,8 +101,10 @@ fn physics_depletion_liberation_inventory_conserved_with_redissolution() {
 fn physics_depletion_liberation_component_balances_close_across_phase_transition() {
     let mut sim = make_below_bubble_point_flash_sim(false);
     sim.set_fim_enabled(true);
-    sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
-    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
+        .unwrap();
+    sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+        .unwrap();
     sim.set_gravity_enabled(false);
     sim.set_stability_params(0.05, 75.0, 0.75);
     sim.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
@@ -145,7 +152,10 @@ fn physics_depletion_liberation_component_balances_close_across_phase_transition
 fn physics_depletion_liberation_undersaturated_rs_stays_constant() {
     let mut sim = make_below_bubble_point_flash_sim(false);
     let initial_rs = sim.rs[0];
-    assert_eq!(sim.sat_gas[0], 0.0, "undersaturated constancy case should start with no free gas");
+    assert_eq!(
+        sim.sat_gas[0], 0.0,
+        "undersaturated constancy case should start with no free gas"
+    );
 
     for pressure_bar in [174.0, 173.0, 172.0, 171.0, 170.0] {
         sim.update_saturations_and_pressure(
@@ -180,16 +190,22 @@ fn physics_depletion_liberation_undersaturated_rs_stays_constant() {
 fn physics_depletion_liberation_timestep_refinement_keeps_transition_accounting_stable() {
     let mut coarse = make_below_bubble_point_flash_sim(false);
     coarse.set_fim_enabled(true);
-    coarse.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
-    coarse.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    coarse
+        .set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
+        .unwrap();
+    coarse
+        .set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+        .unwrap();
     coarse.set_gravity_enabled(false);
     coarse.set_stability_params(0.05, 75.0, 0.75);
     coarse.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
 
     let mut fine = make_below_bubble_point_flash_sim(false);
     fine.set_fim_enabled(true);
-    fine.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0]).unwrap();
-    fine.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0]).unwrap();
+    fine.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
+        .unwrap();
+    fine.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+        .unwrap();
     fine.set_gravity_enabled(false);
     fine.set_stability_params(0.05, 75.0, 0.75);
     fine.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
@@ -223,8 +239,8 @@ fn physics_depletion_liberation_timestep_refinement_keeps_transition_accounting_
     let gas_accounted_rel_diff =
         ((coarse_gas_accounted - fine_gas_accounted) / fine_gas_accounted.max(1e-12)).abs();
     let sg_abs_diff = (coarse.sat_gas[0] - fine.sat_gas[0]).abs();
-    let pressure_rel_diff = ((coarse.pressure[0] - fine.pressure[0]) / fine.pressure[0].max(1e-12))
-        .abs();
+    let pressure_rel_diff =
+        ((coarse.pressure[0] - fine.pressure[0]) / fine.pressure[0].max(1e-12)).abs();
 
     assert!(
         gas_accounted_rel_diff <= 0.03,
