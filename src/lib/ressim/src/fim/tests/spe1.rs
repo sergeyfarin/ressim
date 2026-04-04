@@ -1,5 +1,5 @@
-use super::make_spe1_like_base_sim;
 use crate::ReservoirSimulator;
+use crate::tests::make_spe1_like_base_sim;
 
 #[test]
 fn spe1_fim_first_steps_converge_without_stall() {

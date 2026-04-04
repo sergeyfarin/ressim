@@ -13,6 +13,26 @@
   - Key structural recommendation: remove the current mixed-responsibility `step.rs` by moving the
     IMPES loop to `impes/timestep.rs`, the FIM loop to `fim/timestep.rs`, and leaving only a tiny
     dispatcher or direct `frontend.rs` dispatch.
+  - Phase 1 mechanical refactor completed: created `src/lib/ressim/src/impes/`, moved the old
+    pressure and transport implementation there, split FIM timestep code into
+    `src/lib/ressim/src/fim/timestep.rs`, and reduced root `step.rs` to dispatcher plus shared
+    gas-split helpers.
+  - Phase 2 ownership split is now in progress and documented in
+    `docs/SOLVER_TEST_OWNERSHIP_INVENTORY.md`.
+  - Completed in the current slice: introduced `src/lib/ressim/src/fim/tests/` and
+    `src/lib/ressim/src/impes/tests/`, moved FIM-only depletion and SPE1 smoke coverage into the
+    FIM tree, extracted FIM-local well tests and IMPES-local transport/reporting tests, removed the
+    orphan `src/lib/ressim/src/tests/spe1_short.rs`, and rewrote one liberation helper so shared
+    flash coverage no longer depends on the IMPES transport updater.
+  - Focused validation completed for the moved ownership slice:
+    `spe1_fim_first_steps_converge_without_stall`,
+    `spe1_fim_gas_injection_creates_free_gas`, `fim::tests::wells::*`,
+    `impes::tests::transport::*`,
+    `physics_depletion_liberation_undersaturated_rs_stays_constant`, and
+    `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers` all passed.
+  - Remaining Phase 2 next slice: expand shared parity coverage for above-solver behavior and audit
+    whether `impes/pressure.rs` and `impes/timestep.rs` still need solver-local tests beyond the
+    new transport-owned module.
 
 - [x] Review current TypeScript typecheck failures and fix safe non-behavioral issues.
   - `npm run typecheck` failed only in `src/lib/workers/terminationPolicy.ts`.

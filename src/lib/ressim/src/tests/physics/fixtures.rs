@@ -1,5 +1,3 @@
-use nalgebra::DVector;
-
 use crate::ReservoirSimulator;
 use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
@@ -95,7 +93,7 @@ pub(super) fn make_dep_pss_like_sim(dt_days: f64, steps: usize) -> ReservoirSimu
     sim
 }
 
-pub(super) fn make_closed_depletion_single_cell_sim() -> ReservoirSimulator {
+pub(crate) fn make_closed_depletion_single_cell_sim() -> ReservoirSimulator {
     let mut sim = ReservoirSimulator::new(1, 1, 1, DEP_PSS_POROSITY);
     sim.set_fim_enabled(true);
     sim.set_cell_dimensions_per_layer(DEP_PSS_LENGTH_M, DEP_PSS_WIDTH_M, vec![DEP_PSS_HEIGHT_M])
@@ -255,15 +253,39 @@ pub(super) fn total_gas_inventory_sc(sim: &ReservoirSimulator) -> f64 {
     sim.sat_gas[0] * vp_m3 / bg + (sim.sat_oil[0] * vp_m3 / bo) * sim.rs[0]
 }
 
-pub(super) fn flash_below_bubble_point(sim: &mut ReservoirSimulator, pressure_bar: f64) {
-    sim.update_saturations_and_pressure(
-        &DVector::from_vec(vec![pressure_bar]),
-        &vec![0.0],
-        &vec![0.0],
-        &vec![0.0],
-        &[],
-        1.0,
+pub(super) fn apply_pressure_only_flash_update(sim: &mut ReservoirSimulator, pressure_bar: f64) {
+    let pore_volume_m3 = sim.pore_volume_m3(0).max(1e-9);
+    let water_saturation = sim.sat_water[0];
+    let old_pressure_bar = sim.pressure[0];
+    let old_bg = sim.get_b_g(old_pressure_bar).max(1e-9);
+    let old_bo = sim.get_b_o_cell(0, old_pressure_bar).max(1e-9);
+    let transported_free_gas_sc = sim.sat_gas[0] * pore_volume_m3 / old_bg;
+    let dissolved_gas_sc = if sim.pvt_table.is_some() {
+        sim.sat_oil[0] * pore_volume_m3 * sim.rs[0] / old_bo
+    } else {
+        0.0
+    };
+    let (sg, so, rs) = sim.split_gas_inventory_after_transport(
+        pressure_bar,
+        pore_volume_m3,
+        water_saturation,
+        transported_free_gas_sc,
+        dissolved_gas_sc,
+        if sim.gas_redissolution_enabled {
+            None
+        } else {
+            Some(sim.rs[0])
+        },
     );
+
+    sim.pressure[0] = pressure_bar;
+    sim.sat_gas[0] = sg;
+    sim.sat_oil[0] = so;
+    sim.rs[0] = rs;
+}
+
+pub(super) fn flash_below_bubble_point(sim: &mut ReservoirSimulator, pressure_bar: f64) {
+    apply_pressure_only_flash_update(sim, pressure_bar);
 }
 
 pub(super) fn make_closed_gas_depletion_single_cell_sim() -> ReservoirSimulator {

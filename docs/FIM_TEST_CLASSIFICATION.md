@@ -17,12 +17,11 @@ It is the working classification table used to drive cleanup execution.
 | Item | Current state | Bucket | Target action | Target runtime |
 | --- | --- | --- | --- | --- |
 | `src/lib/ressim/src/tests/pvt_properties.rs` `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas` | focused regression in correct file | production regression | keep | cross-target |
-| `src/lib/ressim/src/tests/spe1_fim.rs` `spe1_fim_first_steps_converge_without_stall` | maintained FIM smoke regression in dedicated file | production regression | keep in `src/lib/ressim/src/tests/spe1_fim.rs` | cross-target |
-| `src/lib/ressim/src/tests/spe1_fim.rs` `spe1_fim_gas_injection_creates_free_gas` | maintained FIM smoke regression in dedicated file | production regression | keep in `src/lib/ressim/src/tests/spe1_fim.rs` | cross-target |
-| `src/lib/ressim/src/tests/spe1_fim.rs` `spe1_fim_coarse_grid_reaches_producer_gas_breakthrough` | maintained regression in dedicated file, but not short enough for the default baseline | production regression | keep in `src/lib/ressim/src/tests/spe1_fim.rs`, outside the short default set | cross-target |
+| `src/lib/ressim/src/fim/tests/spe1.rs` `spe1_fim_first_steps_converge_without_stall` | maintained FIM smoke regression in solver-local file | production regression | keep in `src/lib/ressim/src/fim/tests/spe1.rs` | cross-target |
+| `src/lib/ressim/src/fim/tests/spe1.rs` `spe1_fim_gas_injection_creates_free_gas` | maintained FIM smoke regression in solver-local file | production regression | keep in `src/lib/ressim/src/fim/tests/spe1.rs` | cross-target |
 | `src/lib/ressim/src/lib.rs` former crate-root debug probes | redundant ignored debug probes previously embedded in the crate root | obsolete probe | deleted during Phase 2 cleanup | removed from crate root |
 | `src/lib/ressim/src/tests/fim_spe1_bug.rs` | ad hoc print-heavy repro | obsolete probe | deleted during Phase 2 cleanup | removed |
-| `src/lib/ressim/src/tests/spe1_fim.rs` | dedicated regression module | production regression container | keep as the home for stable SPE1/FIM regressions | cross-target |
+| `src/lib/ressim/src/fim/tests/spe1.rs` | solver-local regression module | production regression container | keep as the home for stable SPE1/FIM regressions | cross-target |
 
 ## Helper Script Inventory
 
@@ -48,7 +47,7 @@ The short default FIM baseline should contain only genuinely short checks.
 Keep in the short default set:
 
 - focused unit regressions such as the `DRSDT = 0` gas-split regression
-- short SPE1/FIM smoke tests after they are moved into `src/lib/ressim/src/tests/spe1_fim.rs`
+- short SPE1/FIM smoke tests in `src/lib/ressim/src/fim/tests/spe1.rs`
 
 Keep outside the short default set:
 

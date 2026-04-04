@@ -9,13 +9,21 @@ public or crate-visible APIs rather than through a single module's private helpe
   - Family-owned physics regressions.
   - Use these for scenario-scale correctness: material balance, phase behavior, gravity,
     front movement, geometry effects, and benchmark-envelope checks.
+- `../fim/tests/`
+  - FIM-owned solver-local tests.
+  - Use these when a test depends on FIM internals, coupled well/Newton behavior, or stable
+    FIM-only smoke coverage.
+- `../impes/tests/`
+  - IMPES-owned solver-local tests.
+  - Use these when a test depends on IMPES-only pressure/transport helpers or explicit-path
+    reporting behavior.
 - `runtime_api.rs`
   - Runtime stepping, API contracts, and cross-module simulator behavior.
 - `geometry_api.rs`
   - Geometry and per-layer API behavior that is broader than one internal formula.
 - `three_phase.rs`
   - Three-phase public behavior and table/API validation.
-- `buckley.rs`, `depletion.rs`, `pvt_properties.rs`, `well_controls.rs`, `spe1_fim.rs`
+- `buckley.rs`, `pvt_properties.rs`, `well_controls.rs`
   - Domain or benchmark tests that exercise the crate through higher-level entry points.
 
 ## What does not live here
@@ -32,6 +40,8 @@ public or crate-visible APIs rather than through a single module's private helpe
 
 - Put a test in `src/tests/` when it validates simulator behavior, physics outcomes, or API-level
   contracts and should remain stable across internal refactors.
+- Put a test in `src/fim/tests/` or `src/impes/tests/` when it is solver-owned and would become
+  artificial or fragile if forced through a solver-agnostic public harness.
 - Put a test in a module-adjacent `*_tests.rs` file when it validates private implementation
   details that are intentionally not exposed outside that module.
 

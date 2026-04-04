@@ -23,14 +23,13 @@ mod capillary;
 mod fim;
 mod frontend;
 mod grid;
+mod impes;
 mod mobility;
-mod pressure_eqn;
 mod pvt;
 mod relperm;
 mod reporting;
 mod solvers;
 mod step;
-mod transport;
 mod well;
 mod well_control;
 
@@ -140,16 +139,14 @@ pub struct ReservoirSimulator {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
+    use crate::well_control::WellControlDecision;
     mod buckley;
-    mod depletion;
     mod geometry_api;
-    mod physics;
+    pub(crate) mod physics;
     mod pvt_properties;
     mod runtime_api;
-    mod spe1_fim;
     mod three_phase;
     mod well_controls;
 
@@ -200,7 +197,7 @@ mod tests {
         }
     }
 
-    fn make_spe1_like_grid_sim(
+    pub(crate) fn make_spe1_like_grid_sim(
         nx: usize,
         ny: usize,
         producer_i: usize,
@@ -539,7 +536,7 @@ mod tests {
         )
     }
 
-    fn make_spe1_like_base_sim() -> ReservoirSimulator {
+    pub(crate) fn make_spe1_like_base_sim() -> ReservoirSimulator {
         make_spe1_like_sim(vec![500.0, 50.0, 200.0], 0.05, 50.0, 0.5)
     }
 }

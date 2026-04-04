@@ -1,4 +1,4 @@
-use super::*;
+use crate::ReservoirSimulator;
 
 use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};

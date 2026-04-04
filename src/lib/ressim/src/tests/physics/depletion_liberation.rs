@@ -1,7 +1,5 @@
-use nalgebra::DVector;
-
 use super::fixtures::{
-    cumulative_component_production_sc, flash_below_bubble_point,
+    apply_pressure_only_flash_update, cumulative_component_production_sc, flash_below_bubble_point,
     make_below_bubble_point_flash_sim, total_component_inventory_sc_all_cells,
     total_gas_inventory_sc, total_gas_inventory_sc_all_cells,
 };
@@ -158,14 +156,7 @@ fn physics_depletion_liberation_undersaturated_rs_stays_constant() {
     );
 
     for pressure_bar in [174.0, 173.0, 172.0, 171.0, 170.0] {
-        sim.update_saturations_and_pressure(
-            &DVector::from_vec(vec![pressure_bar]),
-            &vec![0.0],
-            &vec![0.0],
-            &vec![0.0],
-            &[],
-            0.1,
-        );
+        apply_pressure_only_flash_update(&mut sim, pressure_bar);
         assert!(
             sim.pressure[0] > 150.0,
             "undersaturated Rs constancy case should stay above bubble point, got p={:.6}",

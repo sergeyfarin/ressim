@@ -1,7 +1,7 @@
 mod depletion_gas;
 mod depletion_liberation;
 mod depletion_oil;
-mod fixtures;
+pub(crate) mod fixtures;
 mod gas_cap;
 mod gas_flood;
 mod geometry_anisotropy;
