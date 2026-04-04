@@ -1,5 +1,6 @@
 import initWasm, { ReservoirSimulator, set_panic_hook } from '../ressim/pkg/simulator.js';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule, WorkerRunPayload } from '../simulator-types';
+import { evaluateTerminationPolicy } from './terminationPolicy';
 
 let wasmReady = false;
 let simulator: ReservoirSimulator | null = null;
@@ -7,6 +8,7 @@ let isRunning = false;
 let stopRequested = false;
 let lastRateHistoryLen = 0;
 let wasmInitPromise: Promise<void> | null = null;
+let activeCreatePayload: SimulatorCreatePayload | null = null;
 
 async function ensureWasmReady(): Promise<void> {
   if (wasmReady) {
@@ -146,8 +148,18 @@ function getStatePayload(recordHistory: boolean, stepIndex: number, profile: Rec
   };
 }
 
+function peekLatestRatePoint(): Record<string, unknown> | null {
+  if (!simulator) {
+    throw new Error('Simulator not initialized');
+  }
+
+  const rateHistoryDelta = simulator.getRateHistorySince(lastRateHistoryLen) as Array<Record<string, unknown>>;
+  return rateHistoryDelta.length > 0 ? rateHistoryDelta[rateHistoryDelta.length - 1] : null;
+}
+
 function configureSimulator(payload: SimulatorCreatePayload) {
   simulator = new ReservoirSimulator(payload.nx, payload.ny, payload.nz, Number(payload.porosity));
+  activeCreatePayload = payload;
   lastRateHistoryLen = 0;
 
   const setFimEnabled = /** @type {any} */ (simulator).setFimEnabled;
@@ -467,6 +479,7 @@ self.onmessage = async (event) => {
       const deltaTDays = Number(runPayload?.deltaTDays ?? 0);
       const historyInterval = Math.max(1, Number(runPayload?.historyInterval ?? 1));
       const chunkYieldInterval = Math.max(1, Number(runPayload?.chunkYieldInterval ?? 5));
+      const terminationPolicy = activeCreatePayload?.terminationPolicy;
 
       if (!Number.isFinite(deltaTDays) || deltaTDays <= 0) {
         throw new Error(`Invalid timestep value: ${deltaTDays}`);
@@ -502,6 +515,12 @@ self.onmessage = async (event) => {
         simulator.step(deltaTDays);
         stepMsTotal += performance.now() - stepStart;
 
+        const terminationMatch = evaluateTerminationPolicy(
+          terminationPolicy,
+          peekLatestRatePoint() as any,
+          activeCreatePayload ?? { injectedFluid: 'water' } as SimulatorCreatePayload,
+        );
+
         if (stopRequested) {
           postStopped(batchStart, stepMsTotal, i + 1, snapshotsSent);
           isRunning = false;
@@ -509,7 +528,7 @@ self.onmessage = async (event) => {
           return;
         }
 
-        const shouldRecord = i % historyInterval === 0 || i === steps - 1;
+        const shouldRecord = Boolean(terminationMatch) || i % historyInterval === 0 || i === steps - 1;
         if (shouldRecord) {
           snapshotsSent += 1;
           post(
@@ -520,6 +539,17 @@ self.onmessage = async (event) => {
               snapshotsSent,
             })
           );
+        }
+
+        if (terminationMatch) {
+          post('batchComplete', {
+            profile: buildRunProfile(batchStart, stepMsTotal, i + 1, snapshotsSent),
+            completedSteps: i + 1,
+            terminationSummary: `Simulation completed early after ${i + 1} step(s): ${terminationMatch.summary}`,
+          });
+          isRunning = false;
+          stopRequested = false;
+          return;
         }
 
         const timeSinceLastYield = performance.now() - lastYieldTime;
@@ -553,6 +583,7 @@ self.onmessage = async (event) => {
 
     if (type === 'dispose') {
       simulator = null;
+      activeCreatePayload = null;
       lastRateHistoryLen = 0;
       close();
     }

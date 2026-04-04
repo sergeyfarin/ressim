@@ -281,6 +281,41 @@ export type PublishedReferenceSeries = {
     yAxisID?: string;
 };
 
+export type ScenarioTerminationCondition =
+    | {
+        kind: 'watercut-threshold';
+        /** Water cut threshold in fractional units, e.g. 0.01 for 1%. */
+        value: number;
+        /** Which producer scope should be evaluated. */
+        scope?: 'producer' | 'any-producer';
+    }
+    | {
+        kind: 'phase-rate-threshold';
+        /** Phase rate to monitor. */
+        phase: 'oil' | 'water' | 'gas';
+        /** Compare using <= or >=. Use <= 0 for "drops to zero" conditions. */
+        relation: 'lte' | 'gte';
+        /** Threshold in surface-rate units. */
+        value: number;
+        /** Which well scope should be evaluated. */
+        scope?: 'producer' | 'injector' | 'any';
+    }
+    | {
+        kind: 'gor-threshold';
+        /** Compare using <= or >=. Use gte for "GOR exceeds" conditions. */
+        relation: 'lte' | 'gte';
+        /** Threshold in Sm^3/Sm^3. */
+        value: number;
+        /** Which producer scope should be evaluated. */
+        scope?: 'producer' | 'any';
+    };
+
+export type ScenarioTerminationPolicy = {
+    /** Whether any one condition or all conditions must be met to stop the run. */
+    mode: 'any' | 'all';
+    conditions: ScenarioTerminationCondition[];
+};
+
 export type Scenario = {
     key: string;
     label: string;
@@ -313,6 +348,8 @@ export type Scenario = {
      * Overlaid on charts as dashed reference curves alongside simulation output.
      */
     publishedReferenceSeries?: PublishedReferenceSeries[];
+    /** Optional stop policy for terminating a run when a production condition is met. */
+    terminationPolicy?: ScenarioTerminationPolicy;
 };
 
 /** Default capabilities for custom mode (no predefined scenario). */

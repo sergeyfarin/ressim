@@ -35,6 +35,7 @@ import {
     type BenchmarkRunResult as ReferenceRunResult,
     type BenchmarkRunSpec as ReferenceRunSpec,
 } from '../benchmarkRunModel';
+import { cloneTerminationPolicy } from '../workers/terminationPolicy';
 import {
     validateInputs as validateSimulationInputs,
     type SimulationInputs,
@@ -825,6 +826,7 @@ class SimulationStoreImpl {
                     residual_oil_saturation: payload.s_or,
                 };
             }
+            payload.terminationPolicy = cloneTerminationPolicy(sc.terminationPolicy);
         }
 
         return payload;
@@ -997,7 +999,10 @@ class SimulationStoreImpl {
         // $state.snapshot() strips Svelte 5 reactive proxies so the payload
         // can be structured-cloned by postMessage (pvtTable, cellDzPerLayer, etc.).
         const rawParams = $state.snapshot(nextSpec.params) as Record<string, any>;
-        const payload = buildBenchmarkCreatePayload(rawParams);
+        const payload = buildBenchmarkCreatePayload({
+            ...rawParams,
+            terminationPolicy: nextSpec.terminationPolicy ?? undefined,
+        });
         this.lastCreateSignature = JSON.stringify(payload);
         this.simWorker.postMessage({ type: 'create', payload });
         this.simWorker.postMessage({
@@ -1283,6 +1288,9 @@ class SimulationStoreImpl {
             } else {
                 this.latestStepSolverWarning = '';
                 this.refreshConvergenceWarningDisplay();
+                if (message.terminationSummary) {
+                    this.runtimeWarning = String(message.terminationSummary);
+                }
             }
             return;
         }
@@ -1941,6 +1949,7 @@ class SimulationStoreImpl {
                 reference: analyticalRef,
                 comparisonMetric: null,
                 breakthroughCriterion: null,
+                terminationPolicy: cloneTerminationPolicy(scenario.terminationPolicy) ?? null,
                 comparisonMeaning: variant.description,
             });
         }

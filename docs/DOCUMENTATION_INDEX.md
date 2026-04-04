@@ -18,6 +18,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/UNIT_SYSTEM.md` | Unit conventions, equations, and solver / PVT notes |
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
+| `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, supported conditions, and runtime behavior |
 
 ## Current Repo-Level Facts
 

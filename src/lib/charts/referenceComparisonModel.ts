@@ -1204,10 +1204,12 @@ function buildSimulationSweepSeries(
         if (pvi == null || !Number.isFinite(pvi)) continue;
         const selectedXAxis = mapPviSeriesToXAxis([pvi], derived, xAxisMode, tau)[0];
         if (!Number.isFinite(selectedXAxis)) continue;
-        if (sweep.e_a != null) {
+        // Component metrics (e_a, e_v) are only meaningful for non-'both' geometry;
+        // for 'both' the Rust simulator leaves them null.
+        if (geometry !== 'both' && sweep.e_a != null) {
             areal.push({ x: Number(selectedXAxis), y: sweep.e_a });
         }
-        if (sweep.e_v != null) {
+        if (geometry !== 'both' && sweep.e_v != null) {
             vertical.push({ x: Number(selectedXAxis), y: sweep.e_v });
         }
         combined.push({ x: Number(selectedXAxis), y: sweep.e_vol });

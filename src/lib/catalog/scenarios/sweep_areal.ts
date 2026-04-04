@@ -25,6 +25,16 @@ export const sweep_areal: Scenario = {
         default3DScalar: 'saturation_water',
         requiresThreePhaseMode: false,
     },
+    terminationPolicy: {
+        mode: 'any',
+        conditions: [
+            {
+                kind: 'watercut-threshold',
+                value: 0.98,
+                scope: 'producer',
+            },
+        ],
+    },
     params: {
         // Fluid
         mu_w: 0.5,
@@ -78,8 +88,8 @@ export const sweep_areal: Scenario = {
         well_skin: 0,
         // Numerics
         fimEnabled: false,
-        delta_t_days: 5,
-        steps: 50,
+        delta_t_days: 0.25,
+        steps: 2500,
         max_sat_change_per_step: 0.01,
         max_pressure_change_per_step: 50,
         max_well_rate_change_fraction: 1.0,
@@ -96,21 +106,21 @@ export const sweep_areal: Scenario = {
                     key: 'mob_favorable',
                     label: 'M ≈ 0.5  (μ_o = 0.25 cp)',
                     description: 'Favourable mobility — high areal sweep, late breakthrough, piston-like.',
-                    paramPatch: { mu_o: 0.25 },
+                    paramPatch: { mu_o: 0.25, steps: 1300 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'mob_unit',
                     label: 'M ≈ 2  (μ_o = 1.0 cp)',
                     description: 'Moderate mobility ratio — base case. E_A(BT) ≈ 0.58.',
-                    paramPatch: {},
+                    paramPatch: { steps: 2500 },
                     affectsAnalytical: true,
                 },
                 {
                     key: 'mob_unfavorable',
                     label: 'M ≈ 10  (μ_o = 5.0 cp)',
                     description: 'Strongly unfavourable — viscous channelling, early breakthrough, poor areal sweep.',
-                    paramPatch: { mu_o: 5.0, delta_t_days: 1 },
+                    paramPatch: { mu_o: 5.0, steps: 5000 },
                     affectsAnalytical: true,
                 },
             ],

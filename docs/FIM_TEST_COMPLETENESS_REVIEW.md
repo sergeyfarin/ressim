@@ -11,13 +11,9 @@ question of when correctness work is complete enough to prioritize convergence t
 ## Summary verdict
 
 The test suite is substantially built out through Phases 1–4 of the plan. Fast family regressions
-exist for all nine coverage families. The primary remaining targeted gaps now fall into three categories:
+exist for all nine coverage families. The primary remaining targeted gap now falls into one category:
 
-1. **Multi-perforation shared-BHP coverage is incomplete** — no default oracle yet exercises a
-   physical well grouped across multiple perforations.
-2. **Absolute gravity-term magnitude validation is incomplete** — direction and qualitative gravity
-   behavior are covered, but not the exact hydrostatic weight in bar.
-3. **Oil MB remains a second-class diagnostic** — oil balance still has to be reconstructed from
+1. **Oil MB remains a second-class diagnostic** — oil balance still has to be reconstructed from
    rates plus inventory rather than read as a first-class runtime field.
 
 The previously reported GAP-4 regressions are green in HEAD: the two Rs-switch tests in
@@ -311,19 +307,17 @@ and verifies that:
 
 ---
 
-### GAP-10: Multi-perforation well BHP consistency
+### GAP-10 (CLOSED 2026-04-03): Multi-perforation well BHP consistency
 
-**What it is**: The FIM well topology supports multiple perforations per physical well (shared BHP).
-No test exercises this path.
+**Status**: this gap is now closed. `src/lib/ressim/src/tests/physics/wells_sources.rs` contains
+`physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility`, which builds a
+shared-ID two-completion producer and verifies that the initialized FIM state keeps a single
+physical-well BHP while the two perforation rates match the individual connection rates at that
+shared BHP.
 
-**Why it matters**: The `build_well_topology` grouping logic and the `well_constraint_residual`
-sum over perforations.  A bug in the summing could produce inconsistent BHP or wrong rate splits
+**Why it matters**: the `build_well_topology` grouping logic and the `well_constraint_residual`
+sum over perforations. A bug in the summing could produce inconsistent BHP or wrong rate splits
 between layers.
-
-**Recommended test**: `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility`
-— build a 2-layer vertical grid with the same well perforated in both layers.  After one step,
-verify that both perforations see the same BHP and that the total rate is the sum of the individual
-Peaceman connection rates at that BHP.
 
 ---
 
@@ -349,22 +343,16 @@ fluxes, and verifies that:
 
 ---
 
-### GAP-12: Gravity term magnitude validation
+### GAP-12 (CLOSED 2026-04-03): Gravity term magnitude validation
 
-**What it is**: The gravity term in the fluid potential `dphi = dp - rho*g*dz` uses SI units with
-a `1e-5` conversion to bar.  There is no test that verifies the numerical gravity weight matches
-the analytical hydrostatic column weight.
+**Status**: this gap is now closed. `src/lib/ressim/src/tests/physics/gas_cap.rs` contains
+`physics_gas_cap_gravity_term_magnitude_matches_hydrostatic_analytical`, which seeds a 2-cell
+vertical hydrostatic column, runs one gravity-enabled step, and verifies that the measured pressure
+offset matches the analytical hydrostatic weight in bar.
 
-**Why it matters**: A unit error (e.g., using `g = 9.80665` m/s² but forgetting the bar conversion,
-or using a wrong density unit) would produce a gravity force that is off by a constant factor.  The
-current hydrostatic benchmark checks direction only (bottom > top) and relative gradient to IMPES,
-not absolute magnitude.
-
-**Recommended test**: `physics_gas_cap_gravity_term_magnitude_matches_hydrostatic_analytical` — for
-a 2-cell vertical column at hydrostatic equilibrium with known water density 1000 kg/m³ and dz=10m,
-compute the expected pressure difference `dp = rho * g * dz * 1e-5 = 1000 * 9.80665 * 10 * 1e-5 =
-0.980665 bar`.  After one step with very high permeability (so equilibrium is reached quickly),
-assert `|pressure[bottom] - pressure[top] - 0.980665| < 1e-3`.
+**Why it matters**: a unit error (e.g., using `g = 9.80665` m/s² but forgetting the bar conversion,
+or using a wrong density unit) would produce a gravity force that is off by a constant factor. The
+new oracle checks the absolute magnitude directly.
 
 ---
 
@@ -416,8 +404,7 @@ hole and aligns the broader gas-flood smoke test with the relative-MB policy use
 | P2 | `physics_wells_sources_peaceman_connection_law_matches_analytical_wi` | wells | 0 | Direct formula oracle |
 | P2 | `physics_assembly_water_accumulation_uses_bw_denominator` | PVT | 0 | Accumulation path |
 | P2 | `physics_depletion_liberation_undersaturated_rs_stays_constant` | liberation | 0 | Phase-switch gate |
-| P3 | `physics_gas_cap_gravity_term_magnitude_matches_hydrostatic_analytical` | gas cap | 0 | Absolute gravity check |
-| P3 | `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate` | wells | 1 | Multi-perf topology |
+| P3 | `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility` | wells | 1 | Closed 2026-04-03 |
 | P3 | Tighten gas depletion MB to <1e-3 relative | depletion gas | 1 | Tolerance upgrade |
 | P3 | Tighten gas flood MB to <1e-3 relative per step | gas flood | 1 | Tolerance upgrade |
 | P4 | Oil-rate-to-delta-inventory per-step check | all | 2 | Substitute for missing oil MB field |

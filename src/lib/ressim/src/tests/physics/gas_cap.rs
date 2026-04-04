@@ -91,6 +91,40 @@ fn physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark() {
 }
 
 #[test]
+fn physics_gas_cap_gravity_term_magnitude_matches_hydrostatic_analytical() {
+    let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_permeability_random_seeded(80_000.0, 80_000.0, 7)
+        .unwrap();
+    sim.set_initial_saturation(0.9);
+    sim.pc.p_entry = 0.0;
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_gravity_enabled(true);
+
+    let expected_dp_bar = sim.pvt.rho_w * 9.80665 * sim.dz[0] * 1e-5;
+    let top_id = sim.idx(0, 0, 0);
+    let bottom_id = sim.idx(0, 0, 1);
+    sim.pressure[top_id] = 300.0;
+    sim.pressure[bottom_id] = 300.0 + expected_dp_bar;
+
+    sim.step(5.0);
+
+    assert!(
+        sim.last_solver_warning.is_empty(),
+        "hydrostatic gravity magnitude case emitted solver warning: {}",
+        sim.last_solver_warning
+    );
+
+    let measured_dp_bar = sim.pressure[bottom_id] - sim.pressure[top_id];
+    assert!(
+        (measured_dp_bar - expected_dp_bar).abs() < 1e-3,
+        "gravity term magnitude should match hydrostatic analytical dp: expected={:.6}, measured={:.6}",
+        expected_dp_bar,
+        measured_dp_bar
+    );
+}
+
+#[test]
 fn physics_gas_cap_vertical_column_gravity_stays_quieter_than_no_gravity() {
     let initial_sw = 0.9;
 

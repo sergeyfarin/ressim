@@ -268,14 +268,36 @@ function buildSweepColumnSnapshots(
 }
 
 function buildSweepRunResult(spec: ReturnType<typeof buildBenchmarkRunSpecs>[number]) {
-    const rateHistory = buildSyntheticWaterfloodRateHistory(spec.params, 0.55, 0);
-    const total = Number(spec.params.nx) * Number(spec.params.ny) * Number(spec.params.nz);
-    const history = buildSweepSnapshots(spec.params, [1, Math.max(2, Math.floor(total / 4)), Math.max(3, Math.floor(total / 2))]);
-    return buildBenchmarkRunResult({
-        spec,
-        rateHistory,
-        history,
+    const params = spec.params;
+    const total = Number(params.nx) * Number(params.ny) * Number(params.nz);
+    const history = buildSweepSnapshots(params, [1, Math.max(2, Math.floor(total / 4)), Math.max(3, Math.floor(total / 2))]);
+
+    // Compute sweep metrics from snapshots (mirrors what the Rust simulator computes per-step).
+    const swc = Number(params.s_wc ?? 0.1);
+    const sor = Number(params.s_or ?? 0.1);
+    const movable = Math.max(0, 1 - swc - sor);
+    const sweptThreshold = swc + 0.2 * movable;
+    const baseRateHistory = buildSyntheticWaterfloodRateHistory(params, 0.55, 0);
+    const rateHistory = baseRateHistory.map((point, i) => {
+        const satWater = history[i]?.grid?.sat_water;
+        if (!satWater) return point;
+        let sweptCells = 0;
+        for (let c = 0; c < satWater.length; c++) {
+            if (satWater[c] > sweptThreshold) sweptCells++;
+        }
+        const eVol = sweptCells / total;
+        return {
+            ...point,
+            sweep: {
+                e_a: eVol,
+                e_v: eVol,
+                e_vol: eVol,
+                mobile_oil_recovered: eVol * movable,
+            },
+        };
     });
+
+    return buildBenchmarkRunResult({ spec, rateHistory, history });
 }
 
 describe('referenceComparisonModel', () => {

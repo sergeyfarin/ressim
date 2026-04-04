@@ -30,8 +30,11 @@
        Undersaturated-`Rs` constancy coverage is now in
        `src/lib/ressim/src/tests/physics/depletion_liberation.rs` via
        `physics_depletion_liberation_undersaturated_rs_stays_constant`.
-      Remaining immediate correctness priorities now start with the multi-perforation well and
-       gravity correctness oracles. Dissolved-gas assembly-flux coverage is now in
+      Multi-perforation shared-BHP coverage is now in
+       `src/lib/ressim/src/tests/physics/wells_sources.rs` via
+       `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility`.
+      Remaining immediate correctness priority is the oil MB diagnostic.
+      Dissolved-gas assembly-flux coverage is now in
        `src/lib/ressim/src/fim/assembly_tests.rs` via
        `gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign`.
       Rate-controlled injector FIM coverage is now in
@@ -105,6 +108,9 @@
     - classify FIM regressions versus diagnostics
     - move or remove debug-only probes still outside dedicated diagnostic files
     - define the short canonical regression set for day-to-day FIM edits
+  - Scenario-definition follow-up:
+    - scenario-level termination policies now stop worker runs early while preserving normal frontend completion payloads
+    - later work can expose the same termination policy through explicit UI controls without changing the worker contract
   - Prioritized convergence plan:
     1. Revisit the remaining small-grid and hard-3D nonlinear/front-local retry shelves now that the moderate-grid wasm backend cliff is measured and the `10x10x3` handoff is improved. Use the checkpoint workflow first: scan long windows cheaply, then replay the exact slow shelf instead of tracing only from day `0`.
     2. Improve the iterative near-threshold path further only if new evidence shows CPR coarse solves, restart policy, or smoothing are still leaving measurable runtime on the table after the threshold alignment.
@@ -258,7 +264,7 @@
   - `setSweepConfig(json)` WASM setter added to `frontend.rs`; the store's `buildCreatePayload()` now appends `sweepConfig` when the scenario has `showSweepPanel`.
   - `RateHistoryPoint.sweep` added to `simulator-types.ts`.
   - wasm-bindgen 0.2.117 bundler-target `init` removal handled: worker no longer calls `init()`; test and debug scripts bootstrap WASM via `WebAssembly.instantiate` + `__wbg_set_wasm`; `simulator_bg.d.ts` created for type declarations.
-  - **Still pending:** delete `sweepEfficiencySimSeries` O(n²) `$derived` from `App.svelte` and update `referenceComparisonModel.ts` to read `.sweep` from rate-history instead of recomputing per-entry.
+  - UI wiring complete: `sweepEfficiencySimSeries` in `App.svelte` now reads from `runtime.rateHistory[i].sweep` (O(n) over rate history, not O(n²) over history×cells). `buildSimulationSweepSeries` in `referenceComparisonModel.ts` similarly reads `result.rateHistory[i].sweep` instead of iterating saturation snapshots. `computeSimSweepDiagnosticsForGeometry` / `computeSweepSaturationWindow` removed from both files' hot paths.
 - [x] Restore repo-wide TypeScript typecheck health for explicit well schedule typing and stale debug scripts.
   - Fixed: narrowed `injectorControlMode` / `producerControlMode` in `SimulatorCreatePayload` from `string` to `'pressure' | 'rate'`; added `satisfies SimulatorWellSchedule` to inline schedule literals in `buildCreatePayload.ts`, `sim.worker.ts`, `benchmarkPresetRuntime.test.ts`, and `debug-spe1-grid5.ts`; replaced `payload.delta_t_days` / `payload.steps` references (removed fields) with reads from the raw `params` record; added `@ts-nocheck` to `debug-spe1-gas.ts` (stale WASM API calls).
   - `npm run typecheck` now passes clean.

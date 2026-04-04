@@ -3,6 +3,8 @@
  * and for the simulator "create" payload constructed by the UI.
  */
 
+import type { ScenarioTerminationPolicy } from './catalog/scenarios';
+
 export interface PvtRow {
     p_bar: number;
     rs_m3m3: number;
@@ -196,6 +198,8 @@ export interface SimulatorCreatePayload {
     /** Residual oil saturation S_or. */
     residual_oil_saturation: number;
   };
+  /** Optional run termination rules evaluated by the worker after accepted steps. */
+  terminationPolicy?: ScenarioTerminationPolicy;
 }
 
 /** Payload sent with the `run` message */
@@ -304,7 +308,12 @@ export interface WorkerStateMessage { type: 'state'; data: SimulatorSnapshot }
 export interface WorkerRunStartedMessage { type: 'runStarted'; steps?: number; deltaTDays?: number; hydration?: boolean; hydrationId?: number | string }
 export interface WorkerStoppedMessage { type: 'stopped'; reason?: string; completedSteps?: number; hydration?: boolean; hydrationId?: number | string }
 export interface WorkerHydratedMessage { type: 'hydrated'; hydration: true; hydrationId?: number | string; time?: number; rateHistoryLength?: number }
-export interface WorkerBatchCompleteMessage { type: 'batchComplete'; profile: RunProfile }
+export interface WorkerBatchCompleteMessage {
+  type: 'batchComplete';
+  profile: RunProfile;
+  completedSteps?: number;
+  terminationSummary?: string;
+}
 export interface WorkerErrorMessage { type: 'error'; message: string }
 export interface WorkerWarningMessage { type: 'warning'; message: string }
 

@@ -140,6 +140,23 @@ describe('buildCreatePayloadFromState', () => {
     expect(payload.gasRedissolutionEnabled).toBe(false)
   })
 
+  it('clones termination policy metadata for worker consumption', () => {
+    const payload = buildCreatePayloadFromState({
+      nx: 1,
+      ny: 1,
+      nz: 1,
+      terminationPolicy: {
+        mode: 'any',
+        conditions: [{ kind: 'watercut-threshold', value: 0.01, scope: 'producer' }],
+      },
+    }) as SimulatorCreatePayload
+
+    expect(payload.terminationPolicy).toEqual({
+      mode: 'any',
+      conditions: [{ kind: 'watercut-threshold', value: 0.01, scope: 'producer' }],
+    })
+  })
+
   it('synthesizes explicit well definitions with stable ids from legacy fields', () => {
     const payload = buildCreatePayloadFromState({
       nx: 10,

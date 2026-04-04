@@ -8,7 +8,7 @@ import type {
     BenchmarkReferenceDefinition,
     BenchmarkVariant,
 } from './catalog/benchmarkCases';
-import type { AnalyticalMethod } from './catalog/scenarios';
+import type { AnalyticalMethod, ScenarioTerminationPolicy } from './catalog/scenarios';
 import type { RateHistoryPoint, SimulatorCreatePayload, SimulatorSnapshot } from './simulator-types';
 
 export type BenchmarkRunSpec = {
@@ -27,6 +27,7 @@ export type BenchmarkRunSpec = {
     reference: BenchmarkReferenceDefinition;
     comparisonMetric: BenchmarkComparisonMetric | null;
     breakthroughCriterion: BenchmarkBreakthroughCriterion | null;
+    terminationPolicy?: ScenarioTerminationPolicy | null;
     comparisonMeaning: string;
 };
 
@@ -630,6 +631,7 @@ export function buildBenchmarkRunSpecs(
             reference: family.reference,
             comparisonMetric: family.comparisonMetric ?? null,
             breakthroughCriterion: family.breakthroughCriterion ?? null,
+            terminationPolicy: null,
             comparisonMeaning: 'Base reference run for the selected family.',
         },
         ...variants.map((variant) => {
@@ -652,6 +654,7 @@ export function buildBenchmarkRunSpecs(
                 reference: variant.reference,
                 comparisonMetric: variant.comparisonMetric,
                 breakthroughCriterion: family.breakthroughCriterion ?? null,
+                terminationPolicy: null,
                 comparisonMeaning: variant.comparisonMeaning,
             };
         }),

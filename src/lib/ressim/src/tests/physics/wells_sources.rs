@@ -3,8 +3,8 @@ use nalgebra::DVector;
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
 use crate::fim::state::FimState;
 use crate::fim::wells::{
-    build_well_topology, perforation_component_rates_sc_day, perforation_rate_residual,
-    perforation_residual_diagnostics, well_constraint_residual,
+    build_well_topology, connection_rate_for_bhp, perforation_component_rates_sc_day,
+    perforation_rate_residual, perforation_residual_diagnostics, well_constraint_residual,
 };
 use crate::pvt::{PvtRow, PvtTable};
 use crate::well_control::{ProducerControlState, ResolvedWellControl, WellControlDecision};
@@ -252,6 +252,93 @@ fn physics_wells_sources_rate_controlled_injector_fim_path_converges() {
         target_surface_rate
     );
     assert_eq!(latest.injector_bhp_limited_fraction, 0.0);
+}
+
+#[test]
+fn physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
+    let mut sim = crate::ReservoirSimulator::new(1, 1, 2, 0.2);
+    sim.set_fim_enabled(true);
+    sim.set_cell_dimensions_per_layer(20.0, 20.0, vec![8.0, 12.0])
+        .unwrap();
+    sim.set_rel_perm_props(0.10, 0.10, 2.0, 2.0, 1.0, 1.0)
+        .unwrap();
+    sim.set_fluid_properties(1.0, 0.5).unwrap();
+    sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+    sim.set_fluid_densities(800.0, 1000.0).unwrap();
+    sim.set_rock_properties(1e-6, 0.2, 1.0, 1.0).unwrap();
+    sim.set_initial_pressure(250.0);
+    sim.set_initial_saturation_per_layer(vec![0.15, 0.80])
+        .unwrap();
+    sim.set_gravity_enabled(false);
+    sim.set_stability_params(0.05, 75.0, 0.75);
+    sim.set_permeability_per_layer(vec![80.0, 80.0], vec![80.0, 80.0], vec![25.0, 150.0])
+        .unwrap();
+    sim.set_rate_controlled_wells(true);
+    sim.set_target_well_rates(0.0, 35.0).unwrap();
+    sim.set_well_bhp_limits(0.0, 1.0e9).unwrap();
+    sim.add_well_with_id(0, 0, 0, 120.0, 0.1, 0.0, false, "dual-layer-prod".to_string())
+        .unwrap();
+    sim.add_well_with_id(0, 0, 1, 120.0, 0.1, 0.0, false, "dual-layer-prod".to_string())
+        .unwrap();
+
+    let state = FimState::from_simulator(&sim);
+    let topology = build_well_topology(&sim);
+    assert_eq!(topology.wells.len(), 1);
+    assert_eq!(topology.perforations.len(), 2);
+    assert_eq!(state.well_bhp.len(), 1);
+
+    let well_residual = well_constraint_residual(&sim, &state, &topology, 0)
+        .expect("shared physical well should expose a well constraint residual");
+    assert!(well_residual.abs() < 1e-6);
+
+    let bhp_bar = state.well_bhp[0];
+    let perf0 = topology.wells[0].perforation_indices[0];
+    let perf1 = topology.wells[0].perforation_indices[1];
+
+    let diagnostics0 = perforation_residual_diagnostics(&sim, &state, &topology, perf0)
+        .expect("first perforation diagnostics should exist");
+    let diagnostics1 = perforation_residual_diagnostics(&sim, &state, &topology, perf1)
+        .expect("second perforation diagnostics should exist");
+
+    assert!((diagnostics0.bhp_bar - bhp_bar).abs() < 1e-10);
+    assert!((diagnostics1.bhp_bar - bhp_bar).abs() < 1e-10);
+    assert!((diagnostics0.bhp_bar - diagnostics1.bhp_bar).abs() < 1e-12);
+
+    let q0 = connection_rate_for_bhp(&sim, &state, &topology, perf0, bhp_bar)
+        .expect("first perforation connection rate should exist");
+    let q1 = connection_rate_for_bhp(&sim, &state, &topology, perf1, bhp_bar)
+        .expect("second perforation connection rate should exist");
+
+    let perf_residual0 = perforation_rate_residual(&sim, &state, &topology, perf0)
+        .expect("first perforation residual should exist");
+    let perf_residual1 = perforation_rate_residual(&sim, &state, &topology, perf1)
+        .expect("second perforation residual should exist");
+
+    assert!(perf_residual0.abs() < 1e-6);
+    assert!(perf_residual1.abs() < 1e-6);
+    assert!((state.perforation_rates_m3_day[perf0] - q0).abs() < 1e-8);
+    assert!((state.perforation_rates_m3_day[perf1] - q1).abs() < 1e-8);
+    assert!((q0 - q1).abs() > 1e-6, "layered completions should split rate unevenly");
+
+    let total_connection_rate = q0 + q1;
+    let total_perforation_rate = state.perforation_rates_m3_day[perf0]
+        + state.perforation_rates_m3_day[perf1];
+
+    assert!((total_perforation_rate - total_connection_rate).abs() < 1e-8);
+    assert!(
+        (diagnostics0.actual_well_rate_sc_day
+            .expect("first perforation should report actual well rate")
+            - total_connection_rate)
+            .abs()
+            < 1e-8
+    );
+    assert!(
+        (diagnostics1.actual_well_rate_sc_day
+            .expect("second perforation should report actual well rate")
+            - total_connection_rate)
+            .abs()
+            < 1e-8
+    );
 }
 
 #[test]

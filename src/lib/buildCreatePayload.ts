@@ -5,6 +5,7 @@ import type {
   SimulatorWellSchedule,
   ThreePhaseScalTables,
 } from './simulator-types'
+import { cloneTerminationPolicy } from './workers/terminationPolicy'
 
 function toFiniteNumber(value: unknown, fallback: number): number {
   const numeric = Number(value)
@@ -355,5 +356,6 @@ export function buildCreatePayloadFromState(state: Partial<SimulatorCreatePayloa
     scalTables: cloneScalTables(state.scalTables),
     gasRedissolutionEnabled: state.gasRedissolutionEnabled !== false,
     initialRs: typeof state.initialRs === 'number' ? state.initialRs : undefined,
+    terminationPolicy: cloneTerminationPolicy(state.terminationPolicy),
   }
 }

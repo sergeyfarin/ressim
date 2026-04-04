@@ -48,6 +48,16 @@ describe('sweep scenario sensitivities', () => {
         const scenario = getScenario('sweep_areal');
 
         expect(scenario?.defaultSensitivityDimensionKey).toBe('mobility');
+        expect(scenario?.terminationPolicy).toEqual({
+            mode: 'any',
+            conditions: [
+                {
+                    kind: 'watercut-threshold',
+                    value: 0.01,
+                    scope: 'producer',
+                },
+            ],
+        });
         expect(scenario?.sensitivities.map((dimension) => dimension.key)).toEqual([
             'mobility',
             'areal_heterogeneity',
