@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { gasOilBLDef } from '../analyticalAdapters';
 
 export const gas_injection: Scenario = {
     key: 'gas_injection',
@@ -53,6 +54,7 @@ export const gas_injection: Scenario = {
         max_pressure_change_per_step: 75,
         max_well_rate_change_fraction: 0.75,
     },
+    analyticalDef: gasOilBLDef,
     sensitivities: [
         {
             key: 'mobility',

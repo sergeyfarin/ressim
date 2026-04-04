@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { waterfloodBLDef } from '../analyticalAdapters';
 
 export const sweep_vertical: Scenario = {
     key: 'sweep_vertical',
@@ -89,6 +90,7 @@ export const sweep_vertical: Scenario = {
         max_well_rate_change_fraction: 0.75,
         gravityEnabled: false,
     },
+    analyticalDef: waterfloodBLDef,
     sensitivities: [
         {
             key: 'heterogeneity',

@@ -74,6 +74,12 @@
     This keeps the shared parity surface on stable transition outcomes only: dropping below bubble
     point, creating free gas, finite public reporting, bounded gas accounting, and final-time
     completion without asserting identical internal stepping traces.
+  - Shared parity coverage now also includes fast geometry/public-outcome cases on both solvers via
+    `physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers` and
+    `physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers`.
+    These intentionally stay on stable geometry signals only: nontrivial heterogeneous contrast,
+    stronger high-`kz` cross-layer spreading, finite/positive reporting, and final-time
+    completion without requiring the solvers to match exact profile orientation or internal traces.
   - Focused validation completed for the IMPES ownership move:
     `impes::tests::timestep::*`,
     `tests::runtime_api::default_step_path_reports_rate_controlled_well_state`, and
@@ -90,6 +96,11 @@
     `physics_depletion_oil_closed_system_monotone`,
     `physics_depletion_gas_single_cell_closed_system_monotone`, and
     `physics_depletion_liberation_undersaturated_rs_stays_constant` all passed.
+  - Focused validation completed for the geometry parity slice:
+    `physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers`,
+    `physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers`,
+    `physics_geometry_waterflood_2d_high_perm_streak_advances_front_faster`, and
+    `physics_geometry_gas_segregation_3d_high_kz_accelerates_vertical_migration` all passed.
   - Remaining Phase 2 next slice: add more shared parity coverage only where the public contract is
     stable enough to avoid baking in known rate-magnitude gaps.
 

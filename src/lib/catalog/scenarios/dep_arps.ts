@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { depletionDef } from '../analyticalAdapters';
 
 /**
  * Arps Hyperbolic Decline scenario.
@@ -99,6 +100,7 @@ export const dep_arps: Scenario = {
         max_well_rate_change_fraction: 0.75,
         gravityEnabled: false,
     },
+    analyticalDef: depletionDef,
     sensitivities: [
         {
             key: 'arps_b',

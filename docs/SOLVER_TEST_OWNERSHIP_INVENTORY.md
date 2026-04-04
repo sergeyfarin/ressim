@@ -113,6 +113,9 @@ on matching internal stepping patterns:
   `physics_depletion_gas_public_invariants_hold_on_both_solvers`
 - `src/lib/ressim/src/tests/physics/depletion_liberation.rs`:
   `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`
+- `src/lib/ressim/src/tests/physics/geometry_anisotropy.rs`:
+  `physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers`
+  and `physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers`
 
 These physics-level parity checks intentionally stay on public contracts only:
 
@@ -172,6 +175,8 @@ The moved and rewritten tests were validated with focused Rust runs:
 - `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`
 - `physics_depletion_gas_public_invariants_hold_on_both_solvers`
 - `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`
+- `physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers`
+- `physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers`
 - `physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark`
 - `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers`
 - `physics_depletion_oil_closed_system_monotone`

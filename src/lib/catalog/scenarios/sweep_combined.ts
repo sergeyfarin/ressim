@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { waterfloodBLDef } from '../analyticalAdapters';
 
 export const sweep_combined: Scenario = {
     key: 'sweep_combined',
@@ -114,6 +115,7 @@ export const sweep_combined: Scenario = {
         max_well_rate_change_fraction: 0.75,
         gravityEnabled: false,
     },
+    analyticalDef: waterfloodBLDef,
     sensitivities: [
         {
             key: 'interaction_core',

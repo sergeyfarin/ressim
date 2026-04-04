@@ -302,6 +302,70 @@ fn physics_geometry_gas_flood_2d_high_perm_streak_advances_gas_front_faster() {
 }
 
 #[test]
+fn physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, f64, usize) {
+        let mut sim = build_2d_areal_gas_flood_streak_sim(8, 3);
+        sim.set_fim_enabled(fim_enabled);
+        let streak_row = sim.ny / 2;
+
+        for _ in 0..4 {
+            sim.step(0.5);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "2D gas-streak parity case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                sim.last_solver_warning
+            );
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("2D gas-streak parity case should record history");
+        let center_row_sg = row_average_gas_saturation(&sim, streak_row);
+        let flank_row_sg = 0.5
+            * (row_average_gas_saturation(&sim, 0)
+                + row_average_gas_saturation(&sim, sim.ny - 1));
+        let center_downstream = sim.sat_gas[sim.idx(sim.nx - 3, streak_row, 0)];
+        let flank_downstream = 0.5
+            * (sim.sat_gas[sim.idx(sim.nx - 3, 0, 0)]
+                + sim.sat_gas[sim.idx(sim.nx - 3, sim.ny - 1, 0)]);
+
+        (
+            center_row_sg,
+            flank_row_sg,
+            center_downstream,
+            flank_downstream,
+            latest.total_injection,
+            latest.total_production_gas,
+            latest.time,
+            sim.rate_history.len(),
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(
+            (metrics.0 - metrics.1).abs() > 0.05,
+            "expected nontrivial gas row contrast for fim_enabled={}: center={:.6}, flank={:.6}",
+            fim_enabled,
+            metrics.0,
+            metrics.1
+        );
+        assert!(
+            (metrics.2 - metrics.3).abs() > 0.05,
+            "expected nontrivial downstream gas contrast for fim_enabled={}: center={:.6}, flank={:.6}",
+            fim_enabled,
+            metrics.2,
+            metrics.3
+        );
+        assert!(metrics.4 > 0.0);
+        assert!(metrics.5 >= 0.0);
+        assert!((metrics.6 - 2.0).abs() <= 1e-9);
+        assert!(metrics.7 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+    }
+}
+
+#[test]
 #[ignore = "slow Phase 3 layered waterflood anisotropy probe; keep opt-in while the default geometry slice stays fast"]
 fn physics_geometry_waterflood_3d_high_kz_spreads_front_across_layers() {
     let mut low_kz = build_3d_layered_waterflood_kz_sim(6, 2, 3, 5.0);
@@ -326,6 +390,73 @@ fn physics_geometry_waterflood_3d_high_kz_spreads_front_across_layers() {
         low_off_layer_sw,
         high_off_layer_sw
     );
+}
+
+#[test]
+fn physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, usize, usize) {
+        let mut low_kz = build_3d_layered_waterflood_kz_sim(6, 2, 3, 5.0);
+        let mut high_kz = build_3d_layered_waterflood_kz_sim(6, 2, 3, 500.0);
+        low_kz.set_fim_enabled(fim_enabled);
+        high_kz.set_fim_enabled(fim_enabled);
+
+        for _ in 0..4 {
+            low_kz.step(0.1);
+            high_kz.step(0.1);
+            assert!(
+                low_kz.last_solver_warning.is_empty(),
+                "low-kz layered waterflood parity case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                low_kz.last_solver_warning
+            );
+            assert!(
+                high_kz.last_solver_warning.is_empty(),
+                "high-kz layered waterflood parity case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                high_kz.last_solver_warning
+            );
+        }
+
+        let low_latest = low_kz
+            .rate_history
+            .last()
+            .expect("low-kz layered waterflood parity case should record history");
+        let high_latest = high_kz
+            .rate_history
+            .last()
+            .expect("high-kz layered waterflood parity case should record history");
+        let low_off_layer_sw = 0.5
+            * (layer_average_water_saturation(&low_kz, 0)
+                + layer_average_water_saturation(&low_kz, 2));
+        let high_off_layer_sw = 0.5
+            * (layer_average_water_saturation(&high_kz, 0)
+                + layer_average_water_saturation(&high_kz, 2));
+
+        (
+            low_off_layer_sw,
+            high_off_layer_sw,
+            low_latest.total_injection,
+            high_latest.total_injection,
+            high_latest.time,
+            low_kz.rate_history.len(),
+            high_kz.rate_history.len(),
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(
+            metrics.1 > metrics.0 + 0.01,
+            "expected higher-kz layer spreading for fim_enabled={}: low={:.6}, high={:.6}",
+            fim_enabled,
+            metrics.0,
+            metrics.1
+        );
+        assert!(metrics.2 > 0.0);
+        assert!(metrics.3 > 0.0);
+        assert!((metrics.4 - 0.4).abs() <= 1e-9);
+        assert!(metrics.5 > 0, "expected low-kz history for fim_enabled={}", fim_enabled);
+        assert!(metrics.6 > 0, "expected high-kz history for fim_enabled={}", fim_enabled);
+    }
 }
 
 #[test]

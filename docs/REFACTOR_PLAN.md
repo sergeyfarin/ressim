@@ -294,56 +294,37 @@ Rust computes eA, eV, eVol, mobileOilRecovered per step in `record_step_report()
 
 ---
 
-### Phase 2 — Scenarios Own Their Analytical Function (2-3 days)
+### Phase 2 — Scenarios Own Their Analytical Function ✓ COMPLETE
 
-**Goal:** Complete what Phase 0 started. Eliminate `params.analyticalMode` string routing in
-App.svelte and `referenceComparisonModel.ts`. Scenario declares its analytical function directly.
+**Delivered 2026-04-04:**
 
-**Files to create:**
-
-- `src/lib/analytical/index.ts` — clean public API re-exporting all analytical functions and types.
-- `src/lib/analytical/axisAdapters.ts` — `pviToTime(curves, rateHistory)`,
-  `normalizeRecoveryFactor(curves, ooip)`, and any other axis/unit conversions. **One place.**
-
-**Files to modify:**
-
-- [src/lib/catalog/scenarios.ts](src/lib/catalog/scenarios.ts) — add `analyticalDef: ScenarioAnalyticalDef` to `Scenario` type. Remove reliance on `analyticalMethod` string for function dispatch.
-- Each of the 10 scenario files — populate `analyticalDef` with the correct function and `inputsFromParams` adapter.
-
-  Example:
+- `src/lib/catalog/scenarios.ts` — added `ScenarioAnalyticalPoint`, `ScenarioAnalyticalMeta`,
+  `ScenarioAnalyticalOutput`, and `ScenarioAnalyticalDef` types. Added `analyticalDef?:
+  ScenarioAnalyticalDef` field to `Scenario`.
+- `src/lib/catalog/analyticalAdapters.ts` — new file with three pre-built defs shared
+  across scenarios: `waterfloodBLDef`, `depletionDef`, `gasOilBLDef`.
+- 8 of 10 scenario files populated with `analyticalDef` (gas_drive = `none`, spe1 = `digitized-reference` have no analytical function).
+- [src/App.svelte](src/App.svelte) — `liveAnalyticalOutput` reduced from ~65 lines to 6:
   ```typescript
-  // wf_bl1d.ts
-  analyticalDef: {
-      fn: computeBuckleyLeverettCurves,
-      inputsFromParams: (params, rateHistory) => ({
-          rockProps: { s_wc: params.s_wc, ... },
-          fluidProps: { mu_w: params.mu_w, ... },
-          poreVolume: params.nx * params.cellDx * ...,
-          injectionRateSeries: rateHistory.map(p => p.total_injection),
-          timeHistory: rateHistory.map(p => p.time),
-      }),
-  },
-  ```
-
-- [src/App.svelte](src/App.svelte) — replace `liveAnalyticalOutput` branching logic with:
-  ```typescript
-  const liveAnalyticalOutput = $derived.by(() => {
+  const liveAnalyticalOutput = $derived.by((): ScenarioAnalyticalOutput => {
+      if (runtime.rateHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
       const def = scenario.activeScenarioObject?.analyticalDef;
-      if (!def || runtime.rateHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
-      const inputs = def.inputsFromParams(params, runtime.rateHistory);
+      if (!def) return EMPTY_ANALYTICAL_OUTPUT;
+      const inputs = def.inputsFromParams(params as unknown as Record<string, unknown>, runtime.rateHistory);
       return def.fn(inputs);
   });
   ```
+- `AppAnalyticalMeta` and `AppAnalyticalPoint` local type aliases replaced by index types
+  derived from `ScenarioAnalyticalOutput`.
 
-- [src/lib/charts/referenceComparisonModel.ts](src/lib/charts/referenceComparisonModel.ts) —
-  replace all `switch (analyticalMethod)` / `if (analyticalMethod === ...)` blocks with
-  `result.scenario.analyticalDef.fn(inputs)` calls.
+**Not done (deferred to Phase 4):**
+- `referenceComparisonModel.ts` — still uses `analyticalMethod` string routing internally via
+  `computeBLAnalyticalFromParams`, `computeDepletionAnalyticalFromParams` etc. The `analyticalDef`
+  is now available on scenarios for Phase 4 to consume when it replaces that file entirely.
+- `src/lib/analytical/index.ts` — public re-export barrel; not needed until Phase 4 consumers land.
+- `src/lib/analytical/axisAdapters.ts` — axis conversion utilities; deferred to Phase 4.
 
-**Files that become eligible for deletion after this phase:**
-- `src/lib/analytical/FractionalFlow.svelte` — already removed in WIP ✓
-- `src/lib/analytical/DepletionAnalytical.svelte` — already removed in WIP ✓
-
-**Verification:** All 10 scenarios display correct analytical overlays. No `analyticalMode` string routing remains in App or chart code.
+**Verification:** 533 TypeScript tests pass. `npm run typecheck` clean.
 
 ---
 
@@ -548,11 +529,11 @@ disappears.
 ## 5. Execution Order & Dependencies
 
 ```
-Phase 0.5  ──── TypeScript typecheck fix (prerequisite for clean development)
+Phase 0.5  ──── TypeScript typecheck fix ✓ DONE
     │
-    ├── Phase 1  ──── Sweep metrics in Rust (independent, high value)
+    ├── Phase 1  ──── Sweep metrics in Rust ✓ DONE
     │
-    └── Phase 2  ──── Scenarios own analytical fn (completes Phase 0 work)
+    └── Phase 2  ──── Scenarios own analytical fn ✓ DONE
             │
             └── Phase 3  ──── Panel catalog + style policy (prerequisite for Phase 4)
                     │
@@ -582,8 +563,8 @@ purely TypeScript-side with no overlap.
 | Hidden analytical Svelte components | ✓ Done (Phase 0) |
 | TypeScript typecheck failures | ✓ Done (Phase 0.5) |
 | O(n²) sweep efficiency derived | Phase 1 |
-| `analyticalMode` string routing | Phase 2 |
-| `liveAnalyticalOutput` param spreading | Phase 2 |
+| `analyticalMode` string routing in App.svelte | ✓ Done (Phase 2) |
+| `liveAnalyticalOutput` param spreading | ✓ Done (Phase 2) |
 | Styling constants duplicated | Phase 3 |
 | `referenceComparisonModel.ts` (3,285 lines) | Phase 4 |
 | `RateChart.svelte` hard-coded string matching | Phase 4 |

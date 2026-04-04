@@ -22,7 +22,8 @@
       "Bash(ls /home/reken/Repos/ressim/src/lib/ressim/pkg/*.d.ts)",
       "Read(//home/reken/Repos/ressim/**)",
       "Bash(sort -k1,1)",
-      "Bash(grep -h \"analyticalMethod:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)"
+      "Bash(grep -h \"analyticalMethod:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)",
+      "Bash(grep -h \"chartLayoutKey:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)"
     ]
   }
 }

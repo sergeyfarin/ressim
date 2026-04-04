@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { depletionDef } from '../analyticalAdapters';
 
 export const dep_pss: Scenario = {
     key: 'dep_pss',
@@ -76,6 +77,7 @@ export const dep_pss: Scenario = {
         max_well_rate_change_fraction: 0.75,
         gravityEnabled: false,
     },
+    analyticalDef: depletionDef,
     sensitivities: [
         {
             key: 'shape_factor',

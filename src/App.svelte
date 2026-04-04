@@ -1,12 +1,11 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
-    import { calculateDepletionAnalyticalProduction, type DepletionAnalyticalMeta, type DepletionAnalyticalPoint } from "./lib/analytical/depletionAnalytical";
-    import { calculateAnalyticalProduction, type AnalyticalPoint as FractionalFlowAnalyticalPoint, type FluidProps, type RockProps } from "./lib/analytical/fractionalFlow";
+    import { type FluidProps, type RockProps } from "./lib/analytical/fractionalFlow";
     import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
-    import { getScenarioChartLayout, getScenarioWithVariantParams } from "./lib/catalog/scenarios";
+    import { getScenarioChartLayout, getScenarioWithVariantParams, type ScenarioAnalyticalOutput } from "./lib/catalog/scenarios";
     import { computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
@@ -43,14 +42,8 @@
     // True only for sweep scenarios — reads from scenario capabilities.
     const showSweepPanel = $derived(scenario.activeScenarioObject?.capabilities.showSweepPanel ?? false);
 
-    type AppAnalyticalMeta = DepletionAnalyticalMeta | {
-        mode: "waterflood" | "none";
-        shapeFactor: number | null;
-        shapeLabel: string;
-        q0?: number;
-        tau?: number;
-    };
-    type AppAnalyticalPoint = FractionalFlowAnalyticalPoint | DepletionAnalyticalPoint;
+    type AppAnalyticalMeta = ScenarioAnalyticalOutput['meta'];
+    type AppAnalyticalPoint = ScenarioAnalyticalOutput['production'][number];
     type OutputSelectionProfile = {
         gridState: typeof runtime.gridStateRaw;
         nx: number;
@@ -264,75 +257,12 @@
             sourceLabel: activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime",
         };
     });
-    const liveAnalyticalOutput = $derived.by((): { production: AppAnalyticalPoint[]; meta: AppAnalyticalMeta } => {
-        const timeHistory = runtime.rateHistory.map((point) => point.time);
-        if (timeHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
-
-        if (params.analyticalMode === "waterflood") {
-            return {
-                production: calculateAnalyticalProduction(
-                    {
-                        s_wc: params.s_wc,
-                        s_or: params.s_or,
-                        n_w: params.n_w,
-                        n_o: params.n_o,
-                        k_rw_max: params.k_rw_max,
-                        k_ro_max: params.k_ro_max,
-                    },
-                    { mu_w: params.mu_w, mu_o: params.mu_o },
-                    params.initialSaturation,
-                    timeHistory,
-                    runtime.rateHistory.map((point) => Number(point.total_injection ?? 0)),
-                    params.nx * params.cellDx * params.ny * params.cellDy * params.nz * params.cellDz * params.reservoirPorosity,
-                ),
-                meta: {
-                    mode: "waterflood",
-                    shapeFactor: null,
-                    shapeLabel: "",
-                },
-            };
-        }
-
-        if (params.analyticalMode === "depletion") {
-            return calculateDepletionAnalyticalProduction({
-                reservoir: {
-                    length: params.nx * params.cellDx,
-                    area: params.ny * params.cellDy * params.nz * params.cellDz,
-                    porosity: params.reservoirPorosity,
-                },
-                timeHistory,
-                minTimeDays: params.analyticalDepletionStartDays,
-                initialSaturation: params.initialSaturation,
-                nz: params.nz,
-                permMode: params.permMode,
-                uniformPermX: params.uniformPermX,
-                uniformPermY: params.uniformPermY,
-                layerPermsX: params.layerPermsX,
-                layerPermsY: params.layerPermsY,
-                cellDx: params.cellDx,
-                cellDy: params.cellDy,
-                cellDz: params.cellDz,
-                wellRadius: params.well_radius,
-                wellSkin: params.well_skin,
-                muO: params.mu_o,
-                sWc: params.s_wc,
-                sOr: params.s_or,
-                nO: params.n_o,
-                c_o: params.c_o,
-                c_w: params.c_w,
-                cRock: params.rock_compressibility,
-                initialPressure: params.initialPressure,
-                producerBhp: params.producerBhp,
-                depletionRateScale: params.analyticalDepletionRateScale,
-                arpsB: params.analyticalArpsB,
-                nx: params.nx,
-                ny: params.ny,
-                producerI: params.producerI,
-                producerJ: params.producerJ,
-            });
-        }
-
-        return EMPTY_ANALYTICAL_OUTPUT;
+    const liveAnalyticalOutput = $derived.by((): ScenarioAnalyticalOutput => {
+        if (runtime.rateHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
+        const def = scenario.activeScenarioObject?.analyticalDef;
+        if (!def) return EMPTY_ANALYTICAL_OUTPUT;
+        const inputs = def.inputsFromParams(params as unknown as Record<string, unknown>, runtime.rateHistory);
+        return def.fn(inputs);
     });
     const default3DProperty = $derived.by(() => {
         if (activeSelectedReferenceResult) {

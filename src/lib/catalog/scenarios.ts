@@ -15,6 +15,7 @@
 
 import type { RateChartLayoutConfig } from '../charts/rateChartLayoutConfig';
 import type { SweepAnalyticalMethod, SweepGeometry } from '../analytical/sweepEfficiency';
+import type { RateHistoryPoint } from '../simulator-types';
 import { getChartLayout, mergeChartLayoutConfig } from './chartLayouts';
 
 export { CHART_LAYOUTS, getChartLayout, mergeChartLayoutConfig } from './chartLayouts';
@@ -135,6 +136,45 @@ export const ANALYTICAL_OUTPUT_CONTRACTS: Record<AnalyticalMethod, AnalyticalOut
         hasTau: false,
         defaultPanelExpansion: { rates: true, recovery: true, cumulative: false, diagnostics: false },
     },
+};
+
+// ─── Analytical def — scenario-owned computation ─────────────────────────────
+
+/** Unified point type covering waterflood, depletion, and gas-oil outputs. */
+export type ScenarioAnalyticalPoint = {
+    time: number;
+    oilRate: number;
+    waterRate?: number;
+    gasRate?: number;
+    cumulativeOil: number;
+    avgPressure?: number;
+};
+
+export type ScenarioAnalyticalMeta = {
+    mode: 'waterflood' | 'depletion' | 'gas-oil-bl' | 'none';
+    shapeFactor: number | null;
+    shapeLabel: string;
+    q0?: number;
+    tau?: number;
+    arpsB?: number;
+};
+
+export type ScenarioAnalyticalOutput = {
+    production: ScenarioAnalyticalPoint[];
+    meta: ScenarioAnalyticalMeta;
+};
+
+/**
+ * Encapsulates how a scenario computes its analytical overlay.
+ * The fn/inputsFromParams split keeps pure calculation separate from
+ * param-extraction, enabling both live (App.svelte) and benchmark
+ * (referenceComparisonModel / future buildChartData) call sites.
+ */
+export type ScenarioAnalyticalDef = {
+    /** Pure analytical calculation — call with the output of inputsFromParams. */
+    fn: (inputs: unknown) => ScenarioAnalyticalOutput;
+    /** Assemble analytical inputs from scenario params and rate history. */
+    inputsFromParams: (params: Record<string, unknown>, rateHistory: RateHistoryPoint[]) => unknown;
 };
 
 // ─── Scenario capabilities ───────────────────────────────────────────────────
@@ -350,6 +390,12 @@ export type Scenario = {
     publishedReferenceSeries?: PublishedReferenceSeries[];
     /** Optional stop policy for terminating a run when a production condition is met. */
     terminationPolicy?: ScenarioTerminationPolicy;
+    /**
+     * Scenario-owned analytical computation. When present, App.svelte and
+     * chart builders call this instead of string-routing on analyticalMode/Method.
+     * Absent for 'none' and 'digitized-reference' analytical methods.
+     */
+    analyticalDef?: ScenarioAnalyticalDef;
 };
 
 /** Default capabilities for custom mode (no predefined scenario). */

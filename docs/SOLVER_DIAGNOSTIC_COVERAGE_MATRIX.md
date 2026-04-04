@@ -37,8 +37,8 @@ Use this document together with `docs/SOLVER_TEST_COVERAGE_PLAN.md` and
 
 | Ignored / diagnostic test | Purpose | Default fast sibling(s) | Status |
 |---|---|---|---|
-| `physics_geometry_gas_flood_2d_high_perm_streak_advances_gas_front_faster` | Slow areal gas-flood directional heterogeneity probe | `physics_geometry_waterflood_2d_high_perm_streak_advances_front_faster`, `physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers` | Partially covered; still missing default shared geometry parity for gas directional outcome |
-| `physics_geometry_waterflood_3d_high_kz_spreads_front_across_layers` | Slow layered waterflood anisotropy probe | `physics_geometry_gas_segregation_3d_high_kz_accelerates_vertical_migration`, `physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers` | Partially covered; still missing default shared geometry parity for layered waterflood |
+| `physics_geometry_gas_flood_2d_high_perm_streak_advances_gas_front_faster` | Slow areal gas-flood directional heterogeneity probe | `physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_solvers`, `physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers` | Covered |
+| `physics_geometry_waterflood_3d_high_kz_spreads_front_across_layers` | Slow layered waterflood anisotropy probe | `physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers`, `physics_geometry_gas_segregation_3d_high_kz_accelerates_vertical_migration`, `physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers` | Covered |
 | `physics_geometry_waterflood_2d_refined_streak_uses_iterative_backend_and_keeps_row_ordering` | Refined >1024-row iterative-backend plus row-ordering probe | `physics_geometry_waterflood_2d_high_perm_streak_advances_front_faster` | Covered for row-ordering; iterative backend portion remains diagnostic-only |
 
 ## Shared Benchmarks / Manual Probes

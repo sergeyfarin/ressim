@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { waterfloodBLDef } from '../analyticalAdapters';
 
 export const wf_bl1d: Scenario = {
     key: 'wf_bl1d',
@@ -77,6 +78,7 @@ export const wf_bl1d: Scenario = {
         // Physics toggles
         gravityEnabled: false,
     },
+    analyticalDef: waterfloodBLDef,
     sensitivities: [
         {
             key: 'mobility',

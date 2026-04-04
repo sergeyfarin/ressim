@@ -1,4 +1,5 @@
 import type { Scenario } from '../scenarios';
+import { depletionDef } from '../analyticalAdapters';
 
 export const dep_decline: Scenario = {
     key: 'dep_decline',
@@ -79,6 +80,7 @@ export const dep_decline: Scenario = {
         max_well_rate_change_fraction: 0.75,
         gravityEnabled: false,
     },
+    analyticalDef: depletionDef,
     sensitivities: [
         {
             key: 'permeability',
