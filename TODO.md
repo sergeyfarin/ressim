@@ -4,6 +4,16 @@
 
 ## Now
 
+- [x] Document a clean Rust solver layout split for shared root code, `fim/`, and `impes/`.
+  - Refactor proposal checked in at `docs/SOLVER_LAYOUT_REFACTOR_PLAN.md`.
+  - Proposed end state: root keeps only shared domain and facade modules, `impes/` owns the
+    pressure-plus-transport path, `fim/` owns the fully implicit path, and solver-owned tests move
+    under `impes/tests/` and `fim/tests/` while root `src/tests/` becomes the shared behavior
+    suite.
+  - Key structural recommendation: remove the current mixed-responsibility `step.rs` by moving the
+    IMPES loop to `impes/timestep.rs`, the FIM loop to `fim/timestep.rs`, and leaving only a tiny
+    dispatcher or direct `frontend.rs` dispatch.
+
 - [x] Review current TypeScript typecheck failures and fix safe non-behavioral issues.
   - `npm run typecheck` failed only in `src/lib/workers/terminationPolicy.ts`.
   - Root cause: `evaluateTerminationPolicy()` stored the `all`-mode boolean result and the `any`-mode matched evaluation object in one union-typed `matched` variable, so the later object-property access was not type-safe.
