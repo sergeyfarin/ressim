@@ -377,6 +377,62 @@ fn physics_waterflood_1d_injector_saturation_increases() {
 }
 
 #[test]
+fn physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, usize) {
+        let mut sim = make_short_waterflood_1d_sim();
+        sim.set_fim_enabled(fim_enabled);
+        let initial_avg_sw = sim.sat_water.iter().copied().sum::<f64>() / sim.sat_water.len() as f64;
+        let injector_cell = sim.idx(0, 0, 0);
+        let producer_cell = sim.idx(sim.nx - 1, 0, 0);
+
+        for _ in 0..12 {
+            sim.step(0.25);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "two-solver waterflood public-contract case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                sim.last_solver_warning
+            );
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("two-solver waterflood public-contract case should record history");
+        let final_avg_sw = sim.sat_water.iter().copied().sum::<f64>() / sim.sat_water.len() as f64;
+
+        (
+            initial_avg_sw,
+            final_avg_sw,
+            sim.sat_water[injector_cell],
+            sim.sat_water[producer_cell],
+            latest.total_injection,
+            latest.total_production_liquid,
+            latest.total_production_oil,
+            latest.material_balance_error_m3,
+            latest.producer_bhp_limited_fraction,
+            latest.injector_bhp_limited_fraction,
+            latest.time,
+            sim.rate_history.len(),
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(metrics.1 > metrics.0 + 1e-4);
+        assert!(metrics.2 > metrics.3);
+        assert!(metrics.4 > 0.0);
+        assert!(metrics.5 > 0.0);
+        assert!(metrics.6 >= 0.0);
+        assert!(metrics.6 <= metrics.5 + 1e-9);
+        assert!(metrics.7.is_finite());
+        assert!((0.0..=1.0).contains(&metrics.8));
+        assert!((0.0..=1.0).contains(&metrics.9));
+        assert!((metrics.10 - 3.0).abs() <= 1e-9);
+        assert!(metrics.11 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+    }
+}
+
+#[test]
 fn physics_waterflood_case_matrix_respects_mass_and_front_direction_across_scal_and_capillary_ranges()
  {
     let cases = [

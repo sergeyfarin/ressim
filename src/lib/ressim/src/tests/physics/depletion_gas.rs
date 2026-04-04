@@ -294,6 +294,92 @@ fn physics_depletion_gas_single_cell_closed_system_monotone() {
 }
 
 #[test]
+fn physics_depletion_gas_public_invariants_hold_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, f64, usize) {
+        let mut sim = make_closed_gas_depletion_single_cell_sim();
+        sim.set_fim_enabled(fim_enabled);
+
+        let initial_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+        let mut prev_gas_inventory_sc = initial_inventory_sc;
+        let mut prev_pressure = sim.pressure[0];
+
+        for _ in 0..8 {
+            sim.step(0.005);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "two-solver gas depletion public-contract case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                sim.last_solver_warning
+            );
+
+            let latest = sim
+                .rate_history
+                .last()
+                .expect("two-solver gas depletion public-contract case should record history");
+            let gas_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+
+            assert!(latest.total_injection.abs() <= 1e-12);
+            assert!(latest.total_production_gas > 0.0);
+            assert!(latest.avg_reservoir_pressure.is_finite());
+            assert!(latest.producing_gor.is_finite());
+            assert!(latest.material_balance_error_gas_m3.is_finite());
+            assert!(
+                latest.avg_reservoir_pressure <= prev_pressure + 1e-9,
+                "gas depletion pressure should not increase for fim_enabled={}: prev={:.6}, now={:.6}",
+                fim_enabled,
+                prev_pressure,
+                latest.avg_reservoir_pressure
+            );
+            assert!(
+                gas_inventory_sc <= prev_gas_inventory_sc + 1e-4,
+                "gas depletion inventory should not increase for fim_enabled={}: prev={:.6}, now={:.6}",
+                fim_enabled,
+                prev_gas_inventory_sc,
+                gas_inventory_sc
+            );
+            assert!(sim.sat_gas[0].is_finite());
+            assert!(sim.sat_gas[0] >= -1e-9 && sim.sat_gas[0] <= 1.0 + 1e-9);
+
+            prev_gas_inventory_sc = gas_inventory_sc;
+            prev_pressure = latest.avg_reservoir_pressure;
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("two-solver gas depletion public-contract case should record history");
+        let final_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
+        let cumulative_gas_sc = cumulative_gas_production_sc(&sim);
+        let accounting_rel_diff =
+            ((final_inventory_sc + cumulative_gas_sc - initial_inventory_sc)
+                / initial_inventory_sc.max(1e-12))
+            .abs();
+
+        (
+            final_inventory_sc,
+            cumulative_gas_sc,
+            accounting_rel_diff,
+            latest.producer_bhp_limited_fraction,
+            latest.injector_bhp_limited_fraction,
+            latest.time,
+            sim.sat_gas[0],
+            sim.rate_history.len(),
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(metrics.0 >= 0.0);
+        assert!(metrics.1 > 0.0, "expected cumulative gas production for fim_enabled={}", fim_enabled);
+        assert!(metrics.2 <= 1.5e-1, "gas depletion accounting envelope too large for fim_enabled={}: {}", fim_enabled, metrics.2);
+        assert!((0.0..=1.0).contains(&metrics.3));
+        assert!((0.0..=1.0).contains(&metrics.4));
+        assert!((metrics.5 - 0.04).abs() <= 1e-9);
+        assert!(metrics.6.is_finite());
+        assert!(metrics.7 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+    }
+}
+
+#[test]
 fn physics_depletion_gas_case_matrix_stays_physical_across_sat_perm_pvt_and_scal_ranges() {
     let cases = [
         GasDepletionCase {

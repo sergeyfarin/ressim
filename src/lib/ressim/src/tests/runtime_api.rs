@@ -48,6 +48,42 @@ fn water_mass_balance_sanity_without_wells_on_fim_branch() {
 }
 
 #[test]
+fn closed_system_public_step_keeps_same_water_inventory_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, usize, f64) {
+        let mut sim = ReservoirSimulator::new(4, 4, 1, 0.2);
+        sim.set_fim_enabled(fim_enabled);
+        let water_before = total_water_volume(&sim);
+
+        sim.step(1.0);
+
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "closed-system public-step case emitted solver warning for fim_enabled={}: {}",
+            fim_enabled,
+            sim.last_solver_warning
+        );
+
+        (
+            water_before,
+            total_water_volume(&sim),
+            sim.rate_history.len(),
+            sim.time_days,
+        )
+    }
+
+    let impes = run_case(false);
+    let fim = run_case(true);
+
+    assert!((impes.1 - impes.0).abs() < 1e-6);
+    assert!((fim.1 - fim.0).abs() < 1e-6);
+    assert!((impes.1 - fim.1).abs() < 1e-9);
+    assert_eq!(impes.2, 1);
+    assert_eq!(fim.2, 1);
+    assert!((impes.3 - 1.0).abs() < 1e-12);
+    assert!((fim.3 - 1.0).abs() < 1e-12);
+}
+
+#[test]
 fn fim_branch_advances_simple_well_case_with_finite_state() {
     let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
     sim.set_fim_enabled(true);
@@ -65,6 +101,60 @@ fn fim_branch_advances_simple_well_case_with_finite_state() {
         assert!(sim.sat_water[i].is_finite());
         assert!(sim.sat_oil[i].is_finite());
         assert!(sim.sat_gas[i].is_finite());
+    }
+}
+
+#[test]
+fn simple_pressure_control_public_step_has_same_stable_contract_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, usize, f64, f64, f64, f64, f64) {
+        let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+        sim.set_fim_enabled(fim_enabled);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(2, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        sim.step(0.25);
+
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "simple two-well public-step case emitted solver warning for fim_enabled={}: {}",
+            fim_enabled,
+            sim.last_solver_warning
+        );
+
+        let point = sim
+            .rate_history
+            .last()
+            .expect("simple two-well public-step case should record history");
+
+        for i in 0..sim.nx * sim.ny * sim.nz {
+            assert!(sim.pressure[i].is_finite());
+            assert!(sim.sat_water[i].is_finite());
+            assert!(sim.sat_oil[i].is_finite());
+            assert!(sim.sat_gas[i].is_finite());
+        }
+
+        (
+            sim.time_days,
+            sim.rate_history.len(),
+            point.time,
+            point.total_injection,
+            point.total_production_oil,
+            point.producer_bhp_limited_fraction,
+            point.injector_bhp_limited_fraction,
+        )
+    }
+
+    let impes = run_case(false);
+    let fim = run_case(true);
+
+    for metrics in [impes, fim] {
+        assert!((metrics.0 - 0.25).abs() < 1e-12);
+        assert!(metrics.1 > 0);
+        assert!((metrics.2 - 0.25).abs() < 1e-9);
+        assert!(metrics.3 >= 0.0);
+        assert!(metrics.4 >= 0.0);
+        assert!((0.0..=1.0).contains(&metrics.5));
+        assert!((0.0..=1.0).contains(&metrics.6));
     }
 }
 
@@ -89,6 +179,58 @@ fn multiple_wells_in_same_block_keep_rates_finite() {
         assert!(sim.pressure[i].is_finite());
         assert!(sim.sat_water[i].is_finite());
         assert!(sim.sat_oil[i].is_finite());
+    }
+}
+
+#[test]
+fn shared_block_multiwell_public_step_remains_finite_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, usize, f64, f64, f64) {
+        let mut sim = ReservoirSimulator::new(4, 1, 1, 0.2);
+        sim.set_fim_enabled(fim_enabled);
+        sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(0, 0, 0, 550.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(3, 0, 0, 120.0, 0.1, 0.0, false).unwrap();
+
+        for _ in 0..12 {
+            sim.step(0.5);
+        }
+
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "shared-block multiwell case emitted solver warning for fim_enabled={}: {}",
+            fim_enabled,
+            sim.last_solver_warning
+        );
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("shared-block multiwell case should record history");
+
+        for i in 0..sim.nx * sim.ny * sim.nz {
+            assert!(sim.pressure[i].is_finite());
+            assert!(sim.sat_water[i].is_finite());
+            assert!(sim.sat_oil[i].is_finite());
+        }
+
+        (
+            sim.time_days,
+            sim.rate_history.len(),
+            latest.total_injection,
+            latest.total_production_liquid,
+            latest.total_production_oil,
+        )
+    }
+
+    let impes = run_case(false);
+    let fim = run_case(true);
+
+    for metrics in [impes, fim] {
+        assert!((metrics.0 - 6.0).abs() < 1e-9);
+        assert!(metrics.1 > 0);
+        assert!(metrics.2.is_finite());
+        assert!(metrics.3.is_finite());
+        assert!(metrics.4.is_finite());
     }
 }
 

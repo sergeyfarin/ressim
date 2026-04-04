@@ -230,6 +230,86 @@ fn physics_depletion_oil_closed_system_monotone() {
 }
 
 #[test]
+fn physics_depletion_oil_public_reporting_contract_holds_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, usize) {
+        let mut sim = make_closed_depletion_single_cell_sim();
+        sim.set_fim_enabled(fim_enabled);
+
+        let initial_oil_inventory = total_component_inventory_sc_all_cells(&sim).oil_sc;
+        let mut previous_pressure = sim.pressure[0];
+        let mut previous_cumulative_oil = 0.0;
+        let mut previous_time_days = 0.0;
+        let mut cumulative_oil_sc = 0.0;
+
+        for _ in 0..8 {
+            sim.step(0.05);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "two-solver oil depletion public-contract case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                sim.last_solver_warning
+            );
+
+            let point = sim
+                .rate_history
+                .last()
+                .expect("two-solver oil depletion public-contract case should record history");
+            let dt_days = point.time - previous_time_days;
+            previous_time_days = point.time;
+            cumulative_oil_sc += point.total_production_oil.max(0.0) * dt_days;
+
+            assert!(point.total_injection.abs() <= 1e-12);
+            assert!(point.total_production_oil > 0.0);
+            assert!(point.avg_reservoir_pressure.is_finite());
+            assert!(point.material_balance_error_oil_m3.is_finite());
+            assert!(
+                point.avg_reservoir_pressure <= previous_pressure + 1e-9,
+                "oil depletion pressure should not increase for fim_enabled={}: prev={:.6}, now={:.6}",
+                fim_enabled,
+                previous_pressure,
+                point.avg_reservoir_pressure
+            );
+            assert!(
+                cumulative_oil_sc >= previous_cumulative_oil - 1e-12,
+                "oil depletion cumulative production should not decrease for fim_enabled={}: prev={:.6}, now={:.6}",
+                fim_enabled,
+                previous_cumulative_oil,
+                cumulative_oil_sc
+            );
+
+            previous_pressure = point.avg_reservoir_pressure;
+            previous_cumulative_oil = cumulative_oil_sc;
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("two-solver oil depletion public-contract case should record history");
+        let final_oil_inventory = total_component_inventory_sc_all_cells(&sim).oil_sc;
+
+        (
+            initial_oil_inventory - final_oil_inventory,
+            cumulative_oil_sc,
+            latest.material_balance_error_oil_m3,
+            latest.producer_bhp_limited_fraction,
+            latest.injector_bhp_limited_fraction,
+            latest.time,
+            sim.rate_history.len(),
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(metrics.0 > 0.0, "expected oil inventory depletion for fim_enabled={}", fim_enabled);
+        assert!(metrics.1 > 0.0, "expected cumulative oil production for fim_enabled={}", fim_enabled);
+        assert!(metrics.2.is_finite());
+        assert!((0.0..=1.0).contains(&metrics.3));
+        assert!((0.0..=1.0).contains(&metrics.4));
+        assert!((metrics.5 - 0.4).abs() <= 1e-9);
+        assert!(metrics.6 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+    }
+}
+
+#[test]
 fn physics_depletion_oil_higher_oil_compressibility_cushions_pressure_drop() {
     let mut low_storage = make_closed_depletion_single_cell_sim_with_storage(0.0, 0.0, 0.0, 100.0);
     let mut high_storage =

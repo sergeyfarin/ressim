@@ -87,6 +87,39 @@ The first shared parity slice above the solver boundary is now in place in
 - `public_step_gas_injector_reports_same_control_state_on_both_solvers`
 - `mixed_control_public_step_keeps_same_limit_flags_on_both_solvers`
 
+An additional stable-contract parity slice is now also in place in
+`src/lib/ressim/src/tests/runtime_api.rs`:
+
+- `closed_system_public_step_keeps_same_water_inventory_on_both_solvers`
+- `simple_pressure_control_public_step_has_same_stable_contract_on_both_solvers`
+- `shared_block_multiwell_public_step_remains_finite_on_both_solvers`
+
+Shared parity now also extends into the physics suite for stable public outcomes that do not depend
+on matching internal stepping patterns:
+
+- `src/lib/ressim/src/tests/physics/waterflood.rs`:
+  `physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers`
+- `src/lib/ressim/src/tests/physics/gas_flood.rs`:
+  `physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers`
+- `src/lib/ressim/src/tests/physics/depletion_oil.rs`:
+  `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`
+- `src/lib/ressim/src/tests/physics/depletion_gas.rs`:
+  `physics_depletion_gas_public_invariants_hold_on_both_solvers`
+
+These physics-level parity checks intentionally stay on public contracts only:
+
+- bounded accounting rather than exact internal history matching
+- positive injection / non-negative production sign conventions
+- finite public report values such as `producing_gor`
+- final-time completion of the requested step schedule
+- BHP-limit fractions staying inside the public `[0, 1]` range
+- closed-system monotonicity such as non-increasing pressure or in-place inventory where the
+  scenario guarantees it
+
+The current depletion-family extension deliberately stops short of the liberation-through-bubble-point
+stepping path. That transition remains more solver-path-sensitive and is still covered primarily by
+family-local correctness tests rather than new shared parity assertions.
+
 The IMPES pressure/timestep audit is now complete for the obvious ownership mismatches.
 
 Audit result:
@@ -123,6 +156,18 @@ The moved and rewritten tests were validated with focused Rust runs:
 - `public_step_bhp_limited_producer_reports_same_control_state_on_both_solvers`
 - `public_step_gas_injector_reports_same_control_state_on_both_solvers`
 - `mixed_control_public_step_keeps_same_limit_flags_on_both_solvers`
+- `closed_system_public_step_keeps_same_water_inventory_on_both_solvers`
+- `simple_pressure_control_public_step_has_same_stable_contract_on_both_solvers`
+- `shared_block_multiwell_public_step_remains_finite_on_both_solvers`
+- `physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers`
+- `physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers`
+- `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`
+- `physics_depletion_gas_public_invariants_hold_on_both_solvers`
+- `physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark`
+- `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers`
+- `physics_depletion_oil_closed_system_monotone`
+- `physics_depletion_gas_single_cell_closed_system_monotone`
+- `physics_depletion_liberation_undersaturated_rs_stays_constant`
 - `tests::runtime_api::default_step_path_reports_rate_controlled_well_state`
 - `tests::runtime_api::benchmark_like_substepping_completes_requested_dt`
 

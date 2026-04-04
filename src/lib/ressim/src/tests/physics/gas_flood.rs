@@ -210,6 +210,66 @@ fn physics_gas_flood_saturation_sum_stays_physical() {
 }
 
 #[test]
+fn physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64) {
+        let mut sim = make_3phase_gas_injection_sim(8, fim_enabled);
+        let initial_inventory = total_component_inventory_sc_all_cells(&sim);
+        let initial_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
+
+        for _ in 0..8 {
+            sim.step(0.5);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "two-solver gas-flood public-contract case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                sim.last_solver_warning
+            );
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("two-solver gas-flood public-contract case should record history");
+        let final_inventory = total_component_inventory_sc_all_cells(&sim);
+        let produced = cumulative_component_production_sc(&sim);
+        let injected_gas_sc = cumulative_gas_injection_sc(&sim);
+        let expected_gas_sc = initial_inventory.gas_sc + injected_gas_sc;
+        let gas_accounted_sc = final_inventory.gas_sc + produced.gas_sc;
+        let final_avg_sg = sim.sat_gas.iter().copied().sum::<f64>() / sim.sat_gas.len() as f64;
+
+        (
+            ((gas_accounted_sc - expected_gas_sc) / expected_gas_sc.max(1.0)).abs(),
+            final_avg_sg - initial_avg_sg,
+            latest.total_injection,
+            latest.total_production_gas,
+            latest.total_production_oil,
+            latest.producing_gor,
+            latest.material_balance_error_gas_m3,
+            final_inventory.gas_sc - initial_inventory.gas_sc,
+            latest.producer_bhp_limited_fraction,
+            latest.injector_bhp_limited_fraction,
+            latest.time,
+            sim.rate_history.len() as f64,
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(metrics.0 <= 1.5e-1, "gas accounting drift too large for fim_enabled={}: {}", fim_enabled, metrics.0);
+        assert!(metrics.1 > 1e-8, "average gas saturation should increase for fim_enabled={}", fim_enabled);
+        assert!(metrics.2 > 0.0);
+        assert!(metrics.3 >= 0.0);
+        assert!(metrics.4 >= 0.0);
+        assert!(metrics.5.is_finite());
+        assert!(metrics.6.is_finite());
+        assert!(metrics.7 > 0.0, "expected gas inventory growth for fim_enabled={}", fim_enabled);
+        assert!((0.0..=1.0).contains(&metrics.8));
+        assert!((0.0..=1.0).contains(&metrics.9));
+        assert!((metrics.10 - 4.0).abs() <= 1e-9);
+        assert!(metrics.11 > 0.0, "expected rate history for fim_enabled={}", fim_enabled);
+    }
+}
+
+#[test]
 fn physics_gas_flood_large_steps_keep_state_bounded() {
     let mut sim = ReservoirSimulator::new(6, 1, 3, 0.2);
     sim.set_fim_enabled(true);
