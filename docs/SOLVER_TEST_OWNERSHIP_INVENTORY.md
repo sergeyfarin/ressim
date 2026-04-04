@@ -5,6 +5,9 @@ This document records the Phase 2 ownership split for Rust solver tests in `src/
 The forward-looking completion criteria for this ownership split now live in
 `docs/SOLVER_TEST_COVERAGE_PLAN.md`.
 
+The ignored-diagnostic to fast-gate mapping and grouped validation commands now live in
+`docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.
+
 The goal is a stable layout with three explicit buckets:
 
 - shared crate-level tests under `src/tests/`

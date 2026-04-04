@@ -151,6 +151,9 @@ Exit criterion:
 3. Add one shared geometry/anisotropy parity slice.
 4. Add grouped validation commands to `TODO.md` and the ownership inventory.
 
+The default-gate to ignored-diagnostic mapping and grouped validation commands now live in
+`docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.
+
 ## Definition Of Done
 
 This coverage plan is complete when all of the following are true:

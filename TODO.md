@@ -7,6 +7,8 @@
 - [x] Document a clean Rust solver layout split for shared root code, `fim/`, and `impes/`.
   - Coverage execution plan is now tracked in `docs/SOLVER_TEST_COVERAGE_PLAN.md` with explicit
     exit criteria for shared, FIM-owned, and IMPES-owned buckets.
+  - The ignored-diagnostic to fast-gate mapping and grouped validation commands are now tracked in
+    `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.
   - Refactor proposal checked in at `docs/SOLVER_LAYOUT_REFACTOR_PLAN.md`.
   - Proposed end state: root keeps only shared domain and facade modules, `impes/` owns the
     pressure-plus-transport path, `fim/` owns the fully implicit path, and solver-owned tests move

@@ -21,7 +21,8 @@
       "Bash(node --experimental-wasm-modules -e ':*)",
       "Bash(ls /home/reken/Repos/ressim/src/lib/ressim/pkg/*.d.ts)",
       "Read(//home/reken/Repos/ressim/**)",
-      "Bash(sort -k1,1)"
+      "Bash(sort -k1,1)",
+      "Bash(grep -h \"analyticalMethod:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)"
     ]
   }
 }
