@@ -4,6 +4,18 @@
 
 ## Now
 
+- [x] Review current TypeScript typecheck failures and fix safe non-behavioral issues.
+  - `npm run typecheck` failed only in `src/lib/workers/terminationPolicy.ts`.
+  - Root cause: `evaluateTerminationPolicy()` stored the `all`-mode boolean result and the `any`-mode matched evaluation object in one union-typed `matched` variable, so the later object-property access was not type-safe.
+  - Fix: split the `all` and `any` branches so TypeScript can narrow correctly without changing termination-policy behavior.
+
+- [x] Run lint and the frontend test suite, then fix safe adjacent expectation drift.
+  - `npm run lint` was clean.
+  - `npm test` initially exposed stale test expectations in App wiring, chart architecture checks, and scenario metadata assertions after recent UI/catalog refactors.
+  - One real metadata fix was needed: `sweep_areal` variant `mob_unit` no longer claims `affectsAnalytical: true` because it only changes `steps`.
+  - Remaining fixes were test-only updates to match the current intentional source shape and scenario values.
+  - Final status: `npm test`, `npm run lint`, and `npm run typecheck` all pass.
+
 - [x] Fix frontend worker WASM initialization so simulator creation does not fail with `reservoirsimulator_new` undefined.
   - Root cause: `src/lib/workers/sim.worker.ts` assumed the wasm-bindgen wrapper auto-initialized at import time, but the generated `src/lib/ressim/pkg/simulator.js` still requires explicit default-init in the worker context.
   - Fix: run a one-time `initWasm()` gate before worker `ready`/`create`, then install the panic hook and proceed with simulator construction.

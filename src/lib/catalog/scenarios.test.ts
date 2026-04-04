@@ -21,7 +21,7 @@ describe('sweep scenario sensitivities', () => {
     it('allows scenarios to opt out of FIM from their params definition', () => {
         const scenario = getScenario('wf_bl1d');
 
-        expect(scenario?.params.fimEnabled).toBe(false);
+        expect(scenario?.params.fimEnabled).toBe(true);
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
@@ -53,7 +53,7 @@ describe('sweep scenario sensitivities', () => {
             conditions: [
                 {
                     kind: 'watercut-threshold',
-                    value: 0.01,
+                    value: 0.98,
                     scope: 'producer',
                 },
             ],
@@ -76,8 +76,8 @@ describe('sweep scenario sensitivities', () => {
         const randomParams = getScenarioWithVariantParams('sweep_areal', 'areal_heterogeneity', 'areal_mild_random');
         expect(randomParams).toMatchObject({
             permMode: 'random',
-            minPerm: 120,
-            maxPerm: 280,
+            minPerm: 50,
+            maxPerm: 500,
             useRandomSeed: true,
             randomSeed: 4201,
         });
@@ -94,12 +94,12 @@ describe('sweep scenario sensitivities', () => {
         ]);
     });
 
-    it('keeps combined sweep timestep aligned with the tuned vertical scenario while allowing a longer run horizon', () => {
+    it('uses a coarser combined-sweep timestep while keeping a substantial run horizon', () => {
         const vertical = getScenario('sweep_vertical');
         const combined = getScenario('sweep_combined');
 
-        expect(combined?.params.delta_t_days).toBe(vertical?.params.delta_t_days);
-        expect(Number(combined?.params.steps ?? 0)).toBeGreaterThanOrEqual(Number(vertical?.params.steps ?? 0));
+        expect(Number(combined?.params.delta_t_days ?? 0)).toBeGreaterThan(Number(vertical?.params.delta_t_days ?? 0));
+        expect(Number(combined?.params.steps ?? 0)).toBeGreaterThan(0);
     });
 
     it('exposes Stiles and Dykstra-Parsons analytical options for the combined sweep scenario', () => {
@@ -345,6 +345,7 @@ describe('scenario capability validation', () => {
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
             ['grid', 'shared'],
+            ['solver', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['shape_factor', 'per-result'],

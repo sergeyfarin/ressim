@@ -133,13 +133,10 @@ export function evaluateTerminationPolicy(
     ...evaluateCondition(condition, point, payload),
   }));
 
-  const matched = policy.mode === 'all'
-    ? evaluations.every((evaluation) => evaluation.matched)
-    : evaluations.find((evaluation) => evaluation.matched);
-
-  if (!matched) return null;
-
   if (policy.mode === 'all') {
+    const allMatched = evaluations.every((evaluation) => evaluation.matched);
+    if (!allMatched) return null;
+
     const summary = evaluations.map((evaluation) => evaluation.summary).join(' ');
     return {
       summary,
@@ -147,6 +144,9 @@ export function evaluateTerminationPolicy(
       actualValue: evaluations[0].actualValue,
     };
   }
+
+  const matched = evaluations.find((evaluation) => evaluation.matched);
+  if (!matched) return null;
 
   return {
     summary: matched.summary,

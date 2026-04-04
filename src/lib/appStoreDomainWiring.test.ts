@@ -59,33 +59,26 @@ describe('App store domain wiring', () => {
 
   it('extends outputs-owned comparison focus into the saturation-profile surface', () => {
     expect(appSource).toMatch(/const activeSelectedReferenceResult = \$derived\.by/);
-    expect(appSource).toMatch(/const outputProfileGridState = \$derived\.by/);
-    expect(appSource).toMatch(/const outputProfileNx = \$derived\.by/);
-    expect(appSource).toMatch(/const outputProfileScenarioMode = \$derived\.by/);
-    expect(appSource).toMatch(/gridState=\{outputProfileGridState\}/);
-    expect(appSource).toMatch(/nx=\{outputProfileNx\}/);
-    expect(appSource).toMatch(/simTime=\{outputProfileSimTime\}/);
-    expect(appSource).toMatch(/sourceLabel=\{outputProfileSourceLabel\}/);
-    expect(appSource).toMatch(/rockProps=\{outputProfileRockProps\}/);
-    expect(appSource).toMatch(/fluidProps=\{outputProfileFluidProps\}/);
+    expect(appSource).toMatch(/type OutputSelectionProfile = \{/);
+    expect(appSource).toMatch(/const selectedOutputProfile = \$derived\.by/);
+    expect(appSource).toMatch(/computeSweepRecoveryFactor\(selectedOutputProfile\.rockProps, selectedOutputProfile\.fluidProps/);
+    expect(appSource).toMatch(/rockProps=\{selectedOutputProfile\.rockProps\}/);
+    expect(appSource).toMatch(/fluidProps=\{selectedOutputProfile\.fluidProps\}/);
   });
 
   it('extends outputs-owned comparison focus into the 3D surface', () => {
-    expect(appSource).toMatch(/const output3DHistory = \$derived\.by/);
-    expect(appSource).toMatch(/const output3DNx = \$derived\.by/);
-    expect(appSource).toMatch(/const output3DCurrentIndex = \$derived\.by/);
-    expect(appSource).toMatch(/const output3DReplayTime = \$derived\.by/);
-    expect(appSource).toMatch(/const output3DSourceLabel = \$derived\.by/);
+    expect(appSource).toMatch(/type Output3DSelection = \{/);
+    expect(appSource).toMatch(/const selectedOutput3D = \$derived\.by/);
     expect(appSource).toMatch(/function handleApplyOutputHistoryIndex\(index: number\)/);
-    expect(appSource).toMatch(/sourceLabel=\{output3DSourceLabel\}/);
-    expect(appSource).toMatch(/gridState=\{output3DGridState\}/);
-    expect(appSource).toMatch(/nx=\{output3DNx\}/);
-    expect(appSource).toMatch(/cellDx=\{output3DCellDx\}/);
-    expect(appSource).toMatch(/currentIndex=\{output3DCurrentIndex\}/);
-    expect(appSource).toMatch(/replayTime=\{output3DReplayTime\}/);
+    expect(appSource).toMatch(/sourceLabel=\{selectedOutput3D\.sourceLabel\}/);
+    expect(appSource).toMatch(/gridState=\{selectedOutput3D\.gridState\}/);
+    expect(appSource).toMatch(/nx=\{selectedOutput3D\.nx\}/);
+    expect(appSource).toMatch(/cellDx=\{selectedOutput3D\.cellDx\}/);
+    expect(appSource).toMatch(/currentIndex=\{selectedOutput3D\.currentIndex\}/);
+    expect(appSource).toMatch(/replayTime=\{selectedOutput3D\.replayTime\}/);
     expect(appSource).toMatch(/onApplyHistoryIndex=\{handleApplyOutputHistoryIndex\}/);
-    expect(appSource).toMatch(/history=\{output3DHistory\}/);
-    expect(appSource).toMatch(/wellState=\{output3DWellState\}/);
+    expect(appSource).toMatch(/history=\{selectedOutput3D\.history\}/);
+    expect(appSource).toMatch(/wellState=\{selectedOutput3D\.wellState\}/);
   });
 
   it('routes the centralized warning policy into runtime warning surfaces', () => {

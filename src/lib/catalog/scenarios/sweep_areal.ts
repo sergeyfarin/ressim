@@ -114,7 +114,7 @@ export const sweep_areal: Scenario = {
                     label: 'M ≈ 2  (μ_o = 1.0 cp)',
                     description: 'Moderate mobility ratio — base case. E_A(BT) ≈ 0.58.',
                     paramPatch: { steps: 2500 },
-                    affectsAnalytical: true,
+                    affectsAnalytical: false,
                 },
                 {
                     key: 'mob_unfavorable',

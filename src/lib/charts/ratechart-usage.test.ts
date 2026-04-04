@@ -24,9 +24,9 @@ describe('RateChart architecture checks', () => {
   });
 
   it('builds XY series for each panel', () => {
-    expect(/ratesSeries/.test(rateChartSrc)).toBe(true);
-    expect(/cumulativeSeries/.test(rateChartSrc)).toBe(true);
-    expect(/diagnosticsSeries/.test(rateChartSrc)).toBe(true);
+    expect(/rateCurveSeries/.test(rateChartSrc)).toBe(true);
+    expect(/cumulativeCurveSeries/.test(rateChartSrc)).toBe(true);
+    expect(/diagnosticsCurveSeries/.test(rateChartSrc)).toBe(true);
   });
 
   it('has x-axis control at the top level (not inside sub-panels)', () => {
