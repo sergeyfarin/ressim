@@ -2,6 +2,9 @@
 
 This document records the Phase 2 ownership split for Rust solver tests in `src/lib/ressim/src`.
 
+The forward-looking completion criteria for this ownership split now live in
+`docs/SOLVER_TEST_COVERAGE_PLAN.md`.
+
 The goal is a stable layout with three explicit buckets:
 
 - shared crate-level tests under `src/tests/`
@@ -105,6 +108,8 @@ on matching internal stepping patterns:
   `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`
 - `src/lib/ressim/src/tests/physics/depletion_gas.rs`:
   `physics_depletion_gas_public_invariants_hold_on_both_solvers`
+- `src/lib/ressim/src/tests/physics/depletion_liberation.rs`:
+  `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`
 
 These physics-level parity checks intentionally stay on public contracts only:
 
@@ -115,10 +120,8 @@ These physics-level parity checks intentionally stay on public contracts only:
 - BHP-limit fractions staying inside the public `[0, 1]` range
 - closed-system monotonicity such as non-increasing pressure or in-place inventory where the
   scenario guarantees it
-
-The current depletion-family extension deliberately stops short of the liberation-through-bubble-point
-stepping path. That transition remains more solver-path-sensitive and is still covered primarily by
-family-local correctness tests rather than new shared parity assertions.
+- phase-transition public outcomes such as crossing the bubble point, creating free gas, and
+  keeping reporting/accounting fields finite without matching internal stepping traces
 
 The IMPES pressure/timestep audit is now complete for the obvious ownership mismatches.
 
@@ -135,12 +138,14 @@ Audit result:
 
 Next sub-phase priorities:
 
-1. Add more shared parity coverage only where the public contract is stable enough to avoid baking
+1. Record the default-fast-gate to ignored-diagnostic mapping for FIM and IMPES obligations, using
+  `docs/SOLVER_TEST_COVERAGE_PLAN.md` as the canonical checklist.
+2. Add more shared parity coverage only where the public contract is stable enough to avoid baking
   in known rate-magnitude gaps between the solvers.
-2. Continue pruning mixed ownership from the shared suite whenever a test needs private solver
-   internals to stay meaningful.
-3. Keep shared physics helpers solver-agnostic where possible so future parity tests do not depend
-   on one solver's internal update path.
+3. Continue pruning mixed ownership from the shared suite whenever a test needs private solver
+  internals to stay meaningful.
+4. Keep shared physics helpers solver-agnostic where possible so future parity tests do not depend
+  on one solver's internal update path.
 
 ## Validation Status For This Ownership Pass
 
@@ -163,6 +168,7 @@ The moved and rewritten tests were validated with focused Rust runs:
 - `physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers`
 - `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`
 - `physics_depletion_gas_public_invariants_hold_on_both_solvers`
+- `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`
 - `physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark`
 - `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers`
 - `physics_depletion_oil_closed_system_monotone`

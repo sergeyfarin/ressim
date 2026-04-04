@@ -5,6 +5,8 @@
 ## Now
 
 - [x] Document a clean Rust solver layout split for shared root code, `fim/`, and `impes/`.
+  - Coverage execution plan is now tracked in `docs/SOLVER_TEST_COVERAGE_PLAN.md` with explicit
+    exit criteria for shared, FIM-owned, and IMPES-owned buckets.
   - Refactor proposal checked in at `docs/SOLVER_LAYOUT_REFACTOR_PLAN.md`.
   - Proposed end state: root keeps only shared domain and facade modules, `impes/` owns the
     pressure-plus-transport path, `fim/` owns the fully implicit path, and solver-owned tests move
@@ -64,6 +66,12 @@
     These intentionally stay on closed-system public contracts such as zero injection,
     monotone pressure decline, monotone cumulative production, bounded gas accounting,
     finite report fields, final-time completion, and BHP-limit fractions in range.
+  - Shared parity coverage now also includes liberation-through-bubble-point public transition
+    coverage on both solvers via
+    `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`.
+    This keeps the shared parity surface on stable transition outcomes only: dropping below bubble
+    point, creating free gas, finite public reporting, bounded gas accounting, and final-time
+    completion without asserting identical internal stepping traces.
   - Focused validation completed for the IMPES ownership move:
     `impes::tests::timestep::*`,
     `tests::runtime_api::default_step_path_reports_rate_controlled_well_state`, and
@@ -76,6 +84,7 @@
   - Focused validation completed for the depletion-family parity slice:
     `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`,
     `physics_depletion_gas_public_invariants_hold_on_both_solvers`,
+    `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`,
     `physics_depletion_oil_closed_system_monotone`,
     `physics_depletion_gas_single_cell_closed_system_monotone`, and
     `physics_depletion_liberation_undersaturated_rs_stays_constant` all passed.

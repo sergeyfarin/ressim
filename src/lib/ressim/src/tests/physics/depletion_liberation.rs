@@ -91,6 +91,79 @@ fn physics_depletion_liberation_fim_stepping_liberates_gas() {
 }
 
 #[test]
+fn physics_depletion_liberation_public_transition_contract_holds_on_both_solvers() {
+    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, f64, usize) {
+        let mut sim = make_below_bubble_point_flash_sim(false);
+        sim.set_fim_enabled(fim_enabled);
+        sim.set_cell_dimensions_per_layer(200.0, 200.0, vec![20.0])
+            .unwrap();
+        sim.set_permeability_per_layer(vec![500.0], vec![500.0], vec![500.0])
+            .unwrap();
+        sim.set_gravity_enabled(false);
+        sim.set_stability_params(0.05, 75.0, 0.75);
+        sim.add_well(0, 0, 0, 80.0, 0.1, 0.0, false).unwrap();
+
+        let initial = total_component_inventory_sc_all_cells(&sim);
+
+        for _ in 0..5 {
+            sim.step(1.0);
+            assert!(
+                sim.last_solver_warning.is_empty(),
+                "two-solver liberation public-contract case emitted solver warning for fim_enabled={}: {}",
+                fim_enabled,
+                sim.last_solver_warning
+            );
+        }
+
+        let latest = sim
+            .rate_history
+            .last()
+            .expect("two-solver liberation public-contract case should record history");
+        let final_inventory = total_component_inventory_sc_all_cells(&sim);
+        let produced = cumulative_component_production_sc(&sim);
+        let gas_accounted = final_inventory.gas_sc + produced.gas_sc;
+        let gas_rel_diff = ((gas_accounted - initial.gas_sc) / initial.gas_sc.max(1.0)).abs();
+
+        (
+            sim.pressure[0],
+            sim.sat_gas[0],
+            latest.total_production_oil,
+            latest.total_production_gas,
+            latest.producing_gor,
+            gas_rel_diff,
+            latest.time,
+            sim.rate_history.len(),
+        )
+    }
+
+    for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
+        assert!(
+            metrics.0 < 150.0,
+            "expected pressure below bubble point for fim_enabled={}, got {:.6}",
+            fim_enabled,
+            metrics.0
+        );
+        assert!(
+            metrics.1 > 0.0,
+            "expected liberated free gas for fim_enabled={}, got {:.6}",
+            fim_enabled,
+            metrics.1
+        );
+        assert!(metrics.2 >= 0.0);
+        assert!(metrics.3 >= 0.0);
+        assert!(metrics.4.is_finite());
+        assert!(
+            metrics.5 <= 1.5e-1,
+            "liberation gas accounting envelope too large for fim_enabled={}: {}",
+            fim_enabled,
+            metrics.5
+        );
+        assert!((metrics.6 - 5.0).abs() <= 1e-9);
+        assert!(metrics.7 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+    }
+}
+
+#[test]
 fn physics_depletion_liberation_inventory_conserved_with_redissolution() {
     assert_below_bubble_point_flash_conserves_total_gas_inventory(true);
 }
