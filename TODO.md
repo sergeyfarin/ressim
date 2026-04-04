@@ -30,9 +30,26 @@
     `impes::tests::transport::*`,
     `physics_depletion_liberation_undersaturated_rs_stays_constant`, and
     `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers` all passed.
-  - Remaining Phase 2 next slice: expand shared parity coverage for above-solver behavior and audit
-    whether `impes/pressure.rs` and `impes/timestep.rs` still need solver-local tests beyond the
-    new transport-owned module.
+  - Shared parity coverage has now been expanded in `src/lib/ressim/src/tests/runtime_api.rs` with
+    public-step checks for: producer BHP-limit fallback on both solvers, gas-injector rate-report
+    behavior on both solvers, and mixed-control limit-flag consistency on both solvers.
+  - IMPES pressure/timestep ownership audit is now complete for the obvious shared-runtime leaks:
+    `adaptive_timestep_produces_multiple_substeps_for_strong_flow` and
+    `pressure_resolve_on_substep_produces_physical_results` were moved from
+    `src/lib/ressim/src/tests/runtime_api.rs` into `src/lib/ressim/src/impes/tests/timestep.rs`.
+    Shared runtime checks such as `default_step_path_reports_rate_controlled_well_state` and
+    `benchmark_like_substepping_completes_requested_dt` were intentionally left in place because
+    they validate public-step contracts rather than private IMPES retry internals.
+  - Focused validation completed for the new parity slice:
+    `public_step_bhp_limited_producer_reports_same_control_state_on_both_solvers`,
+    `public_step_gas_injector_reports_same_control_state_on_both_solvers`, and
+    `mixed_control_public_step_keeps_same_limit_flags_on_both_solvers` all passed.
+  - Focused validation completed for the IMPES ownership move:
+    `impes::tests::timestep::*`,
+    `tests::runtime_api::default_step_path_reports_rate_controlled_well_state`, and
+    `tests::runtime_api::benchmark_like_substepping_completes_requested_dt` all passed.
+  - Remaining Phase 2 next slice: add more shared parity coverage only where the public contract is
+    stable enough to avoid baking in known rate-magnitude gaps.
 
 - [x] Review current TypeScript typecheck failures and fix safe non-behavioral issues.
   - `npm run typecheck` failed only in `src/lib/workers/terminationPolicy.ts`.

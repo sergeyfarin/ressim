@@ -69,22 +69,6 @@ fn fim_branch_advances_simple_well_case_with_finite_state() {
 }
 
 #[test]
-fn adaptive_timestep_produces_multiple_substeps_for_strong_flow() {
-    let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
-    sim.set_fim_enabled(false);
-    sim.set_permeability_random(100_000.0, 100_000.0).unwrap();
-    sim.set_stability_params(0.01, 75.0, 0.75);
-    sim.add_well(0, 0, 0, 700.0, 0.1, 0.0, true).unwrap();
-    sim.add_well(2, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
-
-    sim.step(30.0);
-
-    assert!(sim.rate_history.len() > 1);
-    assert!(sim.time_days > 0.0);
-    assert!((sim.time_days - 30.0).abs() < 1e-9);
-}
-
-#[test]
 fn multiple_wells_in_same_block_keep_rates_finite() {
     let mut sim = ReservoirSimulator::new(4, 1, 1, 0.2);
     sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
@@ -263,6 +247,179 @@ fn rate_control_reporting_benchmark_fim_matches_impes() {
     );
 }
 
+struct PublicStepWellReportMetrics {
+    time_days: f64,
+    total_production_oil: f64,
+    total_production_gas: f64,
+    total_production_liquid_reservoir: f64,
+    total_injection: f64,
+    producer_bhp_limited_fraction: f64,
+    injector_bhp_limited_fraction: f64,
+    avg_reservoir_pressure: f64,
+}
+
+fn run_public_step_bhp_limited_producer_case(fim_enabled: bool) -> PublicStepWellReportMetrics {
+    let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+    sim.set_fim_enabled(fim_enabled);
+    sim.set_initial_pressure(300.0);
+    sim.set_initial_saturation(0.1);
+    sim.set_well_control_modes("pressure".to_string(), "rate".to_string());
+    sim.set_target_well_rates(0.0, 1.0e6).unwrap();
+    sim.set_well_bhp_limits(80.0, 1.0e9).unwrap();
+    sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+    sim.step(0.1);
+
+    assert!(
+        sim.last_solver_warning.is_empty(),
+        "BHP-limited producer public-step case emitted solver warning for fim_enabled={}: {}",
+        fim_enabled,
+        sim.last_solver_warning
+    );
+
+    let point = sim
+        .rate_history
+        .last()
+        .expect("BHP-limited producer public-step case should record history");
+
+    PublicStepWellReportMetrics {
+        time_days: point.time,
+        total_production_oil: point.total_production_oil,
+        total_production_gas: point.total_production_gas,
+        total_production_liquid_reservoir: point.total_production_liquid_reservoir,
+        total_injection: point.total_injection,
+        producer_bhp_limited_fraction: point.producer_bhp_limited_fraction,
+        injector_bhp_limited_fraction: point.injector_bhp_limited_fraction,
+        avg_reservoir_pressure: point.avg_reservoir_pressure,
+    }
+}
+
+fn run_public_step_gas_injector_rate_case(fim_enabled: bool) -> PublicStepWellReportMetrics {
+    let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+    sim.set_fim_enabled(fim_enabled);
+    sim.set_three_phase_rel_perm_props(0.10, 0.10, 0.05, 0.05, 0.10, 2.0, 2.0, 1.5, 0.8, 0.9, 0.7)
+        .unwrap();
+    sim.set_three_phase_mode_enabled(true);
+    sim.set_injected_fluid("gas").unwrap();
+    sim.set_gas_fluid_properties(0.02, 1e-4, 10.0).unwrap();
+    sim.set_initial_pressure(100.0);
+    sim.set_initial_saturation(0.10);
+    sim.pvt_table = Some(crate::pvt::PvtTable::new(
+        vec![crate::pvt::PvtRow {
+            p_bar: 100.0,
+            rs_m3m3: 0.0,
+            bo_m3m3: 1.2,
+            mu_o_cp: 1.0,
+            bg_m3m3: 0.25,
+            mu_g_cp: 0.02,
+        }],
+        sim.pvt.c_o,
+    ));
+    sim.set_well_control_modes("rate".to_string(), "bhp".to_string());
+    sim.set_target_well_surface_rates(120.0, 0.0).unwrap();
+    sim.set_well_bhp_limits(0.0, 1.0e9).unwrap();
+    sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, true).unwrap();
+
+    sim.step(0.1);
+
+    assert!(
+        sim.last_solver_warning.is_empty(),
+        "gas injector public-step case emitted solver warning for fim_enabled={}: {}",
+        fim_enabled,
+        sim.last_solver_warning
+    );
+
+    let point = sim
+        .rate_history
+        .last()
+        .expect("gas injector public-step case should record history");
+
+    PublicStepWellReportMetrics {
+        time_days: point.time,
+        total_production_oil: point.total_production_oil,
+        total_production_gas: point.total_production_gas,
+        total_production_liquid_reservoir: point.total_production_liquid_reservoir,
+        total_injection: point.total_injection,
+        producer_bhp_limited_fraction: point.producer_bhp_limited_fraction,
+        injector_bhp_limited_fraction: point.injector_bhp_limited_fraction,
+        avg_reservoir_pressure: point.avg_reservoir_pressure,
+    }
+}
+
+#[test]
+fn public_step_bhp_limited_producer_reports_same_control_state_on_both_solvers() {
+    let impes = run_public_step_bhp_limited_producer_case(false);
+    let fim = run_public_step_bhp_limited_producer_case(true);
+
+    for metrics in [&impes, &fim] {
+        assert!((metrics.time_days - 0.1).abs() < 1e-9);
+        assert!(metrics.total_production_oil > 0.0);
+        assert!(metrics.total_production_gas.abs() < 1e-12);
+        assert!(metrics.total_production_liquid_reservoir > 0.0);
+        assert!(metrics.total_injection.abs() < 1e-12);
+        assert_eq!(metrics.producer_bhp_limited_fraction, 1.0);
+        assert_eq!(metrics.injector_bhp_limited_fraction, 0.0);
+        assert!(metrics.avg_reservoir_pressure.is_finite());
+    }
+
+    assert_eq!(
+        fim.producer_bhp_limited_fraction,
+        impes.producer_bhp_limited_fraction
+    );
+    assert_eq!(
+        fim.injector_bhp_limited_fraction,
+        impes.injector_bhp_limited_fraction
+    );
+}
+
+#[test]
+fn public_step_gas_injector_reports_same_control_state_on_both_solvers() {
+    let impes = run_public_step_gas_injector_rate_case(false);
+    let fim = run_public_step_gas_injector_rate_case(true);
+
+    for metrics in [&impes, &fim] {
+        assert!((metrics.time_days - 0.1).abs() < 1e-9);
+        assert!(metrics.total_injection > 0.0);
+        assert!(metrics.total_production_oil.abs() < 1e-12);
+        assert!(metrics.total_production_gas.abs() < 1e-12);
+        assert!(metrics.total_production_liquid_reservoir.abs() < 1e-12);
+        assert_eq!(metrics.producer_bhp_limited_fraction, 0.0);
+        assert_eq!(metrics.injector_bhp_limited_fraction, 0.0);
+        assert!(metrics.avg_reservoir_pressure.is_finite());
+    }
+
+    let impes_target_rel_diff = ((impes.total_injection - 120.0) / 120.0).abs();
+    let fim_target_rel_diff = ((fim.total_injection - 120.0) / 120.0).abs();
+
+    assert!(impes_target_rel_diff <= 0.10);
+    assert!(fim_target_rel_diff <= 0.10);
+}
+
+#[test]
+fn mixed_control_public_step_keeps_same_limit_flags_on_both_solvers() {
+    let impes = run_rate_control_reporting_benchmark(false);
+    let fim = run_rate_control_reporting_benchmark(true);
+
+    for metrics in [&impes, &fim] {
+        assert!(metrics.total_production_oil.is_finite());
+        assert!(metrics.total_injection.is_finite());
+        assert!(metrics.avg_reservoir_pressure.is_finite());
+        assert!(metrics.total_production_oil >= 0.0);
+        assert!(metrics.total_injection >= 0.0);
+        assert!((0.0..=1.0).contains(&metrics.producer_bhp_limited_fraction));
+        assert!((0.0..=1.0).contains(&metrics.injector_bhp_limited_fraction));
+    }
+
+    assert_eq!(
+        fim.producer_bhp_limited_fraction,
+        impes.producer_bhp_limited_fraction
+    );
+    assert_eq!(
+        fim.injector_bhp_limited_fraction,
+        impes.injector_bhp_limited_fraction
+    );
+}
+
 #[test]
 fn api_contract_rejects_invalid_permeability_inputs() {
     let mut sim = ReservoirSimulator::new(2, 2, 2, 0.2);
@@ -282,66 +439,6 @@ fn api_contract_rejects_invalid_permeability_inputs() {
         sim.set_permeability_per_layer(vec![100.0, 120.0], vec![100.0, 120.0], vec![0.0, 12.0]),
         "must be positive",
     );
-}
-
-#[test]
-fn pressure_resolve_on_substep_produces_physical_results() {
-    let mut sim = ReservoirSimulator::new(5, 1, 1, 0.2);
-    sim.set_fim_enabled(false);
-    sim.set_permeability_random_seeded(100_000.0, 100_000.0, 42)
-        .unwrap();
-    sim.set_stability_params(0.02, 50.0, 0.5);
-    sim.pc.p_entry = 0.0;
-    sim.add_well(0, 0, 0, 600.0, 0.1, 0.0, true).unwrap();
-    sim.add_well(4, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
-
-    sim.step(20.0);
-
-    assert!(
-        sim.rate_history.len() > 1,
-        "Expected sub-stepping, got {} entries",
-        sim.rate_history.len()
-    );
-
-    for i in 0..sim.nx * sim.ny * sim.nz {
-        assert!(
-            sim.pressure[i].is_finite(),
-            "Pressure not finite at cell {}",
-            i
-        );
-        assert!(sim.sat_water[i].is_finite(), "Sw not finite at cell {}", i);
-        assert!(
-            sim.sat_water[i] >= sim.scal.s_wc - 1e-9,
-            "Sw below s_wc at cell {}",
-            i
-        );
-        assert!(
-            sim.sat_water[i] <= 1.0 - sim.scal.s_or + 1e-9,
-            "Sw above 1-s_or at cell {}",
-            i
-        );
-        assert!((sim.sat_water[i] + sim.sat_oil[i] - 1.0).abs() < 1e-8);
-    }
-
-    for i in 0..sim.nx * sim.ny * sim.nz {
-        assert!(
-            sim.pressure[i] > 50.0 && sim.pressure[i] < 700.0,
-            "Pressure {} at cell {} outside physical range",
-            sim.pressure[i],
-            i
-        );
-    }
-
-    for entry in &sim.rate_history {
-        assert!(
-            entry.material_balance_error_m3.is_finite(),
-            "MB error not finite"
-        );
-        assert!(
-            entry.material_balance_error_oil_m3.is_finite(),
-            "oil MB error not finite"
-        );
-    }
 }
 
 #[test]

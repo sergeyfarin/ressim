@@ -58,6 +58,8 @@ Current IMPES-owned files:
 
 - `transport.rs`: transport/reporting checks that depend on `update_saturations_and_pressure()` or
   IMPES-local near-well mixture handling
+- `timestep.rs`: adaptive-substep and pressure-state-sanity checks that exercise the IMPES retry
+  loop and pressure-physicality guard directly
 
 ## Phase 2 Moves Completed
 
@@ -65,6 +67,8 @@ Current IMPES-owned files:
 - moved FIM-only SPE1 smoke coverage from the shared suite to `src/fim/tests/spe1.rs`
 - extracted FIM-local well tests from shared physics coverage into `src/fim/tests/wells.rs`
 - extracted IMPES-local transport/reporting tests into `src/impes/tests/transport.rs`
+- moved IMPES-only adaptive-substep and pressure-physicality coverage out of
+  `src/tests/runtime_api.rs` into `src/impes/tests/timestep.rs`
 - removed the dead orphan `src/lib/ressim/src/tests/spe1_short.rs`
 - rewrote the shared flash helper path in `src/tests/physics/fixtures.rs` so the pressure-only
   liberation checks use shared gas-split logic instead of the IMPES transport updater
@@ -76,16 +80,33 @@ Current IMPES-owned files:
 Phase 2 established the ownership structure and moved the clearest solver-local tests, but the
 coverage program is not finished.
 
+The first shared parity slice above the solver boundary is now in place in
+`src/lib/ressim/src/tests/runtime_api.rs`:
+
+- `public_step_bhp_limited_producer_reports_same_control_state_on_both_solvers`
+- `public_step_gas_injector_reports_same_control_state_on_both_solvers`
+- `mixed_control_public_step_keeps_same_limit_flags_on_both_solvers`
+
+The IMPES pressure/timestep audit is now complete for the obvious ownership mismatches.
+
+Audit result:
+
+- `adaptive_timestep_produces_multiple_substeps_for_strong_flow` is IMPES-local because it exists
+  to verify the explicit retry/substep loop rather than a solver-agnostic public contract
+- `pressure_resolve_on_substep_produces_physical_results` is IMPES-local because it directly
+  validates the IMPES pressure-state guard and retry behavior
+- `default_step_path_reports_rate_controlled_well_state` remains shared because it checks a public
+  reporting contract of the default solver path rather than a private IMPES retry invariant
+- `benchmark_like_substepping_completes_requested_dt` remains shared because it checks public step
+  completion semantics, not the internal IMPES retry implementation details
+
 Next sub-phase priorities:
 
-1. Add more shared parity coverage that runs the same public scenario through both solver paths for
-   above-solver behavior, especially well-control and rate-reporting cases.
-2. Audit `src/lib/ressim/src/impes/pressure.rs` and `src/lib/ressim/src/impes/timestep.rs` for any
-   remaining IMPES-internal behavior that deserves solver-local tests rather than living only under
-   shared runtime coverage.
-3. Continue pruning mixed ownership from the shared suite whenever a test needs private solver
+1. Add more shared parity coverage only where the public contract is stable enough to avoid baking
+  in known rate-magnitude gaps between the solvers.
+2. Continue pruning mixed ownership from the shared suite whenever a test needs private solver
    internals to stay meaningful.
-4. Keep shared physics helpers solver-agnostic where possible so future parity tests do not depend
+3. Keep shared physics helpers solver-agnostic where possible so future parity tests do not depend
    on one solver's internal update path.
 
 ## Validation Status For This Ownership Pass
@@ -96,7 +117,13 @@ The moved and rewritten tests were validated with focused Rust runs:
 - `spe1_fim_gas_injection_creates_free_gas`
 - `fim::tests::wells::*`
 - `impes::tests::transport::*`
+- `impes::tests::timestep::*`
 - `physics_depletion_liberation_undersaturated_rs_stays_constant`
 - `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers`
+- `public_step_bhp_limited_producer_reports_same_control_state_on_both_solvers`
+- `public_step_gas_injector_reports_same_control_state_on_both_solvers`
+- `mixed_control_public_step_keeps_same_limit_flags_on_both_solvers`
+- `tests::runtime_api::default_step_path_reports_rate_controlled_well_state`
+- `tests::runtime_api::benchmark_like_substepping_completes_requested_dt`
 
 All of the above passed after the ownership split.
