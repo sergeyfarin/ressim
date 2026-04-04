@@ -56,7 +56,7 @@ FluidProperties {
     mu_o: 1.0,      // Oil viscosity [cP]
     mu_w: 0.5,      // Water viscosity [cP]
     c_o: 1e-5,      // Oil compressibility [1/bar]
-    c_w: 3e-6,      // Water compressibility [1/bar]
+    c_w: 3e-6,      // Water storage-term compressibility [1/bar]
 }
 ```
 
@@ -69,6 +69,7 @@ FluidProperties {
 Current PVT note:
 - Constant-PVT input remains the default for many teaching scenarios.
 - Black-oil PVT mode is also available: pressure-dependent `B_o`, `B_g`, `R_s`, `mu_o`, and `mu_g` can be generated from correlations or supplied through tabular input.
+- `c_w` currently acts only as a water storage-term approximation in the pressure/accumulation model. It should not be interpreted as a full pressure-dependent `B_w(p)` implementation; the runtime still uses a constant `B_w` denominator in transport, wells, and reporting.
 
 ## Rock and Fluid Properties (Default Values)
 

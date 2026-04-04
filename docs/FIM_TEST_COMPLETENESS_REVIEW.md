@@ -87,6 +87,7 @@ work is now in place.
 - Single-cell producer: reporting matches perforation component rates — good.
 - Transport reporting reuses rate-control decision — good.
 - Rate-controlled gas injector FIM path converges and tracks target surface rate — good.
+- Rate-controlled producer FIM path hits the active BHP limit and reports the clamp branch — good.
 - Gas injection surface totals use Bg conversion (range check only) — marginal.
 - Producing GOR is zero when oil rate is negligible — good.
 
@@ -198,6 +199,11 @@ transitions under different `Bw` values.
 zero value, water would be infinitely stored per unit pore volume.  Even with constant Bw, a
 factor error in the accumulation denominator produces an incorrect water material balance that the
 current suite would not catch at the single-timestep level.
+
+**Current modeling note**: the codebase currently treats `c_w` as a storage-term approximation and
+still uses a constant `B_w` in the runtime residual, Jacobian, wells, and reporting paths. So this
+coverage closes the constant-`B_w` consistency risk, but it does not imply that full
+pressure-dependent water-FVF behavior is implemented.
 
 **What was added**: `src/lib/ressim/src/fim/assembly_tests.rs` now contains
 `water_accumulation_residual_scales_with_bw_denominator`, which evaluates the same one-cell state
@@ -375,6 +381,24 @@ using the same cumulative source-minus-inventory pattern already used for water 
 `physics_depletion_oil_fim_single_step_reports_direct_oil_mb`, which runs a real FIM step on the
 single-cell depletion fixture and verifies that the reported oil MB field matches the direct
 inventory-drop oracle at single-step resolution.
+
+### NEW-GAP-A (CLOSED 2026-04-04): No FIM test for BHP-limited well
+
+**Previous gap**: `rate_control_switches_to_bhp_when_limits_are_hit` in `tests/well_controls.rs`
+covered only the IMPES `resolve_well_control` path. The FIM Newton path uses Fischer-Burmeister
+complementarity for rate-vs-BHP switching, but there was no accepted-step physics test proving that
+the active-limit branch (`bhp_slack ~= 0`, `rate_slack > 0`) converges and reports correctly.
+
+**What was changed**: `src/lib/ressim/src/tests/physics/wells_sources.rs` now contains
+`physics_wells_sources_rate_controlled_producer_fim_hits_bhp_limit`, which runs a real accepted FIM
+timestep on a single-cell producer with an infeasible rate target and asserts all of the branch
+conditions at once:
+
+- Newton converges with small well and perforation residuals.
+- Accepted well BHP lands on the producer lower limit.
+- `bhp_slack` collapses to zero while `rate_slack` remains positive.
+- The diagnostic helper marks the frozen-consistent solution as BHP-limited.
+- Runtime reporting records `producer_bhp_limited_fraction = 1.0`.
 
 ---
 

@@ -51,6 +51,9 @@ k_ro = ((1 - S_w - S_or) / (1 - S_wc - S_or))^n_o
 | Water viscosity | 0.5 | cP |
 | Oil compressibility | 1e-5 | 1/bar |
 | Water compressibility | 3e-6 | 1/bar |
+
+Water-compressibility note:
+- `c_w` is currently used as a storage-term approximation, not as a full pressure-dependent water formation-volume factor model. In the runtime path, `B_w` remains constant.
 | Porosity | 0.2 | — |
 | Horiz. permeability | 100 | mD |
 | Vert. permeability | 10 | mD |

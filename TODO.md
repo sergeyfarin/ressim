@@ -54,7 +54,10 @@
        `gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign`.
       Rate-controlled injector FIM coverage is now in
        `src/lib/ressim/src/tests/physics/wells_sources.rs` via
-       `physics_wells_sources_rate_controlled_injector_fim_path_converges`.
+        `physics_wells_sources_rate_controlled_injector_fim_path_converges`.
+            BHP-limited producer FIM coverage is now in
+        `src/lib/ressim/src/tests/physics/wells_sources.rs` via
+        `physics_wells_sources_rate_controlled_producer_fim_hits_bhp_limit`.
      3. Water-accumulation `Bw` denominator coverage is now in
        `src/lib/ressim/src/fim/assembly_tests.rs` via
        `water_accumulation_residual_scales_with_bw_denominator`, alongside the existing

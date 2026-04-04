@@ -282,6 +282,108 @@ fn physics_wells_sources_rate_controlled_injector_fim_path_converges() {
 }
 
 #[test]
+fn physics_wells_sources_rate_controlled_producer_fim_hits_bhp_limit() {
+    let mut sim = make_closed_depletion_single_cell_sim();
+    sim.set_rate_controlled_wells(true);
+    sim.set_target_well_rates(0.0, 1.0e6).unwrap();
+    sim.set_well_bhp_limits(80.0, 1.0e9).unwrap();
+
+    let previous_state = FimState::from_simulator(&sim);
+    let report = run_fim_timestep(
+        &mut sim,
+        &previous_state,
+        &previous_state,
+        0.1,
+        &FimNewtonOptions::default(),
+    );
+
+    assert!(
+        report.converged,
+        "BHP-limited producer FIM case should converge"
+    );
+
+    let topology = build_well_topology(&sim);
+    assert_eq!(topology.wells.len(), 1);
+    assert_eq!(topology.perforations.len(), 1);
+
+    let well_residual = well_constraint_residual(&sim, &report.accepted_state, &topology, 0)
+        .expect("well constraint residual should exist for BHP-limited producer");
+    let perf_residual = perforation_rate_residual(&sim, &report.accepted_state, &topology, 0)
+        .expect("perforation residual should exist for BHP-limited producer");
+    let diagnostics = perforation_residual_diagnostics(&sim, &report.accepted_state, &topology, 0)
+        .expect("BHP-limited producer diagnostics should exist");
+    let component_rates =
+        perforation_component_rates_sc_day(&sim, &report.accepted_state, &topology, 0);
+
+    let bhp_slack = diagnostics
+        .bhp_slack
+        .expect("BHP-limited producer should report BHP slack");
+    let rate_slack = diagnostics
+        .rate_slack
+        .expect("BHP-limited producer should report rate slack");
+    let target_rate = diagnostics
+        .target_rate_sc_day
+        .expect("rate-controlled producer should expose a target rate");
+    let actual_rate = diagnostics
+        .actual_well_rate_sc_day
+        .expect("rate-controlled producer should expose the actual well rate");
+
+    assert!(
+        well_residual.abs() < 1e-6,
+        "well constraint residual should be near zero at the BHP-limited branch, got {}",
+        well_residual
+    );
+    assert!(
+        perf_residual.abs() < 2e-3,
+        "perforation residual should be near zero at the BHP-limited branch, got {}",
+        perf_residual
+    );
+    assert!(diagnostics.enabled);
+    assert!(!diagnostics.injector);
+    assert!(
+        bhp_slack.abs() < 1e-6,
+        "BHP slack should collapse to zero at the active limit, got {}",
+        bhp_slack
+    );
+    assert!(
+        rate_slack > 1e-3,
+        "rate slack should stay positive when the producer is clamped by BHP, got {}",
+        rate_slack
+    );
+    assert!(
+        (diagnostics.bhp_bar - 80.0).abs() < 1e-6,
+        "accepted producer BHP should sit at the lower limit, got {}",
+        diagnostics.bhp_bar
+    );
+    assert_eq!(diagnostics.frozen_consistent_bhp_limited, Some(true));
+    assert!(
+        actual_rate < target_rate,
+        "actual producer rate should stay below the infeasible target when clamped by BHP: actual={} target={}",
+        actual_rate,
+        target_rate
+    );
+    assert!(
+        component_rates[1] > 0.0,
+        "BHP-limited producer should still produce oil"
+    );
+    assert!(
+        component_rates[2].abs() < 1e-12,
+        "two-phase BHP-limited producer should have zero gas production, got {}",
+        component_rates[2]
+    );
+
+    sim.record_fim_step_report(&report.accepted_state, 0.1, 0.0, 0.0, 0.0);
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("BHP-limited producer FIM case should record history");
+
+    assert!(latest.total_production_oil > 0.0);
+    assert_eq!(latest.producer_bhp_limited_fraction, 1.0);
+    assert_eq!(latest.injector_bhp_limited_fraction, 0.0);
+}
+
+#[test]
 fn physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
     let mut sim = crate::ReservoirSimulator::new(1, 1, 2, 0.2);
     sim.set_fim_enabled(true);
