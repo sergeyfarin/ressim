@@ -129,11 +129,51 @@ impl FimGrowthCooldown {
                     .unwrap_or_default();
                 format!(
                     " cooldown_cap={:.6} clean_left={}{}",
-                    cap_dt_days, self.clean_successes_remaining, hotspot_trace
+                    cap_dt_days,
+                    self.clean_successes_remaining,
+                    hotspot_trace
                 )
             })
             .unwrap_or_default()
     }
+}
+
+fn accepted_step_growth_factor(
+    residual_inf_norm: f64,
+    residual_tolerance: f64,
+    newton_iterations: usize,
+    max_saturation_change: f64,
+    max_pressure_change_bar: f64,
+) -> f64 {
+    const MAX_GROWTH: f64 = 1.25;
+    const MIN_GROWTH: f64 = 0.75;
+    const TARGET_NEWTON_ITERS: f64 = 8.0;
+    const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
+    const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
+
+    let iteration_growth =
+        (TARGET_NEWTON_ITERS / newton_iterations as f64).clamp(MIN_GROWTH, MAX_GROWTH);
+    let sat_growth = if max_saturation_change > TARGET_MAX_SAT_CHANGE {
+        TARGET_MAX_SAT_CHANGE / max_saturation_change
+    } else {
+        MAX_GROWTH
+    };
+    let pressure_growth = if max_pressure_change_bar > TARGET_MAX_PRESSURE_CHANGE_BAR {
+        TARGET_MAX_PRESSURE_CHANGE_BAR / max_pressure_change_bar
+    } else {
+        MAX_GROWTH
+    };
+    let residual_growth = if residual_inf_norm.is_finite() && residual_inf_norm > 0.0 {
+        (residual_tolerance / residual_inf_norm).clamp(MIN_GROWTH, MAX_GROWTH)
+    } else {
+        MAX_GROWTH
+    };
+
+    iteration_growth
+        .min(sat_growth)
+        .min(pressure_growth)
+        .min(residual_growth)
+        .clamp(MIN_GROWTH, MAX_GROWTH)
 }
 
 fn fim_linear_report_step_suffix(linear_report: Option<&FimLinearSolveReport>) -> String {
@@ -173,8 +213,6 @@ impl ReservoirSimulator {
         const MAX_SUBSTEPS: u32 = 100_000;
         const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 16;
         const MAX_GROWTH: f64 = 1.25;
-        const MIN_GROWTH: f64 = 0.75;
-        const TARGET_NEWTON_ITERS: f64 = 8.0;
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
         const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
         const RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES: u32 = 4;
@@ -263,22 +301,13 @@ impl ReservoirSimulator {
                         let _ = idx;
                     }
 
-                    let iteration_growth = (TARGET_NEWTON_ITERS / report.newton_iterations as f64)
-                        .clamp(MIN_GROWTH, MAX_GROWTH);
-                    let sat_growth = if max_dsat > TARGET_MAX_SAT_CHANGE {
-                        TARGET_MAX_SAT_CHANGE / max_dsat
-                    } else {
-                        MAX_GROWTH
-                    };
-                    let pressure_growth = if max_dp > TARGET_MAX_PRESSURE_CHANGE_BAR {
-                        TARGET_MAX_PRESSURE_CHANGE_BAR / max_dp
-                    } else {
-                        MAX_GROWTH
-                    };
-                    last_growth_factor = iteration_growth
-                        .min(sat_growth)
-                        .min(pressure_growth)
-                        .clamp(MIN_GROWTH, MAX_GROWTH);
+                    last_growth_factor = accepted_step_growth_factor(
+                        report.final_residual_inf_norm,
+                        newton_options.residual_tolerance,
+                        report.newton_iterations,
+                        max_dsat,
+                        max_dp,
+                    );
 
                     if retry_count > 0 {
                         growth_cooldown
@@ -464,7 +493,7 @@ impl ReservoirSimulator {
 
 #[cfg(test)]
 mod tests {
-    use super::FimGrowthCooldown;
+    use super::{FimGrowthCooldown, accepted_step_growth_factor};
     use crate::ReservoirSimulator;
     use crate::fim::newton::{FimRetryFailureClass, FimRetryFailureDiagnostics};
 
@@ -591,6 +620,15 @@ mod tests {
         cooldown.note_clean_accepted();
 
         assert!(cooldown.hotspot.is_none());
+    }
+
+    #[test]
+    fn residual_near_tolerance_throttles_growth_factor() {
+        let growth = accepted_step_growth_factor(9.5e-6, 1.0e-5, 2, 0.003, 0.2);
+        assert!(growth < 1.1, "expected near-tolerance residual to clamp growth, got {growth}");
+
+        let easy_growth = accepted_step_growth_factor(1.0e-6, 1.0e-5, 2, 0.003, 0.2);
+        assert!((easy_growth - 1.25).abs() < 1e-12);
     }
 
     #[test]

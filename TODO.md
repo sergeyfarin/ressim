@@ -225,6 +225,7 @@
   - Current status:
     - FIM implementation remains active and incomplete.
     - Resumed convergence work on 2026-04-05 found and fixed a separate Newton material-change bug: well-BHP/perforation-only updates were being treated as unchanged, which blew the canonical wasm `wf_p_12x12x3` day-1 shelf up to `history+=50643`; after the fix, the same repro returned to `history+=139` with the healthy `wf_p_24x1x1` reference still at `history+=5`.
+    - A follow-up residual-aware growth clamp now reduces regrowth when an accepted step already lands near residual tolerance; the canonical wasm `wf_p_12x12x3` day-1 shelf improved further from `history+=139` to `history+=133`, while the healthy `wf_p_24x1x1` reference stayed in the same regime (`history+=6`) and the locked Rust baseline remained green.
     - The latest validated baseline keeps the `DRSDT = 0` gas-split fix and the tightened no-op Newton-acceptance fix.
     - Hard coupled convergence and timestep-fragmentation behavior are still unresolved on the harder waterflood and gas-injection cases.
     - Hotspot tracing for the hard `12x12x3` waterflood case now includes per-face phase diagnostics (`dphi`, upwind donor, mobility, signed flux) for the dominant cell's lateral faces on the canonical wasm path.

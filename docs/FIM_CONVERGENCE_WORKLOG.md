@@ -46,6 +46,45 @@ Interpretation:
 - Fixing well/perforation-only material-change recognition restored the hard day-1 waterflood shelf to essentially the earlier March regime (`~137-140` history points) without regressing the healthy 1D reference.
 - The previously documented outer-step oscillation shelf is therefore still the active convergence target after cleanup. The `50643`-substep collapse was a separate bug layered on top of that shelf, not a replacement diagnosis.
 
+## Validation Update - 2026-04-05 residual-aware growth clamp for near-tolerance accepted steps
+
+- Motivation from the restored day-1 shelf:
+  - after the material-change fix, the canonical hard water repro returned to the old oscillatory regime rather than the `50643`-history collapse
+  - captured day-1 step trace on `wf_p_12x12x3` again showed the same pattern at boundary cell `143` / water row `429`:
+    - repeated accepted steps at the same hotspot with residuals rising through roughly `3.1e-6`, `5.2e-6`, `8.4e-6`, `9.7e-6`
+    - controller regrowth stayed at `1.25x` because Newton iteration count was still low and state changes were still small
+    - the next growth step crossed back over tolerance (`~1.36e-5` to `~1.46e-5`) and stagnated after a few Newton iterations before retrying at about half-step size
+- First attempted policy change did not help enough:
+  - a stronger hotspot-memory policy with a remembered failed-`dt` guard band was tested first
+  - result on `wf_p_12x12x3` day 1: `history += 147`, worse than the restored `139` baseline, so that version was not kept
+- Change kept instead:
+  - `src/lib/ressim/src/fim/timestep.rs` now computes the accepted-step growth factor with an additional residual-based clamp
+  - if an accepted step already lands near the residual tolerance, the next growth factor is reduced even when Newton iterations are still low and the pressure/saturation changes are still small
+  - this directly targets the observed `accept-near-tolerance -> immediate regrow -> fail` staircase without adding broader hotspot-memory side effects
+  - added focused coverage via `residual_near_tolerance_throttles_growth_factor`
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml cooldown -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml hotspot -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml residual_near_tolerance_throttles_growth_factor -- --nocapture` passed
+  - locked Rust baseline reran green:
+    - `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`
+    - `spe1_fim_first_steps_converge_without_stall`
+    - `spe1_fim_gas_injection_creates_free_gas`
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - healthy reference rerun:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 24x1x1 --steps 1 --dt 1 --diagnostic summary --no-json`
+    - outcome: `outer_ms ≈ 23.4`, `history += 6`, `warning=none`
+  - canonical hard-case rerun:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
+    - previous restored baseline: `outer_ms ≈ 97585.1`, `history += 139`
+    - new outcome: `outer_ms ≈ 95357.8`, `history += 133`, `warning=none`
+
+Interpretation:
+
+- The residual-aware growth clamp is a real improvement on the restored day-1 hard shelf: it reduced the canonical `wf_p_12x12x3` day-1 history count from `139` to `133` without breaking the locked Rust baseline.
+- The simple 1D waterflood reference stayed healthy, with only a small shift from `history += 5` to `history += 6`, which is acceptable for now given the harder-case gain.
+- The remaining blocker is still the same front-local outer-step oscillation at boundary cell `143`; the next slice should continue to target later shelf windows (`day 2-3`) and/or further reduce unnecessary regrowth from accepted near-tolerance states instead of reopening linear/CPR work.
+
 ## Scope
 
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.
