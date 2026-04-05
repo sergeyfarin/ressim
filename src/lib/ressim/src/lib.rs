@@ -37,7 +37,7 @@ pub use capillary::{CapillaryPressure, GasOilCapillaryPressure};
 pub use relperm::{
     RockFluidProps, RockFluidPropsThreePhase, SgofRow, SwofRow, ThreePhaseScalTables,
 };
-pub use reporting::{SweepConfig, TimePointRates, WellRates};
+pub use reporting::{FimStepStats, SweepConfig, TimePointRates, WellRates};
 pub use well::Well;
 
 /// Which fluid the injector injects in three-phase mode.
@@ -111,6 +111,8 @@ pub struct ReservoirSimulator {
     last_solver_warning: String,
     last_fim_trace: String,
     capture_fim_trace: bool,
+    last_fim_step_stats: Option<reporting::FimStepStats>,
+    fim_step_stats_history: Vec<reporting::FimStepStats>,
     cumulative_injection_m3: f64,
     cumulative_production_m3: f64,
     pub cumulative_mb_error_m3: f64,

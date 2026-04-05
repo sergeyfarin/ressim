@@ -7,8 +7,10 @@ export class ReservoirSimulator {
     addWellWithId(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean, physical_well_id: string): void;
     add_well(i: number, j: number, k: number, bhp: number, well_radius: number, skin: number, injector: boolean): void;
     getDimensions(): any;
+    getFimStepStatsHistory(): any;
     getFimTrace(): string;
     getGridState(): any;
+    getLastFimStepStats(): any;
     getLastSolverWarning(): string;
     getPressures(): Float64Array;
     getRateHistory(): any;
@@ -89,8 +91,10 @@ export interface InitOutput {
     readonly reservoirsimulator_addWellWithId: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number];
     readonly reservoirsimulator_add_well: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly reservoirsimulator_getDimensions: (a: number) => any;
+    readonly reservoirsimulator_getFimStepStatsHistory: (a: number) => any;
     readonly reservoirsimulator_getFimTrace: (a: number) => [number, number];
     readonly reservoirsimulator_getGridState: (a: number) => any;
+    readonly reservoirsimulator_getLastFimStepStats: (a: number) => any;
     readonly reservoirsimulator_getLastSolverWarning: (a: number) => [number, number];
     readonly reservoirsimulator_getPressures: (a: number) => [number, number];
     readonly reservoirsimulator_getRateHistory: (a: number) => any;

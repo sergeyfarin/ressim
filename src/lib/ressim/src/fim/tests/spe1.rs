@@ -1,11 +1,56 @@
 use crate::ReservoirSimulator;
 use crate::tests::make_spe1_like_base_sim;
 
+fn assert_reasonable_spe1_step_stats(sim: &ReservoirSimulator, expected_time_days: f64) {
+    let stats = sim
+        .last_fim_step_stats_ref()
+        .expect("FIM step stats should be recorded after each outer step");
+
+    assert!(
+        (stats.time_days - expected_time_days).abs() < 1e-9,
+        "expected stats at t={}, got t={}",
+        expected_time_days,
+        stats.time_days
+    );
+    assert!(
+        stats.accepted_substeps <= 20,
+        "early SPE1 smoke exceeded the current tracked internal-step budget: t={} substeps={} retries={}/{}/{} dt_range={:?}..{:?}",
+        stats.time_days,
+        stats.accepted_substeps,
+        stats.linear_bad_retries,
+        stats.nonlinear_bad_retries,
+        stats.mixed_retries,
+        stats.min_accepted_dt_days,
+        stats.max_accepted_dt_days
+    );
+    assert!(
+        stats.nonlinear_bad_retries <= 2,
+        "early SPE1 smoke exceeded the current nonlinear retry budget: t={} nonlinear_bad={} substeps={} growth={:?} retry={:?}/{:?}@{:?}",
+        stats.time_days,
+        stats.nonlinear_bad_retries,
+        stats.accepted_substeps,
+        stats.growth_limiter,
+        stats.last_retry_class,
+        stats.last_retry_dominant_family,
+        stats.last_retry_dominant_row
+    );
+    assert!(
+        stats.min_accepted_dt_days.unwrap_or(0.0) >= 5e-3,
+        "early SPE1 smoke dropped into an unexpectedly tiny accepted dt: t={} min_dt={:?} substeps={} retries={}/{}/{}",
+        stats.time_days,
+        stats.min_accepted_dt_days,
+        stats.accepted_substeps,
+        stats.linear_bad_retries,
+        stats.nonlinear_bad_retries,
+        stats.mixed_retries
+    );
+}
+
 #[test]
 fn spe1_fim_first_steps_converge_without_stall() {
     let mut sim = make_spe1_like_base_sim();
     sim.set_fim_enabled(true);
-    for _ in 0..5 {
+    for step in 1..=5 {
         sim.step(1.0);
         assert!(
             sim.last_solver_warning.is_empty(),
@@ -13,6 +58,7 @@ fn spe1_fim_first_steps_converge_without_stall() {
             sim.time_days,
             sim.last_solver_warning
         );
+        assert_reasonable_spe1_step_stats(&sim, step as f64);
     }
     assert!(
         sim.time_days >= 5.0 - 1e-9,

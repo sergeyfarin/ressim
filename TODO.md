@@ -218,6 +218,15 @@
     - removal or documented quarantine of stale experimental artifacts
 
 - [ ] Replace the current IMPES timestep path with a fully implicit black-oil FIM path in the Rust core.
+
+- [ ] Use the new FIM outer-step diagnostics to drive the remaining convergence work instead of relying on trace-only inspection.
+  - `FimStepStats` is now recorded for every FIM outer step and exposed through Rust tests plus wasm getters (`getLastFimStepStats`, `getFimStepStatsHistory`).
+  - The canonical wasm diagnostic summary in `scripts/fim-wasm-diagnostic.mjs` now prints accepted substeps, retry-class split, accepted-`dt` range, growth limiter, and last retry hotspot.
+  - `spe1_fim_first_steps_converge_without_stall` now enforces the current tracked internal-step budget for the first five 1-day steps: `<=20` accepted substeps, `<=2` nonlinear retries, and no accepted `dt < 5e-3 d`.
+  - Current measured gap after adding the instrumentation: SPE1 day 1 still takes `16` accepted substeps with `2` nonlinear retries, so the diagnostic surface is in place but the simple-case fragmentation goal remains open.
+  - Day-2 water-shelf follow-up completed: hotspot memory now treats alternating cell-family rows on the same cell as one repeated site and suppresses `max-growth` regrowth on repeated sites.
+  - Measured outcome of that slice: targeted day-2 replay improved from `218` to `211` accepted substeps and from `27` to `24` nonlinear retries, but the canonical day-1 hard case moved slightly from `133` to `136` accepted substeps. Keep the change as a measured partial improvement, not the end state.
+  - Next slice: use the saved day-2 checkpoint and the new site-level stats to target the repeated near-converged producer-corner Newton state directly instead of further tightening outer-step heuristics.
   - Canonical current-state summary: `docs/FIM_STATUS.md`.
   - Active convergence investigation: `docs/FIM_CONVERGENCE_WORKLOG.md`.
   - Architecture target and end-state checklist: `docs/FIM_MIGRATION_PLAN.md`.

@@ -504,6 +504,7 @@ function computeRange(values) {
 function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
   const history = sim.getRateHistory();
   const last = history.at(-1) ?? null;
+  const fimStepStats = sim.getLastFimStepStats() ?? null;
   const pressures = sim.getPressures();
   const satWater = sim.getSatWater();
   const satGas = sim.getSatGas();
@@ -527,6 +528,16 @@ function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
     producingGor: last?.producing_gor ?? null,
     producerBhpLimitedFraction: last?.producer_bhp_limited_fraction ?? null,
     injectorBhpLimitedFraction: last?.injector_bhp_limited_fraction ?? null,
+    fimAcceptedSubsteps: fimStepStats?.accepted_substeps ?? null,
+    fimLinearBadRetries: fimStepStats?.linear_bad_retries ?? null,
+    fimNonlinearBadRetries: fimStepStats?.nonlinear_bad_retries ?? null,
+    fimMixedRetries: fimStepStats?.mixed_retries ?? null,
+    fimMinAcceptedDtDays: fimStepStats?.min_accepted_dt_days ?? null,
+    fimMaxAcceptedDtDays: fimStepStats?.max_accepted_dt_days ?? null,
+    fimGrowthLimiter: fimStepStats?.growth_limiter ?? null,
+    fimLastRetryClass: fimStepStats?.last_retry_class ?? null,
+    fimLastRetryDominantFamily: fimStepStats?.last_retry_dominant_family ?? null,
+    fimLastRetryDominantRow: fimStepStats?.last_retry_dominant_row ?? null,
     pressureMin: pressureRange.min,
     pressureMax: pressureRange.max,
     swMin: swRange.min,
@@ -548,10 +559,15 @@ function printStepSummary(record) {
       `time=${record.timeDays.toFixed(4)}d`,
       `outer_ms=${record.outerMs.toFixed(1)}`,
       `history+=${record.historyDelta}`,
+      `substeps=${record.fimAcceptedSubsteps == null ? 'n/a' : record.fimAcceptedSubsteps}`,
+      `retries=${record.fimLinearBadRetries == null ? 'n/a' : `${record.fimLinearBadRetries}/${record.fimNonlinearBadRetries}/${record.fimMixedRetries}`}`,
       `avg_p=${record.avgPressure == null ? 'n/a' : record.avgPressure.toFixed(2)}`,
       `oil=${record.totalOil == null ? 'n/a' : record.totalOil.toFixed(2)}`,
       `inj=${record.totalInjection == null ? 'n/a' : record.totalInjection.toFixed(2)}`,
       `gor=${record.producingGor == null ? 'n/a' : record.producingGor.toFixed(2)}`,
+      `dt=[${record.fimMinAcceptedDtDays == null ? 'n/a' : record.fimMinAcceptedDtDays.toExponential(3)},${record.fimMaxAcceptedDtDays == null ? 'n/a' : record.fimMaxAcceptedDtDays.toExponential(3)}]`,
+      `growth=${record.fimGrowthLimiter ?? 'n/a'}`,
+      `retry_dom=${record.fimLastRetryDominantFamily == null ? 'n/a' : `${record.fimLastRetryClass}:${record.fimLastRetryDominantFamily}@${record.fimLastRetryDominantRow}`}`,
       `p=[${record.pressureMin.toFixed(2)},${record.pressureMax.toFixed(2)}]`,
       `sg=[${record.sgMin.toFixed(4)},${record.sgMax.toFixed(4)}]`,
       record.warning ? `warning=${record.warning}` : 'warning=none',

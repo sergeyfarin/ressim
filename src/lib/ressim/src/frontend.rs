@@ -86,6 +86,8 @@ impl ReservoirSimulator {
             last_solver_warning: String::new(),
             last_fim_trace: String::new(),
             capture_fim_trace: false,
+            last_fim_step_stats: None,
+            fim_step_stats_history: Vec::new(),
             cumulative_injection_m3: 0.0,
             cumulative_production_m3: 0.0,
             cumulative_mb_error_m3: 0.0,
@@ -440,6 +442,16 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = getLastSolverWarning)]
     pub fn get_last_solver_warning(&self) -> String {
         self.last_solver_warning.clone()
+    }
+
+    #[wasm_bindgen(js_name = getLastFimStepStats)]
+    pub fn get_last_fim_step_stats(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.last_fim_step_stats).unwrap()
+    }
+
+    #[wasm_bindgen(js_name = getFimStepStatsHistory)]
+    pub fn get_fim_step_stats_history(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.fim_step_stats_history).unwrap()
     }
 
     #[wasm_bindgen(js_name = getFimTrace)]
@@ -836,6 +848,8 @@ impl ReservoirSimulator {
         self.last_solver_warning.clear();
         self.last_fim_trace.clear();
         self.capture_fim_trace = false;
+        self.last_fim_step_stats = None;
+        self.fim_step_stats_history.clear();
 
         if let Some(last) = self.rate_history.last() {
             self.cumulative_injection_m3 = last.total_injection_reservoir;

@@ -85,6 +85,79 @@ Interpretation:
 - The simple 1D waterflood reference stayed healthy, with only a small shift from `history += 5` to `history += 6`, which is acceptable for now given the harder-case gain.
 - The remaining blocker is still the same front-local outer-step oscillation at boundary cell `143`; the next slice should continue to target later shelf windows (`day 2-3`) and/or further reduce unnecessary regrowth from accepted near-tolerance states instead of reopening linear/CPR work.
 
+## Validation Update - 2026-04-05 structured outer-step diagnostics and tracked SPE1 internal-step budget
+
+- Change made:
+  - added a structured outer-step diagnostic record `FimStepStats` in `src/lib/ressim/src/reporting.rs`
+  - the FIM timestep driver in `src/lib/ressim/src/fim/timestep.rs` now stores, per outer step:
+    - accepted substep count
+    - retry split (`linear-bad`, `nonlinear-bad`, `mixed`)
+    - accepted `dt` range
+    - last accepted-step growth limiter (`max-growth`, `residual-margin`, etc.)
+    - last retry hotspot family/row
+  - exposed the stats to wasm via `getLastFimStepStats()` and `getFimStepStatsHistory()` in `src/lib/ressim/src/frontend.rs`
+  - updated `scripts/fim-wasm-diagnostic.mjs` summary output to print the new structured metrics directly instead of requiring trace-only interpretation
+  - upgraded `src/lib/ressim/src/fim/tests/spe1.rs` so the early SPE1 smoke now asserts a tracked internal-step budget instead of only checking `last_solver_warning`
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_gas_injection_creates_free_gas -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml residual_near_tolerance_throttles_growth_factor -- --nocapture` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - canonical hard-case summary now prints the structured metrics directly:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
+    - observed outcome: `substeps=133`, `retries=3/14/0`, `dt=[5.968e-4,6.250e-2]`, `growth=max-growth`, `retry_dom=nonlinear-bad:water@429`
+- Measured SPE1 baseline captured by the new budgeted smoke:
+  - the first 1-day SPE1 step currently uses `16` accepted substeps with `2` nonlinear retries
+  - the tracked-current smoke budget is therefore intentionally looser than the long-term target for now:
+    - `<=20` accepted substeps
+    - `<=2` nonlinear retries
+    - no accepted `dt < 5e-3 d`
+
+Interpretation:
+
+- This does not solve the simple-case fragmentation problem yet, but it removes a real workflow gap: the solver now exposes structured outer-step evidence instead of forcing every diagnosis through raw trace parsing.
+- SPE1 is now explicitly tracked as a convergence-quality budgeted case, not only a no-warning smoke. That gives the next slices a stable target that can be tightened as real fixes land.
+- The canonical hard water repro remains dominated by the same nonlinear water hotspot, and the new summary surface now makes that visible in one line without replaying the full step trace.
+
+## Validation Update - 2026-04-05 day-2 hotspot-site growth cap using the new outer-step stats
+
+- Motivation from the new outer-step scan:
+  - the stats-backed bounded scan showed the real expensive shelf had moved to day 2, not day 3
+  - `wf_p_12x12x3` day 2 measured `218` accepted substeps with `4/27/0` retry split, while day 3 completed in a single full-day substep
+  - replay of the saved day-2 checkpoint showed the same producer-corner cell site repeating, but current hotspot memory was not accumulating because the dominant retry alternated between:
+    - water row `429`
+    - oil row `430`
+    - same cell item `143`
+  - because hotspot identity was keyed to exact family/row, the controller treated those as different hotspots and returned to `growth=max-growth` after cooldown release
+- Change made in `src/lib/ressim/src/fim/timestep.rs`:
+  - broadened hotspot memory from exact row/family equality to site-level matching for cell residual families (`water`, `oil`, `gas`) using the same cell item index
+  - added a narrow growth-policy hook so repeated hotspot sites no longer regrow at `max-growth`; repeated site memory now caps the accepted-step growth decision to no regrowth (`1.0x`) and reports limiter `hotspot-repeat`
+  - added focused tests for:
+    - alternating water/oil rows on the same cell counting as one hotspot site
+    - repeated hotspot site memory capping the growth decision
+- Validation:
+  - focused timestep regressions passed:
+    - `hotspot`
+    - `cooldown`
+    - `residual_near_tolerance_throttles_growth_factor`
+  - locked Rust baseline reran green:
+    - `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`
+    - `spe1_fim_first_steps_converge_without_stall`
+    - `spe1_fim_gas_injection_creates_free_gas`
+  - day-2 targeted replay improved:
+    - before: `substeps=218`, `retries=4/27/0`
+    - after: `substeps=211`, `retries=4/24/0`
+  - day-1 canonical summary moved slightly the wrong way:
+    - previous baseline: `substeps=133`, `retries=3/14/0`
+    - after this slice: `substeps=136`, `retries=3/13/0`
+
+Interpretation:
+
+- The new stats were useful: they exposed that the day-2 shelf was a repeated site-level oscillation that the previous exact-row hotspot memory could not see.
+- The site-level hotspot cap is directionally correct and does reduce the targeted day-2 shelf, but only modestly.
+- This is not yet the fundamental fix. The remaining evidence still points to a harder nonlinear/front-local issue rather than a controller-only problem, because even with better site-level memory the solver still revisits the same producer-corner cell shelf.
+- The next slice should keep the new site-level memory but move up one level of leverage: use the same day-2 checkpoint to target the repeated near-converged producer-corner Newton state itself rather than only further tightening outer-step regrowth.
+
 ## Scope
 
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.

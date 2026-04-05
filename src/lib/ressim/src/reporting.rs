@@ -129,6 +129,33 @@ pub struct WellRates {
     pub total_liquid_rate: f64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FimStepStats {
+    pub time_days: f64,
+    pub target_dt_days: f64,
+    pub advanced_dt_days: f64,
+    pub accepted_substeps: u32,
+    pub linear_bad_retries: usize,
+    pub nonlinear_bad_retries: usize,
+    pub mixed_retries: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_accepted_dt_days: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_accepted_dt_days: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_accepted_dt_days: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_growth_factor: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub growth_limiter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_retry_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_retry_dominant_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_retry_dominant_row: Option<usize>,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TimePointRates {
     pub time: f64,
@@ -178,6 +205,16 @@ pub struct TimePointRates {
 }
 
 impl ReservoirSimulator {
+    pub(crate) fn store_fim_step_stats(&mut self, stats: FimStepStats) {
+        self.last_fim_step_stats = Some(stats.clone());
+        self.fim_step_stats_history.push(stats);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_fim_step_stats_ref(&self) -> Option<&FimStepStats> {
+        self.last_fim_step_stats.as_ref()
+    }
+
     pub(crate) fn average_reservoir_pressure_pv_weighted(&self) -> f64 {
         let mut weighted_pressure_sum = 0.0;
         let mut pore_volume_sum = 0.0;

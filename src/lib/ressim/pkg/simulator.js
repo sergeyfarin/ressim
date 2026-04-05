@@ -66,6 +66,13 @@ export class ReservoirSimulator {
         return ret;
     }
     /**
+     * @returns {any}
+     */
+    getFimStepStatsHistory() {
+        const ret = wasm.reservoirsimulator_getFimStepStatsHistory(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {string}
      */
     getFimTrace() {
@@ -85,6 +92,13 @@ export class ReservoirSimulator {
      */
     getGridState() {
         const ret = wasm.reservoirsimulator_getGridState(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {any}
+     */
+    getLastFimStepStats() {
+        const ret = wasm.reservoirsimulator_getLastFimStepStats(this.__wbg_ptr);
         return ret;
     }
     /**

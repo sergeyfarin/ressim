@@ -3,6 +3,7 @@ use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{FimNewtonOptions, FimRetryFailureDiagnostics, run_fim_timestep};
 use crate::fim::state::{FimState, HydrocarbonState};
+use crate::reporting::FimStepStats;
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
@@ -30,6 +31,15 @@ struct FimRetryHotspot {
     dominant_family_label: &'static str,
     dominant_row: usize,
     dominant_item_index: usize,
+    scope: FimRetryHotspotScope,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FimRetryHotspotScope {
+    Cell(usize),
+    Well(usize),
+    Perforation(usize),
+    Exact { row: usize, item_index: usize },
 }
 
 impl FimRetryHotspot {
@@ -40,7 +50,26 @@ impl FimRetryHotspot {
                 dominant_family_label: failure_diagnostics.dominant_family_label,
                 dominant_row: failure_diagnostics.dominant_row,
                 dominant_item_index: failure_diagnostics.dominant_item_index,
+                scope: FimRetryHotspotScope::from_failure(failure_diagnostics),
             }),
+        }
+    }
+
+    fn same_site(self, other: Self) -> bool {
+        self.scope == other.scope
+    }
+}
+
+impl FimRetryHotspotScope {
+    fn from_failure(failure_diagnostics: &FimRetryFailureDiagnostics) -> Self {
+        match failure_diagnostics.dominant_family_label {
+            "water" | "oil" | "gas" => Self::Cell(failure_diagnostics.dominant_item_index),
+            "well" => Self::Well(failure_diagnostics.dominant_item_index),
+            "perf" => Self::Perforation(failure_diagnostics.dominant_item_index),
+            _ => Self::Exact {
+                row: failure_diagnostics.dominant_row,
+                item_index: failure_diagnostics.dominant_item_index,
+            },
         }
     }
 }
@@ -75,13 +104,33 @@ impl FimGrowthCooldown {
             return;
         };
 
-        if self.hotspot == Some(hotspot) {
+        if self.hotspot.is_some_and(|previous| previous.same_site(hotspot)) {
             self.hotspot_repeat_failures = self.hotspot_repeat_failures.saturating_add(1);
         } else {
-            self.hotspot = Some(hotspot);
             self.hotspot_repeat_failures = 1;
         }
+        self.hotspot = Some(hotspot);
         self.hotspot_clean_successes_without_retry = 0;
+    }
+
+    fn cap_growth_decision(self, decision: AcceptedStepGrowthDecision) -> AcceptedStepGrowthDecision {
+        if decision.limiter != "max-growth" {
+            return decision;
+        }
+
+        let capped_factor = match self.hotspot_repeat_failures {
+            0 | 1 => return decision,
+            _ => 1.0,
+        };
+
+        if capped_factor >= decision.factor {
+            return decision;
+        }
+
+        AcceptedStepGrowthDecision {
+            factor: capped_factor,
+            limiter: "hotspot-repeat",
+        }
     }
 
     fn note_retry_accepted(&mut self, accepted_dt_days: f64, clean_successes_required: u32) {
@@ -138,6 +187,7 @@ impl FimGrowthCooldown {
     }
 }
 
+#[cfg(test)]
 fn accepted_step_growth_factor(
     residual_inf_norm: f64,
     residual_tolerance: f64,
@@ -145,6 +195,29 @@ fn accepted_step_growth_factor(
     max_saturation_change: f64,
     max_pressure_change_bar: f64,
 ) -> f64 {
+    accepted_step_growth_decision(
+        residual_inf_norm,
+        residual_tolerance,
+        newton_iterations,
+        max_saturation_change,
+        max_pressure_change_bar,
+    )
+    .factor
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct AcceptedStepGrowthDecision {
+    factor: f64,
+    limiter: &'static str,
+}
+
+fn accepted_step_growth_decision(
+    residual_inf_norm: f64,
+    residual_tolerance: f64,
+    newton_iterations: usize,
+    max_saturation_change: f64,
+    max_pressure_change_bar: f64,
+) -> AcceptedStepGrowthDecision {
     const MAX_GROWTH: f64 = 1.25;
     const MIN_GROWTH: f64 = 0.75;
     const TARGET_NEWTON_ITERS: f64 = 8.0;
@@ -169,11 +242,27 @@ fn accepted_step_growth_factor(
         MAX_GROWTH
     };
 
-    iteration_growth
-        .min(sat_growth)
-        .min(pressure_growth)
-        .min(residual_growth)
-        .clamp(MIN_GROWTH, MAX_GROWTH)
+    let mut decision = AcceptedStepGrowthDecision {
+        factor: MAX_GROWTH,
+        limiter: "max-growth",
+    };
+
+    for (factor, limiter) in [
+        (iteration_growth, "newton-iters"),
+        (sat_growth, "sat-change"),
+        (pressure_growth, "pressure-change"),
+        (residual_growth, "residual-margin"),
+    ] {
+        if factor < decision.factor {
+            decision = AcceptedStepGrowthDecision { factor, limiter };
+        }
+    }
+
+    decision.factor = decision.factor.clamp(MIN_GROWTH, MAX_GROWTH);
+    if (decision.factor - MAX_GROWTH).abs() < 1e-12 {
+        decision.limiter = "max-growth";
+    }
+    decision
 }
 
 fn fim_linear_report_step_suffix(linear_report: Option<&FimLinearSolveReport>) -> String {
@@ -187,6 +276,43 @@ fn fim_linear_report_step_suffix(linear_report: Option<&FimLinearSolveReport>) -
             )
         })
         .unwrap_or_default()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn store_fim_outer_step_stats(
+    sim: &mut ReservoirSimulator,
+    target_dt_days: f64,
+    advanced_dt_days: f64,
+    accepted_substeps: u32,
+    linear_bad_retries: usize,
+    nonlinear_bad_retries: usize,
+    mixed_retries: usize,
+    min_accepted_dt_days: Option<f64>,
+    max_accepted_dt_days: Option<f64>,
+    last_accepted_dt_days: Option<f64>,
+    last_growth_factor: f64,
+    growth_limiter: Option<&str>,
+    last_retry_class: Option<&str>,
+    last_retry_dominant_family: Option<&str>,
+    last_retry_dominant_row: Option<usize>,
+) {
+    sim.store_fim_step_stats(FimStepStats {
+        time_days: sim.time_days,
+        target_dt_days,
+        advanced_dt_days,
+        accepted_substeps,
+        linear_bad_retries,
+        nonlinear_bad_retries,
+        mixed_retries,
+        min_accepted_dt_days,
+        max_accepted_dt_days,
+        last_accepted_dt_days,
+        last_growth_factor: last_accepted_dt_days.map(|_| last_growth_factor),
+        growth_limiter: growth_limiter.map(str::to_string),
+        last_retry_class: last_retry_class.map(str::to_string),
+        last_retry_dominant_family: last_retry_dominant_family.map(str::to_string),
+        last_retry_dominant_row,
+    });
 }
 
 pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
@@ -220,6 +346,13 @@ impl ReservoirSimulator {
         let mut linear_bad_retries = 0usize;
         let mut nonlinear_bad_retries = 0usize;
         let mut mixed_retries = 0usize;
+        let mut min_accepted_dt_days: Option<f64> = None;
+        let mut max_accepted_dt_days: Option<f64> = None;
+        let mut last_accepted_dt_days: Option<f64> = None;
+        let mut last_growth_limiter: Option<&'static str> = None;
+        let mut last_retry_class: Option<&'static str> = None;
+        let mut last_retry_dominant_family: Option<&'static str> = None;
+        let mut last_retry_dominant_row: Option<usize> = None;
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
@@ -301,13 +434,28 @@ impl ReservoirSimulator {
                         let _ = idx;
                     }
 
-                    last_growth_factor = accepted_step_growth_factor(
+                    let growth_decision = growth_cooldown.cap_growth_decision(
+                        accepted_step_growth_decision(
                         report.final_residual_inf_norm,
                         newton_options.residual_tolerance,
                         report.newton_iterations,
                         max_dsat,
                         max_dp,
+                        ),
                     );
+                    last_growth_factor = growth_decision.factor;
+                    last_growth_limiter = Some(growth_decision.limiter);
+                    min_accepted_dt_days = Some(
+                        min_accepted_dt_days
+                            .map(|value| value.min(trial_dt))
+                            .unwrap_or(trial_dt),
+                    );
+                    max_accepted_dt_days = Some(
+                        max_accepted_dt_days
+                            .map(|value| value.max(trial_dt))
+                            .unwrap_or(trial_dt),
+                    );
+                    last_accepted_dt_days = Some(trial_dt);
 
                     if retry_count > 0 {
                         growth_cooldown
@@ -359,6 +507,9 @@ impl ReservoirSimulator {
 
                 if let Some(failure_diagnostics) = &report.failure_diagnostics {
                     growth_cooldown.note_retry_failure(failure_diagnostics);
+                    last_retry_class = Some(failure_diagnostics.class.label());
+                    last_retry_dominant_family = Some(failure_diagnostics.dominant_family_label);
+                    last_retry_dominant_row = Some(failure_diagnostics.dominant_row);
                     match failure_diagnostics.class {
                         FimRetryFailureClass::LinearBad => linear_bad_retries += 1,
                         FimRetryFailureClass::NonlinearBad => nonlinear_bad_retries += 1,
@@ -403,6 +554,23 @@ impl ReservoirSimulator {
                         self.time_days + time_stepped,
                         report.newton_iterations
                     );
+                    store_fim_outer_step_stats(
+                        self,
+                        target_dt_days,
+                        time_stepped,
+                        substeps,
+                        linear_bad_retries,
+                        nonlinear_bad_retries,
+                        mixed_retries,
+                        min_accepted_dt_days,
+                        max_accepted_dt_days,
+                        last_accepted_dt_days,
+                        last_growth_factor,
+                        last_growth_limiter,
+                        last_retry_class,
+                        last_retry_dominant_family,
+                        last_retry_dominant_row,
+                    );
                     return;
                 }
 
@@ -417,6 +585,23 @@ impl ReservoirSimulator {
                         "FIM Newton step exceeded retry budget at t={:.6} days after {} retries",
                         self.time_days + time_stepped,
                         retry_count
+                    );
+                    store_fim_outer_step_stats(
+                        self,
+                        target_dt_days,
+                        time_stepped,
+                        substeps,
+                        linear_bad_retries,
+                        nonlinear_bad_retries,
+                        mixed_retries,
+                        min_accepted_dt_days,
+                        max_accepted_dt_days,
+                        last_accepted_dt_days,
+                        last_growth_factor,
+                        last_growth_limiter,
+                        last_retry_class,
+                        last_retry_dominant_family,
+                        last_retry_dominant_row,
                     );
                     return;
                 }
@@ -451,6 +636,24 @@ impl ReservoirSimulator {
                 mixed_retries
             );
         }
+
+        store_fim_outer_step_stats(
+            self,
+            target_dt_days,
+            time_stepped,
+            substeps,
+            linear_bad_retries,
+            nonlinear_bad_retries,
+            mixed_retries,
+            min_accepted_dt_days,
+            max_accepted_dt_days,
+            last_accepted_dt_days,
+            last_growth_factor,
+            last_growth_limiter,
+            last_retry_class,
+            last_retry_dominant_family,
+            last_retry_dominant_row,
+        );
     }
 
     fn total_water_inventory_m3(&self) -> f64 {
@@ -493,7 +696,9 @@ impl ReservoirSimulator {
 
 #[cfg(test)]
 mod tests {
-    use super::{FimGrowthCooldown, accepted_step_growth_factor};
+    use super::{
+        AcceptedStepGrowthDecision, FimGrowthCooldown, accepted_step_growth_factor,
+    };
     use crate::ReservoirSimulator;
     use crate::fim::newton::{FimRetryFailureClass, FimRetryFailureDiagnostics};
 
@@ -555,6 +760,43 @@ mod tests {
         cooldown.note_retry_accepted(0.25, 4);
         assert_eq!(cooldown.clean_successes_remaining, 5);
         assert!(cooldown.trace_suffix().contains("repeats=2"));
+    }
+
+    #[test]
+    fn alternating_cell_row_families_count_as_same_hotspot_site() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let water_failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+        let oil_failure = FimRetryFailureDiagnostics {
+            dominant_family_label: "oil",
+            dominant_row: 430,
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 430, 143)
+        };
+
+        cooldown.note_retry_failure(&water_failure);
+        cooldown.note_retry_failure(&oil_failure);
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 2);
+    }
+
+    #[test]
+    fn repeated_hotspot_caps_max_growth_decision() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&FimRetryFailureDiagnostics {
+            dominant_family_label: "oil",
+            dominant_row: 430,
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 430, 143)
+        });
+
+        let capped = cooldown.cap_growth_decision(AcceptedStepGrowthDecision {
+            factor: 1.25,
+            limiter: "max-growth",
+        });
+
+        assert_eq!(capped.factor, 1.0);
+        assert_eq!(capped.limiter, "hotspot-repeat");
     }
 
     #[test]
