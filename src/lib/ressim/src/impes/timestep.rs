@@ -9,7 +9,17 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 
     while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
         let remaining_dt = target_dt_days - time_stepped;
-        let mut trial_dt = remaining_dt;
+        // A priori CFL estimate using current pressures and mobilities. Only
+        // applied when it trims less than 50% of remaining_dt — if the flow is
+        // so fast that CFL gives a tiny fraction of remaining_dt, the retry
+        // loop is already the right mechanism and the pre-estimate would just
+        // fragment the step budget needlessly.
+        let cfl_dt = sim.cfl_dt_estimate();
+        let mut trial_dt = if cfl_dt >= remaining_dt * 0.5 {
+            remaining_dt.min(cfl_dt)
+        } else {
+            remaining_dt
+        };
         let mut retry_count = 0;
         let actual_dt;
         let final_p;
@@ -111,6 +121,77 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 }
 
 impl ReservoirSimulator {
+    /// A priori CFL timestep estimate [days] using current pressures and mobilities.
+    ///
+    /// For each cell, sums outgoing flux T·λ_t·max(Δp,0) across all faces and
+    /// divides by pore volume. The CFL-limited dt is `max_sat_change_per_step`
+    /// divided by the maximum such ratio. Gravity and capillary corrections are
+    /// omitted here (they complicate the pre-solve estimate and the retry loop
+    /// handles any residual exceedances). Returns `f64::INFINITY` when all fluxes
+    /// are zero (quiescent state).
+    fn cfl_dt_estimate(&self) -> f64 {
+        const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
+        let mut max_flux_over_pv = 0.0_f64;
+
+        for k in 0..self.nz {
+            for j in 0..self.ny {
+                for i in 0..self.nx {
+                    let id = self.idx(i, j, k);
+                    let vp = self.pore_volume_m3(id);
+                    if vp <= 0.0 {
+                        continue;
+                    }
+                    let lam_t = self.total_mobility(id);
+                    let mut outflow = 0.0_f64;
+
+                    let neighbors: &[(isize, isize, isize, char)] = &[
+                        (1, 0, 0, 'x'),
+                        (-1, 0, 0, 'x'),
+                        (0, 1, 0, 'y'),
+                        (0, -1, 0, 'y'),
+                        (0, 0, 1, 'z'),
+                        (0, 0, -1, 'z'),
+                    ];
+                    for &(di, dj, dk, dim) in neighbors {
+                        let ni = i as isize + di;
+                        let nj = j as isize + dj;
+                        let nk = k as isize + dk;
+                        if ni < 0
+                            || nj < 0
+                            || nk < 0
+                            || ni >= self.nx as isize
+                            || nj >= self.ny as isize
+                            || nk >= self.nz as isize
+                        {
+                            continue;
+                        }
+                        let nid = self.idx(ni as usize, nj as usize, nk as usize);
+                        let dp = self.pressure[id] - self.pressure[nid];
+                        if dp > 0.0 {
+                            let geom_t = DARCY_METRIC_FACTOR
+                                * self.geometric_transmissibility(id, nid, dim);
+                            outflow += geom_t * lam_t * dp;
+                        }
+                    }
+
+                    let ratio = outflow / vp;
+                    if ratio > max_flux_over_pv {
+                        max_flux_over_pv = ratio;
+                    }
+                }
+            }
+        }
+
+        if max_flux_over_pv > 0.0 {
+            // Apply a 2× relaxation: the estimate ignores capillary and gravity
+            // corrections and uses single-point mobilities, so it is inherently
+            // conservative. The retry loop handles any residual exceedances.
+            2.0 * self.max_sat_change_per_step / max_flux_over_pv
+        } else {
+            f64::INFINITY
+        }
+    }
+
     fn pressure_state_bounds(&self) -> (f64, f64) {
         let current_min = self
             .pressure

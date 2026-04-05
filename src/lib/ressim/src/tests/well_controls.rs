@@ -22,7 +22,9 @@ fn producer_surface_rate_target_converts_using_oil_fraction_and_bo() {
 }
 
 #[test]
-fn producer_surface_rate_target_uses_same_layer_neighborhood_sampling() {
+fn producer_surface_rate_target_uses_well_cell_only_sampling() {
+    // Fractional-flow sampling uses only the well cell (not a neighborhood average).
+    // Neighboring cells that are oil-rich should not dilute the gas signal at the well.
     let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
     sim.set_initial_pressure(200.0);
     sim.set_initial_saturation(0.12);
@@ -36,14 +38,14 @@ fn producer_surface_rate_target_uses_same_layer_neighborhood_sampling() {
     sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
 
     let producer_id = sim.idx(1, 1, 0);
-    let gas_hit_id = producer_id;
     let left_id = sim.idx(0, 1, 0);
     let down_id = sim.idx(1, 0, 0);
     let diag_id = sim.idx(0, 0, 0);
 
     sim.sat_water = vec![0.12; 4];
-    sim.sat_gas[gas_hit_id] = 0.25;
-    sim.sat_oil[gas_hit_id] = 1.0 - sim.sat_water[gas_hit_id] - sim.sat_gas[gas_hit_id];
+    // Well cell has gas breakthrough; neighbors remain oil-rich.
+    sim.sat_gas[producer_id] = 0.25;
+    sim.sat_oil[producer_id] = 1.0 - sim.sat_water[producer_id] - sim.sat_gas[producer_id];
     for id in [left_id, down_id, diag_id] {
         sim.sat_gas[id] = 0.0;
         sim.sat_oil[id] = 1.0 - sim.sat_water[id];
@@ -52,35 +54,18 @@ fn producer_surface_rate_target_uses_same_layer_neighborhood_sampling() {
     let well = sim.wells.first().unwrap();
     let q_target = sim.target_rate_m3_day(well, 200.0).unwrap();
 
-    let neighbor_ids = [gas_hit_id, left_id, down_id, diag_id];
-    let mut lambda_o_sum = 0.0;
-    let mut lambda_total_sum = 0.0;
-    for id in neighbor_ids {
-        let sw = sim.sat_water[id];
-        let sg = sim.sat_gas[id];
-        let scal = sim.scal_3p.as_ref().unwrap();
-        let lam_w = scal.k_rw(sw) / sim.get_mu_w(200.0);
-        let lam_o = scal.k_ro_stone2(sw, sg) / sim.get_mu_o_cell(id, 200.0);
-        let lam_g = scal.k_rg(sg) / sim.get_mu_g(200.0);
-        lambda_o_sum += lam_o;
-        lambda_total_sum += lam_w + lam_o + lam_g;
-    }
-
-    let sampled_oil_fraction = lambda_o_sum / lambda_total_sum;
-    let expected = 100.0 * sim.get_b_o_cell(producer_id, 200.0) / sampled_oil_fraction;
-
+    // Expected: well-cell-only mobilities.
     let local_scal = sim.scal_3p.as_ref().unwrap();
     let local_lam_w = local_scal.k_rw(sim.sat_water[producer_id]) / sim.get_mu_w(200.0);
     let local_lam_o = local_scal.k_ro_stone2(sim.sat_water[producer_id], sim.sat_gas[producer_id])
         / sim.get_mu_o_cell(producer_id, 200.0);
     let local_lam_g = local_scal.k_rg(sim.sat_gas[producer_id]) / sim.get_mu_g(200.0);
     let local_oil_fraction = local_lam_o / (local_lam_w + local_lam_o + local_lam_g);
-    let local_only = 100.0 * sim.get_b_o_cell(producer_id, 200.0) / local_oil_fraction;
+    let expected = 100.0 * sim.get_b_o_cell(producer_id, 200.0) / local_oil_fraction;
 
-    assert!((q_target - expected).abs() < 1e-9);
     assert!(
-        q_target < local_only,
-        "same-layer neighborhood sampling should request less total reservoir withdrawal than local-only sampling when neighboring cells remain oil-rich"
+        (q_target - expected).abs() < 1e-9,
+        "q_target={q_target} expected={expected}"
     );
 }
 

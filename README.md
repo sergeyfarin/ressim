@@ -85,6 +85,10 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Three-phase mode remains experimental because validation depth still trails implementation breadth.
 - Material-balance diagnostics are partial by phase: water and gas cumulative closure are reported explicitly; oil remains the residual phase in current diagnostics.
 - The Brooks-Corey capillary model is numerically capped at `20 x P_entry`. That cap is a stability safeguard, not a physical plateau.
+- Pore volume is held constant within each timestep. Rock compressibility enters the pressure equation accumulation term but does not update cell geometry. This is the standard IMPES simplification and is consistent with the compressibility magnitudes used.
+- Water density and viscosity are pressure-independent. This is adequate for the reservoir pressure and temperature ranges targeted by this simulator.
+- Two-phase PVT mode uses the scalar undersaturated oil compressibility `c_o` for the accumulation term. In three-phase mode, an effective oil compressibility is computed from the bubble-point curve and blended with the undersaturated value over a 5-bar margin near the bubble point, keeping the accumulation term continuous across phase-state transitions.
+- Numerical derivatives of PVT properties (effective gas compressibility, saturated Bo/Bg slopes used in three-phase accumulation) use a fixed 1-bar finite-difference step. Accuracy degrades below roughly 5 bar, which the pressure floor prevents from being reached in practice.
 
 ## Why The Roadmap Is Ordered This Way
 

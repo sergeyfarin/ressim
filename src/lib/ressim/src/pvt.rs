@@ -178,13 +178,14 @@ impl PvtTable {
             }
         }
 
+        // p is beyond the last table point: exponential extrapolation, consistent
+        // with the single-row case and with interpolate_rows above bubble point.
+        // Linear extrapolation can produce non-physical (negative) Bo values.
         let last = &rows[rows.len() - 1];
-        let prev = &rows[rows.len() - 2];
-        let dp = (last.p_bar - prev.p_bar).max(1e-9);
-        let t = (p - last.p_bar) / dp;
+        let excess = p - last.p_bar;
         (
-            last.bo_m3m3 + t * (last.bo_m3m3 - prev.bo_m3m3),
-            last.mu_o_cp + t * (last.mu_o_cp - prev.mu_o_cp),
+            (last.bo_m3m3 * f64::exp(-c_o * excess)).max(1e-9),
+            last.mu_o_cp * f64::exp(c_o * excess),
         )
     }
 
@@ -426,26 +427,12 @@ impl ReservoirSimulator {
         }
     }
 
-    pub(crate) fn get_c_o(&self, p: f64) -> f64 {
-        if let Some(table) = &self.pvt_table {
-            let dp = 1.0;
-            let p_minus = if p > dp { p - dp } else { 0.0 };
-            let b1 = table.interpolate(p_minus).bo_m3m3;
-            let b2 = table.interpolate(p + dp).bo_m3m3;
-            let bo = table.interpolate(p).bo_m3m3;
-            if bo > 1e-12 {
-                let derived_c_o = (-1.0 / bo) * (b2 - b1) / (2.0 * dp);
-                if derived_c_o.is_finite() && derived_c_o > 0.0 {
-                    derived_c_o.max(self.pvt.c_o)
-                } else {
-                    self.pvt.c_o
-                }
-            } else {
-                self.pvt.c_o
-            }
-        } else {
-            self.pvt.c_o
-        }
+    pub(crate) fn get_c_o(&self, _p: f64) -> f64 {
+        // Called in two-phase mode only (three-phase uses get_c_o_effective instead).
+        // Reading dBo/dp from the saturated curve conflates oil compressibility with
+        // changing Rs along the bubble-point locus, overestimating undersaturated c_o.
+        // The scalar undersaturated c_o is the correct value here.
+        self.pvt.c_o
     }
 
     pub(crate) fn get_c_g(&self, p: f64) -> f64 {

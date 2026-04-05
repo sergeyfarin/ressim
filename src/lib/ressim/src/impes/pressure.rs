@@ -447,9 +447,7 @@ impl ReservoirSimulator {
                             ))
                         };
                         delta_free_gas_sc[id] -= q_m3_day * fg * dt_days
-                            / producer_state
-                                .map(|state| state.gas_fvf)
-                                .unwrap_or_else(|| self.get_b_g(p_new[id]).max(1e-9));
+                            / self.get_b_g(p_new[id]).max(1e-9);
 
                         if !w.injector && self.pvt_table.is_some() {
                             let producer_state = producer_state

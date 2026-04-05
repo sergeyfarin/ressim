@@ -23,7 +23,14 @@
       "Read(//home/reken/Repos/ressim/**)",
       "Bash(sort -k1,1)",
       "Bash(grep -h \"analyticalMethod:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)",
-      "Bash(grep -h \"chartLayoutKey:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)"
+      "Bash(grep -h \"chartLayoutKey:\" /home/reken/Repos/ressim/src/lib/catalog/scenarios/*.ts)",
+      "Bash(tee /tmp/ressim_test.txt)",
+      "Bash(grep -E \"test result|FAILED|ok$\")",
+      "Bash(grep -n \"fn phase_mobilities_3p_at_pressure\\\\|fn phase_mobilities_at_pressure\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
+      "Bash(grep -n \"fn get_mu_o\\\\|fn get_mu_w\\\\|fn get_mu_g\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
+      "Bash(grep -n \"fn set_initial_saturation\\\\|fn set_three_phase_mode\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
+      "Bash(grep -n \"fn calculate_well_productivity_index\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
+      "Bash(grep -n \"fn k_ro_stone2\\\\|fn k_rg\\\\|fn k_rw\\\\|struct Scal3p\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)"
     ]
   }
 }

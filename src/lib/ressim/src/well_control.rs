@@ -261,39 +261,27 @@ impl ReservoirSimulator {
         well: &Well,
         pressures: &[f64],
     ) -> (f64, f64, f64) {
-        let i_min = well.i.saturating_sub(1);
-        let i_max = (well.i + 1).min(self.nx.saturating_sub(1));
-        let j_min = well.j.saturating_sub(1);
-        let j_max = (well.j + 1).min(self.ny.saturating_sub(1));
-        let k = well.k;
+        // Use the well completion cell only. Averaging over a neighbourhood
+        // dilutes the saturation signal, causing premature fractional-flow
+        // response before the flood front reaches the well cell.
+        let id = self.idx(well.i, well.j, well.k);
+        let pressure_bar = pressures.get(id).copied().unwrap_or(self.pressure[id]);
 
-        let mut lambda_w_sum = 0.0;
-        let mut lambda_o_sum = 0.0;
-        let mut lambda_g_sum = 0.0;
+        let (lambda_w, lambda_o, lambda_g) = if self.three_phase_mode {
+            let (w, o, g) = self.phase_mobilities_3p_at_pressure(id, pressure_bar);
+            eprintln!("DBG 3p id={id} sw={} sg={} lam=({w},{o},{g})", self.sat_water[id], self.sat_gas[id]);
+            (w.max(0.0), o.max(0.0), g.max(0.0))
+        } else {
+            let (w, o) = self.phase_mobilities_at_pressure(id, pressure_bar);
+            eprintln!("DBG 2p id={id} sw={} lam=({w},{o})", self.sat_water[id]);
+            (w.max(0.0), o.max(0.0), 0.0)
+        };
 
-        for j in j_min..=j_max {
-            for i in i_min..=i_max {
-                let id = self.idx(i, j, k);
-                let pressure_bar = pressures.get(id).copied().unwrap_or(self.pressure[id]);
-                if self.three_phase_mode {
-                    let (lam_w, lam_o, lam_g) =
-                        self.phase_mobilities_3p_at_pressure(id, pressure_bar);
-                    lambda_w_sum += lam_w.max(0.0);
-                    lambda_o_sum += lam_o.max(0.0);
-                    lambda_g_sum += lam_g.max(0.0);
-                } else {
-                    let (lam_w, lam_o) = self.phase_mobilities_at_pressure(id, pressure_bar);
-                    lambda_w_sum += lam_w.max(0.0);
-                    lambda_o_sum += lam_o.max(0.0);
-                }
-            }
-        }
-
-        let lambda_total = (lambda_w_sum + lambda_o_sum + lambda_g_sum).max(f64::EPSILON);
+        let lambda_total = (lambda_w + lambda_o + lambda_g).max(f64::EPSILON);
         (
-            (lambda_w_sum / lambda_total).clamp(0.0, 1.0),
-            (lambda_o_sum / lambda_total).clamp(0.0, 1.0),
-            (lambda_g_sum / lambda_total).clamp(0.0, 1.0),
+            (lambda_w / lambda_total).clamp(0.0, 1.0),
+            (lambda_o / lambda_total).clamp(0.0, 1.0),
+            (lambda_g / lambda_total).clamp(0.0, 1.0),
         )
     }
 
@@ -387,6 +375,7 @@ impl ReservoirSimulator {
 
     fn total_rate_for_well_bhp(&self, well: &Well, pressures: &[f64], bhp_bar: f64) -> f64 {
         let config = self.well_control_config(well);
+        eprintln!("DBG total_rate bhp={bhp_bar} surface_rate={:?}", config.target_surface_rate_m3_day);
         self.well_control_group_indices(well)
             .into_iter()
             .filter_map(|well_idx| {
