@@ -197,6 +197,7 @@
     - FIM assembly white-box tests were moved out of `src/lib/ressim/src/fim/assembly.rs` into `src/lib/ressim/src/fim/assembly_tests.rs`, and `src/lib/ressim/src/tests/README.md` now documents where crate-level versus module-internal tests belong
     - crate-root debug probes, `src/lib/ressim/src/tests/fim_spe1_bug.rs`, and the redundant manual `test.sh` helper were removed from the active surface
     - deep per-Newton FIM traces are now exposed through the canonical wasm diagnostic path, and the temporary native-only harness has been removed
+    - root patch artifacts and `src/lib/ressim/src/fim/scaling.rs.orig` were deleted, and `src/lib/ressim/src/fim/mod.rs` no longer uses a blanket `#![allow(dead_code)]`
   - Canonical sources after cleanup:
     - `TODO.md` keeps only actionable open FIM tasks and short status bullets.
     - `docs/FIM_CONVERGENCE_WORKLOG.md` keeps active investigation notes only.

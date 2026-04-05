@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 pub(crate) mod assembly;
 pub(crate) mod flash;
 pub(crate) mod linear;
