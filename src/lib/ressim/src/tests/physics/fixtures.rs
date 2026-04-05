@@ -1,7 +1,4 @@
 use crate::ReservoirSimulator;
-use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
-use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
-use crate::fim::state::FimState;
 use crate::pvt::{PvtRow, PvtTable};
 
 pub(super) const DEP_PSS_LENGTH_M: f64 = 420.0;
@@ -20,14 +17,6 @@ pub(super) const DEP_PSS_C_ROCK_BAR_INV: f64 = 1e-6;
 pub(super) const DEP_PSS_WELL_SKIN: f64 = 0.0;
 
 #[derive(Clone, Debug)]
-pub(super) struct LocalNewtonDiagnostics {
-    pub(super) residual_inf_norm: f64,
-    pub(super) material_balance_inf_norm: f64,
-    pub(super) oil_residual_abs_sc: f64,
-    pub(super) oil_residual_scale_sc: f64,
-}
-
-#[derive(Clone, Debug)]
 pub(super) struct DepletionSnapshot {
     pub(super) time_days: f64,
     pub(super) oil_rate_sc_day: f64,
@@ -43,10 +32,10 @@ pub(super) struct GravityBenchmarkMetrics {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct ComponentInventorySc {
-    pub(super) water_sc: f64,
-    pub(super) oil_sc: f64,
-    pub(super) gas_sc: f64,
+pub(crate) struct ComponentInventorySc {
+    pub(crate) water_sc: f64,
+    pub(crate) oil_sc: f64,
+    pub(crate) gas_sc: f64,
 }
 
 pub(super) fn make_dep_pss_like_sim(dt_days: f64, steps: usize) -> ReservoirSimulator {
@@ -139,44 +128,6 @@ pub(super) fn make_closed_depletion_single_cell_sim_with_storage(
         .unwrap();
     sim.wells[0].bhp = producer_bhp_bar;
     sim
-}
-
-pub(super) fn run_single_cell_local_newton(
-    dt_days: f64,
-    options: FimNewtonOptions,
-) -> LocalNewtonDiagnostics {
-    let mut sim = make_closed_depletion_single_cell_sim();
-    let previous_state = FimState::from_simulator(&sim);
-    let report = run_fim_timestep(
-        &mut sim,
-        &previous_state,
-        &previous_state,
-        dt_days,
-        &options,
-    );
-    assert!(
-        report.converged,
-        "single-cell local Newton diagnostic should converge"
-    );
-
-    let assembly = assemble_fim_system(
-        &sim,
-        &previous_state,
-        &report.accepted_state,
-        &FimAssemblyOptions {
-            dt_days,
-            include_wells: true,
-            assemble_residual_only: false,
-            topology: None,
-        },
-    );
-
-    LocalNewtonDiagnostics {
-        residual_inf_norm: report.final_residual_inf_norm,
-        material_balance_inf_norm: report.final_material_balance_inf_norm,
-        oil_residual_abs_sc: assembly.residual[1].abs(),
-        oil_residual_scale_sc: assembly.equation_scaling.oil_component[0],
-    }
 }
 
 pub(super) fn collect_depletion_snapshots(sim: &ReservoirSimulator) -> Vec<DepletionSnapshot> {
@@ -400,7 +351,7 @@ pub(super) fn total_gas_inventory_sc_all_cells(sim: &ReservoirSimulator) -> f64 
         .sum()
 }
 
-pub(super) fn total_component_inventory_sc_all_cells(
+pub(crate) fn total_component_inventory_sc_all_cells(
     sim: &ReservoirSimulator,
 ) -> ComponentInventorySc {
     let mut water_sc = 0.0;

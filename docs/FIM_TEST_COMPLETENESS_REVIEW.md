@@ -377,10 +377,10 @@ could remain hidden for a long time.
 **What was changed**: `src/lib/ressim/src/reporting.rs` now records
 `material_balance_error_oil_m3` on every `TimePointRates` entry for both IMPES and FIM paths,
 using the same cumulative source-minus-inventory pattern already used for water and gas.
-`src/lib/ressim/src/tests/physics/depletion_oil.rs` now contains the non-ignored acceptance test
-`physics_depletion_oil_fim_single_step_reports_direct_oil_mb`, which runs a real FIM step on the
-single-cell depletion fixture and verifies that the reported oil MB field matches the direct
-inventory-drop oracle at single-step resolution.
+That acceptance check now lives in `src/lib/ressim/src/fim/tests/depletion.rs` as
+`dep_pss_fim_single_step_reports_direct_oil_mb`, which runs a real FIM step on the single-cell
+depletion fixture and verifies that the reported oil MB field matches the direct inventory-drop
+oracle at single-step resolution.
 
 ### NEW-GAP-A (CLOSED 2026-04-04): No FIM test for BHP-limited well
 

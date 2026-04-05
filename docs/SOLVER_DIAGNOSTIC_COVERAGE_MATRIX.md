@@ -17,7 +17,7 @@ Use this document together with `docs/SOLVER_TEST_COVERAGE_PLAN.md` and
 
 | Ignored / diagnostic test | Purpose | Default fast sibling(s) | Status |
 |---|---|---|---|
-| `physics_depletion_oil_dep_pss_timestep_refinement_is_locally_stable` | Coarse-vs-fine oil depletion refinement stability | `physics_depletion_oil_single_cell_timestep_stable`, `physics_depletion_oil_closed_system_monotone`, `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers` | Covered |
+| `physics_depletion_oil_dep_pss_timestep_refinement_is_locally_stable` | Coarse-vs-fine oil depletion refinement stability | `dep_pss_fim_single_cell_depletion_is_timestep_stable`, `physics_depletion_oil_closed_system_monotone`, `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers` | Covered |
 | `physics_depletion_oil_dep_pss_late_time_matches_dietz_reference_smoke` | Late-time analytical alignment against Dietz | `physics_depletion_oil_closed_system_monotone`, `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers` | Diagnostic-only until the current analytical/model-alignment gap is resolved |
 | `physics_depletion_gas_single_cell_timestep_refinement_keeps_inventory_stable` | Coarse-vs-fine gas depletion refinement stability | `physics_depletion_gas_single_cell_timestep_stable`, `physics_depletion_gas_single_cell_closed_system_monotone`, `physics_depletion_gas_public_invariants_hold_on_both_solvers` | Covered |
 | `physics_depletion_liberation_timestep_refinement_keeps_transition_accounting_stable` | Coarse-vs-fine liberation transition stability | `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`, `physics_depletion_liberation_fim_stepping_liberates_gas`, `physics_depletion_liberation_component_balances_close_across_phase_transition`, `physics_depletion_liberation_undersaturated_rs_stays_constant` | Covered |
@@ -58,11 +58,30 @@ Use this document together with `docs/SOLVER_TEST_COVERAGE_PLAN.md` and
 
 | Ignored / diagnostic test | Purpose | Default fast sibling(s) | Status |
 |---|---|---|---|
-| `dep_pss_fim_timestep_refinement_is_locally_stable` | FIM-owned depletion refinement stability | `dep_pss_fim_closed_system_depletion_invariants_hold`, `dep_pss_fim_single_cell_depletion_is_timestep_stable` | Covered |
+| `dep_pss_fim_timestep_refinement_is_locally_stable` | FIM-owned depletion refinement stability | `dep_pss_fim_closed_system_depletion_invariants_hold`, `dep_pss_fim_single_cell_depletion_is_timestep_stable`, `dep_pss_fim_single_step_reports_direct_oil_mb` | Covered |
 | `dep_pss_fim_late_time_matches_dietz_reference_smoke` | FIM-owned late-time analytical alignment | `dep_pss_fim_closed_system_depletion_invariants_hold` | Diagnostic-only until the current analytical/model-alignment gap is resolved |
 | `dep_pss_fim_refinement_diagnostics_trace_rate_loss` | Explain where refinement drift comes from | `dep_pss_fim_timestep_refinement_is_locally_stable` and the default depletion fast gates above | Covered as debug trace only |
 | `dep_pss_fim_single_cell_refinement_diagnostics` | Separate local-cell from spatial-flux contribution | `dep_pss_fim_single_cell_depletion_is_timestep_stable`, `dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual` | Covered as debug trace only |
 | `dep_pss_fim_single_cell_tight_newton_diagnostics` | Compare loose vs tight Newton acceptance | `dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual` | Covered as debug trace only |
+
+## Shared/FIM Boundary Audit Result
+
+The final ownership audit found one real boundary mismatch and it has now been corrected:
+
+- `physics_depletion_oil_single_cell_abs_oil_balance`
+- `physics_depletion_oil_single_cell_timestep_stable`
+- `physics_depletion_oil_fim_single_step_reports_direct_oil_mb`
+
+These were FIM-specific depletion-oracle checks living in the shared depletion-oil family. Their
+ownership is now FIM-local under `src/lib/ressim/src/fim/tests/depletion.rs` via:
+
+- `dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual`
+- `dep_pss_fim_single_cell_depletion_is_timestep_stable`
+- `dep_pss_fim_single_step_reports_direct_oil_mb`
+
+No remaining shared test was found to depend directly on IMPES-private retry/substep helpers or on
+FIM-private well/Newton topology beyond the explicitly crate-visible helper plumbing kept in
+`tests/physics/fixtures.rs` for solver-local reuse.
 
 ## Remaining Intentional Diagnostic-Only Probes
 

@@ -240,7 +240,7 @@ Naming should make filtering cheap and predictable.
 
 Examples:
 
-- `physics_depletion_oil_single_cell_abs_oil_balance`
+- `dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual`
 - `physics_depletion_gas_closed_inventory_monotone`
 - `physics_waterflood_1d_mass_conservative`
 - `physics_gas_cap_3d_gravity_changes_vertical_profile`

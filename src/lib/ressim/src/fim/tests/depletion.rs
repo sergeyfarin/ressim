@@ -4,6 +4,7 @@ use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
 use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
 use crate::fim::state::FimState;
 use crate::fim::wells::build_well_topology;
+use crate::tests::physics::fixtures::total_component_inventory_sc_all_cells;
 
 const DEP_PSS_LENGTH_M: f64 = 420.0;
 const DEP_PSS_WIDTH_M: f64 = 420.0;
@@ -422,6 +423,62 @@ fn dep_pss_fim_single_cell_depletion_is_timestep_stable() {
         coarse_point.avg_reservoir_pressure,
         fine_point.avg_reservoir_pressure,
         avg_pressure_rel_diff,
+    );
+}
+
+#[test]
+fn dep_pss_fim_single_step_reports_direct_oil_mb() {
+    let mut sim = make_closed_depletion_single_cell_sim();
+    let initial_inventory = total_component_inventory_sc_all_cells(&sim);
+
+    sim.step(0.1);
+
+    assert!(
+        sim.last_solver_warning.is_empty(),
+        "single-step FIM oil MB case emitted solver warning: {}",
+        sim.last_solver_warning
+    );
+
+    let latest = sim
+        .rate_history
+        .last()
+        .expect("single-step FIM oil MB case should record history");
+    let final_inventory = total_component_inventory_sc_all_cells(&sim);
+    let dt_days = latest.time;
+    let actual_oil_inventory_drop_sc = initial_inventory.oil_sc - final_inventory.oil_sc;
+    let reported_oil_sc = latest.total_production_oil * dt_days;
+    let direct_oil_mb_error_sc = (reported_oil_sc - actual_oil_inventory_drop_sc).abs();
+
+    assert!(
+        latest.material_balance_error_oil_m3.is_finite(),
+        "single-step FIM oil MB field must stay finite: reported_field={:.6}, history_len={}, latest_time={:.6}, reported_oil_sc={:.6}, inventory_drop_sc={:.6}, direct_abs_diff={:.6}",
+        latest.material_balance_error_oil_m3,
+        sim.rate_history.len(),
+        latest.time,
+        reported_oil_sc,
+        actual_oil_inventory_drop_sc,
+        direct_oil_mb_error_sc
+    );
+    assert!(
+        reported_oil_sc.is_finite() && actual_oil_inventory_drop_sc.is_finite(),
+        "single-step FIM oil MB oracle inputs must stay finite: reported={:.6}, inventory_drop={:.6}, abs_diff={:.6}",
+        reported_oil_sc,
+        actual_oil_inventory_drop_sc,
+        direct_oil_mb_error_sc
+    );
+    assert!(
+        (latest.material_balance_error_oil_m3 - direct_oil_mb_error_sc).abs() <= 1e-9,
+        "reported oil MB field should equal the direct single-step oracle: field={:.12}, oracle={:.12}",
+        latest.material_balance_error_oil_m3,
+        direct_oil_mb_error_sc
+    );
+    assert!(
+        reported_oil_sc > 0.0,
+        "single-step FIM oil MB oracle should exercise nonzero reported oil production"
+    );
+    assert!(
+        actual_oil_inventory_drop_sc > 0.0,
+        "single-step FIM oil MB oracle should exercise nonzero oil inventory depletion"
     );
 }
 

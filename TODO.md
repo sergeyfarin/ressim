@@ -18,6 +18,13 @@
   - The remaining ignored probes are now explicitly classified in
     `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md` as either covered by fast siblings,
     diagnostic-only while known parity/model-alignment gaps remain open, or exploratory-only.
+  - The final ownership audit found one real shared/FIM boundary mismatch and it is now fixed:
+    FIM-specific depletion-oracle checks were moved out of
+    `src/lib/ressim/src/tests/physics/depletion_oil.rs` into
+    `src/lib/ressim/src/fim/tests/depletion.rs`.
+  - The IMPES ownership checklist is now explicit in
+    `docs/SOLVER_TEST_COVERAGE_PLAN.md` and `docs/SOLVER_TEST_OWNERSHIP_INVENTORY.md`, so shared
+    vs IMPES-local placement no longer depends on an undocumented convention.
   - Refactor proposal checked in at `docs/SOLVER_LAYOUT_REFACTOR_PLAN.md`.
   - Proposed end state: root keeps only shared domain and facade modules, `impes/` owns the
     pressure-plus-transport path, `fim/` owns the fully implicit path, and solver-owned tests move
@@ -156,8 +163,10 @@
        `physics_wells_sources_multi_layer_well_shares_bhp_and_splits_rate_by_mobility`.
       Oil MB diagnostic coverage is now first-class in `TimePointRates` via
       `material_balance_error_oil_m3`, with direct single-step FIM oracle coverage in
-      `src/lib/ressim/src/tests/physics/depletion_oil.rs` via
-      `physics_depletion_oil_fim_single_step_reports_direct_oil_mb`.
+      `src/lib/ressim/src/fim/tests/depletion.rs` via
+      `dep_pss_fim_single_step_reports_direct_oil_mb`.
+      The now-unused shared local-Newton fixture helpers were removed from
+      `src/lib/ressim/src/tests/physics/fixtures.rs` after the ownership move was validated.
       Dissolved-gas assembly-flux coverage is now in
        `src/lib/ressim/src/fim/assembly_tests.rs` via
        `gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign`.

@@ -119,37 +119,48 @@ Status:
 
 - in place in `impes/tests/timestep.rs` and `impes/tests/transport.rs`
 
-### Missing IMPES-Specific Obligation
+### IMPES Ownership Checklist
 
-Current gap:
+Use this checklist when deciding whether an IMPES-related test belongs under `src/tests/` or under
+`src/impes/tests/`.
 
-- there is still no explicit checklist showing which shared public contracts are intentionally not
-  duplicated in IMPES-owned tests because they already live above the solver boundary
+Keep a test in the shared bucket when it checks any of the following through public behavior:
+
+- public step completion semantics
+- public report fields, sign conventions, and limit fractions
+- stable two-solver parity for bounded accounting, monotonicity, or final-time completion
+- scenario-scale physics outcomes that should survive replacing the timestep implementation
+
+Move or keep a test in the IMPES-owned bucket when it needs any of the following:
+
+- explicit retry or substep counts
+- direct dependence on the adaptive timestep loop
+- direct dependence on pressure-state recovery or pressure-physicality guards
+- direct dependence on `update_saturations_and_pressure()` behavior or IMPES-specific near-well
+   reporting mechanics
+
+Current audited IMPES-owned obligations:
+
+- `transport.rs`: explicit transport/reporting sanity that depends on the IMPES update path
+- `timestep.rs`: retry/substep and pressure-state guard behavior
 
 Exit criterion:
 
-- each IMPES-owned test should map to one private implementation obligation not already covered by
-  shared runtime or shared physics tests
+- each IMPES-owned test maps to one private IMPES implementation obligation not already covered by
+   shared runtime or shared physics tests
 
 ## Remaining High-Priority Gaps
 
-1. Shared liberation-through-bubble-point public stepping parity on both solvers.
-   Why: depletion oil and gas now have shared public-contract parity, but liberation still stops at
-   undersaturated flash constancy in the shared suite while the stepping path is FIM-only.
-2. Explicit coverage matrix for ignored diagnostics.
-   Why: some FIM ignored probes already have default fast siblings, but the mapping is not yet
-   written down in one place.
-3. Shared geometry/anisotropy parity where both solvers should agree on directional outcomes or
-   boundedness without matching exact rates.
-4. Periodic grouped validation commands for each bucket so ownership regressions are caught as sets,
-   not only as single tests.
+1. Keep the shared/FIM/IMPES ownership audit current as new tests are added.
+2. Keep the scripted grouped validation workflow current as new fast gates are added.
+3. Revisit diagnostic-only probes only when their known parity or analytical/model-alignment gaps
+   become active work.
 
 ## Execution Order
 
-1. Close the shared liberation public-contract gap.
-2. Record the default-gate to ignored-diagnostic mapping for FIM and IMPES obligations.
-3. Add one shared geometry/anisotropy parity slice.
-4. Add grouped validation commands to `TODO.md` and the ownership inventory.
+1. Keep the ownership checklist and diagnostic matrix current.
+2. Keep the scripted grouped validation workflow current.
+3. Revisit diagnostic-only probes only when their known gaps become active work.
 
 The default-gate to ignored-diagnostic mapping and grouped validation commands now live in
 `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.

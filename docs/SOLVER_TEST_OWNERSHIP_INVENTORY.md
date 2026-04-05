@@ -76,6 +76,14 @@ Current IMPES-owned files:
 - `timestep.rs`: adaptive-substep and pressure-state-sanity checks that exercise the IMPES retry
   loop and pressure-physicality guard directly
 
+IMPES ownership checklist:
+
+- keep a test shared if it validates a public runtime or physics contract that should remain true
+  even if the IMPES timestep implementation changes
+- keep a test IMPES-owned if it needs retry/substep behavior, pressure-state guard behavior,
+  `update_saturations_and_pressure()`, or other explicit-transport/private IMPES details to stay
+  meaningful
+
 ## Phase 2 Moves Completed
 
 - moved FIM-only depletion coverage from `src/tests/depletion.rs` to `src/fim/tests/depletion.rs`
@@ -84,6 +92,8 @@ Current IMPES-owned files:
 - extracted IMPES-local transport/reporting tests into `src/impes/tests/transport.rs`
 - moved IMPES-only adaptive-substep and pressure-physicality coverage out of
   `src/tests/runtime_api.rs` into `src/impes/tests/timestep.rs`
+- moved the remaining FIM-specific depletion-oracle checks out of
+  `src/tests/physics/depletion_oil.rs` into `src/fim/tests/depletion.rs`
 - removed the dead orphan `src/lib/ressim/src/tests/spe1_short.rs`
 - rewrote the shared flash helper path in `src/tests/physics/fixtures.rs` so the pressure-only
   liberation checks use shared gas-split logic instead of the IMPES transport updater
@@ -140,6 +150,8 @@ These physics-level parity checks intentionally stay on public contracts only:
 
 The IMPES pressure/timestep audit is now complete for the obvious ownership mismatches.
 
+The final shared/FIM boundary audit is now also complete.
+
 Audit result:
 
 - `adaptive_timestep_produces_multiple_substeps_for_strong_flow` is IMPES-local because it exists
@@ -150,6 +162,10 @@ Audit result:
   reporting contract of the default solver path rather than a private IMPES retry invariant
 - `benchmark_like_substepping_completes_requested_dt` remains shared because it checks public step
   completion semantics, not the internal IMPES retry implementation details
+- the former shared depletion-oil single-cell Newton/timestep/direct-MB checks were FIM-specific
+  and have been moved into `src/fim/tests/depletion.rs`
+- no remaining shared tests were found to depend directly on IMPES-private retry/substep mechanics
+  or on FIM-private well/Newton topology beyond the intentionally crate-visible shared fixtures
 
 Next sub-phase priorities:
 
@@ -171,6 +187,9 @@ The moved and rewritten tests were validated with focused Rust runs:
 - `spe1_fim_first_steps_converge_without_stall`
 - `spe1_fim_gas_injection_creates_free_gas`
 - `spe1_fim_producer_gas_breakthrough_smoke`
+- `dep_pss_fim_single_cell_local_newton_leaves_small_absolute_oil_residual`
+- `dep_pss_fim_single_cell_depletion_is_timestep_stable`
+- `dep_pss_fim_single_step_reports_direct_oil_mb`
 - `fim::tests::wells::*`
 - `impes::tests::transport::*`
 - `impes::tests::timestep::*`
