@@ -158,6 +158,56 @@ Interpretation:
 - This is not yet the fundamental fix. The remaining evidence still points to a harder nonlinear/front-local issue rather than a controller-only problem, because even with better site-level memory the solver still revisits the same producer-corner cell shelf.
 - The next slice should keep the new site-level memory but move up one level of leverage: use the same day-2 checkpoint to target the repeated near-converged producer-corner Newton state itself rather than only further tightening outer-step regrowth.
 
+## Validation Update - 2026-04-05 rejected Newton-side day-2 experiments
+
+- Two direct Newton-side experiments were tested against the saved day-2 checkpoint and then reverted after validation:
+  - broad residual-shortcut tightening that reserved residual-only acceptance for the initial iterate
+  - a restored bounded-candidate line-search / guard-equivalent acceptance path
+- Observed outcome of the first experiment:
+  - targeted day-2 replay regressed catastrophically from the tracked shelf to `1540` accepted substeps with `4/216/0` retries
+  - dominant retries moved off the producer-corner water/oil shelf and into a later perforation-dominated path, so the change was clearly not the right local mechanism
+- Observed outcome of the second experiment:
+  - the tracked SPE1 smoke failed its current budget because day 1 dropped to `min_dt=3.93e-3 d` (< `5e-3 d`)
+  - the day-2 checkpoint replay slowed enough that it was terminated before completion, so it was not worth keeping for further tuning
+- Validation after revert:
+  - restored wasm package rebuilt successfully via `bash ./scripts/build-wasm.sh`
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture` passed again on the reverted baseline
+
+Interpretation:
+
+- The remaining day-2 shelf is not improved by broad residual-shortcut tightening; that path destroys too much useful near-converged Newton acceptance.
+- Reintroducing the older bounded-candidate / guard-equivalent machinery wholesale is also too blunt on the current codebase; it regresses the tracked SPE1 budget before proving any day-2 gain.
+- The next Newton slice should stay narrower than both rejected experiments, most likely focusing on the tiny-damping / effectively zero-length candidate path at the producer-corner hotspot rather than rewriting general Newton acceptance again.
+
+## Validation Update - 2026-04-05 checkpoint-scoped effective-move diagnostics at cell 143
+
+- Change made in `src/lib/ressim/src/fim/newton.rs`:
+  - added a checkpoint-oriented Newton trace hook that fires only when the dominant residual hotspot is cell `143` and the damped local move falls below the effective printed resolution of the trace (`<5e-3 bar`, `<5e-5 sat`)
+  - the new line reports:
+    - hotspot family/row at cell `143`
+    - local damped `dP`, `dSw`, `dSo`, `dSg`
+    - attached perforation context for that cell using the existing perforation diagnostics
+  - focused unit coverage added for the effective-move threshold and local cell delta helpers
+- Validation:
+  - focused Rust tests passed:
+    - `move_is_below_effective_trace_threshold_detects_rounds_to_zero`
+    - `local_cell_move_deltas_tracks_pressure_and_phase_changes`
+    - `entry_guard_does_not_accept_unchanged_previous_state`
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - saved day-2 checkpoint replay with full step diagnostics still preserved the tracked behavior:
+    - summary rerun stayed at `substeps=211`, `retries=4/24/0`
+  - the new trace lines now show repeated producer-corner tiny-move states such as:
+    - `HOTSPOT effective-move floor cell143 row=430 damp=0.0000 local_dP=0.00000 ... attached_perfs=[perf1->well1 inj=false ...]`
+    - `HOTSPOT effective-move floor cell143 row=429 damp=1.0000 local_dP=0.00000 ... attached_perfs=[perf1->well1 inj=false ...]`
+    - occasional nonzero but still sub-threshold pressure moves like `local_dP≈6.8e-4` to `1.5e-3 bar` with all phase moves still below the trace-effective saturation threshold
+
+Interpretation:
+
+- This confirms the remaining day-2 shelf is repeatedly revisiting an effectively zero-length local move at the producer-corner hotspot, not a broad injector-producer coupled ambiguity.
+- For the current cell-`143` shelf, producer-side perforation context is sufficient: every emitted hotspot-effective-move line attached only `perf1->well1 inj=false`, with no injector perforation attached to that cell.
+- Injector diagnostics remain useful at the outer-step level for global pressure-support questions, but they are not the missing local diagnostic for the current producer-corner Newton shelf.
+- The next Newton-state fix should therefore target the producer-corner tiny-move path directly, likely by treating these sub-threshold local updates as a distinct stagnation mode rather than by broad acceptance-policy rewrites.
+
 ## Scope
 
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.

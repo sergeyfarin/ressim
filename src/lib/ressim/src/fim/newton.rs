@@ -32,6 +32,9 @@ const STRONG_CPR_AVERAGE_REDUCTION_RATIO: f64 = 0.25;
 const STRONG_CPR_LAST_REDUCTION_RATIO: f64 = 0.5;
 const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
 const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
+const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
+const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
+const CHECKPOINT_TRACE_TARGET_CELL_INDEX: usize = 143;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -429,6 +432,113 @@ fn cell_phase_saturations(cell: &crate::fim::state::FimCellState) -> (f64, f64, 
             (sw, so, 0.0)
         }
     }
+}
+
+fn local_cell_move_deltas(
+    previous_state: &FimState,
+    candidate_state: &FimState,
+    cell_idx: usize,
+) -> Option<(f64, f64, f64, f64)> {
+    let previous_cell = previous_state.cells.get(cell_idx)?;
+    let candidate_cell = candidate_state.cells.get(cell_idx)?;
+    let previous_phase_saturations = cell_phase_saturations(previous_cell);
+    let candidate_phase_saturations = cell_phase_saturations(candidate_cell);
+
+    Some((
+        (candidate_cell.pressure_bar - previous_cell.pressure_bar).abs(),
+        (candidate_phase_saturations.0 - previous_phase_saturations.0).abs(),
+        (candidate_phase_saturations.1 - previous_phase_saturations.1).abs(),
+        (candidate_phase_saturations.2 - previous_phase_saturations.2).abs(),
+    ))
+}
+
+fn move_is_below_effective_trace_threshold(
+    pressure_delta_bar: f64,
+    water_delta: f64,
+    oil_delta: f64,
+    gas_delta: f64,
+) -> bool {
+    pressure_delta_bar < EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR
+        && water_delta < EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD
+        && oil_delta < EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD
+        && gas_delta < EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD
+}
+
+fn cell_attached_perforation_context_trace(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    cell_idx: usize,
+) -> String {
+    let attached = topology
+        .perforations
+        .iter()
+        .enumerate()
+        .filter(|(_, perforation)| perforation.cell_index == cell_idx)
+        .filter_map(|(perf_idx, _)| {
+            let detail = perforation_residual_diagnostics(sim, state, topology, perf_idx)?;
+            Some(format!(
+                "perf{}->well{} inj={} q={:.3e} conn={:.3e} draw={:.3e} bhp={:.3}",
+                detail.perf_idx,
+                detail.physical_well_idx,
+                detail.injector,
+                detail.q_unknown_m3_day,
+                detail.q_connection_m3_day,
+                detail.drawdown_bar,
+                detail.bhp_bar,
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    if attached.is_empty() {
+        "attached_perfs=none".to_string()
+    } else {
+        format!("attached_perfs=[{}]", attached.join(" | "))
+    }
+}
+
+fn effective_move_threshold_trace(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    candidate: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    diagnostics: &ResidualFamilyDiagnostics,
+    damping: f64,
+) -> Option<String> {
+    match diagnostics.global.family {
+        ResidualRowFamily::Water
+        | ResidualRowFamily::OilComponent
+        | ResidualRowFamily::GasComponent => {}
+        _ => return None,
+    }
+
+    if diagnostics.global.item_index != CHECKPOINT_TRACE_TARGET_CELL_INDEX {
+        return None;
+    }
+
+    let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =
+        local_cell_move_deltas(state, candidate, diagnostics.global.item_index)?;
+
+    if !move_is_below_effective_trace_threshold(
+        pressure_delta_bar,
+        water_delta,
+        oil_delta,
+        gas_delta,
+    ) {
+        return None;
+    }
+
+    Some(format!(
+        "cell{} row={} damp={:.4} local_dP={:.5} local_dSw={:.6} local_dSo={:.6} local_dSg={:.6} {}",
+        diagnostics.global.item_index,
+        diagnostics.global.row,
+        damping,
+        pressure_delta_bar,
+        water_delta,
+        oil_delta,
+        gas_delta,
+        cell_attached_perforation_context_trace(sim, candidate, topology, diagnostics.global.item_index),
+    ))
 }
 
 fn state_update_change_bounds(previous_state: &FimState, candidate_state: &FimState) -> (f64, f64) {
@@ -1466,6 +1576,14 @@ pub(crate) fn run_fim_timestep(
             state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
         let (candidate_pressure_change, candidate_saturation_change) =
             state_update_change_bounds(&state, &candidate);
+        let effective_move_trace = effective_move_threshold_trace(
+            sim,
+            &state,
+            &candidate,
+            &topology,
+            &residual_diagnostics,
+            damping,
+        );
         let candidate_is_valid = damping.is_finite()
             && damping > 0.0
             && iterate_has_material_change(&state, &candidate)
@@ -1506,6 +1624,15 @@ pub(crate) fn run_fim_timestep(
                 .map(|detail| format!(" detail=[{}]", detail))
                 .unwrap_or_default()
         );
+        if let Some(effective_move_trace) = effective_move_trace {
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: HOTSPOT effective-move floor {}",
+                iteration,
+                effective_move_trace,
+            );
+        }
 
         if !candidate_is_valid {
             let failure_diagnostics =
@@ -2072,6 +2199,45 @@ mod tests {
         let damping = appleyard_damping(&sim, &state, &update, &FimNewtonOptions::default());
 
         assert!((damping - (1.0 / 3.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn move_is_below_effective_trace_threshold_detects_rounds_to_zero() {
+        assert!(move_is_below_effective_trace_threshold(0.0049, 0.000049, 0.000049, 0.0));
+        assert!(!move_is_below_effective_trace_threshold(0.0051, 0.000049, 0.000049, 0.0));
+        assert!(!move_is_below_effective_trace_threshold(0.0049, 0.000051, 0.000049, 0.0));
+    }
+
+    #[test]
+    fn local_cell_move_deltas_tracks_pressure_and_phase_changes() {
+        let previous_state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.0,
+                sw: 0.2,
+                hydrocarbon_var: 0.1,
+                regime: crate::fim::state::HydrocarbonState::Saturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        let candidate_state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.004,
+                sw: 0.20002,
+                hydrocarbon_var: 0.10001,
+                regime: crate::fim::state::HydrocarbonState::Saturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+
+        let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =
+            local_cell_move_deltas(&previous_state, &candidate_state, 0).expect("cell move");
+
+        assert!((pressure_delta_bar - 0.004).abs() < 1e-12);
+        assert!((water_delta - 0.00002).abs() < 1e-12);
+        assert!((oil_delta - 0.00003).abs() < 1e-12);
+        assert!((gas_delta - 0.00001).abs() < 1e-12);
     }
 
     #[test]

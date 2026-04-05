@@ -227,6 +227,12 @@
   - Day-2 water-shelf follow-up completed: hotspot memory now treats alternating cell-family rows on the same cell as one repeated site and suppresses `max-growth` regrowth on repeated sites.
   - Measured outcome of that slice: targeted day-2 replay improved from `218` to `211` accepted substeps and from `27` to `24` nonlinear retries, but the canonical day-1 hard case moved slightly from `133` to `136` accepted substeps. Keep the change as a measured partial improvement, not the end state.
   - Next slice: use the saved day-2 checkpoint and the new site-level stats to target the repeated near-converged producer-corner Newton state directly instead of further tightening outer-step heuristics.
+  - Rejected `2026-04-05` Newton experiments now recorded so the next slice does not drift backward:
+    - broad residual-shortcut tightening regressed the saved day-2 replay to `1540` accepted substeps with `4/216/0` retries and was reverted
+    - restored bounded-candidate / guard-equivalent Newton logic broke the tracked SPE1 budget (`min_dt=3.93e-3 d`) before proving any day-2 gain and was reverted
+  - Checkpoint-scoped Newton diagnostics are now in place for the producer-corner shelf: when cell `143` becomes the dominant hotspot and the damped local move falls below trace-effective resolution, the step trace now emits local `dP/dSw/dSo/dSg` plus attached perforation context.
+  - Current measured conclusion from the saved day-2 checkpoint: the effective-zero-move shelf at cell `143` is producer-local (`perf1->well1 inj=false`) rather than injector-coupled, and the day-2 replay stays at the tracked partial-improvement baseline (`211` accepted substeps, `4/24/0` retries).
+  - Updated next slice after those rejections: keep the current solver baseline and target the producer-corner tiny-damping / effectively zero-length candidate path directly instead of broad Newton-acceptance rewrites.
   - Canonical current-state summary: `docs/FIM_STATUS.md`.
   - Active convergence investigation: `docs/FIM_CONVERGENCE_WORKLOG.md`.
   - Architecture target and end-state checklist: `docs/FIM_MIGRATION_PLAN.md`.
