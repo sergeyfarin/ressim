@@ -27,6 +27,15 @@
     import { computeCombinedSweep, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from "../analytical/sweepEfficiency";
     import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
     import { resolveSharedXAxisRange } from "./xAxisRangePolicy";
+    import { ANALYTICAL_DASH } from "./curveStylePolicy";
+    import {
+        SCALE_CUMULATIVE_VOLUMES,
+        SCALE_CUMULATIVE,
+        SCALE_PRESSURE,
+        SCALE_GOR,
+        SCALE_FRACTION,
+        SCALE_SWEEP,
+    } from "./scalePresetRegistry";
 
     let {
         rateHistory = [],
@@ -592,7 +601,7 @@
             toggleLabel: "Reference Solution Oil Rate",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y",
         },
         {
@@ -609,7 +618,7 @@
             toggleLabel: "Reference Solution Water Rate",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y",
         },
         {
@@ -639,7 +648,7 @@
             toggleLabel: "Reference Solution Cum Oil",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y",
         },
         {
@@ -648,7 +657,7 @@
             toggleLabel: "Cum Injection",
             color: "#06b6d4",
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y",
         },
         { label: "Cum Water", curveKey: "cum-water", toggleLabel: "Cum Water", color: "#1e3a8a", borderWidth: 2, yAxisID: "y" },
@@ -675,7 +684,7 @@
             toggleLabel: "Reference Solution RF",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y",
         },
     ]);
@@ -695,7 +704,7 @@
             toggleLabel: "Reference Solution Avg Pressure",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y",
         },
         {
@@ -722,7 +731,7 @@
             toggleLabel: "Reference Solution WOR",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y1",
             defaultVisible: false,
         },
@@ -732,7 +741,7 @@
             toggleLabel: "Avg Water Sat",
             color: "#1d4ed8",
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y1",
             defaultVisible: false,
         },
@@ -751,7 +760,7 @@
             toggleLabel: "Reference Solution Water Cut",
             color: neutralColor,
             borderWidth: 2,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y1",
             defaultVisible: false,
         },
@@ -761,7 +770,7 @@
             toggleLabel: "MB Error",
             color: "#ef4444",
             borderWidth: 2.0,
-            borderDash: [7, 4],
+            borderDash: ANALYTICAL_DASH,
             yAxisID: "y2",
             defaultVisible: false,
         },
@@ -812,17 +821,6 @@
             _fraction: true,
         },
     };
-    const cumulativeVolumesScales = {
-        y: {
-            type: "linear",
-            display: true,
-            position: "left",
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: "Cumulative (m³)" },
-            ticks: { count: 6 },
-        },
-    };
 
     let ratesScales = $derived({
         y: {
@@ -852,52 +850,6 @@
             grid: { drawOnChartArea: false },
             ticks: { count: 6 },
             _fraction: true,
-        },
-    };
-    const cumulativeScales = {
-        y: {
-            type: "linear",
-            display: true,
-            position: "left",
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: "Cumulative (m³)" },
-            ticks: { count: 6 },
-        },
-        y1: {
-            type: "linear",
-            display: true,
-            position: "right",
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: "Recovery Factor" },
-            grid: { drawOnChartArea: false },
-            ticks: { count: 6 },
-            _fraction: true,
-        },
-    };
-    const pressureScales = {
-        y: {
-            type: "linear",
-            display: true,
-            position: "left",
-            alignToPixels: true,
-            title: { display: true, text: "Pressure (bar)" },
-            ticks: { count: 6 },
-            _auto: true,
-        },
-    };
-    const gorScales = {
-        y: {
-            type: "linear",
-            display: true,
-            position: "left",
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: "GOR (Sm³/Sm³)" },
-            ticks: { count: 6 },
-            _auto: true,
         },
     };
     const diagnosticsScales = {
@@ -941,19 +893,6 @@
             ticks: { count: 6 },
         },
     };
-    const fractionScales = {
-        y: {
-            type: "linear",
-            display: true,
-            position: "left",
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: "Fraction" },
-            ticks: { count: 6 },
-            _fraction: true,
-        },
-    };
     let allXAxisOptions = $derived<ChartXAxisOption[]>([
         { value: "time", label: "Time" },
         {
@@ -984,16 +923,16 @@
     ]);
 
     function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
-        if (scalePreset === "sweep") return sweepScaleConfig;
+        if (scalePreset === "sweep") return SCALE_SWEEP;
         if (scalePreset === "sweep_rf") return sweepRFScaleConfig;
         if (scalePreset === "breakthrough") return breakthroughScales;
-        if (scalePreset === "pressure") return pressureScales;
-        if (scalePreset === "gor") return gorScales;
-        if (scalePreset === "cumulative") return cumulativeScales;
-        if (scalePreset === "cumulative_volumes") return cumulativeVolumesScales;
+        if (scalePreset === "pressure") return SCALE_PRESSURE;
+        if (scalePreset === "gor") return SCALE_GOR;
+        if (scalePreset === "cumulative") return SCALE_CUMULATIVE;
+        if (scalePreset === "cumulative_volumes") return SCALE_CUMULATIVE_VOLUMES;
         if (scalePreset === "recovery") return recoveryScales;
         if (scalePreset === "diagnostics") return diagnosticsScales;
-        if (scalePreset === "fraction") return fractionScales;
+        if (scalePreset === "fraction") return SCALE_FRACTION;
         return ratesScales;
     }
 
@@ -1143,19 +1082,6 @@
     //   Dashed [4,4]  = supplemental analytical reference (e.g., perfect-sweep upper bound)
     //   Color         = single-run: fixed per metric; multi-variant: CASE_COLORS[index]
     //
-    const sweepScaleConfig = {
-        y: {
-            type: "linear",
-            display: true,
-            position: "left",
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: "Sweep Efficiency" },
-            ticks: { count: 6 },
-        },
-    };
-
     const sweepRFScaleConfig = {
         y: {
             type: "linear",
@@ -1234,7 +1160,7 @@
                 toggleLabel: "E_A (Analytical)",
                 color: "#2563eb",
                 borderWidth: 2.0,
-                borderDash: [7, 4],
+                borderDash: ANALYTICAL_DASH,
                 yAxisID: "y",
             } as CurveConfig,
         ] : [];
@@ -1258,7 +1184,7 @@
                 toggleLabel: "E_V (Analytical)",
                 color: "#16a34a",
                 borderWidth: 2.0,
-                borderDash: [7, 4],
+                borderDash: ANALYTICAL_DASH,
                 yAxisID: "y",
             } as CurveConfig,
         ] : [];
@@ -1285,7 +1211,7 @@
                 toggleLabel: "E_vol (Analytical)",
                 color: "#dc2626",
                 borderWidth: 2.0,
-                borderDash: [7, 4],
+                borderDash: ANALYTICAL_DASH,
                 yAxisID: "y",
             } as CurveConfig,
         ];
@@ -1311,7 +1237,7 @@
                 toggleLabel: "E_vol (Analytical)",
                 color: "#dc2626",
                 borderWidth: 2.0,
-                borderDash: [7, 4],
+                borderDash: ANALYTICAL_DASH,
                 yAxisID: "y",
             } as CurveConfig,
         ] : [];
@@ -1341,7 +1267,7 @@
                 toggleLabel: "RF Analytical (Sweep)",
                 color: "#15803d",
                 borderWidth: 2.0,
-                borderDash: [7, 4],
+                borderDash: ANALYTICAL_DASH,
                 yAxisID: "y",
             } as CurveConfig,
             ...(sweepGeometry === 'both' ? [] : [{
@@ -1350,7 +1276,7 @@
                 toggleLabel: "RF 1D BL (upper bound)",
                 color: "#4ade80",
                 borderWidth: 2.0,
-                borderDash: [7, 4],
+                borderDash: ANALYTICAL_DASH,
                 yAxisID: "y",
                 defaultVisible: false,
             } as CurveConfig]),

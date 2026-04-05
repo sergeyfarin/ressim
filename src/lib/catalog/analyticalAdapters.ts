@@ -21,6 +21,13 @@ import {
 import type { RateHistoryPoint } from '../simulator-types';
 import type { ScenarioAnalyticalDef, ScenarioAnalyticalOutput } from './scenarios';
 
+function computePoreVolume(params: Record<string, unknown>): number {
+    return (params.nx as number) * (params.cellDx as number)
+        * (params.ny as number) * (params.cellDy as number)
+        * (params.nz as number) * (params.cellDz as number)
+        * (params.reservoirPorosity as number);
+}
+
 // ─── Waterflood Buckley-Leverett ─────────────────────────────────────────────
 
 type BLInputs = {
@@ -57,10 +64,7 @@ export const waterfloodBLDef: ScenarioAnalyticalDef = {
         initialSaturation: params.initialSaturation as number,
         timeHistory: rh.map(p => p.time),
         injectionRates: rh.map(p => Number(p.total_injection ?? 0)),
-        poreVolume: (params.nx as number) * (params.cellDx as number)
-            * (params.ny as number) * (params.cellDy as number)
-            * (params.nz as number) * (params.cellDz as number)
-            * (params.reservoirPorosity as number),
+        poreVolume: computePoreVolume(params),
     }),
 };
 
@@ -150,9 +154,6 @@ export const gasOilBLDef: ScenarioAnalyticalDef = {
         initialGasSaturation: params.initialGasSaturation as number,
         timeHistory: rh.map(p => p.time),
         injectionRates: rh.map(p => Number(p.total_injection ?? 0)),
-        poreVolume: (params.nx as number) * (params.cellDx as number)
-            * (params.ny as number) * (params.cellDy as number)
-            * (params.nz as number) * (params.cellDz as number)
-            * (params.reservoirPorosity as number),
+        poreVolume: computePoreVolume(params),
     }),
 };

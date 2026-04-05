@@ -27,6 +27,14 @@
         type AnalyticalPreviewVariant,
         type ReferenceComparisonPreviewCase,
     } from './referenceComparisonModel';
+    import {
+        SCALE_CUMULATIVE_VOLUMES,
+        SCALE_CUMULATIVE,
+        SCALE_PRESSURE,
+        SCALE_GOR,
+        SCALE_FRACTION,
+        SCALE_SWEEP,
+    } from './scalePresetRegistry';
 
     let {
         results = [],
@@ -198,29 +206,6 @@
             ticks: { count: 6 },
         },
     };
-    const cumulativeScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: 'Cumulative (m³)' },
-            ticks: { count: 6 },
-        },
-        y1: {
-            type: 'linear',
-            display: true,
-            position: 'right',
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: 'Recovery Factor' },
-            grid: { drawOnChartArea: false },
-            ticks: { count: 6 },
-            _fraction: true,
-        },
-    };
     const recoveryScales = {
         y: {
             type: 'linear',
@@ -232,65 +217,6 @@
             ticks: { count: 6 },
             _fraction: true,
             _maxCap: 1,
-        },
-    };
-    const fractionScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: 'Fraction' },
-            ticks: { count: 6 },
-            _fraction: true,
-        },
-    };
-    const cumulativeVolumesScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: 'Cumulative (m³)' },
-            ticks: { count: 6 },
-        },
-    };
-    const sweepScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            max: 1,
-            alignToPixels: true,
-            title: { display: true, text: 'Sweep Efficiency' },
-            ticks: { count: 6 },
-        },
-    };
-    const pressureScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            alignToPixels: true,
-            title: { display: true, text: 'Pressure (bar)' },
-            ticks: { count: 6 },
-            _auto: true,
-        },
-    };
-    const gorScales = {
-        y: {
-            type: 'linear',
-            display: true,
-            position: 'left',
-            min: 0,
-            alignToPixels: true,
-            title: { display: true, text: 'GOR (Sm³/Sm³)' },
-            ticks: { count: 6 },
-            _auto: true,
         },
     };
     const diagnosticsScales = {
@@ -318,16 +244,16 @@
     };
 
     function getScalePresetConfig(scalePreset: RateChartScalePreset): Record<string, any> {
-        if (scalePreset === 'sweep') return sweepScales;
-        if (scalePreset === 'sweep_rf') return sweepScales;
+        if (scalePreset === 'sweep') return SCALE_SWEEP;
+        if (scalePreset === 'sweep_rf') return SCALE_SWEEP;
         if (scalePreset === 'breakthrough') return breakthroughScales;
-        if (scalePreset === 'pressure') return pressureScales;
-        if (scalePreset === 'gor') return gorScales;
+        if (scalePreset === 'pressure') return SCALE_PRESSURE;
+        if (scalePreset === 'gor') return SCALE_GOR;
         if (scalePreset === 'diagnostics') return diagnosticsScales;
-        if (scalePreset === 'fraction') return fractionScales;
+        if (scalePreset === 'fraction') return SCALE_FRACTION;
         if (scalePreset === 'recovery') return recoveryScales;
-        if (scalePreset === 'cumulative_volumes') return cumulativeVolumesScales;
-        if (scalePreset === 'cumulative') return cumulativeScales;
+        if (scalePreset === 'cumulative_volumes') return SCALE_CUMULATIVE_VOLUMES;
+        if (scalePreset === 'cumulative') return SCALE_CUMULATIVE;
         return rateScales;
     }
 

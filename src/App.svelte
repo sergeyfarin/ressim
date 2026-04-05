@@ -42,8 +42,6 @@
     // True only for sweep scenarios — reads from scenario capabilities.
     const showSweepPanel = $derived(scenario.activeScenarioObject?.capabilities.showSweepPanel ?? false);
 
-    type AppAnalyticalMeta = ScenarioAnalyticalOutput['meta'];
-    type AppAnalyticalPoint = ScenarioAnalyticalOutput['production'][number];
     type OutputSelectionProfile = {
         gridState: typeof runtime.gridStateRaw;
         nx: number;
@@ -76,7 +74,7 @@
         currentIndex: number;
         sourceLabel: string;
     };
-    const EMPTY_ANALYTICAL_OUTPUT: { production: AppAnalyticalPoint[]; meta: AppAnalyticalMeta } = {
+    const EMPTY_ANALYTICAL_OUTPUT: ScenarioAnalyticalOutput = {
         production: [],
         meta: {
             mode: "none",
