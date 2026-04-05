@@ -269,11 +269,9 @@ impl ReservoirSimulator {
 
         let (lambda_w, lambda_o, lambda_g) = if self.three_phase_mode {
             let (w, o, g) = self.phase_mobilities_3p_at_pressure(id, pressure_bar);
-            eprintln!("DBG 3p id={id} sw={} sg={} lam=({w},{o},{g})", self.sat_water[id], self.sat_gas[id]);
             (w.max(0.0), o.max(0.0), g.max(0.0))
         } else {
             let (w, o) = self.phase_mobilities_at_pressure(id, pressure_bar);
-            eprintln!("DBG 2p id={id} sw={} lam=({w},{o})", self.sat_water[id]);
             (w.max(0.0), o.max(0.0), 0.0)
         };
 
@@ -375,7 +373,6 @@ impl ReservoirSimulator {
 
     fn total_rate_for_well_bhp(&self, well: &Well, pressures: &[f64], bhp_bar: f64) -> f64 {
         let config = self.well_control_config(well);
-        eprintln!("DBG total_rate bhp={bhp_bar} surface_rate={:?}", config.target_surface_rate_m3_day);
         self.well_control_group_indices(well)
             .into_iter()
             .filter_map(|well_idx| {
