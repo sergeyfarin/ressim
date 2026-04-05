@@ -15,8 +15,19 @@ import {
     ANALYTICAL_BORDER,
     simBorderWidth,
 } from './curveStylePolicy';
+import {
+    type DerivedRunSeries,
+    type XYPoint,
+    toXYSeries,
+    buildXAxisValues,
+    getSweepZeroXAxisValue,
+    mapPviSeriesToXAxis,
+    interpolateXAxisAtTimes,
+    requiresRunMappedAnalyticalXAxis,
+    buildAnalyticalAxisWarning,
+} from './axisAdapters';
 
-export type XYPoint = { x: number; y: number | null };
+export type { XYPoint };
 
 export type ReferenceComparisonPanel = {
     curves: CurveConfig[];
@@ -81,29 +92,6 @@ export type AnalyticalPreviewVariant = {
     params: Record<string, any>;
 };
 
-type DerivedRunSeries = {
-    time: number[];
-    historyTime: number[];
-    oilRate: Array<number | null>;
-    injectionRate: Array<number | null>;
-    waterCut: Array<number | null>;
-    gasCut: Array<number | null>;
-    avgWaterSat: Array<number | null>;
-    pressure: Array<number | null>;
-    producerBhp: Array<number | null>;
-    injectorBhp: Array<number | null>;
-    recovery: Array<number | null>;
-    cumulativeOil: Array<number | null>;
-    cumulativeInjection: Array<number | null>;
-    cumulativeLiquid: Array<number | null>;
-    cumulativeGas: Array<number | null>;
-    p_z: Array<number | null>;
-    pvi: Array<number | null>;
-    pvp: Array<number | null>;
-    gor: Array<number | null>;
-    producerBhpLimitedFraction: Array<number | null>;
-    injectorBhpLimitedFraction: Array<number | null>;
-};
 
 const MIN_GOR_OIL_RATE_SM3_DAY = 10.0;
 
@@ -118,30 +106,6 @@ type AnalyticalOverlay = {
     diagnostics: { label: string; values: Array<number | null> } | null;
     xValues: Array<number | null>;
 };
-
-function requiresRunMappedAnalyticalXAxis(
-    analyticalMethod: string | null | undefined,
-    xAxisMode: RateChartXAxisMode,
-): boolean {
-    if (analyticalMethod === 'buckley-leverett' || analyticalMethod === 'waterflood' || analyticalMethod === 'gas-oil-bl') {
-        return xAxisMode !== 'pvi';
-    }
-    return false;
-}
-
-function buildAnalyticalAxisWarning(input: {
-    usesRunMappedAnalyticalXAxis: boolean;
-    hidesPendingAnalyticalWithoutMapping: boolean;
-}): string | null {
-    const parts: string[] = [];
-    if (input.usesRunMappedAnalyticalXAxis) {
-        parts.push('Analytical overlays on this axis are remapped from each completed simulation run.');
-    }
-    if (input.hidesPendingAnalyticalWithoutMapping) {
-        parts.push('Analytical curves without completed simulation runs are hidden on this axis until remapping data exists.');
-    }
-    return parts.length > 0 ? parts.join(' ') : null;
-}
 
 /** Tableau 20 — 20 perceptually distinct colors for categorical data. */
 const CASE_COLORS = [
@@ -235,79 +199,6 @@ function getOoip(params: Record<string, any>): number {
     const poreVolume = getPoreVolume(params);
     const initialSaturation = toFiniteNumber(params.initialSaturation, 0.3);
     return poreVolume * Math.max(0, 1 - initialSaturation);
-}
-
-function toXYSeries(
-    xValues: Array<number | null>,
-    yValues: Array<number | null | undefined>,
-): XYPoint[] {
-    const points: XYPoint[] = [];
-    for (let index = 0; index < yValues.length; index += 1) {
-        const rawX = xValues[index];
-        const rawY = yValues[index];
-        if (!Number.isFinite(rawX)) continue;
-        points.push({
-            x: Number(rawX),
-            y: Number.isFinite(rawY) ? Number(rawY) : null,
-        });
-    }
-    return points;
-}
-
-function interpolateXAxisAtTimes(
-    sourceTimes: Array<number | null>,
-    sourceXAxis: Array<number | null>,
-    targetTimes: Array<number | null>,
-): Array<number | null> {
-    const result: Array<number | null> = [];
-    let previousIndex = -1;
-
-    for (const rawTarget of targetTimes) {
-        if (!Number.isFinite(rawTarget)) {
-            result.push(null);
-            continue;
-        }
-
-        const target = Number(rawTarget);
-        while (previousIndex + 1 < sourceTimes.length) {
-            const nextTime = sourceTimes[previousIndex + 1];
-            if (!Number.isFinite(nextTime) || Number(nextTime) < target) {
-                previousIndex += 1;
-                continue;
-            }
-            break;
-        }
-
-        if (previousIndex < 0) {
-            result.push(Number.isFinite(sourceXAxis[0]) ? Number(sourceXAxis[0]) : null);
-            continue;
-        }
-
-        if (previousIndex + 1 >= sourceTimes.length) {
-            result.push(Number.isFinite(sourceXAxis[previousIndex]) ? Number(sourceXAxis[previousIndex]) : null);
-            continue;
-        }
-
-        const x0 = sourceTimes[previousIndex];
-        const x1 = sourceTimes[previousIndex + 1];
-        const y0 = sourceXAxis[previousIndex];
-        const y1 = sourceXAxis[previousIndex + 1];
-
-        if (!Number.isFinite(x0) || !Number.isFinite(x1) || !Number.isFinite(y0) || !Number.isFinite(y1)) {
-            result.push(Number.isFinite(y0) ? Number(y0) : null);
-            continue;
-        }
-
-        if (Math.abs(Number(x1) - Number(x0)) <= 1e-12) {
-            result.push(Number(y1));
-            continue;
-        }
-
-        const fraction = (target - Number(x0)) / (Number(x1) - Number(x0));
-        result.push(Number(y0) + fraction * (Number(y1) - Number(y0)));
-    }
-
-    return result;
 }
 
 function extractWellBhpHistory(result: BenchmarkRunResult): {
@@ -414,65 +305,6 @@ function buildDerivedRunSeries(result: BenchmarkRunResult): DerivedRunSeries {
             return Number.isFinite(value) ? Number(value) : null;
         }),
     };
-}
-
-function buildXAxisValues(
-    derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
-    tau: number | null = null,
-): Array<number | null> {
-    if (xAxisMode === 'pvi') return [...derived.pvi];
-    if (xAxisMode === 'pvp') return [...derived.pvp];
-    if (xAxisMode === 'cumInjection') return [...derived.cumulativeInjection];
-    if (xAxisMode === 'cumLiquid') return [...derived.cumulativeLiquid];
-    if (xAxisMode === 'cumGas') return [...derived.cumulativeGas];
-    if (xAxisMode === 'logTime') return derived.time.map((value) => (value > 0 ? Math.log10(value) : null));
-    if (xAxisMode === 'tD' && Number.isFinite(tau) && (tau as number) > 0) {
-        return derived.time.map((value) => value / (tau as number));
-    }
-    return [...derived.time];
-}
-
-function getSweepZeroXAxisValue(xAxisMode: RateChartXAxisMode): number | null {
-    return xAxisMode === 'logTime' ? null : 0;
-}
-
-function mapPviSeriesToXAxis(
-    pviValues: Array<number | null>,
-    derived: DerivedRunSeries,
-    xAxisMode: RateChartXAxisMode,
-    tau: number | null,
-): Array<number | null> {
-    if (xAxisMode === 'pvi') return [...pviValues];
-
-    const mappedAxis = buildXAxisValues(derived, xAxisMode, tau);
-    return pviValues.map((targetPvi) => {
-        if (!Number.isFinite(targetPvi)) return null;
-        if ((targetPvi as number) <= 1e-12) return getSweepZeroXAxisValue(xAxisMode);
-
-        let previousIndex = -1;
-        for (let index = 0; index < derived.pvi.length; index += 1) {
-            const domain = derived.pvi[index];
-            const range = mappedAxis[index];
-            if (!Number.isFinite(domain) || !Number.isFinite(range)) continue;
-            if (Math.abs((domain as number) - (targetPvi as number)) <= 1e-9) return Number(range);
-            if ((domain as number) > (targetPvi as number)) {
-                if (previousIndex < 0) return Number(range);
-                const d0 = Number(derived.pvi[previousIndex]);
-                const r0 = Number(mappedAxis[previousIndex]);
-                const d1 = Number(domain);
-                const r1 = Number(range);
-                if (Math.abs(d1 - d0) <= 1e-12) return r1;
-                const fraction = ((targetPvi as number) - d0) / (d1 - d0);
-                return r0 + fraction * (r1 - r0);
-            }
-            previousIndex = index;
-        }
-
-        return previousIndex >= 0 && Number.isFinite(mappedAxis[previousIndex])
-            ? Number(mappedAxis[previousIndex])
-            : null;
-    });
 }
 
 function getBaseResult(results: BenchmarkRunResult[]): BenchmarkRunResult | null {
