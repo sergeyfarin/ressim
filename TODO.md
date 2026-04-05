@@ -193,11 +193,13 @@
     - classification inventory is now checked in at `docs/FIM_TEST_CLASSIFICATION.md`
     - wasm is the approved default diagnostic target
     - clearly broken scratch wasm helper files were removed in the first Phase 2 pass
-    - stable SPE1/FIM smoke regressions were moved out of `src/lib/ressim/src/lib.rs` into `src/lib/ressim/src/tests/spe1_fim.rs`
+    - stable SPE1/FIM smoke regressions were moved out of `src/lib/ressim/src/lib.rs` into `src/lib/ressim/src/fim/tests/spe1.rs`
     - FIM assembly white-box tests were moved out of `src/lib/ressim/src/fim/assembly.rs` into `src/lib/ressim/src/fim/assembly_tests.rs`, and `src/lib/ressim/src/tests/README.md` now documents where crate-level versus module-internal tests belong
     - crate-root debug probes, `src/lib/ressim/src/tests/fim_spe1_bug.rs`, and the redundant manual `test.sh` helper were removed from the active surface
     - deep per-Newton FIM traces are now exposed through the canonical wasm diagnostic path, and the temporary native-only harness has been removed
     - root patch artifacts and `src/lib/ressim/src/fim/scaling.rs.orig` were deleted, and `src/lib/ressim/src/fim/mod.rs` no longer uses a blanket `#![allow(dead_code)]`
+    - the short day-to-day FIM baseline is now locked in `docs/FIM_STATUS.md` to one flash/regime regression plus the two short SPE1/FIM smoke regressions
+    - removing the blanket suppression exposed a narrow dead-code follow-up in the FIM tree; the unused FIM helpers are now either deleted or narrowed to `#[cfg(test)]`, and the wasm build is clean again
   - Canonical sources after cleanup:
     - `TODO.md` keeps only actionable open FIM tasks and short status bullets.
     - `docs/FIM_CONVERGENCE_WORKLOG.md` keeps active investigation notes only.
@@ -222,6 +224,7 @@
   - Preserved March 2026 historical narrative: `docs/FIM_HISTORY_2026-03.md`.
   - Current status:
     - FIM implementation remains active and incomplete.
+    - Resumed convergence work on 2026-04-05 found and fixed a separate Newton material-change bug: well-BHP/perforation-only updates were being treated as unchanged, which blew the canonical wasm `wf_p_12x12x3` day-1 shelf up to `history+=50643`; after the fix, the same repro returned to `history+=139` with the healthy `wf_p_24x1x1` reference still at `history+=5`.
     - The latest validated baseline keeps the `DRSDT = 0` gas-split fix and the tightened no-op Newton-acceptance fix.
     - Hard coupled convergence and timestep-fragmentation behavior are still unresolved on the harder waterflood and gas-injection cases.
     - Hotspot tracing for the hard `12x12x3` waterflood case now includes per-face phase diagnostics (`dphi`, upwind donor, mobility, signed flux) for the dominant cell's lateral faces on the canonical wasm path.

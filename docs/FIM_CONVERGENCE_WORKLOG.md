@@ -8,6 +8,44 @@ Use this worklog only for active observations, reproductions, traces, and next h
 This file is the working document for the March 2026 FIM convergence investigation.
 Keep active observations, reproductions, diagnostics, and next hypotheses here until the issue is resolved.
 
+## Validation Update - 2026-04-05 resumed after cleanup, material-change fix for well/perf-only Newton updates
+
+- Cleanup and baseline status before resuming convergence work:
+  - removed the FIM blanket dead-code suppression and cleaned the newly exposed FIM-only dead helpers by either deleting them or narrowing them to `#[cfg(test)]`
+  - locked short baseline remained green after cleanup (`drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`, `spe1_fim_first_steps_converge_without_stall`, `spe1_fim_gas_injection_creates_free_gas`)
+- First resumed wasm diagnostic on current head exposed a much worse hard-case day-1 shelf than the March notes:
+  - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
+  - observed outcome before the fix: `outer_ms ≈ 381094.5`, `history += 50643`, `warning=none`
+  - step trace showed repeated accepted microsteps with effectively zero cell-state change and a dominant `water` hotspot at `row=0`, `cell0=(0,0,0)` rather than the previously documented boundary cell `143`
+  - representative failing retries reported `invalid bounded Appleyard candidate` even when the linear solve was healthy and the update norm was small
+- Root cause found in `src/lib/ressim/src/fim/newton.rs`:
+  - `iterate_has_material_change(...)` only compared cell unknowns and ignored `well_bhp` plus `perforation_rates_m3_day`
+  - consequence: Newton candidates that changed only well/perforation unknowns were treated as unchanged
+  - that polluted three acceptance/control paths:
+    - candidate validity during damping
+    - update-based convergence gating
+    - the iteration-0 residual-entry guard exactness check
+  - on the hard water shelf this let the solver fall into a pathological loop of tiny accepted outer substeps with no meaningful recognized state progress
+- Change made:
+  - extended `iterate_has_material_change(...)` to include well-BHP and perforation-rate deltas
+  - added focused regression coverage via `iterate_has_material_change_detects_well_and_perforation_updates`
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml entry_guard_does_not_accept_unchanged_previous_state -- --nocapture` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml iterate_has_material_change_detects_well_and_perforation_updates -- --nocapture` passed
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - healthy reference rerun:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 24x1x1 --steps 1 --dt 1 --diagnostic summary --no-json`
+    - outcome: `outer_ms ≈ 23.6`, `history += 5`, `warning=none`
+  - canonical hard-case rerun after the fix:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
+    - outcome: `outer_ms ≈ 97585.1`, `history += 139`, `warning=none`
+
+Interpretation:
+
+- The catastrophic `50643`-history-point day-1 run was not just stale worklog drift; it exposed a real acceptance/accounting bug in the Newton material-change detector.
+- Fixing well/perforation-only material-change recognition restored the hard day-1 waterflood shelf to essentially the earlier March regime (`~137-140` history points) without regressing the healthy 1D reference.
+- The previously documented outer-step oscillation shelf is therefore still the active convergence target after cleanup. The `50643`-substep collapse was a separate bug layered on top of that shelf, not a replacement diagnosis.
+
 ## Scope
 
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.

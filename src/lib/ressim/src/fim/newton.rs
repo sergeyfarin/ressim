@@ -527,6 +527,8 @@ fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> b
     const PRESSURE_EPS: f64 = 1e-12;
     const SATURATION_EPS: f64 = 1e-12;
     const RS_EPS: f64 = 1e-12;
+    const WELL_BHP_EPS: f64 = 1e-12;
+    const PERF_RATE_EPS: f64 = 1e-12;
 
     previous_state
         .cells
@@ -538,6 +540,16 @@ fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> b
                 || (current.hydrocarbon_var - previous.hydrocarbon_var).abs() > RS_EPS
                 || current.regime != previous.regime
         })
+        || previous_state
+            .well_bhp
+            .iter()
+            .zip(state.well_bhp.iter())
+            .any(|(previous, current)| (current - previous).abs() > WELL_BHP_EPS)
+        || previous_state
+            .perforation_rates_m3_day
+            .iter()
+            .zip(state.perforation_rates_m3_day.iter())
+            .any(|(previous, current)| (current - previous).abs() > PERF_RATE_EPS)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1755,6 +1767,28 @@ mod tests {
                 "guarded residual acceptance should not report a zero-update shortcut for an unchanged previous state"
             );
         }
+    }
+
+    #[test]
+    fn iterate_has_material_change_detects_well_and_perforation_updates() {
+        let previous_state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 250.0,
+                sw: 0.25,
+                hydrocarbon_var: 0.0,
+                regime: crate::fim::state::HydrocarbonState::Saturated,
+            }],
+            well_bhp: vec![300.0],
+            perforation_rates_m3_day: vec![-150.0],
+        };
+
+        let mut bhp_changed = previous_state.clone();
+        bhp_changed.well_bhp[0] += 1.0;
+        assert!(iterate_has_material_change(&previous_state, &bhp_changed));
+
+        let mut perf_changed = previous_state.clone();
+        perf_changed.perforation_rates_m3_day[0] += 1.0;
+        assert!(iterate_has_material_change(&previous_state, &perf_changed));
     }
 
     #[test]

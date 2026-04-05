@@ -131,6 +131,7 @@ impl FimState {
         &self.cells[idx]
     }
 
+    #[cfg(test)]
     pub(crate) fn cell_mut(&mut self, idx: usize) -> &mut FimCellState {
         &mut self.cells[idx]
     }
@@ -355,6 +356,7 @@ impl FimState {
     }
 
     /// Apply Newton update with regime reclassification (for use outside Newton loop).
+    #[cfg(test)]
     pub(crate) fn apply_newton_update(
         &self,
         sim: &ReservoirSimulator,

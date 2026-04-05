@@ -94,10 +94,10 @@ Approved direction: keep diagnostics switchable and structured, but do not make 
 
 Target files:
 
-- `src/lib/ressim/src/tests/spe1_fim.rs`
+- `src/lib/ressim/src/fim/tests/spe1.rs`
   - keep as the home for stable SPE1/FIM regressions
 - `src/lib/ressim/src/tests/fim_spe1_bug.rs`
-  - either delete if stale, move useful content into `spe1_fim.rs`, or convert into a documented ignored diagnostic
+  - either delete if stale, move useful content into `src/lib/ressim/src/fim/tests/spe1.rs`, or convert into a documented ignored diagnostic
 - `src/lib/ressim/src/lib.rs` ignored debug helpers
   - move them into a dedicated diagnostics file or remove them if superseded
   - also files `test_import.mjs`, `test-wasm-spe1-short.sh`, `test-wasm-spe1.js`, `test-wasm.sh`, `test.sh`
@@ -162,7 +162,7 @@ End-state rule: when an edit makes convergence better or worse, the comparison s
 Keep:
 
 - `src/lib/ressim/src/fim/`
-- `src/lib/ressim/src/tests/spe1_fim.rs`
+- `src/lib/ressim/src/fim/tests/spe1.rs`
 - `docs/FIM_CONVERGENCE_WORKLOG.md`
 - `docs/FIM_MIGRATION_PLAN.md`
 

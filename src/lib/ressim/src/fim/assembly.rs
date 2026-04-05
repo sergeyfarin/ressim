@@ -361,21 +361,6 @@ fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     unreachable!()
 }
 
-#[cfg(test)]
-fn perturb_cell_unknown(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    cell_idx: usize,
-    local_var: usize,
-) -> (f64, FimState) {
-    let unknown_idx = unknown_offset(cell_idx, local_var);
-    let perturbation = finite_difference_step(state, unknown_idx);
-    let mut update = DVector::zeros(state.n_unknowns());
-    update[unknown_idx] = perturbation;
-    let perturbed_state = state.apply_newton_update(sim, &update, 1.0);
-    (perturbation, perturbed_state)
-}
-
 fn perforation_control_influence_cells(
     sim: &ReservoirSimulator,
     topology: &FimWellTopology,
@@ -929,6 +914,7 @@ fn add_exact_accumulation_jacobian(
     }
 }
 
+#[cfg(test)]
 fn local_cell_step(cell: &crate::fim::state::FimCellState, local_var: usize) -> f64 {
     match local_var {
         0 => 1e-5 * cell.pressure_bar.abs().max(1.0),

@@ -180,14 +180,6 @@ struct ProducerRateSensitivity {
     rs_derivatives: [f64; 3],
 }
 
-pub(crate) fn physical_well_bhp_target(
-    sim: &ReservoirSimulator,
-    topology: &FimWellTopology,
-    well_idx: usize,
-) -> f64 {
-    physical_well(sim, topology, well_idx).bhp
-}
-
 fn family_rate_controlled(sim: &ReservoirSimulator, injector: bool) -> bool {
     if injector {
         sim.injector_rate_controlled && sim.injector_enabled
@@ -710,6 +702,7 @@ pub(crate) fn perforation_target_rate_derivative(
     1.0
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_source_pressure_derivatives_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -734,6 +727,7 @@ pub(crate) fn perforation_source_pressure_derivatives_sc_day(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_surface_rate_pressure_derivative(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -796,6 +790,7 @@ pub(crate) fn perforation_connection_bhp_derivative(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_connection_pressure_derivative(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -880,19 +875,6 @@ pub(crate) fn perforation_connection_cell_derivatives(
         wi_geom * dmob_dsw * drawdown,
         wi_geom * dmob_dh * drawdown,
     ])
-}
-
-pub(crate) fn perforation_component_rate_cell_derivatives_sc_day(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    topology: &FimWellTopology,
-    perf_idx: usize,
-    cell_idx: usize,
-) -> [f64; 3] {
-    let by_var = perforation_component_rate_cell_derivatives_sc_day_by_var(
-        sim, state, topology, perf_idx, cell_idx,
-    );
-    by_var[0]
 }
 
 pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(

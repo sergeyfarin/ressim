@@ -70,25 +70,6 @@ impl PressureCorrectionAccumulator {
 }
 
 impl BlockJacobiPreconditioner {
-    fn identity(n: usize) -> Self {
-        Self {
-            cell_block_size: 0,
-            cell_block_inverses: Vec::new(),
-            scalar_tail_start: n,
-            scalar_inv_diag: Vec::new(),
-            tail_inverse: DMatrix::zeros(0, 0),
-            pressure_tail_coupling: Vec::new(),
-            pressure_tail_prolongation: Vec::new(),
-            pressure_restriction: Vec::new(),
-            pressure_prolongation: Vec::new(),
-            pressure_rows: Vec::new(),
-            pressure_dense_inverse: None,
-            pressure_l_rows: Vec::new(),
-            pressure_u_diag: Vec::new(),
-            pressure_u_rows: Vec::new(),
-        }
-    }
-
     fn apply_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
         let mut result = DVector::zeros(vector.len());
 
