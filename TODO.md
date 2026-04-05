@@ -9,6 +9,15 @@
     exit criteria for shared, FIM-owned, and IMPES-owned buckets.
   - The ignored-diagnostic to fast-gate mapping and grouped validation commands are now tracked in
     `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.
+  - Grouped validation is now routinized via `scripts/validate-solver-coverage.sh` and VS Code
+    tasks in `.vscode/tasks.json` for the shared, FIM-owned, IMPES-owned, and combined buckets.
+  - Remaining partially covered benchmark-style probes were revisited explicitly:
+    the larger-grid gas-flood breakthrough probe now has a fast sibling via
+    `spe1_fim_producer_gas_breakthrough_smoke`, while the late-time Dietz probes remain
+    diagnostic-only until the known analytical/model-alignment gap is resolved.
+  - The remaining ignored probes are now explicitly classified in
+    `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md` as either covered by fast siblings,
+    diagnostic-only while known parity/model-alignment gaps remain open, or exploratory-only.
   - Refactor proposal checked in at `docs/SOLVER_LAYOUT_REFACTOR_PLAN.md`.
   - Proposed end state: root keeps only shared domain and facade modules, `impes/` owns the
     pressure-plus-transport path, `fim/` owns the fully implicit path, and solver-owned tests move

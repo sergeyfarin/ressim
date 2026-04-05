@@ -26,6 +26,31 @@ import {
     requiresRunMappedAnalyticalXAxis,
     buildAnalyticalAxisWarning,
 } from './axisAdapters';
+import {
+    toFiniteNumber,
+    getTotalThickness,
+    getAverageLayerThickness,
+    getPoreVolume,
+    getOoip,
+    extractRockProps,
+    extractFluidProps,
+    extractGasOilRockProps,
+    extractGasOilFluidProps,
+    getBuckleyLeverettOverlaySignature,
+    hasDistinctBuckleyLeverettOverlays,
+    getGasOilBLOverlaySignature,
+    hasDistinctGasOilBLOverlays,
+    resolveOverlayMode,
+    computeBLAnalyticalFromParams,
+    computeGasOilBLAnalyticalFromParams,
+    computeDepletionAnalyticalFromParams,
+    computeDepletionTau,
+    computeMbeDiagnostics,
+    type MbeDiagnostics,
+    MIN_GOR_OIL_RATE_SM3_DAY,
+    buildDerivedRunSeries,
+    getLayerPermeabilities,
+} from './analyticalParamAdapters';
 
 export type { XYPoint };
 

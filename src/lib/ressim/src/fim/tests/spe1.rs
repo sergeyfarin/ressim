@@ -79,3 +79,35 @@ fn spe1_fim_gas_injection_creates_free_gas() {
         final_total_gas_sc
     );
 }
+
+#[test]
+fn spe1_fim_producer_gas_breakthrough_smoke() {
+    let mut sim = crate::tests::make_spe1_like_grid_sim(4, 4, 3, 3, vec![500.0, 50.0, 200.0], 0.05, 20.0, 0.2);
+    sim.set_fim_enabled(true);
+
+    let producer_id = sim.idx(3, 3, 2);
+    let mut breakthrough_time_days = None;
+
+    for _ in 0..80 {
+        sim.step(20.0);
+        assert!(
+            sim.last_solver_warning.is_empty(),
+            "FIM coarse-grid producer breakthrough smoke emitted solver warning at t={}: {}",
+            sim.time_days,
+            sim.last_solver_warning
+        );
+
+        let rate_point = sim.rate_history.last().expect("rate history should exist");
+        if sim.sat_gas[producer_id] > 1e-4 || rate_point.producing_gor > 50.0 {
+            breakthrough_time_days = Some(sim.time_days);
+            break;
+        }
+    }
+
+    let breakthrough_time_days = breakthrough_time_days.expect(
+        "coarse-grid FIM gas-injection smoke should reach producer gas breakthrough within 1600 days"
+    );
+
+    assert!(breakthrough_time_days > 0.0);
+    assert!(sim.rate_history.len() > 0);
+}

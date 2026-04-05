@@ -154,6 +154,9 @@ Exit criterion:
 The default-gate to ignored-diagnostic mapping and grouped validation commands now live in
 `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.
 
+The grouped validation workflow is now routinized through `scripts/validate-solver-coverage.sh`
+and the `.vscode/tasks.json` coverage tasks.
+
 ## Definition Of Done
 
 This coverage plan is complete when all of the following are true:

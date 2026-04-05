@@ -8,6 +8,15 @@ The forward-looking completion criteria for this ownership split now live in
 The ignored-diagnostic to fast-gate mapping and grouped validation commands now live in
 `docs/SOLVER_DIAGNOSTIC_COVERAGE_MATRIX.md`.
 
+Routine bucket validation now runs through `scripts/validate-solver-coverage.sh` and the VS Code
+tasks in `.vscode/tasks.json`.
+
+The remaining ignored probes are now explicitly classified there as one of:
+
+- covered by a default fast sibling
+- diagnostic-only while a known parity or analytical-alignment gap remains open
+- exploratory only
+
 The goal is a stable layout with three explicit buckets:
 
 - shared crate-level tests under `src/tests/`
@@ -144,13 +153,15 @@ Audit result:
 
 Next sub-phase priorities:
 
-1. Record the default-fast-gate to ignored-diagnostic mapping for FIM and IMPES obligations, using
-  `docs/SOLVER_TEST_COVERAGE_PLAN.md` as the canonical checklist.
-2. Add more shared parity coverage only where the public contract is stable enough to avoid baking
+1. Keep the scripted bucket validation workflow current as new shared, FIM-owned, and IMPES-owned
+  fast gates are added.
+2. Revisit the remaining diagnostic-only probes only when their known parity or analytical/model-
+  alignment gaps become active work rather than default regression candidates.
+3. Add more shared parity coverage only where the public contract is stable enough to avoid baking
   in known rate-magnitude gaps between the solvers.
-3. Continue pruning mixed ownership from the shared suite whenever a test needs private solver
+4. Continue pruning mixed ownership from the shared suite whenever a test needs private solver
   internals to stay meaningful.
-4. Keep shared physics helpers solver-agnostic where possible so future parity tests do not depend
+5. Keep shared physics helpers solver-agnostic where possible so future parity tests do not depend
   on one solver's internal update path.
 
 ## Validation Status For This Ownership Pass
@@ -159,6 +170,7 @@ The moved and rewritten tests were validated with focused Rust runs:
 
 - `spe1_fim_first_steps_converge_without_stall`
 - `spe1_fim_gas_injection_creates_free_gas`
+- `spe1_fim_producer_gas_breakthrough_smoke`
 - `fim::tests::wells::*`
 - `impes::tests::transport::*`
 - `impes::tests::timestep::*`
