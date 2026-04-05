@@ -36,6 +36,7 @@
         SCALE_FRACTION,
         SCALE_SWEEP,
     } from "./scalePresetRegistry";
+    import { PANEL_DEFS } from "./panelDefs";
 
     let {
         rateHistory = [],
@@ -954,115 +955,39 @@
     });
 
     const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => ({
+        ...PANEL_DEFS,
         rates: {
-            title: "Rates",
+            ...PANEL_DEFS.rates,
             curveKeys: baseRatesCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseRatesCurves.map((curve) => curve.label),
-            scalePreset: "rates",
-            allowLogToggle: true,
-            visible: true,
-            expanded: true,
         },
         recovery: {
-            title: "Recovery Factor",
+            ...PANEL_DEFS.recovery,
             curveKeys: ["recovery-factor-primary", "recovery-factor-reference"],
-            scalePreset: "recovery",
-            visible: true,
-            expanded: true,
         },
         cumulative: {
-            title: "Cum Oil",
+            ...PANEL_DEFS.cumulative,
             curveKeys: ["cum-oil-sim", "cum-oil-reference", "cum-injection"],
-            scalePreset: "cumulative_volumes",
-            visible: true,
-            expanded: false,
         },
         diagnostics: {
+            ...PANEL_DEFS.diagnostics,
             title: "Diagnostics",
             curveKeys: baseDiagnosticsCurves.map((curve) => curve.curveKey ?? curve.label),
             curveLabels: baseDiagnosticsCurves.map((curve) => curve.label),
             scalePreset: "diagnostics",
-            visible: true,
-            expanded: false,
-        },
-        gor: {
-            title: "GOR",
-            curveKeys: ["gor-sim", "published-gor"],
-            scalePreset: "gor",
-            visible: false,
-            expanded: false,
-        },
-        volumes: {
-            title: "Cum Injection",
-            curveKeys: ["cum-injection"],
-            scalePreset: "cumulative_volumes",
-            visible: true,
-            expanded: false,
         },
         oil_rate: {
-            title: "Oil Rate",
+            ...PANEL_DEFS.oil_rate,
             curveKeys: ["oil-rate-sim", "oil-rate-reference"],
-            scalePreset: "rates",
-            visible: true,
-            expanded: false,
         },
         injection_rate: {
-            title: "Injection Rate",
-            curveKeys: ["injection-rate-sim", "published-injection-rate"],
-            scalePreset: "rates",
+            ...PANEL_DEFS.injection_rate,
             visible: false,
-            expanded: false,
-        },
-        producer_bhp: {
-            title: "Producer WBHP",
-            curveKeys: ["producer-bhp-sim", "published-producer-bhp"],
-            scalePreset: "pressure",
-            visible: false,
-            expanded: false,
-        },
-        injector_bhp: {
-            title: "Injector WBHP",
-            curveKeys: ["injector-bhp-sim", "published-injector-bhp"],
-            scalePreset: "pressure",
-            visible: false,
-            expanded: false,
-        },
-        control_limits: {
-            title: "Control-Limit Fraction",
-            curveKeys: ["producer-bhp-limited-sim", "injector-bhp-limited-sim"],
-            scalePreset: "fraction",
-            visible: false,
-            expanded: false,
         },
         sweep_rf: {
+            ...PANEL_DEFS.sweep_rf,
             title: "Recovery Factor — Sweep Analysis",
-            scalePreset: "sweep_rf",
-            visible: true,
             expanded: true,
-        },
-        sweep_areal: {
-            title: "Areal Sweep Efficiency (E_A)",
-            scalePreset: "sweep",
-            visible: true,
-            expanded: true,
-        },
-        sweep_vertical: {
-            title: "Vertical Sweep Efficiency (E_V)",
-            scalePreset: "sweep",
-            visible: true,
-            expanded: true,
-        },
-        sweep_combined: {
-            title: "Combined Sweep Efficiency (E_vol)",
-            scalePreset: "sweep",
-            visible: true,
-            expanded: true,
-        },
-        sweep_combined_mobile_oil: {
-            title: "Analytical Total E_vol vs Simulated Mobile Oil Recovered",
-            scalePreset: "sweep",
-            visible: false,
-            expanded: false,
         },
     }));
 

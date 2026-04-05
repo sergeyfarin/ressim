@@ -35,6 +35,7 @@
         SCALE_FRACTION,
         SCALE_SWEEP,
     } from './scalePresetRegistry';
+    import { PANEL_DEFS } from './panelDefs';
 
     let {
         results = [],
@@ -313,131 +314,45 @@
         };
     }
 
-    const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => ({
-        rates: {
-            title: family?.showSweepPanel === true ? 'Watercut'
-                : family?.analyticalMethod === 'buckley-leverett' ? 'Breakthrough'
-                : family?.analyticalMethod === 'gas-oil-bl' ? 'Gas Breakthrough'
-                : 'Oil Rate',
-            curveKeys: family?.showSweepPanel === true
-                ? ['water-cut-sim']
-                : family?.analyticalMethod === 'buckley-leverett'
-                ? ['water-cut-sim', 'water-cut-reference']
-                : family?.analyticalMethod === 'gas-oil-bl'
-                ? ['gas-cut-sim', 'gas-cut-reference']
-                : ['oil-rate-sim', 'oil-rate-reference'],
-            scalePreset: (family?.analyticalMethod === 'buckley-leverett' || family?.analyticalMethod === 'gas-oil-bl') ? 'breakthrough' : 'rates',
-            allowLogToggle: family?.analyticalMethod === 'depletion',
-            visible: true,
-            expanded: true,
-        },
-        recovery: {
-            title: 'Recovery Factor',
-            curveKeys: ['recovery-factor'],
-            scalePreset: 'recovery',
-            visible: true,
-            expanded: true,
-        },
-        cumulative: {
-            title: 'Cum Oil',
-            curveKeys: family?.showSweepPanel === true
-                ? ['cum-oil-sim']
-                : family?.analyticalMethod === 'buckley-leverett'
-                ? ['cum-oil-sim', 'cum-oil-reference', 'cum-injection']
-                : ['cum-oil-sim', 'cum-oil-reference'],
-            scalePreset: 'cumulative_volumes',
-            visible: true,
-            expanded: false,
-        },
-        diagnostics: {
-            title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
-            curveKeys: family?.showSweepPanel === true
-                ? ['avg-pressure-sim']
-                : isGasContext ? ['p_z_sim', 'p_z_reference'] : ['avg-pressure-sim', 'avg-pressure-reference'],
-            scalePreset: 'pressure',
-            visible: true,
-            expanded: false,
-        },
-        gor: {
-            title: 'GOR',
-            curveKeys: ['gor-sim', 'published-gor'],
-            scalePreset: 'gor',
-            visible: false,
-            expanded: false,
-        },
-        volumes: {
-            title: 'Cum Injection',
-            curveKeys: ['cum-injection'],
-            scalePreset: 'cumulative_volumes',
-            visible: true,
-            expanded: false,
-        },
-        injection_rate: {
-            title: 'Injection Rate',
-            curveKeys: ['injection-rate-sim', 'published-injection-rate'],
-            scalePreset: 'rates',
-            visible: true,
-            expanded: false,
-        },
-        oil_rate: {
-            title: 'Oil Rate',
-            curveKeys: ['oil-rate-sim'],
-            scalePreset: 'rates',
-            visible: true,
-            expanded: false,
-        },
-        producer_bhp: {
-            title: 'Producer WBHP',
-            curveKeys: ['producer-bhp-sim', 'published-producer-bhp'],
-            scalePreset: 'pressure',
-            visible: false,
-            expanded: false,
-        },
-        injector_bhp: {
-            title: 'Injector WBHP',
-            curveKeys: ['injector-bhp-sim', 'published-injector-bhp'],
-            scalePreset: 'pressure',
-            visible: false,
-            expanded: false,
-        },
-        control_limits: {
-            title: 'Control-Limit Fraction',
-            curveKeys: ['producer-bhp-limited-sim', 'injector-bhp-limited-sim'],
-            scalePreset: 'fraction',
-            visible: false,
-            expanded: false,
-        },
-        sweep_rf: {
-            title: 'Sweep Recovery Factor',
-            scalePreset: 'sweep_rf',
-            visible: true,
-            expanded: false,
-        },
-        sweep_areal: {
-            title: 'Areal Sweep Efficiency (E_A)',
-            scalePreset: 'sweep',
-            visible: true,
-            expanded: true,
-        },
-        sweep_vertical: {
-            title: 'Vertical Sweep Efficiency (E_V)',
-            scalePreset: 'sweep',
-            visible: true,
-            expanded: true,
-        },
-        sweep_combined: {
-            title: 'Combined Sweep Efficiency (E_vol)',
-            scalePreset: 'sweep',
-            visible: true,
-            expanded: true,
-        },
-        sweep_combined_mobile_oil: {
-            title: 'Analytical Total E_vol vs Simulated Mobile Oil Recovered',
-            scalePreset: 'sweep',
-            visible: false,
-            expanded: false,
-        },
-    }));
+    const panelFallbacks = $derived.by((): Record<RateChartPanelId, ChartPanelFallback> => {
+        const isBL = family?.analyticalMethod === 'buckley-leverett';
+        const isGasOilBL = family?.analyticalMethod === 'gas-oil-bl';
+        const isSweep = family?.showSweepPanel === true;
+        return {
+            ...PANEL_DEFS,
+            rates: {
+                ...PANEL_DEFS.rates,
+                title: isSweep ? 'Watercut' : isBL ? 'Breakthrough' : isGasOilBL ? 'Gas Breakthrough' : 'Oil Rate',
+                curveKeys: isSweep
+                    ? ['water-cut-sim']
+                    : isBL
+                    ? ['water-cut-sim', 'water-cut-reference']
+                    : isGasOilBL
+                    ? ['gas-cut-sim', 'gas-cut-reference']
+                    : ['oil-rate-sim', 'oil-rate-reference'],
+                scalePreset: (isBL || isGasOilBL) ? 'breakthrough' : 'rates',
+                allowLogToggle: family?.analyticalMethod === 'depletion',
+            },
+            cumulative: {
+                ...PANEL_DEFS.cumulative,
+                curveKeys: isSweep
+                    ? ['cum-oil-sim']
+                    : isBL
+                    ? ['cum-oil-sim', 'cum-oil-reference', 'cum-injection']
+                    : ['cum-oil-sim', 'cum-oil-reference'],
+            },
+            diagnostics: {
+                ...PANEL_DEFS.diagnostics,
+                title: isGasContext ? 'Material Balance (P/z)' : 'Pressure',
+                curveKeys: isSweep
+                    ? ['avg-pressure-sim']
+                    : isGasContext
+                    ? ['p_z_sim', 'p_z_reference']
+                    : ['avg-pressure-sim', 'avg-pressure-reference'],
+                scalePreset: 'pressure',
+            },
+        };
+    });
 
     const resolvedPanels = $derived.by(() => {
         const panelOrder = layoutConfig?.rateChart?.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER;
