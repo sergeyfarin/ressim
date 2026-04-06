@@ -10,6 +10,7 @@ use crate::fim::wells::{
     FimWellTopology, build_well_topology, fischer_burmeister_gradient,
     perforation_component_rates_sc_day, perforation_local_block, well_local_block,
 };
+use crate::timing::PerfTimer;
 
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
@@ -18,6 +19,15 @@ pub(crate) struct FimAssembly {
     pub(crate) jacobian: CsMat<f64>,
     pub(crate) equation_scaling: EquationScaling,
     pub(crate) variable_scaling: VariableScaling,
+    pub(crate) timing: FimAssemblyTiming,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct FimAssemblyTiming {
+    pub(crate) property_eval_ms: f64,
+    pub(crate) residual_ms: f64,
+    pub(crate) sensitivity_eval_ms: f64,
+    pub(crate) jacobian_ms: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -97,6 +107,7 @@ pub(crate) fn assemble_fim_system(
     let n_unknowns = state.n_unknowns();
     let equation_scaling = build_equation_scaling(sim, state, &topology, options.dt_days);
     let variable_scaling = build_variable_scaling(sim, state);
+    let property_timer = PerfTimer::start();
 
     // Pre-compute derived properties for all cells (avoids redundant PVT lookups).
     let derived: Vec<FimCellDerived> = (0..n_cells)
@@ -105,6 +116,8 @@ pub(crate) fn assemble_fim_system(
     let prev_derived: Vec<FimCellDerived> = (0..n_cells)
         .map(|idx| previous_state.derive_cell(sim, idx))
         .collect();
+    let property_eval_ms = property_timer.elapsed_ms();
+    let residual_timer = PerfTimer::start();
     let residual = assemble_residual(
         sim,
         previous_state,
@@ -114,6 +127,7 @@ pub(crate) fn assemble_fim_system(
         &derived,
         &prev_derived,
     );
+    let residual_ms = residual_timer.elapsed_ms();
 
     if options.assemble_residual_only {
         return FimAssembly {
@@ -121,14 +135,23 @@ pub(crate) fn assemble_fim_system(
             jacobian: TriMatI::<f64, usize>::new((n_unknowns, n_unknowns)).to_csr(),
             equation_scaling,
             variable_scaling,
+            timing: FimAssemblyTiming {
+                property_eval_ms,
+                residual_ms,
+                sensitivity_eval_ms: 0.0,
+                jacobian_ms: 0.0,
+            },
         };
     }
 
     // Pre-compute local flux sensitivities for the Jacobian (each cell appears in ~5 interfaces).
+    let sensitivity_timer = PerfTimer::start();
     let sensitivities: Vec<LocalFluxCellSensitivity> = (0..n_cells)
         .map(|idx| local_flux_cell_sensitivity(sim, state, idx, &derived[idx]))
         .collect();
+    let sensitivity_eval_ms = sensitivity_timer.elapsed_ms();
 
+    let jacobian_timer = PerfTimer::start();
     let mut tri = TriMatI::<f64, usize>::new((n_unknowns, n_unknowns));
 
     add_exact_accumulation_jacobian(sim, previous_state, state, &derived, &mut tri);
@@ -150,11 +173,20 @@ pub(crate) fn assemble_fim_system(
         add_exact_perforation_cell_pressure_jacobian(sim, state, &topology, &mut tri);
     }
 
+    let jacobian = tri.to_csr();
+    let jacobian_ms = jacobian_timer.elapsed_ms();
+
     FimAssembly {
         residual,
-        jacobian: tri.to_csr(),
+        jacobian,
         equation_scaling,
         variable_scaling,
+        timing: FimAssemblyTiming {
+            property_eval_ms,
+            residual_ms,
+            sensitivity_eval_ms,
+            jacobian_ms,
+        },
     }
 }
 

@@ -154,6 +154,22 @@ pub struct FimStepStats {
     pub last_retry_dominant_family: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_retry_dominant_row: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solver_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_solver_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_solver_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assembly_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property_eval_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_solve_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_preconditioner_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_update_ms: Option<f64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

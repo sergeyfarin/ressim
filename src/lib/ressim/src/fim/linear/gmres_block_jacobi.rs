@@ -7,6 +7,7 @@ use super::{
     FimCprDiagnostics, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, FimPressureCoarseSolverKind,
 };
+use crate::timing::PerfTimer;
 
 const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
 const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 8;
@@ -784,6 +785,7 @@ pub(super) fn solve(
     layout: Option<FimLinearBlockLayout>,
     used_fallback: bool,
 ) -> FimLinearSolveReport {
+    let total_timer = PerfTimer::start();
     let backend_used = if options.kind == FimLinearSolverKind::FgmresCpr {
         FimLinearSolverKind::FgmresCpr
     } else {
@@ -799,6 +801,8 @@ pub(super) fn solve(
             used_fallback,
             backend_used,
             cpr_diagnostics: None,
+            total_time_ms: total_timer.elapsed_ms(),
+            preconditioner_build_time_ms: 0.0,
         };
     }
 
@@ -807,7 +811,9 @@ pub(super) fn solve(
     let rhs_norm = rhs.norm();
     let tolerance =
         options.absolute_tolerance + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
+    let preconditioner_timer = PerfTimer::start();
     let preconditioner = build_block_jacobi_preconditioner(jacobian, layout);
+    let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
     let mut iterations = 0usize;
@@ -825,6 +831,8 @@ pub(super) fn solve(
                 used_fallback,
                 backend_used,
                 cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+                total_time_ms: total_timer.elapsed_ms(),
+                preconditioner_build_time_ms,
             };
         }
 
@@ -843,6 +851,8 @@ pub(super) fn solve(
                 used_fallback,
                 backend_used,
                 cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+                total_time_ms: total_timer.elapsed_ms(),
+                preconditioner_build_time_ms,
             };
         }
 
@@ -938,6 +948,8 @@ pub(super) fn solve(
                         used_fallback,
                         backend_used,
                         cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+                        total_time_ms: total_timer.elapsed_ms(),
+                        preconditioner_build_time_ms,
                     };
                 }
 
@@ -963,6 +975,8 @@ pub(super) fn solve(
         used_fallback,
         backend_used,
         cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+        total_time_ms: total_timer.elapsed_ms(),
+        preconditioner_build_time_ms,
     }
 }
 

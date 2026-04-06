@@ -7,6 +7,7 @@ use nalgebra::DVector;
 use sprs::CsMat;
 
 use super::{FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind};
+use crate::timing::PerfTimer;
 
 fn build_sparse_row_matrix(matrix: &CsMat<f64>) -> Option<SparseRowMat<usize, f64>> {
     let mut triplets = Vec::with_capacity(matrix.nnz());
@@ -38,6 +39,7 @@ pub(super) fn solve(
     options: &FimLinearSolveOptions,
     used_fallback: bool,
 ) -> FimLinearSolveReport {
+    let timer = PerfTimer::start();
     let Some(matrix) = build_sparse_row_matrix(jacobian) else {
         return FimLinearSolveReport {
             solution: DVector::zeros(rhs.len()),
@@ -47,6 +49,8 @@ pub(super) fn solve(
             used_fallback,
             backend_used: FimLinearSolverKind::SparseLuDebug,
             cpr_diagnostics: None,
+            total_time_ms: timer.elapsed_ms(),
+            preconditioner_build_time_ms: 0.0,
         };
     };
 
@@ -59,6 +63,8 @@ pub(super) fn solve(
             used_fallback,
             backend_used: FimLinearSolverKind::SparseLuDebug,
             cpr_diagnostics: None,
+            total_time_ms: timer.elapsed_ms(),
+            preconditioner_build_time_ms: 0.0,
         };
     };
 
@@ -78,5 +84,7 @@ pub(super) fn solve(
         used_fallback,
         backend_used: FimLinearSolverKind::SparseLuDebug,
         cpr_diagnostics: None,
+        total_time_ms: timer.elapsed_ms(),
+        preconditioner_build_time_ms: 0.0,
     }
 }

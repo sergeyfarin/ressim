@@ -133,6 +133,17 @@ impl FimGrowthCooldown {
         }
     }
 
+    fn stabilize_growth_decision(self, decision: AcceptedStepGrowthDecision) -> AcceptedStepGrowthDecision {
+        if self.cap_dt_days.is_some() && decision.factor < 1.0 {
+            return AcceptedStepGrowthDecision {
+                factor: 1.0,
+                limiter: "cooldown-hold",
+            };
+        }
+
+        decision
+    }
+
     fn note_retry_accepted(&mut self, accepted_dt_days: f64, clean_successes_required: u32) {
         self.cap_dt_days = Some(accepted_dt_days);
         let extra_clean_successes = self.extra_clean_successes_for_repeated_hotspot();
@@ -189,15 +200,11 @@ impl FimGrowthCooldown {
 
 #[cfg(test)]
 fn accepted_step_growth_factor(
-    residual_inf_norm: f64,
-    residual_tolerance: f64,
     newton_iterations: usize,
     max_saturation_change: f64,
     max_pressure_change_bar: f64,
 ) -> f64 {
     accepted_step_growth_decision(
-        residual_inf_norm,
-        residual_tolerance,
         newton_iterations,
         max_saturation_change,
         max_pressure_change_bar,
@@ -212,13 +219,11 @@ struct AcceptedStepGrowthDecision {
 }
 
 fn accepted_step_growth_decision(
-    residual_inf_norm: f64,
-    residual_tolerance: f64,
     newton_iterations: usize,
     max_saturation_change: f64,
     max_pressure_change_bar: f64,
 ) -> AcceptedStepGrowthDecision {
-    const MAX_GROWTH: f64 = 1.25;
+    const MAX_GROWTH: f64 = 3.0;
     const MIN_GROWTH: f64 = 0.75;
     const TARGET_NEWTON_ITERS: f64 = 8.0;
     const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
@@ -236,11 +241,6 @@ fn accepted_step_growth_decision(
     } else {
         MAX_GROWTH
     };
-    let residual_growth = if residual_inf_norm.is_finite() && residual_inf_norm > 0.0 {
-        (residual_tolerance / residual_inf_norm).clamp(MIN_GROWTH, MAX_GROWTH)
-    } else {
-        MAX_GROWTH
-    };
 
     let mut decision = AcceptedStepGrowthDecision {
         factor: MAX_GROWTH,
@@ -251,7 +251,6 @@ fn accepted_step_growth_decision(
         (iteration_growth, "newton-iters"),
         (sat_growth, "sat-change"),
         (pressure_growth, "pressure-change"),
-        (residual_growth, "residual-margin"),
     ] {
         if factor < decision.factor {
             decision = AcceptedStepGrowthDecision { factor, limiter };
@@ -295,6 +294,14 @@ fn store_fim_outer_step_stats(
     last_retry_class: Option<&str>,
     last_retry_dominant_family: Option<&str>,
     last_retry_dominant_row: Option<usize>,
+    solver_ms: f64,
+    accepted_solver_ms: f64,
+    retry_solver_ms: f64,
+    assembly_ms: f64,
+    property_eval_ms: f64,
+    linear_solve_ms: f64,
+    linear_preconditioner_ms: f64,
+    state_update_ms: f64,
 ) {
     sim.store_fim_step_stats(FimStepStats {
         time_days: sim.time_days,
@@ -312,6 +319,14 @@ fn store_fim_outer_step_stats(
         last_retry_class: last_retry_class.map(str::to_string),
         last_retry_dominant_family: last_retry_dominant_family.map(str::to_string),
         last_retry_dominant_row,
+        solver_ms: Some(solver_ms),
+        accepted_solver_ms: Some(accepted_solver_ms),
+        retry_solver_ms: Some(retry_solver_ms),
+        assembly_ms: Some(assembly_ms),
+        property_eval_ms: Some(property_eval_ms),
+        linear_solve_ms: Some(linear_solve_ms),
+        linear_preconditioner_ms: Some(linear_preconditioner_ms),
+        state_update_ms: Some(state_update_ms),
     });
 }
 
@@ -338,7 +353,7 @@ impl ReservoirSimulator {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
         const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 16;
-        const MAX_GROWTH: f64 = 1.25;
+        const MAX_GROWTH: f64 = 3.0;
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
         const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
         const RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES: u32 = 4;
@@ -357,6 +372,14 @@ impl ReservoirSimulator {
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
         let mut growth_cooldown = FimGrowthCooldown::default();
+        let mut solver_ms = 0.0;
+        let mut accepted_solver_ms = 0.0;
+        let mut retry_solver_ms = 0.0;
+        let mut assembly_ms = 0.0;
+        let mut property_eval_ms = 0.0;
+        let mut linear_solve_ms = 0.0;
+        let mut linear_preconditioner_ms = 0.0;
+        let mut state_update_ms = 0.0;
 
         fim_trace!(
             self,
@@ -414,6 +437,17 @@ impl ReservoirSimulator {
                     trial_dt,
                     &newton_options,
                 );
+                solver_ms += report.total_time_ms;
+                if report.converged {
+                    accepted_solver_ms += report.total_time_ms;
+                } else {
+                    retry_solver_ms += report.total_time_ms;
+                }
+                assembly_ms += report.assembly_ms;
+                property_eval_ms += report.property_eval_ms;
+                linear_solve_ms += report.linear_solve_time_ms;
+                linear_preconditioner_ms += report.linear_preconditioner_build_time_ms;
+                state_update_ms += report.state_update_ms;
 
                 if report.converged {
                     let mut max_dsat: f64 = 0.0;
@@ -434,17 +468,24 @@ impl ReservoirSimulator {
                         let _ = idx;
                     }
 
-                    let growth_decision = growth_cooldown.cap_growth_decision(
+                    let growth_decision = growth_cooldown.stabilize_growth_decision(
+                        growth_cooldown.cap_growth_decision(
                         accepted_step_growth_decision(
-                        report.final_residual_inf_norm,
-                        newton_options.residual_tolerance,
                         report.newton_iterations,
                         max_dsat,
                         max_dp,
                         ),
-                    );
-                    last_growth_factor = growth_decision.factor;
-                    last_growth_limiter = Some(growth_decision.limiter);
+                    ));
+                    let adjusted_growth_decision = if retry_count > 0 && growth_decision.factor < 1.0 {
+                        AcceptedStepGrowthDecision {
+                            factor: 1.0,
+                            limiter: "retry-hold",
+                        }
+                    } else {
+                        growth_decision
+                    };
+                    last_growth_factor = adjusted_growth_decision.factor;
+                    last_growth_limiter = Some(adjusted_growth_decision.limiter);
                     min_accepted_dt_days = Some(
                         min_accepted_dt_days
                             .map(|value| value.min(trial_dt))
@@ -570,6 +611,14 @@ impl ReservoirSimulator {
                         last_retry_class,
                         last_retry_dominant_family,
                         last_retry_dominant_row,
+                        solver_ms,
+                        accepted_solver_ms,
+                        retry_solver_ms,
+                        assembly_ms,
+                        property_eval_ms,
+                        linear_solve_ms,
+                        linear_preconditioner_ms,
+                        state_update_ms,
                     );
                     return;
                 }
@@ -602,6 +651,14 @@ impl ReservoirSimulator {
                         last_retry_class,
                         last_retry_dominant_family,
                         last_retry_dominant_row,
+                        solver_ms,
+                        accepted_solver_ms,
+                        retry_solver_ms,
+                        assembly_ms,
+                        property_eval_ms,
+                        linear_solve_ms,
+                        linear_preconditioner_ms,
+                        state_update_ms,
                     );
                     return;
                 }
@@ -653,6 +710,14 @@ impl ReservoirSimulator {
             last_retry_class,
             last_retry_dominant_family,
             last_retry_dominant_row,
+            solver_ms,
+            accepted_solver_ms,
+            retry_solver_ms,
+            assembly_ms,
+            property_eval_ms,
+            linear_solve_ms,
+            linear_preconditioner_ms,
+            state_update_ms,
         );
     }
 
@@ -800,6 +865,20 @@ mod tests {
     }
 
     #[test]
+    fn cooldown_holds_growth_flat_instead_of_shrinking() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_accepted(0.25, 4);
+
+        let held = cooldown.stabilize_growth_decision(AcceptedStepGrowthDecision {
+            factor: 0.75,
+            limiter: "newton-iters",
+        });
+
+        assert_eq!(held.factor, 1.0);
+        assert_eq!(held.limiter, "cooldown-hold");
+    }
+
+    #[test]
     fn changing_hotspot_resets_extra_growth_cooldown_budget() {
         let mut cooldown = FimGrowthCooldown::default();
         cooldown.note_retry_failure(&failure_diagnostics(
@@ -865,12 +944,9 @@ mod tests {
     }
 
     #[test]
-    fn residual_near_tolerance_throttles_growth_factor() {
-        let growth = accepted_step_growth_factor(9.5e-6, 1.0e-5, 2, 0.003, 0.2);
-        assert!(growth < 1.1, "expected near-tolerance residual to clamp growth, got {growth}");
-
-        let easy_growth = accepted_step_growth_factor(1.0e-6, 1.0e-5, 2, 0.003, 0.2);
-        assert!((easy_growth - 1.25).abs() < 1e-12);
+    fn residual_margin_no_longer_throttles_growth_factor() {
+        let growth = accepted_step_growth_factor(2, 0.003, 0.2);
+        assert!((growth - 3.0).abs() < 1e-12);
     }
 
     #[test]

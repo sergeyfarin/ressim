@@ -13,6 +13,7 @@ use crate::fim::state::FimState;
 use crate::fim::wells::{
     build_well_topology, perforation_local_block, physical_well_control,
 };
+use crate::timing::PerfTimer;
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
@@ -227,6 +228,12 @@ pub(crate) struct FimStepReport {
     pub(crate) last_linear_report: Option<FimLinearSolveReport>,
     pub(crate) failure_diagnostics: Option<FimRetryFailureDiagnostics>,
     pub(crate) retry_factor: f64,
+    pub(crate) total_time_ms: f64,
+    pub(crate) assembly_ms: f64,
+    pub(crate) property_eval_ms: f64,
+    pub(crate) linear_solve_time_ms: f64,
+    pub(crate) linear_preconditioner_build_time_ms: f64,
+    pub(crate) state_update_ms: f64,
 }
 
 fn retry_factor_for_failure(diagnostics: Option<&FimRetryFailureDiagnostics>) -> f64 {
@@ -1495,6 +1502,7 @@ pub(crate) fn run_fim_timestep(
     dt_days: f64,
     options: &FimNewtonOptions,
 ) -> FimStepReport {
+    let total_timer = PerfTimer::start();
     let mut state = initial_iterate.clone();
     let mut last_linear_report = None;
     let mut final_residual_inf_norm: Option<f64>;
@@ -1506,6 +1514,11 @@ pub(crate) fn run_fim_timestep(
     let mut repeated_hotspot_streak: u32 = 0;
     let mut previous_producer_hotspot_effective_move: Option<ProducerHotspotStagnationDiagnostics> =
         None;
+    let mut assembly_ms = 0.0;
+    let mut property_eval_ms = 0.0;
+    let mut linear_solve_time_ms = 0.0;
+    let mut linear_preconditioner_build_time_ms = 0.0;
+    let mut state_update_ms = 0.0;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -1539,6 +1552,9 @@ pub(crate) fn run_fim_timestep(
                 topology: Some(&topology),
             },
         );
+        assembly_ms +=
+            assembly.timing.residual_ms + assembly.timing.sensitivity_eval_ms + assembly.timing.jacobian_ms;
+        property_eval_ms += assembly.timing.property_eval_ms;
         final_residual_inf_norm = Some(scaled_residual_inf_norm(
             &assembly.residual,
             &assembly.equation_scaling,
@@ -1629,6 +1645,12 @@ pub(crate) fn run_fim_timestep(
                     last_linear_report,
                     failure_diagnostics: None,
                     retry_factor: 1.0,
+                    total_time_ms: total_timer.elapsed_ms(),
+                    assembly_ms,
+                    property_eval_ms,
+                    linear_solve_time_ms,
+                    linear_preconditioner_build_time_ms,
+                    state_update_ms,
                 };
             }
 
@@ -1668,6 +1690,12 @@ pub(crate) fn run_fim_timestep(
                 last_linear_report,
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
             };
         }
 
@@ -1702,6 +1730,12 @@ pub(crate) fn run_fim_timestep(
                     last_linear_report,
                     failure_diagnostics: Some(failure_diagnostics),
                     retry_factor,
+                    total_time_ms: total_timer.elapsed_ms(),
+                    assembly_ms,
+                    property_eval_ms,
+                    linear_solve_time_ms,
+                    linear_preconditioner_build_time_ms,
+                    state_update_ms,
                 };
             }
         } else {
@@ -1712,6 +1746,8 @@ pub(crate) fn run_fim_timestep(
         let rhs = -&assembly.residual;
         let mut linear_report =
             solve_linearized_system(&assembly.jacobian, &rhs, &options.linear, block_layout);
+        linear_solve_time_ms += linear_report.total_time_ms;
+        linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
 
         let mut used_fallback = false;
         if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
@@ -1739,6 +1775,8 @@ pub(crate) fn run_fim_timestep(
                 solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
             used_fallback = true;
             linear_report.used_fallback = true;
+            linear_solve_time_ms += linear_report.total_time_ms;
+            linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
         }
 
         final_update_inf_norm =
@@ -1795,6 +1833,12 @@ pub(crate) fn run_fim_timestep(
                     last_linear_report: Some(linear_report),
                     failure_diagnostics: None,
                     retry_factor: 1.0,
+                    total_time_ms: total_timer.elapsed_ms(),
+                    assembly_ms,
+                    property_eval_ms,
+                    linear_solve_time_ms,
+                    linear_preconditioner_build_time_ms,
+                    state_update_ms,
                 };
             }
 
@@ -1833,6 +1877,12 @@ pub(crate) fn run_fim_timestep(
                 last_linear_report: Some(linear_report),
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
             };
         }
 
@@ -1852,8 +1902,10 @@ pub(crate) fn run_fim_timestep(
                         .min(decision.damping_cap)
                 },
             );
+        let state_update_timer = PerfTimer::start();
         let candidate =
             state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
+        state_update_ms += state_update_timer.elapsed_ms();
         let (candidate_pressure_change, candidate_saturation_change) =
             state_update_change_bounds(&state, &candidate);
         let effective_move_trace = effective_move_threshold_trace(
@@ -1958,6 +2010,12 @@ pub(crate) fn run_fim_timestep(
                 last_linear_report: Some(linear_report),
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
             };
         }
 
@@ -1988,6 +2046,12 @@ pub(crate) fn run_fim_timestep(
                 last_linear_report: Some(linear_report),
                 failure_diagnostics: Some(failure_diagnostics),
                 retry_factor,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
             };
         }
 
@@ -2005,6 +2069,10 @@ pub(crate) fn run_fim_timestep(
             topology: Some(&topology),
         },
     );
+    assembly_ms += final_assembly.timing.residual_ms
+        + final_assembly.timing.sensitivity_eval_ms
+        + final_assembly.timing.jacobian_ms;
+    property_eval_ms += final_assembly.timing.property_eval_ms;
     final_residual_inf_norm = Some(scaled_residual_inf_norm(
         &final_assembly.residual,
         &final_assembly.equation_scaling,
@@ -2050,6 +2118,12 @@ pub(crate) fn run_fim_timestep(
             last_linear_report,
             failure_diagnostics: None,
             retry_factor: 1.0,
+            total_time_ms: total_timer.elapsed_ms(),
+            assembly_ms,
+            property_eval_ms,
+            linear_solve_time_ms,
+            linear_preconditioner_build_time_ms,
+            state_update_ms,
         };
     }
 
@@ -2083,6 +2157,12 @@ pub(crate) fn run_fim_timestep(
         last_linear_report,
         failure_diagnostics: Some(failure_diagnostics),
         retry_factor,
+        total_time_ms: total_timer.elapsed_ms(),
+        assembly_ms,
+        property_eval_ms,
+        linear_solve_time_ms,
+        linear_preconditioner_build_time_ms,
+        state_update_ms,
     }
 }
 
@@ -2355,6 +2435,8 @@ mod tests {
                 average_reduction_ratio: 1e-12,
                 last_reduction_ratio: 1e-12,
             }),
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
         };
 
         let classified = classify_retry_failure(Some(&report), &diagnostics);
@@ -2402,6 +2484,8 @@ mod tests {
             used_fallback: false,
             backend_used: FimLinearSolverKind::DenseLuDebug,
             cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
         };
 
         let classified = classify_retry_failure(Some(&report), &diagnostics);
@@ -2454,6 +2538,8 @@ mod tests {
                 average_reduction_ratio: 0.6,
                 last_reduction_ratio: 0.8,
             }),
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
         };
 
         let classified = classify_retry_failure(Some(&report), &diagnostics);
@@ -2501,6 +2587,8 @@ mod tests {
             used_fallback: true,
             backend_used: FimLinearSolverKind::SparseLuDebug,
             cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
         };
 
         let classified = classify_retry_failure(Some(&report), &diagnostics);
@@ -2603,6 +2691,8 @@ mod tests {
             used_fallback: false,
             backend_used: FimLinearSolverKind::FgmresCpr,
             cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
         };
 
         let first = nonlinear_history_stabilization_decision(

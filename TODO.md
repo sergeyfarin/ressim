@@ -222,9 +222,13 @@
 
 - [ ] Cut the shared FIM solver overhead on the existing wasm-first code path.
   - Current diagnosis from the 2026-04-06 comparison: the remaining runtime gap is not just language choice. ResSim is still paying for much more nonlinear work per physical step, rebuilding Jacobian sparsity and the CPR/block-Jacobi preconditioner from scratch on every Newton solve, and using a materially weaker pressure backend than Flow's production CPRW/AMG-style stack.
+  - 2026-04-06 shared-path finding: the first 31-day SPE1 report step was not only limited by the linear backend. The accepted-step controller was also self-throttling badly after convergence. Removing the residual-margin growth limiter cut the wasm-path first-step fragmentation from `1224` accepted substeps to `84`, confirming that timestep-control policy was a major independent bottleneck.
+  - Remaining controller gap: retry hot-spot cooldown plus iteration-based shrink still ratchet the post-retry timestep back down (`0.242 -> 0.181 -> 0.136 -> 0.097 d`) even after the solver has already paid for the retry cut. OPM Flow holds or regrows much more aggressively after a clean accepted step.
   - Constraint: do this on the same maintained solver path used for wasm builds; do not create a separate native-only optimization branch or divergent benchmark harness.
   - Concrete follow-ups:
-    - add timing breakdowns to the existing FIM diagnostic path for assembly, flash/property updates, preconditioner build, linear iterations, and retry/substep overhead
+    - [x] add timing breakdowns to the existing FIM diagnostic path for assembly, flash/property updates, preconditioner build, linear iterations, and retry/substep overhead
+    - [x] stop accepted-step growth from being pinned near `1.00x` by residual-margin throttling
+    - soften retry-hotspot cooldown and post-retry shrink so accepted timesteps do not keep ratcheting downward after a successful retry
     - reduce algorithmic waste first where possible: accepted-substep fragmentation, repeated retries, and weak coarse-pressure correction
     - then reduce implementation waste on the same path: repeated allocations, full matrix/preconditioner rebuilds, and redundant per-cell property recomputation
 

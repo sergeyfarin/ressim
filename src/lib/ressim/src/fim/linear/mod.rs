@@ -123,6 +123,8 @@ pub(crate) struct FimLinearSolveReport {
     pub(crate) used_fallback: bool,
     pub(crate) backend_used: FimLinearSolverKind,
     pub(crate) cpr_diagnostics: Option<FimCprDiagnostics>,
+    pub(crate) total_time_ms: f64,
+    pub(crate) preconditioner_build_time_ms: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

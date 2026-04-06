@@ -4,6 +4,7 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::{FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind};
+use crate::timing::PerfTimer;
 
 pub(super) fn solve(
     jacobian: &CsMat<f64>,
@@ -11,6 +12,7 @@ pub(super) fn solve(
     options: &FimLinearSolveOptions,
     used_fallback: bool,
 ) -> FimLinearSolveReport {
+    let timer = PerfTimer::start();
     let mut dense = DMatrix::<f64>::zeros(jacobian.rows(), jacobian.cols());
     for (row_idx, row) in jacobian.outer_iterator().enumerate() {
         for (col_idx, value) in row.iter() {
@@ -36,5 +38,7 @@ pub(super) fn solve(
         used_fallback,
         backend_used: FimLinearSolverKind::DenseLuDebug,
         cpr_diagnostics: None,
+        total_time_ms: timer.elapsed_ms(),
+        preconditioner_build_time_ms: 0.0,
     }
 }

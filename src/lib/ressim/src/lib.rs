@@ -30,6 +30,7 @@ mod relperm;
 mod reporting;
 mod solvers;
 mod step;
+mod timing;
 mod well;
 mod well_control;
 
