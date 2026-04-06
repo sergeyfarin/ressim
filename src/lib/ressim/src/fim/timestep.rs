@@ -226,18 +226,29 @@ fn accepted_step_growth_decision(
     const MIN_ITERATION_GROWTH: f64 = 1.0;
     const MIN_PHYSICAL_GROWTH: f64 = 0.25;
     const TARGET_NEWTON_ITERS: f64 = 8.0;
-    const SOFT_NEWTON_GROWTH_WINDOW: usize = 6;
-    const SOFT_NEWTON_GROWTH_FACTOR: f64 = 1.1;
+    const SMOOTH_NEWTON_GROWTH_WINDOW: usize = 11;
+    const SMOOTH_NEWTON_GROWTH_START_FACTOR: f64 = 1.1;
+    const SMOOTH_NEWTON_GROWTH_END_FACTOR: f64 = 1.05;
     const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
     const TARGET_MAX_PRESSURE_CHANGE_BAR: f64 = 200.0;
 
     let raw_iteration_growth =
         (TARGET_NEWTON_ITERS / newton_iterations as f64).clamp(MIN_ITERATION_GROWTH, MAX_GROWTH);
-    let iteration_growth = if (TARGET_NEWTON_ITERS as usize + 1
-        ..=TARGET_NEWTON_ITERS as usize + SOFT_NEWTON_GROWTH_WINDOW)
+    let smooth_growth_start_iteration = TARGET_NEWTON_ITERS as usize + 1;
+    let smooth_growth_end_iteration = smooth_growth_start_iteration + SMOOTH_NEWTON_GROWTH_WINDOW - 1;
+    let iteration_growth = if (smooth_growth_start_iteration..=smooth_growth_end_iteration)
         .contains(&newton_iterations)
     {
-        raw_iteration_growth.max(SOFT_NEWTON_GROWTH_FACTOR)
+        let growth_progress = if SMOOTH_NEWTON_GROWTH_WINDOW <= 1 {
+            0.0
+        } else {
+            (newton_iterations - smooth_growth_start_iteration) as f64
+                / (SMOOTH_NEWTON_GROWTH_WINDOW - 1) as f64
+        };
+        let smooth_growth_floor = SMOOTH_NEWTON_GROWTH_START_FACTOR
+            + (SMOOTH_NEWTON_GROWTH_END_FACTOR - SMOOTH_NEWTON_GROWTH_START_FACTOR)
+                * growth_progress;
+        raw_iteration_growth.max(smooth_growth_floor)
     } else {
         raw_iteration_growth
     };
@@ -502,12 +513,13 @@ impl ReservoirSimulator {
 
                     let growth_decision = growth_cooldown.stabilize_growth_decision(
                         growth_cooldown.cap_growth_decision(
-                        accepted_step_growth_decision(
-                        report.newton_iterations,
-                        max_dsat,
-                        max_dp,
+                            accepted_step_growth_decision(
+                                report.newton_iterations,
+                                max_dsat,
+                                max_dp,
+                            ),
                         ),
-                    ));
+                    );
                     let adjusted_growth_decision = if retry_count > 0 && growth_decision.factor < 1.0 {
                         AcceptedStepGrowthDecision {
                             factor: 1.0,
@@ -973,20 +985,38 @@ mod tests {
 
     #[test]
     fn accepted_step_iterations_do_not_shrink_converged_dt() {
-        let growth = accepted_step_growth_factor(15, 0.03, 12.0);
+        let growth = accepted_step_growth_factor(20, 0.03, 12.0);
         assert!((growth - 1.0).abs() < 1e-12);
     }
 
     #[test]
     fn accepted_step_iterations_just_above_target_can_regrow_slowly() {
         let growth = accepted_step_growth_factor(12, 0.03, 12.0);
-        assert!((growth - 1.1).abs() < 1e-12);
+        assert!((growth - 1.085).abs() < 1e-12);
     }
 
     #[test]
     fn accepted_step_iterations_fourteen_can_regrow_slowly() {
         let growth = accepted_step_growth_factor(14, 0.03, 12.0);
-        assert!((growth - 1.1).abs() < 1e-12);
+        assert!((growth - 1.075).abs() < 1e-12);
+    }
+
+    #[test]
+    fn accepted_step_iterations_sixteen_can_regrow_very_slowly() {
+        let growth = accepted_step_growth_factor(16, 0.03, 12.0);
+        assert!((growth - 1.065).abs() < 1e-12);
+    }
+
+    #[test]
+    fn accepted_step_iterations_eighteen_can_regrow_very_slowly() {
+        let growth = accepted_step_growth_factor(18, 0.03, 12.0);
+        assert!((growth - 1.055).abs() < 1e-12);
+    }
+
+    #[test]
+    fn accepted_step_iterations_nineteen_can_regrow_very_slowly() {
+        let growth = accepted_step_growth_factor(19, 0.03, 12.0);
+        assert!((growth - 1.05).abs() < 1e-12);
     }
 
     #[test]

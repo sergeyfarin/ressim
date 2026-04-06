@@ -81,7 +81,7 @@ pub(crate) struct FimLinearBlockLayout {
     pub(crate) cell_block_count: usize,
     pub(crate) cell_block_size: usize,
     pub(crate) well_bhp_count: usize,
-    pub(crate) scalar_tail_start: usize,
+    pub(crate) perforation_tail_start: usize,
 }
 
 impl FimLinearBlockLayout {
@@ -97,8 +97,16 @@ impl FimLinearBlockLayout {
         self.well_bhp_start() + self.well_bhp_count
     }
 
-    pub(crate) const fn legacy_tail_start(self) -> usize {
-        self.cell_unknown_count()
+    pub(crate) const fn coarse_pressure_unknown_count(self) -> usize {
+        self.cell_block_count + self.well_bhp_count
+    }
+
+    pub(crate) const fn coarse_pressure_end(self) -> usize {
+        self.perforation_tail_start
+    }
+
+    pub(crate) const fn noncell_start(self) -> usize {
+        self.well_bhp_start()
     }
 }
 
@@ -265,18 +273,20 @@ mod tests {
     }
 
     #[test]
-    fn linear_block_layout_exposes_well_range_without_moving_legacy_tail_start() {
+    fn linear_block_layout_exposes_explicit_cprw_ranges() {
         let layout = FimLinearBlockLayout {
             cell_block_count: 2,
             cell_block_size: 3,
             well_bhp_count: 2,
-            scalar_tail_start: 8,
+            perforation_tail_start: 8,
         };
 
         assert_eq!(layout.cell_unknown_count(), 6);
         assert_eq!(layout.well_bhp_start(), 6);
         assert_eq!(layout.well_bhp_end(), 8);
-        assert_eq!(layout.legacy_tail_start(), 6);
-        assert_eq!(layout.scalar_tail_start, 8);
+        assert_eq!(layout.noncell_start(), 6);
+        assert_eq!(layout.coarse_pressure_unknown_count(), 4);
+        assert_eq!(layout.coarse_pressure_end(), 8);
+        assert_eq!(layout.perforation_tail_start, 8);
     }
 }

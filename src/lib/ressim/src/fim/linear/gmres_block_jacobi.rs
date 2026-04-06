@@ -19,8 +19,8 @@ struct BlockJacobiPreconditioner {
     cell_block_inverses: Vec<DMatrix<f64>>,
     well_bhp_start: usize,
     well_bhp_count: usize,
-    scalar_tail_start: usize,
-    schur_tail_start: usize,
+    noncell_start: usize,
+    perforation_tail_start: usize,
     scalar_inv_diag: Vec<f64>,
     tail_inverse: DMatrix<f64>,
     pressure_tail_coupling: Vec<Vec<f64>>,
@@ -89,7 +89,7 @@ impl BlockJacobiPreconditioner {
         }
 
         for (tail_idx, inv_diag) in self.scalar_inv_diag.iter().enumerate() {
-            let idx = self.scalar_tail_start + tail_idx;
+            let idx = self.noncell_start + tail_idx;
             if idx < vector.len() {
                 result[idx] = inv_diag * vector[idx];
             }
@@ -126,10 +126,12 @@ impl BlockJacobiPreconditioner {
 
     fn extract_pressure_rhs(&self, residual: &DVector<f64>) -> DVector<f64> {
         let mut rhs = DVector::zeros(self.pressure_u_diag.len());
-        let tail_rhs = if self.tail_inverse.nrows() > 0 && self.schur_tail_start < residual.len() {
+        let tail_rhs = if self.tail_inverse.nrows() > 0
+            && self.perforation_tail_start < residual.len()
+        {
             let tail_residual = DVector::from_iterator(
                 self.tail_inverse.nrows(),
-                (self.schur_tail_start..residual.len()).map(|idx| residual[idx]),
+                (self.perforation_tail_start..residual.len()).map(|idx| residual[idx]),
             );
             Some(&self.tail_inverse * tail_residual)
         } else {
@@ -191,7 +193,7 @@ impl BlockJacobiPreconditioner {
         }
 
         for (tail_idx, prolongation_row) in self.pressure_tail_prolongation.iter().enumerate() {
-            let idx = self.schur_tail_start + tail_idx;
+            let idx = self.perforation_tail_start + tail_idx;
             if idx >= result.len() {
                 continue;
             }
@@ -458,8 +460,8 @@ fn build_block_jacobi_preconditioner(
             cell_block_inverses: Vec::new(),
             well_bhp_start: 0,
             well_bhp_count: 0,
-            scalar_tail_start: 0,
-            schur_tail_start: 0,
+            noncell_start: 0,
+            perforation_tail_start: 0,
             scalar_inv_diag,
             tail_inverse: DMatrix::zeros(0, 0),
             pressure_tail_coupling: Vec::new(),
@@ -476,9 +478,11 @@ fn build_block_jacobi_preconditioner(
 
     let well_bhp_start = layout.well_bhp_start();
     let well_bhp_end = layout.well_bhp_end();
-    debug_assert_eq!(well_bhp_start, layout.legacy_tail_start());
-    debug_assert!(well_bhp_end <= layout.scalar_tail_start);
-    debug_assert!(layout.scalar_tail_start <= matrix.rows());
+    let noncell_start = layout.noncell_start();
+    let perforation_tail_start = layout.coarse_pressure_end();
+    debug_assert_eq!(well_bhp_start, noncell_start);
+    debug_assert_eq!(well_bhp_end, perforation_tail_start);
+    debug_assert!(perforation_tail_start <= matrix.rows());
 
     let mut cell_block_inverses = Vec::with_capacity(layout.cell_block_count);
     let mut pressure_restriction = Vec::with_capacity(layout.cell_block_count);
@@ -511,17 +515,15 @@ fn build_block_jacobi_preconditioner(
         pressure_prolongation.push(prolongation);
     }
 
-    let legacy_tail_start = layout.legacy_tail_start();
-    let schur_tail_start = layout.scalar_tail_start;
-    let schur_tail_count = matrix.rows().saturating_sub(schur_tail_start);
+    let schur_tail_count = matrix.rows().saturating_sub(perforation_tail_start);
     let tail_inverse = if schur_tail_count > 0 {
         let mut tail_block = DMatrix::zeros(schur_tail_count, schur_tail_count);
         for tail_row in 0..schur_tail_count {
             for tail_col in 0..schur_tail_count {
                 tail_block[(tail_row, tail_col)] = matrix_value(
                     matrix,
-                    schur_tail_start + tail_row,
-                    schur_tail_start + tail_col,
+                    perforation_tail_start + tail_row,
+                    perforation_tail_start + tail_col,
                 );
             }
         }
@@ -530,13 +532,13 @@ fn build_block_jacobi_preconditioner(
         DMatrix::zeros(0, 0)
     };
 
-    let coarse_row_count = layout.cell_block_count + layout.well_bhp_count;
+    let coarse_row_count = layout.coarse_pressure_unknown_count();
     let mut tail_to_pressure = vec![vec![0.0; coarse_row_count]; schur_tail_count];
     for tail_idx in 0..schur_tail_count {
-        let row_idx = schur_tail_start + tail_idx;
+        let row_idx = perforation_tail_start + tail_idx;
         if let Some(view) = matrix.outer_view(row_idx) {
             for (col_idx, value) in view.iter() {
-                if col_idx >= schur_tail_start {
+                if col_idx >= perforation_tail_start {
                     continue;
                 }
                 if col_idx < well_bhp_start {
@@ -572,8 +574,8 @@ fn build_block_jacobi_preconditioner(
 
             if let Some(view) = matrix.outer_view(row_idx) {
                 for (col_idx, value) in view.iter() {
-                    if col_idx >= schur_tail_start {
-                        tail_coupling[col_idx - schur_tail_start] += row_weight * value;
+                    if col_idx >= perforation_tail_start {
+                        tail_coupling[col_idx - perforation_tail_start] += row_weight * value;
                         continue;
                     }
                     if col_idx < well_bhp_start {
@@ -627,8 +629,8 @@ fn build_block_jacobi_preconditioner(
 
         if let Some(view) = matrix.outer_view(row_idx) {
             for (col_idx, value) in view.iter() {
-                if col_idx >= schur_tail_start {
-                    tail_coupling[col_idx - schur_tail_start] += value;
+                if col_idx >= perforation_tail_start {
+                    tail_coupling[col_idx - perforation_tail_start] += value;
                     continue;
                 }
                 if col_idx < well_bhp_start {
@@ -692,7 +694,7 @@ fn build_block_jacobi_preconditioner(
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
 
-    let scalar_inv_diag = (legacy_tail_start..matrix.rows())
+    let scalar_inv_diag = (noncell_start..matrix.rows())
         .map(|idx| {
             let diag = matrix_value(matrix, idx, idx);
             if diag.abs() > f64::EPSILON {
@@ -708,8 +710,8 @@ fn build_block_jacobi_preconditioner(
         cell_block_inverses,
         well_bhp_start,
         well_bhp_count: layout.well_bhp_count,
-        scalar_tail_start: legacy_tail_start,
-        schur_tail_start,
+        noncell_start,
+        perforation_tail_start,
         scalar_inv_diag,
         tail_inverse,
         pressure_tail_coupling,
@@ -1003,7 +1005,7 @@ mod tests {
                 cell_block_count: 1,
                 cell_block_size: 3,
                 well_bhp_count: 0,
-                scalar_tail_start: 3,
+                perforation_tail_start: 3,
             }),
         );
 
@@ -1032,7 +1034,7 @@ mod tests {
                 cell_block_count: 1,
                 cell_block_size: 3,
                 well_bhp_count: 0,
-                scalar_tail_start: 3,
+                perforation_tail_start: 3,
             }),
         );
 
@@ -1059,7 +1061,7 @@ mod tests {
                 cell_block_count: 1,
                 cell_block_size: 3,
                 well_bhp_count: 0,
-                scalar_tail_start: 3,
+                perforation_tail_start: 3,
             }),
         );
 
@@ -1089,7 +1091,7 @@ mod tests {
                 cell_block_count: 2,
                 cell_block_size: 3,
                 well_bhp_count: 0,
-                scalar_tail_start: 6,
+                perforation_tail_start: 6,
             }),
         );
 
@@ -1121,7 +1123,7 @@ mod tests {
                 cell_block_count: 2,
                 cell_block_size: 3,
                 well_bhp_count: 0,
-                scalar_tail_start: 6,
+                perforation_tail_start: 6,
             }),
             true,
         );
@@ -1172,7 +1174,7 @@ mod tests {
                 cell_block_count: 1,
                 cell_block_size: 3,
                 well_bhp_count: 1,
-                scalar_tail_start: 4,
+                perforation_tail_start: 4,
             }),
         );
 
@@ -1203,7 +1205,7 @@ mod tests {
                 cell_block_count: 1,
                 cell_block_size: 3,
                 well_bhp_count: 1,
-                scalar_tail_start: 4,
+                perforation_tail_start: 4,
             }),
         );
 
@@ -1240,7 +1242,7 @@ mod tests {
                 cell_block_count: 1,
                 cell_block_size: 3,
                 well_bhp_count: 1,
-                scalar_tail_start: 4,
+                perforation_tail_start: 4,
             }),
             true,
         );

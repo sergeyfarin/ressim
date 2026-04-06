@@ -1495,6 +1495,19 @@ fn accepted_state_meets_convergence(
         && diagnostics.material_balance_inf_norm <= material_balance_limit
 }
 
+fn stagnation_acceptance_allows(
+    materially_changed: bool,
+    residual_inf_norm: f64,
+    material_balance_inf_norm: f64,
+    update_inf_norm: f64,
+    options: &FimNewtonOptions,
+) -> bool {
+    materially_changed
+        && update_inf_norm <= options.update_tolerance
+        && residual_inf_norm <= options.residual_tolerance * NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR
+        && material_balance_inf_norm <= options.material_balance_tolerance
+}
+
 pub(crate) fn run_fim_timestep(
     sim: &mut ReservoirSimulator,
     previous_state: &FimState,
@@ -1523,7 +1536,7 @@ pub(crate) fn run_fim_timestep(
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
         well_bhp_count: state.n_well_unknowns(),
-        scalar_tail_start: state.n_cell_unknowns() + state.n_well_unknowns(),
+        perforation_tail_start: state.n_cell_unknowns() + state.n_well_unknowns(),
     });
     let topology = build_well_topology(sim);
 
@@ -1703,6 +1716,58 @@ pub(crate) fn run_fim_timestep(
         if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
             stagnation_count += 1;
             if stagnation_count >= 3 {
+                let materially_changed = iterate_has_material_change(previous_state, &state);
+                let accepted_diagnostics = evaluate_accepted_state_convergence(
+                    sim,
+                    previous_state,
+                    &state,
+                    &topology,
+                    dt_days,
+                );
+                if stagnation_acceptance_allows(
+                    materially_changed,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    final_update_inf_norm,
+                    options,
+                ) {
+                    fim_trace!(
+                        sim,
+                        options.verbose,
+                        "    iter {:>2}: STAGNATION-ACCEPTED res={:.3e} mb={:.3e} upd={:.3e} fam=[{}] mb=[{}]{}",
+                        iteration,
+                        accepted_diagnostics.residual_inf_norm,
+                        accepted_diagnostics.material_balance_inf_norm,
+                        final_update_inf_norm,
+                        residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                        global_material_balance_trace(
+                            &accepted_diagnostics.material_balance_diagnostics
+                        ),
+                        accepted_diagnostics
+                            .residual_detail
+                            .as_ref()
+                            .map(|detail| format!(" detail=[{}]", detail))
+                            .unwrap_or_default()
+                    );
+                    return FimStepReport {
+                        accepted_state: accepted_diagnostics.state,
+                        converged: true,
+                        newton_iterations: iteration + 1,
+                        final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                        final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
+                        final_update_inf_norm,
+                        last_linear_report,
+                        failure_diagnostics: None,
+                        retry_factor: 1.0,
+                        total_time_ms: total_timer.elapsed_ms(),
+                        assembly_ms,
+                        property_eval_ms,
+                        linear_solve_time_ms,
+                        linear_preconditioner_build_time_ms,
+                        state_update_ms,
+                    };
+                }
+
                 let failure_diagnostics =
                     classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
                 let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
@@ -2326,6 +2391,42 @@ mod tests {
         let mut perf_changed = previous_state.clone();
         perf_changed.perforation_rates_m3_day[0] += 1.0;
         assert!(iterate_has_material_change(&previous_state, &perf_changed));
+    }
+
+    #[test]
+    fn stagnation_acceptance_requires_material_change() {
+        let options = FimNewtonOptions::default();
+        assert!(!stagnation_acceptance_allows(
+            false,
+            options.residual_tolerance * 2.0,
+            options.material_balance_tolerance * 0.5,
+            options.update_tolerance * 0.5,
+            &options,
+        ));
+    }
+
+    #[test]
+    fn stagnation_acceptance_allows_near_converged_state() {
+        let options = FimNewtonOptions::default();
+        assert!(stagnation_acceptance_allows(
+            true,
+            options.residual_tolerance * 6.0,
+            options.material_balance_tolerance * 0.5,
+            options.update_tolerance * 0.1,
+            &options,
+        ));
+    }
+
+    #[test]
+    fn stagnation_acceptance_rejects_material_balance_failure() {
+        let options = FimNewtonOptions::default();
+        assert!(!stagnation_acceptance_allows(
+            true,
+            options.residual_tolerance * 6.0,
+            options.material_balance_tolerance * 2.0,
+            options.update_tolerance * 0.1,
+            &options,
+        ));
     }
 
     #[test]
