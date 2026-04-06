@@ -95,6 +95,19 @@ ResSim files:
 - `src/lib/ressim/src/fim/newton.rs`
 - `src/lib/ressim/src/fim/state.rs`
 
+Current experiment status as of 2026-04-06:
+
+- First prototype landed in `src/lib/ressim/src/fim/newton.rs` as a residual-history adaptive damping cap for repeated near-flat nonlinear hotspot sites.
+- The implemented rule groups repeated hotspot sites by coarse nonlinear location (`cell`, `well`, or `perforation`) instead of exact residual row identity and applies an extra damping cap only when:
+  - the same hotspot site repeats,
+  - residual progress is nearly flat, and
+  - the solve is already in a near-converged residual band.
+- Focused Rust coverage is green for the new helper path and the locked SPE1/FIM smoke gate remains green.
+- Measured benchmark outcome is mixed:
+  - canonical saved day-2 checkpoint improved from the rebuilt current-head baseline `246` to `196` accepted substeps
+  - short day-1 `wf_p_12x12x3` summary regressed from the previously tracked `136`-substep regime to `165` accepted substeps
+- Current verdict: promising as a nonlinear-stabilization direction, but not yet clean enough to call done because the checkpoint gain comes with a visible adjacent regression.
+
 ### 3. Refactor wells toward an explicit local block view
 
 Expected value: medium-high.
@@ -108,6 +121,51 @@ ResSim files:
 
 - `src/lib/ressim/src/fim/wells.rs`
 - `src/lib/ressim/src/fim/assembly.rs`
+
+Current implementation status as of 2026-04-06:
+
+- First structural slice is now implemented.
+- `src/lib/ressim/src/fim/wells.rs` exposes explicit `FimWellLocalBlock` and `FimPerforationLocalBlock` views so the solver can talk about one physical well block as:
+  - one BHP unknown / equation pair, plus
+  - the owned perforation-rate unknown / equation pairs attached to that physical well.
+- `src/lib/ressim/src/fim/assembly.rs` now assembles the well-coupled Jacobian terms through that local-block view instead of reconstructing the same row/column ownership ad hoc in each loop.
+- Second structural slice is also now implemented:
+  - the local-block views now expose the main well/perforation derivative and residual bookkeeping API directly
+  - assembly now consumes methods on the local-block views for:
+    - perforation component-rate derivatives
+    - perforation target-rate derivatives
+    - perforation connection BHP derivatives
+    - perforation connection cell derivatives
+    - well control state / slack lookups
+- Third structural slice is also now implemented:
+  - well-rate aggregation and target-BHP solving now live behind `FimWellLocalBlock`
+  - `src/lib/ressim/src/fim/state.rs` now uses the block view for:
+    - initial rate-controlled BHP solves
+    - initial consistent perforation-rate population
+    - well-state relaxation toward local consistency after Newton updates
+  - well diagnostics now pull actual-well-rate and consistent-BHP-rate data through the well-block aggregation methods instead of rebuilding raw well/perforation loops inline
+- Fourth structural slice is now implemented too:
+  - the remaining well residual helpers now live on the block views directly:
+    - `FimWellLocalBlock::control_slacks(...)`
+    - `FimWellLocalBlock::constraint_residual(...)`
+    - `FimPerforationLocalBlock::rate_residual(...)`
+    - `FimPerforationLocalBlock::residual_diagnostics(...)`
+  - production FIM call sites in `src/lib/ressim/src/fim/assembly.rs`, `src/lib/ressim/src/fim/scaling.rs`, and `src/lib/ressim/src/fim/newton.rs` now consume those block methods instead of raw helper functions
+  - the old free-function entry points are retained only as test-compatibility shims, so the physical well/perforation block view is now the main home for both assembly-side and diagnostic-side well logic
+- Focused Rust coverage is green for:
+  - `local_block_exposes_bhp_and_perforation_offsets`
+  - `local_block_perforation_control_cells_match_existing_control_stencil`
+  - `local_block_derivative_helpers_match_free_functions`
+  - `local_well_block_control_helpers_match_free_functions`
+  - `local_well_block_rate_helpers_match_free_functions`
+  - `local_block_residual_helpers_match_free_functions`
+  - `rate_controlled_well_bhp_unknown_is_solved_implicitly`
+  - `apply_newton_update_frozen_limits_well_overshoot_toward_local_consistency`
+  - `spe1_fim_first_steps_converge_without_stall`
+  - `spe1_fim_gas_injection_creates_free_gas`
+- Rebuilt wasm replay stayed aligned with the current-head nonlinear prototype baseline:
+  - `step=1 | time=1.2500d | history+=196 | substeps=196 | retries=0/31/0 | dt=[4.039e-4,2.253e-2] | growth=max-growth | retry_dom=nonlinear-bad:oil@430 | warning=none`
+- Current verdict: useful structural cleanup. This does not change the physics or the benchmark outcome by itself, but it gives the well block a concrete home that should make later CPRW and well-Newton work less opaque.
 
 ### 4. Stronger primary-variable switching and update hysteresis
 
@@ -259,11 +317,20 @@ Current status as of 2026-04-06:
 
 - Phase 1 is implemented in the codebase.
 - `FimLinearBlockLayout` now exposes an explicit well-BHP range via `well_bhp_count` while preserving the old solver behavior through a legacy-tail helper.
-- The current linear backend still routes well-BHP and perforation-rate unknowns through the same legacy tail path; no CPRW coarse-space behavior change has landed yet.
+- Phase 2 is now implemented in the linear backend: the CPR coarse system includes `cell-pressure + well-BHP` rows, while perforation-rate unknowns remain in the Schur-eliminated tail and both well plus perforation unknowns still participate in the stage-one scalar smoother.
 - Focused validation after the Phase 1 change was green for:
   - `cargo test linear_block_layout_exposes_well_range_without_moving_legacy_tail_start -- --nocapture`
   - `cargo test producer_hotspot_stagnation -- --nocapture`
   - `cargo test spe1_fim_first_steps_converge_without_stall -- --nocapture`
+- Focused validation after the Phase 2 change is also green for:
+  - `cargo test cpr_coarse_operator_promotes_explicit_well_bhp_rows -- --nocapture`
+  - `cargo test pressure_projection_updates_explicit_well_bhp_unknowns -- --nocapture`
+  - `cargo test cpr_report_counts_cells_and_bhp_rows_without_perf_tail -- --nocapture`
+  - `cargo test linear_block_layout_exposes_well_range_without_moving_legacy_tail_start -- --nocapture`
+  - `cargo test producer_hotspot_stagnation -- --nocapture`
+  - `cargo test spe1_fim_first_steps_converge_without_stall -- --nocapture`
+- Canonical wasm replay after the Phase 2 change is neutral, not improved:
+  - `step=1 | time=1.2500d | history+=246 | substeps=246 | retries=0/29/0 | dt=[4.039e-4,5.758e-3] | growth=max-growth | retry_dom=nonlinear-bad:oil@430 | warning=none`
 
 ### Phase 1: Layout split only
 
@@ -302,6 +369,12 @@ Exit criterion:
 
 - new focused unit tests verify that a pressure residual at a perforated cell produces a nonzero coarse well-pressure response and vice versa.
 
+Status:
+
+- Completed on 2026-04-06.
+- Structural result: well BHP unknowns now participate explicitly in the CPR coarse system while perforation-rate unknowns remain in the eliminated tail.
+- Measured result: the canonical wasm checkpoint remained at the current-head baseline (`246` accepted substeps, `0/29/0` retries), so this phase improved solver structure and test coverage but did not move the tracked day-2 shelf by itself.
+
 ### Phase 3: Checkpoint validation
 
 Goal:
@@ -317,6 +390,11 @@ Tasks:
 Exit criterion:
 
 - measurable improvement on the canonical checkpoint without breaking the locked Rust regressions.
+
+Status:
+
+- Executed on 2026-04-06 after the Phase 2 linear change.
+- Result: no measurable checkpoint improvement relative to the rebuilt current-head baseline; keep the structural CPRW change, but treat the day-2 shelf as still dominated by a different mechanism.
 
 ## Required Tests
 
@@ -366,6 +444,11 @@ Continue into the next CPRW iteration only if:
 
 1. the explicit BHP coarse rows are stable in tests, and
 2. the wasm checkpoint improves enough to justify further refinement.
+
+Current verdict:
+
+- The explicit BHP coarse-row split is stable enough to keep.
+- The canonical checkpoint did not improve, so the next solver iteration should not assume that missing explicit BHP coarse rows were the dominant remaining shelf cause.
 
 ## Bottom Line
 

@@ -1146,8 +1146,9 @@ fn producer_control_row_matches_exact_surface_rate_derivative() {
 
     let topology = build_well_topology(&sim);
     let control = crate::fim::wells::physical_well_control(&sim, &topology, 0);
-    let (bhp_slack, rate_slack) =
-        crate::fim::wells::well_control_slacks(&sim, &state, &topology, 0).unwrap();
+    let (bhp_slack, rate_slack) = crate::fim::wells::well_local_block(&topology, &state, 0)
+        .control_slacks(&sim)
+        .unwrap();
     let bhp_scale = control.bhp_limit.abs().max(1.0);
     let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
     let (_, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(

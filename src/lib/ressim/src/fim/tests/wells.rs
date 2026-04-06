@@ -2,7 +2,7 @@ use crate::fim::newton::{FimNewtonOptions, run_fim_timestep};
 use crate::fim::state::FimState;
 use crate::fim::wells::{
     build_well_topology, connection_rate_for_bhp, perforation_component_rates_sc_day,
-    perforation_rate_residual, perforation_residual_diagnostics, well_constraint_residual,
+    perforation_local_block, well_local_block,
 };
 use crate::pvt::{PvtRow, PvtTable};
 use crate::tests::physics::fixtures::make_closed_depletion_single_cell_sim;
@@ -130,11 +130,15 @@ fn rate_controlled_injector_fim_path_converges() {
     assert!(report.converged);
 
     let topology = build_well_topology(&sim);
-    let well_residual = well_constraint_residual(&sim, &report.accepted_state, &topology, 0)
+    let well_block = well_local_block(&topology, &report.accepted_state, 0);
+    let perf = perforation_local_block(&topology, &report.accepted_state, 0);
+    let well_residual = well_block.constraint_residual(&sim)
         .expect("well constraint residual should exist for rate-controlled injector");
-    let perf_residual = perforation_rate_residual(&sim, &report.accepted_state, &topology, 0)
+    let perf_residual = perf
+        .rate_residual(&sim)
         .expect("perforation residual should exist for rate-controlled injector");
-    let diagnostics = perforation_residual_diagnostics(&sim, &report.accepted_state, &topology, 0)
+    let diagnostics = perf
+        .residual_diagnostics(&sim)
         .expect("injector residual diagnostics should exist");
     let component_rates =
         perforation_component_rates_sc_day(&sim, &report.accepted_state, &topology, 0);
@@ -195,11 +199,15 @@ fn rate_controlled_producer_fim_hits_bhp_limit() {
     assert!(report.converged);
 
     let topology = build_well_topology(&sim);
-    let well_residual = well_constraint_residual(&sim, &report.accepted_state, &topology, 0)
+    let well_block = well_local_block(&topology, &report.accepted_state, 0);
+    let perf = perforation_local_block(&topology, &report.accepted_state, 0);
+    let well_residual = well_block.constraint_residual(&sim)
         .expect("well constraint residual should exist for BHP-limited producer");
-    let perf_residual = perforation_rate_residual(&sim, &report.accepted_state, &topology, 0)
+    let perf_residual = perf
+        .rate_residual(&sim)
         .expect("perforation residual should exist for BHP-limited producer");
-    let diagnostics = perforation_residual_diagnostics(&sim, &report.accepted_state, &topology, 0)
+    let diagnostics = perf
+        .residual_diagnostics(&sim)
         .expect("BHP-limited producer diagnostics should exist");
     let component_rates =
         perforation_component_rates_sc_day(&sim, &report.accepted_state, &topology, 0);
@@ -281,7 +289,8 @@ fn multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
 
     let state = FimState::from_simulator(&sim);
     let topology = build_well_topology(&sim);
-    let well_residual = well_constraint_residual(&sim, &state, &topology, 0)
+    let well_block = well_local_block(&topology, &state, 0);
+    let well_residual = well_block.constraint_residual(&sim)
         .expect("shared physical well should expose a well constraint residual");
     assert!(well_residual.abs() < 1e-6);
 
@@ -289,9 +298,11 @@ fn multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
     let perf0 = topology.wells[0].perforation_indices[0];
     let perf1 = topology.wells[0].perforation_indices[1];
 
-    let diagnostics0 = perforation_residual_diagnostics(&sim, &state, &topology, perf0)
+    let diagnostics0 = perforation_local_block(&topology, &state, perf0)
+        .residual_diagnostics(&sim)
         .expect("first perforation diagnostics should exist");
-    let diagnostics1 = perforation_residual_diagnostics(&sim, &state, &topology, perf1)
+    let diagnostics1 = perforation_local_block(&topology, &state, perf1)
+        .residual_diagnostics(&sim)
         .expect("second perforation diagnostics should exist");
 
     assert!((diagnostics0.bhp_bar - bhp_bar).abs() < 1e-10);
@@ -302,9 +313,11 @@ fn multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
     let q1 = connection_rate_for_bhp(&sim, &state, &topology, perf1, bhp_bar)
         .expect("second perforation connection rate should exist");
 
-    let perf_residual0 = perforation_rate_residual(&sim, &state, &topology, perf0)
+    let perf_residual0 = perforation_local_block(&topology, &state, perf0)
+        .rate_residual(&sim)
         .expect("first perforation residual should exist");
-    let perf_residual1 = perforation_rate_residual(&sim, &state, &topology, perf1)
+    let perf_residual1 = perforation_local_block(&topology, &state, perf1)
+        .rate_residual(&sim)
         .expect("second perforation residual should exist");
 
     assert!(perf_residual0.abs() < 1e-6);

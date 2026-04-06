@@ -1,7 +1,7 @@
 use crate::ReservoirSimulator;
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::FimWellTopology;
-use crate::fim::wells::{physical_well_control, well_control_slacks};
+use crate::fim::wells::{physical_well_control, well_local_block};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EquationScaling {
@@ -48,12 +48,11 @@ pub(crate) fn build_equation_scaling(
     }
 
     for well_idx in 0..state.n_well_unknowns() {
-        let bhp_bar = state.well_bhp[well_idx];
+        let block = well_local_block(topology, state, well_idx);
+        let bhp_bar = block.bhp_bar();
         let control = physical_well_control(sim, topology, well_idx);
         if control.rate_controlled {
-            if let Some((_bhp_slack, _rate_slack)) =
-                well_control_slacks(sim, state, topology, well_idx)
-            {
+            if let Some((_bhp_slack, _rate_slack)) = block.control_slacks(sim) {
                 // Scaled FB residual is O(1), so equation scale = 1.0
                 well_constraint.push(1.0);
                 continue;

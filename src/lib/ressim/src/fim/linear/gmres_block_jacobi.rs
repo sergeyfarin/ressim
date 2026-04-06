@@ -16,7 +16,10 @@ const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-2;
 struct BlockJacobiPreconditioner {
     cell_block_size: usize,
     cell_block_inverses: Vec<DMatrix<f64>>,
+    well_bhp_start: usize,
+    well_bhp_count: usize,
     scalar_tail_start: usize,
+    schur_tail_start: usize,
     scalar_inv_diag: Vec<f64>,
     tail_inverse: DMatrix<f64>,
     pressure_tail_coupling: Vec<Vec<f64>>,
@@ -122,17 +125,20 @@ impl BlockJacobiPreconditioner {
 
     fn extract_pressure_rhs(&self, residual: &DVector<f64>) -> DVector<f64> {
         let mut rhs = DVector::zeros(self.pressure_u_diag.len());
-        let tail_rhs = if self.tail_inverse.nrows() > 0 && self.scalar_tail_start < residual.len() {
+        let tail_rhs = if self.tail_inverse.nrows() > 0 && self.schur_tail_start < residual.len() {
             let tail_residual = DVector::from_iterator(
                 self.tail_inverse.nrows(),
-                (self.scalar_tail_start..residual.len()).map(|idx| residual[idx]),
+                (self.schur_tail_start..residual.len()).map(|idx| residual[idx]),
             );
             Some(&self.tail_inverse * tail_residual)
         } else {
             None
         };
 
-        for cell_idx in 0..self.pressure_u_diag.len() {
+        let cell_coarse_count = self.pressure_restriction.len();
+        debug_assert_eq!(self.pressure_rows.len(), cell_coarse_count + self.well_bhp_count);
+
+        for cell_idx in 0..cell_coarse_count {
             let start = cell_idx * self.cell_block_size;
             let mut value = 0.0;
             for local in 0..self.cell_block_size {
@@ -146,6 +152,21 @@ impl BlockJacobiPreconditioner {
             }
             rhs[cell_idx] = value;
         }
+
+        for well_idx in 0..self.well_bhp_count {
+            let coarse_idx = cell_coarse_count + well_idx;
+            let mut value = residual[self.well_bhp_start + well_idx];
+            if let Some(tail_rhs) = &tail_rhs {
+                for (tail_idx, coupling) in self.pressure_tail_coupling[coarse_idx]
+                    .iter()
+                    .enumerate()
+                {
+                    value -= coupling * tail_rhs[tail_idx];
+                }
+            }
+            rhs[coarse_idx] = value;
+        }
+
         rhs
     }
 
@@ -154,15 +175,22 @@ impl BlockJacobiPreconditioner {
         result: &mut DVector<f64>,
         pressure_correction: &DVector<f64>,
     ) {
-        for (cell_idx, correction) in pressure_correction.iter().enumerate() {
+        let cell_coarse_count = self.pressure_restriction.len();
+        for cell_idx in 0..cell_coarse_count {
+            let correction = pressure_correction[cell_idx];
             let start = cell_idx * self.cell_block_size;
             for local in 0..self.cell_block_size {
                 result[start + local] += self.pressure_prolongation[cell_idx][local] * correction;
             }
         }
 
+        for well_idx in 0..self.well_bhp_count {
+            let coarse_idx = cell_coarse_count + well_idx;
+            result[self.well_bhp_start + well_idx] += pressure_correction[coarse_idx];
+        }
+
         for (tail_idx, prolongation_row) in self.pressure_tail_prolongation.iter().enumerate() {
-            let idx = self.scalar_tail_start + tail_idx;
+            let idx = self.schur_tail_start + tail_idx;
             if idx >= result.len() {
                 continue;
             }
@@ -427,7 +455,10 @@ fn build_block_jacobi_preconditioner(
         return BlockJacobiPreconditioner {
             cell_block_size: 0,
             cell_block_inverses: Vec::new(),
+            well_bhp_start: 0,
+            well_bhp_count: 0,
             scalar_tail_start: 0,
+            schur_tail_start: 0,
             scalar_inv_diag,
             tail_inverse: DMatrix::zeros(0, 0),
             pressure_tail_coupling: Vec::new(),
@@ -480,15 +511,16 @@ fn build_block_jacobi_preconditioner(
     }
 
     let legacy_tail_start = layout.legacy_tail_start();
-    let scalar_tail_count = matrix.rows().saturating_sub(legacy_tail_start);
-    let tail_inverse = if scalar_tail_count > 0 {
-        let mut tail_block = DMatrix::zeros(scalar_tail_count, scalar_tail_count);
-        for tail_row in 0..scalar_tail_count {
-            for tail_col in 0..scalar_tail_count {
+    let schur_tail_start = layout.scalar_tail_start;
+    let schur_tail_count = matrix.rows().saturating_sub(schur_tail_start);
+    let tail_inverse = if schur_tail_count > 0 {
+        let mut tail_block = DMatrix::zeros(schur_tail_count, schur_tail_count);
+        for tail_row in 0..schur_tail_count {
+            for tail_col in 0..schur_tail_count {
                 tail_block[(tail_row, tail_col)] = matrix_value(
                     matrix,
-                    legacy_tail_start + tail_row,
-                    legacy_tail_start + tail_col,
+                    schur_tail_start + tail_row,
+                    schur_tail_start + tail_col,
                 );
             }
         }
@@ -497,32 +529,38 @@ fn build_block_jacobi_preconditioner(
         DMatrix::zeros(0, 0)
     };
 
-    let mut tail_to_pressure = vec![vec![0.0; layout.cell_block_count]; scalar_tail_count];
-    for tail_idx in 0..scalar_tail_count {
-        let row_idx = legacy_tail_start + tail_idx;
+    let coarse_row_count = layout.cell_block_count + layout.well_bhp_count;
+    let mut tail_to_pressure = vec![vec![0.0; coarse_row_count]; schur_tail_count];
+    for tail_idx in 0..schur_tail_count {
+        let row_idx = schur_tail_start + tail_idx;
         if let Some(view) = matrix.outer_view(row_idx) {
             for (col_idx, value) in view.iter() {
-                if col_idx >= legacy_tail_start {
+                if col_idx >= schur_tail_start {
                     continue;
                 }
-                let neighbor_block = col_idx / layout.cell_block_size;
-                let neighbor_local = col_idx % layout.cell_block_size;
-                let prolongation = pressure_prolongation[neighbor_block][neighbor_local];
-                if prolongation.abs() <= f64::EPSILON {
-                    continue;
+                if col_idx < well_bhp_start {
+                    let neighbor_block = col_idx / layout.cell_block_size;
+                    let neighbor_local = col_idx % layout.cell_block_size;
+                    let prolongation = pressure_prolongation[neighbor_block][neighbor_local];
+                    if prolongation.abs() <= f64::EPSILON {
+                        continue;
+                    }
+                    tail_to_pressure[tail_idx][neighbor_block] += value * prolongation;
+                } else if col_idx < well_bhp_end {
+                    tail_to_pressure[tail_idx][layout.cell_block_count + (col_idx - well_bhp_start)] +=
+                        value;
                 }
-                tail_to_pressure[tail_idx][neighbor_block] += value * prolongation;
             }
         }
     }
 
-    let mut pressure_rows = Vec::with_capacity(layout.cell_block_count);
-    let mut pressure_tail_coupling = Vec::with_capacity(layout.cell_block_count);
+    let mut pressure_rows = Vec::with_capacity(coarse_row_count);
+    let mut pressure_tail_coupling = Vec::with_capacity(coarse_row_count);
     for block_idx in 0..layout.cell_block_count {
         let start = block_idx * layout.cell_block_size;
         let restriction = &pressure_restriction[block_idx];
         let mut coefficients = std::collections::BTreeMap::<usize, f64>::new();
-        let mut tail_coupling = vec![0.0; scalar_tail_count];
+        let mut tail_coupling = vec![0.0; schur_tail_count];
 
         for local_row in 0..layout.cell_block_size {
             let row_idx = start + local_row;
@@ -533,26 +571,32 @@ fn build_block_jacobi_preconditioner(
 
             if let Some(view) = matrix.outer_view(row_idx) {
                 for (col_idx, value) in view.iter() {
-                    if col_idx >= legacy_tail_start {
-                        tail_coupling[col_idx - legacy_tail_start] += row_weight * value;
+                    if col_idx >= schur_tail_start {
+                        tail_coupling[col_idx - schur_tail_start] += row_weight * value;
                         continue;
                     }
-                    let neighbor_block = col_idx / layout.cell_block_size;
-                    let neighbor_local = col_idx % layout.cell_block_size;
-                    let prolongation = pressure_prolongation[neighbor_block][neighbor_local];
-                    if prolongation.abs() <= f64::EPSILON {
-                        continue;
+                    if col_idx < well_bhp_start {
+                        let neighbor_block = col_idx / layout.cell_block_size;
+                        let neighbor_local = col_idx % layout.cell_block_size;
+                        let prolongation = pressure_prolongation[neighbor_block][neighbor_local];
+                        if prolongation.abs() <= f64::EPSILON {
+                            continue;
+                        }
+                        *coefficients.entry(neighbor_block).or_insert(0.0) +=
+                            row_weight * value * prolongation;
+                    } else if col_idx < well_bhp_end {
+                        *coefficients
+                            .entry(layout.cell_block_count + (col_idx - well_bhp_start))
+                            .or_insert(0.0) += row_weight * value;
                     }
-                    *coefficients.entry(neighbor_block).or_insert(0.0) +=
-                        row_weight * value * prolongation;
                 }
             }
         }
 
-        if scalar_tail_count > 0 {
+        if schur_tail_count > 0 {
             let schur_weights =
                 DVector::from_vec(tail_coupling.clone()).transpose() * &tail_inverse;
-            for tail_idx in 0..scalar_tail_count {
+            for tail_idx in 0..schur_tail_count {
                 let weight = schur_weights[(0, tail_idx)];
                 if weight.abs() <= f64::EPSILON {
                     continue;
@@ -575,13 +619,66 @@ fn build_block_jacobi_preconditioner(
         pressure_tail_coupling.push(tail_coupling);
     }
 
+    for well_idx in 0..layout.well_bhp_count {
+        let row_idx = well_bhp_start + well_idx;
+        let mut coefficients = std::collections::BTreeMap::<usize, f64>::new();
+        let mut tail_coupling = vec![0.0; schur_tail_count];
+
+        if let Some(view) = matrix.outer_view(row_idx) {
+            for (col_idx, value) in view.iter() {
+                if col_idx >= schur_tail_start {
+                    tail_coupling[col_idx - schur_tail_start] += value;
+                    continue;
+                }
+                if col_idx < well_bhp_start {
+                    let neighbor_block = col_idx / layout.cell_block_size;
+                    let neighbor_local = col_idx % layout.cell_block_size;
+                    let prolongation = pressure_prolongation[neighbor_block][neighbor_local];
+                    if prolongation.abs() <= f64::EPSILON {
+                        continue;
+                    }
+                    *coefficients.entry(neighbor_block).or_insert(0.0) += value * prolongation;
+                } else if col_idx < well_bhp_end {
+                    *coefficients
+                        .entry(layout.cell_block_count + (col_idx - well_bhp_start))
+                        .or_insert(0.0) += value;
+                }
+            }
+        }
+
+        if schur_tail_count > 0 {
+            let schur_weights =
+                DVector::from_vec(tail_coupling.clone()).transpose() * &tail_inverse;
+            for tail_idx in 0..schur_tail_count {
+                let weight = schur_weights[(0, tail_idx)];
+                if weight.abs() <= f64::EPSILON {
+                    continue;
+                }
+                for (neighbor_coarse_idx, coefficient) in tail_to_pressure[tail_idx].iter().enumerate() {
+                    if coefficient.abs() <= f64::EPSILON {
+                        continue;
+                    }
+                    *coefficients.entry(neighbor_coarse_idx).or_insert(0.0) -= weight * coefficient;
+                }
+            }
+        }
+
+        pressure_rows.push(
+            coefficients
+                .into_iter()
+                .filter(|(_, value)| value.abs() > 1e-14)
+                .collect::<Vec<_>>(),
+        );
+        pressure_tail_coupling.push(tail_coupling);
+    }
+
     let mut pressure_tail_prolongation =
-        vec![vec![0.0; layout.cell_block_count]; scalar_tail_count];
-    if scalar_tail_count > 0 {
-        for tail_row in 0..scalar_tail_count {
-            for coarse_col in 0..layout.cell_block_count {
+        vec![vec![0.0; coarse_row_count]; schur_tail_count];
+    if schur_tail_count > 0 {
+        for tail_row in 0..schur_tail_count {
+            for coarse_col in 0..coarse_row_count {
                 let mut value = 0.0;
-                for inner_tail in 0..scalar_tail_count {
+                for inner_tail in 0..schur_tail_count {
                     value += tail_inverse[(tail_row, inner_tail)]
                         * tail_to_pressure[inner_tail][coarse_col];
                 }
@@ -608,10 +705,10 @@ fn build_block_jacobi_preconditioner(
     BlockJacobiPreconditioner {
         cell_block_size: layout.cell_block_size,
         cell_block_inverses,
-        // Phase 1 keeps the old solver behavior: wells and perforation-rate unknowns
-        // still travel through the same legacy tail path even though the layout now
-        // exposes the well-BHP split explicitly.
+        well_bhp_start,
+        well_bhp_count: layout.well_bhp_count,
         scalar_tail_start: legacy_tail_start,
+        schur_tail_start,
         scalar_inv_diag,
         tail_inverse,
         pressure_tail_coupling,
@@ -1037,5 +1134,104 @@ mod tests {
         assert!((prolongation[0] - 1.0).abs() < 1e-12);
         assert!((prolongation[1] + 2.0 / 3.0).abs() < 1e-12);
         assert!(prolongation[2].abs() < 1e-12);
+    }
+
+    #[test]
+    fn cpr_coarse_operator_promotes_explicit_well_bhp_rows() {
+        let mut tri = TriMatI::<f64, usize>::new((5, 5));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(0, 3, -2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 1.0);
+        tri.add_triplet(3, 0, -1.5);
+        tri.add_triplet(3, 3, 5.0);
+        tri.add_triplet(3, 4, 1.0);
+        tri.add_triplet(4, 0, -1.0);
+        tri.add_triplet(4, 3, -0.5);
+        tri.add_triplet(4, 4, 7.0);
+        let matrix = tri.to_csr();
+
+        let preconditioner = build_block_jacobi_preconditioner(
+            &matrix,
+            Some(FimLinearBlockLayout {
+                cell_block_count: 1,
+                cell_block_size: 3,
+                well_bhp_count: 1,
+                scalar_tail_start: 4,
+            }),
+        );
+
+        assert_eq!(preconditioner.pressure_rows.len(), 2);
+        assert!(row_entry(&preconditioner.pressure_rows[0], 1).abs() > 1e-12);
+        assert!(row_entry(&preconditioner.pressure_rows[1], 0).abs() > 1e-12);
+    }
+
+    #[test]
+    fn pressure_projection_updates_explicit_well_bhp_unknowns() {
+        let mut tri = TriMatI::<f64, usize>::new((5, 5));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(0, 3, -2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 1.0);
+        tri.add_triplet(3, 0, -1.5);
+        tri.add_triplet(3, 3, 5.0);
+        tri.add_triplet(3, 4, 1.0);
+        tri.add_triplet(4, 0, -1.0);
+        tri.add_triplet(4, 3, -0.5);
+        tri.add_triplet(4, 4, 7.0);
+        let matrix = tri.to_csr();
+
+        let preconditioner = build_block_jacobi_preconditioner(
+            &matrix,
+            Some(FimLinearBlockLayout {
+                cell_block_count: 1,
+                cell_block_size: 3,
+                well_bhp_count: 1,
+                scalar_tail_start: 4,
+            }),
+        );
+
+        let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0, 0.0, 0.0]);
+        let (applied, _) = preconditioner.apply(&matrix, &rhs, true);
+
+        assert!(applied[0].abs() > 1e-12);
+        assert!(applied[3].abs() > 1e-12);
+        assert!(applied[4].abs() > 1e-12);
+    }
+
+    #[test]
+    fn cpr_report_counts_cells_and_bhp_rows_without_perf_tail() {
+        let mut tri = TriMatI::<f64, usize>::new((5, 5));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(0, 3, -2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 1.0);
+        tri.add_triplet(3, 0, -1.5);
+        tri.add_triplet(3, 3, 5.0);
+        tri.add_triplet(3, 4, 1.0);
+        tri.add_triplet(4, 0, -1.0);
+        tri.add_triplet(4, 3, -0.5);
+        tri.add_triplet(4, 4, 7.0);
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_element(5, 1.0);
+
+        let report = solve(
+            &matrix,
+            &rhs,
+            &FimLinearSolveOptions::default(),
+            Some(FimLinearBlockLayout {
+                cell_block_count: 1,
+                cell_block_size: 3,
+                well_bhp_count: 1,
+                scalar_tail_start: 4,
+            }),
+            true,
+        );
+
+        let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
+        assert_eq!(diagnostics.coarse_rows, 2);
     }
 }

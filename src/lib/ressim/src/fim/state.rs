@@ -3,7 +3,7 @@ use nalgebra::DVector;
 use crate::ReservoirSimulator;
 use crate::fim::flash::{classify_cell_regime, resolve_cell_flash};
 use crate::fim::wells::{
-    build_well_topology, connection_rate_for_bhp, physical_well_control, solve_well_bhp_from_target,
+    build_well_topology, perforation_local_block, physical_well_control, well_local_block,
 };
 
 const WELL_BHP_MANIFOLD_BLEND: f64 = 0.9;
@@ -94,21 +94,20 @@ impl FimState {
         };
 
         for well_idx in 0..topology.wells.len() {
-            if let Some((bhp_bar, _)) = solve_well_bhp_from_target(sim, &state, &topology, well_idx)
-            {
+            if let Some((bhp_bar, _)) = well_local_block(&topology, &state, well_idx).solve_bhp_from_target(sim) {
                 state.well_bhp[well_idx] = bhp_bar;
             }
         }
 
         for perf_idx in 0..topology.perforations.len() {
-            let well_idx = topology.perforations[perf_idx].physical_well_index;
+            let perf = perforation_local_block(&topology, &state, perf_idx);
+            let well_idx = perf.physical_well_idx();
             let bhp_bar = state.well_bhp[well_idx];
             state.perforation_rates_m3_day[perf_idx] =
                 if !physical_well_control(sim, &topology, well_idx).enabled {
                     0.0
                 } else {
-                    connection_rate_for_bhp(sim, &state, &topology, perf_idx, bhp_bar)
-                        .unwrap_or(0.0)
+                    perf.connection_rate_for_bhp(sim, bhp_bar).unwrap_or(0.0)
                 };
         }
 
@@ -309,14 +308,18 @@ impl FimState {
         topology: &crate::fim::wells::FimWellTopology,
     ) {
         for well_idx in 0..topology.wells.len() {
-            let control = physical_well_control(sim, topology, well_idx);
-            let consistent_bhp = if !control.enabled {
-                Some(control.bhp_target)
-            } else if control.rate_controlled {
-                solve_well_bhp_from_target(sim, self, topology, well_idx)
-                    .map(|(bhp_bar, _)| bhp_bar)
-            } else {
-                Some(control.bhp_target)
+            let (control, consistent_bhp, perforation_indices) = {
+                let block = well_local_block(topology, self, well_idx);
+                let control = block.control(sim);
+                let consistent_bhp = if !control.enabled {
+                    Some(control.bhp_target)
+                } else if control.rate_controlled {
+                    block.solve_bhp_from_target(sim).map(|(bhp_bar, _)| bhp_bar)
+                } else {
+                    Some(control.bhp_target)
+                };
+                let perforation_indices = block.perforation_indices().to_vec();
+                (control, consistent_bhp, perforation_indices)
             };
 
             let Some(consistent_bhp) = consistent_bhp else {
@@ -331,11 +334,12 @@ impl FimState {
                     .clamp(-WELL_BHP_TRUST_RADIUS_BAR, WELL_BHP_TRUST_RADIUS_BAR))
             .max(1e-6);
 
-            for &perf_idx in &topology.wells[well_idx].perforation_indices {
+            for perf_idx in perforation_indices {
                 let consistent_q = if !control.enabled {
                     0.0
                 } else {
-                    connection_rate_for_bhp(sim, self, topology, perf_idx, self.well_bhp[well_idx])
+                    perforation_local_block(topology, self, perf_idx)
+                        .connection_rate_for_bhp(sim, self.well_bhp[well_idx])
                         .unwrap_or(0.0)
                 };
                 let proposed_q = self.perforation_rates_m3_day[perf_idx];
@@ -721,7 +725,7 @@ mod tests {
 
         let updated = state.apply_newton_update_frozen(&sim, &update, 1.0, &topology);
         let consistent_q =
-            connection_rate_for_bhp(&sim, &updated, &topology, 0, updated.well_bhp[0]).unwrap();
+            perforation_local_block(&topology, &updated, 0).connection_rate_for_bhp(&sim, updated.well_bhp[0]).unwrap();
         let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
             .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
 

@@ -8,12 +8,7 @@ use crate::fim::scaling::{
 use crate::fim::state::{FimCellDerived, FimState, HydrocarbonState};
 use crate::fim::wells::{
     FimWellTopology, build_well_topology, fischer_burmeister_gradient,
-    perforation_component_rate_cell_derivatives_sc_day_by_var,
-    perforation_component_rate_derivatives_sc_day, perforation_component_rates_sc_day,
-    perforation_connection_bhp_derivative, perforation_connection_cell_derivatives,
-    perforation_rate_residual, perforation_surface_rate_cell_derivatives_sc_day,
-    perforation_target_rate_derivative, physical_well_control, well_constraint_residual,
-    well_control_slacks,
+    perforation_component_rates_sc_day, perforation_local_block, well_local_block,
 };
 
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
@@ -171,10 +166,10 @@ fn add_exact_well_source_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for perf_idx in 0..topology.perforations.len() {
-        let column = state.perforation_rate_unknown_offset(perf_idx);
-        let cell_idx = topology.perforations[perf_idx].cell_index;
-        let derivatives =
-            perforation_component_rate_derivatives_sc_day(sim, state, topology, perf_idx);
+        let perf = perforation_local_block(topology, state, perf_idx);
+        let column = perf.rate_unknown_offset();
+        let cell_idx = perf.cell_idx();
+        let derivatives = perf.component_rate_derivatives_sc_day(sim);
         for (local_eq, derivative) in derivatives.into_iter().enumerate() {
             let value = derivative * dt_days;
             if value.abs() > 1e-14 {
@@ -192,11 +187,10 @@ fn add_exact_well_source_cell_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for perf_idx in 0..topology.perforations.len() {
-        let row_cell = topology.perforations[perf_idx].cell_index;
-        for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
-            let derivatives = perforation_component_rate_cell_derivatives_sc_day_by_var(
-                sim, state, topology, perf_idx, cell_idx,
-            );
+        let perf = perforation_local_block(topology, state, perf_idx);
+        let row_cell = perf.cell_idx();
+        for cell_idx in perf.control_influence_cells(sim) {
+            let derivatives = perf.component_rate_cell_derivatives_sc_day_by_var(sim, cell_idx);
             for (local_var, component_derivatives) in derivatives.into_iter().enumerate() {
                 let column = unknown_offset(cell_idx, local_var);
                 for (local_eq, derivative) in component_derivatives.into_iter().enumerate() {
@@ -217,17 +211,17 @@ fn add_exact_well_constraint_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for well_idx in 0..topology.wells.len() {
-        let row = state.well_equation_offset(well_idx);
-        let column_bhp = state.well_bhp_unknown_offset(well_idx);
-        let control = physical_well_control(sim, topology, well_idx);
+        let block = well_local_block(topology, state, well_idx);
+        let row = block.equation_offset();
+        let column_bhp = block.bhp_unknown_offset();
+        let control = block.control(sim);
 
         if !control.enabled || !control.rate_controlled {
             tri.add_triplet(row, column_bhp, 1.0);
             continue;
         }
 
-        let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx)
-        else {
+        let Some((bhp_slack, rate_slack)) = block.control_slacks(sim) else {
             continue;
         };
         let bhp_scale = control.bhp_limit.abs().max(1.0);
@@ -244,9 +238,9 @@ fn add_exact_well_constraint_jacobian(
             tri.add_triplet(row, column_bhp, bhp_value);
         }
 
-        for &perf_idx in &topology.wells[well_idx].perforation_indices {
-            let column = state.perforation_rate_unknown_offset(perf_idx);
-            let dactual_dq = perforation_target_rate_derivative(sim, state, topology, perf_idx);
+        for perf in block.perforations() {
+            let column = perf.rate_unknown_offset();
+            let dactual_dq = perf.target_rate_derivative(sim);
             let value = -dphi_db * dactual_dq / rate_scale;
             if value.abs() > 1e-14 {
                 tri.add_triplet(row, column, value);
@@ -262,25 +256,23 @@ fn add_exact_well_constraint_cell_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for well_idx in 0..topology.wells.len() {
-        let control = physical_well_control(sim, topology, well_idx);
+        let block = well_local_block(topology, state, well_idx);
+        let control = block.control(sim);
         if !control.enabled || !control.rate_controlled || !control.uses_surface_target {
             continue;
         }
 
-        let Some((bhp_slack, rate_slack)) = well_control_slacks(sim, state, topology, well_idx)
-        else {
+        let Some((bhp_slack, rate_slack)) = block.control_slacks(sim) else {
             continue;
         };
         let bhp_scale = control.bhp_limit.abs().max(1.0);
         let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
         let (_, dphi_db) =
             fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
-        let row = state.well_equation_offset(well_idx);
-        for &perf_idx in &topology.wells[well_idx].perforation_indices {
-            for cell_idx in perforation_control_influence_cells(sim, topology, perf_idx) {
-                let derivatives = perforation_surface_rate_cell_derivatives_sc_day(
-                    sim, state, topology, perf_idx, cell_idx,
-                );
+        let row = block.equation_offset();
+        for perf in block.perforations() {
+            for cell_idx in perf.control_influence_cells(sim) {
+                let derivatives = perf.surface_rate_cell_derivatives_sc_day(sim, cell_idx);
                 for (local_var, derivative) in derivatives.into_iter().enumerate() {
                     let value = -dphi_db * derivative / rate_scale;
                     if value.abs() > 1e-14 {
@@ -299,16 +291,15 @@ fn add_exact_perforation_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for perf_idx in 0..topology.perforations.len() {
-        let row = state.perforation_equation_offset(perf_idx);
-        let q_column = state.perforation_rate_unknown_offset(perf_idx);
+        let perf = perforation_local_block(topology, state, perf_idx);
+        let row = perf.equation_offset();
+        let q_column = perf.rate_unknown_offset();
         tri.add_triplet(row, q_column, 1.0);
 
-        let well_idx = topology.perforations[perf_idx].physical_well_index;
-        let bhp_column = state.well_bhp_unknown_offset(well_idx);
-        let bhp_bar = state.well_bhp[well_idx];
-        if let Some(connection_dbhp) =
-            perforation_connection_bhp_derivative(sim, state, topology, perf_idx, bhp_bar)
-        {
+        let block = well_local_block(topology, state, perf.physical_well_idx());
+        let bhp_column = block.bhp_unknown_offset();
+        let bhp_bar = block.bhp_bar();
+        if let Some(connection_dbhp) = perf.connection_bhp_derivative(sim, bhp_bar) {
             let value = -connection_dbhp;
             if value.abs() > 1e-14 {
                 tri.add_triplet(row, bhp_column, value);
@@ -324,16 +315,14 @@ fn add_exact_perforation_cell_pressure_jacobian(
     tri: &mut TriMatI<f64, usize>,
 ) {
     for perf_idx in 0..topology.perforations.len() {
-        let well_idx = topology.perforations[perf_idx].physical_well_index;
-        let bhp_bar = state.well_bhp[well_idx];
-        let Some(connection_derivatives) =
-            perforation_connection_cell_derivatives(sim, state, topology, perf_idx, bhp_bar)
-        else {
+        let perf = perforation_local_block(topology, state, perf_idx);
+        let bhp_bar = well_local_block(topology, state, perf.physical_well_idx()).bhp_bar();
+        let Some(connection_derivatives) = perf.connection_cell_derivatives(sim, bhp_bar) else {
             continue;
         };
 
-        let row = state.perforation_equation_offset(perf_idx);
-        let cell_idx = topology.perforations[perf_idx].cell_index;
+        let row = perf.equation_offset();
+        let cell_idx = perf.cell_idx();
         for (local_var, derivative) in connection_derivatives.into_iter().enumerate() {
             let value = -derivative;
             if value.abs() > 1e-14 {
@@ -359,29 +348,6 @@ fn finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     }
 
     unreachable!()
-}
-
-fn perforation_control_influence_cells(
-    sim: &ReservoirSimulator,
-    topology: &FimWellTopology,
-    perf_idx: usize,
-) -> Vec<usize> {
-    let perforation = &topology.perforations[perf_idx];
-    if perforation.injector {
-        return vec![perforation.cell_index];
-    }
-
-    let i_min = perforation.i.saturating_sub(1);
-    let i_max = (perforation.i + 1).min(sim.nx.saturating_sub(1));
-    let j_min = perforation.j.saturating_sub(1);
-    let j_max = (perforation.j + 1).min(sim.ny.saturating_sub(1));
-    let mut cells = Vec::with_capacity((i_max - i_min + 1) * (j_max - j_min + 1));
-    for j in j_min..=j_max {
-        for i in i_min..=i_max {
-            cells.push(sim.idx(i, j, perforation.k));
-        }
-    }
-    cells
 }
 
 fn pore_volume_at_state(
@@ -1609,8 +1575,9 @@ fn add_well_constraint_equations(
     residual: &mut DVector<f64>,
 ) {
     for well_idx in 0..topology.wells.len() {
-        if let Some(well_residual) = well_constraint_residual(sim, state, topology, well_idx) {
-            residual[state.well_equation_offset(well_idx)] += well_residual;
+        let block = well_local_block(topology, state, well_idx);
+        if let Some(well_residual) = block.constraint_residual(sim) {
+            residual[block.equation_offset()] += well_residual;
         }
     }
 }
@@ -1622,8 +1589,9 @@ fn add_perforation_equations(
     residual: &mut DVector<f64>,
 ) {
     for perf_idx in 0..topology.perforations.len() {
-        if let Some(rate_residual) = perforation_rate_residual(sim, state, topology, perf_idx) {
-            residual[state.perforation_equation_offset(perf_idx)] += rate_residual;
+        let perf = perforation_local_block(topology, state, perf_idx);
+        if let Some(rate_residual) = perf.rate_residual(sim) {
+            residual[perf.equation_offset()] += rate_residual;
         }
     }
 }

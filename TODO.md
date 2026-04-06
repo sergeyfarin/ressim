@@ -189,6 +189,7 @@
 - [ ] Run a focused FIM cleanup pass before more convergence tuning.
   - Goal: reduce duplicated status/docs, isolate diagnostics, and remove stale artifacts so the next convergence iteration works from one clear baseline.
   - Concrete execution plan: `docs/FIM_CLEANUP_PLAN.md`.
+  - Item 3 local well-block cleanup advanced again on 2026-04-06: residual helpers and perforation diagnostics now live on `FimWellLocalBlock` / `FimPerforationLocalBlock`, and production FIM paths (`assembly.rs`, `scaling.rs`, `newton.rs`) no longer depend on the legacy free-function surface for those operations.
   - Phase 2 execution status:
     - classification inventory is now checked in at `docs/FIM_TEST_CLASSIFICATION.md`
     - wasm is the approved default diagnostic target
@@ -219,6 +220,14 @@
 
 - [ ] Replace the current IMPES timestep path with a fully implicit black-oil FIM path in the Rust core.
 
+- [ ] Cut the shared FIM solver overhead on the existing wasm-first code path.
+  - Current diagnosis from the 2026-04-06 comparison: the remaining runtime gap is not just language choice. ResSim is still paying for much more nonlinear work per physical step, rebuilding Jacobian sparsity and the CPR/block-Jacobi preconditioner from scratch on every Newton solve, and using a materially weaker pressure backend than Flow's production CPRW/AMG-style stack.
+  - Constraint: do this on the same maintained solver path used for wasm builds; do not create a separate native-only optimization branch or divergent benchmark harness.
+  - Concrete follow-ups:
+    - add timing breakdowns to the existing FIM diagnostic path for assembly, flash/property updates, preconditioner build, linear iterations, and retry/substep overhead
+    - reduce algorithmic waste first where possible: accepted-substep fragmentation, repeated retries, and weak coarse-pressure correction
+    - then reduce implementation waste on the same path: repeated allocations, full matrix/preconditioner rebuilds, and redundant per-cell property recomputation
+
 - [ ] Use the new FIM outer-step diagnostics to drive the remaining convergence work instead of relying on trace-only inspection.
   - `FimStepStats` is now recorded for every FIM outer step and exposed through Rust tests plus wasm getters (`getLastFimStepStats`, `getFimStepStatsHistory`).
   - The canonical wasm diagnostic summary in `scripts/fim-wasm-diagnostic.mjs` now prints accepted substeps, retry-class split, accepted-`dt` range, growth limiter, and last retry hotspot.
@@ -237,9 +246,24 @@
   - OPM comparison findings and the concrete CPRW-first implementation plan are now captured in `docs/OPM_FLOW_MINIMAL_MAPPING.md` so the solver-comparison conclusions live in-repo instead of only in chat.
   - CPRW-first Phase 1 is now landed and regression-safe: `FimLinearBlockLayout` exposes explicit well-BHP metadata (`well_bhp_count` plus a shifted generic scalar-tail start), while the current linear backend still uses the legacy full-tail path so coarse-solve behavior is unchanged pending Phase 2.
   - Focused validation for that Phase 1 metadata split is green: `linear_block_layout_exposes_well_range_without_moving_legacy_tail_start`, `producer_hotspot_stagnation`, and `spe1_fim_first_steps_converge_without_stall` all passed after fixing one preconditioner tail-start bookkeeping mismatch.
+  - CPRW-first Phase 2 is now landed and regression-safe: the linear backend builds the CPR coarse operator over `cell-pressure + well-BHP` rows, keeps perforation-rate unknowns in the Schur-eliminated tail, and still applies the stage-one scalar smoother to both well and perforation unknowns.
+  - Focused validation for that Phase 2 coarse-space split is green: `cpr_coarse_operator_promotes_explicit_well_bhp_rows`, `pressure_projection_updates_explicit_well_bhp_unknowns`, `cpr_report_counts_cells_and_bhp_rows_without_perf_tail`, `linear_block_layout_exposes_well_range_without_moving_legacy_tail_start`, `producer_hotspot_stagnation`, and `spe1_fim_first_steps_converge_without_stall` all passed.
+  - Rebuilt wasm evidence after the Phase 2 CPRW change is neutral: replaying `/tmp/fim-scan-wf12-stats/step-0001.json` still measures `substeps=246`, `retries=0/29/0`, `dt=[4.039e-4,5.758e-3]`, and `retry_dom=nonlinear-bad:oil@430`.
+  - Item-2 nonlinear stabilization now has a first prototype in `src/lib/ressim/src/fim/newton.rs`: repeated near-flat hotspot sites trigger an extra residual-history damping cap beyond the narrow producer-hotspot bailout.
+  - Focused validation for that broader nonlinear-stabilization prototype is green: `repeated_nonlinear_hotspot_streak_groups_phase_rows_by_cell_site`, `repeated_nonlinear_hotspot_streak_resets_after_strong_progress`, `nonlinear_history_stabilization_caps_damping_for_repeated_weak_progress`, `spe1_fim_first_steps_converge_without_stall`, and `spe1_fim_gas_injection_creates_free_gas` all passed.
+  - Measured benchmark outcome for the item-2 prototype is mixed: the canonical saved day-2 checkpoint improved from `246` to `196` accepted substeps, but the short day-1 `wf_p_12x12x3` summary regressed from the earlier `136`-substep regime to `165` accepted substeps.
+  - Item-3 well-structure refactor now has a first landed slice: `src/lib/ressim/src/fim/wells.rs` exposes explicit `FimWellLocalBlock` / `FimPerforationLocalBlock` views, and `src/lib/ressim/src/fim/assembly.rs` now assembles well-coupled Jacobian terms through that block view instead of rebuilding the same BHP/perforation ownership ad hoc.
+  - Focused validation for the item-3 block-view refactor is green: `local_block_exposes_bhp_and_perforation_offsets`, `local_block_perforation_control_cells_match_existing_control_stencil`, `rate_controlled_well_bhp_unknown_is_solved_implicitly`, `spe1_fim_first_steps_converge_without_stall`, and `spe1_fim_gas_injection_creates_free_gas` all passed.
+  - Rebuilt wasm evidence for the item-3 refactor is behavior-neutral relative to the current nonlinear-stabilization head: replaying `/tmp/fim-scan-wf12-stats/step-0001.json` still measures `substeps=196`, `retries=0/31/0`, `dt=[4.039e-4,2.253e-2]`, and `retry_dom=nonlinear-bad:oil@430`.
+  - Item-3 now has a second landed slice: the local-block views own more of the well-coupled derivative bookkeeping directly, and `src/lib/ressim/src/fim/assembly.rs` now pulls component-rate, target-rate, connection-BHP, connection-cell, and well-control-slack data through block methods instead of raw index plumbing.
+  - Focused validation for the second item-3 slice is green: `local_block_derivative_helpers_match_free_functions`, `local_well_block_control_helpers_match_free_functions`, `local_block_exposes_bhp_and_perforation_offsets`, `local_block_perforation_control_cells_match_existing_control_stencil`, `spe1_fim_first_steps_converge_without_stall`, and `spe1_fim_gas_injection_creates_free_gas` all passed.
+  - Rebuilt wasm evidence after the second item-3 slice remains behavior-neutral on the current head: replaying `/tmp/fim-scan-wf12-stats/step-0001.json` still measures `substeps=196`, `retries=0/31/0`, `dt=[4.039e-4,2.253e-2]`, and `retry_dom=nonlinear-bad:oil@430`.
+  - Item-3 now has a third landed slice: `FimWellLocalBlock` owns well-rate aggregation and target-BHP solving, `src/lib/ressim/src/fim/state.rs` now uses the block view for initial well consistency and post-Newton well relaxation, and well diagnostics now pull actual-rate / consistent-rate information through block aggregation methods instead of rebuilding raw well/perforation loops inline.
+  - Focused validation for the third item-3 slice is green: `local_well_block_rate_helpers_match_free_functions`, `local_well_block_control_helpers_match_free_functions`, `apply_newton_update_frozen_limits_well_overshoot_toward_local_consistency`, `rate_controlled_well_bhp_unknown_is_solved_implicitly`, `spe1_fim_first_steps_converge_without_stall`, and `spe1_fim_gas_injection_creates_free_gas` all passed.
+  - Rebuilt wasm evidence after the third item-3 slice remains behavior-neutral on the current head: replaying `/tmp/fim-scan-wf12-stats/step-0001.json` still measures `substeps=196`, `retries=0/31/0`, `dt=[4.039e-4,2.253e-2]`, and `retry_dom=nonlinear-bad:oil@430`.
   - Rebuilt wasm evidence on current head does not validate that Newton matcher yet: replaying `/tmp/fim-scan-wf12-stats/step-0001.json` now measures `substeps=246`, `retries=0/29/0`, and the filtered step trace shows no `PRODUCER-HOTSPOT STAGNATION` lines.
   - The rebuilt current-head shelf no longer matches the earlier saved `211`-substep replay exactly; it spends the late window in many 2-3 iteration producer/perf resolves with repeated `HOTSPOT effective-move floor` lines but without the specific same-iteration stagnation pattern needed to trigger the new bailout.
-  - Immediate next slice: explain the drift from the earlier `211` checkpoint baseline to the rebuilt current-head `246` checkpoint baseline before attempting another Newton acceptance change or another CPRW-style coarse-space experiment.
+  - Immediate next slice: decide whether to keep refining the new residual-history damping path until it stops regressing the short day-1 waterflood, or revert it and return to explaining the earlier `211 -> 246` baseline drift before the next Newton-side experiment.
   - Canonical current-state summary: `docs/FIM_STATUS.md`.
   - Active convergence investigation: `docs/FIM_CONVERGENCE_WORKLOG.md`.
   - Architecture target and end-state checklist: `docs/FIM_MIGRATION_PLAN.md`.

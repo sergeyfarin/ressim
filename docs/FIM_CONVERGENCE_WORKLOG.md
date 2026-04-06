@@ -233,6 +233,40 @@ Interpretation:
   - the current rebuilt checkpoint no longer matches the older `211`-substep replay signature exactly; in the late window it often resolves in 2-3 Newton iterations with producer/perf-dominated convergence instead of tripping the specific same-cell stagnation sequence required by the new bailout
   - the immediate follow-up should now be to explain why the rebuilt current head sits at `246` accepted substeps on the same saved checkpoint before attempting another Newton acceptance rewrite or another well-aware CPR coarse-space experiment
 
+## Validation Update - 2026-04-06 residual-history adaptive damping prototype for broader nonlinear stabilization
+
+- Motivation from the OPM-mapping follow-up:
+  - the next ranked improvement after CPRW was broader nonlinear stabilization beyond the narrow producer-hotspot bailout
+  - the current checkpoint shelf already showed repeated producer/perf hotspot revisits without always matching the exact effective-zero-move pattern needed to trigger the existing producer-hotspot rule
+- Change made in `src/lib/ressim/src/fim/newton.rs`:
+  - added a residual-history nonlinear-stabilization path that groups dominant residual hotspots by coarse site (`cell`, `well`, or `perforation`) instead of exact row identity
+  - when the same hotspot site repeats with nearly flat residual progress and the Newton solve is already in a near-converged residual band, the next Newton update is additionally capped by a small adaptive damping limit on top of Appleyard damping
+  - kept the scope intentionally narrower than the earlier rejected acceptance rewrites:
+    - no new acceptance shortcut
+    - no change to the entry guard
+    - no restoration of the old bounded-candidate acceptance machinery
+    - no linear/CPRW backend change
+- Focused validation:
+  - passed Rust helper coverage:
+    - `repeated_nonlinear_hotspot_streak_groups_phase_rows_by_cell_site`
+    - `repeated_nonlinear_hotspot_streak_resets_after_strong_progress`
+    - `nonlinear_history_stabilization_caps_damping_for_repeated_weak_progress`
+  - locked Rust smoke remained green:
+    - `spe1_fim_first_steps_converge_without_stall`
+    - `spe1_fim_gas_injection_creates_free_gas`
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+- Measured benchmark outcome:
+  - canonical saved day-2 checkpoint replay improved materially:
+    - before: `substeps=246`, `retries=0/29/0`, `dt=[4.039e-4,5.758e-3]`, `retry_dom=nonlinear-bad:oil@430`
+    - after prototype: `substeps=196`, `retries=0/31/0`, `dt=[4.039e-4,2.253e-2]`, `retry_dom=nonlinear-bad:oil@430`
+  - short day-1 waterflood summary regressed materially:
+    - before tracked regime: `substeps=136`, `retries=3/13/0`
+    - after prototype: `substeps=165`, `retries=4/19/0`
+- Interpretation:
+  - the broader residual-history damping idea is directionally plausible for the saved day-2 shelf; it can move the hard checkpoint without touching the linear backend
+  - however, the current trigger is still too broad or too early because it worsens the adjacent short day-1 waterflood behavior instead of only calming the late producer-corner shelf
+  - treat this as a promising but not-yet-clean nonlinear-stabilization experiment, not a finished acceptance fix
+
 ## Scope
 
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.

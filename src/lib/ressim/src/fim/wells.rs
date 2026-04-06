@@ -32,6 +32,446 @@ pub(crate) struct FimWellTopology {
     pub(crate) perforations: Vec<FimPerforation>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FimPerforationLocalBlock<'a> {
+    topology: &'a FimWellTopology,
+    state: &'a FimState,
+    perf_idx: usize,
+}
+
+impl<'a> FimPerforationLocalBlock<'a> {
+    pub(crate) fn perforation(self) -> &'a FimPerforation {
+        &self.topology.perforations[self.perf_idx]
+    }
+
+    pub(crate) fn cell_idx(self) -> usize {
+        self.perforation().cell_index
+    }
+
+    pub(crate) fn physical_well_idx(self) -> usize {
+        self.perforation().physical_well_index
+    }
+
+    pub(crate) fn rate_unknown_offset(self) -> usize {
+        self.state.perforation_rate_unknown_offset(self.perf_idx)
+    }
+
+    pub(crate) fn equation_offset(self) -> usize {
+        self.state.perforation_equation_offset(self.perf_idx)
+    }
+
+    pub(crate) fn control_influence_cells(self, sim: &ReservoirSimulator) -> Vec<usize> {
+        perforation_control_cells(sim, self.perforation())
+    }
+
+    pub(crate) fn connection_rate_for_bhp(
+        self,
+        sim: &ReservoirSimulator,
+        bhp_bar: f64,
+    ) -> Option<f64> {
+        connection_rate_for_bhp(sim, self.state, self.topology, self.perf_idx, bhp_bar)
+    }
+
+    pub(crate) fn component_rate_derivatives_sc_day(self, sim: &ReservoirSimulator) -> [f64; 3] {
+        perforation_component_rate_derivatives_sc_day(sim, self.state, self.topology, self.perf_idx)
+    }
+
+    pub(crate) fn target_rate_derivative(self, sim: &ReservoirSimulator) -> f64 {
+        perforation_target_rate_derivative(sim, self.state, self.topology, self.perf_idx)
+    }
+
+    pub(crate) fn connection_bhp_derivative(
+        self,
+        sim: &ReservoirSimulator,
+        bhp_bar: f64,
+    ) -> Option<f64> {
+        perforation_connection_bhp_derivative(sim, self.state, self.topology, self.perf_idx, bhp_bar)
+    }
+
+    pub(crate) fn connection_cell_derivatives(
+        self,
+        sim: &ReservoirSimulator,
+        bhp_bar: f64,
+    ) -> Option<[f64; 3]> {
+        perforation_connection_cell_derivatives(sim, self.state, self.topology, self.perf_idx, bhp_bar)
+    }
+
+    pub(crate) fn component_rate_cell_derivatives_sc_day_by_var(
+        self,
+        sim: &ReservoirSimulator,
+        cell_idx: usize,
+    ) -> [[f64; 3]; 3] {
+        perforation_component_rate_cell_derivatives_sc_day_by_var(
+            sim,
+            self.state,
+            self.topology,
+            self.perf_idx,
+            cell_idx,
+        )
+    }
+
+    pub(crate) fn surface_rate_cell_derivatives_sc_day(
+        self,
+        sim: &ReservoirSimulator,
+        cell_idx: usize,
+    ) -> [f64; 3] {
+        perforation_surface_rate_cell_derivatives_sc_day(
+            sim,
+            self.state,
+            self.topology,
+            self.perf_idx,
+            cell_idx,
+        )
+    }
+
+    pub(crate) fn surface_rate_sc_day(
+        self,
+        sim: &ReservoirSimulator,
+        q_m3_day: f64,
+    ) -> Option<f64> {
+        perforation_surface_rate_sc_day(sim, self.state, self.topology, self.perf_idx, q_m3_day)
+    }
+
+    pub(crate) fn current_rate_unknown_m3_day(self) -> f64 {
+        self.state.perforation_rates_m3_day[self.perf_idx]
+    }
+
+    pub(crate) fn rate_residual(self, sim: &ReservoirSimulator) -> Option<f64> {
+        let well_block = well_local_block(self.topology, self.state, self.physical_well_idx());
+        let control = well_block.control(sim);
+        if !control.enabled {
+            return Some(self.current_rate_unknown_m3_day());
+        }
+
+        let q_connection = self.connection_rate_for_bhp(sim, well_block.bhp_bar())?;
+        Some(self.current_rate_unknown_m3_day() - q_connection)
+    }
+
+    pub(crate) fn residual_diagnostics(
+        self,
+        sim: &ReservoirSimulator,
+    ) -> Option<PerforationResidualDiagnostics> {
+        let perforation = self.perforation();
+        let well_block = well_local_block(self.topology, self.state, self.physical_well_idx());
+        let control = well_block.control(sim);
+        let well = perforation_well(sim, perforation);
+        let cell = self.state.cell(perforation.cell_index);
+        let derived = self.state.derive_cell(sim, perforation.cell_index);
+        let mobilities =
+            sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
+        let well_index = geometric_well_index(sim, perforation)?;
+        let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
+        let bhp_bar = well_block.bhp_bar();
+        let drawdown_bar = cell.pressure_bar - bhp_bar;
+        let raw_connection_m3_day = well_index * connection_mobility * drawdown_bar;
+        if !raw_connection_m3_day.is_finite() {
+            return None;
+        }
+
+        let q_connection_m3_day = if !control.enabled {
+            0.0
+        } else if well.injector {
+            raw_connection_m3_day.min(0.0)
+        } else {
+            raw_connection_m3_day.max(0.0)
+        };
+        let q_unknown_m3_day = self.current_rate_unknown_m3_day();
+        let surface_rate_unknown_sc_day = if control.enabled && control.uses_surface_target {
+            self.surface_rate_sc_day(sim, q_unknown_m3_day)
+        } else {
+            None
+        };
+        let (target_rate_sc_day, actual_well_rate_sc_day, bhp_slack, rate_slack) =
+            if control.enabled && control.rate_controlled {
+                let (bhp_slack, rate_slack) = well_block.control_slacks(sim)?;
+                (
+                    control.target_rate,
+                    Some(well_block.total_rate_from_unknowns(sim)),
+                    Some(bhp_slack),
+                    Some(rate_slack),
+                )
+            } else {
+                (None, None, None, None)
+            };
+        let (
+            frozen_consistent_bhp_bar,
+            frozen_consistent_perf_rate_m3_day,
+            frozen_consistent_well_rate_sc_day,
+            frozen_consistent_bhp_limited,
+        ) = if !control.enabled {
+            (Some(control.bhp_target), Some(0.0), Some(0.0), None)
+        } else if control.rate_controlled {
+            if let Some((consistent_bhp_bar, bhp_limited)) = well_block.solve_bhp_from_target(sim)
+            {
+                (
+                    Some(consistent_bhp_bar),
+                    self.connection_rate_for_bhp(sim, consistent_bhp_bar),
+                    Some(well_block.total_rate_for_bhp(sim, consistent_bhp_bar)),
+                    Some(bhp_limited),
+                )
+            } else {
+                (None, None, None, None)
+            }
+        } else {
+            let consistent_bhp_bar = control.bhp_target;
+            (
+                Some(consistent_bhp_bar),
+                self.connection_rate_for_bhp(sim, consistent_bhp_bar),
+                None,
+                None,
+            )
+        };
+
+        Some(PerforationResidualDiagnostics {
+            perf_idx: self.perf_idx,
+            physical_well_idx: perforation.physical_well_index,
+            enabled: control.enabled,
+            injector: well.injector,
+            q_unknown_m3_day,
+            q_connection_m3_day,
+            raw_connection_m3_day,
+            drawdown_bar,
+            well_index,
+            connection_mobility,
+            bhp_bar,
+            cell_pressure_bar: cell.pressure_bar,
+            surface_rate_unknown_sc_day,
+            target_rate_sc_day,
+            actual_well_rate_sc_day,
+            bhp_slack,
+            rate_slack,
+            frozen_consistent_bhp_bar,
+            frozen_consistent_perf_rate_m3_day,
+            frozen_consistent_well_rate_sc_day,
+            frozen_consistent_bhp_limited,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FimWellLocalBlock<'a> {
+    topology: &'a FimWellTopology,
+    state: &'a FimState,
+    well_idx: usize,
+}
+
+impl<'a> FimWellLocalBlock<'a> {
+    #[cfg(test)]
+    pub(crate) fn well_idx(self) -> usize {
+        self.well_idx
+    }
+
+    pub(crate) fn well(self) -> &'a FimPhysicalWell {
+        &self.topology.wells[self.well_idx]
+    }
+
+    pub(crate) fn bhp_unknown_offset(self) -> usize {
+        self.state.well_bhp_unknown_offset(self.well_idx)
+    }
+
+    pub(crate) fn equation_offset(self) -> usize {
+        self.state.well_equation_offset(self.well_idx)
+    }
+
+    pub(crate) fn bhp_bar(self) -> f64 {
+        self.state.well_bhp[self.well_idx]
+    }
+
+    pub(crate) fn perforation_indices(self) -> &'a [usize] {
+        &self.well().perforation_indices
+    }
+
+    pub(crate) fn perforations(self) -> impl Iterator<Item = FimPerforationLocalBlock<'a>> + 'a {
+        self.perforation_indices()
+            .iter()
+            .copied()
+            .map(move |perf_idx| FimPerforationLocalBlock {
+                topology: self.topology,
+                state: self.state,
+                perf_idx,
+            })
+    }
+
+    pub(crate) fn control(self, sim: &ReservoirSimulator) -> PhysicalWellControl {
+        physical_well_control(sim, self.topology, self.well_idx)
+    }
+
+    pub(crate) fn control_slacks(self, sim: &ReservoirSimulator) -> Option<(f64, f64)> {
+        let control = self.control(sim);
+        let well = self.well();
+        if !control.enabled || !control.rate_controlled {
+            return None;
+        }
+
+        let target_rate = control.target_rate?;
+        let actual_rate = self.total_rate_from_unknowns(sim);
+        let bhp_slack = if well.injector {
+            control.bhp_limit - self.bhp_bar()
+        } else {
+            self.bhp_bar() - control.bhp_limit
+        };
+        let rate_slack = target_rate - actual_rate;
+        Some((bhp_slack, rate_slack))
+    }
+
+    pub(crate) fn constraint_residual(self, sim: &ReservoirSimulator) -> Option<f64> {
+        let control = self.control(sim);
+        let bhp_bar = self.bhp_bar();
+
+        if !control.enabled || !control.rate_controlled {
+            return Some(bhp_bar - control.bhp_target);
+        }
+
+        let (bhp_slack, rate_slack) = self.control_slacks(sim)?;
+        let bhp_scale = control.bhp_limit.abs().max(1.0);
+        let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
+        Some(fischer_burmeister(
+            bhp_slack / bhp_scale,
+            rate_slack / rate_scale,
+        ))
+    }
+
+    pub(crate) fn total_rate_for_bhp(
+        self,
+        sim: &ReservoirSimulator,
+        bhp_bar: f64,
+    ) -> f64 {
+        let control = self.control(sim);
+        let injector = self.well().injector;
+        self.perforations()
+            .filter_map(|perf| {
+                let q_m3_day = perf.connection_rate_for_bhp(sim, bhp_bar)?;
+                if injector {
+                    if control.uses_surface_target {
+                        perf.surface_rate_sc_day(sim, q_m3_day)
+                    } else {
+                        Some((-q_m3_day).max(0.0))
+                    }
+                } else if control.uses_surface_target {
+                    perf.surface_rate_sc_day(sim, q_m3_day)
+                } else {
+                    Some(q_m3_day.max(0.0))
+                }
+            })
+            .sum()
+    }
+
+    pub(crate) fn total_rate_from_unknowns(self, sim: &ReservoirSimulator) -> f64 {
+        let control = self.control(sim);
+        let injector = self.well().injector;
+        self.perforations()
+            .filter_map(|perf| {
+                let q_m3_day = perf.current_rate_unknown_m3_day();
+                if injector {
+                    if control.uses_surface_target {
+                        perf.surface_rate_sc_day(sim, q_m3_day)
+                    } else {
+                        Some((-q_m3_day).max(0.0))
+                    }
+                } else if control.uses_surface_target {
+                    perf.surface_rate_sc_day(sim, q_m3_day)
+                } else {
+                    Some(q_m3_day.max(0.0))
+                }
+            })
+            .sum()
+    }
+
+    pub(crate) fn solve_bhp_from_target(
+        self,
+        sim: &ReservoirSimulator,
+    ) -> Option<(f64, bool)> {
+        let control = self.control(sim);
+        if !control.enabled || !control.rate_controlled {
+            return None;
+        }
+
+        let perforations = self.perforations().collect::<Vec<_>>();
+        if perforations.is_empty() {
+            return None;
+        }
+
+        let injector = self.well().injector;
+        let target_rate = control.target_rate?;
+        let min_pressure = perforations
+            .iter()
+            .map(|perf| self.state.cell(perf.cell_idx()).pressure_bar)
+            .fold(f64::INFINITY, f64::min);
+        let max_pressure = perforations
+            .iter()
+            .map(|perf| self.state.cell(perf.cell_idx()).pressure_bar)
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        if !min_pressure.is_finite() || !max_pressure.is_finite() {
+            return None;
+        }
+
+        if injector {
+            let bhp_limit = control.bhp_limit;
+            let max_achievable_rate = self.total_rate_for_bhp(sim, bhp_limit);
+            if target_rate >= max_achievable_rate - 1e-9 {
+                return Some((bhp_limit, true));
+            }
+
+            let mut low = min_pressure.min(bhp_limit);
+            let mut high = bhp_limit;
+            for _ in 0..64 {
+                let mid = 0.5 * (low + high);
+                let rate_mid = self.total_rate_for_bhp(sim, mid);
+                if rate_mid < target_rate {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            Some((0.5 * (low + high), false))
+        } else {
+            let bhp_limit = control.bhp_limit;
+            let max_achievable_rate = self.total_rate_for_bhp(sim, bhp_limit);
+            if target_rate >= max_achievable_rate - 1e-9 {
+                return Some((bhp_limit, true));
+            }
+
+            let mut low = bhp_limit;
+            let mut high = max_pressure.max(bhp_limit);
+            for _ in 0..64 {
+                let mid = 0.5 * (low + high);
+                let rate_mid = self.total_rate_for_bhp(sim, mid);
+                if rate_mid > target_rate {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            Some((0.5 * (low + high), false))
+        }
+    }
+}
+
+pub(crate) fn well_local_block<'a>(
+    topology: &'a FimWellTopology,
+    state: &'a FimState,
+    well_idx: usize,
+) -> FimWellLocalBlock<'a> {
+    FimWellLocalBlock {
+        topology,
+        state,
+        well_idx,
+    }
+}
+
+pub(crate) fn perforation_local_block<'a>(
+    topology: &'a FimWellTopology,
+    state: &'a FimState,
+    perf_idx: usize,
+) -> FimPerforationLocalBlock<'a> {
+    FimPerforationLocalBlock {
+        topology,
+        state,
+        perf_idx,
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum WellGroupingKey {
     ExplicitId(String),
@@ -971,6 +1411,7 @@ pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
     derivatives
 }
 
+#[cfg(test)]
 fn total_rate_for_well_bhp(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -978,138 +1419,27 @@ fn total_rate_for_well_bhp(
     well_idx: usize,
     bhp_bar: f64,
 ) -> f64 {
-    let control = physical_well_control(sim, topology, well_idx);
-    let injector = topology.wells[well_idx].injector;
-    topology.wells[well_idx]
-        .perforation_indices
-        .iter()
-        .copied()
-        .filter_map(|perf_idx| {
-            let q_m3_day = connection_rate_for_bhp(sim, state, topology, perf_idx, bhp_bar)?;
-            if injector {
-                if control.uses_surface_target {
-                    perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
-                } else {
-                    Some((-q_m3_day).max(0.0))
-                }
-            } else if control.uses_surface_target {
-                perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
-            } else {
-                Some(q_m3_day.max(0.0))
-            }
-        })
-        .sum()
+    well_local_block(topology, state, well_idx).total_rate_for_bhp(sim, bhp_bar)
 }
 
+#[cfg(test)]
 fn total_rate_from_unknowns(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     well_idx: usize,
 ) -> f64 {
-    let control = physical_well_control(sim, topology, well_idx);
-    let injector = topology.wells[well_idx].injector;
-    topology.wells[well_idx]
-        .perforation_indices
-        .iter()
-        .copied()
-        .filter_map(|perf_idx| {
-            let q_m3_day = state.perforation_rates_m3_day[perf_idx];
-            if injector {
-                if control.uses_surface_target {
-                    perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
-                } else {
-                    Some((-q_m3_day).max(0.0))
-                }
-            } else if control.uses_surface_target {
-                perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_m3_day)
-            } else {
-                Some(q_m3_day.max(0.0))
-            }
-        })
-        .sum()
+    well_local_block(topology, state, well_idx).total_rate_from_unknowns(sim)
 }
 
+#[cfg(test)]
 pub(crate) fn solve_well_bhp_from_target(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     well_idx: usize,
 ) -> Option<(f64, bool)> {
-    let control = physical_well_control(sim, topology, well_idx);
-    if !control.enabled || !control.rate_controlled {
-        return None;
-    }
-
-    let perforation_indices = &topology.wells[well_idx].perforation_indices;
-    if perforation_indices.is_empty() {
-        return None;
-    }
-
-    let injector = topology.wells[well_idx].injector;
-    let target_rate = control.target_rate?;
-    let min_pressure = perforation_indices
-        .iter()
-        .map(|&perf_idx| {
-            state
-                .cell(topology.perforations[perf_idx].cell_index)
-                .pressure_bar
-        })
-        .fold(f64::INFINITY, f64::min);
-    let max_pressure = perforation_indices
-        .iter()
-        .map(|&perf_idx| {
-            state
-                .cell(topology.perforations[perf_idx].cell_index)
-                .pressure_bar
-        })
-        .fold(f64::NEG_INFINITY, f64::max);
-
-    if !min_pressure.is_finite() || !max_pressure.is_finite() {
-        return None;
-    }
-
-    if injector {
-        let bhp_limit = control.bhp_limit;
-        let max_achievable_rate =
-            total_rate_for_well_bhp(sim, state, topology, well_idx, bhp_limit);
-        if target_rate >= max_achievable_rate - 1e-9 {
-            return Some((bhp_limit, true));
-        }
-
-        let mut low = min_pressure.min(bhp_limit);
-        let mut high = bhp_limit;
-        for _ in 0..64 {
-            let mid = 0.5 * (low + high);
-            let rate_mid = total_rate_for_well_bhp(sim, state, topology, well_idx, mid);
-            if rate_mid < target_rate {
-                low = mid;
-            } else {
-                high = mid;
-            }
-        }
-        Some((0.5 * (low + high), false))
-    } else {
-        let bhp_limit = control.bhp_limit;
-        let max_achievable_rate =
-            total_rate_for_well_bhp(sim, state, topology, well_idx, bhp_limit);
-        if target_rate >= max_achievable_rate - 1e-9 {
-            return Some((bhp_limit, true));
-        }
-
-        let mut low = bhp_limit;
-        let mut high = max_pressure.max(bhp_limit);
-        for _ in 0..64 {
-            let mid = 0.5 * (low + high);
-            let rate_mid = total_rate_for_well_bhp(sim, state, topology, well_idx, mid);
-            if rate_mid > target_rate {
-                low = mid;
-            } else {
-                high = mid;
-            }
-        }
-        Some((0.5 * (low + high), false))
-    }
+    well_local_block(topology, state, well_idx).solve_bhp_from_target(sim)
 }
 
 /// Regularized Fischer-Burmeister NCP function.
@@ -1127,188 +1457,44 @@ pub(crate) fn fischer_burmeister_gradient(a: f64, b: f64) -> (f64, f64) {
     (a / norm - 1.0, b / norm - 1.0)
 }
 
+#[cfg(test)]
 pub(crate) fn well_control_slacks(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     well_idx: usize,
 ) -> Option<(f64, f64)> {
-    let control = physical_well_control(sim, topology, well_idx);
-    let well = &topology.wells[well_idx];
-    if !control.enabled || !control.rate_controlled {
-        return None;
-    }
-
-    let bhp_bar = state.well_bhp[well_idx];
-    let target_rate = control.target_rate?;
-    let actual_rate = total_rate_from_unknowns(sim, state, topology, well_idx);
-
-    let bhp_slack = if well.injector {
-        control.bhp_limit - bhp_bar
-    } else {
-        bhp_bar - control.bhp_limit
-    };
-    let rate_slack = target_rate - actual_rate;
-    Some((bhp_slack, rate_slack))
+    well_local_block(topology, state, well_idx).control_slacks(sim)
 }
 
+#[cfg(test)]
 pub(crate) fn well_constraint_residual(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     well_idx: usize,
 ) -> Option<f64> {
-    let control = physical_well_control(sim, topology, well_idx);
-    let bhp_bar = state.well_bhp[well_idx];
-
-    if !control.enabled {
-        return Some(bhp_bar - control.bhp_target);
-    }
-
-    if !control.rate_controlled {
-        return Some(bhp_bar - control.bhp_target);
-    }
-
-    let (bhp_slack, rate_slack) = well_control_slacks(sim, state, topology, well_idx)?;
-    let bhp_scale = control.bhp_limit.abs().max(1.0);
-    let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
-    Some(fischer_burmeister(
-        bhp_slack / bhp_scale,
-        rate_slack / rate_scale,
-    ))
+    well_local_block(topology, state, well_idx).constraint_residual(sim)
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_rate_residual(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     perf_idx: usize,
 ) -> Option<f64> {
-    let perforation = &topology.perforations[perf_idx];
-    let control = physical_well_control(sim, topology, perforation.physical_well_index);
-    if !control.enabled {
-        return Some(state.perforation_rates_m3_day[perf_idx]);
-    }
-
-    let bhp_bar = state.well_bhp[perforation.physical_well_index];
-    let q_connection = connection_rate_for_bhp(sim, state, topology, perf_idx, bhp_bar)?;
-    Some(state.perforation_rates_m3_day[perf_idx] - q_connection)
+    perforation_local_block(topology, state, perf_idx).rate_residual(sim)
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_residual_diagnostics(
     sim: &ReservoirSimulator,
     state: &FimState,
     topology: &FimWellTopology,
     perf_idx: usize,
 ) -> Option<PerforationResidualDiagnostics> {
-    let perforation = &topology.perforations[perf_idx];
-    let control = physical_well_control(sim, topology, perforation.physical_well_index);
-    let well = perforation_well(sim, perforation);
-    let cell = state.cell(perforation.cell_index);
-    let derived = state.derive_cell(sim, perforation.cell_index);
-    let mobilities =
-        sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
-    let well_index = geometric_well_index(sim, perforation)?;
-    let connection_mobility = (mobilities.water + mobilities.oil + mobilities.gas).max(0.0);
-    let bhp_bar = state.well_bhp[perforation.physical_well_index];
-    let drawdown_bar = cell.pressure_bar - bhp_bar;
-    let raw_connection_m3_day = well_index * connection_mobility * drawdown_bar;
-    if !raw_connection_m3_day.is_finite() {
-        return None;
-    }
-
-    let q_connection_m3_day = if !control.enabled {
-        0.0
-    } else if well.injector {
-        raw_connection_m3_day.min(0.0)
-    } else {
-        raw_connection_m3_day.max(0.0)
-    };
-    let q_unknown_m3_day = state.perforation_rates_m3_day[perf_idx];
-    let surface_rate_unknown_sc_day = if control.enabled && control.uses_surface_target {
-        perforation_surface_rate_sc_day(sim, state, topology, perf_idx, q_unknown_m3_day)
-    } else {
-        None
-    };
-    let (target_rate_sc_day, actual_well_rate_sc_day, bhp_slack, rate_slack) =
-        if control.enabled && control.rate_controlled {
-            let target_rate_sc_day = control.target_rate;
-            let actual_well_rate_sc_day = Some(total_rate_from_unknowns(
-                sim,
-                state,
-                topology,
-                perforation.physical_well_index,
-            ));
-            let (bhp_slack, rate_slack) =
-                well_control_slacks(sim, state, topology, perforation.physical_well_index)?;
-            (
-                target_rate_sc_day,
-                actual_well_rate_sc_day,
-                Some(bhp_slack),
-                Some(rate_slack),
-            )
-        } else {
-            (None, None, None, None)
-        };
-    let (
-        frozen_consistent_bhp_bar,
-        frozen_consistent_perf_rate_m3_day,
-        frozen_consistent_well_rate_sc_day,
-        frozen_consistent_bhp_limited,
-    ) = if !control.enabled {
-        (Some(control.bhp_target), Some(0.0), Some(0.0), None)
-    } else if control.rate_controlled {
-        if let Some((consistent_bhp_bar, bhp_limited)) =
-            solve_well_bhp_from_target(sim, state, topology, perforation.physical_well_index)
-        {
-            (
-                Some(consistent_bhp_bar),
-                connection_rate_for_bhp(sim, state, topology, perf_idx, consistent_bhp_bar),
-                Some(total_rate_for_well_bhp(
-                    sim,
-                    state,
-                    topology,
-                    perforation.physical_well_index,
-                    consistent_bhp_bar,
-                )),
-                Some(bhp_limited),
-            )
-        } else {
-            (None, None, None, None)
-        }
-    } else {
-        let consistent_bhp_bar = control.bhp_target;
-        (
-            Some(consistent_bhp_bar),
-            connection_rate_for_bhp(sim, state, topology, perf_idx, consistent_bhp_bar),
-            None,
-            None,
-        )
-    };
-
-    Some(PerforationResidualDiagnostics {
-        perf_idx,
-        physical_well_idx: perforation.physical_well_index,
-        enabled: control.enabled,
-        injector: well.injector,
-        q_unknown_m3_day,
-        q_connection_m3_day,
-        raw_connection_m3_day,
-        drawdown_bar,
-        well_index,
-        connection_mobility,
-        bhp_bar,
-        cell_pressure_bar: cell.pressure_bar,
-        surface_rate_unknown_sc_day,
-        target_rate_sc_day,
-        actual_well_rate_sc_day,
-        bhp_slack,
-        rate_slack,
-        frozen_consistent_bhp_bar,
-        frozen_consistent_perf_rate_m3_day,
-        frozen_consistent_well_rate_sc_day,
-        frozen_consistent_bhp_limited,
-    })
+    perforation_local_block(topology, state, perf_idx).residual_diagnostics(sim)
 }
 
 pub(crate) fn perforation_component_rates_sc_day(
@@ -1396,6 +1582,144 @@ mod tests {
         assert_eq!(topology.perforations.len(), 2);
         assert_eq!(topology.perforations[0].physical_well_index, 0);
         assert_eq!(topology.perforations[1].physical_well_index, 0);
+    }
+
+    #[test]
+    fn local_block_exposes_bhp_and_perforation_offsets() {
+        let mut sim = ReservoirSimulator::new(1, 1, 2, 0.2);
+        sim.add_well_with_id(0, 0, 0, 120.0, 0.1, 0.0, false, "prod-a".to_string())
+            .unwrap();
+        sim.add_well_with_id(0, 0, 1, 120.0, 0.1, 0.0, false, "prod-a".to_string())
+            .unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let block = well_local_block(&topology, &state, 0);
+        let perforations = block.perforations().collect::<Vec<_>>();
+
+        assert_eq!(block.well_idx(), 0);
+        assert_eq!(block.bhp_unknown_offset(), state.well_bhp_unknown_offset(0));
+        assert_eq!(block.equation_offset(), state.well_equation_offset(0));
+        assert_eq!(perforations.len(), 2);
+        assert_eq!(perforations[0].rate_unknown_offset(), state.perforation_rate_unknown_offset(0));
+        assert_eq!(perforations[0].equation_offset(), state.perforation_equation_offset(0));
+        assert_eq!(perforations[1].rate_unknown_offset(), state.perforation_rate_unknown_offset(1));
+        assert_eq!(perforations[1].equation_offset(), state.perforation_equation_offset(1));
+    }
+
+    #[test]
+    fn local_block_perforation_control_cells_match_existing_control_stencil() {
+        let mut sim = ReservoirSimulator::new(3, 3, 1, 0.2);
+        sim.add_well(1, 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let block = well_local_block(&topology, &state, 0);
+        let perf = block.perforations().next().expect("expected perforation");
+        let mut cells = perf.control_influence_cells(&sim);
+        cells.sort_unstable();
+
+        let mut expected = vec![
+            sim.idx(0, 0, 0),
+            sim.idx(1, 0, 0),
+            sim.idx(2, 0, 0),
+            sim.idx(0, 1, 0),
+            sim.idx(1, 1, 0),
+            sim.idx(2, 1, 0),
+            sim.idx(0, 2, 0),
+            sim.idx(1, 2, 0),
+            sim.idx(2, 2, 0),
+        ];
+        expected.sort_unstable();
+
+        assert_eq!(cells, expected);
+    }
+
+    #[test]
+    fn local_block_derivative_helpers_match_free_functions() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 50.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let perf = perforation_local_block(&topology, &state, 0);
+        let bhp = well_local_block(&topology, &state, perf.physical_well_idx()).bhp_bar();
+
+        assert_eq!(
+            perf.component_rate_derivatives_sc_day(&sim),
+            perforation_component_rate_derivatives_sc_day(&sim, &state, &topology, 0)
+        );
+        assert_eq!(
+            perf.target_rate_derivative(&sim),
+            perforation_target_rate_derivative(&sim, &state, &topology, 0)
+        );
+        assert_eq!(
+            perf.connection_bhp_derivative(&sim, bhp),
+            perforation_connection_bhp_derivative(&sim, &state, &topology, 0, bhp)
+        );
+        assert_eq!(
+            perf.connection_cell_derivatives(&sim, bhp),
+            perforation_connection_cell_derivatives(&sim, &state, &topology, 0, bhp)
+        );
+    }
+
+    #[test]
+    fn local_well_block_control_helpers_match_free_functions() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(0.0, 10.0).unwrap();
+        sim.set_well_bhp_limits(50.0, 400.0).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let block = well_local_block(&topology, &state, 0);
+
+        assert_eq!(block.control(&sim), physical_well_control(&sim, &topology, 0));
+        assert_eq!(block.control_slacks(&sim), well_control_slacks(&sim, &state, &topology, 0));
+        assert_eq!(
+            block.constraint_residual(&sim),
+            well_constraint_residual(&sim, &state, &topology, 0)
+        );
+    }
+
+    #[test]
+    fn local_block_residual_helpers_match_free_functions() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(0.0, 10.0).unwrap();
+        sim.set_well_bhp_limits(50.0, 400.0).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let perf = perforation_local_block(&topology, &state, 0);
+
+        assert_eq!(perf.rate_residual(&sim), perforation_rate_residual(&sim, &state, &topology, 0));
+        assert_eq!(
+            perf.residual_diagnostics(&sim),
+            perforation_residual_diagnostics(&sim, &state, &topology, 0)
+        );
+    }
+
+    #[test]
+    fn local_well_block_rate_helpers_match_free_functions() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(0.0, 10.0).unwrap();
+        sim.set_well_bhp_limits(50.0, 400.0).unwrap();
+        sim.add_well(0, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let block = well_local_block(&topology, &state, 0);
+
+        assert_eq!(block.total_rate_from_unknowns(&sim), total_rate_from_unknowns(&sim, &state, &topology, 0));
+        assert_eq!(block.total_rate_for_bhp(&sim, state.well_bhp[0]), total_rate_for_well_bhp(&sim, &state, &topology, 0, state.well_bhp[0]));
+        assert_eq!(block.solve_bhp_from_target(&sim), solve_well_bhp_from_target(&sim, &state, &topology, 0));
     }
 
     #[test]
