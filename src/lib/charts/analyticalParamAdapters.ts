@@ -358,6 +358,18 @@ export function computeDepletionTau(params: Record<string, any>): number | null 
 }
 
 /**
+ * Computes the depletion analytical solution on a caller-supplied time axis.
+ * Used by reference overlay builders that already have the simulation time vector
+ * (as opposed to `computeDepletionAnalyticalFromParams` which builds a synthetic grid).
+ */
+export function computeDepletionOnTimeAxis(
+    params: Record<string, any>,
+    timeHistory: number[],
+): ReturnType<typeof calculateDepletionAnalyticalProduction> {
+    return calculateDepletionAnalyticalProduction(buildDepletionParams(params, timeHistory));
+}
+
+/**
  * Computes the depletion analytical solution over a synthetic time grid built
  * from `params.steps` × `params.delta_t_days`. Used for preview overlays before
  * any simulation result (and therefore no real time axis) is available.

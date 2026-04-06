@@ -1,13 +1,10 @@
 import { calculateDepletionAnalyticalProduction } from '../analytical/depletionAnalytical';
-import { calculateMaterialBalance } from '../analytical/materialBalance';
-import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
-import type { RockProps, FluidProps, GasOilRockProps, GasOilFluidProps } from '../analytical/fractionalFlow';
+import { calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';
 import { computeCombinedSweep, computeSweepRecoveryFactor, getSweepComponentVisibility, type SweepAnalyticalMethod, type SweepGeometry } from '../analytical/sweepEfficiency';
 import type { BenchmarkFamily } from '../catalog/benchmarkCases';
-import type { AnalyticalOverlayMode } from '../catalog/scenarios';
 import type { BenchmarkRunResult } from '../benchmarkRunModel';
 import type { CurveConfig } from './chartTypes';
-import type { RateChartPanelId, RateChartAuxiliaryPanelKey, RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
+import type { RateChartAuxiliaryPanelKey, RateChartPanelKey, RateChartXAxisMode } from './rateChartLayoutConfig';
 import {
     ANALYTICAL_DASH, PUBLISHED_DASH, AUXILIARY_DASH,
     SWEEP_DASH_AREAL, SWEEP_DASH_VERTICAL, SWEEP_DASH_COMBINED,
@@ -20,7 +17,6 @@ import {
     type XYPoint,
     toXYSeries,
     buildXAxisValues,
-    getSweepZeroXAxisValue,
     mapPviSeriesToXAxis,
     interpolateXAxisAtTimes,
     requiresRunMappedAnalyticalXAxis,
@@ -36,9 +32,7 @@ import {
     extractFluidProps,
     extractGasOilRockProps,
     extractGasOilFluidProps,
-    getBuckleyLeverettOverlaySignature,
     hasDistinctBuckleyLeverettOverlays,
-    getGasOilBLOverlaySignature,
     hasDistinctGasOilBLOverlays,
     resolveOverlayMode,
     computeBLAnalyticalFromParams,
@@ -46,8 +40,6 @@ import {
     computeDepletionAnalyticalFromParams,
     computeDepletionTau,
     computeMbeDiagnostics,
-    type MbeDiagnostics,
-    MIN_GOR_OIL_RATE_SM3_DAY,
     buildDerivedRunSeries,
     getLayerPermeabilities,
 } from './analyticalParamAdapters';
@@ -117,8 +109,6 @@ export type AnalyticalPreviewVariant = {
     params: Record<string, any>;
 };
 
-
-const MIN_GOR_OIL_RATE_SM3_DAY = 10.0;
 
 type AnalyticalOverlay = {
     rates: { label: string; values: Array<number | null> } | null;
@@ -608,14 +598,6 @@ function buildGasOilBLReference(
 //  snapshots) as solid lines alongside these analytical dashed curves — see TODO.md.
 // ─────────────────────────────────────────────────────────────────────────────
 
-
-function mapSweepTimeToPvi(result: BenchmarkRunResult, time: number): number | null {
-    const idx = result.rateHistory.findIndex((point) => Number(point.time) >= time - 1e-9);
-    if (idx >= 0) {
-        return result.pviSeries[idx] ?? null;
-    }
-    return result.pviSeries.at(-1) ?? null;
-}
 
 function dedupeSweepSeries(points: XYPoint[]): XYPoint[] {
     const deduped: XYPoint[] = [];
@@ -1298,7 +1280,7 @@ export function buildReferenceComparisonModel(input: {
         ...orderedResults.map((result) => result.params),
         ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
     ]);
-    const distinctGasOilBLOutlays = hasDistinctGasOilBLOutlays([
+    const distinctGasOilBLOverlays = hasDistinctGasOilBLOverlays([
         ...orderedResults.map((result) => result.params),
         ...(input.pendingPreviewVariants ?? []).map((variant) => variant.params),
     ]);
@@ -1308,7 +1290,7 @@ export function buildReferenceComparisonModel(input: {
     });
     const gasOilOverlayMode = resolveOverlayMode({
         requested: requestedOverlayMode,
-        distinctByPhysics: distinctGasOilBLOutlays,
+        distinctByPhysics: distinctGasOilBLOverlays,
     });
     const depletionOverlayMode = resolveOverlayMode({
         requested: requestedOverlayMode,
