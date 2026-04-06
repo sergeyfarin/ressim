@@ -896,6 +896,188 @@ fn scaled_update_inf_norm(
     max_norm
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UpdateVariableFamily {
+    Pressure,
+    WaterSaturation,
+    HydrocarbonVariable,
+    WellBhp,
+    PerforationRate,
+}
+
+impl UpdateVariableFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pressure => "pressure",
+            Self::WaterSaturation => "sw",
+            Self::HydrocarbonVariable => "hc",
+            Self::WellBhp => "bhp",
+            Self::PerforationRate => "perf-rate",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct UpdateFamilyPeak {
+    family: UpdateVariableFamily,
+    scaled_value: f64,
+    row: usize,
+    item_index: usize,
+}
+
+fn update_variable_peak(
+    current: &mut Option<UpdateFamilyPeak>,
+    family: UpdateVariableFamily,
+    scaled_value: f64,
+    row: usize,
+    item_index: usize,
+) {
+    let scaled_value = if scaled_value.is_finite() {
+        scaled_value
+    } else {
+        f64::INFINITY
+    };
+    let candidate = UpdateFamilyPeak {
+        family,
+        scaled_value,
+        row,
+        item_index,
+    };
+    if current.is_none_or(|existing| candidate.scaled_value > existing.scaled_value) {
+        *current = Some(candidate);
+    }
+}
+
+fn scaled_update_peak(
+    update: &DVector<f64>,
+    scaling: &crate::fim::scaling::VariableScaling,
+) -> UpdateFamilyPeak {
+    let n_cells = scaling.pressure.len();
+    let mut peak = None;
+
+    for i in 0..n_cells {
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::Pressure,
+            update[i * 3].abs() / scaling.pressure[i],
+            i * 3,
+            i,
+        );
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::WaterSaturation,
+            update[i * 3 + 1].abs() / scaling.sw[i],
+            i * 3 + 1,
+            i,
+        );
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::HydrocarbonVariable,
+            update[i * 3 + 2].abs() / scaling.hydrocarbon_var[i],
+            i * 3 + 2,
+            i,
+        );
+    }
+
+    let mut offset = n_cells * 3;
+    for i in 0..scaling.well_bhp.len() {
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::WellBhp,
+            update[offset + i].abs() / scaling.well_bhp[i],
+            offset + i,
+            i,
+        );
+    }
+    offset += scaling.well_bhp.len();
+    for i in 0..scaling.perforation_rate.len() {
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::PerforationRate,
+            update[offset + i].abs() / scaling.perforation_rate[i],
+            offset + i,
+            i,
+        );
+    }
+
+    peak.expect("update diagnostics require at least one unknown")
+}
+
+fn scaled_applied_update_peak(
+    state: &FimState,
+    candidate: &FimState,
+    scaling: &crate::fim::scaling::VariableScaling,
+) -> UpdateFamilyPeak {
+    let mut peak = None;
+
+    for (idx, (current, next)) in state.cells.iter().zip(candidate.cells.iter()).enumerate() {
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::Pressure,
+            (next.pressure_bar - current.pressure_bar).abs() / scaling.pressure[idx],
+            idx * 3,
+            idx,
+        );
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::WaterSaturation,
+            (next.sw - current.sw).abs() / scaling.sw[idx],
+            idx * 3 + 1,
+            idx,
+        );
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::HydrocarbonVariable,
+            (next.hydrocarbon_var - current.hydrocarbon_var).abs() / scaling.hydrocarbon_var[idx],
+            idx * 3 + 2,
+            idx,
+        );
+    }
+
+    let mut offset = state.cells.len() * 3;
+    for (idx, (current, next)) in state
+        .well_bhp
+        .iter()
+        .zip(candidate.well_bhp.iter())
+        .enumerate()
+    {
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::WellBhp,
+            (next - current).abs() / scaling.well_bhp[idx],
+            offset + idx,
+            idx,
+        );
+    }
+    offset += state.well_bhp.len();
+    for (idx, (current, next)) in state
+        .perforation_rates_m3_day
+        .iter()
+        .zip(candidate.perforation_rates_m3_day.iter())
+        .enumerate()
+    {
+        update_variable_peak(
+            &mut peak,
+            UpdateVariableFamily::PerforationRate,
+            (next - current).abs() / scaling.perforation_rate[idx],
+            offset + idx,
+            idx,
+        );
+    }
+
+    peak.expect("applied update diagnostics require at least one unknown")
+}
+
+fn update_peak_trace(peak: UpdateFamilyPeak) -> String {
+    format!(
+        " upd_peak=[{}={:.3e} row={} item={}]",
+        peak.family.label(),
+        peak.scaled_value,
+        peak.row,
+        peak.item_index
+    )
+}
+
 fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> bool {
     const PRESSURE_EPS: f64 = 1e-12;
     const SATURATION_EPS: f64 = 1e-12;
@@ -1495,6 +1677,58 @@ fn accepted_state_meets_convergence(
         && diagnostics.material_balance_inf_norm <= material_balance_limit
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StagnationAcceptanceGateStatus {
+    materially_changed: bool,
+    update_ok: bool,
+    residual_ok: bool,
+    material_balance_ok: bool,
+}
+
+impl StagnationAcceptanceGateStatus {
+    fn allows(self) -> bool {
+        self.materially_changed && self.update_ok && self.residual_ok && self.material_balance_ok
+    }
+}
+
+fn stagnation_acceptance_gate_status(
+    materially_changed: bool,
+    residual_inf_norm: f64,
+    material_balance_inf_norm: f64,
+    update_inf_norm: f64,
+    options: &FimNewtonOptions,
+) -> StagnationAcceptanceGateStatus {
+    StagnationAcceptanceGateStatus {
+        materially_changed,
+        update_ok: update_inf_norm <= options.update_tolerance,
+        residual_ok: residual_inf_norm
+            <= options.residual_tolerance * NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR,
+        material_balance_ok: material_balance_inf_norm <= options.material_balance_tolerance,
+    }
+}
+
+fn stagnation_acceptance_gate_trace(
+    status: StagnationAcceptanceGateStatus,
+    residual_inf_norm: f64,
+    material_balance_inf_norm: f64,
+    update_inf_norm: f64,
+    options: &FimNewtonOptions,
+) -> String {
+    format!(
+        " gates=[changed={} upd={:.3e}/{:.3e} {} res={:.3e}/{:.3e} {} mb={:.3e}/{:.3e} {}]",
+        status.materially_changed,
+        update_inf_norm,
+        options.update_tolerance,
+        if status.update_ok { "ok" } else { "reject" },
+        residual_inf_norm,
+        options.residual_tolerance * NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR,
+        if status.residual_ok { "ok" } else { "reject" },
+        material_balance_inf_norm,
+        options.material_balance_tolerance,
+        if status.material_balance_ok { "ok" } else { "reject" },
+    )
+}
+
 fn stagnation_acceptance_allows(
     materially_changed: bool,
     residual_inf_norm: f64,
@@ -1502,10 +1736,14 @@ fn stagnation_acceptance_allows(
     update_inf_norm: f64,
     options: &FimNewtonOptions,
 ) -> bool {
-    materially_changed
-        && update_inf_norm <= options.update_tolerance
-        && residual_inf_norm <= options.residual_tolerance * NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR
-        && material_balance_inf_norm <= options.material_balance_tolerance
+    stagnation_acceptance_gate_status(
+        materially_changed,
+        residual_inf_norm,
+        material_balance_inf_norm,
+        update_inf_norm,
+        options,
+    )
+    .allows()
 }
 
 pub(crate) fn run_fim_timestep(
@@ -1532,6 +1770,8 @@ pub(crate) fn run_fim_timestep(
     let mut linear_solve_time_ms = 0.0;
     let mut linear_preconditioner_build_time_ms = 0.0;
     let mut state_update_ms = 0.0;
+    let mut last_effective_update_inf_norm = f64::INFINITY;
+    let mut last_effective_update_peak: Option<UpdateFamilyPeak> = None;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -1724,21 +1964,50 @@ pub(crate) fn run_fim_timestep(
                     &topology,
                     dt_days,
                 );
+                let gate_status = stagnation_acceptance_gate_status(
+                    materially_changed,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    last_effective_update_inf_norm,
+                    options,
+                );
+                let raw_update_peak_trace = last_linear_report
+                    .as_ref()
+                    .map(|report| {
+                        update_peak_trace(scaled_update_peak(
+                            &report.solution,
+                            &assembly.variable_scaling,
+                        ))
+                    })
+                    .unwrap_or_else(|| " raw_upd_peak=[unavailable]".to_string());
+                let effective_update_peak_trace = last_effective_update_peak
+                    .map(|peak| format!(" eff{}", update_peak_trace(peak)))
+                    .unwrap_or_else(|| " eff_upd_peak=[unavailable]".to_string());
                 if stagnation_acceptance_allows(
                     materially_changed,
                     accepted_diagnostics.residual_inf_norm,
                     accepted_diagnostics.material_balance_inf_norm,
-                    final_update_inf_norm,
+                    last_effective_update_inf_norm,
                     options,
                 ) {
                     fim_trace!(
                         sim,
                         options.verbose,
-                        "    iter {:>2}: STAGNATION-ACCEPTED res={:.3e} mb={:.3e} upd={:.3e} fam=[{}] mb=[{}]{}",
+                        "    iter {:>2}: STAGNATION-ACCEPTED res={:.3e} mb={:.3e} raw_upd={:.3e} eff_upd={:.3e}{}{}{} fam=[{}] mb=[{}]{}",
                         iteration,
                         accepted_diagnostics.residual_inf_norm,
                         accepted_diagnostics.material_balance_inf_norm,
                         final_update_inf_norm,
+                        last_effective_update_inf_norm,
+                        stagnation_acceptance_gate_trace(
+                            gate_status,
+                            accepted_diagnostics.residual_inf_norm,
+                            accepted_diagnostics.material_balance_inf_norm,
+                            last_effective_update_inf_norm,
+                            options,
+                        ),
+                        raw_update_peak_trace,
+                        effective_update_peak_trace,
                         residual_family_trace(&accepted_diagnostics.residual_diagnostics),
                         global_material_balance_trace(
                             &accepted_diagnostics.material_balance_diagnostics
@@ -1767,6 +2036,33 @@ pub(crate) fn run_fim_timestep(
                         state_update_ms,
                     };
                 }
+
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: STAGNATION-REJECTED res={:.3e} mb={:.3e} raw_upd={:.3e} eff_upd={:.3e}{}{}{} fam=[{}] mb=[{}]{}",
+                    iteration,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    final_update_inf_norm,
+                    last_effective_update_inf_norm,
+                    stagnation_acceptance_gate_trace(
+                        gate_status,
+                        accepted_diagnostics.residual_inf_norm,
+                        accepted_diagnostics.material_balance_inf_norm,
+                        last_effective_update_inf_norm,
+                        options,
+                    ),
+                    raw_update_peak_trace,
+                    effective_update_peak_trace,
+                    residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                    global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                    accepted_diagnostics
+                        .residual_detail
+                        .as_ref()
+                        .map(|detail| format!(" detail=[{}]", detail))
+                        .unwrap_or_default()
+                );
 
                 let failure_diagnostics =
                     classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
@@ -1844,8 +2140,10 @@ pub(crate) fn run_fim_timestep(
             linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
         }
 
+        let update_peak = scaled_update_peak(&linear_report.solution, &assembly.variable_scaling);
         final_update_inf_norm =
             scaled_update_inf_norm(&linear_report.solution, &assembly.variable_scaling);
+        debug_assert!((update_peak.scaled_value - final_update_inf_norm).abs() < 1e-12);
         last_linear_report = Some(linear_report.clone());
 
         let converged = final_update_inf_norm <= options.update_tolerance
@@ -1971,6 +2269,10 @@ pub(crate) fn run_fim_timestep(
         let candidate =
             state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
         state_update_ms += state_update_timer.elapsed_ms();
+        let effective_update_peak =
+            scaled_applied_update_peak(&state, &candidate, &assembly.variable_scaling);
+        last_effective_update_inf_norm = effective_update_peak.scaled_value;
+        last_effective_update_peak = Some(effective_update_peak);
         let (candidate_pressure_change, candidate_saturation_change) =
             state_update_change_bounds(&state, &candidate);
         let effective_move_trace = effective_move_threshold_trace(
@@ -2427,6 +2729,108 @@ mod tests {
             options.update_tolerance * 0.1,
             &options,
         ));
+    }
+
+    #[test]
+    fn stagnation_acceptance_gate_status_reports_update_failure() {
+        let options = FimNewtonOptions::default();
+        let status = stagnation_acceptance_gate_status(
+            true,
+            options.residual_tolerance * 6.0,
+            options.material_balance_tolerance * 0.5,
+            options.update_tolerance * 1.5,
+            &options,
+        );
+
+        assert!(status.materially_changed);
+        assert!(!status.update_ok);
+        assert!(status.residual_ok);
+        assert!(status.material_balance_ok);
+        assert!(!status.allows());
+    }
+
+    #[test]
+    fn stagnation_acceptance_gate_trace_marks_rejected_limits() {
+        let options = FimNewtonOptions::default();
+        let status = stagnation_acceptance_gate_status(
+            true,
+            options.residual_tolerance * 12.0,
+            options.material_balance_tolerance * 2.0,
+            options.update_tolerance * 1.5,
+            &options,
+        );
+
+        let trace = stagnation_acceptance_gate_trace(
+            status,
+            options.residual_tolerance * 12.0,
+            options.material_balance_tolerance * 2.0,
+            options.update_tolerance * 1.5,
+            &options,
+        );
+
+        assert!(trace.contains("upd="));
+        assert!(trace.contains("res="));
+        assert!(trace.contains("mb="));
+        assert!(trace.contains("reject"));
+    }
+
+    #[test]
+    fn scaled_update_peak_reports_dominant_family() {
+        let update = DVector::from_vec(vec![2.0, 0.1, 0.05, 30.0, 0.2]);
+        let scaling = crate::fim::scaling::VariableScaling {
+            pressure: vec![100.0],
+            sw: vec![1.0],
+            hydrocarbon_var: vec![1.0],
+            well_bhp: vec![1000.0],
+            perforation_rate: vec![1.0],
+        };
+
+        let peak = scaled_update_peak(&update, &scaling);
+
+        assert_eq!(peak.family, UpdateVariableFamily::PerforationRate);
+        assert!((peak.scaled_value - 0.2).abs() < 1e-12);
+        assert_eq!(peak.row, 4);
+        assert_eq!(peak.item_index, 0);
+    }
+
+    #[test]
+    fn scaled_applied_update_peak_reports_effective_family() {
+        let state = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.0,
+                sw: 0.1,
+                hydrocarbon_var: 80.0,
+                regime: crate::fim::state::HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: vec![150.0],
+            perforation_rates_m3_day: vec![10.0],
+        };
+
+        let candidate = FimState {
+            cells: vec![crate::fim::state::FimCellState {
+                pressure_bar: 200.5,
+                sw: 0.11,
+                hydrocarbon_var: 80.0,
+                regime: crate::fim::state::HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: vec![150.0],
+            perforation_rates_m3_day: vec![10.2],
+        };
+
+        let scaling = crate::fim::scaling::VariableScaling {
+            pressure: vec![100.0],
+            sw: vec![1.0],
+            hydrocarbon_var: vec![100.0],
+            well_bhp: vec![1000.0],
+            perforation_rate: vec![100.0],
+        };
+
+        let peak = scaled_applied_update_peak(&state, &candidate, &scaling);
+
+        assert_eq!(peak.family, UpdateVariableFamily::WaterSaturation);
+        assert!((peak.scaled_value - 0.01).abs() < 1e-12);
+        assert_eq!(peak.row, 1);
+        assert_eq!(peak.item_index, 0);
     }
 
     #[test]
