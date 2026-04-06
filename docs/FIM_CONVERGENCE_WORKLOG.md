@@ -208,6 +208,31 @@ Interpretation:
 - Injector diagnostics remain useful at the outer-step level for global pressure-support questions, but they are not the missing local diagnostic for the current producer-corner Newton shelf.
 - The next Newton-state fix should therefore target the producer-corner tiny-move path directly, likely by treating these sub-threshold local updates as a distinct stagnation mode rather than by broad acceptance-policy rewrites.
 
+## Validation Update - 2026-04-06 native producer-hotspot matcher landed, rebuilt wasm checkpoint still at 246
+
+- Change made in `src/lib/ressim/src/fim/newton.rs`:
+  - added a narrow producer-hotspot matcher that remembers a producer-only effective-zero move on a boundary producer cell and can classify the following same-cell stagnation as an immediate nonlinear retry
+  - kept the scope intentionally narrow:
+    - only phase-family hotspot rows (`water`, `oil`, `gas`)
+    - only boundary cells on at least two boundary planes
+    - only cells whose attached perforations are all producer perforations
+  - added focused unit coverage for:
+    - producer-boundary qualification
+    - bail/no-bail behavior on same-cell vs different-cell follow-up stagnation
+- Native validation:
+  - `cargo test producer_hotspot_stagnation -- --nocapture` passed
+  - `cargo test spe1_fim_first_steps_converge_without_stall -- --nocapture` passed
+- Rebuilt wasm validation on current head:
+  - rebuilt via `bash ./scripts/build-wasm.sh`
+  - replayed the saved checkpoint with:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --checkpoint-in /tmp/fim-scan-wf12-stats/step-0001.json --diagnostic summary --no-json`
+  - current rebuilt-head outcome: `substeps=246`, `retries=0/29/0`, `dt=[4.039e-4,5.758e-3]`, `growth=max-growth`
+  - filtered step replay shows repeated `HOTSPOT effective-move floor` lines at cell `143`, but no emitted `PRODUCER-HOTSPOT STAGNATION` lines on the rebuilt current head
+- Interpretation:
+  - the new native matcher is mechanically correct and regression-safe, but it is not yet the fundamental fix for the rebuilt wasm shelf on current head
+  - the current rebuilt checkpoint no longer matches the older `211`-substep replay signature exactly; in the late window it often resolves in 2-3 Newton iterations with producer/perf-dominated convergence instead of tripping the specific same-cell stagnation sequence required by the new bailout
+  - the immediate follow-up should now be to explain why the rebuilt current head sits at `246` accepted substeps on the same saved checkpoint before attempting another Newton acceptance rewrite or another well-aware CPR coarse-space experiment
+
 ## Scope
 
 - Problem class: native FIM convergence and timestep fragmentation that appears mainly on 2D and 3D cases.

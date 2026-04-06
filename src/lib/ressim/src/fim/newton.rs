@@ -35,6 +35,8 @@ const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
 const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
 const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
 const CHECKPOINT_TRACE_TARGET_CELL_INDEX: usize = 143;
+const PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES: usize = 2;
+const PRODUCER_HOTSPOT_STAGNATION_THRESHOLD: u32 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -539,6 +541,162 @@ fn effective_move_threshold_trace(
         gas_delta,
         cell_attached_perforation_context_trace(sim, candidate, topology, diagnostics.global.item_index),
     ))
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ProducerHotspotStagnationDiagnostics {
+    cell_idx: usize,
+    row: usize,
+    damping: f64,
+    pressure_delta_bar: f64,
+    water_delta: f64,
+    oil_delta: f64,
+    gas_delta: f64,
+    attached_perforation_context: String,
+}
+
+fn cell_boundary_plane_count(sim: &ReservoirSimulator, cell_idx: usize) -> usize {
+    if sim.nx == 0 || sim.ny == 0 || sim.nz == 0 {
+        return 0;
+    }
+
+    let i = cell_idx % sim.nx;
+    let j = (cell_idx / sim.nx) % sim.ny;
+    let k = cell_idx / (sim.nx * sim.ny);
+    let mut count = 0;
+
+    if i == 0 || i + 1 == sim.nx {
+        count += 1;
+    }
+    if j == 0 || j + 1 == sim.ny {
+        count += 1;
+    }
+    if k == 0 || k + 1 == sim.nz {
+        count += 1;
+    }
+
+    count
+}
+
+fn cell_has_only_attached_producer_perforations(
+    topology: &crate::fim::wells::FimWellTopology,
+    cell_idx: usize,
+) -> bool {
+    let mut has_attached_perforation = false;
+
+    for perforation in &topology.perforations {
+        if perforation.cell_index != cell_idx {
+            continue;
+        }
+        has_attached_perforation = true;
+        if perforation.injector {
+            return false;
+        }
+    }
+
+    has_attached_perforation
+}
+
+fn producer_hotspot_stagnation_diagnostics(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    candidate: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    diagnostics: &ResidualFamilyDiagnostics,
+    damping: f64,
+) -> Option<ProducerHotspotStagnationDiagnostics> {
+    let cell_idx = match diagnostics.global.family {
+        ResidualRowFamily::Water
+        | ResidualRowFamily::OilComponent
+        | ResidualRowFamily::GasComponent => diagnostics.global.item_index,
+        _ => return None,
+    };
+
+    if cell_boundary_plane_count(sim, cell_idx) < PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES {
+        return None;
+    }
+    if !cell_has_only_attached_producer_perforations(topology, cell_idx) {
+        return None;
+    }
+
+    let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =
+        local_cell_move_deltas(state, candidate, cell_idx)?;
+    if !move_is_below_effective_trace_threshold(
+        pressure_delta_bar,
+        water_delta,
+        oil_delta,
+        gas_delta,
+    ) {
+        return None;
+    }
+
+    Some(ProducerHotspotStagnationDiagnostics {
+        cell_idx,
+        row: diagnostics.global.row,
+        damping,
+        pressure_delta_bar,
+        water_delta,
+        oil_delta,
+        gas_delta,
+        attached_perforation_context: cell_attached_perforation_context_trace(
+            sim,
+            candidate,
+            topology,
+            cell_idx,
+        ),
+    })
+}
+
+fn producer_hotspot_stagnation_trace(
+    diagnostics: &ProducerHotspotStagnationDiagnostics,
+) -> String {
+    format!(
+        "cell{} row={} damp={:.4} local_dP={:.5} local_dSw={:.6} local_dSo={:.6} local_dSg={:.6} {}",
+        diagnostics.cell_idx,
+        diagnostics.row,
+        diagnostics.damping,
+        diagnostics.pressure_delta_bar,
+        diagnostics.water_delta,
+        diagnostics.oil_delta,
+        diagnostics.gas_delta,
+        diagnostics.attached_perforation_context,
+    )
+}
+
+fn producer_hotspot_cell_index(diagnostics: &ResidualFamilyDiagnostics) -> Option<usize> {
+    match diagnostics.global.family {
+        ResidualRowFamily::Water
+        | ResidualRowFamily::OilComponent
+        | ResidualRowFamily::GasComponent => Some(diagnostics.global.item_index),
+        _ => None,
+    }
+}
+
+fn producer_hotspot_stagnation_should_bail(
+    previous_effective_move: Option<&ProducerHotspotStagnationDiagnostics>,
+    residual_diagnostics: &ResidualFamilyDiagnostics,
+    candidate_is_valid: bool,
+    stagnation_count: u32,
+) -> bool {
+    if !candidate_is_valid || stagnation_count < PRODUCER_HOTSPOT_STAGNATION_THRESHOLD {
+        return false;
+    }
+
+    let Some(previous_effective_move) = previous_effective_move else {
+        return false;
+    };
+
+    producer_hotspot_cell_index(residual_diagnostics)
+        .is_some_and(|cell_idx| cell_idx == previous_effective_move.cell_idx)
+}
+
+fn classify_producer_hotspot_stagnation_failure(
+    linear_report: Option<&FimLinearSolveReport>,
+    residual_diagnostics: &ResidualFamilyDiagnostics,
+) -> FimRetryFailureDiagnostics {
+    let mut diagnostics = classify_retry_failure(linear_report, residual_diagnostics);
+    diagnostics.class = FimRetryFailureClass::NonlinearBad;
+    diagnostics
 }
 
 fn state_update_change_bounds(previous_state: &FimState, candidate_state: &FimState) -> (f64, f64) {
@@ -1250,6 +1408,8 @@ pub(crate) fn run_fim_timestep(
     let mut final_update_inf_norm = f64::INFINITY;
     let mut prev_residual_norm = f64::INFINITY;
     let mut stagnation_count: u32 = 0;
+    let mut previous_producer_hotspot_effective_move: Option<ProducerHotspotStagnationDiagnostics> =
+        None;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -1584,6 +1744,14 @@ pub(crate) fn run_fim_timestep(
             &residual_diagnostics,
             damping,
         );
+        let producer_hotspot_stagnation = producer_hotspot_stagnation_diagnostics(
+            sim,
+            &state,
+            &candidate,
+            &topology,
+            &residual_diagnostics,
+            damping,
+        );
         let candidate_is_valid = damping.is_finite()
             && damping > 0.0
             && iterate_has_material_change(&state, &candidate)
@@ -1633,6 +1801,43 @@ pub(crate) fn run_fim_timestep(
                 effective_move_trace,
             );
         }
+
+        if producer_hotspot_stagnation_should_bail(
+            previous_producer_hotspot_effective_move.as_ref(),
+            &residual_diagnostics,
+            candidate_is_valid,
+            stagnation_count,
+        ) {
+            let producer_hotspot_stagnation = previous_producer_hotspot_effective_move
+                .as_ref()
+                .expect("checked producer hotspot stagnation");
+            let failure_diagnostics = classify_producer_hotspot_stagnation_failure(
+                Some(&linear_report),
+                &residual_diagnostics,
+            );
+            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: PRODUCER-HOTSPOT STAGNATION {}{} — bailing out",
+                iteration,
+                producer_hotspot_stagnation_trace(&producer_hotspot_stagnation),
+                retry_failure_trace_suffix(&failure_diagnostics)
+            );
+            return FimStepReport {
+                accepted_state: state,
+                converged: false,
+                newton_iterations: iteration + 1,
+                final_residual_inf_norm: current_norm,
+                final_material_balance_inf_norm,
+                final_update_inf_norm,
+                last_linear_report: Some(linear_report),
+                failure_diagnostics: Some(failure_diagnostics),
+                retry_factor,
+            };
+        }
+
+        previous_producer_hotspot_effective_move = producer_hotspot_stagnation;
 
         if !candidate_is_valid {
             let failure_diagnostics =
@@ -2206,6 +2411,188 @@ mod tests {
         assert!(move_is_below_effective_trace_threshold(0.0049, 0.000049, 0.000049, 0.0));
         assert!(!move_is_below_effective_trace_threshold(0.0051, 0.000049, 0.000049, 0.0));
         assert!(!move_is_below_effective_trace_threshold(0.0049, 0.000051, 0.000049, 0.0));
+    }
+
+    #[test]
+    fn cell_boundary_plane_count_detects_corner_cells() {
+        let sim = ReservoirSimulator::new(12, 12, 3, 0.2);
+
+        assert_eq!(cell_boundary_plane_count(&sim, 143), 3);
+        assert_eq!(cell_boundary_plane_count(&sim, sim.idx(5, 5, 1)), 0);
+    }
+
+    #[test]
+    fn producer_hotspot_stagnation_requires_producer_boundary_cell() {
+        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
+        sim.set_rate_controlled_wells(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 1, 0, 50.0, 0.1, 0.0, false).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let state = FimState::from_simulator(&sim);
+        let producer_cell_idx = sim.idx(1, 1, 0);
+        let injector_cell_idx = sim.idx(0, 0, 0);
+
+        let producer_peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::Water,
+            scaled_value: 1.0,
+            row: producer_cell_idx * 3,
+            item_index: producer_cell_idx,
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: producer_peak,
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 0.5,
+                row: producer_cell_idx * 3 + 1,
+                item_index: producer_cell_idx,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.25,
+                row: producer_cell_idx * 3 + 2,
+                item_index: producer_cell_idx,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: producer_peak,
+        };
+
+        assert!(producer_hotspot_stagnation_diagnostics(
+            &sim,
+            &state,
+            &state,
+            &topology,
+            &diagnostics,
+            0.0,
+        )
+        .is_some());
+
+        let injector_peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::Water,
+            scaled_value: 1.0,
+            row: injector_cell_idx * 3,
+            item_index: injector_cell_idx,
+        };
+        let injector_diagnostics = ResidualFamilyDiagnostics {
+            water: injector_peak,
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 0.5,
+                row: injector_cell_idx * 3 + 1,
+                item_index: injector_cell_idx,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.25,
+                row: injector_cell_idx * 3 + 2,
+                item_index: injector_cell_idx,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: injector_peak,
+        };
+
+        assert!(producer_hotspot_stagnation_diagnostics(
+            &sim,
+            &state,
+            &state,
+            &topology,
+            &injector_diagnostics,
+            0.0,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn producer_hotspot_stagnation_bails_on_following_same_cell_stagnation() {
+        let previous = ProducerHotspotStagnationDiagnostics {
+            cell_idx: 143,
+            row: 430,
+            damping: 0.0,
+            pressure_delta_bar: 0.0,
+            water_delta: 0.0,
+            oil_delta: 0.0,
+            gas_delta: 0.0,
+            attached_perforation_context: String::new(),
+        };
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::OilComponent,
+            scaled_value: 1.0,
+            row: 430,
+            item_index: 143,
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 0.5,
+                row: 429,
+                item_index: 143,
+            },
+            oil_component: peak,
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.0,
+                row: 0,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+
+        assert!(producer_hotspot_stagnation_should_bail(
+            Some(&previous),
+            &diagnostics,
+            true,
+            1,
+        ));
+    }
+
+    #[test]
+    fn producer_hotspot_stagnation_does_not_bail_for_different_cell() {
+        let previous = ProducerHotspotStagnationDiagnostics {
+            cell_idx: 143,
+            row: 430,
+            damping: 0.0,
+            pressure_delta_bar: 0.0,
+            water_delta: 0.0,
+            oil_delta: 0.0,
+            gas_delta: 0.0,
+            attached_perforation_context: String::new(),
+        };
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::OilComponent,
+            scaled_value: 1.0,
+            row: 1294,
+            item_index: 431,
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 0.5,
+                row: 1293,
+                item_index: 431,
+            },
+            oil_component: peak,
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.0,
+                row: 0,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+
+        assert!(!producer_hotspot_stagnation_should_bail(
+            Some(&previous),
+            &diagnostics,
+            true,
+            1,
+        ));
     }
 
     #[test]

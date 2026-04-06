@@ -233,6 +233,10 @@
   - Checkpoint-scoped Newton diagnostics are now in place for the producer-corner shelf: when cell `143` becomes the dominant hotspot and the damped local move falls below trace-effective resolution, the step trace now emits local `dP/dSw/dSo/dSg` plus attached perforation context.
   - Current measured conclusion from the saved day-2 checkpoint: the effective-zero-move shelf at cell `143` is producer-local (`perf1->well1 inj=false`) rather than injector-coupled, and the day-2 replay stays at the tracked partial-improvement baseline (`211` accepted substeps, `4/24/0` retries).
   - Updated next slice after those rejections: keep the current solver baseline and target the producer-corner tiny-damping / effectively zero-length candidate path directly instead of broad Newton-acceptance rewrites.
+  - `2026-04-06` follow-up: a narrow native Newton matcher now remembers a producer-only effective-zero move at the producer corner and can bail on the following same-cell stagnation; focused unit coverage plus `spe1_fim_first_steps_converge_without_stall` are green.
+  - Rebuilt wasm evidence on current head does not validate that Newton matcher yet: replaying `/tmp/fim-scan-wf12-stats/step-0001.json` now measures `substeps=246`, `retries=0/29/0`, and the filtered step trace shows no `PRODUCER-HOTSPOT STAGNATION` lines.
+  - The rebuilt current-head shelf no longer matches the earlier saved `211`-substep replay exactly; it spends the late window in many 2-3 iteration producer/perf resolves with repeated `HOTSPOT effective-move floor` lines but without the specific same-iteration stagnation pattern needed to trigger the new bailout.
+  - Immediate next slice: explain the drift from the earlier `211` checkpoint baseline to the rebuilt current-head `246` checkpoint baseline before attempting another Newton acceptance change or another CPRW-style coarse-space experiment.
   - Canonical current-state summary: `docs/FIM_STATUS.md`.
   - Active convergence investigation: `docs/FIM_CONVERGENCE_WORKLOG.md`.
   - Architecture target and end-state checklist: `docs/FIM_MIGRATION_PLAN.md`.
