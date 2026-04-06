@@ -223,12 +223,23 @@
 - [ ] Cut the shared FIM solver overhead on the existing wasm-first code path.
   - Current diagnosis from the 2026-04-06 comparison: the remaining runtime gap is not just language choice. ResSim is still paying for much more nonlinear work per physical step, rebuilding Jacobian sparsity and the CPR/block-Jacobi preconditioner from scratch on every Newton solve, and using a materially weaker pressure backend than Flow's production CPRW/AMG-style stack.
   - 2026-04-06 shared-path finding: the first 31-day SPE1 report step was not only limited by the linear backend. The accepted-step controller was also self-throttling badly after convergence. Removing the residual-margin growth limiter cut the wasm-path first-step fragmentation from `1224` accepted substeps to `84`, confirming that timestep-control policy was a major independent bottleneck.
-  - Remaining controller gap: retry hot-spot cooldown plus iteration-based shrink still ratchet the post-retry timestep back down (`0.242 -> 0.181 -> 0.136 -> 0.097 d`) even after the solver has already paid for the retry cut. OPM Flow holds or regrows much more aggressively after a clean accepted step.
+  - 2026-04-06 follow-up: holding retry-cooldown steps flat instead of letting them shrink cut the same first-step wasm probe from `84` to `73` accepted substeps, and making Newton-count control regrowth-only on accepted steps cut it again to `58` accepted substeps on the 31-day wasm probe (`dt range 0.484..0.723 d`, `nonlinear_bad_retries=6`).
+  - 2026-04-06 follow-up: shortening hotspot cooldown memory alone changed the trace shape but did not improve the `58`-substep result. The effective lever was allowing a mild `1.1x` accepted-step regrowth for the `9-12` Newton band; that cut the 31-day wasm probe again from `58` to `37` accepted substeps while keeping `nonlinear_bad_retries=6`.
+  - 2026-04-06 follow-up: tracing the `37`-substep regime showed the tiny late accepted `dt` was only the exact report-step remainder, not a new instability. All six nonlinear retries were front-loaded into the cold-start retry ladder `31 -> 15.5 -> 7.75 -> 3.875 -> 1.9375 -> 0.96875 -> 0.484375`.
+  - 2026-04-06 follow-up: capping the cold-start first outer-step trial to `1 d` cut the same 31-day wasm probe from `6` nonlinear retries to `1` without changing the `37` accepted substeps, proving the remaining cost had shifted from startup retry discovery to post-startup regrowth.
+  - 2026-04-06 follow-up: widening the mild accepted-step regrowth band from `9-12` to `9-14` Newton iterations cut the 31-day wasm probe again from `37` to `29` accepted substeps while holding retries at `1` (`dt range 0.5..1.899 d`).
+  - Remaining controller gap: OPM Flow still reaches the same first report step in only four substeps. ResSim now avoids most startup retry waste, but the accepted-step regrowth after the first safe `0.5 d` shelf is still materially more conservative than Flow.
   - Constraint: do this on the same maintained solver path used for wasm builds; do not create a separate native-only optimization branch or divergent benchmark harness.
   - Concrete follow-ups:
     - [x] add timing breakdowns to the existing FIM diagnostic path for assembly, flash/property updates, preconditioner build, linear iterations, and retry/substep overhead
     - [x] stop accepted-step growth from being pinned near `1.00x` by residual-margin throttling
-    - soften retry-hotspot cooldown and post-retry shrink so accepted timesteps do not keep ratcheting downward after a successful retry
+    - [x] stop retry-hotspot cooldown from shrinking accepted timesteps below the already-proven safe `dt`
+    - [x] stop Newton-iteration control from shrinking already-accepted timesteps; use it only for regrowth pressure
+    - [x] allow mild accepted-step regrowth in the `9-12` Newton band so the controller can escape post-retry shelves without waiting to hit `<=8` Newton iterations
+    - [x] inspect the apparent late-step micro-`dt` collapse; it was only the exact report-step remainder, not a new instability mode
+    - [x] cap the cold-start first outer-step trial so the solver does not spend six halvings rediscovering the same initial stable band
+    - [x] widen mild accepted-step regrowth through the `13-14` Newton band so startup-safe steps can climb out of the first `0.5 d` shelf faster
+    - inspect whether the remaining `29`-substep first-step regime is now limited more by nonlinear stagnation logic in `fim/newton.rs` than by outer-step growth policy
     - reduce algorithmic waste first where possible: accepted-substep fragmentation, repeated retries, and weak coarse-pressure correction
     - then reduce implementation waste on the same path: repeated allocations, full matrix/preconditioner rebuilds, and redundant per-cell property recomputation
 
