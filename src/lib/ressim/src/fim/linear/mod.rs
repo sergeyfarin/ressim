@@ -80,7 +80,26 @@ pub(crate) struct FimLinearSolveOptions {
 pub(crate) struct FimLinearBlockLayout {
     pub(crate) cell_block_count: usize,
     pub(crate) cell_block_size: usize,
+    pub(crate) well_bhp_count: usize,
     pub(crate) scalar_tail_start: usize,
+}
+
+impl FimLinearBlockLayout {
+    pub(crate) const fn cell_unknown_count(self) -> usize {
+        self.cell_block_count * self.cell_block_size
+    }
+
+    pub(crate) const fn well_bhp_start(self) -> usize {
+        self.cell_unknown_count()
+    }
+
+    pub(crate) const fn well_bhp_end(self) -> usize {
+        self.well_bhp_start() + self.well_bhp_count
+    }
+
+    pub(crate) const fn legacy_tail_start(self) -> usize {
+        self.cell_unknown_count()
+    }
 }
 
 impl Default for FimLinearSolveOptions {
@@ -241,5 +260,21 @@ mod tests {
             32,
             true,
         ));
+    }
+
+    #[test]
+    fn linear_block_layout_exposes_well_range_without_moving_legacy_tail_start() {
+        let layout = FimLinearBlockLayout {
+            cell_block_count: 2,
+            cell_block_size: 3,
+            well_bhp_count: 2,
+            scalar_tail_start: 8,
+        };
+
+        assert_eq!(layout.cell_unknown_count(), 6);
+        assert_eq!(layout.well_bhp_start(), 6);
+        assert_eq!(layout.well_bhp_end(), 8);
+        assert_eq!(layout.legacy_tail_start(), 6);
+        assert_eq!(layout.scalar_tail_start, 8);
     }
 }

@@ -1413,7 +1413,8 @@ pub(crate) fn run_fim_timestep(
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
-        scalar_tail_start: state.n_cell_unknowns(),
+        well_bhp_count: state.n_well_unknowns(),
+        scalar_tail_start: state.n_cell_unknowns() + state.n_well_unknowns(),
     });
     let topology = build_well_topology(sim);
 

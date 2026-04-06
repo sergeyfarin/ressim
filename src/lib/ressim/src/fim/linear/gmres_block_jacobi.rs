@@ -442,6 +442,12 @@ fn build_block_jacobi_preconditioner(
         };
     };
 
+    let well_bhp_start = layout.well_bhp_start();
+    let well_bhp_end = layout.well_bhp_end();
+    debug_assert_eq!(well_bhp_start, layout.legacy_tail_start());
+    debug_assert!(well_bhp_end <= layout.scalar_tail_start);
+    debug_assert!(layout.scalar_tail_start <= matrix.rows());
+
     let mut cell_block_inverses = Vec::with_capacity(layout.cell_block_count);
     let mut pressure_restriction = Vec::with_capacity(layout.cell_block_count);
     let mut pressure_prolongation = Vec::with_capacity(layout.cell_block_count);
@@ -473,15 +479,16 @@ fn build_block_jacobi_preconditioner(
         pressure_prolongation.push(prolongation);
     }
 
-    let scalar_tail_count = matrix.rows().saturating_sub(layout.scalar_tail_start);
+    let legacy_tail_start = layout.legacy_tail_start();
+    let scalar_tail_count = matrix.rows().saturating_sub(legacy_tail_start);
     let tail_inverse = if scalar_tail_count > 0 {
         let mut tail_block = DMatrix::zeros(scalar_tail_count, scalar_tail_count);
         for tail_row in 0..scalar_tail_count {
             for tail_col in 0..scalar_tail_count {
                 tail_block[(tail_row, tail_col)] = matrix_value(
                     matrix,
-                    layout.scalar_tail_start + tail_row,
-                    layout.scalar_tail_start + tail_col,
+                    legacy_tail_start + tail_row,
+                    legacy_tail_start + tail_col,
                 );
             }
         }
@@ -492,10 +499,10 @@ fn build_block_jacobi_preconditioner(
 
     let mut tail_to_pressure = vec![vec![0.0; layout.cell_block_count]; scalar_tail_count];
     for tail_idx in 0..scalar_tail_count {
-        let row_idx = layout.scalar_tail_start + tail_idx;
+        let row_idx = legacy_tail_start + tail_idx;
         if let Some(view) = matrix.outer_view(row_idx) {
             for (col_idx, value) in view.iter() {
-                if col_idx >= layout.scalar_tail_start {
+                if col_idx >= legacy_tail_start {
                     continue;
                 }
                 let neighbor_block = col_idx / layout.cell_block_size;
@@ -526,8 +533,8 @@ fn build_block_jacobi_preconditioner(
 
             if let Some(view) = matrix.outer_view(row_idx) {
                 for (col_idx, value) in view.iter() {
-                    if col_idx >= layout.scalar_tail_start {
-                        tail_coupling[col_idx - layout.scalar_tail_start] += row_weight * value;
+                    if col_idx >= legacy_tail_start {
+                        tail_coupling[col_idx - legacy_tail_start] += row_weight * value;
                         continue;
                     }
                     let neighbor_block = col_idx / layout.cell_block_size;
@@ -587,7 +594,7 @@ fn build_block_jacobi_preconditioner(
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
 
-    let scalar_inv_diag = (layout.scalar_tail_start..matrix.rows())
+    let scalar_inv_diag = (legacy_tail_start..matrix.rows())
         .map(|idx| {
             let diag = matrix_value(matrix, idx, idx);
             if diag.abs() > f64::EPSILON {
@@ -601,7 +608,10 @@ fn build_block_jacobi_preconditioner(
     BlockJacobiPreconditioner {
         cell_block_size: layout.cell_block_size,
         cell_block_inverses,
-        scalar_tail_start: layout.scalar_tail_start,
+        // Phase 1 keeps the old solver behavior: wells and perforation-rate unknowns
+        // still travel through the same legacy tail path even though the layout now
+        // exposes the well-BHP split explicitly.
+        scalar_tail_start: legacy_tail_start,
         scalar_inv_diag,
         tail_inverse,
         pressure_tail_coupling,
@@ -881,6 +891,7 @@ mod tests {
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
                 cell_block_size: 3,
+                well_bhp_count: 0,
                 scalar_tail_start: 3,
             }),
         );
@@ -909,6 +920,7 @@ mod tests {
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
                 cell_block_size: 3,
+                well_bhp_count: 0,
                 scalar_tail_start: 3,
             }),
         );
@@ -935,6 +947,7 @@ mod tests {
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
                 cell_block_size: 3,
+                well_bhp_count: 0,
                 scalar_tail_start: 3,
             }),
         );
@@ -964,6 +977,7 @@ mod tests {
             Some(FimLinearBlockLayout {
                 cell_block_count: 2,
                 cell_block_size: 3,
+                well_bhp_count: 0,
                 scalar_tail_start: 6,
             }),
         );
@@ -995,6 +1009,7 @@ mod tests {
             Some(FimLinearBlockLayout {
                 cell_block_count: 2,
                 cell_block_size: 3,
+                well_bhp_count: 0,
                 scalar_tail_start: 6,
             }),
             true,

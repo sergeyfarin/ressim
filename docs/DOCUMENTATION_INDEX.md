@@ -11,6 +11,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `TODO.md` | Active execution tracker only |
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
 | `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
+| `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |
 | `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark workflow semantics and comparison behavior |
 | `docs/P4_TWO_PHASE_BENCHMARKS.md` | Buckley-Leverett benchmark methodology, tolerances, and current results |
