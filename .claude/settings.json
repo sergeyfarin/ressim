@@ -31,7 +31,9 @@
       "Bash(grep -n \"fn set_initial_saturation\\\\|fn set_three_phase_mode\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
       "Bash(grep -n \"fn calculate_well_productivity_index\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
       "Bash(grep -n \"fn k_ro_stone2\\\\|fn k_rg\\\\|fn k_rw\\\\|struct Scal3p\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
-      "Bash(perl -0pi -e 's/borderWidth: 2,\\\\n\\(\\\\s+borderDash: ANALYTICAL_DASH,\\)/borderWidth: ANALYTICAL_BORDER,\\\\n$1/g' /home/reken/Repos/ressim/src/lib/charts/referenceComparisonModel.ts)"
+      "Bash(perl -0pi -e 's/borderWidth: 2,\\\\n\\(\\\\s+borderDash: ANALYTICAL_DASH,\\)/borderWidth: ANALYTICAL_BORDER,\\\\n$1/g' /home/reken/Repos/ressim/src/lib/charts/referenceComparisonModel.ts)",
+      "Bash(echo \"EXIT_CODE:$?\")",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }

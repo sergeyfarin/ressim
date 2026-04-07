@@ -26,7 +26,7 @@
         getReferenceComparisonCaseColor,
         type AnalyticalPreviewVariant,
         type ReferenceComparisonPreviewCase,
-    } from './referenceComparisonModel';
+    } from './buildChartData';
     import {
         SCALE_CUMULATIVE_VOLUMES,
         SCALE_CUMULATIVE,

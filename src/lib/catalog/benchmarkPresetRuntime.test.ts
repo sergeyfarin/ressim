@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { ReservoirSimulator, __wbg_set_wasm } from '../ressim/pkg/simulator_bg.js';
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
-import { buildReferenceComparisonModel } from '../charts/referenceComparisonModel';
+import { buildReferenceComparisonModel } from '../charts/buildChartData';
 import { getBenchmarkEntry, getBenchmarkFamily, getBenchmarkVariantsForFamily } from './caseCatalog';
 import { getScenario, getScenarioWithVariantParams } from './scenarios';
 import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSchedule } from '../simulator-types';

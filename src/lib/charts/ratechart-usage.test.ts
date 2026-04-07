@@ -3,10 +3,12 @@ import fs from 'fs';
 import path from 'path';
 
 const rateChartPath = path.join(__dirname, 'RateChart.svelte');
+const buildRateChartDataPath = path.join(__dirname, 'buildRateChartData.ts');
 const subPanelPath = path.join(__dirname, 'ChartSubPanel.svelte');
 const referenceComparisonChartPath = path.join(__dirname, 'ReferenceComparisonChart.svelte');
 const chartPanelSelectionPath = path.join(__dirname, 'chartPanelSelection.ts');
 const rateChartSrc = fs.readFileSync(rateChartPath, 'utf8');
+const buildRateChartDataSrc = fs.readFileSync(buildRateChartDataPath, 'utf8');
 const subPanelSrc = fs.readFileSync(subPanelPath, 'utf8');
 const referenceComparisonChartSrc = fs.readFileSync(referenceComparisonChartPath, 'utf8');
 const chartPanelSelectionSrc = fs.readFileSync(chartPanelSelectionPath, 'utf8');
@@ -17,16 +19,22 @@ describe('RateChart architecture checks', () => {
     expect(/<ChartSubPanel/.test(rateChartSrc)).toBe(true);
   });
 
-  it('defines three panel curve configs (rates, cumulative, diagnostics)', () => {
-    expect(/baseRatesCurves\s*=\s*\$derived\.by\(\(\):\s*CurveConfig\[\]\s*=>/.test(rateChartSrc)).toBe(true);
-    expect(/baseCumulativeCurves\s*=\s*\$derived\.by\(\(\):\s*CurveConfig\[\]\s*=>/.test(rateChartSrc)).toBe(true);
-    expect(/baseDiagnosticsCurves\s*=\s*\$derived\.by\(\(\):\s*CurveConfig\[\]\s*=>/.test(rateChartSrc)).toBe(true);
+  it('delegates data computation to buildRateChartData', () => {
+    expect(/from\s+['"]\.\/buildRateChartData['"]/.test(rateChartSrc)).toBe(true);
+    expect(/buildRateChartData/.test(rateChartSrc)).toBe(true);
+    expect(/liveData/.test(rateChartSrc)).toBe(true);
   });
 
-  it('builds XY series for each panel', () => {
-    expect(/rateCurveSeries/.test(rateChartSrc)).toBe(true);
-    expect(/cumulativeCurveSeries/.test(rateChartSrc)).toBe(true);
-    expect(/diagnosticsCurveSeries/.test(rateChartSrc)).toBe(true);
+  it('defines three panel curve configs (rates, cumulative, diagnostics) in buildRateChartData', () => {
+    expect(/ratesCurves/.test(buildRateChartDataSrc)).toBe(true);
+    expect(/cumulativeCurves/.test(buildRateChartDataSrc)).toBe(true);
+    expect(/diagnosticsCurves/.test(buildRateChartDataSrc)).toBe(true);
+  });
+
+  it('builds XY series for each panel in buildRateChartData', () => {
+    expect(/ratesSeries/.test(buildRateChartDataSrc)).toBe(true);
+    expect(/cumulativeSeries/.test(buildRateChartDataSrc)).toBe(true);
+    expect(/diagnosticsSeries/.test(buildRateChartDataSrc)).toBe(true);
   });
 
   it('has x-axis control at the top level (not inside sub-panels)', () => {

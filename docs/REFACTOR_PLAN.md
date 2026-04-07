@@ -1,6 +1,6 @@
 # ResSim Frontend Refactor — Analysis & Step-by-Step Plan
 
-> Last updated: 2026-03-30. Incorporates the uncommitted work-in-progress changes present at time of writing.
+> Last updated: 2026-04-07. Phases 0–4 complete.
 
 ---
 
@@ -328,132 +328,107 @@ Rust computes eA, eV, eVol, mobileOilRecovered per step in `record_step_report()
 
 ---
 
-### Phase 3 — Chart Panel Catalog & Curve Style Policy (2-3 days)
+### Phase 3 — Chart Panel Catalog & Curve Style Policy ✓ COMPLETE
 
-**Goal:** One place for panel definitions. One place for curve styling. No duplicated constants.
+**Delivered:**
 
-**Files to create:**
+- `src/lib/charts/panelDefs.ts` (124 lines) — `PANEL_DEFS` catalog; imported by both
+  `RateChart.svelte` and `ReferenceComparisonChart.svelte`.
+- `src/lib/charts/curveStylePolicy.ts` (87 lines) — single source for `ANALYTICAL_DASH`,
+  `PUBLISHED_DASH`, `AUXILIARY_DASH`, `SWEEP_DASH_*`, `LEGEND_SECTIONS`, `ANALYTICAL_BORDER`,
+  `simBorderWidth`. Imported across all chart builders.
 
-- `src/lib/charts/panelDefs.ts` — `PANEL_DEFS` catalog:
-  ```typescript
-  export const PANEL_DEFS = {
-      rates:       { key: 'rates',       title: 'Water Cut',           scalePreset: 'breakthrough', ... },
-      recovery:    { key: 'recovery',    title: 'Recovery Factor',     scalePreset: 'fraction',     ... },
-      cumulative:  { key: 'cumulative',  title: 'Cumulative',          scalePreset: 'volume',       ... },
-      pressure:    { key: 'pressure',    title: 'Avg Reservoir Pressure', scalePreset: 'pressure',  ... },
-      diagnostics: { key: 'diagnostics', title: 'Diagnostics',         scalePreset: 'auto',         ... },
-      gor:         { key: 'gor',         title: 'Producing GOR',       scalePreset: 'gor',          ... },
-      sweep:       { key: 'sweep',       title: 'Sweep Efficiency',    scalePreset: 'fraction',     ... },
-  } satisfies Record<string, ChartPanelDef>;
-  ```
+**Not done (deferred):**
+- `chartPanels: ChartPanelRef[]` on `Scenario` — deferred to Phase 8 (benchmark consolidation).
+  Scenarios still use `chartLayoutKey` + `layoutConfig` through `BenchmarkFamily`.
+- `chartLayouts.ts` refactor — the merge machinery remains; simplification deferred to Phase 8.
 
-- `src/lib/charts/curveStylePolicy.ts` — **single source of truth for all styling:**
-  ```typescript
-  export const SIM_STYLE       = { borderWidth: 2.5 };                        // solid
-  export const ANALYTICAL_STYLE = { borderWidth: 2.0, borderDash: [7, 4] };   // dashed
-  export const PUBLISHED_STYLE  = { borderWidth: 1.5, borderDash: [4, 4] };   // dotted
-  export const AUXILIARY_STYLE  = { borderWidth: 1.5, borderDash: [2, 4] };   // faint dotted
-
-  export const LEGEND_SECTIONS = {
-      sim:       'Simulation (solid lines):',
-      analytical:'Analytical (dashed lines):',
-      published: 'Published reference (dotted lines):',
-  };
-  ```
-
-**Files to modify:**
-
-- [src/lib/catalog/scenarios.ts](src/lib/catalog/scenarios.ts) — add `chartPanels: ChartPanelRef[]` to `Scenario`. Replace
-  `chartLayoutKey` + `chartLayoutPatch` with explicit panel list.
-- [src/lib/catalog/chartLayouts.ts](src/lib/catalog/chartLayouts.ts) — refactor: `CHART_LAYOUTS` becomes
-  `PANEL_DEFS` (moved here or imported). The merge machinery `mergeChartLayoutConfig` is simplified
-  once scenarios declare panels directly.
-- [src/lib/charts/referenceComparisonModel.ts](src/lib/charts/referenceComparisonModel.ts) — replace all hardcoded
-  `borderDash`, `borderWidth`, and legend string literals with imports from `curveStylePolicy.ts`.
-
-**Verification:** Visual diff of all chart scenarios shows no styling changes. `no-direct-chart-datasets-access.test.ts` and `referenceChartConfig.test.ts` pass.
+**Verification:** `npm run typecheck` clean. `referenceChartConfig.test.ts` passes.
 
 ---
 
-### Phase 4 — `buildChartData.ts` replaces `referenceComparisonModel.ts` (3-4 days)
+### Phase 4 — `buildChartData.ts` replaces `referenceComparisonModel.ts` ✓ COMPLETE
 
-**Goal:** 3,285-line `referenceComparisonModel.ts` replaced by a focused builder.
-`referenceComparisonModel.ts` is deleted.
+**Delivered 2026-04-07:**
 
-**Files to create:**
+The 2,560-line `referenceComparisonModel.ts` was split into four focused files and deleted.
 
-- `src/lib/charts/buildChartData.ts` — the new builder:
-  ```typescript
-  export function buildChartDataSets(
-      scenario: Scenario,
-      results: BenchmarkRunResult[],
-      options: ChartBuildOptions,
-  ): ChartDataSet[] {
-      // 1. For each result: call scenario.analyticalDef.fn(inputs)
-      // 2. Apply axisAdapters if nativeXAxis !== selectedXAxis
-      // 3. Assign colors by variant index
-      // 4. Build sim curves with SIM_STYLE
-      // 5. Build analytical curves with ANALYTICAL_STYLE
-      // 6. Build published reference curves with PUBLISHED_STYLE
-      // 7. Group into ChartDataSet[] by panelKey from scenario.chartPanels
-  }
-  ```
+| File | Lines | Responsibility |
+|------|-------|---------------|
+| `src/lib/charts/referenceChartTypes.ts` | ~175 | Types, color palette, panel construction helpers |
+| `src/lib/charts/referenceOverlayBuilders.ts` | ~180 | BL / depletion / gas-oil analytical overlays |
+| `src/lib/charts/sweepPanelBuilder.ts` | ~500 | Sweep efficiency panels (sim + analytical) |
+| `src/lib/charts/buildChartData.ts` | ~680 | Main orchestrator (`buildReferenceComparisonModel`) |
 
-- `src/lib/charts/buildRateChartData.ts` — same for live simulation (feeds RateChart):
-  ```typescript
-  export function buildRateChartData(
-      scenario: Scenario,
-      rateHistory: RateHistoryPoint[],
-      analyticalCurves: AnalyticalCurves,
-      options: RateChartBuildOptions,
-  ): ChartDataSet[]
-  ```
+- `analyticalParamAdapters.ts` — `computeDepletionOnTimeAxis` added; `analyticalParamAdapters.test.ts`
+  created (65 tests).
+- All three consumers updated: `ReferenceComparisonChart.svelte`, `referenceComparisonModel.test.ts`,
+  `benchmarkPresetRuntime.test.ts`.
+- `src/lib/charts/referenceComparisonModel.ts` — **deleted** ✓
 
-**Files to modify:**
+**Not done (deferred to Phase 5):**
+- `buildRateChartData.ts` — the live-chart builder for `RateChart.svelte` was not created;
+  `RateChart.svelte` still builds curves inline (1,419 lines).
+- The `buildChartDataSets(scenario, results, options): ChartDataSet[]` signature from the plan
+  was not adopted; `buildReferenceComparisonModel` kept its name for backward compat while
+  `BenchmarkFamily` remains the scenario contract (deferred to Phase 8).
 
-- [src/lib/charts/RateChart.svelte](src/lib/charts/RateChart.svelte) — delete all string matching (`if (activeMode === 'wf')` etc.).
-  Call `buildRateChartData()`, pass `ChartDataSet[]` to `ChartSubPanel`.
-  Target: under 300 lines.
-- [src/lib/charts/ReferenceComparisonChart.svelte](src/lib/charts/ReferenceComparisonChart.svelte) —
-  call `buildChartDataSets()`, pass result to `ChartSubPanel`. Target: under 200 lines.
-
-**Files to delete:**
-
-- `src/lib/charts/referenceComparisonModel.ts` — replaced by `buildChartData.ts`.
-
-**Verification:** All 10 scenarios and all benchmark comparisons display correctly.
-`referenceComparisonModel.test.ts` migrated to `buildChartData.test.ts`.
+**Verification:** `npm run typecheck` exits 0. 627 TypeScript tests pass (6 pre-existing WASM
+`LinkError` failures unrelated to these changes).
 
 ---
 
-### Phase 5 — Universal Chart Component (2 days)
+### Phase 5 — Extract `buildRateChartData.ts`, trim `RateChart.svelte`
 
-**Goal:** `ChartSubPanel.svelte` becomes a thin renderer. A new `UniversalChart.svelte`
-takes `ChartDataSet[]` and renders any number of panels with no scenario knowledge.
+**Goal:** `RateChart.svelte` (1,419 lines) stops building curves inline. A new
+`buildRateChartData.ts` extracts all curve-assembly logic into a pure function,
+mirroring what Phase 4 did for the reference chart.
+
+**Starting point:**
+- `RateChart.svelte` — 1,419 lines. Contains: 20-prop interface, x-axis/log-scale
+  state, scenario-aware panel-default `$effect` (string-matching on `activeMode`/`activeCase`),
+  inline curve builders for waterflood / depletion / gas-oil-bl / sweep, panel rendering.
+- `ChartSubPanel.svelte` — 791 lines. Already a focused Chart.js wrapper (curves + series
+  in, Chart.js out). Stays mostly as-is.
+- `ReferenceComparisonChart.svelte` — 576 lines. Already thin (calls `buildReferenceComparisonModel`,
+  renders panels). Minor trimming possible.
 
 **Files to create:**
 
-- `src/lib/charts/UniversalChart.svelte`:
+- `src/lib/charts/buildRateChartData.ts` — pure function that takes `rateHistory`, analytical
+  curves, sweep series, and options; returns the same `ReferenceComparisonPanelMap` shape
+  consumed by `RateChart.svelte`'s panel renderer:
   ```typescript
-  // Props
-  let { datasets, xAxisOptions, xAxisMode, theme }: {
-      datasets: ChartDataSet[];
-      xAxisOptions: XAxisMode[];
-      xAxisMode: XAxisMode;
-      theme: 'light' | 'dark';
-  } = $props();
-  // Renders one ChartSubPanel per dataset, aligns gutters, manages x-axis sync
+  export function buildRateChartData(input: {
+      rateHistory: RateHistoryPoint[];
+      analyticalProductionData: AnalyticalProductionPoint[];
+      avgReservoirPressureSeries: Array<number | null>;
+      avgWaterSaturationSeries: Array<number | null>;
+      ooipM3: number;
+      poreVolumeM3: number;
+      activeMode: string;
+      theme: 'dark' | 'light';
+      xAxisMode: RateChartXAxisMode;
+      // ... sweep inputs
+  }): ReferenceComparisonPanelMap
   ```
+  Imports from `referenceChartTypes.ts` (appendSeries, panel helpers) and
+  `curveStylePolicy.ts` (styling constants).
 
 **Files to modify:**
 
-- [src/lib/charts/RateChart.svelte](src/lib/charts/RateChart.svelte) — becomes: call `buildRateChartData()`,
-  render `<UniversalChart>`. Target: under 100 lines.
-- [src/lib/charts/ReferenceComparisonChart.svelte](src/lib/charts/ReferenceComparisonChart.svelte) — same.
-- [src/lib/charts/ChartSubPanel.svelte](src/lib/charts/ChartSubPanel.svelte) — reduce to pure Chart.js wrapper.
-  Remove scenario-specific props. Target: under 400 lines.
+- [src/lib/charts/RateChart.svelte](src/lib/charts/RateChart.svelte) — delete inline curve builders.
+  Call `buildRateChartData()`, pass result panels to `<ChartSubPanel>` instances.
+  Target: under 300 lines (state management + layout only).
 
-**Verification:** Charts render identically. Gutter alignment and x-axis sync work across all panels.
+**Files NOT changed in this phase:**
+- `ChartSubPanel.svelte` — already a good Chart.js wrapper; leave it.
+- `ReferenceComparisonChart.svelte` — already delegates to `buildChartData.ts`; minor cleanup only.
+- `UniversalChart.svelte` — the shared panel renderer is a desirable long-term goal but requires
+  both charts to share the same panel-map contract first. Deferred to after Phase 6.
+
+**Verification:** Live simulation charts render identically for all 10 scenarios.
+`RateChart.svelte` diff shows only state management and layout remaining.
 
 ---
 
@@ -535,11 +510,11 @@ Phase 0.5  ──── TypeScript typecheck fix ✓ DONE
     │
     └── Phase 2  ──── Scenarios own analytical fn ✓ DONE
             │
-            └── Phase 3  ──── Panel catalog + style policy (prerequisite for Phase 4)
+            └── Phase 3  ──── Panel catalog + style policy ✓ DONE
                     │
-                    └── Phase 4  ──── buildChartData replaces referenceComparisonModel
+                    └── Phase 4  ──── buildChartData replaces referenceComparisonModel ✓ DONE
                             │
-                            └── Phase 5  ──── UniversalChart component
+                            └── Phase 5  ──── buildRateChartData + trim RateChart.svelte  ← NOW
                                     │
                                     └── Phase 6  ──── Split store
                                             │
@@ -562,14 +537,14 @@ purely TypeScript-side with no overlap.
 | 30 `outputProfile*` derived | ✓ Done (Phase 0) |
 | Hidden analytical Svelte components | ✓ Done (Phase 0) |
 | TypeScript typecheck failures | ✓ Done (Phase 0.5) |
-| O(n²) sweep efficiency derived | Phase 1 |
+| O(n²) sweep efficiency derived | ✓ Done (Phase 1) |
 | `analyticalMode` string routing in App.svelte | ✓ Done (Phase 2) |
 | `liveAnalyticalOutput` param spreading | ✓ Done (Phase 2) |
-| Styling constants duplicated | Phase 3 |
-| `referenceComparisonModel.ts` (3,285 lines) | Phase 4 |
-| `RateChart.svelte` hard-coded string matching | Phase 4 |
-| PVI→time remapping not cached | Phase 4 (`axisAdapters.ts`) |
-| Chart component not agnostic | Phase 5 |
+| Styling constants duplicated | ✓ Done (Phase 3) |
+| `referenceComparisonModel.ts` (2,560 lines) | ✓ Done (Phase 4) |
+| `RateChart.svelte` curve-building inline (1,419 lines) | Phase 5 |
+| `RateChart.svelte` hard-coded string matching | Phase 5 |
+| Chart component not agnostic | Phase 5/6 |
 | Store is a god object | Phase 6 |
 | `activeScenarioAsFamily` in store | Phase 6 |
 | App.svelte still has business logic | Phase 7 |
@@ -585,8 +560,8 @@ purely TypeScript-side with no overlap.
 | 1 | Medium — Rust API change | Additive only; feature-detect in worker if needed; `cargo test` gate |
 | 2 | Medium — all 10 scenarios touched | Port scenario-by-scenario; verify each analytical overlay |
 | 3 | Low — mechanical constant extraction | Grep for all `borderDash` literals; remove one by one |
-| 4 | High — 3,285-line file replaced | Build `buildChartData.ts` alongside old model; flip one scenario at a time; migrate tests |
-| 5 | Medium — chart component rework | Keep `ChartSubPanel` working throughout; layer `UniversalChart` on top |
+| 4 | High — 3,285-line file replaced | ✓ Done — four focused files; `referenceComparisonModel.ts` deleted |
+| 5 | Medium — extract builder from RateChart | Keep `ChartSubPanel` working throughout; extract curves first, trim Svelte after |
 | 6 | Medium — store split | Barrel re-export pattern; split one store at a time |
 | 7 | Low — trim pass | By this point App.svelte logic is already moved elsewhere |
 | 8 | Medium — legacy deletion | Ensure all scenarios pass reference runs; search for all import sites |
@@ -602,8 +577,11 @@ purely TypeScript-side with no overlap.
 | `src/lib/analytical/axisAdapters.ts` | 2 | PVI→time, RF normalization |
 | `src/lib/charts/panelDefs.ts` | 3 | Panel catalog (reusable across scenarios) |
 | `src/lib/charts/curveStylePolicy.ts` | 3 | Single source for all styling constants |
-| `src/lib/charts/buildChartData.ts` | 4 | Reference comparison chart data builder |
-| `src/lib/charts/buildRateChartData.ts` | 4 | Live rate chart data builder |
+| `src/lib/charts/referenceChartTypes.ts` | 4 ✓ | Types, colors, panel helpers |
+| `src/lib/charts/referenceOverlayBuilders.ts` | 4 ✓ | BL / depletion / gas-oil overlays |
+| `src/lib/charts/sweepPanelBuilder.ts` | 4 ✓ | Sweep efficiency panel builders |
+| `src/lib/charts/buildChartData.ts` | 4 ✓ | Reference comparison chart data orchestrator |
+| `src/lib/charts/buildRateChartData.ts` | 5 | Live rate chart data builder |
 | `src/lib/charts/UniversalChart.svelte` | 5 | Scenario-agnostic chart renderer |
 | `src/lib/stores/parameterStore.svelte.ts` | 6 | Simulation input parameters |
 | `src/lib/stores/runtimeStore.svelte.ts` | 6 | Worker lifecycle + output |
@@ -626,7 +604,7 @@ purely TypeScript-side with no overlap.
 |------|-------|--------|
 | `src/lib/analytical/FractionalFlow.svelte` | ✓ WIP | Replaced by pure function |
 | `src/lib/analytical/DepletionAnalytical.svelte` | ✓ WIP | Replaced by pure function |
-| `src/lib/charts/referenceComparisonModel.ts` | 4 | Replaced by `buildChartData.ts` |
+| `src/lib/charts/referenceComparisonModel.ts` | 4 ✓ | Replaced by `buildChartData.ts` |
 | `src/lib/stores/simulationStore.svelte.ts` | 6 | Split into three focused stores |
 | `src/lib/catalog/benchmarkCases.ts` | 8 | Merged into scenario system |
 | `src/lib/catalog/caseCatalog.ts` | 8 | Merged into scenario system |

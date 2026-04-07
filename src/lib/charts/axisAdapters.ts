@@ -5,8 +5,7 @@
  * and log-time x-axis modes live here. No chart-building or curve-assembly
  * logic — pure data transformation.
  *
- * Consumed by referenceComparisonModel.ts today; will be consumed directly by
- * buildChartData.ts (Phase 4) when referenceComparisonModel.ts is replaced.
+ * Consumed by buildChartData.ts, referenceOverlayBuilders.ts, and sweepPanelBuilder.ts.
  */
 
 import type { RateChartXAxisMode } from './rateChartLayoutConfig';

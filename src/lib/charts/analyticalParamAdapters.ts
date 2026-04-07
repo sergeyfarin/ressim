@@ -6,8 +6,8 @@
  * BenchmarkRunResult) and return typed data. No Chart.js, no curve config, no
  * DOM. Every function is independently testable.
  *
- * Consumed by referenceComparisonModel.ts today; will be consumed directly by
- * buildChartData.ts (Phase 4) once that replaces the model.
+ * Consumed by buildChartData.ts (orchestrator), referenceOverlayBuilders.ts,
+ * and sweepPanelBuilder.ts.
  */
 
 import { calculateAnalyticalProduction, calculateGasOilAnalyticalProduction } from '../analytical/fractionalFlow';

@@ -7,7 +7,7 @@ import { getScenario, getScenarioChartLayout } from '../catalog/scenarios';
 import { buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import type { BenchmarkRunSpec } from '../benchmarkRunModel';
 import type { SimulatorSnapshot } from '../simulator-types';
-import { buildReferenceComparisonModel } from './referenceComparisonModel';
+import { buildReferenceComparisonModel } from './buildChartData';
 
 function getTotalThickness(params: Record<string, any>) {
     if (Array.isArray(params.cellDzPerLayer) && params.cellDzPerLayer.length > 0) {
