@@ -1,3 +1,4 @@
+import { gasInjectionLivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario } from '../scenarios';
 import { gasOilBLDef } from '../analyticalAdapters';
 
@@ -55,6 +56,7 @@ export const gas_injection: Scenario = {
         max_well_rate_change_fraction: 0.75,
     },
     analyticalDef: gasOilBLDef,
+    liveChartPanels: gasInjectionLivePanels,
     sensitivities: [
         {
             key: 'mobility',

@@ -3,26 +3,45 @@ import fs from 'fs';
 import path from 'path';
 
 const rateChartPath = path.join(__dirname, 'RateChart.svelte');
+const universalChartPath = path.join(__dirname, 'UniversalChart.svelte');
 const buildRateChartDataPath = path.join(__dirname, 'buildRateChartData.ts');
+const buildLiveDerivedSeriesPath = path.join(__dirname, 'buildLiveDerivedSeries.ts');
+const buildUniversalChartDataPath = path.join(__dirname, 'buildUniversalChartData.ts');
 const subPanelPath = path.join(__dirname, 'ChartSubPanel.svelte');
 const referenceComparisonChartPath = path.join(__dirname, 'ReferenceComparisonChart.svelte');
 const chartPanelSelectionPath = path.join(__dirname, 'chartPanelSelection.ts');
 const rateChartSrc = fs.readFileSync(rateChartPath, 'utf8');
+const universalChartSrc = fs.readFileSync(universalChartPath, 'utf8');
 const buildRateChartDataSrc = fs.readFileSync(buildRateChartDataPath, 'utf8');
+const buildLiveDerivedSeriesSrc = fs.readFileSync(buildLiveDerivedSeriesPath, 'utf8');
+const buildUniversalChartDataSrc = fs.readFileSync(buildUniversalChartDataPath, 'utf8');
 const subPanelSrc = fs.readFileSync(subPanelPath, 'utf8');
 const referenceComparisonChartSrc = fs.readFileSync(referenceComparisonChartPath, 'utf8');
 const chartPanelSelectionSrc = fs.readFileSync(chartPanelSelectionPath, 'utf8');
 
 describe('RateChart architecture checks', () => {
-  it('imports and uses ChartSubPanel', () => {
-    expect(/import\s+ChartSubPanel\s+from/.test(rateChartSrc)).toBe(true);
-    expect(/<ChartSubPanel/.test(rateChartSrc)).toBe(true);
+  it('RateChart.svelte is a thin adapter that delegates to UniversalChart', () => {
+    expect(/import\s+UniversalChart\s+from/.test(rateChartSrc)).toBe(true);
+    expect(/<UniversalChart/.test(rateChartSrc)).toBe(true);
+    // Thin adapter: should not contain any data computation or x-axis state
+    expect(/buildRateChartData/.test(rateChartSrc)).toBe(false);
+    expect(/let xAxisMode/.test(rateChartSrc)).toBe(false);
   });
 
-  it('delegates data computation to buildRateChartData', () => {
-    expect(/from\s+['"]\.\/buildRateChartData['"]/.test(rateChartSrc)).toBe(true);
-    expect(/buildRateChartData/.test(rateChartSrc)).toBe(true);
-    expect(/liveData/.test(rateChartSrc)).toBe(true);
+  it('UniversalChart imports and uses ChartSubPanel', () => {
+    expect(/import\s+ChartSubPanel\s+from/.test(universalChartSrc)).toBe(true);
+    expect(/<ChartSubPanel/.test(universalChartSrc)).toBe(true);
+  });
+
+  it('RateChart (adapter) delegates series computation to buildLiveDerivedSeries', () => {
+    expect(/from\s+['"]\.\/buildLiveDerivedSeries['"]/.test(rateChartSrc)).toBe(true);
+    expect(/buildLiveDerivedSeries/.test(rateChartSrc)).toBe(true);
+  });
+
+  it('UniversalChart delegates panel building to buildUniversalChartData', () => {
+    expect(/from\s+['"]\.\/buildUniversalChartData['"]/.test(universalChartSrc)).toBe(true);
+    expect(/buildUniversalChartData/.test(universalChartSrc)).toBe(true);
+    expect(/liveData/.test(universalChartSrc)).toBe(true);
   });
 
   it('defines three panel curve configs (rates, cumulative, diagnostics) in buildRateChartData', () => {
@@ -38,14 +57,14 @@ describe('RateChart architecture checks', () => {
   });
 
   it('has x-axis control at the top level (not inside sub-panels)', () => {
-    expect(/ToggleGroup/.test(rateChartSrc)).toBe(true);
-    expect(/xAxisMode/.test(rateChartSrc)).toBe(true);
+    expect(/ToggleGroup/.test(universalChartSrc)).toBe(true);
+    expect(/xAxisMode/.test(universalChartSrc)).toBe(true);
   });
 
   it('uses shared panel-selection helpers instead of duplicating shell logic', () => {
-    expect(/chartPanelSelection/.test(rateChartSrc)).toBe(true);
-    expect(/getConfiguredXAxisOptions/.test(rateChartSrc)).toBe(true);
-    expect(/resolveChartPanelDefinition/.test(rateChartSrc)).toBe(true);
+    expect(/chartPanelSelection/.test(universalChartSrc)).toBe(true);
+    expect(/getConfiguredXAxisOptions/.test(universalChartSrc)).toBe(true);
+    expect(/resolveChartPanelDefinition/.test(universalChartSrc)).toBe(true);
     expect(/chartPanelSelection/.test(referenceComparisonChartSrc)).toBe(true);
     expect(/getConfiguredXAxisOptions/.test(referenceComparisonChartSrc)).toBe(true);
     expect(/resolveChartPanelDefinition/.test(referenceComparisonChartSrc)).toBe(true);
@@ -53,7 +72,22 @@ describe('RateChart architecture checks', () => {
   });
 
   it('computes error stats (MAE, RMSE, MAPE)', () => {
-    expect(/mismatchSummary/.test(rateChartSrc)).toBe(true);
+    expect(/mismatchSummary/.test(universalChartSrc)).toBe(true);
+  });
+
+  it('buildLiveDerivedSeries computes rates, cumulatives, and diagnostics', () => {
+    expect(/oilRate/.test(buildLiveDerivedSeriesSrc)).toBe(true);
+    expect(/cumOil/.test(buildLiveDerivedSeriesSrc)).toBe(true);
+    expect(/recoveryFactor/.test(buildLiveDerivedSeriesSrc)).toBe(true);
+    expect(/buildMismatchSummary/.test(buildLiveDerivedSeriesSrc)).toBe(true);
+  });
+
+  it('buildUniversalChartData is domain-agnostic (no oil/water references)', () => {
+    expect(/oilRate/.test(buildUniversalChartDataSrc)).toBe(false);
+    expect(/waterRate/.test(buildUniversalChartDataSrc)).toBe(false);
+    expect(/getData/.test(buildUniversalChartDataSrc)).toBe(true);
+    expect(/getDataXY/.test(buildUniversalChartDataSrc)).toBe(true);
+    expect(/applyCurveTypeStyle/.test(buildUniversalChartDataSrc)).toBe(true);
   });
 });
 

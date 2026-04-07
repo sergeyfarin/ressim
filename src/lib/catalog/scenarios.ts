@@ -396,6 +396,13 @@ export type Scenario = {
      * Absent for 'none' and 'digitized-reference' analytical methods.
      */
     analyticalDef?: ScenarioAnalyticalDef;
+    /**
+     * Live-chart panel definitions — exactly which panels and curves to show
+     * in the single-run rate chart. Declares curveType (simulation / analytical /
+     * reference / reference-simulation), color, and getData callback per curve.
+     * When absent, UniversalChart falls back to a generic default panel set.
+     */
+    liveChartPanels?: import('../charts/universalChartTypes').UniversalPanelDef[];
 };
 
 /** Default capabilities for custom mode (no predefined scenario). */

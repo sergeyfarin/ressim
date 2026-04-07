@@ -1,3 +1,4 @@
+import { depletionLivePanels } from '../chartPanels/depletionLivePanels';
 import type { Scenario } from '../scenarios';
 import { depletionDef } from '../analyticalAdapters';
 
@@ -101,6 +102,7 @@ export const dep_arps: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: depletionDef,
+    liveChartPanels: depletionLivePanels,
     sensitivities: [
         {
             key: 'arps_b',

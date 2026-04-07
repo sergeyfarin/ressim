@@ -1,3 +1,4 @@
+import { sweepLivePanels } from '../chartPanels/sweepLivePanels';
 import type { Scenario } from '../scenarios';
 import { waterfloodBLDef } from '../analyticalAdapters';
 
@@ -116,6 +117,7 @@ export const sweep_combined: Scenario = {
         gravityEnabled: false,
     },
     analyticalDef: waterfloodBLDef,
+    liveChartPanels: sweepLivePanels,
     sensitivities: [
         {
             key: 'interaction_core',

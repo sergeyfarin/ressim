@@ -1,3 +1,4 @@
+import { spe1LivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario, PublishedReferenceSeries } from '../scenarios';
 import type { ThreePhaseScalTables } from '../../simulator-types';
 
@@ -447,4 +448,5 @@ export const spe1_gas_injection: Scenario = {
             ],
         },
     ],
+    liveChartPanels: spe1LivePanels,
 };

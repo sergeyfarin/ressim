@@ -77,11 +77,55 @@ export const AUXILIARY_STYLE = {
     borderDash:  AUXILIARY_DASH,
 } as const;
 
+// ─── Reference simulation style ──────────────────────────────────────────────
+
+/** Reference simulation line — another simulator's output. Solid but thinner. */
+export const REF_SIM_BORDER = 1.5;
+
+/** Reference simulation style object — spread into CurveConfig. No borderDash = solid. */
+export const REF_SIM_STYLE = {
+    borderWidth: REF_SIM_BORDER,
+} as const;
+
+// ─── Auto-style from CurveType ────────────────────────────────────────────────
+
+import type { CurveType } from './universalChartTypes';
+
+/**
+ * Returns the borderWidth + optional borderDash that match a CurveType.
+ * Spread the result into a CurveConfig to apply the visual convention automatically.
+ *
+ *   simulation          solid 2.5px
+ *   analytical          dashed [7,4] 2.0px
+ *   reference           dotted [4,4] 1.5px
+ *   reference-simulation solid 1.5px
+ */
+export function applyCurveTypeStyle(curveType: CurveType): {
+    borderWidth: number;
+    borderDash?: number[];
+} {
+    switch (curveType) {
+        case 'simulation':          return { borderWidth: SIM_BORDER_SINGLE };
+        case 'analytical':          return { borderWidth: ANALYTICAL_BORDER, borderDash: ANALYTICAL_DASH };
+        case 'reference':           return { borderWidth: PUBLISHED_BORDER,  borderDash: PUBLISHED_DASH };
+        case 'reference-simulation': return { borderWidth: REF_SIM_BORDER };
+    }
+}
+
 // ─── Legend section labels ────────────────────────────────────────────────────
 
 export const LEGEND_SECTIONS = {
     sim:          'Simulation (solid lines):',
     analytical:   'Analytical (dashed lines):',
-    published:    'Published reference (dashed lines):',
+    published:    'Published reference (dotted lines):',
+    refSim:       'Reference simulation (thin solid lines):',
     driveIndices: 'Drive Indices:',
 } as const;
+
+/** Maps CurveType to the appropriate legend section header. */
+export const CURVE_TYPE_LEGEND_SECTION: Record<CurveType, string> = {
+    simulation:             LEGEND_SECTIONS.sim,
+    analytical:             LEGEND_SECTIONS.analytical,
+    reference:              LEGEND_SECTIONS.published,
+    'reference-simulation': LEGEND_SECTIONS.refSim,
+};

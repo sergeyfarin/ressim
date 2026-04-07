@@ -33,7 +33,14 @@
       "Bash(grep -n \"fn k_ro_stone2\\\\|fn k_rg\\\\|fn k_rw\\\\|struct Scal3p\" /home/reken/Repos/ressim/src/lib/ressim/src/*.rs)",
       "Bash(perl -0pi -e 's/borderWidth: 2,\\\\n\\(\\\\s+borderDash: ANALYTICAL_DASH,\\)/borderWidth: ANALYTICAL_BORDER,\\\\n$1/g' /home/reken/Repos/ressim/src/lib/charts/referenceComparisonModel.ts)",
       "Bash(echo \"EXIT_CODE:$?\")",
-      "Bash(echo \"Exit: $?\")"
+      "Bash(echo \"Exit: $?\")",
+      "Bash(sed -n '79,84p' src/lib/catalog/scenarios/wf_bl1d.ts)",
+      "Bash(sed -n '79,84p' src/lib/catalog/scenarios/gas_drive.ts)",
+      "Bash(sed -i '1s/^/import { gasDriveLivePanels } from '\"'\"'..\\\\/chartPanels\\\\/gasLivePanels'\"'\"';\\\\n/' gas_drive.ts)",
+      "Bash(perl -i -0pe 's/\\(    \\\\],\\\\n\\\\};\\)/    liveChartPanels: gasDriveLivePanels,\\\\n$1/' gas_drive.ts)",
+      "Bash(sed -i '1s/^/import { spe1LivePanels } from '\"'\"'..\\\\/chartPanels\\\\/gasLivePanels'\"'\"';\\\\n/' spe1_gas_injection.ts)",
+      "Bash(perl -i -0pe 's/\\(    \\\\],\\\\n\\\\};\\)/    liveChartPanels: spe1LivePanels,\\\\n$1/' spe1_gas_injection.ts)",
+      "Bash(grep -n \"liveChartPanels\\\\|import.*LivePanels\\\\|import.*livePanels\" src/lib/catalog/scenarios/*.ts)"
     ]
   }
 }

@@ -1,37 +1,38 @@
+<!--
+    RateChart.svelte — domain adapter for UniversalChart.
+
+    This is the only component that knows about simulation data structures
+    (rateHistory, ooipM3, sweep geometry, etc.) and scenario categories.
+
+    Responsibilities:
+      - Build LiveDerivedSeries from raw simulation output
+      - Build LiveSweepContext when sweep panel is active
+      - Create the buildCurveContext closure that UniversalChart calls on demand
+      - Compute x-axis options (with pviAvailable / pvpAvailable / tauAvailable flags)
+      - Derive scenario-aware defaults (x-axis mode, panel expansion)
+      - Pass everything to UniversalChart — which stays fully agnostic
+-->
 <script lang="ts">
-    import { untrack } from "svelte";
-    import ChartSubPanel from "./ChartSubPanel.svelte";
-    import type { CurveConfig } from "./chartTypes";
-    import {
-        coerceChartAxisState,
-        getConfiguredXAxisOptions,
-        resolveChartPanelDefinition,
-        resolveChartPanelLayout,
-        type ChartPanelDefinition,
-        type ChartPanelEntry,
-        type ChartXAxisOption,
-    } from "./chartPanelSelection";
+    import UniversalChart from "./UniversalChart.svelte";
+    import type { ChartXAxisOption } from "./chartPanelSelection";
     import type {
         RateChartLayoutConfig,
-        RateChartPanelId,
         RateChartXAxisMode,
     } from "./rateChartLayoutConfig";
-    import { DEFAULT_RATE_CHART_PANEL_ORDER } from "./rateChartLayoutConfig";
-    import type {
-        RateHistoryPoint,
-        AnalyticalProductionPoint,
-    } from "../simulator-types";
-    import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
+    import type { RateHistoryPoint, AnalyticalProductionPoint } from "../simulator-types";
     import type { SweepAnalyticalMethod, SweepGeometry } from "../analytical/sweepEfficiency";
-    import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
-    import { resolveSharedXAxisRange } from "./xAxisRangePolicy";
     import {
-        buildRateChartData,
-        buildGetScalePresetConfig,
-        type XYPoint,
-    } from "./buildRateChartData";
+        computeCombinedSweep,
+        computeSweepRecoveryFactor,
+        getSweepComponentVisibility,
+    } from "../analytical/sweepEfficiency";
+    import type { RockProps, FluidProps } from "../analytical/fractionalFlow";
+    import { buildLiveDerivedSeries, buildXValues } from "./buildLiveDerivedSeries";
+    import type { LiveCurveContext, LiveSweepContext, UniversalPanelDef } from "./universalChartTypes";
+    import { DEFAULT_RATE_CHART_PANEL_ORDER } from "./rateChartLayoutConfig";
 
     let {
+        panelDefs = [],
         rateHistory = [],
         analyticalProductionData = [],
         avgReservoirPressureSeries = [],
@@ -53,6 +54,7 @@
         sweepEfficiencySimSeries = null,
         sweepRFAnalytical = null,
     }: {
+        panelDefs?: UniversalPanelDef[];
         rateHistory?: RateHistoryPoint[];
         analyticalProductionData?: AnalyticalProductionPoint[];
         avgReservoirPressureSeries?: Array<number | null>;
@@ -71,148 +73,93 @@
         showSweepPanel?: boolean;
         sweepGeometry?: SweepGeometry;
         sweepAnalyticalMethod?: SweepAnalyticalMethod;
-        sweepEfficiencySimSeries?: Array<{ time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null }> | null;
+        sweepEfficiencySimSeries?: Array<{
+            time: number;
+            eA: number | null;
+            eV: number | null;
+            eVol: number;
+            mobileOilRecovered: number | null;
+        }> | null;
         sweepRFAnalytical?: import("../analytical/sweepEfficiency").SweepRFResult | null;
     } = $props();
 
-    type PanelDefinition = ChartPanelDefinition<CurveConfig, XYPoint[]>;
-
-    // --- X-axis state (shared across all panels) ---
-    let xAxisMode = $state<RateChartXAxisMode>("time");
-    let logScale = $state(false);
-    let normalizeRates = $state(false);
-
-    function createDefaultPanelExpandedState(): Record<RateChartPanelId, boolean> {
-        return Object.fromEntries(
-            DEFAULT_RATE_CHART_PANEL_ORDER.map((panelKey) => [panelKey, false]),
-        ) as Record<RateChartPanelId, boolean>;
-    }
-
-    function equalPanelExpandedState(
-        left: Record<RateChartPanelId, boolean>,
-        right: Record<RateChartPanelId, boolean>,
-    ): boolean {
-        return DEFAULT_RATE_CHART_PANEL_ORDER.every((panelKey) => left[panelKey] === right[panelKey]);
-    }
-
-    // --- Panel expand/collapse state ---
-    let panelExpanded = $state<Record<RateChartPanelId, boolean>>(createDefaultPanelExpandedState());
-
-    // --- Panel alignment state ---
-    let nativeGutters = $state<Record<string, { left: number; right: number }>>({});
-    let maxLeftGutter = $derived(
-        Math.max(0, ...Object.values(nativeGutters).map((g) => g.left)),
-    );
-    let maxRightGutter = $derived(
-        Math.max(0, ...Object.values(nativeGutters).map((g) => g.right)),
+    // ── Pre-computed simulation series ────────────────────────────────────────
+    let sim = $derived.by(() =>
+        buildLiveDerivedSeries(
+            rateHistory,
+            analyticalProductionData,
+            avgReservoirPressureSeries,
+            avgWaterSaturationSeries,
+            ooipM3,
+            poreVolumeM3,
+        ),
     );
 
-    // --- Live chart data (pure computation) ---
-    let liveData = $derived.by(() => buildRateChartData({
-        rateHistory,
-        analyticalProductionData,
-        avgReservoirPressureSeries,
-        avgWaterSaturationSeries,
-        ooipM3,
-        poreVolumeM3,
-        theme,
-        xAxisMode,
-        normalizeRates,
-        analyticalMeta,
-        showSweepPanel,
-        sweepGeometry,
-        sweepAnalyticalMethod,
-        sweepEfficiencySimSeries: sweepEfficiencySimSeries ?? null,
-        sweepRFAnalytical: sweepRFAnalytical ?? null,
-        rockProps,
-        fluidProps,
-        layerPermeabilities,
-        layerThickness,
-    }));
-
-    let pviAvailable = $derived(liveData.pviAvailable);
-    let pvpAvailable = $derived(liveData.pvpAvailable);
-    let mismatchSummary = $derived(liveData.mismatchSummary);
-    let getScalePresetConfig = $derived(buildGetScalePresetConfig(normalizeRates));
-
-    // --- Scenario-aware panel defaults ---
-    $effect(() => {
-        const cat = (activeMode ?? "").toLowerCase();
-        const cs = (activeCase ?? "").toLowerCase();
-
-        const currentExpanded = untrack(() => panelExpanded);
-        const nextExpanded = { ...currentExpanded };
-        const conf = layoutConfig?.rateChart;
-        if (conf) {
-            if (conf.logScale !== undefined) logScale = conf.logScale;
-            if (conf.xAxisMode !== undefined) xAxisMode = conf.xAxisMode;
-            for (const panelKey of conf.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER) {
-                const expanded = conf.panels?.[panelKey]?.expanded;
-                if (expanded !== undefined) nextExpanded[panelKey] = expanded;
-            }
-        } else {
-            if (cat === "dep" || cat === "depletion" || cs.includes("depletion")) {
-                nextExpanded.rates = true;
-                nextExpanded.cumulative = false;
-                nextExpanded.diagnostics = true;
-            } else if (
-                cat === "wf" ||
-                cat === "waterflood" ||
-                cs.startsWith("wf_") ||
-                cs.includes("waterflood") ||
-                cs.startsWith("bl_")
-            ) {
-                nextExpanded.rates = true;
-                nextExpanded.cumulative = true;
-                nextExpanded.diagnostics = false;
-            }
-            if (
-                cat === "wf" ||
-                cs.startsWith("wf_") ||
-                cs.startsWith("bl_") ||
-                cs === "waterflood_custom_subcase"
-            ) {
-                xAxisMode = pviAvailable ? "pvi" : "time";
-            } else {
-                xAxisMode = "time";
-                logScale = false;
-            }
-        }
-
-        if (!equalPanelExpandedState(currentExpanded, nextExpanded)) {
-            panelExpanded = nextExpanded;
-        }
+    // ── Sweep analytical context ──────────────────────────────────────────────
+    let sweepCtx = $derived.by((): LiveSweepContext | null => {
+        if (!showSweepPanel || !rockProps || !fluidProps) return null;
+        const perms = layerPermeabilities.length > 0 ? layerPermeabilities : [100];
+        const analytical = computeCombinedSweep(
+            rockProps, fluidProps, perms, layerThickness,
+            3.0, 200, sweepGeometry, sweepAnalyticalMethod,
+        );
+        const rfResult =
+            sweepRFAnalytical ??
+            computeSweepRecoveryFactor(
+                rockProps, fluidProps, perms, layerThickness,
+                3.0, 200, sweepGeometry, sweepAnalyticalMethod,
+            );
+        const { showAreal, showVertical } = getSweepComponentVisibility(sweepGeometry);
+        return {
+            arealSweepCurve: analytical.arealSweep.curve,
+            verticalSweepCurve: analytical.verticalSweep.curve,
+            combinedSweepCurve: analytical.combined,
+            rfResult,
+            showAreal,
+            showVertical,
+        };
     });
 
-    function setXAxisMode(mode: RateChartXAxisMode) {
-        if (mode === "pvi" && !pviAvailable) return;
-        if (mode === "pvp" && !pvpAvailable) return;
-        if (mode === "tD" && (!analyticalMeta?.tau || analyticalMeta.tau <= 0))
-            return;
-        xAxisMode = mode;
-    }
+    // ── Context factory passed to UniversalChart ──────────────────────────────
+    // Re-derives when sim, sweepCtx, or any closed-over prop changes.
+    let buildCurveContext = $derived.by(
+        () =>
+            (xAxisMode: RateChartXAxisMode, normalizeRates: boolean): LiveCurveContext => {
+                const xValues = buildXValues(sim, xAxisMode, analyticalMeta);
+                const scaleFactor =
+                    normalizeRates && analyticalMeta?.q0 && analyticalMeta.q0 > 0
+                        ? 1 / (analyticalMeta.q0 as number)
+                        : 1;
+                const neutralColor = theme === "dark" ? "#f8fafc" : "#0f172a";
+                return {
+                    sim,
+                    analytical: analyticalProductionData,
+                    xValues,
+                    xAxisMode,
+                    pviArr: sim.pvi,
+                    scaleFactor,
+                    neutralColor,
+                    ooipM3,
+                    rateHistory,
+                    sweep: sweepCtx,
+                    sweepSimSeries: sweepEfficiencySimSeries ?? null,
+                };
+            },
+    );
 
-    function applyCurveLayout(defaultCurves: CurveConfig[]): CurveConfig[] {
-        const customCurves = layoutConfig?.rateChart?.curves;
-        if (!customCurves) return defaultCurves;
-        return defaultCurves.map((c) => {
-            const override = customCurves[c.label];
-            if (!override) return c;
-            return {
-                ...c,
-                defaultVisible:
-                    override.visible !== undefined ? override.visible : c.defaultVisible,
-                disabled: override.disabled,
-            };
-        });
-    }
+    // ── X-axis options (availability derived from sim data) ───────────────────
+    let pviAvailable = $derived((sim.pvi.at(-1) ?? 0) > 1e-12);
+    let pvpAvailable = $derived((sim.pvp.at(-1) ?? 0) > 1e-12);
+    let tauAvailable = $derived(
+        analyticalMeta?.tau != null && analyticalMeta.tau > 0,
+    );
 
-    let allXAxisOptions = $derived<ChartXAxisOption[]>([
+    let xAxisOptions = $derived<ChartXAxisOption[]>([
         { value: "time", label: "Time" },
         {
             value: "tD",
             label: "tD",
-            disabled: !analyticalMeta?.tau || analyticalMeta.tau <= 0,
+            disabled: !tauAvailable,
             title: "Dimensionless Time (t/τ)",
         },
         { value: "pvi", label: "PVI", disabled: !pviAvailable, title: "PV Injected" },
@@ -222,184 +169,62 @@
         { value: "logTime", label: "Log Time", title: "Log Time (Fetkovich)" },
     ]);
 
-    function buildPanelDefinition(
-        panelKey: RateChartPanelId,
-        entries: Array<ChartPanelEntry<CurveConfig, XYPoint[]>>,
-    ): PanelDefinition {
-        const panelDefinition = resolveChartPanelDefinition({
-            override: layoutConfig?.rateChart?.panels?.[panelKey],
-            fallback: liveData.panelFallbacks[panelKey],
-            entries,
-            getScalePresetConfig,
-        });
-        return {
-            ...panelDefinition,
-            curves: applyCurveLayout(panelDefinition.curves),
-        };
-    }
+    // ── Scenario-aware defaults (passed to UniversalChart as reactive props) ──
+    let supportsNormalization = $derived(
+        !!(analyticalMeta?.q0 && analyticalMeta.q0 > 0),
+    );
 
-    function toPanelEntries(
-        curves: CurveConfig[],
-        series: XYPoint[][],
-    ): Array<ChartPanelEntry<CurveConfig, XYPoint[]>> {
-        return curves.map((curve, index) => ({
-            curve,
-            series: series[index] ?? [],
-        }));
-    }
-
-    const panelEntriesByKey = $derived.by((): Record<RateChartPanelId, Array<ChartPanelEntry<CurveConfig, XYPoint[]>>> => ({
-        rates: liveData.curveRegistry,
-        recovery: liveData.curveRegistry,
-        cumulative: liveData.curveRegistry,
-        diagnostics: liveData.curveRegistry,
-        gor: liveData.curveRegistry,
-        volumes: liveData.curveRegistry,
-        oil_rate: liveData.curveRegistry,
-        injection_rate: liveData.curveRegistry,
-        producer_bhp: liveData.curveRegistry,
-        injector_bhp: liveData.curveRegistry,
-        control_limits: liveData.curveRegistry,
-        sweep_rf: liveData.sweepPanels ? toPanelEntries(liveData.sweepPanels.rfCurves, liveData.sweepPanels.rfSeries) : [],
-        sweep_areal: liveData.sweepPanels ? toPanelEntries(liveData.sweepPanels.arealCurves, liveData.sweepPanels.arealSeries) : [],
-        sweep_vertical: liveData.sweepPanels ? toPanelEntries(liveData.sweepPanels.verticalCurves, liveData.sweepPanels.verticalSeries) : [],
-        sweep_combined: liveData.sweepPanels ? toPanelEntries(liveData.sweepPanels.volCurves, liveData.sweepPanels.volSeries) : [],
-        sweep_combined_mobile_oil: liveData.sweepPanels ? toPanelEntries(liveData.sweepPanels.mobileOilCurves, liveData.sweepPanels.mobileOilSeries) : [],
-    }));
-
-    const resolvedPanels = $derived.by(() => {
-        const panelOrder = layoutConfig?.rateChart?.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER;
-
-        return panelOrder
-            .map((panelKey) => {
-                const panelLayout = resolveChartPanelLayout({
-                    override: layoutConfig?.rateChart?.panels?.[panelKey],
-                    fallback: liveData.panelFallbacks[panelKey],
-                });
-                const panelDefinition = buildPanelDefinition(panelKey, panelEntriesByKey[panelKey]);
-
-                return {
-                    key: panelKey,
-                    chartId: panelKey.replaceAll('_', '-'),
-                    title: panelDefinition.title,
-                    curves: panelDefinition.curves,
-                    series: panelDefinition.series,
-                    scales: panelDefinition.scales,
-                    allowLogToggle: panelDefinition.allowLogToggle || panelLayout.allowLogToggle,
-                    visible: panelLayout.visible,
-                    expanded: panelExpanded[panelKey] ?? panelLayout.expanded,
-                };
-            })
-            .filter((panel) => panel.visible && panel.curves.length > 0);
+    let defaultXAxisMode = $derived.by((): RateChartXAxisMode => {
+        const conf = layoutConfig?.rateChart;
+        if (conf?.xAxisMode !== undefined) return conf.xAxisMode;
+        const cs = (activeCase ?? "").toLowerCase();
+        const cat = (activeMode ?? "").toLowerCase();
+        if (
+            cat === "wf" ||
+            cs.startsWith("wf_") ||
+            cs.startsWith("bl_") ||
+            cs === "waterflood_custom_subcase"
+        ) {
+            return pviAvailable ? "pvi" : "time";
+        }
+        return "time";
     });
 
-    const ratePanelSupportsNormalization = $derived(
-        (resolvedPanels.find((panel) => panel.key === 'rates')?.curves ?? []).some((curve) => curve.label.includes("Rate")),
-    );
-
-    const showsPrimaryAnalyticalCurves = $derived.by(() =>
-        resolvedPanels
-            .filter((panel) => !panel.key.startsWith('sweep_'))
-            .flatMap((panel) => panel.curves)
-            .some((curve) => (curve.curveKey ?? "").includes("-reference")),
-    );
-
-    const sharedXRange = $derived.by(() =>
-        resolveSharedXAxisRange({
-            allSeries: resolvedPanels.flatMap((panel) => panel.series),
-            rateSeries: resolvedPanels.find((panel) => panel.key === 'rates')?.series ?? [],
-            xAxisMode,
-            policy: layoutConfig?.rateChart?.xAxisRangePolicy,
-            pviMappings: [{ domainValues: liveData.pviValues, rangeValues: liveData.xValues }],
-        }),
-    );
-
-    let xAxisOptions = $derived(
-        getConfiguredXAxisOptions(allXAxisOptions, layoutConfig?.rateChart?.xAxisOptions),
-    );
-
-    $effect(() => {
-        const nextAxisState = coerceChartAxisState({
-            xAxisMode,
-            xAxisOptions,
-            logScale,
-            allowLogScale: layoutConfig?.rateChart?.allowLogScale,
-        });
-
-        if (nextAxisState.xAxisMode !== xAxisMode) xAxisMode = nextAxisState.xAxisMode;
-        if (nextAxisState.logScale !== logScale) logScale = nextAxisState.logScale;
+    let defaultPanelExpanded = $derived.by((): Record<string, boolean> => {
+        const conf = layoutConfig?.rateChart;
+        if (conf) {
+            const overrides: Record<string, boolean> = {};
+            for (const panelKey of conf.panelOrder ?? DEFAULT_RATE_CHART_PANEL_ORDER) {
+                const expanded = conf.panels?.[panelKey]?.expanded;
+                if (expanded !== undefined) overrides[panelKey] = expanded;
+            }
+            return overrides;
+        }
+        const cat = (activeMode ?? "").toLowerCase();
+        const cs = (activeCase ?? "").toLowerCase();
+        if (cat === "dep" || cat === "depletion" || cs.includes("depletion")) {
+            return { rates: true, cumulative: false, diagnostics: true };
+        }
+        if (
+            cat === "wf" ||
+            cat === "waterflood" ||
+            cs.startsWith("wf_") ||
+            cs.includes("waterflood") ||
+            cs.startsWith("bl_")
+        ) {
+            return { rates: true, cumulative: true, diagnostics: false };
+        }
+        return {};
     });
 </script>
 
-<div class="flex flex-col">
-    <div
-        class="flex flex-col gap-3 border-b border-border/50 px-4 pb-2 pt-4 md:px-5 md:pt-5"
-    >
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div class="flex items-center gap-2 overflow-x-auto">
-                <span
-                    class="ui-section-kicker opacity-50 shrink-0"
-                    >X-axis</span
-                >
-                <ToggleGroup
-                    options={xAxisOptions}
-                    bind:value={xAxisMode}
-                    onChange={(val) => setXAxisMode(val as RateChartXAxisMode)}
-                />
-            </div>
-
-            <div class="flex items-center gap-2 overflow-x-auto sm:ml-4">
-                {#if ratePanelSupportsNormalization && analyticalMeta?.q0 && analyticalMeta.q0 > 0}
-                    <span
-                        class="ui-section-kicker opacity-50 shrink-0"
-                        >Y-axis</span
-                    >
-                    <label
-                        class="flex items-center gap-1.5 cursor-pointer select-none"
-                    >
-                        <input
-                            type="checkbox"
-                            bind:checked={normalizeRates}
-                            class="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
-                        />
-                        <span
-                            class="ui-support-copy whitespace-nowrap"
-                            >Normalize Rates (q/q₀)</span
-                        >
-                    </label>
-                {/if}
-            </div>
-        </div>
-    </div>
-
-    {#each resolvedPanels as panel (panel.key)}
-        <ChartSubPanel
-            panelId={panel.chartId}
-            title={panel.title}
-            bind:expanded={panelExpanded[panel.key]}
-            curves={panel.curves}
-            seriesData={panel.series}
-            scaleConfigs={panel.scales}
-            {theme}
-            bind:logScale
-            allowLogToggle={layoutConfig?.rateChart?.allowLogScale ?? panel.allowLogToggle}
-            xRange={sharedXRange}
-            targetLeftGutter={maxLeftGutter}
-            targetRightGutter={maxRightGutter}
-            onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, [panel.key]: { left, right } };
-            }}
-        />
-    {/each}
-
-    <!-- Error stats -->
-    {#if showsPrimaryAnalyticalCurves && mismatchSummary.pointsCompared > 0}
-        <div class="ui-support-copy px-4 pb-4 pt-2 opacity-60 md:px-5 md:pb-5">
-            Reference Solution: {mismatchSummary.pointsCompared} pts · MAE: {mismatchSummary.mae.toFixed(
-                3,
-            )} · RMSE: {mismatchSummary.rmse.toFixed(3)} · MAPE: {mismatchSummary.mape.toFixed(
-                2,
-            )}%
-        </div>
-    {/if}
-</div>
+<UniversalChart
+    {panelDefs}
+    {buildCurveContext}
+    {xAxisOptions}
+    {supportsNormalization}
+    {defaultXAxisMode}
+    {defaultPanelExpanded}
+    {theme}
+    {layoutConfig}
+/>

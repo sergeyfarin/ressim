@@ -601,6 +601,7 @@
                         />
                     {:else if RateChartComponent}
                         <RateChartComponent
+                            panelDefs={scenario.activeScenarioObject?.liveChartPanels ?? []}
                             rateHistory={runtime.rateHistory}
                             analyticalProductionData={liveAnalyticalOutput.production}
                             avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}

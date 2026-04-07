@@ -1,3 +1,4 @@
+import { gasDriveLivePanels } from '../chartPanels/gasLivePanels';
 import type { Scenario } from '../scenarios';
 
 export const gas_drive: Scenario = {
@@ -139,4 +140,5 @@ export const gas_drive: Scenario = {
             ],
         },
     ],
+    liveChartPanels: gasDriveLivePanels,
 };
