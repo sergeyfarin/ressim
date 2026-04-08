@@ -26,6 +26,23 @@ application.
 | 2 | Fix coarse ILU(0) behavior for >512-row systems | None on current benchmark-sized shelves | Required |
 | 3 | Consider AMG only after coarse ILU/BiCGSTAB is characterized | None | Possible future scale-up path |
 
+## Current Status - 2026-04-08
+
+- Phase 1 is implemented and parked. The full-system ILU(0) CPR fine smoother is in place and
+  test-green, but it is not being promoted yet as a clean runtime win because the shipped gas
+  replay did not improve.
+- Phase 2 is now implemented on current head. The non-dense coarse path reports
+  `solver=bicgstab` and the bounded `23x23x1` probe shows much stronger coarse-stage reduction
+  ratios than the old ILU defect-correction path.
+- The bounded threshold pair still lands on the same shelf shape, though:
+  `22x22x1` (exact-dense control) and `23x23x1` (over-threshold probe) both end at
+  `substeps=8`, `retries=0/3/0`.
+- Current interpretation: Phase 2 improved coarse solve quality, but not the overall bounded
+  step outcome, because Newton still falls back to `dense-lu` on the full system almost
+  immediately after the first CPR-backed iteration on each retry rung. The next slice inside
+  Phase 2 should therefore target iterative-backend persistence / fallback-burden reduction,
+  not another coarse residual-quality change by itself.
+
 ## Guardrails Before Any Code Change
 
 The current draft needs three corrections before implementation:
@@ -204,7 +221,7 @@ done until both the baseline-preservation rows and the new-smoother rows pass.
 
 ## Phase 2: Fix the Coarse ILU(0) for Large Systems
 
-**Goal**: The coarse ILU(0) (lines 300–362) has two weaknesses that matter when
+**Goal**: The original coarse ILU(0) path (lines 300–362 before the Phase 2 change) had two weaknesses that mattered when
 reservoirs exceed 512 cells: (1) the `row_entry` linear scan is O(nnz) per element,
 making factorization O(n × nnz²); (2) 8 iterations at 1e-2 tolerance is far too weak.
 
@@ -244,9 +261,11 @@ fn solve_pressure_with_bicgstab(
 ) -> (DVector<f64>, f64)
 ```
 
-The expected benefit is empirical, not guaranteed. The acceptance bar is practical:
-keep the `23x23x1` bounded shelf shape unchanged while reducing coarse-stage residuals,
-iterative-backend fallback burden, or total runtime versus the current ILU defect-correction path.
+The expected benefit is empirical, not guaranteed. On current head, this part is implemented and
+the first half of that bet already happened: `23x23x1` now shows much smaller coarse reduction
+ratios than the old ILU defect-correction baseline. The remaining acceptance bar is practical:
+keep the `23x23x1` bounded shelf shape unchanged while reducing iterative-backend fallback burden
+or total runtime versus the current BiCGSTAB coarse path.
 
 Update constants:
 ```rust

@@ -4,8 +4,9 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::{
-    FimCprDiagnostics, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind, FimPressureCoarseSolverKind,
+    FimCprDiagnostics, FimLinearBlockLayout, FimLinearFailureDiagnostics,
+    FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    FimPressureCoarseSolverKind,
 };
 use crate::timing::PerfTimer;
 
@@ -68,6 +69,7 @@ impl FimIlu0Factors {
 #[derive(Clone, Debug, PartialEq)]
 struct BlockJacobiPreconditioner {
     fine_smoother_kind: CprFineSmootherKind,
+    post_pressure_block_jacobi_experiment: bool,
     cell_block_size: usize,
     cell_block_inverses: Vec<DMatrix<f64>>,
     well_bhp_start: usize,
@@ -111,7 +113,7 @@ impl PressureCorrectionAccumulator {
             return Some(FimCprDiagnostics {
                 coarse_rows: preconditioner.pressure_rows.len(),
                 coarse_solver,
-                smoother_label: preconditioner.fine_smoother_kind.label(),
+                smoother_label: preconditioner.smoother_label(),
                 coarse_applications: 0,
                 average_reduction_ratio: 1.0,
                 last_reduction_ratio: 1.0,
@@ -121,7 +123,7 @@ impl PressureCorrectionAccumulator {
         Some(FimCprDiagnostics {
             coarse_rows: preconditioner.pressure_rows.len(),
             coarse_solver,
-            smoother_label: preconditioner.fine_smoother_kind.label(),
+            smoother_label: preconditioner.smoother_label(),
             coarse_applications: self.applications,
             average_reduction_ratio: self.accumulated_reduction_ratio / self.applications as f64,
             last_reduction_ratio: self.last_reduction_ratio,
@@ -130,13 +132,15 @@ impl PressureCorrectionAccumulator {
 }
 
 impl BlockJacobiPreconditioner {
-    fn apply_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
-        if self.fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
-            if let Some(ilu) = &self.full_ilu {
-                return ilu.apply(vector);
-            }
+    fn smoother_label(&self) -> &'static str {
+        if self.post_pressure_block_jacobi_experiment {
+            "ilu0/post-bj"
+        } else {
+            self.fine_smoother_kind.label()
         }
+    }
 
+    fn apply_block_jacobi_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
         let mut result = DVector::zeros(vector.len());
 
         for (block_idx, inverse) in self.cell_block_inverses.iter().enumerate() {
@@ -160,6 +164,16 @@ impl BlockJacobiPreconditioner {
         result
     }
 
+    fn apply_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
+        if self.fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
+            if let Some(ilu) = &self.full_ilu {
+                return ilu.apply(vector);
+            }
+        }
+
+        self.apply_block_jacobi_stage_one(vector)
+    }
+
     fn apply(
         &self,
         matrix: &CsMat<f64>,
@@ -175,10 +189,16 @@ impl BlockJacobiPreconditioner {
             self.add_pressure_correction(&mut result, &pressure_correction);
             pressure_reduction_ratio = Some(reduction_ratio);
 
-            // Follow the pressure solve with the global block smoother so the
-            // transport and well unknowns respond to the pressure update.
+            // Over-threshold CPR shelves currently show good coarse reduction but
+            // unstable full-system post-smoothing. Keep the experiment bounded to
+            // the post-coarse pass on the non-dense coarse path.
             let corrected_residual = vector - &cs_mat_mul_vec(matrix, &result);
-            result += self.apply_stage_one(&corrected_residual);
+            let stage_one_correction = if self.post_pressure_block_jacobi_experiment {
+                self.apply_block_jacobi_stage_one(&corrected_residual)
+            } else {
+                self.apply_stage_one(&corrected_residual)
+            };
+            result += stage_one_correction;
         } else {
             result = self.apply_stage_one(vector);
         }
@@ -659,6 +679,7 @@ fn build_block_jacobi_preconditioner(
             .collect();
         return BlockJacobiPreconditioner {
             fine_smoother_kind: CprFineSmootherKind::BlockJacobi,
+            post_pressure_block_jacobi_experiment: false,
             cell_block_size: 0,
             cell_block_inverses: Vec::new(),
             well_bhp_start: 0,
@@ -897,6 +918,8 @@ fn build_block_jacobi_preconditioner(
     let pressure_dense_inverse = invert_pressure_block(&pressure_rows);
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
+    let post_pressure_block_jacobi_experiment =
+        fine_smoother_kind == CprFineSmootherKind::FullIlu0 && pressure_dense_inverse.is_none();
     let full_ilu = if fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
         factorize_full_ilu0(matrix)
     } else {
@@ -916,6 +939,7 @@ fn build_block_jacobi_preconditioner(
 
     BlockJacobiPreconditioner {
         fine_smoother_kind,
+        post_pressure_block_jacobi_experiment,
         cell_block_size: layout.cell_block_size,
         cell_block_inverses,
         well_bhp_start,
@@ -970,6 +994,26 @@ fn compute_givens_rotation(a: f64, b: f64) -> (f64, f64) {
     }
 }
 
+fn build_iterative_failure_diagnostics(
+    reason: FimLinearFailureReason,
+    tolerance: f64,
+    rhs_norm: f64,
+    outer_residual_norm: f64,
+    preconditioned_residual_norm: Option<f64>,
+    estimated_residual_norm: Option<f64>,
+    candidate_residual_norm: Option<f64>,
+) -> FimLinearFailureDiagnostics {
+    FimLinearFailureDiagnostics {
+        reason,
+        tolerance,
+        rhs_norm,
+        outer_residual_norm,
+        preconditioned_residual_norm,
+        estimated_residual_norm,
+        candidate_residual_norm,
+    }
+}
+
 fn back_substitute_upper(
     hessenberg: &DMatrix<f64>,
     rhs: &DVector<f64>,
@@ -1012,6 +1056,7 @@ fn solve_with_cpr_fine_smoother(
             converged: true,
             iterations: 0,
             final_residual_norm: 0.0,
+            failure_diagnostics: None,
             used_fallback,
             backend_used,
             cpr_diagnostics: None,
@@ -1033,16 +1078,23 @@ fn solve_with_cpr_fine_smoother(
     let mut solution = DVector::zeros(rhs.len());
     let mut iterations = 0usize;
     let mut pressure_correction_stats = PressureCorrectionAccumulator::default();
+    let mut failure_reason = None;
+    let mut last_outer_residual_norm = rhs_norm;
+    let mut last_preconditioned_residual_norm = None;
+    let mut last_estimated_residual_norm = None;
+    let mut last_candidate_residual_norm = None;
 
     while iterations < max_iterations {
         let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
         let residual_norm = residual.norm();
+        last_outer_residual_norm = residual_norm;
         if residual_norm <= tolerance {
             return FimLinearSolveReport {
                 solution,
                 converged: true,
                 iterations,
                 final_residual_norm: residual_norm,
+                failure_diagnostics: None,
                 used_fallback,
                 backend_used,
                 cpr_diagnostics: if use_pressure_correction {
@@ -1061,12 +1113,14 @@ fn solve_with_cpr_fine_smoother(
             pressure_correction_stats.record(reduction_ratio);
         }
         let beta = preconditioned_residual.norm();
+        last_preconditioned_residual_norm = Some(beta);
         if beta <= tolerance {
             return FimLinearSolveReport {
                 solution,
                 converged: true,
                 iterations,
                 final_residual_norm: residual_norm,
+                failure_diagnostics: None,
                 used_fallback,
                 backend_used,
                 cpr_diagnostics: if use_pressure_correction {
@@ -1151,6 +1205,7 @@ fn solve_with_cpr_fine_smoother(
             // Use the Givens rotation residual estimate instead of computing
             // a full matrix-vector product at every inner iteration.
             let estimated_residual = rotated_rhs[inner + 1].abs();
+            last_estimated_residual_norm = Some(estimated_residual);
 
             if estimated_residual <= tolerance
                 || iterations >= max_iterations
@@ -1161,13 +1216,28 @@ fn solve_with_cpr_fine_smoother(
                 let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
                 let candidate = &solution + combine_basis(&basis[..cols], &y);
                 let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
+                last_candidate_residual_norm = Some(candidate_residual);
 
                 if candidate_residual <= tolerance || iterations >= max_iterations {
+                    let converged = candidate_residual <= tolerance;
                     return FimLinearSolveReport {
                         solution: candidate,
-                        converged: candidate_residual <= tolerance,
+                        converged,
                         iterations,
                         final_residual_norm: candidate_residual,
+                        failure_diagnostics: if converged {
+                            None
+                        } else {
+                            Some(build_iterative_failure_diagnostics(
+                                FimLinearFailureReason::MaxIterations,
+                                tolerance,
+                                rhs_norm,
+                                last_outer_residual_norm,
+                                last_preconditioned_residual_norm,
+                                last_estimated_residual_norm,
+                                last_candidate_residual_norm,
+                            ))
+                        },
                         used_fallback,
                         backend_used,
                         cpr_diagnostics: if use_pressure_correction {
@@ -1183,11 +1253,15 @@ fn solve_with_cpr_fine_smoother(
                 if candidate_residual < best_residual {
                     best_solution = candidate;
                 }
+                if next_norm <= f64::EPSILON {
+                    failure_reason = Some(FimLinearFailureReason::ArnoldiBreakdown);
+                }
                 break;
             }
         }
 
         if inner_steps == 0 {
+            failure_reason = Some(FimLinearFailureReason::RestartStagnation);
             break;
         }
         solution = best_solution;
@@ -1199,6 +1273,19 @@ fn solve_with_cpr_fine_smoother(
         converged: final_residual <= tolerance,
         iterations,
         final_residual_norm: final_residual,
+        failure_diagnostics: if final_residual <= tolerance {
+            None
+        } else {
+            Some(build_iterative_failure_diagnostics(
+                failure_reason.unwrap_or(FimLinearFailureReason::MaxIterations),
+                tolerance,
+                rhs_norm,
+                last_outer_residual_norm,
+                last_preconditioned_residual_norm,
+                last_estimated_residual_norm,
+                last_candidate_residual_norm,
+            ))
+        },
         used_fallback,
         backend_used,
         cpr_diagnostics: if use_pressure_correction {
@@ -1710,6 +1797,7 @@ mod tests {
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
         assert_eq!(diagnostics.coarse_rows, n);
         assert_eq!(diagnostics.coarse_solver, FimPressureCoarseSolverKind::BiCgStab);
+        assert_eq!(diagnostics.smoother_label, "ilu0/post-bj");
     }
 
     #[test]

@@ -68,20 +68,25 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - Representative hard 3D shelf (`12x12x3`) still uses the exact-dense coarse path and is not limited by coarse-stage reduction quality:
   - `cpr=[rows=434 solver=dense apps=12 avg_rr=1.148e-13 last_rr=3.754e-14]`
 - Over-threshold CPR cases are still open on current head:
-  - bounded `23x23x1` probe shows `cpr=[rows=531 solver=ilu apps=11 avg_rr=7.557e-2 last_rr=7.896e-2]`
-  - the same probe later hits repeated linear failure and dense-LU fallback on the `1591`-row system
+  - bounded `23x23x1` probe now shows the new coarse backend in live use: `cpr=[rows=531 solver=bicgstab smoother=ilu0 ...]`
+  - current coarse-stage reduction quality is materially better than the old ILU defect-correction baseline: first retry rung reached `avg_rr=2.551e-6`, `last_rr=4.597e-5`; later retry rungs stayed in the `1e-5` to `1e-3` band
+  - despite that improvement, the same probe still hits repeated linear failure and dense-LU fallback on the full `1591`-row system after the first CPR-backed iteration on each retry ladder
+  - bounded follow-up experiment now isolates the post-coarse smoother specifically on the same over-threshold path: `cpr=[rows=531 solver=bicgstab smoother=ilu0/post-bj ...]`
+  - this does not remove fallback yet, but it changes the failure shape materially: the rejected CPR solves remain `reason=max-iters`, while `prec_res` drops from the earlier `1e8-1e9` class into `1e0-1e3` and `cand_res/final_res` drops from `1e3-1e4` into `1e-1-1e-3`
+  - at `dt=0.03125`, some Newton iterations now converge on the CPR path directly before later fallback resumes (`linear_iters=4`, `26`, `45`, `50` on successive accepted Newton iterations), which is the first clear sign that the instability is in the post-coarse global smoother/Krylov interaction rather than in coarse pressure reduction itself
 - Isolated threshold comparison:
   - exact-dense control `22x22x1` stays below the coarse threshold (`rows=486 solver=dense`) and still lands on the same bounded shelf shape: `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1450`, `outer_ms=18580.2`, `retry_ms=1229.0`
-  - over-threshold `23x23x1` crosses the coarse threshold (`rows=531 solver=ilu`) but keeps the same bounded shelf counts: `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1585`, `outer_ms=27243.3`, `retry_ms=8656.0`
-  - current code-backed threshold is explicit: coarse rows `<= 512` use exact-dense inversion and `> 512` switches to ILU defect correction
+  - over-threshold `23x23x1` crosses the coarse threshold (`rows=531 solver=bicgstab`) but keeps the same bounded shelf counts: `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1585`
+  - the current code-backed threshold is explicit: coarse rows `<= 512` use exact-dense inversion and `> 512` switches to BiCGSTAB on the coarse system
 - Current linear-track interpretation:
-  - this bounded pair isolates a real backend penalty: the over-threshold case does not add more retries or accepted substeps, but it spends much more time in linear work before converging the same shelf
-  - on `23x23x1`, the coarse stage starts on the ILU path but Newton falls back to `dense-lu` on the full `1591`-row system almost immediately after the first coarse-backed iteration on each retry ladder
-  - that means the next over-threshold slice should target fallback frequency and iterative-backend persistence first, before mixing the result back into the shared nonlinear-controller track
+  - this bounded pair still isolates a real backend penalty: the over-threshold case does not add more retries or accepted substeps, but it still spends materially more time in linear work before converging the same shelf
+  - Phase 2 improved coarse-stage quality itself, but that alone was not enough to change bounded step behavior because Newton still falls back to `dense-lu` on the full `1591`-row system almost immediately after the first CPR-backed iteration on each retry ladder
+  - the bounded post-coarse smoother experiment adds a second, narrower result: once the post-coarse pass is switched to block-Jacobi, the iterative solve gets much closer to usable before fallback and occasionally survives whole Newton iterations on the CPR path
+  - that means the next over-threshold slice should stay inside Phase 2 and target fallback frequency / iterative-backend persistence first, before mixing the result back into the shared nonlinear-controller track
 - Current interpretation:
   - coarse-pressure-solver quality is not the active blocker on the representative exact-dense shelf
-  - it remains an open issue for larger over-threshold CPR cases
-  - Phase 1 should therefore be treated as implemented but parked pending later promotion; the active next solver track is Phase 2 on the over-threshold coarse path
+  - it remains an open issue for larger over-threshold CPR cases, but the problem is now narrower: coarse reduction quality improved, while full-system fallback burden did not
+  - Phase 1 should therefore be treated as implemented but parked pending later promotion; Phase 2 is implemented and test-green, but still not promoted as a runtime/convergence win until the over-threshold iterative path survives longer
 
 ## Active Conclusions
 - Current-head hard shelves are best described as reservoir-row nonlinear problems with partial controller improvements already landed.
@@ -108,7 +113,7 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - Concrete acceptance criteria for the over-threshold CPR track:
   - use the bounded pair together: `water-pressure --grid 22x22x1 --steps 1 --dt 0.25` as the exact-dense control and `water-pressure --grid 23x23x1 --steps 1 --dt 0.25` as the over-threshold probe
   - measure coarse-stage quality separately from nonlinear shelf behavior: coarse rows, solver kind, average and last reduction ratio, fallback frequency, and whether the step stays on the iterative backend long enough to matter
-  - require any linear-backend slice to improve the over-threshold runtime class or fallback burden without worsening the bounded shelf counts (`substeps=8`, `retries=0/3/0`) before promoting it into a broader CPRW implementation slice
+  - require any next linear-backend slice to improve the over-threshold fallback burden or runtime class without worsening the bounded shelf counts (`substeps=8`, `retries=0/3/0`) before promoting it into a broader CPRW implementation slice
 - Tests that should not be the next slice from this review:
   - do not reopen generic line-search or Appleyard work; the old OPM-gap note there is stale on current head
   - do not reopen broad well-Schur experiments for the representative shelves; current diagnostics no longer show a well/perforation-dominated blocker on those cases

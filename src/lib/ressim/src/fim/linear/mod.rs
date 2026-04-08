@@ -67,6 +67,34 @@ pub(crate) enum FimPressureCoarseSolverKind {
     BiCgStab,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimLinearFailureReason {
+    MaxIterations,
+    ArnoldiBreakdown,
+    RestartStagnation,
+}
+
+impl FimLinearFailureReason {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::MaxIterations => "max-iters",
+            Self::ArnoldiBreakdown => "arnoldi-breakdown",
+            Self::RestartStagnation => "restart-stagnation",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FimLinearFailureDiagnostics {
+    pub(crate) reason: FimLinearFailureReason,
+    pub(crate) tolerance: f64,
+    pub(crate) rhs_norm: f64,
+    pub(crate) outer_residual_norm: f64,
+    pub(crate) preconditioned_residual_norm: Option<f64>,
+    pub(crate) estimated_residual_norm: Option<f64>,
+    pub(crate) candidate_residual_norm: Option<f64>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimLinearSolveOptions {
     pub(crate) kind: FimLinearSolverKind,
@@ -128,6 +156,7 @@ pub(crate) struct FimLinearSolveReport {
     pub(crate) converged: bool,
     pub(crate) iterations: usize,
     pub(crate) final_residual_norm: f64,
+    pub(crate) failure_diagnostics: Option<FimLinearFailureDiagnostics>,
     pub(crate) used_fallback: bool,
     pub(crate) backend_used: FimLinearSolverKind,
     pub(crate) cpr_diagnostics: Option<FimCprDiagnostics>,

@@ -35,6 +35,7 @@ pub(super) fn solve(
         converged: residual_norm <= tolerance,
         iterations: 1,
         final_residual_norm: residual_norm,
+        failure_diagnostics: None,
         used_fallback,
         backend_used: FimLinearSolverKind::DenseLuDebug,
         cpr_diagnostics: None,

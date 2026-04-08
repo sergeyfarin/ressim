@@ -141,6 +141,33 @@ fn linear_report_trace_suffix(
     )
 }
 
+fn linear_failure_trace_suffix(report: &FimLinearSolveReport) -> String {
+    let Some(failure) = &report.failure_diagnostics else {
+        return String::new();
+    };
+
+    let mut parts = vec![format!(
+        " fail=[backend={} iters={} final_res={:.3e} tol={:.3e} reason={}",
+        report.backend_used.label(),
+        report.iterations,
+        report.final_residual_norm,
+        failure.tolerance,
+        failure.reason.label(),
+    )];
+    parts.push(format!(" outer_res={:.3e}", failure.outer_residual_norm));
+    if let Some(norm) = failure.preconditioned_residual_norm {
+        parts.push(format!(" prec_res={:.3e}", norm));
+    }
+    if let Some(norm) = failure.estimated_residual_norm {
+        parts.push(format!(" est_res={:.3e}", norm));
+    }
+    if let Some(norm) = failure.candidate_residual_norm {
+        parts.push(format!(" cand_res={:.3e}", norm));
+    }
+    parts.push("]".to_string());
+    parts.join("")
+}
+
 #[cfg(test)]
 fn classify_retry_failure(
     linear_report: Option<&FimLinearSolveReport>,
@@ -2223,10 +2250,12 @@ pub(crate) fn run_fim_timestep(
             fim_trace!(
                 sim,
                 options.verbose,
-                "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback",
+                "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback{}{}",
                 iteration,
                 linear_report.converged,
-                linear_report.solution.iter().all(|v| v.is_finite())
+                linear_report.solution.iter().all(|v| v.is_finite()),
+                linear_report_trace_suffix(&linear_report, options.linear.kind),
+                linear_failure_trace_suffix(&linear_report),
             );
             let mut fallback_options = options.linear;
             fallback_options.kind = {
@@ -3123,6 +3152,7 @@ mod tests {
             converged: true,
             iterations: 12,
             final_residual_norm: 1e-12,
+            failure_diagnostics: None,
             used_fallback: false,
             backend_used: FimLinearSolverKind::FgmresCpr,
             cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
@@ -3179,6 +3209,7 @@ mod tests {
             converged: true,
             iterations: 3,
             final_residual_norm: 1e-12,
+            failure_diagnostics: None,
             used_fallback: false,
             backend_used: FimLinearSolverKind::DenseLuDebug,
             cpr_diagnostics: None,
@@ -3227,6 +3258,7 @@ mod tests {
             converged: true,
             iterations: 12,
             final_residual_norm: 1e-12,
+            failure_diagnostics: None,
             used_fallback: false,
             backend_used: FimLinearSolverKind::FgmresCpr,
             cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
@@ -3283,6 +3315,7 @@ mod tests {
             converged: true,
             iterations: 1,
             final_residual_norm: 1e-8,
+            failure_diagnostics: None,
             used_fallback: true,
             backend_used: FimLinearSolverKind::SparseLuDebug,
             cpr_diagnostics: None,
@@ -3331,6 +3364,7 @@ mod tests {
             converged: false,
             iterations: 1,
             final_residual_norm: 1e-2,
+            failure_diagnostics: None,
             used_fallback: true,
             backend_used: FimLinearSolverKind::DenseLuDebug,
             cpr_diagnostics: None,
@@ -3505,6 +3539,7 @@ mod tests {
             converged: true,
             iterations: 6,
             final_residual_norm: 1e-12,
+            failure_diagnostics: None,
             used_fallback: false,
             backend_used: FimLinearSolverKind::FgmresCpr,
             cpr_diagnostics: None,
@@ -3567,6 +3602,7 @@ mod tests {
             converged: true,
             iterations: 1,
             final_residual_norm: 1e-12,
+            failure_diagnostics: None,
             used_fallback: true,
             backend_used: FimLinearSolverKind::DenseLuDebug,
             cpr_diagnostics: None,
