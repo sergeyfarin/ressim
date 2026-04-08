@@ -18,26 +18,70 @@ OPM's ~1.4 linear iterations/Newton comes from a fine-level ILU (or block-ILU) s
 that, combined with the coarse pressure correction, reduces the residual by ~10× per
 application.
 
-**Three independent improvements, in priority order:**
+**Three improvements, in implementation order:**
 
 | Phase | Target | Current test impact | Scale-up impact |
 |-------|--------|---------------------|-----------------|
-| 1 | Replace block-Jacobi with ILU(0) on the full Jacobian | High — fixes 10–20 iter count | High |
-| 2 | Fix coarse ILU(0) for >512-row systems | None (all test cases use dense) | Required |
-| 3 | Two-level AMG on the coarse pressure matrix | None | Scale-up to 10k+ cells |
+| 1 | Add selectable CPR fine smoother and implement full-system ILU(0) | High — most likely lever on current 10–20 iter cases | High |
+| 2 | Fix coarse ILU(0) behavior for >512-row systems | None on current benchmark-sized shelves | Required |
+| 3 | Consider AMG only after coarse ILU/BiCGSTAB is characterized | None | Possible future scale-up path |
+
+## Guardrails Before Any Code Change
+
+The current draft needs three corrections before implementation:
+
+1. **Do not change `GmresIlu0` semantics accidentally.** Both `FgmresCpr` and `GmresIlu0`
+  currently share the same preconditioner builder and stage-one apply path. Replacing
+  `apply_stage_one` unconditionally would silently redefine the separate non-CPR iterative
+  backend instead of only changing CPR's fine smoother.
+
+2. **Do not add a redundant coarse-row sort pass.** `pressure_rows` is already assembled
+  from `BTreeMap` accumulators, so each row is emitted in sorted column order today.
+  Replacing the linear `row_entry` lookup with binary search is still valid, but the extra
+  sort step is unnecessary.
+
+3. **Do not treat Phase 3 AMG as ready-to-implement.** The current coarse operator includes
+  explicit well-BHP rows in addition to cell-pressure rows. Any AMG design must define how
+  those well rows are handled; a naive cell-style aggregation over all coarse rows is not a
+  safe default.
 
 ---
 
-## Phase 1: Full-System ILU(0) Fine Smoother
+## Phase 1: Selectable CPR Fine Smoother + Full-System ILU(0)
 
-**Goal**: Replace the per-block block-Jacobi smoother with ILU(0) on the full
-`sprs::CsMat<f64>` Jacobian. Highest-leverage change because it directly targets the
-bottleneck on all current test cases.
+**Goal**: Add an explicit CPR fine-smoother selection point, keep the existing
+block-Jacobi path as the baseline, and add full-system ILU(0) as the new CPR-only
+fine smoother. This is the highest-leverage change because it targets the bottleneck on
+all current benchmark-sized cases while preserving a clean A/B path.
 
 **Technical basis**: The Jacobian is already `sprs::CsMat<f64>` (`FimAssembly.jacobian`,
 `assembly.rs:19`). The existing `factorize_pressure_ilu0` (`gmres_block_jacobi.rs:300`)
 already implements ILU(0) on `Vec<Vec<(usize, f64)>>`. The infrastructure exists — it
-needs to be adapted to the full system and wired into the preconditioner.
+needs to be adapted to the full system and wired into the CPR preconditioner without
+changing the separate `GmresIlu0` backend contract.
+
+### Step 1.0 — Add explicit smoother selection
+
+Introduce an internal enum in `gmres_block_jacobi.rs`:
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CprFineSmootherKind {
+    BlockJacobi,
+    FullIlu0,
+}
+```
+
+Use it to make the baseline and experimental paths explicit:
+
+- `FimLinearSolverKind::FgmresCpr` selects a CPR preconditioner build with an explicit
+  smoother choice.
+- `FimLinearSolverKind::GmresIlu0` keeps its current meaning: no pressure-correction stage,
+  no silent switch to CPR full-system ILU.
+- During rollout, keep both CPR smoother paths buildable so tests and wasm diagnostics can
+  compare `block-jacobi` versus `ilu0` on the same solver family.
+
+This can stay internal to `gmres_block_jacobi.rs`; no public UI or runtime config is needed.
 
 ### Step 1.1 — Add `FimIlu0Factors` struct
 
@@ -74,31 +118,42 @@ Key differences from the coarse ILU:
 - Return `None` if `mat.rows() > FULL_ILU_ROW_LIMIT` (constant, e.g. 4096) or if
   factorization encounters a singular diagonal — falls back to block-Jacobi
 
-### Step 1.3 — Extend `BlockJacobiPreconditioner` to hold ILU factors
+### Step 1.3 — Extend the CPR preconditioner to hold ILU factors and the selected smoother
 
 Add one field to the struct (line 17):
 
 ```rust
 full_ilu: Option<FimIlu0Factors>,   // None → fall back to block-Jacobi
+fine_smoother_kind: CprFineSmootherKind,
 ```
 
-Build at the end of `build_block_jacobi_preconditioner` (line 443), after the coarse
-system assembly, using the `matrix: &CsMat<f64>` parameter already passed in:
+Update `build_block_jacobi_preconditioner(...)` to take the selected smoother kind.
+Build the ILU factors only when that kind requests them:
 
 ```rust
-let full_ilu = factorize_full_ilu0(matrix);
-// None if mat is too large or factorization encounters singular diagonal
+let full_ilu = match fine_smoother_kind {
+  CprFineSmootherKind::BlockJacobi => None,
+  CprFineSmootherKind::FullIlu0 => factorize_full_ilu0(matrix),
+};
 ```
 
-### Step 1.4 — Replace `apply_stage_one` with ILU-aware dispatch
+This preserves a clean baseline path and prevents `GmresIlu0` from being redefined by
+implementation accident.
+
+### Step 1.4 — Make stage one dispatch on the selected smoother
 
 Change `apply_stage_one` (lines 77–98):
 
 ```rust
 fn apply_stage_one(&self, vector: &DVector<f64>, result: &mut DVector<f64>) {
-    if let Some(ilu) = &self.full_ilu {
+  match self.fine_smoother_kind {
+    CprFineSmootherKind::FullIlu0 => {
+      if let Some(ilu) = &self.full_ilu {
         *result = ilu.apply(vector);
         return;
+      }
+    }
+    CprFineSmootherKind::BlockJacobi => {}
     }
     // existing block-Jacobi path unchanged — kept as fallback
     for (block_idx, inverse) in self.cell_block_inverses.iter().enumerate() { ... }
@@ -116,6 +171,10 @@ Extend `FimCprDiagnostics` with `smoother_label: &'static str` (`"ilu0"` or
 `"block-jacobi"`). Report in the existing `cpr=[...]` wasm trace line so the diagnostic
 output shows which smoother path is active without requiring a test rebuild.
 
+This is required because current timestep classification already consumes CPR diagnostics;
+the new label must be additive and must not disturb the existing `coarse_solver`,
+`average_reduction_ratio`, or `last_reduction_ratio` semantics.
+
 ### Step 1.6 — Tests
 
 Add to the test block in `gmres_block_jacobi.rs`:
@@ -128,23 +187,18 @@ Add to the test block in `gmres_block_jacobi.rs`:
    is exact: `ilu.apply(A * x) == x` for any x.
 
 3. `cpr_with_full_ilu_smoother_reduces_fgmres_iteration_count` — create a small
-   2-cell FIM system (6 unknowns), run `solve_linearized_system` twice with
-   `FgmresCpr` (block-Jacobi path) and the new ILU path. Assert the ILU path
-   converges in fewer iterations.
+   2-cell FIM system (6 unknowns), run the CPR solve twice with explicit smoother
+   selection (`block-jacobi` baseline vs `ilu0`). Assert the ILU path converges in
+   fewer iterations.
+
+4. `gmres_ilu0_backend_keeps_non_cpr_semantics` — ensure the separate `GmresIlu0`
+   path still runs without pressure-correction diagnostics and is unaffected by the
+   new CPR smoother-selection plumbing.
 
 ### Validation gate after Phase 1
 
-- All locked baselines must pass: `spe1_fim_first_steps_converge_without_stall`,
-  `spe1_fim_gas_injection_creates_free_gas`, `pressure_correction_uses_exact_dense_inverse_when_small`,
-  `pressure_transfer_weights_follow_local_schur_elimination`.
-- Run canonical wasm diagnostic:
-  ```
-  node scripts/fim-wasm-diagnostic.mjs \
-    --preset water-pressure --grid 12x12x3 \
-    --steps 1 --dt 1 --diagnostic summary --no-json
-  ```
-  Target: FGMRES linear iterations per Newton step reduced from 10–20 to ≤5 average.
-- SPE1 gas: first-step substep count must remain ≤20 (existing test budget).
+Use the matrix in the **Validation Matrix** section below. Phase 1 should not be considered
+done until both the baseline-preservation rows and the new-smoother rows pass.
 
 ---
 
@@ -157,16 +211,7 @@ making factorization O(n × nnz²); (2) 8 iterations at 1e-2 tolerance is far to
 This phase has **no impact on current test cases** (coarse ≤ 512 rows → exact dense
 solve) but is required before the solver can handle production-scale reservoirs.
 
-### Step 2.1 — Sort `pressure_rows` after construction
-
-`pressure_rows: Vec<Vec<(usize, f64)>>` currently has no guaranteed column ordering.
-Sort each row by column index immediately after the assembly loop at line 674:
-
-```rust
-for row in &mut pressure_rows {
-    row.sort_unstable_by_key(|&(col, _)| col);
-}
-```
+### Step 2.1 — Replace linear coarse-row lookup with binary search
 
 Replace the `row_entry` linear scan (lines 292–298) with a binary search:
 
@@ -180,6 +225,9 @@ fn row_entry(row: &[(usize, f64)], col: usize) -> f64 {
 ```
 
 This changes factorization from O(n × nnz²) to O(n × nnz × log nnz).
+
+No extra sort pass is needed because the current `pressure_rows` builder already emits
+sorted rows via `BTreeMap` accumulation.
 
 ### Step 2.2 — Replace defect-correction loop with inner BiCGSTAB
 
@@ -196,8 +244,9 @@ fn solve_pressure_with_bicgstab(
 ) -> (DVector<f64>, f64)
 ```
 
-BiCGSTAB with ILU(0) preconditioner converges in O(√κ) iterations rather than O(κ)
-for Richardson, where κ is the condition number of the preconditioned system.
+The expected benefit is empirical, not guaranteed. The acceptance bar is practical:
+keep the `23x23x1` bounded shelf shape unchanged while reducing coarse-stage residuals,
+iterative-backend fallback burden, or total runtime versus the current ILU defect-correction path.
 
 Update constants:
 ```rust
@@ -228,13 +277,14 @@ the Phase 2.1–2.2 improvements are insufficient.
 
 ---
 
-## Phase 3: Two-Level AMG on the Coarse Pressure Matrix
+## Phase 3: AMG Is A Later Design Track, Not The Next Slice
 
-**Goal**: For reservoirs with more than ~1500 cells (coarse pressure system > 512 rows),
-provide an O(n log n) coarse solver via a two-level aggregation AMG hierarchy.
+**Goal**: Only revisit AMG after Phase 2 proves that coarse pressure quality, not fallback
+policy or full-system backend persistence, is the remaining limiter on over-threshold cases.
 
-This phase has no impact on current test cases but is required for production-scale
-grids (tens of thousands of cells).
+This phase has no impact on current test cases. It is intentionally deferred because the
+current coarse operator includes explicit well-BHP rows, and the design for handling those
+rows in an aggregation hierarchy has not been validated yet.
 
 ### Step 3.1 — Represent the coarse pressure matrix in sorted CSR
 
@@ -247,11 +297,18 @@ fn pressure_rows_to_sprs(rows: &[Vec<(usize, f64)>]) -> sprs::CsMat<f64>
 This gives access to sprs's sparse-matrix utilities (matrix-vector multiply, triple
 product for the Galerkin operator) without reimplementing them.
 
-### Step 3.2 — Aggregation-based coarsening
+### Step 3.2 — Aggregation-based coarsening (design prerequisite)
 
-For the pressure stencil on a Cartesian grid (primarily nearest-neighbor coupling),
-use **plain aggregation** — greedily group cells with their strongest-connected
-unaggregated neighbor:
+Before implementing this, decide whether explicit well-BHP rows are:
+
+1. excluded from aggregation and carried as a separate coarse block,
+2. pinned as singleton aggregates with special transfer operators, or
+3. folded into a different well-aware CPRW-style coarse construction.
+
+Without that decision, a plain cell-style aggregation is not an implementation-ready plan.
+
+For the reservoir-cell subset only, a possible starting point is **plain aggregation** —
+greedily group cells with their strongest-connected unaggregated neighbor:
 
 ```rust
 fn build_aggregates(
@@ -372,21 +429,14 @@ fn solve_pressure_correction(&self, rhs: &DVector<f64>) -> (DVector<f64>, f64) {
 }
 ```
 
-### Validation gate after Phase 3
+### Exit criterion for Phase 3 planning
 
-- All Phase 1 and Phase 2 validation gates must still pass.
-- Add a unit test: `amg_vcycle_reduces_residual_by_factor_on_1d_pressure_problem` —
-  build a tridiagonal 100-row pressure system (1D diffusion), apply one AMG V-cycle,
-  assert residual reduces by > 10×.
-- Run a large diagnostic:
-  ```
-  node scripts/fim-wasm-diagnostic.mjs \
-    --preset water-pressure --grid 30x30x3 \
-    --steps 1 --dt 1 --diagnostic summary --no-json
-  ```
-  (2700 cells → coarse > 512 rows, AMG path active.)
-  Compare FGMRES iteration counts: AMG path vs BiCGSTAB path on the same case.
-  AMG should give ≤5 FGMRES iterations; iteration count should stay flat as grid grows.
+Do not implement AMG until all of the following are true:
+
+1. Phase 1 is merged and materially improves current exact-dense coarse shelves.
+2. Phase 2 is merged and the bounded `23x23x1` probe still shows coarse pressure as the
+   dominant remaining penalty.
+3. A well-row handling design is written down and reviewed against the current coarse operator.
 
 ---
 
@@ -394,26 +444,65 @@ fn solve_pressure_correction(&self, rhs: &DVector<f64>) -> (DVector<f64>, f64) {
 
 | Location | Change |
 |----------|--------|
-| `BlockJacobiPreconditioner` (`gmres_block_jacobi.rs:17`) | Add `full_ilu: Option<FimIlu0Factors>` |
-| `FimPressureCoarseSolverKind` (`mod.rs`) | Add `BiCGStab` and `Amg` variants |
-| `pressure_rows` construction (line 674) | Sort each row after build |
-| `FimCprDiagnostics` | Add `smoother_label: &'static str` |
+| `BlockJacobiPreconditioner` (`gmres_block_jacobi.rs:17`) | Add `full_ilu: Option<FimIlu0Factors>` and `fine_smoother_kind` |
+| `gmres_block_jacobi.rs` solve/build path | Add internal CPR smoother selection so `FgmresCpr` can compare `block-jacobi` vs `ilu0` without changing `GmresIlu0` semantics |
+| `FimPressureCoarseSolverKind` (`mod.rs`) | Phase 2 only: consider `BiCGStab`; do not add `Amg` until Phase 3 design is real |
+| `FimCprDiagnostics` | Add `smoother_label: &'static str` without changing existing reduction-ratio semantics |
 | `row_entry` helper (lines 292–298) | Replace linear scan with binary search |
 
 ---
 
 ## Expected Outcomes
 
-| Metric | Current | After Phase 1 | After Phase 2+3 |
-|--------|---------|---------------|-----------------|
-| FGMRES iters/Newton (12×12×3 waterflood) | 10–20 | 2–5 | 2–4 |
-| FGMRES iters/Newton (SPE1, 300 cells) | 10–20 | 2–5 | ~2 |
-| OPM reference (SPE1) | — | — | ~1.4 |
-| Coarse solve for >512-row systems | 8 ILU iters, 1e-2 tol | BiCGStab, 1e-6 tol | AMG V-cycle |
-| 5000-cell reservoir solve quality | Degrades severely | Degrades | O(n log n) |
+| Metric | Current | Phase 1 target | Phase 2 target |
+|--------|---------|----------------|----------------|
+| FGMRES iters/Newton (12×12×3 waterflood) | 10–20 | materially lower, target ≤5 average | preserve or slightly improve |
+| FGMRES iters/Newton (SPE1, 300 cells) | 10–20 | materially lower, target ≤5 average | preserve |
+| Current `GmresIlu0` backend behavior | stable | unchanged semantics | unchanged semantics |
+| Coarse solve for >512-row systems | 8 ILU iters, 1e-2 tol | unchanged | stronger coarse residual reduction and lower fallback burden |
+| 5000-cell reservoir solve quality | degrades severely | unchanged | still open; AMG remains future work |
 
-Phase 1 alone closes most of the current SPE1 and waterflood gap. Phases 2 and 3 are
-prerequisites for scaling beyond the current benchmark grid sizes.
+Phase 1 is the only implementation-ready convergence lever for the current benchmark-sized
+shelves. Phase 2 is the separate over-threshold track. Phase 3 stays deferred until the
+coarse well-row story is explicit.
+
+## Validation Matrix
+
+Use existing tests and the shipped wasm diagnostic suite only. A phase is not complete until
+every row in its gate passes.
+
+### Phase 1 gate: CPR fine-smoother change
+
+| Purpose | Command / test | Expected result |
+|---------|----------------|-----------------|
+| Locked CPR coarse correctness | `cargo test pressure_correction_uses_exact_dense_inverse_when_small --lib` | Pass |
+| Locked transfer-weight correctness | `cargo test pressure_transfer_weights_follow_local_schur_elimination --lib` | Pass |
+| Locked FIM smoke: early SPE1 stability | `cargo test spe1_fim_first_steps_converge_without_stall --lib` | Pass |
+| Locked FIM smoke: gas creation path | `cargo test spe1_fim_gas_injection_creates_free_gas --lib` | Pass |
+| New baseline-preservation unit | `cargo test gmres_ilu0_backend_keeps_non_cpr_semantics --lib` | Pass |
+| New factorization unit | `cargo test full_ilu0_lower_times_upper_recovers_original_matrix --lib` | Pass |
+| New exactness unit | `cargo test full_ilu0_apply_solves_diagonal_system_exactly --lib` | Pass |
+| New A/B iteration unit | `cargo test cpr_with_full_ilu_smoother_reduces_fgmres_iteration_count --lib` | Pass |
+| Representative exact-dense water shelf | `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` | CPR trace reports `solver=dense`; `smoother=ilu0` on the new path; average FGMRES iterations materially lower than current baseline; no worse accepted-substep class than current `129`/`0/35/0` shelf |
+| Representative gas shelf non-regression | `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` | First-step budget remains within current smoke expectations; no regression in shipped replay stability |
+
+### Phase 2 gate: over-threshold coarse solver change
+
+| Purpose | Command / test | Expected result |
+|---------|----------------|-----------------|
+| Phase 1 regression pack | All Phase 1 rows above | Still pass |
+| Exact-dense control below threshold | `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 22x22x1 --steps 1 --dt 0.25 --diagnostic step --no-json | rg -m 8 "cpr=\[|FIM retry summary|FIM step done|Newton: dt="` | Control remains `rows=486 solver=dense`; bounded shelf shape stays `substeps=8`, `retries=0/3/0` |
+| Over-threshold probe | `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 23x23x1 --steps 1 --dt 0.25 --diagnostic step --no-json | rg -m 8 "cpr=\[|FIM retry summary|FIM step done|Newton: dt="` | Probe remains bounded at `substeps=8`, `retries=0/3/0` while coarse residual reduction, runtime class, or fallback burden improves versus current ILU defect-correction baseline |
+| Optional larger coarse case | `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 1 --diagnostic summary --no-json` | Coarse solver behavior is measurable above threshold and does not force an earlier nonlinear regression |
+
+### Promotion rules
+
+1. **Promote Phase 1** only if the exact-dense benchmark shelves improve materially and all
+  locked tests remain green.
+2. **Promote Phase 2** only if the `23x23x1` over-threshold probe improves without worsening
+  the bounded shelf shape relative to the `22x22x1` control.
+3. **Do not start Phase 3** until Phase 2 still leaves coarse-pressure quality as the clear
+  dominant cost on over-threshold cases.
 
 ---
 
@@ -421,8 +510,9 @@ prerequisites for scaling beyond the current benchmark grid sizes.
 
 | File | Phase |
 |------|-------|
-| `src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs` | 1, 2, 3 |
-| `src/lib/ressim/src/fim/linear/mod.rs` | 2, 3 (new enum variants) |
+| `src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs` | 1, 2 |
+| `src/lib/ressim/src/fim/linear/mod.rs` | 1 for additive diagnostics fields; 2 for any coarse-solver enum changes |
+| `src/lib/ressim/src/fim/newton.rs` | 1 for additive CPR diagnostic trace field only |
 
-No other files need to change. The Newton solver, assembly, and timestep controller
-are not touched by this plan.
+No physics, assembly, or timestep-control behavior should change in Phase 1 beyond the
+linear solve path and additive diagnostics.

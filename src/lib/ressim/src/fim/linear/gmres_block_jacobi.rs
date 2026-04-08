@@ -12,9 +12,62 @@ use crate::timing::PerfTimer;
 const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
 const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 8;
 const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-2;
+const FULL_ILU_ROW_LIMIT: usize = 4096;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CprFineSmootherKind {
+    BlockJacobi,
+    FullIlu0,
+}
+
+impl CprFineSmootherKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::BlockJacobi => "block-jacobi",
+            Self::FullIlu0 => "ilu0",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FimIlu0Factors {
+    l_rows: Vec<Vec<(usize, f64)>>,
+    u_diag: Vec<f64>,
+    u_rows: Vec<Vec<(usize, f64)>>,
+}
+
+impl FimIlu0Factors {
+    fn apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+        let mut y = DVector::zeros(rhs.len());
+        for row_idx in 0..rhs.len() {
+            let mut sum = rhs[row_idx];
+            for &(col_idx, value) in &self.l_rows[row_idx] {
+                sum -= value * y[col_idx];
+            }
+            y[row_idx] = sum;
+        }
+
+        let mut x = DVector::zeros(rhs.len());
+        for row_idx in (0..rhs.len()).rev() {
+            let mut sum = y[row_idx];
+            for &(col_idx, value) in &self.u_rows[row_idx] {
+                sum -= value * x[col_idx];
+            }
+            let diag = self.u_diag[row_idx];
+            x[row_idx] = if diag.abs() > f64::EPSILON {
+                sum / diag
+            } else {
+                sum
+            };
+        }
+
+        x
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 struct BlockJacobiPreconditioner {
+    fine_smoother_kind: CprFineSmootherKind,
     cell_block_size: usize,
     cell_block_inverses: Vec<DMatrix<f64>>,
     well_bhp_start: usize,
@@ -32,6 +85,7 @@ struct BlockJacobiPreconditioner {
     pressure_l_rows: Vec<Vec<(usize, f64)>>,
     pressure_u_diag: Vec<f64>,
     pressure_u_rows: Vec<Vec<(usize, f64)>>,
+    full_ilu: Option<FimIlu0Factors>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -57,6 +111,7 @@ impl PressureCorrectionAccumulator {
             return Some(FimCprDiagnostics {
                 coarse_rows: preconditioner.pressure_rows.len(),
                 coarse_solver,
+                smoother_label: preconditioner.fine_smoother_kind.label(),
                 coarse_applications: 0,
                 average_reduction_ratio: 1.0,
                 last_reduction_ratio: 1.0,
@@ -66,6 +121,7 @@ impl PressureCorrectionAccumulator {
         Some(FimCprDiagnostics {
             coarse_rows: preconditioner.pressure_rows.len(),
             coarse_solver,
+            smoother_label: preconditioner.fine_smoother_kind.label(),
             coarse_applications: self.applications,
             average_reduction_ratio: self.accumulated_reduction_ratio / self.applications as f64,
             last_reduction_ratio: self.last_reduction_ratio,
@@ -75,6 +131,12 @@ impl PressureCorrectionAccumulator {
 
 impl BlockJacobiPreconditioner {
     fn apply_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
+        if self.fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
+            if let Some(ilu) = &self.full_ilu {
+                return ilu.apply(vector);
+            }
+        }
+
         let mut result = DVector::zeros(vector.len());
 
         for (block_idx, inverse) in self.cell_block_inverses.iter().enumerate() {
@@ -290,11 +352,17 @@ impl BlockJacobiPreconditioner {
 }
 
 fn row_entry(entries: &[(usize, f64)], target_col: usize) -> f64 {
-    entries
-        .iter()
-        .find(|(col_idx, _)| *col_idx == target_col)
-        .map(|(_, value)| *value)
-        .unwrap_or(0.0)
+    match entries.binary_search_by_key(&target_col, |&(col_idx, _)| col_idx) {
+        Ok(index) => entries[index].1,
+        Err(_) => 0.0,
+    }
+}
+
+fn sparse_row_entry(indices: &[usize], data: &[f64], target_col: usize) -> f64 {
+    match indices.binary_search(&target_col) {
+        Ok(index) => data[index],
+        Err(_) => 0.0,
+    }
 }
 
 fn factorize_pressure_ilu0(
@@ -359,6 +427,73 @@ fn factorize_pressure_ilu0(
     }
 
     (l_rows, u_diag, u_rows)
+}
+
+fn factorize_full_ilu0(matrix: &CsMat<f64>) -> Option<FimIlu0Factors> {
+    let n = matrix.rows();
+    if n == 0 || n > FULL_ILU_ROW_LIMIT {
+        return None;
+    }
+
+    let mut l_rows: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+    let mut u_diag = vec![0.0_f64; n];
+    let mut u_rows: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+
+    for row_idx in 0..n {
+        let row = matrix.outer_view(row_idx)?;
+        let mut lower_cols = Vec::new();
+        let mut upper_cols = Vec::new();
+        let mut diag_entry = 0.0;
+
+        for (col_idx, value) in row.iter() {
+            if col_idx < row_idx {
+                lower_cols.push((col_idx, *value));
+            } else if col_idx == row_idx {
+                diag_entry = *value;
+            } else {
+                upper_cols.push((col_idx, *value));
+            }
+        }
+
+        for &(col_idx, value) in &lower_cols {
+            let mut sum = value;
+            for &(k, l_ik) in &l_rows[row_idx] {
+                if k >= col_idx {
+                    break;
+                }
+                sum -= l_ik * row_entry(&u_rows[k], col_idx);
+            }
+            let diag: f64 = u_diag[col_idx];
+            if diag.abs() <= f64::EPSILON {
+                return None;
+            }
+            l_rows[row_idx].push((col_idx, sum / diag));
+        }
+
+        let mut u_diag_value = diag_entry;
+        for &(k, l_ik) in &l_rows[row_idx] {
+            let upper_row = matrix.outer_view(k)?;
+            u_diag_value -= l_ik * sparse_row_entry(upper_row.indices(), upper_row.data(), row_idx);
+        }
+        if u_diag_value.abs() <= f64::EPSILON {
+            return None;
+        }
+        u_diag[row_idx] = u_diag_value;
+
+        for &(col_idx, value) in &upper_cols {
+            let mut sum = value;
+            for &(k, l_ik) in &l_rows[row_idx] {
+                sum -= l_ik * row_entry(&u_rows[k], col_idx);
+            }
+            u_rows[row_idx].push((col_idx, sum));
+        }
+    }
+
+    Some(FimIlu0Factors {
+        l_rows,
+        u_diag,
+        u_rows,
+    })
 }
 
 fn matrix_value(matrix: &CsMat<f64>, row: usize, col: usize) -> f64 {
@@ -443,6 +578,7 @@ fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>)
 fn build_block_jacobi_preconditioner(
     matrix: &CsMat<f64>,
     layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
 ) -> BlockJacobiPreconditioner {
     let Some(layout) = layout else {
         let scalar_inv_diag = (0..matrix.rows())
@@ -456,6 +592,7 @@ fn build_block_jacobi_preconditioner(
             })
             .collect();
         return BlockJacobiPreconditioner {
+            fine_smoother_kind: CprFineSmootherKind::BlockJacobi,
             cell_block_size: 0,
             cell_block_inverses: Vec::new(),
             well_bhp_start: 0,
@@ -473,6 +610,7 @@ fn build_block_jacobi_preconditioner(
             pressure_l_rows: Vec::new(),
             pressure_u_diag: Vec::new(),
             pressure_u_rows: Vec::new(),
+            full_ilu: None,
         };
     };
 
@@ -693,6 +831,11 @@ fn build_block_jacobi_preconditioner(
     let pressure_dense_inverse = invert_pressure_block(&pressure_rows);
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
+    let full_ilu = if fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
+        factorize_full_ilu0(matrix)
+    } else {
+        None
+    };
 
     let scalar_inv_diag = (noncell_start..matrix.rows())
         .map(|idx| {
@@ -706,6 +849,7 @@ fn build_block_jacobi_preconditioner(
         .collect();
 
     BlockJacobiPreconditioner {
+        fine_smoother_kind,
         cell_block_size: layout.cell_block_size,
         cell_block_inverses,
         well_bhp_start,
@@ -723,6 +867,7 @@ fn build_block_jacobi_preconditioner(
         pressure_l_rows,
         pressure_u_diag,
         pressure_u_rows,
+        full_ilu,
     }
 }
 
@@ -780,12 +925,13 @@ fn back_substitute_upper(
     solution
 }
 
-pub(super) fn solve(
+fn solve_with_cpr_fine_smoother(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
     options: &FimLinearSolveOptions,
     layout: Option<FimLinearBlockLayout>,
     used_fallback: bool,
+    cpr_fine_smoother_kind: CprFineSmootherKind,
 ) -> FimLinearSolveReport {
     let total_timer = PerfTimer::start();
     let backend_used = if options.kind == FimLinearSolverKind::FgmresCpr {
@@ -814,7 +960,8 @@ pub(super) fn solve(
     let tolerance =
         options.absolute_tolerance + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
     let preconditioner_timer = PerfTimer::start();
-    let preconditioner = build_block_jacobi_preconditioner(jacobian, layout);
+    let preconditioner =
+        build_block_jacobi_preconditioner(jacobian, layout, cpr_fine_smoother_kind);
     let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
@@ -832,7 +979,11 @@ pub(super) fn solve(
                 final_residual_norm: residual_norm,
                 used_fallback,
                 backend_used,
-                cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+                cpr_diagnostics: if use_pressure_correction {
+                    pressure_correction_stats.build_report(&preconditioner)
+                } else {
+                    None
+                },
                 total_time_ms: total_timer.elapsed_ms(),
                 preconditioner_build_time_ms,
             };
@@ -852,7 +1003,11 @@ pub(super) fn solve(
                 final_residual_norm: residual_norm,
                 used_fallback,
                 backend_used,
-                cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+                cpr_diagnostics: if use_pressure_correction {
+                    pressure_correction_stats.build_report(&preconditioner)
+                } else {
+                    None
+                },
                 total_time_ms: total_timer.elapsed_ms(),
                 preconditioner_build_time_ms,
             };
@@ -949,7 +1104,11 @@ pub(super) fn solve(
                         final_residual_norm: candidate_residual,
                         used_fallback,
                         backend_used,
-                        cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+                        cpr_diagnostics: if use_pressure_correction {
+                            pressure_correction_stats.build_report(&preconditioner)
+                        } else {
+                            None
+                        },
                         total_time_ms: total_timer.elapsed_ms(),
                         preconditioner_build_time_ms,
                     };
@@ -976,10 +1135,37 @@ pub(super) fn solve(
         final_residual_norm: final_residual,
         used_fallback,
         backend_used,
-        cpr_diagnostics: pressure_correction_stats.build_report(&preconditioner),
+        cpr_diagnostics: if use_pressure_correction {
+            pressure_correction_stats.build_report(&preconditioner)
+        } else {
+            None
+        },
         total_time_ms: total_timer.elapsed_ms(),
         preconditioner_build_time_ms,
     }
+}
+
+pub(super) fn solve(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    used_fallback: bool,
+) -> FimLinearSolveReport {
+    let cpr_fine_smoother_kind = if options.kind == FimLinearSolverKind::FgmresCpr {
+        CprFineSmootherKind::FullIlu0
+    } else {
+        CprFineSmootherKind::BlockJacobi
+    };
+
+    solve_with_cpr_fine_smoother(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        used_fallback,
+        cpr_fine_smoother_kind,
+    )
 }
 
 #[cfg(test)]
@@ -1007,6 +1193,7 @@ mod tests {
                 well_bhp_count: 0,
                 perforation_tail_start: 3,
             }),
+            CprFineSmootherKind::BlockJacobi,
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0]);
@@ -1036,6 +1223,7 @@ mod tests {
                 well_bhp_count: 0,
                 perforation_tail_start: 3,
             }),
+            CprFineSmootherKind::BlockJacobi,
         );
 
         let rhs = DVector::from_vec(vec![0.0, 0.0, 0.0, 1.0]);
@@ -1063,6 +1251,7 @@ mod tests {
                 well_bhp_count: 0,
                 perforation_tail_start: 3,
             }),
+            CprFineSmootherKind::BlockJacobi,
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0, 0.0]);
@@ -1093,6 +1282,7 @@ mod tests {
                 well_bhp_count: 0,
                 perforation_tail_start: 6,
             }),
+            CprFineSmootherKind::BlockJacobi,
         );
 
         assert!(preconditioner.pressure_dense_inverse.is_some());
@@ -1134,6 +1324,7 @@ mod tests {
             diagnostics.coarse_solver,
             FimPressureCoarseSolverKind::ExactDense
         );
+        assert_eq!(diagnostics.smoother_label, "ilu0");
         assert!(diagnostics.coarse_applications > 0);
         assert!(diagnostics.average_reduction_ratio <= 1.0);
     }
@@ -1176,6 +1367,7 @@ mod tests {
                 well_bhp_count: 1,
                 perforation_tail_start: 4,
             }),
+            CprFineSmootherKind::BlockJacobi,
         );
 
         assert_eq!(preconditioner.pressure_rows.len(), 2);
@@ -1207,6 +1399,7 @@ mod tests {
                 well_bhp_count: 1,
                 perforation_tail_start: 4,
             }),
+            CprFineSmootherKind::BlockJacobi,
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0, 0.0, 0.0]);
@@ -1215,6 +1408,183 @@ mod tests {
         assert!(applied[0].abs() > 1e-12);
         assert!(applied[3].abs() > 1e-12);
         assert!(applied[4].abs() > 1e-12);
+    }
+
+    fn reconstruct_ilu0_matrix(factors: &FimIlu0Factors) -> DMatrix<f64> {
+        let n = factors.u_diag.len();
+        let mut lower = DMatrix::<f64>::identity(n, n);
+        let mut upper = DMatrix::<f64>::zeros(n, n);
+
+        for row_idx in 0..n {
+            for &(col_idx, value) in &factors.l_rows[row_idx] {
+                lower[(row_idx, col_idx)] = value;
+            }
+            upper[(row_idx, row_idx)] = factors.u_diag[row_idx];
+            for &(col_idx, value) in &factors.u_rows[row_idx] {
+                upper[(row_idx, col_idx)] = value;
+            }
+        }
+
+        lower * upper
+    }
+
+    #[test]
+    fn full_ilu0_lower_times_upper_recovers_original_matrix() {
+        let mut tri = TriMatI::<f64, usize>::new((4, 4));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, -1.0);
+        tri.add_triplet(1, 0, -1.5);
+        tri.add_triplet(1, 1, 5.0);
+        tri.add_triplet(1, 2, -0.5);
+        tri.add_triplet(2, 1, -0.25);
+        tri.add_triplet(2, 2, 6.0);
+        tri.add_triplet(2, 3, -0.75);
+        tri.add_triplet(3, 2, -0.8);
+        tri.add_triplet(3, 3, 3.5);
+        let matrix = tri.to_csr();
+
+        let factors = factorize_full_ilu0(&matrix).expect("expected ILU factors");
+        let reconstructed = reconstruct_ilu0_matrix(&factors);
+
+        for row_idx in 0..matrix.rows() {
+            let row = matrix.outer_view(row_idx).expect("expected row");
+            for (col_idx, value) in row.iter() {
+                assert!((reconstructed[(row_idx, col_idx)] - value).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn full_ilu0_apply_solves_diagonal_system_exactly() {
+        let mut tri = TriMatI::<f64, usize>::new((4, 4));
+        tri.add_triplet(0, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 4.0);
+        tri.add_triplet(3, 3, 5.0);
+        let matrix = tri.to_csr();
+        let factors = factorize_full_ilu0(&matrix).expect("expected ILU factors");
+        let x = DVector::from_vec(vec![1.0, -2.0, 3.0, -4.0]);
+        let rhs = cs_mat_mul_vec(&matrix, &x);
+
+        let solved = factors.apply(&rhs);
+
+        assert!((&solved - x).norm() < 1e-12);
+    }
+
+    #[test]
+    fn cpr_with_full_ilu_smoother_reduces_fgmres_iteration_count() {
+        let mut tri = TriMatI::<f64, usize>::new((9, 9));
+        tri.add_triplet(0, 0, 8.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(0, 3, -1.0);
+        tri.add_triplet(1, 1, 4.0);
+        tri.add_triplet(1, 4, -1.0);
+        tri.add_triplet(2, 2, 4.0);
+        tri.add_triplet(2, 5, -1.0);
+        tri.add_triplet(3, 0, -1.0);
+        tri.add_triplet(3, 3, 8.0);
+        tri.add_triplet(3, 4, 1.0);
+        tri.add_triplet(3, 6, -1.0);
+        tri.add_triplet(4, 1, -1.0);
+        tri.add_triplet(4, 4, 4.0);
+        tri.add_triplet(4, 7, -1.0);
+        tri.add_triplet(5, 2, -1.0);
+        tri.add_triplet(5, 5, 4.0);
+        tri.add_triplet(5, 8, -1.0);
+        tri.add_triplet(6, 3, -1.0);
+        tri.add_triplet(6, 6, 8.0);
+        tri.add_triplet(6, 7, 1.0);
+        tri.add_triplet(7, 4, -1.0);
+        tri.add_triplet(7, 7, 4.0);
+        tri.add_triplet(8, 5, -1.0);
+        tri.add_triplet(8, 8, 4.0);
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_element(9, 1.0);
+        let options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::FgmresCpr,
+            restart: 8,
+            max_iterations: 30,
+            relative_tolerance: 1e-10,
+            absolute_tolerance: 1e-12,
+        };
+        let layout = Some(FimLinearBlockLayout {
+            cell_block_count: 3,
+            cell_block_size: 3,
+            well_bhp_count: 0,
+            perforation_tail_start: 9,
+        });
+
+        let block_jacobi_report = solve_with_cpr_fine_smoother(
+            &matrix,
+            &rhs,
+            &options,
+            layout,
+            false,
+            CprFineSmootherKind::BlockJacobi,
+        );
+        let ilu_report = solve_with_cpr_fine_smoother(
+            &matrix,
+            &rhs,
+            &options,
+            layout,
+            false,
+            CprFineSmootherKind::FullIlu0,
+        );
+
+        assert!(block_jacobi_report.converged);
+        assert!(ilu_report.converged);
+        assert!(
+            ilu_report.iterations < block_jacobi_report.iterations,
+            "expected full ILU smoother to reduce iterations, got ilu={} vs block-jacobi={}",
+            ilu_report.iterations,
+            block_jacobi_report.iterations
+        );
+        assert_eq!(
+            block_jacobi_report
+                .cpr_diagnostics
+                .as_ref()
+                .map(|diag| diag.smoother_label),
+            Some("block-jacobi")
+        );
+        assert_eq!(
+            ilu_report
+                .cpr_diagnostics
+                .as_ref()
+                .map(|diag| diag.smoother_label),
+            Some("ilu0")
+        );
+    }
+
+    #[test]
+    fn gmres_ilu0_backend_keeps_non_cpr_semantics() {
+        let mut tri = TriMatI::<f64, usize>::new((6, 6));
+        for idx in 0..6 {
+            tri.add_triplet(idx, idx, 2.0 + idx as f64);
+        }
+        tri.add_triplet(0, 3, -0.5);
+        tri.add_triplet(3, 0, -0.25);
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_element(6, 1.0);
+
+        let report = solve(
+            &matrix,
+            &rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::GmresIlu0,
+                ..FimLinearSolveOptions::default()
+            },
+            Some(FimLinearBlockLayout {
+                cell_block_count: 2,
+                cell_block_size: 3,
+                well_bhp_count: 0,
+                perforation_tail_start: 6,
+            }),
+            false,
+        );
+
+        assert!(report.converged);
+        assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
+        assert!(report.cpr_diagnostics.is_none());
     }
 
     #[test]

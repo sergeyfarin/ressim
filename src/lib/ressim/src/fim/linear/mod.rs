@@ -139,6 +139,7 @@ pub(crate) struct FimLinearSolveReport {
 pub(crate) struct FimCprDiagnostics {
     pub(crate) coarse_rows: usize,
     pub(crate) coarse_solver: FimPressureCoarseSolverKind,
+    pub(crate) smoother_label: &'static str,
     pub(crate) coarse_applications: usize,
     pub(crate) average_reduction_ratio: f64,
     pub(crate) last_reduction_ratio: f64,

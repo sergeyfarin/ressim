@@ -127,13 +127,14 @@ fn linear_report_trace_suffix(
     };
 
     format!(
-        " lin=[req={} used={} rows={} direct_thr={}] cpr=[rows={} solver={} apps={} avg_rr={:.3e} last_rr={:.3e}]",
+        " lin=[req={} used={} rows={} direct_thr={}] cpr=[rows={} solver={} smoother={} apps={} avg_rr={:.3e} last_rr={:.3e}]",
         requested_kind.label(),
         report.backend_used.label(),
         report.solution.len(),
         active_direct_solve_row_threshold(),
         cpr.coarse_rows,
         solver,
+        cpr.smoother_label,
         cpr.coarse_applications,
         cpr.average_reduction_ratio,
         cpr.last_reduction_ratio,
@@ -3127,6 +3128,7 @@ mod tests {
             cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
                 coarse_rows: 10,
                 coarse_solver: crate::fim::linear::FimPressureCoarseSolverKind::ExactDense,
+                smoother_label: "ilu0",
                 coarse_applications: 4,
                 average_reduction_ratio: 1e-12,
                 last_reduction_ratio: 1e-12,
@@ -3230,6 +3232,7 @@ mod tests {
             cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
                 coarse_rows: 10,
                 coarse_solver: crate::fim::linear::FimPressureCoarseSolverKind::ExactDense,
+                smoother_label: "block-jacobi",
                 coarse_applications: 4,
                 average_reduction_ratio: 0.6,
                 last_reduction_ratio: 0.8,
