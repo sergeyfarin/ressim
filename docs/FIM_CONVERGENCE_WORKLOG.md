@@ -8,6 +8,178 @@ Use this worklog only for active observations, reproductions, traces, and next h
 This file is the working document for the March 2026 FIM convergence investigation.
 Keep active observations, reproductions, diagnostics, and next hypotheses here until the issue is resolved.
 
+## Validation Update - 2026-04-08 alternating gas hotspot cells now share one injector-symmetry site key
+
+- Motivation from the previous gas-shelf slice:
+  - the shipped `gas-rate` replay was still bouncing between symmetric injector-side gas cells even after history damping started firing
+  - the compact traces showed the exact pattern the next slice needed to address: failed full-step shelves could terminate on `gas row=92 item=30` while the active Newton damping ladder within the cutback shelf was keyed on `gas row=11 item=3`
+  - both cells are the same injector-side symmetry orbit on the `10x10x3` corner-gas case, but Newton history and timestep cooldown were still comparing exact cell IDs, so the controller could not accumulate memory across that alternation
+- Changes made in `src/lib/ressim/src/fim/newton.rs` and `src/lib/ressim/src/fim/timestep.rs`:
+  - introduced a shared `FimHotspotSite` key carried in retry diagnostics
+  - added gas-only injector-symmetry grouping in Newton: gas residual hotspots now map to the nearest injector perforation plus sorted in-plane offsets and vertical offset
+  - for the shipped corner-gas replay this collapses `cell3=(3,0,0)` and `cell30=(0,3,0)` to the same logical site: `gasinj0[3,0,0]`
+  - timestep cooldown no longer reconstructs hotspot identity from raw row/item pairs; it now uses the shared `hotspot_site` emitted by Newton failure diagnostics
+  - added focused regression coverage for:
+    - injector-symmetry grouping of axis-swapped gas cells
+    - timestep cooldown treating alternating gas cells with the same injector-symmetry site as one repeated hotspot
+- Validation:
+  - focused Rust tests passed:
+    - `cargo test repeated_nonlinear_hotspot_streak_ --lib -- --nocapture`
+    - `cargo test gas_injector_symmetry_site_groups_axis_swapped_cells --lib -- --nocapture`
+    - `cargo test nonlinear_history_stabilization_ --lib -- --nocapture`
+    - `cargo test alternating_gas_cells_with_shared_injector_symmetry_site_count_as_same_hotspot --lib -- --nocapture`
+    - `cargo test alternating_cell_row_families_count_as_same_hotspot_site --lib -- --nocapture`
+  - broader smoke remained green:
+    - `cargo test spe1_fim_ --lib -- --nocapture`
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - shipped gas summary rerun:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`
+    - headline retry counts did not change:
+      - step 1: `retries=0/3/0`
+      - steps 2-6: `retries=0/2/0`
+    - but the dominant retry cell now visibly walks across the symmetric gas shelf instead of sticking to one raw item index:
+      - step 2: `retry_dom=nonlinear-bad:gas@11`
+      - step 3: `retry_dom=nonlinear-bad:gas@122`
+      - step 4: `retry_dom=nonlinear-bad:gas@44`
+      - step 5: `retry_dom=nonlinear-bad:gas@17`
+      - step 6: `retry_dom=nonlinear-bad:gas@128`
+  - compact step trace confirmation:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 2 --dt 0.25 --diagnostic step --no-json | rg "hist=\[site=|cooldown_cap=|FIM retry summary|FAILED dt=|ACCEPTED dt=|retry=\[class="`
+    - representative failed full-step shelf now ends with:
+      - `retry=[class=nonlinear-bad dom=gas row=92 item=30 site=gasinj0[3,0,0] ...]`
+    - the active cutback shelf now damps and cools down on that same logical site even while the local Newton hotspot remains `cell3`:
+      - `hist=[site=gasinj0[3,0,0] streak=5 damp_cap=0.250]`
+      - `substep 0: ACCEPTED ... hotspot=gas row=11 item=3 site=gasinj0[3,0,0] repeats=2 ...`
+- Interpretation:
+  - the identity problem is now fixed: alternating symmetric gas cells are no longer invisible to the history/cooldown logic
+  - this was necessary cleanup, but not the full convergence win. The outer replay still lands on the same retry counts, so the next slice should strengthen the timestep policy for repeated shared gas sites rather than revisiting raw hotspot identity again
+
+## Validation Update - 2026-04-08 gas-hotspot history damping now activates on fallback-assisted shelves
+
+- Motivation from the shipped `gas-rate` replay after the strict-MB slice:
+  - the remaining gas issue was clearly a Newton-side nonlinear shelf around repeating gas hotspot rows, not a material-balance gate problem
+  - the detailed trace showed two blockers in `fim/newton.rs` for the existing nonlinear-history damping path:
+    - converged fallback iterations were excluded entirely from hotspot stabilization
+    - the weak-progress detector required almost-flat residual progress (`>= 98%` of the previous residual), while the gas shelf was improving by about `9-10%` per Newton step, which was still too slow to avoid burning the full iteration budget
+- Changes made in `src/lib/ressim/src/fim/newton.rs`:
+  - converged fallback iterations are now allowed to participate in `nonlinear_history_stabilization_decision(...)`
+  - added a gas-specific weak-progress threshold for repeated gas hotspot sites (`0.90`) while keeping the stricter non-gas threshold unchanged (`0.98`)
+  - added focused regression coverage for:
+    - converged fallback path allowed into nonlinear-history stabilization
+    - gas hotspot streaks using the relaxed threshold
+    - non-gas hotspot streaks keeping the stricter threshold
+- Validation:
+  - focused Rust tests passed:
+    - `cargo test --manifest-path src/lib/ressim/Cargo.toml nonlinear_history_stabilization_ -- --nocapture`
+    - `cargo test --manifest-path src/lib/ressim/Cargo.toml repeated_nonlinear_hotspot_streak_ -- --nocapture`
+  - wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+  - shipped gas summary rerun:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`
+    - headline outcome stayed structurally the same:
+      - step 1: `retries=0/3/0`
+      - steps 2-6: `retries=0/2/0`
+    - but retry-shelf runtime improved on at least the first gas-dominated replay step:
+      - previous step-2 `retry_ms`: about `4552 ms`
+      - new step-2 `retry_ms`: about `3548 ms`
+  - compact step trace confirmation:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 2 --dt 0.25 --diagnostic step --no-json | rg "hist=\[|step=|substep 0: FAILED|FIM retry summary|ACCEPTED dt="`
+    - the gas shelf now emits active history damping lines such as:
+      - `hist=[site=cell3 streak=3 damp_cap=0.250]`
+      - `hist=[site=cell3 streak=4 damp_cap=0.250]`
+      - `hist=[site=cell3 streak=5 damp_cap=0.250]`
+    - on the representative failed `dt=0.125 d` retry shelf, the solver now bails after `13` Newton iterations instead of grinding through the previous `20`-iteration shelf before cutting back
+- Interpretation:
+  - this slice is directionally correct: the fallback-assisted gas hotspot shelf is no longer invisible to the nonlinear-history controller, and the replay shows real per-failure shelf shortening
+  - it is not yet the full convergence fix. The outer gas replay still lands on the same accepted-substep and retry counts, which means the next lever is likely hotspot-site grouping or timestep-policy handling across the alternating gas cells rather than simply turning history damping on
+
+## Validation Update - 2026-04-08 strict MB gate on guarded Newton acceptance
+
+- Motivation from the OPM-gap review and current code audit:
+  - `fim/newton.rs` already had a global component-sum material-balance diagnostic, so the old worklog issue title "No global material balance convergence check" was no longer accurate on current head
+  - however, the acceptance helper `convergence_limits(...)` still widened the MB limit together with the residual entry guard band
+  - that meant entry/update shortcut acceptance could still treat a globally non-conservative state as converged whenever MB was inside the residual guard window instead of inside the configured MB tolerance
+- Root cause in `src/lib/ressim/src/fim/newton.rs`:
+  - `convergence_limits(...)` returned `(residual_tol * factor, material_balance_tol * factor)`
+  - the residual guard band is a deliberate Newton-shortcut allowance; the MB side should remain strict if we want OPM-style `CNV + MB` semantics
+- Change made:
+  - kept the residual guard-band behavior unchanged
+  - made the accepted-state MB limit strict on every guarded acceptance path by leaving `material_balance_tolerance` unscaled in `convergence_limits(...)`
+  - added focused regression coverage proving:
+    - guard-band residual acceptance still exists
+    - the same guard band no longer loosens MB acceptance
+    - an accepted-state candidate with residual inside the guard band but MB outside the configured tolerance is rejected
+
+Validation:
+
+- Focused Rust regressions passed:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml guard_band_keeps_material_balance_limit_strict -- --nocapture`
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml accepted_state_convergence_rejects_guard_band_material_balance_violation -- --nocapture`
+- Existing short FIM smoke regressions stayed green:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_ -- --nocapture`
+- wasm rebuild succeeded via `bash ./scripts/build-wasm.sh`
+- shipped gas diagnostic rerun:
+  - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`
+  - outcome by step:
+    - step 1: `retries=0/3/0`, `retry_dom=nonlinear-bad:well@901`
+    - step 2: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@92`
+    - step 3: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@122`
+    - step 4: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@44`
+    - step 5: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@17`
+    - step 6: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@128`
+- compact early-step trace check:
+  - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 2 --dt 0.25 --diagnostic step --no-json | rg "step=|substep 0: FAILED|FIM retry summary|ACCEPTED dt=|FAILED \(iters=.* mb="`
+  - representative accepted cutback states still show residuals inside the residual guard band but MB strictly below tolerance, for example:
+    - `ACCEPTED dt=0.062500 ... res=1.974e-5 mb=8.119e-6`
+    - `ACCEPTED dt=0.062500 ... res=1.834e-5 mb=7.400e-6`
+    - `ACCEPTED dt=0.062500 ... res=1.896e-5 mb=7.195e-6`
+
+Interpretation:
+
+- The active issue on current head is not the total absence of an MB check; it is that the existing MB gate was still partially softened by the residual shortcut machinery.
+- This slice closes that remaining correctness gap and aligns guarded acceptance with the intended `CNV + MB` rule: residual shortcuts may still be tolerant, but material balance must now pass at the configured strict tolerance.
+- The shipped gas replay did not show a convergence-throughput improvement from this change. That is expected from the trace: the accepted guarded states on this path were already below the strict MB tolerance, so the new gate removes a false-convergence hole without changing the current dominant nonlinear shelf.
+
+## Validation Update - 2026-04-08 gas-side fallback retry classification audit
+
+- Motivation from the latest shipped-path gas replay:
+  - the current `gas-rate` wasm diagnostic still showed residual `linear-bad` retries even though the detailed step trace no longer looked like a true unresolved linear failure
+  - representative failing substeps on `gas_10x10x3` repeatedly printed `linear solver FAILED ..., trying fallback`, then finished each Newton iteration with a finite dense-LU correction and a steadily shrinking gas-dominated residual shelf
+  - the failed full-step trace ended at the Newton iteration limit with `fallback=true`, `lin=[used=dense-lu rows=904]`, and a hotspot on gas rows near cells `3` / `30`, which suggested the remaining failure was Newton-side stagnation after a converged fallback solve, not a bad final linear solve
+- Root cause in `src/lib/ressim/src/fim/newton.rs`:
+  - `classify_retry_failure(...)` still forced any `used_fallback=true` report into `linear-bad`, even when the final fallback report itself was converged
+  - that was too pessimistic for retry control on the gas shelf: the iterative backend did fail, but the direct fallback had already resolved the linear stage accurately before Newton hit its outer iteration limit
+- Change made:
+  - narrowed retry classification so only nonconverged final linear reports remain `linear-bad`
+  - converged fallback-assisted reports now classify by their final backend quality; for the actual gas traces this means `dense-lu` fallback shelves are treated as `nonlinear-bad`
+  - kept `used_linear_fallback` intact in diagnostics so the trace still exposes that the iterative backend had to fall back
+  - updated focused unit coverage:
+    - converged fallback path -> `nonlinear-bad`
+    - nonconverged fallback path -> `linear-bad`
+- Validation:
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml failure_classification_` passed
+  - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_` passed
+  - rebuilt wasm via `bash ./scripts/build-wasm.sh`
+  - reran shipped gas diagnostic:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`
+    - outcome by step:
+      - step 1: `retries=0/3/0`, `retry_dom=nonlinear-bad:well@901`
+      - step 2: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@92`
+      - step 3: `retries=0/2/0`, `retry_dom=nonlinear-bad:gas@122`
+      - step 4: `retries=0/1/0`, `retry_dom=nonlinear-bad:gas@152`
+      - step 5: `retries=0/1/0`, `retry_dom=nonlinear-bad:gas@17`
+      - step 6: `retries=0/1/0`, `retry_dom=nonlinear-bad:oil@898`
+  - compact step-trace confirmation:
+    - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 2 --dt 0.25 --diagnostic step --no-json | rg "retry=\[class=|substep 0: FAILED|FIM retry summary|step="`
+    - representative failed full-step shelf now ends with `retry=[class=nonlinear-bad dom=gas row=92 item=30 linear_iters=1 fallback=true]`
+    - the corresponding cutback line now uses `retry_factor=0.50` and seeds hotspot cooldown memory, which matches the actual failure mode
+    - the two-step replay finishes with `FIM retry summary: linear-bad=0 nonlinear-bad=2 mixed=0`
+
+Interpretation:
+
+- The remaining gas-side retries visible in the wasm diagnostic were primarily a retry-classification problem, not evidence that the direct fallback solve was itself failing.
+- After the change, the diagnostic headline is aligned with the actual trace: the gas case still has localized nonlinear shelves, but it no longer reports them as `linear-bad` when a converged fallback solve has already resolved the linear stage.
+- This keeps the retry controller on the less pessimistic nonlinear path and makes the remaining gas-side follow-up clearer: if further improvement is needed, target the localized gas hotspot shelf itself rather than the linear backend label.
+
 ## Validation Update - 2026-04-05 resumed after cleanup, material-change fix for well/perf-only Newton updates
 
 - Cleanup and baseline status before resuming convergence work:
@@ -1171,6 +1343,36 @@ Implemented a first solver-side change in `fim/state.rs`:
   - the catastrophic perforation-manifold failures were suppressed
   - the dominant residual remains the injector-side gas cell row, and in later small-step regimes some retries now stall on the well-control row rather than the perforation row
 
+### Validation Update - 2026-04-08 well-Schur issue rechecked on current head
+
+This worklog still referenced the well-Schur / explicit-well-drift item as if it were the active root cause of the hard water breakthrough shelf. That is no longer accurate on current head.
+
+Current recheck:
+
+- the March local-well trust-region slice is already active in `fim/state.rs`
+  - `well_bhp` is relaxed toward a locally consistent BHP with a `25 bar` trust radius
+  - perforation rates are relaxed toward connection-law rates with a bounded manifold step and sign clamp
+- canonical wasm hard-case rerun on current head:
+  - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
+  - result: `134` accepted substeps, retries `0/44/0`, `retry_dom=nonlinear-bad:oil@430`, no solver warning
+- representative step trace still shows the failing retries dominated by reservoir oil row `430` / cell `143`, with well and perforation residual families at `0` on the traced failing iteration headers
+
+Two narrow follow-up experiments were tried against this issue:
+
+- tighter BHP-only Appleyard damping for explicit well unknowns
+  - result: no material change on the canonical wasm repro; the case remained at `134` accepted substeps and retries `0/44/0`
+  - interpretation: the current hard shelf is not sensitive to a tighter BHP cap alone
+- perforation-rate damping on the same local-trust scale used by the post-update relaxation
+  - result: catastrophic regression, with `0` accepted substeps and `16` immediate nonlinear retries on the same repro
+  - this experiment was reverted
+
+Conclusion:
+
+- full Schur-complement well elimination is still not implemented, so it remains a valid long-range architecture option
+- but the older diagnosis that the current hard `wf_p_12x12x3` shelf is primarily explicit-well drift is stale on current head
+- after the landed local-well trust-region fix, the active hard shelf is now best characterized as a reservoir-row nonlinear problem, not a well/perforation-manifold problem
+- this item should therefore be treated as historical context plus future architecture direction, not as the next proven high-leverage convergence fix
+
 ### Updated interpretation after the first fix
 
 - The first fix appears to have done what it was supposed to do:
@@ -1246,7 +1448,7 @@ When Newton stagnates early (suggesting 0.25), the outer loop only cuts by 0.5, 
 ### Remaining gaps (deferred)
 
 - **ILU(0) pressure preconditioner instead of AMG**: degrades with grid size, causes linear solver failures that cascade into timestep cuts. Medium effort, deferred.
-- **Full Jacobian reassembly during line search**: each damped candidate does a full `assemble_fim_system` instead of a cheaper residual-only evaluation. Multiplies cost per Newton iteration by 2–4×. Medium effort, deferred.
+- **Historical full-Jacobian damping cost**: this was a real March-era issue, but it is not the active bottleneck on current head. The residual-based line search is no longer in the Newton loop, and the remaining acceptance-only residual rechecks were switched to `assemble_residual_only` on 2026-04-08. Treat any older references to per-damped-candidate Jacobian rebuilds as historical context rather than current behavior.
 
 ## Phase 1 Fix: Adaptive Timestep Controller
 
@@ -1546,25 +1748,35 @@ if (gas_inventory_before - gas_inventory_after).abs() > 1e-6 {
 
 If this fires on the SPE1 gas case, the diagnosis is confirmed.
 
-### Issue: No Global Material Balance Convergence Check
+### Historical Issue: Global Material Balance Gate Was Missing, Then Too Soft On Guarded Paths
 
 **Location**: `fim/newton.rs`, convergence acceptance paths.
 
-The Newton solver checks convergence via scaled infinity norms of the residual and update. This is equivalent to OPM's CNV (Component Normalized Volume) check — the maximum per-cell residual. However, OPM also requires a **MB (Mass Balance)** check: the sum of all residuals per component over the entire domain, normalized by total fluid volume.
+At the time of the original review, the Newton solver effectively behaved like a CNV-only checker. Since then, current head gained a global component-sum MB diagnostic and threaded it through the acceptance paths. The remaining gap found on 2026-04-08 was narrower: the residual entry-guard machinery also widened the MB limit, which was still softer than OPM's intended `CNV + MB` requirement.
 
 The MB check catches cases where per-cell residuals are individually small but don't sum to zero — meaning the global conservation equations are not actually satisfied. This is particularly important when regime transitions or clamping operations modify the state after the Newton solve.
 
-Adding a global mass balance check would provide a safety net against the Rs clamping bug and similar state-modification errors. If the sum of gas-component residuals is nonzero after acceptance, the step should be rejected regardless of per-cell convergence.
+Current status after the 2026-04-08 fix:
 
-### Issue: Full Assembly During Line Search
+- global MB diagnostics are computed from the summed cell conservation rows per component
+- post-classification accepted-state checks require MB to pass
+- guarded residual shortcuts no longer loosen the MB threshold
 
-**Location**: `fim/newton.rs`, lines 694–703 (damping loop).
+This issue should now be treated as resolved unless a later diagnostic shows the MB normalization itself is insufficient.
 
-Each damped trial candidate calls `assemble_fim_system`, which builds both the residual and the full Jacobian. Only the residual norm is needed for the line search acceptance decision. The Jacobian is discarded. This multiplies the cost of each Newton iteration by `(1 + number_of_damping_trials)`.
+### Historical Issue: Full Assembly During Residual-Based Damping Checks
 
-OPM Flow does not use a residual-based line search — it relies on Appleyard chops alone with tighter per-variable limits. The chops are cheaper because they don't require residual evaluation.
+At the time of the original review, the Newton loop still had a residual-based damping acceptance path, and those candidate checks rebuilt the full Jacobian even though they only needed residual norms.
 
-**Fix**: The `assemble_residual` function already exists as a separate path (used by the FD test helpers). Adding an `assemble_residual_only` option to `FimAssemblyOptions` that skips Jacobian construction would halve the cost of the line search without changing convergence behavior.
+Current status on 2026-04-08:
+
+- current `fim/newton.rs` no longer performs residual-based line search in the damping loop; it applies Appleyard and history-based damping directly
+- the OPM-class Appleyard defaults requested in the review are already active on current head (`ΔP <= 200 bar`, `ΔSw <= 0.1`)
+- the smaller leftover inefficiency was narrower: accepted-state convergence checks and the final post-loop residual check still called full assembly even though they only consumed residual and MB diagnostics
+- that leftover cost is now removed by routing those checks through `assemble_residual_only`
+- validation after that cleanup used the canonical wasm replay `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` after a fresh wasm rebuild. The replay stayed in the same regime already documented elsewhere on current head: accepted substeps `8/4/4/4/4/4`, retries `0/3/0` on step 1 and `0/2/0` on later steps, monotone `sg_max` growth `0.2987 -> 0.4540`, no solver warnings. In other words, this cleaned up real overhead, but it did not materially change the convergence pattern because the larger line-search issue had already been removed earlier.
+
+This issue should now be treated as resolved. If future diagnostics still show poor throughput, the cause is elsewhere in the nonlinear/linear coupling path rather than a hidden per-damped-candidate Jacobian rebuild.
 
 ### Issue: Convergence Criteria Compared to OPM
 
@@ -1573,7 +1785,7 @@ OPM Flow uses two separate convergence criteria that must both be satisfied:
 - **CNV** (per-cell): max over all cells of `|residual_i| / (pv_i / (dt * B_alpha))`. Similar to the current scaled infinity norm.
 - **MB** (global): `|sum(residual_i)| / (total_fluid_volume / (dt * B_alpha))` per component. Catches global conservation failures.
 
-The current implementation only has the CNV-equivalent check. Adding the MB check would be a small incremental change with disproportionate value for catching material balance problems.
+The current implementation now has both the CNV-equivalent check and a global MB gate. The remaining question, if diagnostics still expose false convergence later, would be whether the present MB normalization should be tightened further rather than whether MB is absent.
 
 ### Remaining Convergence Bottleneck: Nonlinear Stagnation After Breakthrough
 
@@ -1634,16 +1846,26 @@ The failing step has `iters=1, res=~8e-6` (just 60% above tolerance `1e-5`) with
 
 Interpretation: The front-local nonlinearity at the corner cell creates a minimum viable dt below which the step is easy (2 iters) and above which Newton can't descend. The 1.25× growth periodically crosses that threshold, and the 0.50 retry factor drops back below it. The system is stuck in a stable oscillation that no amount of Newton globalization can fully remove — only dt policy can.
 
-### Correctness alert: 3 failing tests
+### Historical correctness alert: 3 failing tests at the time of review
 
-Three pre-existing tests in the current HEAD are failing:
-- `fim::state::tests::classify_regimes_switches_immediately_when_rs_exceeds_rs_sat` — FAILED
-- `fim::state::tests::classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat` — FAILED
-- `fim::wells::tests::gas_injector_surface_pressure_derivatives_match_local_fd` — FAILED
+At the time of this 2026-03-31 review, three tests were failing in the then-current HEAD:
+- `fim::state::tests::classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`
+- `fim::state::tests::classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`
+- `fim::wells::tests::gas_injector_surface_pressure_derivatives_match_local_fd`
 
-The first two tests directly verify the Rs-switch correctness fix documented earlier in this worklog. Their failure means the Rs clamping fix is broken. This is the most likely explanation for FIM vs IMPES parity gaps on depletion cases (`dep_pss`, `dep_decline`) documented in the correctness review (lines 19-33 of this file).
+The first two tests were the direct evidence behind the Rs-clamping diagnosis above.
 
-**These failures must be investigated and fixed before further convergence tuning.**
+### Validation Update - 2026-04-08 Rs clamping fix is landed and revalidated
+
+- `src/lib/ressim/src/fim/state.rs` now uses the immediate undersaturated-to-saturated switch path documented above: if `Rs > Rs_sat + tol`, `classify_regimes()` resolves the flash immediately instead of clamping `Rs` back to `Rs_sat`.
+- Focused Rust validation is green:
+  - `classify_regimes_switches_immediately_when_rs_exceeds_rs_sat`
+  - `classify_regimes_preserves_gas_inventory_when_undersaturated_state_exceeds_rs_sat`
+  - `spe1_fim_gas_injection_creates_free_gas`
+- Rebuilt wasm gas-side diagnostic is also consistent with the fix being active. On `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`, free gas appears immediately and grows monotonically across the short run:
+  - `sg_max`: `0.2992 -> 0.3592 -> 0.3946 -> 0.4196 -> 0.4388 -> 0.4541`
+  - no solver warnings were emitted
+- Current interpretation: the specific Rs-clamping material-balance bug described in this section is no longer an open issue on the current head. Remaining SPE1/FIM performance gaps should therefore be treated as separate nonlinear/linear/timestep problems rather than as evidence that `classify_regimes()` is still discarding dissolved gas on this path.
 
 ### Architecture review: is an OPM rewrite viable?
 
@@ -1662,7 +1884,7 @@ A full OPM rewrite is not recommended — the core formulation is verified corre
 
 ### Priority order for next work
 
-1. **Correctness first**: Investigate and fix the 3 failing tests, especially the classify_regimes failures
+1. **Correctness first**: keep the landed `classify_regimes` gas-inventory tests green and investigate only any remaining correctness failures still present on the current head
 2. **Correctness baseline**: Add a dep_pss FIM vs IMPES parity smoke test
 3. **Convergence**: Hotspot-aware cooldown policy (smaller scoped change)
 4. **Convergence**: Replace line search with tighter Appleyard-only (OPM-style Newton globalization)

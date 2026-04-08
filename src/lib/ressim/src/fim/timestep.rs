@@ -1,7 +1,9 @@
 use crate::ReservoirSimulator;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
-use crate::fim::newton::{FimNewtonOptions, FimRetryFailureDiagnostics, run_fim_timestep};
+use crate::fim::newton::{
+    FimHotspotSite, FimNewtonOptions, FimRetryFailureDiagnostics, run_fim_timestep,
+};
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::reporting::FimStepStats;
 
@@ -31,15 +33,7 @@ struct FimRetryHotspot {
     dominant_family_label: &'static str,
     dominant_row: usize,
     dominant_item_index: usize,
-    scope: FimRetryHotspotScope,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FimRetryHotspotScope {
-    Cell(usize),
-    Well(usize),
-    Perforation(usize),
-    Exact { row: usize, item_index: usize },
+    site: FimHotspotSite,
 }
 
 impl FimRetryHotspot {
@@ -50,27 +44,13 @@ impl FimRetryHotspot {
                 dominant_family_label: failure_diagnostics.dominant_family_label,
                 dominant_row: failure_diagnostics.dominant_row,
                 dominant_item_index: failure_diagnostics.dominant_item_index,
-                scope: FimRetryHotspotScope::from_failure(failure_diagnostics),
+                site: failure_diagnostics.hotspot_site,
             }),
         }
     }
 
     fn same_site(self, other: Self) -> bool {
-        self.scope == other.scope
-    }
-}
-
-impl FimRetryHotspotScope {
-    fn from_failure(failure_diagnostics: &FimRetryFailureDiagnostics) -> Self {
-        match failure_diagnostics.dominant_family_label {
-            "water" | "oil" | "gas" => Self::Cell(failure_diagnostics.dominant_item_index),
-            "well" => Self::Well(failure_diagnostics.dominant_item_index),
-            "perf" => Self::Perforation(failure_diagnostics.dominant_item_index),
-            _ => Self::Exact {
-                row: failure_diagnostics.dominant_row,
-                item_index: failure_diagnostics.dominant_item_index,
-            },
-        }
+        self.site == other.site
     }
 }
 
@@ -176,10 +156,11 @@ impl FimGrowthCooldown {
                     .hotspot
                     .map(|hotspot| {
                         format!(
-                            " hotspot={} row={} item={} repeats={} clear_left={}",
+                            " hotspot={} row={} item={} site={} repeats={} clear_left={}",
                             hotspot.dominant_family_label,
                             hotspot.dominant_row,
                             hotspot.dominant_item_index,
+                            hotspot.site.trace_label(),
                             self.hotspot_repeat_failures,
                             Self::HOTSPOT_MEMORY_CLEAR_CLEAN_SUCCESSES
                                 .saturating_sub(self.hotspot_clean_successes_without_retry),
@@ -810,7 +791,7 @@ mod tests {
         proposed_trial_dt_days,
     };
     use crate::ReservoirSimulator;
-    use crate::fim::newton::{FimRetryFailureClass, FimRetryFailureDiagnostics};
+    use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
 
     fn failure_diagnostics(
         class: FimRetryFailureClass,
@@ -822,6 +803,7 @@ mod tests {
             dominant_family_label: "water",
             dominant_row,
             dominant_item_index,
+            hotspot_site: FimHotspotSite::Cell(dominant_item_index),
             linear_iterations: Some(12),
             used_linear_fallback: false,
             cpr_average_reduction_ratio: Some(1e-13),
@@ -901,6 +883,49 @@ mod tests {
 
         assert_eq!(capped.factor, 1.0);
         assert_eq!(capped.limiter, "hotspot-repeat");
+    }
+
+    #[test]
+    fn alternating_gas_cells_with_shared_injector_symmetry_site_count_as_same_hotspot() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let east_failure = FimRetryFailureDiagnostics {
+            dominant_family_label: "gas",
+            dominant_row: 11,
+            dominant_item_index: 3,
+            hotspot_site: FimHotspotSite::GasInjectorSymmetry {
+                injector_well_index: 0,
+                major_offset: 3,
+                minor_offset: 0,
+                vertical_offset: 0,
+            },
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 11, 3)
+        };
+        let north_failure = FimRetryFailureDiagnostics {
+            dominant_family_label: "gas",
+            dominant_row: 83,
+            dominant_item_index: 30,
+            hotspot_site: FimHotspotSite::GasInjectorSymmetry {
+                injector_well_index: 0,
+                major_offset: 3,
+                minor_offset: 0,
+                vertical_offset: 0,
+            },
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 83, 30)
+        };
+
+        cooldown.note_retry_failure(&east_failure);
+        cooldown.note_retry_failure(&north_failure);
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 2);
+        assert_eq!(
+            cooldown.hotspot.expect("hotspot").site,
+            FimHotspotSite::GasInjectorSymmetry {
+                injector_well_index: 0,
+                major_offset: 3,
+                minor_offset: 0,
+                vertical_offset: 0,
+            }
+        );
     }
 
     #[test]

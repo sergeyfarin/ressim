@@ -39,6 +39,7 @@ const CHECKPOINT_TRACE_TARGET_CELL_INDEX: usize = 143;
 const PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES: usize = 2;
 const PRODUCER_HOTSPOT_STAGNATION_THRESHOLD: u32 = 1;
 const NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO: f64 = 0.98;
+const NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO: f64 = 0.90;
 const NONLINEAR_HISTORY_MIN_STREAK: u32 = 1;
 const NONLINEAR_HISTORY_FIRST_DAMPING_CAP: f64 = 0.5;
 const NONLINEAR_HISTORY_REPEAT_DAMPING_CAP: f64 = 0.25;
@@ -67,10 +68,43 @@ pub(crate) struct FimRetryFailureDiagnostics {
     pub(crate) dominant_family_label: &'static str,
     pub(crate) dominant_row: usize,
     pub(crate) dominant_item_index: usize,
+    pub(crate) hotspot_site: FimHotspotSite,
     pub(crate) linear_iterations: Option<usize>,
     pub(crate) used_linear_fallback: bool,
     pub(crate) cpr_average_reduction_ratio: Option<f64>,
     pub(crate) cpr_last_reduction_ratio: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimHotspotSite {
+    Cell(usize),
+    GasInjectorSymmetry {
+        injector_well_index: usize,
+        major_offset: usize,
+        minor_offset: usize,
+        vertical_offset: usize,
+    },
+    Well(usize),
+    Perforation(usize),
+}
+
+impl FimHotspotSite {
+    pub(crate) fn trace_label(self) -> String {
+        match self {
+            Self::Cell(cell_idx) => format!("cell{}", cell_idx),
+            Self::GasInjectorSymmetry {
+                injector_well_index,
+                major_offset,
+                minor_offset,
+                vertical_offset,
+            } => format!(
+                "gasinj{}[{},{},{}]",
+                injector_well_index, major_offset, minor_offset, vertical_offset
+            ),
+            Self::Well(well_idx) => format!("well{}", well_idx),
+            Self::Perforation(perf_idx) => format!("perf{}", perf_idx),
+        }
+    }
 }
 
 fn linear_report_trace_suffix(
@@ -106,9 +140,22 @@ fn linear_report_trace_suffix(
     )
 }
 
+#[cfg(test)]
 fn classify_retry_failure(
     linear_report: Option<&FimLinearSolveReport>,
     residual_diagnostics: &ResidualFamilyDiagnostics,
+) -> FimRetryFailureDiagnostics {
+    classify_retry_failure_with_site(
+        linear_report,
+        residual_diagnostics,
+        exact_residual_hotspot_site(&residual_diagnostics.global),
+    )
+}
+
+fn classify_retry_failure_with_site(
+    linear_report: Option<&FimLinearSolveReport>,
+    residual_diagnostics: &ResidualFamilyDiagnostics,
+    hotspot_site: FimHotspotSite,
 ) -> FimRetryFailureDiagnostics {
     let used_linear_fallback = linear_report.is_some_and(|report| report.used_fallback);
     let cpr_average_reduction_ratio = linear_report
@@ -118,7 +165,7 @@ fn classify_retry_failure(
         .and_then(|report| report.cpr_diagnostics.as_ref())
         .map(|diagnostics| diagnostics.last_reduction_ratio);
     let class = if let Some(report) = linear_report {
-        if !report.converged || used_linear_fallback {
+        if !report.converged {
             FimRetryFailureClass::LinearBad
         } else {
             match report.backend_used {
@@ -155,6 +202,7 @@ fn classify_retry_failure(
         dominant_family_label: residual_diagnostics.global.family.label(),
         dominant_row: residual_diagnostics.global.row,
         dominant_item_index: residual_diagnostics.global.item_index,
+        hotspot_site,
         linear_iterations: linear_report.map(|report| report.iterations),
         used_linear_fallback,
         cpr_average_reduction_ratio,
@@ -164,11 +212,12 @@ fn classify_retry_failure(
 
 fn retry_failure_trace_suffix(diagnostics: &FimRetryFailureDiagnostics) -> String {
     let mut parts = vec![format!(
-        " retry=[class={} dom={} row={} item={}",
+        " retry=[class={} dom={} row={} item={} site={}",
         diagnostics.class.label(),
         diagnostics.dominant_family_label,
         diagnostics.dominant_row,
         diagnostics.dominant_item_index,
+        diagnostics.hotspot_site.trace_label(),
     )];
     if let Some(linear_iterations) = diagnostics.linear_iterations {
         parts.push(format!(" linear_iters={}", linear_iterations));
@@ -567,18 +616,18 @@ struct ProducerHotspotStagnationDiagnostics {
     attached_perforation_context: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ResidualHotspotSite {
-    Cell(usize),
-    Well(usize),
-    Perforation(usize),
-}
-
 #[derive(Clone, Debug, PartialEq)]
 struct NonlinearHistoryStabilizationDecision {
     damping_cap: f64,
     repeated_site_streak: u32,
-    site: ResidualHotspotSite,
+    site: FimHotspotSite,
+}
+
+fn cell_ijk(sim: &ReservoirSimulator, cell_idx: usize) -> (usize, usize, usize) {
+    let i = cell_idx % sim.nx;
+    let j = (cell_idx / sim.nx) % sim.ny;
+    let k = cell_idx / (sim.nx * sim.ny);
+    (i, j, k)
 }
 
 fn cell_boundary_plane_count(sim: &ReservoirSimulator, cell_idx: usize) -> usize {
@@ -586,9 +635,7 @@ fn cell_boundary_plane_count(sim: &ReservoirSimulator, cell_idx: usize) -> usize
         return 0;
     }
 
-    let i = cell_idx % sim.nx;
-    let j = (cell_idx / sim.nx) % sim.ny;
-    let k = cell_idx / (sim.nx * sim.ny);
+    let (i, j, k) = cell_ijk(sim, cell_idx);
     let mut count = 0;
 
     if i == 0 || i + 1 == sim.nx {
@@ -689,34 +736,80 @@ fn producer_hotspot_stagnation_trace(
     )
 }
 
-fn residual_hotspot_site(peak: &ResidualFamilyPeak) -> ResidualHotspotSite {
+fn exact_residual_hotspot_site(peak: &ResidualFamilyPeak) -> FimHotspotSite {
     match peak.family {
         ResidualRowFamily::Water
         | ResidualRowFamily::OilComponent
-        | ResidualRowFamily::GasComponent => ResidualHotspotSite::Cell(peak.item_index),
-        ResidualRowFamily::WellConstraint => ResidualHotspotSite::Well(peak.item_index),
-        ResidualRowFamily::PerforationFlow => ResidualHotspotSite::Perforation(peak.item_index),
+        | ResidualRowFamily::GasComponent => FimHotspotSite::Cell(peak.item_index),
+        ResidualRowFamily::WellConstraint => FimHotspotSite::Well(peak.item_index),
+        ResidualRowFamily::PerforationFlow => FimHotspotSite::Perforation(peak.item_index),
+    }
+}
+
+fn gas_injector_symmetry_site(
+    sim: &ReservoirSimulator,
+    topology: &crate::fim::wells::FimWellTopology,
+    cell_idx: usize,
+) -> Option<FimHotspotSite> {
+    let (cell_i, cell_j, cell_k) = cell_ijk(sim, cell_idx);
+    topology
+        .perforations
+        .iter()
+        .filter(|perforation| perforation.injector)
+        .map(|perforation| {
+            let di = perforation.i.abs_diff(cell_i);
+            let dj = perforation.j.abs_diff(cell_j);
+            let dk = perforation.k.abs_diff(cell_k);
+            let major_offset = di.max(dj);
+            let minor_offset = di.min(dj);
+            (
+                (di + dj + dk, major_offset, minor_offset, dk, perforation.physical_well_index),
+                FimHotspotSite::GasInjectorSymmetry {
+                    injector_well_index: perforation.physical_well_index,
+                    major_offset,
+                    minor_offset,
+                    vertical_offset: dk,
+                },
+            )
+        })
+        .min_by_key(|(distance_key, _)| *distance_key)
+        .map(|(_, site)| site)
+}
+
+fn residual_hotspot_site(
+    sim: &ReservoirSimulator,
+    topology: &crate::fim::wells::FimWellTopology,
+    peak: &ResidualFamilyPeak,
+) -> FimHotspotSite {
+    match peak.family {
+        ResidualRowFamily::GasComponent => gas_injector_symmetry_site(sim, topology, peak.item_index)
+            .unwrap_or_else(|| exact_residual_hotspot_site(peak)),
+        _ => exact_residual_hotspot_site(peak),
     }
 }
 
 fn repeated_nonlinear_hotspot_streak(
-    previous_diagnostics: Option<&ResidualFamilyDiagnostics>,
+    previous_site: Option<FimHotspotSite>,
     previous_residual_norm: f64,
     current_diagnostics: &ResidualFamilyDiagnostics,
+    current_site: FimHotspotSite,
     current_residual_norm: f64,
     current_streak: u32,
 ) -> u32 {
-    let Some(previous_diagnostics) = previous_diagnostics else {
+    let Some(previous_site) = previous_site else {
         return 0;
     };
     if !previous_residual_norm.is_finite() || previous_residual_norm <= f64::EPSILON {
         return 0;
     }
 
-    let same_site = residual_hotspot_site(&previous_diagnostics.global)
-        == residual_hotspot_site(&current_diagnostics.global);
+    let same_site = previous_site == current_site;
+    let weak_progress_ratio = match current_diagnostics.global.family {
+        ResidualRowFamily::GasComponent => NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO,
+        _ => NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO,
+    };
     let weak_progress = current_residual_norm
-        >= previous_residual_norm * NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO;
+        >= previous_residual_norm * weak_progress_ratio;
 
     if same_site && weak_progress {
         current_streak + 1
@@ -727,14 +820,14 @@ fn repeated_nonlinear_hotspot_streak(
 
 fn nonlinear_history_stabilization_decision(
     linear_report: &FimLinearSolveReport,
-    current_diagnostics: &ResidualFamilyDiagnostics,
+    _current_diagnostics: &ResidualFamilyDiagnostics,
     current_residual_norm: f64,
     options: &FimNewtonOptions,
     repeated_site_streak: u32,
+    current_site: FimHotspotSite,
 ) -> Option<NonlinearHistoryStabilizationDecision> {
     if repeated_site_streak < NONLINEAR_HISTORY_MIN_STREAK
         || !linear_report.converged
-        || linear_report.used_fallback
         || current_residual_norm
             > options.residual_tolerance * NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR
     {
@@ -750,21 +843,18 @@ fn nonlinear_history_stabilization_decision(
     Some(NonlinearHistoryStabilizationDecision {
         damping_cap,
         repeated_site_streak,
-        site: residual_hotspot_site(&current_diagnostics.global),
+        site: current_site,
     })
 }
 
 fn nonlinear_history_stabilization_trace(
     decision: &NonlinearHistoryStabilizationDecision,
 ) -> String {
-    let site = match decision.site {
-        ResidualHotspotSite::Cell(cell_idx) => format!("cell{}", cell_idx),
-        ResidualHotspotSite::Well(well_idx) => format!("well{}", well_idx),
-        ResidualHotspotSite::Perforation(perf_idx) => format!("perf{}", perf_idx),
-    };
     format!(
         " hist=[site={} streak={} damp_cap={:.3}]",
-        site, decision.repeated_site_streak, decision.damping_cap,
+        decision.site.trace_label(),
+        decision.repeated_site_streak,
+        decision.damping_cap,
     )
 }
 
@@ -796,10 +886,16 @@ fn producer_hotspot_stagnation_should_bail(
 }
 
 fn classify_producer_hotspot_stagnation_failure(
+    sim: &ReservoirSimulator,
+    topology: &crate::fim::wells::FimWellTopology,
     linear_report: Option<&FimLinearSolveReport>,
     residual_diagnostics: &ResidualFamilyDiagnostics,
 ) -> FimRetryFailureDiagnostics {
-    let mut diagnostics = classify_retry_failure(linear_report, residual_diagnostics);
+    let mut diagnostics = classify_retry_failure_with_site(
+        linear_report,
+        residual_diagnostics,
+        residual_hotspot_site(sim, topology, &residual_diagnostics.global),
+    );
     diagnostics.class = FimRetryFailureClass::NonlinearBad;
     diagnostics
 }
@@ -1627,7 +1723,7 @@ fn evaluate_accepted_state_convergence(
         &FimAssemblyOptions {
             dt_days,
             include_wells: true,
-            assemble_residual_only: false,
+            assemble_residual_only: true,
             topology: Some(topology),
         },
     );
@@ -1664,7 +1760,7 @@ fn convergence_limits(options: &FimNewtonOptions, use_guard_band: bool) -> (f64,
     };
     (
         options.residual_tolerance * factor,
-        options.material_balance_tolerance * factor,
+        options.material_balance_tolerance,
     )
 }
 
@@ -1761,7 +1857,7 @@ pub(crate) fn run_fim_timestep(
     let mut final_update_inf_norm = f64::INFINITY;
     let mut prev_residual_norm = f64::INFINITY;
     let mut stagnation_count: u32 = 0;
-    let mut previous_residual_diagnostics: Option<ResidualFamilyDiagnostics> = None;
+    let mut previous_hotspot_site: Option<FimHotspotSite> = None;
     let mut repeated_hotspot_streak: u32 = 0;
     let mut previous_producer_hotspot_effective_move: Option<ProducerHotspotStagnationDiagnostics> =
         None;
@@ -1825,10 +1921,12 @@ pub(crate) fn run_fim_timestep(
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let previous_iteration_residual_norm = prev_residual_norm;
+        let current_hotspot_site = residual_hotspot_site(sim, &topology, &residual_diagnostics.global);
         repeated_hotspot_streak = repeated_nonlinear_hotspot_streak(
-            previous_residual_diagnostics.as_ref(),
+            previous_hotspot_site,
             previous_iteration_residual_norm,
             &residual_diagnostics,
+            current_hotspot_site,
             current_norm,
             repeated_hotspot_streak,
         );
@@ -1907,9 +2005,14 @@ pub(crate) fn run_fim_timestep(
                 };
             }
 
-            let failure_diagnostics = classify_retry_failure(
+            let failure_diagnostics = classify_retry_failure_with_site(
                 last_linear_report.as_ref(),
                 &accepted_diagnostics.residual_diagnostics,
+                residual_hotspot_site(
+                    sim,
+                    &topology,
+                    &accepted_diagnostics.residual_diagnostics.global,
+                ),
             );
             let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
@@ -2064,8 +2167,11 @@ pub(crate) fn run_fim_timestep(
                         .unwrap_or_default()
                 );
 
-                let failure_diagnostics =
-                    classify_retry_failure(last_linear_report.as_ref(), &residual_diagnostics);
+                let failure_diagnostics = classify_retry_failure_with_site(
+                    last_linear_report.as_ref(),
+                    &residual_diagnostics,
+                    current_hotspot_site,
+                );
                 let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
                 fim_trace!(
                     sim,
@@ -2205,9 +2311,14 @@ pub(crate) fn run_fim_timestep(
                 };
             }
 
-            let failure_diagnostics = classify_retry_failure(
+            let failure_diagnostics = classify_retry_failure_with_site(
                 Some(&linear_report),
                 &accepted_diagnostics.residual_diagnostics,
+                residual_hotspot_site(
+                    sim,
+                    &topology,
+                    &accepted_diagnostics.residual_diagnostics.global,
+                ),
             );
             let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
@@ -2255,6 +2366,7 @@ pub(crate) fn run_fim_timestep(
             current_norm,
             options,
             repeated_hotspot_streak,
+            current_hotspot_site,
         );
         let damping = history_stabilization
             .as_ref()
@@ -2355,6 +2467,8 @@ pub(crate) fn run_fim_timestep(
                 .as_ref()
                 .expect("checked producer hotspot stagnation");
             let failure_diagnostics = classify_producer_hotspot_stagnation_failure(
+                sim,
+                &topology,
                 Some(&linear_report),
                 &residual_diagnostics,
             );
@@ -2387,11 +2501,14 @@ pub(crate) fn run_fim_timestep(
         }
 
         previous_producer_hotspot_effective_move = producer_hotspot_stagnation;
-        previous_residual_diagnostics = Some(residual_diagnostics.clone());
+        previous_hotspot_site = Some(current_hotspot_site);
 
         if !candidate_is_valid {
-            let failure_diagnostics =
-                classify_retry_failure(Some(&linear_report), &residual_diagnostics);
+            let failure_diagnostics = classify_retry_failure_with_site(
+                Some(&linear_report),
+                &residual_diagnostics,
+                current_hotspot_site,
+            );
             let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
             fim_trace!(
                 sim,
@@ -2432,7 +2549,7 @@ pub(crate) fn run_fim_timestep(
         &FimAssemblyOptions {
             dt_days,
             include_wells: true,
-            assemble_residual_only: false,
+            assemble_residual_only: true,
             topology: Some(&topology),
         },
     );
@@ -2494,8 +2611,11 @@ pub(crate) fn run_fim_timestep(
         };
     }
 
-    let failure_diagnostics =
-        classify_retry_failure(last_linear_report.as_ref(), &final_residual_diagnostics);
+    let failure_diagnostics = classify_retry_failure_with_site(
+        last_linear_report.as_ref(),
+        &final_residual_diagnostics,
+        residual_hotspot_site(sim, &topology, &final_residual_diagnostics.global),
+    );
     let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
     fim_trace!(
         sim,
@@ -2772,6 +2892,77 @@ mod tests {
         assert!(trace.contains("res="));
         assert!(trace.contains("mb="));
         assert!(trace.contains("reject"));
+    }
+
+    #[test]
+    fn guard_band_keeps_material_balance_limit_strict() {
+        let options = FimNewtonOptions::default();
+        let (residual_limit, material_balance_limit) = convergence_limits(&options, true);
+
+        assert_eq!(
+            residual_limit,
+            options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
+        );
+        assert_eq!(material_balance_limit, options.material_balance_tolerance);
+    }
+
+    #[test]
+    fn accepted_state_convergence_rejects_guard_band_material_balance_violation() {
+        let diagnostics = AcceptedStateConvergenceDiagnostics {
+            state: FimState {
+                cells: Vec::new(),
+                well_bhp: Vec::new(),
+                perforation_rates_m3_day: Vec::new(),
+            },
+            residual_inf_norm: 1.5e-5,
+            residual_diagnostics: ResidualFamilyDiagnostics {
+                water: ResidualFamilyPeak {
+                    family: ResidualRowFamily::Water,
+                    scaled_value: 1.5e-5,
+                    row: 0,
+                    item_index: 0,
+                },
+                oil_component: ResidualFamilyPeak {
+                    family: ResidualRowFamily::OilComponent,
+                    scaled_value: 1.0e-5,
+                    row: 1,
+                    item_index: 0,
+                },
+                gas_component: ResidualFamilyPeak {
+                    family: ResidualRowFamily::GasComponent,
+                    scaled_value: 0.5e-5,
+                    row: 2,
+                    item_index: 0,
+                },
+                well_constraint: None,
+                perforation_flow: None,
+                global: ResidualFamilyPeak {
+                    family: ResidualRowFamily::Water,
+                    scaled_value: 1.5e-5,
+                    row: 0,
+                    item_index: 0,
+                },
+            },
+            residual_detail: None,
+            material_balance_inf_norm: 1.5e-5,
+            material_balance_diagnostics: GlobalMaterialBalanceDiagnostics {
+                water: 1.5e-5,
+                oil_component: 1.0e-5,
+                gas_component: 0.5e-5,
+                global_family: ResidualRowFamily::Water,
+                global_value: 1.5e-5,
+            },
+        };
+        let options = FimNewtonOptions::default();
+        let (residual_limit, material_balance_limit) = convergence_limits(&options, true);
+
+        assert!(diagnostics.residual_inf_norm <= residual_limit);
+        assert!(diagnostics.material_balance_inf_norm > material_balance_limit);
+        assert!(!accepted_state_meets_convergence(
+            &diagnostics,
+            residual_limit,
+            material_balance_limit,
+        ));
     }
 
     #[test]
@@ -3055,7 +3246,7 @@ mod tests {
     }
 
     #[test]
-    fn failure_classification_marks_fallback_path_as_linear_bad() {
+    fn failure_classification_marks_converged_fallback_path_as_nonlinear_bad() {
         let diagnostics = ResidualFamilyDiagnostics {
             water: ResidualFamilyPeak {
                 family: ResidualRowFamily::Water,
@@ -3098,31 +3289,65 @@ mod tests {
 
         let classified = classify_retry_failure(Some(&report), &diagnostics);
 
+        assert_eq!(classified.class, FimRetryFailureClass::NonlinearBad);
+        assert!(classified.used_linear_fallback);
+    }
+
+    #[test]
+    fn failure_classification_keeps_nonconverged_fallback_path_linear_bad() {
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: ResidualFamilyPeak {
+                family: ResidualRowFamily::Water,
+                scaled_value: 0.5,
+                row: 0,
+                item_index: 0,
+            },
+            oil_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 1.0,
+                row: 1,
+                item_index: 0,
+            },
+            gas_component: ResidualFamilyPeak {
+                family: ResidualRowFamily::GasComponent,
+                scaled_value: 0.0,
+                row: 2,
+                item_index: 0,
+            },
+            well_constraint: None,
+            perforation_flow: None,
+            global: ResidualFamilyPeak {
+                family: ResidualRowFamily::OilComponent,
+                scaled_value: 1.0,
+                row: 1,
+                item_index: 0,
+            },
+        };
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: false,
+            iterations: 1,
+            final_residual_norm: 1e-2,
+            used_fallback: true,
+            backend_used: FimLinearSolverKind::DenseLuDebug,
+            cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
+        };
+
+        let classified = classify_retry_failure(Some(&report), &diagnostics);
+
         assert_eq!(classified.class, FimRetryFailureClass::LinearBad);
         assert!(classified.used_linear_fallback);
     }
 
     #[test]
     fn repeated_nonlinear_hotspot_streak_groups_phase_rows_by_cell_site() {
-        let previous_peak = ResidualFamilyPeak {
-            family: ResidualRowFamily::Water,
-            scaled_value: 1.0,
-            row: 429,
-            item_index: 143,
-        };
         let current_peak = ResidualFamilyPeak {
             family: ResidualRowFamily::OilComponent,
             scaled_value: 0.98,
             row: 430,
             item_index: 143,
-        };
-        let previous = ResidualFamilyDiagnostics {
-            water: previous_peak,
-            oil_component: previous_peak,
-            gas_component: previous_peak,
-            well_constraint: None,
-            perforation_flow: None,
-            global: previous_peak,
         };
         let current = ResidualFamilyDiagnostics {
             water: current_peak,
@@ -3134,10 +3359,11 @@ mod tests {
         };
 
         let streak = repeated_nonlinear_hotspot_streak(
-            Some(&previous),
+            Some(FimHotspotSite::Cell(143)),
             1.0,
             &current,
-            0.95,
+            FimHotspotSite::Cell(143),
+            0.99,
             0,
         );
 
@@ -3162,14 +3388,97 @@ mod tests {
         };
 
         let streak = repeated_nonlinear_hotspot_streak(
-            Some(&diagnostics),
+            Some(FimHotspotSite::Cell(143)),
             1.0,
             &diagnostics,
+            FimHotspotSite::Cell(143),
             0.5,
             2,
         );
 
         assert_eq!(streak, 0);
+    }
+
+    #[test]
+    fn repeated_nonlinear_hotspot_streak_relaxes_threshold_for_gas_hotspot_site() {
+        let current_peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::GasComponent,
+            scaled_value: 0.91,
+            row: 92,
+            item_index: 30,
+        };
+        let current = ResidualFamilyDiagnostics {
+            water: current_peak,
+            oil_component: current_peak,
+            gas_component: current_peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: current_peak,
+        };
+
+        let streak = repeated_nonlinear_hotspot_streak(
+            Some(FimHotspotSite::Cell(30)),
+            1.0e-4,
+            &current,
+            FimHotspotSite::Cell(30),
+            9.1e-5,
+            0,
+        );
+
+        assert_eq!(streak, 1);
+    }
+
+    #[test]
+    fn repeated_nonlinear_hotspot_streak_keeps_stricter_threshold_for_non_gas_sites() {
+        let current_peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::Water,
+            scaled_value: 0.91,
+            row: 429,
+            item_index: 143,
+        };
+        let current = ResidualFamilyDiagnostics {
+            water: current_peak,
+            oil_component: current_peak,
+            gas_component: current_peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: current_peak,
+        };
+
+        let streak = repeated_nonlinear_hotspot_streak(
+            Some(FimHotspotSite::Cell(143)),
+            1.0e-4,
+            &current,
+            FimHotspotSite::Cell(143),
+            9.1e-5,
+            0,
+        );
+
+        assert_eq!(streak, 0);
+    }
+
+    #[test]
+    fn gas_injector_symmetry_site_groups_axis_swapped_cells() {
+        let mut sim = ReservoirSimulator::new(10, 10, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(9, 9, 2, 50.0, 0.1, 0.0, false)
+            .expect("producer");
+        let topology = build_well_topology(&sim);
+
+        let east_site = gas_injector_symmetry_site(&sim, &topology, sim.idx(3, 0, 0));
+        let north_site = gas_injector_symmetry_site(&sim, &topology, sim.idx(0, 3, 0));
+
+        assert_eq!(east_site, north_site);
+        assert_eq!(
+            east_site,
+            Some(FimHotspotSite::GasInjectorSymmetry {
+                injector_well_index: 0,
+                major_offset: 3,
+                minor_offset: 0,
+                vertical_offset: 0,
+            })
+        );
     }
 
     #[test]
@@ -3206,6 +3515,7 @@ mod tests {
             5e-5,
             &FimNewtonOptions::default(),
             1,
+            FimHotspotSite::Cell(143),
         )
             .expect("expected first stabilization decision");
         let repeated = nonlinear_history_stabilization_decision(
@@ -3214,10 +3524,11 @@ mod tests {
             5e-5,
             &FimNewtonOptions::default(),
             2,
+            FimHotspotSite::Cell(143),
         )
             .expect("expected repeated stabilization decision");
 
-        assert_eq!(first.site, ResidualHotspotSite::Cell(143));
+        assert_eq!(first.site, FimHotspotSite::Cell(143));
         assert!((first.damping_cap - 0.5).abs() < 1e-12);
         assert!((repeated.damping_cap - 0.25).abs() < 1e-12);
 
@@ -3227,8 +3538,51 @@ mod tests {
             1e-3,
             &FimNewtonOptions::default(),
             2,
+            FimHotspotSite::Cell(143),
         )
         .is_none());
+    }
+
+    #[test]
+    fn nonlinear_history_stabilization_allows_converged_fallback_path() {
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::GasComponent,
+            scaled_value: 1.0,
+            row: 92,
+            item_index: 30,
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: peak,
+            oil_component: peak,
+            gas_component: peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: true,
+            iterations: 1,
+            final_residual_norm: 1e-12,
+            used_fallback: true,
+            backend_used: FimLinearSolverKind::DenseLuDebug,
+            cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
+        };
+
+        let decision = nonlinear_history_stabilization_decision(
+            &report,
+            &diagnostics,
+            5e-5,
+            &FimNewtonOptions::default(),
+            1,
+            FimHotspotSite::Cell(30),
+        )
+        .expect("expected stabilization after converged fallback");
+
+        assert_eq!(decision.site, FimHotspotSite::Cell(30));
+        assert!((decision.damping_cap - 0.5).abs() < 1e-12);
     }
 
     #[test]
@@ -3508,4 +3862,5 @@ mod tests {
             &FimNewtonOptions::default(),
         ));
     }
+
 }
