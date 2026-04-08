@@ -535,6 +535,8 @@ function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
     fimMinAcceptedDtDays: fimStepStats?.min_accepted_dt_days ?? null,
     fimMaxAcceptedDtDays: fimStepStats?.max_accepted_dt_days ?? null,
     fimGrowthLimiter: fimStepStats?.growth_limiter ?? null,
+    fimHotspotRepeatSuppressedNewtonItersGrowthCount:
+      fimStepStats?.hotspot_repeat_suppressed_newton_iters_growth_count ?? null,
     fimLastRetryClass: fimStepStats?.last_retry_class ?? null,
     fimLastRetryDominantFamily: fimStepStats?.last_retry_dominant_family ?? null,
     fimLastRetryDominantRow: fimStepStats?.last_retry_dominant_row ?? null,
@@ -575,6 +577,7 @@ function printStepSummary(record) {
       `gor=${record.producingGor == null ? 'n/a' : record.producingGor.toFixed(2)}`,
       `dt=[${record.fimMinAcceptedDtDays == null ? 'n/a' : record.fimMinAcceptedDtDays.toExponential(3)},${record.fimMaxAcceptedDtDays == null ? 'n/a' : record.fimMaxAcceptedDtDays.toExponential(3)}]`,
       `growth=${record.fimGrowthLimiter ?? 'n/a'}`,
+      `hotspot_newton_caps=${record.fimHotspotRepeatSuppressedNewtonItersGrowthCount == null ? 'n/a' : record.fimHotspotRepeatSuppressedNewtonItersGrowthCount}`,
       `retry_dom=${record.fimLastRetryDominantFamily == null ? 'n/a' : `${record.fimLastRetryClass}:${record.fimLastRetryDominantFamily}@${record.fimLastRetryDominantRow}`}`,
       `fim_ms=${record.fimSolverMs == null ? 'n/a' : record.fimSolverMs.toFixed(1)}`,
       `asm_ms=${record.fimAssemblyMs == null ? 'n/a' : record.fimAssemblyMs.toFixed(1)}`,

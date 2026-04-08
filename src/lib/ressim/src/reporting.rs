@@ -149,6 +149,8 @@ pub struct FimStepStats {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub growth_limiter: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hotspot_repeat_suppressed_newton_iters_growth_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_retry_class: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_retry_dominant_family: Option<String>,
