@@ -20,7 +20,7 @@ macro_rules! fim_trace {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct FimGrowthCooldown {
+pub(crate) struct FimGrowthCooldown {
     cap_dt_days: Option<f64>,
     clean_successes_remaining: u32,
     hotspot: Option<FimRetryHotspot>,
@@ -88,6 +88,14 @@ impl FimRetryHotspot {
 
 impl FimGrowthCooldown {
     const HOTSPOT_MEMORY_CLEAR_CLEAN_SUCCESSES: u32 = 2;
+
+    fn into_outer_step_carryover(self) -> Self {
+        if self.hotspot.is_some() && self.hotspot_repeat_failures >= 2 {
+            return self;
+        }
+
+        Self::default()
+    }
 
     fn extra_clean_successes_for_repeated_hotspot(self) -> u32 {
         match self.hotspot_repeat_failures {
@@ -432,7 +440,7 @@ impl ReservoirSimulator {
         self.last_solver_warning = String::new();
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
-        let mut growth_cooldown = FimGrowthCooldown::default();
+        let mut growth_cooldown = std::mem::take(&mut self.fim_growth_cooldown);
         let mut solver_ms = 0.0;
         let mut accepted_solver_ms = 0.0;
         let mut retry_solver_ms = 0.0;
@@ -670,6 +678,7 @@ impl ReservoirSimulator {
                         self.time_days + time_stepped,
                         report.newton_iterations
                     );
+                    self.fim_growth_cooldown = growth_cooldown.into_outer_step_carryover();
                     store_fim_outer_step_stats(
                         self,
                         target_dt_days,
@@ -711,6 +720,7 @@ impl ReservoirSimulator {
                         self.time_days + time_stepped,
                         retry_count
                     );
+                    self.fim_growth_cooldown = growth_cooldown.into_outer_step_carryover();
                     store_fim_outer_step_stats(
                         self,
                         target_dt_days,
@@ -751,6 +761,8 @@ impl ReservoirSimulator {
                 time_stepped, target_dt_days
             );
         }
+
+        self.fim_growth_cooldown = growth_cooldown.into_outer_step_carryover();
 
         fim_trace!(
             self,
@@ -1142,6 +1154,53 @@ mod tests {
         cooldown.note_retry_accepted(0.25, 2);
 
         assert_eq!(cooldown.clean_successes_remaining, 4);
+    }
+
+    #[test]
+    fn repeated_hotspot_carryover_persists_into_next_outer_step() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+
+        let carryover = cooldown.into_outer_step_carryover();
+
+        assert_eq!(carryover.clamp_trial_dt(0.3125, 1.0), 0.25);
+        assert_eq!(carryover.hotspot_repeat_failures, 2);
+    }
+
+    #[test]
+    fn single_failure_does_not_persist_outer_step_carryover() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+
+        let carryover = cooldown.into_outer_step_carryover();
+
+        assert_eq!(carryover, FimGrowthCooldown::default());
+    }
+
+    #[test]
+    fn repeated_hotspot_memory_survives_outer_step_after_cooldown_release() {
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_accepted(0.25, 2);
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted();
+
+        let carryover = cooldown.into_outer_step_carryover();
+
+        assert!(carryover.cap_dt_days.is_none());
+        assert_eq!(carryover.hotspot_repeat_failures, 2);
+        assert!(carryover.hotspot.is_some());
     }
 
     #[test]

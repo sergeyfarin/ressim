@@ -86,6 +86,7 @@ impl ReservoirSimulator {
             last_solver_warning: String::new(),
             last_fim_trace: String::new(),
             capture_fim_trace: false,
+            fim_growth_cooldown: crate::fim::timestep::FimGrowthCooldown::default(),
             last_fim_step_stats: None,
             fim_step_stats_history: Vec::new(),
             cumulative_injection_m3: 0.0,
@@ -848,6 +849,7 @@ impl ReservoirSimulator {
         self.last_solver_warning.clear();
         self.last_fim_trace.clear();
         self.capture_fim_trace = false;
+        self.fim_growth_cooldown = crate::fim::timestep::FimGrowthCooldown::default();
         self.last_fim_step_stats = None;
         self.fim_step_stats_history.clear();
 

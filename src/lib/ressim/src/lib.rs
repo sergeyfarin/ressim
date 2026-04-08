@@ -112,6 +112,7 @@ pub struct ReservoirSimulator {
     last_solver_warning: String,
     last_fim_trace: String,
     capture_fim_trace: bool,
+    pub(crate) fim_growth_cooldown: crate::fim::timestep::FimGrowthCooldown,
     last_fim_step_stats: Option<reporting::FimStepStats>,
     fim_step_stats_history: Vec<reporting::FimStepStats>,
     cumulative_injection_m3: f64,
