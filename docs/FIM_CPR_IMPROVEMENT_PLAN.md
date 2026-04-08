@@ -462,9 +462,10 @@ Do not implement AMG until all of the following are true:
 | Coarse solve for >512-row systems | 8 ILU iters, 1e-2 tol | unchanged | stronger coarse residual reduction and lower fallback burden |
 | 5000-cell reservoir solve quality | degrades severely | unchanged | still open; AMG remains future work |
 
-Phase 1 is the only implementation-ready convergence lever for the current benchmark-sized
-shelves. Phase 2 is the separate over-threshold track. Phase 3 stays deferred until the
-coarse well-row story is explicit.
+Phase 1 is implemented and test-green, but it is currently parked rather than promoted as a
+runtime win because the shipped gas replay drift was not attributable to the new smoother and
+still needs separate current-head explanation. Phase 2 is now the active over-threshold track.
+Phase 3 stays deferred until the coarse well-row story is explicit.
 
 ## Validation Matrix
 

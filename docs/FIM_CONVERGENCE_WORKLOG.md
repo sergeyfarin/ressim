@@ -61,6 +61,7 @@ Historical narrative was trimmed out of this file on 2026-04-08.
   - the controller is now engaging on the intended gas-side path
   - outer-step carryover was directionally correct for gas because it could suppress one repeated retry shelf without losing the hotspot-repeat signal
   - it is still not the right shared implementation because the rest of the gas replay remained in the same `0/2/0` regime while water regressed
+  - the parked Phase 1 CPR fine-smoother change is not the cause of the current gas replay shape: rebuilding wasm and replaying the same shipped case with the default CPR smoother temporarily forced back to block-Jacobi produced the same `0/3/0`, then repeated `0/2/0` shelf, including step 4 at `0/2/0`
 
 ### Coarse pressure solver
 - The old coarse-solver note was too broad.
@@ -80,6 +81,7 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - Current interpretation:
   - coarse-pressure-solver quality is not the active blocker on the representative exact-dense shelf
   - it remains an open issue for larger over-threshold CPR cases
+  - Phase 1 should therefore be treated as implemented but parked pending later promotion; the active next solver track is Phase 2 on the over-threshold coarse path
 
 ## Active Conclusions
 - Current-head hard shelves are best described as reservoir-row nonlinear problems with partial controller improvements already landed.

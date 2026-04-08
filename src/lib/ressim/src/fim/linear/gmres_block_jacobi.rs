@@ -10,8 +10,8 @@ use super::{
 use crate::timing::PerfTimer;
 
 const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
-const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 8;
-const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-2;
+const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 50;
+const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-6;
 const FULL_ILU_ROW_LIMIT: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -279,18 +279,13 @@ impl BlockJacobiPreconditioner {
             };
             return (solution, reduction_ratio);
         }
-
-        let mut solution = DVector::zeros(rhs.len());
         let tolerance = rhs.norm().max(f64::EPSILON) * PRESSURE_DEFECT_CORRECTION_REL_TOL;
 
-        for _ in 0..PRESSURE_DEFECT_CORRECTION_MAX_ITERS {
-            let residual = rhs - &self.pressure_mat_vec(&solution);
-            if residual.norm() <= tolerance {
-                break;
-            }
-            let delta = self.apply_pressure_ilu(&residual);
-            solution += delta;
-        }
+        let solution = self.solve_pressure_with_bicgstab(
+            rhs,
+            PRESSURE_DEFECT_CORRECTION_MAX_ITERS,
+            tolerance,
+        );
 
         let residual = rhs - &self.pressure_mat_vec(&solution);
         let reduction_ratio = if rhs_norm > f64::EPSILON {
@@ -308,7 +303,7 @@ impl BlockJacobiPreconditioner {
         } else if self.pressure_dense_inverse.is_some() {
             Some(FimPressureCoarseSolverKind::ExactDense)
         } else {
-            Some(FimPressureCoarseSolverKind::IluDefectCorrection)
+            Some(FimPressureCoarseSolverKind::BiCgStab)
         }
     }
 
@@ -347,6 +342,77 @@ impl BlockJacobiPreconditioner {
                 sum
             };
         }
+        x
+    }
+
+    fn solve_pressure_with_bicgstab(
+        &self,
+        rhs: &DVector<f64>,
+        max_iters: usize,
+        tol: f64,
+    ) -> DVector<f64> {
+        let mut x = DVector::zeros(rhs.len());
+        let mut r = rhs - &self.pressure_mat_vec(&x);
+        let r0_norm = r.norm();
+        if r0_norm <= tol {
+            return x;
+        }
+
+        let r_hat = r.clone();
+        let mut rho_prev = 1.0;
+        let mut alpha = 1.0;
+        let mut omega = 1.0;
+        let mut v = DVector::<f64>::zeros(rhs.len());
+        let mut p = DVector::<f64>::zeros(rhs.len());
+
+        for iter in 0..max_iters {
+            if r.norm() <= tol {
+                break;
+            }
+
+            let rho = r_hat.dot(&r);
+            if !rho.is_finite() || rho.abs() < f64::EPSILON {
+                break;
+            }
+
+            let beta = if iter == 0 {
+                0.0
+            } else {
+                (rho / rho_prev) * (alpha / omega)
+            };
+            p = &r + beta * (&p - omega * &v);
+
+            let p_hat = self.apply_pressure_ilu(&p);
+            v = self.pressure_mat_vec(&p_hat);
+            let r_hat_dot_v = r_hat.dot(&v);
+            if !r_hat_dot_v.is_finite() || r_hat_dot_v.abs() < f64::EPSILON {
+                break;
+            }
+
+            alpha = rho / r_hat_dot_v;
+            let s = &r - alpha * &v;
+            if s.norm() <= tol {
+                x += alpha * p_hat;
+                break;
+            }
+
+            let s_hat = self.apply_pressure_ilu(&s);
+            let t = self.pressure_mat_vec(&s_hat);
+            let t_dot_t = t.dot(&t);
+            if !t_dot_t.is_finite() || t_dot_t.abs() < f64::EPSILON {
+                break;
+            }
+
+            omega = t.dot(&s) / t_dot_t;
+            if !omega.is_finite() || omega.abs() < f64::EPSILON {
+                break;
+            }
+
+            x += alpha * p_hat + omega * &s_hat;
+            r = s - omega * t;
+            rho_prev = rho;
+        }
+
         x
     }
 }
@@ -1585,6 +1651,65 @@ mod tests {
         assert!(report.converged);
         assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
         assert!(report.cpr_diagnostics.is_none());
+    }
+
+    #[test]
+    fn pressure_bicgstab_reduces_residual_on_small_nonsymmetric_system() {
+        let mut tri = TriMatI::<f64, usize>::new((6, 6));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 3, 1.0);
+        tri.add_triplet(1, 1, 2.0);
+        tri.add_triplet(2, 2, 1.5);
+        tri.add_triplet(3, 0, -1.5);
+        tri.add_triplet(3, 3, 5.0);
+        tri.add_triplet(4, 4, 3.0);
+        tri.add_triplet(5, 5, 7.0);
+        let matrix = tri.to_csr();
+
+        let preconditioner = build_block_jacobi_preconditioner(
+            &matrix,
+            Some(FimLinearBlockLayout {
+                cell_block_count: 2,
+                cell_block_size: 3,
+                well_bhp_count: 0,
+                perforation_tail_start: 6,
+            }),
+            CprFineSmootherKind::BlockJacobi,
+        );
+        let rhs = DVector::from_vec(vec![1.0, -2.0]);
+
+        let solution = preconditioner.solve_pressure_with_bicgstab(&rhs, 20, 1e-10);
+        let residual = rhs - preconditioner.pressure_mat_vec(&solution);
+
+        assert!(residual.norm() < 1e-8);
+    }
+
+    #[test]
+    fn cpr_report_uses_bicgstab_when_coarse_system_exceeds_dense_threshold() {
+        let n = PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD + 1;
+        let mut tri = TriMatI::<f64, usize>::new((n, n));
+        for idx in 0..n {
+            tri.add_triplet(idx, idx, 2.0);
+        }
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_element(n, 1.0);
+
+        let report = solve(
+            &matrix,
+            &rhs,
+            &FimLinearSolveOptions::default(),
+            Some(FimLinearBlockLayout {
+                cell_block_count: n,
+                cell_block_size: 1,
+                well_bhp_count: 0,
+                perforation_tail_start: n,
+            }),
+            false,
+        );
+
+        let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
+        assert_eq!(diagnostics.coarse_rows, n);
+        assert_eq!(diagnostics.coarse_solver, FimPressureCoarseSolverKind::BiCgStab);
     }
 
     #[test]

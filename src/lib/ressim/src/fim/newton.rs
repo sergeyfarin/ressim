@@ -123,7 +123,7 @@ fn linear_report_trace_suffix(
 
     let solver = match cpr.coarse_solver {
         crate::fim::linear::FimPressureCoarseSolverKind::ExactDense => "dense",
-        crate::fim::linear::FimPressureCoarseSolverKind::IluDefectCorrection => "ilu",
+        crate::fim::linear::FimPressureCoarseSolverKind::BiCgStab => "bicgstab",
     };
 
     format!(

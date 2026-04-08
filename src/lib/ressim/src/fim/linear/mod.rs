@@ -64,7 +64,7 @@ fn should_force_direct_solve(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimPressureCoarseSolverKind {
     ExactDense,
-    IluDefectCorrection,
+    BiCgStab,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
