@@ -5,8 +5,8 @@ use sprs::CsMat;
 
 use super::{
     FimCprDiagnostics, FimLinearBlockLayout, FimLinearFailureDiagnostics,
-    FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    FimPressureCoarseSolverKind,
+    FimLinearFailureReason, FimLinearRestartDiagnostics, FimLinearSolveOptions,
+    FimLinearSolveReport, FimLinearSolverKind, FimPressureCoarseSolverKind,
 };
 use crate::timing::PerfTimer;
 
@@ -1002,6 +1002,7 @@ fn build_iterative_failure_diagnostics(
     preconditioned_residual_norm: Option<f64>,
     estimated_residual_norm: Option<f64>,
     candidate_residual_norm: Option<f64>,
+    restart_diagnostics: Vec<FimLinearRestartDiagnostics>,
 ) -> FimLinearFailureDiagnostics {
     FimLinearFailureDiagnostics {
         reason,
@@ -1011,6 +1012,31 @@ fn build_iterative_failure_diagnostics(
         preconditioned_residual_norm,
         estimated_residual_norm,
         candidate_residual_norm,
+        restart_diagnostics,
+    }
+}
+
+fn build_restart_diagnostics(
+    restart_index: usize,
+    start_iteration: usize,
+    end_iteration: usize,
+    inner_steps: usize,
+    outer_residual_norm: f64,
+    preconditioned_residual_norm: f64,
+    best_estimated_residual_norm: Option<f64>,
+    best_candidate_residual_norm: Option<f64>,
+    solution_improved: bool,
+) -> FimLinearRestartDiagnostics {
+    FimLinearRestartDiagnostics {
+        restart_index,
+        start_iteration,
+        end_iteration,
+        inner_steps,
+        outer_residual_norm,
+        preconditioned_residual_norm,
+        best_estimated_residual_norm,
+        best_candidate_residual_norm,
+        solution_improved,
     }
 }
 
@@ -1083,6 +1109,7 @@ fn solve_with_cpr_fine_smoother(
     let mut last_preconditioned_residual_norm = None;
     let mut last_estimated_residual_norm = None;
     let mut last_candidate_residual_norm = None;
+    let mut restart_diagnostics = Vec::new();
 
     while iterations < max_iterations {
         let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
@@ -1137,12 +1164,17 @@ fn solve_with_cpr_fine_smoother(
         basis.push(preconditioned_residual / beta);
         let mut hessenberg = DMatrix::<f64>::zeros(restart + 1, restart);
         let mut best_solution = solution.clone();
-        let best_residual = residual_norm;
         let mut givens_cosines = vec![0.0; restart];
         let mut givens_sines = vec![0.0; restart];
         let mut rotated_rhs = DVector::<f64>::zeros(restart + 1);
         rotated_rhs[0] = beta;
         let mut inner_steps = 0usize;
+        let restart_index = restart_diagnostics.len() + 1;
+        let restart_start_iteration = iterations;
+        let mut restart_best_estimated_residual_norm = None;
+        let mut restart_best_candidate_residual_norm = None;
+        let mut restart_solution_improved = false;
+        let mut restart_recorded = false;
 
         for inner in 0..restart {
             if inner >= basis.len() {
@@ -1206,6 +1238,10 @@ fn solve_with_cpr_fine_smoother(
             // a full matrix-vector product at every inner iteration.
             let estimated_residual = rotated_rhs[inner + 1].abs();
             last_estimated_residual_norm = Some(estimated_residual);
+            restart_best_estimated_residual_norm = Some(
+                restart_best_estimated_residual_norm
+                    .map_or(estimated_residual, |best: f64| best.min(estimated_residual)),
+            );
 
             if estimated_residual <= tolerance
                 || iterations >= max_iterations
@@ -1217,6 +1253,29 @@ fn solve_with_cpr_fine_smoother(
                 let candidate = &solution + combine_basis(&basis[..cols], &y);
                 let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
                 last_candidate_residual_norm = Some(candidate_residual);
+                restart_best_candidate_residual_norm = Some(
+                    restart_best_candidate_residual_norm.map_or(candidate_residual, |best: f64| {
+                        best.min(candidate_residual)
+                    }),
+                );
+
+                if candidate_residual < residual_norm {
+                    best_solution = candidate.clone();
+                    restart_solution_improved = true;
+                }
+
+                restart_diagnostics.push(build_restart_diagnostics(
+                    restart_index,
+                    restart_start_iteration,
+                    iterations,
+                    inner_steps,
+                    residual_norm,
+                    beta,
+                    restart_best_estimated_residual_norm,
+                    restart_best_candidate_residual_norm,
+                    restart_solution_improved,
+                ));
+                restart_recorded = true;
 
                 if candidate_residual <= tolerance || iterations >= max_iterations {
                     let converged = candidate_residual <= tolerance;
@@ -1236,6 +1295,7 @@ fn solve_with_cpr_fine_smoother(
                                 last_preconditioned_residual_norm,
                                 last_estimated_residual_norm,
                                 last_candidate_residual_norm,
+                                restart_diagnostics,
                             ))
                         },
                         used_fallback,
@@ -1250,14 +1310,38 @@ fn solve_with_cpr_fine_smoother(
                     };
                 }
 
-                if candidate_residual < best_residual {
-                    best_solution = candidate;
-                }
                 if next_norm <= f64::EPSILON {
                     failure_reason = Some(FimLinearFailureReason::ArnoldiBreakdown);
                 }
                 break;
             }
+        }
+
+        if inner_steps > 0 && !restart_recorded {
+            let cols = inner_steps;
+            let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
+            let candidate = &solution + combine_basis(&basis[..cols], &y);
+            let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
+            last_candidate_residual_norm = Some(candidate_residual);
+            restart_best_candidate_residual_norm = Some(
+                restart_best_candidate_residual_norm
+                    .map_or(candidate_residual, |best: f64| best.min(candidate_residual)),
+            );
+            if candidate_residual < residual_norm {
+                best_solution = candidate;
+                restart_solution_improved = true;
+            }
+            restart_diagnostics.push(build_restart_diagnostics(
+                restart_index,
+                restart_start_iteration,
+                iterations,
+                inner_steps,
+                residual_norm,
+                beta,
+                restart_best_estimated_residual_norm,
+                restart_best_candidate_residual_norm,
+                restart_solution_improved,
+            ));
         }
 
         if inner_steps == 0 {
@@ -1284,6 +1368,7 @@ fn solve_with_cpr_fine_smoother(
                 last_preconditioned_residual_norm,
                 last_estimated_residual_norm,
                 last_candidate_residual_norm,
+                restart_diagnostics,
             ))
         },
         used_fallback,
@@ -1798,6 +1883,42 @@ mod tests {
         assert_eq!(diagnostics.coarse_rows, n);
         assert_eq!(diagnostics.coarse_solver, FimPressureCoarseSolverKind::BiCgStab);
         assert_eq!(diagnostics.smoother_label, "ilu0/post-bj");
+    }
+
+    #[test]
+    fn gmres_commits_restart_boundary_progress() {
+        let mut tri = TriMatI::<f64, usize>::new((6, 6));
+        for idx in 0..6 {
+            tri.add_triplet(idx, idx, 4.0);
+        }
+        for idx in 0..5 {
+            tri.add_triplet(idx, idx + 1, -1.0);
+            tri.add_triplet(idx + 1, idx, -1.0);
+        }
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_element(6, 1.0);
+
+        let report = solve(
+            &matrix,
+            &rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::GmresIlu0,
+                restart: 2,
+                max_iterations: 12,
+                relative_tolerance: 1e-8,
+                absolute_tolerance: 1e-10,
+            },
+            Some(FimLinearBlockLayout {
+                cell_block_count: 6,
+                cell_block_size: 1,
+                well_bhp_count: 0,
+                perforation_tail_start: 6,
+            }),
+            false,
+        );
+
+        assert!(report.converged, "expected restarted GMRES to converge, got {report:?}");
+        assert!(report.iterations > 2);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-# FIM CPR Preconditioner Improvement Plan
+FIM CPR Preconditioner Improvement Plan
 
 ## Diagnosis: Where the 10–20 FGMRES Iterations Come From
 
@@ -34,6 +34,12 @@ application.
 - Phase 2 is now implemented on current head. The non-dense coarse path reports
   `solver=bicgstab` and the bounded `23x23x1` probe shows much stronger coarse-stage reduction
   ratios than the old ILU defect-correction path.
+- Bounded over-threshold follow-up now also closed the first Krylov-plateau diagnosis. One real
+  GMRES issue was discarding restart-boundary candidate progress unless convergence or breakdown
+  happened inside the restart. After fixing that and replaying the same `23x23x1` bounded case,
+  the shelf shape stayed the same (`substeps=8`, `retries=0/3/0`) but fallback burden dropped
+  again, from `46` rejected CPR solves / `56` dense-LU uses to `28` rejected CPR solves /
+  `36` dense-LU uses.
 - The bounded threshold pair still lands on the same shelf shape, though:
   `22x22x1` (exact-dense control) and `23x23x1` (over-threshold probe) both end at
   `substeps=8`, `retries=0/3/0`.
@@ -42,6 +48,12 @@ application.
   immediately after the first CPR-backed iteration on each retry rung. The next slice inside
   Phase 2 should therefore target iterative-backend persistence / fallback-burden reduction,
   not another coarse residual-quality change by itself.
+- Updated interpretation after the bounded Krylov diagnosis: the remaining plateau is no longer a
+  missing-restart-update problem. Current restart traces now show 2–3 strongly improving restarts,
+  followed by a short-restart asymptotic tail where `outer_res`, `prec_res`, and `est_res` are
+  already tiny but the restart candidate stops improving (`upd=n`) and can come back worse than the
+  current iterate. The next Phase 2 slice should therefore target this post-coarse asymptotic
+  Krylov tail, not coarse-pressure quality and not restart bookkeeping.
 
 ## Guardrails Before Any Code Change
 

@@ -85,6 +85,19 @@ impl FimLinearFailureReason {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FimLinearRestartDiagnostics {
+    pub(crate) restart_index: usize,
+    pub(crate) start_iteration: usize,
+    pub(crate) end_iteration: usize,
+    pub(crate) inner_steps: usize,
+    pub(crate) outer_residual_norm: f64,
+    pub(crate) preconditioned_residual_norm: f64,
+    pub(crate) best_estimated_residual_norm: Option<f64>,
+    pub(crate) best_candidate_residual_norm: Option<f64>,
+    pub(crate) solution_improved: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FimLinearFailureDiagnostics {
     pub(crate) reason: FimLinearFailureReason,
     pub(crate) tolerance: f64,
@@ -93,6 +106,7 @@ pub(crate) struct FimLinearFailureDiagnostics {
     pub(crate) preconditioned_residual_norm: Option<f64>,
     pub(crate) estimated_residual_norm: Option<f64>,
     pub(crate) candidate_residual_norm: Option<f64>,
+    pub(crate) restart_diagnostics: Vec<FimLinearRestartDiagnostics>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

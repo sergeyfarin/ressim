@@ -164,6 +164,36 @@ fn linear_failure_trace_suffix(report: &FimLinearSolveReport) -> String {
     if let Some(norm) = failure.candidate_residual_norm {
         parts.push(format!(" cand_res={:.3e}", norm));
     }
+    if !failure.restart_diagnostics.is_empty() {
+        let restart_trace = failure
+            .restart_diagnostics
+            .iter()
+            .map(|restart| {
+                let est = restart
+                    .best_estimated_residual_norm
+                    .map(|norm| format!("{norm:.3e}"))
+                    .unwrap_or_else(|| "-".to_string());
+                let cand = restart
+                    .best_candidate_residual_norm
+                    .map(|norm| format!("{norm:.3e}"))
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "r{}:{}-{} steps={} out={:.3e} prec={:.3e} est={} cand={} upd={}",
+                    restart.restart_index,
+                    restart.start_iteration,
+                    restart.end_iteration,
+                    restart.inner_steps,
+                    restart.outer_residual_norm,
+                    restart.preconditioned_residual_norm,
+                    est,
+                    cand,
+                    if restart.solution_improved { "y" } else { "n" },
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        parts.push(format!(" restarts=[{}]", restart_trace));
+    }
     parts.push("]".to_string());
     parts.join("")
 }
