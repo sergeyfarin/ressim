@@ -72,6 +72,7 @@ pub(crate) enum FimLinearFailureReason {
     MaxIterations,
     ArnoldiBreakdown,
     RestartStagnation,
+    DeadStateDetected,
 }
 
 impl FimLinearFailureReason {
@@ -80,6 +81,7 @@ impl FimLinearFailureReason {
             Self::MaxIterations => "max-iters",
             Self::ArnoldiBreakdown => "arnoldi-breakdown",
             Self::RestartStagnation => "restart-stagnation",
+            Self::DeadStateDetected => "dead-state",
         }
     }
 }

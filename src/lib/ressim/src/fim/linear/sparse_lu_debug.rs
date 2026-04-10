@@ -9,6 +9,9 @@ use sprs::CsMat;
 use super::{FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind};
 use crate::timing::PerfTimer;
 
+const MAX_ITERATIVE_REFINEMENT_STEPS: usize = 2;
+const MIN_REFINEMENT_IMPROVEMENT_RATIO: f64 = 0.95;
+
 fn build_sparse_row_matrix(matrix: &CsMat<f64>) -> Option<SparseRowMat<usize, f64>> {
     let mut triplets = Vec::with_capacity(matrix.nnz());
     for (row, vec) in matrix.outer_iterator().enumerate() {
@@ -70,18 +73,49 @@ pub(super) fn solve(
         };
     };
 
-    let rhs_col = Col::from_fn(rhs.len(), |row| rhs[row]);
-    let solved = factorization.solve(&rhs_col);
-    let solution = DVector::from_iterator(rhs.len(), (0..rhs.len()).map(|idx| solved[idx]));
-    let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
-    let residual_norm = residual.norm();
     let tolerance =
         options.absolute_tolerance + options.relative_tolerance * rhs.norm().max(f64::EPSILON);
+    let rhs_col = Col::from_fn(rhs.len(), |row| rhs[row]);
+    let solved = factorization.solve(&rhs_col);
+    let mut solution = DVector::from_iterator(rhs.len(), (0..rhs.len()).map(|idx| solved[idx]));
+    let mut residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
+    let mut residual_norm = residual.norm();
+    let mut solves = usize::from(residual_norm > 0.0);
+
+    for _ in 0..MAX_ITERATIVE_REFINEMENT_STEPS {
+        if !residual_norm.is_finite() || residual_norm <= tolerance {
+            break;
+        }
+
+        let correction_rhs = Col::from_fn(rhs.len(), |row| residual[row]);
+        let correction_col = factorization.solve(&correction_rhs);
+        let correction = DVector::from_iterator(
+            rhs.len(),
+            (0..rhs.len()).map(|idx| correction_col[idx]),
+        );
+        if !correction.iter().all(|value| value.is_finite()) {
+            break;
+        }
+
+        let candidate = &solution + correction;
+        let candidate_residual = rhs - &cs_mat_mul_vec(jacobian, &candidate);
+        let candidate_residual_norm = candidate_residual.norm();
+        if !candidate_residual_norm.is_finite()
+            || candidate_residual_norm >= residual_norm * MIN_REFINEMENT_IMPROVEMENT_RATIO
+        {
+            break;
+        }
+
+        solution = candidate;
+        residual = candidate_residual;
+        residual_norm = candidate_residual_norm;
+        solves += 1;
+    }
 
     FimLinearSolveReport {
         solution,
         converged: residual_norm <= tolerance,
-        iterations: usize::from(residual_norm > 0.0),
+        iterations: solves,
         final_residual_norm: residual_norm,
         failure_diagnostics: None,
         used_fallback,

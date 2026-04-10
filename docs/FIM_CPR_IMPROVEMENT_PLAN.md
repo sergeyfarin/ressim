@@ -40,6 +40,17 @@ application.
   the shelf shape stayed the same (`substeps=8`, `retries=0/3/0`) but fallback burden dropped
   again, from `46` rejected CPR solves / `56` dense-LU uses to `28` rejected CPR solves /
   `36` dense-LU uses.
+- A second bounded Krylov-tail fix is now also in on current head. The restarted GMRES path was
+  still treating an over-optimistic preconditioned residual estimate as an immediate restart
+  trigger even when the true candidate residual disagreed and Krylov space could still grow.
+  Keeping that restart alive reduced the same `23x23x1` bounded replay further, from
+  `28` rejected CPR solves / `36` dense-LU uses to `15` rejected CPR solves /
+  `21` dense-LU uses, again with the same bounded shelf shape (`substeps=8`, `retries=0/3/0`).
+- A third bounded tail slice is now in as well. Tiny-residual tails that have already reached the
+  post-improvement asymptote no longer spend the full five restart windows proving that the current
+  iterate cannot be improved. On the same `23x23x1` bounded replay this reduced fallback burden one
+  more step, from `15` rejected CPR solves / `21` dense-LU uses to `14` rejected CPR solves /
+  `20` dense-LU uses, still with the same bounded shelf shape (`substeps=8`, `retries=0/3/0`).
 - The bounded threshold pair still lands on the same shelf shape, though:
   `22x22x1` (exact-dense control) and `23x23x1` (over-threshold probe) both end at
   `substeps=8`, `retries=0/3/0`.
@@ -54,6 +65,85 @@ application.
   already tiny but the restart candidate stops improving (`upd=n`) and can come back worse than the
   current iterate. The next Phase 2 slice should therefore target this post-coarse asymptotic
   Krylov tail, not coarse-pressure quality and not restart bookkeeping.
+- Updated interpretation after the latest tail fix: the old false-estimate restart trigger is no
+  longer the dominant plateau source either. Remaining `23x23x1` failures now split into a much
+  smaller tiny-residual tail, where the first 2–3 restarts improve strongly before later restart
+  candidates stall or worsen, plus a smaller set of genuinely hard nonlinear states where restart 1
+  never improves at all (`upd=n` from the first cycle). The next Phase 2 slice should therefore be
+  one of two bounded choices only: tighten acceptance/termination around the tiny-residual tail, or
+  detect and bypass the clearly non-improving hard states earlier instead of spending all five
+  restart cycles.
+- Updated interpretation after the current termination tweak: the visible new win comes mainly from
+  early `restart-stagnation` exit on the tiny tail, not from a broad acceptance expansion. Several
+  former `max-iters` tails now stop after restart 3 or 4 (`68-103` total iterations in the bounded
+  replay) once the current iterate is already tiny and later candidates are only worse. The clearly
+  hard states remain unchanged: they still show `upd=n` from restart 1 and still spend the full
+  `150`-iteration budget as `max-iters`. The next bounded Phase 2 slice should therefore move off
+  the tiny tail and focus on those immediately non-improving hard states.
+- Updated interpretation after the dead-state detector: the bounded `23x23x1` shelf count stayed the
+  same (`14` rejected CPR solves / `20` dense-LU uses), but the remaining hard-state family no
+  longer spends the full Krylov budget proving failure. The `upd=n` from restart 1 cases now stop
+  after the first full restart as `reason=dead-state` at `30` iterations instead of running out to
+  `150` iterations as `max-iters`. That means the remaining over-threshold issue is no longer wasted
+  tail work and no longer wasted dead-state proof work; it is the fallback burden itself.
+- Updated interpretation after the Newton-side dead-state bypass: the bounded fallback count is still
+  unchanged (`20` dense-LU uses), but repeated futile CPR attempts inside the same substep are now
+  suppressed after the first proven dead-state. On the same `23x23x1` replay, rejected CPR solves
+  dropped from `14` to `9` while dense fallback stayed flat at `20`. The remaining issue is now
+  narrower again: not repeated CPR rediscovery, but the fact that those hard states still need the
+  direct solve once they are detected.
+- First direct-fallback cleanup is now in on the wasm path. The dense fallback no longer clones the
+  assembled dense matrix before LU and no longer uses a dense matrix-vector multiply just to check
+  the residual; it now reuses the sparse Jacobian for residual evaluation. The bounded `23x23x1`
+  replay stayed behavior-identical (`9` rejected CPR solves / `20` dense-LU uses, same
+  `substeps=8`, `retries=0/3/0`), so this landed as a semantics-preserving direct-path cost cut.
+- Large-row wasm direct-fallback A/B is now also complete. Temporarily restoring dense LU on the
+  same bounded `23x23x1` replay kept the earlier behavior class (`9` rejected CPR solves /
+  `20` dense-LU uses, still `substeps=8`, `retries=0/3/0`) but took about `10866.6 ms` outer /
+  `10764.0 ms` linear. Switching the large-row wasm direct path to sparse LU changed the bounded
+  counts only slightly (`11` rejected CPR solves / `22` sparse-LU uses, same shelf shape) while
+  cutting runtime to about `1326.5 ms` outer / `1219.0 ms` linear. The selector should therefore
+  stay on sparse LU for large wasm direct fallbacks; the next Phase 2 slice should reduce fallback
+  incidence, not restore dense LU on those hard states.
+- Sparse-LU refinement follow-up is now also in on that same direct path. Adding a short
+  iterative-refinement loop to the large-row sparse backend kept the same bounded replay counts on
+  `23x23x1` (`11` rejected CPR solves / `22` sparse-LU uses / `5` dead-state bypasses, same
+  `substeps=8`, `retries=0/3/0`) but improved runtime again to about `1289.6 ms` outer /
+  `1182.0 ms` linear. Keep this as a second direct-path cost cut, but do not mistake it for the
+  next convergence lever: the active Phase 2 question is still how to reduce fallback incidence,
+  not how to swap or polish the direct backend further.
+- Repeated-`restart-stagnation` bypass is now also in at the Newton layer. After two consecutive
+  iterative failures with `reason=restart-stagnation` inside the same substep, later Newton
+  iterations now bypass CPR and go straight to the row-selected direct backend for the rest of that
+  substep. On the same bounded `23x23x1` replay this fired twice, cut rejected CPR solves from
+  `11` down to `9`, kept sparse direct fallback uses flat at `22`, preserved the same bounded
+  shelf (`substeps=8`, `retries=0/3/0`), and improved runtime again to about `1174.6 ms` outer /
+  `1074.0 ms` linear. Keep it as another bounded rediscovery cut. The active Phase 2 question is
+  now narrower again: not repeated dead-state proof, not repeated restart-stagnation proof, and
+  not direct-backend cost, but the remaining `22` direct fallback uses themselves.
+- Zero-move fallback bypass is now also in and is the new current head. If a fallback-backed Newton
+  iteration produces only an effectively zero state move, using the existing effective-move floor
+  (`<5e-3 bar`, `<5e-5` saturation), the next Newton iteration now bypasses CPR and goes straight
+  to the row-selected direct backend instead of rerunning the same iterative solve on the same
+  unchanged state. Two confirming `23x23x1` replays now agree on the new bounded control counts:
+  `6` rejected CPR solves, `19` sparse direct fallbacks, `5` dead-state bypasses, and `2`
+  zero-move bypasses, with the same bounded shelf (`substeps=8`, `retries=0/3/0`). Runtime stays
+  in the same improved band (`outer_ms≈1188-1257`, `lin_ms≈1091-1152`). Keep it. The active Phase
+  2 question is now narrower again: not repeated dead-state proof, not repeated restart-stagnation
+  proof, not unchanged-state fallback rediscovery, and not direct-backend cost, but the remaining
+  `19` direct fallback uses themselves.
+- Near-converged iterative accept is now also in and is the new current head. If the CPR solve
+  stops in a small-residual `restart-stagnation` or `max-iters` tail but is still close enough to
+  tolerance (`outer_res <= 16x tol`, candidate residual no worse than `8x` the current iterate,
+  and at least one restart improved the iterate), Newton now accepts that iterative step instead
+  of paying for a direct fallback. Two confirming `23x23x1` replays now agree on the new bounded
+  control counts: `6` rejected CPR solves, `18` sparse direct fallbacks, `5` dead-state bypasses,
+  `2` zero-move bypasses, and `1` near-converged iterative accept, with the same bounded shelf
+  (`substeps=8`, `retries=0/3/0`). Runtime stays in the same improved band
+  (`outer_ms≈1209-1231`, `lin_ms≈1106-1121`). Keep it. The active Phase 2 question is now even
+  narrower: not dead-state rediscovery, not restart-stagnation rediscovery, not unchanged-state
+  rediscovery, not small-residual near-converged tails, and not direct-backend cost, but the
+  remaining `18` direct fallback uses themselves.
 
 ## Guardrails Before Any Code Change
 

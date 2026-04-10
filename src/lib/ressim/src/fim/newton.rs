@@ -6,7 +6,8 @@ use crate::fim::assembly::{
     assemble_fim_system, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
 };
 use crate::fim::linear::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind,
     active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::FimState;
@@ -44,6 +45,9 @@ const NONLINEAR_HISTORY_MIN_STREAK: u32 = 1;
 const NONLINEAR_HISTORY_FIRST_DAMPING_CAP: f64 = 0.5;
 const NONLINEAR_HISTORY_REPEAT_DAMPING_CAP: f64 = 0.25;
 const NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR: f64 = 10.0;
+const RESTART_STAGNATION_DIRECT_BYPASS_THRESHOLD: u32 = 2;
+const NEAR_CONVERGED_ITERATIVE_OUTER_FACTOR: f64 = 16.0;
+const NEAR_CONVERGED_ITERATIVE_CANDIDATE_WORSENING_FACTOR: f64 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -196,6 +200,83 @@ fn linear_failure_trace_suffix(report: &FimLinearSolveReport) -> String {
     }
     parts.push("]".to_string());
     parts.join("")
+}
+
+fn direct_fallback_kind_for_rows(row_count: usize) -> FimLinearSolverKind {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if row_count > active_direct_solve_row_threshold() {
+            FimLinearSolverKind::SparseLuDebug
+        } else {
+            FimLinearSolverKind::DenseLuDebug
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = row_count;
+        FimLinearSolverKind::SparseLuDebug
+    }
+}
+
+fn next_restart_stagnation_fallback_streak(
+    current_streak: u32,
+    failure_reason: Option<FimLinearFailureReason>,
+) -> u32 {
+    match failure_reason {
+        Some(FimLinearFailureReason::RestartStagnation) => current_streak.saturating_add(1),
+        _ => 0,
+    }
+}
+
+fn should_enable_restart_stagnation_direct_bypass(streak: u32) -> bool {
+    streak >= RESTART_STAGNATION_DIRECT_BYPASS_THRESHOLD
+}
+
+fn should_enable_zero_move_fallback_direct_bypass(
+    used_fallback: bool,
+    pressure_change_bar: f64,
+    saturation_change: f64,
+) -> bool {
+    used_fallback
+        && pressure_change_bar < EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR
+        && saturation_change < EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD
+}
+
+fn should_accept_near_converged_iterative_step(report: &FimLinearSolveReport) -> bool {
+    if report.backend_used != FimLinearSolverKind::FgmresCpr {
+        return false;
+    }
+
+    let Some(failure) = &report.failure_diagnostics else {
+        return false;
+    };
+
+    if !matches!(
+        failure.reason,
+        FimLinearFailureReason::RestartStagnation | FimLinearFailureReason::MaxIterations
+    ) {
+        return false;
+    }
+
+    if failure.outer_residual_norm > failure.tolerance * NEAR_CONVERGED_ITERATIVE_OUTER_FACTOR {
+        return false;
+    }
+
+    let Some(candidate_residual_norm) = failure.candidate_residual_norm else {
+        return false;
+    };
+
+    if candidate_residual_norm
+        > failure.outer_residual_norm * NEAR_CONVERGED_ITERATIVE_CANDIDATE_WORSENING_FACTOR
+    {
+        return false;
+    }
+
+    failure
+        .restart_diagnostics
+        .iter()
+        .any(|restart| restart.solution_improved)
 }
 
 #[cfg(test)]
@@ -1926,6 +2007,11 @@ pub(crate) fn run_fim_timestep(
     let mut state_update_ms = 0.0;
     let mut last_effective_update_inf_norm = f64::INFINITY;
     let mut last_effective_update_peak: Option<UpdateFamilyPeak> = None;
+    let requested_linear_kind = options.linear.kind;
+    let mut dead_state_direct_bypass = false;
+    let mut restart_stagnation_direct_bypass = false;
+    let mut restart_stagnation_fallback_streak = 0_u32;
+    let mut zero_move_fallback_direct_bypass = false;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -2269,14 +2355,53 @@ pub(crate) fn run_fim_timestep(
         prev_residual_norm = current_norm;
 
         let rhs = -&assembly.residual;
+        let mut linear_options = options.linear;
+        if dead_state_direct_bypass
+            || restart_stagnation_direct_bypass
+            || zero_move_fallback_direct_bypass
+        {
+            linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: bypassing iterative backend after {}; using {}",
+                iteration,
+                if dead_state_direct_bypass {
+                    "dead-state"
+                } else if restart_stagnation_direct_bypass {
+                    "repeated restart-stagnation"
+                } else {
+                    "zero-move fallback"
+                },
+                linear_options.kind.label(),
+            );
+        }
         let mut linear_report =
-            solve_linearized_system(&assembly.jacobian, &rhs, &options.linear, block_layout);
+            solve_linearized_system(&assembly.jacobian, &rhs, &linear_options, block_layout);
         linear_solve_time_ms += linear_report.total_time_ms;
         linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
 
         let mut used_fallback = false;
         if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
         {
+            if should_accept_near_converged_iterative_step(&linear_report) {
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: accepting near-converged iterative step without direct fallback{}{}",
+                    iteration,
+                    linear_report_trace_suffix(&linear_report, requested_linear_kind),
+                    linear_failure_trace_suffix(&linear_report),
+                );
+                linear_report.converged = true;
+            }
+        }
+        if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
+        {
+            let iterative_failure_reason = linear_report
+                .failure_diagnostics
+                .as_ref()
+                .map(|diagnostics| diagnostics.reason);
             fim_trace!(
                 sim,
                 options.verbose,
@@ -2284,26 +2409,33 @@ pub(crate) fn run_fim_timestep(
                 iteration,
                 linear_report.converged,
                 linear_report.solution.iter().all(|v| v.is_finite()),
-                linear_report_trace_suffix(&linear_report, options.linear.kind),
+                linear_report_trace_suffix(&linear_report, requested_linear_kind),
                 linear_failure_trace_suffix(&linear_report),
             );
+            if linear_report
+                .failure_diagnostics
+                .as_ref()
+                .is_some_and(|diagnostics| diagnostics.reason == FimLinearFailureReason::DeadStateDetected)
+            {
+                dead_state_direct_bypass = true;
+            }
+            restart_stagnation_fallback_streak = next_restart_stagnation_fallback_streak(
+                restart_stagnation_fallback_streak,
+                iterative_failure_reason,
+            );
+            if should_enable_restart_stagnation_direct_bypass(restart_stagnation_fallback_streak) {
+                restart_stagnation_direct_bypass = true;
+            }
             let mut fallback_options = options.linear;
-            fallback_options.kind = {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    FimLinearSolverKind::DenseLuDebug
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    FimLinearSolverKind::SparseLuDebug
-                }
-            };
+            fallback_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
             linear_report =
                 solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
             used_fallback = true;
             linear_report.used_fallback = true;
             linear_solve_time_ms += linear_report.total_time_ms;
             linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
+        } else {
+            restart_stagnation_fallback_streak = 0;
         }
 
         let update_peak = scaled_update_peak(&linear_report.solution, &assembly.variable_scaling);
@@ -2341,7 +2473,7 @@ pub(crate) fn run_fim_timestep(
                     final_update_inf_norm,
                     linear_report.iterations,
                     if used_fallback { " [fallback]" } else { "" },
-                    linear_report_trace_suffix(&linear_report, options.linear.kind),
+                    linear_report_trace_suffix(&linear_report, requested_linear_kind),
                     residual_family_trace(&accepted_diagnostics.residual_diagnostics),
                     global_material_balance_trace(
                         &accepted_diagnostics.material_balance_diagnostics
@@ -2391,7 +2523,7 @@ pub(crate) fn run_fim_timestep(
                 final_update_inf_norm,
                 linear_report.iterations,
                 if used_fallback { " [fallback]" } else { "" },
-                linear_report_trace_suffix(&linear_report, options.linear.kind),
+                linear_report_trace_suffix(&linear_report, requested_linear_kind),
                 residual_family_trace(&accepted_diagnostics.residual_diagnostics),
                 global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
                 accepted_diagnostics
@@ -2447,6 +2579,11 @@ pub(crate) fn run_fim_timestep(
         last_effective_update_peak = Some(effective_update_peak);
         let (candidate_pressure_change, candidate_saturation_change) =
             state_update_change_bounds(&state, &candidate);
+        zero_move_fallback_direct_bypass = should_enable_zero_move_fallback_direct_bypass(
+            used_fallback,
+            candidate_pressure_change,
+            candidate_saturation_change,
+        );
         let effective_move_trace = effective_move_threshold_trace(
             sim,
             &state,
@@ -2495,7 +2632,7 @@ pub(crate) fn run_fim_timestep(
             candidate_saturation_change,
             linear_report.iterations,
             if used_fallback { " [fallback]" } else { "" },
-            linear_report_trace_suffix(&linear_report, options.linear.kind),
+            linear_report_trace_suffix(&linear_report, requested_linear_kind),
             history_stabilization
                 .as_ref()
                 .map(nonlinear_history_stabilization_trace)
@@ -3357,6 +3494,121 @@ mod tests {
 
         assert_eq!(classified.class, FimRetryFailureClass::NonlinearBad);
         assert!(classified.used_linear_fallback);
+    }
+
+    #[test]
+    fn restart_stagnation_fallback_streak_only_accumulates_matching_failures() {
+        let streak = next_restart_stagnation_fallback_streak(
+            0,
+            Some(FimLinearFailureReason::RestartStagnation),
+        );
+        let streak = next_restart_stagnation_fallback_streak(
+            streak,
+            Some(FimLinearFailureReason::RestartStagnation),
+        );
+        let reset = next_restart_stagnation_fallback_streak(
+            streak,
+            Some(FimLinearFailureReason::DeadStateDetected),
+        );
+
+        assert_eq!(streak, 2);
+        assert_eq!(reset, 0);
+    }
+
+    #[test]
+    fn restart_stagnation_direct_bypass_requires_two_consecutive_fallbacks() {
+        assert!(!should_enable_restart_stagnation_direct_bypass(1));
+        assert!(should_enable_restart_stagnation_direct_bypass(2));
+    }
+
+    #[test]
+    fn zero_move_fallback_direct_bypass_uses_existing_effective_move_floor() {
+        assert!(should_enable_zero_move_fallback_direct_bypass(
+            true, 0.0049, 0.000049,
+        ));
+        assert!(!should_enable_zero_move_fallback_direct_bypass(
+            false, 0.0049, 0.000049,
+        ));
+        assert!(!should_enable_zero_move_fallback_direct_bypass(
+            true, 0.0051, 0.000049,
+        ));
+        assert!(!should_enable_zero_move_fallback_direct_bypass(
+            true, 0.0049, 0.000051,
+        ));
+    }
+
+    #[test]
+    fn near_converged_iterative_accept_requires_small_outer_and_bounded_candidate_worsening() {
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: false,
+            iterations: 80,
+            final_residual_norm: 1.0e-6,
+            failure_diagnostics: Some(crate::fim::linear::FimLinearFailureDiagnostics {
+                reason: FimLinearFailureReason::RestartStagnation,
+                tolerance: 1.0e-7,
+                rhs_norm: 1.0,
+                outer_residual_norm: 1.2e-6,
+                preconditioned_residual_norm: Some(1.1e-6),
+                estimated_residual_norm: Some(1.0e-8),
+                candidate_residual_norm: Some(4.0e-6),
+                restart_diagnostics: vec![crate::fim::linear::FimLinearRestartDiagnostics {
+                    restart_index: 3,
+                    start_iteration: 60,
+                    end_iteration: 80,
+                    inner_steps: 20,
+                    outer_residual_norm: 1.2e-6,
+                    preconditioned_residual_norm: 1.1e-6,
+                    best_estimated_residual_norm: Some(1.0e-8),
+                    best_candidate_residual_norm: Some(4.0e-6),
+                    solution_improved: true,
+                }],
+            }),
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::FgmresCpr,
+            cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
+        };
+
+        assert!(should_accept_near_converged_iterative_step(&report));
+    }
+
+    #[test]
+    fn near_converged_iterative_accept_rejects_large_outer_tail() {
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: false,
+            iterations: 80,
+            final_residual_norm: 1.0e-6,
+            failure_diagnostics: Some(crate::fim::linear::FimLinearFailureDiagnostics {
+                reason: FimLinearFailureReason::MaxIterations,
+                tolerance: 1.0e-7,
+                rhs_norm: 1.0,
+                outer_residual_norm: 3.0e-6,
+                preconditioned_residual_norm: Some(3.0e-6),
+                estimated_residual_norm: Some(1.0e-8),
+                candidate_residual_norm: Some(4.0e-6),
+                restart_diagnostics: vec![crate::fim::linear::FimLinearRestartDiagnostics {
+                    restart_index: 3,
+                    start_iteration: 60,
+                    end_iteration: 80,
+                    inner_steps: 20,
+                    outer_residual_norm: 3.0e-6,
+                    preconditioned_residual_norm: 3.0e-6,
+                    best_estimated_residual_norm: Some(1.0e-8),
+                    best_candidate_residual_norm: Some(4.0e-6),
+                    solution_improved: true,
+                }],
+            }),
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::FgmresCpr,
+            cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
+        };
+
+        assert!(!should_accept_near_converged_iterative_step(&report));
     }
 
     #[test]

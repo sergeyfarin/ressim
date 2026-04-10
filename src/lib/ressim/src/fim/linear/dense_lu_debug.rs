@@ -6,6 +6,18 @@ use sprs::CsMat;
 use super::{FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind};
 use crate::timing::PerfTimer;
 
+fn cs_mat_mul_vec(a: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
+    let mut y = DVector::<f64>::zeros(a.rows());
+    for (row_idx, row) in a.outer_iterator().enumerate() {
+        let mut sum = 0.0;
+        for (col_idx, value) in row.iter() {
+            sum += *value * x[col_idx];
+        }
+        y[row_idx] = sum;
+    }
+    y
+}
+
 pub(super) fn solve(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
@@ -20,12 +32,8 @@ pub(super) fn solve(
         }
     }
 
-    let solution = dense
-        .clone()
-        .lu()
-        .solve(rhs)
-        .unwrap_or_else(|| DVector::zeros(rhs.len()));
-    let residual = rhs - &dense * &solution;
+    let solution = dense.lu().solve(rhs).unwrap_or_else(|| DVector::zeros(rhs.len()));
+    let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
     let residual_norm = residual.norm();
     let tolerance =
         options.absolute_tolerance + options.relative_tolerance * rhs.norm().max(f64::EPSILON);

@@ -382,34 +382,30 @@ impl BlockJacobiPreconditioner {
         let mut rho_prev = 1.0;
         let mut alpha = 1.0;
         let mut omega = 1.0;
-        let mut v = DVector::<f64>::zeros(rhs.len());
-        let mut p = DVector::<f64>::zeros(rhs.len());
+        let mut v = DVector::zeros(rhs.len());
+        let mut p = DVector::zeros(rhs.len());
 
-        for iter in 0..max_iters {
-            if r.norm() <= tol {
-                break;
-            }
-
+        for iter_idx in 0..max_iters {
             let rho = r_hat.dot(&r);
             if !rho.is_finite() || rho.abs() < f64::EPSILON {
                 break;
             }
 
-            let beta = if iter == 0 {
-                0.0
+            if iter_idx == 0 {
+                p = r.clone();
             } else {
-                (rho / rho_prev) * (alpha / omega)
-            };
-            p = &r + beta * (&p - omega * &v);
+                let beta = (rho / rho_prev) * (alpha / omega);
+                p = &r + beta * (&p - omega * &v);
+            }
 
             let p_hat = self.apply_pressure_ilu(&p);
             v = self.pressure_mat_vec(&p_hat);
-            let r_hat_dot_v = r_hat.dot(&v);
-            if !r_hat_dot_v.is_finite() || r_hat_dot_v.abs() < f64::EPSILON {
+            let v_dot = r_hat.dot(&v);
+            if !v_dot.is_finite() || v_dot.abs() < f64::EPSILON {
                 break;
             }
 
-            alpha = rho / r_hat_dot_v;
+            alpha = rho / v_dot;
             let s = &r - alpha * &v;
             if s.norm() <= tol {
                 x += alpha * p_hat;
@@ -419,7 +415,7 @@ impl BlockJacobiPreconditioner {
             let s_hat = self.apply_pressure_ilu(&s);
             let t = self.pressure_mat_vec(&s_hat);
             let t_dot_t = t.dot(&t);
-            if !t_dot_t.is_finite() || t_dot_t.abs() < f64::EPSILON {
+            if !t_dot_t.is_finite() || t_dot_t <= f64::EPSILON {
                 break;
             }
 
@@ -430,6 +426,10 @@ impl BlockJacobiPreconditioner {
 
             x += alpha * p_hat + omega * &s_hat;
             r = s - omega * t;
+            if r.norm() <= tol {
+                break;
+            }
+
             rho_prev = rho;
         }
 
@@ -1061,6 +1061,87 @@ fn back_substitute_upper(
     solution
 }
 
+const TINY_RESIDUAL_TAIL_MIN_RESTART_INDEX: usize = 3;
+const TINY_RESIDUAL_TAIL_ESTIMATE_FACTOR: f64 = 0.1;
+const TINY_RESIDUAL_TAIL_WORSENING_FACTOR: f64 = 2.0;
+const TINY_RESIDUAL_TAIL_ACCEPT_FACTOR: f64 = 8.0;
+const TINY_RESIDUAL_TAIL_TERMINATE_FACTOR: f64 = 128.0;
+const DEAD_STATE_DETECTOR_RESTART_INDEX: usize = 1;
+const DEAD_STATE_MIN_OUTER_FACTOR: f64 = 1024.0;
+const DEAD_STATE_MIN_ESTIMATE_FACTOR: f64 = 16.0;
+const DEAD_STATE_MIN_PRECONDITIONED_RATIO: f64 = 4.0;
+const DEAD_STATE_MIN_CANDIDATE_WORSENING: f64 = 1.05;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TinyResidualTailAction {
+    Continue,
+    AcceptCurrentIterate,
+    TerminateStagnation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DeadStateAction {
+    Continue,
+    Terminate,
+}
+
+fn classify_tiny_residual_tail_action(
+    restart_index: usize,
+    tolerance: f64,
+    outer_residual_norm: f64,
+    preconditioned_residual_norm: f64,
+    estimated_residual_norm: f64,
+    candidate_residual_norm: f64,
+) -> TinyResidualTailAction {
+    if restart_index < TINY_RESIDUAL_TAIL_MIN_RESTART_INDEX
+        || estimated_residual_norm > tolerance * TINY_RESIDUAL_TAIL_ESTIMATE_FACTOR
+        || candidate_residual_norm < outer_residual_norm * TINY_RESIDUAL_TAIL_WORSENING_FACTOR
+    {
+        return TinyResidualTailAction::Continue;
+    }
+
+    if outer_residual_norm <= tolerance * TINY_RESIDUAL_TAIL_ACCEPT_FACTOR
+        && preconditioned_residual_norm <= tolerance * TINY_RESIDUAL_TAIL_ACCEPT_FACTOR
+    {
+        return TinyResidualTailAction::AcceptCurrentIterate;
+    }
+
+    if outer_residual_norm <= tolerance * TINY_RESIDUAL_TAIL_TERMINATE_FACTOR
+        && preconditioned_residual_norm <= tolerance * TINY_RESIDUAL_TAIL_TERMINATE_FACTOR
+    {
+        return TinyResidualTailAction::TerminateStagnation;
+    }
+
+    TinyResidualTailAction::Continue
+}
+
+fn classify_dead_state_action(
+    restart_index: usize,
+    restart_size: usize,
+    inner_steps: usize,
+    solution_improved: bool,
+    tolerance: f64,
+    outer_residual_norm: f64,
+    preconditioned_residual_norm: f64,
+    estimated_residual_norm: f64,
+    candidate_residual_norm: f64,
+) -> DeadStateAction {
+    if restart_index != DEAD_STATE_DETECTOR_RESTART_INDEX
+        || inner_steps < restart_size
+        || solution_improved
+        || outer_residual_norm < tolerance * DEAD_STATE_MIN_OUTER_FACTOR
+        || estimated_residual_norm < tolerance * DEAD_STATE_MIN_ESTIMATE_FACTOR
+        || preconditioned_residual_norm
+            < outer_residual_norm * DEAD_STATE_MIN_PRECONDITIONED_RATIO
+        || candidate_residual_norm
+            < outer_residual_norm * DEAD_STATE_MIN_CANDIDATE_WORSENING
+    {
+        return DeadStateAction::Continue;
+    }
+
+    DeadStateAction::Terminate
+}
+
 fn solve_with_cpr_fine_smoother(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
@@ -1110,6 +1191,8 @@ fn solve_with_cpr_fine_smoother(
     let mut last_estimated_residual_norm = None;
     let mut last_candidate_residual_norm = None;
     let mut restart_diagnostics = Vec::new();
+    let mut terminate_tiny_residual_tail = false;
+    let mut terminate_dead_state = false;
 
     while iterations < max_iterations {
         let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
@@ -1243,10 +1326,8 @@ fn solve_with_cpr_fine_smoother(
                     .map_or(estimated_residual, |best: f64| best.min(estimated_residual)),
             );
 
-            if estimated_residual <= tolerance
-                || iterations >= max_iterations
-                || next_norm <= f64::EPSILON
-            {
+            let estimated_trigger = estimated_residual <= tolerance;
+            if estimated_trigger || iterations >= max_iterations || next_norm <= f64::EPSILON {
                 // Construct the actual solution only when we need it.
                 let cols = inner + 1;
                 let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
@@ -1262,6 +1343,104 @@ fn solve_with_cpr_fine_smoother(
                 if candidate_residual < residual_norm {
                     best_solution = candidate.clone();
                     restart_solution_improved = true;
+                }
+
+                let tiny_tail_action = classify_tiny_residual_tail_action(
+                    restart_index,
+                    tolerance,
+                    residual_norm,
+                    beta,
+                    estimated_residual,
+                    candidate_residual,
+                );
+
+                if tiny_tail_action == TinyResidualTailAction::AcceptCurrentIterate {
+                    restart_diagnostics.push(build_restart_diagnostics(
+                        restart_index,
+                        restart_start_iteration,
+                        iterations,
+                        inner_steps,
+                        residual_norm,
+                        beta,
+                        restart_best_estimated_residual_norm,
+                        restart_best_candidate_residual_norm,
+                        restart_solution_improved,
+                    ));
+                    return FimLinearSolveReport {
+                        solution,
+                        converged: true,
+                        iterations,
+                        final_residual_norm: residual_norm,
+                        failure_diagnostics: None,
+                        used_fallback,
+                        backend_used,
+                        cpr_diagnostics: if use_pressure_correction {
+                            pressure_correction_stats.build_report(&preconditioner)
+                        } else {
+                            None
+                        },
+                        total_time_ms: total_timer.elapsed_ms(),
+                        preconditioner_build_time_ms,
+                    };
+                }
+
+                if tiny_tail_action == TinyResidualTailAction::TerminateStagnation {
+                    restart_diagnostics.push(build_restart_diagnostics(
+                        restart_index,
+                        restart_start_iteration,
+                        iterations,
+                        inner_steps,
+                        residual_norm,
+                        beta,
+                        restart_best_estimated_residual_norm,
+                        restart_best_candidate_residual_norm,
+                        restart_solution_improved,
+                    ));
+                    restart_recorded = true;
+                    failure_reason = Some(FimLinearFailureReason::RestartStagnation);
+                    terminate_tiny_residual_tail = true;
+                    break;
+                }
+
+                let dead_state_action = classify_dead_state_action(
+                    restart_index,
+                    restart,
+                    inner_steps,
+                    restart_solution_improved,
+                    tolerance,
+                    residual_norm,
+                    beta,
+                    estimated_residual,
+                    candidate_residual,
+                );
+
+                if dead_state_action == DeadStateAction::Terminate {
+                    restart_diagnostics.push(build_restart_diagnostics(
+                        restart_index,
+                        restart_start_iteration,
+                        iterations,
+                        inner_steps,
+                        residual_norm,
+                        beta,
+                        restart_best_estimated_residual_norm,
+                        restart_best_candidate_residual_norm,
+                        restart_solution_improved,
+                    ));
+                    restart_recorded = true;
+                    failure_reason = Some(FimLinearFailureReason::DeadStateDetected);
+                    break;
+                }
+
+                if estimated_trigger
+                    && candidate_residual > tolerance
+                    && iterations < max_iterations
+                    && next_norm > f64::EPSILON
+                {
+                    // On the over-threshold CPR path the preconditioned GMRES estimate
+                    // can become over-optimistic in the asymptotic tail. Do not restart
+                    // yet if the true residual still disagrees and the Krylov space can
+                    // still grow inside this restart.
+                    continue;
                 }
 
                 restart_diagnostics.push(build_restart_diagnostics(
@@ -1331,6 +1510,19 @@ fn solve_with_cpr_fine_smoother(
                 best_solution = candidate;
                 restart_solution_improved = true;
             }
+
+            let dead_state_action = classify_dead_state_action(
+                restart_index,
+                restart,
+                inner_steps,
+                restart_solution_improved,
+                tolerance,
+                residual_norm,
+                beta,
+                restart_best_estimated_residual_norm.unwrap_or(f64::INFINITY),
+                candidate_residual,
+            );
+
             restart_diagnostics.push(build_restart_diagnostics(
                 restart_index,
                 restart_start_iteration,
@@ -1342,13 +1534,23 @@ fn solve_with_cpr_fine_smoother(
                 restart_best_candidate_residual_norm,
                 restart_solution_improved,
             ));
+            if dead_state_action == DeadStateAction::Terminate {
+                failure_reason = Some(FimLinearFailureReason::DeadStateDetected);
+                terminate_dead_state = true;
+            }
         }
 
         if inner_steps == 0 {
             failure_reason = Some(FimLinearFailureReason::RestartStagnation);
             break;
         }
+        if terminate_dead_state {
+            break;
+        }
         solution = best_solution;
+        if terminate_tiny_residual_tail {
+            break;
+        }
     }
 
     let final_residual = (rhs - &cs_mat_mul_vec(jacobian, &solution)).norm();
@@ -1919,6 +2121,48 @@ mod tests {
 
         assert!(report.converged, "expected restarted GMRES to converge, got {report:?}");
         assert!(report.iterations > 2);
+    }
+
+    #[test]
+    fn tiny_residual_tail_accepts_current_iterate_when_already_near_tolerance() {
+        let action = classify_tiny_residual_tail_action(3, 1e-8, 4e-8, 2e-8, 5e-10, 2e-7);
+
+        assert_eq!(action, TinyResidualTailAction::AcceptCurrentIterate);
+    }
+
+    #[test]
+    fn tiny_residual_tail_terminates_when_tail_is_small_but_not_close_enough_to_accept() {
+        let action = classify_tiny_residual_tail_action(3, 1e-8, 7e-7, 5e-7, 4e-10, 4e-6);
+
+        assert_eq!(action, TinyResidualTailAction::TerminateStagnation);
+    }
+
+    #[test]
+    fn tiny_residual_tail_ignores_large_residual_hard_states() {
+        let action = classify_tiny_residual_tail_action(3, 1e-8, 4e0, 8e1, 5e-4, 1e1);
+
+        assert_eq!(action, TinyResidualTailAction::Continue);
+    }
+
+    #[test]
+    fn dead_state_detector_trips_on_non_improving_first_restart_hard_state() {
+        let action = classify_dead_state_action(1, 30, 30, false, 1e-8, 8.0, 150.0, 5e-4, 10.0);
+
+        assert_eq!(action, DeadStateAction::Terminate);
+    }
+
+    #[test]
+    fn dead_state_detector_ignores_tiny_tail_regime() {
+        let action = classify_dead_state_action(1, 30, 30, false, 1e-8, 4e-7, 4e-7, 1e-10, 2e-6);
+
+        assert_eq!(action, DeadStateAction::Continue);
+    }
+
+    #[test]
+    fn dead_state_detector_ignores_improving_first_restart() {
+        let action = classify_dead_state_action(1, 30, 30, true, 1e-8, 8.0, 150.0, 5e-4, 10.0);
+
+        assert_eq!(action, DeadStateAction::Continue);
     }
 
     #[test]
