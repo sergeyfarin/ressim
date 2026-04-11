@@ -633,23 +633,16 @@ impl ReservoirSimulator {
                         let _ = idx;
                     }
 
+                    let uncapped_growth_decision = accepted_step_growth_decision(
+                        report.newton_iterations,
+                        max_dsat,
+                        max_dp,
+                    );
                     let growth_decision = growth_cooldown.stabilize_growth_decision(
-                        growth_cooldown.cap_growth_decision(
-                            accepted_step_growth_decision(
-                                report.newton_iterations,
-                                max_dsat,
-                                max_dp,
-                            ),
-                        ),
+                        growth_cooldown.cap_growth_decision(uncapped_growth_decision),
                     );
                     if growth_decision.limiter == "hotspot-repeat"
-                        && accepted_step_growth_decision(
-                            report.newton_iterations,
-                            max_dsat,
-                            max_dp,
-                        )
-                        .limiter
-                            == "newton-iters"
+                        && uncapped_growth_decision.limiter == "newton-iters"
                     {
                         hotspot_repeat_suppressed_newton_iters_growth_count += 1;
                     }
