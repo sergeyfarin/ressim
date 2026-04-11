@@ -1141,6 +1141,7 @@ fn classify_dead_state_action(
 
     DeadStateAction::Terminate
 }
+
 fn solve_with_cpr_fine_smoother(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,

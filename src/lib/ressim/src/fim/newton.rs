@@ -38,7 +38,7 @@ const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
 const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
 const CHECKPOINT_TRACE_TARGET_CELL_INDEX: usize = 143;
 const PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES: usize = 2;
-const PRODUCER_HOTSPOT_STAGNATION_THRESHOLD: u32 = 1;
+const PRODUCER_HOTSPOT_STAGNATION_THRESHOLD: u32 = 2;
 const NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO: f64 = 0.98;
 const NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO: f64 = 0.90;
 const NONLINEAR_HISTORY_MIN_STREAK: u32 = 1;
@@ -4064,11 +4064,18 @@ mod tests {
             global: peak,
         };
 
-        assert!(producer_hotspot_stagnation_should_bail(
+        assert!(!producer_hotspot_stagnation_should_bail(
             Some(&previous),
             &diagnostics,
             true,
             1,
+        ));
+
+        assert!(producer_hotspot_stagnation_should_bail(
+            Some(&previous),
+            &diagnostics,
+            true,
+            2,
         ));
     }
 
