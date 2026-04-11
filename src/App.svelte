@@ -5,17 +5,16 @@
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
-    import { getScenarioChartLayout, getScenarioWithVariantParams, type ScenarioAnalyticalOutput } from "./lib/catalog/scenarios";
+    import { getScenarioChartLayout, getScenarioWithVariantParams, suppressesPrimaryAnalyticalOverlays, type ScenarioAnalyticalOutput } from "./lib/catalog/scenarios";
     import { computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
+    import type { BenchmarkFamily } from "./lib/catalog/benchmarkCases";
+    import { resolveCapabilities } from "./lib/catalog/scenarios";
 
     // ---------- Store ----------
-    const store = createSimulationStore();
-    const scenario = store.scenarioSelection;
-    const params = store.parameterState;
-    const runtime = store.runtimeState;
+    const { params, runtime, nav: scenario } = createSimulationStore();
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("light");
@@ -38,7 +37,45 @@
     let RateChartComponent = $state<RateChartComponentType | null>(null);
     let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
-    const activeReferenceFamily = $derived(scenario.activeScenarioAsFamily ?? scenario.activeReferenceFamily);
+    // Build the BenchmarkFamily-shaped object for the active scenario (chart-layer adapter).
+    // Moved here from the store in Phase 6 — this is a chart concern, not a store concern.
+    const activeScenarioAsFamily = $derived.by((): BenchmarkFamily | null => {
+        const sc = scenario.activeScenarioObject;
+        if (!sc || scenario.isCustomMode) return null;
+        const resolved = resolveCapabilities(sc.capabilities);
+        const activeDimension = sc.sensitivities.find((dimension) => dimension.key === scenario.activeSensitivityDimensionKey) ?? null;
+        const chartLayout = getScenarioChartLayout(sc, scenario.activeSensitivityDimensionKey);
+
+        const xAxis = resolved.analyticalNativeXAxis as BenchmarkFamily['displayDefaults']['xAxis'];
+        const panels = (resolved.primaryRateCurve === 'oil-rate'
+            ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
+            : ['watercut-breakthrough', 'recovery', 'pressure']
+        ) as BenchmarkFamily['displayDefaults']['panels'][number][];
+
+        return {
+            key: sc.key,
+            baseCaseKey: sc.key,
+            analyticalMethod: resolved.analyticalMethod,
+            sensitivityAxes: [],
+            reference: {
+                kind: 'analytical' as const,
+                source: resolved.analyticalMethod === 'digitized-reference' ? `${sc.key}:digitized-reference` : `${sc.key}:analytical`,
+            },
+            displayDefaults: { xAxis, panels },
+            stylePolicy: { colorBy: 'case' as const, lineStyleBy: 'quantity-or-reference' as const, separatePressurePanel: true },
+            runPolicy: 'compare-to-reference' as const,
+            label: sc.label,
+            description: sc.description,
+            baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
+            suppressPrimaryAnalyticalOverlays: suppressesPrimaryAnalyticalOverlays(chartLayout),
+            showSweepPanel: resolved.showSweepPanel,
+            sweepGeometry: resolved.sweepGeometry,
+            sweepAnalyticalMethod: scenario.activeAnalyticalOption?.sweepMethod,
+            analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
+            publishedReferenceSeries: sc.publishedReferenceSeries,
+        } as BenchmarkFamily;
+    });
+    const activeReferenceFamily = $derived(activeScenarioAsFamily ?? scenario.activeReferenceFamily);
     // True only for sweep scenarios — reads from scenario capabilities.
     const showSweepPanel = $derived(scenario.activeScenarioObject?.capabilities.showSweepPanel ?? false);
 
@@ -105,13 +142,13 @@
     // Analytical recovery factor for sweep scenarios: RF = E_vol(Craig+DP) × E_D_BL(PVI_local).
     // Computed purely from rock/fluid props — no simulation data required.
     const sweepGeometry = $derived.by((): SweepGeometry => {
-        return scenario.activeScenarioAsFamily?.sweepGeometry
+        return activeScenarioAsFamily?.sweepGeometry
             ?? scenario.activeScenarioObject?.capabilities.sweepGeometry
             ?? 'both';
     });
     const sweepAnalyticalMethod = $derived.by((): SweepAnalyticalMethod => {
         return scenario.activeAnalyticalOption?.sweepMethod
-            ?? scenario.activeScenarioAsFamily?.sweepAnalyticalMethod
+            ?? activeScenarioAsFamily?.sweepAnalyticalMethod
             ?? 'dykstra-parsons';
     });
     const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {

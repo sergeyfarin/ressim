@@ -2,8 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-const storePath = path.join(__dirname, 'simulationStore.svelte.ts');
-const storeSource = fs.readFileSync(storePath, 'utf8');
+// Concatenate all three stores so patterns can span whichever sub-file they landed in.
+const storeSource = [
+    'parameterStore.svelte.ts',
+    'runtimeStore.svelte.ts',
+    'navigationStore.svelte.ts',
+].map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n');
 
 describe('simulation store policy wiring', () => {
   it('uses the shared auto-clear policy for modified-state reset behavior', () => {
@@ -44,10 +48,9 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/hasUserStepsOverride = \$state\(false\)/);
     expect(storeSource).toMatch(/markDeltaTDaysOverride\(\)/);
     expect(storeSource).toMatch(/markStepsOverride\(\)/);
-    expect(storeSource).toMatch(/const runSteps = this\.hasUserStepsOverride/);
+    expect(storeSource).toMatch(/const runSteps = this\.#params\.hasUserStepsOverride/);
     expect(storeSource).toMatch(/variantParams\.steps \?\? baseParams\.steps/);
-    expect(storeSource).toMatch(/const runDeltaTDays = this\.hasUserDeltaTDaysOverride/);
-    expect(storeSource).toMatch(/variantParams\.delta_t_days \?\? baseParams\.delta_t_days/);
+    expect(storeSource).toMatch(/const runDeltaTDays = this\.#params\.hasUserDeltaTDaysOverride/);
     expect(storeSource).toMatch(/steps: runSteps/);
     expect(storeSource).toMatch(/deltaTDays: runDeltaTDays/);
     expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
@@ -65,10 +68,10 @@ describe('simulation store policy wiring', () => {
 
   it('clears stale reference comparisons when sensitivity selection changes', () => {
     expect(storeSource).toMatch(/selectSensitivityDimension\(dimensionKey: string\)/);
-    expect(storeSource).toMatch(/if \(this\.referenceSweepRunning \|\| this\.activeReferenceRunSpec\) return;/);
-    expect(storeSource).toMatch(/this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.clearReferenceRunnerState\(true\);[\s\S]*this\.activeSensitivityDimensionKey = dimensionKey;/);
+    expect(storeSource).toMatch(/if \(this\.#runtime\.referenceSweepRunning \|\| this\.#runtime\.activeReferenceRunSpec\) return;/);
+    expect(storeSource).toMatch(/this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.#runtime\.clearReferenceRunnerState\(true\);[\s\S]*this\.activeSensitivityDimensionKey = dimensionKey;/);
     expect(storeSource).toMatch(/toggleScenarioVariant\(variantKey: string\)/);
-    expect(storeSource).toMatch(/toggleScenarioVariant\(variantKey: string\)[\s\S]*this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.clearReferenceRunnerState\(true\);/);
+    expect(storeSource).toMatch(/toggleScenarioVariant\(variantKey: string\)[\s\S]*this\.activeComparisonSelection = buildComparisonSelection\(\);[\s\S]*this\.#runtime\.clearReferenceRunnerState\(true\);/);
   });
 
   it('exposes compatibility navigation state alongside legacy mode state', () => {

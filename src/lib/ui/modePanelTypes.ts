@@ -95,7 +95,6 @@ export type ModePanelParameterBindings = {
   analyticalMode: AnalyticalMode;
   analyticalDepletionRateScale: number;
   analyticalArpsB: number;
-  parameterOverrideCount: number;
   markDeltaTDaysOverride: () => void;
   handleNzOrPermModeChange: () => void;
   handleAnalyticalModeChange: (mode: Exclude<AnalyticalMode, 'none'>) => void;

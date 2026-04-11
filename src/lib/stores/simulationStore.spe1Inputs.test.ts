@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-const storePath = path.join(__dirname, 'simulationStore.svelte.ts');
+const storePath = path.join(__dirname, 'parameterStore.svelte.ts');
 const storeSource = fs.readFileSync(storePath, 'utf8');
 
 describe('simulation store SPE1 exact-input wiring', () => {

@@ -545,6 +545,7 @@
 - [ ] Generalize the `sweep_combined` analytical-method toggle into a reusable sweep-method framework.
 - [ ] Collapse the remaining legacy benchmark layer into the scenario system where practical.
 - [x] Extract a typed output-selection view model from `App.svelte` for charts, 3D output, and analytical helpers.
+- [x] Split `simulationStore.svelte.ts` into `parameterStore`, `runtimeStore`, and `navigationStore` (Phase 6 of `docs/REFACTOR_PLAN.md`). The original file is now a transitional barrel; `activeScenarioAsFamily` moved to `App.svelte` as a local `$derived.by`.
 - [ ] Decide whether `SwProfileChart` should be restored as a maintained output or removed completely.
 - [ ] Document `sweep_areal` explicitly as a quarter-five-spot style interpretation with no-flow outer boundaries.
 
