@@ -9,7 +9,7 @@ use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
 };
-use crate::fim::state::FimState;
+use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
 use crate::timing::PerfTimer;
 
@@ -455,6 +455,122 @@ fn retry_factor_for_failure(diagnostics: Option<&FimRetryFailureDiagnostics>) ->
         Some(FimRetryFailureClass::LinearBad) => 0.25,
         Some(FimRetryFailureClass::NonlinearBad) | Some(FimRetryFailureClass::Mixed) => 0.5,
         None => 0.5,
+    }
+}
+
+fn hydrocarbon_state_label(regime: HydrocarbonState) -> &'static str {
+    match regime {
+        HydrocarbonState::Saturated => "sat",
+        HydrocarbonState::Undersaturated => "undersat",
+    }
+}
+
+fn small_dt_hotspot_neighborhood_indices(
+    sim: &ReservoirSimulator,
+    center_idx: usize,
+) -> Vec<usize> {
+    let center_i = center_idx % sim.nx;
+    let center_j = (center_idx / sim.nx) % sim.ny;
+    let center_k = center_idx / (sim.nx * sim.ny);
+    let mut indices = Vec::new();
+
+    for dj in -1_i32..=1 {
+        for di in -1_i32..=1 {
+            let neighbor_i = center_i as i32 + di;
+            let neighbor_j = center_j as i32 + dj;
+            if neighbor_i < 0
+                || neighbor_i >= sim.nx as i32
+                || neighbor_j < 0
+                || neighbor_j >= sim.ny as i32
+            {
+                continue;
+            }
+            let idx = center_k * sim.nx * sim.ny
+                + neighbor_j as usize * sim.nx
+                + neighbor_i as usize;
+            indices.push(idx);
+        }
+    }
+
+    if center_k > 0 {
+        indices.push(center_idx - sim.nx * sim.ny);
+    }
+    if center_k + 1 < sim.nz {
+        indices.push(center_idx + sim.nx * sim.ny);
+    }
+
+    indices.sort_unstable();
+    indices.dedup();
+    indices
+}
+
+fn maybe_trace_small_dt_hotspot_neighborhood(
+    sim: &mut ReservoirSimulator,
+    verbose: bool,
+    context: &str,
+    dt_days: f64,
+    previous_state: &FimState,
+    candidate_state: &FimState,
+    hotspot_site: FimHotspotSite,
+) {
+    const SMALL_DT_NEIGHBORHOOD_TRACE_THRESHOLD_DAYS: f64 = 1.0e-3;
+
+    if dt_days > SMALL_DT_NEIGHBORHOOD_TRACE_THRESHOLD_DAYS {
+        return;
+    }
+
+    let FimHotspotSite::Cell(center_idx) = hotspot_site else {
+        return;
+    };
+
+    let center_i = center_idx % sim.nx;
+    let center_j = (center_idx / sim.nx) % sim.ny;
+    let center_k = center_idx / (sim.nx * sim.ny);
+    fim_trace!(
+        sim,
+        verbose,
+        "      hotspot-nbhd {} dt={:.6} center=cell{}({},{},{})",
+        context,
+        dt_days,
+        center_idx,
+        center_i,
+        center_j,
+        center_k,
+    );
+
+    for idx in small_dt_hotspot_neighborhood_indices(sim, center_idx) {
+        let before_cell = previous_state.cell(idx);
+        let after_cell = candidate_state.cell(idx);
+        let before = previous_state.derive_cell(sim, idx);
+        let after = candidate_state.derive_cell(sim, idx);
+        let i = idx % sim.nx;
+        let j = (idx / sim.nx) % sim.ny;
+        let k = idx / (sim.nx * sim.ny);
+        fim_trace!(
+            sim,
+            verbose,
+            "        cell{}({},{},{}) {}->{} p={:.2}->{:.2} dP={:+.2} sw={:.4}->{:.4} dSw={:+.4} so={:.4}->{:.4} dSo={:+.4} sg={:.4}->{:.4} dSg={:+.4} rs={:.4}->{:.4}",
+            idx,
+            i,
+            j,
+            k,
+            hydrocarbon_state_label(before_cell.regime),
+            hydrocarbon_state_label(after_cell.regime),
+            before_cell.pressure_bar,
+            after_cell.pressure_bar,
+            after_cell.pressure_bar - before_cell.pressure_bar,
+            before_cell.sw,
+            after_cell.sw,
+            after_cell.sw - before_cell.sw,
+            before.so,
+            after.so,
+            after.so - before.so,
+            before.sg,
+            after.sg,
+            after.sg - before.sg,
+            before.rs,
+            after.rs,
+        );
     }
 }
 
@@ -2012,6 +2128,24 @@ fn accepted_state_meets_convergence(
         && diagnostics.material_balance_inf_norm <= material_balance_limit
 }
 
+fn zero_move_appleyard_acceptance_allows(
+    materially_changed: bool,
+    residual_inf_norm: f64,
+    material_balance_inf_norm: f64,
+    options: &FimNewtonOptions,
+) -> bool {
+    if materially_changed {
+        return false;
+    }
+
+    residual_inf_norm
+        <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR * ENTRY_RESIDUAL_GUARD_FACTOR
+        && material_balance_inf_norm
+            <= options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct StagnationAcceptanceGateStatus {
     materially_changed: bool,
@@ -2244,6 +2378,19 @@ pub(crate) fn run_fim_timestep(
                         .map(|detail| format!(" detail=[{}]", detail))
                         .unwrap_or_default()
                 );
+                maybe_trace_small_dt_hotspot_neighborhood(
+                    sim,
+                    options.verbose,
+                    "accepted",
+                    dt_days,
+                    previous_state,
+                    &accepted_diagnostics.state,
+                    residual_hotspot_site(
+                        sim,
+                        &topology,
+                        &accepted_diagnostics.residual_diagnostics.global,
+                    ),
+                );
                 return FimStepReport {
                     accepted_state: accepted_diagnostics.state,
                     converged: true,
@@ -2293,6 +2440,15 @@ pub(crate) fn run_fim_timestep(
                     .map(|detail| format!(" detail=[{}]", detail))
                     .unwrap_or_default(),
                 retry_failure_trace_suffix(&failure_diagnostics)
+            );
+            maybe_trace_small_dt_hotspot_neighborhood(
+                sim,
+                options.verbose,
+                "rejected",
+                dt_days,
+                previous_state,
+                &accepted_diagnostics.state,
+                failure_diagnostics.hotspot_site,
             );
             return FimStepReport {
                 accepted_state: accepted_diagnostics.state,
@@ -2378,6 +2534,19 @@ pub(crate) fn run_fim_timestep(
                             .as_ref()
                             .map(|detail| format!(" detail=[{}]", detail))
                             .unwrap_or_default()
+                    );
+                    maybe_trace_small_dt_hotspot_neighborhood(
+                        sim,
+                        options.verbose,
+                        "accepted",
+                        dt_days,
+                        previous_state,
+                        &accepted_diagnostics.state,
+                        residual_hotspot_site(
+                            sim,
+                            &topology,
+                            &accepted_diagnostics.residual_diagnostics.global,
+                        ),
                     );
                     return FimStepReport {
                         accepted_state: accepted_diagnostics.state,
@@ -2655,6 +2824,15 @@ pub(crate) fn run_fim_timestep(
                     .unwrap_or_default(),
                 retry_failure_trace_suffix(&failure_diagnostics)
             );
+            maybe_trace_small_dt_hotspot_neighborhood(
+                sim,
+                options.verbose,
+                "rejected",
+                dt_days,
+                previous_state,
+                &accepted_diagnostics.state,
+                failure_diagnostics.hotspot_site,
+            );
             return FimStepReport {
                 accepted_state: accepted_diagnostics.state,
                 converged: false,
@@ -2720,9 +2898,10 @@ pub(crate) fn run_fim_timestep(
             &residual_diagnostics,
             damping,
         );
+        let candidate_materially_changed = iterate_has_material_change(&state, &candidate);
         let candidate_is_valid = damping.is_finite()
             && damping > 0.0
-            && iterate_has_material_change(&state, &candidate)
+            && candidate_materially_changed
             && candidate.is_finite()
             && candidate.respects_basic_bounds(sim)
             && candidate_respects_update_bounds(&state, &candidate, options);
@@ -2823,6 +3002,72 @@ pub(crate) fn run_fim_timestep(
         previous_hotspot_site = Some(current_hotspot_site);
 
         if !candidate_is_valid {
+            let accepted_diagnostics = evaluate_accepted_state_convergence(
+                sim,
+                previous_state,
+                &state,
+                &topology,
+                dt_days,
+            );
+            if zero_move_appleyard_acceptance_allows(
+                candidate_materially_changed,
+                accepted_diagnostics.residual_inf_norm,
+                accepted_diagnostics.material_balance_inf_norm,
+                options,
+            ) {
+                final_update_inf_norm = 0.0;
+                let use_guard_band =
+                    accepted_diagnostics.residual_inf_norm > options.residual_tolerance;
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: ZERO-MOVE APPLEYARD ACCEPTED res={:.3e} mb={:.3e}{} fam=[{}] mb=[{}]{}",
+                    iteration,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    if use_guard_band {
+                        format!(" (entry guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
+                    } else {
+                        String::new()
+                    },
+                    residual_family_trace(&accepted_diagnostics.residual_diagnostics),
+                    global_material_balance_trace(
+                        &accepted_diagnostics.material_balance_diagnostics
+                    ),
+                    accepted_diagnostics
+                        .residual_detail
+                        .as_ref()
+                        .map(|detail| format!(" detail=[{}]", detail))
+                        .unwrap_or_default()
+                );
+                maybe_trace_small_dt_hotspot_neighborhood(
+                    sim,
+                    options.verbose,
+                    "accepted",
+                    dt_days,
+                    previous_state,
+                    &accepted_diagnostics.state,
+                    current_hotspot_site,
+                );
+                return FimStepReport {
+                    accepted_state: accepted_diagnostics.state,
+                    converged: true,
+                    newton_iterations: iteration + 1,
+                    final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
+                    final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
+                    final_update_inf_norm,
+                    last_linear_report: Some(linear_report),
+                    failure_diagnostics: None,
+                    retry_factor: 1.0,
+                    total_time_ms: total_timer.elapsed_ms(),
+                    assembly_ms,
+                    property_eval_ms,
+                    linear_solve_time_ms,
+                    linear_preconditioner_build_time_ms,
+                    state_update_ms,
+                };
+            }
+
             let failure_diagnostics = classify_retry_failure_with_site(
                 Some(&linear_report),
                 &residual_diagnostics,
@@ -3154,6 +3399,60 @@ mod tests {
             options.residual_tolerance * 6.0,
             options.material_balance_tolerance * 0.5,
             options.update_tolerance * 0.1,
+            &options,
+        ));
+    }
+
+    #[test]
+    fn zero_move_appleyard_acceptance_allows_guarded_unchanged_state() {
+        let options = FimNewtonOptions::default();
+        assert!(zero_move_appleyard_acceptance_allows(
+            false,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * 0.9,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * 0.9,
+            &options,
+        ));
+    }
+
+    #[test]
+    fn zero_move_appleyard_acceptance_rejects_changed_or_out_of_band_state() {
+        let options = FimNewtonOptions::default();
+        assert!(!zero_move_appleyard_acceptance_allows(
+            true,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR,
+            &options,
+        ));
+        assert!(!zero_move_appleyard_acceptance_allows(
+            false,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * 1.1,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR,
+            &options,
+        ));
+        assert!(!zero_move_appleyard_acceptance_allows(
+            false,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * 1.1,
             &options,
         ));
     }

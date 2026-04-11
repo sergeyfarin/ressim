@@ -130,11 +130,53 @@ pub struct WellRates {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FimAcceptedRungStats {
+    pub substep: u32,
+    pub dt_days: f64,
+    pub newton_iterations: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_backend: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_iterations: Option<usize>,
+    pub linear_solve_ms: f64,
+    pub linear_preconditioner_ms: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FimRetryRungStats {
+    pub substep: u32,
+    pub dt_days: f64,
+    pub newton_iterations: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_backend: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_iterations: Option<usize>,
+    pub linear_solve_ms: f64,
+    pub linear_preconditioner_ms: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dominant_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dominant_row: Option<usize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FimStepStats {
     pub time_days: f64,
     pub target_dt_days: f64,
     pub advanced_dt_days: f64,
     pub accepted_substeps: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub real_accepted_substeps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replayed_cooldown_accepts: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replayed_hotspot_plateau_accepts: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_rungs: Option<Vec<FimAcceptedRungStats>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_rungs: Option<Vec<FimRetryRungStats>>,
     pub linear_bad_retries: usize,
     pub nonlinear_bad_retries: usize,
     pub mixed_retries: usize,

@@ -6,7 +6,7 @@ use crate::fim::newton::{
     run_fim_timestep,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
-use crate::reporting::FimStepStats;
+use crate::reporting::{FimAcceptedRungStats, FimRetryRungStats, FimStepStats};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
 macro_rules! fim_trace {
@@ -411,6 +411,7 @@ fn accepted_step_growth_decision(
     decision
 }
 
+#[cfg(test)]
 fn replayable_unchanged_cooldown_accepts(
     cooldown: FimGrowthCooldown,
     accepted_dt_days: f64,
@@ -432,6 +433,84 @@ fn replayable_unchanged_cooldown_accepts(
     replayable
 }
 
+fn replayable_unchanged_accepts_after_retry(
+    mut cooldown: FimGrowthCooldown,
+    accepted_dt_days: f64,
+    remaining_dt_days: f64,
+) -> (u32, u32) {
+    let mut cooldown_replayable = 0_u32;
+    let mut plateau_replayable = 0_u32;
+    let mut replay_time_days = 0.0;
+
+    while replay_time_days + accepted_dt_days <= remaining_dt_days + 1e-12 {
+        if cooldown.cap_dt_days == Some(accepted_dt_days) && cooldown.clean_successes_remaining > 0 {
+            cooldown.note_clean_accepted(false);
+            cooldown_replayable += 1;
+            replay_time_days += accepted_dt_days;
+            continue;
+        }
+
+        if cooldown.cap_dt_days.is_none()
+            && cooldown.hotspot.is_some()
+            && cooldown.hotspot_repeat_failures >= 2
+        {
+            plateau_replayable += 1;
+            replay_time_days += accepted_dt_days;
+            continue;
+        }
+
+        break;
+    }
+
+    (cooldown_replayable, plateau_replayable)
+}
+
+fn replayable_unchanged_hotspot_plateau_accepts(
+    cooldown: FimGrowthCooldown,
+    accepted_dt_days: f64,
+    remaining_dt_days: f64,
+) -> u32 {
+    if cooldown.cap_dt_days.is_some()
+        || cooldown.hotspot.is_none()
+        || cooldown.hotspot_repeat_failures < 2
+    {
+        return 0;
+    }
+
+    let mut replayable = 0_u32;
+    let mut replay_time_days = 0.0;
+    while replay_time_days + accepted_dt_days <= remaining_dt_days + 1e-12 {
+        replayable += 1;
+        replay_time_days += accepted_dt_days;
+    }
+
+    replayable
+}
+
+fn accelerated_retry_factor_for_repeated_hotspot_failure(
+    base_retry_factor: f64,
+    repeated_same_hotspot_failures: u32,
+    hotspot_repeat_failures: u32,
+    trial_dt_days: f64,
+    report: &crate::fim::newton::FimStepReport,
+) -> f64 {
+    let Some(failure_diagnostics) = &report.failure_diagnostics else {
+        return base_retry_factor;
+    };
+
+    if failure_diagnostics.class != FimRetryFailureClass::NonlinearBad
+        || repeated_same_hotspot_failures < 2
+        || hotspot_repeat_failures < 2
+        || trial_dt_days <= 1.0e-4
+        || report.newton_iterations != 1
+        || failure_diagnostics.linear_iterations != Some(1)
+    {
+        return base_retry_factor;
+    }
+
+    base_retry_factor.min(0.2)
+}
+
 fn proposed_trial_dt_days(
     sim_time_days: f64,
     substeps: u32,
@@ -439,11 +518,20 @@ fn proposed_trial_dt_days(
     last_successful_dt_days: f64,
     last_growth_factor: f64,
 ) -> f64 {
-    const INITIAL_OUTER_STEP_TRIAL_CAP_DAYS: f64 = 1.0;
+    const INITIAL_OUTER_STEP_SMALL_TARGET_CAP_THRESHOLD_DAYS: f64 = 1.0;
+    const INITIAL_OUTER_STEP_SMALL_TARGET_TRIAL_CAP_DAYS: f64 = 0.25;
+    const INITIAL_OUTER_STEP_LARGE_TARGET_TRIAL_CAP_DAYS: f64 = 1.0;
 
     if substeps == 0 {
         if sim_time_days <= 1e-12 {
-            remaining_dt_days.min(INITIAL_OUTER_STEP_TRIAL_CAP_DAYS)
+            let initial_trial_cap_days = if remaining_dt_days
+                <= INITIAL_OUTER_STEP_SMALL_TARGET_CAP_THRESHOLD_DAYS + 1e-12
+            {
+                INITIAL_OUTER_STEP_SMALL_TARGET_TRIAL_CAP_DAYS
+            } else {
+                INITIAL_OUTER_STEP_LARGE_TARGET_TRIAL_CAP_DAYS
+            };
+            remaining_dt_days.min(initial_trial_cap_days)
         } else {
             remaining_dt_days
         }
@@ -471,6 +559,11 @@ fn store_fim_outer_step_stats(
     target_dt_days: f64,
     advanced_dt_days: f64,
     accepted_substeps: u32,
+    real_accepted_substeps: u32,
+    replayed_cooldown_accepts: u32,
+    replayed_hotspot_plateau_accepts: u32,
+    accepted_rungs: Vec<FimAcceptedRungStats>,
+    retry_rungs: Vec<FimRetryRungStats>,
     linear_bad_retries: usize,
     nonlinear_bad_retries: usize,
     mixed_retries: usize,
@@ -497,6 +590,11 @@ fn store_fim_outer_step_stats(
         target_dt_days,
         advanced_dt_days,
         accepted_substeps,
+        real_accepted_substeps: Some(real_accepted_substeps),
+        replayed_cooldown_accepts: Some(replayed_cooldown_accepts),
+        replayed_hotspot_plateau_accepts: Some(replayed_hotspot_plateau_accepts),
+        accepted_rungs: Some(accepted_rungs),
+        retry_rungs: Some(retry_rungs),
         linear_bad_retries,
         nonlinear_bad_retries,
         mixed_retries,
@@ -553,6 +651,11 @@ impl ReservoirSimulator {
         let mut linear_bad_retries = 0usize;
         let mut nonlinear_bad_retries = 0usize;
         let mut mixed_retries = 0usize;
+        let mut real_accepted_substeps = 0_u32;
+        let mut replayed_cooldown_accepts = 0_u32;
+        let mut replayed_hotspot_plateau_accepts = 0_u32;
+        let mut accepted_rungs: Vec<FimAcceptedRungStats> = Vec::new();
+        let mut retry_rungs: Vec<FimRetryRungStats> = Vec::new();
         let mut min_accepted_dt_days: Option<f64> = None;
         let mut max_accepted_dt_days: Option<f64> = None;
         let mut last_accepted_dt_days: Option<f64> = None;
@@ -608,6 +711,8 @@ impl ReservoirSimulator {
             };
             let mut trial_dt = initial_trial;
             let mut retry_count = 0;
+            let mut previous_retry_hotspot: Option<FimRetryHotspot> = None;
+            let mut repeated_same_hotspot_failures = 0_u32;
             let previous_state = FimState::from_simulator(self);
 
             loop {
@@ -690,6 +795,12 @@ impl ReservoirSimulator {
                         } else {
                             growth_decision
                         };
+                    let unchanged_hotspot_plateau_accept = retry_count == 0
+                        && report.newton_iterations == 1
+                        && report.final_update_inf_norm == 0.0
+                        && !materially_changed
+                        && adjusted_growth_decision.factor == 1.0
+                        && adjusted_growth_decision.limiter == "hotspot-repeat";
                     last_growth_factor = adjusted_growth_decision.factor;
                     last_growth_limiter = Some(adjusted_growth_decision.limiter);
                     min_accepted_dt_days = Some(
@@ -742,28 +853,76 @@ impl ReservoirSimulator {
                         oil_before - oil_after,
                         gas_after - gas_before,
                     );
+                    accepted_rungs.push(FimAcceptedRungStats {
+                        substep: substeps,
+                        dt_days: trial_dt,
+                        newton_iterations: report.newton_iterations,
+                        linear_backend: report
+                            .last_linear_report
+                            .as_ref()
+                            .map(|linear_report| linear_report.backend_used.label().to_string()),
+                        linear_iterations: report
+                            .last_linear_report
+                            .as_ref()
+                            .map(|linear_report| linear_report.iterations),
+                        linear_solve_ms: report.linear_solve_time_ms,
+                        linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
+                    });
                     self.time_days += trial_dt;
                     time_stepped += trial_dt;
                     last_successful_dt = trial_dt;
+                    real_accepted_substeps += 1;
                     substeps += 1;
 
-                    let replayable_accepts = if unchanged_retry_accept {
-                        replayable_unchanged_cooldown_accepts(
-                            growth_cooldown,
-                            trial_dt,
-                            target_dt_days - time_stepped,
-                        )
-                    } else {
-                        0
-                    };
+                    let (replayed_cooldown, replayed_plateau, replayable_accepts) =
+                        if unchanged_retry_accept {
+                            let (cooldown_replayable, plateau_replayable) =
+                                replayable_unchanged_accepts_after_retry(
+                                    growth_cooldown,
+                                    trial_dt,
+                                    target_dt_days - time_stepped,
+                                );
+                            (
+                                cooldown_replayable,
+                                plateau_replayable,
+                                cooldown_replayable + plateau_replayable,
+                            )
+                        } else if unchanged_hotspot_plateau_accept {
+                            let plateau_replayable = replayable_unchanged_hotspot_plateau_accepts(
+                                growth_cooldown,
+                                trial_dt,
+                                target_dt_days - time_stepped,
+                            );
+                            (0, plateau_replayable, plateau_replayable)
+                        } else {
+                            (0, 0, 0)
+                        };
 
-                    for _ in 0..replayable_accepts {
+                    if unchanged_retry_accept {
+                        replayed_cooldown_accepts += replayed_cooldown;
+                        replayed_hotspot_plateau_accepts += replayed_plateau;
+                    } else if unchanged_hotspot_plateau_accept {
+                        replayed_hotspot_plateau_accepts += replayed_plateau;
+                    }
+
+                    for replay_index in 0..replayable_accepts {
                         growth_cooldown.note_clean_accepted(false);
                         last_accepted_dt_days = Some(trial_dt);
+                        let replay_trace_suffix = if unchanged_retry_accept {
+                            if replay_index < replayed_cooldown {
+                                " [replayed unchanged cooldown accept]"
+                            } else {
+                                " [replayed unchanged hotspot plateau accept]"
+                            }
+                        } else if unchanged_hotspot_plateau_accept {
+                            " [replayed unchanged hotspot plateau accept]"
+                        } else {
+                            ""
+                        };
                         fim_trace!(
                             self,
                             verbose,
-                            "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}{}{} [replayed unchanged cooldown accept]",
+                            "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}{}{}{}",
                             substeps,
                             trial_dt,
                             report.newton_iterations,
@@ -774,7 +933,8 @@ impl ReservoirSimulator {
                             max_dp,
                             last_growth_factor,
                             growth_cooldown.trace_suffix(),
-                            fim_linear_report_step_suffix(report.last_linear_report.as_ref())
+                            fim_linear_report_step_suffix(report.last_linear_report.as_ref()),
+                            replay_trace_suffix
                         );
                         self.record_fim_step_report(
                             &report.accepted_state,
@@ -792,7 +952,35 @@ impl ReservoirSimulator {
                     break;
                 }
 
-                let next_dt = trial_dt * report.retry_factor.clamp(0.1, 0.5);
+                if let Some(failure_diagnostics) = &report.failure_diagnostics {
+                    let current_retry_hotspot = FimRetryHotspot::from_failure(self, failure_diagnostics);
+                    if let Some(current_retry_hotspot) = current_retry_hotspot {
+                        if previous_retry_hotspot
+                            .is_some_and(|previous| previous.same_site(current_retry_hotspot))
+                        {
+                            repeated_same_hotspot_failures =
+                                repeated_same_hotspot_failures.saturating_add(1);
+                        } else {
+                            repeated_same_hotspot_failures = 1;
+                        }
+                        previous_retry_hotspot = Some(current_retry_hotspot);
+                    } else {
+                        repeated_same_hotspot_failures = 0;
+                        previous_retry_hotspot = None;
+                    }
+                } else {
+                    repeated_same_hotspot_failures = 0;
+                    previous_retry_hotspot = None;
+                }
+
+                let effective_retry_factor = accelerated_retry_factor_for_repeated_hotspot_failure(
+                    report.retry_factor,
+                    repeated_same_hotspot_failures,
+                    growth_cooldown.hotspot_repeat_failures,
+                    trial_dt,
+                    &report,
+                );
+                let next_dt = trial_dt * effective_retry_factor.clamp(0.1, 0.5);
                 retry_count += 1;
 
                 if let Some(failure_diagnostics) = &report.failure_diagnostics {
@@ -800,6 +988,24 @@ impl ReservoirSimulator {
                     last_retry_class = Some(failure_diagnostics.class.label());
                     last_retry_dominant_family = Some(failure_diagnostics.dominant_family_label);
                     last_retry_dominant_row = Some(failure_diagnostics.dominant_row);
+                    retry_rungs.push(FimRetryRungStats {
+                        substep: substeps,
+                        dt_days: trial_dt,
+                        newton_iterations: report.newton_iterations,
+                        linear_backend: report
+                            .last_linear_report
+                            .as_ref()
+                            .map(|linear_report| linear_report.backend_used.label().to_string()),
+                        linear_iterations: report
+                            .last_linear_report
+                            .as_ref()
+                            .map(|linear_report| linear_report.iterations),
+                        linear_solve_ms: report.linear_solve_time_ms,
+                        linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
+                        retry_class: Some(failure_diagnostics.class.label().to_string()),
+                        dominant_family: Some(failure_diagnostics.dominant_family_label.to_string()),
+                        dominant_row: Some(failure_diagnostics.dominant_row),
+                    });
                     match failure_diagnostics.class {
                         FimRetryFailureClass::LinearBad => linear_bad_retries += 1,
                         FimRetryFailureClass::NonlinearBad => nonlinear_bad_retries += 1,
@@ -816,7 +1022,7 @@ impl ReservoirSimulator {
                     report.final_residual_inf_norm,
                     report.final_material_balance_inf_norm,
                     report.final_update_inf_norm,
-                    report.retry_factor,
+                    effective_retry_factor,
                     report
                         .failure_diagnostics
                         .as_ref()
@@ -849,6 +1055,11 @@ impl ReservoirSimulator {
                         target_dt_days,
                         time_stepped,
                         substeps,
+                        real_accepted_substeps,
+                        replayed_cooldown_accepts,
+                        replayed_hotspot_plateau_accepts,
+                        accepted_rungs,
+                        retry_rungs,
                         linear_bad_retries,
                         nonlinear_bad_retries,
                         mixed_retries,
@@ -890,6 +1101,11 @@ impl ReservoirSimulator {
                         target_dt_days,
                         time_stepped,
                         substeps,
+                        real_accepted_substeps,
+                        replayed_cooldown_accepts,
+                        replayed_hotspot_plateau_accepts,
+                        accepted_rungs,
+                        retry_rungs,
                         linear_bad_retries,
                         nonlinear_bad_retries,
                         mixed_retries,
@@ -950,6 +1166,11 @@ impl ReservoirSimulator {
             target_dt_days,
             time_stepped,
             substeps,
+            real_accepted_substeps,
+            replayed_cooldown_accepts,
+            replayed_hotspot_plateau_accepts,
+            accepted_rungs,
+            retry_rungs,
             linear_bad_retries,
             nonlinear_bad_retries,
             mixed_retries,
@@ -1014,11 +1235,16 @@ impl ReservoirSimulator {
 #[cfg(test)]
 mod tests {
     use super::{
-        AcceptedStepGrowthDecision, FimGrowthCooldown, accepted_step_growth_factor,
-        proposed_trial_dt_days, replayable_unchanged_cooldown_accepts,
+        AcceptedStepGrowthDecision, FimGrowthCooldown,
+        accelerated_retry_factor_for_repeated_hotspot_failure, accepted_step_growth_factor,
+        proposed_trial_dt_days, replayable_unchanged_accepts_after_retry,
+        replayable_unchanged_cooldown_accepts,
+        replayable_unchanged_hotspot_plateau_accepts,
     };
     use crate::ReservoirSimulator;
     use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
+    use crate::fim::newton::FimStepReport;
+    use crate::fim::state::FimState;
 
     fn failure_diagnostics(
         class: FimRetryFailureClass,
@@ -1524,6 +1750,12 @@ mod tests {
     }
 
     #[test]
+    fn cold_start_small_target_first_outer_step_caps_initial_trial_dt_more_tightly() {
+        let trial = proposed_trial_dt_days(0.0, 0, 1.0, 1.0, 3.0);
+        assert!((trial - 0.25).abs() < 1e-12);
+    }
+
+    #[test]
     fn non_startup_first_outer_step_keeps_full_trial_dt() {
         let trial = proposed_trial_dt_days(10.0, 0, 31.0, 1.0, 3.0);
         assert!((trial - 31.0).abs() < 1e-12);
@@ -1558,6 +1790,104 @@ mod tests {
         assert_eq!(
             replayable_unchanged_cooldown_accepts(cooldown, 0.25, 0.26),
             1
+        );
+    }
+
+    #[test]
+    fn unchanged_retry_accepts_can_flow_directly_into_hotspot_plateau_replay() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(
+            replayable_unchanged_accepts_after_retry(cooldown, 0.25, 1.0),
+            (3, 1)
+        );
+        assert_eq!(
+            replayable_unchanged_accepts_after_retry(cooldown, 0.25, 0.74),
+            (2, 0)
+        );
+    }
+
+    #[test]
+    fn unchanged_hotspot_plateau_replays_full_steps_until_remaining_time() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
+
+        assert_eq!(
+            replayable_unchanged_hotspot_plateau_accepts(cooldown, 0.25, 1.0),
+            4
+        );
+        assert_eq!(
+            replayable_unchanged_hotspot_plateau_accepts(cooldown, 0.25, 0.24),
+            0
+        );
+    }
+
+    #[test]
+    fn unchanged_hotspot_plateau_does_not_replay_while_cooldown_hold_is_active() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(
+            replayable_unchanged_hotspot_plateau_accepts(cooldown, 0.25, 1.0),
+            0
+        );
+    }
+
+    #[test]
+    fn repeated_one_iteration_nonlinear_hotspot_failure_accelerates_retry_cut() {
+        let report = FimStepReport {
+            accepted_state: FimState::from_simulator(&ReservoirSimulator::new(1, 1, 1, 0.2)),
+            converged: false,
+            newton_iterations: 1,
+            final_residual_inf_norm: 1.0,
+            final_material_balance_inf_norm: 1.0,
+            final_update_inf_norm: 0.0,
+            last_linear_report: None,
+            failure_diagnostics: Some(FimRetryFailureDiagnostics {
+                class: FimRetryFailureClass::NonlinearBad,
+                dominant_family_label: "water",
+                dominant_row: 1020,
+                dominant_item_index: 340,
+                hotspot_site: FimHotspotSite::Cell(340),
+                linear_iterations: Some(1),
+                used_linear_fallback: false,
+                cpr_average_reduction_ratio: None,
+                cpr_last_reduction_ratio: None,
+            }),
+            retry_factor: 0.5,
+            total_time_ms: 0.0,
+            assembly_ms: 0.0,
+            property_eval_ms: 0.0,
+            linear_solve_time_ms: 0.0,
+            linear_preconditioner_build_time_ms: 0.0,
+            state_update_ms: 0.0,
+        };
+
+        assert_eq!(
+            accelerated_retry_factor_for_repeated_hotspot_failure(0.5, 1, 2, 1.0e-3, &report),
+            0.5
+        );
+        assert_eq!(
+            accelerated_retry_factor_for_repeated_hotspot_failure(0.5, 2, 2, 1.0e-3, &report),
+            0.2
+        );
+        assert_eq!(
+            accelerated_retry_factor_for_repeated_hotspot_failure(0.5, 2, 2, 8.0e-5, &report),
+            0.5
+        );
+        assert_eq!(
+            accelerated_retry_factor_for_repeated_hotspot_failure(0.5, 2, 1, 1.0e-3, &report),
+            0.5
         );
     }
 

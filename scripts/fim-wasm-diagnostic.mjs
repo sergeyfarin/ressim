@@ -529,6 +529,12 @@ function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
     producerBhpLimitedFraction: last?.producer_bhp_limited_fraction ?? null,
     injectorBhpLimitedFraction: last?.injector_bhp_limited_fraction ?? null,
     fimAcceptedSubsteps: fimStepStats?.accepted_substeps ?? null,
+    fimRealAcceptedSubsteps: fimStepStats?.real_accepted_substeps ?? null,
+    fimReplayedCooldownAccepts: fimStepStats?.replayed_cooldown_accepts ?? null,
+    fimReplayedHotspotPlateauAccepts:
+      fimStepStats?.replayed_hotspot_plateau_accepts ?? null,
+    fimAcceptedRungs: fimStepStats?.accepted_rungs ?? null,
+    fimRetryRungs: fimStepStats?.retry_rungs ?? null,
     fimLinearBadRetries: fimStepStats?.linear_bad_retries ?? null,
     fimNonlinearBadRetries: fimStepStats?.nonlinear_bad_retries ?? null,
     fimMixedRetries: fimStepStats?.mixed_retries ?? null,
@@ -562,6 +568,20 @@ function snapshot(sim, outerStep, outerMs, previousHistoryLength) {
   };
 }
 
+function formatAcceptedRung(record) {
+  const backend = record.linear_backend ?? 'n/a';
+  const linearIterations = record.linear_iterations == null ? 'n/a' : record.linear_iterations;
+  return `s${record.substep}@${record.dt_days.toExponential(3)}/n${record.newton_iterations}/${backend}[it=${linearIterations},lin=${record.linear_solve_ms.toFixed(1)},pc=${record.linear_preconditioner_ms.toFixed(1)}]`;
+}
+
+function formatRetryRung(record) {
+  const backend = record.linear_backend ?? 'n/a';
+  const linearIterations = record.linear_iterations == null ? 'n/a' : record.linear_iterations;
+  const retryClass = record.retry_class ?? 'n/a';
+  const dominant = record.dominant_family == null ? 'n/a' : `${record.dominant_family}@${record.dominant_row}`;
+  return `s${record.substep}@${record.dt_days.toExponential(3)}/n${record.newton_iterations}/${backend}[it=${linearIterations},lin=${record.linear_solve_ms.toFixed(1)},pc=${record.linear_preconditioner_ms.toFixed(1)}]/${retryClass}:${dominant}`;
+}
+
 function printStepSummary(record) {
   console.error(
     [
@@ -570,6 +590,7 @@ function printStepSummary(record) {
       `outer_ms=${record.outerMs.toFixed(1)}`,
       `history+=${record.historyDelta}`,
       `substeps=${record.fimAcceptedSubsteps == null ? 'n/a' : record.fimAcceptedSubsteps}`,
+      `accepts=${record.fimRealAcceptedSubsteps == null ? 'n/a' : `${record.fimRealAcceptedSubsteps}+${record.fimReplayedCooldownAccepts ?? 0}+${record.fimReplayedHotspotPlateauAccepts ?? 0}`}`,
       `retries=${record.fimLinearBadRetries == null ? 'n/a' : `${record.fimLinearBadRetries}/${record.fimNonlinearBadRetries}/${record.fimMixedRetries}`}`,
       `avg_p=${record.avgPressure == null ? 'n/a' : record.avgPressure.toFixed(2)}`,
       `oil=${record.totalOil == null ? 'n/a' : record.totalOil.toFixed(2)}`,
@@ -591,6 +612,12 @@ function printStepSummary(record) {
       record.warning ? `warning=${record.warning}` : 'warning=none',
     ].join(' | '),
   );
+  if (record.fimAcceptedRungs?.length) {
+    console.error(`  real_accept_rungs: ${record.fimAcceptedRungs.map(formatAcceptedRung).join(' ; ')}`);
+  }
+  if (record.fimRetryRungs?.length) {
+    console.error(`  retry_rungs: ${record.fimRetryRungs.map(formatRetryRung).join(' ; ')}`);
+  }
 }
 
 function printFimTrace(trace) {
