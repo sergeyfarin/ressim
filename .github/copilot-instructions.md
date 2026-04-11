@@ -70,3 +70,12 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 **TODO discipline**: while working on any task, note discoveries in `TODO.md` — bugs, gaps, bad practices, physics concerns, UX improvements. When work is complete, mark finished items done. Keeping TODO current is part of the definition of done.
 
 **Prefer fundamental fixes** over quick patches. Address root causes; avoid workaround accumulation.
+
+**Baseline discipline**: never describe a solver/runtime/convergence number as the current baseline unless it was reproduced on a committed revision and the exact replay command is recorded next to it. When a diagnostic result matters for future comparison:
+- record the exact commit hash or tag
+- record the exact command line used
+- copy the key summary output verbatim enough to reconstruct the claimed baseline
+- treat results from temporary experiments, dirty worktrees, or partially reverted states as provisional until rerun on the intended committed state
+- when replacing an older baseline in docs, explicitly say which older baseline was superseded and why
+
+**Promotion discipline**: before promoting a convergence change into docs as the new baseline, rerun the agreed validation shortlist on the final post-revert/post-cleanup tree, not on an intermediate experiment commit. If a replay is too expensive to rerun broadly, mark the baseline as provisional instead of presenting it as settled.

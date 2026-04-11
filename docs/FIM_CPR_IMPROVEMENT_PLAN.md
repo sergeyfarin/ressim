@@ -144,6 +144,19 @@ application.
   narrower: not dead-state rediscovery, not restart-stagnation rediscovery, not unchanged-state
   rediscovery, not small-residual near-converged tails, and not direct-backend cost, but the
   remaining `18` direct fallback uses themselves.
+- Latest replay classification now narrows those remaining direct uses into a small site map rather
+  than a broad tail. The dominant repeated family is substep 6 oil cell95 / `row=286 item=95`:
+  one `dead-state` fallback followed by five same-substep direct-bypass cleanup iterations. Two
+  smaller repeated families are substep 2 injector perf0 / `row=1589 item=0` and substep 4 oil
+  cell49 / `row=148 item=49`, each showing one `restart-stagnation` fallback plus one zero-move
+  direct cleanup iteration. The remaining survivors are one-shot cleanup tails: substep 0 oil
+  cell48 / `row=145 item=48`, substep 5 water cell96 / `row=288 item=96`, and substep 7 water
+  cell51 / `row=153 item=51`. One useful negative control is substep 3 oil cell72 / `row=217
+  item=72`, which is exactly the kind of small-residual site now removed by the near-converged
+  iterative accept. Current Phase 2 recommendation: do not add another generic CPR heuristic; if a
+  bounded linear slice is taken next, target the one-shot tiny/small-residual cleanup tails. If a
+  broader reduction of the dominant cell95 family is desired, that is now more of a nonlinear
+  state-management/trust-region question than a coarse-pressure or Krylov question.
 
 ## Guardrails Before Any Code Change
 

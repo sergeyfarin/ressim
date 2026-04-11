@@ -20,6 +20,10 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 
 ### Water shelf
 - The active hard water shelf is reservoir-row dominated, not well/perforation dominated.
+- Completed sequential replays on 2026-04-11 clarified that the previously documented `129`-substep baseline is stale on this replay path well before current head. The same `water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary` command finishes at:
+  - `344980f` (2026-04-08): `substeps=12226`, `retries=0/3636/0`, `retry_dom=nonlinear-bad:water@1095`, `growth=max-growth`, `hotspot_newton_caps=5`, `outer_ms=1244516.4`
+  - `12ae00a` (2026-04-10): `substeps=12226`, `retries=0/3636/0`, `retry_dom=nonlinear-bad:water@1095`, `growth=max-growth`, `hotspot_newton_caps=5`, `outer_ms=1243420.0`
+  - current reverted head: `substeps=16448`, `retries=0/4892/0`, `retry_dom=nonlinear-bad:water@1020`, `growth=hotspot-repeat`, `hotspot_newton_caps=4`, `outer_ms=268731.6`
 - Repeated-hotspot cooldown now caps any accepted-step regrowth above `1.0`, not just `max-growth`.
 - Latest canonical result:
   - before: `substeps=134`, `retries=0/44/0`, `outer_ms=121254.6`, `retry_ms=32917.0`
@@ -38,6 +42,8 @@ Historical narrative was trimmed out of this file on 2026-04-08.
   - this controller slice is a real water-side improvement
   - the dominant hotspot did not move, so the remaining issue is still the same reservoir-row shelf rather than a new failure family
   - carrying a hard dt cap across outer-step boundaries is not a clean shared-policy lever here; both carryover variants held the water shelf too conservatively and were reverted
+  - the completed 2026-04-11 replays narrow the actual question: the old `129`-substep water baseline is already stale by April 8 for this exact replay path, but current head still worsens that already-drifted water shelf further, moving from the April 8/10 `12226` / `3636` / `water@1095` regime to the current `16448` / `4892` / `water@1020` regime
+  - that same newer water regression is not just “more of the same” runtime-wise: accepted-substep count and retry count got worse, but outer runtime dropped sharply because the newer linear/direct path is much cheaper per substep than the older April 8/10 path
 
 ### Gas shelf
 - The shipped gas shelf is still a nonlinear hotspot problem, but its active identity and damping path are now visible and stable.
@@ -62,6 +68,7 @@ Historical narrative was trimmed out of this file on 2026-04-08.
   - outer-step carryover was directionally correct for gas because it could suppress one repeated retry shelf without losing the hotspot-repeat signal
   - it is still not the right shared implementation because the rest of the gas replay remained in the same `0/2/0` regime while water regressed
   - the parked Phase 1 CPR fine-smoother change is not the cause of the current gas replay shape: rebuilding wasm and replaying the same shipped case with the default CPR smoother temporarily forced back to block-Jacobi produced the same `0/3/0`, then repeated `0/2/0` shelf, including step 4 at `0/2/0`
+  - one more bounded carryover variant was tried on 2026-04-11: a soft first-outer-step regrowth throttle seeded only from repeated gas-region failures. On the experimental build it improved the shipped replay at step 3 and step 5 from `0/2/0` to `0/1/0`, but the slice was reverted instead of kept because the broader validation matrix did not support promotion. After revert the shipped gas replay returned to the documented current baseline (`0/3/0`, then repeated `0/2/0`)
 
 ### Coarse pressure solver
 - The old coarse-solver note was too broad.
@@ -87,9 +94,23 @@ Historical narrative was trimmed out of this file on 2026-04-08.
   - bounded repeated-`restart-stagnation` bypass is now also in at the Newton layer. When the same substep hits two consecutive iterative failures with `reason=restart-stagnation`, later Newton iterations now bypass CPR and go straight to the row-selected direct backend for the remainder of that substep. On the same `23x23x1` bounded replay this new bypass fired twice, cut rejected CPR solves from `11` down to `9`, kept sparse direct fallback uses flat at `22`, preserved the same bounded shelf (`substeps=8`, `retries=0/3/0`), and improved runtime again to about `1174.6 ms` outer / `1074.0 ms` linear. Current interpretation: repeated restart-stagnation rediscovery is now as bounded as the earlier dead-state family; the remaining active cost is the `22` direct solves themselves
   - bounded zero-move fallback bypass is now also in and is the new current head on this replay. If a fallback-backed Newton iteration produces only an effectively zero state move, using the existing effective-move floor (`<5e-3 bar`, `<5e-5` saturation), the next Newton iteration now bypasses CPR and goes straight to the row-selected direct backend instead of rerunning the same iterative solve on the same unchanged state. Two confirming `23x23x1` replays land on the same control counts: `6` rejected CPR solves, `19` sparse direct fallbacks, `5` dead-state bypasses, and `2` zero-move bypasses, with the same bounded shelf (`substeps=8`, `retries=0/3/0`). The runtime class remains in the same improved band (`outer_ms≈1188-1257`, `lin_ms≈1091-1152`). Current interpretation: same-substep CPR rediscovery is now bounded one step further; the remaining active cost is the remaining `19` direct solves themselves
   - bounded near-converged iterative accept is now also in and is the new current head. If the CPR solve lands in a small-residual `restart-stagnation` or `max-iters` tail but is still close enough to tolerance (`outer_res <= 16x tol`, candidate residual no worse than `8x` the current iterate, and at least one restart improved the iterate), Newton now accepts that iterative step instead of paying for a direct fallback. Two confirming `23x23x1` replays agree on the new control counts: `6` rejected CPR solves, `18` sparse direct fallbacks, `5` dead-state bypasses, `2` zero-move bypasses, and `1` near-converged iterative accept, with the same bounded shelf (`substeps=8`, `retries=0/3/0`). Runtime remains in the same improved band (`outer_ms≈1209-1231`, `lin_ms≈1106-1121`). Current interpretation: the remaining active cost is now the remaining `18` direct solves themselves, not small-residual linear tails that were already good enough for Newton
+  - remaining fallback-site classification from the latest confirmed replay is now concrete enough to drive the next slice. The survivor set is not broad; it clusters into six hotspot families:
+    - substep 0: oil cell48 / `row=145 item=48` — one-shot `max-iters` tiny tail that sparse LU cleans up immediately
+    - substep 2: injector perf0 / `row=1589 item=0` — one `restart-stagnation` fallback followed by one zero-move direct cleanup iteration
+    - substep 4: oil cell49 / `row=148 item=49` — one `restart-stagnation` fallback followed by one zero-move direct cleanup iteration
+    - substep 5: water cell96 / `row=288 item=96` — one-shot `max-iters` tiny tail that sparse LU cleans up immediately
+    - substep 6: oil cell95 / `row=286 item=95` — the dominant repeated hard-state family: one `dead-state` fallback followed by five same-substep direct-bypass cleanup iterations
+    - substep 7: water cell51 / `row=153 item=51` — one `restart-stagnation` fallback at iter 0, after which CPR resumes and the substep converges
+  - one useful negative result also came out of the classification: substep 3 oil cell72 / `row=217 item=72` is exactly the kind of small-residual survivor that the new near-converged accept was meant to remove, and it no longer pays for direct fallback on current head
+  - updated interpretation from that site map:
+    - the dead-state family is now a localized nonlinear state-management problem, not another generic Krylov/coarse-pressure problem
+    - the two zero-move families show the current bypass is already doing what it should and are not the highest-value next linear target
+    - the cleanest remaining bounded linear opportunity is the small set of one-shot tiny/small-residual cleanup tails, because they still pay for sparse direct fallback once and then immediately converge
 - Isolated threshold comparison:
-  - exact-dense control `22x22x1` stays below the coarse threshold (`rows=486 solver=dense`) and still lands on the same bounded shelf shape: `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1450`, `outer_ms=18580.2`, `retry_ms=1229.0`
+  - revalidation on 2026-04-11 exposed that the current exact-dense control is also no longer on the previously documented baseline. The current reverted head measures `22x22x1` at `substeps=10`, `retries=0/4/0`, `retry_dom=nonlinear-bad:oil@1450`, `hotspot_newton_caps=5`, and `outer_ms=2149.4`
+  - historical re-baselining already narrows that drift materially: detached worktrees at `344980f` (2026-04-08) and `12ae00a` (2026-04-10) both still replay `22x22x1` at the older documented baseline, `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1450`
   - over-threshold `23x23x1` crosses the coarse threshold (`rows=531 solver=bicgstab`) but keeps the same bounded shelf counts: `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1585`
+  - the same historical worktrees also keep `23x23x1` on that same bounded control, so the isolated control drift is specific to `22x22x1` and entered after `12ae00a`, not during the reverted carryover experiment
   - the current code-backed threshold is explicit: coarse rows `<= 512` use exact-dense inversion and `> 512` switches to BiCGSTAB on the coarse system
 - Current linear-track interpretation:
   - this bounded pair still isolates a real backend penalty: the over-threshold case does not add more retries or accepted substeps, but it still spends materially more time in linear work before converging the same shelf
@@ -137,9 +158,11 @@ Historical narrative was trimmed out of this file on 2026-04-08.
   - do not generalize exact-dense water-shelf results into a closure for large-case CPR quality
 
 ## Next Questions
-1. Gas shelf: can repeated gas-region failures retain stronger memory without carrying a hard dt cap across outer steps?
-2. Gas shelf: is the next lever a softer first-regrowth throttle after a repeated hotspot, or is a broader memory key still needed beyond the current injector-region grouping?
-3. Over-threshold CPR: what is the narrowest change that keeps the `23x23x1` iterative path alive longer or reduces fallback burden, while preserving the same bounded shelf shape as the `22x22x1` control?
+1. Water shelf archaeology: if `344980f` and `12ae00a` already sit at `12226` substeps, where did the much older documented `129` / `0/35/0` water baseline come from, and is that difference due to earlier solver code or to a replay/configuration path mismatch?
+2. Water shelf regression window: which post-`12ae00a` Newton/fallback change moved the representative water shelf from `12226` / `3636` / `water@1095` to the current `16448` / `4892` / `water@1020` regime?
+3. Exact-dense control regression window: which same post-`12ae00a` change first moved `22x22x1` from `substeps=8`, `retries=0/3/0` to `substeps=10`, `retries=0/4/0`?
+4. Gas shelf: once the representative baselines are re-established, is a softer first-regrowth throttle still the best next shared-controller candidate, or is the remaining leverage elsewhere in the gas-region memory path?
+5. Over-threshold CPR: what is the narrowest change that keeps the `23x23x1` iterative path alive longer or reduces fallback burden, while preserving a re-baselined exact-dense control?
 
 ## Validation Shortlist
 - Water shelf summary:
