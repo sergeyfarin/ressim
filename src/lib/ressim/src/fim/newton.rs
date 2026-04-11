@@ -242,6 +242,36 @@ fn should_enable_zero_move_fallback_direct_bypass(
         && saturation_change < EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD
 }
 
+fn hotspot_sites_share_history_region(
+    sim: &ReservoirSimulator,
+    family: ResidualRowFamily,
+    previous_site: FimHotspotSite,
+    current_site: FimHotspotSite,
+) -> bool {
+    match family {
+        ResidualRowFamily::GasComponent => previous_site == current_site,
+        _ => non_gas_hotspot_sites_share_local_region(sim, previous_site, current_site),
+    }
+}
+
+fn should_enable_repeated_zero_move_direct_bypass(
+    sim: &ReservoirSimulator,
+    previous_effective_move_site: Option<FimHotspotSite>,
+    current_diagnostics: &ResidualFamilyDiagnostics,
+    current_site: FimHotspotSite,
+) -> bool {
+    let Some(previous_site) = previous_effective_move_site else {
+        return false;
+    };
+
+    hotspot_sites_share_history_region(
+        sim,
+        current_diagnostics.global.family,
+        previous_site,
+        current_site,
+    )
+}
+
 fn should_accept_near_converged_iterative_step(report: &FimLinearSolveReport) -> bool {
     if report.backend_used != FimLinearSolverKind::FgmresCpr {
         return false;
@@ -1002,10 +1032,12 @@ fn repeated_nonlinear_hotspot_streak(
         return 0;
     }
 
-    let same_site = match current_diagnostics.global.family {
-        ResidualRowFamily::GasComponent => previous_site == current_site,
-        _ => non_gas_hotspot_sites_share_local_region(sim, previous_site, current_site),
-    };
+    let same_site = hotspot_sites_share_history_region(
+        sim,
+        current_diagnostics.global.family,
+        previous_site,
+        current_site,
+    );
     let weak_progress_ratio = match current_diagnostics.global.family {
         ResidualRowFamily::GasComponent => NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO,
         _ => NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO,
@@ -2075,6 +2107,7 @@ pub(crate) fn run_fim_timestep(
     let mut restart_stagnation_direct_bypass = false;
     let mut restart_stagnation_fallback_streak = 0_u32;
     let mut zero_move_fallback_direct_bypass = false;
+    let mut previous_effective_move_floor_site: Option<FimHotspotSite> = None;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -2137,6 +2170,12 @@ pub(crate) fn run_fim_timestep(
             current_hotspot_site,
             current_norm,
             repeated_hotspot_streak,
+        );
+        let repeated_zero_move_direct_bypass = should_enable_repeated_zero_move_direct_bypass(
+            sim,
+            previous_effective_move_floor_site,
+            &residual_diagnostics,
+            current_hotspot_site,
         );
         let materially_changed = iterate_has_material_change(previous_state, &state);
         let converged_on_entry = if iteration == 0 && !materially_changed {
@@ -2423,6 +2462,7 @@ pub(crate) fn run_fim_timestep(
         if dead_state_direct_bypass
             || restart_stagnation_direct_bypass
             || zero_move_fallback_direct_bypass
+            || repeated_zero_move_direct_bypass
         {
             linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
             fim_trace!(
@@ -2434,6 +2474,8 @@ pub(crate) fn run_fim_timestep(
                     "dead-state"
                 } else if restart_stagnation_direct_bypass {
                     "repeated restart-stagnation"
+                } else if repeated_zero_move_direct_bypass {
+                    "repeated zero-move hotspot"
                 } else {
                     "zero-move fallback"
                 },
@@ -2708,7 +2750,7 @@ pub(crate) fn run_fim_timestep(
                 .map(|detail| format!(" detail=[{}]", detail))
                 .unwrap_or_default()
         );
-        if let Some(effective_move_trace) = effective_move_trace {
+        if let Some(ref effective_move_trace) = effective_move_trace {
             fim_trace!(
                 sim,
                 options.verbose,
@@ -2717,6 +2759,9 @@ pub(crate) fn run_fim_timestep(
                 effective_move_trace,
             );
         }
+        previous_effective_move_floor_site = effective_move_trace
+            .as_ref()
+            .map(|_| current_hotspot_site);
 
         if producer_hotspot_stagnation_should_bail(
             previous_producer_hotspot_effective_move.as_ref(),
@@ -3598,6 +3643,66 @@ mod tests {
         ));
         assert!(!should_enable_zero_move_fallback_direct_bypass(
             true, 0.0049, 0.000051,
+        ));
+    }
+
+    #[test]
+    fn repeated_zero_move_direct_bypass_groups_nearby_non_gas_cells_in_same_layer() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::OilComponent,
+            scaled_value: 0.99,
+            row: 250,
+            item_index: sim.idx(3, 4, 0),
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: peak,
+            oil_component: peak,
+            gas_component: peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+
+        assert!(should_enable_repeated_zero_move_direct_bypass(
+            &sim,
+            Some(FimHotspotSite::Cell(sim.idx(3, 3, 0))),
+            &diagnostics,
+            FimHotspotSite::Cell(sim.idx(3, 4, 0)),
+        ));
+    }
+
+    #[test]
+    fn repeated_zero_move_direct_bypass_does_not_group_vertical_non_gas_shift() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::OilComponent,
+            scaled_value: 0.99,
+            row: 1390,
+            item_index: sim.idx(3, 3, 1),
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: peak,
+            oil_component: peak,
+            gas_component: peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+
+        assert!(!should_enable_repeated_zero_move_direct_bypass(
+            &sim,
+            Some(FimHotspotSite::Cell(sim.idx(3, 3, 0))),
+            &diagnostics,
+            FimHotspotSite::Cell(sim.idx(3, 3, 1)),
         ));
     }
 
