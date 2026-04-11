@@ -31,11 +31,65 @@ pub(crate) struct FimGrowthCooldown {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FimRetryMemoryRegion {
     Exact(FimHotspotSite),
+    NonGasReservoirRegion {
+        reference_well_index: Option<usize>,
+        anchor_i: usize,
+        anchor_j: usize,
+        anchor_k: usize,
+    },
     GasReservoirRegion {
         injector_well_index: usize,
         vertical_offset: usize,
     },
     GasFamily,
+}
+
+fn cell_ijk(sim: &ReservoirSimulator, cell_idx: usize) -> (usize, usize, usize) {
+    let i = cell_idx % sim.nx;
+    let j = (cell_idx / sim.nx) % sim.ny;
+    let k = cell_idx / (sim.nx * sim.ny);
+    (i, j, k)
+}
+
+fn representative_well_index(sim: &ReservoirSimulator, well_idx: usize) -> usize {
+    let Some(physical_well_id) = sim.wells[well_idx].physical_well_id.as_deref() else {
+        return well_idx;
+    };
+
+    sim.wells
+        .iter()
+        .position(|well| well.physical_well_id.as_deref() == Some(physical_well_id))
+        .unwrap_or(well_idx)
+}
+
+fn nearest_well_reference_index(
+    sim: &ReservoirSimulator,
+    i: usize,
+    j: usize,
+    k: usize,
+) -> Option<usize> {
+    sim.wells
+        .iter()
+        .enumerate()
+        .map(|(well_idx, well)| {
+            let di = well.i.abs_diff(i);
+            let dj = well.j.abs_diff(j);
+            let dk = well.k.abs_diff(k);
+            let major_offset = di.max(dj);
+            let minor_offset = di.min(dj);
+            (
+                (
+                    di + dj + dk,
+                    major_offset,
+                    minor_offset,
+                    dk,
+                    representative_well_index(sim, well_idx),
+                ),
+                representative_well_index(sim, well_idx),
+            )
+        })
+        .min_by_key(|(distance_key, _)| *distance_key)
+        .map(|(_, representative_index)| representative_index)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,10 +103,27 @@ struct FimRetryHotspot {
 
 impl FimRetryHotspot {
     fn memory_region_from_failure(
+        sim: &ReservoirSimulator,
         failure_diagnostics: &FimRetryFailureDiagnostics,
     ) -> FimRetryMemoryRegion {
         if failure_diagnostics.dominant_family_label != "gas" {
-            return FimRetryMemoryRegion::Exact(failure_diagnostics.hotspot_site);
+            return match failure_diagnostics.hotspot_site {
+                FimHotspotSite::Cell(cell_idx) => {
+                    let (anchor_i, anchor_j, anchor_k) = cell_ijk(sim, cell_idx);
+                    FimRetryMemoryRegion::NonGasReservoirRegion {
+                        reference_well_index: nearest_well_reference_index(
+                            sim,
+                            anchor_i,
+                            anchor_j,
+                            anchor_k,
+                        ),
+                        anchor_i,
+                        anchor_j,
+                        anchor_k,
+                    }
+                }
+                _ => FimRetryMemoryRegion::Exact(failure_diagnostics.hotspot_site),
+            };
         }
 
         match failure_diagnostics.hotspot_site {
@@ -68,7 +139,10 @@ impl FimRetryHotspot {
         }
     }
 
-    fn from_failure(failure_diagnostics: &FimRetryFailureDiagnostics) -> Option<Self> {
+    fn from_failure(
+        sim: &ReservoirSimulator,
+        failure_diagnostics: &FimRetryFailureDiagnostics,
+    ) -> Option<Self> {
         match failure_diagnostics.class {
             FimRetryFailureClass::LinearBad => None,
             FimRetryFailureClass::NonlinearBad | FimRetryFailureClass::Mixed => Some(Self {
@@ -76,13 +150,37 @@ impl FimRetryHotspot {
                 dominant_row: failure_diagnostics.dominant_row,
                 dominant_item_index: failure_diagnostics.dominant_item_index,
                 site: failure_diagnostics.hotspot_site,
-                memory_region: Self::memory_region_from_failure(failure_diagnostics),
+                memory_region: Self::memory_region_from_failure(sim, failure_diagnostics),
             }),
         }
     }
 
     fn same_site(self, other: Self) -> bool {
-        self.memory_region == other.memory_region
+        const NON_GAS_MEMORY_LATERAL_RADIUS: usize = 1;
+        const NON_GAS_MEMORY_VERTICAL_RADIUS: usize = 0;
+
+        match (self.memory_region, other.memory_region) {
+            (
+                FimRetryMemoryRegion::NonGasReservoirRegion {
+                    reference_well_index: left_well,
+                    anchor_i: left_i,
+                    anchor_j: left_j,
+                    anchor_k: left_k,
+                },
+                FimRetryMemoryRegion::NonGasReservoirRegion {
+                    reference_well_index: right_well,
+                    anchor_i: right_i,
+                    anchor_j: right_j,
+                    anchor_k: right_k,
+                },
+            ) => {
+                left_well == right_well
+                    && left_i.abs_diff(right_i) <= NON_GAS_MEMORY_LATERAL_RADIUS
+                    && left_j.abs_diff(right_j) <= NON_GAS_MEMORY_LATERAL_RADIUS
+                    && left_k.abs_diff(right_k) <= NON_GAS_MEMORY_VERTICAL_RADIUS
+            }
+            _ => self.memory_region == other.memory_region,
+        }
     }
 }
 
@@ -111,8 +209,12 @@ impl FimGrowthCooldown {
         self.hotspot_clean_successes_without_retry = 0;
     }
 
-    fn note_retry_failure(&mut self, failure_diagnostics: &FimRetryFailureDiagnostics) {
-        let Some(hotspot) = FimRetryHotspot::from_failure(failure_diagnostics) else {
+    fn note_retry_failure(
+        &mut self,
+        sim: &ReservoirSimulator,
+        failure_diagnostics: &FimRetryFailureDiagnostics,
+    ) {
+        let Some(hotspot) = FimRetryHotspot::from_failure(sim, failure_diagnostics) else {
             self.clear_hotspot_memory();
             return;
         };
@@ -622,7 +724,7 @@ impl ReservoirSimulator {
                 retry_count += 1;
 
                 if let Some(failure_diagnostics) = &report.failure_diagnostics {
-                    growth_cooldown.note_retry_failure(failure_diagnostics);
+                    growth_cooldown.note_retry_failure(self, failure_diagnostics);
                     last_retry_class = Some(failure_diagnostics.class.label());
                     last_retry_dominant_family = Some(failure_diagnostics.dominant_family_label);
                     last_retry_dominant_row = Some(failure_diagnostics.dominant_row);
@@ -864,6 +966,13 @@ mod tests {
         }
     }
 
+    fn hotspot_memory_sim() -> ReservoirSimulator {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(19, 19, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim
+    }
+
     #[test]
     fn retry_acceptance_freezes_growth_until_clean_success_budget_is_spent() {
         let mut cooldown = FimGrowthCooldown::default();
@@ -888,14 +997,15 @@ mod tests {
 
     #[test]
     fn repeated_same_hotspot_extends_growth_cooldown_budget() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
-        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
 
-        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
         assert!(cooldown.trace_suffix().contains("repeats=2"));
@@ -903,6 +1013,7 @@ mod tests {
 
     #[test]
     fn alternating_cell_row_families_count_as_same_hotspot_site() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let water_failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
         let oil_failure = FimRetryFailureDiagnostics {
@@ -911,19 +1022,20 @@ mod tests {
             ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 430, 143)
         };
 
-        cooldown.note_retry_failure(&water_failure);
-        cooldown.note_retry_failure(&oil_failure);
+        cooldown.note_retry_failure(&sim, &water_failure);
+        cooldown.note_retry_failure(&sim, &oil_failure);
 
         assert_eq!(cooldown.hotspot_repeat_failures, 2);
     }
 
     #[test]
     fn repeated_hotspot_caps_max_growth_decision() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
-        cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_failure(&FimRetryFailureDiagnostics {
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &FimRetryFailureDiagnostics {
             dominant_family_label: "oil",
             dominant_row: 430,
             ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 430, 143)
@@ -940,11 +1052,12 @@ mod tests {
 
     #[test]
     fn repeated_hotspot_also_caps_newton_limited_regrowth() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 11, 3);
 
-        cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
 
         let capped = cooldown.cap_growth_decision(AcceptedStepGrowthDecision {
             factor: 1.25,
@@ -957,6 +1070,7 @@ mod tests {
 
     #[test]
     fn alternating_gas_cells_with_shared_injector_symmetry_site_count_as_same_hotspot() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let east_failure = FimRetryFailureDiagnostics {
             dominant_family_label: "gas",
@@ -983,8 +1097,8 @@ mod tests {
             ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 83, 30)
         };
 
-        cooldown.note_retry_failure(&east_failure);
-        cooldown.note_retry_failure(&north_failure);
+        cooldown.note_retry_failure(&sim, &east_failure);
+        cooldown.note_retry_failure(&sim, &north_failure);
 
         assert_eq!(cooldown.hotspot_repeat_failures, 2);
         assert_eq!(
@@ -1000,6 +1114,7 @@ mod tests {
 
     #[test]
     fn gas_hotspots_in_same_injector_region_count_as_same_memory_region() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let east_failure = FimRetryFailureDiagnostics {
             dominant_family_label: "gas",
@@ -1026,14 +1141,15 @@ mod tests {
             ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 122, 41)
         };
 
-        cooldown.note_retry_failure(&east_failure);
-        cooldown.note_retry_failure(&farther_failure);
+        cooldown.note_retry_failure(&sim, &east_failure);
+        cooldown.note_retry_failure(&sim, &farther_failure);
 
         assert_eq!(cooldown.hotspot_repeat_failures, 2);
     }
 
     #[test]
     fn gas_hotspots_on_different_vertical_offsets_do_not_share_memory_region() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let lower_failure = FimRetryFailureDiagnostics {
             dominant_family_label: "gas",
@@ -1060,14 +1176,15 @@ mod tests {
             ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 211, 103)
         };
 
-        cooldown.note_retry_failure(&lower_failure);
-        cooldown.note_retry_failure(&upper_failure);
+        cooldown.note_retry_failure(&sim, &lower_failure);
+        cooldown.note_retry_failure(&sim, &upper_failure);
 
         assert_eq!(cooldown.hotspot_repeat_failures, 1);
     }
 
     #[test]
     fn gas_family_fallback_memory_groups_non_symmetry_gas_failures() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let gas_cell_a = FimRetryFailureDiagnostics {
             dominant_family_label: "gas",
@@ -1084,10 +1201,86 @@ mod tests {
             ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 77, 22)
         };
 
-        cooldown.note_retry_failure(&gas_cell_a);
-        cooldown.note_retry_failure(&gas_cell_b);
+        cooldown.note_retry_failure(&sim, &gas_cell_a);
+        cooldown.note_retry_failure(&sim, &gas_cell_b);
 
         assert_eq!(cooldown.hotspot_repeat_failures, 2);
+    }
+
+    #[test]
+    fn nearby_non_gas_cells_share_local_memory_region() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let first = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 189, sim.idx(3, 3, 0));
+        let nearby = FimRetryFailureDiagnostics {
+            dominant_family_label: "oil",
+            dominant_row: 250,
+            dominant_item_index: sim.idx(3, 4, 0),
+            hotspot_site: FimHotspotSite::Cell(sim.idx(3, 4, 0)),
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 250, sim.idx(3, 4, 0))
+        };
+
+        cooldown.note_retry_failure(&sim, &first);
+        cooldown.note_retry_failure(&sim, &nearby);
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 2);
+    }
+
+    #[test]
+    fn vertical_non_gas_shift_does_not_share_local_memory_region() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let lower = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 189, sim.idx(3, 3, 0));
+        let upper = FimRetryFailureDiagnostics {
+            dominant_family_label: "oil",
+            dominant_row: 1390,
+            dominant_item_index: sim.idx(3, 3, 1),
+            hotspot_site: FimHotspotSite::Cell(sim.idx(3, 3, 1)),
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 1390, sim.idx(3, 3, 1))
+        };
+
+        cooldown.note_retry_failure(&sim, &lower);
+        cooldown.note_retry_failure(&sim, &upper);
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 1);
+    }
+
+    #[test]
+    fn far_non_gas_cells_do_not_share_local_memory_region() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let first = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 189, sim.idx(3, 3, 0));
+        let far = FimRetryFailureDiagnostics {
+            dominant_family_label: "oil",
+            dominant_row: 840,
+            dominant_item_index: sim.idx(8, 8, 0),
+            hotspot_site: FimHotspotSite::Cell(sim.idx(8, 8, 0)),
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 840, sim.idx(8, 8, 0))
+        };
+
+        cooldown.note_retry_failure(&sim, &first);
+        cooldown.note_retry_failure(&sim, &far);
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 1);
+    }
+
+    #[test]
+    fn nearby_non_gas_cells_near_different_wells_do_not_share_memory_region() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let injector_side = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 189, sim.idx(3, 3, 0));
+        let producer_side = FimRetryFailureDiagnostics {
+            dominant_family_label: "oil",
+            dominant_row: 3190,
+            dominant_item_index: sim.idx(16, 16, 0),
+            hotspot_site: FimHotspotSite::Cell(sim.idx(16, 16, 0)),
+            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 3190, sim.idx(16, 16, 0))
+        };
+
+        cooldown.note_retry_failure(&sim, &injector_side);
+        cooldown.note_retry_failure(&sim, &producer_side);
+
+        assert_eq!(cooldown.hotspot_repeat_failures, 1);
     }
 
     #[test]
@@ -1106,13 +1299,14 @@ mod tests {
 
     #[test]
     fn changing_hotspot_resets_extra_growth_cooldown_budget() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
-        cooldown.note_retry_failure(&failure_diagnostics(
+        cooldown.note_retry_failure(&sim, &failure_diagnostics(
             FimRetryFailureClass::NonlinearBad,
             429,
             143,
         ));
-        cooldown.note_retry_failure(&failure_diagnostics(
+        cooldown.note_retry_failure(&sim, &failure_diagnostics(
             FimRetryFailureClass::NonlinearBad,
             429,
             143,
@@ -1120,7 +1314,7 @@ mod tests {
         cooldown.note_retry_accepted(0.25, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
 
-        cooldown.note_retry_failure(&failure_diagnostics(
+        cooldown.note_retry_failure(&sim, &failure_diagnostics(
             FimRetryFailureClass::NonlinearBad,
             297,
             99,
@@ -1132,13 +1326,14 @@ mod tests {
 
     #[test]
     fn repeated_hotspot_increases_clean_success_budget() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
-        cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_failure(&failure);
-        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
 
         assert_eq!(cooldown.clean_successes_remaining, 4);
@@ -1146,8 +1341,9 @@ mod tests {
 
     #[test]
     fn linear_failure_does_not_seed_hotspot_memory() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
-        cooldown.note_retry_failure(&failure_diagnostics(FimRetryFailureClass::LinearBad, 10, 3));
+        cooldown.note_retry_failure(&sim, &failure_diagnostics(FimRetryFailureClass::LinearBad, 10, 3));
         cooldown.note_retry_accepted(0.25, 2);
 
         assert_eq!(cooldown.clean_successes_remaining, 2);
@@ -1156,17 +1352,18 @@ mod tests {
 
     #[test]
     fn hotspot_memory_persists_across_release_and_decays_after_clean_steps() {
+        let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
-        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
         cooldown.note_clean_accepted();
         cooldown.note_clean_accepted();
 
         assert_eq!(cooldown.hotspot_repeat_failures, 1);
 
-        cooldown.note_retry_failure(&failure);
+        cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
 
