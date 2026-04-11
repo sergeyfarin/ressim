@@ -36,7 +36,6 @@ const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
 const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
 const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
 const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
-const CHECKPOINT_TRACE_TARGET_CELL_INDEX: usize = 143;
 const PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES: usize = 2;
 const PRODUCER_HOTSPOT_STAGNATION_THRESHOLD: u32 = 2;
 const NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO: f64 = 0.98;
@@ -712,10 +711,6 @@ fn effective_move_threshold_trace(
         | ResidualRowFamily::OilComponent
         | ResidualRowFamily::GasComponent => {}
         _ => return None,
-    }
-
-    if diagnostics.global.item_index != CHECKPOINT_TRACE_TARGET_CELL_INDEX {
-        return None;
     }
 
     let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =

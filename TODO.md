@@ -105,7 +105,8 @@
     `physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers`,
     `physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark`, and
     `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers` all passed.
-  - Focused validation completed for the depletion-family parity slice:
+    - 2026-04-11 attempted timestep-level follow-up on the `20x20x3` water retry ladder is now reverted. A bounded post-cooldown hotspot-regrowth cap in `fim/timestep.rs` was meant to stop the `0.007392 -> 0.022175` re-ramp after the `cell63` shelf, but both tested caps were non-promotable: `1.6` and then `2.0` preserved the short controls (`22x22x1` and `23x23x1` stayed at `4` / `0/2/0`) yet worsened the target `20x20x3` water replay from `substeps=13`, `retries=0/6/0` to `substeps=14`, `retries=0/6/0`. Treat that as evidence that a generic first-post-cooldown growth cap adds fragmentation without removing the underlying front-local nonlinear ladder.
+    - 2026-04-11 geometry-agnostic cleanup: removed the only hardcoded runtime cell-index gate from the Newton diagnostics path. The solver no longer singles out cell `143`; hotspot traces now remain generic and the runtime audit did not find any other fixed-cell-number behavior in non-test solver code.
     `physics_depletion_oil_public_reporting_contract_holds_on_both_solvers`,
     `physics_depletion_gas_public_invariants_hold_on_both_solvers`,
     `physics_depletion_liberation_public_transition_contract_holds_on_both_solvers`,
