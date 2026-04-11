@@ -922,7 +922,72 @@ fn residual_hotspot_site(
     }
 }
 
+fn representative_well_index(sim: &ReservoirSimulator, well_idx: usize) -> usize {
+    let Some(physical_well_id) = sim.wells[well_idx].physical_well_id.as_deref() else {
+        return well_idx;
+    };
+
+    sim.wells
+        .iter()
+        .position(|well| well.physical_well_id.as_deref() == Some(physical_well_id))
+        .unwrap_or(well_idx)
+}
+
+fn nearest_well_reference_index(
+    sim: &ReservoirSimulator,
+    i: usize,
+    j: usize,
+    k: usize,
+) -> Option<usize> {
+    sim.wells
+        .iter()
+        .enumerate()
+        .map(|(well_idx, well)| {
+            let di = well.i.abs_diff(i);
+            let dj = well.j.abs_diff(j);
+            let dk = well.k.abs_diff(k);
+            let major_offset = di.max(dj);
+            let minor_offset = di.min(dj);
+            (
+                (
+                    di + dj + dk,
+                    major_offset,
+                    minor_offset,
+                    dk,
+                    representative_well_index(sim, well_idx),
+                ),
+                representative_well_index(sim, well_idx),
+            )
+        })
+        .min_by_key(|(distance_key, _)| *distance_key)
+        .map(|(_, representative_index)| representative_index)
+}
+
+fn non_gas_hotspot_sites_share_local_region(
+    sim: &ReservoirSimulator,
+    previous_site: FimHotspotSite,
+    current_site: FimHotspotSite,
+) -> bool {
+    const NON_GAS_HISTORY_LATERAL_RADIUS: usize = 1;
+
+    let (FimHotspotSite::Cell(previous_cell_idx), FimHotspotSite::Cell(current_cell_idx)) =
+        (previous_site, current_site)
+    else {
+        return previous_site == current_site;
+    };
+
+    let (previous_i, previous_j, previous_k) = cell_ijk(sim, previous_cell_idx);
+    let (current_i, current_j, current_k) = cell_ijk(sim, current_cell_idx);
+
+    previous_k == current_k
+        && nearest_well_reference_index(sim, previous_i, previous_j, previous_k)
+            == nearest_well_reference_index(sim, current_i, current_j, current_k)
+        && previous_i.abs_diff(current_i) <= NON_GAS_HISTORY_LATERAL_RADIUS
+        && previous_j.abs_diff(current_j) <= NON_GAS_HISTORY_LATERAL_RADIUS
+}
+
 fn repeated_nonlinear_hotspot_streak(
+    sim: &ReservoirSimulator,
     previous_site: Option<FimHotspotSite>,
     previous_residual_norm: f64,
     current_diagnostics: &ResidualFamilyDiagnostics,
@@ -937,7 +1002,10 @@ fn repeated_nonlinear_hotspot_streak(
         return 0;
     }
 
-    let same_site = previous_site == current_site;
+    let same_site = match current_diagnostics.global.family {
+        ResidualRowFamily::GasComponent => previous_site == current_site,
+        _ => non_gas_hotspot_sites_share_local_region(sim, previous_site, current_site),
+    };
     let weak_progress_ratio = match current_diagnostics.global.family {
         ResidualRowFamily::GasComponent => NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO,
         _ => NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO,
@@ -2062,6 +2130,7 @@ pub(crate) fn run_fim_timestep(
         let previous_iteration_residual_norm = prev_residual_norm;
         let current_hotspot_site = residual_hotspot_site(sim, &topology, &residual_diagnostics.global);
         repeated_hotspot_streak = repeated_nonlinear_hotspot_streak(
+            sim,
             previous_hotspot_site,
             previous_iteration_residual_norm,
             &residual_diagnostics,
@@ -3657,6 +3726,11 @@ mod tests {
 
     #[test]
     fn repeated_nonlinear_hotspot_streak_groups_phase_rows_by_cell_site() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
         let current_peak = ResidualFamilyPeak {
             family: ResidualRowFamily::OilComponent,
             scaled_value: 0.98,
@@ -3673,6 +3747,7 @@ mod tests {
         };
 
         let streak = repeated_nonlinear_hotspot_streak(
+            &sim,
             Some(FimHotspotSite::Cell(143)),
             1.0,
             &current,
@@ -3686,6 +3761,11 @@ mod tests {
 
     #[test]
     fn repeated_nonlinear_hotspot_streak_resets_after_strong_progress() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
         let peak = ResidualFamilyPeak {
             family: ResidualRowFamily::Water,
             scaled_value: 1.0,
@@ -3702,6 +3782,7 @@ mod tests {
         };
 
         let streak = repeated_nonlinear_hotspot_streak(
+            &sim,
             Some(FimHotspotSite::Cell(143)),
             1.0,
             &diagnostics,
@@ -3715,6 +3796,11 @@ mod tests {
 
     #[test]
     fn repeated_nonlinear_hotspot_streak_relaxes_threshold_for_gas_hotspot_site() {
+        let mut sim = ReservoirSimulator::new(10, 10, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(9, 9, 2, 50.0, 0.1, 0.0, false)
+            .expect("producer");
         let current_peak = ResidualFamilyPeak {
             family: ResidualRowFamily::GasComponent,
             scaled_value: 0.91,
@@ -3731,6 +3817,7 @@ mod tests {
         };
 
         let streak = repeated_nonlinear_hotspot_streak(
+            &sim,
             Some(FimHotspotSite::Cell(30)),
             1.0e-4,
             &current,
@@ -3744,6 +3831,11 @@ mod tests {
 
     #[test]
     fn repeated_nonlinear_hotspot_streak_keeps_stricter_threshold_for_non_gas_sites() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
         let current_peak = ResidualFamilyPeak {
             family: ResidualRowFamily::Water,
             scaled_value: 0.91,
@@ -3760,11 +3852,82 @@ mod tests {
         };
 
         let streak = repeated_nonlinear_hotspot_streak(
+            &sim,
             Some(FimHotspotSite::Cell(143)),
             1.0e-4,
             &current,
             FimHotspotSite::Cell(143),
             9.1e-5,
+            0,
+        );
+
+        assert_eq!(streak, 0);
+    }
+
+    #[test]
+    fn repeated_nonlinear_hotspot_streak_groups_nearby_non_gas_cells_in_same_layer() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::OilComponent,
+            scaled_value: 0.99,
+            row: 250,
+            item_index: sim.idx(3, 4, 0),
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: peak,
+            oil_component: peak,
+            gas_component: peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+
+        let streak = repeated_nonlinear_hotspot_streak(
+            &sim,
+            Some(FimHotspotSite::Cell(sim.idx(3, 3, 0))),
+            1.0,
+            &diagnostics,
+            FimHotspotSite::Cell(sim.idx(3, 4, 0)),
+            0.99,
+            0,
+        );
+
+        assert_eq!(streak, 1);
+    }
+
+    #[test]
+    fn repeated_nonlinear_hotspot_streak_does_not_group_vertical_non_gas_shift() {
+        let mut sim = ReservoirSimulator::new(20, 20, 3, 0.2);
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true)
+            .expect("injector");
+        sim.add_well(19, 19, 0, 50.0, 0.1, 0.0, false)
+            .expect("producer");
+        let peak = ResidualFamilyPeak {
+            family: ResidualRowFamily::OilComponent,
+            scaled_value: 0.99,
+            row: 1390,
+            item_index: sim.idx(3, 3, 1),
+        };
+        let diagnostics = ResidualFamilyDiagnostics {
+            water: peak,
+            oil_component: peak,
+            gas_component: peak,
+            well_constraint: None,
+            perforation_flow: None,
+            global: peak,
+        };
+
+        let streak = repeated_nonlinear_hotspot_streak(
+            &sim,
+            Some(FimHotspotSite::Cell(sim.idx(3, 3, 0))),
+            1.0,
+            &diagnostics,
+            FimHotspotSite::Cell(sim.idx(3, 3, 1)),
+            0.99,
             0,
         );
 
