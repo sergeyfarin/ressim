@@ -905,26 +905,31 @@ impl ReservoirSimulator {
                         replayed_hotspot_plateau_accepts += replayed_plateau;
                     }
 
-                    for replay_index in 0..replayable_accepts {
-                        growth_cooldown.note_clean_accepted(false);
-                        last_accepted_dt_days = Some(trial_dt);
+                    if replayable_accepts > 0 {
+                        for _ in 0..replayable_accepts {
+                            growth_cooldown.note_clean_accepted(false);
+                        }
+
+                        let replayed_dt_days = trial_dt * replayable_accepts as f64;
                         let replay_trace_suffix = if unchanged_retry_accept {
-                            if replay_index < replayed_cooldown {
-                                " [replayed unchanged cooldown accept]"
-                            } else {
-                                " [replayed unchanged hotspot plateau accept]"
-                            }
+                            format!(
+                                " [replayed unchanged accepts cooldown={} hotspot-plateau={}]",
+                                replayed_cooldown, replayed_plateau
+                            )
                         } else if unchanged_hotspot_plateau_accept {
-                            " [replayed unchanged hotspot plateau accept]"
+                            format!(
+                                " [replayed unchanged hotspot plateau accepts count={}]",
+                                replayed_plateau
+                            )
                         } else {
-                            ""
+                            String::new()
                         };
                         fim_trace!(
                             self,
                             verbose,
                             "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}{}{}{}",
                             substeps,
-                            trial_dt,
+                            replayed_dt_days,
                             report.newton_iterations,
                             report.final_residual_inf_norm,
                             report.final_material_balance_inf_norm,
@@ -938,14 +943,15 @@ impl ReservoirSimulator {
                         );
                         self.record_fim_step_report(
                             &report.accepted_state,
-                            trial_dt,
+                            replayed_dt_days,
                             0.0,
                             0.0,
                             0.0,
                         );
-                        self.time_days += trial_dt;
-                        time_stepped += trial_dt;
+                        self.time_days += replayed_dt_days;
+                        time_stepped += replayed_dt_days;
                         last_successful_dt = trial_dt;
+                        last_accepted_dt_days = Some(trial_dt);
                         substeps += 1;
                     }
 
