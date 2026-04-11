@@ -583,6 +583,7 @@
 - [ ] Collapse the remaining legacy benchmark layer into the scenario system where practical.
 - [x] Extract a typed output-selection view model from `App.svelte` for charts, 3D output, and analytical helpers.
 - [x] Split `simulationStore.svelte.ts` into `parameterStore`, `runtimeStore`, and `navigationStore` (Phase 6 of `docs/REFACTOR_PLAN.md`). The original file is now a transitional barrel; `activeScenarioAsFamily` moved to `App.svelte` as a local `$derived.by`.
+- [x] Lean App.svelte (Phase 7 of `docs/REFACTOR_PLAN.md`). All business-logic `$derived` state (chart adapter, sweep analytics, output profiles, comparison selection, 3D selection, live analytical output) moved into `navigationStore`. `ThreeDViewCard.svelte` extracted to reduce template size. App.svelte reduced from 823 to 306 lines; script block from ~478 to ~115 lines.
 - [ ] Decide whether `SwProfileChart` should be restored as a maintained output or removed completely.
 - [ ] Document `sweep_areal` explicitly as a quarter-five-spot style interpretation with no-flow outer boundaries.
 

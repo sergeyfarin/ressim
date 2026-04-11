@@ -1,351 +1,31 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
-    import { type FluidProps, type RockProps } from "./lib/analytical/fractionalFlow";
     import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
-    import { getReferenceRateChartLayoutConfig } from "./lib/charts/referenceChartConfig";
-    import { getScenarioChartLayout, getScenarioWithVariantParams, suppressesPrimaryAnalyticalOverlays, type ScenarioAnalyticalOutput } from "./lib/catalog/scenarios";
-    import { computeSweepRecoveryFactor, type SweepAnalyticalMethod, type SweepRFResult, type SweepGeometry } from "./lib/analytical/sweepEfficiency";
+    import ThreeDViewCard from "./lib/ui/cards/ThreeDViewCard.svelte";
     import Button from "./lib/ui/controls/Button.svelte";
     import Card from "./lib/ui/controls/Card.svelte";
     import { createSimulationStore } from "./lib/stores/simulationStore.svelte";
-    import type { BenchmarkFamily } from "./lib/catalog/benchmarkCases";
-    import { resolveCapabilities } from "./lib/catalog/scenarios";
 
-    // ---------- Store ----------
+    // ---------- Stores ----------
     const { params, runtime, nav: scenario } = createSimulationStore();
 
     // ---------- UI-only state ----------
     let theme: "dark" | "light" = $state("light");
-    let showDebugState = $state(false);
-    let showProperty:
-        | "pressure"
-        | "saturation_water"
-        | "saturation_oil"
-        | "saturation_gas"
-        | "saturation_ternary" = $state("pressure");
+    let showProperty: "pressure" | "saturation_water" | "saturation_oil" | "saturation_gas" | "saturation_ternary" = $state("pressure");
     let legendFixedMin = $state(0);
     let legendFixedMax = $state(1);
 
     type ThreeDViewComponentType = typeof import("./lib/visualization/3dview.svelte").default;
-    type RateChartComponentType =
-        typeof import("./lib/charts/RateChart.svelte").default;
-    type ReferenceComparisonChartComponentType =
-        typeof import("./lib/charts/ReferenceComparisonChart.svelte").default;
+    type RateChartComponentType = typeof import("./lib/charts/RateChart.svelte").default;
+    type ReferenceComparisonChartComponentType = typeof import("./lib/charts/ReferenceComparisonChart.svelte").default;
     let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
     let RateChartComponent = $state<RateChartComponentType | null>(null);
     let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
-    // Build the BenchmarkFamily-shaped object for the active scenario (chart-layer adapter).
-    // Moved here from the store in Phase 6 — this is a chart concern, not a store concern.
-    const activeScenarioAsFamily = $derived.by((): BenchmarkFamily | null => {
-        const sc = scenario.activeScenarioObject;
-        if (!sc || scenario.isCustomMode) return null;
-        const resolved = resolveCapabilities(sc.capabilities);
-        const activeDimension = sc.sensitivities.find((dimension) => dimension.key === scenario.activeSensitivityDimensionKey) ?? null;
-        const chartLayout = getScenarioChartLayout(sc, scenario.activeSensitivityDimensionKey);
 
-        const xAxis = resolved.analyticalNativeXAxis as BenchmarkFamily['displayDefaults']['xAxis'];
-        const panels = (resolved.primaryRateCurve === 'oil-rate'
-            ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
-            : ['watercut-breakthrough', 'recovery', 'pressure']
-        ) as BenchmarkFamily['displayDefaults']['panels'][number][];
-
-        return {
-            key: sc.key,
-            baseCaseKey: sc.key,
-            analyticalMethod: resolved.analyticalMethod,
-            sensitivityAxes: [],
-            reference: {
-                kind: 'analytical' as const,
-                source: resolved.analyticalMethod === 'digitized-reference' ? `${sc.key}:digitized-reference` : `${sc.key}:analytical`,
-            },
-            displayDefaults: { xAxis, panels },
-            stylePolicy: { colorBy: 'case' as const, lineStyleBy: 'quantity-or-reference' as const, separatePressurePanel: true },
-            runPolicy: 'compare-to-reference' as const,
-            label: sc.label,
-            description: sc.description,
-            baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
-            suppressPrimaryAnalyticalOverlays: suppressesPrimaryAnalyticalOverlays(chartLayout),
-            showSweepPanel: resolved.showSweepPanel,
-            sweepGeometry: resolved.sweepGeometry,
-            sweepAnalyticalMethod: scenario.activeAnalyticalOption?.sweepMethod,
-            analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
-            publishedReferenceSeries: sc.publishedReferenceSeries,
-        } as BenchmarkFamily;
-    });
-    const activeReferenceFamily = $derived(activeScenarioAsFamily ?? scenario.activeReferenceFamily);
-    // True only for sweep scenarios — reads from scenario capabilities.
-    const showSweepPanel = $derived(scenario.activeScenarioObject?.capabilities.showSweepPanel ?? false);
-
-    type OutputSelectionProfile = {
-        gridState: typeof runtime.gridStateRaw;
-        nx: number;
-        ny: number;
-        nz: number;
-        cellDx: number;
-        cellDy: number;
-        cellDz: number;
-        simTime: number;
-        injectionRate: number;
-        scenarioMode: "waterflood" | "depletion" | "none";
-        sourceLabel: string;
-        producerJ: number;
-        initialSaturation: number;
-        rockProps: RockProps;
-        fluidProps: FluidProps;
-    };
-    type Output3DSelection = {
-        history: typeof runtime.history;
-        nx: number;
-        ny: number;
-        nz: number;
-        cellDx: number;
-        cellDy: number;
-        cellDz: number;
-        cellDzPerLayer: number[];
-        gridState: typeof runtime.gridStateRaw;
-        wellState: typeof runtime.wellStateRaw;
-        replayTime: number | null;
-        currentIndex: number;
-        sourceLabel: string;
-    };
-    const EMPTY_ANALYTICAL_OUTPUT: ScenarioAnalyticalOutput = {
-        production: [],
-        meta: {
-            mode: "none",
-            shapeFactor: null,
-            shapeLabel: "",
-        },
-    };
-
-    // Simulation sweep efficiency time series — read from rate history (computed by Rust per-step).
-    // Only populated for sweep-domain scenarios; null otherwise.
-    type SimSweepPoint = { time: number; eA: number | null; eV: number | null; eVol: number; mobileOilRecovered: number | null };
-    const sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
-        if (!showSweepPanel || runtime.rateHistory.length === 0) return null;
-        const points: SimSweepPoint[] = [{ time: 0, eA: sweepGeometry === 'both' ? null : 0, eV: sweepGeometry === 'both' ? null : 0, eVol: 0, mobileOilRecovered: sweepGeometry === 'both' ? 0 : null }];
-        for (const p of runtime.rateHistory) {
-            if (!p.sweep) continue;
-            points.push({
-                time: p.time,
-                eA: p.sweep.e_a ?? null,
-                eV: p.sweep.e_v ?? null,
-                eVol: p.sweep.e_vol,
-                mobileOilRecovered: p.sweep.mobile_oil_recovered ?? null,
-            });
-        }
-        return points.length > 1 ? points : null;
-    });
-
-    // Analytical recovery factor for sweep scenarios: RF = E_vol(Craig+DP) × E_D_BL(PVI_local).
-    // Computed purely from rock/fluid props — no simulation data required.
-    const sweepGeometry = $derived.by((): SweepGeometry => {
-        return activeScenarioAsFamily?.sweepGeometry
-            ?? scenario.activeScenarioObject?.capabilities.sweepGeometry
-            ?? 'both';
-    });
-    const sweepAnalyticalMethod = $derived.by((): SweepAnalyticalMethod => {
-        return scenario.activeAnalyticalOption?.sweepMethod
-            ?? activeScenarioAsFamily?.sweepAnalyticalMethod
-            ?? 'dykstra-parsons';
-    });
-    const sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
-        if (!showSweepPanel || !selectedOutputProfile.rockProps || !selectedOutputProfile.fluidProps) return null;
-        const perms = params.permMode === 'perLayer' && params.layerPermsX.length > 1
-            ? params.layerPermsX
-            : params.nz > 1
-                ? Array.from({ length: params.nz }, () => params.uniformPermX)
-                : [params.uniformPermX];
-        return computeSweepRecoveryFactor(selectedOutputProfile.rockProps, selectedOutputProfile.fluidProps, perms, params.cellDz, 3.0, 200, sweepGeometry, sweepAnalyticalMethod);
-    });
-
-    // True when any active sensitivity variant is declared to affect the analytical solution.
-    // Drives per-result vs shared analytical curve rendering in the comparison chart.
-    const analyticalPerVariant = $derived.by(() => {
-        const sc = scenario.activeScenarioObject;
-        if (!sc) return false;
-        const activeDim = sc.sensitivities.find(
-            (d) => d.key === scenario.activeSensitivityDimensionKey,
-        );
-        if (!activeDim) return false;
-        if (activeDim.analyticalOverlayMode === 'per-result') return true;
-        if (activeDim.analyticalOverlayMode === 'shared') return false;
-        return activeDim.variants
-            .filter((v) => scenario.activeVariantKeys.includes(v.key))
-            .some((v) => v.affectsAnalytical);
-    });
-
-    // When analyticalPerVariant is true, build one preview entry per selected
-    // variant so the comparison chart can show all analytical curves before any
-    // simulation runs complete. Each entry carries the full merged params so the
-    // chart can compute the BL / depletion analytical solution independently.
-    const previewVariantParams = $derived.by(() => {
-        if (!analyticalPerVariant) return undefined;
-        const sc = scenario.activeScenarioObject;
-        if (!sc) return undefined;
-        const dim = sc.sensitivities.find(
-            (d) => d.key === scenario.activeSensitivityDimensionKey,
-        );
-        if (!dim) return undefined;
-        if (scenario.activeVariantKeys.length === 0) return undefined;
-        return scenario.activeVariantKeys.flatMap((vk) => {
-            const variant = dim.variants.find((v) => v.key === vk);
-            if (!variant) return [];
-            return [{
-                label: variant.label,
-                variantKey: vk,
-                params: getScenarioWithVariantParams(sc.key, dim.key, vk),
-            }];
-        });
-    });
-    const activeReferenceResults = $derived.by(() => {
-        const familyKey = activeReferenceFamily?.key ?? null;
-        if (!familyKey) return [];
-        return runtime.referenceRunResults.filter((result) => result.familyKey === familyKey);
-    });
-
-    // Variants whose results haven't landed yet — keeps analytical preview curves
-    // visible mid-sweep so the chart never snaps from N lines to fewer.
-    // Keyed by variantKey because buildScenarioSweepSpecs sets variantKey on each spec.
-    const pendingPreviewVariants = $derived.by(() => {
-        if (!previewVariantParams?.length) return undefined;
-        if (activeReferenceResults.length === 0) return undefined; // pure preview handles this
-        const completedVariantKeys = new Set(
-            activeReferenceResults.map((r) => r.variantKey).filter(Boolean),
-        );
-        const pending = previewVariantParams.filter(
-            (v) => !completedVariantKeys.has(v.variantKey),
-        );
-        return pending.length > 0 ? pending : undefined;
-    });
-    const activeComparisonSelection = $derived(scenario.activeComparisonSelection);
-    const activeReferenceBaseResult = $derived.by(() => {
-        return activeReferenceResults.find((result) => result.variantKey === null) ?? null;
-    });
-    const activePrimaryComparisonResultKey = $derived.by(() => {
-        const primaryResultKey = activeComparisonSelection.primaryResultKey;
-        if (!primaryResultKey) return null;
-        return activeReferenceResults.some((result) => result.key === primaryResultKey)
-            ? primaryResultKey
-            : null;
-    });
-    const activeSelectedReferenceResult = $derived.by(() => {
-        if (!activePrimaryComparisonResultKey) return null;
-        return activeReferenceResults.find((result) => result.key === activePrimaryComparisonResultKey) ?? null;
-    });
-    const selectedOutputProfile = $derived.by((): OutputSelectionProfile => ({
-        gridState: activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null,
-        nx: Number(activeSelectedReferenceResult?.params.nx ?? params.nx),
-        ny: Number(activeSelectedReferenceResult?.params.ny ?? params.ny),
-        nz: Number(activeSelectedReferenceResult?.params.nz ?? params.nz),
-        cellDx: Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx),
-        cellDy: Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy),
-        cellDz: Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz),
-        simTime:
-            activeSelectedReferenceResult?.finalSnapshot?.time
-            ?? Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.time ?? runtime.simTime),
-        injectionRate: Math.max(0, Number(activeSelectedReferenceResult?.rateHistory.at(-1)?.total_injection ?? runtime.latestInjectionRate ?? 0)),
-        scenarioMode: activeSelectedReferenceResult?.analyticalMethod === "depletion" ? "depletion" : params.analyticalMode,
-        sourceLabel: activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime",
-        producerJ: Number(activeSelectedReferenceResult?.params.producerJ ?? params.producerJ),
-        initialSaturation: Number(activeSelectedReferenceResult?.params.initialSaturation ?? params.initialSaturation),
-        rockProps: {
-            s_wc: Number(activeSelectedReferenceResult?.params.s_wc ?? params.s_wc),
-            s_or: Number(activeSelectedReferenceResult?.params.s_or ?? params.s_or),
-            n_w: Number(activeSelectedReferenceResult?.params.n_w ?? params.n_w),
-            n_o: Number(activeSelectedReferenceResult?.params.n_o ?? params.n_o),
-            k_rw_max: Number(activeSelectedReferenceResult?.params.k_rw_max ?? params.k_rw_max),
-            k_ro_max: Number(activeSelectedReferenceResult?.params.k_ro_max ?? params.k_ro_max),
-        },
-        fluidProps: {
-            mu_w: Number(activeSelectedReferenceResult?.params.mu_w ?? params.mu_w),
-            mu_o: Number(activeSelectedReferenceResult?.params.mu_o ?? params.mu_o),
-        },
-    }));
-    const selectedOutput3D = $derived.by((): Output3DSelection => {
-        const history = activeSelectedReferenceResult?.history ?? runtime.history;
-        const currentIndex = history.length === 0
-            ? -1
-            : Math.max(0, Math.min(runtime.currentIndex, history.length - 1));
-        const cellDzPerLayerRaw = activeSelectedReferenceResult?.params.cellDzPerLayer
-            ?? params.cellDzPerLayer;
-        return {
-            history,
-            nx: Number(activeSelectedReferenceResult?.params.nx ?? params.nx),
-            ny: Number(activeSelectedReferenceResult?.params.ny ?? params.ny),
-            nz: Number(activeSelectedReferenceResult?.params.nz ?? params.nz),
-            cellDx: Number(activeSelectedReferenceResult?.params.cellDx ?? params.cellDx),
-            cellDy: Number(activeSelectedReferenceResult?.params.cellDy ?? params.cellDy),
-            cellDz: Number(activeSelectedReferenceResult?.params.cellDz ?? params.cellDz),
-            cellDzPerLayer: Array.isArray(cellDzPerLayerRaw)
-                ? cellDzPerLayerRaw.map((value) => Number(value))
-                : [],
-            gridState: activeSelectedReferenceResult?.finalSnapshot?.grid ?? runtime.gridStateRaw ?? null,
-            wellState: activeSelectedReferenceResult?.finalSnapshot?.wells ?? runtime.wellStateRaw ?? null,
-            replayTime:
-                currentIndex >= 0 && currentIndex < history.length
-                    ? history[currentIndex]?.time ?? null
-                    : activeSelectedReferenceResult?.finalSnapshot?.time ?? runtime.replayTime,
-            currentIndex,
-            sourceLabel: activeSelectedReferenceResult ? activeSelectedReferenceResult.label : "Live runtime",
-        };
-    });
-    const liveAnalyticalOutput = $derived.by((): ScenarioAnalyticalOutput => {
-        if (runtime.rateHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
-        const def = scenario.activeScenarioObject?.analyticalDef;
-        if (!def) return EMPTY_ANALYTICAL_OUTPUT;
-        const inputs = def.inputsFromParams(params as unknown as Record<string, unknown>, runtime.rateHistory);
-        return def.fn(inputs);
-    });
-    const default3DProperty = $derived.by(() => {
-        if (activeSelectedReferenceResult) {
-            const resultParams = activeSelectedReferenceResult.params ?? {};
-            if (resultParams.injectedFluid === "gas") {
-                return "saturation_gas" as const;
-            }
-            if (activeSelectedReferenceResult?.analyticalMethod !== "depletion") {
-                return "saturation_water" as const;
-            }
-            return null;
-        }
-
-        if (params.injectedFluid === "gas" && params.threePhaseModeEnabled) {
-            return "saturation_gas" as const;
-        }
-
-        const default3D = scenario.activeScenarioObject?.capabilities.default3DScalar;
-        if (default3D) {
-            return default3D;
-        }
-
-        return null;
-    });
-    const activeRunManifest = $derived.by(() => ({
-        referencePolicySummary: scenario.activeLibraryEntry?.referencePolicySummary ?? null,
-        referenceProvenance: scenario.referenceProvenance,
-        referenceFamily: scenario.activeReferenceFamily ?? null,
-    }));
-
-    let last3DSelectionContextKey = $state("");
-
-    const activeRateChartLayoutConfig = $derived.by(() => {
-        if (scenario.activeScenarioObject) {
-            return getScenarioChartLayout(
-                scenario.activeScenarioObject,
-                scenario.activeSensitivityDimensionKey,
-            );
-        }
-        if (activeReferenceFamily) {
-            return getReferenceRateChartLayoutConfig({
-                family: activeReferenceFamily,
-                referencePolicy: activeReferenceBaseResult?.referencePolicy ?? null,
-            });
-        }
-        return scenario.activeLibraryEntry?.layoutConfig ?? {};
-    });
-
+    // ---------- Callbacks ----------
     function handleRun() {
         const scenarioKey = scenario.activeScenarioKey;
         const dimensionKey = scenario.activeSensitivityDimensionKey;
@@ -356,65 +36,40 @@
         }
     }
 
-    function handleSelectComparisonResult(resultKey: string) {
-        scenario.setComparisonSelection({
-            primaryResultKey: resultKey,
-            comparedResultKeys: [],
-        });
-    }
-
-    function clearComparisonSelection() {
-        scenario.setComparisonSelection({
-            primaryResultKey: null,
-            comparedResultKeys: [],
-        });
-    }
-
     function handleApplyOutputHistoryIndex(index: number) {
-        if (activeSelectedReferenceResult) {
+        if (scenario.activeSelectedReferenceResult) {
             runtime.currentIndex = index;
             return;
         }
-
         runtime.applyHistoryIndex(index);
     }
 
-    $effect(() => {
-        const hasActiveResults = activeReferenceResults.length > 0;
-        if (!hasActiveResults) {
-            if (activeComparisonSelection.primaryResultKey || activeComparisonSelection.comparedResultKeys.length > 0) {
-                clearComparisonSelection();
-            }
-            return;
-        }
-
-        if (!activeComparisonSelection.primaryResultKey) return;
-        if (activePrimaryComparisonResultKey) return;
-
-        clearComparisonSelection();
-    });
-
-    $effect(() => {
-        const selectionContextKey = `${scenario.activeScenarioKey ?? "none"}|${activeSelectedReferenceResult?.key ?? "live"}`;
-        if (selectionContextKey === last3DSelectionContextKey) return;
-
-        last3DSelectionContextKey = selectionContextKey;
-
-        if (default3DProperty) {
-            showProperty = default3DProperty;
-        }
-    });
-
-
-    // ---------- Config diff $effect ----------
-    $effect(() => {
-        runtime.checkConfigDiff();
-    });
-
-    // ---------- Theme ----------
     function toggleTheme() {
         theme = theme === "dark" ? "light" : "dark";
     }
+
+    // ---------- Effects ----------
+    $effect(() => {
+        const hasActiveResults = scenario.activeReferenceResults.length > 0;
+        if (!hasActiveResults) {
+            if (scenario.activeComparisonSelection.primaryResultKey ||
+                scenario.activeComparisonSelection.comparedResultKeys.length > 0) {
+                scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] });
+            }
+            return;
+        }
+        if (!scenario.activeComparisonSelection.primaryResultKey) return;
+        if (scenario.activePrimaryComparisonResultKey) return;
+        scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] });
+    });
+
+    $effect(() => {
+        if (scenario.default3DProperty) {
+            showProperty = scenario.default3DProperty;
+        }
+    });
+
+    $effect(() => { runtime.checkConfigDiff(); });
 
     $effect(() => {
         if (typeof document === "undefined") return;
@@ -426,30 +81,11 @@
     });
 
     // ---------- Lazy module loading ----------
-    async function loadRateChartModule() {
-        try {
-            const rateChartModule = await import("./lib/charts/RateChart.svelte");
-            RateChartComponent = rateChartModule.default;
-        } catch (error) {
-            console.error("Failed to load rate chart module:", error);
-        }
-    }
-
-    async function loadReferenceComparisonChartModule() {
-        try {
-            const comparisonChartModule = await import("./lib/charts/ReferenceComparisonChart.svelte");
-            ReferenceComparisonChartComponent = comparisonChartModule.default;
-        } catch (error) {
-            console.error("Failed to load comparison chart module:", error);
-        }
-    }
-
     async function loadThreeDViewModule() {
         if (ThreeDViewComponent || loadingThreeDView) return;
         loadingThreeDView = true;
         try {
-            const threeDModule = await import("./lib/visualization/3dview.svelte");
-            ThreeDViewComponent = threeDModule.default;
+            ThreeDViewComponent = (await import("./lib/visualization/3dview.svelte")).default;
         } catch (error) {
             console.error("Failed to load 3D view module:", error);
         } finally {
@@ -464,31 +100,24 @@
         document.documentElement.setAttribute("data-theme", theme);
         runtime.setupWorker();
 
-        await loadRateChartModule();
-        await loadReferenceComparisonChartModule();
+        try { RateChartComponent = (await import("./lib/charts/RateChart.svelte")).default; } catch {}
+        try { ReferenceComparisonChartComponent = (await import("./lib/charts/ReferenceComparisonChart.svelte")).default; } catch {}
         await loadThreeDViewModule();
         await tick();
 
         scenario.selectScenario("wf_bl1d");
     });
 
-    onDestroy(() => {
-        runtime.dispose();
-    });
+    onDestroy(() => { runtime.dispose(); });
 </script>
 
 <main
     class="min-h-screen text-foreground bg-background relative"
     data-theme={theme}
 >
-    
-
-    <!-- Main Content — z-[2] ensures it renders above both layers and gradient overlay -->
     <div class="mx-auto w-full space-y-4 p-4 lg:p-6 2xl:px-8 relative z-2">
         <!-- Header -->
-        <header
-            class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-        >
+        <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="title-gradient text-2xl font-bold lg:text-3xl">
                     3D Three-Phase Reservoir Simulation with Analytical Reference Solutions
@@ -507,13 +136,7 @@
                     title="Open ResSim on GitHub"
                     class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        class="h-4.5 w-4.5"
-                        aria-hidden="true"
-                    >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4.5 w-4.5" aria-hidden="true">
                         <path d="M12 .5C5.65.5.5 5.66.5 12.03c0 5.1 3.3 9.42 7.88 10.95.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.21.7-3.89-1.36-3.89-1.36-.53-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.72-1.55-2.56-.29-5.25-1.29-5.25-5.72 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.48.11-3.08 0 0 .97-.31 3.19 1.18a11.1 11.1 0 0 1 5.8 0c2.22-1.49 3.19-1.18 3.19-1.18.63 1.6.23 2.79.11 3.08.74.81 1.19 1.84 1.19 3.1 0 4.44-2.69 5.42-5.26 5.71.41.36.77 1.05.77 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A11.53 11.53 0 0 0 23.5 12.03C23.5 5.66 18.35.5 12 .5Z" />
                     </svg>
                 </a>
@@ -524,300 +147,160 @@
         </header>
 
         <section class="space-y-2">
-        <ScenarioPicker
-            activeScenarioKey={scenario.activeScenarioKey}
-            activeSensitivityDimensionKey={scenario.activeSensitivityDimensionKey}
-            activeAnalyticalOptionKey={scenario.activeAnalyticalOptionKey}
-            activeVariantKeys={scenario.activeVariantKeys}
-            isCustom={scenario.isCustomMode}
-            activeMode={scenario.activeMode}
-            {params}
-            toggles={scenario.toggles}
-            disabledOptions={scenario.disabledOptions}
-            validationErrors={params.validationErrors}
-            warningPolicy={runtime.warningPolicy}
-            basePreset={scenario.basePreset}
-            navigationState={scenario.navigationState}
-            referenceProvenance={scenario.referenceProvenance}
-            referenceSweepRunning={runtime.referenceSweepRunning}
-            onSelectScenario={(key) => scenario.selectScenario(key)}
-            onSelectSensitivityDimension={(key) => scenario.selectSensitivityDimension(key)}
-            onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
-            onSelectAnalyticalOption={(key) => scenario.selectAnalyticalOption(key)}
-            onEnterCustomMode={() => scenario.enterCustomMode()}
-            onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}
-            onActivateLibraryEntry={(key) => scenario.activateLibraryEntry(key)}
-            onToggleChange={(dimKey, value) => scenario.handleToggleChange(dimKey, value)}
-            onParamEdit={() => scenario.handleParamEdit()}
-        />
+            <ScenarioPicker
+                activeScenarioKey={scenario.activeScenarioKey}
+                activeSensitivityDimensionKey={scenario.activeSensitivityDimensionKey}
+                activeAnalyticalOptionKey={scenario.activeAnalyticalOptionKey}
+                activeVariantKeys={scenario.activeVariantKeys}
+                isCustom={scenario.isCustomMode}
+                activeMode={scenario.activeMode}
+                {params}
+                toggles={scenario.toggles}
+                disabledOptions={scenario.disabledOptions}
+                validationErrors={params.validationErrors}
+                warningPolicy={runtime.warningPolicy}
+                basePreset={scenario.basePreset}
+                navigationState={scenario.navigationState}
+                referenceProvenance={scenario.referenceProvenance}
+                referenceSweepRunning={runtime.referenceSweepRunning}
+                onSelectScenario={(key) => scenario.selectScenario(key)}
+                onSelectSensitivityDimension={(key) => scenario.selectSensitivityDimension(key)}
+                onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
+                onSelectAnalyticalOption={(key) => scenario.selectAnalyticalOption(key)}
+                onEnterCustomMode={() => scenario.enterCustomMode()}
+                onCloneReferenceToCustom={() => scenario.cloneActiveReferenceToCustom()}
+                onActivateLibraryEntry={(key) => scenario.activateLibraryEntry(key)}
+                onToggleChange={(dimKey, value) => scenario.handleToggleChange(dimKey, value)}
+                onParamEdit={() => scenario.handleParamEdit()}
+            />
         </section>
 
         <section class="space-y-2">
-        <RunControls
-            wasmReady={runtime.wasmReady}
-            workerRunning={runtime.workerRunning || runtime.referenceSweepRunning}
-            runCompleted={runtime.runCompleted}
-            simTime={runtime.simTime}
-            historyLength={runtime.history.length}
-            totalStepsRun={runtime.rateHistory.length}
-            hasValidationErrors={params.hasValidationErrors}
-            numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
-            runProgress={runtime.referenceSweepRunning
-                ? runtime.referenceSweepProgressLabel
-                : runtime.workerRunning && runtime.currentRunTotalSteps > 0
-                    ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
-                    : ""}
-            bind:steps={params.steps}
-            showStepsInput={scenario.isCustomMode}
-            stopPending={runtime.stopPending}
-            onStepsEdit={() => params.markStepsOverride()}
-            onRunSteps={handleRun}
-            onInitSimulator={() => runtime.initSimulator()}
-            onStopRun={() => runtime.stopRun()}
-            fieldErrors={params.validationErrors}
-            warningPolicy={runtime.warningPolicy}
-        />
-        {#if runtime.referenceSweepError}
-            <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {runtime.referenceSweepError}
-            </div>
-        {/if}
-
-        {#if scenario.activeReferenceFamily?.key}
-            <div class="space-y-1">
-                <div class="ui-section-kicker">Reference Run Status</div>
-                <ReferenceExecutionCard
-                    referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
-                    isModified={scenario.isModified}
-                    referenceSweepRunning={runtime.referenceSweepRunning}
-                    onRunReferenceSelection={(keys) => runtime.runActiveReferenceSelection(keys)}
-                    onStopReferenceSweep={() => runtime.stopRun()}
-                />
-            </div>
-        {/if}
+            <RunControls
+                wasmReady={runtime.wasmReady}
+                workerRunning={runtime.workerRunning || runtime.referenceSweepRunning}
+                runCompleted={runtime.runCompleted}
+                simTime={runtime.simTime}
+                historyLength={runtime.history.length}
+                totalStepsRun={runtime.rateHistory.length}
+                hasValidationErrors={params.hasValidationErrors}
+                numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
+                runProgress={runtime.referenceSweepRunning
+                    ? runtime.referenceSweepProgressLabel
+                    : runtime.workerRunning && runtime.currentRunTotalSteps > 0
+                        ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
+                        : ""}
+                bind:steps={params.steps}
+                showStepsInput={scenario.isCustomMode}
+                stopPending={runtime.stopPending}
+                onStepsEdit={() => params.markStepsOverride()}
+                onRunSteps={handleRun}
+                onInitSimulator={() => runtime.initSimulator()}
+                onStopRun={() => runtime.stopRun()}
+                fieldErrors={params.validationErrors}
+                warningPolicy={runtime.warningPolicy}
+            />
+            {#if runtime.referenceSweepError}
+                <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {runtime.referenceSweepError}
+                </div>
+            {/if}
+            {#if scenario.activeReferenceFamily?.key}
+                <div class="space-y-1">
+                    <div class="ui-section-kicker">Reference Run Status</div>
+                    <ReferenceExecutionCard
+                        referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
+                        isModified={scenario.isModified}
+                        referenceSweepRunning={runtime.referenceSweepRunning}
+                        onRunReferenceSelection={(keys) => runtime.runActiveReferenceSelection(keys)}
+                        onStopReferenceSweep={() => runtime.stopRun()}
+                    />
+                </div>
+            {/if}
         </section>
 
-        <!-- Error / Warning banners -->
         {#if runtime.runtimeError}
-            <div
-                class="rounded-md border border-destructive bg-card text-destructive p-3 text-xs font-medium"
-            >
+            <div class="rounded-md border border-destructive bg-card text-destructive p-3 text-xs font-medium">
                 {runtime.runtimeError}
             </div>
         {/if}
 
-        <div class="hidden">
-            {#if params.analyticalMode === 'depletion'}
-                <span>Depletion Reference Solution</span>
-            {:else if params.analyticalMode === 'waterflood'}
-                <span>Waterflood Reference Solution · Reference solution: Buckley-Leverett fractional flow</span>
-            {/if}
-        </div>
-
         <section class="space-y-2 mt-2">
-            <div>
-                <div class="ui-section-kicker">
-                    Results
+            <div><div class="ui-section-kicker">Results</div></div>
+
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+                <div class="space-y-4">
+                    <Card class="overflow-hidden">
+                        {#if scenario.activeChartFamily && ReferenceComparisonChartComponent}
+                            <ReferenceComparisonChartComponent
+                                results={scenario.activeReferenceResults}
+                                family={scenario.activeChartFamily}
+                                layoutConfig={scenario.activeRateChartLayoutConfig}
+                                analyticalPerVariant={scenario.analyticalPerVariant}
+                                {theme}
+                                previewVariantParams={scenario.activeReferenceResults.length === 0 ? scenario.previewVariantParams : undefined}
+                                pendingPreviewVariants={scenario.activeReferenceResults.length > 0 ? scenario.pendingPreviewVariants : undefined}
+                                previewBaseParams={scenario.activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
+                                previewAnalyticalMethod={scenario.activeChartFamily?.analyticalMethod}
+                            />
+                        {:else if RateChartComponent}
+                            <RateChartComponent
+                                panelDefs={scenario.activeScenarioObject?.liveChartPanels ?? []}
+                                rateHistory={runtime.rateHistory}
+                                analyticalProductionData={scenario.liveAnalyticalOutput.production}
+                                avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}
+                                avgWaterSaturationSeries={runtime.avgWaterSaturationSeries}
+                                ooipM3={params.ooipM3}
+                                poreVolumeM3={params.poreVolumeM3}
+                                activeMode={scenario.activeMode}
+                                activeCase={scenario.activeCase}
+                                {theme}
+                                analyticalMeta={scenario.liveAnalyticalOutput.meta}
+                                layoutConfig={scenario.activeRateChartLayoutConfig}
+                                rockProps={scenario.selectedOutputProfile.rockProps}
+                                fluidProps={scenario.selectedOutputProfile.fluidProps}
+                                layerPermeabilities={params.permMode === 'perLayer' && params.layerPermsX.length > 1
+                                    ? params.layerPermsX
+                                    : params.nz > 1
+                                        ? Array.from({ length: params.nz }, () => params.uniformPermX)
+                                        : [params.uniformPermX]}
+                                layerThickness={params.cellDz}
+                                showSweepPanel={scenario.showSweepPanel}
+                                sweepGeometry={scenario.sweepGeometry}
+                                sweepAnalyticalMethod={scenario.sweepAnalyticalMethod}
+                                sweepEfficiencySimSeries={scenario.sweepEfficiencySimSeries}
+                                sweepRFAnalytical={scenario.sweepRFAnalytical}
+                            />
+                        {:else}
+                            <div class="p-4 md:p-5 text-sm text-muted-foreground w-full text-center">
+                                Loading output chart…
+                            </div>
+                        {/if}
+                    </Card>
+                </div>
+
+                <div class="space-y-4">
+                    <Card>
+                        <ThreeDViewCard
+                            {ThreeDViewComponent}
+                            {loadingThreeDView}
+                            selectedOutput3D={scenario.selectedOutput3D}
+                            selectedOutputProfile={scenario.selectedOutputProfile}
+                            activeReferenceResults={scenario.activeReferenceResults}
+                            activePrimaryComparisonResultKey={scenario.activePrimaryComparisonResultKey}
+                            {theme}
+                            vizRevision={runtime.vizRevision}
+                            bind:showProperty
+                            bind:legendFixedMin
+                            bind:legendFixedMax
+                            onApplyHistoryIndex={handleApplyOutputHistoryIndex}
+                            onLoadThreeDView={loadThreeDViewModule}
+                            onSelectResult={(key) => scenario.setComparisonSelection({ primaryResultKey: key, comparedResultKeys: [] })}
+                            onClearResult={() => scenario.setComparisonSelection({ primaryResultKey: null, comparedResultKeys: [] })}
+                        />
+                    </Card>
                 </div>
             </div>
-
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
-            <div class="space-y-4">
-                <Card class="overflow-hidden">
-                    {#if activeReferenceFamily && ReferenceComparisonChartComponent}
-                        <ReferenceComparisonChartComponent
-                            results={activeReferenceResults}
-                            family={activeReferenceFamily}
-                            layoutConfig={activeRateChartLayoutConfig}
-                            {analyticalPerVariant}
-                            {theme}
-                            previewVariantParams={activeReferenceResults.length === 0 ? previewVariantParams : undefined}
-                            pendingPreviewVariants={activeReferenceResults.length > 0 ? pendingPreviewVariants : undefined}
-                            previewBaseParams={activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
-                            previewAnalyticalMethod={activeReferenceFamily?.analyticalMethod}
-                        />
-                    {:else if RateChartComponent}
-                        <RateChartComponent
-                            panelDefs={scenario.activeScenarioObject?.liveChartPanels ?? []}
-                            rateHistory={runtime.rateHistory}
-                            analyticalProductionData={liveAnalyticalOutput.production}
-                            avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}
-                            avgWaterSaturationSeries={runtime.avgWaterSaturationSeries}
-                            ooipM3={params.ooipM3}
-                            poreVolumeM3={params.poreVolumeM3}
-                            activeMode={scenario.activeMode}
-                            activeCase={scenario.activeCase}
-                            {theme}
-                            analyticalMeta={liveAnalyticalOutput.meta}
-                            layoutConfig={activeRateChartLayoutConfig}
-                            rockProps={selectedOutputProfile.rockProps}
-                            fluidProps={selectedOutputProfile.fluidProps}
-                            layerPermeabilities={params.permMode === 'perLayer' && params.layerPermsX.length > 1
-                                ? params.layerPermsX
-                                : params.nz > 1
-                                    ? Array.from({ length: params.nz }, () => params.uniformPermX)
-                                    : [params.uniformPermX]}
-                            layerThickness={params.cellDz}
-                            {showSweepPanel}
-                            {sweepGeometry}
-                            {sweepAnalyticalMethod}
-                            {sweepEfficiencySimSeries}
-                            {sweepRFAnalytical}
-                        />
-                    {:else}
-                        <div
-                            class="p-4 md:p-5 text-sm text-muted-foreground w-full text-center"
-                        >
-                            Loading output chart…
-                        </div>
-                    {/if}
-                </Card>
-
-                
-
-                
-            </div>
-
-            <div class="space-y-4">
-                <Card>
-                    <div class="p-4 md:p-5">
-                        {#if activeReferenceResults.length > 0}
-                            <div class="mb-3 flex flex-wrap items-center gap-1.5">
-                                <button
-                                    type="button"
-                                    class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
-                                        activePrimaryComparisonResultKey === null
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
-                                    }`}
-                                    onclick={clearComparisonSelection}
-                                >
-                                    Live runtime
-                                </button>
-                                {#each activeReferenceResults as result}
-                                    <button
-                                        type="button"
-                                        class={`px-2 py-1 text-[11px] font-medium rounded-md border transition-colors ${
-                                            activePrimaryComparisonResultKey === result.key
-                                                ? "bg-primary text-primary-foreground border-primary"
-                                                : "bg-transparent text-muted-foreground border-border hover:bg-muted/50 hover:text-foreground"
-                                        }`}
-                                        onclick={() => handleSelectComparisonResult(result.key)}
-                                    >
-                                        {result.variantKey === null ? "Base" : (result.variantLabel ?? result.label)}
-                                    </button>
-                                {/each}
-                            </div>
-                        {:else}
-                            <div class="mb-3">
-                                <span class="ui-chip border border-border/70 bg-background text-muted-foreground">
-                                    Live runtime
-                                </span>
-                            </div>
-                        {/if}
-                        {#if ThreeDViewComponent}
-                            {#key `${selectedOutput3D.nx}-${selectedOutput3D.ny}-${selectedOutput3D.nz}-${selectedOutput3D.cellDz}-${selectedOutput3D.cellDzPerLayer.join(",")}-${runtime.vizRevision}-${activeSelectedReferenceResult?.key ?? "live"}`}
-                                <ThreeDViewComponent
-                                    nx={selectedOutput3D.nx}
-                                    ny={selectedOutput3D.ny}
-                                    nz={selectedOutput3D.nz}
-                                    cellDx={selectedOutput3D.cellDx}
-                                    cellDy={selectedOutput3D.cellDy}
-                                    cellDz={selectedOutput3D.cellDz}
-                                    cellDzPerLayer={selectedOutput3D.cellDzPerLayer}
-                                    {theme}
-                                    sourceLabel={selectedOutput3D.sourceLabel}
-                                    gridState={selectedOutput3D.gridState}
-                                    bind:showProperty
-                                    bind:legendFixedMin
-                                    bind:legendFixedMax
-                                    s_wc={selectedOutputProfile.rockProps.s_wc}
-                                    s_or={selectedOutputProfile.rockProps.s_or}
-                                    currentIndex={selectedOutput3D.currentIndex}
-                                    replayTime={selectedOutput3D.replayTime}
-                                    onApplyHistoryIndex={handleApplyOutputHistoryIndex}
-                                    history={selectedOutput3D.history}
-                                    wellState={selectedOutput3D.wellState}
-                                />
-                            {/key}
-                        {:else}
-                            <div
-                                class="flex items-center justify-center rounded border border-border bg-muted/20"
-                                style="height: clamp(240px, 35vh, 420px);"
-                            >
-                                {#if loadingThreeDView}
-                                    <div class="flex items-center space-x-2">
-                                        <div
-                                            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary"
-                                        ></div>
-                                        <span class="text-sm font-medium"
-                                            >Loading 3D output...</span
-                                        >
-                                    </div>
-                                {:else}
-                                    <Button
-                                        size="sm"
-                                        variant="default"
-                                        onclick={loadThreeDViewModule}
-                                        >Open 3D View</Button
-                                    >
-                                {/if}
-                            </div>
-                        {/if}
-                    </div>
-                    <!-- <div class="p-4 md:p-5">
-                        <SwProfileChart
-                            gridState={outputProfileGridState}
-                            nx={outputProfileNx}
-                            ny={outputProfileNy}
-                            nz={outputProfileNz}
-                            cellDx={outputProfileCellDx}
-                            cellDy={outputProfileCellDy}
-                            cellDz={outputProfileCellDz}
-                            simTime={outputProfileSimTime}
-                            producerJ={outputProfileProducerJ}
-                            initialSaturation={outputProfileInitialSaturation}
-                            injectionRate={outputProfileInjectionRate}
-                            scenarioMode={outputProfileScenarioMode}
-                            sourceLabel={outputProfileSourceLabel}
-                            rockProps={outputProfileRockProps}
-                            fluidProps={outputProfileFluidProps}
-                        />
-                    </div> -->
-                </Card>
-
-            </div>
-        </div>
         </section>
-
-        <!-- Debug State -->
-        {#if showDebugState}
-            <Card class="mt-4">
-                <div class="grid gap-4 p-4 lg:grid-cols-2">
-                    <div>
-                        <h4 class="mb-2 text-sm font-semibold">
-                            Grid State (current)
-                        </h4>
-                        <pre
-                            class="max-h-100 overflow-auto rounded border border-border bg-muted/20 p-2 text-xs">{JSON.stringify(
-                                runtime.gridStateRaw,
-                                null,
-                                2,
-                            )}</pre>
-                    </div>
-                    <div>
-                        <h4 class="mb-2 text-sm font-semibold">
-                            Well State (current)
-                        </h4>
-                        <pre
-                            class="max-h-105 overflow-auto rounded border border-border bg-muted p-2 text-xs">{JSON.stringify(
-                                runtime.wellStateRaw,
-                                null,
-                                2,
-                            )}</pre>
-                    </div>
-                </div>
-            </Card>
-        {/if}
     </div>
 </main>

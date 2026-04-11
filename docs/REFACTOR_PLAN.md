@@ -514,13 +514,13 @@ Phase 0.5  ──── TypeScript typecheck fix ✓ DONE
                     │
                     └── Phase 4  ──── buildChartData replaces referenceComparisonModel ✓ DONE
                             │
-                            └── Phase 5  ──── buildRateChartData + trim RateChart.svelte  ← NOW
+                            └── Phase 5  ──── buildRateChartData + trim RateChart.svelte ✓ DONE
                                     │
-                                    └── Phase 6  ──── Split store
+                                    └── Phase 6  ──── Split store ✓ DONE
                                             │
-                                            └── Phase 7  ──── Lean App.svelte
+                                            └── Phase 7  ──── Lean App.svelte ✓ DONE
                                                     │
-                                                    └── Phase 8  ──── Benchmark consolidation
+                                                    └── Phase 8  ──── Benchmark consolidation  ← NOW
 ```
 
 Phases 1 and 2 can run in parallel since Phase 1 is purely Rust-side and Phase 2 is

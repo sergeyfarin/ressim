@@ -19,8 +19,11 @@ import {
     getScenario,
     getScenarioChartLayout,
     getDefaultVariantKeys,
+    getScenarioWithVariantParams,
     resolveCapabilities,
+    suppressesPrimaryAnalyticalOverlays,
     type ScenarioAnalyticalOption,
+    type ScenarioAnalyticalOutput,
 } from '../catalog/scenarios';
 import {
     buildReferenceCloneProvenance,
@@ -40,6 +43,52 @@ import {
 } from './phase2PresetContract';
 import type { ParameterStore } from './parameterStore.svelte';
 import type { RuntimeStore } from './runtimeStore.svelte';
+import type { BenchmarkFamily } from '../catalog/benchmarkCases';
+import { getReferenceRateChartLayoutConfig } from '../charts/referenceChartConfig';
+import type { RockProps, FluidProps } from '../analytical/fractionalFlow';
+import {
+    computeSweepRecoveryFactor,
+    type SweepAnalyticalMethod,
+    type SweepGeometry,
+    type SweepRFResult,
+} from '../analytical/sweepEfficiency';
+import type { GridState, WellState, SimulatorSnapshot } from '../simulator-types';
+
+// ---------- Presentation-layer types (live in nav store; used by App.svelte) ----------
+
+export type OutputSelectionProfile = {
+    gridState: GridState | null;
+    nx: number; ny: number; nz: number;
+    cellDx: number; cellDy: number; cellDz: number;
+    simTime: number; injectionRate: number;
+    scenarioMode: 'waterflood' | 'depletion' | 'none';
+    sourceLabel: string; producerJ: number; initialSaturation: number;
+    rockProps: RockProps; fluidProps: FluidProps;
+};
+
+export type Output3DSelection = {
+    history: SimulatorSnapshot[];
+    nx: number; ny: number; nz: number;
+    cellDx: number; cellDy: number; cellDz: number; cellDzPerLayer: number[];
+    gridState: GridState | null;
+    wellState: WellState | null;
+    replayTime: number | null;
+    currentIndex: number;
+    sourceLabel: string;
+};
+
+type SimSweepPoint = {
+    time: number;
+    eA: number | null;
+    eV: number | null;
+    eVol: number;
+    mobileOilRecovered: number | null;
+};
+
+const EMPTY_ANALYTICAL_OUTPUT: ScenarioAnalyticalOutput = {
+    production: [],
+    meta: { mode: 'none', shapeFactor: null, shapeLabel: '' },
+};
 
 // ---------- Constants ----------
 
@@ -199,6 +248,278 @@ class NavigationStoreImpl {
         const selected = options.find((option) => option.key === this.activeAnalyticalOptionKey);
         if (selected) return selected;
         return options.find((option) => option.default) ?? options[0] ?? null;
+    });
+
+    // ===== $derived: Scenario → Chart Adapter =====
+
+    /** BenchmarkFamily-shaped adapter for the active scenario (chart layer use only). */
+    activeScenarioAsFamily = $derived.by((): BenchmarkFamily | null => {
+        const sc = this.activeScenarioObject;
+        if (!sc || this.isCustomMode) return null;
+        const resolved = resolveCapabilities(sc.capabilities);
+        const activeDimension = sc.sensitivities.find((d) => d.key === this.activeSensitivityDimensionKey) ?? null;
+        const chartLayout = getScenarioChartLayout(sc, this.activeSensitivityDimensionKey);
+        const xAxis = resolved.analyticalNativeXAxis as BenchmarkFamily['displayDefaults']['xAxis'];
+        const panels = (resolved.primaryRateCurve === 'oil-rate'
+            ? ['oil-rate', 'cumulative-oil', 'decline-diagnostics']
+            : ['watercut-breakthrough', 'recovery', 'pressure']
+        ) as BenchmarkFamily['displayDefaults']['panels'][number][];
+        return {
+            key: sc.key,
+            baseCaseKey: sc.key,
+            analyticalMethod: resolved.analyticalMethod,
+            sensitivityAxes: [],
+            reference: {
+                kind: 'analytical' as const,
+                source: resolved.analyticalMethod === 'digitized-reference'
+                    ? `${sc.key}:digitized-reference`
+                    : `${sc.key}:analytical`,
+            },
+            displayDefaults: { xAxis, panels },
+            stylePolicy: {
+                colorBy: 'case' as const,
+                lineStyleBy: 'quantity-or-reference' as const,
+                separatePressurePanel: true,
+            },
+            runPolicy: 'compare-to-reference' as const,
+            label: sc.label,
+            description: sc.description,
+            baseCase: { key: sc.key, label: sc.label, description: sc.description, params: sc.params },
+            suppressPrimaryAnalyticalOverlays: suppressesPrimaryAnalyticalOverlays(chartLayout),
+            showSweepPanel: resolved.showSweepPanel,
+            sweepGeometry: resolved.sweepGeometry,
+            sweepAnalyticalMethod: this.activeAnalyticalOption?.sweepMethod,
+            analyticalOverlayMode: activeDimension?.analyticalOverlayMode ?? 'auto',
+            publishedReferenceSeries: sc.publishedReferenceSeries,
+        } as BenchmarkFamily;
+    });
+
+    /** Chart-facing family: scenario adapter when in scenario mode, otherwise the library benchmark family. */
+    activeChartFamily = $derived(this.activeScenarioAsFamily ?? this.activeReferenceFamily);
+
+    // ===== $derived: Sweep / Analytical Config =====
+
+    showSweepPanel = $derived(this.activeScenarioObject?.capabilities.showSweepPanel ?? false);
+
+    sweepGeometry = $derived.by((): SweepGeometry => {
+        return this.activeChartFamily?.sweepGeometry
+            ?? this.activeScenarioObject?.capabilities.sweepGeometry
+            ?? 'both';
+    });
+
+    sweepAnalyticalMethod = $derived.by((): SweepAnalyticalMethod => {
+        return this.activeAnalyticalOption?.sweepMethod
+            ?? (this.activeChartFamily as BenchmarkFamily | null)?.sweepAnalyticalMethod
+            ?? 'dykstra-parsons';
+    });
+
+    analyticalPerVariant = $derived.by((): boolean => {
+        const sc = this.activeScenarioObject;
+        if (!sc) return false;
+        const activeDim = sc.sensitivities.find((d) => d.key === this.activeSensitivityDimensionKey);
+        if (!activeDim) return false;
+        if (activeDim.analyticalOverlayMode === 'per-result') return true;
+        if (activeDim.analyticalOverlayMode === 'shared') return false;
+        return activeDim.variants
+            .filter((v) => this.activeVariantKeys.includes(v.key))
+            .some((v) => v.affectsAnalytical);
+    });
+
+    previewVariantParams = $derived.by(() => {
+        if (!this.analyticalPerVariant) return undefined;
+        const sc = this.activeScenarioObject;
+        if (!sc) return undefined;
+        const dim = sc.sensitivities.find((d) => d.key === this.activeSensitivityDimensionKey);
+        if (!dim) return undefined;
+        if (this.activeVariantKeys.length === 0) return undefined;
+        return this.activeVariantKeys.flatMap((vk) => {
+            const variant = dim.variants.find((v) => v.key === vk);
+            if (!variant) return [];
+            return [{ label: variant.label, variantKey: vk, params: getScenarioWithVariantParams(sc.key, dim.key, vk) }];
+        });
+    });
+
+    // ===== $derived: Reference Results / Comparison =====
+
+    activeReferenceResults = $derived.by(() => {
+        const familyKey = this.activeChartFamily?.key ?? null;
+        if (!familyKey) return this.#runtime.referenceRunResults.slice(0, 0); // typed empty
+        return this.#runtime.referenceRunResults.filter((result) => result.familyKey === familyKey);
+    });
+
+    activeReferenceBaseResult = $derived.by(() => {
+        return this.activeReferenceResults.find((result) => result.variantKey === null) ?? null;
+    });
+
+    activePrimaryComparisonResultKey = $derived.by((): string | null => {
+        const primaryResultKey = this.activeComparisonSelection.primaryResultKey;
+        if (!primaryResultKey) return null;
+        return this.activeReferenceResults.some((result) => result.key === primaryResultKey)
+            ? primaryResultKey
+            : null;
+    });
+
+    activeSelectedReferenceResult = $derived.by(() => {
+        if (!this.activePrimaryComparisonResultKey) return null;
+        return this.activeReferenceResults.find(
+            (result) => result.key === this.activePrimaryComparisonResultKey,
+        ) ?? null;
+    });
+
+    pendingPreviewVariants = $derived.by(() => {
+        if (!this.previewVariantParams?.length) return undefined;
+        if (this.activeReferenceResults.length === 0) return undefined;
+        const completedVariantKeys = new Set(
+            this.activeReferenceResults.map((r) => r.variantKey).filter(Boolean),
+        );
+        const pending = this.previewVariantParams.filter((v) => !completedVariantKeys.has(v.variantKey));
+        return pending.length > 0 ? pending : undefined;
+    });
+
+    // ===== $derived: Chart Layout =====
+
+    activeRateChartLayoutConfig = $derived.by(() => {
+        if (this.activeScenarioObject) {
+            return getScenarioChartLayout(this.activeScenarioObject, this.activeSensitivityDimensionKey);
+        }
+        if (this.activeChartFamily) {
+            return getReferenceRateChartLayoutConfig({
+                family: this.activeChartFamily,
+                referencePolicy: this.activeReferenceBaseResult?.referencePolicy ?? null,
+            });
+        }
+        return this.activeLibraryEntry?.layoutConfig ?? {};
+    });
+
+    // ===== $derived: Output Profiles (for child components) =====
+
+    selectedOutputProfile = $derived.by((): OutputSelectionProfile => {
+        const ref = this.activeSelectedReferenceResult;
+        return {
+            gridState: ref?.finalSnapshot?.grid ?? this.#runtime.gridStateRaw ?? null,
+            nx: Number(ref?.params.nx ?? this.#params.nx),
+            ny: Number(ref?.params.ny ?? this.#params.ny),
+            nz: Number(ref?.params.nz ?? this.#params.nz),
+            cellDx: Number(ref?.params.cellDx ?? this.#params.cellDx),
+            cellDy: Number(ref?.params.cellDy ?? this.#params.cellDy),
+            cellDz: Number(ref?.params.cellDz ?? this.#params.cellDz),
+            simTime: ref?.finalSnapshot?.time
+                ?? Number(ref?.rateHistory.at(-1)?.time ?? this.#runtime.simTime),
+            injectionRate: Math.max(0, Number(ref?.rateHistory.at(-1)?.total_injection ?? this.#runtime.latestInjectionRate ?? 0)),
+            scenarioMode: ref?.analyticalMethod === 'depletion' ? 'depletion' : this.#params.analyticalMode,
+            sourceLabel: ref ? ref.label : 'Live runtime',
+            producerJ: Number(ref?.params.producerJ ?? this.#params.producerJ),
+            initialSaturation: Number(ref?.params.initialSaturation ?? this.#params.initialSaturation),
+            rockProps: {
+                s_wc: Number(ref?.params.s_wc ?? this.#params.s_wc),
+                s_or: Number(ref?.params.s_or ?? this.#params.s_or),
+                n_w: Number(ref?.params.n_w ?? this.#params.n_w),
+                n_o: Number(ref?.params.n_o ?? this.#params.n_o),
+                k_rw_max: Number(ref?.params.k_rw_max ?? this.#params.k_rw_max),
+                k_ro_max: Number(ref?.params.k_ro_max ?? this.#params.k_ro_max),
+            },
+            fluidProps: {
+                mu_w: Number(ref?.params.mu_w ?? this.#params.mu_w),
+                mu_o: Number(ref?.params.mu_o ?? this.#params.mu_o),
+            },
+        };
+    });
+
+    selectedOutput3D = $derived.by((): Output3DSelection => {
+        const ref = this.activeSelectedReferenceResult;
+        const history = ref?.history ?? this.#runtime.history;
+        const currentIndex = history.length === 0
+            ? -1
+            : Math.max(0, Math.min(this.#runtime.currentIndex, history.length - 1));
+        const cellDzPerLayerRaw = ref?.params.cellDzPerLayer ?? this.#params.cellDzPerLayer;
+        return {
+            history,
+            nx: Number(ref?.params.nx ?? this.#params.nx),
+            ny: Number(ref?.params.ny ?? this.#params.ny),
+            nz: Number(ref?.params.nz ?? this.#params.nz),
+            cellDx: Number(ref?.params.cellDx ?? this.#params.cellDx),
+            cellDy: Number(ref?.params.cellDy ?? this.#params.cellDy),
+            cellDz: Number(ref?.params.cellDz ?? this.#params.cellDz),
+            cellDzPerLayer: Array.isArray(cellDzPerLayerRaw)
+                ? cellDzPerLayerRaw.map((v) => Number(v))
+                : [],
+            gridState: ref?.finalSnapshot?.grid ?? this.#runtime.gridStateRaw ?? null,
+            wellState: ref?.finalSnapshot?.wells ?? this.#runtime.wellStateRaw ?? null,
+            replayTime: currentIndex >= 0 && currentIndex < history.length
+                ? history[currentIndex]?.time ?? null
+                : ref?.finalSnapshot?.time ?? this.#runtime.replayTime,
+            currentIndex,
+            sourceLabel: ref ? ref.label : 'Live runtime',
+        };
+    });
+
+    default3DProperty = $derived.by((): 'pressure' | 'saturation_water' | 'saturation_oil' | 'saturation_gas' | 'saturation_ternary' | null => {
+        const ref = this.activeSelectedReferenceResult;
+        if (ref) {
+            const resultParams = ref.params ?? {};
+            if (resultParams.injectedFluid === 'gas') return 'saturation_gas';
+            if (ref.analyticalMethod !== 'depletion') return 'saturation_water';
+            return null;
+        }
+        if (this.#params.injectedFluid === 'gas' && this.#params.threePhaseModeEnabled) {
+            return 'saturation_gas';
+        }
+        const default3D = this.activeScenarioObject?.capabilities.default3DScalar;
+        if (default3D) return default3D as 'pressure' | 'saturation_water' | 'saturation_oil' | 'saturation_gas' | 'saturation_ternary';
+        return null;
+    });
+
+    // ===== $derived: Analytical Output =====
+
+    liveAnalyticalOutput = $derived.by((): ScenarioAnalyticalOutput => {
+        if (this.#runtime.rateHistory.length === 0) return EMPTY_ANALYTICAL_OUTPUT;
+        const def = this.activeScenarioObject?.analyticalDef;
+        if (!def) return EMPTY_ANALYTICAL_OUTPUT;
+        const inputs = def.inputsFromParams(this.#params as unknown as Record<string, unknown>, this.#runtime.rateHistory);
+        return def.fn(inputs);
+    });
+
+    sweepEfficiencySimSeries = $derived.by((): SimSweepPoint[] | null => {
+        if (!this.showSweepPanel || this.#runtime.rateHistory.length === 0) return null;
+        const points: SimSweepPoint[] = [{
+            time: 0,
+            eA: this.sweepGeometry === 'both' ? null : 0,
+            eV: this.sweepGeometry === 'both' ? null : 0,
+            eVol: 0,
+            mobileOilRecovered: this.sweepGeometry === 'both' ? 0 : null,
+        }];
+        for (const p of this.#runtime.rateHistory) {
+            if (!p.sweep) continue;
+            points.push({
+                time: p.time,
+                eA: p.sweep.e_a ?? null,
+                eV: p.sweep.e_v ?? null,
+                eVol: p.sweep.e_vol,
+                mobileOilRecovered: p.sweep.mobile_oil_recovered ?? null,
+            });
+        }
+        return points.length > 1 ? points : null;
+    });
+
+    sweepRFAnalytical = $derived.by((): SweepRFResult | null => {
+        if (!this.showSweepPanel) return null;
+        const { rockProps, fluidProps } = this.selectedOutputProfile;
+        if (!rockProps || !fluidProps) return null;
+        const perms = this.#params.permMode === 'perLayer' && (this.#params.layerPermsX as number[]).length > 1
+            ? (this.#params.layerPermsX as number[])
+            : (this.#params.nz as number) > 1
+                ? Array.from({ length: this.#params.nz as number }, () => this.#params.uniformPermX as number)
+                : [this.#params.uniformPermX as number];
+        return computeSweepRecoveryFactor(
+            rockProps,
+            fluidProps,
+            perms,
+            this.#params.cellDz as number,
+            3.0,
+            200,
+            this.sweepGeometry,
+            this.sweepAnalyticalMethod,
+        );
     });
 
     // Navigation state delegation getters — flatten navigationState properties for direct access

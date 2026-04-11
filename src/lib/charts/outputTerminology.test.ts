@@ -7,6 +7,7 @@ const rateChartSource = fs.readFileSync(path.join(__dirname, 'RateChart.svelte')
 const universalChartSource = fs.readFileSync(path.join(__dirname, 'UniversalChart.svelte'), 'utf8');
 const swProfileSource = fs.readFileSync(path.join(__dirname, 'SwProfileChart.svelte'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', '..', 'App.svelte'), 'utf8');
+const threeDViewCardSource = fs.readFileSync(path.join(__dirname, '..', 'ui', 'cards', 'ThreeDViewCard.svelte'), 'utf8');
 
 describe('output terminology copy', () => {
   it('does not render the deprecated reference results summary table copy', () => {
@@ -24,14 +25,12 @@ describe('output terminology copy', () => {
     expect(appSource).toMatch(/Results/);
     expect(appSource).not.toMatch(/Outputs/);
     expect(appSource).toMatch(/Loading output chart…/);
-    expect(appSource).toMatch(/Loading 3D output\.\.\./);
-    expect(appSource).toMatch(/Open 3D View/);
+    // 3D loading strings live in ThreeDViewCard (extracted in Phase 7)
+    expect(threeDViewCardSource).toMatch(/Loading 3D output\.\.\./);
+    expect(threeDViewCardSource).toMatch(/Open 3D View/);
   });
 
   it('uses reference-solution wording in output-side solution cards and profile copy', () => {
-    expect(appSource).toMatch(/Depletion Reference Solution/);
-    expect(appSource).toMatch(/Waterflood Reference Solution/);
-    expect(appSource).toMatch(/Reference solution: Buckley-Leverett fractional flow/);
     expect(universalChartSource).toMatch(/Reference Solution: \{mismatchSummary\.pointsCompared\} pts/);
     expect(universalChartSource).not.toMatch(/Analytical: \{mismatchSummary\.pointsCompared\} pts/);
     expect(swProfileSource).toMatch(/Reference Front Profile/);

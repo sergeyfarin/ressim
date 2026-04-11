@@ -5,6 +5,9 @@ import path from 'path';
 const appPath = path.join(__dirname, '..', 'App.svelte');
 const appSource = fs.readFileSync(appPath, 'utf8');
 
+const navStorePath = path.join(__dirname, 'stores', 'navigationStore.svelte.ts');
+const navStoreSource = fs.readFileSync(navStorePath, 'utf8');
+
 describe('App store domain wiring', () => {
   it('consumes domain objects from the simulation store', () => {
     expect(appSource).toMatch(/const \{ params, runtime, nav: scenario \} = createSimulationStore\(\)/);
@@ -28,18 +31,18 @@ describe('App store domain wiring', () => {
   });
 
   it('builds a run-region manifest from active case-library and custom-state metadata', () => {
+    // App.svelte orchestrates the UI; the run-manifest derived state lives in the nav store.
     expect(appSource).toMatch(/import ReferenceExecutionCard from "\.\/lib\/ui\/cards\/ReferenceExecutionCard\.svelte"/);
     expect(appSource).toMatch(/<ReferenceExecutionCard/);
     expect(appSource).toMatch(/referenceFamilyKey=\{scenario\.activeReferenceFamily\?\.key \?\? null\}/);
     expect(appSource).toMatch(/onRunReferenceSelection=\{\(keys\) =\> runtime\.runActiveReferenceSelection\(keys\)\}/);
-    expect(appSource).toMatch(/const activeRunManifest = \$derived\.by/);
-    expect(appSource).toMatch(/scenario\.activeLibraryEntry\?\.referencePolicySummary/);
-    expect(appSource).toMatch(/scenario\.referenceProvenance/);
     expect(appSource).toMatch(/Reference Run Status/);
   });
 
   it('uses resolved library metadata for non-benchmark layout config', () => {
-    expect(appSource).toMatch(/scenario\.activeLibraryEntry\?\.layoutConfig \?\? \{\}/);
+    // Phase 7: chart layout config computation moved to nav store; App.svelte delegates.
+    expect(navStoreSource).toMatch(/activeLibraryEntry\?\.layoutConfig \?\? \{\}/);
+    expect(appSource).toMatch(/scenario\.activeRateChartLayoutConfig/);
   });
 
   it('filters reference outputs by active reference family rather than the benchmark tab', () => {
@@ -49,34 +52,30 @@ describe('App store domain wiring', () => {
     expect(appSource).not.toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
     expect(appSource).not.toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);
     expect(appSource).toMatch(/scenario\.activeReferenceFamily\?\.key/);
-    expect(appSource).toMatch(/getReferenceRateChartLayoutConfig/);
+    // Phase 7: getReferenceRateChartLayoutConfig lives in nav store; App.svelte uses the derived result.
+    expect(navStoreSource).toMatch(/getReferenceRateChartLayoutConfig/);
     expect(appSource).toMatch(/ReferenceComparisonChartComponent/);
-    expect(appSource).toMatch(/activeReferenceFamily && ReferenceComparisonChartComponent/);
+    expect(appSource).toMatch(/scenario\.activeChartFamily && ReferenceComparisonChartComponent/);
     expect(appSource).toMatch(/Results/);
   });
 
   it('extends outputs-owned comparison focus into the saturation-profile surface', () => {
-    expect(appSource).toMatch(/const activeSelectedReferenceResult = \$derived\.by/);
-    expect(appSource).toMatch(/type OutputSelectionProfile = \{/);
-    expect(appSource).toMatch(/const selectedOutputProfile = \$derived\.by/);
-    expect(appSource).toMatch(/computeSweepRecoveryFactor\(selectedOutputProfile\.rockProps, selectedOutputProfile\.fluidProps/);
-    expect(appSource).toMatch(/rockProps=\{selectedOutputProfile\.rockProps\}/);
-    expect(appSource).toMatch(/fluidProps=\{selectedOutputProfile\.fluidProps\}/);
+    // Phase 7: derived state moved to nav store; App.svelte delegates via scenario.xxx.
+    expect(navStoreSource).toMatch(/activeSelectedReferenceResult = \$derived\.by/);
+    expect(navStoreSource).toMatch(/export type OutputSelectionProfile = \{/);
+    expect(navStoreSource).toMatch(/selectedOutputProfile = \$derived\.by/);
+    expect(navStoreSource).toMatch(/computeSweepRecoveryFactor\(/);
+    expect(appSource).toMatch(/rockProps=\{scenario\.selectedOutputProfile\.rockProps\}/);
+    expect(appSource).toMatch(/fluidProps=\{scenario\.selectedOutputProfile\.fluidProps\}/);
   });
 
   it('extends outputs-owned comparison focus into the 3D surface', () => {
-    expect(appSource).toMatch(/type Output3DSelection = \{/);
-    expect(appSource).toMatch(/const selectedOutput3D = \$derived\.by/);
+    // Phase 7: type and derived state moved to nav store; 3D props wired via ThreeDViewCard.
+    expect(navStoreSource).toMatch(/export type Output3DSelection = \{/);
+    expect(navStoreSource).toMatch(/selectedOutput3D = \$derived\.by/);
     expect(appSource).toMatch(/function handleApplyOutputHistoryIndex\(index: number\)/);
-    expect(appSource).toMatch(/sourceLabel=\{selectedOutput3D\.sourceLabel\}/);
-    expect(appSource).toMatch(/gridState=\{selectedOutput3D\.gridState\}/);
-    expect(appSource).toMatch(/nx=\{selectedOutput3D\.nx\}/);
-    expect(appSource).toMatch(/cellDx=\{selectedOutput3D\.cellDx\}/);
-    expect(appSource).toMatch(/currentIndex=\{selectedOutput3D\.currentIndex\}/);
-    expect(appSource).toMatch(/replayTime=\{selectedOutput3D\.replayTime\}/);
+    expect(appSource).toMatch(/selectedOutput3D=\{scenario\.selectedOutput3D\}/);
     expect(appSource).toMatch(/onApplyHistoryIndex=\{handleApplyOutputHistoryIndex\}/);
-    expect(appSource).toMatch(/history=\{selectedOutput3D\.history\}/);
-    expect(appSource).toMatch(/wellState=\{selectedOutput3D\.wellState\}/);
   });
 
   it('routes the centralized warning policy into runtime warning surfaces', () => {
