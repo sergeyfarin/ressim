@@ -324,8 +324,7 @@ fn physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_
             .expect("2D gas-streak parity case should record history");
         let center_row_sg = row_average_gas_saturation(&sim, streak_row);
         let flank_row_sg = 0.5
-            * (row_average_gas_saturation(&sim, 0)
-                + row_average_gas_saturation(&sim, sim.ny - 1));
+            * (row_average_gas_saturation(&sim, 0) + row_average_gas_saturation(&sim, sim.ny - 1));
         let center_downstream = sim.sat_gas[sim.idx(sim.nx - 3, streak_row, 0)];
         let flank_downstream = 0.5
             * (sim.sat_gas[sim.idx(sim.nx - 3, 0, 0)]
@@ -361,7 +360,11 @@ fn physics_geometry_gas_flood_2d_high_perm_streak_public_contract_holds_on_both_
         assert!(metrics.4 > 0.0);
         assert!(metrics.5 >= 0.0);
         assert!((metrics.6 - 2.0).abs() <= 1e-9);
-        assert!(metrics.7 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.7 > 0,
+            "expected rate history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 
@@ -454,8 +457,16 @@ fn physics_geometry_waterflood_3d_high_kz_public_contract_holds_on_both_solvers(
         assert!(metrics.2 > 0.0);
         assert!(metrics.3 > 0.0);
         assert!((metrics.4 - 0.4).abs() <= 1e-9);
-        assert!(metrics.5 > 0, "expected low-kz history for fim_enabled={}", fim_enabled);
-        assert!(metrics.6 > 0, "expected high-kz history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.5 > 0,
+            "expected low-kz history for fim_enabled={}",
+            fim_enabled
+        );
+        assert!(
+            metrics.6 > 0,
+            "expected high-kz history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 

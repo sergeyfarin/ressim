@@ -254,18 +254,35 @@ fn physics_gas_flood_short_inventory_and_reporting_contract_hold_on_both_solvers
     }
 
     for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
-        assert!(metrics.0 <= 1.5e-1, "gas accounting drift too large for fim_enabled={}: {}", fim_enabled, metrics.0);
-        assert!(metrics.1 > 1e-8, "average gas saturation should increase for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.0 <= 1.5e-1,
+            "gas accounting drift too large for fim_enabled={}: {}",
+            fim_enabled,
+            metrics.0
+        );
+        assert!(
+            metrics.1 > 1e-8,
+            "average gas saturation should increase for fim_enabled={}",
+            fim_enabled
+        );
         assert!(metrics.2 > 0.0);
         assert!(metrics.3 >= 0.0);
         assert!(metrics.4 >= 0.0);
         assert!(metrics.5.is_finite());
         assert!(metrics.6.is_finite());
-        assert!(metrics.7 > 0.0, "expected gas inventory growth for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.7 > 0.0,
+            "expected gas inventory growth for fim_enabled={}",
+            fim_enabled
+        );
         assert!((0.0..=1.0).contains(&metrics.8));
         assert!((0.0..=1.0).contains(&metrics.9));
         assert!((metrics.10 - 4.0).abs() <= 1e-9);
-        assert!(metrics.11 > 0.0, "expected rate history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.11 > 0.0,
+            "expected rate history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 

@@ -128,7 +128,16 @@ fn spe1_fim_gas_injection_creates_free_gas() {
 
 #[test]
 fn spe1_fim_producer_gas_breakthrough_smoke() {
-    let mut sim = crate::tests::make_spe1_like_grid_sim(4, 4, 3, 3, vec![500.0, 50.0, 200.0], 0.05, 20.0, 0.2);
+    let mut sim = crate::tests::make_spe1_like_grid_sim(
+        4,
+        4,
+        3,
+        3,
+        vec![500.0, 50.0, 200.0],
+        0.05,
+        20.0,
+        0.2,
+    );
     sim.set_fim_enabled(true);
 
     let producer_id = sim.idx(3, 3, 2);

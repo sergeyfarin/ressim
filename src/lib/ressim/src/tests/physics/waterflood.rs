@@ -378,10 +378,13 @@ fn physics_waterflood_1d_injector_saturation_increases() {
 
 #[test]
 fn physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers() {
-    fn run_case(fim_enabled: bool) -> (f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, usize) {
+    fn run_case(
+        fim_enabled: bool,
+    ) -> (f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, usize) {
         let mut sim = make_short_waterflood_1d_sim();
         sim.set_fim_enabled(fim_enabled);
-        let initial_avg_sw = sim.sat_water.iter().copied().sum::<f64>() / sim.sat_water.len() as f64;
+        let initial_avg_sw =
+            sim.sat_water.iter().copied().sum::<f64>() / sim.sat_water.len() as f64;
         let injector_cell = sim.idx(0, 0, 0);
         let producer_cell = sim.idx(sim.nx - 1, 0, 0);
 
@@ -428,7 +431,11 @@ fn physics_waterflood_1d_public_reporting_contract_holds_on_both_solvers() {
         assert!((0.0..=1.0).contains(&metrics.8));
         assert!((0.0..=1.0).contains(&metrics.9));
         assert!((metrics.10 - 3.0).abs() <= 1e-9);
-        assert!(metrics.11 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.11 > 0,
+            "expected rate history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 

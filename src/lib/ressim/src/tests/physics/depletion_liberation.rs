@@ -159,7 +159,11 @@ fn physics_depletion_liberation_public_transition_contract_holds_on_both_solvers
             metrics.5
         );
         assert!((metrics.6 - 5.0).abs() <= 1e-9);
-        assert!(metrics.7 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.7 > 0,
+            "expected rate history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 

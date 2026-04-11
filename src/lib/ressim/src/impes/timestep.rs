@@ -168,8 +168,8 @@ impl ReservoirSimulator {
                         let nid = self.idx(ni as usize, nj as usize, nk as usize);
                         let dp = self.pressure[id] - self.pressure[nid];
                         if dp > 0.0 {
-                            let geom_t = DARCY_METRIC_FACTOR
-                                * self.geometric_transmissibility(id, nid, dim);
+                            let geom_t =
+                                DARCY_METRIC_FACTOR * self.geometric_transmissibility(id, nid, dim);
                             outflow += geom_t * lam_t * dp;
                         }
                     }

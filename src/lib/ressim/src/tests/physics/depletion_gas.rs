@@ -350,10 +350,9 @@ fn physics_depletion_gas_public_invariants_hold_on_both_solvers() {
             .expect("two-solver gas depletion public-contract case should record history");
         let final_inventory_sc = total_gas_inventory_sc_all_cells(&sim);
         let cumulative_gas_sc = cumulative_gas_production_sc(&sim);
-        let accounting_rel_diff =
-            ((final_inventory_sc + cumulative_gas_sc - initial_inventory_sc)
-                / initial_inventory_sc.max(1e-12))
-            .abs();
+        let accounting_rel_diff = ((final_inventory_sc + cumulative_gas_sc - initial_inventory_sc)
+            / initial_inventory_sc.max(1e-12))
+        .abs();
 
         (
             final_inventory_sc,
@@ -369,13 +368,26 @@ fn physics_depletion_gas_public_invariants_hold_on_both_solvers() {
 
     for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
         assert!(metrics.0 >= 0.0);
-        assert!(metrics.1 > 0.0, "expected cumulative gas production for fim_enabled={}", fim_enabled);
-        assert!(metrics.2 <= 1.5e-1, "gas depletion accounting envelope too large for fim_enabled={}: {}", fim_enabled, metrics.2);
+        assert!(
+            metrics.1 > 0.0,
+            "expected cumulative gas production for fim_enabled={}",
+            fim_enabled
+        );
+        assert!(
+            metrics.2 <= 1.5e-1,
+            "gas depletion accounting envelope too large for fim_enabled={}: {}",
+            fim_enabled,
+            metrics.2
+        );
         assert!((0.0..=1.0).contains(&metrics.3));
         assert!((0.0..=1.0).contains(&metrics.4));
         assert!((metrics.5 - 0.04).abs() <= 1e-9);
         assert!(metrics.6.is_finite());
-        assert!(metrics.7 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.7 > 0,
+            "expected rate history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 

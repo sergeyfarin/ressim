@@ -85,7 +85,13 @@ impl<'a> FimPerforationLocalBlock<'a> {
         sim: &ReservoirSimulator,
         bhp_bar: f64,
     ) -> Option<f64> {
-        perforation_connection_bhp_derivative(sim, self.state, self.topology, self.perf_idx, bhp_bar)
+        perforation_connection_bhp_derivative(
+            sim,
+            self.state,
+            self.topology,
+            self.perf_idx,
+            bhp_bar,
+        )
     }
 
     pub(crate) fn connection_cell_derivatives(
@@ -93,7 +99,13 @@ impl<'a> FimPerforationLocalBlock<'a> {
         sim: &ReservoirSimulator,
         bhp_bar: f64,
     ) -> Option<[f64; 3]> {
-        perforation_connection_cell_derivatives(sim, self.state, self.topology, self.perf_idx, bhp_bar)
+        perforation_connection_cell_derivatives(
+            sim,
+            self.state,
+            self.topology,
+            self.perf_idx,
+            bhp_bar,
+        )
     }
 
     pub(crate) fn component_rate_cell_derivatives_sc_day_by_var(
@@ -201,8 +213,7 @@ impl<'a> FimPerforationLocalBlock<'a> {
         ) = if !control.enabled {
             (Some(control.bhp_target), Some(0.0), Some(0.0), None)
         } else if control.rate_controlled {
-            if let Some((consistent_bhp_bar, bhp_limited)) = well_block.solve_bhp_from_target(sim)
-            {
+            if let Some((consistent_bhp_bar, bhp_limited)) = well_block.solve_bhp_from_target(sim) {
                 (
                     Some(consistent_bhp_bar),
                     self.connection_rate_for_bhp(sim, consistent_bhp_bar),
@@ -331,11 +342,7 @@ impl<'a> FimWellLocalBlock<'a> {
         ))
     }
 
-    pub(crate) fn total_rate_for_bhp(
-        self,
-        sim: &ReservoirSimulator,
-        bhp_bar: f64,
-    ) -> f64 {
+    pub(crate) fn total_rate_for_bhp(self, sim: &ReservoirSimulator, bhp_bar: f64) -> f64 {
         let control = self.control(sim);
         let injector = self.well().injector;
         self.perforations()
@@ -377,10 +384,7 @@ impl<'a> FimWellLocalBlock<'a> {
             .sum()
     }
 
-    pub(crate) fn solve_bhp_from_target(
-        self,
-        sim: &ReservoirSimulator,
-    ) -> Option<(f64, bool)> {
+    pub(crate) fn solve_bhp_from_target(self, sim: &ReservoirSimulator) -> Option<(f64, bool)> {
         let control = self.control(sim);
         if !control.enabled || !control.rate_controlled {
             return None;
@@ -1601,10 +1605,22 @@ mod tests {
         assert_eq!(block.bhp_unknown_offset(), state.well_bhp_unknown_offset(0));
         assert_eq!(block.equation_offset(), state.well_equation_offset(0));
         assert_eq!(perforations.len(), 2);
-        assert_eq!(perforations[0].rate_unknown_offset(), state.perforation_rate_unknown_offset(0));
-        assert_eq!(perforations[0].equation_offset(), state.perforation_equation_offset(0));
-        assert_eq!(perforations[1].rate_unknown_offset(), state.perforation_rate_unknown_offset(1));
-        assert_eq!(perforations[1].equation_offset(), state.perforation_equation_offset(1));
+        assert_eq!(
+            perforations[0].rate_unknown_offset(),
+            state.perforation_rate_unknown_offset(0)
+        );
+        assert_eq!(
+            perforations[0].equation_offset(),
+            state.perforation_equation_offset(0)
+        );
+        assert_eq!(
+            perforations[1].rate_unknown_offset(),
+            state.perforation_rate_unknown_offset(1)
+        );
+        assert_eq!(
+            perforations[1].equation_offset(),
+            state.perforation_equation_offset(1)
+        );
     }
 
     #[test]
@@ -1678,8 +1694,14 @@ mod tests {
         let state = FimState::from_simulator(&sim);
         let block = well_local_block(&topology, &state, 0);
 
-        assert_eq!(block.control(&sim), physical_well_control(&sim, &topology, 0));
-        assert_eq!(block.control_slacks(&sim), well_control_slacks(&sim, &state, &topology, 0));
+        assert_eq!(
+            block.control(&sim),
+            physical_well_control(&sim, &topology, 0)
+        );
+        assert_eq!(
+            block.control_slacks(&sim),
+            well_control_slacks(&sim, &state, &topology, 0)
+        );
         assert_eq!(
             block.constraint_residual(&sim),
             well_constraint_residual(&sim, &state, &topology, 0)
@@ -1698,7 +1720,10 @@ mod tests {
         let state = FimState::from_simulator(&sim);
         let perf = perforation_local_block(&topology, &state, 0);
 
-        assert_eq!(perf.rate_residual(&sim), perforation_rate_residual(&sim, &state, &topology, 0));
+        assert_eq!(
+            perf.rate_residual(&sim),
+            perforation_rate_residual(&sim, &state, &topology, 0)
+        );
         assert_eq!(
             perf.residual_diagnostics(&sim),
             perforation_residual_diagnostics(&sim, &state, &topology, 0)
@@ -1717,9 +1742,18 @@ mod tests {
         let state = FimState::from_simulator(&sim);
         let block = well_local_block(&topology, &state, 0);
 
-        assert_eq!(block.total_rate_from_unknowns(&sim), total_rate_from_unknowns(&sim, &state, &topology, 0));
-        assert_eq!(block.total_rate_for_bhp(&sim, state.well_bhp[0]), total_rate_for_well_bhp(&sim, &state, &topology, 0, state.well_bhp[0]));
-        assert_eq!(block.solve_bhp_from_target(&sim), solve_well_bhp_from_target(&sim, &state, &topology, 0));
+        assert_eq!(
+            block.total_rate_from_unknowns(&sim),
+            total_rate_from_unknowns(&sim, &state, &topology, 0)
+        );
+        assert_eq!(
+            block.total_rate_for_bhp(&sim, state.well_bhp[0]),
+            total_rate_for_well_bhp(&sim, &state, &topology, 0, state.well_bhp[0])
+        );
+        assert_eq!(
+            block.solve_bhp_from_target(&sim),
+            solve_well_bhp_from_target(&sim, &state, &topology, 0)
+        );
     }
 
     #[test]

@@ -2,7 +2,8 @@ use crate::ReservoirSimulator;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{
-    FimHotspotSite, FimNewtonOptions, FimRetryFailureDiagnostics, run_fim_timestep,
+    FimHotspotSite, FimNewtonOptions, FimRetryFailureDiagnostics, iterate_has_material_change,
+    run_fim_timestep,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::reporting::FimStepStats;
@@ -112,10 +113,7 @@ impl FimRetryHotspot {
                     let (anchor_i, anchor_j, anchor_k) = cell_ijk(sim, cell_idx);
                     FimRetryMemoryRegion::NonGasReservoirRegion {
                         reference_well_index: nearest_well_reference_index(
-                            sim,
-                            anchor_i,
-                            anchor_j,
-                            anchor_k,
+                            sim, anchor_i, anchor_j, anchor_k,
                         ),
                         anchor_i,
                         anchor_j,
@@ -219,7 +217,10 @@ impl FimGrowthCooldown {
             return;
         };
 
-        if self.hotspot.is_some_and(|previous| previous.same_site(hotspot)) {
+        if self
+            .hotspot
+            .is_some_and(|previous| previous.same_site(hotspot))
+        {
             self.hotspot_repeat_failures = self.hotspot_repeat_failures.saturating_add(1);
         } else {
             self.hotspot_repeat_failures = 1;
@@ -228,7 +229,10 @@ impl FimGrowthCooldown {
         self.hotspot_clean_successes_without_retry = 0;
     }
 
-    fn cap_growth_decision(self, decision: AcceptedStepGrowthDecision) -> AcceptedStepGrowthDecision {
+    fn cap_growth_decision(
+        self,
+        decision: AcceptedStepGrowthDecision,
+    ) -> AcceptedStepGrowthDecision {
         if decision.factor <= 1.0 {
             return decision;
         }
@@ -248,7 +252,10 @@ impl FimGrowthCooldown {
         }
     }
 
-    fn stabilize_growth_decision(self, decision: AcceptedStepGrowthDecision) -> AcceptedStepGrowthDecision {
+    fn stabilize_growth_decision(
+        self,
+        decision: AcceptedStepGrowthDecision,
+    ) -> AcceptedStepGrowthDecision {
         if self.cap_dt_days.is_some() && decision.factor < 1.0 {
             return AcceptedStepGrowthDecision {
                 factor: 1.0,
@@ -266,7 +273,7 @@ impl FimGrowthCooldown {
         self.hotspot_clean_successes_without_retry = 0;
     }
 
-    fn note_clean_accepted(&mut self) {
+    fn note_clean_accepted(&mut self, materially_changed: bool) {
         if self.clean_successes_remaining > 0 {
             self.clean_successes_remaining -= 1;
             if self.clean_successes_remaining == 0 {
@@ -276,6 +283,9 @@ impl FimGrowthCooldown {
         }
 
         if self.hotspot.is_some() {
+            if !materially_changed {
+                return;
+            }
             self.hotspot_clean_successes_without_retry += 1;
             if self.hotspot_clean_successes_without_retry
                 >= Self::HOTSPOT_MEMORY_CLEAR_CLEAN_SUCCESSES
@@ -305,9 +315,7 @@ impl FimGrowthCooldown {
                     .unwrap_or_default();
                 format!(
                     " cooldown_cap={:.6} clean_left={}{}",
-                    cap_dt_days,
-                    self.clean_successes_remaining,
-                    hotspot_trace
+                    cap_dt_days, self.clean_successes_remaining, hotspot_trace
                 )
             })
             .unwrap_or_default()
@@ -352,7 +360,8 @@ fn accepted_step_growth_decision(
     let raw_iteration_growth =
         (TARGET_NEWTON_ITERS / newton_iterations as f64).clamp(MIN_ITERATION_GROWTH, MAX_GROWTH);
     let smooth_growth_start_iteration = TARGET_NEWTON_ITERS as usize + 1;
-    let smooth_growth_end_iteration = smooth_growth_start_iteration + SMOOTH_NEWTON_GROWTH_WINDOW - 1;
+    let smooth_growth_end_iteration =
+        smooth_growth_start_iteration + SMOOTH_NEWTON_GROWTH_WINDOW - 1;
     let iteration_growth = if (smooth_growth_start_iteration..=smooth_growth_end_iteration)
         .contains(&newton_iterations)
     {
@@ -400,6 +409,27 @@ fn accepted_step_growth_decision(
         decision.limiter = "max-growth";
     }
     decision
+}
+
+fn replayable_unchanged_cooldown_accepts(
+    cooldown: FimGrowthCooldown,
+    accepted_dt_days: f64,
+    remaining_dt_days: f64,
+) -> u32 {
+    if cooldown.cap_dt_days != Some(accepted_dt_days) || cooldown.clean_successes_remaining == 0 {
+        return 0;
+    }
+
+    let mut replayable = 0_u32;
+    let mut replay_time_days = 0.0;
+    while replayable < cooldown.clean_successes_remaining
+        && replay_time_days + accepted_dt_days <= remaining_dt_days + 1e-12
+    {
+        replayable += 1;
+        replay_time_days += accepted_dt_days;
+    }
+
+    replayable
 }
 
 fn proposed_trial_dt_days(
@@ -615,6 +645,10 @@ impl ReservoirSimulator {
                 state_update_ms += report.state_update_ms;
 
                 if report.converged {
+                    let materially_changed = iterate_has_material_change(
+                        &previous_state,
+                        &report.accepted_state,
+                    );
                     let mut max_dsat: f64 = 0.0;
                     let mut max_dp: f64 = 0.0;
                     for (idx, new_cell) in report.accepted_state.cells.iter().enumerate() {
@@ -632,12 +666,13 @@ impl ReservoirSimulator {
                         max_dsat = max_dsat.max((new_sg - old_sg).abs());
                         let _ = idx;
                     }
+                    let unchanged_retry_accept = retry_count > 0
+                        && report.newton_iterations == 1
+                        && report.final_update_inf_norm == 0.0
+                        && !materially_changed;
 
-                    let uncapped_growth_decision = accepted_step_growth_decision(
-                        report.newton_iterations,
-                        max_dsat,
-                        max_dp,
-                    );
+                    let uncapped_growth_decision =
+                        accepted_step_growth_decision(report.newton_iterations, max_dsat, max_dp);
                     let growth_decision = growth_cooldown.stabilize_growth_decision(
                         growth_cooldown.cap_growth_decision(uncapped_growth_decision),
                     );
@@ -646,14 +681,15 @@ impl ReservoirSimulator {
                     {
                         hotspot_repeat_suppressed_newton_iters_growth_count += 1;
                     }
-                    let adjusted_growth_decision = if retry_count > 0 && growth_decision.factor < 1.0 {
-                        AcceptedStepGrowthDecision {
-                            factor: 1.0,
-                            limiter: "retry-hold",
-                        }
-                    } else {
-                        growth_decision
-                    };
+                    let adjusted_growth_decision =
+                        if retry_count > 0 && growth_decision.factor < 1.0 {
+                            AcceptedStepGrowthDecision {
+                                factor: 1.0,
+                                limiter: "retry-hold",
+                            }
+                        } else {
+                            growth_decision
+                        };
                     last_growth_factor = adjusted_growth_decision.factor;
                     last_growth_limiter = Some(adjusted_growth_decision.limiter);
                     min_accepted_dt_days = Some(
@@ -672,7 +708,7 @@ impl ReservoirSimulator {
                         growth_cooldown
                             .note_retry_accepted(trial_dt, RETRY_GROWTH_COOLDOWN_CLEAN_SUCCESSES);
                     } else {
-                        growth_cooldown.note_clean_accepted();
+                        growth_cooldown.note_clean_accepted(materially_changed);
                     }
 
                     fim_trace!(
@@ -710,6 +746,49 @@ impl ReservoirSimulator {
                     time_stepped += trial_dt;
                     last_successful_dt = trial_dt;
                     substeps += 1;
+
+                    let replayable_accepts = if unchanged_retry_accept {
+                        replayable_unchanged_cooldown_accepts(
+                            growth_cooldown,
+                            trial_dt,
+                            target_dt_days - time_stepped,
+                        )
+                    } else {
+                        0
+                    };
+
+                    for _ in 0..replayable_accepts {
+                        growth_cooldown.note_clean_accepted(false);
+                        last_accepted_dt_days = Some(trial_dt);
+                        fim_trace!(
+                            self,
+                            verbose,
+                            "  substep {}: ACCEPTED dt={:.6} iters={} res={:.3e} mb={:.3e} upd={:.3e} max_dSat={:.4} max_dP={:.2} growth={:.3}{}{} [replayed unchanged cooldown accept]",
+                            substeps,
+                            trial_dt,
+                            report.newton_iterations,
+                            report.final_residual_inf_norm,
+                            report.final_material_balance_inf_norm,
+                            report.final_update_inf_norm,
+                            max_dsat,
+                            max_dp,
+                            last_growth_factor,
+                            growth_cooldown.trace_suffix(),
+                            fim_linear_report_step_suffix(report.last_linear_report.as_ref())
+                        );
+                        self.record_fim_step_report(
+                            &report.accepted_state,
+                            trial_dt,
+                            0.0,
+                            0.0,
+                            0.0,
+                        );
+                        self.time_days += trial_dt;
+                        time_stepped += trial_dt;
+                        last_successful_dt = trial_dt;
+                        substeps += 1;
+                    }
+
                     break;
                 }
 
@@ -936,7 +1015,7 @@ impl ReservoirSimulator {
 mod tests {
     use super::{
         AcceptedStepGrowthDecision, FimGrowthCooldown, accepted_step_growth_factor,
-        proposed_trial_dt_days,
+        proposed_trial_dt_days, replayable_unchanged_cooldown_accepts,
     };
     use crate::ReservoirSimulator;
     use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
@@ -973,10 +1052,10 @@ mod tests {
 
         assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
 
-        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted(true);
         assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.25);
 
-        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted(true);
         assert_eq!(cooldown.clamp_trial_dt(0.3125, 1.0), 0.3125);
     }
 
@@ -1028,11 +1107,14 @@ mod tests {
         let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
 
         cooldown.note_retry_failure(&sim, &failure);
-        cooldown.note_retry_failure(&sim, &FimRetryFailureDiagnostics {
-            dominant_family_label: "oil",
-            dominant_row: 430,
-            ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 430, 143)
-        });
+        cooldown.note_retry_failure(
+            &sim,
+            &FimRetryFailureDiagnostics {
+                dominant_family_label: "oil",
+                dominant_row: 430,
+                ..failure_diagnostics(FimRetryFailureClass::NonlinearBad, 430, 143)
+            },
+        );
 
         let capped = cooldown.cap_growth_decision(AcceptedStepGrowthDecision {
             factor: 1.25,
@@ -1261,7 +1343,8 @@ mod tests {
     fn nearby_non_gas_cells_near_different_wells_do_not_share_memory_region() {
         let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
-        let injector_side = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 189, sim.idx(3, 3, 0));
+        let injector_side =
+            failure_diagnostics(FimRetryFailureClass::NonlinearBad, 189, sim.idx(3, 3, 0));
         let producer_side = FimRetryFailureDiagnostics {
             dominant_family_label: "oil",
             dominant_row: 3190,
@@ -1294,24 +1377,21 @@ mod tests {
     fn changing_hotspot_resets_extra_growth_cooldown_budget() {
         let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
-        cooldown.note_retry_failure(&sim, &failure_diagnostics(
-            FimRetryFailureClass::NonlinearBad,
-            429,
-            143,
-        ));
-        cooldown.note_retry_failure(&sim, &failure_diagnostics(
-            FimRetryFailureClass::NonlinearBad,
-            429,
-            143,
-        ));
+        cooldown.note_retry_failure(
+            &sim,
+            &failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143),
+        );
+        cooldown.note_retry_failure(
+            &sim,
+            &failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143),
+        );
         cooldown.note_retry_accepted(0.25, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
 
-        cooldown.note_retry_failure(&sim, &failure_diagnostics(
-            FimRetryFailureClass::NonlinearBad,
-            297,
-            99,
-        ));
+        cooldown.note_retry_failure(
+            &sim,
+            &failure_diagnostics(FimRetryFailureClass::NonlinearBad, 297, 99),
+        );
         cooldown.note_retry_accepted(0.2, 2);
         assert_eq!(cooldown.clean_successes_remaining, 2);
         assert!(cooldown.trace_suffix().contains("row=297"));
@@ -1336,7 +1416,10 @@ mod tests {
     fn linear_failure_does_not_seed_hotspot_memory() {
         let sim = hotspot_memory_sim();
         let mut cooldown = FimGrowthCooldown::default();
-        cooldown.note_retry_failure(&sim, &failure_diagnostics(FimRetryFailureClass::LinearBad, 10, 3));
+        cooldown.note_retry_failure(
+            &sim,
+            &failure_diagnostics(FimRetryFailureClass::LinearBad, 10, 3),
+        );
         cooldown.note_retry_accepted(0.25, 2);
 
         assert_eq!(cooldown.clean_successes_remaining, 2);
@@ -1351,21 +1434,39 @@ mod tests {
 
         cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
-        cooldown.note_clean_accepted();
-        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted(true);
+        cooldown.note_clean_accepted(true);
 
         assert_eq!(cooldown.hotspot_repeat_failures, 1);
 
         cooldown.note_retry_failure(&sim, &failure);
         cooldown.note_retry_accepted(0.25, 2);
-        assert_eq!(cooldown.clean_successes_remaining, 2);
+        assert_eq!(cooldown.clean_successes_remaining, 3);
 
-        cooldown.note_clean_accepted();
-        cooldown.note_clean_accepted();
-        cooldown.note_clean_accepted();
-        cooldown.note_clean_accepted();
+        cooldown.note_clean_accepted(true);
+        cooldown.note_clean_accepted(true);
+        cooldown.note_clean_accepted(true);
+        cooldown.note_clean_accepted(true);
+        cooldown.note_clean_accepted(true);
 
         assert!(cooldown.hotspot.is_none());
+    }
+
+    #[test]
+    fn unchanged_clean_accepts_do_not_decay_hotspot_memory() {
+        let sim = hotspot_memory_sim();
+        let mut cooldown = FimGrowthCooldown::default();
+        let failure = failure_diagnostics(FimRetryFailureClass::NonlinearBad, 429, 143);
+
+        cooldown.note_retry_failure(&sim, &failure);
+        cooldown.note_retry_failure(&sim, &failure);
+
+        cooldown.note_clean_accepted(false);
+        cooldown.note_clean_accepted(false);
+        cooldown.note_clean_accepted(false);
+
+        assert!(cooldown.hotspot.is_some());
+        assert_eq!(cooldown.hotspot_repeat_failures, 2);
     }
 
     #[test]
@@ -1432,6 +1533,32 @@ mod tests {
     fn later_substeps_still_use_growth_based_trial_dt() {
         let trial = proposed_trial_dt_days(0.0, 3, 20.0, 0.75, 1.6);
         assert!((trial - 1.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn unchanged_cooldown_accepts_replay_remaining_clean_steps() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(
+            replayable_unchanged_cooldown_accepts(cooldown, 0.25, 1.0),
+            2
+        );
+    }
+
+    #[test]
+    fn unchanged_cooldown_replay_stops_at_remaining_time() {
+        let mut cooldown = FimGrowthCooldown::default();
+        cooldown.note_retry_accepted(0.25, 2);
+
+        assert_eq!(
+            replayable_unchanged_cooldown_accepts(cooldown, 0.25, 0.24),
+            0
+        );
+        assert_eq!(
+            replayable_unchanged_cooldown_accepts(cooldown, 0.25, 0.26),
+            1
+        );
     }
 
     #[test]

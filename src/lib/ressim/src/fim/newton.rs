@@ -7,13 +7,10 @@ use crate::fim::assembly::{
 };
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind,
-    active_direct_solve_row_threshold, solve_linearized_system,
+    FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::FimState;
-use crate::fim::wells::{
-    build_well_topology, perforation_local_block, physical_well_control,
-};
+use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
 use crate::timing::PerfTimer;
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -707,7 +704,8 @@ fn cell_attached_perforation_context_trace(
         .enumerate()
         .filter(|(_, perforation)| perforation.cell_index == cell_idx)
         .filter_map(|(perf_idx, _)| {
-            let detail = perforation_local_block(topology, state, perf_idx).residual_diagnostics(sim)?;
+            let detail =
+                perforation_local_block(topology, state, perf_idx).residual_diagnostics(sim)?;
             Some(format!(
                 "perf{}->well{} inj={} q={:.3e} conn={:.3e} draw={:.3e} bhp={:.3}",
                 detail.perf_idx,
@@ -764,7 +762,12 @@ fn effective_move_threshold_trace(
         water_delta,
         oil_delta,
         gas_delta,
-        cell_attached_perforation_context_trace(sim, candidate, topology, diagnostics.global.item_index),
+        cell_attached_perforation_context_trace(
+            sim,
+            candidate,
+            topology,
+            diagnostics.global.item_index
+        ),
     ))
 }
 
@@ -876,17 +879,12 @@ fn producer_hotspot_stagnation_diagnostics(
         oil_delta,
         gas_delta,
         attached_perforation_context: cell_attached_perforation_context_trace(
-            sim,
-            candidate,
-            topology,
-            cell_idx,
+            sim, candidate, topology, cell_idx,
         ),
     })
 }
 
-fn producer_hotspot_stagnation_trace(
-    diagnostics: &ProducerHotspotStagnationDiagnostics,
-) -> String {
+fn producer_hotspot_stagnation_trace(diagnostics: &ProducerHotspotStagnationDiagnostics) -> String {
     format!(
         "cell{} row={} damp={:.4} local_dP={:.5} local_dSw={:.6} local_dSo={:.6} local_dSg={:.6} {}",
         diagnostics.cell_idx,
@@ -927,7 +925,13 @@ fn gas_injector_symmetry_site(
             let major_offset = di.max(dj);
             let minor_offset = di.min(dj);
             (
-                (di + dj + dk, major_offset, minor_offset, dk, perforation.physical_well_index),
+                (
+                    di + dj + dk,
+                    major_offset,
+                    minor_offset,
+                    dk,
+                    perforation.physical_well_index,
+                ),
                 FimHotspotSite::GasInjectorSymmetry {
                     injector_well_index: perforation.physical_well_index,
                     major_offset,
@@ -946,8 +950,10 @@ fn residual_hotspot_site(
     peak: &ResidualFamilyPeak,
 ) -> FimHotspotSite {
     match peak.family {
-        ResidualRowFamily::GasComponent => gas_injector_symmetry_site(sim, topology, peak.item_index)
-            .unwrap_or_else(|| exact_residual_hotspot_site(peak)),
+        ResidualRowFamily::GasComponent => {
+            gas_injector_symmetry_site(sim, topology, peak.item_index)
+                .unwrap_or_else(|| exact_residual_hotspot_site(peak))
+        }
         _ => exact_residual_hotspot_site(peak),
     }
 }
@@ -1042,8 +1048,7 @@ fn repeated_nonlinear_hotspot_streak(
         ResidualRowFamily::GasComponent => NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO,
         _ => NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO,
     };
-    let weak_progress = current_residual_norm
-        >= previous_residual_norm * weak_progress_ratio;
+    let weak_progress = current_residual_norm >= previous_residual_norm * weak_progress_ratio;
 
     if same_site && weak_progress {
         current_streak + 1
@@ -1408,7 +1413,7 @@ fn update_peak_trace(peak: UpdateFamilyPeak) -> String {
     )
 }
 
-fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> bool {
+pub(crate) fn iterate_has_material_change(previous_state: &FimState, state: &FimState) -> bool {
     const PRESSURE_EPS: f64 = 1e-12;
     const SATURATION_EPS: f64 = 1e-12;
     const RS_EPS: f64 = 1e-12;
@@ -2055,7 +2060,11 @@ fn stagnation_acceptance_gate_trace(
         if status.residual_ok { "ok" } else { "reject" },
         material_balance_inf_norm,
         options.material_balance_tolerance,
-        if status.material_balance_ok { "ok" } else { "reject" },
+        if status.material_balance_ok {
+            "ok"
+        } else {
+            "reject"
+        },
     )
 }
 
@@ -2141,8 +2150,9 @@ pub(crate) fn run_fim_timestep(
                 topology: Some(&topology),
             },
         );
-        assembly_ms +=
-            assembly.timing.residual_ms + assembly.timing.sensitivity_eval_ms + assembly.timing.jacobian_ms;
+        assembly_ms += assembly.timing.residual_ms
+            + assembly.timing.sensitivity_eval_ms
+            + assembly.timing.jacobian_ms;
         property_eval_ms += assembly.timing.property_eval_ms;
         final_residual_inf_norm = Some(scaled_residual_inf_norm(
             &assembly.residual,
@@ -2161,7 +2171,8 @@ pub(crate) fn run_fim_timestep(
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let previous_iteration_residual_norm = prev_residual_norm;
-        let current_hotspot_site = residual_hotspot_site(sim, &topology, &residual_diagnostics.global);
+        let current_hotspot_site =
+            residual_hotspot_site(sim, &topology, &residual_diagnostics.global);
         repeated_hotspot_streak = repeated_nonlinear_hotspot_streak(
             sim,
             previous_hotspot_site,
@@ -2373,7 +2384,8 @@ pub(crate) fn run_fim_timestep(
                         converged: true,
                         newton_iterations: iteration + 1,
                         final_residual_inf_norm: accepted_diagnostics.residual_inf_norm,
-                        final_material_balance_inf_norm: accepted_diagnostics.material_balance_inf_norm,
+                        final_material_balance_inf_norm: accepted_diagnostics
+                            .material_balance_inf_norm,
                         final_update_inf_norm,
                         last_linear_report,
                         failure_diagnostics: None,
@@ -2406,7 +2418,9 @@ pub(crate) fn run_fim_timestep(
                     raw_update_peak_trace,
                     effective_update_peak_trace,
                     residual_family_trace(&accepted_diagnostics.residual_diagnostics),
-                    global_material_balance_trace(&accepted_diagnostics.material_balance_diagnostics),
+                    global_material_balance_trace(
+                        &accepted_diagnostics.material_balance_diagnostics
+                    ),
                     accepted_diagnostics
                         .residual_detail
                         .as_ref()
@@ -2521,7 +2535,9 @@ pub(crate) fn run_fim_timestep(
             if linear_report
                 .failure_diagnostics
                 .as_ref()
-                .is_some_and(|diagnostics| diagnostics.reason == FimLinearFailureReason::DeadStateDetected)
+                .is_some_and(|diagnostics| {
+                    diagnostics.reason == FimLinearFailureReason::DeadStateDetected
+                })
             {
                 dead_state_direct_bypass = true;
             }
@@ -2666,15 +2682,13 @@ pub(crate) fn run_fim_timestep(
             repeated_hotspot_streak,
             current_hotspot_site,
         );
-        let damping = history_stabilization
-            .as_ref()
-            .map_or_else(
-                || appleyard_damping(sim, &state, &linear_report.solution, options),
-                |decision| {
-                    appleyard_damping(sim, &state, &linear_report.solution, options)
-                        .min(decision.damping_cap)
-                },
-            );
+        let damping = history_stabilization.as_ref().map_or_else(
+            || appleyard_damping(sim, &state, &linear_report.solution, options),
+            |decision| {
+                appleyard_damping(sim, &state, &linear_report.solution, options)
+                    .min(decision.damping_cap)
+            },
+        );
         let state_update_timer = PerfTimer::start();
         let candidate =
             state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
@@ -2759,9 +2773,8 @@ pub(crate) fn run_fim_timestep(
                 effective_move_trace,
             );
         }
-        previous_effective_move_floor_site = effective_move_trace
-            .as_ref()
-            .map(|_| current_hotspot_site);
+        previous_effective_move_floor_site =
+            effective_move_trace.as_ref().map(|_| current_hotspot_site);
 
         if producer_hotspot_stagnation_should_bail(
             previous_producer_hotspot_effective_move.as_ref(),
@@ -4100,7 +4113,7 @@ mod tests {
             1,
             FimHotspotSite::Cell(143),
         )
-            .expect("expected first stabilization decision");
+        .expect("expected first stabilization decision");
         let repeated = nonlinear_history_stabilization_decision(
             &report,
             &diagnostics,
@@ -4109,21 +4122,23 @@ mod tests {
             2,
             FimHotspotSite::Cell(143),
         )
-            .expect("expected repeated stabilization decision");
+        .expect("expected repeated stabilization decision");
 
         assert_eq!(first.site, FimHotspotSite::Cell(143));
         assert!((first.damping_cap - 0.5).abs() < 1e-12);
         assert!((repeated.damping_cap - 0.25).abs() < 1e-12);
 
-        assert!(nonlinear_history_stabilization_decision(
-            &report,
-            &diagnostics,
-            1e-3,
-            &FimNewtonOptions::default(),
-            2,
-            FimHotspotSite::Cell(143),
-        )
-        .is_none());
+        assert!(
+            nonlinear_history_stabilization_decision(
+                &report,
+                &diagnostics,
+                1e-3,
+                &FimNewtonOptions::default(),
+                2,
+                FimHotspotSite::Cell(143),
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -4193,9 +4208,15 @@ mod tests {
 
     #[test]
     fn move_is_below_effective_trace_threshold_detects_rounds_to_zero() {
-        assert!(move_is_below_effective_trace_threshold(0.0049, 0.000049, 0.000049, 0.0));
-        assert!(!move_is_below_effective_trace_threshold(0.0051, 0.000049, 0.000049, 0.0));
-        assert!(!move_is_below_effective_trace_threshold(0.0049, 0.000051, 0.000049, 0.0));
+        assert!(move_is_below_effective_trace_threshold(
+            0.0049, 0.000049, 0.000049, 0.0
+        ));
+        assert!(!move_is_below_effective_trace_threshold(
+            0.0051, 0.000049, 0.000049, 0.0
+        ));
+        assert!(!move_is_below_effective_trace_threshold(
+            0.0049, 0.000051, 0.000049, 0.0
+        ));
     }
 
     #[test]
@@ -4244,15 +4265,17 @@ mod tests {
             global: producer_peak,
         };
 
-        assert!(producer_hotspot_stagnation_diagnostics(
-            &sim,
-            &state,
-            &state,
-            &topology,
-            &diagnostics,
-            0.0,
-        )
-        .is_some());
+        assert!(
+            producer_hotspot_stagnation_diagnostics(
+                &sim,
+                &state,
+                &state,
+                &topology,
+                &diagnostics,
+                0.0,
+            )
+            .is_some()
+        );
 
         let injector_peak = ResidualFamilyPeak {
             family: ResidualRowFamily::Water,
@@ -4279,15 +4302,17 @@ mod tests {
             global: injector_peak,
         };
 
-        assert!(producer_hotspot_stagnation_diagnostics(
-            &sim,
-            &state,
-            &state,
-            &topology,
-            &injector_diagnostics,
-            0.0,
-        )
-        .is_none());
+        assert!(
+            producer_hotspot_stagnation_diagnostics(
+                &sim,
+                &state,
+                &state,
+                &topology,
+                &injector_diagnostics,
+                0.0,
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -4453,5 +4478,4 @@ mod tests {
             &FimNewtonOptions::default(),
         ));
     }
-
 }

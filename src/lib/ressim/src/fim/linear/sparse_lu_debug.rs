@@ -89,10 +89,8 @@ pub(super) fn solve(
 
         let correction_rhs = Col::from_fn(rhs.len(), |row| residual[row]);
         let correction_col = factorization.solve(&correction_rhs);
-        let correction = DVector::from_iterator(
-            rhs.len(),
-            (0..rhs.len()).map(|idx| correction_col[idx]),
-        );
+        let correction =
+            DVector::from_iterator(rhs.len(), (0..rhs.len()).map(|idx| correction_col[idx]));
         if !correction.iter().all(|value| value.is_finite()) {
             break;
         }

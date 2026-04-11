@@ -94,7 +94,9 @@ impl FimState {
         };
 
         for well_idx in 0..topology.wells.len() {
-            if let Some((bhp_bar, _)) = well_local_block(&topology, &state, well_idx).solve_bhp_from_target(sim) {
+            if let Some((bhp_bar, _)) =
+                well_local_block(&topology, &state, well_idx).solve_bhp_from_target(sim)
+            {
                 state.well_bhp[well_idx] = bhp_bar;
             }
         }
@@ -724,8 +726,9 @@ mod tests {
         update[state.perforation_rate_unknown_offset(0)] = 100_000.0;
 
         let updated = state.apply_newton_update_frozen(&sim, &update, 1.0, &topology);
-        let consistent_q =
-            perforation_local_block(&topology, &updated, 0).connection_rate_for_bhp(&sim, updated.well_bhp[0]).unwrap();
+        let consistent_q = perforation_local_block(&topology, &updated, 0)
+            .connection_rate_for_bhp(&sim, updated.well_bhp[0])
+            .unwrap();
         let trust_radius = (WELL_RATE_TRUST_RADIUS_FRAC * consistent_q.abs())
             .max(WELL_RATE_TRUST_RADIUS_MIN_M3_DAY);
 

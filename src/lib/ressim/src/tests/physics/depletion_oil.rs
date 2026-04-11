@@ -176,13 +176,25 @@ fn physics_depletion_oil_public_reporting_contract_holds_on_both_solvers() {
     }
 
     for (fim_enabled, metrics) in [(false, run_case(false)), (true, run_case(true))] {
-        assert!(metrics.0 > 0.0, "expected oil inventory depletion for fim_enabled={}", fim_enabled);
-        assert!(metrics.1 > 0.0, "expected cumulative oil production for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.0 > 0.0,
+            "expected oil inventory depletion for fim_enabled={}",
+            fim_enabled
+        );
+        assert!(
+            metrics.1 > 0.0,
+            "expected cumulative oil production for fim_enabled={}",
+            fim_enabled
+        );
         assert!(metrics.2.is_finite());
         assert!((0.0..=1.0).contains(&metrics.3));
         assert!((0.0..=1.0).contains(&metrics.4));
         assert!((metrics.5 - 0.4).abs() <= 1e-9);
-        assert!(metrics.6 > 0, "expected rate history for fim_enabled={}", fim_enabled);
+        assert!(
+            metrics.6 > 0,
+            "expected rate history for fim_enabled={}",
+            fim_enabled
+        );
     }
 }
 

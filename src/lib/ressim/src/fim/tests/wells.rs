@@ -132,7 +132,8 @@ fn rate_controlled_injector_fim_path_converges() {
     let topology = build_well_topology(&sim);
     let well_block = well_local_block(&topology, &report.accepted_state, 0);
     let perf = perforation_local_block(&topology, &report.accepted_state, 0);
-    let well_residual = well_block.constraint_residual(&sim)
+    let well_residual = well_block
+        .constraint_residual(&sim)
         .expect("well constraint residual should exist for rate-controlled injector");
     let perf_residual = perf
         .rate_residual(&sim)
@@ -201,7 +202,8 @@ fn rate_controlled_producer_fim_hits_bhp_limit() {
     let topology = build_well_topology(&sim);
     let well_block = well_local_block(&topology, &report.accepted_state, 0);
     let perf = perforation_local_block(&topology, &report.accepted_state, 0);
-    let well_residual = well_block.constraint_residual(&sim)
+    let well_residual = well_block
+        .constraint_residual(&sim)
         .expect("well constraint residual should exist for BHP-limited producer");
     let perf_residual = perf
         .rate_residual(&sim)
@@ -290,7 +292,8 @@ fn multi_layer_well_shares_bhp_and_splits_rate_by_mobility() {
     let state = FimState::from_simulator(&sim);
     let topology = build_well_topology(&sim);
     let well_block = well_local_block(&topology, &state, 0);
-    let well_residual = well_block.constraint_residual(&sim)
+    let well_residual = well_block
+        .constraint_residual(&sim)
         .expect("shared physical well should expose a well constraint residual");
     assert!(well_residual.abs() < 1e-6);
 

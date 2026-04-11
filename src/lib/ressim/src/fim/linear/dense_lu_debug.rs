@@ -32,7 +32,10 @@ pub(super) fn solve(
         }
     }
 
-    let solution = dense.lu().solve(rhs).unwrap_or_else(|| DVector::zeros(rhs.len()));
+    let solution = dense
+        .lu()
+        .solve(rhs)
+        .unwrap_or_else(|| DVector::zeros(rhs.len()));
     let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
     let residual_norm = residual.norm();
     let tolerance =

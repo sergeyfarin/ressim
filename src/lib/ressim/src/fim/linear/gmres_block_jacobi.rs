@@ -4,9 +4,9 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::{
-    FimCprDiagnostics, FimLinearBlockLayout, FimLinearFailureDiagnostics,
-    FimLinearFailureReason, FimLinearRestartDiagnostics, FimLinearSolveOptions,
-    FimLinearSolveReport, FimLinearSolverKind, FimPressureCoarseSolverKind,
+    FimCprDiagnostics, FimLinearBlockLayout, FimLinearFailureDiagnostics, FimLinearFailureReason,
+    FimLinearRestartDiagnostics, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    FimPressureCoarseSolverKind,
 };
 use crate::timing::PerfTimer;
 
@@ -208,20 +208,22 @@ impl BlockJacobiPreconditioner {
 
     fn extract_pressure_rhs(&self, residual: &DVector<f64>) -> DVector<f64> {
         let mut rhs = DVector::zeros(self.pressure_u_diag.len());
-        let tail_rhs = if self.tail_inverse.nrows() > 0
-            && self.perforation_tail_start < residual.len()
-        {
-            let tail_residual = DVector::from_iterator(
-                self.tail_inverse.nrows(),
-                (self.perforation_tail_start..residual.len()).map(|idx| residual[idx]),
-            );
-            Some(&self.tail_inverse * tail_residual)
-        } else {
-            None
-        };
+        let tail_rhs =
+            if self.tail_inverse.nrows() > 0 && self.perforation_tail_start < residual.len() {
+                let tail_residual = DVector::from_iterator(
+                    self.tail_inverse.nrows(),
+                    (self.perforation_tail_start..residual.len()).map(|idx| residual[idx]),
+                );
+                Some(&self.tail_inverse * tail_residual)
+            } else {
+                None
+            };
 
         let cell_coarse_count = self.pressure_restriction.len();
-        debug_assert_eq!(self.pressure_rows.len(), cell_coarse_count + self.well_bhp_count);
+        debug_assert_eq!(
+            self.pressure_rows.len(),
+            cell_coarse_count + self.well_bhp_count
+        );
 
         for cell_idx in 0..cell_coarse_count {
             let start = cell_idx * self.cell_block_size;
@@ -242,9 +244,8 @@ impl BlockJacobiPreconditioner {
             let coarse_idx = cell_coarse_count + well_idx;
             let mut value = residual[self.well_bhp_start + well_idx];
             if let Some(tail_rhs) = &tail_rhs {
-                for (tail_idx, coupling) in self.pressure_tail_coupling[coarse_idx]
-                    .iter()
-                    .enumerate()
+                for (tail_idx, coupling) in
+                    self.pressure_tail_coupling[coarse_idx].iter().enumerate()
                 {
                     value -= coupling * tail_rhs[tail_idx];
                 }
@@ -301,11 +302,8 @@ impl BlockJacobiPreconditioner {
         }
         let tolerance = rhs.norm().max(f64::EPSILON) * PRESSURE_DEFECT_CORRECTION_REL_TOL;
 
-        let solution = self.solve_pressure_with_bicgstab(
-            rhs,
-            PRESSURE_DEFECT_CORRECTION_MAX_ITERS,
-            tolerance,
-        );
+        let solution =
+            self.solve_pressure_with_bicgstab(rhs, PRESSURE_DEFECT_CORRECTION_MAX_ITERS, tolerance);
 
         let residual = rhs - &self.pressure_mat_vec(&solution);
         let reduction_ratio = if rhs_norm > f64::EPSILON {
@@ -775,8 +773,8 @@ fn build_block_jacobi_preconditioner(
                     }
                     tail_to_pressure[tail_idx][neighbor_block] += value * prolongation;
                 } else if col_idx < well_bhp_end {
-                    tail_to_pressure[tail_idx][layout.cell_block_count + (col_idx - well_bhp_start)] +=
-                        value;
+                    tail_to_pressure[tail_idx]
+                        [layout.cell_block_count + (col_idx - well_bhp_start)] += value;
                 }
             }
         }
@@ -882,7 +880,9 @@ fn build_block_jacobi_preconditioner(
                 if weight.abs() <= f64::EPSILON {
                     continue;
                 }
-                for (neighbor_coarse_idx, coefficient) in tail_to_pressure[tail_idx].iter().enumerate() {
+                for (neighbor_coarse_idx, coefficient) in
+                    tail_to_pressure[tail_idx].iter().enumerate()
+                {
                     if coefficient.abs() <= f64::EPSILON {
                         continue;
                     }
@@ -900,8 +900,7 @@ fn build_block_jacobi_preconditioner(
         pressure_tail_coupling.push(tail_coupling);
     }
 
-    let mut pressure_tail_prolongation =
-        vec![vec![0.0; coarse_row_count]; schur_tail_count];
+    let mut pressure_tail_prolongation = vec![vec![0.0; coarse_row_count]; schur_tail_count];
     if schur_tail_count > 0 {
         for tail_row in 0..schur_tail_count {
             for coarse_col in 0..coarse_row_count {
@@ -1131,10 +1130,8 @@ fn classify_dead_state_action(
         || solution_improved
         || outer_residual_norm < tolerance * DEAD_STATE_MIN_OUTER_FACTOR
         || estimated_residual_norm < tolerance * DEAD_STATE_MIN_ESTIMATE_FACTOR
-        || preconditioned_residual_norm
-            < outer_residual_norm * DEAD_STATE_MIN_PRECONDITIONED_RATIO
-        || candidate_residual_norm
-            < outer_residual_norm * DEAD_STATE_MIN_CANDIDATE_WORSENING
+        || preconditioned_residual_norm < outer_residual_norm * DEAD_STATE_MIN_PRECONDITIONED_RATIO
+        || candidate_residual_norm < outer_residual_norm * DEAD_STATE_MIN_CANDIDATE_WORSENING
     {
         return DeadStateAction::Continue;
     }
@@ -1335,9 +1332,8 @@ fn solve_with_cpr_fine_smoother(
                 let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
                 last_candidate_residual_norm = Some(candidate_residual);
                 restart_best_candidate_residual_norm = Some(
-                    restart_best_candidate_residual_norm.map_or(candidate_residual, |best: f64| {
-                        best.min(candidate_residual)
-                    }),
+                    restart_best_candidate_residual_norm
+                        .map_or(candidate_residual, |best: f64| best.min(candidate_residual)),
                 );
 
                 if candidate_residual < residual_norm {
@@ -2083,7 +2079,10 @@ mod tests {
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
         assert_eq!(diagnostics.coarse_rows, n);
-        assert_eq!(diagnostics.coarse_solver, FimPressureCoarseSolverKind::BiCgStab);
+        assert_eq!(
+            diagnostics.coarse_solver,
+            FimPressureCoarseSolverKind::BiCgStab
+        );
         assert_eq!(diagnostics.smoother_label, "ilu0/post-bj");
     }
 
@@ -2119,7 +2118,10 @@ mod tests {
             false,
         );
 
-        assert!(report.converged, "expected restarted GMRES to converge, got {report:?}");
+        assert!(
+            report.converged,
+            "expected restarted GMRES to converge, got {report:?}"
+        );
         assert!(report.iterations > 2);
     }
 
@@ -2164,7 +2166,6 @@ mod tests {
 
         assert_eq!(action, DeadStateAction::Continue);
     }
-
 
     #[test]
     fn cpr_report_counts_cells_and_bhp_rows_without_perf_tail() {
