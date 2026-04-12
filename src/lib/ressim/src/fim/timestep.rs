@@ -553,7 +553,7 @@ fn seed_gas_outer_step_trial_carryover(
     last_growth_limiter: Option<&str>,
     last_retry_dominant_family: Option<&str>,
 ) -> Option<GasOuterStepTrialCarryover> {
-    const GAS_OUTER_STEP_CARRYOVER_CLEAN_PERSISTENCE_STEPS: u32 = 1;
+    const GAS_OUTER_STEP_CARRYOVER_CLEAN_PERSISTENCE_STEPS: u32 = 2;
 
     let accepted_dt_days = last_accepted_dt_days?;
 
@@ -1894,7 +1894,7 @@ mod tests {
             ),
             Some(GasOuterStepTrialCarryover {
                 cap_dt_days: 0.0625,
-                clean_steps_remaining: 1,
+                clean_steps_remaining: 2,
             })
         );
     }
@@ -1928,7 +1928,31 @@ mod tests {
     }
 
     #[test]
-    fn clean_step_preserves_gas_outer_step_trial_cap_once() {
+    fn clean_step_preserves_gas_outer_step_trial_cap_for_two_steps() {
+        assert_eq!(
+            next_gas_outer_step_trial_carryover(
+                Some(GasOuterStepTrialCarryover {
+                    cap_dt_days: 0.0625,
+                    clean_steps_remaining: 2,
+                }),
+                0,
+                0,
+                0,
+                Some(0.05005),
+                Some(0.07089),
+                Some(0.05005),
+                Some("newton-iters"),
+                None,
+            ),
+            Some(GasOuterStepTrialCarryover {
+                cap_dt_days: 0.0625,
+                clean_steps_remaining: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn second_clean_step_expires_gas_outer_step_trial_cap() {
         assert_eq!(
             next_gas_outer_step_trial_carryover(
                 Some(GasOuterStepTrialCarryover {
@@ -1938,9 +1962,9 @@ mod tests {
                 0,
                 0,
                 0,
-                Some(0.05005),
-                Some(0.07089),
-                Some(0.05005),
+                Some(0.04809),
+                Some(0.07223),
+                Some(0.04809),
                 Some("newton-iters"),
                 None,
             ),
