@@ -540,6 +540,77 @@ fn proposed_trial_dt_days(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct GasOuterStepTrialCarryover {
+    cap_dt_days: f64,
+    clean_steps_remaining: u32,
+}
+
+fn seed_gas_outer_step_trial_carryover(
+    min_accepted_dt_days: Option<f64>,
+    max_accepted_dt_days: Option<f64>,
+    last_accepted_dt_days: Option<f64>,
+    last_growth_limiter: Option<&str>,
+    last_retry_dominant_family: Option<&str>,
+) -> Option<GasOuterStepTrialCarryover> {
+    const GAS_OUTER_STEP_CARRYOVER_CLEAN_PERSISTENCE_STEPS: u32 = 1;
+
+    let accepted_dt_days = last_accepted_dt_days?;
+
+    if last_growth_limiter != Some("hotspot-repeat")
+        || last_retry_dominant_family != Some("gas")
+    {
+        return None;
+    }
+
+    let min_dt_days = min_accepted_dt_days?;
+    let max_dt_days = max_accepted_dt_days?;
+    if (min_dt_days - accepted_dt_days).abs() > 1e-12
+        || (max_dt_days - accepted_dt_days).abs() > 1e-12
+    {
+        return None;
+    }
+
+    Some(GasOuterStepTrialCarryover {
+        cap_dt_days: accepted_dt_days,
+        clean_steps_remaining: GAS_OUTER_STEP_CARRYOVER_CLEAN_PERSISTENCE_STEPS,
+    })
+}
+
+fn next_gas_outer_step_trial_carryover(
+    existing_carryover: Option<GasOuterStepTrialCarryover>,
+    linear_bad_retries: usize,
+    nonlinear_bad_retries: usize,
+    mixed_retries: usize,
+    min_accepted_dt_days: Option<f64>,
+    max_accepted_dt_days: Option<f64>,
+    last_accepted_dt_days: Option<f64>,
+    last_growth_limiter: Option<&str>,
+    last_retry_dominant_family: Option<&str>,
+) -> Option<GasOuterStepTrialCarryover> {
+    if let Some(seed) = seed_gas_outer_step_trial_carryover(
+        min_accepted_dt_days,
+        max_accepted_dt_days,
+        last_accepted_dt_days,
+        last_growth_limiter,
+        last_retry_dominant_family,
+    ) {
+        return Some(seed);
+    }
+
+    let existing_carryover = existing_carryover?;
+    if linear_bad_retries + nonlinear_bad_retries + mixed_retries > 0
+        || existing_carryover.clean_steps_remaining == 0
+    {
+        return None;
+    }
+
+    Some(GasOuterStepTrialCarryover {
+        cap_dt_days: existing_carryover.cap_dt_days,
+        clean_steps_remaining: existing_carryover.clean_steps_remaining - 1,
+    })
+}
+
 fn fim_linear_report_step_suffix(linear_report: Option<&FimLinearSolveReport>) -> String {
     linear_report
         .map(|report| {
@@ -668,6 +739,7 @@ impl ReservoirSimulator {
         let mut last_successful_dt = target_dt_days;
         let mut last_growth_factor = MAX_GROWTH;
         let mut growth_cooldown = FimGrowthCooldown::default();
+        let carried_gas_outer_step_trial_carryover = self.gas_outer_step_trial_carryover.take();
         let mut solver_ms = 0.0;
         let mut accepted_solver_ms = 0.0;
         let mut retry_solver_ms = 0.0;
@@ -699,15 +771,38 @@ impl ReservoirSimulator {
                 last_successful_dt,
                 last_growth_factor,
             );
-            let initial_trial = growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt);
-            let cooldown_trace = if initial_trial + 1e-12 < proposed_trial {
+            let cooldown_clamped_trial = growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt);
+            let gas_carryover_clamped_trial = if substeps == 0 {
+                carried_gas_outer_step_trial_carryover
+                    .map(|carryover| cooldown_clamped_trial.min(carryover.cap_dt_days))
+                    .unwrap_or(cooldown_clamped_trial)
+            } else {
+                cooldown_clamped_trial
+            };
+            let initial_trial = gas_carryover_clamped_trial;
+            let gas_carryover_trace = if substeps == 0
+                && carried_gas_outer_step_trial_carryover.is_some_and(|carryover| {
+                    carryover.cap_dt_days + 1e-12 < cooldown_clamped_trial
+                })
+            {
+                let carryover = carried_gas_outer_step_trial_carryover.expect("checked above");
                 format!(
-                    " [cooldown-clamped from {:.6}{}]",
-                    proposed_trial,
-                    growth_cooldown.trace_suffix()
+                    " [gas-carryover-clamped from {:.6} persist_left={}]",
+                    cooldown_clamped_trial,
+                    carryover.clean_steps_remaining,
                 )
             } else {
-                growth_cooldown.trace_suffix()
+                String::new()
+            };
+            let cooldown_trace = if cooldown_clamped_trial + 1e-12 < proposed_trial {
+                format!(
+                    " [cooldown-clamped from {:.6}{}]{}",
+                    proposed_trial,
+                    growth_cooldown.trace_suffix(),
+                    gas_carryover_trace,
+                )
+            } else {
+                format!("{}{}", growth_cooldown.trace_suffix(), gas_carryover_trace)
             };
             let mut trial_dt = initial_trial;
             let mut retry_count = 0;
@@ -1087,6 +1182,7 @@ impl ReservoirSimulator {
                         linear_preconditioner_ms,
                         state_update_ms,
                     );
+                    self.gas_outer_step_trial_carryover = None;
                     return;
                 }
 
@@ -1133,6 +1229,7 @@ impl ReservoirSimulator {
                         linear_preconditioner_ms,
                         state_update_ms,
                     );
+                    self.gas_outer_step_trial_carryover = None;
                     return;
                 }
 
@@ -1198,6 +1295,17 @@ impl ReservoirSimulator {
             linear_preconditioner_ms,
             state_update_ms,
         );
+        self.gas_outer_step_trial_carryover = next_gas_outer_step_trial_carryover(
+            carried_gas_outer_step_trial_carryover,
+            linear_bad_retries,
+            nonlinear_bad_retries,
+            mixed_retries,
+            min_accepted_dt_days,
+            max_accepted_dt_days,
+            last_accepted_dt_days,
+            last_growth_limiter,
+            last_retry_dominant_family,
+        );
     }
 
     fn total_water_inventory_m3(&self) -> f64 {
@@ -1241,8 +1349,9 @@ impl ReservoirSimulator {
 #[cfg(test)]
 mod tests {
     use super::{
-        AcceptedStepGrowthDecision, FimGrowthCooldown,
+        AcceptedStepGrowthDecision, FimGrowthCooldown, GasOuterStepTrialCarryover,
         accelerated_retry_factor_for_repeated_hotspot_failure, accepted_step_growth_factor,
+        next_gas_outer_step_trial_carryover, seed_gas_outer_step_trial_carryover,
         proposed_trial_dt_days, replayable_unchanged_accepts_after_retry,
         replayable_unchanged_cooldown_accepts,
         replayable_unchanged_hotspot_plateau_accepts,
@@ -1771,6 +1880,96 @@ mod tests {
     fn later_substeps_still_use_growth_based_trial_dt() {
         let trial = proposed_trial_dt_days(0.0, 3, 20.0, 0.75, 1.6);
         assert!((trial - 1.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn flat_hotspot_repeat_gas_shelf_seeds_next_outer_step_trial_cap() {
+        assert_eq!(
+            seed_gas_outer_step_trial_carryover(
+                Some(0.0625),
+                Some(0.0625),
+                Some(0.0625),
+                Some("hotspot-repeat"),
+                Some("gas"),
+            ),
+            Some(GasOuterStepTrialCarryover {
+                cap_dt_days: 0.0625,
+                clean_steps_remaining: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn varying_gas_accept_dt_does_not_seed_outer_step_trial_cap() {
+        assert_eq!(
+            seed_gas_outer_step_trial_carryover(
+                Some(0.004042),
+                Some(0.04232),
+                Some(0.004042),
+                Some("hotspot-repeat"),
+                Some("gas"),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn non_gas_hotspot_repeat_does_not_seed_outer_step_trial_cap() {
+        assert_eq!(
+            seed_gas_outer_step_trial_carryover(
+                Some(0.0625),
+                Some(0.0625),
+                Some(0.0625),
+                Some("hotspot-repeat"),
+                Some("water"),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn clean_step_preserves_gas_outer_step_trial_cap_once() {
+        assert_eq!(
+            next_gas_outer_step_trial_carryover(
+                Some(GasOuterStepTrialCarryover {
+                    cap_dt_days: 0.0625,
+                    clean_steps_remaining: 1,
+                }),
+                0,
+                0,
+                0,
+                Some(0.05005),
+                Some(0.07089),
+                Some(0.05005),
+                Some("newton-iters"),
+                None,
+            ),
+            Some(GasOuterStepTrialCarryover {
+                cap_dt_days: 0.0625,
+                clean_steps_remaining: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn retrying_step_does_not_preserve_gas_outer_step_trial_cap_without_reseeding() {
+        assert_eq!(
+            next_gas_outer_step_trial_carryover(
+                Some(GasOuterStepTrialCarryover {
+                    cap_dt_days: 0.0625,
+                    clean_steps_remaining: 1,
+                }),
+                0,
+                2,
+                0,
+                Some(0.0625),
+                Some(0.0625),
+                Some(0.0625),
+                Some("newton-iters"),
+                Some("gas"),
+            ),
+            None
+        );
     }
 
     #[test]

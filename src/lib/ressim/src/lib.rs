@@ -112,6 +112,8 @@ pub struct ReservoirSimulator {
     last_solver_warning: String,
     last_fim_trace: String,
     capture_fim_trace: bool,
+    pub(crate) gas_outer_step_trial_carryover:
+        Option<crate::fim::timestep::GasOuterStepTrialCarryover>,
     last_fim_step_stats: Option<reporting::FimStepStats>,
     fim_step_stats_history: Vec<reporting::FimStepStats>,
     cumulative_injection_m3: f64,

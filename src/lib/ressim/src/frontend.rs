@@ -86,6 +86,7 @@ impl ReservoirSimulator {
             last_solver_warning: String::new(),
             last_fim_trace: String::new(),
             capture_fim_trace: false,
+            gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
             fim_step_stats_history: Vec::new(),
             cumulative_injection_m3: 0.0,
