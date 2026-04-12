@@ -2106,6 +2106,7 @@ mod tests {
             final_material_balance_inf_norm: 1.0,
             final_update_inf_norm: 0.0,
             last_linear_report: None,
+            accepted_hotspot_site: None,
             failure_diagnostics: Some(FimRetryFailureDiagnostics {
                 class: FimRetryFailureClass::NonlinearBad,
                 dominant_family_label: "water",
