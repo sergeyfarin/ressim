@@ -553,7 +553,7 @@ fn seed_gas_outer_step_trial_carryover(
     last_growth_limiter: Option<&str>,
     last_retry_dominant_family: Option<&str>,
 ) -> Option<GasOuterStepTrialCarryover> {
-    const GAS_OUTER_STEP_CARRYOVER_CLEAN_PERSISTENCE_STEPS: u32 = 2;
+    const GAS_OUTER_STEP_CARRYOVER_CLEAN_PERSISTENCE_STEPS: u32 = 3;
 
     let accepted_dt_days = last_accepted_dt_days?;
 
@@ -1894,7 +1894,7 @@ mod tests {
             ),
             Some(GasOuterStepTrialCarryover {
                 cap_dt_days: 0.0625,
-                clean_steps_remaining: 2,
+                clean_steps_remaining: 3,
             })
         );
     }
@@ -1928,12 +1928,12 @@ mod tests {
     }
 
     #[test]
-    fn clean_step_preserves_gas_outer_step_trial_cap_for_two_steps() {
+    fn clean_step_preserves_gas_outer_step_trial_cap_for_three_steps() {
         assert_eq!(
             next_gas_outer_step_trial_carryover(
                 Some(GasOuterStepTrialCarryover {
                     cap_dt_days: 0.0625,
-                    clean_steps_remaining: 2,
+                    clean_steps_remaining: 3,
                 }),
                 0,
                 0,
@@ -1946,13 +1946,37 @@ mod tests {
             ),
             Some(GasOuterStepTrialCarryover {
                 cap_dt_days: 0.0625,
+                clean_steps_remaining: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn second_clean_step_preserves_gas_outer_step_trial_cap_for_one_more_step() {
+        assert_eq!(
+            next_gas_outer_step_trial_carryover(
+                Some(GasOuterStepTrialCarryover {
+                    cap_dt_days: 0.0625,
+                    clean_steps_remaining: 2,
+                }),
+                0,
+                0,
+                0,
+                Some(0.04809),
+                Some(0.07223),
+                Some(0.04809),
+                Some("newton-iters"),
+                None,
+            ),
+            Some(GasOuterStepTrialCarryover {
+                cap_dt_days: 0.0625,
                 clean_steps_remaining: 1,
             })
         );
     }
 
     #[test]
-    fn second_clean_step_expires_gas_outer_step_trial_cap() {
+    fn third_clean_step_exhausts_gas_outer_step_trial_cap() {
         assert_eq!(
             next_gas_outer_step_trial_carryover(
                 Some(GasOuterStepTrialCarryover {
@@ -1962,9 +1986,9 @@ mod tests {
                 0,
                 0,
                 0,
-                Some(0.04809),
-                Some(0.07223),
-                Some(0.04809),
+                Some(0.04807),
+                Some(0.07256),
+                Some(0.04807),
                 Some("newton-iters"),
                 None,
             ),
