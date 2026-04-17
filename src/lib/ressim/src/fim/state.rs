@@ -234,12 +234,6 @@ impl FimState {
         }
     }
 
-    pub(crate) fn apply_physical_cell_bounds(&mut self, sim: &ReservoirSimulator) {
-        for idx in 0..self.cells.len() {
-            self.enforce_cell_bounds(sim, idx);
-        }
-    }
-
     fn enforce_cell_bounds(&mut self, sim: &ReservoirSimulator, idx: usize) {
         let cell = &mut self.cells[idx];
         cell.pressure_bar = cell.pressure_bar.max(1e-6);
