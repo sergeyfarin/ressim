@@ -219,3 +219,88 @@ Future revisit of this idea should condition on:
 
 Slice B (DSMAX/DPMAX trial_dt shaping) and Slice C (in-Newton variable
 switching) were not attempted in this experiment per the user's scope.
+
+## Path 1 experiment — 2026-04-13 (layered on re-applied Slice A)
+
+Goal: relax the replay-equality gate so Slice A extrapolation stops
+disabling the replay optimization. Two concrete code moves:
+
+1. New predicate `accepted_state_is_effectively_unchanged(previous,
+   accepted)` in `src/lib/ressim/src/fim/timestep.rs` with per-family
+   tolerances (1e-4 bar pressure, 1e-5 saturation, 1e-4·max(|Rs|,1)
+   Rs, 1e-4 bar well BHP, 1e-2 m³/day perforation rate). Replaces
+   `!iterate_has_material_change(...)` inside the replay gates only.
+2. Drop `newton_iterations == 1 && final_update_inf_norm == 0.0` from
+   the two `unchanged_*` gates so Newton can do real work and still
+   be replay-eligible if the accepted state is effectively equal to
+   the previous state.
+
+Plus Slice A re-applied (extrapolated initial iterate on clean
+substeps with two-accept history, plateau+stationary+alpha-ceiling
+guards, and a new `else` branch that *clears* `last_clean_history_*`
+when the previous accept is stationary or on a plateau limiter, so
+stale history cannot fire extrapolation during dt-collapsed tails).
+
+### Measurements
+
+| # | Command | Baseline outer_ms / substeps / retries | Post1 outer_ms / substeps / accepts R+C+P / retries | Verdict |
+|---|---------|---------|---------|---------|
+| 1 | water-pressure 12x12x3 dt=1 | 1821 / 16 / 0-9-0 / 15+4+8354 | 4392 / 33 / 32+4+2671 / 0-15-0 | **2.4x slower** |
+| 2 | water-pressure 20x20x3 dt=0.25 | 17667 / 12 / 0-5-0 | 15608 / 10 / 10+0+0 / 0-5-0 | 1.13x faster |
+| 3 | water-pressure 22x22x1 dt=0.25 | 1410 / 4 / 0-2-0 | 944 / 4 / 4+0+0 / 0-2-0 | 1.5x faster |
+| 4 | water-pressure 23x23x1 dt=0.25 | 1117 / 4 / 0-2-0 | 962 / 4 / 4+0+0 / 0-2-0 | 1.16x faster |
+| 5 step 1 | gas-rate 10x10x3 | 764 / 8 / 0-3-0 | 1015 / 8 / 8+0+0 / 0-4-0 | 1.33x slower |
+| 5 step 3 | gas-rate step 3 | 286 / 4 / 0-0-0 | 320 / 4 / 0-1-0 | +1 retry |
+| 5 step 4 | gas-rate step 4 | 273 / 4 / 0-0-0 | 464 / 4 / 0-2-0 | 1.7x slower |
+| 5 step 5 | gas-rate step 5 | 252 / 4 / 0-0-0 | 332 / 5 / 0-2-0 | 1.3x slower |
+| 5 step 6 | gas-rate step 6 | 235 / 4 / 0-0-0 | 663 / 8 / 0-3-0 | 2.8x slower |
+| 6 | gas-rate 20x20x3 dt=0.25 | 2660 / 4 / 0-2-0 | 2853 / 4 / 0-2-0 | wash |
+
+Correctness: all three locked baseline tests pass
+(`drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+`spe1_fim_first_steps_converge_without_stall`,
+`spe1_fim_gas_injection_creates_free_gas`).
+
+Intermediate experiment shape worth recording: before the history
+self-clear was added, run 1 collapsed to **15436 ms / 157 substeps /
+accepts=157+0+0** (7-8x slower than the 4392 ms figure above). That
+confirmed stale history in dt-collapsed tails was feeding
+extrapolation into cells where initial_iterate = previous_state was
+the correct choice. The self-clear guard fixed that specific
+pathology, but did not turn the change net-positive overall.
+
+### Verdict on Path 1
+
+**Revert again.** Path 1 narrows the run 1 penalty vs unguarded
+Slice A (17x → 2.4x slower vs 8x → 2.5x with the original plateau
+guards alone), but does not take Slice A from net-regression to
+net-positive. Structural findings:
+
+- Even with the replay gate relaxed and with history self-clearing,
+  Slice A introduces new `nonlinear-bad` retries on clean smooth
+  gas-rate substeps (steps 4 and 6 worst) because the extrapolated
+  iterate lands outside the Newton basin for some cells. Those
+  retries by themselves cost more than Slice A saves on runs 2-4.
+- Run 1's 8354 → 2671 collapse in replayed plateau accepts is
+  caused by Newton converging to a *near*-previous-state (within
+  ~1e-4 bar / 1e-5 sat per the relaxed predicate) that *is* inside
+  the new tolerance — but the real cost is elsewhere: Slice A
+  pushes the early hotspot trajectory along a different path, so
+  the solver hits the plateau tail later and with fewer cleanly
+  replayable ticks.
+
+Remaining options untried (kept as future-work notes, not
+implemented here):
+
+- Strict per-cell extrapolation: only extrapolate cells that
+  satisfy a local smoothness test (small |dp|, |dsw|, no regime
+  flip, distance from any hotspot cell > K neighbours), and anchor
+  all other cells to `previous_state`.
+- Dt-aware replay tolerance tied to the Newton update tolerance
+  rather than to state deltas; this would keep replay eligibility
+  on plateau ticks without relaxing the per-field state epsilon.
+- Leaving extrapolation off until dt has grown past a minimum
+  fraction of `target_dt_days` (skip the first N substeps where
+  the hotspot is still being resolved).
+
+Slices B and C remain untried.

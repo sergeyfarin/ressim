@@ -2,8 +2,7 @@ use crate::ReservoirSimulator;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{
-    FimHotspotSite, FimNewtonOptions, FimRetryFailureDiagnostics, iterate_has_material_change,
-    run_fim_timestep,
+    FimHotspotSite, FimNewtonOptions, FimRetryFailureDiagnostics, run_fim_timestep,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::reporting::{FimAcceptedRungStats, FimRetryRungStats, FimStepStats};
@@ -540,6 +539,114 @@ fn proposed_trial_dt_days(
     }
 }
 
+/// Bounded linear time-extrapolation of the FIM state to serve as the
+/// Newton initial iterate on a clean substep.
+fn extrapolated_initial_iterate(
+    sim: &ReservoirSimulator,
+    history_start: &FimState,
+    current: &FimState,
+    trial_dt_days: f64,
+    history_dt_days: f64,
+    options: &FimNewtonOptions,
+) -> Option<FimState> {
+    if history_dt_days <= 1e-12 || trial_dt_days <= 1e-12 {
+        return None;
+    }
+    if history_start.cells.len() != current.cells.len()
+        || history_start.well_bhp.len() != current.well_bhp.len()
+    {
+        return None;
+    }
+
+    const ALPHA_CEILING: f64 = 2.0;
+    let alpha = (trial_dt_days / history_dt_days).min(ALPHA_CEILING);
+    let mut iterate = current.clone();
+    let dp_cap = options.max_pressure_change_bar;
+    let dsw_cap = options.max_saturation_change;
+
+    for (idx, cell) in iterate.cells.iter_mut().enumerate() {
+        let prev = &history_start.cells[idx];
+        let current_cell = &current.cells[idx];
+
+        let dp = current_cell.pressure_bar - prev.pressure_bar;
+        let dp_bounded = (alpha * dp).clamp(-dp_cap, dp_cap);
+        cell.pressure_bar = (current_cell.pressure_bar + dp_bounded).max(1e-6);
+
+        let dsw = current_cell.sw - prev.sw;
+        let dsw_bounded = (alpha * dsw).clamp(-dsw_cap, dsw_cap);
+        cell.sw = current_cell.sw + dsw_bounded;
+
+        if prev.regime == current_cell.regime {
+            let dh = current_cell.hydrocarbon_var - prev.hydrocarbon_var;
+            let dh_bounded = match current_cell.regime {
+                HydrocarbonState::Saturated => (alpha * dh).clamp(-dsw_cap, dsw_cap),
+                HydrocarbonState::Undersaturated => {
+                    let rs_cap = options.max_rs_change_fraction
+                        * current_cell.hydrocarbon_var.abs().max(1.0);
+                    (alpha * dh).clamp(-rs_cap, rs_cap)
+                }
+            };
+            cell.hydrocarbon_var = current_cell.hydrocarbon_var + dh_bounded;
+        }
+    }
+
+    for (idx, bhp) in iterate.well_bhp.iter_mut().enumerate() {
+        let dbhp = current.well_bhp[idx] - history_start.well_bhp[idx];
+        let dbhp_bounded = (alpha * dbhp).clamp(-dp_cap, dp_cap);
+        *bhp = (current.well_bhp[idx] + dbhp_bounded).max(1e-6);
+    }
+
+    iterate.apply_physical_cell_bounds(sim);
+    Some(iterate)
+}
+
+/// Path 1: replay-gate predicate that tolerates tiny numerical noise between
+/// `previous_state` and `accepted_state` on substeps that converged to an
+/// effectively stationary iterate. The strict 1e-12 epsilon used by
+/// `iterate_has_material_change` is correct for Newton-internal stagnation
+/// detection but prevents replay when an extrapolated initial iterate leaves
+/// Newton converging within residual tolerance (~1e-5) of previous_state.
+fn accepted_state_is_effectively_unchanged(
+    previous_state: &FimState,
+    accepted: &FimState,
+) -> bool {
+    const PRESSURE_EPS_BAR: f64 = 1e-4;
+    const SATURATION_EPS: f64 = 1e-5;
+    const RS_EPS_SCALE: f64 = 1e-4;
+    const WELL_BHP_EPS_BAR: f64 = 1e-4;
+    const PERF_RATE_EPS_M3_DAY: f64 = 1e-2;
+
+    let cells_unchanged = previous_state
+        .cells
+        .iter()
+        .zip(accepted.cells.iter())
+        .all(|(previous, current)| {
+            if previous.regime != current.regime {
+                return false;
+            }
+            let dp = (current.pressure_bar - previous.pressure_bar).abs();
+            let dsw = (current.sw - previous.sw).abs();
+            let dh = (current.hydrocarbon_var - previous.hydrocarbon_var).abs();
+            let rs_eps = RS_EPS_SCALE * current.hydrocarbon_var.abs().max(1.0);
+            let h_eps = match current.regime {
+                HydrocarbonState::Saturated => SATURATION_EPS,
+                HydrocarbonState::Undersaturated => rs_eps,
+            };
+            dp <= PRESSURE_EPS_BAR && dsw <= SATURATION_EPS && dh <= h_eps
+        });
+    let bhp_unchanged = previous_state
+        .well_bhp
+        .iter()
+        .zip(accepted.well_bhp.iter())
+        .all(|(previous, current)| (current - previous).abs() <= WELL_BHP_EPS_BAR);
+    let perf_unchanged = previous_state
+        .perforation_rates_m3_day
+        .iter()
+        .zip(accepted.perforation_rates_m3_day.iter())
+        .all(|(previous, current)| (current - previous).abs() <= PERF_RATE_EPS_M3_DAY);
+    cells_unchanged && bhp_unchanged && perf_unchanged
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct GasOuterStepTrialCarryover {
     cap_dt_days: f64,
@@ -740,6 +847,8 @@ impl ReservoirSimulator {
         let mut last_growth_factor = MAX_GROWTH;
         let mut growth_cooldown = FimGrowthCooldown::default();
         let carried_gas_outer_step_trial_carryover = self.gas_outer_step_trial_carryover.take();
+        let mut last_clean_history_state: Option<FimState> = None;
+        let mut last_clean_history_dt_days: Option<f64> = None;
         let mut solver_ms = 0.0;
         let mut accepted_solver_ms = 0.0;
         let mut retry_solver_ms = 0.0;
@@ -825,10 +934,31 @@ impl ReservoirSimulator {
                     }
                 );
 
+                let extrapolated_iterate = if retry_count == 0 {
+                    match (
+                        last_clean_history_state.as_ref(),
+                        last_clean_history_dt_days,
+                    ) {
+                        (Some(history_start), Some(history_dt)) => extrapolated_initial_iterate(
+                            self,
+                            history_start,
+                            &previous_state,
+                            trial_dt,
+                            history_dt,
+                            &newton_options,
+                        ),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let initial_iterate = extrapolated_iterate
+                    .as_ref()
+                    .unwrap_or(&previous_state);
                 let report = run_fim_timestep(
                     self,
                     &previous_state,
-                    &previous_state,
+                    initial_iterate,
                     trial_dt,
                     &newton_options,
                 );
@@ -845,7 +975,7 @@ impl ReservoirSimulator {
                 state_update_ms += report.state_update_ms;
 
                 if report.converged {
-                    let materially_changed = iterate_has_material_change(
+                    let materially_changed = !accepted_state_is_effectively_unchanged(
                         &previous_state,
                         &report.accepted_state,
                     );
@@ -866,10 +996,7 @@ impl ReservoirSimulator {
                         max_dsat = max_dsat.max((new_sg - old_sg).abs());
                         let _ = idx;
                     }
-                    let unchanged_retry_accept = retry_count > 0
-                        && report.newton_iterations == 1
-                        && report.final_update_inf_norm == 0.0
-                        && !materially_changed;
+                    let unchanged_retry_accept = retry_count > 0 && !materially_changed;
 
                     let uncapped_growth_decision =
                         accepted_step_growth_decision(report.newton_iterations, max_dsat, max_dp);
@@ -891,8 +1018,6 @@ impl ReservoirSimulator {
                             growth_decision
                         };
                     let unchanged_hotspot_plateau_accept = retry_count == 0
-                        && report.newton_iterations == 1
-                        && report.final_update_inf_norm == 0.0
                         && !materially_changed
                         && adjusted_growth_decision.factor == 1.0
                         && adjusted_growth_decision.limiter == "hotspot-repeat";
@@ -968,6 +1093,21 @@ impl ReservoirSimulator {
                     last_successful_dt = trial_dt;
                     real_accepted_substeps += 1;
                     substeps += 1;
+
+                    {
+                        let stationary_accept = max_dsat < 1e-4 && max_dp < 1e-2;
+                        let plateau_limiter = matches!(
+                            adjusted_growth_decision.limiter,
+                            "hotspot-repeat" | "retry-hold",
+                        );
+                        if retry_count == 0 && !stationary_accept && !plateau_limiter {
+                            last_clean_history_state = Some(previous_state.clone());
+                            last_clean_history_dt_days = Some(trial_dt);
+                        } else if stationary_accept || plateau_limiter {
+                            last_clean_history_state = None;
+                            last_clean_history_dt_days = None;
+                        }
+                    }
 
                     let (replayed_cooldown, replayed_plateau, replayable_accepts) =
                         if unchanged_retry_accept {
