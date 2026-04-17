@@ -55,7 +55,11 @@
       "Bash(git checkout:*)",
       "Bash(node ./scripts/fim-wasm-diagnostic.mjs water-pressure --grid 12x12x3 --steps 1 --dt 1)",
       "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --help)",
-      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary)"
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary)",
+      "Bash(git add *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
