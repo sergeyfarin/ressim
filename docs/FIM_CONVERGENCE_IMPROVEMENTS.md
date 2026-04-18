@@ -492,6 +492,68 @@ at exactly the fronts the probe selects.
 (not committed; rerunnable from the commands listed in
 `docs/FIM_CONVERGENCE_WORKLOG.md` Validation Shortlist).
 
+## Direction A attempt — 2026-04-18 (reverted, Slice A round 3)
+
+Attempted direction A (strict per-cell Newton initial-iterate
+extrapolation with smoothness gating) on top of commit `3e04e0e`
+(post-Step-0-probe). **Result: reverted same session. Fails the stop
+rule — regresses a locked baseline smoke test.**
+
+**What was implemented.**
+
+- New helper `per_cell_extrapolated_seed` in
+  [src/lib/ressim/src/fim/timestep.rs](src/lib/ressim/src/fim/timestep.rs).
+- Extended the Step-0 probe buffer tuple to carry per-accept ring
+  centers (every family top cell surfaced by that accept's probe run).
+- On retry 0, before `run_fim_timestep`, built a seed state by
+  linearly extrapolating each cell's `(pressure_bar, sw,
+  hydrocarbon_var)` from the last two clean accepts, with per-cell
+  freeze if ANY of:
+  - cell inside Chebyshev ring of radius 3 around any ring center,
+  - pressure jump > 20 bar vs `previous_state`,
+  - extrapolated `sw` outside `[0, 1]` by more than 1e-6,
+  - regime differs between `prev_prev` and `prev` (recent flip),
+  - extrapolated `hydrocarbon_var` would cross 0,
+  - any extrapolated scalar non-finite.
+- Wells and perforations **not** extrapolated (kept at baseline) —
+  Slice A round 2 traced several regressions to well-side iterates.
+- 3 new unit tests for the freeze predicate (ring / regime flip /
+  large-dp).
+
+**Why it failed (stop-rule trigger).**
+
+On the locked smoke test
+`spe1_fim_first_steps_converge_without_stall`, the solver collapsed
+the timestep at t≈`0.8103` days after 1 Newton iteration. Pre-A
+commit `3e04e0e` passes the same test in ~26 s. Tightening guards
+from (50 bar, radius 2) to (20 bar, radius 3) did not rescue the
+test — the failure point was bit-identical. The per-cell freeze
+design is not sufficient to keep the extrapolated iterate inside
+the Newton basin on SPE1-class problems.
+
+This is precisely the stop-rule condition from the plan: *"if the
+per-cell freeze does not remove the 'extrapolated iterate outside
+Newton basin near hotspot' class of failures that sank Slice A
+round 2, revert and move to direction B."* A is reverted without
+tuning further.
+
+**Post-revert verification (same commit `3e04e0e`):** SPE1 locked
+suite (all 3 tests) green in ~44 s.
+
+**Implication for the execution order.** A is dead for this
+codebase without a fundamentally different anchor than the probe's
+top cells. Next slice should be B (dt-aware replay tolerance), not
+C — C attacks regime hysteresis and the Step 0 probe already showed
+regime flips are NOT the dominant amp≥1 failure family (water front
+is). The remaining upside on the heavy-water shelf is bookkeeping
+(replay aggregation), which is exactly what B is designed to
+harvest.
+
+**Updated recommendation for execution order:** skip step 3 (A/C),
+proceed to step 4 (B) after D lands. Step 0 deliverables (probe,
+ring-center buffer design, negative result) remain the active
+record of why.
+
 ## Cross-references
 
 - Worklog: `docs/FIM_CONVERGENCE_WORKLOG.md` (active findings, all

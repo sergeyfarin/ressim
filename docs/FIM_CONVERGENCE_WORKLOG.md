@@ -217,6 +217,11 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - Decision: proceed with direction A (per-cell Newton extrapolation with smoothness gating), anchored on the hotspot ring. Skip direction C for this slice.
 - Full tabulated results, raw traces, and the A/C decision rationale: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` — "Step 0 probe results — 2026-04-18".
 
+### Direction A (per-cell Newton extrapolation with smoothness gating) — attempted and reverted 2026-04-18
+- Attempted on top of `3e04e0e` (post-Step-0-probe). Design: linearly extrapolate each cell's `(p, sw, hv)` from last two clean accepts on retry 0, freeze cells in a Chebyshev ring (radius 2→3) around the previous probe's top risk cells or failing regime/dp/sw guards. Wells+perforations kept at baseline.
+- Outcome: **reverted same session, stop rule triggered.** Locked smoke test `spe1_fim_first_steps_converge_without_stall` collapses the timestep at t≈0.8103d after 1 Newton iteration, while the pre-A tree passes in ~26s. Guard tightening (50 bar, radius 2) → (20 bar, radius 3) produced bit-identical failure — the problem is not guard tuning but that the per-cell freeze anchor (probe's top risk cells) is insufficient for SPE1-class problems. Post-revert SPE1 suite back to green.
+- Implication: A is dead for this codebase without a fundamentally different anchor. Per `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Direction A attempt — 2026-04-18", next slice should be B (dt-aware replay tolerance) after D, not C — the Step 0 probe already ruled out regime hysteresis as the dominant amp≥1 family.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
