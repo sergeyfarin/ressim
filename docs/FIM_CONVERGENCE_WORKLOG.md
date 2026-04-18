@@ -206,6 +206,17 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 4. Gas shelf: once the representative baselines are re-established, is a softer first-regrowth throttle still the best next shared-controller candidate, or is the remaining leverage elsewhere in the gas-region memory path?
 5. Over-threshold CPR: what is the narrowest change that keeps the `23x23x1` iterative path alive longer or reduces fallback burden, while preserving a re-baselined exact-dense control?
 
+## Current Findings - 2026-04-18
+
+### Basin-escape proxy probe landed (diagnostic only)
+- Purpose: before re-attempting Newton initial-guess extrapolation (Slice A was reverted 2026-04-13), measure whether the globally-extrapolated iterate lands outside the Newton basin on current head, and where.
+- Mechanism: at each materially-changed, retry-free clean accept, evaluate the residual of the linearly-extrapolated state (uses last two clean accepts, regime inherited from curr, Sw clamped to [0,1]). Reports per-family scaled inf-norm + top cell via `fim_trace!`.
+- Implementation in [src/lib/ressim/src/fim/timestep.rs](src/lib/ressim/src/fim/timestep.rs): `linear_extrapolate_scalar`, `globally_extrapolated_state`, `evaluate_basin_escape_residual`, state buffer `basin_escape_prev{_prev}` threaded through `step_internal_fim_impl`, firing site after `accepted_rungs.push(...)`. 3 unit tests added.
+- Neutrality: heavy water `12x12x3 dt=1` summary with probe on matches pre-probe baseline exactly (`substeps=16, accepts=15+4+8354, retries=0/9/0`). No controller state is touched; probe purely emits trace.
+- Outcome across the shortlist: all amp ≥ 1 events are water, all on the advancing front (tight ring cluster). Shipped gas amp stays ≤ 0.672, risk cells cluster at injector neighbourhood. No diffuse-risk case observed.
+- Decision: proceed with direction A (per-cell Newton extrapolation with smoothness gating), anchored on the hotspot ring. Skip direction C for this slice.
+- Full tabulated results, raw traces, and the A/C decision rationale: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` — "Step 0 probe results — 2026-04-18".
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`

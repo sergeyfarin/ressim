@@ -1,11 +1,12 @@
 use crate::ReservoirSimulator;
+use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system, equation_offset};
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{
     FimHotspotSite, FimNewtonOptions, FimRetryFailureDiagnostics, iterate_has_material_change,
     run_fim_timestep,
 };
-use crate::fim::state::{FimState, HydrocarbonState};
+use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
 use crate::reporting::{FimAcceptedRungStats, FimRetryRungStats, FimStepStats};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -691,6 +692,142 @@ fn store_fim_outer_step_stats(
     });
 }
 
+/// Linearly extrapolate a scalar between two accepted-state snapshots by the
+/// ratio `dt_next / dt_prev`. This is the OPM Flow `extrapolateInitialGuess`
+/// rule reduced to a single component.
+fn linear_extrapolate_scalar(prev: f64, curr: f64, dt_ratio: f64) -> f64 {
+    curr + (curr - prev) * dt_ratio
+}
+
+/// Build a fully extrapolated `FimState` from the two most recent
+/// clean-accepted states, applied globally (per-cell + per-well + per-perf).
+/// The regime is inherited from `curr` — regime flips are precisely what
+/// this probe is meant to surface as residual amplification, so we do NOT
+/// re-classify here.
+fn globally_extrapolated_state(prev: &FimState, curr: &FimState, dt_ratio: f64) -> FimState {
+    let cells: Vec<FimCellState> = prev
+        .cells
+        .iter()
+        .zip(curr.cells.iter())
+        .map(|(p, c)| FimCellState {
+            pressure_bar: linear_extrapolate_scalar(p.pressure_bar, c.pressure_bar, dt_ratio),
+            sw: linear_extrapolate_scalar(p.sw, c.sw, dt_ratio).clamp(0.0, 1.0),
+            hydrocarbon_var: linear_extrapolate_scalar(
+                p.hydrocarbon_var,
+                c.hydrocarbon_var,
+                dt_ratio,
+            ),
+            regime: c.regime,
+        })
+        .collect();
+    let well_bhp: Vec<f64> = prev
+        .well_bhp
+        .iter()
+        .zip(curr.well_bhp.iter())
+        .map(|(p, c)| linear_extrapolate_scalar(*p, *c, dt_ratio))
+        .collect();
+    let perforation_rates_m3_day: Vec<f64> = prev
+        .perforation_rates_m3_day
+        .iter()
+        .zip(curr.perforation_rates_m3_day.iter())
+        .map(|(p, c)| linear_extrapolate_scalar(*p, *c, dt_ratio))
+        .collect();
+    FimState {
+        cells,
+        well_bhp,
+        perforation_rates_m3_day,
+    }
+}
+
+/// Per-family scaled residual inf-norm and dominant-cell index for the
+/// three cell-component families (water/oil/gas). Well/perforation rows
+/// are excluded — regime-flip / basin-escape risk lives in cell space,
+/// and including well slack rows would dilute the signal.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct BasinEscapeFamily {
+    pub(crate) inf_norm: f64,
+    pub(crate) top_cell_idx: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct BasinEscapeProbeResult {
+    pub(crate) water: BasinEscapeFamily,
+    pub(crate) oil: BasinEscapeFamily,
+    pub(crate) gas: BasinEscapeFamily,
+}
+
+impl BasinEscapeProbeResult {
+    fn total_inf_norm(&self) -> f64 {
+        self.water
+            .inf_norm
+            .max(self.oil.inf_norm)
+            .max(self.gas.inf_norm)
+    }
+
+    fn top_family_and_cell(&self) -> (&'static str, Option<usize>) {
+        let (label, family) = [
+            ("water", self.water),
+            ("oil", self.oil),
+            ("gas", self.gas),
+        ]
+        .into_iter()
+        .max_by(|a, b| a.1.inf_norm.partial_cmp(&b.1.inf_norm).unwrap())
+        .unwrap();
+        (label, family.top_cell_idx)
+    }
+}
+
+/// Evaluate the residual at `state` using the same assembly the solver uses,
+/// scale per-equation the same way the solver's convergence check does, and
+/// reduce to per-family inf-norms. Pure diagnostic call — no Newton, no
+/// linear solve, no state mutation.
+pub(crate) fn evaluate_basin_escape_residual(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    dt_days: f64,
+) -> BasinEscapeProbeResult {
+    let assembly = assemble_fim_system(
+        sim,
+        previous_state,
+        state,
+        &FimAssemblyOptions {
+            dt_days,
+            include_wells: true,
+            assemble_residual_only: true,
+            topology: None,
+        },
+    );
+    let n_cells = state.cells.len();
+    let mut water = BasinEscapeFamily::default();
+    let mut oil = BasinEscapeFamily::default();
+    let mut gas = BasinEscapeFamily::default();
+    for cell_idx in 0..n_cells {
+        let wr = (assembly.residual[equation_offset(cell_idx, 0)]
+            / assembly.equation_scaling.water[cell_idx])
+            .abs();
+        let or = (assembly.residual[equation_offset(cell_idx, 1)]
+            / assembly.equation_scaling.oil_component[cell_idx])
+            .abs();
+        let gr = (assembly.residual[equation_offset(cell_idx, 2)]
+            / assembly.equation_scaling.gas_component[cell_idx])
+            .abs();
+        if wr > water.inf_norm {
+            water.inf_norm = wr;
+            water.top_cell_idx = Some(cell_idx);
+        }
+        if or > oil.inf_norm {
+            oil.inf_norm = or;
+            oil.top_cell_idx = Some(cell_idx);
+        }
+        if gr > gas.inf_norm {
+            gas.inf_norm = gr;
+            gas.top_cell_idx = Some(cell_idx);
+        }
+    }
+    BasinEscapeProbeResult { water, oil, gas }
+}
+
 pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
     sim.step_internal_fim(target_dt_days);
 }
@@ -748,6 +885,10 @@ impl ReservoirSimulator {
         let mut linear_solve_ms = 0.0;
         let mut linear_preconditioner_ms = 0.0;
         let mut state_update_ms = 0.0;
+        // Basin-escape probe history: last two clean-accepted, materially-changed
+        // snapshots with the dt that produced each one. Diagnostic only.
+        let mut basin_escape_prev_prev: Option<(FimState, f64)> = None;
+        let mut basin_escape_prev: Option<(FimState, f64)> = None;
 
         fim_trace!(
             self,
@@ -963,6 +1104,72 @@ impl ReservoirSimulator {
                         linear_solve_ms: report.linear_solve_time_ms,
                         linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
                     });
+
+                    // Basin-escape diagnostic probe: only on real, clean,
+                    // materially-changed accepts (no retries, no replay) and
+                    // only once we have two prior such accepts to extrapolate
+                    // from. Pure diagnostic — does not touch controller state.
+                    if retry_count == 0 && materially_changed {
+                        if let (Some((prev_prev_state, _prev_prev_dt)), Some((prev_state, prev_dt))) =
+                            (basin_escape_prev_prev.as_ref(), basin_escape_prev.as_ref())
+                        {
+                            let dt_ratio = if *prev_dt > 0.0 {
+                                trial_dt / *prev_dt
+                            } else {
+                                1.0
+                            };
+                            let extrapolated = globally_extrapolated_state(
+                                prev_prev_state,
+                                prev_state,
+                                dt_ratio,
+                            );
+                            let baseline = evaluate_basin_escape_residual(
+                                self,
+                                &previous_state,
+                                prev_state,
+                                trial_dt,
+                            );
+                            let probe = evaluate_basin_escape_residual(
+                                self,
+                                &previous_state,
+                                &extrapolated,
+                                trial_dt,
+                            );
+                            let baseline_norm = baseline.total_inf_norm();
+                            let probe_norm = probe.total_inf_norm();
+                            let amp = if baseline_norm > 0.0 {
+                                probe_norm / baseline_norm
+                            } else {
+                                f64::INFINITY
+                            };
+                            let (top_family, top_cell) = probe.top_family_and_cell();
+                            let top_cell_trace = match top_cell {
+                                Some(idx) => {
+                                    let (i, j, k) = cell_ijk(self, idx);
+                                    format!("cell{}(ijk={},{},{})", idx, i, j, k)
+                                }
+                                None => "none".to_string(),
+                            };
+                            fim_trace!(
+                                self,
+                                verbose,
+                                "  substep {}: BASIN-ESCAPE PROBE dt_ratio={:.3} res_prev={:.3e} res_extrap={:.3e} amp={:.2e} top=[{}] site={} fam=[water={:.3e},oil={:.3e},gas={:.3e}]",
+                                substeps,
+                                dt_ratio,
+                                baseline_norm,
+                                probe_norm,
+                                amp,
+                                top_family,
+                                top_cell_trace,
+                                probe.water.inf_norm,
+                                probe.oil.inf_norm,
+                                probe.gas.inf_norm
+                            );
+                        }
+                        basin_escape_prev_prev = basin_escape_prev.take();
+                        basin_escape_prev = Some((report.accepted_state.clone(), trial_dt));
+                    }
+
                     self.time_days += trial_dt;
                     time_stepped += trial_dt;
                     last_successful_dt = trial_dt;
@@ -2143,6 +2350,116 @@ mod tests {
             accelerated_retry_factor_for_repeated_hotspot_failure(0.5, 2, 1, 1.0e-3, &report),
             0.5
         );
+    }
+
+    #[test]
+    fn globally_extrapolated_state_linearly_extrapolates_each_scalar_by_dt_ratio() {
+        use super::{globally_extrapolated_state, linear_extrapolate_scalar};
+        use crate::fim::state::{FimCellState, HydrocarbonState};
+
+        let prev = FimState {
+            cells: vec![
+                FimCellState {
+                    pressure_bar: 100.0,
+                    sw: 0.20,
+                    hydrocarbon_var: 0.10,
+                    regime: HydrocarbonState::Saturated,
+                },
+                FimCellState {
+                    pressure_bar: 150.0,
+                    sw: 0.30,
+                    hydrocarbon_var: 40.0,
+                    regime: HydrocarbonState::Undersaturated,
+                },
+            ],
+            well_bhp: vec![200.0],
+            perforation_rates_m3_day: vec![10.0, -5.0],
+        };
+        let curr = FimState {
+            cells: vec![
+                FimCellState {
+                    pressure_bar: 105.0,
+                    sw: 0.22,
+                    hydrocarbon_var: 0.11,
+                    regime: HydrocarbonState::Saturated,
+                },
+                FimCellState {
+                    pressure_bar: 148.0,
+                    sw: 0.31,
+                    hydrocarbon_var: 39.0,
+                    regime: HydrocarbonState::Undersaturated,
+                },
+            ],
+            well_bhp: vec![198.0],
+            perforation_rates_m3_day: vec![12.0, -6.0],
+        };
+        let dt_ratio = 0.5;
+        let extrapolated = globally_extrapolated_state(&prev, &curr, dt_ratio);
+
+        let expected_p0 = linear_extrapolate_scalar(100.0, 105.0, dt_ratio);
+        let expected_sw1 = linear_extrapolate_scalar(0.30, 0.31, dt_ratio);
+        let expected_bhp = linear_extrapolate_scalar(200.0, 198.0, dt_ratio);
+        let expected_rate1 = linear_extrapolate_scalar(-5.0, -6.0, dt_ratio);
+
+        assert!((extrapolated.cells[0].pressure_bar - expected_p0).abs() < 1e-12);
+        assert!((extrapolated.cells[1].sw - expected_sw1).abs() < 1e-12);
+        assert!((extrapolated.well_bhp[0] - expected_bhp).abs() < 1e-12);
+        assert!((extrapolated.perforation_rates_m3_day[1] - expected_rate1).abs() < 1e-12);
+        // Regime is inherited from curr, not re-classified.
+        assert_eq!(extrapolated.cells[0].regime, HydrocarbonState::Saturated);
+        assert_eq!(extrapolated.cells[1].regime, HydrocarbonState::Undersaturated);
+    }
+
+    #[test]
+    fn globally_extrapolated_state_clamps_sw_into_unit_interval() {
+        use super::globally_extrapolated_state;
+        use crate::fim::state::{FimCellState, HydrocarbonState};
+
+        let prev = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 100.0,
+                sw: 0.90,
+                hydrocarbon_var: 0.0,
+                regime: HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: vec![],
+            perforation_rates_m3_day: vec![],
+        };
+        let curr = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 100.0,
+                sw: 0.98,
+                hydrocarbon_var: 0.0,
+                regime: HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: vec![],
+            perforation_rates_m3_day: vec![],
+        };
+        // dt_ratio=2 would extrapolate sw to 0.98 + (0.98-0.90)*2 = 1.14,
+        // which must clamp to 1.0.
+        let extrapolated = globally_extrapolated_state(&prev, &curr, 2.0);
+        assert!(extrapolated.cells[0].sw <= 1.0);
+        assert!(extrapolated.cells[0].sw >= 0.0);
+    }
+
+    #[test]
+    fn evaluate_basin_escape_residual_returns_zero_at_previous_state_with_zero_dt() {
+        // At zero dt, the accumulation term trivially satisfies the residual
+        // equation when state == previous_state (no flux accumulation and no
+        // well source contribution for a closed, equilibrium system). This
+        // verifies the residual-only assembly path through the probe's public
+        // entry point.
+        use super::evaluate_basin_escape_residual;
+
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        let state = FimState::from_simulator(&sim);
+        let result = evaluate_basin_escape_residual(&sim, &state, &state, 1.0);
+        // A closed 2-cell system at its initial state with matching previous
+        // state should have near-zero residual across all three families.
+        assert!(result.water.inf_norm < 1e-8);
+        assert!(result.oil.inf_norm < 1e-8);
+        assert!(result.gas.inf_norm < 1e-8);
     }
 
     #[test]

@@ -384,6 +384,7 @@
   - Immediate next slice: decide whether to keep refining the new residual-history damping path until it stops regressing the short day-1 waterflood, or revert it and return to explaining the earlier `211 -> 246` baseline drift before the next Newton-side experiment.
   - Canonical current-state summary: `docs/FIM_STATUS.md`.
   - Active convergence investigation: `docs/FIM_CONVERGENCE_WORKLOG.md`.
+  - Forward-looking next-slice plan (2026-04-18): `docs/FIM_CONVERGENCE_IMPROVEMENTS.md`. Step 0 (basin-escape proxy probe) landed and captured; decision: proceed with direction A, skip C.
   - Architecture target and end-state checklist: `docs/FIM_MIGRATION_PLAN.md`.
   - Preserved March 2026 historical narrative: `docs/FIM_HISTORY_2026-03.md`.
   - Current status:
