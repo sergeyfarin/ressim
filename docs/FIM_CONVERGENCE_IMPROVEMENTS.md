@@ -492,6 +492,70 @@ at exactly the fronts the probe selects.
 (not committed; rerunnable from the commands listed in
 `docs/FIM_CONVERGENCE_WORKLOG.md` Validation Shortlist).
 
+## Direction D reconciliation — 2026-04-18 (not attempted, deferred to CPR plan)
+
+Before starting D, two facts surfaced that retire the D framing as
+written in the "Candidate directions, ranked" section above:
+
+**Fact 1 — the bounded pair premise is stale.** Current head baseline
+on the validation shortlist (no probe, no A):
+
+- `water-pressure 22x22x1 dt=0.25`: `substeps=4, retries=0/2/0, pc_ms=983, fim_ms=1414`
+- `water-pressure 23x23x1 dt=0.25`: `substeps=4, retries=0/2/0, pc_ms=12, fim_ms=1060`
+
+`22x22x1` is now the *slower* case, not `23x23x1`. The dense-coarse
+path on `22x22x1` spends `983 ms` of `1414 ms` in the preconditioner
+stage because the CPR block-Jacobi first-iter reliably fails with
+`prec_res≈1e10 × outer_res` (10 orders of magnitude worse) and the
+solver falls back to sparse-LU. Meanwhile the old `over-threshold
+CPR probe` on `23x23x1` already runs the faster BiCGSTAB coarse path
+and its bounded shelf is narrower than the plan's D acceptance band
+assumed.
+
+**Fact 2 — the `dead-state` classifier has no per-row signal.** The
+classifier at [src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs:1117](src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs#L1117)
+is a **global** `prec_res > 4 × outer_res` termination gate, not a
+row-tagging pass. There are no "dead-state rows" to augment; the
+entire 1456-row preconditioner is collapsing on first iter. An
+additive Schwarz patch would be a different preconditioner, not a
+localized augmentation — and the block-Jacobi it would augment is
+already known to collapse on this case.
+
+**Fact 3 — the CPR-specific worklog already supersedes D.**
+`docs/FIM_CPR_IMPROVEMENT_PLAN.md` is the authoritative status on
+this track and ends with an explicit recommendation:
+
+> "Current Phase 2 recommendation: do not add another generic CPR
+>  heuristic; if a bounded linear slice is taken next, target the
+>  one-shot tiny/small-residual cleanup tails. If a broader
+>  reduction of the dominant cell95 family is desired, that is now
+>  more of a nonlinear state-management/trust-region question than
+>  a coarse-pressure or Krylov question."
+
+D as originally framed is a generic CPR heuristic; adding one is
+exactly what the CPR plan says not to do next.
+
+**Decision: skip D entirely from this forward-looking plan.** Any
+further linear-backend work should be proposed inside
+`docs/FIM_CPR_IMPROVEMENT_PLAN.md`, not here. The `22x22x1`
+dense-coarse collapse is real and worth investigating, but the
+mechanism is not "dead-state rows"; it is that the block-Jacobi
+preconditioner is useless on dense-coarse-path systems. That is a
+CPR Phase 1 / Phase 2 question.
+
+**Updated execution order (2026-04-18, post-A and post-D):**
+
+1. ~~Step 0 (probe)~~ — landed and committed (`3e04e0e`).
+2. ~~Step 3 (A)~~ — attempted and reverted; stop rule fired.
+3. ~~Step 2 (D)~~ — skipped per above; defer to CPR plan.
+4. Next: **B** (dt-aware replay tolerance tied to update tolerance).
+   Lowest risk of the remaining options, targets the heavy water
+   shelf bookkeeping, does not touch the Newton/basin-escape
+   surface A failed on.
+5. Only after B is settled, reconsider E (step-0 trial policy
+   generalized to medium water) if the `20x20x3` shelf still
+   shows headroom.
+
 ## Direction A attempt — 2026-04-18 (reverted, Slice A round 3)
 
 Attempted direction A (strict per-cell Newton initial-iterate
@@ -553,6 +617,181 @@ harvest.
 proceed to step 4 (B) after D lands. Step 0 deliverables (probe,
 ring-center buffer design, negative result) remain the active
 record of why.
+
+## Direction B attempt — 2026-04-18 (reverted, no measured effect)
+
+Attempted direction B (dt-aware replay-acceptance tolerance tied
+to Newton update tolerance) on top of commit `1b16219`. **Result:
+reverted same session. Behaviorally a no-op on the entire
+validation shortlist — no substep/retry count changes anywhere,
+no bit-level change in either direction. Nothing to promote.**
+
+**What was implemented.**
+
+- New helper `iterate_has_material_change_scaled(prev, state,
+  dt_days)` in [src/lib/ressim/src/fim/newton.rs](src/lib/ressim/src/fim/newton.rs).
+- Per-family tolerance = `(cap * dt_days / dt_ref).clamp(floor,
+  cap)` with `dt_ref = 1 day`.
+  - Pressure: `floor = 1e-12 bar`, `cap = 1e-5 bar`.
+  - Saturation / Rs / well BHP / perf rate: `floor = 1e-12`,
+    `cap = 1e-6`.
+  - Cap chosen ≥ 2 decades below the Newton `update_tolerance =
+    1e-3`, so replay can never mask a real convergence.
+- Wired into the accept-site gate at
+  [src/lib/ressim/src/fim/timestep.rs](src/lib/ressim/src/fim/timestep.rs)
+  (`materially_changed` feeding `unchanged_hotspot_plateau_accept`
+  and the cooldown-replay variable). The five Newton-internal call
+  sites of the original `iterate_has_material_change` (in
+  `newton.rs`) remain on the strict 1e-12 predicate, so Newton
+  convergence behavior is unchanged.
+- 4 new unit tests (floor / cap / midrange / always-detect-regime
+  flip). All pass.
+
+**Validation shortlist (B vs pre-B baseline, same committed tree
+otherwise):**
+
+| Case | B | baseline | Δ |
+|------|---|----------|---|
+| `water-pressure 12x12x3 dt=1` | `16` acc (`15+4+8354`), `0/9/0` | `16` acc (`15+4+8354`), `0/9/0` | identical |
+| `water-pressure 20x20x3 dt=0.25` | `12` acc, `0/5/0` | `12` acc, `0/5/0` | identical |
+| `water-pressure 22x22x1 dt=0.25` | `4` acc, `0/2/0` | `4` acc, `0/2/0` | identical |
+| `water-pressure 23x23x1 dt=0.25` | `4` acc, `0/2/0` | `4` acc, `0/2/0` | identical |
+| `gas-rate 10x10x3 steps=6 dt=0.25` | `4/0, 8/3, 4/2, 4/0, 4/0, 4/0` | identical | identical |
+| `gas-rate 20x20x3 dt=0.25` | `4` acc, `0/2/0` | `4` acc, `0/2/0` | identical |
+
+(The `gas-rate` 6-step line above corrects the stale row in the
+top-of-file baseline table, which wrote `step1=8/3` when the
+actual current-head result is `step1=4/0`, `step2=8/3`. That is
+pre-existing and independent of B; update the top table on next
+doc touch.)
+
+Locked smoke tests (all 3) pass on the B tree:
+`drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+`spe1_fim_first_steps_converge_without_stall`,
+`spe1_fim_gas_injection_creates_free_gas`.
+
+**Why it was a no-op.**
+
+The plateau/cooldown replay gate at
+[src/lib/ressim/src/fim/timestep.rs:1034](src/lib/ressim/src/fim/timestep.rs#L1034)
+requires `report.newton_iterations == 1 &&
+report.final_update_inf_norm == 0.0` before the
+`materially_changed` flag is even consulted. When Newton takes one
+iteration and the infinity-norm update is **exactly** zero, the
+per-family differences between `previous_state` and
+`report.accepted_state` are genuinely zero bit-for-bit — so the
+tolerance value is irrelevant. Scaling `eps` up (or down) along
+`dt` changes nothing, because `0 > eps` is false at every
+positive `eps`. The replay aggregation count (`+4+8354` on heavy
+water) is already saturated by the existing predicate.
+
+A dt-aware predicate would only help if the gate were also
+attempting to accept-and-replay substeps with *small-but-nonzero*
+state drift — but the preconditions `newton_iterations == 1 &&
+final_update_inf_norm == 0.0` exclude that class by construction.
+
+**Post-revert verification (same commit `1b16219`):** wasm
+rebuilt; shortlist bit-identical to pre-B baseline (verified by
+running the full shortlist twice, once with B staged and once
+after `git checkout -- src/fim/newton.rs src/fim/timestep.rs`).
+
+**Implication for the execution order.**
+
+B as designed (tie tolerance to Newton update tolerance, scale
+with dt) is dead for this codebase without first also relaxing
+the `final_update_inf_norm == 0.0` precondition — but that was
+tried as Slice A round 2's replay-gate-relaxation Path 1, which
+regressed the heavy water shelf (see
+`project_fim_slice_a_attempt` Fact 2). So the combination
+*(B scaling + gate relaxation)* is effectively the already-dead
+Path 1, and *B scaling alone* is a no-op.
+
+The remaining top-ranked directions from this doc are:
+
+- **C** (primary-variable switching / hysteresis at gas-oil
+  contact) — top 3, but the Step-0 probe showed regime flips are
+  NOT the dominant amp≥1 failure family on the current shelves.
+  Not promising without fresh evidence.
+- **E** (generalize the Step-0 trial policy to medium water) —
+  top 4. Independent of Newton initial iterate, independent of
+  replay. Not yet attempted.
+
+Recommended next action: run the Step 0 probe on the medium-water
+`20x20x3` shelf and see whether its top-risk cells match the
+`oil@190` nonlinear-retry ladder near `(3,3,0)`..`(3,4,0)`
+described at the top of this doc. If they do, E is the next
+candidate with real headroom. If they do not, the probe itself
+needs a different amplification signal for medium-water regimes.
+
+## Medium-water Step-0 probe on `20x20x3 dt=0.25` — 2026-04-18 (positive, supports E)
+
+Commit: `1b16219`. Command:
+
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure \
+  --grid 20x20x3 --dt 0.25 --steps 1 --diagnostic step --no-json
+```
+
+Baseline numbers unchanged (`12 accepts, 0/5/0 retries,
+retry_dom=nonlinear-bad:oil@190`). Retry-ladder dominant cells:
+
+| rung | dt (d) | fail site | fail family |
+|------|--------|-----------|-------------|
+| s0 | 2.500e-1 | `cell0 = (0,0,0)` | water |
+| s0 | 1.250e-1 | `cell0 = (0,0,0)` | water |
+| s1 | 6.250e-2 | `cell0 = (0,0,0)` | water |
+| s4 | 3.125e-2 | `cell443 = (3,2,1)` | oil |
+| s5 | 1.563e-2 | `cell63 = (3,3,0)` | **oil@190** |
+
+Probe emissions on the subsequent clean accepts
+(`BASIN-ESCAPE PROBE`):
+
+| substep | top cell (ijk) | amp | family |
+|---------|----------------|-----|--------|
+| 6 | `(3,3,0)` cell63 | 0.80 | water |
+| 7 | `(3,3,0)` cell63 | **3.24** | water |
+| 8 | `(4,3,1)` cell464 | 0.16 | water |
+| 9 | `(4,3,1)` cell464 | 0.26 | water |
+| 10 | `(3,4,2)` cell883 | 0.35 | water |
+| 11 | `(4,4,0)` cell84 | 0.21 | water |
+
+**Finding: the probe's top-risk cells match the retry-ladder
+dominant cell on medium water.** The labeled dominant family
+`oil@190` sits at `cell63 = (3,3,0)`, which is the probe's
+top cell on the first two clean-accept emissions (substeps 6–7,
+including the one amp≥1 event). Subsequent emissions drift to
+immediate Chebyshev neighbours — `(4,3,1)`, `(3,4,2)`, `(4,4,0)`
+are all within radius 2 of `(3,3,0)`. That cluster matches the
+"small front patch near `(3,3,0)`..`(3,4,0)`" described at the
+top of this doc.
+
+Caveat: the probe does **not** flag `cell0 = (0,0,0)` which drives
+the first three retry rungs. The probe can only fire after 2
+clean accepts, and `cell0` is fighting Dirichlet-boundary mobility
+degeneracy, not front advancement. So a probe-anchored trial
+policy would target the *front-patch* failure (`oil@190`),
+reducing the s4/s5 rungs, not the early boundary rungs. That
+aligns with E's purpose (generalize the Step-0 trial policy to
+medium water) — the expected gain is on the `oil@190` rung, not
+the `water@0` rung.
+
+**Implication for direction E.** E has a real probe-grounded
+anchor on medium water. Before implementing, note:
+
+- The hit is on family `water` (front advancing), not `oil`, even
+  though the labeled retry is `oil@190`. That is consistent with
+  Step 0 probe semantics on heavy water (all amp≥1 events were
+  water family). The label `oil@190` describes which cell+family
+  the retry was dominated by *at the retry point*; the probe
+  fires *after* retries are resolved.
+- Only substep 7 has amp ≥ 1 (3.24). All other emissions are
+  below 1.0, i.e. extrapolating is locally safer than the
+  previous accept. E should focus its freeze ring on substep 7's
+  `cell63 = (3,3,0)` and immediate Chebyshev-2 neighbours.
+- The boundary rungs (s0 × 3 at `cell0 = (0,0,0)`) are outside
+  E's reach; those would require a boundary-specific trial
+  policy or a DPMAXL-style outer-step cap, which is a different
+  direction entirely.
 
 ## Cross-references
 
