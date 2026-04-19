@@ -59,7 +59,9 @@
       "Bash(git add *)",
       "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 1 --diagnostic summary --no-json)",
       "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 6 --diagnostic outer --no-json)",
-      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --dt 1 --steps 1 --diagnostic summary --no-json)"
+      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --dt 1 --steps 1 --diagnostic summary --no-json)",
+      "Bash(node /tmp/bypass-audit/aggregate.mjs /tmp/bypass-audit/case1-mw-step1.log /tmp/bypass-audit/case2-mw-6step.log /tmp/bypass-audit/case3-hw-dt1.log /tmp/bypass-audit/case4-gas-6step.log)",
+      "Bash(bash scripts/build-wasm.sh)"
     ],
     "additionalDirectories": [
       "/tmp"

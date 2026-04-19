@@ -285,6 +285,18 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - **Next active lever** (from 2026-04-18 cost profile, now promoted): **direct-bypass trigger audit** — instrument which bypass fires per rung and correlate with `lin_ms` per bypass category. Tells us whether a subset of bypasses can be narrowed (converted back to iterative) without regressing the Newton stalls they were added to escape.
 - Full investigation narrative, gate designs, tables, and root-cause analysis: `docs/FIM_JACOBIAN_REUSE_INVESTIGATION.md`.
 
+### Direct-bypass trigger audit — reframes the cost hypothesis (probe reverted 2026-04-19)
+- Added a `BYPASS-AUDIT` per-Newton-iter probe in `newton.rs` attributing first-solve + fallback-solve lin_ms to one of seven categories: `clean`, `near-converged-accept`, `post-fail-fallback`, `dead-state`, `restart-stag`, `repeated-zm`, `zm-fallback`. Probe total matched step-reported lin_ms exactly on every case — no blind spots.
+- **Headline reframing:** the 2026-04-18 cost profile attributed the 88% sparse-lu lin_ms to four direct-bypass triggers. The audit shows those four triggers combined are only **2.3% (case 1) / 2.6% (case 2)** of medium-water lin_ms. The real cost is `fgmres-cpr fails → sparse-lu rescues` (category `post-fail-fallback`): **68.8% (case 1) / 74.5% (case 2) / 73.5% (case 3) / 34.5% (case 4)**. `near-converged-accept` (fgmres-cpr didn't converge but was accepted without sparse-lu rescue) is another 8.7% / 10.3% on medium-water.
+- **Together, `post-fail-fallback + near-converged-accept` is 77.5% of medium-water case 1 lin_ms and 84.8% of case 2 lin_ms.** These are the two failure outcomes of the iterative attempt; they share a driver: fgmres-cpr hitting `max-iters` with non-zero residual.
+- **Direction update:** direct-bypass narrowing is dead on medium-water. The real lever is iterative-backend failure handling.
+- **Active lever (Plan B, two-slice):**
+  1. **Lever 1** — widen `should_accept_near_converged_iterative_step` from `OUTER_FACTOR=16.0` to `200.0` to absorb more of the "close-to-tol" fgmres-cpr failures instead of paying the sparse-lu rescue. Projected savings: 20-34% of case 1 lin_ms.
+  2. **Lever 3** — post-fail short-circuit: after an iter's fgmres-cpr failed, skip the iterative attempt on the next iter and go straight to sparse-lu. Saves ~300-450 ms per consecutive-failure iter. Projected savings: 33-52% of case 1 lin_ms.
+- Both levers have Stage 1 measurement-only probes defined (Lever 3: `prev_iter_failed` flag + category correlation; Lever 1: dry-run the widened gate and count newly-accepted iters). Each slice is independently reversible and can be promoted or reverted without blocking the other.
+- Probe reverted via `git checkout -- src/lib/ressim/src/fim/newton.rs`. Clean wasm rebuilt. Locked smoke tests green.
+- Full tables (all 4 cases), gate design, staging plan, risks: `docs/FIM_BYPASS_AUDIT.md`.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
