@@ -268,6 +268,23 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - Full tabulated probe trace: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Medium-water Step-0 probe on `20x20x3 dt=0.25` — 2026-04-18".
 - Decision: Direction E has a probe-grounded anchor on medium water. Next action (when resuming this track): design E's trial-policy freeze around substep 7's top cell `(3,3,0)` and its Chebyshev-2 neighbours.
 
+## Current Findings - 2026-04-19
+
+### Jacobian reuse (intra-rung lagged factorization) — Stage 1 PASS, Stage 2 REVERTED
+- Hypothesis from 2026-04-18 cost profile: 88% of medium-water `lin_ms` lives in per-Newton-iter `sparse-lu` refactorization; caching the `faer::sparse::linalg::solvers::Lu<usize, f64>` across Newton iters within a rung, gated on Appleyard-damped small steps (`damp * ||upd||_inf < threshold`), should save a large fraction of that cost.
+- **Stage 1 (measurement only, reverted):** instrumented `REUSE-PROBE` per Newton iter on current-head wasm. Eligibility at `damp_x_upd < 1e-2`: case 1 (medium-water step 1) 70% iters / 75% lin_ms, case 2 (medium-water 6-step) 45% / 41%, case 3 (heavy-water dt=1) 78% / 72%. Met exit criterion. Caveat: **strict gate** (`lin_conv && !fallback && !any_bypass && damp_x_upd < 1e-3`) captures **zero sparse-lu eligible** iters on case 1 because every sparse-lu iter there has `used_fallback=true` or an active bypass.
+- **Stage 2 (implementation, REVERTED):** added `JacobianReuseCache` in `sparse_lu_debug.rs`, cache-aware `solve_linearized_system_with_cache` in `linear/mod.rs`, rung-scoped cache + strict gate + age≤3 cap in `newton.rs`. Locked smoke tests stayed green (drsdt0, spe1_first_steps, spe1_gas_injection).
+- **A/B on same wasm build (stash-swap methodology):**
+  - case 1 step 1: baseline `outer=17358 lin=16931 sub=12` → Stage 2 `outer=17828 lin=18162 sub=12` (lin +7.3%)
+  - case 2 6-step total: baseline `outer≈121091 lin≈121919` → Stage 2 `outer≈124019 lin≈124359` (lin +2.0%)
+  - case 3: baseline `outer=1742 lin=1572 sub=16` → Stage 2 `outer=1812 lin=1621 sub=16` (lin +3.1%)
+- **Permissive gate variant tested** (allow reuse during bypass/fallback): case 1 went to `lin_ms=21371 substeps=16` — +26% lin_ms, trajectory divergence (reused factorization produces valid-but-non-Newton-enough steps that add retries whose cost dwarfs the saved factorization).
+- **Structural diagnosis:** the 88% sparse-lu lin_ms is structurally tied to bypass paths (zero-move hotspot, restart-stagnation, dead-state, post-failure fallback). On bypass iters reuse is unsafe (trajectory divergence); on clean iters reuse is safe but those iters are a minority of cost on the profiled case. No amount of gate tuning reconciles this: strict gate captures no savings, permissive gate diverges trajectories.
+- **Reverted** via `git checkout --` on `newton.rs`, `linear/mod.rs`, `linear/sparse_lu_debug.rs`. Clean wasm rebuilt. Locked smoke tests green on reverted tree.
+- **Direction closeout — intra-rung Jacobian reuse is shelved.** Any future reattempt must first restructure the bypass architecture so hot `lin_ms` iters solve same-shape linear systems as their neighbours.
+- **Next active lever** (from 2026-04-18 cost profile, now promoted): **direct-bypass trigger audit** — instrument which bypass fires per rung and correlate with `lin_ms` per bypass category. Tells us whether a subset of bypasses can be narrowed (converted back to iterative) without regressing the Newton stalls they were added to escape.
+- Full investigation narrative, gate designs, tables, and root-cause analysis: `docs/FIM_JACOBIAN_REUSE_INVESTIGATION.md`.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`

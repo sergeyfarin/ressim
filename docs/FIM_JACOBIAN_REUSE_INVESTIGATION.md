@@ -306,3 +306,103 @@ Before promotion:
   sparse-LU only.
 - NOT introducing a feature flag — a single reuse threshold is
   simpler to revert via git than a flag is to maintain.
+
+## Stage 2 result — REVERTED 2026-04-19
+
+### Implementation summary
+
+Built as designed in
+[sparse_lu_debug.rs](../src/lib/ressim/src/fim/linear/sparse_lu_debug.rs)
++ [linear/mod.rs](../src/lib/ressim/src/fim/linear/mod.rs) +
+[newton.rs](../src/lib/ressim/src/fim/newton.rs):
+- `JacobianReuseCache { factorization: faer::sparse::linalg::solvers::Lu<usize, f64> }`
+  (the `Lu` type is `Clone` and owns its data — no lifetime surgery).
+- `solve_linearized_system_with_cache` routes reuse only when the
+  effective backend is `sparse-lu`; transparently clears cache on
+  backend change.
+- Gate as designed: `damp * ||update||_inf < 1.0e-2`, `age < 3`, no
+  bypass active, `linear_report.converged`, `candidate_is_valid`.
+- Locked smoke tests stayed green (`drsdt0_*`,
+  `spe1_fim_first_steps_converge_without_stall`,
+  `spe1_fim_gas_injection_creates_free_gas`).
+
+### A/B measurement — same wasm build each side, stash-swap methodology
+
+Rebuilt wasm on pre-Stage-2 tree (via `git stash push`), captured
+baseline; `git stash pop`, rebuilt wasm, captured Stage 2. Pinned
+commit for each side, same diagnostic CLI invocation.
+
+| Case                                           | Metric   | Baseline | Stage 2 | Δ     |
+|------------------------------------------------|----------|---------:|--------:|------:|
+| medium-water 20x20x3 dt=0.25 step=1            | lin_ms   |  16,931  | 18,162  | +7.3% |
+| medium-water 20x20x3 dt=0.25 step=1            | outer_ms |  17,358  | 17,828  | +2.7% |
+| medium-water 20x20x3 dt=0.25 step=1            | substeps |    12    |   12    |  0    |
+| medium-water 20x20x3 dt=0.25 steps=6 (total)   | lin_ms   | 121,919  |124,359  | +2.0% |
+| medium-water 20x20x3 dt=0.25 steps=6 (total)   | outer_ms | 121,091  |124,019  | +2.4% |
+| heavy-water 12x12x3 dt=1                       | lin_ms   |   1,572  |  1,621  | +3.1% |
+| heavy-water 12x12x3 dt=1                       | outer_ms |   1,742  |  1,812  | +4.0% |
+
+**Direction: Stage 2 regresses `lin_ms` across the full shortlist.**
+
+### Root cause — both gate variants fail
+
+**Strict gate (`lin_conv && !fallback && !any_bypass && damp_x_upd < 1e-2`):**
+Stage 1 probe already showed this captures **zero** `sparse-lu`-eligible
+iters on medium-water step 1, because on that case every `sparse-lu` iter
+has either `used_fallback=true` or an active bypass. Stage 2 with this
+gate therefore saves no factorizations, and the cache bookkeeping +
+dispatch path adds 2-7% overhead.
+
+**Permissive gate (allow reuse during bypass / fallback):**
+Tested before the final revert. Case 1 went to `lin_ms = 21,371`
+(+26% vs baseline), `substeps` 12 → 16. The reused factorization
+produces a valid but non-Newton-enough step; when the outer rung was
+already on a bypass path because the Newton trajectory was fragile,
+the reused step diverges the trajectory and adds retries whose cost
+(another full refactor plus its own Newton iters) dwarfs the factorization
+saved.
+
+### Why the structure defeats reuse here
+
+The 88% `lin_ms` figure from the 2026-04-18 cost profile is almost
+entirely on the **bypass + post-fallback** path, not on the clean
+late-Newton-iter path where classical lagged-Jacobian theory applies.
+Bypass iters have already detected a problem (zero-move, restart
+stagnation, dead-state, post-failure fallback) and are deliberately
+solving a differently-shaped linear system. Reusing a factorization
+from a prior bypass-path iter means solving a slightly-wrong system to
+escape a slightly-wrong system; empirically this diverges the Newton
+trajectory more often than it helps.
+
+The clean late-iter regime where reuse *would* be safe contributes only
+a minority of `lin_ms` on this workload (Stage 1 strict-gate coverage:
+0% on case 1, 41% on case 3). That minority is not large enough to
+offset the cache bookkeeping cost when the hot-path bypass iters reject
+reuse.
+
+### Actions on revert
+
+1. Reverted Stage 2 edits:
+   - [src/lib/ressim/src/fim/newton.rs](../src/lib/ressim/src/fim/newton.rs)
+   - [src/lib/ressim/src/fim/linear/mod.rs](../src/lib/ressim/src/fim/linear/mod.rs)
+   - [src/lib/ressim/src/fim/linear/sparse_lu_debug.rs](../src/lib/ressim/src/fim/linear/sparse_lu_debug.rs)
+2. Rebuilt clean wasm on pre-Stage-2 tree.
+3. Confirmed locked smoke tests stay green on reverted tree.
+
+### Direction closeout — Jacobian reuse shelved
+
+Intra-rung Jacobian reuse is **not** a viable direction on the current
+FIM shelf, for a structural reason that will not be undone by gate
+tuning: the 88% sparse-lu `lin_ms` share lives on the bypass-path where
+reuse is unsafe, not on the clean-iter path where reuse is safe.
+
+Any future reattempt must first change the bypass architecture so the
+hot `lin_ms` iters are solving the same linear system shape as their
+neighbors. Until then, this direction is closed.
+
+The next-in-line lever from the 2026-04-18 cost profile is the
+**direct-bypass trigger audit**:
+instrument which bypass fires on which rung and correlate with
+`lin_ms` per bypass category. That tells us whether a subset of
+bypasses can be narrowed (converted back to iterative) without
+regressing the Newton stalls they were added to escape.

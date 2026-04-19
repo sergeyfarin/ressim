@@ -56,7 +56,10 @@
       "Bash(node ./scripts/fim-wasm-diagnostic.mjs water-pressure --grid 12x12x3 --steps 1 --dt 1)",
       "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --help)",
       "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 1 --diagnostic summary --no-json)",
+      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 6 --diagnostic outer --no-json)",
+      "Bash(node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --dt 1 --steps 1 --diagnostic summary --no-json)"
     ],
     "additionalDirectories": [
       "/tmp"
