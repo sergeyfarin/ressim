@@ -41,8 +41,17 @@ Current dominant failure mode across the remaining shelves:
 3. Gas step 1 of the shipped replay: still takes 3 retry rungs at
    startup even with the three-step carryover; steps 2..6 are now clean.
 
-The common thread: these are *physical-front / regime-flip* failures, not
-linear-solver failures. That shapes the recommended directions below.
+The common thread is harder than it first appears. The *visible* failure
+mode is physical-front / regime-flip (hotspot repeats, nonlinear-bad
+retries). But the 2026-04-18 cost profile on `20x20x3 dt=0.25`
+(documented below in "Medium-water step-1 cost profile") shows the
+*cost* is elsewhere: ~88% of `lin_ms` lives in per-Newton-iteration
+`sparse-lu` refactorization on bypass paths, not in retry ladders or
+iterative-solver iterations. Directions A, B, and E — all attempted
+and reverted 2026-04-18 — targeted retry-ladder overhead and therefore
+hit a cost ceiling of ~34%. The directions that remain viable are the
+ones that attack per-Newton-iter direct-solve cost or reduce bypass
+firing rate.
 
 ## What has already been ruled out (do not re-attempt in the same form)
 
@@ -792,6 +801,197 @@ anchor on medium water. Before implementing, note:
   E's reach; those would require a boundary-specific trial
   policy or a DPMAXL-style outer-step cap, which is a different
   direction entirely.
+
+## Direction E attempt — 2026-04-18 (reverted, no measured effect)
+
+**Claim on which E was built:** cross-outer-step first-trial cold-start
+at `dt=0.25` when the previous outer step accepted at `dt≈0.012` forces
+a multi-rung retry ladder at every boundary of the shipped medium-water
+6-step replay; a water-family mirror of the existing gas carryover
+would clamp substep 0 of the next step to the last accepted `dt`, skipping
+the wasted retry rungs.
+
+**Implementation (mirroring the promoted gas carryover):**
+- Added `WaterOuterStepTrialCarryover { cap_dt_days, clean_steps_remaining }`
+  in `fim/timestep.rs`, with `seed_water_outer_step_trial_carryover` (gated
+  on `last_growth_limiter != "hotspot-repeat"` and
+  `last_retry_dominant_family == Some("oil")`) and
+  `next_water_outer_step_trial_carryover` (persistence budget: 1 clean step).
+- Wired into substep-0 trial as a `.min()` chain after the gas carryover clamp,
+  so both caps compose without breaking gas-side behaviour.
+- Added field `water_outer_step_trial_carryover: Option<...>` to the simulator
+  struct, initialized `None` in the frontend constructor, cleared on ABORT paths
+  alongside the gas carryover.
+- Six unit tests covering the seed/reject/expire/reset/reseed transitions; all
+  passed. Three locked baselines (`drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+  `spe1_fim_first_steps_converge_without_stall`, `spe1_fim_gas_injection_creates_free_gas`)
+  all passed on the E tree.
+
+**Validation shortlist on E (post-rebuild, vs pre-E baseline):**
+
+| Case | Pre-E baseline | With E | Delta |
+|------|----------------|--------|-------|
+| `water-pressure 12x12x3 dt=1` | `16/(0/9/0)` | `16/(0/9/0)` | identical |
+| `water-pressure 20x20x3 dt=0.25` | `12/(0/5/0)` | `12/(0/5/0)` | identical |
+| `water-pressure 22x22x1 dt=0.25` | `4/(0/2/0)` | `4/(0/2/0)` | identical |
+| `water-pressure 23x23x1 dt=0.25` | `4/(0/2/0)` | `4/(0/2/0)` | identical |
+| `gas-rate 20x20x3 dt=0.25` | `4/(0/2/0)` | `4/(0/2/0)` | identical |
+| `gas-rate 10x10x3 steps=6 dt=0.25` | `0/3/0, 0/2/0, 0/0/0, 0/0/0, 0/0/0, 0/0/0` | same | identical |
+
+**Target case (medium-water 6 steps, E's intended target):**
+
+| Step | Pre-E | With E | Delta |
+|------|-------|--------|-------|
+| 1 | `12/(0/5/0)` dt=[7.813e-3,6.250e-2] | `12/(0/5/0)` same | identical |
+| 2 | `14/(0/2/0)` dt=[1.058e-2,3.919e-2] | `14/(0/2/0)` same | identical |
+| 3 | `14/(0/2/0)` dt=[4.144e-3,3.203e-2] | `14/(0/2/0)` same | identical |
+| 4 | `23/(0/5/0)` dt=[4.130e-3,2.723e-2] | `23/(0/5/0)` same | identical |
+| 5 | `16/(0/2/0)` dt=[4.130e-3,3.049e-2] | `16/(0/2/0)` same | identical |
+| 6 | `21/(0/4/0)` dt=[6.861e-3,3.116e-2] | `21/(0/4/0)` same | identical |
+
+Totals (both): **102 substeps, 0/20/0 retries.** Bit-identical across the
+entire multi-step target replay.
+
+**Why the clamp was a no-op, confirmed from the filtered step trace:**
+E *did* fire correctly — substep-0 traces for steps 2 and 3 log
+`water-carryover-clamped from 0.250000 persist_left=1`, and the seed
+activates on step 1's `nonlinear-bad:oil@190` end-state. But the
+first accepted substep dt at the boundary is identical with and without E:
+step 2 substep 0 accepts at `dt=0.012426` in both runs, step 3 substep 0
+accepts at `dt=0.019134` in both runs. The existing retry ladder already
+collapses the first-trial `dt=0.25` down to essentially the same rung the
+carryover caps to; moving the cap forward to substep 0 just replaces
+two or three internal retry rungs that were already free under the
+current controller (`retry_ms` is comparable — the ladder work was not
+actually charged in the failing direction E was built to remove).
+
+**Conclusion:** reverted. All of `src/lib/ressim/src/fim/timestep.rs`,
+`src/lib/ressim/src/lib.rs`, and `src/lib/ressim/src/frontend.rs` restored
+to pre-E state via `git checkout --`. Wasm rebuilt on the clean tree.
+
+**What this teaches about the remaining medium-water ladders:**
+the "20× dt cold-start mismatch" framing is a distraction — in the
+current solver, the retry ladder at an outer-step boundary is not where
+the cost lives. The existing Newton-side no-op accepts and Appleyard
+damping already short-circuit the ladder descent; the ladder is fast,
+cheap proof work, not the dominant cost. The remaining `0/5/0, 0/2/0,
+0/2/0, 0/5/0, 0/2/0, 0/4/0` retry shelf on the 6-step medium-water replay
+is in-step nonlinear-bad rung descent *within* each step, not
+boundary cold-start overhead. Future work on the medium-water shelf
+should stay inside the Newton-state-management lane (the direction
+Slice A was in) and not revisit cross-step first-trial clamping for water.
+
+## Medium-water `20x20x3` step-1 cost profile — 2026-04-18 (reframes the bottleneck)
+
+After three consecutive negative Newton-trial-policy results (A round 3,
+B, E), ran a per-rung cost profile on the shipped baseline
+`water-pressure 20x20x3 dt=0.25 --steps 1` from the existing
+`real_accept_rungs` and `retry_rungs` summary lines (no new
+instrumentation needed — the per-rung backend, linear iteration count,
+`lin_ms`, and `pc_ms` are already in the trace).
+
+**Total `lin_ms = 19,401`** across 17 rungs (12 accepts + 5 retries),
+which is ~98% of `fim_ms = 19,902`. Cost breakdown by linear backend:
+
+| Backend | Rungs | Newton iters | Total linear iters | `lin_ms` | Share |
+|---------|------:|-------------:|-------------------:|---------:|------:|
+| **`sparse-lu` (direct)** | 12 | 122 | 122 | **17,141** | **88.4%** |
+| `fgmres-cpr` (iterative) | 5 | 24 | 3,145 | 2,260 | 11.6% |
+
+**Per-rung detail:**
+
+| Kind | s# | dt | n_newton | backend | lin_iters | lin_ms | pc_ms |
+|---|---:|---|---:|---|---:|---:|---:|
+| accept | 0 | 6.250e-2 | 14 | sparse-lu | 1 | 1610 | 16 |
+| accept | 1 | 3.125e-2 | 12 | sparse-lu | 1 | 1553 | 7 |
+| accept | 2 | 3.125e-2 | 11 | sparse-lu | 1 | 1797 | 6 |
+| accept | 3 | 3.125e-2 | 12 | sparse-lu | 1 | **2763** | 10 |
+| accept | 4 | 1.563e-2 | 5 | fgmres-cpr | 130 | 646 | 3 |
+| accept | 5 | 7.813e-3 | 9 | sparse-lu | 1 | 691 | 6 |
+| accept | 6 | 7.813e-3 | 2 | fgmres-cpr | 55 | 75 | 1 |
+| accept | 7 | 7.813e-3 | 7 | fgmres-cpr | 150 (max) | 477 | 7 |
+| accept | 8 | 8.929e-3 | 5 | fgmres-cpr | 150 (max) | 536 | 3 |
+| accept | 9 | 1.429e-2 | 6 | sparse-lu | 1 | 612 | 4 |
+| accept | 10 | 1.905e-2 | 9 | sparse-lu | 1 | 1588 | 6 |
+| accept | 11 | 1.243e-2 | 5 | sparse-lu | 1 | 531 | 3 |
+| retry | 0 | 2.500e-1 | 8 | sparse-lu | 1 | 474 | 17 |
+| retry | 0 | 1.250e-1 | 8 | sparse-lu | 1 | 391 | 8 |
+| retry | 1 | 6.250e-2 | 20 | sparse-lu | 1 | **3491** | 16 |
+| retry | 4 | 3.125e-2 | 8 | sparse-lu | 1 | 1640 | 6 |
+| retry | 5 | 1.563e-2 | 5 | fgmres-cpr | 117 | 526 | 4 |
+
+**What this data actually says:**
+
+1. **The cost is NOT retries.** All 5 retries together account for
+   `474+391+3491+1640+526 = 6522 ms`, about 34% of `lin_ms`. The other
+   66% is accepted work. Eliminating every retry would save at most 6.5s
+   of a 19.4s step. This directly invalidates the A/B/E framing that
+   drove the three previous reverted attempts — those all targeted retry
+   ladder overhead.
+
+2. **The cost is NOT the iterative backend.** FGMRES-CPR runs on only
+   5 rungs and accounts for 11.6% of `lin_ms`. Even the 2 rungs that hit
+   max_iters=150 (s7, s8) cost only 477 and 536 ms — cheaper than any
+   sparse-lu solve. `pc_ms` (preconditioner build + apply) is tiny
+   across the board (1-17ms). CPR is not the bottleneck.
+
+3. **The cost IS per-Newton-iteration sparse-LU refactorization.**
+   `sparse-lu[it=1]` means one linear iteration per solve (it's direct,
+   not iterative), and the `n_newton` column shows how many times
+   that factor+solve happens per rung. The worst offenders:
+   - retry s1 dt=6.25e-2: 20 Newton iters × sparse-LU = **3491 ms**
+   - accept s3 dt=3.125e-2: 12 Newton iters × sparse-LU = **2763 ms**
+   - accept s0 dt=6.25e-2: 14 Newton iters × sparse-LU = **1610 ms**
+   At `n_rows=3604`, each LU factorization is ~140-180 ms and each
+   rung does 5-20 of them.
+
+4. **Why sparse-LU dominates even with `req=fgmres-cpr`:** the bypass
+   paths that route nominally-iterative requests to direct — "repeated
+   zero-move hotspot direct bypass" (`fim/newton.rs`), "restart
+   stagnation direct bypass", "dead-state direct bypass", and post-
+   failure fallback — are firing on most rungs. These bypasses were
+   added to escape specific Newton stalls and they do that job, but
+   each bypass pays ~1.5-2.7s of LU work on a 3,604-row system to do
+   so.
+
+**Reframed bottleneck:** the remaining medium-water cost is in direct
+Jacobian factorization, called once per Newton iteration within each
+rung. The two levers that matter are:
+
+1. **Jacobian reuse / lagged Jacobian across Newton iters within a
+   substep.** Item 6 in `TODO.md`. If the Jacobian changes slowly
+   between adjacent Newton iters on the same rung (likely, since
+   Appleyard damping already implies small updates), reusing the
+   factorization for 2-3 iters before rebuilding could cut `lin_ms`
+   by 50-70%. The heavy-shelf replay-aggregation slice documented in
+   `FIM_CONVERGENCE_WORKLOG.md:160` is precedent: it collapsed
+   `outer_ms` 8× with zero control-surface change, by recognizing that
+   identical-state solves need not all be redone.
+
+2. **Audit what sends nominally-iterative requests to direct.** The
+   bypass paths were added one at a time to solve specific stalls. At
+   `n_rows=3604` each firing costs ~1.5s of LU; at smaller grids the
+   same bypass is effectively free. A targeted audit of which bypass
+   triggers are firing on which rungs, and whether the iterative
+   result could have been accepted with a slightly wider gate, could
+   recover 3-10s per step without any controller change.
+
+**What is NOT the next direction:**
+
+- Newton-trial-policy surgery (A, B, E variants) — the retry ladder is
+  not the cost block.
+- Direction D / CPR completion — would optimize the 12% share, not the
+  88%. Still worth doing long-term but not the immediate lever.
+- Controller retuning of dt rungs — retries eliminated entirely save
+  ≤34% of cost, and the controller is already running near its tuned
+  operating point.
+
+**Concrete next slice:** instrument which bypass path fired on each of
+the 12 accept rungs + 5 retry rungs in the medium-water step-1 replay,
+and correlate Newton-iter count with bypass trigger. That tells us
+whether reuse is feasible (if bypasses cluster on a small subset of
+"hard" Newton iters, reuse is cheap and safe) or whether they're
+uniformly distributed (reuse would need more care).
 
 ## Cross-references
 
