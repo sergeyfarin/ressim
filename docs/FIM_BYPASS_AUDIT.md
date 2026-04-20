@@ -350,3 +350,121 @@ Ordering by independence, risk, and cost:
 Probe revert via `git checkout -- src/lib/ressim/src/fim/newton.rs`.
 Raw logs archived at `/tmp/bypass-audit/case{1-4}-*.log`. Aggregator
 script at `/tmp/bypass-audit/aggregate.mjs`.
+
+## Lever 3 Stage 1 probe — 2026-04-19
+
+Probe: extended the `BYPASS-AUDIT` trace line with a `prev_iter_failed`
+field. The flag is set iff the *previous* Newton iter's category was
+`post-fail-fallback` (i.e. the iterative backend failed AND sparse-lu
+rescued). It clears after any other category (clean, near-converged-
+accept, bypass paths, zero-move-Appleyard-accept). No behavioral
+change — measurement only.
+
+The probe was reverted via `git checkout -- src/lib/ressim/src/fim/newton.rs`
+and WASM rebuilt clean after the sweep.
+
+### Decision rule
+
+Per the Stage 1 design: categorize iters where `prev_iter_failed=true`
+by their own `cat`:
+- `cat == post-fail-fallback` → **benefit** (short-circuit saves the
+  wasted `first_ms` of the fgmres-cpr attempt that would again fail)
+- `cat == near-converged-accept` → **neutral** (no sparse-lu rescue
+  today, so short-circuit replaces a cheap-ish iterative with a
+  sparse-lu call — cost-shift, not savings)
+- `cat == clean` → **harm** (short-circuit would have foregone a
+  genuine clean iterative convergence)
+- `cat == repeated-zm / dead-state / restart-stag / zm-fallback` →
+  **n/a** (bypass already active; short-circuit gated on "no bypass
+  active" wouldn't fire)
+
+Promotion threshold: benefit:harm ≥ 5:1 on case 1 and case 2.
+
+### Shortlist results
+
+| case                                   | total iters | total_ms | benefit (pff) | harm (clean) | neutral (nca) | ratio   | proj. savings |
+|----------------------------------------|------------:|---------:|--------------:|-------------:|--------------:|:--------|--------------:|
+| Case 1: medium-water 20x20x3 step-1    |         131 |   17,089 |            19 |            2 |             0 | **9.5:1**  | **21.0% lin_ms** |
+| Case 2: medium-water 20x20x3 6-step    |         775 |  122,099 |            76 |            3 |             6 | **25.3:1** | **17.1% lin_ms** |
+| Case 3: heavy-water 12x12x3 dt=1       |         141 |    1,618 |             1 |            0 |             0 | 1:0     | 2.6% lin_ms   |
+| Case 4: gas-rate 10x10x3 6-step        |         445 |    1,562 |             0 |            0 |             0 | 0:0     | 0% lin_ms     |
+
+`pff` = post-fail-fallback; `nca` = near-converged-accept.
+
+"proj. savings" is the sum of `first_ms` over benefit iters / total
+`lin_ms`. This is a **best-case** figure that ignores:
+- harm iters (foregone clean iterative; each loses a ~100-200 ms
+  sparse-lu but avoids a similar-cost clean fgmres-cpr, roughly a wash)
+- neutral iters (replace iterative with sparse-lu — cost-shift,
+  direction depends on sparse-lu vs fgmres-cpr cost at that row count)
+
+### Interpretation
+
+**Case 1 and Case 2 pass the promotion threshold cleanly.** On
+medium-water (the shelf where `lin_ms` concentrates — case 2 alone
+is 122 s across 6 steps), ~17-21% of lin_ms is a wasted fgmres-cpr
+attempt that immediately follows another failed fgmres-cpr attempt.
+The benefit:harm ratios (9.5:1 and 25.3:1) are well above the 5:1
+threshold.
+
+**Case 3 and Case 4 see no Lever-3 benefit.** Both cases are
+already fully covered by the `dead-state` direct-bypass: after the
+first failure they go straight to sparse-lu for every subsequent
+iter, so `prev_iter_failed=true` iters are already in `cat==dead-state`
+rather than `cat==post-fail-fallback`. This is not a Lever 3 failure
+— it's that the existing bypass logic already catches the pattern on
+those shelves. Lever 3 is purely a medium-water win, which matches
+where the cost actually is.
+
+**Neutral cases are small enough to ignore at Stage 1.** 6 iters in
+case 2 (~1.6 s total), 0 elsewhere. Not enough to move the verdict.
+
+**Raw logs:** `/tmp/bypass-audit/case{1-4}.log`. Aggregator:
+`/tmp/bypass-audit/aggregate.mjs`.
+
+### Verdict
+
+**PROMOTE to Lever 3 Stage 2 implementation.** The gate is:
+- Track `iterative_failed_last_iter: bool` in the Newton loop.
+- Set it iff the current iter's category was `post-fail-fallback`.
+- Clear it on any other category.
+- On iter N+1, if the flag is set AND no pre-solve bypass is already
+  active, swap `linear_options.kind` to `direct_fallback_kind_for_rows`
+  before the solve (skip the iterative attempt).
+- Emit a fim_trace line noting the short-circuit so retro-analysis
+  can distinguish it from the pre-existing bypass triggers.
+
+**Expected case 1 savings (conservative, accounting for harm):**
+- Benefit: save 3,590 ms of wasted first_ms (21% of 17,089).
+- Harm: 2 iters will no longer converge cleanly via iterative; they
+  now spend a sparse-lu (~180 ms each) instead of a fgmres-cpr
+  (~150-250 ms). Net: roughly a wash, possibly small loss (~60 ms).
+- **Expected net: 19-21% lin_ms reduction on case 1**.
+
+**Expected case 2 savings:** benefit 20,882 ms / harm 3 iters ~540 ms.
+Net **~16-17% lin_ms reduction** (~20 s off a 122 s run).
+
+**No regression expected on case 3 / case 4:** Lever 3 fires only in
+medium-water-like regimes; on shelves where `dead-state` bypass
+dominates, the Lever 3 gate will rarely trigger (because `dead-state`
+pre-empts it) and when it does will behave identically to the existing
+bypass.
+
+### Follow-up before Stage 2
+
+Two risks deferred to Stage 2 validation, not blockers:
+
+1. **Cross-substep hysteresis.** Flag lifetime should be Newton-loop
+   only (clears at each substep boundary). Implementation: `let mut
+   iterative_failed_last_iter = false;` inside `run_fim_timestep` and
+   scoped to a single Newton loop — matches the existing bypass-flag
+   pattern.
+2. **Locked smoke tests** (drsdt0, spe1_first_steps, spe1_gas_injection)
+   must stay green on Stage 2. These tests gate subtle Newton trajectory
+   differences that could be perturbed if Lever 3 changes the exact
+   step at which `dead_state_direct_bypass` latches.
+
+Stage 2 should land as a minimal diff: one bool, one if-branch at
+newton.rs:2658 (right before the existing bypass check), and a
+fim_trace line. Promote per `CLAUDE.md` discipline: run locked smoke
+tests + 4-case shortlist A/B on same-wasm baseline swap.
