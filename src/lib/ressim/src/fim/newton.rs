@@ -2251,6 +2251,7 @@ pub(crate) fn run_fim_timestep(
     let mut restart_stagnation_direct_bypass = false;
     let mut restart_stagnation_fallback_streak = 0_u32;
     let mut zero_move_fallback_direct_bypass = false;
+    let mut iterative_failed_last_iter = false;
     let mut previous_effective_move_floor_site: Option<FimHotspotSite> = None;
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
@@ -2655,11 +2656,11 @@ pub(crate) fn run_fim_timestep(
 
         let rhs = -&assembly.residual;
         let mut linear_options = options.linear;
-        if dead_state_direct_bypass
+        let any_preexisting_bypass = dead_state_direct_bypass
             || restart_stagnation_direct_bypass
             || zero_move_fallback_direct_bypass
-            || repeated_zero_move_direct_bypass
-        {
+            || repeated_zero_move_direct_bypass;
+        if any_preexisting_bypass {
             linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
             fim_trace!(
                 sim,
@@ -2675,6 +2676,15 @@ pub(crate) fn run_fim_timestep(
                 } else {
                     "zero-move fallback"
                 },
+                linear_options.kind.label(),
+            );
+        } else if iterative_failed_last_iter {
+            linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: iterative-failure short-circuit (prev iter fell back); using {}",
+                iteration,
                 linear_options.kind.label(),
             );
         }
@@ -2741,6 +2751,7 @@ pub(crate) fn run_fim_timestep(
         } else {
             restart_stagnation_fallback_streak = 0;
         }
+        iterative_failed_last_iter = used_fallback && !any_preexisting_bypass;
 
         let update_peak = scaled_update_peak(&linear_report.solution, &assembly.variable_scaling);
         final_update_inf_norm =

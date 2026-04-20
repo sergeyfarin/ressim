@@ -77,7 +77,11 @@
       "Bash(echo \"exit=$?\")",
       "Bash(bash /tmp/bypass-audit/run-sweep.sh)",
       "Bash(tee /tmp/bypass-audit/sweep-progress.log)",
-      "Bash(node /tmp/bypass-audit/aggregate.mjs)"
+      "Bash(node /tmp/bypass-audit/aggregate.mjs)",
+      "Bash(chmod +x /tmp/lever3-stage2/run-sweep.sh)",
+      "Bash(bash /tmp/lever3-stage2/run-sweep.sh baseline)",
+      "Bash(bash /tmp/lever3-stage2/run-sweep.sh stage2)",
+      "Bash(node /tmp/lever3-stage2/compare.mjs)"
     ],
     "additionalDirectories": [
       "/tmp"

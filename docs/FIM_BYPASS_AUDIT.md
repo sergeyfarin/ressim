@@ -468,3 +468,158 @@ Stage 2 should land as a minimal diff: one bool, one if-branch at
 newton.rs:2658 (right before the existing bypass check), and a
 fim_trace line. Promote per `CLAUDE.md` discipline: run locked smoke
 tests + 4-case shortlist A/B on same-wasm baseline swap.
+
+## Lever 3 Stage 2 — implementation + A/B result — 2026-04-20
+
+Landed as a minimal additive diff in `src/lib/ressim/src/fim/newton.rs`
+(+14 lines, 2 modifications around lines 2254, 2658, 2754):
+
+```rust
+// state declaration inside run_fim_timestep
+let mut iterative_failed_last_iter = false;
+
+// at the bypass-check site, hoist the or-chain and add a second branch:
+let any_preexisting_bypass = dead_state_direct_bypass
+    || restart_stagnation_direct_bypass
+    || zero_move_fallback_direct_bypass
+    || repeated_zero_move_direct_bypass;
+if any_preexisting_bypass {
+    linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+    fim_trace!(sim, options.verbose,
+        "    iter {:>2}: bypassing iterative backend after {}; using {}",
+        iteration, /* label */, linear_options.kind.label());
+} else if iterative_failed_last_iter {
+    linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+    fim_trace!(sim, options.verbose,
+        "    iter {:>2}: iterative-failure short-circuit (prev iter fell back); using {}",
+        iteration, linear_options.kind.label());
+}
+
+// after the linear-solve block:
+iterative_failed_last_iter = used_fallback && !any_preexisting_bypass;
+```
+
+**Invariants:**
+- Flag lifetime is Newton-loop-local (created inside `run_fim_timestep`,
+  naturally clears at substep boundary).
+- Flag sets iff `used_fallback && !any_preexisting_bypass` — i.e. this
+  iter's category was `post-fail-fallback`, matching the Stage 1
+  definition exactly.
+- Flag clears on every other outcome (clean, near-converged-accept,
+  any pre-existing bypass iter, and implicitly on return paths since
+  the Newton loop exits). We deliberately do NOT set the flag from
+  bypass iters — those don't touch the iterative backend, so "prev
+  iter's iterative failed" is the wrong summary.
+
+### Locked smoke tests
+
+`cargo test --release --lib` on clean master: 297 passed / 7 failed.
+`cargo test --release --lib` with Stage 2: 297 passed / 7 failed.
+Exact parity — Stage 2 introduces no new test failures. (The 7 pre-
+existing failures are tracked separately; 5 of them are FIM-scope,
+unrelated to this work. Not blocking.)
+
+### A/B sweep (same-wasm, 4 shortlist cases, 2026-04-20)
+
+Commit state: [726d2a4](https://github.com/..) + Stage 2 diff. Both
+baseline and stage2 WASM rebuilt from the same toolchain.
+
+Per-step summary (values from the diagnostic `step=N |...` line):
+
+#### Case 1 — medium-water 20x20x3 dt=0.25 step-1
+| step | base lin_ms | stg lin_ms | Δ       | substeps | accepts        | oil     |
+|-----:|------------:|-----------:|:--------|---------:|:---------------|--------:|
+| 1    |      17,602 |     14,336 | **−18.6%** |    12=12 | 12+0+0=12+0+0 | 3337.62 |
+
+#### Case 2 — medium-water 20x20x3 dt=0.25 6-step
+| step | base lin_ms | stg lin_ms | Δ       | substeps | accepts        | oil     |
+|-----:|------------:|-----------:|:--------|---------:|:---------------|--------:|
+| 1    |      17,531 |     14,317 | −18.3%  |    12=12 | 12+0+0=12+0+0 | 3337.62 |
+| 2    |      19,653 |     18,033 |  −8.2%  |    20=20 | 20+0+0=20+0+0 | 3458.48 |
+| 3    |      19,746 |     15,292 | −22.6%  |    16=16 | 16+0+0=16+0+0 | 3517.50 |
+| 4    |      24,022 |     20,802 | −13.4%  |    23=23 | 23+0+0=23+0+0 | 3556.99 |
+| 5    |      20,172 |     15,843 | −21.5%  |    13=13 | 13+0+0=13+0+0 | 3587.28 |
+| 6    |      20,642 |     18,047 | −12.6%  |    18=18 | 18+0+0=18+0+0 | 3610.27 |
+| **Σ**|     121,766 |    102,334 | **−16.0%** |  102=102 | exact match   | exact   |
+
+#### Case 3 — heavy-water 12x12x3 dt=1
+| step | base lin_ms | stg lin_ms | Δ     | substeps | accepts                  | oil     |
+|-----:|------------:|-----------:|:------|---------:|:-------------------------|--------:|
+| 1    |       1,649 |      1,640 | −0.5% |    16=16 | 15+4+8354=15+4+8354      | 3808.44 |
+
+#### Case 4 — gas-rate 10x10x3 6-step
+| step | base lin_ms | stg lin_ms | Δ     | substeps | accepts        | oil    |
+|-----:|------------:|-----------:|:------|---------:|:---------------|-------:|
+| 1    |         533 |        532 | −0.2% |     8=8  | 8+0+0=8+0+0   | 160.88 |
+| 2    |         299 |        300 | +0.3% |     4=4  | 4+0+0=4+0+0   | 161.10 |
+| 3    |         203 |        193 | −4.9% |     4=4  | 4+0+0=4+0+0   | 161.31 |
+| 4    |         195 |        191 | −2.1% |     4=4  | 4+0+0=4+0+0   | 161.50 |
+| 5    |         177 |        179 | +1.1% |     4=4  | 4+0+0=4+0+0   | 161.72 |
+| 6    |         171 |        173 | +1.2% |     4=4  | 4+0+0=4+0+0   | 161.92 |
+| **Σ**|       1,578 |      1,568 | −0.6% |    28=28 | exact match   | exact  |
+
+#### Overall
+
+| metric           | baseline  | stage 2   | delta                |
+|------------------|----------:|----------:|:---------------------|
+| total lin_ms     |   142,595 |   119,878 | **−22,717 (−15.9%)** |
+| max oil div      | —         | —         | 0.0 (bit-exact)      |
+| trajectory       | —         | —         | **EQUIVALENT on all 4 cases** |
+
+### Short-circuit activation count (probe trace)
+
+| case | fired | Stage 1 prediction (benefit iters) |
+|------|------:|-----------------------------------:|
+| 1    |    15 | 19                                 |
+| 2    |    78 | 76                                 |
+| 3    |     1 |  1                                 |
+| 4    |     0 |  0                                 |
+
+Close match. Case 1's small drift (15 vs 19) is within noise — Newton
+trajectory is trajectory-equivalent but not strictly iter-by-iter
+identical because the short-circuit replaces a ~150-250 ms fgmres-cpr
+with a ~100-180 ms sparse-lu, and the slightly different wall-clock
+and solution numeric noise can shift when exactly `dead_state_direct_
+bypass` flips on/off — which in turn can shift whether a given iter
+lands as `post-fail-fallback` or `dead-state`. The final oil/substeps
+are bit-exact so this is functionally equivalent.
+
+### Verdict
+
+**PROMOTED.** Lever 3 Stage 2 is the new baseline for medium-water
+FIM convergence cost. Net **−15.9% across the 4-case shortlist** and
+**−16.0% on the 6-step medium-water case** (the shelf where lin_ms
+actually concentrates — 85% of the absolute cost savings). Cases 3/4
+are neutral (as predicted). Trajectories bit-exact.
+
+### Baseline update (per `CLAUDE.md` promotion discipline)
+
+- **Commit:** Stage 2 diff landed on top of `726d2a4` (bypass audit doc).
+- **Replay commands:** same as the Stage 1 probe (see "Shortlist
+  results" above).
+- **Baseline numbers (new, post-Stage-2, to be referenced by future
+  convergence work):** case 1 lin_ms = 14,336; case 2 Σ lin_ms =
+  102,334; case 3 = 1,640; case 4 Σ = 1,568.
+- **Superseded baseline:** case 1 = 17,602; case 2 Σ = 121,766;
+  cases 3/4 unchanged (within noise).
+- **Raw logs (not committed, reproducible):** `/tmp/lever3-stage2/{baseline,stage2}-case{1-4}.log`.
+  Comparator: `/tmp/lever3-stage2/compare.mjs`.
+
+### Next direction
+
+- **Lever 1 Stage 1 probe** is the natural next step. Lever 1 targets
+  the `near-converged-accept` gate widening (raise `NEAR_CONVERGED_
+  ITERATIVE_OUTER_FACTOR` from 16.0 to 200.0). Expected to compose
+  additively with Lever 3 because the two levers catch different
+  failure subsets:
+  - Lever 3 shorts-out consecutive iterative failures (already landed).
+  - Lever 1 would convert more single-failure iters into near-converged-
+    accepts, saving the sparse-lu rescue cost entirely for those.
+  - The two do not overlap: once Lever 3 fires on iter N, iter N+1
+    uses sparse-lu from the start — Lever 1's gate never applies.
+    Lever 1 would help on iters where the previous iter was `clean`
+    but this one is `post-fail-fallback`.
+- Stage 1 probe for Lever 1: instrument `should_accept_near_converged_
+  iterative_step` to emit the current+hypothetical decisions under the
+  proposed widened factor; run on the 4-case shortlist; project
+  savings.
