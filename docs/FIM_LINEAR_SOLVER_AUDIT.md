@@ -548,3 +548,432 @@ injector. If Fixes 1–3 close the convergence gap, Fix 6 can be dropped.
 - Memory: `project_fim_cost_profile_2026-04-18`,
   `project_fim_bypass_audit_2026-04-19`,
   `project_fim_jacobian_reuse_attempt`.
+
+## Fix 2 Stage 1 probe design — 2026-04-20
+
+Context: after Lever 3 Stage 2 landed (commit d6069be, -15.9% lin_ms
+on 4-case shortlist), the convergence gap with OPM Flow (30-day
+timesteps vs our sub-day substeps) remains. Medium-water case 2
+requires 12-23 substeps per 0.25-day step at dt ∈ [3e-3, 5e-2]d,
+driven by `retry_dom=nonlinear-bad:oil@N` Newton damping failures.
+Fix 2 (replace row-0 pressure restriction with summed-IMPES or
+Dynamic Row Sum) is the next-highest-leverage lever per
+`FIM_WIDE_ANGLE_ANALYSIS.md` Tier 1 ranking — it would attack both
+lin_ms (via CPR quality) and dt ceiling (via more-accurate Newton
+updates).
+
+**What the probe measures:** per-cell restriction-weighted residual
+magnitudes for the three candidate restriction schemes, side-by-side
+with the current (Baseline) scheme. No preconditioner change; no
+actual alternative solve. Measurement-only: we compute each variant's
+*coarse-system RHS magnitude* and *coarse-system diagonal dominance*
+at each CPR application and log aggregate statistics, then decide
+whether to build a real alternative preconditioner in Stage 2.
+
+**Signal we want:**
+- Does Baseline's row-0 restriction attenuate the residual more than
+  SummedImpes or DynamicRowSum at the cells where outer `fgmres-cpr`
+  is stalling?
+- Does Baseline's coarse-system diagonal have lower magnitude (worse
+  conditioning) than the alternatives?
+- A PASS is the alternative shows a consistent, cell-weighted
+  advantage on the cases where `fgmres-cpr` fails. A FAIL is the
+  alternatives produce the same or weaker signal → Fix 2 unlikely to
+  help and we pivot to Fix 4 (stronger coarse solver) or Line Search.
+
+**Instrumentation (gmres_block_jacobi.rs, ~50 lines additive):**
+
+1. Add a variant enum `PressureRestrictionKind { Baseline, SummedImpes,
+   DynamicRowSum }` — Baseline is what the code currently does.
+2. In `build_pressure_transfer_weights`, add a probe path that computes
+   all three variants' restriction weights on each block. Only
+   Baseline is returned; the other two are stored alongside the
+   preconditioner for measurement.
+3. In `extract_pressure_rhs`, when a probe flag is on, compute the
+   coarse RHS under all three restrictions. Log per-apply:
+   - `|rhs_baseline|_inf`, `|rhs_summed|_inf`, `|rhs_dynrow|_inf`
+   - cell index of the max-residual block and its per-row magnitudes
+     `(|r0|, |r1|, |r2|)` so we can see whether the water row is
+     under-representing the dominant residual direction
+4. In `solve_pressure_correction`, compute a cheap proxy for each
+   variant's coarse-diagonal magnitude: `sum_cell |restriction·block_diag|`.
+   The Baseline diagonal is what the coarse solver actually inverts;
+   the alternatives' values tell us whether the coarse problem would
+   be better-conditioned under Fix 2.
+5. Emit a trace line once per CPR outer apply:
+   ```
+   CPR-RESTRICTION-PROBE iter={n} rhs_inf=[base={v} summed={v} dynrow={v}]
+     rhs_l2=[base={v} summed={v} dynrow={v}]
+     coarse_diag_sum=[base={v} summed={v} dynrow={v}]
+     worst_cell={c} block_r=[{r0} {r1} {r2}]
+   ```
+
+**Decision rule for promotion to Stage 2:**
+- PASS: on cases 1 and 2 (medium-water), SummedImpes OR DynamicRowSum
+  shows `rhs_inf` ≥ 1.5× and `coarse_diag_sum` ≥ 1.2× Baseline on the
+  CPR applies that precede a `post-fail-fallback` iter. (The
+  threshold is conservative — we're looking for a clean signal, not
+  a marginal one, given Fix 1's false-positive on Stage 1 LINSCALE.)
+- FAIL: no variant clears both thresholds → Fix 2 will not change
+  behavior meaningfully; pivot to Fix 4 or add Line Search (Fix 5).
+- PARTIAL: one variant clears the thresholds but only on a fraction
+  of the failing iters → proceed with Stage 2 for that variant and
+  measure actual lin_ms; expect a smaller win than the PASS case.
+
+**Risk of false PASS:** the probe measures RHS magnitude, not solved
+quality. A variant with a bigger RHS could still produce the same
+update after the coarse solve converges. We accept this risk because
+the probe is cheap and any real Stage 2 (build the alternative
+preconditioner) would re-validate empirically.
+
+**Stage 1 scope:**
+- Probe lives in `gmres_block_jacobi.rs` only (additive, ~50 lines).
+- Gated off by default; enabled by a `FIM_CPR_RESTRICTION_PROBE=1`
+  env var so locked smoke tests stay green without toggling.
+- Run 4-case shortlist with probe on, aggregate per-case statistics,
+  revert probe, commit the audit doc update + a memory memo.
+
+### Fix 2 Stage 1 SUPERSEDED — OPM Flow reference run is the sharper signal
+
+Before implementing the internal restriction probe we ran the case-2
+shortlist problem through **OPM Flow 2025.10** on the same machine
+(see `/tmp/opm-case2/CASE2.DATA` for the translated deck). OPM Flow
+ships the industry-standard CPR-W preconditioner (pressure-stage AMG
+with wells) and a full Newton stack (residual/update/MB convergence,
+update stabilization, line-search-like controls). This gives us a
+**direct reference** for "what a correctly implemented CPR + Newton
+stack does on this exact problem" — strictly stronger evidence than
+our internal restriction proxy would have been.
+
+**Case 2 — OPM Flow vs ressim post-Stage-2 baseline (same problem, same dt schedule):**
+
+| metric                         | ressim (d6069be)          | OPM Flow 2025.10 | gap        |
+|--------------------------------|---------------------------|------------------|-----------:|
+| total substeps across 6 steps  |                       102 |                7 |     **15×** |
+| Newton iterations (accumulated)|             hundreds (est)|               33 |    **~10×+** |
+| linear iterations              |             hundreds (est)|               36 |    **~10×+** |
+| wall time (simulation only)    |                     ~122 s |           0.07 s |   **~1700×** |
+| final FPR                      |                 348.3 bar |        337.9 bar |     ~3% lower (vol-wt vs cell-avg) |
+| producer oil rate trajectory   |          3337→3610 m³/d   |    3050→3558 m³/d |     same trend |
+
+Physical trajectories match (within the cell-avg vs volume-weighted
+pressure convention). Convergence robustness does not.
+
+**Key data points from OPM's run:**
+- Step 1 (dt=0.25d): **1 substep**, 9 Newton iters, 9 linear iters
+- Step 2: **2 substeps** at dt=0.125 — this was OPM's only step that
+  needed adaptive reduction; subsequent steps returned to dt=0.25
+- Steps 3-6: **1 substep each** at dt=0.25, 4-5 Newton iters, 4-6
+  linear iters per substep
+- Linear solver: `LinearSolver="cprw"` — CPR with Wells, not ILU0+scalar
+- Preconditioner reuse: `CprReuseInterval=30`, `CprReuseSetup=4`
+
+**Implications for the fix ranking:**
+
+1. **The convergence gap is not subtle — it is a ~3 order-of-magnitude
+   structural gap.** Fix 2 (summed-IMPES restriction) alone will not
+   close it. The 2026-04-19 audit correctly identified that our CPR is
+   incomplete, but the gap is bigger than a restriction-operator
+   change can close: OPM's coarse solver is AMG, not BiCGSTAB+ILU0 (our
+   Finding 4), and OPM's Newton stack has update stabilization and
+   adaptive time-step control tuned to reservoir problems (our Finding 6).
+2. **Fix 2 remains worth doing as a component**, but its projected
+   upside should be reframed: it is one of ~4 components in a correct
+   CPR+Newton stack, and the biggest win will come from completing all
+   of them. Any Stage 2 that lands Fix 2 alone and shows only a 10-20%
+   lin_ms improvement would be consistent with this evidence — not a
+   disappointment.
+3. **The line-search / update-stabilization lever (Fix 5) may be
+   larger than originally estimated.** OPM does not take 12-23
+   substeps per 0.25-day step on this problem. A non-trivial fraction
+   of our substep count comes from Appleyard damping failing to find a
+   safe factor where a proper line search or update stabilization
+   would succeed. `nonlinear-bad:oil@N` is the dominant retry class in
+   our case-2 log — that is exactly the symptom Fix 5 targets.
+4. **The decision between "finish CPR" and "add line search" is
+   resolvable by a second OPM experiment, cheaper than either
+   implementation.** Re-run OPM with `--use-update-stabilization=false`
+   and see how many substeps it needs. If OPM still converges in ~7
+   substeps without update stabilization, the win is in the linear
+   solver (CPR-AMG); if it degrades, Fix 5 is the lever.
+
+**Revised Stage 1 decision — 2026-04-20:**
+- **Fix 2 internal restriction probe: skipped.** Its upside is bounded
+  by the OPM evidence — even a perfect summed-IMPES restriction only
+  addresses one of the multiple CPR deficiencies and cannot close a
+  15-100× substep gap on its own.
+- **Next action: OPM component-ablation experiments.** Run 2-3 cheap
+  OPM variants on the same deck:
+  1. default cprw — **done, 7 substeps**
+  2. `--linear-solver=ilu0` (no CPR) — measure whether CPR is the
+     dominant contributor to OPM's substep count
+  3. `--use-update-stabilization=false` — measure whether update
+     stabilization is material
+  4. `--enable-adaptive-time-stepping=false` with our dt=0.25 schedule
+     — measure baseline Newton robustness at fixed dt
+
+  Each is a 1-line CLI change and a 0.1s run. The outcomes will tell
+  us definitively whether the gap is CPR-dominated, Newton-dominated,
+  or mixed — directing the next 2-4 weeks of implementation work.
+- **Fix 5 (line search / update stabilization) moves up to the same
+  tier as Fix 2/4.** It was "Tier 2" in the wide-angle analysis; the
+  OPM evidence suggests it is Tier 1 alongside the CPR fixes.
+
+### OPM Flow ablation experiments — 2026-04-20
+
+Four single-flag experiments on the same deck. Each a 0.1s re-run.
+Goal: localize the gap between ressim (102 substeps / 122s) and OPM
+(7 substeps / 0.07s).
+
+| experiment                                                  | substeps | Newton its | linear its | verdict                                   |
+|-------------------------------------------------------------|---------:|-----------:|-----------:|-------------------------------------------|
+| default (`LinearSolver=cprw`)                               |        7 |         33 |         36 | baseline                                  |
+| `--linear-solver=ilu0` (disable CPR)                        |        7 |         48 |    **758** | **CPR is the dominant linear-iters lever**|
+| `--use-update-stabilization=false`                          |        7 |         33 |         36 | **identical — update-stab is no-op here** |
+| `--enable-adaptive-time-stepping=false` (fixed dt=0.25)     |        6 |         30 |         34 | adaptive splitting adds 1 substep         |
+| `--tolerance-cnv=0.001 --tolerance-mb=1e-9` (tight)         |        7 |         39 |         42 | +18% iters, same substep count            |
+
+**Localizations:**
+
+1. **CPR contributes the full 21× linear-iter savings**: 758 → 36.
+   Without CPR, OPM needs ~16 Krylov iters per Newton linearization
+   (758/48); with CPR it needs ~1 (36/33). That's the AMG coarse
+   grid doing its job on the elliptic pressure subsystem.
+
+2. **CPR does NOT contribute to substep count on its own**: both
+   `cprw` and `ilu0` take 7 substeps. The linear solver is accurate
+   enough either way for Newton to find a damp-feasible direction.
+   This contradicts an earlier hypothesis that a degraded linear
+   solve causes ressim's substep explosion via "linear-bad-
+   masquerading-as-nonlinear-bad" — at least, it's not the direct
+   mechanism in OPM's reference stack.
+
+3. **CPR does contribute modestly to Newton-iter count**: 33 → 48
+   (+45%) without CPR. More inaccurate linear solves → more Newton
+   iters to converge each substep.
+
+4. **Update stabilization is a no-op on this problem**: identical
+   substep/Newton/linear counts with and without it. This problem
+   does not exhibit the oscillation pattern update-stab targets.
+   Fix 5 (line search + update stabilization) drops back to Tier 2.
+
+5. **Tight tolerances add ~18% iters but do not change substeps**.
+   Our tolerance choice vs OPM's is not the explanation for the
+   substep gap.
+
+**Where does the 102-vs-7 substep gap come from, then?**
+
+By elimination:
+- Not CPR directly (CPR helps Newton iter count by 45%, not 15×
+  substep count).
+- Not update stabilization (no-op here).
+- Not tolerance choice (minor).
+- Not adaptive time-stepping (fixed dt only cuts 1 substep).
+
+Remaining explanations, ranked by likely contribution:
+- **(A) Newton damping policy + acceptance criteria.** OPM's Newton
+  has a different acceptance rule than ressim's Appleyard
+  `hotspot-newton-caps` + `retry_dom=nonlinear-bad:oil@N` machinery.
+  On this problem OPM accepts after 4-9 Newton iters per substep
+  with dt=0.25d; ressim cannot damp at dt=0.25d and retries down
+  to dt ∈ [3e-3, 5e-2]d. The gap is not "our Newton fails to
+  damp"; it's "our Newton thinks it has failed to damp and backs
+  off dt, while OPM's Newton keeps iterating and succeeds". This
+  is a ressim-specific over-conservatism in the acceptance gate.
+- **(B) Jacobian accuracy / scaling.** Finding 2 (unscaled Jacobian
+  given to the linear solver) was refuted as a simple D_r·J·D_c
+  pre-scaling lever (Stage 1 LINSCALE probe showed no win), but
+  the underlying "physical-units row variation" may still hurt
+  Appleyard damping's cell-local stability estimates. Under-
+  investigated.
+- **(C) Property evaluation / upwinding at the well column.**
+  retry_dom consistently lands at cells that move through the
+  producer's water front (`oil@190`, `oil@256`, `oil@2719`, etc.).
+  These are cells where upwinding may flip within an iteration,
+  forcing Newton to chase a discontinuity Appleyard can't damp.
+  OPM uses monotone upwinding with smoothing; ressim's upwinding
+  strategy has not been audited for this failure mode.
+
+**Revised next action:**
+
+The gap is **NOT** in the linear solver as we previously framed it.
+CPR helps, but not by enough to close the 15× substep gap.
+Implementing Fix 2 or even Fix 4 alone is projected to save 10-30%
+of lin_ms (consistent with the CPR ablation above: ~40% of Newton
+iters, which is a subset of total lin_ms) but would leave the
+substep gap almost entirely intact.
+
+**New Tier 1 candidates (post-OPM-ablation):**
+
+- **Fix A (new, HIGH): audit and widen ressim's Newton acceptance
+  gate to match OPM's behavior.** Compare Newton iteration counts
+  per substep between ressim and OPM on the same first substep of
+  step 1. Find the iter where OPM accepts (~9) and ressim retries
+  (~5-7 before hotspot-cap or damping failure). The acceptance
+  rule in `should_accept_near_converged_iterative_step` and the
+  hotspot-retry logic are the most likely culprits.
+- **Fix B (new, HIGH): audit upwinding at the saturation front.**
+  retry_dom localizes to cells on the water front. If upwinding
+  flips mid-Newton-iter, Appleyard can't converge. A single-point
+  upstream weighting with a smoothing term (Hamon-Vohralik or
+  similar) would stabilize the flux Jacobian.
+- Existing Fix 2 / Fix 4 (CPR completion): demoted. Worth doing for
+  the ~20-30% lin_ms win they could deliver but no longer the
+  headline substep-gap lever.
+- Fix 5 (line search + update stabilization): demoted to Tier 2
+  based on OPM ablation. Line search alone (without the
+  stabilization half) may still help; TBD.
+
+**Next concrete step:**
+
+Side-by-side ressim vs OPM on a single substep at dt=0.25d, step 1.
+Instrument both to print per-Newton-iter: residual norm (scaled),
+max saturation change, max pressure change, acceptance decision.
+Direct comparison tells us exactly where ressim's acceptance gate
+diverges from OPM's. Expected outcome: ressim is failing to
+accept at iter 3-5 where OPM accepts at iter 6-9 after more
+damping.
+
+## Side-by-side per-Newton-iter comparison — 2026-04-21
+
+Executed the planned instrumentation on step 1, dt=0.25d. Traces
+captured at `/tmp/opm-case2/trace/CASE2.DBG` and
+`/tmp/ressim-trace-step1.log`. The comparison exposes the **exact
+mechanism** by which ressim bails out while OPM converges cleanly.
+
+**OPM (cprw, step 0, stepsize 0.25d — converges in 9 Newton iters):**
+
+| iter | MB(O)    | MB(W)    | CNV(O)   | CNV(W)   |
+|-----:|---------:|---------:|---------:|---------:|
+|    0 | 7.48e-2  | 7.48e-2  | 89.89    | 89.72    |
+|    1 | 4.09e-2  | 2.81e-2  | 45.79    | 33.22    |
+|    2 | 2.16e-2  | 4.27e-2  |  9.70    | 31.59    |
+|    3 | 2.38e-2  | 2.57e-2  |  8.97    | 11.74    |
+|    4 | 1.67e-2  | 1.63e-2  |  6.70    |  6.74    |
+|    5 | 5.93e-3  | 5.53e-3  |  1.53    |  5.34    |
+|    6 | 1.72e-4  | 1.67e-4  |  0.58    |  1.62    |
+|    7 | 2.44e-5  | 1.86e-5  |  8.3e-2  |  9.6e-2  |
+|    8 | 1.40e-6  | 7.42e-7  |  5.5e-3  |  5.6e-3  |
+|    9 | 5.37e-8  | 4.20e-8  |  2.1e-4  |  2.8e-5  |
+
+Note the **non-monotone CNV(W)** at iter 2 (jumps 33.22 → 31.59 →
+actually slight uptick in other MB rows at iter 2/3). OPM tolerates
+these non-monotonicities and keeps iterating. No retries, no dt
+chop.
+
+**Ressim (fgmres-cpr, step 1 substep 0 retry 0, dt=0.25d — bails at
+iter 7 STAGNATION):**
+
+| iter | res      | damp      | stag  | notes                                               |
+|-----:|---------:|----------:|------:|-----------------------------------------------------|
+|    0 | 22.47    | 0.0055    |       | upd=36.4 → heavily damped                           |
+|    1 | 22.35    | 0.0663    |       | small progress (−0.5%)                              |
+|    2 | 20.87    | 0.0349    |       | fgmres-cpr FAILED max-iters, fallback to sparse-lu  |
+|    3 | 20.14    | 0.0595    | stag=1| iterative-failure short-circuit → sparse-lu         |
+|    4 | 18.95    | **0.0000**|       | **HOTSPOT effective-move floor cell399** (zero move)|
+|    5 | 18.95    | 0.0580    | stag=1| zero-move bypass (repeats)                          |
+|    6 | 18.34    | 0.1161    | stag=2| hotspot shifts to cell0 water front                 |
+|    7 | **18.74**| —         | stag=3| **STAGNATION-REJECTED** (res increased!) → retry    |
+
+At iter 7, the gate prints
+`gates=[changed=true upd=1.485e-1/1.000e-3 reject res=1.874e1/1.000e-4 reject mb=1.562e-2/1.000e-5 reject]`
+— i.e. none of the tolerances are met, so the near-converged-accept
+gate cannot help. STAGNATION count=3 accumulated over iters 3, 5, 7
+trips, substep FAILED, dt halved to 0.125d.
+
+Same pattern repeats at dt=0.125d (iters 0-7 end with
+STAGNATION-REJECTED, retry_factor=0.50), then at dt=0.0625d it
+finally converges in 14 iters — but meanwhile 12 substeps have been
+burned for step 1 alone.
+
+**Mechanism-level diagnosis (sharp):**
+
+1. **HOTSPOT effective-move floor is the primary stagnation driver.**
+   At iter 4 ressim damps to `damp=0.0000` at `cell399` (the
+   producer corner, `(19,19,0)` — the cell that sees the BHP=100
+   constraint). This is the effective-move-floor code path: when
+   Appleyard's damping would take the cell too far from its current
+   state, the floor forces damp=0 on that row, which means the
+   iteration makes **zero effective progress** but still counts as
+   a Newton iteration. Iter 5 repeats zero-move. That is 2 of the
+   3 stagnation counts accumulated in 7 iters.
+
+2. **STAGNATION (count=3) gate is the proximate trigger.** The
+   tripwire fires at iter 7 because the combination of (damped iter
+   0-2) + (two zero-move iters 4-5) + (mild non-monotone bump at
+   iter 7) accumulates 3 stagnation events well before the
+   iteration budget is exhausted. OPM's equivalent monitor either
+   doesn't exist or tolerates more non-monotonicity — OPM's CNV
+   trajectory has a similar "plateau-like" region at iters 2-4
+   (9.70 → 8.97 → 6.70) but OPM continues to iter 9 where
+   convergence is clean.
+
+3. **fgmres-cpr failure at iter 2 triggers the iterative-failure
+   short-circuit (Lever 3).** That short-circuit is correct — it
+   saves lin_ms — but it doesn't save the substep because the
+   **nonlinear** stagnation is already inevitable by the time
+   iter 4 hits the HOTSPOT floor.
+
+4. **Retry at dt=0.125d replays the same failure mode.** Iter 4
+   hits the same HOTSPOT cell399 zero-move. The dt chop does not
+   break the HOTSPOT pattern — only dt=0.0625d does, because at
+   that dt the Appleyard-adjusted move is small enough that the
+   effective-move floor no longer kicks in.
+
+**Why this localizes the fix:**
+
+The previous tentative recommendation was a generic "widen Newton
+acceptance gate". The side-by-side narrows that to two specific
+pieces:
+
+- **Fix A1 (HIGH, specific): audit the HOTSPOT effective-move
+  floor.** Zero-move iters counting as stagnation is a
+  self-inflicted wound: iterations that make no progress shouldn't
+  *also* count against a stagnation budget that kills the substep.
+  Options: (a) don't increment stagnation when the iteration is
+  HOTSPOT-zero-move, (b) widen the effective-move floor so pure
+  zero moves are rarer, or (c) skip the iter entirely (re-solve
+  with different damping) instead of accepting a zero-move
+  iteration.
+
+- **Fix A2 (HIGH, specific): audit the STAGNATION gate threshold
+  and the `gates` tolerances used inside it.** OPM tolerates
+  non-monotone residual bumps (iter 7 res=18.74 > iter 6 res=18.34
+  is a bump of +2% that triggered rejection); OPM's sample
+  trajectory shows similar ~5% bumps that it absorbs. Widening the
+  stagnation tolerance — or switching to an "accept-if-cnv-decreasing"
+  rule that mirrors OPM's CNV/MB gate — would likely let ressim
+  reach iter 12-14 at dt=0.25d instead of retrying at dt=0.125d.
+
+- **Fix B (audit upwinding front stability) remains HIGH but
+  distinct.** The HOTSPOT triggering at cell399 (producer) and
+  cell0 (injector corner) may itself be caused by upwinding flips,
+  but the side-by-side doesn't prove that; Fix A1/A2 can be
+  prototyped first because they are strictly policy-level fixes
+  that don't change physics.
+
+**Stage 1 probe design for Fix A1:**
+
+Read-only instrumentation first, then a narrow gate change as the
+Stage 2 probe. Stage 1 plumbing (hours, not days):
+
+- Add a `stagnation_attribution` field to the per-iter trace that
+  prints which iter contributed to the stagnation count and why
+  (zero-move, residual-bump, update-below-eps).
+- Run the 4-case shortlist and case 2 to count how many stagnation
+  events are zero-move vs real-bump across substep retries.
+- Expected signal: if >50% of stagnation events on case 2 are
+  zero-move, Fix A1 addresses the dominant mode. If <20%, Fix A2
+  is the dominant mode. If split 50/50, both matter.
+
+Stage 2 (days): change the stagnation-counter rule to exclude
+zero-move iters. Measure substep count and lin_ms on the 4-case
+shortlist. Promote only if case 2 substeps drop meaningfully
+(target: 17 → 10 or fewer on step 1) without regressions on cases
+1/3/4.
+
+**Files of record:**
+- `/tmp/ressim-trace-step1.log` — full ressim verbose trace
+  capturing STAGNATION sequence.
+- `/tmp/opm-case2/trace/CASE2.DBG` — OPM verbose trace showing
+  monotone-enough CNV/MB convergence in 9 iters at dt=0.25d.

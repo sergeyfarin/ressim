@@ -81,7 +81,25 @@
       "Bash(chmod +x /tmp/lever3-stage2/run-sweep.sh)",
       "Bash(bash /tmp/lever3-stage2/run-sweep.sh baseline)",
       "Bash(bash /tmp/lever3-stage2/run-sweep.sh stage2)",
-      "Bash(node /tmp/lever3-stage2/compare.mjs)"
+      "Bash(node /tmp/lever3-stage2/compare.mjs)",
+      "Bash(flow --version)",
+      "Bash(flow CASE2.DATA)",
+      "Bash(flow --output-dir=. --enable-logging-of-summary --linear-solver-verbosity=3 --newton-verbosity=4 CASE2.DATA)",
+      "Bash(flow --solver-verbosity=3 --time-step-verbosity=3 /tmp/opm-case2/CASE2.DATA --output-dir=/tmp/opm-case2)",
+      "Read(//usr/bin/**)",
+      "Bash(dpkg -L libopm-common-bin)",
+      "Bash(summary /tmp/opm-case2/CASE2 WOPR:PRO WWIR:INJ WBHP:PRO WBHP:INJ FPR)",
+      "Bash(awk '/substeps=|retries=|dt=\\\\[/ {print NR, $0}' /tmp/lever3-stage2/stage2-case2.log)",
+      "Bash(mkdir -p /tmp/opm-case2/ablations)",
+      "Bash(cp ../CASE2.DATA CASE2.DATA)",
+      "Bash(flow --linear-solver=ilu0 --output-dir=./a1-ilu0 CASE2.DATA)",
+      "Bash(flow --use-update-stabilization=false --output-dir=./a2-noupdstab CASE2.DATA)",
+      "Bash(flow --enable-adaptive-time-stepping=false --output-dir=./a3-fixdt CASE2.DATA)",
+      "Bash(flow --tolerance-cnv=0.001 --tolerance-mb=1e-9 --output-dir=./a4-tightol CASE2.DATA)",
+      "Bash(flow --help)",
+      "Bash(flow --solver-verbosity=4 --linear-solver-verbosity=2 --debug-verbosity-level=5 --output-dir=/tmp/opm-case2/trace /tmp/opm-case2/CASE2.DATA)",
+      "Bash(flow --solver-verbosity=4 --linear-solver-verbosity=2 --debug-verbosity-level=5 /tmp/opm-case2/CASE2.DATA --output-dir=/tmp/opm-case2/trace)",
+      "Bash(awk -F ' fam=' '{print $1}')"
     ],
     "additionalDirectories": [
       "/tmp"
