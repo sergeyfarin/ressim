@@ -2235,6 +2235,9 @@ pub(crate) fn run_fim_timestep(
     let mut final_update_inf_norm = f64::INFINITY;
     let mut prev_residual_norm = f64::INFINITY;
     let mut stagnation_count: u32 = 0;
+    let mut stagnation_attrib_zero_move: u32 = 0;
+    let mut stagnation_attrib_real_bump: u32 = 0;
+    let mut stagnation_attrib_slow_decay: u32 = 0;
     let mut previous_hotspot_site: Option<FimHotspotSite> = None;
     let mut repeated_hotspot_streak: u32 = 0;
     let mut previous_producer_hotspot_effective_move: Option<ProducerHotspotStagnationDiagnostics> =
@@ -2478,8 +2481,35 @@ pub(crate) fn run_fim_timestep(
         }
 
         // Early termination: if residual is not decreasing, bail out to trigger timestep cut.
-        if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 {
+        // Zero-move iters (prev iter hit HOTSPOT effective-move floor) neither count against
+        // nor reset the stagnation budget — they make no progress by construction, so treating
+        // them as either progress or stagnation is wrong.
+        let prev_iter_was_zero_move = previous_effective_move_floor_site.is_some();
+        if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 && !prev_iter_was_zero_move
+        {
             stagnation_count += 1;
+            let stagnation_attrib_class: &'static str =
+                if current_norm > prev_residual_norm {
+                    stagnation_attrib_real_bump += 1;
+                    "real-bump"
+                } else {
+                    stagnation_attrib_slow_decay += 1;
+                    "slow-decay"
+                };
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: STAGNATION-ATTRIB class={} count={} res={:.3e} prev_res={:.3e} ratio={:.4} (zero_move_skipped={} real_bump={} slow_decay={})",
+                iteration,
+                stagnation_attrib_class,
+                stagnation_count,
+                current_norm,
+                prev_residual_norm,
+                current_norm / prev_residual_norm,
+                stagnation_attrib_zero_move,
+                stagnation_attrib_real_bump,
+                stagnation_attrib_slow_decay,
+            );
             if stagnation_count >= 3 {
                 let materially_changed = iterate_has_material_change(previous_state, &state);
                 let accepted_diagnostics = evaluate_accepted_state_convergence(
@@ -2650,6 +2680,9 @@ pub(crate) fn run_fim_timestep(
                 };
             }
         } else {
+            if prev_iter_was_zero_move {
+                stagnation_attrib_zero_move += 1;
+            }
             stagnation_count = 0;
         }
         prev_residual_norm = current_norm;

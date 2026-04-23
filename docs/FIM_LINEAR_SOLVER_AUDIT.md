@@ -977,3 +977,234 @@ shortlist. Promote only if case 2 substeps drop meaningfully
   capturing STAGNATION sequence.
 - `/tmp/opm-case2/trace/CASE2.DBG` — OPM verbose trace showing
   monotone-enough CNV/MB convergence in 9 iters at dt=0.25d.
+
+## Fix A1 Stage 1 probe — 2026-04-21
+
+Added `STAGNATION-ATTRIB` trace line in `newton.rs` at the
+`stagnation_count += 1` site. Each line emits a class label —
+`zero-move`, `real-bump`, or `slow-decay` — plus running totals.
+Read-only, no behavioral change.
+
+**Attribution rule:**
+- `zero-move` if `previous_effective_move_floor_site.is_some()` at
+  the time of the counter bump (prev iter hit HOTSPOT floor → zero
+  effective progress).
+- `real-bump` if `current_norm > prev_residual_norm` (residual
+  actually grew).
+- `slow-decay` otherwise (decreased by < 5%).
+
+**Sweep results (4 cases):**
+
+| case                                 | substeps | zero-move events | slow-decay | real-bump | bailouts | bailout class (dominant) |
+|--------------------------------------|---------:|-----------------:|-----------:|----------:|---------:|--------------------------|
+| Case 1 — medium-water 20x20x3 step-1 |       12 |     43 (**79%**) |          9 |         2 |        4 | zero-move (2/4)          |
+| Case 2 — medium-water 20x20x3 6-step |      102 |    286 (**86%**) |         45 |         2 |       34 | zero-move (34/38 ≈ 89%)  |
+| Case 3 — heavy-water 12x12x3 dt=1    |       16 |     36 (**78%**) |          5 |         5 |        2 | real-bump (2/2)          |
+| Case 4 — gas-rate 10x10x3 6-step     |       28 |       0 (**0%**) |          9 |         4 |        2 | slow-decay (2/2)         |
+
+**Decisive finding: Fix A1 (stop counting zero-move iters as
+stagnation) is the dominant lever on the water cases that drive
+the 102-substep gap.**
+
+- On case 2 — the case that drives the 15× substep gap — **86% of
+  all stagnation events and 89% of actual bailouts come from
+  zero-move iters.** Eliminating zero-move from the stagnation
+  budget would prevent the vast majority of substep failures.
+- Case 1 (a single step of case 2) shows the same pattern at 79%
+  zero-move event fraction.
+- Case 3 (heavy-water, 12x12x3, dt=1) also has 78% zero-move
+  events but only 2 bailouts — and those bailouts were real-bump
+  triggered. Fix A1 would save events without changing the bailout
+  count here (case 3 is a different regime, fewer substeps).
+- Case 4 (gas-rate) has **zero** zero-move events. HOTSPOT
+  effective-move floor does not fire in this regime because gas
+  flow doesn't produce the saturation-front discontinuities that
+  trigger cell-local effective-move floors. Fix A1 is a no-op on
+  case 4, which is the safest possible outcome (no risk of
+  regression).
+
+**Stage 2 design — narrow behavioral change:**
+
+Change the stagnation counter rule from `if current_norm >=
+prev_residual_norm * 0.95 then stagnation_count += 1` to exclude
+the case where the previous iteration hit the HOTSPOT effective-
+move floor. Concretely:
+
+```rust
+// Early termination: if residual is not decreasing, bail out to
+// trigger timestep cut. Skip this check when the previous
+// iteration was a HOTSPOT zero-move iter, because those iters
+// make no progress by construction and shouldn't count against
+// the stagnation budget.
+if iteration >= 2
+    && current_norm >= prev_residual_norm * 0.95
+    && previous_effective_move_floor_site.is_none()
+{
+    stagnation_count += 1;
+    ...
+}
+```
+
+Optional refinement: if we want to preserve the ability to bail
+out when the simulator is trapped at the HOTSPOT floor forever,
+track a separate `zero_move_streak` counter and bail only if it
+exceeds some larger threshold (e.g. 5 or 8), since a sustained
+zero-move streak means Appleyard genuinely can't escape.
+
+**Expected outcomes:**
+- Case 2: substep count should drop substantially. Predicted: 102
+  → ~30-50 substeps (the ~89% of bailouts that were zero-move-
+  triggered should disappear). Newton iteration count will grow
+  per substep but total work drops.
+- Case 1: 12 → 6-10 substeps (half the bailouts were
+  zero-move-triggered).
+- Case 3: 16 → 16 substeps (zero bailouts caused by zero-move).
+- Case 4: 28 → 28 substeps (zero impact, no zero-move events).
+
+**Files of record:**
+- `/tmp/stagnation-attrib-case{1,2,3,4}.log` — per-case
+  instrumentation logs.
+- Probe diff: two changes in `src/lib/ressim/src/fim/newton.rs`:
+  three new local counters around line 2238, one `STAGNATION-
+  ATTRIB` trace emission inside the stagnation block. Zero
+  behavioral change.
+
+**Promotion criteria for Fix A1 Stage 2:**
+1. Case 2 substep count drops to ≤50 (≥2× improvement).
+2. No regression on case 4 substep count (gas-rate unaffected
+   because zero-move doesn't fire there).
+3. Bit-exact trajectory check removed — behavior *must* change to
+   realize the win, but the FPR/oil-rate smoke-check
+   trajectory must remain within ~2% of OPM's reference
+   (FPR 321→338 bar, oil 3050→3558 m³/d).
+4. 4-case `fim-wasm-diagnostic` full timing must not regress by
+   more than 5% on case 4 (where the fix is a no-op).
+
+## Fix A1 Stage 2 result — 2026-04-21 → 2026-04-23
+
+Implemented the narrow behavioral change: the stagnation counter
+is no longer incremented when the previous iteration hit the
+HOTSPOT effective-move floor, and any non-stagnating iteration
+now resets the counter. Diff ~10 lines in
+`src/lib/ressim/src/fim/newton.rs` around the stagnation block
+(counter-reset semantics: when the previous iter was a zero-move
+iter, the current iter does not count against the budget; any
+good iter zeroes the counter). `STAGNATION-ATTRIB` probe lines
+retained as non-gated diagnostics.
+
+**4-case shortlist — baseline (pre-fix) vs Fix A1 Stage 2:**
+
+| case                                 | baseline substeps/lin_ms/oil/avg_p | Fix A1 S2 substeps/lin_ms/oil/avg_p | Δ substeps | Δ lin_ms | verdict |
+|--------------------------------------|------------------------------------|---------------------------------------|-----------:|---------:|---------|
+| Case 1 — medium-water 20x20x3 step-1 | 12 / 13,759 ms / 3337.62 / 329.20  |  7 / 13,135 ms / 3326.63 / 328.49     |   **-42%** |    -4.5% | improvement |
+| Case 2 — medium-water 20x20x3 6-step |102 /100,903 ms / 3610.27 / 348.31  | 34 / 62,005 ms / 3602.46 / 348.07     |   **-67%** |  **-38%**| **target case: big win** |
+| Case 3 — heavy-water 12x12x3 dt=1    | 16 /  1,605 ms / 3808.44 / 338.37  | 27 /  3,503 ms / 3882.89 / 353.82     |      +69%  |   +118%  | see "Case 3 physics investigation" |
+| Case 4 — gas-rate 10x10x3 6-step     | 28 /  2,225 ms /  161.92 / —       | 28 /  2,263 ms /  161.92 / —          |       0%   |    +1.7% | no-op (as predicted) |
+
+Case 2 clears promotion criterion 1 (≤50 substeps, ≥2× improvement)
+with substantial margin: 102 → 34 (−67%). Case 4 clears criterion
+2 (no-op on gas-rate). Case 1 is a straight improvement.
+
+### Case 3 physics investigation — the "regression" is a physics correction
+
+Case 3 takes **more** substeps under Fix A1 (16 → 27), which is
+the opposite direction from the design intent. Looked worrying
+at first, but the avg_p number told a different story:
+`baseline avg_p = 338.37 bar`, `Fix A1 avg_p = 353.82 bar` — a
+**4.6% shift**, not noise.
+
+Ran a **fine-dt reference**: same case 3 problem, same total
+duration (1 day), but `dt = 0.0625d` with 16 steps (vs baseline
+`dt = 1.0d` with 1 step). The fine-dt reference is the converged
+physical answer; deviation from it is Newton-truncation error,
+not a feature of the solver policy.
+
+| configuration                   | avg_p (bar) | oil (m³/d) | deviation from fine-dt |
+|---------------------------------|------------:|-----------:|-----------------------:|
+| fine-dt reference (dt=0.0625)   |      354.80 |    3858.10 |                 0%     |
+| baseline (dt=1.0, pre-fix)      |      338.37 |    3808.44 |   **−4.63% avg_p**     |
+| Fix A1 Stage 2 (dt=1.0)         |      353.82 |    3882.89 |       −0.28% avg_p     |
+
+The baseline converges to a measurably *wrong* answer on case 3
+at dt=1.0d. Fix A1 converges to within 0.3% of the fine-dt
+reference. **The extra substeps are ressim correctly splitting
+the step into pieces each of which can converge** — the
+baseline's apparent fast convergence at dt=1.0d was actually a
+false convergence masked by early STAGNATION bailout that handed
+back a damp-feasible but under-resolved update.
+
+This reframes the case-3 "+118% lin_ms" entry: it is the price
+of correctness on that specific heavy-water extreme-dt case. On
+a 12×12×3 problem the absolute cost is 1.6s → 3.5s — a
+non-issue in aggregate. The pre-fix was not a fast baseline; it
+was a wrong baseline that terminated early.
+
+**Fine-dt reference artefact:** `/tmp/case3-finedt.log`
+(reproducible: `node scripts/fim-wasm-diagnostic.mjs --preset
+heavy-water-12x12x3 --dt 0.0625 --steps 16`).
+
+### Promotion decision — PROMOTE
+
+All 4 promotion criteria met:
+
+1. ✅ Case 2: 102 → 34 substeps (−67%, criterion was −50%).
+2. ✅ Case 4: 28 → 28 substeps (criterion was no regression).
+3. ✅ Physics smoke check: Case 2 FPR and oil rate remain within
+   ~2% of the OPM reference. Case 3 avg_p moved *closer* to the
+   fine-dt reference (fine-dt=354.80, Fix A1=353.82 vs
+   baseline=338.37).
+4. ✅ Case 4 lin_ms regression is +1.7%, well under the 5%
+   bound.
+
+Case 3's wall-time regression is an acceptable cost for a
+physics correction: a 12×12×3 grid at dt=1.0d is an extreme
+configuration outside the shortlist's primary performance
+targets, and the new trajectory matches the converged physical
+reference.
+
+**Net across the 4-case shortlist**:
+- Total substeps: 158 → 96 (−39%)
+- Total lin_ms: 118,492 ms → 80,906 ms (−32%)
+- Case 2 alone is a −38% lin_ms win, closing a material
+  fraction of the OPM gap.
+
+### What Fix A1 does NOT close
+
+The OPM Flow reference on case 2 is 7 substeps / 0.07s. Fix A1
+lands case 2 at 34 substeps / 62s. The remaining gap:
+
+- **Substeps: 34 vs 7 (~5×).** Some of this is Appleyard damping
+  still triggering HOTSPOT zero-move in regions where OPM's
+  update stabilization would permit a non-zero move. Some is
+  STAGNATION real-bump bailouts that Fix A1 does not address
+  (criterion A2 remains unexplored).
+- **Per-substep wall time.** OPM's 0.07s / 7 substeps ≈ 10 ms
+  per substep; ressim's 62s / 34 ≈ 1.8s per substep — a 180×
+  per-substep gap that reflects CPR completeness (Fixes 2/4) and
+  the sparse-lu fallback dominating lin_ms on iterative-failure
+  paths (documented in `project_fim_bypass_audit_2026-04-19`).
+
+**Next candidates (post-Fix-A1):**
+1. **Fix A2 (widen STAGNATION real-bump tolerance)** — case 2
+   still has 2 real-bump bailouts; case 3 had 2; OPM absorbs +2%
+   residual bumps. A narrow `prev_residual_norm * 1.05`
+   tolerance (or CNV-based gate) could eliminate these without
+   regressing the zero-move guard.
+2. **Fix 2 (summed-IMPES)** and/or **Fix 4 (AMG coarse
+   solver)** — now visible as the per-substep cost lever. With
+   substeps reduced 67% on case 2, further per-substep speedup
+   becomes proportionally more valuable.
+3. **Fix B (upwinding audit)** — the HOTSPOT cell persistently
+   localizes to the producer corner cell399 and the injector
+   corner cell0. If upwinding flips at the saturation front are
+   the root cause of those HOTSPOT events, a smoothed upstream
+   weighting would reduce the zero-move iter frequency,
+   further widening the Fix A1 margin.
+
+**Files of record (Stage 2):**
+- `src/lib/ressim/src/fim/newton.rs` — stagnation-gate change
+  around line 2481 + counter declarations near line 2238 +
+  STAGNATION-ATTRIB emission line.
+- `/tmp/stage2-case{1,2,3,4}.log` — Stage 2 A/B run logs.
+- `/tmp/case3-finedt.log` — fine-dt reference run that reframes
+  case 3 as a physics correction.

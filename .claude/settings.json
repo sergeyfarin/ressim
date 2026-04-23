@@ -99,7 +99,20 @@
       "Bash(flow --help)",
       "Bash(flow --solver-verbosity=4 --linear-solver-verbosity=2 --debug-verbosity-level=5 --output-dir=/tmp/opm-case2/trace /tmp/opm-case2/CASE2.DATA)",
       "Bash(flow --solver-verbosity=4 --linear-solver-verbosity=2 --debug-verbosity-level=5 /tmp/opm-case2/CASE2.DATA --output-dir=/tmp/opm-case2/trace)",
-      "Bash(awk -F ' fam=' '{print $1}')"
+      "Bash(awk -F ' fam=' '{print $1}')",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 6 --dt 0.25 --diagnostic step)",
+      "Bash(tee /tmp/stagnation-attrib-case2.log)",
+      "Bash(awk '{for \\(i=1; i<=NF; i++\\) if \\($i ~ /^class=/\\) print $i}')",
+      "Bash(awk ' *)",
+      "Bash(awk -F'|' '{print $1, $4, $5}')",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic step)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1.0 --diagnostic step)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic step)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 6 --dt 0.25 --diagnostic outer)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic outer)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1.0 --diagnostic outer)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer)",
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 16 --dt 0.0625 --diagnostic outer)"
     ],
     "additionalDirectories": [
       "/tmp"
