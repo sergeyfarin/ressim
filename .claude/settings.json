@@ -112,10 +112,18 @@
       "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic outer)",
       "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1.0 --diagnostic outer)",
       "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer)",
-      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 16 --dt 0.0625 --diagnostic outer)"
+      "Bash(node /home/reken/Repos/ressim/scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 16 --dt 0.0625 --diagnostic outer)",
+      "Bash(timeout 180 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 1 --diagnostic step)",
+      "Bash(tee /tmp/a1-attrib/case1.log)",
+      "Bash(timeout 300 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 6 --diagnostic step)",
+      "Bash(timeout 180 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --dt 1.0 --steps 1 --diagnostic step)",
+      "Bash(timeout 180 node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --dt 0.25 --steps 6 --diagnostic step)",
+      "Bash(awk -F\"ratio=\" '{print $2}')",
+      "Bash(awk '{print $1}')"
     ],
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/tmp/a1-attrib"
     ]
   }
 }
