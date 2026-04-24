@@ -1653,6 +1653,159 @@ fn add_interface_flux(
     }
 }
 
+/// Fix-B Stage 1 probe: per-face upwind-sign snapshot.
+///
+/// `face_key` is a stable identifier for a grid face: `(id_i, id_j, dim)`
+/// where `dim` is `'x'|'y'|'z'` and `id_i < id_j`. For each face we record
+/// the upwind side for water/oil/gas (`0 = id_i`, `1 = id_j`) plus the
+/// phase-potential magnitudes used in the upstream decision. Two
+/// consecutive snapshots can be diffed to count upwind flips per iter.
+///
+/// Read-only. No residual or Jacobian dependency; safe to call outside
+/// the hot assembly path.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FaceUpwindSample {
+    pub(crate) id_i: usize,
+    pub(crate) id_j: usize,
+    pub(crate) dim: char,
+    pub(crate) upwind: [u8; 3], // water, oil, gas — 0 = id_i, 1 = id_j
+    pub(crate) dphi: [f64; 3],
+}
+
+pub(crate) fn collect_face_upwind_snapshot(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+) -> Vec<FaceUpwindSample> {
+    let n_cells = state.cells.len();
+    let derived: Vec<FimCellDerived> = (0..n_cells)
+        .map(|idx| state.derive_cell(sim, idx))
+        .collect();
+    let mut samples =
+        Vec::with_capacity(sim.nx * sim.ny * sim.nz * 3);
+    for k in 0..sim.nz {
+        for j in 0..sim.ny {
+            for i in 0..sim.nx {
+                let id = sim.idx(i, j, k);
+                if i + 1 < sim.nx {
+                    let id_j = sim.idx(i + 1, j, k);
+                    if let Some(sample) = face_upwind_sample(
+                        sim, state, id, id_j, 'x', k, k, &derived[id], &derived[id_j],
+                    ) {
+                        samples.push(sample);
+                    }
+                }
+                if j + 1 < sim.ny {
+                    let id_j = sim.idx(i, j + 1, k);
+                    if let Some(sample) = face_upwind_sample(
+                        sim, state, id, id_j, 'y', k, k, &derived[id], &derived[id_j],
+                    ) {
+                        samples.push(sample);
+                    }
+                }
+                if k + 1 < sim.nz {
+                    let id_j = sim.idx(i, j, k + 1);
+                    if let Some(sample) = face_upwind_sample(
+                        sim, state, id, id_j, 'z', k, k + 1, &derived[id], &derived[id_j],
+                    ) {
+                        samples.push(sample);
+                    }
+                }
+            }
+        }
+    }
+    samples
+}
+
+fn face_upwind_sample(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    id_i: usize,
+    id_j: usize,
+    dim: char,
+    k_i: usize,
+    k_j: usize,
+    derived_i: &FimCellDerived,
+    derived_j: &FimCellDerived,
+) -> Option<FaceUpwindSample> {
+    let terms = interface_flux_terms(sim, state, id_i, id_j, dim, k_i, k_j, derived_i, derived_j)?;
+    let upwind = [
+        if terms.dphi[0] >= 0.0 { 0u8 } else { 1u8 },
+        if terms.dphi[1] >= 0.0 { 0u8 } else { 1u8 },
+        if terms.dphi[2] >= 0.0 { 0u8 } else { 1u8 },
+    ];
+    Some(FaceUpwindSample {
+        id_i,
+        id_j,
+        dim,
+        upwind,
+        dphi: terms.dphi,
+    })
+}
+
+/// Compare two face-upwind snapshots from consecutive Newton iterations.
+/// Returns per-phase flip counts and a sample list of the first few flips
+/// for logging. Previous snapshot may be empty (iter 0), in which case
+/// returns an all-zeros result.
+pub(crate) fn diff_face_upwind_snapshots(
+    prev: &[FaceUpwindSample],
+    curr: &[FaceUpwindSample],
+    hotspot_cells: &[usize],
+    max_samples: usize,
+) -> FaceUpwindFlipReport {
+    if prev.is_empty() || prev.len() != curr.len() {
+        return FaceUpwindFlipReport::default();
+    }
+    let mut flips = [0u32; 3];
+    let mut hotspot_flips = [0u32; 3];
+    let mut samples = Vec::new();
+    for (p, c) in prev.iter().zip(curr.iter()) {
+        for phase in 0..3 {
+            if p.upwind[phase] != c.upwind[phase] {
+                flips[phase] += 1;
+                let is_hotspot = hotspot_cells.contains(&p.id_i)
+                    || hotspot_cells.contains(&p.id_j);
+                if is_hotspot {
+                    hotspot_flips[phase] += 1;
+                }
+                if samples.len() < max_samples {
+                    samples.push(FaceUpwindFlip {
+                        id_i: p.id_i,
+                        id_j: p.id_j,
+                        dim: p.dim,
+                        phase: phase as u8,
+                        dphi_prev: p.dphi[phase],
+                        dphi_curr: c.dphi[phase],
+                        is_hotspot,
+                    });
+                }
+            }
+        }
+    }
+    FaceUpwindFlipReport {
+        flips,
+        hotspot_flips,
+        samples,
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct FaceUpwindFlipReport {
+    pub(crate) flips: [u32; 3],
+    pub(crate) hotspot_flips: [u32; 3],
+    pub(crate) samples: Vec<FaceUpwindFlip>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FaceUpwindFlip {
+    pub(crate) id_i: usize,
+    pub(crate) id_j: usize,
+    pub(crate) dim: char,
+    pub(crate) phase: u8,
+    pub(crate) dphi_prev: f64,
+    pub(crate) dphi_curr: f64,
+    pub(crate) is_hotspot: bool,
+}
+
 #[cfg(test)]
 #[path = "assembly_tests.rs"]
 mod assembly_tests;

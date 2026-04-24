@@ -2,8 +2,9 @@ use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
 use crate::fim::assembly::{
-    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FimAssemblyOptions, PhaseFluxDiagnostic,
-    assemble_fim_system, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
+    CellFacePhaseDiagnostics, FaceUpwindSample, FacePhaseDiagnostics, FimAssemblyOptions,
+    PhaseFluxDiagnostic, assemble_fim_system, cell_equation_residual_breakdown,
+    cell_face_phase_flux_diagnostics, collect_face_upwind_snapshot, diff_face_upwind_snapshots,
 };
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
@@ -2256,6 +2257,10 @@ pub(crate) fn run_fim_timestep(
     let mut zero_move_fallback_direct_bypass = false;
     let mut iterative_failed_last_iter = false;
     let mut previous_effective_move_floor_site: Option<FimHotspotSite> = None;
+    // Fix-B Stage 1 upwind-flip probe: snapshot of per-face upstream choices from the
+    // previous Newton iteration. Compared against the current-iter snapshot to detect
+    // saturation-front upwinding flips; read-only diagnostic.
+    let mut previous_face_upwind_snapshot: Vec<FaceUpwindSample> = Vec::new();
     let block_layout = Some(FimLinearBlockLayout {
         cell_block_count: state.cells.len(),
         cell_block_size: 3,
@@ -2312,6 +2317,77 @@ pub(crate) fn run_fim_timestep(
         let previous_iteration_residual_norm = prev_residual_norm;
         let current_hotspot_site =
             residual_hotspot_site(sim, &topology, &residual_diagnostics.global);
+
+        // Fix-B Stage 1 probe: upwind-flip snapshot diff against previous iter.
+        // Read-only — emits an UPWIND-SUMMARY trace line per iter (from iter 1 onward).
+        // Runs unconditionally (not gated on options.verbose) because `fim_trace!`
+        // writes to the sim's internal trace buffer which is what the harness
+        // exposes; the verbose flag only controls the stderr eprintln path.
+        {
+            let current_upwind_snapshot = collect_face_upwind_snapshot(sim, &state);
+            let hotspot_cells: Vec<usize> = [
+                previous_effective_move_floor_site,
+                Some(current_hotspot_site),
+                previous_hotspot_site,
+            ]
+            .into_iter()
+            .flatten()
+            .filter_map(|site| match site {
+                FimHotspotSite::Cell(idx) => Some(idx),
+                _ => None,
+            })
+            .collect();
+            let flip_report = diff_face_upwind_snapshots(
+                &previous_face_upwind_snapshot,
+                &current_upwind_snapshot,
+                &hotspot_cells,
+                3,
+            );
+            if !previous_face_upwind_snapshot.is_empty() {
+                let total_flips = flip_report.flips.iter().sum::<u32>();
+                let total_hotspot = flip_report.hotspot_flips.iter().sum::<u32>();
+                let sample_trace = if flip_report.samples.is_empty() {
+                    String::new()
+                } else {
+                    let entries: Vec<String> = flip_report
+                        .samples
+                        .iter()
+                        .map(|f| {
+                            let phase_label = match f.phase {
+                                0 => 'w',
+                                1 => 'o',
+                                _ => 'g',
+                            };
+                            format!(
+                                "({} {}-{} {}:{:+.3e}->{:+.3e}{})",
+                                phase_label,
+                                f.id_i,
+                                f.id_j,
+                                f.dim,
+                                f.dphi_prev,
+                                f.dphi_curr,
+                                if f.is_hotspot { " HS" } else { "" }
+                            )
+                        })
+                        .collect();
+                    format!(" samples=[{}]", entries.join(" "))
+                };
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: UPWIND-SUMMARY flips_w={} flips_o={} flips_g={} total={} hotspot={} (hs_cells={:?}){}",
+                    iteration,
+                    flip_report.flips[0],
+                    flip_report.flips[1],
+                    flip_report.flips[2],
+                    total_flips,
+                    total_hotspot,
+                    hotspot_cells,
+                    sample_trace,
+                );
+            }
+            previous_face_upwind_snapshot = current_upwind_snapshot;
+        }
         repeated_hotspot_streak = repeated_nonlinear_hotspot_streak(
             sim,
             previous_hotspot_site,
