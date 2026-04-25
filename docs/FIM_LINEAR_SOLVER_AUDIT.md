@@ -1208,3 +1208,325 @@ lands case 2 at 34 substeps / 62s. The remaining gap:
 - `/tmp/stage2-case{1,2,3,4}.log` — Stage 2 A/B run logs.
 - `/tmp/case3-finedt.log` — fine-dt reference run that reframes
   case 3 as a physics correction.
+
+## Fix A2 Stage 1 — 2026-04-24 (HYPOTHESIS REFUTED on case 2; gate widening will not close the Case 2 gap)
+
+### Motivation
+
+After Fix A1 Stage 2 landed Case 2 at 34 substeps (down from 102
+but still 5× OPM's 7), the remaining 2 bailouts per case-2 step
+were real-bump STAGNATION count=3 events at ratio 1.15–1.17. The
+hypothesis behind Fix A2 was: "OPM absorbs comparable +15% CNV
+bumps without chopping dt because it only checks convergence at
+the end of its 12-iter budget. If ressim widened its count=3 gate
+to keep Newton going when iter budget remains and residual has
+net-progressed since the stagnation run started, Newton would
+converge."
+
+The post-Fix-B pivot reinforced this: Fix B upstream smoothing
+would diverge from the OPM reference, so the policy-level Fix A2
+was the natural next lever.
+
+### Probe
+
+Added a read-only residual-trend probe in
+`src/lib/ressim/src/fim/newton.rs`:
+
+- New local vars `best_residual_so_far` (min `current_norm` across
+  all iters of this timestep) and `stagnation_entry_residual` (set
+  to `prev_residual_norm` when `stagnation_count` first transitions
+  0→1; reset in the else-branch where `stagnation_count = 0`).
+- New `STAG-TREND` trace line emitted at every `stagnation_count +=
+  1` event (beside the existing `STAGNATION-ATTRIB` line), reporting
+  `count`, `res`, `entry_res`, `best_res`, `trend_vs_entry =
+  current_norm / entry_res`, `vs_best = current_norm / best_res`,
+  `iters_remain`, and a proposed `would_widen` flag defined as:
+
+  ```
+  stagnation_count >= 3
+    && trend_vs_entry < 0.5
+    && iters_remain >= 3
+  ```
+
+Probe is read-only; zero behavioral change.
+
+### Stage 1 result — 4-case shortlist
+
+Ran `node scripts/fim-wasm-diagnostic.mjs` with the same 4-case
+shortlist as Fix A1/B. Logs in
+`worklog/fix-a2-stagnation-gate/stage1-case{1,2,3,4}.log`.
+
+**Key aggregate: `would_widen=true` fires 0 times across all 4
+cases.** No count=3 bailout in any of the probed runs meets the
+"current < 0.5 × entry" threshold. This is not a threshold-tuning
+issue — the raw data shows every bailout is at a residual *above*
+both `entry_res` and `best_res`:
+
+| case | bailout | entry_res | best_res | count=3 res | trend_vs_entry | vs_best |
+|------|--------:|----------:|---------:|------------:|---------------:|--------:|
+| 1    |       1 |  1.937e1  | 1.834e1  |  2.458e1    |     1.27       |   1.34  |
+| 1    |       2 |  4.652e0  | 4.652e0  |  5.618e0    |     1.21       |   1.21  |
+| 2    |       1 |  1.937e1  | 1.834e1  |  2.458e1    |     1.27       |   1.34  |
+| 2    |       2 |  4.652e0  | 4.652e0  |  5.618e0    |     1.21       |   1.21  |
+| 3    |       1 |  1.902e1  | 1.832e1  |  2.174e1    |     1.14       |   1.19  |
+| 3    |       2 |  4.687e0  | 4.687e0  |  5.711e0    |     1.22       |   1.22  |
+| 4    |       1 |  9.477e-5 | 9.084e-5 | 9.084e-5    |     0.96       |   1.00  |
+| 4    |       2 |  9.809e-5 | 9.138e-5 | 9.138e-5    |     0.93       |   1.00  |
+
+(Case-1 / case-2 rows 1–2 are identical because case 2 is "case 1
+extended to 6 steps" and step 1 bails out the same way both runs.)
+
+### Iter-by-iter residual on case 2 step-1 dt=0.25 substep
+
+The case 2 dt=0.25 substep that bails out at iter 11 shows a
+genuinely divergent trajectory, not a stalled-but-progressing one:
+
+```
+iter:  0   1   2   3   4   5   6   7   8   9  10  11
+res : 22.5 22.4 20.9 20.1 19.0 19.0 18.3 18.7 19.4 21.7 21.2 24.6
+```
+
+The residual **peaks above its starting point** (iter 11 res = 24.6
+vs iter 0 res = 22.5) after bottoming at iter 6 (18.3). With
+`iters_remain=8` at bailout and residual now climbing by +16% per
+iter, there is no plausible recovery in 8 more iters. A widened
+gate would have kept Newton going through a diverging trajectory.
+
+Case 3 bailouts show the same shape (res bottoms, then climbs
+above entry). Case 4 bailouts show monotone slow decay near the
+`residual_tolerance=1e-5` threshold — a different failure mode.
+
+### Conclusion
+
+**Hypothesis refuted on the cases that matter.** The case 2 / case 3
+bailouts are not "Newton is slowly converging but the gate bails
+out too eagerly" — they are "Newton is genuinely diverging at
+dt=0.25 and a dt-cut is the right response". Widening the count=3
+gate would force Newton to waste 8 more iters per substep before
+bailing out to the same dt-cut.
+
+The 102→34 substep gain from Fix A1 Stage 2 came from a specific
+mechanism (don't count zero-move iters as stagnation) that had a
+real PASS signal in the probe data (86% zero-move on case 2). Fix
+A2's equivalent "progress-since-entry" signal is absent — the
+remaining bailouts after Fix A1 are genuinely unrecoverable at the
+attempted dt.
+
+**The 34→7 substep gap to OPM is NOT in the STAGNATION gate. It's
+elsewhere:**
+1. **Newton kernel strength at dt=0.25.** OPM converges at dt=0.25
+   on case 2 step 1 in 9 iters; ressim diverges by iter 11 with
+   damping 0.0055–0.126 (small fractional steps) and repeated
+   HOTSPOT zero-move events at cell0/cell399. OPM's
+   saturation-update limiting (`dsMax=0.2`) and implicit equation
+   scaling likely yield a stronger update direction per iter.
+2. **Jacobian scaling / equation scaling mismatches.** Linear-solver
+   audit Finding 2 is not fully refuted; the CPR summed-IMPES
+   restriction (Finding 3) plus full AMG pressure stage (Finding 4)
+   are orthogonal to this and capped at ~20-30% lin_ms.
+
+### Going-forward decisions
+
+1. **Shelve Fix A2 (STAGNATION gate widening).** The probe shows
+   it won't help on case 2. Moving the gate to "allow bumps when
+   progress-since-entry is good" would not fire on the actual
+   bailouts we see.
+2. **Keep the STAG-TREND probe in-tree** as a diagnostic. Cost is
+   three f64s and one trace line per stagnation event — negligible.
+   The `best_res` and `entry_res` values are useful context for
+   any future Newton-acceptance-policy investigation.
+3. **Next candidates (no clear winner yet):**
+   - **Fix 5 redux (line search / update stabilization on oil-row
+     residual).** OPM's SOR update stabilization is a no-op on case
+     2, but OPM's initial-iter damping is effectively larger than
+     ressim's 0.0055 at iter 0 — something in the Appleyard /
+     HOTSPOT / max_sw_change interaction is pinning ressim's first
+     several iters to tiny steps. Needs a fresh probe.
+   - **Jacobian/equation scaling audit (Finding 2 revisit).** The
+     water-row residual at cell0 is dominated by `well=−1969` vs
+     `accum=2.499` — 3 orders of magnitude asymmetry. Equation
+     scaling by local-accumulation would rebalance the Newton
+     direction.
+   - **Fix 2 / 3 / 4 (CPR completion bundle).** Bounded upside per
+     the 2026-04-20 OPM ablation (CPR vs ILU0 = 0 substep delta),
+     but lin_ms gains of 20-30% are realistic and would
+     multiplicatively compound with future substep reductions.
+
+### Files of record
+
+- `src/lib/ressim/src/fim/newton.rs` — Fix A2 Stage 1 probe
+  (best-residual tracker + STAG-TREND emission). Kept in-tree as
+  a diagnostic.
+- `worklog/fix-a2-stagnation-gate/stage1-case{1,2,3,4}.log` — 4-case
+  shortlist probe runs (git-ignored under `/worklog/`).
+
+## Fix A3 Stage 1 — 2026-04-24 (PASS — inflection-point chop is the dominant damping constraint, 93% on case 2)
+
+### Motivation
+
+After Fix A2 refutation localized the 34→7 substep gap to "Newton
+kernel strength, not gate policy", the working hypothesis became:
+**something about ressim's Newton kernel produces small initial-iter
+damping values (0.0055–0.07 observed on case 2 step-1 iter-0), and
+that forces Newton to inch forward in small fractional steps over
+many iters before reaching a state where dt=0.25 converges.**
+
+The candidates were (a) Appleyard Sw cap `max_saturation_change=0.2`
+— but this is identical to OPM's `dsMax=0.2`, so it can't be the
+full story on its own; (b) the `fw_inflection_point_sw` trust-region
+chop (Wang & Tchelepi, 2013) that ressim added for fractional-flow
+basin stability — OPM does NOT have an equivalent chop; or (c)
+equation-scaling / Jacobian-row asymmetry producing an oversized
+raw update.
+
+### Probe
+
+Added `appleyard_damping_breakdown()` in `src/lib/ressim/src/fim/
+newton.rs` — a read-only sibling that computes the same final damping
+as `appleyard_damping()` but also records:
+- `binding_kind` (pressure / sw_appleyard / sw_inflection / sg_appleyard
+  / so_implied / rs / bhp / unbound)
+- `binding_cell` or `binding_well` identifying the critical cell
+- Raw (pre-damping) peaks: `raw_dp_peak`, `raw_dsw_peak`, `raw_dh_peak`,
+  `raw_dbhp_peak` with associated cell/well indices
+- `inflection_crossings` count
+
+Emits a `DAMP-BREAKDOWN` trace line per Newton iter. Kept the
+original `appleyard_damping()` alive under `#[cfg(test)]` so the
+existing unit test continues to exercise the pure-computation path.
+
+### Stage 1 result — PASS
+
+Aggregate binding distribution across all iters:
+
+| case | total iters | inflection | sw_appleyard | sg | unbound | % inflection |
+|------|------------:|-----------:|-------------:|---:|--------:|-------------:|
+| 1    |         115 |         90 |           12 |  0 |      13 |      **78%** |
+| 2    |         756 |        699 |           12 |  0 |      45 |      **93%** |
+| 3    |         402 |        326 |           10 |  0 |      66 |      **81%** |
+| 4    |         418 |          0 |            0 |  4 |     414 |         0%   |
+
+Iter-0 substep damping distribution (how many substeps start with
+tiny damping that will force many iters of micro-steps):
+
+| case | substeps | damp<0.05 at iter 0 | fraction |
+|------|---------:|--------------------:|---------:|
+| 1    |       10 |                   3 |      30% |
+| 2    |       50 |                  19 |      38% |
+| 3    |       35 |                  14 |      40% |
+| 4    |       33 |                   0 |       0% |
+
+**Decisive: 93% of case-2 Newton iters are bound by the
+`fw_inflection_point_sw` trust-region chop, not by the Appleyard
+`max_saturation_change=0.2` cap.** Only 12 of 756 iters bind on
+`sw_appleyard`. The inflection chop fires at every front-advancing
+iter because the linear solve, given the strong injector well term,
+produces raw dsw values that step from Sw=0.1 (irreducible) across
+the inflection (~Sw=0.4 for Corey n=2 water/oil with Swc=Sor=0.1)
+to Sw>0.5 in one Newton step. The chop correctly stops at the
+inflection — but then *every next iter also tries to cross the
+inflection* because the residual at the inflection is still large,
+so Newton repeatedly chops at the same inflection distance.
+
+Case 4 (gas-rate with zero water front) is a natural no-op: the
+inflection chop fires 0/418 iters because there's no water
+saturation transitioning between basins. This is the safety-net
+confirmation that a change to the chop would not regress gas-only
+problems.
+
+### Smoking gun — case 2 step-1 iter 0
+
+```
+DAMP-BREAKDOWN final=0.0055 bind=sw_appleyard@cell0
+  raw_dp=1.189e2@cell0
+  raw_dsw=3.640e1@cell0   ← 36× Sw_max_change; 180× realistic physical move
+  raw_dh=0.000e0
+  inflection=0
+```
+
+At cell0 (injector corner), the linear solver is asking for
+`dsw = 36.4` while Sw is at 0.1. A physically sensible move to
+reach the breakthrough shock state is dsw ≈ 0.4 — nearly two
+orders of magnitude smaller. The Appleyard cap clamps to dsw=0.2
+(damp=0.0055). Subsequent iters then hit the inflection chop
+instead because the damped step is smaller than the residual
+would drive on a fully linearized Newton.
+
+### Cross-check with OPM
+
+Per the 2026-04-24 OPM WebFetch (`blackoilnewtonmethod.hh`,
+`BlackoilModel_impl.hpp`), **OPM has `dsMax=0.2` but does NOT
+have a Wang-Tchelepi inflection-point trust region.** OPM's Newton
+update limiter is:
+- `dsMax=0.2` saturation cap (identical to ressim's
+  `max_saturation_change`)
+- SOR `stabilizeNonlinearUpdate` (no-op on case 2 per
+  2026-04-20 ablation)
+- That's it — no fw-basin guard.
+
+So ressim's inflection chop is **a net-extra conservatism that OPM
+does not have** and that fires on 93% of case-2 iters. This is the
+mechanism by which ressim's "Newton kernel strength at dt=0.25" is
+weaker than OPM's: OPM accepts each iter's dsMax=0.2 step even
+when that crosses the fw inflection; ressim clamps at the
+inflection, reducing per-iter Sw progress roughly in half for
+front cells.
+
+### Fix A3 Stage 2 design (to discuss)
+
+Two feasible directions, both removing or relaxing the inflection
+chop to match OPM's behavior:
+
+**Option A (conservative): widen the chop threshold.**
+- Only chop at the inflection if the full step overshoots by a
+  meaningful margin (e.g., `max_damping * dsw_signed.abs()` ≥
+  `2 * dist_to_inflection`), not on every marginal crossing.
+- Allows Newton to cross the inflection when the step size is
+  dominated by other chops, preserving the "no wild jump" intent
+  without firing on routine front advancement.
+
+**Option B (aggressive): remove the inflection chop entirely.**
+- Match OPM exactly: only apply `dsMax=0.2` and pressure cap.
+- Rely on OPM-style Newton iteration count + stagnation policy
+  (which Fix A1 already moved toward) to handle any basin-jump
+  divergence that would have been prevented by the chop.
+
+**Predicted effect:** Cases 1/2/3 Newton iter counts drop
+substantially (likely by 30-50% on case 2 based on 93% inflection-
+bound fraction — not all will "return" their capped damping to
+full 0.2, but front cells should see a factor of 2 larger step).
+Case 4 is a guaranteed no-op.
+
+**Risk:** The Wang-Tchelepi chop was added for a reason. If we
+remove it and a test case (Buckley-Leverett validation, Craig
+displacement, heavy-water breakthrough) regresses, we know why.
+Would require the full benchmark suite + OPM cross-check before
+promotion.
+
+### Going-forward decisions
+
+1. **Keep DAMP-BREAKDOWN probe in-tree** as a diagnostic. Cost is
+   one trace line per Newton iter + one additional allocation-free
+   pass over cells per iter (≈ same cost as `appleyard_damping`
+   itself — effectively doubling the damping computation, which is
+   ~0.1% of total fim_ms per the cost profile memory).
+2. **Stage 2 is Option A (widen the chop threshold).** It's the
+   minimal behavioral change, it can be tuned by a single
+   threshold constant, and it preserves the basin-jump guard for
+   cases where the step genuinely overshoots. Option B (full
+   removal) becomes the fallback if Option A doesn't close enough
+   of the gap.
+3. **Before Stage 2**, promote the DAMP-BREAKDOWN probe to a
+   before/after A/B tool — run the shortlist with the current chop,
+   then with the relaxed chop, and diff substep counts, lin_ms, and
+   physics accuracy (avg_p, oil_production match to fine-dt ref).
+
+### Files of record
+
+- `src/lib/ressim/src/fim/newton.rs` — `DampingBreakdown` struct
+  and `appleyard_damping_breakdown()` function near line 678;
+  `DAMP-BREAKDOWN` trace emission in the Newton loop just before
+  the state-update. `appleyard_damping()` retained under
+  `#[cfg(test)]` for the existing unit test.
+- `worklog/fix-a3-damping-probe/stage1-case{1,2,3,4}.log` — 4-case
+  probe runs (git-ignored under `/worklog/`).

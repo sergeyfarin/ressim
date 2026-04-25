@@ -126,7 +126,15 @@
       "Bash(dpkg -L opm-simulators-bin)",
       "Bash(dpkg -l)",
       "Bash(dpkg -L libopm-simulators-dev)",
-      "Read(//usr/include/**)"
+      "Read(//usr/include/**)",
+      "Bash(awk 'NR>=6 && NR<=53 && /iter-res|residual=|STAGNATION-ATTRIB|final_res.*iter|iter.*res=|Newton: dt=/' worklog/fix-a2-stagnation-gate/stage1-case2.log)",
+      "Bash(awk '{for\\(i=1;i<=NF;i++\\){if\\($i~/trend_vs_entry=/\\){t=$i} else if\\($i~/would_widen=/\\){w=$i}} print t, w}')",
+      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|accepts=/\\) printf \"%s \", $i; print \"\"}')",
+      "Bash(echo \"CASE1=$?\")",
+      "Bash(grep -i \"wang\\\\|tchelepi\\\\|inflection\\\\|fw\\\\|basin\\\\|trust\" echo \"---\" grep -rli \"inflection\\\\|wang.*tchelepi\\\\|basin-escape\" docs/)",
+      "Bash(awk '-F|' '{ *)",
+      "Bash(timeout 600 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 48 --dt 0.03125 --diagnostic outer --no-json)",
+      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=|lin_ms=/\\) printf \"%s|\", $i; print \"\"}')"
     ],
     "additionalDirectories": [
       "/tmp",

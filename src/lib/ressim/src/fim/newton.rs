@@ -675,93 +675,178 @@ fn fw_inflection_point_sw(
     best_sw
 }
 
-/// Appleyard chop: compute the largest damping factor such that no cell variable
-/// exceeds its per-iteration limit. Returns a value in (0, 1].
-///
-/// Also enforces the trust-region boundary at the fw inflection point (Wang & Tchelepi,
-/// 2013): if a Newton update would move Sw across the inflection point, the damping is
-/// chopped to keep the iterate on the same side. This prevents Newton from jumping into
-/// the wrong convergence basin of the fractional-flow curve, which is the primary source
-/// of nonlinear stagnation near water-breakthrough fronts.
-fn appleyard_damping(
+/// Newton-kernel-damping Stage 1 probe: read-only breakdown of which constraint
+/// limited `appleyard_damping` and the raw (pre-damping) update peaks that fed
+/// into each constraint. Used to understand why the initial-iter damping is so
+/// small on the case 2 medium-water step (0.0055 at dt=0.25 observed).
+#[derive(Clone, Debug)]
+pub(crate) struct DampingBreakdown {
+    pub(crate) final_damping: f64,
+    pub(crate) binding_kind: &'static str,
+    pub(crate) binding_cell: Option<usize>,
+    pub(crate) binding_well: Option<usize>,
+    pub(crate) raw_dp_peak: f64,
+    pub(crate) raw_dp_peak_cell: Option<usize>,
+    pub(crate) raw_dsw_peak: f64,
+    pub(crate) raw_dsw_peak_cell: Option<usize>,
+    pub(crate) raw_dh_peak: f64,
+    pub(crate) raw_dh_peak_cell: Option<usize>,
+    pub(crate) raw_dbhp_peak: f64,
+    pub(crate) raw_dbhp_peak_well: Option<usize>,
+    pub(crate) inflection_crossings: u32,
+}
+
+fn appleyard_damping_breakdown(
     sim: &ReservoirSimulator,
     state: &FimState,
     update: &DVector<f64>,
     options: &FimNewtonOptions,
-) -> f64 {
+) -> DampingBreakdown {
     let mut max_damping = 1.0_f64;
-    let n_cells = state.cells.len();
+    let mut binding_kind: &'static str = "unbound";
+    let mut binding_cell: Option<usize> = None;
+    let mut binding_well: Option<usize> = None;
+    let mut raw_dp_peak = 0.0_f64;
+    let mut raw_dp_peak_cell: Option<usize> = None;
+    let mut raw_dsw_peak = 0.0_f64;
+    let mut raw_dsw_peak_cell: Option<usize> = None;
+    let mut raw_dh_peak = 0.0_f64;
+    let mut raw_dh_peak_cell: Option<usize> = None;
+    let mut raw_dbhp_peak = 0.0_f64;
+    let mut raw_dbhp_peak_well: Option<usize> = None;
+    let mut inflection_crossings: u32 = 0;
 
+    let n_cells = state.cells.len();
     for idx in 0..n_cells {
         let offset = idx * 3;
         let cell = state.cell(idx);
 
-        // Pressure
         let dp = update[offset].abs();
+        if dp > raw_dp_peak {
+            raw_dp_peak = dp;
+            raw_dp_peak_cell = Some(idx);
+        }
         if dp > 1e-12 {
-            max_damping = max_damping.min(options.max_pressure_change_bar / dp);
+            let cap = options.max_pressure_change_bar / dp;
+            if cap < max_damping {
+                max_damping = cap;
+                binding_kind = "pressure";
+                binding_cell = Some(idx);
+                binding_well = None;
+            }
         }
 
-        // Water saturation — standard Appleyard limit.
         let dsw = update[offset + 1].abs();
+        if dsw > raw_dsw_peak {
+            raw_dsw_peak = dsw;
+            raw_dsw_peak_cell = Some(idx);
+        }
         if dsw > 1e-12 {
-            max_damping = max_damping.min(options.max_saturation_change / dsw);
+            let cap = options.max_saturation_change / dsw;
+            if cap < max_damping {
+                max_damping = cap;
+                binding_kind = "sw_appleyard";
+                binding_cell = Some(idx);
+                binding_well = None;
+            }
         }
 
         // Trust-region boundary at the fw inflection point (water).
         // If the full update would cross the inflection point, chop so Sw lands at it.
-        // This guides Newton to stay within one convergence basin of the fractional-flow
-        // curve and prevents the stagnation plateau observed at breakthrough.
         let dsw_signed = update[offset + 1];
         if dsw_signed.abs() > 1e-12 {
             if let Some(sw_inflect) = fw_inflection_point_sw(sim, cell) {
                 let sw_full = cell.sw + max_damping * dsw_signed;
-                // Check if the damped step would cross the inflection point.
                 let side_before = cell.sw - sw_inflect;
                 let side_after = sw_full - sw_inflect;
                 if side_before * side_after < 0.0 {
-                    // Cross detected: chop so update stops exactly at inflection point.
+                    inflection_crossings += 1;
                     let dist = (sw_inflect - cell.sw).abs();
                     let chop = (dist / dsw_signed.abs()).clamp(0.0, max_damping);
-                    max_damping = max_damping.min(chop);
+                    if chop < max_damping {
+                        max_damping = chop;
+                        binding_kind = "sw_inflection";
+                        binding_cell = Some(idx);
+                        binding_well = None;
+                    }
                 }
             }
         }
 
-        // Hydrocarbon variable (Sg or Rs)
         let dh = update[offset + 2];
-        if dh.abs() > 1e-12 {
+        let dh_abs = dh.abs();
+        if dh_abs > raw_dh_peak {
+            raw_dh_peak = dh_abs;
+            raw_dh_peak_cell = Some(idx);
+        }
+        if dh_abs > 1e-12 {
             match cell.regime {
                 crate::fim::state::HydrocarbonState::Saturated => {
-                    // Sg: limit absolute change.
-                    max_damping = max_damping.min(options.max_saturation_change / dh.abs());
-
-                    // So = 1 - Sw - Sg, so bound the implied oil-saturation move too.
+                    let cap_sg = options.max_saturation_change / dh_abs;
+                    if cap_sg < max_damping {
+                        max_damping = cap_sg;
+                        binding_kind = "sg_appleyard";
+                        binding_cell = Some(idx);
+                        binding_well = None;
+                    }
                     let dso = (update[offset + 1] + dh).abs();
                     if dso > 1e-12 {
-                        max_damping = max_damping.min(options.max_saturation_change / dso);
+                        let cap_so = options.max_saturation_change / dso;
+                        if cap_so < max_damping {
+                            max_damping = cap_so;
+                            binding_kind = "so_implied";
+                            binding_cell = Some(idx);
+                            binding_well = None;
+                        }
                     }
                 }
                 crate::fim::state::HydrocarbonState::Undersaturated => {
-                    // Rs: limit relative change.
                     let rs_scale = cell.hydrocarbon_var.abs().max(1.0);
-                    max_damping =
-                        max_damping.min(options.max_rs_change_fraction * rs_scale / dh.abs());
+                    let cap_rs = options.max_rs_change_fraction * rs_scale / dh_abs;
+                    if cap_rs < max_damping {
+                        max_damping = cap_rs;
+                        binding_kind = "rs";
+                        binding_cell = Some(idx);
+                        binding_well = None;
+                    }
                 }
             }
         }
     }
 
-    // Well BHP: same pressure limit
     let well_offset = state.n_cell_unknowns();
     for well_idx in 0..state.n_well_unknowns() {
         let dbhp = update[well_offset + well_idx].abs();
+        if dbhp > raw_dbhp_peak {
+            raw_dbhp_peak = dbhp;
+            raw_dbhp_peak_well = Some(well_idx);
+        }
         if dbhp > 1e-12 {
-            max_damping = max_damping.min(options.max_pressure_change_bar / dbhp);
+            let cap = options.max_pressure_change_bar / dbhp;
+            if cap < max_damping {
+                max_damping = cap;
+                binding_kind = "bhp";
+                binding_cell = None;
+                binding_well = Some(well_idx);
+            }
         }
     }
 
-    max_damping.clamp(0.0, 1.0)
+    DampingBreakdown {
+        final_damping: max_damping.clamp(0.0, 1.0),
+        binding_kind,
+        binding_cell,
+        binding_well,
+        raw_dp_peak,
+        raw_dp_peak_cell,
+        raw_dsw_peak,
+        raw_dsw_peak_cell,
+        raw_dh_peak,
+        raw_dh_peak_cell,
+        raw_dbhp_peak,
+        raw_dbhp_peak_well,
+        inflection_crossings,
+    }
 }
 
 fn cell_phase_saturations(cell: &crate::fim::state::FimCellState) -> (f64, f64, f64) {
@@ -2239,6 +2324,11 @@ pub(crate) fn run_fim_timestep(
     let mut stagnation_attrib_zero_move: u32 = 0;
     let mut stagnation_attrib_real_bump: u32 = 0;
     let mut stagnation_attrib_slow_decay: u32 = 0;
+    // Fix-A2 Stage 1 residual-trend probe: track best-so-far and the residual at which
+    // the current stagnation run started. Read-only diagnostic — used to emit STAG-TREND
+    // and WOULD-WIDEN lines that classify whether the widened count=3 gate would fire.
+    let mut best_residual_so_far = f64::INFINITY;
+    let mut stagnation_entry_residual: Option<f64> = None;
     let mut previous_hotspot_site: Option<FimHotspotSite> = None;
     let mut repeated_hotspot_streak: u32 = 0;
     let mut previous_producer_hotspot_effective_move: Option<ProducerHotspotStagnationDiagnostics> =
@@ -2317,6 +2407,11 @@ pub(crate) fn run_fim_timestep(
         let previous_iteration_residual_norm = prev_residual_norm;
         let current_hotspot_site =
             residual_hotspot_site(sim, &topology, &residual_diagnostics.global);
+
+        // Fix-A2 Stage 1 probe: update best-residual tracker every iter (read-only).
+        if current_norm.is_finite() && current_norm < best_residual_so_far {
+            best_residual_so_far = current_norm;
+        }
 
         // Fix-B Stage 1 probe: upwind-flip snapshot diff against previous iter.
         // Read-only — emits an UPWIND-SUMMARY trace line per iter (from iter 1 onward).
@@ -2586,6 +2681,47 @@ pub(crate) fn run_fim_timestep(
                 stagnation_attrib_real_bump,
                 stagnation_attrib_slow_decay,
             );
+            // Fix-A2 Stage 1 probe: residual-trend classification at every stagnation iter.
+            // Read-only — no behavioral change. Records the residual at which this stagnation
+            // run began, then reports trend relative to that entry point and to the best
+            // residual seen in this timestep, along with whether the proposed widened gate
+            // (progress-since-entry < 0.5 AND iter-budget >= 3) would suppress the bailout.
+            if stagnation_entry_residual.is_none() {
+                stagnation_entry_residual = Some(prev_residual_norm);
+            }
+            let entry_res = stagnation_entry_residual.unwrap_or(current_norm);
+            let trend_vs_entry = if entry_res.is_finite() && entry_res > 0.0 {
+                current_norm / entry_res
+            } else {
+                f64::NAN
+            };
+            let progress_vs_best = if best_residual_so_far.is_finite()
+                && best_residual_so_far > 0.0
+            {
+                current_norm / best_residual_so_far
+            } else {
+                f64::NAN
+            };
+            let iters_remaining =
+                options.max_newton_iterations.saturating_sub(iteration + 1);
+            let would_widen = stagnation_count >= 3
+                && trend_vs_entry.is_finite()
+                && trend_vs_entry < 0.5
+                && iters_remaining >= 3;
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: STAG-TREND count={} res={:.3e} entry_res={:.3e} best_res={:.3e} trend_vs_entry={:.4} vs_best={:.4} iters_remain={} would_widen={}",
+                iteration,
+                stagnation_count,
+                current_norm,
+                entry_res,
+                best_residual_so_far,
+                trend_vs_entry,
+                progress_vs_best,
+                iters_remaining,
+                would_widen,
+            );
             if stagnation_count >= 3 {
                 let materially_changed = iterate_has_material_change(previous_state, &state);
                 let accepted_diagnostics = evaluate_accepted_state_convergence(
@@ -2760,6 +2896,7 @@ pub(crate) fn run_fim_timestep(
                 stagnation_attrib_zero_move += 1;
             }
             stagnation_count = 0;
+            stagnation_entry_residual = None;
         }
         prev_residual_norm = current_norm;
 
@@ -2999,12 +3136,54 @@ pub(crate) fn run_fim_timestep(
             repeated_hotspot_streak,
             current_hotspot_site,
         );
-        let damping = history_stabilization.as_ref().map_or_else(
-            || appleyard_damping(sim, &state, &linear_report.solution, options),
-            |decision| {
-                appleyard_damping(sim, &state, &linear_report.solution, options)
-                    .min(decision.damping_cap)
-            },
+        let damping_breakdown =
+            appleyard_damping_breakdown(sim, &state, &linear_report.solution, options);
+        let damping = history_stabilization
+            .as_ref()
+            .map(|decision| damping_breakdown.final_damping.min(decision.damping_cap))
+            .unwrap_or(damping_breakdown.final_damping);
+        // Fix A3 Stage 1 probe: read-only damping breakdown — which constraint bound
+        // the Appleyard chop, raw per-variable update peaks, and whether history
+        // stabilization further capped it. Used to investigate why initial-iter
+        // damping is 0.005-0.07 on the case 2 medium-water step.
+        fim_trace!(
+            sim,
+            options.verbose,
+            "    iter {:>2}: DAMP-BREAKDOWN final={:.4} appleyard={:.4} hist_cap={} bind={}@{} raw_dp={:.3e}@cell{} raw_dsw={:.3e}@cell{} raw_dh={:.3e}@cell{} raw_dbhp={:.3e}@well{} inflection={}",
+            iteration,
+            damping,
+            damping_breakdown.final_damping,
+            history_stabilization
+                .as_ref()
+                .map(|d| format!("{:.3}", d.damping_cap))
+                .unwrap_or_else(|| "none".to_string()),
+            damping_breakdown.binding_kind,
+            damping_breakdown
+                .binding_cell
+                .map(|c| format!("cell{}", c))
+                .or_else(|| damping_breakdown.binding_well.map(|w| format!("well{}", w)))
+                .unwrap_or_else(|| "none".to_string()),
+            damping_breakdown.raw_dp_peak,
+            damping_breakdown
+                .raw_dp_peak_cell
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            damping_breakdown.raw_dsw_peak,
+            damping_breakdown
+                .raw_dsw_peak_cell
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            damping_breakdown.raw_dh_peak,
+            damping_breakdown
+                .raw_dh_peak_cell
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            damping_breakdown.raw_dbhp_peak,
+            damping_breakdown
+                .raw_dbhp_peak_well
+                .map(|w| w.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            damping_breakdown.inflection_crossings,
         );
         let state_update_timer = PerfTimer::start();
         let candidate =
@@ -4648,7 +4827,9 @@ mod tests {
         update[2] = 0.15;
 
         let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
-        let damping = appleyard_damping(&sim, &state, &update, &FimNewtonOptions::default());
+        let damping =
+            appleyard_damping_breakdown(&sim, &state, &update, &FimNewtonOptions::default())
+                .final_damping;
 
         assert!((damping - (1.0 / 3.0)).abs() < 1e-12);
     }
