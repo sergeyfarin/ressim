@@ -241,20 +241,115 @@ Recommended next steps:
    is genuinely zero in ressim. If turning capillary truly off
    changes the ressim result, the discrepancy is partly Pcow.
 
-## Phase 3 decision (deferred)
+## Phase 2 result — 2026-04-25 (chop IS doing real correctness work)
 
-Postponed pending Phase 2 results. The chop question becomes a
-secondary lever once we understand the 16-49% oil discrepancy.
-Likely outcomes:
-- **If a different ressim bug accounts for the case-3 gap and
-  fixing it brings ressim to oil≈2609:** revisit the chop
-  question (Option B may then be safe to promote, since the
-  case-3 "regression" was an artifact of a now-fixed bug).
-- **If the case-3 gap is a fundamental physics-modeling
-  difference (e.g., well PI formula):** the chop's role is
-  uncoupled and we decide on it based on cases 1/2/4 alone where
-  it bound 78-93% of iters and removing it produced major lin_ms
-  wins.
+Phase 2 ran two diagnostics:
+
+### Diagnostic A: single-cell well-PI A/B
+
+Built `worklog/single-cell-pi/SINGLE_CELL.DATA` (OPM) and
+`worklog/single-cell-pi/run-ressim-single-cell.mjs` (ressim).
+1×1×1 grid, BHP-controlled producer at 100 bar, P_init=300,
+Sw_init=0.1, φ=0.99 to keep state ~constant. dt=0.001d.
+
+| sim    | end-of-step P_cell | reported oil rate |
+|--------|-------------------:|------------------:|
+| OPM    | 105.53 bar (FPR)   | 198.08 m³/d (WOPR, time-avg over step) |
+| ressim | 105.37 bar         | 193.05 m³/d (end-of-step rate) |
+
+Analytical at end-of-step (ΔP=5.4 bar, k_ro=1.0, μ_o=1.0,
+λ_o=1.0, B_o=1.0, r_eq=1.98m, ln(re/rw)=2.986):
+**q_o = 8.527e-3 · 2π · 2000 · 1.0 · 1.0 · 5.4 / 2.986
+= 193.7 m³/d.**
+
+Ressim's 193.05 matches the analytical end-of-step rate within
+0.3%. OPM's 198.08 is the time-averaged rate over a step where
+P_cell dropped 300→105, so it's slightly higher (averaging in
+some early-step rate when ΔP was bigger). **Well-PI is identical
+between ressim and OPM at the formula level.**
+
+### Diagnostic B: OPM dt-refinement on case 3
+
+The Phase 1 conclusion treated OPM dt=1 (1 substep, 11 Newton
+iters) as ground truth. Re-ran OPM with progressively finer dt:
+
+| OPM dt    | substeps | Newton iters | FOPT (m³) | FPR (bar) |
+|----------:|---------:|-------------:|----------:|----------:|
+| 1.0       |       1  |          11  | **2609.51** | 352.53 |
+| 0.25      |       4  |          29  | 3399.15   | 367.24 |
+| 0.0625    |      16  |          66  | 3713.66   | 367.61 |
+| 0.015625  |      64  |         142  | **3826.12** | 364.61 |
+
+**OPM's 1-substep result was discretization-limited, not
+converged.** OPM oil-production climbs from 2609 → 3826 as dt
+shrinks 64×. The dt=0.015625 result (3826) is within 0.6% of
+ressim with-chop fine-dt (3848) and within 1.5% of ressim
+with-chop dt=1 (3883).
+
+**Refined-dt OPM and refined-dt ressim agree on FOPT ≈ 3850.**
+Without-chop ressim gives FOPT ≈ 3018-3116 across dt — clearly
+diverged from the asymptote by ~20%.
+
+### Revised verdict
+
+**The chop is doing real correctness work.** The Phase 1 false
+finding (that the chop was masking wrong physics) came from
+treating OPM's 1-substep coarse-dt answer as ground truth, when
+in fact OPM at dt=1 is severely under-resolved on this case. The
+properly-converged reference (OPM dt=0.015625 = 3826, ressim
+with-chop fine-dt = 3848) confirms with-chop ressim is correct
+within a few percent.
+
+Without-chop ressim diverges from the converged reference by
+~20% on oil production. The Wang-Tchelepi inflection-point chop
+prevents Newton from jumping into a wrong basin of the
+fractional-flow curve on heavy-water case 3, exactly as the 2013
+paper described.
+
+## Phase 3 decision
+
+**Option B is dead. Do not promote.** The chop is not net-extra
+conservatism vs OPM — it's doing correctness work that OPM
+relies on its own different mechanisms (smaller default dt under
+adaptive control, more aggressive substep cuts) to achieve.
+
+OPM's case-3 default `cprw` run at dt=1 fails to resolve the
+breakthrough dynamics in 11 Newton iters and accepts a wrong
+answer with no chop. Ressim's chop is what makes ressim's dt=1
+attempt land at the asymptote in 27 substeps + dt-cuts.
+
+Remaining open questions:
+
+1. **Option A (widen the chop threshold).** The chop binds 93%
+   of case-2 Newton iters. Widening it (only fire on meaningful
+   overshoots) might still buy most of the case-2 lin_ms win
+   while preserving correctness on case 3. Worth a Stage 1
+   probe: measure how many "marginal" inflection crossings would
+   be relaxed by `chop only fires if proposed step ≥ 2 ×
+   distance_to_inflection`. If most case-2 firings are
+   "marginal" but most case-3 firings are "deep" overshoots,
+   Option A wins.
+
+2. **Why does ressim with-chop dt=1 outperform OPM with default
+   dt=1 on case 3?** OPM at dt=1 produces a 30% wrong answer
+   (FOPT=2609 vs asymptote 3826). Ressim at dt=1 with chop +
+   dt-cut machinery lands at 3883 (1.5% above asymptote). This
+   means **ressim's adaptive-dt + chop combination is
+   significantly more robust than OPM's default cprw + adaptive
+   dt** on this case. That is a positive finding — but it also
+   means the OPM 1-substep result is NOT the right reference for
+   future ressim convergence work; we need to use OPM with finer
+   dt (or fixed-dt-disabled-adaptation) to get a meaningful
+   comparison.
+
+3. **Methodological note for future Stage 1 probes.** When
+   comparing against OPM, always run OPM at multiple dt values to
+   confirm the OPM result is converged, not just a quick coarse-
+   dt answer. This was a real pitfall on this experiment.
+
+The branch stays around as a record. Master is unchanged. Next
+work probably back on master: try Option A (widened threshold) on
+the chop, with fine-dt OPM as the proper correctness reference.
 
 ## How to reproduce on this branch
 

@@ -135,7 +135,21 @@
       "Bash(awk '-F|' '{ *)",
       "Bash(timeout 600 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 48 --dt 0.03125 --diagnostic outer --no-json)",
       "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=|lin_ms=/\\) printf \"%s|\", $i; print \"\"}')",
-      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=/\\) printf \"%s|\", $i; print \"\"}')"
+      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=/\\) printf \"%s|\", $i; print \"\"}')",
+      "Bash(summary CASE3 TIME WBHP:INJ WBHP:PRO WOPR:PRO WWPR:PRO WWIR:INJ FPR)",
+      "Bash(timeout 30 flow SINGLE_CELL.DATA --output-dir=.)",
+      "Bash(summary SINGLE_CELL TIME WBHP:PRO WOPR:PRO WWPR:PRO BPR:1,1,1 BSWAT:1,1,1)",
+      "Bash(summary SINGLE_CELL TIME WBHP:PRO WOPR:PRO WWPR:PRO FPR FOPR FWPR FOPT FWPT)",
+      "Bash(node worklog/single-cell-pi/run-ressim-single-cell.mjs)",
+      "Bash(timeout 60 flow CASE3_finedt.DATA --output-dir=.)",
+      "Bash(summary CASE3_finedt TIME WBHP:PRO WOPR:PRO WWPR:PRO FPR FOPT FWPT FWIT)",
+      "Bash(summary CASE3_FINEDT TIME WBHP:PRO WOPR:PRO WWPR:PRO FPR FOPT FWPT FWIT)",
+      "Bash(sed -i 's|16\\\\*0.0625|4*0.25|; s|fine timestep \\(16 × 0.0625d\\)|dt=0.25d × 4 substeps|; s|16 substeps of 0.0625d|dt=0.25d × 4 substeps|' /home/reken/Repos/ressim/worklog/opm-case3/CASE3_dt025.DATA)",
+      "Bash(timeout 60 flow CASE3_dt025.DATA --output-dir=.)",
+      "Bash(summary CASE3_DT025 TIME WBHP:PRO WOPR:PRO WWPR:PRO FPR FOPT FWPT FWIT)",
+      "Bash(sed -i 's|16\\\\*0.0625|64*0.015625|; s|fine timestep \\(16 × 0.0625d\\)|dt=0.015625d × 64 substeps|; s|16 substeps of 0.0625d|64 substeps of 0.015625d|' /home/reken/Repos/ressim/worklog/opm-case3/CASE3_dt015.DATA)",
+      "Bash(timeout 120 flow CASE3_dt015.DATA --output-dir=.)",
+      "Bash(summary CASE3_DT015 TIME FOPT FWPT FWIT FPR)"
     ],
     "additionalDirectories": [
       "/tmp",
