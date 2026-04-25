@@ -126,6 +126,136 @@ keep the chop as-is and document why ressim diverges from OPM here,
 or shelve and move to a different lever (line search, equation
 scaling, CPR completion).
 
+## Phase 1 result — 2026-04-25 (OPM lands "somewhere else entirely")
+
+Translated case 3 to `worklog/opm-case3/CASE3.DATA` (deck
+preserved on master and this branch via `worklog/` which is
+gitignored — file present in the working tree). Single substep,
+1-day TSTEP, identical fluid/grid spec to case 2.
+
+OPM Flow `cprw` default solver:
+- **1 substep**, 11 Newton iters, 13 linear iters, 0.04 s
+- **FPR (avg_p) = 352.53 bar**
+- **FOPT (oil produced) = 2609.51 m³**
+- **FWIT (water injected) = 2996.32 m³**
+
+This **doesn't match either ressim variant.** Comparison:
+
+| run | substeps | avg_p | oil produced | inj | wall time |
+|-----|---------:|------:|-------------:|----:|----------:|
+| OPM Flow (cprw, dt=1)              |   1 | 352.53 | **2609.51** | 2996.32 | 0.04 s |
+| ressim with-chop (master, dt=1)    |  27 | 353.82 | **3882.89** | 3873.29 | 3.4 s |
+| ressim with-chop (master, fine-dt) |   — | 354.80 | **3847.60** | 3850.77 | — |
+| ressim without-chop (branch, dt=1) | 162 | 365.12 | **3018.88** | 3599.79 | 14.1 s |
+| ressim without-chop (branch, fine-dt) | — | 364.24 | **3116.23** | 3634.56 | — |
+
+Both ressim variants overshoot OPM's oil production
+substantially. **With-chop ressim is +49% over OPM**
+(3882 vs 2609), **without-chop is +16% over OPM** (3018 vs 2609).
+ressim fine-dt (with chop) is +47% over OPM (3848 vs 2609).
+
+**The chop is not the bug.** Both ressim variants disagree with
+OPM on case 3, in different ways. The with-chop "fine-dt
+reference" we used in 2026-04-23 (Fix A1 promotion) was itself
+wrong vs OPM by ~50%.
+
+## What this means
+
+- **Hypothesis 1 (chop is correctness-essential): partially
+  refuted.** Without-chop ressim is closer to OPM's oil number
+  than with-chop ressim, so removing the chop is *more right*
+  on this metric. But without-chop ressim avg_p (365) is also
+  +3.6% over OPM (352.5) where with-chop ressim avg_p (353.8) is
+  within 0.4% of OPM. So the two variants disagree about which
+  is more correct depending on which metric you weight.
+- **Hypothesis 2 (chop masks a different bug): partially
+  confirmed.** There's a real ressim-vs-OPM gap on case 3 that
+  is independent of the chop. The chop was making one of the two
+  errors larger (oil overshoot) while keeping the other smaller
+  (avg_p match). Removing the chop swaps which error is larger.
+- **Neither variant is the right answer.** The case-3 setup
+  (heavy-water 12×12×3, dt=1, kx=2000mD/kz=200mD,
+  Corey-n=2 SWOF, BHP-controlled wells) reveals a deeper ressim
+  ↔ OPM disagreement that the chop has been masking on the oil
+  metric.
+
+## Possible sources of the case-3 ressim ↔ OPM gap
+
+(Investigation directions, not findings.)
+
+1. **Well productivity index (PI) calculation.** Ressim's
+   `add_well(... rw=0.1, skin=0.0)` may use a different Peaceman
+   formula than OPM's COMPDAT. With BHP-controlled producer at
+   100 bar and avg_p ~352 bar at dt=1, even a small PI difference
+   compounds into a large oil-rate difference.
+2. **Capillary pressure model.** Ressim's
+   `setCapillaryParams(0.0, 2.0)` translates to Brooks-Corey with
+   `p_entry=0` → effectively zero Pcow. OPM SWOF Pcow column is
+   0 → also zero Pcow. Should match. Worth confirming with a
+   nonzero Pcow A/B.
+3. **Hydrostatic gradient.** Ressim sets uniform initial pressure
+   = 300 bar; OPM (after the EQUIL fix) uses `PRESSURE 432*300`,
+   also uniform. Should match.
+4. **Relperm endpoint extrapolation.** SWOF table from
+   Sw=0.10 to Sw=0.90; ressim uses Corey n=2 analytical;
+   OPM linearly interpolates the table. Both should agree at the
+   table points but interpolation between points might differ
+   (sub-percent effect, unlikely to explain a 50% gap).
+5. **PVT formulation.** Ressim sets B_o, B_w as constants;
+   OPM PVCDO/PVTW define ref-pressure-dependent density via
+   compressibility. Both should agree at P=300 bar (the ref). Above
+   ref pressure (injector at 500 bar), OPM may show a slightly
+   different Bw — bounded effect.
+6. **Time stepping.** OPM finishes the 1-day step in 1 substep
+   with 11 Newton iters; ressim takes 27 (with chop) or 162
+   (without). The substep gap may be the proximate cause: each
+   ressim substep evaluates well rates at substep boundaries,
+   accumulating oil over 27 (or 162) substep "fences" that may
+   integrate differently than OPM's single substep.
+
+## Phase 2 plan (revised)
+
+The "chop is or isn't doing real work" question is now
+secondary. The primary question is: **why does ressim
+overshoot OPM oil production on case 3 by 16-49%?**
+
+Recommended next steps:
+
+1. **Drop a single 1-substep dt=1 case 3 from ressim with FIM
+   max-newton-iters lifted high enough that no dt-cut fires.**
+   Compare oil/water/avg_p iter-by-iter to OPM's 11-iter
+   trajectory in `worklog/opm-case3/CASE3.DBG`. If ressim
+   converges to the same answer as OPM in 1 substep without the
+   dt-cut machinery interfering, the bug is in the substep-rhythm
+   accumulation. If ressim converges to oil≈3018 (the
+   without-chop branch result), the bug is upstream of the
+   substep machinery — in the well/PI or relperm formulation.
+
+2. **Explicit single-cell test:** put both simulators on a 1×1×1
+   grid with identical injector+producer setup and check that
+   well-rate output matches at fixed Sw. This isolates
+   well/PI calculation from front-propagation effects.
+
+3. **Capillary A/B:** rerun case 3 on this branch with
+   `setCapillaryParams(0.001, 2.0)` (tiny p_entry) to confirm Pcow
+   is genuinely zero in ressim. If turning capillary truly off
+   changes the ressim result, the discrepancy is partly Pcow.
+
+## Phase 3 decision (deferred)
+
+Postponed pending Phase 2 results. The chop question becomes a
+secondary lever once we understand the 16-49% oil discrepancy.
+Likely outcomes:
+- **If a different ressim bug accounts for the case-3 gap and
+  fixing it brings ressim to oil≈2609:** revisit the chop
+  question (Option B may then be safe to promote, since the
+  case-3 "regression" was an artifact of a now-fixed bug).
+- **If the case-3 gap is a fundamental physics-modeling
+  difference (e.g., well PI formula):** the chop's role is
+  uncoupled and we decide on it based on cases 1/2/4 alone where
+  it bound 78-93% of iters and removing it produced major lin_ms
+  wins.
+
 ## How to reproduce on this branch
 
 ```bash
