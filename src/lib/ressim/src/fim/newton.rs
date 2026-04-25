@@ -3200,6 +3200,48 @@ pub(crate) fn run_fim_timestep(
                 .unwrap_or_else(|| "-".to_string()),
             damping_breakdown.inflection_crossings,
         );
+        // Stage 1 over-damping probe: compute the per-variable damp candidate
+        // each component would have allowed in isolation, and report the wasted
+        // ratio (applied_damp / per_var_candidate). Ratios <1 mean the global
+        // single-scalar damping is over-damping that component.
+        {
+            let damp_dp_only = if damping_breakdown.raw_dp_peak > 1e-12 {
+                (options.max_pressure_change_bar / damping_breakdown.raw_dp_peak).min(1.0)
+            } else {
+                1.0
+            };
+            let damp_dsw_only = if damping_breakdown.raw_dsw_peak > 1e-12 {
+                (options.max_saturation_change / damping_breakdown.raw_dsw_peak).min(1.0)
+            } else {
+                1.0
+            };
+            let damp_dh_only = if damping_breakdown.raw_dh_peak > 1e-12 {
+                (options.max_saturation_change / damping_breakdown.raw_dh_peak).min(1.0)
+            } else {
+                1.0
+            };
+            let damp_dbhp_only = if damping_breakdown.raw_dbhp_peak > 1e-12 {
+                (options.max_pressure_change_bar / damping_breakdown.raw_dbhp_peak).min(1.0)
+            } else {
+                1.0
+            };
+            let waste = |allowed: f64| if allowed > 0.0 { damping / allowed } else { 1.0 };
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: COMPONENT-CLIP applied={:.4} dp_allowed={:.4}(waste={:.4}) dsw_allowed={:.4}(waste={:.4}) dh_allowed={:.4}(waste={:.4}) dbhp_allowed={:.4}(waste={:.4})",
+                iteration,
+                damping,
+                damp_dp_only,
+                waste(damp_dp_only),
+                damp_dsw_only,
+                waste(damp_dsw_only),
+                damp_dh_only,
+                waste(damp_dh_only),
+                damp_dbhp_only,
+                waste(damp_dbhp_only),
+            );
+        }
         let state_update_timer = PerfTimer::start();
         let candidate =
             state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
