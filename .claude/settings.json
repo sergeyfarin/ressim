@@ -134,7 +134,9 @@
       "Bash(grep -i \"wang\\\\|tchelepi\\\\|inflection\\\\|fw\\\\|basin\\\\|trust\" echo \"---\" grep -rli \"inflection\\\\|wang.*tchelepi\\\\|basin-escape\" docs/)",
       "Bash(awk '-F|' '{ *)",
       "Bash(timeout 600 node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 48 --dt 0.03125 --diagnostic outer --no-json)",
-      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=|lin_ms=/\\) printf \"%s|\", $i; print \"\"}')"
+      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=|lin_ms=/\\) printf \"%s|\", $i; print \"\"}')",
+      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=|fim_ms=|lin_ms=/\\) printf \"%s|\", $i; print \"\"}')",
+      "Bash(awk '-F|' '{for\\(i=1;i<=NF;i++\\) if\\($i~/step=|substeps=|avg_p=|oil=|inj=/\\) printf \"%s|\", $i; print \"\"}')"
     ],
     "additionalDirectories": [
       "/tmp",

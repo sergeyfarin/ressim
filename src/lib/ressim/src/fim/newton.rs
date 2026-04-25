@@ -32,6 +32,13 @@ const STRONG_CPR_AVERAGE_REDUCTION_RATIO: f64 = 0.25;
 const STRONG_CPR_LAST_REDUCTION_RATIO: f64 = 0.5;
 const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
 const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
+/// Inflection-chop overshoot factor: only chop the Newton update at the fw
+/// inflection point if the proposed step would land at least this multiple
+/// of `dist_to_inflection` past the inflection. Setting to 1.0 reproduces
+/// the classic Wang-Tchelepi 2013 trust-region chop (any crossing fires).
+/// Larger values skip "marginal" crossings while still guarding deep
+/// basin-jumping overshoots.
+const FW_INFLECTION_OVERSHOOT_FACTOR: f64 = 1.2;
 const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
 const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
 const PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES: usize = 2;
@@ -752,7 +759,11 @@ fn appleyard_damping_breakdown(
         }
 
         // Trust-region boundary at the fw inflection point (water).
-        // If the full update would cross the inflection point, chop so Sw lands at it.
+        // Only chop when the proposed step would overshoot the inflection by
+        // a meaningful margin — proposed step magnitude must be at least
+        // FW_INFLECTION_OVERSHOOT_FACTOR * dist_to_inflection. Marginal
+        // crossings are let through; basin-jumping protection still holds
+        // for genuinely wild updates.
         let dsw_signed = update[offset + 1];
         if dsw_signed.abs() > 1e-12 {
             if let Some(sw_inflect) = fw_inflection_point_sw(sim, cell) {
@@ -760,14 +771,18 @@ fn appleyard_damping_breakdown(
                 let side_before = cell.sw - sw_inflect;
                 let side_after = sw_full - sw_inflect;
                 if side_before * side_after < 0.0 {
-                    inflection_crossings += 1;
+                    let proposed_step_mag = max_damping * dsw_signed.abs();
                     let dist = (sw_inflect - cell.sw).abs();
-                    let chop = (dist / dsw_signed.abs()).clamp(0.0, max_damping);
-                    if chop < max_damping {
-                        max_damping = chop;
-                        binding_kind = "sw_inflection";
-                        binding_cell = Some(idx);
-                        binding_well = None;
+                    let overshoot_threshold = FW_INFLECTION_OVERSHOOT_FACTOR * dist;
+                    if proposed_step_mag >= overshoot_threshold {
+                        inflection_crossings += 1;
+                        let chop = (dist / dsw_signed.abs()).clamp(0.0, max_damping);
+                        if chop < max_damping {
+                            max_damping = chop;
+                            binding_kind = "sw_inflection";
+                            binding_cell = Some(idx);
+                            binding_well = None;
+                        }
                     }
                 }
             }

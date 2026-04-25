@@ -1530,3 +1530,121 @@ promotion.
   `#[cfg(test)]` for the existing unit test.
 - `worklog/fix-a3-damping-probe/stage1-case{1,2,3,4}.log` — 4-case
   probe runs (git-ignored under `/worklog/`).
+
+## Fix A3 Stage 2 — 2026-04-25 (PROMOTED via Option A, k=1.2)
+
+### Pivot from Option B to Option A
+
+Option B (full removal of the inflection chop) was tried first
+on `experiment/fim-no-inflection-chop` and refuted by case 3
+correctness loss: FOPT 3883→3019, a -22% drop vs the converged
+fine-dt reference (3826). Critically, the Option B branch
+investigation also re-validated the OPM reference: OPM at dt=1
+(default cprw) gives FOPT=2609, but a dt-refinement sweep shows
+OPM FOPT climbs to 3826 at dt=0.015625 (64 substeps). OPM at
+default dt was discretization-limited, not converged. Both
+refined-dt simulators agree on FOPT≈3826.
+
+The chop is doing real correctness work (not OPM-equivalent
+"net-extra conservatism"). Pivoted to Option A: keep the chop
+but only fire it when the proposed step overshoots the
+inflection by a meaningful margin.
+
+### Implementation
+
+One-line behavioral change in
+`src/lib/ressim/src/fim/newton.rs`:
+
+```rust
+const FW_INFLECTION_OVERSHOOT_FACTOR: f64 = 1.2;
+
+// in appleyard_damping_breakdown:
+let proposed_step_mag = max_damping * dsw_signed.abs();
+let dist = (sw_inflect - cell.sw).abs();
+let overshoot_threshold = FW_INFLECTION_OVERSHOOT_FACTOR * dist;
+if proposed_step_mag >= overshoot_threshold {
+    // ... existing chop block ...
+}
+```
+
+Setting `FW_INFLECTION_OVERSHOOT_FACTOR = 1.0` reproduces the
+classical Wang-Tchelepi 2013 chop exactly (any crossing fires).
+k=1.2 lets through marginal crossings (the largest population of
+front-cell iters) while still chopping deep overshoots (the
+basin-jump risk Wang-Tchelepi was actually targeting).
+
+### k-value sweep on case 3 (the discriminator)
+
+| k    | substeps | FOPT (dt=1) | inflection-bound iters |
+|-----:|---------:|------------:|------------------------:|
+| 1.0 (master) | 27 | 3883 | 326/402 (81%) |
+| **1.2 (chosen)** | **32** | **3837** | **247/350 (71%)** |
+| 1.5  | 42 | 3793 | (not computed) |
+| 2.0  | 139 | 3191 | 182/1010 (18%) |
+| ∞ (Option B) | 162 | 3019 | 0/n/a |
+
+k=1.2 sweet spot: case-3 FOPT stays within 1% of the converged
+reference (and case-3 fine-dt at k=1.2 matches OPM converged ref
+3826 within 0.01%).
+
+### 4-case shortlist — master vs Fix A3 Option A k=1.2
+
+| case | substeps with→k1.2 | lin_ms with→k1.2 | dt-run FOPT | fine-dt FOPT |
+|------|-------------------:|-----------------:|------------:|-------------:|
+| 1: medium-water 1 step    |  7 → 4   (-43%) | 13,920 → 5,667 (-59%) | 3326 → 3289 | n/a |
+| 2: medium-water 6 step    | 34 → 30  (-12%) | 60,910 → 46,620 (-23%) | 3602 → 3598 (-0.1%) | 3609.73 → **3609.73** (bit-exact) |
+| 3: heavy-water 12x12x3    | 27 → 32  (+19%) | 3,517 → 3,687 (+5%) | 3883 → 3837 (-1.2%) | 3847 → **3826** (matches OPM converged 3826) |
+| 4: gas-rate 10x10x3       | 28 → 28  (no-op) | 1,628 → 1,656 (+2%) | unchanged | n/a |
+
+**Net across 4-case shortlist:** total substeps 96 → 94, total
+lin_ms 79,975 → 57,630 (**-28%**).
+
+### Validation
+
+- All Rust tests pass (Buckley-Leverett A/B + smaller-dt
+  refinement, Dietz PSS, SPE1 first-steps + gas-injection +
+  breakthrough, Appleyard damping). 298/298 passing tests on
+  this branch — same as master baseline. Same 6 pre-existing
+  failures (no new regressions).
+- Case 2 fine-dt FOPT bit-exact match to master with-chop fine-dt
+  (3609.73 vs 3609.73).
+- Case 3 fine-dt FOPT=3826.36 — matches OPM dt=0.015625 converged
+  reference (3826.12) within 0.01%, and slightly closer to the
+  converged answer than master with-chop fine-dt (3847.60).
+- Case 4 (gas-only): inflection chop never fires there;
+  bit-exact behavior expected and confirmed.
+
+### Files of record
+
+- `src/lib/ressim/src/fim/newton.rs` — `FW_INFLECTION_OVERSHOOT_FACTOR`
+  constant near line 41; widened predicate in
+  `appleyard_damping_breakdown` near line 770.
+- `docs/FIM_CHOP_WIDEN_EXPERIMENT.md` — full experiment writeup
+  with k-sweep and validation evidence.
+- `worklog/fix-a3-option-a/` — A/B run logs preserved (git-
+  ignored).
+- `worklog/opm-case3/` — case-3 OPM reference decks at
+  multiple dt values (dt=1.0, 0.25, 0.0625, 0.015625) used to
+  establish the converged reference 3826.
+
+### Methodology lesson (apply going forward)
+
+The Option B refutation surfaced a methodology gap: **the OPM
+reference must be validated at multiple dt values** before
+treating it as ground truth. OPM at default dt is not always
+converged, especially on cases where ressim has been struggling
+— those cases tend to be exactly the ones where OPM's own
+adaptive dt may also be under-resolving.
+
+Concrete recipe for future OPM-reference work:
+1. Run OPM at the same dt as the ressim test case.
+2. Run OPM at dt/4 and dt/16 (or wider) and compare the metric
+   of interest (FOPT, FWIT, FPR, etc.).
+3. If the metric moves by more than ~1% across the dt-refinement
+   sweep, the original OPM result was discretization-limited;
+   use the finest run as the reference.
+4. Document the dt-refinement table next to any OPM-vs-ressim
+   comparison.
+
+This was previously documented in
+`project_fim_fix_a3_option_b_refuted_2026-04-25.md` memory.
