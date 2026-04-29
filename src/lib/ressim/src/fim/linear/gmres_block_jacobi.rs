@@ -622,7 +622,28 @@ fn invert_pressure_block(pressure_rows: &[Vec<(usize, f64)>]) -> Option<DMatrix<
     matrix.try_inverse()
 }
 
+/// Build CPR restriction and prolongation operators for one cell block.
+///
+/// **Summed-IMPES (Dynamic Row Sum) restriction** (Bundle B,
+/// `experiment/fim-cpr-summed-impes`): the coarse pressure equation is
+/// the unweighted sum of all cell-component-mass equations. Each row of
+/// the cell Jacobian has units of m³ at standard conditions (residual
+/// definition in `cell_component_inventory_sc`); summing them gives a
+/// total-inventory-change equation whose dependence on (Sw, Sg) is much
+/// smaller than the water row alone, because mass-transfer between phases
+/// partially cancels and well source terms convert to volume sources.
+///
+/// **Prolongation** stays diagonal `[1, 0, 0]` — the coarse pressure
+/// correction updates only cell pressure; the saturation correction comes
+/// from the smoothing step, not the coarse step.
+///
+/// The legacy Quasi-IMPES construction (water-row-as-pressure with
+/// transport-block elimination) is preserved as a comment-out fallback
+/// for diff readability; setting `USE_SUMMED_IMPES = false` would
+/// reproduce the master baseline behavior.
 fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>) {
+    const USE_SUMMED_IMPES: bool = true;
+
     let size = block.nrows();
     let mut restriction = vec![0.0; size];
     let mut prolongation = vec![0.0; size];
@@ -630,6 +651,18 @@ fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>)
         return (restriction, prolongation);
     }
 
+    if USE_SUMMED_IMPES {
+        // Sum all cell rows into a total-inventory-change pressure equation.
+        for entry in restriction.iter_mut() {
+            *entry = 1.0;
+        }
+        // Prolongation: only update pressure from the coarse correction.
+        prolongation[0] = 1.0;
+        return (restriction, prolongation);
+    }
+
+    // Legacy Quasi-IMPES (water-row-as-pressure with transport-block
+    // elimination) — preserved for branch-experiment toggle.
     restriction[0] = 1.0;
     prolongation[0] = 1.0;
     if size == 1 {
@@ -1766,17 +1799,17 @@ mod tests {
     }
 
     #[test]
-    fn pressure_transfer_weights_follow_local_schur_elimination() {
+    fn pressure_transfer_weights_use_summed_impes_restriction() {
+        // Under summed-IMPES (Bundle B), the coarse pressure restriction is
+        // the unweighted sum of all cell rows, and the prolongation is
+        // diagonal. Local Schur elimination is no longer used in the
+        // restriction (the saturation correction comes from smoothing).
         let block = DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0]);
 
         let (restriction, prolongation) = build_pressure_transfer_weights(&block);
 
-        assert!((restriction[0] - 1.0).abs() < 1e-12);
-        assert!((restriction[1] + 1.0 / 3.0).abs() < 1e-12);
-        assert!(restriction[2].abs() < 1e-12);
-        assert!((prolongation[0] - 1.0).abs() < 1e-12);
-        assert!((prolongation[1] + 2.0 / 3.0).abs() < 1e-12);
-        assert!(prolongation[2].abs() < 1e-12);
+        assert_eq!(restriction, vec![1.0, 1.0, 1.0]);
+        assert_eq!(prolongation, vec![1.0, 0.0, 0.0]);
     }
 
     #[test]
