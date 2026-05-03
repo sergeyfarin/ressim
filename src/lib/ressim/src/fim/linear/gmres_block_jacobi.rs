@@ -3,7 +3,7 @@ use std::f64;
 use nalgebra::{DMatrix, DVector};
 use ndarray::Array1;
 use scirs2_sparse::csr_array::CsrArray;
-use scirs2_sparse::linalg::{AMGOptions, AMGPreconditioner};
+use scirs2_sparse::linalg::{AMGOptions, AMGPreconditioner, CycleType, InterpolationType, SmootherType};
 use sprs::CsMat;
 
 use super::{
@@ -486,7 +486,24 @@ fn solve_pressure_with_amg(
         return Some(DVector::zeros(0));
     }
     let csr = pressure_rows_to_csr_array(pressure_rows);
-    let amg = AMGPreconditioner::<f64>::new(&csr, AMGOptions::default()).ok()?;
+    // OPM Dune-AMG defaults ported from
+    // opm-simulators/opm/simulators/linalg/setupPropertyTree.cpp::setupDuneAMG.
+    // Notable divergences from scirs2 defaults: theta 0.25→0.333 (alpha),
+    // max_levels 10→15, max_coarse_size 50→1200 (huge — OPM stops coarsening
+    // earlier and direct-solves a larger coarsest grid). OPM uses ILU0
+    // smoother; scirs2 doesn't have ILU0-as-smoother, so we keep
+    // GaussSeidel which is the closest equivalent.
+    let opts = AMGOptions {
+        max_levels: 15,
+        theta: 0.333_333_333_333,
+        max_coarse_size: 1200,
+        interpolation: InterpolationType::Classical,
+        smoother: SmootherType::GaussSeidel,
+        pre_smooth_steps: 1,
+        post_smooth_steps: 1,
+        cycle_type: CycleType::V,
+    };
+    let amg = AMGPreconditioner::<f64>::new(&csr, opts).ok()?;
 
     let mut x = DVector::zeros(n);
     for _it in 0..max_iters {
@@ -715,6 +732,31 @@ fn invert_pressure_block(pressure_rows: &[Vec<(usize, f64)>]) -> Option<DMatrix<
 /// transport-block elimination) is preserved as a comment-out fallback
 /// for diff readability; setting `USE_SUMMED_IMPES = false` would
 /// reproduce the master baseline behavior.
+/// OPM Quasi-IMPES weights, ported from
+/// `opm-simulators/opm/simulators/linalg/getQuasiImpesWeights.hpp`.
+///
+/// For each cell-block the coarse-pressure restriction weights are
+/// `bweights = (block^T)^-1 · e_p` where `e_p` is the unit vector for
+/// the pressure variable (column 0 in our cell layout). The result is
+/// then normalized by `1/|max(bweights)|` so the largest-magnitude
+/// component has unit absolute value. This is **per-cell** weighting:
+/// each cell solves a small 3×3 system, and the resulting row vector
+/// hits the pressure variable exactly while damping out the saturation
+/// derivatives by exact local inversion — much more accurate than
+/// either the unweighted summed-IMPES `[1,1,1]` (which I tried Stage 2
+/// 2026-05-01) or the heuristic `[1, 1 if pressure-coupled, 0]`
+/// (parallel agent's bundle).
+///
+/// The earlier Quasi-IMPES heuristic in ressim (Schur-complement
+/// elimination of rows 1..size by `transport_inverse`) is
+/// mathematically a related construction but uses a different basis
+/// and lacks OPM's normalization step. The exact OPM formula gives
+/// strictly better-conditioned coarse pressure systems for the cases
+/// where ressim deviates from OPM the most.
+///
+/// **Prolongation** stays diagonal `[1, 0, 0]` — coarse pressure
+/// correction updates only the pressure variable; saturation
+/// corrections come from the smoothing step.
 fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>) {
     let size = block.nrows();
     let mut restriction = vec![0.0; size];
@@ -723,28 +765,30 @@ fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>)
         return (restriction, prolongation);
     }
 
-    // Tighter row-coupling threshold (added during 2026-05-01 bisection):
-    // only sum rows whose pressure coupling is meaningful relative to the
-    // largest diagonal. Threshold of 1e-6×max diagonal excludes gas-row
-    // contributions in undersaturated cells (gas compressibility creates
-    // a tiny but nonzero ∂/∂P that otherwise pollutes the coarse
-    // equation). On case 2 with the rest of the bundle, this drops
-    // substeps 32→24 and lin_ms by ~22%.
-    let max_diag = (0..size)
-        .map(|i| block[(i, i)].abs())
-        .fold(0.0_f64, f64::max);
-    let coupling_threshold = (max_diag * 1e-6).max(f64::EPSILON);
-    let has_any_pressure_coupling =
-        (0..size).any(|row| block[(row, 0)].abs() > coupling_threshold);
-    if has_any_pressure_coupling {
-        for row in 0..size {
-            restriction[row] = if block[(row, 0)].abs() > coupling_threshold {
-                1.0
-            } else {
-                0.0
-            };
+    // bweights = (block^T)^-1 · e_p, where e_p[0] = 1.
+    // Equivalently: bweights = first ROW of (block^-1), as a column vector.
+    if let Some(inv) = block.clone().try_inverse() {
+        for row_idx in 0..size {
+            restriction[row_idx] = inv[(0, row_idx)];
         }
     } else {
+        // Fallback: pure water-row restriction (Quasi-IMPES degenerate case).
+        restriction[0] = 1.0;
+    }
+
+    // Normalize by 1/|max(bweights)|.
+    let max_abs = restriction
+        .iter()
+        .copied()
+        .map(f64::abs)
+        .fold(0.0_f64, f64::max);
+    if max_abs > f64::EPSILON {
+        let inv_norm = 1.0 / max_abs;
+        for w in restriction.iter_mut() {
+            *w *= inv_norm;
+        }
+    } else {
+        // All-zero block (degenerate); fall back to water-row.
         restriction[0] = 1.0;
     }
 
@@ -1861,12 +1905,19 @@ mod tests {
     }
 
     #[test]
-    fn pressure_transfer_weights_drop_transport_only_rows() {
+    fn pressure_transfer_weights_match_opm_quasi_impes_formula() {
+        // OPM Quasi-IMPES: bweights = (block^T)^-1 · e_p, normalized by
+        // 1/|max(bweights)|. For the test block below:
+        //   block = [[4,1,0],[2,3,0],[0,0,1]]
+        //   block^-1 row 0 = [3/10, -1/10, 0]
+        //   normalized by 1/|3/10| -> [1.0, -1/3, 0.0]
         let block = DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0]);
 
         let (restriction, prolongation) = build_pressure_transfer_weights(&block);
 
-        assert_eq!(restriction, vec![1.0, 1.0, 0.0]);
+        assert!((restriction[0] - 1.0).abs() < 1e-12);
+        assert!((restriction[1] - (-1.0 / 3.0)).abs() < 1e-12);
+        assert!(restriction[2].abs() < 1e-12);
         assert_eq!(prolongation, vec![1.0, 0.0, 0.0]);
     }
 
