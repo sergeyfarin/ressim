@@ -503,9 +503,11 @@ fn accelerated_retry_factor_for_repeated_hotspot_failure(
         || repeated_same_hotspot_failures < 2
         || hotspot_repeat_failures < 2
         || trial_dt_days <= 1.0e-4
-        || report.newton_iterations != 1
-        || failure_diagnostics.linear_iterations != Some(1)
     {
+        return base_retry_factor;
+    }
+
+    if report.newton_iterations != 1 || failure_diagnostics.linear_iterations != Some(1) {
         return base_retry_factor;
     }
 
@@ -885,8 +887,8 @@ impl ReservoirSimulator {
         let mut linear_solve_ms = 0.0;
         let mut linear_preconditioner_ms = 0.0;
         let mut state_update_ms = 0.0;
-        // Basin-escape probe history: last two clean-accepted, materially-changed
-        // snapshots with the dt that produced each one. Diagnostic only.
+        // Basin-escape history: last two clean-accepted, materially-changed
+        // snapshots with the dt that produced each one.
         let mut basin_escape_prev_prev: Option<(FimState, f64)> = None;
         let mut basin_escape_prev: Option<(FimState, f64)> = None;
 

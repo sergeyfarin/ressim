@@ -2,14 +2,17 @@ use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
 use crate::fim::assembly::{
-    CellFacePhaseDiagnostics, FaceUpwindSample, FacePhaseDiagnostics, FimAssemblyOptions,
+    CellFacePhaseDiagnostics, FaceUpwindSample, FacePhaseDiagnostics, FimAssembly,
+    FimAssemblyOptions,
     PhaseFluxDiagnostic, assemble_fim_system, cell_equation_residual_breakdown,
     cell_face_phase_flux_diagnostics, collect_face_upwind_snapshot, diff_face_upwind_snapshots,
 };
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
+    FimLinearSolverKind, FimPressureCoarseSolverKind, active_direct_solve_row_threshold,
+    left_scale_linear_system_rows, solve_linearized_system,
 };
+use crate::fim::scaling::EquationScaling;
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
 use crate::timing::PerfTimer;
@@ -28,6 +31,9 @@ macro_rules! fim_trace {
 
 const ENTRY_RESIDUAL_GUARD_FACTOR: f64 = 2.0;
 const NOOP_ENTRY_EXACT_FACTOR: f64 = 1e-3;
+const ZERO_MOVE_APPLEYARD_GUARD_FACTOR: f64 = 3.0;
+const ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR: f64 = 2.0;
+const ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR: f64 = 160.0;
 const STRONG_CPR_AVERAGE_REDUCTION_RATIO: f64 = 0.25;
 const STRONG_CPR_LAST_REDUCTION_RATIO: f64 = 0.5;
 const DEFAULT_MAX_NEWTON_PRESSURE_CHANGE_BAR: f64 = 200.0;
@@ -50,7 +56,9 @@ const NONLINEAR_HISTORY_FIRST_DAMPING_CAP: f64 = 0.5;
 const NONLINEAR_HISTORY_REPEAT_DAMPING_CAP: f64 = 0.25;
 const NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR: f64 = 10.0;
 const RESTART_STAGNATION_DIRECT_BYPASS_THRESHOLD: u32 = 2;
+const REPEATED_ZERO_MOVE_DIRECT_BYPASS_BAIL_THRESHOLD: u32 = 3;
 const NEAR_CONVERGED_ITERATIVE_OUTER_FACTOR: f64 = 16.0;
+const NEAR_CONVERGED_ITERATIVE_BICGSTAB_OUTER_FACTOR: f64 = 256.0;
 const NEAR_CONVERGED_ITERATIVE_CANDIDATE_WORSENING_FACTOR: f64 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -277,6 +285,22 @@ fn should_enable_repeated_zero_move_direct_bypass(
     )
 }
 
+fn should_bail_repeated_zero_move_direct_bypass(
+    repeated_zero_move_direct_bypass: bool,
+    effective_move_floor_hit: bool,
+    linear_iterations: usize,
+    streak: u32,
+) -> bool {
+    // BISECT: F disabled
+    let _ = (
+        repeated_zero_move_direct_bypass,
+        effective_move_floor_hit,
+        linear_iterations,
+        streak,
+    );
+    false
+}
+
 fn should_accept_near_converged_iterative_step(report: &FimLinearSolveReport) -> bool {
     if report.backend_used != FimLinearSolverKind::FgmresCpr {
         return false;
@@ -293,7 +317,15 @@ fn should_accept_near_converged_iterative_step(report: &FimLinearSolveReport) ->
         return false;
     }
 
-    if failure.outer_residual_norm > failure.tolerance * NEAR_CONVERGED_ITERATIVE_OUTER_FACTOR {
+    let outer_factor = if report.cpr_diagnostics.as_ref().is_some_and(|diagnostics| {
+        diagnostics.coarse_solver == FimPressureCoarseSolverKind::BiCgStab
+    }) {
+        NEAR_CONVERGED_ITERATIVE_BICGSTAB_OUTER_FACTOR
+    } else {
+        NEAR_CONVERGED_ITERATIVE_OUTER_FACTOR
+    };
+
+    if failure.outer_residual_norm > failure.tolerance * outer_factor {
         return false;
     }
 
@@ -311,6 +343,22 @@ fn should_accept_near_converged_iterative_step(report: &FimLinearSolveReport) ->
         .restart_diagnostics
         .iter()
         .any(|restart| restart.solution_improved)
+}
+
+    fn iterative_perforation_row_scale_factors(scaling: &EquationScaling) -> Option<Vec<f64>> {
+    let cell_rows = scaling.water.len() + scaling.oil_component.len() + scaling.gas_component.len();
+    let total_rows = cell_rows + scaling.well_constraint.len() + scaling.perforation_flow.len();
+    let mut factors = vec![1.0; total_rows];
+    let perf_offset = cell_rows + scaling.well_constraint.len();
+
+    for (perf_idx, scale) in scaling.perforation_flow.iter().enumerate() {
+        factors[perf_offset + perf_idx] = 1.0 / scale.max(1.0);
+    }
+
+    factors
+        .iter()
+        .any(|factor| (factor - 1.0).abs() > 1e-12)
+        .then_some(factors)
 }
 
 #[cfg(test)]
@@ -2230,22 +2278,33 @@ fn accepted_state_meets_convergence(
         && diagnostics.material_balance_inf_norm <= material_balance_limit
 }
 
+fn zero_move_appleyard_guard_factor(update_inf_norm: f64, options: &FimNewtonOptions) -> f64 {
+    if update_inf_norm <= options.update_tolerance * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR {
+        ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR
+    } else {
+        ZERO_MOVE_APPLEYARD_GUARD_FACTOR
+    }
+}
+
 fn zero_move_appleyard_acceptance_allows(
     materially_changed: bool,
     residual_inf_norm: f64,
     material_balance_inf_norm: f64,
+    update_inf_norm: f64,
     options: &FimNewtonOptions,
 ) -> bool {
     if materially_changed {
         return false;
     }
 
+    let guard_factor = zero_move_appleyard_guard_factor(update_inf_norm, options);
+
     residual_inf_norm
-        <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR * ENTRY_RESIDUAL_GUARD_FACTOR
+        <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR * guard_factor
         && material_balance_inf_norm
             <= options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * guard_factor
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2362,6 +2421,9 @@ pub(crate) fn run_fim_timestep(
     let mut zero_move_fallback_direct_bypass = false;
     let mut iterative_failed_last_iter = false;
     let mut previous_effective_move_floor_site: Option<FimHotspotSite> = None;
+    let mut repeated_zero_move_direct_bypass_streak: u32 = 0;
+    let mut cached_assembly: Option<FimAssembly> = None;
+    let mut previous_iteration_left_state_unchanged = false;
     // Fix-B Stage 1 upwind-flip probe: snapshot of per-face upstream choices from the
     // previous Newton iteration. Compared against the current-iter snapshot to detect
     // saturation-front upwinding flips; read-only diagnostic.
@@ -2388,21 +2450,36 @@ pub(crate) fn run_fim_timestep(
     );
 
     for iteration in 0..options.max_newton_iterations {
-        let assembly = assemble_fim_system(
-            sim,
-            previous_state,
-            &state,
-            &FimAssemblyOptions {
-                dt_days,
-                include_wells: true,
-                assemble_residual_only: false,
-                topology: Some(&topology),
-            },
-        );
-        assembly_ms += assembly.timing.residual_ms
-            + assembly.timing.sensitivity_eval_ms
-            + assembly.timing.jacobian_ms;
-        property_eval_ms += assembly.timing.property_eval_ms;
+        let assembly = if previous_iteration_left_state_unchanged {
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: reusing previous assembly after unchanged iterate",
+                iteration,
+            );
+            cached_assembly
+                .as_ref()
+                .expect("unchanged iterate reuse requires cached assembly")
+                .clone()
+        } else {
+            let assembly = assemble_fim_system(
+                sim,
+                previous_state,
+                &state,
+                &FimAssemblyOptions {
+                    dt_days,
+                    include_wells: true,
+                    assemble_residual_only: false,
+                    topology: Some(&topology),
+                },
+            );
+            assembly_ms += assembly.timing.residual_ms
+                + assembly.timing.sensitivity_eval_ms
+                + assembly.timing.jacobian_ms;
+            property_eval_ms += assembly.timing.property_eval_ms;
+            cached_assembly = Some(assembly.clone());
+            assembly
+        };
         final_residual_inf_norm = Some(scaled_residual_inf_norm(
             &assembly.residual,
             &assembly.equation_scaling,
@@ -2949,8 +3026,33 @@ pub(crate) fn run_fim_timestep(
                 linear_options.kind.label(),
             );
         }
+        let row_scaled_iterative_system = matches!(
+            linear_options.kind,
+            FimLinearSolverKind::FgmresCpr | FimLinearSolverKind::GmresIlu0
+        )
+        .then(|| iterative_perforation_row_scale_factors(&assembly.equation_scaling))
+        .flatten();
+        let (scaled_iterative_jacobian, scaled_iterative_rhs);
+        let (solve_jacobian, solve_rhs) = if let Some(row_factors) = row_scaled_iterative_system.as_ref()
+        {
+            (scaled_iterative_jacobian, scaled_iterative_rhs) = left_scale_linear_system_rows(
+                &assembly.jacobian,
+                &rhs,
+                row_factors,
+            );
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: left-scaling iterative perf rows before {}",
+                iteration,
+                linear_options.kind.label(),
+            );
+            (&scaled_iterative_jacobian, &scaled_iterative_rhs)
+        } else {
+            (&assembly.jacobian, &rhs)
+        };
         let mut linear_report =
-            solve_linearized_system(&assembly.jacobian, &rhs, &linear_options, block_layout);
+            solve_linearized_system(solve_jacobian, solve_rhs, &linear_options, block_layout);
         linear_solve_time_ms += linear_report.total_time_ms;
         linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
 
@@ -3274,6 +3376,12 @@ pub(crate) fn run_fim_timestep(
             damping,
         );
         let candidate_materially_changed = iterate_has_material_change(&state, &candidate);
+        let reuse_current_assembly_next_iteration =
+            effective_move_trace.is_some() || !candidate_materially_changed;
+        previous_iteration_left_state_unchanged = reuse_current_assembly_next_iteration;
+        if !reuse_current_assembly_next_iteration {
+            cached_assembly = None;
+        }
         let candidate_is_valid = damping.is_finite()
             && damping > 0.0
             && candidate_materially_changed
@@ -3327,6 +3435,57 @@ pub(crate) fn run_fim_timestep(
                 effective_move_trace,
             );
         }
+        if should_bail_repeated_zero_move_direct_bypass(
+            repeated_zero_move_direct_bypass,
+            effective_move_trace.is_some(),
+            linear_report.iterations,
+            if repeated_zero_move_direct_bypass && effective_move_trace.is_some() {
+                repeated_zero_move_direct_bypass_streak.saturating_add(1)
+            } else {
+                0
+            },
+        ) {
+            repeated_zero_move_direct_bypass_streak =
+                repeated_zero_move_direct_bypass_streak.saturating_add(1);
+            let failure_diagnostics = classify_retry_failure_with_site(
+                Some(&linear_report),
+                &residual_diagnostics,
+                current_hotspot_site,
+            );
+            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: REPEATED ZERO-MOVE DIRECT-BYPASS streak={}{} — bailing out",
+                iteration,
+                repeated_zero_move_direct_bypass_streak,
+                retry_failure_trace_suffix(&failure_diagnostics)
+            );
+            return FimStepReport {
+                accepted_state: state,
+                converged: false,
+                newton_iterations: iteration + 1,
+                final_residual_inf_norm: current_norm,
+                final_material_balance_inf_norm,
+                final_update_inf_norm,
+                last_linear_report: Some(linear_report),
+                accepted_hotspot_site: None,
+                failure_diagnostics: Some(failure_diagnostics),
+                retry_factor,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
+            };
+        }
+        repeated_zero_move_direct_bypass_streak =
+            if repeated_zero_move_direct_bypass && effective_move_trace.is_some() {
+                repeated_zero_move_direct_bypass_streak.saturating_add(1)
+            } else {
+                0
+            };
         previous_effective_move_floor_site =
             effective_move_trace.as_ref().map(|_| current_hotspot_site);
 
@@ -3385,10 +3544,13 @@ pub(crate) fn run_fim_timestep(
                 &topology,
                 dt_days,
             );
+            let zero_move_guard_factor =
+                zero_move_appleyard_guard_factor(final_update_inf_norm, options);
             if zero_move_appleyard_acceptance_allows(
                 candidate_materially_changed,
                 accepted_diagnostics.residual_inf_norm,
                 accepted_diagnostics.material_balance_inf_norm,
+                final_update_inf_norm,
                 options,
             ) {
                 final_update_inf_norm = 0.0;
@@ -3402,7 +3564,7 @@ pub(crate) fn run_fim_timestep(
                     accepted_diagnostics.residual_inf_norm,
                     accepted_diagnostics.material_balance_inf_norm,
                     if use_guard_band {
-                        format!(" (entry guard {:.1}x)", ENTRY_RESIDUAL_GUARD_FACTOR)
+                        format!(" (entry guard {:.1}x)", zero_move_guard_factor)
                     } else {
                         String::new()
                     },
@@ -3794,12 +3956,31 @@ mod tests {
             false,
             options.residual_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR
                 * 0.9,
             options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR
                 * 0.9,
+            options.update_tolerance,
+            &options,
+        ));
+    }
+
+    #[test]
+    fn zero_move_appleyard_acceptance_allows_small_update_wider_band() {
+        let options = FimNewtonOptions::default();
+        assert!(zero_move_appleyard_acceptance_allows(
+            false,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR
+                * 0.9,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR
+                * 0.9,
+            options.update_tolerance * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR * 0.9,
             &options,
         ));
     }
@@ -3811,32 +3992,60 @@ mod tests {
             true,
             options.residual_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR,
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR,
             options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR,
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR,
+            options.update_tolerance,
             &options,
         ));
         assert!(!zero_move_appleyard_acceptance_allows(
             false,
             options.residual_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR
                 * 1.1,
             options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR,
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR,
+            options.update_tolerance * (ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR + 0.1),
             &options,
         ));
         assert!(!zero_move_appleyard_acceptance_allows(
             false,
             options.residual_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR,
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR,
             options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR
+                * ZERO_MOVE_APPLEYARD_GUARD_FACTOR
                 * 1.1,
+            options.update_tolerance * (ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR + 0.1),
+            &options,
+        ));
+        assert!(!zero_move_appleyard_acceptance_allows(
+            false,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR
+                * 0.9,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR
+                * 0.9,
+            options.update_tolerance * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR * 1.1,
+            &options,
+        ));
+        assert!(!zero_move_appleyard_acceptance_allows(
+            false,
+            options.residual_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR
+                * 1.1,
+            options.material_balance_tolerance
+                * NOOP_ENTRY_EXACT_FACTOR
+                * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_GUARD_FACTOR,
+            options.update_tolerance * ZERO_MOVE_APPLEYARD_SMALL_UPDATE_FACTOR * 0.9,
             &options,
         ));
     }
@@ -4403,6 +4612,15 @@ mod tests {
     }
 
     #[test]
+    fn repeated_zero_move_direct_bypass_bail_requires_repeated_floor_hits() {
+        assert!(!should_bail_repeated_zero_move_direct_bypass(true, true, 1, 2));
+        assert!(should_bail_repeated_zero_move_direct_bypass(true, true, 1, 3));
+        assert!(!should_bail_repeated_zero_move_direct_bypass(true, false, 1, 3));
+        assert!(!should_bail_repeated_zero_move_direct_bypass(false, true, 1, 3));
+        assert!(!should_bail_repeated_zero_move_direct_bypass(true, true, 2, 3));
+    }
+
+    #[test]
     fn near_converged_iterative_accept_requires_small_outer_and_bounded_candidate_worsening() {
         let report = FimLinearSolveReport {
             solution: DVector::zeros(1),
@@ -4474,6 +4692,50 @@ mod tests {
         };
 
         assert!(!should_accept_near_converged_iterative_step(&report));
+    }
+
+    #[test]
+    fn near_converged_iterative_accept_allows_larger_outer_tail_for_bicgstab_cpr() {
+        let report = FimLinearSolveReport {
+            solution: DVector::zeros(1),
+            converged: false,
+            iterations: 150,
+            final_residual_norm: 1.8e-7,
+            failure_diagnostics: Some(crate::fim::linear::FimLinearFailureDiagnostics {
+                reason: FimLinearFailureReason::MaxIterations,
+                tolerance: 1.0e-9,
+                rhs_norm: 1.0,
+                outer_residual_norm: 1.8e-7,
+                preconditioned_residual_norm: Some(1.0e-5),
+                estimated_residual_norm: Some(1.0e-21),
+                candidate_residual_norm: Some(2.0e-7),
+                restart_diagnostics: vec![crate::fim::linear::FimLinearRestartDiagnostics {
+                    restart_index: 2,
+                    start_iteration: 30,
+                    end_iteration: 60,
+                    inner_steps: 30,
+                    outer_residual_norm: 1.9e-7,
+                    preconditioned_residual_norm: 1.0e-6,
+                    best_estimated_residual_norm: Some(1.0e-20),
+                    best_candidate_residual_norm: Some(1.7e-7),
+                    solution_improved: true,
+                }],
+            }),
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::FgmresCpr,
+            cpr_diagnostics: Some(crate::fim::linear::FimCprDiagnostics {
+                coarse_rows: 531,
+                coarse_solver: FimPressureCoarseSolverKind::BiCgStab,
+                smoother_label: "ilu0/post-bj",
+                coarse_applications: 155,
+                average_reduction_ratio: 2.5e-2,
+                last_reduction_ratio: 1.3e-7,
+            }),
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
+        };
+
+        assert!(should_accept_near_converged_iterative_step(&report));
     }
 
     #[test]

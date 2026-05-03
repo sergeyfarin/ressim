@@ -1,5 +1,5 @@
 use nalgebra::DVector;
-use sprs::CsMat;
+use sprs::{CsMat, TriMatI};
 
 mod dense_lu_debug;
 mod gmres_block_jacobi;
@@ -220,6 +220,31 @@ pub(crate) fn solve_linearized_system(
     }
 }
 
+pub(crate) fn left_scale_linear_system_rows(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    row_factors: &[f64],
+) -> (CsMat<f64>, DVector<f64>) {
+    debug_assert_eq!(jacobian.rows(), row_factors.len());
+    debug_assert_eq!(rhs.len(), row_factors.len());
+
+    if !row_factors.iter().any(|factor| (factor - 1.0).abs() > 1e-12) {
+        return (jacobian.clone(), rhs.clone());
+    }
+
+    let mut scaled_rhs = rhs.clone();
+    let mut scaled = TriMatI::<f64, usize>::new((jacobian.rows(), jacobian.cols()));
+    for (row_idx, row) in jacobian.outer_iterator().enumerate() {
+        let factor = row_factors[row_idx];
+        scaled_rhs[row_idx] *= factor;
+        for (col_idx, value) in row.iter() {
+            scaled.add_triplet(row_idx, col_idx, value * factor);
+        }
+    }
+
+    (scaled.to_csr(), scaled_rhs)
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::DVector;
@@ -334,5 +359,43 @@ mod tests {
         assert_eq!(layout.coarse_pressure_unknown_count(), 4);
         assert_eq!(layout.coarse_pressure_end(), 8);
         assert_eq!(layout.perforation_tail_start, 8);
+    }
+
+    #[test]
+    fn left_row_scaling_preserves_solution_for_mixed_scale_system() {
+        let mut tri = TriMatI::<f64, usize>::new((3, 3));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(1, 1, 300.0);
+        tri.add_triplet(2, 2, 1200.0);
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_vec(vec![8.0, 900.0, -2400.0]);
+        let row_factors = vec![1.0, 1.0 / 300.0, 1.0 / 1200.0];
+
+        let raw = solve_linearized_system(
+            &jacobian,
+            &rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..FimLinearSolveOptions::default()
+            },
+            None,
+        );
+        let (scaled_jacobian, scaled_rhs) =
+            left_scale_linear_system_rows(&jacobian, &rhs, &row_factors);
+        let scaled = solve_linearized_system(
+            &scaled_jacobian,
+            &scaled_rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..FimLinearSolveOptions::default()
+            },
+            None,
+        );
+
+        assert!(raw.converged);
+        assert!(scaled.converged);
+        for idx in 0..rhs.len() {
+            assert!((raw.solution[idx] - scaled.solution[idx]).abs() < 1e-12);
+        }
     }
 }

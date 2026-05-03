@@ -14,6 +14,7 @@ use crate::timing::PerfTimer;
 
 const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
+#[derive(Clone)]
 pub(crate) struct FimAssembly {
     pub(crate) residual: DVector<f64>,
     pub(crate) jacobian: CsMat<f64>,

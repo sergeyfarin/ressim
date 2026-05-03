@@ -19,6 +19,11 @@ nalgebra = "0.34.2"
 # For sparse matrices (the 'A' in Ax=b)
 sprs = "0.11.4"
 rand = "0.10.1"
+# AMG (algebraic multigrid) for the CPR coarse pressure solve.
+# Path A spike — replaces BiCGStab+ILU(0) on the n>512 coarse path.
+# See docs/FIM_AMG_INTEGRATION_PLAN.md.
+scirs2-sparse = "0.4"
+ndarray = "0.17"
 
 [dependencies.getrandom]
 version = "0.4.2"
