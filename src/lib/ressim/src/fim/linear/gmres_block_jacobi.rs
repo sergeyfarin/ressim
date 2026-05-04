@@ -2084,6 +2084,7 @@ mod tests {
             max_iterations: 30,
             relative_tolerance: 1e-10,
             absolute_tolerance: 1e-12,
+            opm_linear_scaling: false,
         };
         let layout = Some(FimLinearBlockLayout {
             cell_block_count: 3,
@@ -2250,6 +2251,7 @@ mod tests {
                 max_iterations: 12,
                 relative_tolerance: 1e-8,
                 absolute_tolerance: 1e-10,
+                opm_linear_scaling: false,
             },
             Some(FimLinearBlockLayout {
                 cell_block_count: 6,

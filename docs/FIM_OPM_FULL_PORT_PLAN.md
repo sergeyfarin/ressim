@@ -4,6 +4,17 @@ Date: 2026-05-04
 Status: durable implementation plan; no solver behavior is promoted by this
 document alone.
 
+## Current Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 0: License | Complete | GPL-3.0-or-later metadata, root `LICENSE`, and root `NOTICE` are in place. |
+| Phase 0: Reference Harness | Partial | `scripts/opm-ressim-compare.sh` now provides repeatable ResSim/OPM commands; water and gas OPM decks still need to be generated. |
+| Phase 1: Scaling + CPR Bundle | Partial / gated | Row+column scaling and physical-update recovery are implemented behind `FimLinearSolveOptions::opm_linear_scaling`; default remains `false` because the current branch does not pass the performance/promotion gates when enabled globally. |
+| Phase 2: Well Block Port | Not started | Waits for Phase 1 promotion or a deliberate decision to proceed with Phase 1 still gated. |
+| Phase 3: Nonlinear Update Policy | Not started | Waits for Phase 1/2 direction. |
+| Phase 4: AMG Revisit | Not started | Explicitly deferred until Phases 1-3 create a stable scaled/well-aware CPR operator. |
+
 ## Summary
 
 This plan makes ResSim's Rust/WASM FIM solver follow OPM Flow's coupled
@@ -23,6 +34,8 @@ GPL-3.0-or-later metadata and attribution for any translated OPM material.
 
 ## Phase 0: License And Reference Harness
 
+Status: licensing complete; executable reference harness partially complete.
+
 Objectives:
 
 - Make the repository GPL-compatible for direct OPM-derived implementation.
@@ -39,6 +52,23 @@ Implementation:
 - Add root `NOTICE` explaining that future OPM-derived implementation must
   retain source-file and release/commit attribution.
 - Keep this plan in `docs/FIM_OPM_FULL_PORT_PLAN.md` as the durable roadmap.
+
+Remaining Phase 0 work:
+
+- `scripts/opm-ressim-compare.sh` is the canonical command harness. It runs
+  ResSim diagnostics for all configured parity cases and runs OPM Flow when
+  the matching deck exists.
+- `npm run compare:opm -- --dry-run --no-build-wasm` prints the full command
+  matrix without running expensive simulations.
+- Generate and validate OPM decks for:
+  - `water-medium-step1`
+  - `water-medium-6step`
+  - `gas-rate-10x10x3`
+- Existing OPM decks are wired for:
+  - `heavy-water-12x12x3`
+  - `heavy-water-finedt`
+- Store comparison outputs under `worklog/` or another ignored run-log
+  location, with the dt-refinement table next to each physics metric.
 
 Reference cases:
 
@@ -62,6 +92,8 @@ Reference rules:
 
 ## Phase 1: Scaling And CPR Bundle
 
+Status: implementation machinery present; not complete or promoted.
+
 Objective:
 
 Implement the OPM-compatible linear-system basis as one bundle:
@@ -75,6 +107,35 @@ dx_physical = D_c * y
 
 This must be paired with CPR pressure restriction built from the scaled local
 cell blocks. Do not reintroduce OPM Quasi-IMPES weights on the raw Jacobian.
+
+Implementation status:
+
+- The row/column scaling machinery is implemented behind
+  `FimLinearSolveOptions::opm_linear_scaling`.
+- When enabled for the iterative backend, Newton builds the CPR
+  preconditioner from the scaled matrix and recovers the physical update
+  before applying damping and state updates.
+- The option defaults to `false` because enabling it globally on the current
+  `experiment/fim-amg-scirs2` solver state exceeds the locked SPE1 smoke
+  runtime envelope. Promotion requires the acceptance gates below.
+- Last focused checks:
+  - `row_column_scaling_recovers_physical_solution_for_mixed_scale_system`
+    passed.
+  - `default_fim_linear_solver_targets_fgmres_cpr` passed and asserts the
+    option defaults off.
+  - `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas` passed.
+  - `spe1_fim_first_steps_converge_without_stall` passed with a 300s guard
+    but exceeded a 120s smoke guard on this branch.
+
+Remaining Phase 1 work:
+
+- Run the medium-water single-step and six-step shortlist with
+  `opm_linear_scaling=true`.
+- Run heavy-water `12x12x3` fine-dt FOPT against the converged OPM reference.
+- Run gas-rate `10x10x3` and the SPE1 gas-injection smoke with the option
+  enabled.
+- Promote the option only if the acceptance gates below pass; otherwise keep
+  it gated and continue with the next structural lever.
 
 Implementation details:
 

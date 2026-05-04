@@ -118,6 +118,7 @@ pub(crate) struct FimLinearSolveOptions {
     pub(crate) max_iterations: usize,
     pub(crate) relative_tolerance: f64,
     pub(crate) absolute_tolerance: f64,
+    pub(crate) opm_linear_scaling: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,6 +163,7 @@ impl Default for FimLinearSolveOptions {
             max_iterations: 150,
             relative_tolerance: 1e-7,
             absolute_tolerance: 1e-10,
+            opm_linear_scaling: false,
         }
     }
 }
@@ -228,7 +230,10 @@ pub(crate) fn left_scale_linear_system_rows(
     debug_assert_eq!(jacobian.rows(), row_factors.len());
     debug_assert_eq!(rhs.len(), row_factors.len());
 
-    if !row_factors.iter().any(|factor| (factor - 1.0).abs() > 1e-12) {
+    if !row_factors
+        .iter()
+        .any(|factor| (factor - 1.0).abs() > 1e-12)
+    {
         return (jacobian.clone(), rhs.clone());
     }
 
@@ -245,6 +250,57 @@ pub(crate) fn left_scale_linear_system_rows(
     (scaled.to_csr(), scaled_rhs)
 }
 
+pub(crate) fn scale_linear_system_rows_and_columns(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    row_factors: &[f64],
+    column_factors: &[f64],
+) -> (CsMat<f64>, DVector<f64>) {
+    debug_assert_eq!(jacobian.rows(), row_factors.len());
+    debug_assert_eq!(rhs.len(), row_factors.len());
+    debug_assert_eq!(jacobian.cols(), column_factors.len());
+
+    let row_identity = !row_factors
+        .iter()
+        .any(|factor| (factor - 1.0).abs() > 1e-12);
+    let column_identity = !column_factors
+        .iter()
+        .any(|factor| (factor - 1.0).abs() > 1e-12);
+    if row_identity && column_identity {
+        return (jacobian.clone(), rhs.clone());
+    }
+
+    let mut scaled_rhs = rhs.clone();
+    let mut scaled = TriMatI::<f64, usize>::new((jacobian.rows(), jacobian.cols()));
+    for (row_idx, row) in jacobian.outer_iterator().enumerate() {
+        let row_factor = row_factors[row_idx];
+        scaled_rhs[row_idx] *= row_factor;
+        for (col_idx, value) in row.iter() {
+            scaled.add_triplet(
+                row_idx,
+                col_idx,
+                value * row_factor * column_factors[col_idx],
+            );
+        }
+    }
+
+    (scaled.to_csr(), scaled_rhs)
+}
+
+pub(crate) fn recover_physical_update_from_scaled_solution(
+    scaled_solution: &DVector<f64>,
+    column_factors: &[f64],
+) -> DVector<f64> {
+    debug_assert_eq!(scaled_solution.len(), column_factors.len());
+    DVector::from_iterator(
+        scaled_solution.len(),
+        scaled_solution
+            .iter()
+            .zip(column_factors.iter())
+            .map(|(value, factor)| value * factor),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::DVector;
@@ -254,10 +310,9 @@ mod tests {
 
     #[test]
     fn default_fim_linear_solver_targets_fgmres_cpr() {
-        assert_eq!(
-            FimLinearSolveOptions::default().kind,
-            FimLinearSolverKind::FgmresCpr
-        );
+        let options = FimLinearSolveOptions::default();
+        assert_eq!(options.kind, FimLinearSolverKind::FgmresCpr);
+        assert!(!options.opm_linear_scaling);
     }
 
     #[test]
@@ -396,6 +451,49 @@ mod tests {
         assert!(scaled.converged);
         for idx in 0..rhs.len() {
             assert!((raw.solution[idx] - scaled.solution[idx]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn row_column_scaling_recovers_physical_solution_for_mixed_scale_system() {
+        let mut tri = TriMatI::<f64, usize>::new((3, 3));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 2.0);
+        tri.add_triplet(1, 1, 300.0);
+        tri.add_triplet(2, 0, -6.0);
+        tri.add_triplet(2, 2, 1200.0);
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_vec(vec![12.0, 900.0, -2412.0]);
+        let row_factors = vec![1.0, 1.0 / 300.0, 1.0 / 1200.0];
+        let column_factors = vec![250.0, 1.0, 40.0];
+
+        let raw = solve_linearized_system(
+            &jacobian,
+            &rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..FimLinearSolveOptions::default()
+            },
+            None,
+        );
+        let (scaled_jacobian, scaled_rhs) =
+            scale_linear_system_rows_and_columns(&jacobian, &rhs, &row_factors, &column_factors);
+        let scaled = solve_linearized_system(
+            &scaled_jacobian,
+            &scaled_rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..FimLinearSolveOptions::default()
+            },
+            None,
+        );
+        let recovered =
+            recover_physical_update_from_scaled_solution(&scaled.solution, &column_factors);
+
+        assert!(raw.converged);
+        assert!(scaled.converged);
+        for idx in 0..rhs.len() {
+            assert!((raw.solution[idx] - recovered[idx]).abs() < 1e-10);
         }
     }
 }

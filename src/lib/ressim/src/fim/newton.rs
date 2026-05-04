@@ -10,7 +10,8 @@ use crate::fim::assembly::{
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, FimPressureCoarseSolverKind, active_direct_solve_row_threshold,
-    left_scale_linear_system_rows, solve_linearized_system,
+    recover_physical_update_from_scaled_solution, scale_linear_system_rows_and_columns,
+    solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 use crate::fim::state::{FimState, HydrocarbonState};
@@ -345,20 +346,64 @@ fn should_accept_near_converged_iterative_step(report: &FimLinearSolveReport) ->
         .any(|restart| restart.solution_improved)
 }
 
-    fn iterative_perforation_row_scale_factors(scaling: &EquationScaling) -> Option<Vec<f64>> {
-    let cell_rows = scaling.water.len() + scaling.oil_component.len() + scaling.gas_component.len();
-    let total_rows = cell_rows + scaling.well_constraint.len() + scaling.perforation_flow.len();
-    let mut factors = vec![1.0; total_rows];
-    let perf_offset = cell_rows + scaling.well_constraint.len();
+fn iterative_row_scale_factors(scaling: &EquationScaling) -> Vec<f64> {
+    let n_cells = scaling.water.len();
+    let mut factors = Vec::with_capacity(
+        n_cells * 3 + scaling.well_constraint.len() + scaling.perforation_flow.len(),
+    );
 
-    for (perf_idx, scale) in scaling.perforation_flow.iter().enumerate() {
-        factors[perf_offset + perf_idx] = 1.0 / scale.max(1.0);
+    for cell_idx in 0..n_cells {
+        factors.push(1.0 / scaling.water[cell_idx].max(1.0));
+        factors.push(1.0 / scaling.oil_component[cell_idx].max(1.0));
+        factors.push(1.0 / scaling.gas_component[cell_idx].max(1.0));
+    }
+    for scale in &scaling.well_constraint {
+        factors.push(1.0 / scale.max(1.0));
+    }
+    for scale in &scaling.perforation_flow {
+        factors.push(1.0 / scale.max(1.0));
     }
 
     factors
-        .iter()
-        .any(|factor| (factor - 1.0).abs() > 1e-12)
-        .then_some(factors)
+}
+
+fn iterative_column_scale_factors(scaling: &crate::fim::scaling::VariableScaling) -> Vec<f64> {
+    let n_cells = scaling.pressure.len();
+    let mut factors =
+        Vec::with_capacity(n_cells * 3 + scaling.well_bhp.len() + scaling.perforation_rate.len());
+
+    for cell_idx in 0..n_cells {
+        factors.push(scaling.pressure[cell_idx].max(1.0));
+        factors.push(scaling.sw[cell_idx].max(1.0));
+        factors.push(scaling.hydrocarbon_var[cell_idx].max(1.0));
+    }
+    for scale in &scaling.well_bhp {
+        factors.push(scale.max(1.0));
+    }
+    for scale in &scaling.perforation_rate {
+        factors.push(scale.max(1.0));
+    }
+
+    factors
+}
+
+fn should_scale_iterative_linear_system(kind: FimLinearSolverKind, row_count: usize) -> bool {
+    match kind {
+        FimLinearSolverKind::FgmresCpr => row_count > active_direct_solve_row_threshold(),
+        FimLinearSolverKind::GmresIlu0 => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                row_count > active_direct_solve_row_threshold()
+            }
+
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let _ = row_count;
+                true
+            }
+        }
+        FimLinearSolverKind::DenseLuDebug | FimLinearSolverKind::SparseLuDebug => false,
+    }
 }
 
 #[cfg(test)]
@@ -3026,31 +3071,35 @@ pub(crate) fn run_fim_timestep(
                 linear_options.kind.label(),
             );
         }
-        let row_scaled_iterative_system = matches!(
-            linear_options.kind,
-            FimLinearSolverKind::FgmresCpr | FimLinearSolverKind::GmresIlu0
-        )
-        .then(|| iterative_perforation_row_scale_factors(&assembly.equation_scaling))
-        .flatten();
+        let scaled_iterative_system = (linear_options.opm_linear_scaling
+            && should_scale_iterative_linear_system(linear_options.kind, assembly.jacobian.rows()))
+        .then(|| {
+            (
+                iterative_row_scale_factors(&assembly.equation_scaling),
+                iterative_column_scale_factors(&assembly.variable_scaling),
+            )
+        });
         let (scaled_iterative_jacobian, scaled_iterative_rhs);
-        let (solve_jacobian, solve_rhs) = if let Some(row_factors) = row_scaled_iterative_system.as_ref()
-        {
-            (scaled_iterative_jacobian, scaled_iterative_rhs) = left_scale_linear_system_rows(
-                &assembly.jacobian,
-                &rhs,
-                row_factors,
-            );
-            fim_trace!(
-                sim,
-                options.verbose,
-                "    iter {:>2}: left-scaling iterative perf rows before {}",
-                iteration,
-                linear_options.kind.label(),
-            );
-            (&scaled_iterative_jacobian, &scaled_iterative_rhs)
-        } else {
-            (&assembly.jacobian, &rhs)
-        };
+        let (solve_jacobian, solve_rhs) =
+            if let Some((row_factors, column_factors)) = scaled_iterative_system.as_ref() {
+                (scaled_iterative_jacobian, scaled_iterative_rhs) =
+                    scale_linear_system_rows_and_columns(
+                        &assembly.jacobian,
+                        &rhs,
+                        row_factors,
+                        column_factors,
+                    );
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: scaling iterative rows+cols before {}",
+                    iteration,
+                    linear_options.kind.label(),
+                );
+                (&scaled_iterative_jacobian, &scaled_iterative_rhs)
+            } else {
+                (&assembly.jacobian, &rhs)
+            };
         let mut linear_report =
             solve_linearized_system(solve_jacobian, solve_rhs, &linear_options, block_layout);
         linear_solve_time_ms += linear_report.total_time_ms;
@@ -3115,6 +3164,14 @@ pub(crate) fn run_fim_timestep(
             restart_stagnation_fallback_streak = 0;
         }
         iterative_failed_last_iter = used_fallback && !any_preexisting_bypass;
+        if !used_fallback {
+            if let Some((_row_factors, column_factors)) = scaled_iterative_system.as_ref() {
+                linear_report.solution = recover_physical_update_from_scaled_solution(
+                    &linear_report.solution,
+                    column_factors,
+                );
+            }
+        }
 
         let update_peak = scaled_update_peak(&linear_report.solution, &assembly.variable_scaling);
         final_update_inf_norm =
