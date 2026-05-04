@@ -1,0 +1,12 @@
+ResSim licensing and OPM compatibility notice
+
+ResSim is licensed under GPL-3.0-or-later.
+
+Future solver work may use GPL-compatible OPM Flow concepts, translated
+algorithms, or directly derived implementation details. Any direct source
+translation from OPM must keep attribution to the relevant OPM module,
+source file, and commit or release reference in the implementing change.
+
+The root LICENSE file contains the GNU General Public License version 3
+text. The project metadata declares GPL-3.0-or-later so later GPL versions
+may also be used at the recipient's option.

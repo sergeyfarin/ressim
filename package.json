@@ -2,6 +2,7 @@
   "name": "ressim",
   "private": true,
   "version": "0.0.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "predev": "npm run build:wasm",
