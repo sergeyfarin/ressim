@@ -59,8 +59,9 @@ Lesson from the failed OPM-copy attempts:
 
 ## Phase 0: Canonical Baseline And References
 
-Status: licensing and harness scaffolding are part of this plan; OPM parity
-decks for water/gas still need to be generated.
+Status: licensing, harness scaffolding, and tracked same-dt OPM parity decks
+are present. Dt-refinement reference tables are still required before any OPM
+physics metric is treated as converged truth.
 
 Implementation:
 
@@ -73,25 +74,34 @@ Implementation:
   retain source-file and release/commit attribution.
 - Add `scripts/opm-ressim-compare.sh` as the canonical comparison harness.
 - Expose the harness through `npm run compare:opm`.
+- Keep Phase-0 OPM parity decks under `opm/reference-decks/` so deck inputs
+  are reviewable and versioned.
+- Keep same-dt OPM summary tables in
+  `docs/opm-reference-results/phase0-same-dt.md` as a baseline record.
 
 Reference harness behavior:
 
 - ResSim diagnostics run through `scripts/fim-wasm-diagnostic.mjs`.
 - OPM Flow runs only when a matching deck exists and `FLOW_BIN` points to a
   runnable Flow executable.
+- The harness copies each OPM deck into the comparison output directory before
+  invoking Flow, keeping generated `.PRT`, `.UNSMRY`, restart, and grid files
+  out of the tracked deck tree.
 - Missing decks are recorded as `missing-deck`, not treated as harness
   failures.
 - Default output goes under `worklog/opm-ressim-compare/<utc-stamp>/`.
 
 Remaining Phase 0 work:
 
-- Generate and validate OPM decks for:
+- Extend the same-dt OPM reference record with dt/4 and dt/16 runs for:
   - `water-medium-step1`,
   - `water-medium-6step`,
   - `gas-rate-10x10x3`.
 - Keep existing heavy-water deck wiring for:
   - `heavy-water-12x12x3`,
   - `heavy-water-finedt`.
+- Promote the historical heavy-water decks from `worklog/opm-case3/` into the
+  tracked reference-deck tree or regenerate them there.
 - For every OPM physics metric used as a reference, record same-dt, dt/4, and
   dt/16 runs before declaring the OPM value converged.
 

@@ -16,7 +16,9 @@ usage() {
 Usage: scripts/opm-ressim-compare.sh [options]
 
 Runs repeatable ResSim WASM diagnostics and, when the matching deck is present,
-the corresponding OPM Flow case. Outputs go under worklog/ by default.
+the corresponding OPM Flow case. Outputs go under worklog/ by default. OPM deck
+inputs are tracked under opm/reference-decks/; generated Flow files are written
+to the selected output directory.
 
 Options:
   --case <name>       Run one case. Use --list to see names.
@@ -41,9 +43,9 @@ Configured cases:
   heavy-water-finedt      ResSim: water-pressure 12x12x3 dt=0.0625 steps=16
 
 OPM deck status:
-  heavy-water-12x12x3 and heavy-water-finedt use existing decks in
-  worklog/opm-case3/. Water/gas parity decks are intentionally listed but
-  currently missing; the script records that as "missing-deck".
+  Phase-0 parity decks live in opm/reference-decks/. The historical heavy-water
+  decks still live in worklog/opm-case3/ until they are promoted into the
+  tracked reference-deck tree.
 USAGE
 }
 
@@ -88,13 +90,13 @@ opm_deck_for_case() {
       printf '%s\n' "worklog/opm-case3/CASE3_finedt.DATA"
       ;;
     water-medium-step1)
-      printf '%s\n' "worklog/opm-reference-decks/water-medium-step1/CASE.DATA"
+      printf '%s\n' "opm/reference-decks/water-medium-step1/CASE.DATA"
       ;;
     water-medium-6step)
-      printf '%s\n' "worklog/opm-reference-decks/water-medium-6step/CASE.DATA"
+      printf '%s\n' "opm/reference-decks/water-medium-6step/CASE.DATA"
       ;;
     gas-rate-10x10x3)
-      printf '%s\n' "worklog/opm-reference-decks/gas-rate-10x10x3/CASE.DATA"
+      printf '%s\n' "opm/reference-decks/gas-rate-10x10x3/CASE.DATA"
       ;;
     *)
       return 1
@@ -228,13 +230,23 @@ for case_name in $(case_names); do
       continue
     fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      echo "+ (cd $(dirname "$deck") && $FLOW_BIN $(basename "$deck")) > $case_dir/opm.log 2>&1"
+      echo "+ mkdir -p $case_dir/opm-work"
+      echo "+ cp $deck $case_dir/opm-work/$(basename "$deck")"
+      echo "+ (cd $case_dir/opm-work && $FLOW_BIN $(basename "$deck")) > $case_dir/opm.log 2>&1"
     else
-      (
-        cd "$(dirname "$deck")"
+      opm_run_dir="$case_dir/opm-work"
+      mkdir -p "$opm_run_dir"
+      cp "$deck" "$opm_run_dir/$(basename "$deck")"
+      if (
+        cd "$opm_run_dir"
         "$FLOW_BIN" "$(basename "$deck")"
-      ) > "$case_dir/opm.log" 2>&1
-      write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "ran" "$deck"
+      ) > "$case_dir/opm.log" 2>&1; then
+        write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "ran" "$deck"
+      else
+        write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "failed" "$deck"
+        echo "OPM Flow failed for $case_name; see $case_dir/opm.log" >&2
+        exit 1
+      fi
     fi
   fi
 done
