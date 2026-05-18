@@ -1,0 +1,115 @@
+-- ============================================================================
+-- ResSim/OPM Phase-0 parity deck: water-medium-6step dt/16
+-- Same 1.5d horizon as CASE.DATA, split into 96 Flow report steps.
+-- ============================================================================
+
+RUNSPEC
+
+TITLE
+   water-medium-6step dt/16 - 20x20x3 water-pressure 96*0.015625d
+
+DIMENS
+   20 20 3 /
+
+OIL
+WATER
+
+METRIC
+
+START
+   1 'JAN' 2024 /
+
+WELLDIMS
+   2 1 1 2 /
+
+TABDIMS
+   1 1 9 9 1 1 /
+
+UNIFOUT
+
+GRID
+
+INIT
+
+DXV
+   20*10 /
+DYV
+   20*10 /
+DZV
+   3*1 /
+
+TOPS
+   400*1000 /
+
+PORO
+   1200*0.2 /
+
+PERMX
+   1200*2000 /
+PERMY
+   1200*2000 /
+PERMZ
+   1200*200 /
+
+PROPS
+
+DENSITY
+   800.0  1000.0  1.0 /
+
+PVTW
+   300.0  1.0  3.0E-6  0.5  0.0 /
+
+PVCDO
+   300.0  1.0  1.0E-5  1.0  0.0 /
+
+ROCK
+   300.0  1.0E-6 /
+
+SWOF
+   0.10   0.0000   1.0000   0.0
+   0.20   0.0156   0.7656   0.0
+   0.30   0.0625   0.5625   0.0
+   0.40   0.1406   0.3906   0.0
+   0.50   0.2500   0.2500   0.0
+   0.60   0.3906   0.1406   0.0
+   0.70   0.5625   0.0625   0.0
+   0.80   0.7656   0.0156   0.0
+   0.90   1.0000   0.0000   0.0
+/
+
+SOLUTION
+
+PRESSURE
+   1200*300.0 /
+
+SWAT
+   1200*0.1 /
+
+SUMMARY
+
+ALL
+
+SCHEDULE
+
+WELSPECS
+   'INJ'  'G' 1  1  1*  'WATER' /
+   'PRO'  'G' 20 20 1*  'OIL'   /
+/
+
+COMPDAT
+   'INJ' 1  1  1 1 'OPEN' 1*  1*  0.2 /
+   'PRO' 20 20 1 1 'OPEN' 1*  1*  0.2 /
+/
+
+WCONINJE
+   'INJ' 'WATER' 'OPEN' 'BHP' 1*  1*  500.0 /
+/
+
+WCONPROD
+   'PRO' 'OPEN' 'BHP' 5*  100.0 /
+/
+
+TSTEP
+   96*0.015625 /
+
+END

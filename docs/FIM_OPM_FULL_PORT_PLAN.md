@@ -59,9 +59,11 @@ Lesson from the failed OPM-copy attempts:
 
 ## Phase 0: Canonical Baseline And References
 
-Status: licensing, harness scaffolding, and tracked same-dt OPM parity decks
-are present. Dt-refinement reference tables are still required before any OPM
-physics metric is treated as converged truth.
+Status: licensing, harness scaffolding, tracked OPM parity decks, and
+same/dt4/dt16 OPM reference tables are present for the Phase-0 water/gas
+parity cases.
+Metric-specific promotion tolerances still need to be stated before any ResSim
+solver change can claim physics equivalence.
 
 Implementation:
 
@@ -76,8 +78,9 @@ Implementation:
 - Expose the harness through `npm run compare:opm`.
 - Keep Phase-0 OPM parity decks under `opm/reference-decks/` so deck inputs
   are reviewable and versioned.
-- Keep same-dt OPM summary tables in
-  `docs/opm-reference-results/phase0-same-dt.md` as a baseline record.
+- Keep same/dt4/dt16 OPM summary tables in
+  `docs/opm-reference-results/phase0-same-dt.md` as the Phase-0 reference
+  record.
 
 Reference harness behavior:
 
@@ -93,10 +96,11 @@ Reference harness behavior:
 
 Remaining Phase 0 work:
 
-- Extend the same-dt OPM reference record with dt/4 and dt/16 runs for:
-  - `water-medium-step1`,
-  - `water-medium-6step`,
-  - `gas-rate-10x10x3`.
+- Define metric-specific tolerances for dt/16-vs-ResSim comparisons:
+  - field pressure (`FPR` versus ResSim average reservoir pressure),
+  - cumulative oil production (`FOPT`),
+  - cumulative injection (`FWIT`/`FGIT`),
+  - gas production/inventory metrics for gas-rate cases.
 - Keep existing heavy-water deck wiring for:
   - `heavy-water-12x12x3`,
   - `heavy-water-finedt`.

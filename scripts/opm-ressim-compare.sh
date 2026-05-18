@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 FLOW_BIN="${FLOW_BIN:-flow}"
 OUT_DIR="${OUT_DIR:-worklog/opm-ressim-compare/$(date -u +%Y%m%dT%H%M%SZ)}"
 CASE_FILTER=""
+OPM_VARIANT_FILTER="same"
 MODE="both"
 DRY_RUN=0
 BUILD_WASM=1
@@ -22,6 +23,8 @@ to the selected output directory.
 
 Options:
   --case <name>       Run one case. Use --list to see names.
+  --opm-variant <v>   OPM deck timestep variant: same | dt4 | dt16 | all.
+                      Default: same.
   --ressim-only       Run only ResSim diagnostics.
   --opm-only          Run only OPM Flow decks.
   --out-dir <dir>     Output directory. Default: worklog/opm-ressim-compare/<utc-stamp>
@@ -82,21 +85,42 @@ ressim_args_for_case() {
 }
 
 opm_deck_for_case() {
-  case "$1" in
-    heavy-water-12x12x3)
+  local case_name="$1"
+  local variant="${2:-same}"
+
+  case "$case_name:$variant" in
+    heavy-water-12x12x3:same)
       printf '%s\n' "worklog/opm-case3/CASE3.DATA"
       ;;
-    heavy-water-finedt)
+    heavy-water-finedt:same)
       printf '%s\n' "worklog/opm-case3/CASE3_finedt.DATA"
       ;;
-    water-medium-step1)
+    water-medium-step1:same)
       printf '%s\n' "opm/reference-decks/water-medium-step1/CASE.DATA"
       ;;
-    water-medium-6step)
+    water-medium-step1:dt4)
+      printf '%s\n' "opm/reference-decks/water-medium-step1/CASE_DT4.DATA"
+      ;;
+    water-medium-step1:dt16)
+      printf '%s\n' "opm/reference-decks/water-medium-step1/CASE_DT16.DATA"
+      ;;
+    water-medium-6step:same)
       printf '%s\n' "opm/reference-decks/water-medium-6step/CASE.DATA"
       ;;
-    gas-rate-10x10x3)
+    water-medium-6step:dt4)
+      printf '%s\n' "opm/reference-decks/water-medium-6step/CASE_DT4.DATA"
+      ;;
+    water-medium-6step:dt16)
+      printf '%s\n' "opm/reference-decks/water-medium-6step/CASE_DT16.DATA"
+      ;;
+    gas-rate-10x10x3:same)
       printf '%s\n' "opm/reference-decks/gas-rate-10x10x3/CASE.DATA"
+      ;;
+    gas-rate-10x10x3:dt4)
+      printf '%s\n' "opm/reference-decks/gas-rate-10x10x3/CASE_DT4.DATA"
+      ;;
+    gas-rate-10x10x3:dt16)
+      printf '%s\n' "opm/reference-decks/gas-rate-10x10x3/CASE_DT16.DATA"
       ;;
     *)
       return 1
@@ -104,16 +128,32 @@ opm_deck_for_case() {
   esac
 }
 
-run_cmd() {
-  local label="$1"
-  shift
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    printf '+ [%s]' "$label"
-    printf ' %q' "$@"
-    printf '\n'
-  else
-    "$@"
+opm_variants_for_case() {
+  local case_name="$1"
+  if [[ "$OPM_VARIANT_FILTER" != "all" ]]; then
+    printf '%s\n' "$OPM_VARIANT_FILTER"
+    return
   fi
+
+  case "$case_name" in
+    water-medium-step1|water-medium-6step|gas-rate-10x10x3)
+      printf '%s\n' same dt4 dt16
+      ;;
+    *)
+      printf '%s\n' same
+      ;;
+  esac
+}
+
+opm_output_prefix_for_variant() {
+  case "$1" in
+    same)
+      printf '%s\n' "opm"
+      ;;
+    *)
+      printf '%s\n' "opm-$1"
+      ;;
+  esac
 }
 
 write_status_json() {
@@ -134,6 +174,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --case)
       CASE_FILTER="${2:?missing case name}"
+      shift 2
+      ;;
+    --opm-variant)
+      OPM_VARIANT_FILTER="${2:?missing OPM variant}"
       shift 2
       ;;
     --ressim-only)
@@ -183,6 +227,16 @@ if [[ -n "$CASE_FILTER" ]] && ! case_names | grep -qx "$CASE_FILTER"; then
   exit 2
 fi
 
+case "$OPM_VARIANT_FILTER" in
+  same|dt4|dt16|all)
+    ;;
+  *)
+    echo "Unknown OPM variant: $OPM_VARIANT_FILTER" >&2
+    echo "Known variants: same, dt4, dt16, all" >&2
+    exit 2
+    ;;
+esac
+
 if [[ "$DRY_RUN" -eq 0 ]]; then
   mkdir -p "$OUT_DIR"
 fi
@@ -192,7 +246,11 @@ if [[ "$FLOW_BIN" == */* && -x "$FLOW_BIN" ]]; then
 fi
 
 if [[ "$MODE" != "opm" && "$BUILD_WASM" -eq 1 ]]; then
-  run_cmd "$ROOT_DIR" npm run build:wasm
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "+ npm run build:wasm"
+  else
+    npm run build:wasm
+  fi
 fi
 
 for case_name in $(case_names); do
@@ -217,37 +275,40 @@ for case_name in $(case_names); do
   fi
 
   if [[ "$MODE" != "ressim" ]]; then
-    deck="$(opm_deck_for_case "$case_name")"
-    echo "== OPM $case_name =="
-    if [[ ! -f "$deck" ]]; then
-      write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "missing-deck" "$deck"
-      echo "missing OPM deck: $deck"
-      continue
-    fi
-    if ! command -v "$FLOW_BIN" >/dev/null 2>&1; then
-      write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "missing-flow-bin" "$FLOW_BIN"
-      echo "missing OPM Flow executable: $FLOW_BIN"
-      continue
-    fi
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      echo "+ mkdir -p $case_dir/opm-work"
-      echo "+ cp $deck $case_dir/opm-work/$(basename "$deck")"
-      echo "+ (cd $case_dir/opm-work && $FLOW_BIN $(basename "$deck")) > $case_dir/opm.log 2>&1"
-    else
-      opm_run_dir="$case_dir/opm-work"
-      mkdir -p "$opm_run_dir"
-      cp "$deck" "$opm_run_dir/$(basename "$deck")"
-      if (
-        cd "$opm_run_dir"
-        "$FLOW_BIN" "$(basename "$deck")"
-      ) > "$case_dir/opm.log" 2>&1; then
-        write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "ran" "$deck"
-      else
-        write_status_json "$case_dir/opm-status.json" "$case_name" "opm" "failed" "$deck"
-        echo "OPM Flow failed for $case_name; see $case_dir/opm.log" >&2
-        exit 1
+    for opm_variant in $(opm_variants_for_case "$case_name"); do
+      deck="$(opm_deck_for_case "$case_name" "$opm_variant" || true)"
+      prefix="$(opm_output_prefix_for_variant "$opm_variant")"
+      echo "== OPM $case_name [$opm_variant] =="
+      if [[ -z "$deck" || ! -f "$deck" ]]; then
+        write_status_json "$case_dir/$prefix-status.json" "$case_name" "$prefix" "missing-deck" "${deck:-unknown}"
+        echo "missing OPM deck: ${deck:-unknown}"
+        continue
       fi
-    fi
+      if ! command -v "$FLOW_BIN" >/dev/null 2>&1; then
+        write_status_json "$case_dir/$prefix-status.json" "$case_name" "$prefix" "missing-flow-bin" "$FLOW_BIN"
+        echo "missing OPM Flow executable: $FLOW_BIN"
+        continue
+      fi
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "+ mkdir -p $case_dir/$prefix-work"
+        echo "+ cp $deck $case_dir/$prefix-work/$(basename "$deck")"
+        echo "+ (cd $case_dir/$prefix-work && $FLOW_BIN $(basename "$deck")) > $case_dir/$prefix.log 2>&1"
+      else
+        opm_run_dir="$case_dir/$prefix-work"
+        mkdir -p "$opm_run_dir"
+        cp "$deck" "$opm_run_dir/$(basename "$deck")"
+        if (
+          cd "$opm_run_dir"
+          "$FLOW_BIN" "$(basename "$deck")"
+        ) > "$case_dir/$prefix.log" 2>&1; then
+          write_status_json "$case_dir/$prefix-status.json" "$case_name" "$prefix" "ran" "$deck"
+        else
+          write_status_json "$case_dir/$prefix-status.json" "$case_name" "$prefix" "failed" "$deck"
+          echo "OPM Flow failed for $case_name [$opm_variant]; see $case_dir/$prefix.log" >&2
+          exit 1
+        fi
+      fi
+    done
   fi
 done
 

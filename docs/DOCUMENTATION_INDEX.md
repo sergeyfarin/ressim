@@ -12,7 +12,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
 | `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
 | `docs/FIM_OPM_FULL_PORT_PLAN.md` | Canonical clean-master continuation plan for the OPM-compatible FIM reimplementation |
-| `docs/opm-reference-results/phase0-same-dt.md` | Same-timestep OPM Phase-0 reference outputs; not yet dt-refined truth |
+| `docs/opm-reference-results/phase0-same-dt.md` | OPM Phase-0 same/dt4/dt16 reference outputs for tracked water/gas parity decks |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |
 | `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark workflow semantics and comparison behavior |
