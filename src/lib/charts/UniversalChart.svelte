@@ -67,28 +67,36 @@
             Object.entries(PANEL_DEFS).map(([k, def]) => [k, def.expanded ?? false]),
         );
     }
-    let panelExpanded = $state<Record<string, boolean>>(initPanelExpanded());
 
-    // Initialize any panel keys from panelDefs not in PANEL_DEFS.
-    $effect(() => {
-        const missing: Record<string, boolean> = {};
-        for (const d of panelDefs) {
-            if (!(d.panelKey in panelExpanded)) missing[d.panelKey] = false;
+    function buildPanelExpandedState(
+        panels: UniversalPanelDef[],
+        defaults?: Record<string, boolean>,
+    ): Record<string, boolean> {
+        const next = initPanelExpanded();
+        for (const panel of panels) {
+            if (!(panel.panelKey in next)) next[panel.panelKey] = false;
         }
-        if (Object.keys(missing).length > 0) {
-            panelExpanded = { ...panelExpanded, ...missing };
-        }
-    });
+        return defaults && Object.keys(defaults).length > 0 ? { ...next, ...defaults } : next;
+    }
+
+    let panelExpanded = $state<Record<string, boolean>>(initPanelExpanded());
+    let lastPanelExpandedDefaultsKey = "";
 
     // ── Sync defaults from adapter (fires when scenario / layout changes) ─────
     $effect(() => {
-        if (defaultXAxisMode !== undefined) xAxisMode = defaultXAxisMode;
+        if (defaultXAxisMode !== undefined && xAxisMode !== defaultXAxisMode) {
+            xAxisMode = defaultXAxisMode;
+        }
     });
 
     $effect(() => {
-        if (defaultPanelExpanded && Object.keys(defaultPanelExpanded).length > 0) {
-            panelExpanded = { ...panelExpanded, ...defaultPanelExpanded };
-        }
+        const nextKey = JSON.stringify({
+            panels: panelDefs.map((panel) => panel.panelKey),
+            defaults: defaultPanelExpanded ?? {},
+        });
+        if (nextKey === lastPanelExpandedDefaultsKey) return;
+        lastPanelExpandedDefaultsKey = nextKey;
+        panelExpanded = buildPanelExpandedState(panelDefs, defaultPanelExpanded);
     });
 
     // ── Panel gutter alignment ────────────────────────────────────────────────
@@ -99,6 +107,18 @@
     let maxRightGutter = $derived(
         Math.max(0, ...Object.values(nativeGutters).map((g) => g.right)),
     );
+
+    function setNativeGutter(panelKey: string, left: number, right: number) {
+        const current = nativeGutters[panelKey];
+        if (
+            current &&
+            Math.abs(current.left - left) < 0.5 &&
+            Math.abs(current.right - right) < 0.5
+        ) {
+            return;
+        }
+        nativeGutters = { ...nativeGutters, [panelKey]: { left, right } };
+    }
 
     // ── Build chart data via the provided context factory ─────────────────────
     let ctx = $derived(buildCurveContext(xAxisMode, normalizeRates));
@@ -259,7 +279,7 @@
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, [panel.key]: { left, right } };
+                setNativeGutter(panel.key, left, right);
             }}
         />
     {/each}

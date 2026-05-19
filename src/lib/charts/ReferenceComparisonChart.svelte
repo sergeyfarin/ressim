@@ -94,6 +94,18 @@
         Math.max(0, ...Object.values(nativeGutters).map((g) => g.right)),
     );
 
+    function setNativeGutter(panelKey: string, left: number, right: number) {
+        const current = nativeGutters[panelKey];
+        if (
+            current &&
+            Math.abs(current.left - left) < 0.5 &&
+            Math.abs(current.right - right) < 0.5
+        ) {
+            return;
+        }
+        nativeGutters = { ...nativeGutters, [panelKey]: { left, right } };
+    }
+
     $effect(() => {
         const config = layoutConfig?.rateChart;
         if (!config) return;
@@ -570,7 +582,7 @@
             targetLeftGutter={maxLeftGutter}
             targetRightGutter={maxRightGutter}
             onGutterMeasure={(left: number, right: number) => {
-                nativeGutters = { ...nativeGutters, [panel.key]: { left, right } };
+                setNativeGutter(panel.key, left, right);
             }}
         />
     {/each}
