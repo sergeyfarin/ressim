@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "predev": "npm run build:wasm",
-    "dev": "vite",
+    "dev": "vite --host",
     "prebuild": "npm run build:wasm",
     "build": "vite build",
     "preview": "vite preview",
