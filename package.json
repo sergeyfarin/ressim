@@ -15,7 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint 'src/**/*.{js,ts,svelte}' --max-warnings=0"
+    "lint": "eslint 'src/**/*.{js,ts,svelte}' --max-warnings=0",
+    "test:rust:impes": "bash scripts/validate-solver-coverage.sh impes",
+    "validate:product": "npm run typecheck && npm run lint && npm test && npm run test:rust:impes && npm run build",
+    "opm:deck": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli generate-deck",
+    "opm:artifacts": "uv run --directory tools/opm_flow python -m opm_flow_tool.cli build-artifacts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

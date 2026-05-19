@@ -1,0 +1,28 @@
+{
+  "caseKey": "spe1_gas_injection",
+  "deckHash": "e0dbde5e465918d1eec881fdd175afb3c21e4a04503d72a8308ae3bc5cda9a60",
+  "flowVersion": "flow 2025.10",
+  "generatedAt": "1970-01-01T00:00:00+00:00",
+  "label": "SPE1 Black-Oil Benchmark",
+  "notes": "Generated artifact metadata is available. Run Flow and attach parsed summary series before treating this as numerical reference data.",
+  "scenarioKey": "spe1_gas_injection",
+  "schemaVersion": 1,
+  "series": [],
+  "sourceType": "opm-flow-precomputed",
+  "status": "deck-ready",
+  "supportedCurves": [
+    "FOPR",
+    "FGIR",
+    "FOPT",
+    "FGPT",
+    "FPR",
+    "WBHP",
+    "WGOR"
+  ],
+  "units": {
+    "pressure": "bar",
+    "rate": "sm3/day",
+    "system": "METRIC",
+    "time": "days"
+  }
+}

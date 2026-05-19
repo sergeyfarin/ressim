@@ -163,7 +163,7 @@ class ParameterStoreImpl {
     gasRedissolutionEnabled = $state(true);
     /** Initial dissolved-gas ratio override [Sm³/Sm³]; undefined = use saturated curve */
     initialRs = $state<number | undefined>(undefined);
-    fimEnabled = $state(true);
+    fimEnabled = $state(false);
 
     // Analytical solution
     analyticalMode: 'waterflood' | 'depletion' | 'none' = $state('depletion');
@@ -446,7 +446,7 @@ class ParameterStoreImpl {
         if (resolved.initialRs !== undefined) {
             this.initialRs = Number(resolved.initialRs);
         }
-        this.fimEnabled = resolved.fimEnabled !== false;
+        this.fimEnabled = resolved.fimEnabled === true;
 
         // Sync analyticalMode from explicit params first, then legacy params, then inferred defaults.
         const resolvedAnalyticalMode = resolved.analyticalMode ?? resolved.analyticalSolutionMode;

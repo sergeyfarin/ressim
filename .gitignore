@@ -24,9 +24,13 @@ dist-ssr
 *.sw?
 
 # Project exclude paths
+/tmp/opm-flow-runs/
 /src/lib/ressim/target/
 /target/
 /worklog/
 
 # coverage output
 /coverage
+.venv/
+__pycache__/
+*.pyc

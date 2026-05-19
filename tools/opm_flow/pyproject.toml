@@ -1,0 +1,9 @@
+[project]
+name = "ressim-opm-flow-tools"
+version = "0.1.0"
+description = "Offline OPM Flow deck/artifact tooling for ResSim predefined cases"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+ressim-opm-flow = "opm_flow_tool.cli:main"

@@ -137,17 +137,19 @@ function appendPublishedReferenceSeries(
     if (!family?.publishedReferenceSeries?.length) return;
 
     const publishedColor = '#e74c3c';
+    const opmFlowColor = '#15803d';
     for (const series of family.publishedReferenceSeries) {
         const targetPanel = panels[series.panelKey as RateChartPanelKey];
         if (!targetPanel) continue;
+        const isOpmFlow = series.sourceType === 'opm-flow-precomputed';
         appendSeries(targetPanel, {
             label: series.label,
             curveKey: series.curveKey,
-            toggleGroupKey: 'published-reference',
-            toggleLabel: 'Published reference',
+            toggleGroupKey: isOpmFlow ? `opm-flow-${series.sourceArtifactKey ?? 'reference'}` : 'published-reference',
+            toggleLabel: isOpmFlow ? 'OPM Flow reference' : 'Published reference',
             legendSection: 'published',
-            legendSectionLabel: LEGEND_SECTIONS.published,
-            color: publishedColor,
+            legendSectionLabel: isOpmFlow ? 'OPM Flow reference' : LEGEND_SECTIONS.published,
+            color: isOpmFlow ? opmFlowColor : publishedColor,
             borderWidth: 1.5,
             borderDash: PUBLISHED_DASH,
             yAxisID: series.yAxisID ?? 'y',

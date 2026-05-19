@@ -10,6 +10,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `ROADMAP.md` | Future-facing roadmap and priority order |
 | `TODO.md` | Active execution tracker only |
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
+| `docs/FIM_DEFERRED_BACKLOG.md` | Current product boundary for FIM and the deferred solver backlog |
 | `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |
 | `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
@@ -27,8 +28,8 @@ Use this file to decide which documents are authoritative, which are active work
 - There are 10 canonical scenarios under `src/lib/catalog/scenarios/`.
 - `ScenarioPicker.svelte` is the main scenario-selection surface.
 - Legacy benchmark-family files still exist and remain load-bearing in parts of the UI and chart stack.
-- All simulations execute directly in browser-side WASM. There is no prerun artifact pipeline.
-- Black-oil mode is implemented and exposed in the UI. SPE1 benchmark scenario is in place with Eclipse reference overlay; quantitative acceptance criteria pending tabular SCAL support.
+- Public simulations execute directly in browser-side WASM through the IMPES path. Offline OPM Flow artifacts are precomputed reference data, not live browser simulation.
+- Black-oil mode is implemented and exposed in the UI. SPE1 benchmark scenario is in place with published reference overlays and OPM Flow artifact hooks; quantitative acceptance criteria remain deferred.
 - Three-phase mode is implemented, but remains experimental because validation depth still trails the implementation.
 
 ## Historical Snapshots

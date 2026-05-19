@@ -9,7 +9,8 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 - Analytical overlays for Buckley-Leverett, Craig areal sweep, Dykstra-Parsons vertical sweep, Stiles-style combined sweep, Dietz pseudo-steady-state depletion, Fetkovich decline, Arps decline, and Havlena-Odeh material-balance diagnostics.
 - Black-oil PVT mode is available for volatile-oil style studies through correlation-based or tabular PVT input.
 - Three-phase oil/water/gas flow is implemented, but still treated as experimental because comparative-solution validation is not complete.
-- All execution runs locally in the browser through WASM. No backend or prerun artifact pipeline is required.
+- Public app runs are IMPES-first while the FIM path is deferred to explicit developer diagnostics.
+- OPM Flow reference work is handled offline through precomputed artifacts; browser execution remains local WASM.
 
 ## Scenario Inventory
 
@@ -68,7 +69,7 @@ Browser-based reservoir simulator with a Rust/WASM flow engine, Svelte 5 UI, ana
 
 ### In Progress
 
-- SPE1 black-oil benchmark scenario is defined with Eclipse reference data overlay. Qualitative comparison is possible; quantitative match requires tabular SCAL support (currently Corey approximation) and surface-rate well control.
+- SPE1 black-oil benchmark scenario is defined with published Eclipse reference overlays and offline OPM Flow artifact hooks. Quantitative match remains a validation task.
 
 ### Still Needed
 

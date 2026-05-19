@@ -182,7 +182,7 @@ export interface SimulatorCreatePayload {
   injectorKLayers?: number[];
   /** Explicit physical wells with stable IDs and grouped completions. */
   wells?: SimulatorWellDefinition[];
-  /** Whether the runtime should use the FIM step path for this simulator instance. */
+  /** Whether the runtime should use the dev-only FIM step path for this simulator instance. Defaults to IMPES. */
   fimEnabled?: boolean;
   /**
    * When present, the simulator will compute sweep efficiency diagnostics every step.

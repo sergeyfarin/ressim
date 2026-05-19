@@ -204,6 +204,7 @@ export const spe1_gas_injection: Scenario = {
     analyticalMethodReference:
         'Odeh, A.S. (1981) "Comparison of Solutions to a Three-Dimensional Black-Oil Reservoir Simulation Problem", JPT, SPE 9723.',
     chartLayoutKey: 'spe1',
+    opmFlowReferenceArtifactKeys: ['spe1_gas_injection'],
     capabilities: {
         analyticalMethod: 'digitized-reference',
         primaryRateCurve: 'oil-rate',
@@ -311,7 +312,7 @@ export const spe1_gas_injection: Scenario = {
         gravityEnabled: true,      // layered system with density differences
 
         // ── Numerics ────────────────────────────────────────────────────
-        fimEnabled: true,
+        fimEnabled: false,
         delta_t_days: 30,
         steps: 120,               // 4000 days coverage
         max_sat_change_per_step: 0.05,

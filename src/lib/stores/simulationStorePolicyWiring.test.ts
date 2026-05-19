@@ -56,9 +56,9 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
   });
 
-  it('persists solver selection from scenario params into runtime payload state', () => {
-    expect(storeSource).toMatch(/fimEnabled = \$state\(true\)/);
-    expect(storeSource).toMatch(/this\.fimEnabled = resolved\.fimEnabled !== false;/);
+  it('defaults product runtime to IMPES while preserving explicit FIM opt-in', () => {
+    expect(storeSource).toMatch(/fimEnabled = \$state\(false\)/);
+    expect(storeSource).toMatch(/this\.fimEnabled = resolved\.fimEnabled === true;/);
   });
 
   it('persists depletion analytical late-time clipping settings from scenario params', () => {

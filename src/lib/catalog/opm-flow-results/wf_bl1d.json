@@ -1,0 +1,27 @@
+{
+  "caseKey": "wf_bl1d",
+  "deckHash": "b25cb03bcd024671d62850f4f306e4fb50e49f2b5d18a881613e783c517e120a",
+  "flowVersion": "flow 2025.10",
+  "generatedAt": "1970-01-01T00:00:00+00:00",
+  "label": "1D Waterflood IMPES Reference-Compatible Case",
+  "notes": "Generated artifact metadata is available. Run Flow and attach parsed summary series before treating this as numerical reference data.",
+  "scenarioKey": "wf_bl1d",
+  "schemaVersion": 1,
+  "series": [],
+  "sourceType": "opm-flow-precomputed",
+  "status": "deck-ready",
+  "supportedCurves": [
+    "FOPR",
+    "FWPR",
+    "FWIR",
+    "FOPT",
+    "FWPT",
+    "FPR"
+  ],
+  "units": {
+    "pressure": "bar",
+    "rate": "m3/day",
+    "system": "METRIC",
+    "time": "days"
+  }
+}

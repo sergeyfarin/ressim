@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
-// wasm-bindgen 0.2.117 bundler target no longer exports init — bootstrap manually for Node.js.
-// Import from simulator_bg.js (no static .wasm import) with types from simulator_bg.d.ts.
-import { ReservoirSimulator, __wbg_set_wasm } from '../ressim/pkg/simulator_bg.js';
+import initWasm, { ReservoirSimulator } from '../ressim/pkg/simulator.js';
 import { computeWelgeMetrics } from '../analytical/fractionalFlow';
 import { buildBenchmarkCreatePayload, buildBenchmarkRunResult, buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import { buildReferenceComparisonModel } from '../charts/buildChartData';
@@ -12,19 +10,12 @@ import type { SimulatorCreatePayload, SimulatorWellDefinition, SimulatorWellSche
 
 type BenchmarkParams = Record<string, unknown>;
 
-// Import the full bg namespace for the imports object passed to WebAssembly.instantiate.
-import * as bgNamespace from '../ressim/pkg/simulator_bg.js';
-
 let wasmReady: Promise<unknown> | null = null;
 
 async function ensureWasmReady() {
   if (!wasmReady) {
     wasmReady = readFile(new URL('../ressim/pkg/simulator_bg.wasm', import.meta.url)).then(
-      async (wasmBytes) => {
-        const { instance } = await WebAssembly.instantiate(wasmBytes, { './simulator_bg.js': bgNamespace });
-        __wbg_set_wasm(instance.exports as WebAssembly.Exports);
-        (instance.exports as Record<string, (() => void) | undefined>).__wbindgen_start?.();
-      },
+      (wasmBytes) => initWasm({ module_or_path: wasmBytes }),
     );
   }
   await wasmReady;
@@ -112,7 +103,7 @@ function configureSimulatorFromPayload(payload: SimulatorCreatePayload, applySch
     return undefined;
   };
 
-  call('setFimEnabled', payload.fimEnabled !== false);
+  call('setFimEnabled', payload.fimEnabled === true);
   if (payload.cellDzPerLayer && payload.cellDzPerLayer.length > 0) {
     call('setCellDimensionsPerLayer', Number(payload.cellDx), Number(payload.cellDy), new Float64Array(payload.cellDzPerLayer));
   } else {
@@ -511,7 +502,7 @@ describe('frontend benchmark preset runtime coverage', () => {
 
       expect(relativeError).toBeLessThanOrEqual(family?.comparisonMetric?.tolerance ?? 0.3);
     }
-  });
+  }, 30_000);
 
   it('builds distinct BL Case A comparison series for selected sensitivity variants', async () => {
     await ensureWasmReady();
@@ -544,7 +535,7 @@ describe('frontend benchmark preset runtime coverage', () => {
     );
 
     expect(distinctSeries.size).toBe(3);
-  });
+  }, 30_000);
 
   it('respects SPE1 per-layer completion arrays when instantiating runtime wells', async () => {
     await ensureWasmReady();

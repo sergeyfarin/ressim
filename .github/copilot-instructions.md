@@ -27,6 +27,7 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 - **Chart.js 4.x** — charts managed via `ChartSubPanel.svelte`; don't bypass the panel abstraction.
 - **Three.js pinned** at 0.183.2 — do not upgrade casually; visualization behavior is version-sensitive.
 - **WASM bindings** via `wasm-bindgen`; worker communication uses structured cloning only (no functions or class instances).
+- **Python tooling** uses `uv` for commands, scripts, environments, and dependency management.
 
 ## Coding Conventions
 

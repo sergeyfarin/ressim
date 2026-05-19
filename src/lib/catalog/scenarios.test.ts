@@ -18,10 +18,10 @@ import {
 } from './scenarios';
 
 describe('sweep scenario sensitivities', () => {
-    it('allows scenarios to opt out of FIM from their params definition', () => {
+    it('defaults predefined product scenarios to IMPES', () => {
         const scenario = getScenario('wf_bl1d');
 
-        expect(scenario?.params.fimEnabled).toBe(true);
+        expect(scenario?.params.fimEnabled).toBe(false);
     });
 
     it('provides analytical method metadata for every canonical scenario', () => {
@@ -345,7 +345,6 @@ describe('scenario capability validation', () => {
             ['corey_no', 'per-result'],
             ['sor', 'per-result'],
             ['grid', 'shared'],
-            ['solver', 'shared'],
         ]);
         expect(getScenario('dep_pss')?.sensitivities.map((dim) => [dim.key, dim.analyticalOverlayMode])).toEqual([
             ['shape_factor', 'per-result'],

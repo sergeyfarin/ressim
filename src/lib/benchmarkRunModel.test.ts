@@ -87,7 +87,7 @@ function buildDepletionReferenceRateHistory(params: Record<string, any>) {
 }
 
 describe('benchmarkRunModel', () => {
-    it('uses benchmark params to control runtime FIM enablement', () => {
+    it('defaults benchmark runtime to IMPES and preserves explicit FIM opt-in', () => {
         const defaultPayload = buildBenchmarkCreatePayload({
             nx: 4,
             ny: 1,
@@ -97,18 +97,18 @@ describe('benchmarkRunModel', () => {
             producerControlMode: 'pressure',
         });
 
-        const disabledPayload = buildBenchmarkCreatePayload({
+        const enabledPayload = buildBenchmarkCreatePayload({
             nx: 4,
             ny: 1,
             nz: 1,
             reservoirPorosity: 0.2,
             injectorControlMode: 'pressure',
             producerControlMode: 'pressure',
-            fimEnabled: false,
+            fimEnabled: true,
         });
 
-        expect(defaultPayload.fimEnabled).toBe(true);
-        expect(disabledPayload.fimEnabled).toBe(false);
+        expect(defaultPayload.fimEnabled).toBe(false);
+        expect(enabledPayload.fimEnabled).toBe(true);
     });
 
     it('builds deterministic base-plus-variant run specs for BL families', () => {

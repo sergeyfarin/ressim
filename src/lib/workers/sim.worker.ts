@@ -164,7 +164,7 @@ function configureSimulator(payload: SimulatorCreatePayload) {
 
   const setFimEnabled = /** @type {any} */ (simulator).setFimEnabled;
   if (typeof setFimEnabled === 'function') {
-    setFimEnabled.call(simulator, payload.fimEnabled !== false);
+    setFimEnabled.call(simulator, payload.fimEnabled === true);
   }
 
   if (payload.cellDzPerLayer && payload.cellDzPerLayer.length > 0) {

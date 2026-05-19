@@ -10,6 +10,7 @@ export const wf_bl1d: Scenario = {
     analyticalMethodReference: 'Buckley and Leverett (1942); Welge (1952).',
     chartLayoutKey: 'waterflood',
     defaultSensitivityDimensionKey: 'mobility',
+    opmFlowReferenceArtifactKeys: ['wf_bl1d'],
     capabilities: {
         analyticalMethod: 'buckley-leverett',
         showSweepPanel: false,
@@ -70,7 +71,7 @@ export const wf_bl1d: Scenario = {
         well_radius: 0.1,
         well_skin: 0,
         // Numerics
-        fimEnabled: true,
+        fimEnabled: false,
         delta_t_days: 0.25,
         steps: 200,
         max_sat_change_per_step: 0.05,
@@ -209,29 +210,6 @@ export const wf_bl1d: Scenario = {
                     label: '96 cells  (fine)',
                     description: 'Fine 96-cell reference grid — matches the base case exactly.',
                     paramPatch: {},
-                    affectsAnalytical: false,
-                },
-            ],
-        },
-        {
-            key: 'solver',
-            label: 'Solver',
-            description: 'Numerical convergence study. The Buckley-Leverett analytical solution is the same — only the simulation solver is modified.',
-            analyticalOverlayMode: 'shared',
-            chartLayoutKeyOverride: 'waterflood',
-            variants: [
-                {
-                    key: 'FIM',
-                    label: 'FIM Solver',
-                    description: 'Fully implicit method — robust, less diffusive than IMPES, sharper front on coarse grids.',
-                    paramPatch: { fimEnabled: true },
-                    affectsAnalytical: false,
-                },
-                {
-                    key: 'IMPES',
-                    label: 'IMPES Solver',
-                    description: 'Implicit pressure, explicit saturation method — less robust, more diffusive than FIM, smeared front on coarse grids.',
-                    paramPatch: { fimEnabled: false },
                     affectsAnalytical: false,
                 },
             ],

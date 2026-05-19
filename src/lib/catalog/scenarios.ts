@@ -309,6 +309,10 @@ export type SensitivityDimension = {
  * Used to overlay published simulator results (e.g. Eclipse SPE1) on charts.
  */
 export type PublishedReferenceSeries = {
+    /** Explicit source category for reference/comparison curves. */
+    sourceType?: import('./opmFlowArtifacts').ReferenceSourceType;
+    /** Optional artifact key when this series comes from bundled precomputed data. */
+    sourceArtifactKey?: string;
     /** Which chart panel this series appears in (e.g. 'diagnostics', 'rates', 'oil_rate'). */
     panelKey: string;
     /** Display label in the legend (e.g. 'Eclipse — Avg Pressure'). */
@@ -388,6 +392,8 @@ export type Scenario = {
      * Overlaid on charts as dashed reference curves alongside simulation output.
      */
     publishedReferenceSeries?: PublishedReferenceSeries[];
+    /** Keys for offline OPM Flow artifacts that can provide precomputed reference curves. */
+    opmFlowReferenceArtifactKeys?: string[];
     /** Optional stop policy for terminating a run when a production condition is met. */
     terminationPolicy?: ScenarioTerminationPolicy;
     /**
