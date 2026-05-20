@@ -30,6 +30,7 @@
         WellStateEntry,
     } from "../simulator-types";
     import ToggleGroup from "../ui/controls/ToggleGroup.svelte";
+    import { getPressureMaxFromHistorySlice as getHistoryPressureMax } from "./spatialViewModel";
 
     type HistoryEntry = SimulatorSnapshot;
 
@@ -193,15 +194,6 @@
         ) {
             const tmp = legendFixedMin;
             legendFixedMin = legendFixedMax;
-            type VisualReservoirMetrics = {
-                cellSizeX: number;
-                cellSizeY: number;
-                layerThicknesses: number[];
-                layerCenters: number[];
-                totalThickness: number;
-                maxLayerThickness: number;
-                topSurfaceZ: number;
-            };
             legendFixedMax = tmp;
         }
     }
@@ -598,8 +590,9 @@
 
     function applySliderValue(event: Event) {
         const input = event.currentTarget as HTMLInputElement;
-        currentIndex = Number(input.value);
-        onApplyHistoryIndex(currentIndex);
+        const nextIndex = Math.max(0, Math.min(history.length - 1, Math.round(Number(input.value))));
+        currentIndex = Number.isFinite(nextIndex) ? nextIndex : -1;
+        if (currentIndex >= 0) onApplyHistoryIndex(currentIndex);
     }
 
     function formatLegendValue(property: PropertyKey, value: number): string {
@@ -788,7 +781,7 @@
         // Store radius for dynamic clipping updates
         modelRadius = radius;
 
-        const verticalFov = (perspectiveCamera.fov * Math.PI) / 60;
+        const verticalFov = (perspectiveCamera.fov * Math.PI) / 180;
         const horizontalFov =
             2 *
             Math.atan(Math.tan(verticalFov * 0.5) * perspectiveCamera.aspect);
@@ -852,28 +845,11 @@
     }
 
     function getPressureMaxFromHistorySlice(startIdx: number): number | null {
-        const expectedCount = getExpectedCellCount();
-        if (
-            expectedCount <= 0 ||
-            !Array.isArray(history) ||
-            history.length === 0
-        )
-            return null;
-
-        const safeStart = Math.max(0, Math.min(history.length, startIdx));
-        let max = Number.NEGATIVE_INFINITY;
-
-        for (let idx = safeStart; idx < history.length; idx++) {
-            const grid = history[idx]?.grid;
-            if (!Array.isArray(grid) || grid.length !== expectedCount) continue;
-            for (const cell of grid) {
-                const value = Number(cell?.pressure);
-                if (!Number.isFinite(value)) continue;
-                if (value > max) max = value;
-            }
-        }
-
-        return Number.isFinite(max) ? max : null;
+        return getHistoryPressureMax({
+            history,
+            startIndex: startIdx,
+            expectedCellCount: getExpectedCellCount(),
+        });
     }
 
     // Auto legend policy:
@@ -1485,7 +1461,7 @@
             const w = well as WellStateEntry;
             const i = Number(w.i ?? w.ix ?? 0);
             const j = Number(w.j ?? w.jy ?? 0);
-            const k = Number(w.k ?? w.k ?? 0);
+            const k = Number(w.k ?? 0);
 
             const colKey = `${i},${j}`;
             if (!wellColumns.has(colKey)) {
@@ -1497,7 +1473,7 @@
                     const o = other as WellStateEntry;
                     const oi = Number(o.i ?? o.ix ?? 0);
                     const oj = Number(o.j ?? o.jy ?? 0);
-                    const ok = Number(o.k ?? o.k ?? 0);
+                    const ok = Number(o.k ?? 0);
                     if (oi === i && oj === j && ok < topK) {
                         topK = ok;
                     }
@@ -1655,6 +1631,7 @@
             min="0"
             max={Math.max(0, history.length - 1)}
             bind:value={currentIndex}
+            disabled={history.length === 0}
             oninput={applySliderValue}
             onchange={applySliderValue}
         />

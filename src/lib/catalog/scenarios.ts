@@ -411,6 +411,16 @@ export type Scenario = {
     liveChartPanels?: import('../charts/universalChartTypes').UniversalPanelDef[];
 };
 
+// Scenario-first product vocabulary. The older Scenario/Sensitivity names
+// remain exported while migration continues, but new frontend code should
+// prefer these aliases.
+export type ScenarioDefinition = Scenario;
+export type ScenarioCaseParams = Record<string, unknown>;
+export type ScenarioSensitivityDimension = SensitivityDimension;
+export type ScenarioVariant = SensitivityVariant;
+export type ScenarioChartDefinition = Pick<Scenario, 'chartLayoutKey' | 'chartLayoutPatch' | 'liveChartPanels'>;
+export type { ScenarioReferenceSource, ScenarioRunPolicy } from '../scenario/runModel';
+
 /** Default capabilities for custom mode (no predefined scenario). */
 export const CUSTOM_MODE_CAPABILITIES: ScenarioCapabilities = {
     analyticalMethod: 'none',

@@ -23,20 +23,21 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/navigationState=\{scenario\.navigationState\}/);
     expect(appSource).toMatch(/onActivateLibraryEntry=\{\(key\) =\> scenario\.activateLibraryEntry\(key\)\}/);
     expect(appSource).toMatch(/referenceProvenance=\{scenario\.referenceProvenance\}/);
-    expect(appSource).toMatch(/referenceSweepRunning=\{runtime\.referenceSweepRunning\}/);
+    expect(appSource).toMatch(/referenceSweepRunning=\{runtime\.runSetRunning\}/);
     expect(appSource).toMatch(/warningPolicy=\{runtime\.warningPolicy\}/);
     expect(appSource).not.toMatch(/<ModePanel[^>]*referenceSweepProgressLabel=/);
     expect(appSource).not.toMatch(/<ModePanel[^>]*onRunReferenceSelection=/);
     expect(appSource).not.toMatch(/<ModePanel[^>]*referenceRunResults=/);
   });
 
-  it('builds a run-region manifest from active case-library and custom-state metadata', () => {
-    // App.svelte orchestrates the UI; the run-manifest derived state lives in the nav store.
-    expect(appSource).toMatch(/import ReferenceExecutionCard from "\.\/lib\/ui\/cards\/ReferenceExecutionCard\.svelte"/);
-    expect(appSource).toMatch(/<ReferenceExecutionCard/);
-    expect(appSource).toMatch(/referenceFamilyKey=\{scenario\.activeReferenceFamily\?\.key \?\? null\}/);
-    expect(appSource).toMatch(/onRunReferenceSelection=\{\(keys\) =\> runtime\.runActiveReferenceSelection\(keys\)\}/);
-    expect(appSource).toMatch(/Reference Run Status/);
+  it('keeps scenario execution on the scenario-first run-set path', () => {
+    expect(appSource).toMatch(/runtime\.runScenarioSet\(scenarioKey, dimensionKey, scenario\.activeVariantKeys\)/);
+    expect(appSource).toMatch(/workerRunning=\{runtime\.workerRunning \|\| runtime\.runSetRunning\}/);
+    expect(appSource).toMatch(/runProgress=\{runtime\.runSetRunning/);
+    expect(appSource).toMatch(/\{#if runtime\.runSetError\}/);
+    expect(appSource).not.toMatch(/ReferenceExecutionCard/);
+    expect(appSource).not.toMatch(/Reference Run Status/);
+    expect(appSource).not.toMatch(/runActiveReferenceSelection/);
   });
 
   it('uses resolved library metadata for non-benchmark layout config', () => {
@@ -45,17 +46,17 @@ describe('App store domain wiring', () => {
     expect(appSource).toMatch(/scenario\.activeRateChartLayoutConfig/);
   });
 
-  it('filters reference outputs by active reference family rather than the benchmark tab', () => {
+  it('routes results through the scenario chart entrypoint', () => {
     expect(appSource).not.toMatch(/ReferenceResultsCard/);
     expect(appSource).not.toMatch(/Reference Run Results/);
     expect(appSource).toMatch(/scenario\.setComparisonSelection\(/);
     expect(appSource).not.toMatch(/primaryResultKey=\{activePrimaryComparisonResultKey\}/);
     expect(appSource).not.toMatch(/comparedResultKeys=\{activeComparedResultKeys\}/);
-    expect(appSource).toMatch(/scenario\.activeReferenceFamily\?\.key/);
-    // Phase 7: getReferenceRateChartLayoutConfig lives in nav store; App.svelte uses the derived result.
+    // During migration the nav store still derives legacy-compatible layout data; App only consumes the scenario chart shell.
     expect(navStoreSource).toMatch(/getReferenceRateChartLayoutConfig/);
-    expect(appSource).toMatch(/ReferenceComparisonChartComponent/);
-    expect(appSource).toMatch(/scenario\.activeChartFamily && ReferenceComparisonChartComponent/);
+    expect(appSource).toMatch(/ScenarioChartComponent/);
+    expect(appSource).toMatch(/runResults=\{scenario\.activeRunResults\}/);
+    expect(appSource).not.toMatch(/ReferenceComparisonChartComponent/);
     expect(appSource).toMatch(/Results/);
   });
 

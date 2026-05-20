@@ -211,9 +211,9 @@
         
       </div>
       
-      <!-- <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
+      <Button size="sm" variant="ghost" onclick={onEnterCustomMode} class="h-6 shrink-0 px-2 text-[10px]">
           Customize →
-        </Button> -->
+        </Button>
     </div>
 
     <!-- ── Sensitivity panel ── -->

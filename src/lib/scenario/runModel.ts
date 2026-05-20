@@ -174,6 +174,20 @@ export function buildScenarioRunSpecs(input: {
     return specs;
 }
 
+export function coerceRunSpec(spec: RunSpec | Record<string, any>): RunSpec {
+    const reference = spec.reference as BenchmarkReferenceDefinition | undefined;
+    const fallbackSource = String(reference?.source ?? `${String(spec.key ?? 'run')}:reference`);
+    return {
+        ...(spec as RunSpec),
+        reference: reference ?? { kind: 'analytical', source: fallbackSource },
+        referenceSource: (spec as RunSpec).referenceSource ?? {
+            type: 'analytical',
+            source: fallbackSource,
+            label: 'Reference',
+        },
+    };
+}
+
 export function buildCreatePayloadForRun(spec: RunSpec): SimulatorCreatePayload {
     return buildBenchmarkCreatePayload({
         ...spec.params,

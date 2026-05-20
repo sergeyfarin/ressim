@@ -10,14 +10,16 @@ import {
     getBenchmarkVariantsForFamily,
     type BenchmarkSensitivityAxisKey,
 } from '../catalog/caseCatalog';
+import { buildBenchmarkRunSpecs } from '../benchmarkRunModel';
 import {
-    buildBenchmarkCreatePayload,
-    buildBenchmarkRunResult,
-    buildBenchmarkRunSpecs,
-    resolveBenchmarkReferenceComparisons,
-    type BenchmarkRunResult as ReferenceRunResult,
-    type BenchmarkRunSpec as ReferenceRunSpec,
-} from '../benchmarkRunModel';
+    buildCreatePayloadForRun,
+    buildRunResult,
+    buildScenarioRunSpecs,
+    coerceRunSpec,
+    resolveRunComparisons,
+    type RunResult,
+    type RunSpec,
+} from '../scenario/runModel';
 import { cloneTerminationPolicy } from '../workers/terminationPolicy';
 import { buildWarningPolicy, type AnalyticalStatus } from '../warningPolicy';
 import { getScenario, getScenarioWithVariantParams, resolveCapabilities } from '../catalog/scenarios';
@@ -93,9 +95,9 @@ class RuntimeStoreImpl {
     referenceSweepError = $state('');
     referenceTotalRuns = $state(0);
     referenceRunsCompleted = $state(0);
-    referenceRunQueue = $state<ReferenceRunSpec[]>([]);
-    activeReferenceRunSpec: ReferenceRunSpec | null = $state(null);
-    referenceRunResults = $state<ReferenceRunResult[]>([]);
+    referenceRunQueue = $state<RunSpec[]>([]);
+    activeReferenceRunSpec: RunSpec | null = $state(null);
+    referenceRunResults = $state<RunResult[]>([]);
 
     // Display data
     gridStateRaw: GridState | null = $state(null);
@@ -161,6 +163,16 @@ class RuntimeStoreImpl {
         }
         return `${this.referenceRunsCompleted}/${this.referenceTotalRuns} done`;
     });
+
+    // Scenario-first aliases used by product UI. Legacy reference names remain
+    // for compatibility with library-reference workflows during migration.
+    runSetRunning = $derived(this.referenceSweepRunning);
+    runSetError = $derived(this.referenceSweepError);
+    runSetTotal = $derived(this.referenceTotalRuns);
+    runSetCompleted = $derived(this.referenceRunsCompleted);
+    activeRunSpec = $derived(this.activeReferenceRunSpec);
+    activeRunResults = $derived(this.referenceRunResults);
+    runSetProgressLabel = $derived(this.referenceSweepProgressLabel);
 
     estimatedRunSeconds = $derived(
         Math.max(0, (Number(this.profileStats.avgStepMs || 0) * Number(this.#params.steps || 0)) / 1000),
@@ -249,7 +261,7 @@ class RuntimeStoreImpl {
         return this.history.length > 0 ? this.history[this.history.length - 1] : null;
     }
 
-    hydrateRuntimeFromReferenceResult(result: ReferenceRunResult) {
+    hydrateRuntimeFromReferenceResult(result: RunResult) {
         this.stopPlaying();
         this.history = result.history ?? [];
         this.currentIndex = this.history.length > 0 ? this.history.length - 1 : -1;
@@ -268,14 +280,14 @@ class RuntimeStoreImpl {
     finalizeActiveReferenceRun() {
         if (!this.activeReferenceRunSpec) return null;
 
-        const result = buildBenchmarkRunResult({
+        const result = buildRunResult({
             spec: this.activeReferenceRunSpec,
             rateHistory: this.rateHistory,
             history: this.history,
             finalSnapshot: this.captureCurrentFinalSnapshot(),
         });
 
-        this.referenceRunResults = resolveBenchmarkReferenceComparisons([
+        this.referenceRunResults = resolveRunComparisons([
             ...this.referenceRunResults,
             result,
         ]);
@@ -321,13 +333,7 @@ class RuntimeStoreImpl {
         this.currentRunTotalSteps = nextSpec.steps;
         this.currentRunStepsCompleted = 0;
 
-        // $state.snapshot() strips Svelte 5 reactive proxies so the payload
-        // can be structured-cloned by postMessage (pvtTable, cellDzPerLayer, etc.).
-        const rawParams = $state.snapshot(nextSpec.params) as Record<string, any>;
-        const payload = buildBenchmarkCreatePayload({
-            ...rawParams,
-            terminationPolicy: nextSpec.terminationPolicy ?? undefined,
-        });
+        const payload = buildCreatePayloadForRun(nextSpec);
         this.lastCreateSignature = JSON.stringify(payload);
         this.simWorker.postMessage({ type: 'create', payload });
         this.simWorker.postMessage({
@@ -343,7 +349,7 @@ class RuntimeStoreImpl {
         return true;
     }
 
-    runReferenceSpecs(specs: ReferenceRunSpec[]): boolean {
+    runReferenceSpecs(specs: Array<RunSpec | Record<string, any>>): boolean {
         if (!this.#nav?.activeReferenceFamily) {
             this.runtimeError = 'Reference runs are only available when a library reference case is active.';
             return false;
@@ -361,7 +367,7 @@ class RuntimeStoreImpl {
         this.clearReferenceRunnerState(true);
         this.referenceSweepRunning = true;
         this.referenceTotalRuns = specs.length;
-        this.referenceRunQueue = [...specs];
+        this.referenceRunQueue = specs.map((spec) => coerceRunSpec(spec));
         this.runtimeError = '';
         this.runtimeWarning = '';
         this.referenceConvergenceWarnings = [];
@@ -861,67 +867,17 @@ class RuntimeStoreImpl {
         scenarioKey: string,
         dimensionKey: string,
         variantKeys: string[],
-    ): import('../benchmarkRunModel').BenchmarkRunSpec[] {
-        const scenario = getScenario(scenarioKey);
-        if (!scenario) return [];
-
-        const dimension = scenario.sensitivities.find((d) => d.key === dimensionKey);
-        if (!dimension) {
-            if (import.meta.env.DEV) {
-                console.warn(`[store] buildScenarioSweepSpecs: unknown dimensionKey "${dimensionKey}" for scenario "${scenarioKey}"`);
-            }
-            return [];
-        }
-
-        const analyticalMethod = scenario.capabilities.analyticalMethod;
-        const baseParams = scenario.params;
-        const analyticalRef = {
-            kind: 'analytical' as const,
-            source: analyticalMethod === 'digitized-reference' ? `${scenarioKey}:digitized-reference` : `${scenarioKey}:analytical`,
-        };
-
-        const specs: import('../benchmarkRunModel').BenchmarkRunSpec[] = [];
-
-        for (const variantKey of variantKeys) {
-            const variant = dimension.variants.find((v) => v.key === variantKey);
-            if (!variant) {
-                if (import.meta.env.DEV) {
-                    console.warn(`[store] buildScenarioSweepSpecs: unknown variantKey "${variantKey}" in dimension "${dimensionKey}"`);
-                }
-                continue;
-            }
-            const variantParams = getScenarioWithVariantParams(scenarioKey, dimensionKey, variantKey);
-            const runSteps = this.#params.hasUserStepsOverride
-                ? Math.max(1, Math.round(Number(this.#params.steps ?? baseParams.steps ?? 240)))
-                : Math.max(1, Math.round(Number(variantParams.steps ?? baseParams.steps ?? 240)));
-            const runDeltaTDays = this.#params.hasUserDeltaTDaysOverride
-                ? Number(this.#params.delta_t_days ?? baseParams.delta_t_days ?? 0.125)
-                : Number(variantParams.delta_t_days ?? baseParams.delta_t_days ?? 0.125);
-            specs.push({
-                key: `${scenarioKey}__${dimensionKey}__${variantKey}`,
-                caseKey: scenarioKey,
-                familyKey: scenarioKey,
-                analyticalMethod,
-                variantKey,
-                variantLabel: variant.label,
-                label: `${scenario.label} — ${variant.label}`,
-                description: variant.description,
-                params: variantParams,
-                steps: runSteps,
-                deltaTDays: runDeltaTDays,
-                historyInterval: Math.max(1, Math.ceil(runSteps / 25)),
-                reference: analyticalRef,
-                comparisonMetric: null,
-                breakthroughCriterion: null,
-                terminationPolicy: cloneTerminationPolicy(scenario.terminationPolicy) ?? null,
-                comparisonMeaning: variant.description,
-            });
-        }
-
-        return specs;
+    ): RunSpec[] {
+        return buildScenarioRunSpecs({
+            scenarioKey,
+            dimensionKey,
+            variantKeys,
+            stepsOverride: this.#params.hasUserStepsOverride ? Number(this.#params.steps) : null,
+            deltaTDaysOverride: this.#params.hasUserDeltaTDaysOverride ? Number(this.#params.delta_t_days) : null,
+        });
     }
 
-    runScenarioSweep(scenarioKey: string, dimensionKey: string, variantKeys: string[]): boolean {
+    runScenarioSet(scenarioKey: string, dimensionKey: string, variantKeys: string[]): boolean {
         if (!this.wasmReady || !this.simWorker) {
             this.runtimeError = 'WASM not ready yet.';
             return false;
@@ -934,10 +890,14 @@ class RuntimeStoreImpl {
         this.clearReferenceRunnerState(true);
         this.referenceSweepRunning = true;
         this.referenceTotalRuns = specs.length;
-        this.referenceRunQueue = [...specs];
+        this.referenceRunQueue = specs.map((spec) => coerceRunSpec(spec));
         this.runtimeError = '';
         this.runtimeWarning = '';
         return this.startQueuedReferenceRun();
+    }
+
+    runScenarioSweep(scenarioKey: string, dimensionKey: string, variantKeys: string[]): boolean {
+        return this.runScenarioSet(scenarioKey, dimensionKey, variantKeys);
     }
 }
 

@@ -43,16 +43,15 @@ describe('simulation store policy wiring', () => {
     expect(storeSource).toMatch(/explicitLibraryEntryKey/);
   });
 
-  it('treats scenario runtime controls as explicit overrides for sensitivity sweeps', () => {
+  it('treats scenario runtime controls as explicit overrides for scenario run sets', () => {
     expect(storeSource).toMatch(/hasUserDeltaTDaysOverride = \$state\(false\)/);
     expect(storeSource).toMatch(/hasUserStepsOverride = \$state\(false\)/);
     expect(storeSource).toMatch(/markDeltaTDaysOverride\(\)/);
     expect(storeSource).toMatch(/markStepsOverride\(\)/);
-    expect(storeSource).toMatch(/const runSteps = this\.#params\.hasUserStepsOverride/);
-    expect(storeSource).toMatch(/variantParams\.steps \?\? baseParams\.steps/);
-    expect(storeSource).toMatch(/const runDeltaTDays = this\.#params\.hasUserDeltaTDaysOverride/);
-    expect(storeSource).toMatch(/steps: runSteps/);
-    expect(storeSource).toMatch(/deltaTDays: runDeltaTDays/);
+    expect(storeSource).toMatch(/buildScenarioRunSpecs\(\{/);
+    expect(storeSource).toMatch(/stepsOverride: this\.\#params\.hasUserStepsOverride \? Number\(this\.\#params\.steps\) : null/);
+    expect(storeSource).toMatch(/deltaTDaysOverride: this\.\#params\.hasUserDeltaTDaysOverride \? Number\(this\.\#params\.delta_t_days\) : null/);
+    expect(storeSource).toMatch(/runScenarioSet\(scenarioKey: string, dimensionKey: string, variantKeys: string\[\]\): boolean/);
     expect(storeSource).toMatch(/clearRuntimeOverrides\(\)/);
   });
 

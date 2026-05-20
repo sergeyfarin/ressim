@@ -11,6 +11,7 @@
     UniversalChart:  panelDefs × ctx → buildUniversalChartData → datasets → ChartSubPanel[]
 -->
 <script lang="ts">
+    import { untrack } from "svelte";
     import ChartSubPanel from "./ChartSubPanel.svelte";
     import type { CurveConfig } from "./chartTypes";
     import {
@@ -84,8 +85,10 @@
 
     // ── Sync defaults from adapter (fires when scenario / layout changes) ─────
     $effect(() => {
-        if (defaultXAxisMode !== undefined && xAxisMode !== defaultXAxisMode) {
-            xAxisMode = defaultXAxisMode;
+        const nextXAxisMode = defaultXAxisMode;
+        if (nextXAxisMode === undefined) return;
+        if (untrack(() => xAxisMode) !== nextXAxisMode) {
+            xAxisMode = nextXAxisMode;
         }
     });
 
@@ -94,7 +97,7 @@
             panels: panelDefs.map((panel) => panel.panelKey),
             defaults: defaultPanelExpanded ?? {},
         });
-        if (nextKey === lastPanelExpandedDefaultsKey) return;
+        if (nextKey === untrack(() => lastPanelExpandedDefaultsKey)) return;
         lastPanelExpandedDefaultsKey = nextKey;
         panelExpanded = buildPanelExpandedState(panelDefs, defaultPanelExpanded);
     });

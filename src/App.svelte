@@ -1,6 +1,5 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
-    import ReferenceExecutionCard from "./lib/ui/cards/ReferenceExecutionCard.svelte";
     import RunControls from "./lib/ui/cards/RunControls.svelte";
     import ScenarioPicker from "./lib/ui/modes/ScenarioPicker.svelte";
     import ThreeDViewCard from "./lib/ui/cards/ThreeDViewCard.svelte";
@@ -18,11 +17,9 @@
     let legendFixedMax = $state(1);
 
     type ThreeDViewComponentType = typeof import("./lib/visualization/3dview.svelte").default;
-    type RateChartComponentType = typeof import("./lib/charts/RateChart.svelte").default;
-    type ReferenceComparisonChartComponentType = typeof import("./lib/charts/ReferenceComparisonChart.svelte").default;
+    type ScenarioChartComponentType = typeof import("./lib/charts/ScenarioChart.svelte").default;
     let ThreeDViewComponent = $state<ThreeDViewComponentType | null>(null);
-    let RateChartComponent = $state<RateChartComponentType | null>(null);
-    let ReferenceComparisonChartComponent = $state<ReferenceComparisonChartComponentType | null>(null);
+    let ScenarioChartComponent = $state<ScenarioChartComponentType | null>(null);
     let loadingThreeDView = $state(false);
 
     // ---------- Callbacks ----------
@@ -30,14 +27,14 @@
         const scenarioKey = scenario.activeScenarioKey;
         const dimensionKey = scenario.activeSensitivityDimensionKey;
         if (scenarioKey && dimensionKey && !scenario.isCustomMode && scenario.activeVariantKeys.length > 0) {
-            runtime.runScenarioSweep(scenarioKey, dimensionKey, scenario.activeVariantKeys);
+            runtime.runScenarioSet(scenarioKey, dimensionKey, scenario.activeVariantKeys);
         } else {
             runtime.runSteps();
         }
     }
 
     function handleApplyOutputHistoryIndex(index: number) {
-        if (scenario.activeSelectedReferenceResult) {
+        if (scenario.activeSelectedRunResult) {
             runtime.currentIndex = index;
             return;
         }
@@ -50,7 +47,7 @@
 
     // ---------- Effects ----------
     $effect(() => {
-        const hasActiveResults = scenario.activeReferenceResults.length > 0;
+        const hasActiveResults = scenario.activeRunResults.length > 0;
         if (!hasActiveResults) {
             if (scenario.activeComparisonSelection.primaryResultKey ||
                 scenario.activeComparisonSelection.comparedResultKeys.length > 0) {
@@ -100,8 +97,7 @@
         document.documentElement.setAttribute("data-theme", theme);
         runtime.setupWorker();
 
-        try { RateChartComponent = (await import("./lib/charts/RateChart.svelte")).default; } catch {}
-        try { ReferenceComparisonChartComponent = (await import("./lib/charts/ReferenceComparisonChart.svelte")).default; } catch {}
+        try { ScenarioChartComponent = (await import("./lib/charts/ScenarioChart.svelte")).default; } catch {}
         await loadThreeDViewModule();
         await tick();
 
@@ -162,7 +158,7 @@
                 basePreset={scenario.basePreset}
                 navigationState={scenario.navigationState}
                 referenceProvenance={scenario.referenceProvenance}
-                referenceSweepRunning={runtime.referenceSweepRunning}
+                referenceSweepRunning={runtime.runSetRunning}
                 onSelectScenario={(key) => scenario.selectScenario(key)}
                 onSelectSensitivityDimension={(key) => scenario.selectSensitivityDimension(key)}
                 onToggleVariant={(key) => scenario.toggleScenarioVariant(key)}
@@ -178,15 +174,15 @@
         <section class="space-y-2">
             <RunControls
                 wasmReady={runtime.wasmReady}
-                workerRunning={runtime.workerRunning || runtime.referenceSweepRunning}
+                workerRunning={runtime.workerRunning || runtime.runSetRunning}
                 runCompleted={runtime.runCompleted}
                 simTime={runtime.simTime}
                 historyLength={runtime.history.length}
                 totalStepsRun={runtime.rateHistory.length}
                 hasValidationErrors={params.hasValidationErrors}
                 numSensitivities={!scenario.isCustomMode ? scenario.activeVariantKeys.length : 0}
-                runProgress={runtime.referenceSweepRunning
-                    ? runtime.referenceSweepProgressLabel
+                runProgress={runtime.runSetRunning
+                    ? runtime.runSetProgressLabel
                     : runtime.workerRunning && runtime.currentRunTotalSteps > 0
                         ? `${runtime.currentRunStepsCompleted}/${runtime.currentRunTotalSteps} steps`
                         : ""}
@@ -200,21 +196,9 @@
                 fieldErrors={params.validationErrors}
                 warningPolicy={runtime.warningPolicy}
             />
-            {#if runtime.referenceSweepError}
+            {#if runtime.runSetError}
                 <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    {runtime.referenceSweepError}
-                </div>
-            {/if}
-            {#if scenario.activeReferenceFamily?.key}
-                <div class="space-y-1">
-                    <div class="ui-section-kicker">Reference Run Status</div>
-                    <ReferenceExecutionCard
-                        referenceFamilyKey={scenario.activeReferenceFamily?.key ?? null}
-                        isModified={scenario.isModified}
-                        referenceSweepRunning={runtime.referenceSweepRunning}
-                        onRunReferenceSelection={(keys) => runtime.runActiveReferenceSelection(keys)}
-                        onStopReferenceSweep={() => runtime.stopRun()}
-                    />
+                    {runtime.runSetError}
                 </div>
             {/if}
         </section>
@@ -231,21 +215,18 @@
             <div class="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
                 <div class="space-y-4">
                     <Card class="overflow-hidden">
-                        {#if scenario.activeChartFamily && ReferenceComparisonChartComponent}
-                            <ReferenceComparisonChartComponent
-                                results={scenario.activeReferenceResults}
-                                family={scenario.activeChartFamily}
+                        {#if ScenarioChartComponent}
+                            <ScenarioChartComponent
+                                scenario={scenario.activeScenarioObject}
+                                isCustom={scenario.isCustomMode}
+                                activeDimensionKey={scenario.activeSensitivityDimensionKey}
+                                analyticalOption={scenario.activeAnalyticalOption}
+                                runResults={scenario.activeRunResults}
                                 layoutConfig={scenario.activeRateChartLayoutConfig}
                                 analyticalPerVariant={scenario.analyticalPerVariant}
-                                {theme}
-                                previewVariantParams={scenario.activeReferenceResults.length === 0 ? scenario.previewVariantParams : undefined}
-                                pendingPreviewVariants={scenario.activeReferenceResults.length > 0 ? scenario.pendingPreviewVariants : undefined}
-                                previewBaseParams={scenario.activeReferenceResults.length === 0 ? (params as Record<string, any>) : undefined}
-                                previewAnalyticalMethod={scenario.activeChartFamily?.analyticalMethod}
-                            />
-                        {:else if RateChartComponent}
-                            <RateChartComponent
-                                panelDefs={scenario.activeScenarioObject?.liveChartPanels ?? []}
+                                previewVariantParams={scenario.previewVariantParams}
+                                pendingPreviewVariants={scenario.pendingPreviewVariants}
+                                previewBaseParams={params as Record<string, any>}
                                 rateHistory={runtime.rateHistory}
                                 analyticalProductionData={scenario.liveAnalyticalOutput.production}
                                 avgReservoirPressureSeries={runtime.avgReservoirPressureSeries}
@@ -256,7 +237,6 @@
                                 activeCase={scenario.activeCase}
                                 {theme}
                                 analyticalMeta={scenario.liveAnalyticalOutput.meta}
-                                layoutConfig={scenario.activeRateChartLayoutConfig}
                                 rockProps={scenario.selectedOutputProfile.rockProps}
                                 fluidProps={scenario.selectedOutputProfile.fluidProps}
                                 layerPermeabilities={params.permMode === 'perLayer' && params.layerPermsX.length > 1
@@ -286,8 +266,8 @@
                             {loadingThreeDView}
                             selectedOutput3D={scenario.selectedOutput3D}
                             selectedOutputProfile={scenario.selectedOutputProfile}
-                            activeReferenceResults={scenario.activeReferenceResults}
-                            activePrimaryComparisonResultKey={scenario.activePrimaryComparisonResultKey}
+                            activeReferenceResults={scenario.activeRunResults}
+                            activePrimaryComparisonResultKey={scenario.activePrimaryRunResultKey}
                             {theme}
                             vizRevision={runtime.vizRevision}
                             bind:showProperty

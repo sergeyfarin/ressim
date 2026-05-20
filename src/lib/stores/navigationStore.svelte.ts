@@ -370,11 +370,19 @@ class NavigationStoreImpl {
         ) ?? null;
     });
 
+
+    // Scenario-first aliases consumed by product UI during the migration away
+    // from benchmark/reference terminology.
+    activeRunResults = $derived(this.activeReferenceResults);
+    activeRunBaseResult = $derived(this.activeReferenceBaseResult);
+    activePrimaryRunResultKey = $derived(this.activePrimaryComparisonResultKey);
+    activeSelectedRunResult = $derived(this.activeSelectedReferenceResult);
+
     pendingPreviewVariants = $derived.by(() => {
         if (!this.previewVariantParams?.length) return undefined;
-        if (this.activeReferenceResults.length === 0) return undefined;
+        if (this.activeRunResults.length === 0) return undefined;
         const completedVariantKeys = new Set(
-            this.activeReferenceResults.map((r) => r.variantKey).filter(Boolean),
+            this.activeRunResults.map((r) => r.variantKey).filter(Boolean),
         );
         const pending = this.previewVariantParams.filter((v) => !completedVariantKeys.has(v.variantKey));
         return pending.length > 0 ? pending : undefined;
