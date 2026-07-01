@@ -21,6 +21,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/UNIT_REFERENCE.md` | Quick unit lookup card |
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, supported conditions, and runtime behavior |
+| `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 findings and forward plan for comparison architecture, OPM Flow integration, and scenario coverage |
 
 ## Current Repo-Level Facts
 
@@ -40,6 +41,8 @@ These files are useful context, but they are not live specs.
 |----------|--------|
 | `docs/FRONTEND_UI_AUDIT_2026-03-07.md` | Historical frontend audit that fed later refactoring work |
 | `docs/IMPLEMENTATION_REVIEW_2026-03-19.md` | Historical implementation review snapshot; some findings have since been closed |
+| `PLAN.md` | Historical scenario-first rewrite plan; superseded by work already landed (see `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §2.1). Left in place pending author decision to archive or delete. |
+| `docs/REFACTOR_PLAN.md` | Historical refactor plan; most phases (0–7) are done and the file's own "last updated" date and "Phase 8 ← NOW" marker are stale (see `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §2.1) |
 
 ## Maintenance Rule
 
