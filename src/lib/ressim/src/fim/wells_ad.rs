@@ -355,6 +355,245 @@ pub(crate) fn well_constraint_residual_fb_generic<S: Scalar>(
     ))
 }
 
+// ---------------------------------------------------------------------------
+// Grid-wide Jacobian-block extraction for the full assembler.
+//
+// A well/perforation row can, for producers, depend on cells OUTSIDE the
+// connected cell (the control neighborhood feeding `producer_fractions_generic`).
+// Rather than a dual number wide enough for the whole neighborhood, every
+// function below follows the same two-part pattern proven in
+// `neighbor_blocks_reconstruct_full_neighborhood_jacobian`:
+//
+//   "own" block:      the connected cell's combined direct (via its own
+//                      Bo/Bg/Rs) + indirect (via its own contribution to the
+//                      neighborhood sum) derivative, obtained by seeding the
+//                      connected cell as Ad<4> = [p, sw, hydrocarbon_var, q]
+//                      and re-using it as the active neighborhood member.
+//
+//   "neighbor" block:  an OTHER neighbor's derivative, which (because Bo/Bg/Rs
+//                      at the connected cell don't depend on other cells at
+//                      all) only flows through the fraction sum -- obtained
+//                      via `producer_fractions_neighbor_block` and the same
+//                      quotient-rule combination as `component_rate_coefficients_generic`.
+// ---------------------------------------------------------------------------
+
+/// Seeds the connected cell as `Ad<4>` (slots 0-2 = its own primaries, slot 3
+/// reserved for `q`) and, if a producer control neighborhood is given,
+/// recomputes fractions with that SAME `Ad<4>` value standing in for the
+/// connected cell's position in the neighborhood (other neighbors held
+/// constant) -- giving fractions whose slot 0-2 derivatives already combine
+/// both the direct and indirect paths through the connected cell.
+fn fractions_with_connected_cell_active(
+    sim: &ReservoirSimulator,
+    cell_ad: WellCellInput<Ad<4>>,
+    producer_neighborhood: Option<(&[WellCellInput<f64>], usize)>,
+) -> Option<ProducerFractionsGeneric<Ad<4>>> {
+    producer_neighborhood.map(|(neighborhood, connected_index)| {
+        let seeded: Vec<WellCellInput<Ad<4>>> = neighborhood
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| {
+                if idx == connected_index {
+                    cell_ad
+                } else {
+                    WellCellInput {
+                        p: Ad::<4>::constant(c.p),
+                        sw: Ad::<4>::constant(c.sw),
+                        hydrocarbon_var: Ad::<4>::constant(c.hydrocarbon_var),
+                        regime: c.regime,
+                        drsdt0_base_rs: c.drsdt0_base_rs,
+                    }
+                }
+            })
+            .collect();
+        producer_fractions_generic(sim, &seeded)
+    })
+}
+
+fn cell_as_ad4(cell: &WellCellInput<f64>) -> WellCellInput<Ad<4>> {
+    WellCellInput {
+        p: Ad::<4>::variable(cell.p, 0),
+        sw: Ad::<4>::variable(cell.sw, 1),
+        hydrocarbon_var: Ad::<4>::variable(cell.hydrocarbon_var, 2),
+        regime: cell.regime,
+        drsdt0_base_rs: cell.drsdt0_base_rs,
+    }
+}
+
+/// Jacobian of the perforation rate-consistency row (`q - connection_rate`)
+/// w.r.t. its connected cell's own `[p, sw, hydrocarbon_var]` and the well's
+/// `bhp`. The row's derivative w.r.t. its own `q` is exactly `1.0` and is not
+/// part of this block (added directly by the caller).
+pub(crate) fn rate_consistency_cell_bhp_jacobian(
+    sim: &ReservoirSimulator,
+    wi_geom: f64,
+    injector: bool,
+    cell: &WellCellInput<f64>,
+    bhp: f64,
+) -> ([f64; 3], f64) {
+    let cell_ad = cell_as_ad4(cell);
+    let bhp_ad = Ad::<4>::variable(bhp, 3);
+    let connection = connection_rate_generic(sim, wi_geom, injector, &cell_ad, bhp_ad);
+    let d = connection.deriv();
+    ([-d[0], -d[1], -d[2]], -d[3])
+}
+
+/// Jacobian of one perforation's `[water, oil, gas]` mass-balance source
+/// terms w.r.t. its connected cell's own `[p, sw, hydrocarbon_var]` and its
+/// own perforation rate `q` (the combined "own" block; see module note above).
+pub(crate) fn mass_balance_own_jacobian(
+    sim: &ReservoirSimulator,
+    injector: bool,
+    injected_fluid: InjectedFluid,
+    cell: &WellCellInput<f64>,
+    producer_neighborhood: Option<(&[WellCellInput<f64>], usize)>,
+    q: f64,
+) -> [[f64; 4]; 3] {
+    let cell_ad = cell_as_ad4(cell);
+    let q_ad = Ad::<4>::variable(q, 3);
+    let fractions_ad = fractions_with_connected_cell_active(sim, cell_ad, producer_neighborhood);
+
+    let coefficients =
+        component_rate_coefficients_generic(sim, injector, injected_fluid, &cell_ad, fractions_ad.as_ref());
+
+    let mut block = [[0.0; 4]; 3];
+    for (phase, coef) in coefficients.iter().enumerate() {
+        block[phase] = *(*coef * q_ad).deriv();
+    }
+    block
+}
+
+/// Cross-derivative of one perforation's `[water, oil, gas]` mass-balance
+/// source terms w.r.t. an OTHER (non-connected) cell in its producer control
+/// neighborhood. Injector perforations have no neighborhood and never call
+/// this (their coefficients don't depend on any fraction).
+pub(crate) fn mass_balance_neighbor_jacobian(
+    sim: &ReservoirSimulator,
+    cell: &WellCellInput<f64>,
+    neighborhood: &[WellCellInput<f64>],
+    neighbor_idx: usize,
+    q: f64,
+) -> [[f64; 3]; 3] {
+    let props = cell_props_generic::<f64>(
+        sim,
+        cell.regime,
+        cell.p,
+        cell.sw,
+        cell.hydrocarbon_var,
+        cell.drsdt0_base_rs,
+    );
+    let (_fractions, frac_block) = producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
+    let bo = props.bo.max(1e-9);
+    let bg = props.bg.max(1e-9);
+    let bw = sim.b_w.max(1e-9);
+
+    let mut block = [[0.0; 3]; 3];
+    for v in 0..3 {
+        let d_water_frac = frac_block[0][v];
+        let d_oil_frac = frac_block[1][v];
+        let d_gas_frac = frac_block[2][v];
+        block[0][v] = (d_water_frac / bw) * q;
+        block[1][v] = (d_oil_frac / bo) * q;
+        block[2][v] = (d_gas_frac / bg + (d_oil_frac / bo) * props.rs) * q;
+    }
+    block
+}
+
+/// BHP column of the well constraint row plus the raw Fischer-Burmeister
+/// partials/scales needed to build each perforation's own/cross-term columns
+/// with a consistent `dphi_db` (generic mirror of
+/// `add_exact_well_constraint_jacobian`'s scalar bookkeeping; the FB
+/// gradient itself is the existing, already-validated
+/// `wells::fischer_burmeister_gradient`, not re-derived here).
+pub(crate) fn well_constraint_bhp_column_and_fb_gradient(
+    sim: &ReservoirSimulator,
+    injector: bool,
+    injected_fluid: InjectedFluid,
+    control: &WellControlValuesGeneric,
+    bhp: f64,
+    perforations: &[WellPerforationInputGeneric<f64>],
+) -> Option<(f64, f64, f64)> {
+    if !control.enabled || !control.rate_controlled {
+        return None;
+    }
+    let target_rate = control.target_rate?;
+    let actual_rate = well_actual_rate_generic(
+        sim,
+        injector,
+        injected_fluid,
+        control.uses_surface_target,
+        perforations,
+    );
+    let bhp_slack = if injector {
+        control.bhp_limit - bhp
+    } else {
+        bhp - control.bhp_limit
+    };
+    let rate_slack = target_rate - actual_rate;
+    let bhp_scale = control.bhp_limit.abs().max(1.0);
+    let rate_scale = target_rate.abs().max(1.0);
+    let (dphi_da, dphi_db) =
+        crate::fim::wells::fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
+    let dslack_dbhp = if injector { -1.0 } else { 1.0 };
+    let bhp_column = dphi_da * dslack_dbhp / bhp_scale;
+    Some((bhp_column, dphi_db, rate_scale))
+}
+
+/// One perforation's own contribution to the well constraint row's Jacobian
+/// (`-dphi_db/rate_scale * d(actual_rate)/d(theta)` restricted to that
+/// perforation's own `[p, sw, hydrocarbon_var, q]`), via
+/// `perforation_surface_rate_generic` / `perforation_reservoir_rate_generic`.
+pub(crate) fn well_constraint_own_perforation_rate_jacobian(
+    sim: &ReservoirSimulator,
+    injector: bool,
+    injected_fluid: InjectedFluid,
+    uses_surface_target: bool,
+    cell: &WellCellInput<f64>,
+    producer_neighborhood: Option<(&[WellCellInput<f64>], usize)>,
+    q: f64,
+) -> [f64; 4] {
+    let cell_ad = cell_as_ad4(cell);
+    let q_ad = Ad::<4>::variable(q, 3);
+
+    let rate = if uses_surface_target {
+        let fractions_ad = fractions_with_connected_cell_active(sim, cell_ad, producer_neighborhood);
+        perforation_surface_rate_generic(sim, injector, injected_fluid, &cell_ad, fractions_ad.as_ref(), q_ad)
+    } else {
+        perforation_reservoir_rate_generic(injector, q_ad)
+    };
+
+    *rate.deriv()
+}
+
+/// One perforation's cross-term contribution to the well constraint row's
+/// Jacobian w.r.t. an OTHER (non-connected) cell in its control neighborhood
+/// (producers with a surface-rate target only).
+pub(crate) fn well_constraint_neighbor_rate_jacobian(
+    sim: &ReservoirSimulator,
+    cell: &WellCellInput<f64>,
+    neighborhood: &[WellCellInput<f64>],
+    neighbor_idx: usize,
+    q: f64,
+) -> [f64; 3] {
+    let props = cell_props_generic::<f64>(
+        sim,
+        cell.regime,
+        cell.p,
+        cell.sw,
+        cell.hydrocarbon_var,
+        cell.drsdt0_base_rs,
+    );
+    let (_fractions, frac_block) = producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
+    let bo = props.bo.max(1e-9);
+    let q_clamped = q.max(0.0);
+
+    let mut d = [0.0; 3];
+    for v in 0..3 {
+        d[v] = (q_clamped / bo) * frac_block[1][v];
+    }
+    d
+}
+
 /// Packed 5-row residual `[rate_consistency, well_constraint, water_source,
 /// oil_source, gas_source]` for one single-perforation well, generic over `S`.
 #[allow(clippy::too_many_arguments)]

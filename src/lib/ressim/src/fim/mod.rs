@@ -1,5 +1,6 @@
 pub(crate) mod ad;
 pub(crate) mod assembly;
+pub(crate) mod assembly_ad;
 pub(crate) mod flash;
 pub(crate) mod flash_ad;
 pub(crate) mod flux;
