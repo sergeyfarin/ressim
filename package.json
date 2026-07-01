@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "build:wasm": "sh scripts/build-wasm.sh",
-    "validate": "pnpm run typecheck && npm run lint && npm test && npm run build",
+    "validate": "pnpm run typecheck && pnpm run lint && pnpm test && pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
