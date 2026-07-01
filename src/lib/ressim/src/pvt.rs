@@ -593,6 +593,28 @@ impl ReservoirSimulator {
         }
     }
 
+    /// Generic (differentiable) mirror of [`Self::get_mu_o_for_rs`].
+    pub(crate) fn get_mu_o_for_rs_generic<S: Scalar>(&self, p: S, rs_sm3_sm3: S) -> S {
+        if let Some(table) = &self.pvt_table {
+            if self.three_phase_mode {
+                let (_, mu) = table.interpolate_oil_generic(p, rs_sm3_sm3);
+                return mu;
+            }
+            table.interpolate_saturated_generic(p).mu_o
+        } else {
+            S::from_f64(self.pvt.mu_o)
+        }
+    }
+
+    /// Generic (differentiable) mirror of [`Self::get_mu_g`].
+    pub(crate) fn get_mu_g_generic<S: Scalar>(&self, p: S) -> S {
+        if let Some(table) = &self.pvt_table {
+            table.interpolate_saturated_generic(p).mu_g
+        } else {
+            S::from_f64(self.mu_g)
+        }
+    }
+
     pub(crate) fn get_c_o(&self, _p: f64) -> f64 {
         // Called in two-phase mode only (three-phase uses get_c_o_effective instead).
         // Reading dBo/dp from the saturated curve conflates oil compressibility with
@@ -871,6 +893,29 @@ impl ReservoirSimulator {
                 mu_g_cp: self.mu_g,
                 rho_g_kg_m3: self.rho_g,
             }
+        }
+    }
+
+    /// Generic (differentiable) mirror of [`Self::oil_props_for_state`], oil
+    /// mass density only (the field the flux gravity term needs).
+    pub(crate) fn oil_density_generic<S: Scalar>(&self, p: S, rs: S) -> S {
+        if let Some(table) = &self.pvt_table {
+            let (bo, _mu) = table.interpolate_oil_generic(p, rs);
+            (S::from_f64(self.pvt.rho_o) + rs * self.rho_g) / bo.max_floor(1e-9)
+        } else {
+            let bo = (S::from_f64(self.b_o) * (p * (-self.pvt.c_o)).exp()).max_floor(1e-9);
+            S::from_f64(self.pvt.rho_o) / bo
+        }
+    }
+
+    /// Generic (differentiable) mirror of [`Self::gas_props_for_state`], gas
+    /// mass density only.
+    pub(crate) fn gas_density_generic<S: Scalar>(&self, p: S) -> S {
+        if let Some(table) = &self.pvt_table {
+            let bg = table.interpolate_saturated_generic(p).bg;
+            S::from_f64(self.rho_g) / bg.max_floor(1e-9)
+        } else {
+            S::from_f64(self.rho_g)
         }
     }
 }

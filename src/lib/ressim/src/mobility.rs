@@ -1,4 +1,12 @@
 use crate::ReservoirSimulator;
+use crate::fim::ad::Scalar;
+
+/// Generic (differentiable) mirror of [`PhaseMobilities`].
+pub(crate) struct PhaseMobilitiesGeneric<S> {
+    pub(crate) water: S,
+    pub(crate) oil: S,
+    pub(crate) gas: S,
+}
 
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -138,6 +146,52 @@ impl ReservoirSimulator {
             water: krw / self.get_mu_w(pressure_bar),
             oil: kro / self.get_mu_o_for_rs(pressure_bar, rs_sm3_sm3),
             gas: 0.0,
+        }
+    }
+
+    /// Generic (differentiable) mirror of [`Self::phase_mobilities_for_state`].
+    /// `mu_w` is pressure-independent (see `get_mu_w`), so it is looked up as a
+    /// plain f64 and lifted into `S`.
+    pub(crate) fn phase_mobilities_for_state_generic<S: Scalar>(
+        &self,
+        sw: S,
+        sg: S,
+        pressure_bar: S,
+        rs_sm3_sm3: S,
+    ) -> PhaseMobilitiesGeneric<S> {
+        let mu_w = S::from_f64(self.get_mu_w(0.0));
+
+        if self.three_phase_mode {
+            let s = match &self.scal_3p {
+                Some(s) => s,
+                None => {
+                    let krw = self.scal.k_rw_generic(sw);
+                    let kro = self.scal.k_ro_generic(sw);
+                    let mu_o = self.get_mu_o_for_rs_generic(pressure_bar, rs_sm3_sm3);
+                    return PhaseMobilitiesGeneric {
+                        water: krw / mu_w,
+                        oil: kro / mu_o,
+                        gas: S::from_f64(0.0),
+                    };
+                }
+            };
+
+            let mu_o = self.get_mu_o_for_rs_generic(pressure_bar, rs_sm3_sm3);
+            let mu_g = self.get_mu_g_generic(pressure_bar);
+            return PhaseMobilitiesGeneric {
+                water: s.k_rw_generic(sw) / mu_w,
+                oil: s.k_ro_stone2_generic(sw, sg) / mu_o,
+                gas: s.k_rg_generic(sg) / mu_g,
+            };
+        }
+
+        let krw = self.scal.k_rw_generic(sw);
+        let kro = self.scal.k_ro_generic(sw);
+        let mu_o = self.get_mu_o_for_rs_generic(pressure_bar, rs_sm3_sm3);
+        PhaseMobilitiesGeneric {
+            water: krw / mu_w,
+            oil: kro / mu_o,
+            gas: S::from_f64(0.0),
         }
     }
 

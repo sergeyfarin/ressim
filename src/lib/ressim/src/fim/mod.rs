@@ -1,6 +1,8 @@
 pub(crate) mod ad;
 pub(crate) mod assembly;
 pub(crate) mod flash;
+pub(crate) mod flash_ad;
+pub(crate) mod flux;
 #[cfg(test)]
 pub(crate) mod numjac;
 pub(crate) mod linear;
@@ -10,6 +12,7 @@ pub(crate) mod scaling;
 pub(crate) mod state;
 pub(crate) mod timestep;
 pub(crate) mod wells;
+pub(crate) mod wells_ad;
 
 #[cfg(test)]
 mod tests;

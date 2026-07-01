@@ -553,7 +553,7 @@ fn physical_well<'a>(
     &sim.wells[topology.wells[well_idx].representative_well_index]
 }
 
-fn effective_injected_fluid(sim: &ReservoirSimulator) -> InjectedFluid {
+pub(crate) fn effective_injected_fluid(sim: &ReservoirSimulator) -> InjectedFluid {
     if sim.three_phase_mode {
         sim.injected_fluid
     } else {
@@ -733,7 +733,7 @@ pub(crate) fn physical_well_control(
     }
 }
 
-fn geometric_well_index(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Option<f64> {
+pub(crate) fn geometric_well_index(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Option<f64> {
     let well = perforation_well(sim, perforation);
     let id = perforation.cell_index;
     let kx = sim.perm_x[id];
@@ -1450,7 +1450,7 @@ pub(crate) fn solve_well_bhp_from_target(
 /// Adding ε² inside the sqrt makes the function C¹ at the origin,
 /// removing the Jacobian discontinuity at the well control switching point
 /// (where both BHP slack and rate slack approach zero simultaneously).
-const FB_EPSILON: f64 = 1e-6;
+pub(crate) const FB_EPSILON: f64 = 1e-6;
 
 fn fischer_burmeister(a: f64, b: f64) -> f64 {
     (a * a + b * b + 2.0 * FB_EPSILON * FB_EPSILON).sqrt() - a - b

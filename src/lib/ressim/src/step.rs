@@ -9,7 +9,7 @@ impl ReservoirSimulator {
         crate::impes::timestep::step_internal(self, target_dt_days);
     }
 
-    fn solve_rs_for_dissolved_gas(
+    pub(crate) fn solve_rs_for_dissolved_gas(
         &self,
         pressure_bar: f64,
         water_saturation: f64,

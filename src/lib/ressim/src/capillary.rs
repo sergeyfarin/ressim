@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::RockFluidProps;
+use crate::fim::ad::Scalar;
 use crate::relperm::RockFluidPropsThreePhase;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -64,6 +65,27 @@ impl CapillaryPressure {
 
         self.p_entry * (-1.0 / self.lambda) * s_eff.powf(-1.0 / self.lambda - 1.0) / denom
     }
+
+    /// Generic (differentiable) mirror of [`Self::capillary_pressure`]. Branch
+    /// selection (the `s_eff >= 1` / `s_eff <= 0` saturation-bound checks) is
+    /// made on `.value()`, matching the f64 control flow exactly; the interior
+    /// Brooks-Corey branch carries the exact derivative through `powf`.
+    pub(crate) fn capillary_pressure_generic<S: Scalar>(&self, s_w: S, rock: &RockFluidProps) -> S {
+        let denom = 1.0 - rock.s_wc - rock.s_or;
+        let s_eff = ((s_w - rock.s_wc) / denom).max_floor(0.0).min_ceil(1.0);
+
+        if s_eff.value() >= 1.0 {
+            return S::from_f64(0.0);
+        }
+
+        let pc_max = self.p_entry * 20.0;
+        if s_eff.value() <= 0.0 {
+            return S::from_f64(pc_max);
+        }
+
+        let pc = s_eff.powf(-1.0 / self.lambda) * self.p_entry;
+        pc.max_floor(0.0).min_ceil(pc_max)
+    }
 }
 
 /// Oil-gas capillary pressure: P_cog(S_g) = P_gas − P_oil (gas is non-wetting).
@@ -123,5 +145,28 @@ impl GasOilCapillaryPressure {
         }
 
         self.p_entry * (1.0 / self.lambda) * s_eff.powf(-1.0 / self.lambda - 1.0) / denom
+    }
+
+    /// Generic (differentiable) mirror of [`Self::capillary_pressure_og`].
+    pub(crate) fn capillary_pressure_og_generic<S: Scalar>(
+        &self,
+        s_g: S,
+        rock: &RockFluidPropsThreePhase,
+    ) -> S {
+        let denom = 1.0 - rock.s_wc - rock.s_org;
+        if denom <= 0.0 {
+            return S::from_f64(self.p_entry * 20.0);
+        }
+
+        let s_o = S::from_f64(1.0 - rock.s_wc) - s_g;
+        let s_eff = ((s_o - rock.s_org) / denom).max_floor(0.0).min_ceil(1.0);
+
+        let pc_max = self.p_entry * 20.0;
+        if s_eff.value() <= 0.0 {
+            return S::from_f64(pc_max);
+        }
+
+        let pc = s_eff.powf(-1.0 / self.lambda) * self.p_entry;
+        pc.max_floor(0.0).min_ceil(pc_max)
     }
 }

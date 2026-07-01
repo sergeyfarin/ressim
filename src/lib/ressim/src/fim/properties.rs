@@ -72,17 +72,44 @@ pub(crate) fn cell_props_generic<S: Scalar>(
             CellProps { so, sg, rs, bo, bg }
         }
         HydrocarbonState::Undersaturated => {
-            let so = total_hc;
-            let rs = hydrocarbon_var.max_floor(0.0);
+            // Mirrors `flash::resolve_cell_flash`'s Undersaturated arm: below
+            // the (possibly DRSDT0-capped) saturated Rs bound, oil simply
+            // carries the trial Rs. Above it, excess dissolved gas flashes to
+            // free gas via `split_gas_inventory_after_transport` (which can
+            // itself flip the physical regime to Saturated -- that flip is
+            // resolved by `classify_regimes` between Newton iterations, not
+            // here; this function only needs the resulting so/sg/rs).
+            let rs_cap_base = table.interpolate_saturated_generic(p).rs.max_floor(0.0);
+            let rs_cap = match drsdt0_base_rs {
+                Some(base_rs) => rs_cap_base.min_of(S::from_f64(base_rs.max(0.0))),
+                None => rs_cap_base,
+            };
+            let rs_trial = hydrocarbon_var.max_floor(0.0);
+
+            let (sg, so, rs) = if rs_trial.value() <= rs_cap.value() + 1e-6 {
+                (S::from_f64(0.0), total_hc, rs_trial)
+            } else {
+                let (bo_trial, _mu_o) = table.interpolate_oil_generic(p, rs_trial);
+                let bo_trial = bo_trial.max_floor(1e-9);
+                let dissolved_gas_sc = total_hc * rs_trial / bo_trial;
+                // `split_gas_inventory_after_transport_generic` returns
+                // `(sg, so, rs)`, matching `split_gas_inventory_after_transport`.
+                crate::fim::flash_ad::split_gas_inventory_after_transport_generic(
+                    sim,
+                    p,
+                    S::from_f64(1.0),
+                    sw,
+                    S::from_f64(0.0),
+                    dissolved_gas_sc,
+                    drsdt0_base_rs,
+                )
+            };
+
+            // Bo/Bg are always read off the FINAL (post-flash) Rs, matching
+            // `state::FimState::derive_cell`'s `oil_props_for_state(p, flash.rs)`.
             let (bo, _mu_o) = table.interpolate_oil_generic(p, rs);
             let bg = table.interpolate_saturated_generic(p).bg;
-            CellProps {
-                so,
-                sg: S::from_f64(0.0),
-                rs,
-                bo,
-                bg,
-            }
+            CellProps { so, sg, rs, bo, bg }
         }
     }
 }
@@ -143,15 +170,18 @@ pub(crate) fn cell_accumulation_generic<S: Scalar>(
     let current = component_inventory_generic(sim, pv, sw, &props);
 
     // Previous inventory: same code, f64 instantiation, previous pressure is its
-    // own reference (delta 0 -> pv = pv_ref).
-    let prev_props =
-        cell_props_generic::<f64>(sim, prev_regime, prev_p, prev_sw, prev_hydrocarbon_var, {
-            if !sim.gas_redissolution_enabled {
-                Some(prev_hydrocarbon_var.max(0.0))
-            } else {
-                None
-            }
-        });
+    // own reference (delta 0 -> pv = pv_ref). `derive_cell` derives the
+    // DRSDT0 cap from `sim.rs[idx]` -- a simulator-level constant, not either
+    // state's own hydrocarbon_var -- so the SAME `drsdt0_base_rs` the caller
+    // passed in for the current point applies unchanged to the previous point.
+    let prev_props = cell_props_generic::<f64>(
+        sim,
+        prev_regime,
+        prev_p,
+        prev_sw,
+        prev_hydrocarbon_var,
+        drsdt0_base_rs,
+    );
     let prev_pv = pore_volume_generic::<f64>(sim, cell_idx, prev_p, prev_p);
     let previous = component_inventory_generic::<f64>(sim, prev_pv, prev_sw, &prev_props);
 
@@ -275,23 +305,27 @@ mod tests {
         }
     }
 
-    fn accumulation_gate(regime: HydrocarbonState, p: f64, sw: f64, hc_var: f64) {
-        let sim = three_phase_sim();
-        let drsdt0 = None; // gas redissolution on -> uncapped Rs_sat, clean smooth branch
-
+    fn accumulation_gate_with(
+        sim: &ReservoirSimulator,
+        regime: HydrocarbonState,
+        p: f64,
+        sw: f64,
+        hc_var: f64,
+        drsdt0: Option<f64>,
+    ) {
         // Previous iterate: perturb slightly so accumulation is nonzero but the
         // current iterate stays interior to its branch.
         let prev_p = p - 5.0;
         let prev_sw = sw - 0.01;
-        let prev_hc = hc_var * 0.95;
+        let prev_hc = hc_var * 0.7;
 
         let analytic = accumulation_jacobian_block(
-            &sim, 0, p, sw, hc_var, regime, drsdt0, prev_p, prev_sw, prev_hc, regime,
+            sim, 0, p, sw, hc_var, regime, drsdt0, prev_p, prev_sw, prev_hc, regime,
         );
 
         let residual = |x: &[f64]| {
             let acc = cell_accumulation_generic::<f64>(
-                &sim, 0, x[0], x[1], x[2], regime, drsdt0, prev_p, prev_sw, prev_hc, regime,
+                sim, 0, x[0], x[1], x[2], regime, drsdt0, prev_p, prev_sw, prev_hc, regime,
             );
             acc.to_vec()
         };
@@ -305,6 +339,12 @@ mod tests {
         );
     }
 
+    fn accumulation_gate(regime: HydrocarbonState, p: f64, sw: f64, hc_var: f64) {
+        let sim = three_phase_sim();
+        // gas redissolution on (default) -> uncapped Rs_sat, clean smooth branch
+        accumulation_gate_with(&sim, regime, p, sw, hc_var, None);
+    }
+
     #[test]
     fn ad_accumulation_matches_numerical_saturated() {
         accumulation_gate(HydrocarbonState::Saturated, 150.0, 0.2, 0.1);
@@ -314,4 +354,107 @@ mod tests {
     fn ad_accumulation_matches_numerical_undersaturated() {
         accumulation_gate(HydrocarbonState::Undersaturated, 150.0, 0.2, 12.0);
     }
+
+    /// AD-vs-numerical gate for the undersaturated excess-gas-flash branch
+    /// (trial Rs above its DRSDT0-capped bound), which routes through
+    /// `flash_ad::split_gas_inventory_after_transport_generic` and its
+    /// implicit-function-theorem-differentiated internal bisection. This is
+    /// the branch that caught a real tuple-order bug during development
+    /// (`(sg, so, rs)` mis-destructured as `(so, sg, rs)`), so this gate
+    /// specifically targets the derivative, not just the value.
+    #[test]
+    fn ad_accumulation_matches_numerical_undersaturated_excess_flash() {
+        let mut sim = three_phase_sim();
+        sim.set_gas_redissolution_enabled(false);
+        // p=150 -> rs_sat=15; cap=11 well below both rs_sat and the trial Rs=12,
+        // safely inside the excess-flash branch (away from the rs_trial==cap kink).
+        accumulation_gate_with(
+            &sim,
+            HydrocarbonState::Undersaturated,
+            150.0,
+            0.2,
+            12.0,
+            Some(11.0),
+        );
+    }
+
+    /// Bit-parity gate for the DRSDT0 (`gas_redissolution_enabled = false`)
+    /// path: `FimState::derive_cell` caps `Rs` against `sim.rs[idx]` -- a
+    /// simulator-level constant shared by BOTH the current and previous
+    /// accumulation evaluations, not a value derived from either state's own
+    /// hydrocarbon_var. An earlier draft of `cell_accumulation_generic` used
+    /// `prev_hydrocarbon_var.max(0.0)` as the previous-point cap instead,
+    /// which is wrong whenever `prev_hydrocarbon_var != sim.rs[idx]`. This
+    /// test exercises exactly that path against the real
+    /// `cell_equation_residual_breakdown` on an actual
+    /// `ReservoirSimulator`/`FimWellTopology`.
+    #[test]
+    fn generic_accumulation_matches_real_residual_with_drsdt0_disabled() {
+        use crate::fim::assembly::cell_equation_residual_breakdown;
+        use crate::fim::wells::build_well_topology;
+
+        let mut sim = three_phase_sim();
+        sim.set_gas_redissolution_enabled(false);
+        // Base Rs cap distinct from either state's own hydrocarbon_var, so a
+        // self-derived cap would diverge from the real `sim.rs[idx]` cap.
+        sim.rs[0] = 11.0;
+
+        let previous_state = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 145.0,
+                sw: 0.18,
+                hydrocarbon_var: 9.0,
+                regime: HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        let state = FimState {
+            cells: vec![FimCellState {
+                pressure_bar: 150.0,
+                sw: 0.2,
+                hydrocarbon_var: 12.0,
+                regime: HydrocarbonState::Undersaturated,
+            }],
+            well_bhp: Vec::new(),
+            perforation_rates_m3_day: Vec::new(),
+        };
+        let topology = build_well_topology(&sim);
+        let dt_days = 0.5;
+
+        for component in 0..3 {
+            let real = cell_equation_residual_breakdown(
+                &sim,
+                &previous_state,
+                &state,
+                &topology,
+                dt_days,
+                0,
+                component,
+            )
+            .unwrap()
+            .accumulation;
+
+            let drsdt0 = Some(sim.rs[0]);
+            let generic = cell_accumulation_generic::<f64>(
+                &sim,
+                0,
+                state.cells[0].pressure_bar,
+                state.cells[0].sw,
+                state.cells[0].hydrocarbon_var,
+                state.cells[0].regime,
+                drsdt0,
+                previous_state.cells[0].pressure_bar,
+                previous_state.cells[0].sw,
+                previous_state.cells[0].hydrocarbon_var,
+                previous_state.cells[0].regime,
+            )[component];
+
+            assert!(
+                (real - generic).abs() < 1e-10,
+                "component {component}: real={real} generic={generic}"
+            );
+        }
+    }
 }
+

@@ -1,5 +1,44 @@
 use serde::{Deserialize, Serialize};
 
+use crate::fim::ad::Scalar;
+
+/// Generic mirror of [`interpolate_piecewise`] over a differentiable scalar.
+/// The segment is chosen from `x.value()` (matching the f64 branch exactly),
+/// then the interpolated value is computed with `S` arithmetic so `Ad<N>`
+/// carries the correct chain-rule derivative through the active segment.
+fn interpolate_piecewise_generic<S: Scalar, T>(
+    rows: &[T],
+    x: S,
+    x_of: fn(&T) -> f64,
+    y_of: fn(&T) -> f64,
+) -> S {
+    if rows.is_empty() {
+        return S::from_f64(0.0);
+    }
+    let xv = x.value();
+    if xv <= x_of(&rows[0]) {
+        return S::from_f64(y_of(&rows[0]));
+    }
+    for pair in rows.windows(2) {
+        let x0 = x_of(&pair[0]);
+        let x1 = x_of(&pair[1]);
+        if xv <= x1 {
+            if (x1 - x0).abs() <= f64::EPSILON {
+                return S::from_f64(y_of(&pair[1]));
+            }
+            let fraction = ((x - x0) / (x1 - x0)).max_floor(0.0).min_ceil(1.0);
+            let y0 = y_of(&pair[0]);
+            let y1 = y_of(&pair[1]);
+            return fraction * (y1 - y0) + y0;
+        }
+    }
+    if let Some(last) = rows.last() {
+        S::from_f64(y_of(last))
+    } else {
+        S::from_f64(0.0)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SwofRow {
     pub sw: f64,
@@ -343,6 +382,61 @@ impl RockFluidPropsThreePhase {
         let d_krg = self.d_k_rg_d_sg(s_g);
         kro_max * (a * (d_kro_g / kro_max + d_krg) - d_krg)
     }
+
+    // ── Generic (differentiable) mirrors for AD Jacobian assembly ──────────────
+    // Each mirrors the f64 method above exactly (same clamp/branch structure),
+    // instantiated with `S = f64` for bitwise parity or `S = Ad<N>` for the
+    // exact analytic derivative through the active Corey/tabular segment.
+
+    pub(crate) fn k_rw_generic<S: Scalar>(&self, s_w: S) -> S {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_generic(&tables.swof, s_w, |row| row.sw, |row| row.krw);
+        }
+        let denom = 1.0 - self.s_wc - self.s_or;
+        let s_eff = ((s_w - self.s_wc) / denom).max_floor(0.0).min_ceil(1.0);
+        s_eff.powf(self.n_w) * self.k_rw_max
+    }
+
+    pub(crate) fn k_rg_generic<S: Scalar>(&self, s_g: S) -> S {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_generic(&tables.sgof, s_g, |row| row.sg, |row| row.krg);
+        }
+        let denom = 1.0 - self.s_wc - self.s_gc - self.s_gr;
+        let s_eff = ((s_g - self.s_gc) / denom).max_floor(0.0).min_ceil(1.0);
+        s_eff.powf(self.n_g) * self.k_rg_max
+    }
+
+    pub(crate) fn k_ro_water_generic<S: Scalar>(&self, s_w: S) -> S {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_generic(&tables.swof, s_w, |row| row.sw, |row| row.krow);
+        }
+        let denom = 1.0 - self.s_wc - self.s_or;
+        let s_eff = ((S::from_f64(1.0 - self.s_or) - s_w) / denom)
+            .max_floor(0.0)
+            .min_ceil(1.0);
+        s_eff.powf(self.n_o) * self.k_ro_max
+    }
+
+    pub(crate) fn k_ro_gas_generic<S: Scalar>(&self, s_g: S) -> S {
+        if let Some(tables) = &self.tables {
+            return interpolate_piecewise_generic(&tables.sgof, s_g, |row| row.sg, |row| row.krog);
+        }
+        let denom = 1.0 - self.s_wc - self.s_org;
+        let s_eff = ((S::from_f64(1.0 - self.s_wc - self.s_org) - s_g) / denom)
+            .max_floor(0.0)
+            .min_ceil(1.0);
+        s_eff.powf(self.n_o) * self.k_ro_max
+    }
+
+    pub(crate) fn k_ro_stone2_generic<S: Scalar>(&self, s_w: S, s_g: S) -> S {
+        let kro_max = self.k_ro_max;
+        let kro_w = self.k_ro_water_generic(s_w);
+        let kro_g = self.k_ro_gas_generic(s_g);
+        let krw = self.k_rw_generic(s_w);
+        let krg = self.k_rg_generic(s_g);
+        let val = ((kro_w / kro_max + krw) * (kro_g / kro_max + krg) - krw - krg) * kro_max;
+        val.max_floor(0.0).min_ceil(kro_max)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -414,5 +508,21 @@ impl RockFluidProps {
             return 0.0;
         }
         -self.k_ro_max * self.n_o * s_eff.powf(self.n_o - 1.0) / denom
+    }
+
+    // ── Generic (differentiable) mirrors, see the three-phase block above ──────
+
+    pub(crate) fn k_rw_generic<S: Scalar>(&self, s_w: S) -> S {
+        let denom = 1.0 - self.s_wc - self.s_or;
+        let s_eff = ((s_w - self.s_wc) / denom).max_floor(0.0).min_ceil(1.0);
+        s_eff.powf(self.n_w) * self.k_rw_max
+    }
+
+    pub(crate) fn k_ro_generic<S: Scalar>(&self, s_w: S) -> S {
+        let denom = 1.0 - self.s_wc - self.s_or;
+        let s_eff = ((S::from_f64(1.0 - self.s_or) - s_w) / denom)
+            .max_floor(0.0)
+            .min_ceil(1.0);
+        s_eff.powf(self.n_o) * self.k_ro_max
     }
 }

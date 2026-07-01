@@ -12,7 +12,7 @@ use crate::fim::wells::{
 };
 use crate::timing::PerfTimer;
 
-const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
+pub(crate) const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
 
 pub(crate) struct FimAssembly {
     pub(crate) residual: DVector<f64>,
@@ -67,11 +67,11 @@ pub(crate) struct CellFacePhaseDiagnostics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct InterfaceFluxTerms {
+pub(crate) struct InterfaceFluxTerms {
     dphi: [f64; 3],
     upwind_cell_idx: [usize; 3],
     mobility: [f64; 3],
-    flux_sc_day: [f64; 3],
+    pub(crate) flux_sc_day: [f64; 3],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1128,7 +1128,7 @@ fn interface_flux_contribution(
     ])
 }
 
-fn interface_flux_terms(
+pub(crate) fn interface_flux_terms(
     sim: &ReservoirSimulator,
     state: &FimState,
     id_i: usize,
