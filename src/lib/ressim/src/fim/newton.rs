@@ -3,9 +3,16 @@ use nalgebra::DVector;
 use crate::ReservoirSimulator;
 use crate::fim::assembly::{
     CellFacePhaseDiagnostics, FaceUpwindSample, FacePhaseDiagnostics, FimAssemblyOptions,
-    PhaseFluxDiagnostic, assemble_fim_system, cell_equation_residual_breakdown,
-    cell_face_phase_flux_diagnostics, collect_face_upwind_snapshot, diff_face_upwind_snapshots,
+    PhaseFluxDiagnostic, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
+    collect_face_upwind_snapshot, diff_face_upwind_snapshots,
 };
+// Phase 5 cutover: production Newton now assembles the coupled residual/
+// Jacobian via automatic differentiation (`assembly_ad`) instead of the
+// legacy hand-derivative/finite-difference hybrid in `assembly`. Aliased to
+// the old name so every production call site below is unchanged; the
+// `#[cfg(test)]` module still imports the legacy `assemble_fim_system`
+// directly for its own assertions.
+use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,

@@ -1,5 +1,7 @@
 use crate::ReservoirSimulator;
-use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system, equation_offset};
+use crate::fim::assembly::{FimAssemblyOptions, equation_offset};
+// See newton.rs: production assembly now goes through the AD assembler.
+use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{
