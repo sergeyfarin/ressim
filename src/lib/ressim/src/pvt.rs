@@ -1,6 +1,18 @@
 use serde::{Deserialize, Serialize};
 
 use crate::ReservoirSimulator;
+use crate::fim::ad::Scalar;
+
+/// Generic (differentiable) counterpart of the fields interpolated from the
+/// saturated PVT curve. Parameterized by a `Scalar` so the same interpolation
+/// serves both the plain `f64` residual and the `Ad<N>` Jacobian path.
+pub(crate) struct SatProps<S> {
+    pub(crate) rs: S,
+    pub(crate) bo: S,
+    pub(crate) bg: S,
+    pub(crate) mu_o: S,
+    pub(crate) mu_g: S,
+}
 
 const PVTO_RS_TOLERANCE: f64 = 1e-6;
 
@@ -214,6 +226,160 @@ impl PvtTable {
     /// Extrapolates using constant compressibility for points above the table max pressure.
     pub fn interpolate(&self, p: f64) -> PvtRow {
         Self::interpolate_rows(&self.saturated_rows, p, self.c_o)
+    }
+
+    /// Generic mirror of [`Self::interpolate`] over the saturated curve.
+    ///
+    /// Segment/extrapolation branch is chosen on `p.value()`, so evaluating with
+    /// `S = f64` reproduces `interpolate` exactly, while `S = Ad<N>` yields the
+    /// exact analytic derivatives of each interpolated field w.r.t. pressure.
+    pub(crate) fn interpolate_saturated_generic<S: Scalar>(&self, p: S) -> SatProps<S> {
+        let rows = &self.saturated_rows;
+        if rows.is_empty() {
+            return SatProps {
+                rs: S::from_f64(0.0),
+                bo: S::from_f64(1.0),
+                bg: S::from_f64(1.0),
+                mu_o: S::from_f64(1.0),
+                mu_g: S::from_f64(0.02),
+            };
+        }
+
+        let pv = p.value();
+
+        // Below the first table pressure: clamp to the first row (constant).
+        if pv <= rows[0].p_bar {
+            let r = &rows[0];
+            return SatProps {
+                rs: S::from_f64(r.rs_m3m3),
+                bo: S::from_f64(r.bo_m3m3),
+                bg: S::from_f64(r.bg_m3m3),
+                mu_o: S::from_f64(r.mu_o_cp),
+                mu_g: S::from_f64(r.mu_g_cp),
+            };
+        }
+
+        let last_idx = rows.len() - 1;
+        // Above the last table pressure: exponential Bo, Boyle-law Bg, constant Rs/mu.
+        if pv >= rows[last_idx].p_bar {
+            let r = &rows[last_idx];
+            // Bo = last.Bo * exp(-c_o * (p - last.p))
+            let bo = S::from_f64(r.bo_m3m3) * ((p * (-self.c_o)) + (self.c_o * r.p_bar)).exp();
+            // Bg = last.Bg * (last.p / p)
+            let bg = S::from_f64(r.bg_m3m3 * r.p_bar) / p;
+            return SatProps {
+                rs: S::from_f64(r.rs_m3m3),
+                bo,
+                bg,
+                mu_o: S::from_f64(r.mu_o_cp),
+                mu_g: S::from_f64(r.mu_g_cp),
+            };
+        }
+
+        for i in 0..last_idx {
+            let r0 = &rows[i];
+            let r1 = &rows[i + 1];
+            if pv >= r0.p_bar && pv <= r1.p_bar {
+                let dp = r1.p_bar - r0.p_bar;
+                if dp < 1e-6 {
+                    return SatProps {
+                        rs: S::from_f64(r0.rs_m3m3),
+                        bo: S::from_f64(r0.bo_m3m3),
+                        bg: S::from_f64(r0.bg_m3m3),
+                        mu_o: S::from_f64(r0.mu_o_cp),
+                        mu_g: S::from_f64(r0.mu_g_cp),
+                    };
+                }
+                let t = (p - r0.p_bar) / dp;
+                let lerp = |a: f64, b: f64| t * (b - a) + a;
+                return SatProps {
+                    rs: lerp(r0.rs_m3m3, r1.rs_m3m3),
+                    bo: lerp(r0.bo_m3m3, r1.bo_m3m3),
+                    bg: lerp(r0.bg_m3m3, r1.bg_m3m3),
+                    mu_o: lerp(r0.mu_o_cp, r1.mu_o_cp),
+                    mu_g: lerp(r0.mu_g_cp, r1.mu_g_cp),
+                };
+            }
+        }
+
+        let r = &rows[last_idx];
+        SatProps {
+            rs: S::from_f64(r.rs_m3m3),
+            bo: S::from_f64(r.bo_m3m3),
+            bg: S::from_f64(r.bg_m3m3),
+            mu_o: S::from_f64(r.mu_o_cp),
+            mu_g: S::from_f64(r.mu_g_cp),
+        }
+    }
+
+    /// Generic mirror of [`Self::branch_props`] (Bo, mu_o on a fixed-Rs branch).
+    fn branch_props_generic<S: Scalar>(branch: &PvtOilBranch, p: S, c_o: f64) -> (S, S) {
+        let rows = &branch.rows;
+        if rows.is_empty() {
+            return (S::from_f64(1.0), S::from_f64(1.0));
+        }
+        if rows.len() == 1 {
+            let row = &rows[0];
+            // Bo = Bo0 * exp(-c_o * (p - p0)) ; mu = mu0 * exp(c_o * (p - p0))
+            let excess = p - row.p_bar;
+            let bo = S::from_f64(row.bo_m3m3) * (excess * (-c_o)).exp();
+            let mu = S::from_f64(row.mu_o_cp) * (excess * c_o).exp();
+            return (bo, mu);
+        }
+
+        let pv = p.value();
+        if pv <= rows[0].p_bar {
+            return (S::from_f64(rows[0].bo_m3m3), S::from_f64(rows[0].mu_o_cp));
+        }
+
+        for pair in rows.windows(2) {
+            let r0 = &pair[0];
+            let r1 = &pair[1];
+            if pv >= r0.p_bar && pv <= r1.p_bar {
+                let dp = r1.p_bar - r0.p_bar;
+                if dp.abs() < 1e-9 {
+                    return (S::from_f64(r0.bo_m3m3), S::from_f64(r0.mu_o_cp));
+                }
+                let t = (p - r0.p_bar) / dp;
+                let bo = t * (r1.bo_m3m3 - r0.bo_m3m3) + r0.bo_m3m3;
+                let mu = t * (r1.mu_o_cp - r0.mu_o_cp) + r0.mu_o_cp;
+                return (bo, mu);
+            }
+        }
+
+        let last = &rows[rows.len() - 1];
+        let excess = p - last.p_bar;
+        let bo = (S::from_f64(last.bo_m3m3) * (excess * (-c_o)).exp()).max_floor(1e-9);
+        let mu = S::from_f64(last.mu_o_cp) * (excess * c_o).exp();
+        (bo, mu)
+    }
+
+    /// Generic mirror of [`Self::interpolate_oil`] (undersaturation-aware Bo, mu_o).
+    pub(crate) fn interpolate_oil_generic<S: Scalar>(&self, p: S, rs: S) -> (S, S) {
+        if self.saturated_rows.is_empty() {
+            return (S::from_f64(1.0), S::from_f64(1.0));
+        }
+        let sat = self.interpolate_saturated_generic(p);
+        let rs_sat = sat.rs.value();
+
+        if rs.value() >= rs_sat - 1e-6 {
+            return (sat.bo, sat.mu_o);
+        }
+
+        if let Some((low, high)) = self.branch_bounds(rs.value()) {
+            let (bo_low, mu_low) = Self::branch_props_generic(low, p, self.c_o);
+            if (high.rs_m3m3 - low.rs_m3m3).abs() <= PVTO_RS_TOLERANCE {
+                return (bo_low, mu_low);
+            }
+            let (bo_high, mu_high) = Self::branch_props_generic(high, p, self.c_o);
+            // t = (rs - low.rs) / (high.rs - low.rs)
+            let t = (rs - low.rs_m3m3) / (high.rs_m3m3 - low.rs_m3m3);
+            let bo = t * (bo_high - bo_low) + bo_low;
+            let mu = t * (mu_high - mu_low) + mu_low;
+            return (bo, mu);
+        }
+
+        (sat.bo, sat.mu_o)
     }
 
     /// Find the bubble-point pressure for a given dissolved-gas ratio.
