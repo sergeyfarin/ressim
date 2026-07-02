@@ -45,12 +45,23 @@ pub(crate) fn cell_props_generic<S: Scalar>(
     let one = S::from_f64(1.0);
     let total_hc = (one - sw).max_floor(0.0);
 
-    // Two-phase / no PVT table: oil fills the hydrocarbon pore space, no gas.
+    // Two-phase / no PVT table: no gas is present (the flash pins sg = 0 and
+    // the state's hydrocarbon_var stays 0), but the third unknown must keep
+    // LIVE derivatives (sg = hydrocarbon_var formally, as in the saturated
+    // regime) or its Jacobian row and column are identically zero and the
+    // global system is structurally singular — one empty row per cell. The
+    // legacy assembler regularizes the same way: its accumulation block
+    // applies the saturated-regime chain rule (d_sg/d_hc = 1 -> gas-row
+    // diagonal pv/bg) even though its residual pins sg = 0. Along the actual
+    // trajectory hc = 0, so the residual value is unchanged and Newton yields
+    // delta_hc = 0 exactly; only the Jacobian structure differs.
     if !sim.three_phase_mode || sim.pvt_table.is_none() {
+        let sg = hydrocarbon_var.max_floor(0.0).min_of(total_hc);
+        let so = (one - sw - sg).max_floor(0.0);
         let bo = base_oil_fvf_generic(sim, p);
         return CellProps {
-            so: total_hc,
-            sg: S::from_f64(0.0),
+            so,
+            sg,
             rs: S::from_f64(0.0),
             bo,
             bg: S::from_f64(1.0),
@@ -455,6 +466,28 @@ mod tests {
                 "component {component}: real={real} generic={generic}"
             );
         }
+    }
+
+    /// AD-vs-numerical gate for the TWO-PHASE path (`three_phase_mode = false`,
+    /// no PVT table) -- every prior Phase 1/2 gate used a three-phase fixture,
+    /// so this branch (`cell_props_generic`'s first `if` arm, and everything
+    /// downstream in flux/mobility that special-cases `!three_phase_mode`) was
+    /// never checked against numerical differentiation.
+    ///
+    /// Evaluated at hc = 0.05, interior to the live branch: hc = 0 (the
+    /// actual two-phase operating point) sits exactly on the `max_floor(0.0)`
+    /// clamp kink of the inactive-unknown regularization, where a central
+    /// difference straddles the branch switch and reports half the one-sided
+    /// derivative AD (correctly, matching the legacy assembler) selects. The
+    /// hc = 0 point itself is covered by
+    /// `assembly_ad::two_phase_singularity_check`, which pins the row/column
+    /// structure against the legacy Jacobian instead of against a numerical
+    /// difference.
+    #[test]
+    fn ad_accumulation_matches_numerical_two_phase() {
+        let sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        assert!(!sim.three_phase_mode);
+        accumulation_gate_with(&sim, HydrocarbonState::Saturated, 300.0, 0.2, 0.05, None);
     }
 }
 

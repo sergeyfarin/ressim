@@ -378,4 +378,39 @@ mod tests {
             );
         }
     }
+
+    /// AD-vs-numerical gate for the TWO-PHASE flux path (`three_phase_mode =
+    /// false`) -- every prior flux gate used a three-phase fixture; this is
+    /// the untested branch relevant to `water-pressure`-style scenarios.
+    #[test]
+    fn flux_gate_two_phase_with_capillary() {
+        let sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        assert!(!sim.three_phase_mode);
+        let geom_t = 3.5_f64;
+        let dt_days = 0.4_f64;
+
+        let i = input(310.0, 0.15, 0.0, HydrocarbonState::Saturated, 0.0);
+        let j = input(290.0, 0.12, 0.0, HydrocarbonState::Saturated, 0.0);
+
+        let (bii, bij, bji, bjj) = face_flux_jacobian_blocks(&sim, geom_t, dt_days, &i, &j);
+        let mut analytic = vec![vec![0.0; 6]; 6];
+        for eq in 0..3 {
+            for v in 0..3 {
+                analytic[eq][v] = bii[eq][v];
+                analytic[eq][3 + v] = bij[eq][v];
+                analytic[3 + eq][v] = bji[eq][v];
+                analytic[3 + eq][3 + v] = bjj[eq][v];
+            }
+        }
+
+        let x0 = [i.p, i.sw, i.hydrocarbon_var, j.p, j.sw, j.hydrocarbon_var];
+        let residual = |x: &[f64]| {
+            let i2 = FaceCellInput { p: x[0], sw: x[1], hydrocarbon_var: x[2], ..i };
+            let j2 = FaceCellInput { p: x[3], sw: x[4], hydrocarbon_var: x[5], ..j };
+            face_flux_residual_f64(&sim, geom_t, dt_days, &i2, &j2).to_vec()
+        };
+        let numerical = central_difference_jacobian(&x0, 6, residual);
+
+        assert_jacobian_matches(&analytic, &numerical, 1e-6, 1e-9);
+    }
 }

@@ -2481,3 +2481,60 @@ mod tests {
         assert!(sim.last_solver_warning.is_empty());
     }
 }
+
+#[cfg(test)]
+mod phase5_repro {
+    use crate::ReservoirSimulator;
+    use std::time::Instant;
+
+    /// Native reproduction of the wasm diagnostic's `water-pressure --grid
+    /// 12x12x3 --steps 1 --dt 1` case (see `scripts/fim-wasm-diagnostic.mjs`
+    /// `configureCommonTwoPhase` + `waterWellConfig` (pressure control) +
+    /// `setWells`).
+    ///
+    /// KNOWN REGRESSION (Phase 5 AD-assembler cutover): under the AD
+    /// assembler this case's timestep controller collapses to the dt floor
+    /// (~1e-5 days, i.e. the target dt halved ~16 times) and never recovers,
+    /// putting the run on track for ~100,000 substeps (`MAX_SUBSTEPS`)
+    /// instead of completing in ~32 substeps as it does on the pre-cutover
+    /// assembler. `#[ignore]`d because it does not terminate in reasonable
+    /// time; kept as the reproduction case for the next investigation pass.
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_12x12x3() {
+        let nx = 12usize;
+        let ny = 12usize;
+        let nz = 3usize;
+        let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0).unwrap();
+        sim.set_initial_pressure(300.0);
+        sim.set_initial_saturation(0.1);
+        sim.set_fluid_properties(1.0, 0.5).unwrap();
+        sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+        sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+        sim.set_fluid_densities(800.0, 1000.0).unwrap();
+        sim.set_capillary_params(0.0, 2.0).unwrap();
+        sim.set_gravity_enabled(false);
+        sim.set_permeability_per_layer(vec![2000.0; nz], vec![2000.0; nz], vec![200.0; nz])
+            .unwrap();
+        sim.set_stability_params(0.05, 75.0, 0.75);
+
+        // waterWellConfig(pressure control)
+        sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+        sim.set_target_well_rates(0.0, 0.0).unwrap();
+        sim.set_well_bhp_limits(100.0, 500.0).unwrap();
+        sim.set_rate_controlled_wells(false);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let start = Instant::now();
+        let trace = sim.step_with_diagnostics(1.0);
+        let elapsed = start.elapsed();
+        println!("native step elapsed: {:.3}s", elapsed.as_secs_f64());
+        println!("trace tail (last 4000 chars):");
+        let tail_start = trace.len().saturating_sub(4000);
+        println!("{}", &trace[tail_start..]);
+    }
+}

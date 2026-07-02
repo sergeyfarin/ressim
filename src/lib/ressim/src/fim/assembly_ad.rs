@@ -778,3 +778,83 @@ mod tests {
         assert_jacobian_matches(&analytic, &numerical, 1e-5, 1e-6);
     }
 }
+
+#[cfg(test)]
+mod two_phase_singularity_check {
+    use super::*;
+    use crate::fim::assembly::assemble_fim_system;
+
+    fn row_nnz(m: &sprs::CsMat<f64>, row: usize) -> usize {
+        m.iter().filter(|(v, (r, _c))| v.abs() > 0.0 && *r == row).count()
+    }
+
+    fn col_nnz(m: &sprs::CsMat<f64>, col: usize) -> usize {
+        m.iter().filter(|(v, (_r, c))| v.abs() > 0.0 && *c == col).count()
+    }
+
+    /// Root-cause gate for the Phase 5 water-pressure dt-collapse.
+    ///
+    /// In two-phase mode the residual genuinely does not depend on the third
+    /// unknown (the flash pins sg = 0 for any hydrocarbon_var), so the TRUE
+    /// derivative of that unknown's row/column is identically zero — a
+    /// Jacobian that is exact-but-structurally-singular, with one empty row
+    /// per cell. Every prior gate (bit-parity residual, AD-vs-numerical
+    /// Jacobian of both this and the REAL residual) passes on such a matrix:
+    /// exactness checks cannot detect rank deficiency when the reference is
+    /// equally rank-deficient. The legacy assembler avoids this by applying
+    /// the saturated-regime chain rule (live d_sg/d_hc = 1) even in two-phase
+    /// mode — an intentional Jacobian/residual inconsistency that acts as
+    /// regularization of the inactive unknown. This gate pins the structural
+    /// requirement directly: the AD Jacobian's hc row/column occupancy must
+    /// match the legacy assembler's on a two-phase system, and the residual
+    /// must stay bit-identical (the fix regularizes only Jacobian structure;
+    /// hc = 0 on-trajectory keeps the value path unchanged).
+    #[test]
+    fn two_phase_third_unknown_occupancy_matches_legacy() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        assert!(!sim.three_phase_mode);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        state.cells[0].pressure_bar = 310.0;
+        state.cells[0].sw = 0.15;
+        state.cells[1].pressure_bar = 290.0;
+        state.cells[1].sw = 0.12;
+
+        let options = FimAssemblyOptions {
+            dt_days: 0.1,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: None,
+        };
+        let old = assemble_fim_system(&sim, &previous_state, &state, &options);
+        let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
+
+        for cell_idx in 0..2 {
+            let hc_row = equation_offset(cell_idx, 2);
+            let hc_col = unknown_offset(cell_idx, 2);
+
+            let old_row = row_nnz(&old.jacobian, hc_row);
+            let new_row = row_nnz(&new.jacobian, hc_row);
+            let old_col = col_nnz(&old.jacobian, hc_col);
+            let new_col = col_nnz(&new.jacobian, hc_col);
+
+            assert!(new_row > 0, "cell {cell_idx}: AD hc row is empty (singular)");
+            assert!(new_col > 0, "cell {cell_idx}: AD hc column is empty (singular)");
+            assert_eq!(new_row, old_row, "cell {cell_idx}: hc row occupancy diverges from legacy");
+            assert_eq!(new_col, old_col, "cell {cell_idx}: hc column occupancy diverges from legacy");
+        }
+
+        for i in 0..old.residual.len() {
+            assert!(
+                (old.residual[i] - new.residual[i]).abs() < 1e-12,
+                "residual[{i}] diverged: old={} new={}",
+                old.residual[i],
+                new.residual[i]
+            );
+        }
+    }
+}
