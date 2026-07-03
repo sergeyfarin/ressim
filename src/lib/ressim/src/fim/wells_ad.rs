@@ -158,10 +158,27 @@ pub(crate) fn connection_rate_generic<S: Scalar>(
     let connection_mobility = (mob.water + mob.oil + mob.gas).max_floor(0.0);
     let raw_rate = (connection_mobility * (cell.p - bhp)) * wi_geom;
 
+    // Mirror `wells::perforation_connection_bhp_derivative` /
+    // `perforation_connection_cell_derivatives`'s explicit STRICT-inequality
+    // guard: legacy treats a connection rate that is AT (not just beyond) its
+    // physical clamp as already clamped -- `raw_rate < 0.0` (strict) for a
+    // live injector derivative, `raw_rate > 0.0` (strict) for a live producer
+    // derivative. The generic `.min_ceil(0.0)` / `.max_floor(0.0)`
+    // combinators are boundary-inclusive (value AT the bound stays "live"),
+    // which disagrees with legacy exactly when a rate-controlled well's
+    // consistent initial BHP puts drawdown at exactly zero. The VALUE is
+    // unaffected either way (both conventions clamp to 0.0 at the boundary);
+    // only the derivative selection differs.
     if injector {
-        raw_rate.min_ceil(0.0)
+        if raw_rate.value() < 0.0 {
+            raw_rate
+        } else {
+            S::from_f64(0.0)
+        }
+    } else if raw_rate.value() > 0.0 {
+        raw_rate
     } else {
-        raw_rate.max_floor(0.0)
+        S::from_f64(0.0)
     }
 }
 

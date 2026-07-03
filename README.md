@@ -105,7 +105,7 @@ That ordering aligns with the literature already used in the project: Buckley an
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18+ with `pnpm`
 - Rust toolchain
 - `wasm-pack`
 - `wasm32-unknown-unknown` target
@@ -113,7 +113,7 @@ That ordering aligns with the literature already used in the project: Buckley an
 ### Install
 
 ```bash
-npm install
+pnpm install
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
 ```
@@ -121,15 +121,18 @@ cargo install wasm-pack
 ### Run
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 ### Validate
 
 ```bash
-npm run validate
-cd src/lib/ressim && cargo test
+pnpm run validate           # frontend: typecheck + lint + test + build
+pnpm run validate:product   # + Rust IMPES solver bucket
+bash scripts/validate-solver-coverage.sh all   # Rust solver test buckets
 ```
+
+Note: full `cargo test` is not used as a gate — FIM diagnostic tests can dominate runtime (see `docs/FIM_DEFERRED_BACKLOG.md` and `.claude/skills/ressim-validation/SKILL.md`).
 
 ## Project Layout
 

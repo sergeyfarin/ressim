@@ -6,6 +6,8 @@ Browser-based reservoir simulator: Rust/WASM core + Svelte 5 UI. Runs IMPES (imp
 
 See `README.md` for full feature list and `docs/` for technical deep-dives.
 
+**Workflow skills**: task-specific playbooks live in `.claude/skills/` (validation gates, engine changes, FIM debugging, frontend architecture, scenario authoring, OPM pipeline). Read the skill matching your task before working; index at `.claude/skills/README.md`.
+
 ## Architecture
 
 | Layer | Location | Role |
@@ -25,9 +27,10 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 - **TypeScript** throughout; strict mode.
 - **Tailwind CSS 4.x** — utility classes, no custom CSS unless unavoidable.
 - **Chart.js 4.x** — charts managed via `ChartSubPanel.svelte`; don't bypass the panel abstraction.
-- **Three.js pinned** at 0.183.2 — do not upgrade casually; visualization behavior is version-sensitive.
+- **Three.js pinned** to the exact version in `package.json` — do not upgrade casually; visualization behavior is version-sensitive.
 - **WASM bindings** via `wasm-bindgen`; worker communication uses structured cloning only (no functions or class instances).
 - **Python tooling** uses `uv` for commands, scripts, environments, and dependency management.
+- **Package manager is pnpm** (`pnpm install`, `pnpm run dev`, `pnpm test`) — never npm/yarn.
 
 ## Coding Conventions
 
@@ -47,6 +50,8 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 **Simulation loop**: user configures scenario → worker creates Rust simulator → `step()` solves pressure, advances saturation, updates wells → worker posts state snapshots to UI.
 
 **Benchmarking**: physics validated against analytical solutions via Rust `#[test]` functions in `src/lib/ressim/src/lib.rs`. Don't change benchmark tolerances without justification.
+
+**Testing caution**: full `cargo test` is NOT a valid gate — FIM/SPE1 tests can hang or dominate runtime. Use `bash scripts/validate-solver-coverage.sh {shared|fim|impes|all}` and the targeted commands in `.claude/skills/ressim-validation/SKILL.md`.
 
 **CurveConfig / ChartSubPanel**: charts are driven by `CurveConfig[]` arrays. Curves grouped by `toggleGroupKey` into legend toggle buttons. `legendSection` / `legendSectionLabel` group buttons under collapsible section headers. Don't bypass this pattern.
 

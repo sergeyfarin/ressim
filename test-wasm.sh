@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /home/reken/Repos/ressim
+cd "$(dirname "$0")"
 
 echo "Building wasm package..."
-npm run build:wasm >/dev/null
+pnpm run build:wasm >/dev/null
 
 if [[ $# -eq 0 ]]; then
   set -- --preset water-pressure

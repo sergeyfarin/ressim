@@ -2,6 +2,25 @@
 
 `TODO.md` is the active execution tracker. Completed work has been moved to `docs/DELIVERED_WORK_2026_Q1.md`.
 
+## Discovered issues — 2026-07-02 handoff review
+
+Found while building the `.claude/skills/` library. Small stale-doc/path items were fixed in the same pass (README pnpm quick start, `test-wasm.sh` hardcoded `/home/reken` path, Three.js version claims in copilot-instructions/ARCHITECTURE_NOTES, scenario count 9→10).
+
+- [ ] **CI runs no Rust tests.** `.github/workflows/pr-tests.yml` runs vitest + typecheck only; an engine regression cannot be caught by CI. Minimal fix: add `bash scripts/validate-solver-coverage.sh impes` (or `all`) as a CI step — the buckets are curated to be hang-free.
+- [ ] **OPM summary parser still unimplemented** (`tools/opm_flow/opm_flow_tool/artifacts.py::build_artifact()` writes stub `series: []`). Highest-leverage validation task; full plan in `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §5 Phase A and `.claude/skills/opm-reference-pipeline/`.
+- [ ] **`.claude/settings.json` allowlist is stale**: dozens of `/home/reken/...` absolute-path entries and one-off experiment commands from old sessions. Needs a manual prune to project-relative rules (agent-initiated permission edits are blocked by policy — user action).
+- [ ] **The FIM AD-migration plan lives only in commit messages** (`410e7b4`, `68fbf17`, `ffd965a`, "step 5"). Violates the project's own documentation discipline: capture phase status + remaining steps in `docs/FIM_MIGRATION_PLAN.md` or `docs/FIM_STATUS.md` (which still doesn't mention that `assembly_ad.rs` is now the live assembly path).
+- [x] **Phase 5 AD-assembler cutover benchmarked and hardened (commit `ffd965a` + same-day follow-up, uncommitted)** — found and fixed three real bugs, all the same species (legacy hand-derivative code and the new AD path pick different one-sided derivatives at a relperm/rate clamp boundary), none of them Jacobian-*value* bugs:
+  1. Two-phase Jacobian structural singularity (exact-but-rank-deficient hc row/column) that caused `water-pressure 12x12x3 dt=1` to never terminate — fixed, gated (`two_phase_singularity_check`).
+  2. Stone2 upper-clamp kink at `Sw=Swc, Sg=0` (a standard initial condition) — fixed in `k_ro_stone2_generic` by mirroring legacy's explicit boundary guard.
+  3. Connection-rate clamp kink at zero drawdown (hit by rate-controlled wells' solved-consistent initial BHP) — fixed in `connection_rate_generic` by mirroring legacy's strict-inequality guard.
+  A full-row/column-occupancy sweep across every preset configuration (`structural_parity_sweep`, 5 gates) plus a full-suite rerun (340 passed / 7 failed, all 7 confirmed pre-existing and unrelated, one verified via stash-swap to fail identically on the legacy assembler) found no further gaps. Benchmark re-verified unchanged after both later fixes (neither touches the two-phase/BHP-controlled scenarios the shortlist currently covers) — gas-rate 10x10x3/6-step clearly improved (14 vs 28 substeps), heavy water-pressure 12x12x3/dt=1 roughly neutral (34 vs 32 substeps) pending Phase 7 (Newton globalization revisit for the exact Jacobian). Full narrative: `docs/FIM_CONVERGENCE_WORKLOG.md` "Current Findings - 2026-07-02". **Follow-up:** add a rate-controlled-well case to the benchmark shortlist so this kink class has routine coverage, not just the unit tests that happened to hit it. Phase 6 (deleting the legacy assembler) is now unblocked.
+- [ ] **TODO.md itself violates its stated policy** (short and action-oriented; currently ~670 lines of dated FIM micro-experiment narrative that `FIM_STATUS.md` says belongs in `docs/FIM_CONVERGENCE_WORKLOG.md`). Prune per COMPARISON_TOOLBOX_REVIEW Phase D.
+- [ ] **Root/doc hygiene**: `SPE1CASE1.DBG` (+`:Zone.Identifier`), `image.png`, `ccopy.sh` are stray untracked-purpose files at repo root; `docs/2.md` and `docs/20260426.md` are orphaned (not in the doc index); `PLAN.md`/`docs/REFACTOR_PLAN.md` marked historical but still at top level.
+- [ ] **`c_o = 1e-5 /bar` duplication** between `src/lib/physics/pvt.ts` and `src/lib/analytical/materialBalance.ts` still has no regression guard (ROADMAP 1.3).
+- [ ] **`fim/newton.rs` at ~5.2k lines** is the largest maintenance hotspot in the engine; consider a controller/state-machine extraction once AD migration completes (candidate for the `.github/agents/refactor-planner` agent).
+- [ ] **3D view named bugs** from PLAN.md-era review (FOV degrees conversion, `Array.isArray` on GridState, `k ?? k` well indexing) were never re-verified post-refactor — cheap scoped verification pass (COMPARISON_TOOLBOX_REVIEW gap #7).
+
 ## Now
 
 - [x] Document a clean Rust solver layout split for shared root code, `fim/`, and `impes/`.

@@ -297,6 +297,56 @@ Historical narrative was trimmed out of this file on 2026-04-08.
 - Probe reverted via `git checkout -- src/lib/ressim/src/fim/newton.rs`. Clean wasm rebuilt. Locked smoke tests green.
 - Full tables (all 4 cases), gate design, staging plan, risks: `docs/FIM_BYPASS_AUDIT.md`.
 
+## Current Findings - 2026-07-02
+
+### Phase 5 AD-assembler cutover — two-phase Jacobian singularity found and fixed, benchmark result is mixed
+
+Context: `fim/assembly_ad.rs` (automatic-differentiation assembler, built and gated in Phases 0-4 of the AD migration) was wired in as the live production assembler at commit `86596ee` (`newton.rs`/`timestep.rs` alias `assemble_fim_system_ad` as `assemble_fim_system`). That cutover landed before the performance gate was run — see the discovered-issues note at the top of `TODO.md`.
+
+**Bug found:** the water-pressure `12x12x3 dt=1` canonical case did not terminate (ran past 1 hour wall clock; native reproduction also did not terminate). Root cause: two-phase mode (`three_phase_mode = false`) has a residual that genuinely does not depend on the third primary unknown (`hydrocarbon_var` — the flash pins `sg = 0` regardless of its value), so an exact AD Jacobian correctly produces a **structurally singular matrix** (one empty row + column per cell). Every existing AD gate (bit-parity residual, AD-vs-numerical Jacobian of both the AD and the real residual) passed anyway, because the numerical reference was equally rank-deficient — exactness checks cannot detect shared rank deficiency. The legacy assembler avoids this by applying the saturated-regime chain rule (`d_sg/d_hc = 1`) even in two-phase mode — a deliberate Jacobian/residual inconsistency that regularizes the inactive unknown. That inconsistency was load-bearing and the AD migration had not carried it forward.
+
+**Fix** (commit `ffd965a`): `cell_props_generic`'s two-phase branch now treats `sg` as the live variable (`hc.max(0).min(1-sw)`), mirroring the legacy regularization. On-trajectory `hc = 0`, so the residual is unchanged bit-for-bit; only the Jacobian structure changes. New structural gate `two_phase_singularity_check` in `assembly_ad.rs` asserts AD hc-row/column occupancy matches legacy occupancy on a two-phase system (not just "some nonzero value") — this is the gate class that was missing, and should be applied to any future primitive that has a formally-present-but-residual-inactive unknown.
+
+**Validation on commit `ffd965a`** (locked smoke tests green: `spe1_fim_first_steps_converge_without_stall`, `spe1_fim_gas_injection_creates_free_gas`, `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`; wasm rebuilt on this commit):
+
+| Case | Command | AD (`ffd965a`) | Legacy (pre-cutover, same session) |
+|---|---|---|---|
+| water-pressure 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=8 retries=0/3/0` | not re-measured this pass |
+| water-pressure 22x22x1 | `--grid 22x22x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=4 retries=0/2/0` | not re-measured this pass |
+| water-pressure 23x23x1 | `--grid 23x23x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=4 retries=0/2/0` | not re-measured this pass |
+| gas-rate 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=2 retries=0/1/0` | not re-measured this pass |
+| gas-rate 10x10x3, 6 steps | `--grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` | **14 total substeps** (4,2,2,2,2,2), retries `0/2/0` then `0/1/0`x5 | **28** (8,4,4,4,4,4) on legacy, same session |
+| water-pressure 12x12x3 dt=1 (heavy) | `--grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` | `substeps=34 retries=0/12/0 outer_ms=27462.0` | `substeps=32 retries=0/11/0 outer_ms=12567.6` |
+
+**Interpretation — result is mixed, not a clean win:**
+- No case collapses or runs away anymore; the singularity was the actual cause of the multi-hour hang and it is resolved.
+- Gas shelf (10x10x3, 6-step) is a clear improvement: 14 vs 28 substeps on the same tree/session.
+- The heavy water shelf (12x12x3 dt=1) is roughly neutral-to-slightly-worse: 34 vs 32 substeps, ~2.2x wall clock (27.5s vs 12.6s), dt still bottoms out to `5.4e-5` near the end of the run, and `retry_dom` moves through four distinct hotspots across the replay (`water@0` -> `oil@430` -> `perf@1299` -> `water@1215`), not one stable stall.
+- Consistent with the expectation set before starting the cutover: `newton.rs`'s damping/growth/retry heuristics (hotspot-repeat cooldown, growth caps, etc.) were tuned empirically against the legacy assembler's approximate-Jacobian quirks. An exact Jacobian changes some interactions for the better (gas shelf) and some not yet (heavy water shelf). This is exactly the class of work Phase 7 (OPM-style Newton globalization, revisiting these heuristics against the now-exact Jacobian) is for — it is not yet attempted.
+
+**Baseline discipline note:** the numbers above supersede both the stale documented `246`-substep figure for the 12x12x3/dt=1 case (already known stale before this session) and the `32`-substep legacy figure measured earlier in this same session (superseded because the two-phase singularity fix landed on top of it). Reproduced on commit `ffd965a`, clean tree, exact commands recorded above — no longer provisional.
+
+**Follow-up sweep completed (same day):** compared FULL row/column occupancy (not just the previously-known hc row) between legacy and AD across every qualitatively distinct preset configuration. The 5 wasm-diagnostic presets reduce to exactly 2 structural configurations (water-pressure/water-rate/sweep-areal are all two-phase via `configureCommonTwoPhase`; gas-pressure/gas-rate are the only three-phase presets via `configureGasBase`) crossed with well control mode (BHP/rate) and regime — every Phase 0-4 gate had used a *uniform* regime across a fixture, so a mixed-regime three-phase grid (some cells saturated, some undersaturated) had never been exercised. New gates in `assembly_ad.rs::structural_parity_sweep` (5 tests): `two_phase_bhp_controlled_wells`, `two_phase_rate_controlled_wells`, `three_phase_uniform_saturated_with_wells`, `three_phase_mixed_regime_with_wells`, `three_phase_drsdt0_disabled_with_wells`.
+
+One more divergence found and characterized while building the mixed-regime fixture (NOT a new bug class): with a saturated cell sitting at exactly `sg = 0.0` and a producer well attached, legacy and AD disagreed on whether that cell's own `sg` column appears in its water-equation row. Root cause is a producer's water-fraction coefficient (`lambda_w / (lambda_w+lambda_o+lambda_g)`) genuinely depending on the cell's own `sg` through the shared total-mobility denominator, evaluated exactly at the `sg = 0` relperm kink — legacy's hand code and AD pick different one-sided derivatives there, same class as the already-known Phase 3 `s_gc` kink. Confirmed by moving the fixture off the kink (`sg = 0.05`): both assemblers then agree on occupancy *and* value to float noise (`5.607440846332977` vs `5.607440846332972`), and confirmed the term is well-driven (vanishes identically on both sides with wells excluded). Not fixed — it's a measure-zero kink disagreement of the accepted kind, not a structural singularity. Documented in the `three_phase_mixed_regime_with_wells` test.
+
+All 5 sweep gates green.
+
+### Full-suite rerun found two more real kink-convention bugs (both fixed, same day)
+
+The full test suite (not just the targeted sweep) surfaced 2 genuinely new failures beyond the pre-existing baseline: `fim::newton::tests::entry_guard_does_not_accept_unchanged_previous_state` and `fim::tests::wells::rate_controlled_injector_fim_path_converges`. Both traced to the same underlying pattern as the benign mixed-regime kink above, except this time the kink sat exactly at commonly-hit initial conditions, so it was not benign:
+
+1. **Stone2 upper-clamp kink.** At `Sw = Swc` and `Sg = 0` simultaneously (a completely standard initial condition — connate water, no free gas), Stone2 oil relperm (`k_ro_stone2`) lands exactly on its upper clamp bound (`val == kro_max`). Legacy's hand derivative explicitly guards `if val <= 0.0 || val >= kro_max { return 0.0; }` (zero derivative AT OR BEYOND either bound); the generic `.max_floor(0.0).min_ceil(kro_max)` AD combinators keep a live derivative AT the bound (value equality resolves to "still on the branch"). Fixed in `k_ro_stone2_generic` (`relperm.rs`) by mirroring legacy's explicit boundary guard directly, rather than changing the foundational `Ad` clamp convention — confirmed the convention is genuinely per-function and inconsistent in legacy (e.g. basic Corey `k_rw`'s floor-boundary derivative stays live in legacy, the opposite of Stone2's), so a single foundational change would have fixed one function while breaking another.
+2. **Connection-rate clamp kink.** `connection_rate_generic`'s injector/producer `.min_ceil(0.0)` / `.max_floor(0.0)` clamp on the well connection rate has the same AD-vs-legacy boundary disagreement, hit when a rate-controlled well's solved-consistent initial BHP puts drawdown at exactly zero. Legacy's `perforation_connection_bhp_derivative` / `perforation_connection_cell_derivatives` use a **strict** inequality (`raw_rate < 0.0` for injector-live, `raw_rate > 0.0` for producer-live) — AT the boundary is always the clamped/zero-derivative side for both directions. Fixed in `connection_rate_generic` (`wells_ad.rs`) by mirroring the same strict-inequality guard.
+
+Both fixes are residual-value-neutral (the clamped VALUE is identical either way; only the boundary derivative selection changes) and verified with the same technique as the mixed-regime finding: direct legacy-vs-AD Jacobian comparison at the exact failing state, isolating the diverging entries before touching any code.
+
+**Result:** both previously-failing tests now pass. Full suite rerun: 340 passed / 7 failed (down from 9), and the 7 remaining failures are confirmed pre-existing and unrelated — 6 match the original documented baseline exactly, and the 7th (`physics_gas_flood_case_matrix_remains_bounded_across_sat_perm_pvt_and_capillary_ranges`, `initial_sw = 0.06 < Swc = 0.10` — an extreme out-of-range initial condition) was verified via stash-swap to fail **identically on the legacy assembler**, confirming it predates and is unrelated to the entire AD migration.
+
+**Benchmark re-verified after both fixes** (wasm rebuilt, same commands as the earlier table): water-pressure 12x12x3/dt=1 heavy case is bit-for-bit unchanged in substeps/retries (`34`/`0/12/0` — this case is two-phase and BHP-controlled, so neither kink applies to it), gas-rate 10x10x3/6-step unchanged (`14` total substeps), and the full bounded control matrix (20x20x3 water/gas, 22x22x1, 23x23x1) all unchanged. No regression from either fix; the two rate-controlled/three-phase-corner scenarios these fixes target simply aren't exercised by the current benchmark shortlist — worth adding a rate-controlled-well case to the shortlist as a follow-up so this class of kink is covered by the routine gate set, not just by the unit tests that happened to hit it.
+
+Phase 6 (deleting the legacy assembler) is unblocked: the sweep plus the full-suite rerun found no further structural gaps beyond the three characterized above (two-phase singularity, Stone2 kink, connection-rate kink), all fixed, all gated.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
@@ -306,3 +356,6 @@ Historical narrative was trimmed out of this file on 2026-04-08.
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 23x23x1 --steps 1 --dt 0.25 --diagnostic step --no-json | rg -m 8 "cpr=\[|FIM retry summary|FIM step done|Newton: dt="`
 - Exact-dense threshold control:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 22x22x1 --steps 1 --dt 0.25 --diagnostic step --no-json | rg -m 8 "cpr=\[|FIM retry summary|FIM step done|Newton: dt="`
+- Bounded control matrix additions (added 2026-07-02, part of the fim-solver-debug skill's routine gate set):
+  - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json`
+  - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json`

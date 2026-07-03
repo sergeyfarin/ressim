@@ -858,3 +858,212 @@ mod two_phase_singularity_check {
         }
     }
 }
+
+/// Broader structural sweep (2026-07-02): the two-phase singularity was found
+/// by accident on one specific canonical case. Rather than trust that it was
+/// the only such gap, this sweep checks FULL row/column occupancy parity
+/// (every unknown, not just the one that turned out to be degenerate) across
+/// every qualitatively distinct configuration that appears across all 5
+/// wasm-diagnostic presets: two-phase (water-pressure/water-rate/sweep-areal
+/// all reduce to this structurally) and three-phase (gas-pressure/gas-rate),
+/// crossed with well control mode, and -- untested by any Phase 0-4 gate
+/// until now -- a MIXED-REGIME three-phase grid (some cells saturated, some
+/// undersaturated), since every prior three-phase gate used a uniform regime.
+#[cfg(test)]
+mod structural_parity_sweep {
+    use super::*;
+    use crate::fim::assembly::assemble_fim_system;
+    use crate::fim::state::HydrocarbonState;
+    use crate::pvt::{PvtRow, PvtTable};
+
+    /// Asserts every row and every column has identical nonzero occupancy
+    /// (not just identical total nnz) between the legacy and AD Jacobians,
+    /// and that the residual is bit-identical.
+    fn assert_structural_parity(
+        old: &FimAssembly,
+        new: &FimAssembly,
+        n_unknowns: usize,
+        label: &str,
+    ) {
+        let row_pattern = |m: &sprs::CsMat<f64>, row: usize| -> Vec<usize> {
+            m.iter()
+                .filter(|(v, (r, _c))| v.abs() > 0.0 && *r == row)
+                .map(|(_v, (_r, c))| c)
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        };
+        for row in 0..n_unknowns {
+            let old_pattern = row_pattern(&old.jacobian, row);
+            let new_pattern = row_pattern(&new.jacobian, row);
+            assert_eq!(
+                old_pattern, new_pattern,
+                "{label}: row {row} column-occupancy pattern diverges (legacy={old_pattern:?} ad={new_pattern:?})"
+            );
+        }
+        for i in 0..n_unknowns.min(old.residual.len()) {
+            assert!(
+                (old.residual[i] - new.residual[i]).abs() < 1e-9,
+                "{label}: residual[{i}] diverged: legacy={} ad={}",
+                old.residual[i],
+                new.residual[i]
+            );
+        }
+    }
+
+    fn three_phase_pvt() -> PvtTable {
+        PvtTable::new(
+            vec![
+                PvtRow { p_bar: 100.0, rs_m3m3: 10.0, bo_m3m3: 1.2, mu_o_cp: 1.4, bg_m3m3: 0.02, mu_g_cp: 0.03 },
+                PvtRow { p_bar: 200.0, rs_m3m3: 20.0, bo_m3m3: 1.1, mu_o_cp: 1.2, bg_m3m3: 0.01, mu_g_cp: 0.025 },
+            ],
+            1e-5,
+        )
+    }
+
+    fn run_sweep(sim: &ReservoirSimulator, dt_days: f64, label: &str) {
+        let previous_state = FimState::from_simulator(sim);
+        let state = previous_state.clone();
+        let options = FimAssemblyOptions {
+            dt_days,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: None,
+        };
+        let old = assemble_fim_system(sim, &previous_state, &state, &options);
+        let new = assemble_fim_system_ad(sim, &previous_state, &state, &options);
+        assert_structural_parity(&old, &new, old.residual.len(), label);
+    }
+
+    #[test]
+    fn two_phase_bhp_controlled_wells() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        run_sweep(&sim, 0.1, "two_phase_bhp_controlled_wells");
+    }
+
+    #[test]
+    fn two_phase_rate_controlled_wells() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_surface_rates(30.0, 20.0).unwrap();
+        sim.well_bhp_min = 50.0;
+        sim.well_bhp_max = 500.0;
+        run_sweep(&sim, 0.1, "two_phase_rate_controlled_wells");
+    }
+
+    #[test]
+    fn three_phase_uniform_saturated_with_wells() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(three_phase_pvt());
+        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0).unwrap();
+        sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        for cell in state.cells.iter_mut() {
+            cell.regime = HydrocarbonState::Saturated;
+            cell.hydrocarbon_var = 0.1;
+            cell.pressure_bar = 210.0;
+            cell.sw = 0.3;
+        }
+        let options = FimAssemblyOptions { dt_days: 0.1, include_wells: true, assemble_residual_only: false, topology: None };
+        let old = assemble_fim_system(&sim, &previous_state, &state, &options);
+        let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
+        assert_structural_parity(&old, &new, old.residual.len(), "three_phase_uniform_saturated_with_wells");
+    }
+
+    /// The key untested configuration: a three-phase grid where cells span
+    /// BOTH regimes (some saturated with free gas, some undersaturated),
+    /// forcing a mixed-regime flux face -- no Phase 0-4 gate ever exercised
+    /// this combination.
+    ///
+    /// NOTE: an earlier version of this fixture put cell 2 exactly at
+    /// `sg = 0.0` (a saturated cell with no free gas) and found a genuine
+    /// legacy-vs-AD occupancy divergence in that state: a producer well's
+    /// water-fraction coefficient depends on the cell's own `sg` through the
+    /// total-mobility denominator (`lambda_w / (lambda_w+lambda_o+lambda_g)`),
+    /// and legacy's hand-derivative code and AD pick different one-sided
+    /// derivatives exactly at the `sg = 0` relperm kink. Off the kink
+    /// (`sg = 0.05` here) both assemblers agree on both occupancy and value
+    /// to float noise (`5.607440846332977` vs `5.607440846332972`), and the
+    /// term vanishes identically with wells excluded -- confirming this is
+    /// the same already-accepted class of kink-boundary disagreement as the
+    /// Phase 3 `s_gc` kink (measure-zero, not a structural bug like the
+    /// two-phase singularity), not asserted here.
+    #[test]
+    fn three_phase_mixed_regime_with_wells() {
+        let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(three_phase_pvt());
+        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0).unwrap();
+        sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(2, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        // cell 0: saturated with free gas; cell 1: undersaturated; cell 2: saturated, no free gas.
+        state.cells[0].regime = HydrocarbonState::Saturated;
+        state.cells[0].hydrocarbon_var = 0.12;
+        state.cells[0].pressure_bar = 215.0;
+        state.cells[0].sw = 0.28;
+        state.cells[1].regime = HydrocarbonState::Undersaturated;
+        state.cells[1].hydrocarbon_var = 14.0;
+        state.cells[1].pressure_bar = 205.0;
+        state.cells[1].sw = 0.30;
+        state.cells[2].regime = HydrocarbonState::Saturated;
+        state.cells[2].hydrocarbon_var = 0.05; // off the sg=0 kink -- see note above
+        state.cells[2].pressure_bar = 195.0;
+        state.cells[2].sw = 0.32;
+
+        let options = FimAssemblyOptions { dt_days: 0.1, include_wells: true, assemble_residual_only: false, topology: None };
+        let old = assemble_fim_system(&sim, &previous_state, &state, &options);
+        let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
+        assert_structural_parity(&old, &new, old.residual.len(), "three_phase_mixed_regime_with_wells");
+    }
+
+    /// Three-phase, DRSDT0-disabled, with a cell whose Rs sits right at the
+    /// undersaturated regime's live branch (not the excess-flash branch,
+    /// which is already gated for VALUE/derivative correctness in
+    /// `properties.rs` -- this checks structural occupancy specifically).
+    #[test]
+    fn three_phase_drsdt0_disabled_with_wells() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(three_phase_pvt());
+        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0).unwrap();
+        sim.set_gas_redissolution_enabled(false);
+        sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.rs[0] = 12.0;
+        sim.rs[1] = 12.0;
+
+        let previous_state = FimState::from_simulator(&sim);
+        let mut state = previous_state.clone();
+        state.cells[0].regime = HydrocarbonState::Undersaturated;
+        state.cells[0].hydrocarbon_var = 9.0;
+        state.cells[0].pressure_bar = 210.0;
+        state.cells[0].sw = 0.28;
+        state.cells[1].regime = HydrocarbonState::Undersaturated;
+        state.cells[1].hydrocarbon_var = 8.0;
+        state.cells[1].pressure_bar = 200.0;
+        state.cells[1].sw = 0.30;
+
+        let options = FimAssemblyOptions { dt_days: 0.1, include_wells: true, assemble_residual_only: false, topology: None };
+        let old = assemble_fim_system(&sim, &previous_state, &state, &options);
+        let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
+        assert_structural_parity(&old, &new, old.residual.len(), "three_phase_drsdt0_disabled_with_wells");
+    }
+}
+

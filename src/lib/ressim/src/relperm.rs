@@ -435,7 +435,23 @@ impl RockFluidPropsThreePhase {
         let krw = self.k_rw_generic(s_w);
         let krg = self.k_rg_generic(s_g);
         let val = ((kro_w / kro_max + krw) * (kro_g / kro_max + krg) - krw - krg) * kro_max;
-        val.max_floor(0.0).min_ceil(kro_max)
+        // Mirror `d_k_ro_stone2_d_sw` / `d_k_ro_stone2_d_sg`'s explicit
+        // boundary guard (`if val <= 0.0 || val >= kro_max { return 0.0; }`):
+        // legacy treats the derivative as exactly zero AT OR BEYOND either
+        // clamp bound, not just strictly beyond it. The generic
+        // `.max_floor(0.0).min_ceil(kro_max)` combinators keep a live
+        // derivative exactly AT a bound (value equality resolves to "still on
+        // the branch"), which disagrees with legacy precisely at physically
+        // common corners -- e.g. Sw = Swc and Sg = 0 simultaneously (a
+        // standard initial condition), where both relperms saturate to their
+        // max and `val` lands exactly on `kro_max`. Match legacy's
+        // zero-derivative-at-the-bound convention explicitly; the VALUE is
+        // unaffected (still `val.value().clamp(0.0, kro_max)` bit-for-bit).
+        if val.value() <= 0.0 || val.value() >= kro_max {
+            S::from_f64(val.value().clamp(0.0, kro_max))
+        } else {
+            val
+        }
     }
 }
 

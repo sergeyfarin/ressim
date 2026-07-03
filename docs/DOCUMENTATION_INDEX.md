@@ -22,6 +22,8 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/TRANSMISSIBILITY_FACTOR.md` | Derivation of the transmissibility conversion factor |
 | `docs/SCENARIO_TERMINATION_POLICY.md` | Early-stop policy syntax, supported conditions, and runtime behavior |
 | `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` | 2026-07 findings and forward plan for comparison architecture, OPM Flow integration, and scenario coverage |
+| `docs/CASE_LIBRARY_ROADMAP.md` | Sourcing map for new scenarios/cases: SPE benchmarks, public field datasets, textbook cases, and selection criteria |
+| `.claude/skills/README.md` | Workflow skill library index (validation, engine changes, FIM debugging, frontend, scenarios, OPM pipeline) and how to use it with different agents |
 
 ## Current Repo-Level Facts
 

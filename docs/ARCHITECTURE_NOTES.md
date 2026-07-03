@@ -5,7 +5,7 @@ This document tracks active architectural decisions that are still relevant. His
 ## Current Architecture Snapshot
 
 - `src/lib/catalog/scenarios.ts` is the primary scenario registry.
-- There are 9 canonical scenario definitions under `src/lib/catalog/scenarios/`.
+- There are 10 canonical scenario definitions under `src/lib/catalog/scenarios/`.
 - `ScenarioCapabilities` is the main routing contract for analytical behavior, chart defaults, injector presence, sweep geometry, and three-phase gating.
 - The custom-mode UI is denser and more structured than before, but it still sits beside the scenario system rather than on top of it.
 - The benchmark layer is partially modernized but still split across legacy family-owned files and the newer scenario workflow.
@@ -60,6 +60,6 @@ Why:
 
 - Svelte 5 runes only.
 - Tailwind-first styling.
-- Three.js pinned at `0.183.2`.
+- Three.js pinned to the exact version in `package.json`.
 - Worker communication must remain structured-clone-safe.
 - No unnecessary new dependencies.
