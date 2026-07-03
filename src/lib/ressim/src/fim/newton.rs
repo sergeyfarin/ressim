@@ -48,8 +48,6 @@ const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
 const FW_INFLECTION_OVERSHOOT_FACTOR: f64 = 1.2;
 const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
 const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
-const PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES: usize = 2;
-const PRODUCER_HOTSPOT_STAGNATION_THRESHOLD: u32 = 2;
 const NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO: f64 = 0.98;
 const NONLINEAR_HISTORY_GAS_WEAK_PROGRESS_RATIO: f64 = 0.90;
 const NONLINEAR_HISTORY_MIN_STREAK: u32 = 1;
@@ -997,18 +995,6 @@ fn effective_move_threshold_trace(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct ProducerHotspotStagnationDiagnostics {
-    cell_idx: usize,
-    row: usize,
-    damping: f64,
-    pressure_delta_bar: f64,
-    water_delta: f64,
-    oil_delta: f64,
-    gas_delta: f64,
-    attached_perforation_context: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 struct NonlinearHistoryStabilizationDecision {
     damping_cap: f64,
     repeated_site_streak: u32,
@@ -1020,107 +1006,6 @@ fn cell_ijk(sim: &ReservoirSimulator, cell_idx: usize) -> (usize, usize, usize) 
     let j = (cell_idx / sim.nx) % sim.ny;
     let k = cell_idx / (sim.nx * sim.ny);
     (i, j, k)
-}
-
-fn cell_boundary_plane_count(sim: &ReservoirSimulator, cell_idx: usize) -> usize {
-    if sim.nx == 0 || sim.ny == 0 || sim.nz == 0 {
-        return 0;
-    }
-
-    let (i, j, k) = cell_ijk(sim, cell_idx);
-    let mut count = 0;
-
-    if i == 0 || i + 1 == sim.nx {
-        count += 1;
-    }
-    if j == 0 || j + 1 == sim.ny {
-        count += 1;
-    }
-    if k == 0 || k + 1 == sim.nz {
-        count += 1;
-    }
-
-    count
-}
-
-fn cell_has_only_attached_producer_perforations(
-    topology: &crate::fim::wells::FimWellTopology,
-    cell_idx: usize,
-) -> bool {
-    let mut has_attached_perforation = false;
-
-    for perforation in &topology.perforations {
-        if perforation.cell_index != cell_idx {
-            continue;
-        }
-        has_attached_perforation = true;
-        if perforation.injector {
-            return false;
-        }
-    }
-
-    has_attached_perforation
-}
-
-fn producer_hotspot_stagnation_diagnostics(
-    sim: &ReservoirSimulator,
-    state: &FimState,
-    candidate: &FimState,
-    topology: &crate::fim::wells::FimWellTopology,
-    diagnostics: &ResidualFamilyDiagnostics,
-    damping: f64,
-) -> Option<ProducerHotspotStagnationDiagnostics> {
-    let cell_idx = match diagnostics.global.family {
-        ResidualRowFamily::Water
-        | ResidualRowFamily::OilComponent
-        | ResidualRowFamily::GasComponent => diagnostics.global.item_index,
-        _ => return None,
-    };
-
-    if cell_boundary_plane_count(sim, cell_idx) < PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES {
-        return None;
-    }
-    if !cell_has_only_attached_producer_perforations(topology, cell_idx) {
-        return None;
-    }
-
-    let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =
-        local_cell_move_deltas(state, candidate, cell_idx)?;
-    if !move_is_below_effective_trace_threshold(
-        pressure_delta_bar,
-        water_delta,
-        oil_delta,
-        gas_delta,
-    ) {
-        return None;
-    }
-
-    Some(ProducerHotspotStagnationDiagnostics {
-        cell_idx,
-        row: diagnostics.global.row,
-        damping,
-        pressure_delta_bar,
-        water_delta,
-        oil_delta,
-        gas_delta,
-        attached_perforation_context: cell_attached_perforation_context_trace(
-            sim, candidate, topology, cell_idx,
-        ),
-    })
-}
-
-fn producer_hotspot_stagnation_trace(diagnostics: &ProducerHotspotStagnationDiagnostics) -> String {
-    format!(
-        "cell{} row={} damp={:.4} local_dP={:.5} local_dSw={:.6} local_dSo={:.6} local_dSg={:.6} {}",
-        diagnostics.cell_idx,
-        diagnostics.row,
-        diagnostics.damping,
-        diagnostics.pressure_delta_bar,
-        diagnostics.water_delta,
-        diagnostics.oil_delta,
-        diagnostics.gas_delta,
-        diagnostics.attached_perforation_context,
-    )
 }
 
 fn exact_residual_hotspot_site(peak: &ResidualFamilyPeak) -> FimHotspotSite {
@@ -1322,46 +1207,121 @@ fn nonlinear_history_stabilization_trace(
     )
 }
 
-fn producer_hotspot_cell_index(diagnostics: &ResidualFamilyDiagnostics) -> Option<usize> {
-    match diagnostics.global.family {
-        ResidualRowFamily::Water
-        | ResidualRowFamily::OilComponent
-        | ResidualRowFamily::GasComponent => Some(diagnostics.global.item_index),
-        _ => None,
+// OPM-style global oscillation detector + persistent relaxation scalar (Phase 7, sub-phase
+// 7.1 — wired but inert: only traced, not yet folded into `damping`). Ported from
+// `opm/simulators/flow/NonlinearSolver.cpp::detectOscillations()`/`stabilizeNonlinearUpdate()`.
+// Unlike `nonlinear_history_stabilization_decision` above (cell-site-keyed, hard-capped),
+// this tracks per-family *residual norm history* and evolves a single scalar smoothly.
+
+const OSCILLATION_RELAX_REL_TOL: f64 = 0.2;
+const OSCILLATION_RELAX_INCREMENT: f64 = 0.1;
+const OSCILLATION_MAX_RELAX_FLOOR: f64 = 0.5;
+const OSCILLATION_MIN_OSCILLATING_PHASES: u32 = 1;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PerFamilyNorms {
+    water: f64,
+    oil_component: f64,
+    gas_component: f64,
+}
+
+impl Default for PerFamilyNorms {
+    fn default() -> Self {
+        Self {
+            water: f64::INFINITY,
+            oil_component: f64::INFINITY,
+            gas_component: f64::INFINITY,
+        }
     }
 }
 
-fn producer_hotspot_stagnation_should_bail(
-    previous_effective_move: Option<&ProducerHotspotStagnationDiagnostics>,
-    residual_diagnostics: &ResidualFamilyDiagnostics,
-    candidate_is_valid: bool,
-    stagnation_count: u32,
-) -> bool {
-    if !candidate_is_valid || stagnation_count < PRODUCER_HOTSPOT_STAGNATION_THRESHOLD {
-        return false;
+impl PerFamilyNorms {
+    fn from_diagnostics(diagnostics: &ResidualFamilyDiagnostics) -> Self {
+        Self {
+            water: diagnostics.water.scaled_value,
+            oil_component: diagnostics.oil_component.scaled_value,
+            gas_component: diagnostics.gas_component.scaled_value,
+        }
     }
-
-    let Some(previous_effective_move) = previous_effective_move else {
-        return false;
-    };
-
-    producer_hotspot_cell_index(residual_diagnostics)
-        .is_some_and(|cell_idx| cell_idx == previous_effective_move.cell_idx)
 }
 
-fn classify_producer_hotspot_stagnation_failure(
-    sim: &ReservoirSimulator,
-    topology: &crate::fim::wells::FimWellTopology,
-    linear_report: Option<&FimLinearSolveReport>,
-    residual_diagnostics: &ResidualFamilyDiagnostics,
-) -> FimRetryFailureDiagnostics {
-    let mut diagnostics = classify_retry_failure_with_site(
-        linear_report,
-        residual_diagnostics,
-        residual_hotspot_site(sim, topology, &residual_diagnostics.global),
-    );
-    diagnostics.class = FimRetryFailureClass::NonlinearBad;
-    diagnostics
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RelaxationState {
+    residual_norm_2ago: PerFamilyNorms,
+    residual_norm_1ago: PerFamilyNorms,
+    current_relaxation: f64,
+    history_len: u32,
+}
+
+impl Default for RelaxationState {
+    fn default() -> Self {
+        Self {
+            residual_norm_2ago: PerFamilyNorms::default(),
+            residual_norm_1ago: PerFamilyNorms::default(),
+            current_relaxation: 1.0,
+            history_len: 0,
+        }
+    }
+}
+
+/// OPM `detectOscillations()`'s single-family test: `d1 = |F0-F2|/F0` (2-step relative
+/// change), `d2 = |F0-F1|/F0` (1-step). Oscillating iff the 2-step change is small while the
+/// 1-step change is large — i.e. the residual is swinging back toward where it was.
+fn family_is_oscillating(f0: f64, f1: f64, f2: f64) -> bool {
+    if !(f0.is_finite() && f1.is_finite() && f2.is_finite()) || f0 <= 0.0 {
+        return false;
+    }
+    let d1 = (f0 - f2).abs() / f0;
+    let d2 = (f0 - f1).abs() / f0;
+    d1 < OSCILLATION_RELAX_REL_TOL && OSCILLATION_RELAX_REL_TOL < d2
+}
+
+fn detect_oscillation(current: PerFamilyNorms, prev1: PerFamilyNorms, prev2: PerFamilyNorms) -> u32 {
+    [
+        family_is_oscillating(current.water, prev1.water, prev2.water),
+        family_is_oscillating(
+            current.oil_component,
+            prev1.oil_component,
+            prev2.oil_component,
+        ),
+        family_is_oscillating(
+            current.gas_component,
+            prev1.gas_component,
+            prev2.gas_component,
+        ),
+    ]
+    .into_iter()
+    .filter(|&osc| osc)
+    .count() as u32
+}
+
+/// OPM never ramps `current_relaxation` back up mid-solve once it starts decaying — only
+/// port that behavior; do not invent a recovery ramp (see `fim-solver-debug` skill's
+/// known-reverted-lever discipline on widening acceptance/relaxation ad hoc).
+fn next_relaxation_factor(current_relaxation: f64, oscillating_phase_count: u32) -> f64 {
+    if oscillating_phase_count >= OSCILLATION_MIN_OSCILLATING_PHASES {
+        (current_relaxation - OSCILLATION_RELAX_INCREMENT).max(OSCILLATION_MAX_RELAX_FLOOR)
+    } else {
+        current_relaxation
+    }
+}
+
+/// Sub-phase 7.2: compose Appleyard damping, history-stabilization cap (if any), and the
+/// OPM-style oscillation-relaxation scalar as three independent multiplicative bounds on
+/// the same Newton update — whichever is tightest wins.
+fn compose_damping(
+    appleyard_final_damping: f64,
+    history_stabilization_cap: Option<f64>,
+    oscillation_relaxation: f64,
+) -> f64 {
+    [
+        Some(appleyard_final_damping),
+        history_stabilization_cap,
+        Some(oscillation_relaxation),
+    ]
+    .into_iter()
+    .flatten()
+    .fold(1.0_f64, f64::min)
 }
 
 fn state_update_change_bounds(previous_state: &FimState, candidate_state: &FimState) -> (f64, f64) {
@@ -2353,8 +2313,6 @@ pub(crate) fn run_fim_timestep(
     let mut stagnation_entry_residual: Option<f64> = None;
     let mut previous_hotspot_site: Option<FimHotspotSite> = None;
     let mut repeated_hotspot_streak: u32 = 0;
-    let mut previous_producer_hotspot_effective_move: Option<ProducerHotspotStagnationDiagnostics> =
-        None;
     let mut assembly_ms = 0.0;
     let mut property_eval_ms = 0.0;
     let mut linear_solve_time_ms = 0.0;
@@ -2369,6 +2327,9 @@ pub(crate) fn run_fim_timestep(
     let mut zero_move_fallback_direct_bypass = false;
     let mut iterative_failed_last_iter = false;
     let mut previous_effective_move_floor_site: Option<FimHotspotSite> = None;
+    // Phase 7 sub-phase 7.1: OPM-style oscillation-detection state, traced but not yet
+    // folded into `damping` (see OSC-DETECT trace line below).
+    let mut relaxation_state = RelaxationState::default();
     // Fix-B Stage 1 upwind-flip probe: snapshot of per-face upstream choices from the
     // previous Newton iteration. Compared against the current-iter snapshot to detect
     // saturation-front upwinding flips; read-only diagnostic.
@@ -2424,6 +2385,32 @@ pub(crate) fn run_fim_timestep(
             dt_days,
             &residual_diagnostics,
         );
+
+        // Phase 7: OPM-style oscillation detection (sub-phase 7.1). The resulting
+        // `relaxation_state.current_relaxation` scalar is folded into `damping` below
+        // (sub-phase 7.2, at the `appleyard_damping_breakdown`/`history_stabilization`
+        // composition site).
+        {
+            let current_family_norms = PerFamilyNorms::from_diagnostics(&residual_diagnostics);
+            let osc_phase_count = detect_oscillation(
+                current_family_norms,
+                relaxation_state.residual_norm_1ago,
+                relaxation_state.residual_norm_2ago,
+            );
+            relaxation_state.current_relaxation =
+                next_relaxation_factor(relaxation_state.current_relaxation, osc_phase_count);
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: OSC-DETECT osc_phases={} relax={:.2}",
+                iteration,
+                osc_phase_count,
+                relaxation_state.current_relaxation,
+            );
+            relaxation_state.residual_norm_2ago = relaxation_state.residual_norm_1ago;
+            relaxation_state.residual_norm_1ago = current_family_norms;
+            relaxation_state.history_len += 1;
+        }
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let previous_iteration_residual_norm = prev_residual_norm;
@@ -3160,10 +3147,15 @@ pub(crate) fn run_fim_timestep(
         );
         let damping_breakdown =
             appleyard_damping_breakdown(sim, &state, &linear_report.solution, options);
-        let damping = history_stabilization
-            .as_ref()
-            .map(|decision| damping_breakdown.final_damping.min(decision.damping_cap))
-            .unwrap_or(damping_breakdown.final_damping);
+        // Phase 7 sub-phase 7.2: fold OPM's global oscillation-relaxation scalar into the
+        // same damping bound as Appleyard and history-stabilization — matching how OPM
+        // itself composes per-variable chopping and oscillation relaxation as two
+        // independent multiplicative bounds on the same update, not layered stages.
+        let damping = compose_damping(
+            damping_breakdown.final_damping,
+            history_stabilization.as_ref().map(|d| d.damping_cap),
+            relaxation_state.current_relaxation,
+        );
         // Fix A3 Stage 1 probe: read-only damping breakdown — which constraint bound
         // the Appleyard chop, raw per-variable update peaks, and whether history
         // stabilization further capped it. Used to investigate why initial-iter
@@ -3171,7 +3163,7 @@ pub(crate) fn run_fim_timestep(
         fim_trace!(
             sim,
             options.verbose,
-            "    iter {:>2}: DAMP-BREAKDOWN final={:.4} appleyard={:.4} hist_cap={} bind={}@{} raw_dp={:.3e}@cell{} raw_dsw={:.3e}@cell{} raw_dh={:.3e}@cell{} raw_dbhp={:.3e}@well{} inflection={}",
+            "    iter {:>2}: DAMP-BREAKDOWN final={:.4} appleyard={:.4} hist_cap={} osc_relax={:.2} bind={}@{} raw_dp={:.3e}@cell{} raw_dsw={:.3e}@cell{} raw_dh={:.3e}@cell{} raw_dbhp={:.3e}@well{} inflection={}",
             iteration,
             damping,
             damping_breakdown.final_damping,
@@ -3179,6 +3171,7 @@ pub(crate) fn run_fim_timestep(
                 .as_ref()
                 .map(|d| format!("{:.3}", d.damping_cap))
                 .unwrap_or_else(|| "none".to_string()),
+            relaxation_state.current_relaxation,
             damping_breakdown.binding_kind,
             damping_breakdown
                 .binding_cell
@@ -3272,14 +3265,6 @@ pub(crate) fn run_fim_timestep(
             &residual_diagnostics,
             damping,
         );
-        let producer_hotspot_stagnation = producer_hotspot_stagnation_diagnostics(
-            sim,
-            &state,
-            &candidate,
-            &topology,
-            &residual_diagnostics,
-            damping,
-        );
         let candidate_materially_changed = iterate_has_material_change(&state, &candidate);
         let candidate_is_valid = damping.is_finite()
             && damping > 0.0
@@ -3337,51 +3322,6 @@ pub(crate) fn run_fim_timestep(
         previous_effective_move_floor_site =
             effective_move_trace.as_ref().map(|_| current_hotspot_site);
 
-        if producer_hotspot_stagnation_should_bail(
-            previous_producer_hotspot_effective_move.as_ref(),
-            &residual_diagnostics,
-            candidate_is_valid,
-            stagnation_count,
-        ) {
-            let producer_hotspot_stagnation = previous_producer_hotspot_effective_move
-                .as_ref()
-                .expect("checked producer hotspot stagnation");
-            let failure_diagnostics = classify_producer_hotspot_stagnation_failure(
-                sim,
-                &topology,
-                Some(&linear_report),
-                &residual_diagnostics,
-            );
-            let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
-            fim_trace!(
-                sim,
-                options.verbose,
-                "    iter {:>2}: PRODUCER-HOTSPOT STAGNATION {}{} — bailing out",
-                iteration,
-                producer_hotspot_stagnation_trace(&producer_hotspot_stagnation),
-                retry_failure_trace_suffix(&failure_diagnostics)
-            );
-            return FimStepReport {
-                accepted_state: state,
-                converged: false,
-                newton_iterations: iteration + 1,
-                final_residual_inf_norm: current_norm,
-                final_material_balance_inf_norm,
-                final_update_inf_norm,
-                last_linear_report: Some(linear_report),
-                accepted_hotspot_site: None,
-                failure_diagnostics: Some(failure_diagnostics),
-                retry_factor,
-                total_time_ms: total_timer.elapsed_ms(),
-                assembly_ms,
-                property_eval_ms,
-                linear_solve_time_ms,
-                linear_preconditioner_build_time_ms,
-                state_update_ms,
-            };
-        }
-
-        previous_producer_hotspot_effective_move = producer_hotspot_stagnation;
         previous_hotspot_site = Some(current_hotspot_site);
 
         if !candidate_is_valid {
@@ -4767,6 +4707,85 @@ mod tests {
     }
 
     #[test]
+    fn detect_oscillation_flags_single_phase_two_step_relative_change() {
+        // Water swings back close to its value from 2 iterations ago (small d1) while
+        // having moved a lot 1 iteration ago (large d2) -> classic oscillation signature.
+        let current = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        let prev1 = PerFamilyNorms {
+            water: 2.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        let prev2 = PerFamilyNorms {
+            water: 1.01,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        assert_eq!(detect_oscillation(current, prev1, prev2), 1);
+    }
+
+    #[test]
+    fn detect_oscillation_requires_below_two_step_above_one_step_threshold() {
+        // Monotonic decrease (no oscillation): d1 and d2 both large, but d1 is NOT < tol.
+        let current = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        let prev1 = PerFamilyNorms {
+            water: 2.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        let prev2 = PerFamilyNorms {
+            water: 4.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        assert_eq!(detect_oscillation(current, prev1, prev2), 0);
+
+        // Steady state (both d1 and d2 tiny): not oscillating either.
+        let steady = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+        };
+        assert_eq!(detect_oscillation(steady, steady, steady), 0);
+    }
+
+    #[test]
+    fn next_relaxation_factor_floors_at_newton_max_relax() {
+        let mut relax = 1.0;
+        for _ in 0..20 {
+            relax = next_relaxation_factor(relax, 1);
+        }
+        assert!((relax - OSCILLATION_MAX_RELAX_FLOOR).abs() < 1e-12);
+    }
+
+    #[test]
+    fn next_relaxation_factor_holds_when_not_oscillating() {
+        assert!((next_relaxation_factor(0.7, 0) - 0.7).abs() < 1e-12);
+        // One decrement step from full relaxation.
+        assert!((next_relaxation_factor(1.0, 1) - 0.9).abs() < 1e-12);
+    }
+
+    #[test]
+    fn appleyard_and_oscillation_relaxation_compose_via_min() {
+        // No history-stabilization cap active; Appleyard is tighter than relaxation.
+        assert!((compose_damping(0.3, None, 0.8) - 0.3).abs() < 1e-12);
+        // Oscillation relaxation is tighter than Appleyard.
+        assert!((compose_damping(0.9, None, 0.5) - 0.5).abs() < 1e-12);
+        // History-stabilization cap is the tightest of all three.
+        assert!((compose_damping(0.9, Some(0.25), 0.5) - 0.25).abs() < 1e-12);
+        // All three at 1.0 (nothing binding) -> 1.0.
+        assert!((compose_damping(1.0, None, 1.0) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
     fn nonlinear_history_stabilization_caps_damping_for_repeated_weak_progress() {
         let peak = ResidualFamilyPeak {
             family: ResidualRowFamily::OilComponent,
@@ -4908,199 +4927,6 @@ mod tests {
         ));
         assert!(!move_is_below_effective_trace_threshold(
             0.0049, 0.000051, 0.000049, 0.0
-        ));
-    }
-
-    #[test]
-    fn cell_boundary_plane_count_detects_corner_cells() {
-        let sim = ReservoirSimulator::new(12, 12, 3, 0.2);
-
-        assert_eq!(cell_boundary_plane_count(&sim, 143), 3);
-        assert_eq!(cell_boundary_plane_count(&sim, sim.idx(5, 5, 1)), 0);
-    }
-
-    #[test]
-    fn producer_hotspot_stagnation_requires_producer_boundary_cell() {
-        let mut sim = ReservoirSimulator::new(2, 2, 1, 0.2);
-        sim.set_rate_controlled_wells(true);
-        sim.set_injected_fluid("water").unwrap();
-        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(1, 1, 0, 50.0, 0.1, 0.0, false).unwrap();
-
-        let topology = build_well_topology(&sim);
-        let state = FimState::from_simulator(&sim);
-        let producer_cell_idx = sim.idx(1, 1, 0);
-        let injector_cell_idx = sim.idx(0, 0, 0);
-
-        let producer_peak = ResidualFamilyPeak {
-            family: ResidualRowFamily::Water,
-            scaled_value: 1.0,
-            row: producer_cell_idx * 3,
-            item_index: producer_cell_idx,
-        };
-        let diagnostics = ResidualFamilyDiagnostics {
-            water: producer_peak,
-            oil_component: ResidualFamilyPeak {
-                family: ResidualRowFamily::OilComponent,
-                scaled_value: 0.5,
-                row: producer_cell_idx * 3 + 1,
-                item_index: producer_cell_idx,
-            },
-            gas_component: ResidualFamilyPeak {
-                family: ResidualRowFamily::GasComponent,
-                scaled_value: 0.25,
-                row: producer_cell_idx * 3 + 2,
-                item_index: producer_cell_idx,
-            },
-            well_constraint: None,
-            perforation_flow: None,
-            global: producer_peak,
-        };
-
-        assert!(
-            producer_hotspot_stagnation_diagnostics(
-                &sim,
-                &state,
-                &state,
-                &topology,
-                &diagnostics,
-                0.0,
-            )
-            .is_some()
-        );
-
-        let injector_peak = ResidualFamilyPeak {
-            family: ResidualRowFamily::Water,
-            scaled_value: 1.0,
-            row: injector_cell_idx * 3,
-            item_index: injector_cell_idx,
-        };
-        let injector_diagnostics = ResidualFamilyDiagnostics {
-            water: injector_peak,
-            oil_component: ResidualFamilyPeak {
-                family: ResidualRowFamily::OilComponent,
-                scaled_value: 0.5,
-                row: injector_cell_idx * 3 + 1,
-                item_index: injector_cell_idx,
-            },
-            gas_component: ResidualFamilyPeak {
-                family: ResidualRowFamily::GasComponent,
-                scaled_value: 0.25,
-                row: injector_cell_idx * 3 + 2,
-                item_index: injector_cell_idx,
-            },
-            well_constraint: None,
-            perforation_flow: None,
-            global: injector_peak,
-        };
-
-        assert!(
-            producer_hotspot_stagnation_diagnostics(
-                &sim,
-                &state,
-                &state,
-                &topology,
-                &injector_diagnostics,
-                0.0,
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn producer_hotspot_stagnation_bails_on_following_same_cell_stagnation() {
-        let previous = ProducerHotspotStagnationDiagnostics {
-            cell_idx: 143,
-            row: 430,
-            damping: 0.0,
-            pressure_delta_bar: 0.0,
-            water_delta: 0.0,
-            oil_delta: 0.0,
-            gas_delta: 0.0,
-            attached_perforation_context: String::new(),
-        };
-        let peak = ResidualFamilyPeak {
-            family: ResidualRowFamily::OilComponent,
-            scaled_value: 1.0,
-            row: 430,
-            item_index: 143,
-        };
-        let diagnostics = ResidualFamilyDiagnostics {
-            water: ResidualFamilyPeak {
-                family: ResidualRowFamily::Water,
-                scaled_value: 0.5,
-                row: 429,
-                item_index: 143,
-            },
-            oil_component: peak,
-            gas_component: ResidualFamilyPeak {
-                family: ResidualRowFamily::GasComponent,
-                scaled_value: 0.0,
-                row: 0,
-                item_index: 0,
-            },
-            well_constraint: None,
-            perforation_flow: None,
-            global: peak,
-        };
-
-        assert!(!producer_hotspot_stagnation_should_bail(
-            Some(&previous),
-            &diagnostics,
-            true,
-            1,
-        ));
-
-        assert!(producer_hotspot_stagnation_should_bail(
-            Some(&previous),
-            &diagnostics,
-            true,
-            2,
-        ));
-    }
-
-    #[test]
-    fn producer_hotspot_stagnation_does_not_bail_for_different_cell() {
-        let previous = ProducerHotspotStagnationDiagnostics {
-            cell_idx: 143,
-            row: 430,
-            damping: 0.0,
-            pressure_delta_bar: 0.0,
-            water_delta: 0.0,
-            oil_delta: 0.0,
-            gas_delta: 0.0,
-            attached_perforation_context: String::new(),
-        };
-        let peak = ResidualFamilyPeak {
-            family: ResidualRowFamily::OilComponent,
-            scaled_value: 1.0,
-            row: 1294,
-            item_index: 431,
-        };
-        let diagnostics = ResidualFamilyDiagnostics {
-            water: ResidualFamilyPeak {
-                family: ResidualRowFamily::Water,
-                scaled_value: 0.5,
-                row: 1293,
-                item_index: 431,
-            },
-            oil_component: peak,
-            gas_component: ResidualFamilyPeak {
-                family: ResidualRowFamily::GasComponent,
-                scaled_value: 0.0,
-                row: 0,
-                item_index: 0,
-            },
-            well_constraint: None,
-            perforation_flow: None,
-            global: peak,
-        };
-
-        assert!(!producer_hotspot_stagnation_should_bail(
-            Some(&previous),
-            &diagnostics,
-            true,
-            1,
         ));
     }
 

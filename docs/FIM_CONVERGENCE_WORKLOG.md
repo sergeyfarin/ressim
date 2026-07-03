@@ -362,6 +362,171 @@ Original plan scope was to delete `assembly.rs`'s hand-derivative Jacobian const
 
 Phase 7 (OPM-style Newton globalization, revisiting `newton.rs`'s damping/retry heuristics for the exact Jacobian) is next and is now unblocked with a fully clean, warning-free, fully-gated tree as its starting point.
 
+### Phase 7 scope decided; starting baseline recorded on commit `a1d7fdc`
+
+Phase 7 plan (approved, folded into `/home/coder/.claude/plans/graceful-splashing-micali.md`) ports OPM's
+global oscillation-detection + persistent-relaxation scalar (`opm/simulators/flow/NonlinearSolver.cpp`
+`detectOscillations()`/`stabilizeNonlinearUpdate()`) as sub-phase 7.1/7.2, then empirically re-evaluates
+whether ResSim's ad-hoc `nonlinear_history_stabilization_decision` (7.3) and `producer_hotspot_stagnation_should_bail`
+(7.4) become redundant. Confirmed by direct code read (not assumed): ResSim's existing Appleyard damping
+(`appleyard_damping_breakdown`) already matches or exceeds OPM's per-variable chopping (it adds a Wang &
+Tchelepi 2013 fw-inflection trust region OPM lacks) — not a retirement/port target. The linear-solver-level
+bypasses (zero-move/repeated-zero-move/restart-stagnation/dead-state/near-converged-iterative, all keyed on
+`FimLinearFailureReason`) have no OPM analog and are explicitly out of scope. Residual-stagnation bailout /
+entry guard / zero-move-Appleyard acceptance are **diagnostic-only** this phase (user-confirmed decision) —
+this territory overlaps the skill's documented already-reverted lever class ("widening Newton stagnation
+acceptance above tolerance"), and an unpromoted `STAG-TREND`/`would_widen` probe already sits at that exact
+code location, so no removal is attempted there without a separate, explicitly-scoped follow-up.
+
+**Starting baseline** — clean tree, commit `a1d7fdca855658dfe0d48eac9a7b202c0e6138c2` ("Step 6 of the FIM
+plan completed"), `git status` clean. wasm rebuilt via `bash scripts/build-wasm.sh` on this commit
+(clean build, only a pre-existing `unused variable: verbose` warning at `newton.rs:525`, unrelated to Phase 7).
+
+Locked smoke set (`cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- --nocapture
+spe1_fim_first_steps_converge_without_stall spe1_fim_gas_injection_creates_free_gas
+drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`): **3 passed, 0 failed**, 364.82s.
+
+Full bounded control matrix + heavy case (exact commands under Validation Shortlist below):
+
+| Case | Command suffix | substeps | accepts | retries | outer_ms |
+|---|---|---|---|---|---|
+| water-pressure 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 8 | 8+0+0 | 0/3/0 | 28924.2 |
+| water-pressure 22x22x1 | `--grid 22x22x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 4 | 4+0+0 | 0/2/0 | 10794.5 |
+| water-pressure 23x23x1 | `--grid 23x23x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 4 | 4+0+0 | 0/2/0 | 4341.4 |
+| gas-rate 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 2 | 2+0+0 | 0/1/0 | 9303.9 |
+| gas-rate 10x10x3, 6 steps | `--grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` | 4,2,2,2,2,2 (14 total) | all clean | 0/2/0 then 0/1/0 x5 | 4121.3 total step1 |
+| water-pressure 12x12x3 dt=1 (heavy) | `--grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` | 34 | 33+3+2154 | 0/12/0 | 28972.3 |
+
+All figures reproduce the `ffd965a`-commit numbers already on record exactly (heavy case: `34`/`0/12/0`,
+gas shelf: `14` total) — confirms the tree is stable across the two `#[cfg(test)]`-gating commits (Phase 6)
+and this is a valid re-derived starting point for Phase 7's own gates, per baseline discipline (do not reuse
+old doc numbers without re-running on the current tree).
+
+**Sub-phase 7.1 complete (uncommitted, this session)** — added `RelaxationState`/`PerFamilyNorms` plus
+`family_is_oscillating`/`detect_oscillation`/`next_relaxation_factor` (OPM's `detectOscillations` ported
+almost line-for-line, using the already-computed `ResidualFamilyDiagnostics.{water,oil_component,gas_component}.scaled_value`
+— no new residual computation). Wired into `run_fim_timestep` as **trace-only** (`OSC-DETECT osc_phases=N
+relax=X.XX` per iteration); does not touch `damping`. 4 new unit tests
+(`detect_oscillation_flags_single_phase_two_step_relative_change`,
+`detect_oscillation_requires_below_two_step_above_one_step_threshold`,
+`next_relaxation_factor_floors_at_newton_max_relax`, `next_relaxation_factor_holds_when_not_oscillating`), all
+green. Verified as a pure no-op per the sub-phase's gate: locked smoke set green (3/3, 411.35s); full control
+matrix + heavy 12x12x3/dt=1 case **bit-identical** to the just-recorded Phase 7 baseline (heavy case: `34`
+substeps, `accepts=33+3+2154`, `retries=0/12/0` — exact match; all other cases exact match on
+substeps/accepts/retries, timing-ms noise only). Proceeding to sub-phase 7.2 (fold the relaxation scalar into
+the `damping` `min()` fold).
+
+**Sub-phase 7.2 complete and PROMOTED (uncommitted, this session)** — extracted a small `compose_damping(appleyard_final_damping,
+history_stabilization_cap, oscillation_relaxation) -> f64` helper (three-way `min()` fold, tested directly via
+`appleyard_and_oscillation_relaxation_compose_via_min`) and wired it in at the existing composition site,
+replacing the two-way `history_stabilization`/`damping_breakdown` fold. `DAMP-BREAKDOWN` trace line extended
+with `osc_relax={:.2}`. This is OPM's "dampen" mode only (no "sor" blend — explicit non-goal per the plan,
+would require persisting a full `n_unknowns`-sized previous-update vector for a benefit not yet evidenced).
+
+Gate result — **clean improvement, no regressions**:
+
+| Case | substeps (7.1 baseline -> 7.2) | retries | accepts |
+|---|---|---|---|
+| water-pressure 20x20x3 | 8 -> 8 (unchanged) | 0/3/0 -> 0/3/0 | unchanged |
+| water-pressure 22x22x1 | 4 -> 4 (unchanged) | 0/2/0 -> 0/2/0 | unchanged |
+| water-pressure 23x23x1 | 4 -> 4 (unchanged) | 0/2/0 -> 0/2/0 | unchanged |
+| gas-rate 20x20x3 | 2 -> 2 (unchanged) | 0/1/0 -> 0/1/0 | unchanged |
+| gas-rate 10x10x3, 6 steps | 14 -> 14 total (unchanged) | unchanged | unchanged |
+| **water-pressure 12x12x3 dt=1 (heavy)** | **34 -> 31 (improved)** | 0/12/0 -> 0/12/0 (same retry count, fewer substeps) | `33+3+2154` -> `30+3+1678` |
+
+The heavy case — the one Phase 7 exists to address — improved for the first time in this migration (`hotspot_newton_caps`
+dropped `8` -> `6` too, consistent with the smooth relaxation scalar catching some oscillation earlier than the
+hard-capped `nonlinear_history_stabilization_decision` alone did). No case regressed. Locked smoke set green
+(3/3, 396.94s). **Promoted** — this sub-phase's code change is kept. Proceeding to sub-phase 7.3 (measure
+whether `nonlinear_history_stabilization_decision` is now redundant, then retire if so).
+
+**Sub-phase 7.3 Stage 1 measurement complete — hypothesis FALSIFIED, mechanism kept, no Stage 2 attempted.**
+
+Reused the existing `DAMP-BREAKDOWN` trace (extended in 7.2 with `osc_relax=`) rather than building new
+instrumentation — ran the heavy water-pressure 12x12x3/dt=1 case at `--diagnostic step` and grepped every
+`DAMP-BREAKDOWN` line (337 Newton iterations total). `nonlinear_history_stabilization_decision` actually fired
+(`hist_cap != none`) on 29 of those 337 iterations. In **all 29 of 29** firings, `hist_cap=0.500` was strictly
+tighter than or equal to `osc_relax` (which ranged `0.70`–`1.00` across those same iterations, i.e. `osc_relax`
+was still at or near its unrelaxed starting value of `1.0` in most of them). This directly falsifies the
+sub-phase's premise (that OPM's oscillation-relaxation scalar would make ResSim's ad-hoc history-stabilization
+cap redundant) — history-stabilization is doing real, currently-more-aggressive damping work at every site it
+fires, not duplicate work. Per the sub-phase's own decision gate ("confirm the new mechanism is at least as
+tight before deleting the old one"), the answer is unambiguously no.
+
+**Decision: do NOT proceed to Stage 2 removal.** Removing `nonlinear_history_stabilization_decision` now would
+loosen damping at 29 known iterations with no principled replacement in place — exactly the kind of ad hoc
+loosening the `fim-solver-debug` skill's discipline warns against attempting without evidence it's safe. No
+code changed in this sub-phase (measurement only, using existing trace fields) — the earlier hypothesis in the
+plan (that 7.2 alone would supersede this mechanism) was a reasonable a priori guess but is not supported by
+this tree's actual behavior. Kept as an open observation for a future revisit: `OSCILLATION_RELAX_INCREMENT`
+(currently OPM's stock `0.1`) is the constant most likely to close this gap if retuned, but the plan explicitly
+flags premature tuning of that constant as out of scope without separate evidence — not attempted here.
+Proceeding to sub-phase 7.4 (producer-hotspot stagnation bailout fire-rate measurement).
+
+**Sub-phase 7.4 complete and PROMOTED (uncommitted, this session)** — measured `producer_hotspot_stagnation_should_bail`'s
+fire rate (grep count of its `PRODUCER-HOTSPOT STAGNATION ... bailing out` trace line) across the heavy
+water-pressure 12x12x3/dt=1 case plus water-rate 20x20x3, gas-rate 20x20x3, and gas-rate 10x10x3/6-step — **zero
+fires in all four**, including the heavy case this mechanism was specifically built for. Proceeded to Stage 2:
+removed the mechanism and its bookkeeping together (per the plan's explicit "orphaned state is worse than
+keeping the hack" guidance) — `ProducerHotspotStagnationDiagnostics` struct, `producer_hotspot_stagnation_diagnostics`,
+`producer_hotspot_stagnation_trace`, `producer_hotspot_cell_index`, `producer_hotspot_stagnation_should_bail`,
+`classify_producer_hotspot_stagnation_failure`, the two now-dead-only helpers `cell_boundary_plane_count`/
+`cell_has_only_attached_producer_perforations`, the `previous_producer_hotspot_effective_move` loop state, the
+bailout `if` block and its `return FimStepReport{...}` at the consumption site, and the two now-unused constants
+`PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES`/`PRODUCER_HOTSPOT_STAGNATION_THRESHOLD`. Removed the 4 tests that
+existed solely to test this code (`cell_boundary_plane_count_detects_corner_cells`,
+`producer_hotspot_stagnation_requires_producer_boundary_cell`,
+`producer_hotspot_stagnation_bails_on_following_same_cell_stagnation`,
+`producer_hotspot_stagnation_does_not_bail_for_different_cell`). Confirmed via project-wide grep that nothing
+else referenced any removed identifier, and both `cargo build` and `cargo build --tests` are clean with zero
+new warnings.
+
+Gate result: full control matrix + heavy case **bit-identical** to the post-7.2 baseline on every case (heavy:
+`31` substeps, `accepts=30+3+1678`, `retries=0/12/0` — exact match down to the decimal; all other cases exact
+match). Locked smoke set green (3/3, 400.30s). **Promoted** — this sub-phase's removal is kept; the mechanism
+was confirmed dead weight on every case this project's own benchmark shortlist exercises. (Note: this does not
+prove it is dead on *every* possible topology — only that it does not fire on the shortlist, which is the
+agreed scope of evidence per the sub-phase's decision gate.) Proceeding to sub-phase 7.5 (diagnostic-only
+measurement of the residual-stagnation bailout / entry-guard / zero-move-Appleyard-acceptance gates — no code
+changes, per the phase's user-confirmed decision to treat that territory as diagnostic-only).
+
+**Sub-phase 7.5 measurement complete — gates are still load-bearing, NO code changes made or attempted (as
+decided).** Ran the heavy water-pressure 12x12x3/dt=1 case at `--diagnostic step` on the post-7.4 tree and
+grepped the existing trace tags (no new instrumentation): `STAGNATION-ATTRIB` (residual plateau detected,
+`stagnation_count` incremented) fired **61** times; the read-only `STAG-TREND` probe's `would_widen=true`
+condition (the already-tried-and-reverted "widen stagnation acceptance" gate from the skill's known-lever
+list) fired **0** times, consistent with that lever having been correctly rejected previously;
+`STAGNATION-ACCEPTED` (accept-despite-stagnation path) fired **0** times; **`STAGNATION-REJECTED` (the hard
+bailout at `stagnation_count >= 3`, which trips a dt-cutback retry) fired 4 times** — direct evidence this
+mechanism remains load-bearing on the exact case Phase 7 targets, even after the oscillation-relaxation scalar
+(7.2) is live. The literal "entry guard" trace substring did not appear in this replay (0 occurrences) — read
+as "this specific case doesn't hit the iteration-0-unchanged-state condition that mechanism guards," not as
+evidence the mechanism is unused generally (out of scope to investigate further this phase).
+
+**Conclusion: per the phase's decision, no Stage 2 attempted.** The residual-stagnation bailout is measurably
+still doing real work (4 rejections on the heavy case) — retiring or loosening it now would be indistinguishable
+from re-attempting the skill's already-reverted "widen stagnation acceptance above tolerance" lever, exactly
+what this sub-phase was scoped to avoid. Recorded as a candidate for a future, separately-scoped investigation
+(if ever revisited, it must start from a fresh hypothesis about *why* residual plateaus 61 times pre-bailout on
+this case, not from loosening the acceptance gate itself).
+
+### Phase 7 summary — all 5 sub-phases complete
+
+| Sub-phase | Outcome |
+|---|---|
+| 7.1 (oscillation detector, inert) | Landed as pure no-op scaffolding; verified bit-identical to baseline. |
+| 7.2 (fold relaxation into damping) | **Promoted.** Heavy case improved `34` -> `31` substeps (`hotspot_newton_caps` `8` -> `6`); all other shortlist cases unchanged; no regressions. |
+| 7.3 (retire history-stabilization) | **Not retired** — Stage 1 measurement falsified the redundancy hypothesis (history-stabilization is strictly tighter than oscillation-relaxation in all 29 of 29 observed firings). Both mechanisms kept, working together. |
+| 7.4 (retire producer-hotspot bailout) | **Promoted/removed.** Zero fires across the full shortlist including the heavy case; ~140 lines + 2 constants + 4 tests removed as confirmed dead weight, bit-identical benchmark result. |
+| 7.5 (stagnation/entry-guard gates) | **Diagnostic-only, no change** (as decided) — residual-stagnation bailout confirmed still load-bearing (4 rejections on the heavy case); left untouched per the skill's already-reverted-lever discipline. |
+
+Net result: the heavy water-pressure 12x12x3/dt=1 case — the one this migration's Phase 5 benchmark left
+"roughly neutral-to-slightly-worse" (`34` vs legacy's `32` substeps) — now stands at **`31` substeps**, a genuine
+improvement over both the AD-migration starting point and the pre-AD legacy baseline, achieved via a
+principled OPM-style mechanism rather than another tactical hack. One dead mechanism (`producer_hotspot_stagnation_should_bail`)
+was removed with hard evidence, not guesswork. Two mechanisms were investigated and deliberately left in place
+with recorded reasons rather than removed on schedule.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
