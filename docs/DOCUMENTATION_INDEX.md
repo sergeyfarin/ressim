@@ -11,7 +11,11 @@ Use this file to decide which documents are authoritative, which are active work
 | `TODO.md` | Active execution tracker only |
 | `docs/ARCHITECTURE_NOTES.md` | Current architecture direction and unresolved design decisions |
 | `docs/FIM_DEFERRED_BACKLOG.md` | Current product boundary for FIM and the deferred solver backlog |
+| `docs/FIM_STATUS.md` | Current consolidated FIM implementation state, blockers, validation entry points, and canonical source map |
+| `docs/FIM_EXPERIMENT_REGISTRY.md` | Searchable anti-repeat ledger of FIM convergence experiments, verdicts, retry conditions, and source-doc links |
+| `docs/FIM_CONVERGENCE_WORKLOG.md` | Active FIM investigation log for current-head traces and temporary hypotheses |
 | `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
+| `docs/FIM_CLEANUP_PLAN.md` | FIM doc/test/diagnostic cleanup sequence and ownership boundaries |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |
 | `docs/DELIVERED_WORK_2026_Q1.md` | Archived delivered work moved out of TODO |
 | `docs/BENCHMARK_MODE_GUIDE.md` | Current benchmark workflow semantics and comparison behavior |
@@ -34,6 +38,14 @@ Use this file to decide which documents are authoritative, which are active work
 - Public simulations execute directly in browser-side WASM through the IMPES path. Offline OPM Flow artifacts are precomputed reference data, not live browser simulation.
 - Black-oil mode is implemented and exposed in the UI. SPE1 benchmark scenario is in place with published reference overlays and OPM Flow artifact hooks; quantitative acceptance criteria remain deferred.
 - Three-phase mode is implemented, but remains experimental because validation depth still trails the implementation.
+
+## FIM Document Ownership
+
+- `docs/FIM_STATUS.md`: current FIM truth, blockers, validation surface, and canonical links.
+- `docs/FIM_EXPERIMENT_REGISTRY.md`: short searchable verdicts for attempted or proposed convergence levers; check this before new FIM tuning.
+- `docs/FIM_CONVERGENCE_WORKLOG.md`: active current-head traces, detailed measurements, and temporary reasoning while an issue is live.
+- `docs/FIM_MIGRATION_PLAN.md`: target architecture and migration checklist, not a live debugging diary.
+- `TODO.md`: short active tasks only; do not add long FIM experiment narratives there.
 
 ## Historical Snapshots
 

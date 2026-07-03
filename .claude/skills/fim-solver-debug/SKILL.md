@@ -12,9 +12,10 @@ FIM is **dev-only** — public scenario runs use IMPES (`docs/FIM_DEFERRED_BACKL
 Many plausible levers were already tried and **reverted**. Check these, in order, before designing anything:
 
 1. `docs/FIM_STATUS.md` — current state, locked baseline, open gaps.
-2. `TODO.md` "Now" section — dated micro-experiment log (what was promoted vs reverted, with exact replay numbers).
-3. `docs/FIM_CONVERGENCE_WORKLOG.md` — active hypotheses and traces.
-4. `docs/FIM_CONVERGENCE_ARCHIVE_*.md`, `docs/FIM_HISTORY_2026-03.md` — older attempts.
+2. `docs/FIM_EXPERIMENT_REGISTRY.md` — fast searchable index of promoted, reverted, refuted, diagnostic, and open FIM levers. Search by mechanism, file, target case, and failure family. If an equivalent experiment is already listed, do **not** repeat it unless the row's `Retry only if` condition is satisfied.
+3. `TODO.md` "Now" section — active task tracker only; if it contains dated micro-experiment notes, treat them as candidates to move into the registry/worklog.
+4. `docs/FIM_CONVERGENCE_WORKLOG.md` — active hypotheses and traces.
+5. `docs/FIM_CONVERGENCE_ARCHIVE_*.md`, `docs/FIM_HISTORY_2026-03.md` — older attempts.
 
 Known-reverted lever classes (do not re-try without new evidence): widening Newton stagnation acceptance above tolerance; softer retry factors near tolerance (runtime clamps retry factors to ≤ 0.5 in `fim/timestep.rs`); post-cooldown hotspot regrowth caps; letting no-op accepts decay hotspot memory; accepted-site-aware carryover persistence (fixed 3-clean-step budget won); blanket per-row infinity-norm scaling of the linear system before the iterative CPR/ILU0 solve (`row_scaled_system` in `fim/linear/gmres_block_jacobi.rs` — regressed the heavy `12x12x3/dt=1` case 31→241 substeps; destroys physically-meaningful relative-magnitude information the preconditioner implicitly relies on — a narrower, equation-family-aware or quasi-IMPES-style weighting has not been tried).
 
@@ -83,7 +84,8 @@ From project instructions (`.github/copilot-instructions.md`):
 3. Implement with a focused Rust unit test for the new mechanism (see existing `gas_outer_step_trial_cap` tests in `fim/timestep.rs` for the pattern).
 4. Rebuild wasm, rerun target + full control matrix.
 5. Green and improved → promote with recorded numbers. Any control moved → revert and record the negative result.
-6. Run FIM locked baseline + parity gates (`ressim-validation` skill) before committing.
+6. Add or update the corresponding row in `docs/FIM_EXPERIMENT_REGISTRY.md` before committing, including the verdict and the condition for retrying if it failed.
+7. Run FIM locked baseline + parity gates (`ressim-validation` skill) before committing.
 
 ## Reference target
 

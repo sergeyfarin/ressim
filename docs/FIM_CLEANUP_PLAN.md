@@ -9,6 +9,7 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
 - remove stale artifacts and ambiguous backup files
 - reduce duplicate status reporting across `TODO.md`, `docs/`, and ad hoc notes
 - make it obvious which files are canonical for current FIM status, active investigation, and future architecture
+- prevent repeated FIM convergence experiments by keeping a compact experiment registry
 
 ## Canonical Sources After Cleanup
 
@@ -20,6 +21,10 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
   - current FIM implementation state
   - known parity gaps and current blockers
   - links to the active worklog and migration plan
+- `docs/FIM_EXPERIMENT_REGISTRY.md`
+  - short searchable verdicts for every promoted, reverted, refuted, diagnostic, or open convergence lever
+  - retry conditions for failed experiments
+  - links to the detailed source documents
 - `docs/FIM_CONVERGENCE_WORKLOG.md`
   - active investigation log only
   - dated experiments and temporary findings while an issue is live
@@ -32,6 +37,7 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
 ### Documentation sprawl
 
 - `TODO.md` contains too much historical FIM narrative and is hard to use as a live tracker.
+- repeated FIM experiment knowledge is spread across many docs, so future sessions can miss prior negative results.
 - `docs/FIM_CONVERGENCE_WORKLOG.md` mixes resolved items, active hypotheses, and historical context.
 - `docs/FIM_MIGRATION_PLAN.md` is correct in role but needs to stay separate from implementation status.
 
@@ -54,20 +60,25 @@ Purpose: reduce FIM-related noise before more convergence work so new edits are 
 
 ## Phase 1: Documentation Cleanup
 
-1. Create `docs/FIM_STATUS.md`.
+1. Keep `docs/FIM_STATUS.md` as the current consolidated status doc.
    - include a short summary of the current FIM state
    - list known open parity or convergence gaps
    - list the canonical regression tests and diagnostic entry points
 
-2. Compress the FIM history in `TODO.md`.
+2. Keep `docs/FIM_EXPERIMENT_REGISTRY.md` as the anti-repeat ledger.
+   - add one row for each promoted, reverted, refuted, diagnostic, or open convergence lever
+   - keep rows short and link to detailed evidence elsewhere
+   - update rows when later work supersedes an older verdict
+
+3. Compress the FIM history in `TODO.md`.
    - keep active tasks and short status bullets only
    - move long historical narrative to a dated archive doc if needed
 
-3. Add a short header to `docs/FIM_CONVERGENCE_WORKLOG.md`.
+4. Add a short header to `docs/FIM_CONVERGENCE_WORKLOG.md`.
    - state that it is an active investigation log
    - point readers to `docs/FIM_STATUS.md` for the current consolidated status
 
-4. Keep `docs/FIM_MIGRATION_PLAN.md` architecture-only.
+5. Keep `docs/FIM_MIGRATION_PLAN.md` architecture-only.
    - avoid adding live debugging status there
 
 ## Phase 2: Test and Diagnostic Classification
@@ -182,6 +193,7 @@ Delete unless an audit proves otherwise:
 Cleanup is complete when all of the following are true:
 
 - one current-status FIM doc exists
+- a searchable FIM experiment registry exists and the FIM skill requires checking it before new convergence work
 - `TODO.md` FIM section is short and action-oriented
 - all FIM tests are clearly categorized as regression or diagnostic
 - no debug-only probe remains embedded in `lib.rs`

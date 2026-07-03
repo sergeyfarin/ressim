@@ -9,6 +9,7 @@ Use this file for:
 - canonical validation and diagnostic entry points
 
 Do not use this file as a detailed experiment log. Active reproductions and temporary hypotheses belong in `docs/FIM_CONVERGENCE_WORKLOG.md`.
+Do not use this file as an experiment index. Promoted, reverted, refuted, diagnostic, and open FIM levers belong in `docs/FIM_EXPERIMENT_REGISTRY.md`.
 
 ## Current State
 
@@ -32,6 +33,7 @@ Do not use this file as a detailed experiment log. Active reproductions and temp
 ## Canonical Sources
 
 - Active tracker: `TODO.md`
+- Experiment registry / anti-repeat ledger: `docs/FIM_EXPERIMENT_REGISTRY.md`
 - Active investigation log: `docs/FIM_CONVERGENCE_WORKLOG.md`
 - Architecture target: `docs/FIM_MIGRATION_PLAN.md`
 - Cleanup sequence: `docs/FIM_CLEANUP_PLAN.md`
@@ -82,6 +84,8 @@ Diagnostic entry points for deeper convergence work:
 ## Current Working Rules
 
 - Keep `TODO.md` short and action-oriented.
+- Before proposing or implementing a FIM convergence change, search `docs/FIM_EXPERIMENT_REGISTRY.md` for equivalent mechanisms, files, cases, and failure families.
 - Put active reproductions, traces, and next hypotheses in `docs/FIM_CONVERGENCE_WORKLOG.md`.
+- Put short promoted/reverted/refuted verdicts in `docs/FIM_EXPERIMENT_REGISTRY.md`; keep detailed evidence in the linked source docs.
 - Keep `docs/FIM_MIGRATION_PLAN.md` focused on the intended end-state architecture, not current debugging status.
 - Do not promote a toy or unstable repro into the canonical regression set until it is reliable enough to gate edits.
