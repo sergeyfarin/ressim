@@ -2979,6 +2979,27 @@ pub(crate) fn run_fim_timestep(
                 linear_report_trace_suffix(&linear_report, requested_linear_kind),
                 linear_failure_trace_suffix(&linear_report),
             );
+            // Phase 8 step 8.1: on a linear-solve failure only, capture the actual nonlinear
+            // state (saturations/regime/mobility for cells; slack/freeze/mobility for
+            // perforations) at the hotspot row so failure characterization doesn't require a
+            // separate repro. Gated on failure_diagnostics being Some (i.e. only this already-
+            // failing branch) so it cannot affect the solve-succeeds path.
+            if let Some(detail) = residual_family_detail_trace(
+                sim,
+                previous_state,
+                &state,
+                &topology,
+                dt_days,
+                &residual_diagnostics,
+            ) {
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: FAIL-SITE-DETAIL {}",
+                    iteration,
+                    detail,
+                );
+            }
             if linear_report
                 .failure_diagnostics
                 .as_ref()

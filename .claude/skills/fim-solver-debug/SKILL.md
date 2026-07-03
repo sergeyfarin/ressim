@@ -16,7 +16,7 @@ Many plausible levers were already tried and **reverted**. Check these, in order
 3. `docs/FIM_CONVERGENCE_WORKLOG.md` — active hypotheses and traces.
 4. `docs/FIM_CONVERGENCE_ARCHIVE_*.md`, `docs/FIM_HISTORY_2026-03.md` — older attempts.
 
-Known-reverted lever classes (do not re-try without new evidence): widening Newton stagnation acceptance above tolerance; softer retry factors near tolerance (runtime clamps retry factors to ≤ 0.5 in `fim/timestep.rs`); post-cooldown hotspot regrowth caps; letting no-op accepts decay hotspot memory; accepted-site-aware carryover persistence (fixed 3-clean-step budget won).
+Known-reverted lever classes (do not re-try without new evidence): widening Newton stagnation acceptance above tolerance; softer retry factors near tolerance (runtime clamps retry factors to ≤ 0.5 in `fim/timestep.rs`); post-cooldown hotspot regrowth caps; letting no-op accepts decay hotspot memory; accepted-site-aware carryover persistence (fixed 3-clean-step budget won); blanket per-row infinity-norm scaling of the linear system before the iterative CPR/ILU0 solve (`row_scaled_system` in `fim/linear/gmres_block_jacobi.rs` — regressed the heavy `12x12x3/dt=1` case 31→241 substeps; destroys physically-meaningful relative-magnitude information the preconditioner implicitly relies on — a narrower, equation-family-aware or quasi-IMPES-style weighting has not been tried).
 
 ## Architecture orientation (as of 2026-07)
 

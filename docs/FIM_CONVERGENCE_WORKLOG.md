@@ -527,6 +527,134 @@ principled OPM-style mechanism rather than another tactical hack. One dead mecha
 was removed with hard evidence, not guesswork. Two mechanisms were investigated and deliberately left in place
 with recorded reasons rather than removed on schedule.
 
+### Phase 8 — hotspot state characterization (diagnostic-only), Step 8.1 landed
+
+Follow-up session: even with Phase 7's improvements, FIM is nowhere near OPM's real performance target
+(~2.5 Newton iterations per 30-day timestep). A live diagnostic on the heavy case found the FIM linear
+solver's "FgmresCpr" backend fails via `DeadStateDetected` on 42 of 45 iterative attempts, falling back to
+direct sparse-LU every time. A reversible experiment (`DEAD_STATE_DETECTOR_RESTART_INDEX` 1→999, rebuild,
+rerun, revert) proved this is not premature bailout: given 5x the iteration budget, residuals stayed flat
+at ~10^6-10^7x tolerance. The preconditioner is genuinely inadequate at specific nonlinear states, recurring
+at `water@0`/`oil@430`/`water@1215` (cells) and `perf@1299` (a well perforation).
+
+A pre-existing document, `docs/FIM_CPR_IMPROVEMENT_PLAN.md` (not previously read this session), independently
+reached the same conclusion on a *different* case (`23x23x1`) after a long history of bounded CPR/Krylov
+experiments — its own most recent entry says the dominant remaining hotspot family is "more of a nonlinear
+state-management/trust-region question than a coarse-pressure or Krylov question" and explicitly recommends
+against adding another generic CPR heuristic. Full plan continuing this numbering (Phase 8/9) is in
+`/home/coder/.claude/plans/graceful-splashing-micali.md`.
+
+**Step 8.1 (landed, uncommitted this session):** added one call to the already-existing
+`residual_family_detail_trace(...)` (confirmed present at `newton.rs:2053`, dispatches to
+`cell_residual_detail_trace`/`well_constraint_detail_trace`/an inline `perforation_local_block(...)
+.residual_diagnostics(sim)` branch — all fields needed, `connection_mobility`/`bhp_slack`/`rate_slack`/
+`frozen_consistent_*`, confirmed present verbatim) at the `"linear solver FAILED"` trace site
+(`newton.rs`, ~line 2972), which previously only emitted Krylov-level diagnostics (residual norms, restart
+history) with no nonlinear-state detail at all. New trace line: `FAIL-SITE-DETAIL {...}`, gated on
+`failure_diagnostics.is_some()` so it cannot fire on the solve-succeeds path.
+
+**Gate result:** full control matrix + heavy case bit-identical to the post-7.4 baseline on every case
+(heavy: `31` substeps, `accepts=30+3+1678`, `retries=0/12/0` — exact match; all other cases exact match).
+Locked smoke set green (3/3, 397.84s). Confirmed pure instrumentation, as required — proceeding to Step 8.2
+(run the diagnostic sequence, build the Hypothesis A/B interpretation table).
+
+**Step 8.2/8.3 complete — result does NOT cleanly match either pre-registered hypothesis; a third,
+narrower pattern emerged instead.** Ran `--diagnostic step` on both cases (heavy `12x12x3/dt=1`: 43 unique
+`FAIL-SITE-DETAIL` observations; bounded `23x23x1/dt=0.25`: 12). Zero perforation-row (`perf@N`) failures were
+captured in either run — Hypothesis A (Fischer-Burmeister slack/crossover) has **no supporting evidence** in
+this data (caveat: `residual_family_detail_trace` is keyed on the *nonlinear residual peak*, not necessarily
+the linear solver's own dominant offending row — see note below).
+
+Three distinct patterns emerged instead, split by whether the hotspot cell hosts a well:
+
+1. **Dominant family by occurrence count (`cell405`/heavy, 11 of 43; `cell50`/`cell71`/`cell26`/bounded) — no
+   well, no clean signature.** Balanced-magnitude flux terms in all directions (0.03–1.3 range), no single
+   term dominating, saturations comfortably mid-range (not near a phase-appearance boundary), no visible
+   regime oscillation in a single snapshot. This does **not** match Hypothesis B as scoped either — it looks
+   like ordinary hard two-phase transport, not an identifiable kink. This is Stop Condition 1 territory for
+   this specific family: no consistent signature this instrumentation can see.
+2. **Extreme well-dominance family (`cell143`/heavy, 4 of 43) — a NEW pattern, not pre-registered.** A
+   boundary corner cell attached to a well: two faces are literal grid boundaries, the other two show
+   `dphi=0.000e0` (no potential gradient at all) with all face fluxes and `accum` at `0.000e0`, yet
+   `well=8.999e2` to `1.800e3` — the well-source term is 2-3 **orders of magnitude** larger than every other
+   term in the row, with essentially zero live reservoir coupling back into the Jacobian.
+3. **Moderate well-dominance family (`cell0`/well-hosting corner cell, both cases, 3-4 occurrences each) —
+   same shape as #2, less extreme.** Two literal boundary faces, well term ~2-30x the largest flux term
+   (heavy: `well=-1.595e3` vs. flux terms ≤`44`; bounded: `well=-79.36` vs. flux terms ≤`35.4`) — real but
+   smaller reservoir coupling than family #1, still consistently well-source-dominated.
+
+**Interpretation:** families #2/#3 are a well-coupling pathology, but a different mechanism than Hypothesis A
+predicted — not an NCP complementarity crossover in the perforation *constraint* equation, but the *cell*
+mass-balance row being poorly scaled by an outsized well-source contribution relative to its (often nearly
+absent) reservoir-flux coupling. Call this **Hypothesis C (well-source row scaling)**. Family #1, the
+numerically dominant one by occurrence count, matches neither A nor B/C — flagging per the plan's Stop
+Condition 1 rather than force-fitting it into a branch.
+
+**Caveat on methodology:** the trace call added in Step 8.1 reports the *nonlinear residual peak*
+(`residual_diagnostics.global`), which is not guaranteed to be the same row the *linear* Krylov solver is
+specifically stuck on within that iteration — the two can differ. The `perf@1299`-style perforation hotspot
+seen in earlier (pre-Phase-8) diagnostic runs of this same heavy case never appeared in this capture; it may
+occur at a different substep than this run's 43 samples happened to catch, or the nonlinear-residual-peak
+proxy may simply not track it. Not confirmed either way — flagged rather than assumed resolved.
+
+**Status: paused for review before Phase 9, per the plan's own design** (Phase 8's deliverable is reviewed
+before any Phase 9 branch is chosen — this result doesn't cleanly select Branch 9-A or 9-B, so it is being
+presented to the user rather than picked autonomously).
+
+### Hypothesis C attempt — REVERTED, negative result recorded
+
+User elected to pursue Hypothesis C (well-source row scaling) directly. Confirmed via code read that no
+row/column scaling exists anywhere in the linear-solve path (`grep "scal"` in `gmres_block_jacobi.rs` matches
+nothing but the unrelated `scalar_inv_diag`; `EquationScaling` is used only for residual/convergence
+diagnostics in `newton.rs`, never applied to the Jacobian before the linear solve) — combined with the Step
+8.2 finding that well-hosting cells' rows are dominated 2-3 orders of magnitude by the well-source term, this
+is a textbook unscaled-linear-system conditioning problem.
+
+**Implementation:** added `row_scaled_system(jacobian, rhs) -> (CsMat, DVector)` in `gmres_block_jacobi.rs` —
+computes each row's infinity norm, scales that row (and the matching RHS entry) to unit norm. Applied only
+inside `solve_with_cpr_fine_smoother` (the shared FgmresCpr/GmresIlu0 entry point), via parameter shadowing
+right after the empty-matrix check, so every direct-solve backend is completely untouched and no other line
+in the ~440-line function needed to change. Row-only scaling is a left-multiply by a diagonal matrix and does
+not change the solution `x`, so no unscaling step was needed. 3 new unit tests
+(`row_scaled_system_normalizes_each_row_to_unit_infinity_norm`, `row_scaled_system_preserves_the_solution`,
+`row_scaled_system_leaves_all_zero_row_untouched`) all passed; all 32 pre-existing `fim::linear::*` tests
+passed unchanged.
+
+**Gate result — clear regression, reverted:**
+
+| Case | Before (Phase 8 baseline) | After (row-scaled) |
+|---|---|---|
+| water-pressure 20x20x3 | `8` substeps, `0/3/0` | `8` substeps, `0/3/0` (unchanged) |
+| water-pressure 22x22x1 | `4` substeps, `0/2/0` | `4` substeps, `0/2/0` (unchanged) |
+| water-pressure 23x23x1 | `4` substeps, `0/2/0` | `4` substeps, `0/2/0` (unchanged) |
+| gas-rate 20x20x3 | `2` substeps, `0/1/0` | `2` substeps, `0/1/0` (unchanged) |
+| gas-rate 10x10x3, 6 steps | `14` total substeps | `14` total substeps (unchanged) |
+| **water-pressure 12x12x3 dt=1 (heavy)** | **`31` substeps, `0/12/0`** | **`241` substeps, `0/54/0`** — severe regression |
+
+The heavy case — the one Hypothesis C specifically targets — got roughly 8x worse (`31` → `241` substeps),
+with `retry_dom` reverting to `perf@1299` (the perforation hotspot last seen before this migration's earlier
+fixes). All other control-matrix cases were unaffected either way, consistent with them not exercising the
+well-source-row-dominance pattern much. **Reverted immediately** (`git checkout -- gmres_block_jacobi.rs`),
+wasm rebuilt, heavy case re-confirmed at the exact `31`/`0/12/0` baseline.
+
+**Why this most likely failed:** naive per-row infinity-norm equilibration, applied uniformly with no
+awareness of equation-family structure (pressure vs. saturation vs. well rows) or the preconditioner's own
+block structure, likely destroyed relative-magnitude information that the block-Jacobi/ILU0/pressure-transfer-
+weight machinery was implicitly relying on — flattening every row to unit norm removes the *physical* scale
+differences between equation families (which the existing local-Schur `pressure_transfer_weights` computation
+and the coarse-pressure extraction both derive from), not just the *problematic* well-term-dominance pattern
+Step 8.2 identified. This is a known pitfall of pure row-only scaling in coupled multi-physics systems
+(OPM's own real CPR avoids it by using *quasi-IMPES weights* — a principled, physically-derived per-row
+weighting from the accumulation block specifically for pressure extraction, not a blanket infinity-norm
+equilibration applied to the whole system).
+
+**Recorded for future reference, not retried without new evidence:** blanket per-row infinity-norm scaling of
+the full linear system, applied before the iterative CPR/ILU0 path. If Hypothesis C is revisited, the more
+targeted next step (not yet attempted) would be scaling scoped narrowly to *only* the identified pathological
+rows (well-hosting boundary cells where the well term exceeds some threshold relative to the row's other
+entries), or an OPM-style quasi-IMPES per-row weighting applied specifically to the pressure-extraction stage
+rather than the whole system uniformly.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
