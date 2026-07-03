@@ -267,6 +267,7 @@ impl ReservoirSimulator {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_gas_oil_capillary_pressure_d_sg(&self, s_g: f64) -> f64 {
         match (&self.pc_og, &self.scal_3p) {
             (Some(pc), Some(rock)) => pc.d_capillary_pressure_og_d_sg(s_g, rock),
@@ -279,6 +280,7 @@ impl ReservoirSimulator {
         self.pc.capillary_pressure(s_w, &self.scal)
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_capillary_pressure_d_sw(&self, s_w: f64) -> f64 {
         self.pc.d_capillary_pressure_d_sw(s_w, &self.scal)
     }

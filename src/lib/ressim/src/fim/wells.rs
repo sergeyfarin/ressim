@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::fim::state::{FimState, HydrocarbonState};
+use crate::fim::state::FimState;
+#[cfg(test)]
+use crate::fim::state::HydrocarbonState;
 use crate::well_control::ProducerControlState;
 use crate::{InjectedFluid, ReservoirSimulator, Well};
 
@@ -52,10 +54,12 @@ impl<'a> FimPerforationLocalBlock<'a> {
         self.perforation().physical_well_index
     }
 
+    #[cfg(test)]
     pub(crate) fn rate_unknown_offset(self) -> usize {
         self.state.perforation_rate_unknown_offset(self.perf_idx)
     }
 
+    #[cfg(test)]
     pub(crate) fn equation_offset(self) -> usize {
         self.state.perforation_equation_offset(self.perf_idx)
     }
@@ -72,14 +76,17 @@ impl<'a> FimPerforationLocalBlock<'a> {
         connection_rate_for_bhp(sim, self.state, self.topology, self.perf_idx, bhp_bar)
     }
 
+    #[cfg(test)]
     pub(crate) fn component_rate_derivatives_sc_day(self, sim: &ReservoirSimulator) -> [f64; 3] {
         perforation_component_rate_derivatives_sc_day(sim, self.state, self.topology, self.perf_idx)
     }
 
+    #[cfg(test)]
     pub(crate) fn target_rate_derivative(self, sim: &ReservoirSimulator) -> f64 {
         perforation_target_rate_derivative(sim, self.state, self.topology, self.perf_idx)
     }
 
+    #[cfg(test)]
     pub(crate) fn connection_bhp_derivative(
         self,
         sim: &ReservoirSimulator,
@@ -94,6 +101,7 @@ impl<'a> FimPerforationLocalBlock<'a> {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn connection_cell_derivatives(
         self,
         sim: &ReservoirSimulator,
@@ -108,6 +116,7 @@ impl<'a> FimPerforationLocalBlock<'a> {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn component_rate_cell_derivatives_sc_day_by_var(
         self,
         sim: &ReservoirSimulator,
@@ -122,6 +131,7 @@ impl<'a> FimPerforationLocalBlock<'a> {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn surface_rate_cell_derivatives_sc_day(
         self,
         sim: &ReservoirSimulator,
@@ -148,6 +158,7 @@ impl<'a> FimPerforationLocalBlock<'a> {
         self.state.perforation_rates_m3_day[self.perf_idx]
     }
 
+    #[cfg(test)]
     pub(crate) fn rate_residual(self, sim: &ReservoirSimulator) -> Option<f64> {
         let well_block = well_local_block(self.topology, self.state, self.physical_well_idx());
         let control = well_block.control(sim);
@@ -276,10 +287,12 @@ impl<'a> FimWellLocalBlock<'a> {
         &self.topology.wells[self.well_idx]
     }
 
+    #[cfg(test)]
     pub(crate) fn bhp_unknown_offset(self) -> usize {
         self.state.well_bhp_unknown_offset(self.well_idx)
     }
 
+    #[cfg(test)]
     pub(crate) fn equation_offset(self) -> usize {
         self.state.well_equation_offset(self.well_idx)
     }
@@ -325,6 +338,7 @@ impl<'a> FimWellLocalBlock<'a> {
         Some((bhp_slack, rate_slack))
     }
 
+    #[cfg(test)]
     pub(crate) fn constraint_residual(self, sim: &ReservoirSimulator) -> Option<f64> {
         let control = self.control(sim);
         let bhp_bar = self.bhp_bar();
@@ -597,6 +611,7 @@ pub(crate) struct PerforationResidualDiagnostics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg(test)]
 struct LocalPhaseSensitivity {
     mobilities: [f64; 3],
     mobility_derivatives: [[f64; 3]; 3],
@@ -609,6 +624,7 @@ struct LocalPhaseSensitivity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg(test)]
 struct ProducerRateSensitivity {
     water_fraction: f64,
     oil_fraction: f64,
@@ -818,6 +834,7 @@ fn perforation_control_cells(sim: &ReservoirSimulator, perforation: &FimPerforat
     cells
 }
 
+#[cfg(test)]
 fn local_phase_sensitivity(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -936,6 +953,7 @@ fn local_phase_sensitivity(
     }
 }
 
+#[cfg(test)]
 fn injector_connection_mobility(
     _sim: &ReservoirSimulator,
     local: &LocalPhaseSensitivity,
@@ -960,6 +978,7 @@ fn injector_connection_mobility(
     )
 }
 
+#[cfg(test)]
 fn producer_rate_sensitivity(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1087,6 +1106,7 @@ fn perforation_surface_rate_sc_day(
     Some(q_m3_day.max(0.0) * producer.oil_fraction / producer.oil_fvf.max(1e-9))
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_component_rate_derivatives_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1113,6 +1133,7 @@ pub(crate) fn perforation_component_rate_derivatives_sc_day(
     ]
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_target_rate_derivative(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1197,6 +1218,7 @@ pub(crate) fn perforation_surface_rate_pressure_derivative(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_connection_bhp_derivative(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1267,6 +1289,7 @@ pub(crate) fn perforation_connection_pressure_derivative(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_connection_cell_derivatives(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1321,6 +1344,7 @@ pub(crate) fn perforation_connection_cell_derivatives(
     ])
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1372,6 +1396,7 @@ pub(crate) fn perforation_component_rate_cell_derivatives_sc_day_by_var(
     derivatives
 }
 
+#[cfg(test)]
 pub(crate) fn perforation_surface_rate_cell_derivatives_sc_day(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1452,6 +1477,7 @@ pub(crate) fn solve_well_bhp_from_target(
 /// (where both BHP slack and rate slack approach zero simultaneously).
 pub(crate) const FB_EPSILON: f64 = 1e-6;
 
+#[cfg(test)]
 fn fischer_burmeister(a: f64, b: f64) -> f64 {
     (a * a + b * b + 2.0 * FB_EPSILON * FB_EPSILON).sqrt() - a - b
 }

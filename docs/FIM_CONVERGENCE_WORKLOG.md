@@ -347,6 +347,21 @@ Both fixes are residual-value-neutral (the clamped VALUE is identical either way
 
 Phase 6 (deleting the legacy assembler) is unblocked: the sweep plus the full-suite rerun found no further structural gaps beyond the three characterized above (two-phase singularity, Stone2 kink, connection-rate kink), all fixed, all gated.
 
+### Phase 6 completed: legacy Jacobian machinery gated `#[cfg(test)]`, not deleted
+
+Original plan scope was to delete `assembly.rs`'s hand-derivative Jacobian construction (`add_exact_*_jacobian`, `add_*_fd`, `finite_difference_step`) and the now-unused `d_*` helpers in `pvt.rs`/`relperm.rs`/`mobility.rs`/`wells.rs` outright. Revised on user decision: `assembly.rs`'s legacy assembler is now also the permanent parity reference for `structural_parity_sweep` and `two_phase_singularity_check` — the exact gates that caught the two-phase singularity, the Stone2 kink, and the connection-rate kink this session. Deleting it would remove that regression net entirely.
+
+**Resolution:** added `#[cfg(test)]` to all 38 warning-flagged dead-code items (individually, not by module-level gating, since `assembly.rs`/`wells.rs` still export live types and diagnostic helpers used by production `newton.rs`/`timestep.rs`) across `assembly.rs` (`assemble_fim_system` and all its Jacobian-construction internals), `wells.rs` (the `perforation_*_derivative*`/`local_phase_sensitivity`/`fischer_burmeister` hand-derivative family), `mobility.rs`, and `pvt.rs` (`d_*`/`get_d_*_for_state` families). Split a few `use` blocks into test-only and always-live halves where an import was needed only by now-gated code.
+
+**Verification:**
+- Clean `cargo build` (no `--test`, i.e. production profile): 38 warnings -> 0.
+- Full test suite: 340 passed / 7 failed, identical to the pre-Phase-6 count (same 7 confirmed-unrelated pre-existing failures) — the gating changed nothing test-observable.
+- wasm binary size: **unchanged** (844,001 bytes before and after). The release + `wasm-opt` toolchain was already stripping this genuinely-unreachable code at the binary level regardless of the `#[cfg(test)]` attribute or the dead-code lint. Phase 6's value here is zero compiler warnings and explicit, self-documenting intent (a reader now knows these are permanent test-only reference implementations, not accidentally-unused code) — not a binary-size win.
+- Benchmark shortlist (heavy water-pressure 12x12x3/dt=1, gas-rate 10x10x3/6-step) re-run after the wasm rebuild: bit-for-bit unchanged substeps/retries, as expected (this phase touches only what's compiled, not any residual/Jacobian formula).
+- Locked SPE1 smoke tests: green on the final tree.
+
+Phase 7 (OPM-style Newton globalization, revisiting `newton.rs`'s damping/retry heuristics for the exact Jacobian) is next and is now unblocked with a fully clean, warning-free, fully-gated tree as its starting point.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`

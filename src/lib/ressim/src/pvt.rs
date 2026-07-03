@@ -473,6 +473,7 @@ impl PvtTable {
         (bo_hi - bo_lo) / (2.0 * dp)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_bo_d_rs(&self, p: f64, rs: f64) -> f64 {
         let drs = 1.0;
         let rs_lo = (rs - drs).max(0.0);
@@ -481,6 +482,7 @@ impl PvtTable {
         (bo_hi - bo_lo) / (2.0 * drs)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_bo_sat_d_p(&self, p: f64) -> f64 {
         let dp = 1.0;
         let p_lo = (p - dp).max(0.0);
@@ -489,6 +491,7 @@ impl PvtTable {
         (row_hi.bo_m3m3 - row_lo.bo_m3m3) / (2.0 * dp)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_bg_d_p(&self, p: f64) -> f64 {
         let dp = 1.0;
         let p_lo = (p - dp).max(0.0);
@@ -497,6 +500,7 @@ impl PvtTable {
         (row_hi.bg_m3m3 - row_lo.bg_m3m3) / (2.0 * dp)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_mu_o_d_p(&self, p: f64, rs: f64) -> f64 {
         let dp = 1.0;
         let p_lo = (p - dp).max(0.0);
@@ -505,6 +509,7 @@ impl PvtTable {
         (mu_hi - mu_lo) / (2.0 * dp)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_mu_o_sat_d_p(&self, p: f64) -> f64 {
         let dp = 1.0;
         let p_lo = (p - dp).max(0.0);
@@ -513,6 +518,7 @@ impl PvtTable {
         (row_hi.mu_o_cp - row_lo.mu_o_cp) / (2.0 * dp)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_mu_o_d_rs(&self, p: f64, rs: f64) -> f64 {
         let drs = 1.0;
         let rs_lo = (rs - drs).max(0.0);
@@ -521,6 +527,7 @@ impl PvtTable {
         (mu_hi - mu_lo) / (2.0 * drs)
     }
 
+    #[cfg(test)]
     pub(crate) fn d_mu_g_d_p(&self, p: f64) -> f64 {
         let dp = 1.0;
         let p_lo = (p - dp).max(0.0);
@@ -763,6 +770,7 @@ impl ReservoirSimulator {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_bo_d_p_for_state(&self, p: f64, rs_sm3_sm3: f64, saturated: bool) -> f64 {
         if let Some(table) = &self.pvt_table {
             if self.three_phase_mode {
@@ -776,6 +784,7 @@ impl ReservoirSimulator {
         -self.pvt.c_o * self.base_oil_fvf(p)
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_bo_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             if self.three_phase_mode {
@@ -785,6 +794,7 @@ impl ReservoirSimulator {
         0.0
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_bg_d_p_for_state(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             return table.d_bg_d_p(p);
@@ -793,6 +803,7 @@ impl ReservoirSimulator {
         0.0
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_rs_sat_d_p_for_state(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             if self.three_phase_mode {
@@ -802,6 +813,7 @@ impl ReservoirSimulator {
         0.0
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_mu_o_d_p_for_state(&self, p: f64, rs_sm3_sm3: f64, saturated: bool) -> f64 {
         if let Some(table) = &self.pvt_table {
             if saturated {
@@ -812,6 +824,7 @@ impl ReservoirSimulator {
         0.0
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_mu_o_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             return table.d_mu_o_d_rs(p, rs_sm3_sm3);
@@ -819,6 +832,7 @@ impl ReservoirSimulator {
         0.0
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_mu_g_d_p_for_state(&self, p: f64) -> f64 {
         if let Some(table) = &self.pvt_table {
             return table.d_mu_g_d_p(p);
@@ -826,6 +840,7 @@ impl ReservoirSimulator {
         0.0
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_rho_o_d_p_for_state(
         &self,
         p: f64,
@@ -848,6 +863,7 @@ impl ReservoirSimulator {
         self.rho_g * d_rs_d_p / bo - rho_o * d_bo_d_p / bo
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_rho_o_d_rs_for_state(&self, p: f64, rs_sm3_sm3: f64) -> f64 {
         if self.pvt_table.is_none() {
             return 0.0;
@@ -859,6 +875,7 @@ impl ReservoirSimulator {
         self.rho_g / bo - rho_o * d_bo_d_rs / bo
     }
 
+    #[cfg(test)]
     pub(crate) fn get_d_rho_g_d_p_for_state(&self, p: f64) -> f64 {
         if self.pvt_table.is_none() {
             return 0.0;

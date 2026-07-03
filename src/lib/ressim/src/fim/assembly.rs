@@ -1,15 +1,21 @@
 use nalgebra::DVector;
-use sprs::{CsMat, TriMatI};
+use sprs::CsMat;
+#[cfg(test)]
+use sprs::TriMatI;
 
 use crate::ReservoirSimulator;
-use crate::fim::scaling::{
-    EquationScaling, VariableScaling, build_equation_scaling, build_variable_scaling,
-};
-use crate::fim::state::{FimCellDerived, FimState, HydrocarbonState};
+use crate::fim::scaling::{EquationScaling, VariableScaling};
+#[cfg(test)]
+use crate::fim::scaling::{build_equation_scaling, build_variable_scaling};
+use crate::fim::state::{FimCellDerived, FimState};
+#[cfg(test)]
+use crate::fim::state::HydrocarbonState;
+use crate::fim::wells::{FimWellTopology, perforation_component_rates_sc_day};
+#[cfg(test)]
 use crate::fim::wells::{
-    FimWellTopology, build_well_topology, fischer_burmeister_gradient,
-    perforation_component_rates_sc_day, perforation_local_block, well_local_block,
+    build_well_topology, fischer_burmeister_gradient, perforation_local_block, well_local_block,
 };
+#[cfg(test)]
 use crate::timing::PerfTimer;
 
 pub(crate) const DARCY_METRIC_FACTOR: f64 = 8.526_988_8e-3;
@@ -90,6 +96,7 @@ pub(crate) fn equation_offset(cell_idx: usize, local_eq: usize) -> usize {
     cell_idx * 3 + local_eq
 }
 
+#[cfg(test)]
 pub(crate) fn assemble_fim_system(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -190,6 +197,7 @@ pub(crate) fn assemble_fim_system(
     }
 }
 
+#[cfg(test)]
 fn add_exact_well_source_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -211,6 +219,7 @@ fn add_exact_well_source_jacobian(
     }
 }
 
+#[cfg(test)]
 fn add_exact_well_source_cell_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -236,6 +245,7 @@ fn add_exact_well_source_cell_jacobian(
     }
 }
 
+#[cfg(test)]
 fn add_exact_well_constraint_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -281,6 +291,7 @@ fn add_exact_well_constraint_jacobian(
     }
 }
 
+#[cfg(test)]
 fn add_exact_well_constraint_cell_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -316,6 +327,7 @@ fn add_exact_well_constraint_cell_jacobian(
     }
 }
 
+#[cfg(test)]
 fn add_exact_perforation_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -340,6 +352,7 @@ fn add_exact_perforation_jacobian(
     }
 }
 
+#[cfg(test)]
 fn add_exact_perforation_cell_pressure_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -705,6 +718,7 @@ pub(crate) fn cell_face_phase_flux_diagnostics(
     })
 }
 
+#[cfg(test)]
 fn cell_accumulation_jacobian_block(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -763,6 +777,7 @@ fn cell_accumulation_jacobian_block(
     ]
 }
 
+#[cfg(test)]
 fn assemble_residual(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -785,6 +800,7 @@ fn assemble_residual(
     )
 }
 
+#[cfg(test)]
 fn assemble_residual_with_flags(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -883,6 +899,7 @@ fn assemble_residual_with_flags(
     residual
 }
 
+#[cfg(test)]
 fn add_exact_accumulation_jacobian(
     sim: &ReservoirSimulator,
     previous_state: &FimState,
@@ -923,6 +940,7 @@ fn local_cell_step(cell: &crate::fim::state::FimCellState, local_var: usize) -> 
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg(test)]
 struct LocalFluxCellSensitivity {
     mobilities: [f64; 3],
     mobility_derivatives: [[f64; 3]; 3],
@@ -938,6 +956,7 @@ struct LocalFluxCellSensitivity {
     pcog_derivatives: [f64; 3],
 }
 
+#[cfg(test)]
 fn local_flux_cell_sensitivity(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1080,6 +1099,7 @@ fn local_flux_cell_sensitivity(
     }
 }
 
+#[cfg(test)]
 fn gravity_half_coefficient(sim: &ReservoirSimulator, depth_i: f64, depth_j: f64) -> f64 {
     if sim.gravity_enabled {
         0.5 * 9.80665 * (depth_i - depth_j) * 1e-5
@@ -1088,6 +1108,7 @@ fn gravity_half_coefficient(sim: &ReservoirSimulator, depth_i: f64, depth_j: f64
     }
 }
 
+#[cfg(test)]
 fn phase_potential_derivatives(
     pressure_sign: f64,
     capillary_sign: f64,
@@ -1253,6 +1274,7 @@ fn oriented_face_phase_diagnostics(
     })
 }
 
+#[cfg(test)]
 fn add_exact_flux_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1325,6 +1347,7 @@ fn add_exact_flux_jacobian(
     }
 }
 
+#[cfg(test)]
 fn add_exact_interface_flux_jacobian(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1584,6 +1607,7 @@ fn add_interface_flux_jacobian_fd(
     }
 }
 
+#[cfg(test)]
 fn add_well_source_terms(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1600,6 +1624,7 @@ fn add_well_source_terms(
     }
 }
 
+#[cfg(test)]
 fn add_well_constraint_equations(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1614,6 +1639,7 @@ fn add_well_constraint_equations(
     }
 }
 
+#[cfg(test)]
 fn add_perforation_equations(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -1628,6 +1654,7 @@ fn add_perforation_equations(
     }
 }
 
+#[cfg(test)]
 fn add_interface_flux(
     sim: &ReservoirSimulator,
     state: &FimState,
