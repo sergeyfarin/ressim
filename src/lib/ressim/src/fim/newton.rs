@@ -139,30 +139,8 @@ fn linear_report_trace_suffix(
         crate::fim::linear::FimPressureCoarseSolverKind::BiCgStab => "bicgstab",
     };
 
-    let probe = if cpr.restriction_probe.is_empty() {
-        String::new()
-    } else {
-        let entries = cpr
-            .restriction_probe
-            .iter()
-            .map(|probe| {
-                format!(
-                    "{}:rhs={:.3e},rr={:.3e},pc={:.3e},post={:.3e},z={:.3e}",
-                    probe.label,
-                    probe.coarse_rhs_norm,
-                    probe.coarse_reduction_ratio,
-                    probe.pressure_correction_norm,
-                    probe.post_preconditioner_residual_norm,
-                    probe.preconditioned_vector_norm,
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(";");
-        format!(" cpr_probe=[{}]", entries)
-    };
-
     format!(
-        " lin=[req={} used={} rows={} direct_thr={}] cpr=[rows={} solver={} smoother={} apps={} avg_rr={:.3e} last_rr={:.3e}]{}",
+        " lin=[req={} used={} rows={} direct_thr={}] cpr=[rows={} solver={} smoother={} apps={} avg_rr={:.3e} last_rr={:.3e}]",
         requested_kind.label(),
         report.backend_used.label(),
         report.solution.len(),
@@ -173,7 +151,6 @@ fn linear_report_trace_suffix(
         cpr.coarse_applications,
         cpr.average_reduction_ratio,
         cpr.last_reduction_ratio,
-        probe,
     )
 }
 
@@ -2966,8 +2943,6 @@ pub(crate) fn run_fim_timestep(
                 linear_options.kind.label(),
             );
         }
-        linear_options.restriction_probe =
-            options.verbose && linear_options.kind == FimLinearSolverKind::FgmresCpr;
         let mut linear_report =
             solve_linearized_system(&assembly.jacobian, &rhs, &linear_options, block_layout);
         linear_solve_time_ms += linear_report.total_time_ms;
@@ -4127,7 +4102,6 @@ mod tests {
                 coarse_applications: 4,
                 average_reduction_ratio: 1e-12,
                 last_reduction_ratio: 1e-12,
-                restriction_probe: Vec::new(),
             }),
             total_time_ms: 0.0,
             preconditioner_build_time_ms: 0.0,
@@ -4234,7 +4208,6 @@ mod tests {
                 coarse_applications: 4,
                 average_reduction_ratio: 0.6,
                 last_reduction_ratio: 0.8,
-                restriction_probe: Vec::new(),
             }),
             total_time_ms: 0.0,
             preconditioner_build_time_ms: 0.0,
@@ -5045,3 +5018,4 @@ mod tests {
         ));
     }
 }
+
