@@ -118,6 +118,7 @@ pub(crate) struct FimLinearSolveOptions {
     pub(crate) max_iterations: usize,
     pub(crate) relative_tolerance: f64,
     pub(crate) absolute_tolerance: f64,
+    pub(crate) restriction_probe: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,6 +163,7 @@ impl Default for FimLinearSolveOptions {
             max_iterations: 150,
             relative_tolerance: 1e-7,
             absolute_tolerance: 1e-10,
+            restriction_probe: false,
         }
     }
 }
@@ -188,6 +190,17 @@ pub(crate) struct FimCprDiagnostics {
     pub(crate) coarse_applications: usize,
     pub(crate) average_reduction_ratio: f64,
     pub(crate) last_reduction_ratio: f64,
+    pub(crate) restriction_probe: Vec<FimCprRestrictionProbeDiagnostics>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FimCprRestrictionProbeDiagnostics {
+    pub(crate) label: &'static str,
+    pub(crate) coarse_rhs_norm: f64,
+    pub(crate) coarse_reduction_ratio: f64,
+    pub(crate) pressure_correction_norm: f64,
+    pub(crate) post_preconditioner_residual_norm: f64,
+    pub(crate) preconditioned_vector_norm: f64,
 }
 
 pub(crate) fn solve_linearized_system(
