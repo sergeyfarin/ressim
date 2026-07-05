@@ -580,12 +580,72 @@ one shared scalar, which is an inherent property of scalar-damped Newton globali
 persistent relaxation scalar has the same global-coupling character) rather than something specific to this
 codebase's implementation.
 
-**No further local fix pursued.** The two candidate levers (loosen the inflection chop; loosen the entry/zero-
-move acceptance gates) are each already-explored territory with a clear negative verdict, and a fix that
-actually addresses this without the same side effect would need per-cell or per-region damping/acceptance
-criteria — a materially larger architectural change than a chop-formula tweak, out of scope for this
-investigation. Recorded as understood-but-not-actionable-within-current-architecture; `62` substeps stands as
-the current heavy-case baseline (down from the pre-Phase-11 `160`, still short of the pre-Phase-10 `26`).
+**No further local fix pursued at the time.** The two candidate levers (loosen the inflection chop; loosen the
+entry/zero-move acceptance gates) are each already-explored territory with a clear negative verdict, and a fix
+that actually addresses this without the same side effect would need per-cell or per-region damping/acceptance
+criteria — a materially larger architectural change than a chop-formula tweak. Recorded as understood at the
+time; `62` substeps stood as the interim heavy-case baseline (down from the pre-Phase-11 `160`, still short of
+the pre-Phase-10 `26`) — **superseded by Task #38 below**, which found a materially better `k` value for the
+*existing* `FW_INFLECTION_OVERSHOOT_FACTOR` mechanism rather than trying to change its formula.
+
+### Task #38 — user pointed at prior art (`FIM-DAMP-002`/`003`); re-swept `k` under the current bundle, found a new stable point
+
+User recollection, confirmed by a docs search: the "loosen the inflection chop" direction was already explored
+in depth in April 2026, well before this session — `docs/FIM_LINEAR_SOLVER_AUDIT.md` "Fix A3" and
+`docs/FIM_CHOP_WIDEN_EXPERIMENT.md`. Two directly relevant prior results:
+
+- **`FIM-DAMP-002` (REVERTED)**: removing the inflection chop entirely — full alignment with OPM, which has no
+  equivalent mechanism — was tried on a dedicated branch (`experiment/fim-no-inflection-chop`) and failed on
+  *both* axes: substeps got worse (`27→162` on that era's case 3) and physics accuracy got worse (`FOPT
+  3883→3019`, a genuine `-22%` loss vs. the converged fine-dt reference `3826`). The chop is doing real
+  correctness work, not "OPM-inconsistent extra conservatism" — it compensates for ResSim's linear solver
+  (no full AMG-CPR, unlike OPM) producing wilder raw Newton directions than OPM's.
+- **`FIM-DAMP-003` (PROMOTED)**: the live `FW_INFLECTION_OVERSHOOT_FACTOR=1.2` came from a deliberate k-sweep
+  (`k ∈ {1.0, 1.2, 1.5, 2.0, ∞}`) on that era's linear solver, showing a *monotonic* trend — more loosening,
+  worse on both substeps and FOPT. `k=1.2` was the identified sweet spot, with an explicit retry condition:
+  "retune only with k-sweep and fine-dt reference."
+
+This session's `FIM-NEWTON-007` (three variants relaxing the chop's degenerate-`dist≈0` case) was, in
+retrospect, more points along that same already-swept axis — the regression found there is a re-confirmation
+of the April trend, not new information, and cross-referencing this prior art first would have saved three
+live-test cycles. **The linear solver has changed substantially since the April sweep** (Phase 10's loosened
+tolerance/budget/block-ILU0, Phase 11's well elimination) — `FIM-DAMP-003`'s own retry condition is satisfied,
+so a fresh k-sweep under the *current* bundle is legitimate, not another attempt at the same refuted direction.
+
+**Sweep result on the heavy case (`k`, substeps):**
+
+| `k` | substeps | retries | `hotspot_newton_caps` | `retry_dom` |
+|-----:|---------:|--------:|----------------------:|---|
+| 1.0 | 248 | 51 | 105 | `perf@1299` |
+| 1.1 | 32  | 13 | 8   | `water@1215` |
+| 1.15 | 214 | 49 | 91  | `perf@1299` |
+| 1.2 (April sweet spot, now stale) | 62 | 20 | 16 | `water@387` |
+| **1.25 (chosen)** | **32** | **13** | **7** | `water@1215` |
+| 1.3 | 32 | 13 | 7 | `water@1215` (identical to 1.25) |
+| 1.5 | 204 | 48 | 95 | `perf@1299` |
+| 2.0 | 134 | 34 | 51 | `water@819` |
+
+**The `k`↔substep relationship is genuinely chaotic, not smooth** — `k=1.15` (214 substeps) sits *between* two
+good values (`1.1`, `1.25`/`1.3`, all `32`), a hallmark of Newton-trajectory bifurcation (a retry/accept
+decision flips discretely at some critical iteration depending on the exact `k`), not a tunable trend. This
+means picking a value because it "looks good" in one measurement would be exactly the kind of trial-and-error
+this project's discipline exists to avoid — the reason `k=1.25` is defensible is that `k=1.25` and `k=1.3`
+produce **bit-identical** trajectories (same `accepts`/`retries`/`hotspot_newton_caps`/production numbers),
+a genuine stable plateau, unlike the isolated single points at `1.1` or `1.2`.
+
+**Promoted `k=1.25`** (middle of the demonstrated `[1.25, 1.3]` stable range). Full control matrix (5
+non-target cases) bit-identical; locked smoke 3/3 (`spe1_fim_first_steps_converge_without_stall`,
+`spe1_fim_gas_injection_creates_free_gas`, `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`).
+Checked the new dominant retry site (`water@1215`/`cell405`) directly — same benign, already-understood
+local-Sw-plateau retry-ladder mechanism from Task #37 (`DAMPING FAILED`, residual scaling quadratically with
+`dt` across retries, genuine zero-movement plateau on acceptance), not a new failure mode, just occurring less
+often (13 retries vs. 20) and at a different cell. Recorded as `FIM-DAMP-004`.
+
+**Net**: heavy case now at `32` substeps — down from `160` at the Phase-11 low point, `62` at the interim
+Task #37 baseline, and close to (though not exactly at) the pre-Phase-10 `26`. Production numbers (`oil`,
+`inj`) stayed in the same ballpark across all tested `k` values (no gross physics breakdown at any point in
+the sweep), though a proper fine-dt reference re-derivation under the current bundle (matching the April
+methodology) has not been done and would be needed before treating `26` itself as the target to chase further.
 
 ## Validation Shortlist
 - Water shelf summary:

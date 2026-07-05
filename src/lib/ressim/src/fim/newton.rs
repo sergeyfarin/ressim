@@ -45,7 +45,19 @@ const DEFAULT_MAX_NEWTON_SATURATION_CHANGE: f64 = 0.1;
 /// the classic Wang-Tchelepi 2013 trust-region chop (any crossing fires).
 /// Larger values skip "marginal" crossings while still guarding deep
 /// basin-jumping overshoots.
-const FW_INFLECTION_OVERSHOOT_FACTOR: f64 = 1.2;
+///
+/// Re-swept 2026-07-05 (`FIM-DAMP-004`) under the Phase 10/11 linear-solver bundle (loosened
+/// tolerance, block-ILU0, well elimination), per `FIM-DAMP-003`'s own retry condition ("retune
+/// only with k-sweep and fine-dt reference"). The relationship between `k` and heavy-case
+/// substep count is now genuinely non-monotonic/chaotic (a Newton-trajectory bifurcation
+/// artifact, not a smooth trend): `k=1.0`→248, `k=1.1`→32, `k=1.15`→214, `k=1.2`(the April
+/// sweet spot, now stale)→62, `k=1.25`→32, `k=1.3`→32, `k=1.5`→204, `k=2.0`→134 substeps.
+/// `k∈[1.25,1.3]` is a genuine stable plateau (identical trajectories, not a lucky isolated
+/// point like `1.1` or the bad spot at `1.15`) — chose `1.25`, the middle of that demonstrated
+/// range. Full control matrix bit-identical, locked smoke 3/3; no new failure mode introduced
+/// (same benign local-Sw-plateau retry pattern as before, just less frequent, at a different
+/// cell). See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38" for the full sweep table.
+const FW_INFLECTION_OVERSHOOT_FACTOR: f64 = 1.25;
 const EFFECTIVE_TRACE_PRESSURE_MOVE_THRESHOLD_BAR: f64 = 5e-3;
 const EFFECTIVE_TRACE_SATURATION_MOVE_THRESHOLD: f64 = 5e-5;
 const NONLINEAR_HISTORY_WEAK_PROGRESS_RATIO: f64 = 0.98;
