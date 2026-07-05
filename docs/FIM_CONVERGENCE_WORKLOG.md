@@ -540,6 +540,53 @@ Recorded as `FIM-NEWTON-007` (REFUTED) — do not re-attempt a local chop-formul
 without new evidence explaining *why* it is this sensitive (e.g. characterizing what specifically links
 cell115's damping decision to cell1299's/perf1's oscillation many iterations and possibly substeps later).
 
+### Task #37 — the sensitivity mechanism found and fully explained; no further local fix pursued
+
+Traced substep 59's exact retry sequence (`--diagnostic step`, same post-Phase-11 heavy case). What actually
+happens is precise and deterministic, not chaotic:
+
+- Substep 59 starts (`iteration 0`, before any update) with residual `8.569e-6` — comfortably inside the
+  *ordinary* Newton tolerance (`1e-5`) but not inside the much stricter "already converged, skip the update
+  entirely" entry guard, which requires `residual <= residual_tolerance * NOOP_ENTRY_EXACT_FACTOR = 1e-5 * 1e-3
+  = 1e-8` (`newton.rs:2555-2556`) when the state hasn't materially changed — which it hasn't, since iteration 0
+  always starts from the unmodified previous state. `8.569e-6` is `~857x` too large for this gate, so Newton
+  must attempt a real update.
+- That update gets `cell115`'s fw-inflection trust-region chop applied (a *different* cell from the reported
+  hotspot `cell129`, since the binding constraint is whichever cell's own raw step is tightest that iteration),
+  which computes exactly `damping = 0.0` — legitimate protection, not a bug on its own (a cell genuinely at the
+  fw inflection point has `dist ≈ 0`, so any real step "crosses" it and the chop that would land exactly at the
+  boundary is itself ≈0).
+- With `damping = 0.0`, the candidate is invalid, and the rescue path (`zero_move_appleyard_acceptance_allows`)
+  is *also* gated at `residual_tolerance * NOOP_ENTRY_EXACT_FACTOR * ENTRY_RESIDUAL_GUARD_FACTOR = 1e-5 * 1e-3 *
+  2.0 = 2e-8` (`newton.rs:2241-2246`) — similarly far below `8.569e-6`. Newton has no valid move in either
+  direction; the substep fails and the retry ladder halves `dt`.
+- The residual scales down almost exactly **quadratically** with `dt` across the 5 retries this substep needed
+  (`8.569e-6 → 2.142e-6 → 5.356e-7 → 1.339e-7 → 3.347e-8 → 8.368e-9`, each halving of `dt` roughly quartering
+  the residual) until it finally crosses the `1e-8` entry-guard threshold and gets accepted — confirmed in the
+  trace as a genuine, exact local plateau: every cell in the `cell129` neighborhood shows literally `dP=+0.00
+  dSw=+0.0000` (no movement at all, at any precision shown). This is not a bug; it is the retry ladder correctly
+  discovering that this region of the reservoir has reached local steady-state partway through the outer
+  timestep, and mechanically shrinking `dt` until the residual is small enough to accept that as fact.
+
+**Why the three `FIM-NEWTON-007` variants backfired, precisely**: `cell115`'s zero damping and the tight
+entry/zero-move thresholds are each individually legitimate and — for the thresholds — already an explicit,
+previously-litigated project decision (`FIM-NEWTON-004`: do not widen acceptance above tolerance). Both are
+*single global scalars* applied to the *entire* Newton update vector, not per-cell values. Loosening either one
+doesn't just let `cell115`/`cell129`'s own local plateau resolve faster — it lets the *whole* global Newton step
+move further in the *same* iteration, including at whatever other site happens to be marginal that iteration
+(here, `perf1`, whose oscillation `FIM-NEWTON-006` had just fixed). The "sensitivity" is not a special
+`cell115`↔`perf1` relationship; it is the ordinary consequence of coupling every cell's allowed movement through
+one shared scalar, which is an inherent property of scalar-damped Newton globalization generally (OPM's own
+persistent relaxation scalar has the same global-coupling character) rather than something specific to this
+codebase's implementation.
+
+**No further local fix pursued.** The two candidate levers (loosen the inflection chop; loosen the entry/zero-
+move acceptance gates) are each already-explored territory with a clear negative verdict, and a fix that
+actually addresses this without the same side effect would need per-cell or per-region damping/acceptance
+criteria — a materially larger architectural change than a chop-formula tweak, out of scope for this
+investigation. Recorded as understood-but-not-actionable-within-current-architecture; `62` substeps stands as
+the current heavy-case baseline (down from the pre-Phase-11 `160`, still short of the pre-Phase-10 `26`).
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
