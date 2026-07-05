@@ -1,13 +1,14 @@
 use std::f64;
 
 use nalgebra::{DMatrix, DVector};
-use sprs::CsMat;
+use sprs::{CsMat, TriMatI};
 
 use super::{
     FimCprDiagnostics, FimLinearBlockLayout, FimLinearFailureDiagnostics, FimLinearFailureReason,
     FimLinearRestartDiagnostics, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
     FimPressureCoarseSolverKind,
 };
+use crate::fim::scaling::EquationScaling;
 use crate::timing::PerfTimer;
 
 const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
@@ -16,9 +17,10 @@ const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-6;
 const FULL_ILU_ROW_LIMIT: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CprFineSmootherKind {
+pub(super) enum CprFineSmootherKind {
     BlockJacobi,
     FullIlu0,
+    BlockIlu0,
 }
 
 impl CprFineSmootherKind {
@@ -26,6 +28,61 @@ impl CprFineSmootherKind {
         match self {
             Self::BlockJacobi => "block-jacobi",
             Self::FullIlu0 => "ilu0",
+            Self::BlockIlu0 => "block-ilu0",
+        }
+    }
+}
+
+/// Pressure-restriction/prolongation variants for the CPR coarse stage. `Row0Schur` is the
+/// only variant used by the production path (`solve()`, i.e. `FgmresCpr`/`GmresIlu0` as
+/// dispatched from `solve_linearized_system`) — the others exist for the offline solver
+/// lab (`fim/linear/solver_lab.rs`) to compare as full solves on captured real systems
+/// before any live-solver change is considered (Phase 9, `FIM-LINEAR-005`/`FIM-LINEAR-007`).
+/// Salvaged from the reverted in-situ probe (commit `db3bdaf`, unreachable from production
+/// because it was gated on `options.verbose`) plus a new `QuasiImpes` variant matching
+/// OPM's `getQuasiImpesWeights.hpp` construction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) enum CprPressureRestrictionKind {
+    Row0Schur,
+    SummedRows,
+    DiagBalancedRows,
+    DominantDiagonalRow,
+    LocalSchurBalanced,
+    QuasiImpes,
+}
+
+impl CprPressureRestrictionKind {
+    #[cfg(test)]
+    pub(super) const ALL: [Self; 6] = [
+        Self::Row0Schur,
+        Self::SummedRows,
+        Self::DiagBalancedRows,
+        Self::DominantDiagonalRow,
+        Self::LocalSchurBalanced,
+        Self::QuasiImpes,
+    ];
+
+    #[cfg(test)]
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Row0Schur => "row0-schur",
+            Self::SummedRows => "sum-rows",
+            Self::DiagBalancedRows => "diag-balanced-sum",
+            Self::DominantDiagonalRow => "dominant-diag-row",
+            Self::LocalSchurBalanced => "local-schur-balanced",
+            Self::QuasiImpes => "quasi-impes",
+        }
+    }
+}
+
+fn normalize_weights(weights: &mut [f64]) {
+    let max_abs = weights
+        .iter()
+        .fold(0.0_f64, |max_abs, value| max_abs.max(value.abs()));
+    if max_abs > f64::EPSILON {
+        for value in weights {
+            *value /= max_abs;
         }
     }
 }
@@ -66,6 +123,188 @@ impl FimIlu0Factors {
     }
 }
 
+/// Block-ILU(0) on the natural per-cell `cell_block_size × cell_block_size` reservoir blocks
+/// (matching OPM's `Dune::BCRSMatrix<MatrixBlock<Scalar,3,3>>` block-structured ILU0), with the
+/// well-BHP/perforation tail kept scalar and factorized independently (Option A from the Phase
+/// 10 plan: wells are not naturally block-sized or periodically located, and OPM itself handles
+/// wells via a separate operator alongside its block-ILU0 reservoir smoother, not folded into
+/// it — so a scalar, uncoupled tail factorization is architecturally consistent with OPM, not a
+/// compromise). No cross-block fill between the cell region and the tail; the CPR pressure-
+/// correction stage already carries that coupling via `tail_inverse`/`pressure_tail_coupling`.
+#[derive(Clone, Debug, PartialEq)]
+struct FimBlockIlu0Factors {
+    block_size: usize,
+    block_count: usize,
+    l_block_rows: Vec<Vec<(usize, DMatrix<f64>)>>,
+    u_diag_inv: Vec<DMatrix<f64>>,
+    u_block_rows: Vec<Vec<(usize, DMatrix<f64>)>>,
+    tail_start: usize,
+    tail: Option<FimIlu0Factors>,
+}
+
+impl FimBlockIlu0Factors {
+    fn apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+        let n = rhs.len();
+        let mut result = DVector::zeros(n);
+
+        // Block forward/back substitution over the reservoir-cell region, mirroring
+        // `FimIlu0Factors::apply`'s scalar sweep exactly, one block at a time.
+        let mut y: Vec<DVector<f64>> = Vec::with_capacity(self.block_count);
+        for i in 0..self.block_count {
+            let start = i * self.block_size;
+            let mut rhs_block =
+                DVector::from_iterator(self.block_size, (0..self.block_size).map(|l| rhs[start + l]));
+            for &(k, ref l_ik) in &self.l_block_rows[i] {
+                rhs_block -= l_ik * &y[k];
+            }
+            y.push(rhs_block);
+        }
+
+        let mut x: Vec<DVector<f64>> = vec![DVector::zeros(self.block_size); self.block_count];
+        for i in (0..self.block_count).rev() {
+            let mut rhs_block = y[i].clone();
+            for &(j, ref u_ij) in &self.u_block_rows[i] {
+                rhs_block -= u_ij * &x[j];
+            }
+            x[i] = &self.u_diag_inv[i] * rhs_block;
+        }
+
+        for i in 0..self.block_count {
+            let start = i * self.block_size;
+            for local in 0..self.block_size {
+                result[start + local] = x[i][local];
+            }
+        }
+
+        if let Some(tail) = &self.tail {
+            let tail_n = n - self.tail_start;
+            let tail_rhs =
+                DVector::from_iterator(tail_n, (0..tail_n).map(|l| rhs[self.tail_start + l]));
+            let tail_x = tail.apply(&tail_rhs);
+            for local in 0..tail_n {
+                result[self.tail_start + local] = tail_x[local];
+            }
+        }
+
+        result
+    }
+}
+
+fn factorize_block_ilu0(
+    matrix: &CsMat<f64>,
+    layout: FimLinearBlockLayout,
+) -> Option<FimBlockIlu0Factors> {
+    let block_size = layout.cell_block_size;
+    let block_count = layout.cell_block_count;
+    if block_size == 0 || block_count == 0 {
+        return None;
+    }
+    let cell_unknown_count = layout.cell_unknown_count();
+
+    let extract_block = |row_block: usize, col_block: usize| -> DMatrix<f64> {
+        let mut block = DMatrix::zeros(block_size, block_size);
+        for row in 0..block_size {
+            for col in 0..block_size {
+                block[(row, col)] = matrix_value(
+                    matrix,
+                    row_block * block_size + row,
+                    col_block * block_size + col,
+                );
+            }
+        }
+        block
+    };
+
+    // Discover the occupied block-column pattern per block-row from the original scalar
+    // sparsity (ILU(0): no fill beyond this pattern).
+    let mut rows: Vec<std::collections::BTreeMap<usize, DMatrix<f64>>> = Vec::with_capacity(block_count);
+    for row_block in 0..block_count {
+        let mut cols = std::collections::BTreeSet::new();
+        cols.insert(row_block);
+        for local in 0..block_size {
+            let row_idx = row_block * block_size + local;
+            let Some(row) = matrix.outer_view(row_idx) else {
+                continue;
+            };
+            for (col_idx, value) in row.iter() {
+                if col_idx >= cell_unknown_count || value.abs() <= f64::EPSILON {
+                    continue;
+                }
+                cols.insert(col_idx / block_size);
+            }
+        }
+        let entries = cols
+            .into_iter()
+            .map(|col_block| (col_block, extract_block(row_block, col_block)))
+            .collect();
+        rows.push(entries);
+    }
+
+    let mut l_block_rows: Vec<Vec<(usize, DMatrix<f64>)>> = vec![Vec::new(); block_count];
+    let mut u_diag_inv: Vec<DMatrix<f64>> = Vec::with_capacity(block_count);
+    let mut u_block_rows: Vec<Vec<(usize, DMatrix<f64>)>> = vec![Vec::new(); block_count];
+
+    for i in 0..block_count {
+        let ks: Vec<usize> = rows[i].keys().copied().filter(|&k| k < i).collect();
+        for k in ks {
+            let a_ik = rows[i]
+                .get(&k)
+                .cloned()
+                .unwrap_or_else(|| DMatrix::zeros(block_size, block_size));
+            let l_ik = &a_ik * &u_diag_inv[k];
+            let u_k_row = u_block_rows[k].clone();
+            for (j, u_kj) in &u_k_row {
+                if let Some(a_ij) = rows[i].get_mut(j) {
+                    *a_ij -= &l_ik * u_kj;
+                }
+            }
+            l_block_rows[i].push((k, l_ik));
+            rows[i].remove(&k);
+        }
+
+        let diag = rows[i]
+            .get(&i)
+            .cloned()
+            .unwrap_or_else(|| DMatrix::zeros(block_size, block_size));
+        u_diag_inv.push(invert_tail_block(&diag));
+
+        for (&j, block) in rows[i].iter() {
+            if j > i {
+                u_block_rows[i].push((j, block.clone()));
+            }
+        }
+    }
+
+    let tail_start = cell_unknown_count;
+    let tail_n = matrix.rows().saturating_sub(tail_start);
+    let tail = if tail_n > 0 {
+        let mut tri = TriMatI::<f64, usize>::new((tail_n, tail_n));
+        for row in 0..tail_n {
+            let Some(view) = matrix.outer_view(tail_start + row) else {
+                continue;
+            };
+            for (col_idx, value) in view.iter() {
+                if col_idx >= tail_start {
+                    tri.add_triplet(row, col_idx - tail_start, *value);
+                }
+            }
+        }
+        factorize_full_ilu0(&tri.to_csr())
+    } else {
+        None
+    };
+
+    Some(FimBlockIlu0Factors {
+        block_size,
+        block_count,
+        l_block_rows,
+        u_diag_inv,
+        u_block_rows,
+        tail_start,
+        tail,
+    })
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct BlockJacobiPreconditioner {
     fine_smoother_kind: CprFineSmootherKind,
@@ -88,6 +327,7 @@ struct BlockJacobiPreconditioner {
     pressure_u_diag: Vec<f64>,
     pressure_u_rows: Vec<Vec<(usize, f64)>>,
     full_ilu: Option<FimIlu0Factors>,
+    block_ilu: Option<FimBlockIlu0Factors>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -167,6 +407,11 @@ impl BlockJacobiPreconditioner {
     fn apply_stage_one(&self, vector: &DVector<f64>) -> DVector<f64> {
         if self.fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
             if let Some(ilu) = &self.full_ilu {
+                return ilu.apply(vector);
+            }
+        }
+        if self.fine_smoother_kind == CprFineSmootherKind::BlockIlu0 {
+            if let Some(ilu) = &self.block_ilu {
                 return ilu.apply(vector);
             }
         }
@@ -580,7 +825,7 @@ fn factorize_full_ilu0(matrix: &CsMat<f64>) -> Option<FimIlu0Factors> {
     })
 }
 
-fn matrix_value(matrix: &CsMat<f64>, row: usize, col: usize) -> f64 {
+pub(super) fn matrix_value(matrix: &CsMat<f64>, row: usize, col: usize) -> f64 {
     matrix
         .outer_view(row)
         .and_then(|view| {
@@ -591,7 +836,7 @@ fn matrix_value(matrix: &CsMat<f64>, row: usize, col: usize) -> f64 {
         .unwrap_or(0.0)
 }
 
-fn invert_tail_block(matrix: &DMatrix<f64>) -> DMatrix<f64> {
+pub(super) fn invert_tail_block(matrix: &DMatrix<f64>) -> DMatrix<f64> {
     matrix.clone().try_inverse().unwrap_or_else(|| {
         let mut fallback = DMatrix::zeros(matrix.nrows(), matrix.ncols());
         for diag_idx in 0..matrix.nrows() {
@@ -622,7 +867,10 @@ fn invert_pressure_block(pressure_rows: &[Vec<(usize, f64)>]) -> Option<DMatrix<
     matrix.try_inverse()
 }
 
-fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>) {
+fn build_pressure_transfer_weights(
+    block: &DMatrix<f64>,
+    restriction_kind: CprPressureRestrictionKind,
+) -> (Vec<f64>, Vec<f64>) {
     let size = block.nrows();
     let mut restriction = vec![0.0; size];
     let mut prolongation = vec![0.0; size];
@@ -630,10 +878,51 @@ fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>)
         return (restriction, prolongation);
     }
 
-    restriction[0] = 1.0;
     prolongation[0] = 1.0;
     if size == 1 {
+        restriction[0] = 1.0;
         return (restriction, prolongation);
+    }
+
+    match restriction_kind {
+        CprPressureRestrictionKind::SummedRows => {
+            restriction.fill(1.0);
+            return (restriction, prolongation);
+        }
+        CprPressureRestrictionKind::DiagBalancedRows => {
+            for row in 0..size {
+                let diag = block[(row, row)].abs();
+                restriction[row] = if diag > f64::EPSILON { 1.0 / diag } else { 1.0 };
+            }
+            normalize_weights(&mut restriction);
+            return (restriction, prolongation);
+        }
+        CprPressureRestrictionKind::DominantDiagonalRow => {
+            let dominant_row = (0..size)
+                .max_by(|a, b| {
+                    block[(*a, *a)]
+                        .abs()
+                        .partial_cmp(&block[(*b, *b)].abs())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap_or(0);
+            restriction[dominant_row] = 1.0;
+            return (restriction, prolongation);
+        }
+        CprPressureRestrictionKind::QuasiImpes => {
+            // OPM's `getQuasiImpesWeights.hpp`: solve `A^T w = e_pressure` using only the
+            // diagonal accumulation block, i.e. w = A^{-1}.row(pressure_index). Pressure
+            // is unknown index 0 in this block layout.
+            let inverse = invert_tail_block(block);
+            for col in 0..size {
+                restriction[col] = inverse[(0, col)];
+            }
+            normalize_weights(&mut restriction);
+            return (restriction, prolongation);
+        }
+        CprPressureRestrictionKind::Row0Schur | CprPressureRestrictionKind::LocalSchurBalanced => {
+            restriction[0] = 1.0;
+        }
     }
 
     let transport_size = size - 1;
@@ -656,6 +945,10 @@ fn build_pressure_transfer_weights(block: &DMatrix<f64>) -> (Vec<f64>, Vec<f64>)
         prolongation[local + 1] = -prolongation_weight;
     }
 
+    if restriction_kind == CprPressureRestrictionKind::LocalSchurBalanced {
+        normalize_weights(&mut restriction);
+    }
+
     (restriction, prolongation)
 }
 
@@ -663,6 +956,7 @@ fn build_block_jacobi_preconditioner(
     matrix: &CsMat<f64>,
     layout: Option<FimLinearBlockLayout>,
     fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
 ) -> BlockJacobiPreconditioner {
     let Some(layout) = layout else {
         let scalar_inv_diag = (0..matrix.rows())
@@ -696,6 +990,7 @@ fn build_block_jacobi_preconditioner(
             pressure_u_diag: Vec::new(),
             pressure_u_rows: Vec::new(),
             full_ilu: None,
+            block_ilu: None,
         };
     };
 
@@ -733,7 +1028,7 @@ fn build_block_jacobi_preconditioner(
         });
         cell_block_inverses.push(inverse);
 
-        let (restriction, prolongation) = build_pressure_transfer_weights(&block);
+        let (restriction, prolongation) = build_pressure_transfer_weights(&block, restriction_kind);
         pressure_restriction.push(restriction);
         pressure_prolongation.push(prolongation);
     }
@@ -924,6 +1219,11 @@ fn build_block_jacobi_preconditioner(
     } else {
         None
     };
+    let block_ilu = if fine_smoother_kind == CprFineSmootherKind::BlockIlu0 {
+        factorize_block_ilu0(matrix, layout)
+    } else {
+        None
+    };
 
     let scalar_inv_diag = (noncell_start..matrix.rows())
         .map(|idx| {
@@ -957,10 +1257,11 @@ fn build_block_jacobi_preconditioner(
         pressure_u_diag,
         pressure_u_rows,
         full_ilu,
+        block_ilu,
     }
 }
 
-fn cs_mat_mul_vec(matrix: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
+pub(super) fn cs_mat_mul_vec(matrix: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
     let mut y = DVector::<f64>::zeros(matrix.rows());
     for (row, vec) in matrix.outer_iterator().enumerate() {
         let mut sum = 0.0;
@@ -1146,6 +1447,8 @@ fn solve_with_cpr_fine_smoother(
     layout: Option<FimLinearBlockLayout>,
     used_fallback: bool,
     cpr_fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    equation_scaling: Option<&EquationScaling>,
 ) -> FimLinearSolveReport {
     let total_timer = PerfTimer::start();
     let backend_used = if options.kind == FimLinearSolverKind::FgmresCpr {
@@ -1174,9 +1477,31 @@ fn solve_with_cpr_fine_smoother(
     let rhs_norm = rhs.norm();
     let tolerance =
         options.absolute_tolerance + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
+    // `FIM-LINEAR-008` follow-up (Step 10.1 reconciliation): the global relative-residual
+    // criterion above can leave a numerically small subsystem (the well/perforation rows)
+    // systematically under-resolved even while the whole-system norm is satisfied. When an
+    // `EquationScaling` is supplied (always true from the production Newton call site; opt-in
+    // elsewhere so every pre-existing synthetic-matrix test keeps its old behavior), require
+    // every equation family's own scaled residual to also clear its own relative-reduction
+    // target, using `x_0 = 0` so the family's initial scaled peak is just `scaling.family_peaks(rhs)`.
+    let initial_family_peaks = equation_scaling.map(|scaling| scaling.family_peaks(rhs));
+    let family_ok = |residual_vec: &DVector<f64>| -> bool {
+        match (equation_scaling, &initial_family_peaks) {
+            (Some(scaling), Some(initial)) => scaling.family_peaks(residual_vec).within_relative_reduction(
+                initial,
+                options.absolute_tolerance,
+                options.relative_tolerance,
+            ),
+            _ => true,
+        }
+    };
     let preconditioner_timer = PerfTimer::start();
-    let preconditioner =
-        build_block_jacobi_preconditioner(jacobian, layout, cpr_fine_smoother_kind);
+    let preconditioner = build_block_jacobi_preconditioner(
+        jacobian,
+        layout,
+        cpr_fine_smoother_kind,
+        restriction_kind,
+    );
     let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
@@ -1195,7 +1520,7 @@ fn solve_with_cpr_fine_smoother(
         let residual = rhs - &cs_mat_mul_vec(jacobian, &solution);
         let residual_norm = residual.norm();
         last_outer_residual_norm = residual_norm;
-        if residual_norm <= tolerance {
+        if residual_norm <= tolerance && family_ok(&residual) {
             return FimLinearSolveReport {
                 solution,
                 converged: true,
@@ -1221,7 +1546,7 @@ fn solve_with_cpr_fine_smoother(
         }
         let beta = preconditioned_residual.norm();
         last_preconditioned_residual_norm = Some(beta);
-        if beta <= tolerance {
+        if beta <= tolerance && family_ok(&residual) {
             return FimLinearSolveReport {
                 solution,
                 converged: true,
@@ -1329,7 +1654,8 @@ fn solve_with_cpr_fine_smoother(
                 let cols = inner + 1;
                 let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
                 let candidate = &solution + combine_basis(&basis[..cols], &y);
-                let candidate_residual = (rhs - &cs_mat_mul_vec(jacobian, &candidate)).norm();
+                let candidate_residual_vec = rhs - &cs_mat_mul_vec(jacobian, &candidate);
+                let candidate_residual = candidate_residual_vec.norm();
                 last_candidate_residual_norm = Some(candidate_residual);
                 restart_best_candidate_residual_norm = Some(
                     restart_best_candidate_residual_norm
@@ -1452,8 +1778,9 @@ fn solve_with_cpr_fine_smoother(
                 ));
                 restart_recorded = true;
 
-                if candidate_residual <= tolerance || iterations >= max_iterations {
-                    let converged = candidate_residual <= tolerance;
+                let family_converged = candidate_residual <= tolerance && family_ok(&candidate_residual_vec);
+                if family_converged || iterations >= max_iterations {
+                    let converged = family_converged;
                     return FimLinearSolveReport {
                         solution: candidate,
                         converged,
@@ -1549,13 +1876,15 @@ fn solve_with_cpr_fine_smoother(
         }
     }
 
-    let final_residual = (rhs - &cs_mat_mul_vec(jacobian, &solution)).norm();
+    let final_residual_vec = rhs - &cs_mat_mul_vec(jacobian, &solution);
+    let final_residual = final_residual_vec.norm();
+    let final_converged = final_residual <= tolerance && family_ok(&final_residual_vec);
     FimLinearSolveReport {
         solution,
-        converged: final_residual <= tolerance,
+        converged: final_converged,
         iterations,
         final_residual_norm: final_residual,
-        failure_diagnostics: if final_residual <= tolerance {
+        failure_diagnostics: if final_converged {
             None
         } else {
             Some(build_iterative_failure_diagnostics(
@@ -1587,6 +1916,46 @@ pub(super) fn solve(
     options: &FimLinearSolveOptions,
     layout: Option<FimLinearBlockLayout>,
     used_fallback: bool,
+    equation_scaling: Option<&EquationScaling>,
+) -> FimLinearSolveReport {
+    // Phase 10 (`FIM-LINEAR-008`): block-ILU0 on the natural per-cell blocks, matching OPM's
+    // `Dune::BCRSMatrix<MatrixBlock<Scalar,3,3>>` block smoother. Re-applied (see `mod.rs`)
+    // after a first live attempt regressed the heavy case — investigating the Newton-side
+    // reconciliation (Step 10.1) the plan called for but was skipped before the first
+    // live test, rather than concluding the recipe doesn't work.
+    let cpr_fine_smoother_kind = if options.kind == FimLinearSolverKind::FgmresCpr {
+        CprFineSmootherKind::BlockIlu0
+    } else {
+        CprFineSmootherKind::BlockJacobi
+    };
+
+    // Promoted 2026-07-04 (Phase 9 Step 9.3, FIM-LINEAR-005): the offline solver lab showed
+    // `Row0Schur` (the historical restriction) never converges on either of two captured
+    // real-failure corpora, while `QuasiImpes` (OPM's own `getQuasiImpesWeights.hpp`
+    // construction) converges on ~92-93% of both. See `solve_with_restriction_kind` below
+    // for the offline solver lab's full variant comparisons.
+    solve_with_cpr_fine_smoother(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        used_fallback,
+        cpr_fine_smoother_kind,
+        CprPressureRestrictionKind::QuasiImpes,
+        equation_scaling,
+    )
+}
+
+/// Lab-only entry point (Phase 9 offline solver lab): full solve with an explicit CPR
+/// pressure-restriction variant, otherwise identical to `solve()`. Never called from the
+/// production path (`solve_linearized_system`) — only from `fim/linear/solver_lab.rs`.
+#[cfg(test)]
+pub(super) fn solve_with_restriction_kind(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    restriction_kind: CprPressureRestrictionKind,
 ) -> FimLinearSolveReport {
     let cpr_fine_smoother_kind = if options.kind == FimLinearSolverKind::FgmresCpr {
         CprFineSmootherKind::FullIlu0
@@ -1599,15 +1968,41 @@ pub(super) fn solve(
         rhs,
         options,
         layout,
-        used_fallback,
+        false,
         cpr_fine_smoother_kind,
+        restriction_kind,
+        None,
+    )
+}
+
+/// Lab-only entry point (Phase 10 bundle test): full solve with an explicit fine-smoother
+/// kind *and* restriction kind, so the offline lab can vary both axes independently. Never
+/// called from the production path.
+#[cfg(test)]
+pub(super) fn solve_with_smoother_and_restriction(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    equation_scaling: Option<&EquationScaling>,
+) -> FimLinearSolveReport {
+    solve_with_cpr_fine_smoother(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        false,
+        fine_smoother_kind,
+        restriction_kind,
+        equation_scaling,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use nalgebra::DVector;
-    use sprs::TriMatI;
 
     use super::*;
 
@@ -1630,6 +2025,7 @@ mod tests {
                 perforation_tail_start: 3,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0]);
@@ -1660,6 +2056,7 @@ mod tests {
                 perforation_tail_start: 3,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
 
         let rhs = DVector::from_vec(vec![0.0, 0.0, 0.0, 1.0]);
@@ -1688,6 +2085,7 @@ mod tests {
                 perforation_tail_start: 3,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0, 0.0]);
@@ -1719,6 +2117,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
 
         assert!(preconditioner.pressure_dense_inverse.is_some());
@@ -1752,6 +2151,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             true,
+            None,
         );
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
@@ -1760,7 +2160,7 @@ mod tests {
             diagnostics.coarse_solver,
             FimPressureCoarseSolverKind::ExactDense
         );
-        assert_eq!(diagnostics.smoother_label, "ilu0");
+        assert_eq!(diagnostics.smoother_label, "block-ilu0");
         assert!(diagnostics.coarse_applications > 0);
         assert!(diagnostics.average_reduction_ratio <= 1.0);
     }
@@ -1769,7 +2169,8 @@ mod tests {
     fn pressure_transfer_weights_follow_local_schur_elimination() {
         let block = DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0]);
 
-        let (restriction, prolongation) = build_pressure_transfer_weights(&block);
+        let (restriction, prolongation) =
+            build_pressure_transfer_weights(&block, CprPressureRestrictionKind::Row0Schur);
 
         assert!((restriction[0] - 1.0).abs() < 1e-12);
         assert!((restriction[1] + 1.0 / 3.0).abs() < 1e-12);
@@ -1804,6 +2205,7 @@ mod tests {
                 perforation_tail_start: 4,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
 
         assert_eq!(preconditioner.pressure_rows.len(), 2);
@@ -1836,6 +2238,7 @@ mod tests {
                 perforation_tail_start: 4,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
 
         let rhs = DVector::from_vec(vec![1.0, 0.0, 0.0, 0.0, 0.0]);
@@ -1908,6 +2311,81 @@ mod tests {
     }
 
     #[test]
+    fn block_ilu0_solves_exactly_when_cell_blocks_are_uncoupled() {
+        // Two 2x2 diagonal-dominant cell blocks with no cross-cell coupling: block-ILU(0)
+        // has nothing to approximate here, so `apply` must be exact, just like the scalar
+        // ILU(0) diagonal-system test above.
+        let mut tri = TriMatI::<f64, usize>::new((4, 4));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(1, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        tri.add_triplet(2, 2, 5.0);
+        tri.add_triplet(2, 3, -1.0);
+        tri.add_triplet(3, 2, 1.0);
+        tri.add_triplet(3, 3, 6.0);
+        let matrix = tri.to_csr();
+        let layout = FimLinearBlockLayout {
+            cell_block_count: 2,
+            cell_block_size: 2,
+            well_bhp_count: 0,
+            perforation_tail_start: 4,
+        };
+
+        let factors = factorize_block_ilu0(&matrix, layout).expect("expected block ILU factors");
+        let x = DVector::from_vec(vec![1.0, -2.0, 3.0, -4.0]);
+        let rhs = cs_mat_mul_vec(&matrix, &x);
+
+        let solved = factors.apply(&rhs);
+
+        assert!((&solved - x).norm() < 1e-10);
+    }
+
+    #[test]
+    fn block_ilu0_reduces_residual_with_cell_coupling_and_scalar_tail() {
+        // Two coupled 2x2 cell blocks plus a scalar well-BHP tail row coupled to cell 0.
+        // ILU(0) with fill restricted to the original pattern is not expected to be exact
+        // here (that would be the wrong gate) — the gate is that applying it as a
+        // preconditioner meaningfully reduces the residual, i.e. it is a valid, stable
+        // smoother, not a numerically broken one.
+        let mut tri = TriMatI::<f64, usize>::new((5, 5));
+        tri.add_triplet(0, 0, 6.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(0, 2, 0.5);
+        tri.add_triplet(0, 4, 0.3);
+        tri.add_triplet(1, 0, 1.0);
+        tri.add_triplet(1, 1, 5.0);
+        tri.add_triplet(2, 0, 0.5);
+        tri.add_triplet(2, 2, 7.0);
+        tri.add_triplet(2, 3, 1.0);
+        tri.add_triplet(3, 2, 1.0);
+        tri.add_triplet(3, 3, 6.0);
+        tri.add_triplet(4, 0, 0.3);
+        tri.add_triplet(4, 4, 4.0);
+        let matrix = tri.to_csr();
+        let layout = FimLinearBlockLayout {
+            cell_block_count: 2,
+            cell_block_size: 2,
+            well_bhp_count: 1,
+            perforation_tail_start: 5,
+        };
+
+        let factors = factorize_block_ilu0(&matrix, layout).expect("expected block ILU factors");
+        let x = DVector::from_vec(vec![1.0, -2.0, 3.0, -1.5, 0.7]);
+        let rhs = cs_mat_mul_vec(&matrix, &x);
+        let initial_residual = rhs.norm();
+
+        let preconditioned = factors.apply(&rhs);
+        let residual_after = (&rhs - &cs_mat_mul_vec(&matrix, &preconditioned)).norm();
+
+        assert!(preconditioned.iter().all(|v| v.is_finite()));
+        assert!(
+            residual_after < initial_residual,
+            "block-ILU0 should reduce the residual as a preconditioner: before={initial_residual:.3e} after={residual_after:.3e}"
+        );
+    }
+
+    #[test]
     fn cpr_with_full_ilu_smoother_reduces_fgmres_iteration_count() {
         let mut tri = TriMatI::<f64, usize>::new((9, 9));
         tri.add_triplet(0, 0, 8.0);
@@ -1942,6 +2420,7 @@ mod tests {
             max_iterations: 30,
             relative_tolerance: 1e-10,
             absolute_tolerance: 1e-12,
+            eliminate_wells: false,
         };
         let layout = Some(FimLinearBlockLayout {
             cell_block_count: 3,
@@ -1957,6 +2436,8 @@ mod tests {
             layout,
             false,
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
+            None,
         );
         let ilu_report = solve_with_cpr_fine_smoother(
             &matrix,
@@ -1965,6 +2446,8 @@ mod tests {
             layout,
             false,
             CprFineSmootherKind::FullIlu0,
+            CprPressureRestrictionKind::Row0Schur,
+            None,
         );
 
         assert!(block_jacobi_report.converged);
@@ -2016,6 +2499,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             false,
+            None,
         );
 
         assert!(report.converged);
@@ -2045,6 +2529,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             CprFineSmootherKind::BlockJacobi,
+            CprPressureRestrictionKind::Row0Schur,
         );
         let rhs = DVector::from_vec(vec![1.0, -2.0]);
 
@@ -2075,6 +2560,7 @@ mod tests {
                 perforation_tail_start: n,
             }),
             false,
+            None,
         );
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");
@@ -2083,7 +2569,7 @@ mod tests {
             diagnostics.coarse_solver,
             FimPressureCoarseSolverKind::BiCgStab
         );
-        assert_eq!(diagnostics.smoother_label, "ilu0/post-bj");
+        assert_eq!(diagnostics.smoother_label, "block-ilu0");
     }
 
     #[test]
@@ -2108,6 +2594,7 @@ mod tests {
                 max_iterations: 12,
                 relative_tolerance: 1e-8,
                 absolute_tolerance: 1e-10,
+                eliminate_wells: false,
             },
             Some(FimLinearBlockLayout {
                 cell_block_count: 6,
@@ -2116,6 +2603,7 @@ mod tests {
                 perforation_tail_start: 6,
             }),
             false,
+            None,
         );
 
         assert!(
@@ -2195,6 +2683,7 @@ mod tests {
                 perforation_tail_start: 4,
             }),
             true,
+            None,
         );
 
         let diagnostics = report.cpr_diagnostics.expect("expected CPR diagnostics");

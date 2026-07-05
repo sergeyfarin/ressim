@@ -1212,6 +1212,17 @@ fn nonlinear_history_stabilization_trace(
 // `opm/simulators/flow/NonlinearSolver.cpp::detectOscillations()`/`stabilizeNonlinearUpdate()`.
 // Unlike `nonlinear_history_stabilization_decision` above (cell-site-keyed, hard-capped),
 // this tracks per-family *residual norm history* and evolves a single scalar smoothly.
+//
+// Phase 11 follow-up (`FIM-NEWTON-006`): originally scoped to `water`/`oil_component`/
+// `gas_component` only, matching a guess that well/perforation rows have "different scaling/
+// switch behavior" (deferred pending evidence). That evidence now exists: a live heavy-case
+// retry showed `perforation_flow`'s scaled residual alternating in an exact 2-period cycle
+// (`d1 ≈ 0, d2 ≈ 0.6` — a textbook match for this exact test) while water/oil_component stayed
+// flat, and a Newton run with well/perforation unknowns fully Schur-eliminated from the linear
+// system (`FIM-LINEAR-010`) showed the *identical* oscillation — proving it is not a linear-
+// system-structure artifact this detector should have been blind to, but a genuine nonlinear
+// residual oscillation OPM's own (family-agnostic) test is designed to catch. Widened to include
+// `well_constraint`/`perforation_flow`.
 
 const OSCILLATION_RELAX_REL_TOL: f64 = 0.2;
 const OSCILLATION_RELAX_INCREMENT: f64 = 0.1;
@@ -1223,6 +1234,8 @@ struct PerFamilyNorms {
     water: f64,
     oil_component: f64,
     gas_component: f64,
+    well_constraint: f64,
+    perforation_flow: f64,
 }
 
 impl Default for PerFamilyNorms {
@@ -1231,6 +1244,8 @@ impl Default for PerFamilyNorms {
             water: f64::INFINITY,
             oil_component: f64::INFINITY,
             gas_component: f64::INFINITY,
+            well_constraint: f64::INFINITY,
+            perforation_flow: f64::INFINITY,
         }
     }
 }
@@ -1241,6 +1256,12 @@ impl PerFamilyNorms {
             water: diagnostics.water.scaled_value,
             oil_component: diagnostics.oil_component.scaled_value,
             gas_component: diagnostics.gas_component.scaled_value,
+            well_constraint: diagnostics
+                .well_constraint
+                .map_or(f64::INFINITY, |peak| peak.scaled_value),
+            perforation_flow: diagnostics
+                .perforation_flow
+                .map_or(f64::INFINITY, |peak| peak.scaled_value),
         }
     }
 }
@@ -1288,6 +1309,16 @@ fn detect_oscillation(current: PerFamilyNorms, prev1: PerFamilyNorms, prev2: Per
             current.gas_component,
             prev1.gas_component,
             prev2.gas_component,
+        ),
+        family_is_oscillating(
+            current.well_constraint,
+            prev1.well_constraint,
+            prev2.well_constraint,
+        ),
+        family_is_oscillating(
+            current.perforation_flow,
+            prev1.perforation_flow,
+            prev2.perforation_flow,
         ),
     ]
     .into_iter()
@@ -2943,10 +2974,48 @@ pub(crate) fn run_fim_timestep(
                 linear_options.kind.label(),
             );
         }
-        let mut linear_report =
-            solve_linearized_system(&assembly.jacobian, &rhs, &linear_options, block_layout);
+        // Step 10.1 follow-up (`FIM-LINEAR-009`): family-aware convergence is built and
+        // offline-lab-validated infrastructure, but the offline evidence did NOT support it as
+        // the primary fix (only 1/35 heavy-corpus systems showed a real per-family overshoot;
+        // see `docs/FIM_CONVERGENCE_WORKLOG.md` "Step 10.1 follow-up"). Kept opt-in (`None`
+        // here) rather than wired live, pending stronger evidence or a different application.
+        let mut linear_report = solve_linearized_system(
+            &assembly.jacobian,
+            &rhs,
+            &linear_options,
+            block_layout,
+            None,
+        );
         linear_solve_time_ms += linear_report.total_time_ms;
         linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
+
+        // Step 10.1 follow-up (`FIM-LINEAR-008` reopened): under the loosened Phase 10 CPR
+        // tolerance the linear solve itself usually succeeds, but the *Newton* loop can still
+        // exhaust `max_newton_iterations` on a near-miss (see the worklog's "Step 10.4
+        // (reopened)" section). The existing capture below only fires when the linear solve
+        // fails, so it never captures these systems. Capture the final iteration's system
+        // unconditionally (regardless of `linear_report.converged`) so the offline lab has real
+        // near-miss systems to test a family-aware convergence criterion against.
+        #[cfg(not(target_arch = "wasm32"))]
+        if iteration + 1 == options.max_newton_iterations {
+            if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env() {
+                let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                    newton_iteration: iteration,
+                    failure_reason: "final-iteration-near-miss".to_string(),
+                    dominant_family: residual_diagnostics.global.family.label().to_string(),
+                    dominant_item_index: residual_diagnostics.global.item_index,
+                };
+                crate::fim::linear::capture::write_capture(
+                    &capture_dir,
+                    crate::fim::linear::capture::next_capture_sequence(),
+                    &metadata,
+                    block_layout,
+                    &assembly.jacobian,
+                    &rhs,
+                    Some(&assembly.equation_scaling),
+                );
+            }
+        }
 
         let mut used_fallback = false;
         if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
@@ -3000,6 +3069,30 @@ pub(crate) fn run_fim_timestep(
                     detail,
                 );
             }
+            // Phase 9 step 9.1: offline solver-lab capture. Native-only and inert unless
+            // FIM_CAPTURE_DIR is set — dumps the exact failed system so preconditioner
+            // variants can be compared as full solves out-of-loop instead of via live
+            // solver changes.
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env() {
+                let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                    newton_iteration: iteration,
+                    failure_reason: iterative_failure_reason
+                        .map(|reason| reason.label().to_string())
+                        .unwrap_or_else(|| "non-finite".to_string()),
+                    dominant_family: residual_diagnostics.global.family.label().to_string(),
+                    dominant_item_index: residual_diagnostics.global.item_index,
+                };
+                crate::fim::linear::capture::write_capture(
+                    &capture_dir,
+                    crate::fim::linear::capture::next_capture_sequence(),
+                    &metadata,
+                    block_layout,
+                    &assembly.jacobian,
+                    &rhs,
+                    Some(&assembly.equation_scaling),
+                );
+            }
             if linear_report
                 .failure_diagnostics
                 .as_ref()
@@ -3018,8 +3111,13 @@ pub(crate) fn run_fim_timestep(
             }
             let mut fallback_options = options.linear;
             fallback_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
-            linear_report =
-                solve_linearized_system(&assembly.jacobian, &rhs, &fallback_options, block_layout);
+            linear_report = solve_linearized_system(
+                &assembly.jacobian,
+                &rhs,
+                &fallback_options,
+                block_layout,
+                None,
+            );
             used_fallback = true;
             linear_report.used_fallback = true;
             linear_solve_time_ms += linear_report.total_time_ms;
@@ -4735,18 +4833,66 @@ mod tests {
             water: 1.0,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         let prev1 = PerFamilyNorms {
             water: 2.0,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         let prev2 = PerFamilyNorms {
             water: 1.01,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         assert_eq!(detect_oscillation(current, prev1, prev2), 1);
+    }
+
+    #[test]
+    fn detect_oscillation_flags_perforation_flow_two_step_relative_change() {
+        // Matches the measured heavy-case pattern: perforation_flow alternates while the cell
+        // families stay flat (`FIM-NEWTON-006`).
+        let current = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+            perforation_flow: 2.137e-5,
+            well_constraint: 1.0,
+        };
+        let prev1 = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+            perforation_flow: 3.419e-5,
+            well_constraint: 1.0,
+        };
+        let prev2 = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+            perforation_flow: 2.137e-5,
+            well_constraint: 1.0,
+        };
+        assert_eq!(detect_oscillation(current, prev1, prev2), 1);
+    }
+
+    #[test]
+    fn detect_oscillation_ignores_missing_well_and_perforation_families() {
+        // No wells/perforations in this system: both default to infinity (from_diagnostics'
+        // `None` mapping) and must never register as oscillating.
+        let missing = PerFamilyNorms {
+            water: 1.0,
+            oil_component: 1.0,
+            gas_component: 1.0,
+            well_constraint: f64::INFINITY,
+            perforation_flow: f64::INFINITY,
+        };
+        assert_eq!(detect_oscillation(missing, missing, missing), 0);
     }
 
     #[test]
@@ -4756,16 +4902,22 @@ mod tests {
             water: 1.0,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         let prev1 = PerFamilyNorms {
             water: 2.0,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         let prev2 = PerFamilyNorms {
             water: 4.0,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         assert_eq!(detect_oscillation(current, prev1, prev2), 0);
 
@@ -4774,6 +4926,8 @@ mod tests {
             water: 1.0,
             oil_component: 1.0,
             gas_component: 1.0,
+            well_constraint: 1.0,
+            perforation_flow: 1.0,
         };
         assert_eq!(detect_oscillation(steady, steady, steady), 0);
     }

@@ -1,9 +1,14 @@
 use nalgebra::DVector;
 use sprs::CsMat;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod capture;
 mod dense_lu_debug;
 mod gmres_block_jacobi;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod solver_lab;
 mod sparse_lu_debug;
+mod well_schur;
 
 const DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
 const WASM_DIRECT_SOLVE_ROW_THRESHOLD: usize = DIRECT_SOLVE_ROW_THRESHOLD;
@@ -118,6 +123,12 @@ pub(crate) struct FimLinearSolveOptions {
     pub(crate) max_iterations: usize,
     pub(crate) relative_tolerance: f64,
     pub(crate) absolute_tolerance: f64,
+    /// Phase 11 (`FIM-LINEAR-010`): Schur-eliminate well-BHP and perforation-rate unknowns from
+    /// the linear system before the iterative CPR/GMRES solve, matching OPM's `StandardWell`
+    /// architecture (well block eliminated every Newton iteration, recovered after the reservoir
+    /// solve) rather than iterating them as ordinary global unknowns. Off by default pending
+    /// offline-lab validation (`solve_with_well_elimination`, `fim/linear/well_schur.rs`).
+    pub(crate) eliminate_wells: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,12 +167,24 @@ impl FimLinearBlockLayout {
 
 impl Default for FimLinearSolveOptions {
     fn default() -> Self {
+        // Phase 10 (`FIM-LINEAR-008`): OPM's actual shipped `cprw` recipe pairs a loose
+        // linear tolerance (`0.005` relative reduction) with a small iteration budget
+        // (`maxiter: 20`). ResSim's linear solve always starts from x_0=0, so r_0=rhs
+        // exactly and OPM's relative-reduction target translates exactly to
+        // `relative_tolerance = 5e-3` here. Re-applied after a first live attempt
+        // regressed the heavy case (Newton-side mechanisms weren't yet reconciled to the
+        // new linear-solve noise level, Step 10.1) — see `docs/FIM_CONVERGENCE_WORKLOG.md`
+        // "Phase 10" for the re-applied investigation.
         Self {
             kind: FimLinearSolverKind::FgmresCpr,
             restart: 30,
-            max_iterations: 150,
-            relative_tolerance: 1e-7,
-            absolute_tolerance: 1e-10,
+            max_iterations: 20,
+            relative_tolerance: 5e-3,
+            absolute_tolerance: 1e-12,
+            // Phase 11 (`FIM-LINEAR-010`): offline lab on 35 real captured heavy-case systems
+            // showed a decisive win (34/35 -> 35/35 converged, mean linear iterations 3.9 -> 1.1)
+            // — promoted to default pending the live control-matrix gate.
+            eliminate_wells: true,
         }
     }
 }
@@ -195,6 +218,7 @@ pub(crate) fn solve_linearized_system(
     rhs: &DVector<f64>,
     options: &FimLinearSolveOptions,
     layout: Option<FimLinearBlockLayout>,
+    equation_scaling: Option<&crate::fim::scaling::EquationScaling>,
 ) -> FimLinearSolveReport {
     #[cfg(not(target_arch = "wasm32"))]
     if should_force_direct_solve(options.kind, jacobian.rows(), false) {
@@ -206,16 +230,38 @@ pub(crate) fn solve_linearized_system(
         return dense_lu_debug::solve(jacobian, rhs, options, false);
     }
 
+    // Phase 11 (`FIM-LINEAR-010`): eliminate well/perforation unknowns before the iterative
+    // solve, matching OPM's `StandardWell` architecture. Only applies to the iterative backends
+    // (direct solves are already exact, no oscillation-avoidance value); only fires when the
+    // layout actually has a well/perforation tail to eliminate, so the recursive call this makes
+    // back into `solve_linearized_system` for the reduced (tail-free) system naturally falls
+    // through to the normal dispatch below without re-entering this branch.
+    if options.eliminate_wells
+        && matches!(
+            options.kind,
+            FimLinearSolverKind::FgmresCpr | FimLinearSolverKind::GmresIlu0
+        )
+        && layout.is_some_and(|l| l.well_bhp_count > 0 || l.perforation_tail_start < jacobian.rows())
+    {
+        return well_schur::solve_with_well_elimination(
+            jacobian,
+            rhs,
+            options,
+            layout.expect("checked above"),
+            equation_scaling,
+        );
+    }
+
     match options.kind {
         FimLinearSolverKind::DenseLuDebug => dense_lu_debug::solve(jacobian, rhs, options, false),
         FimLinearSolverKind::SparseLuDebug => sparse_lu_debug::solve(jacobian, rhs, options, false),
         FimLinearSolverKind::GmresIlu0 => {
-            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false)
+            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false, equation_scaling)
         }
         // CPR is still incomplete, but the default FIM path now uses a pressure-first
         // two-stage iterative backend instead of falling straight back to sparse LU.
         FimLinearSolverKind::FgmresCpr => {
-            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false)
+            gmres_block_jacobi::solve(jacobian, rhs, options, layout, false, equation_scaling)
         }
     }
 }
@@ -251,6 +297,7 @@ mod tests {
                 ..FimLinearSolveOptions::default()
             },
             None,
+            None,
         );
 
         assert!(report.converged);
@@ -269,7 +316,7 @@ mod tests {
         let rhs = DVector::from_vec(vec![4.0, 9.0]);
 
         let report =
-            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
+            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None, None);
 
         assert!(report.converged);
         assert!(!report.used_fallback);
@@ -287,7 +334,7 @@ mod tests {
         let rhs = DVector::from_element(n, 1.0);
 
         let report =
-            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None);
+            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None, None);
 
         assert!(report.converged);
         assert!(!report.used_fallback);

@@ -2492,19 +2492,34 @@ mod phase5_repro {
     /// `configureCommonTwoPhase` + `waterWellConfig` (pressure control) +
     /// `setWells`).
     ///
-    /// KNOWN REGRESSION (Phase 5 AD-assembler cutover): under the AD
-    /// assembler this case's timestep controller collapses to the dt floor
-    /// (~1e-5 days, i.e. the target dt halved ~16 times) and never recovers,
-    /// putting the run on track for ~100,000 substeps (`MAX_SUBSTEPS`)
-    /// instead of completing in ~32 substeps as it does on the pre-cutover
-    /// assembler. `#[ignore]`d because it does not terminate in reasonable
-    /// time; kept as the reproduction case for the next investigation pass.
+    /// History: this documented the Phase 5 AD-cutover dt-floor collapse; that
+    /// two-phase Jacobian singularity was fixed in `ffd965a` and the case now
+    /// completes (31 substeps as of the Phase 7 baseline). Kept `#[ignore]`d
+    /// because it is still slow in debug builds, and doubles as the capture
+    /// driver for the offline solver lab: run manually with
+    /// `FIM_CAPTURE_DIR=<dir> cargo test --release ... repro_water_pressure_12x12x3 -- --ignored`
+    /// to dump every failed iterative linear system for offline analysis
+    /// (`fim/linear/capture.rs` / `fim/linear/solver_lab.rs`).
     #[test]
     #[ignore]
     fn repro_water_pressure_12x12x3() {
-        let nx = 12usize;
-        let ny = 12usize;
-        let nz = 3usize;
+        run_water_pressure_capture_driver(12, 12, 3, 1.0);
+    }
+
+    /// Sibling capture driver mirroring the wasm diagnostic's bounded
+    /// `water-pressure --grid 23x23x1 --steps 1 --dt 0.25` control case —
+    /// the second case the offline solver lab compares against (the
+    /// CPR-improvement doc's over-threshold probe).
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_23x23x1() {
+        run_water_pressure_capture_driver(23, 23, 1, 0.25);
+    }
+
+    /// Shared body for the native water-pressure repro/capture drivers. Exact
+    /// mirror of `configureCommonTwoPhase` + `waterWellConfig` (pressure
+    /// control) in `scripts/fim-wasm-diagnostic.mjs`.
+    fn run_water_pressure_capture_driver(nx: usize, ny: usize, nz: usize, dt_days: f64) {
         let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
         sim.set_fim_enabled(true);
         sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
@@ -2530,7 +2545,7 @@ mod phase5_repro {
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false).unwrap();
 
         let start = Instant::now();
-        let trace = sim.step_with_diagnostics(1.0);
+        let trace = sim.step_with_diagnostics(dt_days);
         let elapsed = start.elapsed();
         println!("native step elapsed: {:.3}s", elapsed.as_secs_f64());
         println!("trace tail (last 4000 chars):");
