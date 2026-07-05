@@ -769,6 +769,19 @@ fn appleyard_damping_breakdown(
         // FW_INFLECTION_OVERSHOOT_FACTOR * dist_to_inflection. Marginal
         // crossings are let through; basin-jumping protection still holds
         // for genuinely wild updates.
+        //
+        // `FIM-NEWTON-007` (REFUTED, see registry): `dist` degenerates toward zero for a cell
+        // sitting essentially at the inflection point, and the un-margined
+        // `chop = dist / |dsw_signed|` then chops `max_damping` to ~0, stalling Newton at that
+        // state (observed live at `water@387`/`cell129`). Three variants that relax this
+        // degenerate case (additive margin, `dist.max(max_saturation_change)` floor, skip the
+        // chop entirely below a `1e-4` degenerate-range threshold) were each tried live and each
+        // regressed the heavy case substantially (`62→263`, `62→263`, `62→238` substeps, all with
+        // `retry_dom` reverting to the just-fixed `perf@1299` pattern) — the heavy case's Newton
+        // trajectory is apparently sensitive enough to this exact site's damping that any change
+        // here perturbs the path into re-triggering a different, already-addressed failure mode,
+        // rather than genuinely fixing anything. Left as-is; do not re-attempt a local chop
+        // formula change at this site without new evidence about *why* it's this sensitive.
         let dsw_signed = update[offset + 1];
         if dsw_signed.abs() > 1e-12 {
             if let Some(sw_inflect) = fw_inflection_point_sw(sim, cell) {

@@ -1,0 +1,654 @@
+# FIM Convergence Archive: 2026-04-08 to 2026-07-03
+
+Archived from `docs/FIM_CONVERGENCE_WORKLOG.md` on 2026-07-05 to keep the active worklog focused
+on the current investigation (Phase 9 onward — the component-isolation solver lab, Phase 10's
+OPM `cprw` bundle, Phase 11's well-Schur-elimination and OSC-DETECT work). This covers the water/
+gas shelf investigations, the Phase 5 AD-assembler cutover, Phase 6 (legacy Jacobian retirement),
+Phase 7 (OPM-style Newton globalization, all 5 sub-phases), Phase 8 (hotspot state
+characterization), and the Hypothesis C row-scaling attempt — all resolved, reverted, or
+superseded by later phases; kept here for reference, not active.
+
+See `docs/FIM_STATUS.md` for current consolidated solver status, and
+`docs/FIM_CONVERGENCE_WORKLOG.md` for the active investigation.
+
+---
+
+## Current Findings - 2026-04-08
+
+### Water shelf
+- The active hard water shelf is reservoir-row dominated, not well/perforation dominated.
+- Completed sequential replays on 2026-04-11 clarified that the previously documented `129`-substep baseline is stale on this replay path well before current head. The same `water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary` command finishes at:
+  - `344980f` (2026-04-08): `substeps=12226`, `retries=0/3636/0`, `retry_dom=nonlinear-bad:water@1095`, `growth=max-growth`, `hotspot_newton_caps=5`, `outer_ms=1244516.4`
+  - `12ae00a` (2026-04-10): `substeps=12226`, `retries=0/3636/0`, `retry_dom=nonlinear-bad:water@1095`, `growth=max-growth`, `hotspot_newton_caps=5`, `outer_ms=1243420.0`
+  - current reverted head: `substeps=16448`, `retries=0/4892/0`, `retry_dom=nonlinear-bad:water@1020`, `growth=hotspot-repeat`, `hotspot_newton_caps=4`, `outer_ms=268731.6`
+- Repeated-hotspot cooldown now caps any accepted-step regrowth above `1.0`, not just `max-growth`.
+- Latest canonical result:
+  - before: `substeps=134`, `retries=0/44/0`, `outer_ms=121254.6`, `retry_ms=32917.0`
+  - current: `substeps=129`, `retries=0/35/0`, `outer_ms=115710.8`, `retry_ms=19333.0`, `retry_dom=nonlinear-bad:oil@430`
+  - current metric surface also reports `hotspot_newton_caps=12`
+- Shared outer-step carryover prototype result:
+  - kept the headline shelf counts at `substeps=129`, `retries=0/35/0`, `hotspot_newton_caps=12`
+  - but runtime moved the wrong way: `outer_ms=120294.2`, `retry_ms=22175.0`
+- Narrowed one-substep seed-cap refinement result:
+  - preserved the same headline shelf counts at `substeps=129`, `retries=0/35/0`, `hotspot_newton_caps=12`
+  - but water runtime regressed further to `outer_ms=137259.1`, `retry_ms=26023.0`
+- Reverted current-head state:
+  - the cross-outer-step carryover experiment was removed after the refinement still failed the water guard
+  - post-revert canonical replay returned to the prior water shelf class: `substeps=129`, `retries=0/35/0`, `hotspot_newton_caps=12`, `outer_ms=119991.9`, `retry_ms=22092.0`, `retry_dom=nonlinear-bad:oil@430`
+- Current interpretation:
+  - this controller slice is a real water-side improvement
+  - the dominant hotspot did not move, so the remaining issue is still the same reservoir-row shelf rather than a new failure family
+  - carrying a hard dt cap across outer-step boundaries is not a clean shared-policy lever here; both carryover variants held the water shelf too conservatively and were reverted
+  - the completed 2026-04-11 replays narrow the actual question: the old `129`-substep water baseline is already stale by April 8 for this exact replay path, but current head still worsens that already-drifted water shelf further, moving from the April 8/10 `12226` / `3636` / `water@1095` regime to the current `16448` / `4892` / `water@1020` regime
+  - that same newer water regression is not just “more of the same” runtime-wise: accepted-substep count and retry count got worse, but outer runtime dropped sharply because the newer linear/direct path is much cheaper per substep than the older April 8/10 path
+
+### Gas shelf
+- The shipped gas shelf is still a nonlinear hotspot problem, but its active identity and damping path are now visible and stable.
+- Landed current-head changes already active on this shelf:
+  - fallback-assisted Newton iterations now participate in nonlinear-history damping
+  - alternating symmetric injector-side gas cells share one hotspot site key
+  - cooldown memory is broader than exact-cell identity and now holds on `hotspot-repeat` consistently after step 1
+  - converged fallback shelves are classified as `nonlinear-bad`, not falsely as `linear-bad`
+- Latest shipped replay:
+  - step 1: `retries=0/3/0`, `growth=max-growth`, `hotspot_newton_caps=0`
+  - steps 2-6: `retries=0/2/0`, `growth=hotspot-repeat`, `hotspot_newton_caps=4`
+  - wall clock improved from the old `1:14.59` class to about `1:11.18`
+- Shared outer-step carryover prototype result:
+  - step 4 improved from `retries=0/2/0` to `retries=0/0/0`
+  - steps 2, 3, 5, and 6 stayed at `retries=0/2/0`
+  - `hotspot_newton_caps` stayed active (`4` on the retrying gas steps, `3` on the clean step-4 replay)
+- Reverted current-head state:
+  - after removing cross-outer-step carryover, the shipped replay is back to the known shared-policy baseline: `0/3/0`, `0/2/0`, `0/2/0`, `0/0/0`, `0/2/0`, `0/2/0`
+  - `hotspot_newton_caps` remains active on the retrying gas steps without the reverted carryover path
+- Current interpretation:
+  - the controller is now engaging on the intended gas-side path
+  - outer-step carryover was directionally correct for gas because it could suppress one repeated retry shelf without losing the hotspot-repeat signal
+  - it is still not the right shared implementation because the rest of the gas replay remained in the same `0/2/0` regime while water regressed
+  - the parked Phase 1 CPR fine-smoother change is not the cause of the current gas replay shape: rebuilding wasm and replaying the same shipped case with the default CPR smoother temporarily forced back to block-Jacobi produced the same `0/3/0`, then repeated `0/2/0` shelf, including step 4 at `0/2/0`
+  - one more bounded carryover variant was tried on 2026-04-11: a soft first-outer-step regrowth throttle seeded only from repeated gas-region failures. On the experimental build it improved the shipped replay at step 3 and step 5 from `0/2/0` to `0/1/0`, but the slice was reverted instead of kept because the broader validation matrix did not support promotion. After revert the shipped gas replay returned to the documented current baseline (`0/3/0`, then repeated `0/2/0`)
+
+### Coarse pressure solver
+- The old coarse-solver note was too broad.
+- Representative hard 3D shelf (`12x12x3`) still uses the exact-dense coarse path and is not limited by coarse-stage reduction quality:
+  - `cpr=[rows=434 solver=dense apps=12 avg_rr=1.148e-13 last_rr=3.754e-14]`
+- Over-threshold CPR cases are still open on current head:
+  - bounded `23x23x1` probe now shows the new coarse backend in live use: `cpr=[rows=531 solver=bicgstab smoother=ilu0 ...]`
+  - current coarse-stage reduction quality is materially better than the old ILU defect-correction baseline: first retry rung reached `avg_rr=2.551e-6`, `last_rr=4.597e-5`; later retry rungs stayed in the `1e-5` to `1e-3` band
+  - despite that improvement, the same probe still hits repeated linear failure and dense-LU fallback on the full `1591`-row system after the first CPR-backed iteration on each retry ladder
+  - bounded follow-up experiment now isolates the post-coarse smoother specifically on the same over-threshold path: `cpr=[rows=531 solver=bicgstab smoother=ilu0/post-bj ...]`
+  - this does not remove fallback yet, but it changes the failure shape materially: the rejected CPR solves remain `reason=max-iters`, while `prec_res` drops from the earlier `1e8-1e9` class into `1e0-1e3` and `cand_res/final_res` drops from `1e3-1e4` into `1e-1-1e-3`
+  - at `dt=0.03125`, some Newton iterations now converge on the CPR path directly before later fallback resumes (`linear_iters=4`, `26`, `45`, `50` on successive accepted Newton iterations), which is the first clear sign that the instability is in the post-coarse global smoother/Krylov interaction rather than in coarse pressure reduction itself
+  - bounded Krylov-plateau follow-up is now tighter: one real GMRES issue was that full restart cycles could discard candidate progress unless convergence or breakdown happened inside the restart. After fixing that and replaying `23x23x1`, fallback burden dropped from `46` rejected CPR solves / `56` dense-LU uses to `28` rejected CPR solves / `36` dense-LU uses without changing the bounded shelf shape (`substeps=8`, `retries=0/3/0`)
+  - second bounded Krylov-tail follow-up is now also in: when the Givens residual estimate drops below tolerance but the true candidate residual still disagrees and Krylov space can still grow, the solver now keeps the current restart alive instead of restarting immediately. Replaying `23x23x1` with that fix cut fallback burden again from `28` rejected CPR solves / `36` dense-LU uses to `15` rejected CPR solves / `21` dense-LU uses, still with the same bounded shelf shape (`substeps=8`, `retries=0/3/0`)
+  - third bounded Krylov-tail follow-up is now in too: tiny-residual tails that have already reached the post-improvement asymptote now stop early as `restart-stagnation` instead of spending all five restart windows proving that later candidates are only worse. Replaying `23x23x1` with that bounded termination tweak cut fallback burden again from `15` rejected CPR solves / `21` dense-LU uses to `14` rejected CPR solves / `20` dense-LU uses, still with the same bounded shelf shape (`substeps=8`, `retries=0/3/0`)
+  - new per-restart failure traces show the remaining pattern more narrowly now: many former failures no longer die at the old false-estimate boundary. The remaining set splits into two smaller families: a tiny-residual asymptotic tail where the first 2–3 restarts improve by orders of magnitude before later restart candidates stall or worsen, and a smaller hard-state family where restart 1 never helps (`upd=n` from the first cycle) and all five restart windows are effectively spent proving that
+  - the new termination traces sharpen that split further: several former tiny-tail `max-iters` failures now stop at restart 3 or 4 with `reason=restart-stagnation` after `68-103` total iterations, while the hard-state family is still unchanged and remains full-budget `max-iters` with `upd=n` from restart 1
+  - bounded dead-state detection is now in for that remaining hard-state family: when restart 1 consumes the full window, never improves the iterate (`upd=n`), and is still clearly far from the tiny-tail regime, the solver now exits immediately as `reason=dead-state` instead of spending all five restart windows. On the same `23x23x1` replay this did not change the headline fallback count (`14` rejected CPR solves / `20` dense-LU uses), but it did collapse the hard-state failures from `150` iterations / `155` CPR applications down to `30` iterations / `31` CPR applications each
+  - Newton-side dead-state bypass is now in too: after one explicit `reason=dead-state` failure, later Newton iterations in the same substep stop retrying CPR and go straight to the direct backend. On the same `23x23x1` replay this cut rejected CPR solves again from `14` to `9`, while dense-LU uses stayed flat at `20`. In other words, the repeated rediscovery cost is now gone; the remaining cost is the direct fallback itself
+  - first direct-fallback cleanup is now in on wasm: the dense fallback no longer clones the dense matrix before LU and no longer uses a dense residual multiply just to validate the solve. Replaying `23x23x1` after that cleanup kept the same bounded behavior (`9` rejected CPR solves / `20` dense-LU uses, `substeps=8`, `retries=0/3/0`), which is the expected outcome for a semantics-preserving cost cut rather than an algorithmic fallback reduction
+  - bounded large-row direct-fallback A/B is now also in on wasm. Temporarily forcing the same `23x23x1` bounded replay back to dense LU preserved the earlier behavior class (`9` rejected CPR solves / `20` dense-LU uses, same `substeps=8`, `retries=0/3/0`) but took about `10866.6 ms` outer / `10764.0 ms` linear. Restoring sparse LU for large-row direct fallback changed the same replay only slightly on the control counts (`11` rejected CPR solves / `22` sparse-LU uses, still `substeps=8`, `retries=0/3/0`) while cutting runtime to about `1326.5 ms` outer / `1219.0 ms` linear. Current interpretation: sparse LU should stay as the large-row wasm direct fallback even though the iterative path still needs one more fallback-avoidance slice, because dense LU is an order-of-magnitude slower on the same remaining hard states
+  - bounded sparse-LU refinement follow-up is now also in. Adding a short iterative-refinement loop to the large-row sparse direct backend did not change the bounded control counts on `23x23x1` (`11` rejected CPR solves / `22` sparse-LU uses / `5` dead-state bypasses, same `substeps=8`, `retries=0/3/0`), but it did improve runtime again to about `1289.6 ms` outer / `1182.0 ms` linear. Current interpretation: this is worth keeping as a direct-path efficiency improvement, but it does not move the active diagnosis. The remaining leverage is still fallback incidence, not another direct-backend micro-optimization by itself
+  - bounded repeated-`restart-stagnation` bypass is now also in at the Newton layer. When the same substep hits two consecutive iterative failures with `reason=restart-stagnation`, later Newton iterations now bypass CPR and go straight to the row-selected direct backend for the remainder of that substep. On the same `23x23x1` bounded replay this new bypass fired twice, cut rejected CPR solves from `11` down to `9`, kept sparse direct fallback uses flat at `22`, preserved the same bounded shelf (`substeps=8`, `retries=0/3/0`), and improved runtime again to about `1174.6 ms` outer / `1074.0 ms` linear. Current interpretation: repeated restart-stagnation rediscovery is now as bounded as the earlier dead-state family; the remaining active cost is the `22` direct solves themselves
+  - bounded zero-move fallback bypass is now also in and is the new current head on this replay. If a fallback-backed Newton iteration produces only an effectively zero state move, using the existing effective-move floor (`<5e-3 bar`, `<5e-5` saturation), the next Newton iteration now bypasses CPR and goes straight to the row-selected direct backend instead of rerunning the same iterative solve on the same unchanged state. Two confirming `23x23x1` replays land on the same control counts: `6` rejected CPR solves, `19` sparse direct fallbacks, `5` dead-state bypasses, and `2` zero-move bypasses, with the same bounded shelf (`substeps=8`, `retries=0/3/0`). The runtime class remains in the same improved band (`outer_ms≈1188-1257`, `lin_ms≈1091-1152`). Current interpretation: same-substep CPR rediscovery is now bounded one step further; the remaining active cost is the remaining `19` direct solves themselves
+  - bounded near-converged iterative accept is now also in and is the new current head. If the CPR solve lands in a small-residual `restart-stagnation` or `max-iters` tail but is still close enough to tolerance (`outer_res <= 16x tol`, candidate residual no worse than `8x` the current iterate, and at least one restart improved the iterate), Newton now accepts that iterative step instead of paying for a direct fallback. Two confirming `23x23x1` replays agree on the new control counts: `6` rejected CPR solves, `18` sparse direct fallbacks, `5` dead-state bypasses, `2` zero-move bypasses, and `1` near-converged iterative accept, with the same bounded shelf (`substeps=8`, `retries=0/3/0`). Runtime remains in the same improved band (`outer_ms≈1209-1231`, `lin_ms≈1106-1121`). Current interpretation: the remaining active cost is now the remaining `18` direct solves themselves, not small-residual linear tails that were already good enough for Newton
+  - remaining fallback-site classification from the latest confirmed replay is now concrete enough to drive the next slice. The survivor set is not broad; it clusters into six hotspot families:
+    - substep 0: oil cell48 / `row=145 item=48` — one-shot `max-iters` tiny tail that sparse LU cleans up immediately
+    - substep 2: injector perf0 / `row=1589 item=0` — one `restart-stagnation` fallback followed by one zero-move direct cleanup iteration
+    - substep 4: oil cell49 / `row=148 item=49` — one `restart-stagnation` fallback followed by one zero-move direct cleanup iteration
+    - substep 5: water cell96 / `row=288 item=96` — one-shot `max-iters` tiny tail that sparse LU cleans up immediately
+    - substep 6: oil cell95 / `row=286 item=95` — the dominant repeated hard-state family: one `dead-state` fallback followed by five same-substep direct-bypass cleanup iterations
+    - substep 7: water cell51 / `row=153 item=51` — one `restart-stagnation` fallback at iter 0, after which CPR resumes and the substep converges
+  - one useful negative result also came out of the classification: substep 3 oil cell72 / `row=217 item=72` is exactly the kind of small-residual survivor that the new near-converged accept was meant to remove, and it no longer pays for direct fallback on current head
+  - updated interpretation from that site map:
+    - the dead-state family is now a localized nonlinear state-management problem, not another generic Krylov/coarse-pressure problem
+    - the two zero-move families show the current bypass is already doing what it should and are not the highest-value next linear target
+    - the cleanest remaining bounded linear opportunity is the small set of one-shot tiny/small-residual cleanup tails, because they still pay for sparse direct fallback once and then immediately converge
+- Isolated threshold comparison:
+  - revalidation on 2026-04-11 exposed that the current exact-dense control is also no longer on the previously documented baseline. The current reverted head measures `22x22x1` at `substeps=10`, `retries=0/4/0`, `retry_dom=nonlinear-bad:oil@1450`, `hotspot_newton_caps=5`, and `outer_ms=2149.4`
+  - historical re-baselining already narrows that drift materially: detached worktrees at `344980f` (2026-04-08) and `12ae00a` (2026-04-10) both still replay `22x22x1` at the older documented baseline, `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1450`
+  - over-threshold `23x23x1` crosses the coarse threshold (`rows=531 solver=bicgstab`) but keeps the same bounded shelf counts: `substeps=8`, `retries=0/3/0`, `retry_dom=nonlinear-bad:oil@1585`
+  - the same historical worktrees also keep `23x23x1` on that same bounded control, so the isolated control drift is specific to `22x22x1` and entered after `12ae00a`, not during the reverted carryover experiment
+  - the current code-backed threshold is explicit: coarse rows `<= 512` use exact-dense inversion and `> 512` switches to BiCGSTAB on the coarse system
+- Current linear-track interpretation:
+  - this bounded pair still isolates a real backend penalty: the over-threshold case does not add more retries or accepted substeps, but it still spends materially more time in linear work before converging the same shelf
+  - Phase 2 improved coarse-stage quality itself, but that alone was not enough to change bounded step behavior because Newton still falls back to `dense-lu` on the full `1591`-row system almost immediately after the first CPR-backed iteration on each retry ladder
+  - the bounded post-coarse smoother experiment adds a second, narrower result: once the post-coarse pass is switched to block-Jacobi, the iterative solve gets much closer to usable before fallback and occasionally survives whole Newton iterations on the CPR path
+  - the restart-boundary fix adds a third result: a real portion of the old plateau was bookkeeping loss, not just bad preconditioning
+  - the false-estimate continuation fix adds a fourth result: another real portion of the old plateau was premature restart, not just weak preconditioning or bad bookkeeping
+  - the tiny-tail termination tweak adds a fifth result: another real portion of the old plateau was just wasted proof work after the asymptote had already been reached
+  - that means the next over-threshold slice should stay inside Phase 2 but narrow further again: the wasted-iteration part, repeated-rediscovery part, and the first direct-path cleanup are now all in, so the remaining question is whether to make the direct fallback itself materially cheaper again via reusable workspace/factorization plumbing, or to reduce the number of direct fallbacks algorithmically
+  - the dense-vs-sparse direct-fallback A/B plus the sparse-refinement, repeated-restart-stagnation, zero-move bypass, and near-converged iterative-accept follow-ups narrow that again on wasm: the direct backend itself is now cheap enough to keep sparse LU on the hot path for large systems, same-substep CPR rediscovery is bounded more tightly again, and one class of small-residual linear tails no longer pays for direct fallback. The higher-value next slice is now to reduce how often the remaining hard states need any direct fallback at all
+  - completed post-`12ae00a` isolations now narrow the current regression source much further:
+    - disabling the Newton-side bypass/accept family in `newton.rs` does **not** restore the exact-dense control; `22x22x1` stays at `substeps=10`, `retries=0/4/0`, and `23x23x1` stays bounded at `8`/`0/3/0`
+    - disabling the April 10 GMRES-tail family in `gmres_block_jacobi.rs` **does** restore the exact-dense control; `22x22x1` returns to `substeps=8`, `retries=0/3/0`, while `23x23x1` stays bounded but slows to `outer_ms=1648.6`
+    - false-estimate continuation alone is sufficient to reproduce the `22x22x1` regression, but it is not the whole story: gating only false-estimate continuation to the over-threshold BiCGSTAB path still leaves `22x22x1` regressed at `10`/`0/4/0`, so at least one tiny-tail/dead-state branch also independently perturbs the exact-dense control
+    - a full over-threshold-only gate on the whole tail family is also too broad: it satisfies the bounded pair (`22x22x1 -> 8`/`0/3/0`, `23x23x1 -> 8`/`0/3/0`, `outer_ms=1087.0`) but badly regresses the representative exact-dense `12x12x3` water guard to `substeps=28583`, `retries=0/8494/0`, `retry_dom=nonlinear-bad:oil@943`, `outer_ms=523745.5`
+    - a trace-ratio follow-up was also tried and reverted: requiring a larger `preconditioned_residual / estimated_residual` gap before dead-state or false-estimate continuation could fire preserved `23x23x1` at `8`/`0/3/0` but left `22x22x1` unchanged at `10`/`0/4/0`. The filtered control trace from that candidate shows the remaining regression is no longer just the early dead-state family; after those first exits, the exact-dense shelf is still dominated by `reason=max-iters` failures with `upd=n` or a single early `upd=y` followed by flat restarts, plus later zero-move fallback cleanup
+    - a post-improvement plateau follow-up was then tried and reverted too: terminating a full restart after one earlier improving restart plus one already-flat restart preserved `23x23x1` (`8`/`0/3/0`, `outer_ms=1179.6`) but again left `22x22x1` unchanged at `10`/`0/4/0`, `outer_ms=2148.9`
+    - fallback-side producer-hotspot tuning is the first positive bounded hit after those linear-tail dead ends. Relaxing `PRODUCER_HOTSPOT_STAGNATION_THRESHOLD` from `1` to `2` in `newton.rs` leaves the representative `12x12x3` water guard on its current shelf (`16448` / `0/4892/0`) but materially improves both threshold controls: `22x22x1 -> 4`/`0/2/0` (`outer_ms=1482.7`) and `23x23x1 -> 4`/`0/2/0` (`outer_ms=1282.9`). The shipped `10x10x3` gas replay also shortens after step 1: steps `2-6` now each land at `substeps=4`, `retries=0/2/0` rather than the older longer accepted-substep class
+  - updated implication: restart-geometry tweaks appear exhausted for this exact-dense control, but the first fallback-side nonlinear-controller slice is actually moving the solver in the right direction. For Cartesian cases in the OPM Flow comparison class, that is the right objective function: fewer substeps and retries, not just cheaper failed linear work
+  - committed replay set on clean revision `eb54e95` confirms the slice is real and not a dirty-tree artifact:
+    - `22x22x1`: `substeps=4`, `retries=0/2/0`, `outer_ms=1421.2`
+    - `23x23x1`: `substeps=4`, `retries=0/2/0`, `outer_ms=1225.4`
+    - `12x12x3`: unchanged guard shelf at `substeps=16448`, `retries=0/4892/0`, `outer_ms=275550.5`
+    - shipped `10x10x3` gas replay: step 1 remains `8`/`0/3/0`, but steps `2-6` each now land at `substeps=4`, `retries=0/2/0`
+    - larger Cartesian probes on the same committed revision are now valid comparison points too: `20x20x3` water lands at `substeps=13`, `retries=0/6/0`, while `20x20x3` gas already lands at `substeps=4`, `retries=0/2/0`
+  - updated implication after the committed replay set: this producer-hotspot threshold change should stay in place and become the new working baseline for the next slice. The next optimization target is no longer whether this fallback-side direction is valid; it is how to continue reducing the remaining producer-dominated nonlinear retry ladders, especially on larger Cartesian water floods like `20x20x3`, without giving back the gas/water improvements already reproduced here
+  - 2026-04-11 `20x20x3` water trace follow-up ruled out one obvious timestep-side idea. A bounded post-cooldown hotspot-regrowth cap was tried in `fim/timestep.rs` to stop the first re-ramp after the `cell63=(3,3,0)` shelf (`0.007392 -> 0.022175` in the filtered step trace). Two variants were validated and both were reverted: `HOTSPOT_RELEASE_GROWTH_CAP=1.6` and then `2.0`. Both preserved the short control pair (`22x22x1` and `23x23x1` stayed at `substeps=4`, `retries=0/2/0`), but both worsened the target replay from `20x20x3 water -> substeps=13`, `retries=0/6/0` to `substeps=14`, `retries=0/6/0` with no retry reduction. Current interpretation: a generic first-post-cooldown growth cap just adds fragmentation; the remaining medium-grid water shelf still needs a more specific front-local nonlinear controller, not a blanket regrowth throttle.
+  - 2026-04-11 geometry-agnostic runtime audit tightened the next target. The only fixed-cell runtime gate was a diagnostics-only Newton trace special-case for cell `143`; it is now removed. The remaining solver heuristics are not cell-number-based, but one asymmetry is now the obvious next slice: gas hotspot memory in `fim/timestep.rs` already groups failures by injector-relative symmetry region, while non-gas hotspot memory still uses exact cell identity. Given the current `20x20x3` water trace walks through the same local front patch across `(3,3,0)`, `(3,3,1)`, `(3,3,2)`, `(2,4,1)`, and `(3,4,0)`, the next logical change should be to replace that exact non-gas hotspot memory with a geometry-agnostic local-region classifier keyed by topology and local front context rather than exact cell index.
+  - 2026-04-11 that non-gas retry-memory generalization is now implemented in a conservative form. `fim/timestep.rs` no longer treats oil/water hotspot cells as the same retry-memory site only when the exact cell repeats. Instead, non-gas hotspot memory is now classified by nearest-well local patch: same nearest well, within a one-cell lateral neighborhood, and staying on the same layer. The first broader version, which also merged vertically adjacent cells, was rejected immediately because it worsened `20x20x3 water` from `13` to `16` substeps while leaving retries flat. The tightened layer-local version keeps the active validation matrix unchanged (`20x20x3 water -> 13`/`0/6/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`) and adds focused timestep coverage for nearby non-gas grouping, far-cell separation, different-well separation, and vertical non-grouping. Current interpretation: this is the right geometry-agnostic controller foundation, but not yet the bounded convergence improvement on its own.
+  - 2026-04-11 the same geometry-agnostic local-region idea is now wired into Newton nonlinear-history damping. `fim/newton.rs` no longer increments the repeated non-gas hotspot streak only when the exact oil/water cell repeats; it now treats nearby non-gas cells in the same nearest-well local patch and layer as the same front-local hotspot family, while gas hotspots still use the existing exact/symmetry-aware path. Focused Rust validation is green (`cargo test repeated_nonlinear_hotspot_streak --manifest-path src/lib/ressim/Cargo.toml`), with added coverage for same-layer non-gas grouping and vertical non-grouping. Rebuilding wasm and replaying the active bounded matrix leaves the shelf unchanged: `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json -> substeps=13, retries=0/6/0, retry_dom=nonlinear-bad:oil@190`; `--grid 22x22x1 -> substeps=4, retries=0/2/0, retry_dom=nonlinear-bad:oil@1450`; `--grid 23x23x1 -> substeps=4, retries=0/2/0, retry_dom=nonlinear-bad:oil@1585`; `gas-rate --grid 20x20x3 -> substeps=4, retries=0/2/0, retry_dom=nonlinear-bad:gas@2`. Current interpretation: Newton-side local-region streaking is another valid geometry-agnostic controller cleanup, but it is neutral on the current promoted bounded shelves.
+  - 2026-04-11 bounded controller follow-up on the live `20x20x3` water shelf is now narrowed by two reverted experiments. First attempt: widen Newton stagnation acceptance only for repeated non-gas hotspot shelves so the `cell63` rung at `res=1.059e-4`, `mb=4.668e-6`, `eff_upd=6.630e-8` could accept instead of retrying. That did change behavior, but the wrong way: `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` moved from `substeps=13`, `retries=0/6/0` to `substeps=14`, `retries=0/5/0`. The filtered step trace shows why: substep 6 became `STAGNATION-ACCEPTED` at `dt=0.009239`, then the solver sat on a longer `0.009239` plateau (`substeps 6-10`) before re-entering the same front ladder. Second attempt: keep the rejection but return a softer `retry_factor=0.625` for repeated non-gas stagnation failures near the residual band. The first replay looked neutral until the trace exposed a root-cause bug in the experiment itself: timestep code still clamps all retry factors back to `<=0.5`, so the new Newton-side retry factor could not actually reach dt control. After temporarily raising that clamp, the water summary still stayed non-promotable: `substeps=13`, `retries=0/6/0`, but `dt_min` worsened from `4.620e-3` to `2.585e-3` and `growth` changed from `newton-iters` to `max-growth`. Both slices are reverted now; current interpretation is stronger than before: shaping retry cuts or accepting above-tolerance stagnation is not the right lever for this shelf. The next bounded slice should stay in Newton-side state management on the `cell63` front patch itself, not in timestep retry shaping.
+  - 2026-04-11 the next Newton-side state-management slice is now in and is the first positive bounded hit on the remaining `20x20x3` water shelf. `fim/newton.rs` now remembers when the previous Newton candidate hit the effective-move floor and, on the next iteration, bypasses the iterative backend immediately if the residual hotspot is still in the same geometry-agnostic hotspot region. For gas this stays exact/symmetry-aware; for non-gas it reuses the same nearest-well same-layer local-region grouping already used by hotspot history. Focused Rust validation is green: `cargo test repeated_zero_move_direct_bypass --manifest-path src/lib/ressim/Cargo.toml`, `cargo test repeated_nonlinear_hotspot_streak --manifest-path src/lib/ressim/Cargo.toml`, and `cargo test zero_move_fallback_direct_bypass --manifest-path src/lib/ressim/Cargo.toml`. Rebuilding wasm and replaying the bounded matrix gives the first promotable change on the target shelf: `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json -> substeps=12, retries=0/5/0, dt=[7.813e-3,6.250e-2], growth=newton-iters, hotspot_newton_caps=3, retry_dom=nonlinear-bad:oil@190`. The guard cases stay on their prior control counts: `22x22x1 -> substeps=4, retries=0/2/0`; `23x23x1 -> substeps=4, retries=0/2/0`; `gas-rate --grid 20x20x3 -> substeps=4, retries=0/2/0`. The filtered target trace confirms the mechanism directly: the old `cell63` plateau now logs `bypassing iterative backend after repeated zero-move hotspot; using sparse-lu` at the first repeated effective-move-floor iteration, which shortens the front-local ladder enough to remove one retry rung instead of merely changing retry size after failure.
+  - 2026-04-11 the next heavy-guard timestep slice was tried and reverted. The filtered `12x12x3` trace around the dominant hotspot-repeat family shows a distinct late-run micro-step ladder at `hotspot=water row=1020 item=340 site=cell340`: many accepted substeps land at `dt≈4e-5` to `6e-5`, `iters=1`, `max_dSat=0`, `max_dP=0`, `upd=0`, with the same tiny residuals repeated verbatim while cooldown traces alternate between short `3.000` clamp holds and long `growth=1.000` flat ladders once `repeats>=2`. A bounded attempt treated those exact no-op retry accepts as a sign to release hotspot cooldown memory earlier. The aggressive version, which removed the cap immediately after such accepts, was disastrous (`substeps=15404`, `retries=0/24406/0`, `outer_ms=1312139.9`, `growth=max-growth`). A safer version, which kept the short hold but cleared hotspot memory when the hold expired, was still non-promotable: `substeps=15776`, `retries=0/6983/0`, `outer_ms=385068.9`, `dt_min=5.545e-6`, still with `retry_dom=nonlinear-bad:water@1020`. Both are reverted now. Current interpretation: the heavy guard is not simply paying for over-conservative cooldown retention on exact no-op accepts; when memory is released earlier, the same hotspot just re-fails more often. The next heavy-shelf slice should target the post-release Newton/timestep failure mechanism at `water@1020`, not only the cooldown lifetime.
+  - 2026-04-11 the next heavy-guard timestep slice is now provisionally positive, but only as a runtime shortcut. The same filtered `12x12x3` ladder showed that many retry accepts are already exact no-op states: Newton enters at iteration 0, passes the residual check, and returns the same state while cooldown then forces several identical accepted substeps at the same `dt`. `fim/timestep.rs` now replays those forced unchanged cooldown-held accepts directly instead of re-running Newton on each one, using the shared epsilon-based `iterate_has_material_change(...)` predicate from `fim/newton.rs` rather than exact whole-state equality. The first exact-equality version was effectively neutral; after switching to the shared epsilon predicate, focused Rust tests stayed green and the bounded matrix remained unchanged (`20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`). On the active heavy replay command, the headline ladder stays exactly the same (`substeps=16448`, `retries=0/4892/0`, `retry_dom=nonlinear-bad:water@1020`, `growth=hotspot-repeat`, `hotspot_newton_caps=4`) but wall clock drops to `outer_ms=269965.5` on the current working tree. Current interpretation: this is a bounded cost cut on the heavy hotspot-repeat shelf, not a controller/lifecycle change. Because the replay was measured on a dirty worktree, it should stay marked provisional until rerun on a committed revision against the documented clean `eb54e95` heavy result (`outer_ms=275550.5`).
+  - 2026-04-11 the next heavy-guard timestep slice now changes the `water@1020` re-failure path itself, not just its proof cost. Fresh filtered traces showed the remaining mechanism after the replay shortcut more clearly: once cooldown hold expired, later unchanged/no-op accepted substeps were still aging out hotspot-repeat memory, and the next regrowth attempt would immediately re-fail at the same hotspot (`water row=1020 item=340 site=cell340`). `fim/timestep.rs` now only lets hotspot memory decay on materially changed clean accepts; unchanged accepts leave that memory intact. Focused Rust validation is green, including the new `unchanged_clean_accepts_do_not_decay_hotspot_memory` coverage plus the updated hotspot-memory persistence expectations. Rebuilding wasm and replaying the active matrix leaves the bounded controls unchanged (`20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`) but changes the heavy guard materially: `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json -> substeps=17134, retries=0/16/0, dt=[1.023e-5,3.864e-2], growth=hotspot-repeat, hotspot_newton_caps=4, retry_dom=nonlinear-bad:water@1020, outer_ms=19998.1`. The confirming filtered tail no longer shows the old post-release pattern of regrowth, immediate failure, retry, and replayed no-op accepts. Instead it ends in a long accepted plateau at `dt≈4.1e-5` where Newton converges on the residual check at iteration 0 on the same hotspot until the final cleanup substep at `dt≈1.0e-5`. Current interpretation: the controller is now suppressing the old immediate re-failure loop, but it is doing so by flattening the path into a very conservative accepted-step shelf. That is a real mechanism win and a large runtime win, but promotability still depends on whether this accepted-step fragmentation is an acceptable trade for the eliminated retry ladder.
+    - Clean rerun on repository-clean commit `5b7dba866b9e68ffdfc838818dbfa3483f97c229` confirms the same shelf shape and removes the dirty-tree caveat. Exact replay sequence: `bash ./scripts/build-wasm.sh` followed by `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`. Result: `step=1 | outer_ms=20642.1 | history+=17134 | substeps=17134 | retries=0/16/0 | dt=[1.023e-5,3.864e-2] | growth=hotspot-repeat | hotspot_newton_caps=4 | retry_dom=nonlinear-bad:water@1020`. Clean-baseline control replays on the same build also stayed unchanged: `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`. Updated interpretation: the measurement is now baseline-worthy; the only remaining promotion question is whether the `+686` accepted-substep increase over the old heavy shelf is an acceptable price for eliminating `4876` nonlinear retries and cutting wall clock by roughly an order of magnitude.
+    - 2026-04-11 the next slice now targets that accepted-step shelf as a cost problem rather than a controller problem. `fim/timestep.rs` already replayed unchanged cooldown-held retry accepts; it now also replays clean unchanged hotspot-repeat plateau accepts when Newton stops at iteration 1 with zero update, the state is materially unchanged, and accepted-step growth is still clamped to `1.0` by `hotspot-repeat`. This deliberately preserves the same `substeps` and per-substep history while removing repeated identical Newton proof work from the late shelf. Focused timestep tests are green, including the new plateau-replay coverage. On the same clean commit `5b7dba866b9e68ffdfc838818dbfa3483f97c229`, rebuilding wasm and rerunning `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` keeps the same heavy control surface (`history+=17134`, `substeps=17134`, `retries=0/16/0`, same `dt`, same `growth=hotspot-repeat`, same `retry_dom=nonlinear-bad:water@1020`) but drops runtime again to `outer_ms=2365.6`. The bounded matrix on the same build stays unchanged (`20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`). The confirming heavy step trace now shows long runs of `[replayed unchanged hotspot plateau accept]`, which means the remaining heavy shelf is still conservative in accepted-step count but no longer expensive in solver time. Updated interpretation: this is worth keeping as a runtime optimization layered on the promoted `water@1020` baseline, but it does not answer the remaining controller question of whether the solver should actually take fewer accepted substeps there.
+    - 2026-04-11 targeted count view is now wired through `FimStepStats` and the wasm diagnostic summary so the heavy shelf can be separated into real accepted solves versus replayed no-op history without scraping the full trace. The summary now prints `accepts=real+cooldown+plateau` next to the existing `substeps=` field. On the same clean heavy replay the new split is `accepts=16+5+17113` while `substeps` remains `17134` and `retries` remains `0/16/0`. This is the most useful policy signal from the current head: after the hotspot-memory fix and the replay shortcuts, the controller is only paying for `16` real accepted solves and `16` nonlinear retries on the heavy path; the huge remaining `17134` ledger is almost entirely replayed unchanged hotspot-plateau history. Updated interpretation: do not treat `17134` as evidence of a large remaining physical/controller solve burden by itself. The next controller change should be justified only if it can safely reduce the `16` real accepted solves or the `16` retries, not if it merely shortens replayed bookkeeping.
+    - 2026-04-11 compact rung telemetry is now in the diagnostic summary too, which finally localizes the real large-step blockers without reading the full trace. On the current clean heavy replay (`outer_ms=2188.2`, `accepts=16+5+17113`, `retries=0/16/0`), every real accepted solve and every retry rung is using `sparse-lu`, so the remaining gap to OPM-style long timesteps is not backend switching churn. It is two nonlinear dt ladders. First, startup at substep `0` spends six retry rungs halving `1.0 -> 0.5 -> 0.25 -> 0.125 -> 0.0625 -> 0.03125` before the solver can accept `1.563e-2 d`. Second, after the accepted ramp reaches `3.864e-2 d`, substep `13` immediately hits the `water@1020` retry family and collapses through ten more retry rungs `4.192e-2 -> 2.096e-2 -> ... -> 8.188e-5`, followed by the final tiny accepted rungs at `4.094e-5 d` and `1.023e-5 d`. Updated interpretation: if the goal is to close the stepping gap with OPM Flow, the next controller work should target those two real retry ladders specifically. The replayed plateau is no longer the runtime problem.
+    - 2026-04-11 first direct follow-up on that second ladder is now positive on both the heavy target and the documented bounded controls. `fim/timestep.rs` now shortens repeated same-substep hotspot failures more aggressively than the default `retry_factor=0.5`, but only when all of the following are true: the failure is `nonlinear-bad`, Newton stopped after one iteration, the linear solve also stopped after one iteration, the same geometry-aware hotspot has already repeated within the substep, timestep control is already in an established `hotspot-repeat` regime, and the current retry rung is still above `1e-4 d`. On the active heavy replay this compresses the `water@1020` collapse from ten retries down to six (`4.192e-2 -> 2.096e-2 -> 1.048e-2 -> 2.620e-3 -> 6.550e-4 -> 1.638e-4`, then accept at `4.094e-5`), keeps the real accepted shelf unchanged at `substeps=17134`, shifts the accept split from `16+5+17113` to `16+4+17114`, cuts retries from `0/16/0` to `0/12/0`, and improves the same summary run to about `outer_ms=1965.0` / `retry_ms=882.0`. Rechecking the exact documented bounded controls also stays clean: `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json -> substeps=12, retries=0/5/0`; `--grid 22x22x1 --steps 1 --dt 0.25 -> substeps=4, retries=0/2/0`; `--grid 23x23x1 --steps 1 --dt 0.25 -> substeps=4, retries=0/2/0`; `--preset gas-rate --grid 20x20x3 --steps 1 --dt 0.25 -> substeps=4, retries=0/2/0`. The earlier apparent control regression was a validation mistake: those first quick comparison runs used `--dt 1` instead of the documented bounded `--dt 0.25` commands, so they should not be treated as part of the promotion record.
+    - 2026-04-11 first direct follow-up on the startup ladder is now also positive and remains bounded-clean. The cold-start initial-trial policy in `fim/timestep.rs` now distinguishes small and large first report steps: if the very first outer step starts at `sim_time=0` and the target step size is `<= 1 d`, the initial trial is capped at `0.25 d`; otherwise the existing `1.0 d` cold-start cap is preserved. This is deliberately narrow: it attacks the `12x12x3 --dt 1` startup chop without undoing the earlier 31-day startup fix or perturbing the documented `--dt 0.25` controls by construction. On the active heavy replay the startup ladder is now `0.25 -> 0.125 -> 0.0625 -> 0.03125`, followed by the same first real accept at `1.563e-2 d`, so startup retries fall from six to four. Combined with the already-landed `water@1020` fast-cut change, the heavy summary drops again from `retries=0/12/0` to `0/10/0`, while the accepted shelf remains unchanged (`substeps=17134`, `accepts=16+4+17114`, same `dt`, same `retry_dom=nonlinear-bad:water@1020`). `retry_ms` also improves further from about `882.0` to `820.0`. One validating replay landed at `outer_ms=2101.4`, so wall clock should still be treated as noisy run-to-run here; the durable signal is that two more real nonlinear retries are gone without changing the accepted-step shelf. Exact rechecks of the documented bounded controls remain unchanged on the same build: `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`.
+    - 2026-04-11 the next bounded follow-up on the remaining `water@1020` ladder is now positive as well. The already-narrow hotspot-repeat fast-cut in `fim/timestep.rs` now uses `retry_factor=0.2` instead of `0.25`, but only inside the same established regime: repeated same-substep hotspot, `nonlinear-bad`, one Newton iteration, one linear iteration, active `hotspot-repeat`, and `dt > 1e-4 d`. This leaves startup and the documented `--dt 0.25` controls untouched in behavior class, but it changes the heavy tail meaningfully. On the active heavy replay the `water@1020` retry ladder becomes `4.192e-2 -> 2.096e-2 -> 1.048e-2 -> 2.096e-3 -> 4.192e-4 -> 8.385e-5`, then accepts at about `4.19e-5 d`. That removes the former `1.638e-4 -> 4.094e-5 -> 1.023e-5` tail, so even though retry count stays at `0/10/0`, the heavy accepted shelf shortens from `substeps=17134` down to `16732`, the accept split becomes `16+4+16712`, `dt_min` rises to `4.167e-5`, `retry_ms` drops again to about `754.0`, and the validating replay lands at `outer_ms=1839.4`. Exact bounded rechecks remain unchanged on the same build: `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`. Updated interpretation: the remaining heavy gap is still the same hotspot-repeat family, but it is now materially shorter in both retries and accepted-step tail length than the original promoted `17134` shelf.
+    - 2026-04-11 the next replay-path follow-up is the first change that reduces the number of real accepted solves on the surviving heavy plateau itself. The timestep loop already replayed unchanged cooldown-held accepts and, separately, unchanged hotspot-plateau accepts. The remaining waste was the handoff between those two modes: after an unchanged retry-accepted rung, the solver replayed the forced cooldown-held accepts, then still paid one more real Newton solve to discover that the post-cooldown plateau was also unchanged before starting hotspot-plateau replay. `fim/timestep.rs` now predicts that handoff directly for unchanged retry accepts and lets the replay flow straight from cooldown-held accepts into hotspot-plateau accepts when the same hotspot-repeat memory remains active. On the active heavy replay this changes the accept split from `16+4+16712` to `15+4+16713` with no control-surface regression: `substeps=16732`, `retries=0/10/0`, `dt=[4.167e-5,3.864e-2]`, same `retry_dom=nonlinear-bad:water@1020`. The compact rung list confirms the removed real accept directly: the extra plateau accept at `s18@~4.19e-5` disappears, leaving only `s13@4.192e-5` and the final remainder accept at `s16731@4.167e-5`. Runtime improves slightly again on the validating replay (`retry_ms=745.0`, `outer_ms=1828.0`). Exact documented bounded rechecks remain unchanged on the same build: `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`.
+    - 2026-04-11 targeted hotspot-neighborhood tracing now resolves the remaining `8.385e-5 d` versus `4.192e-5 d` ambiguity. The rejected `8.385e-5 d` rung at `water row=1020 item=340 site=cell340` does not show a branch flip or any material local state movement: Newton stops at iteration `0`, the hotspot remains saturated, `p/sw/so/sg/rs` are unchanged, `attached_perfs=none`, and the trace reports `damp=0.0000` with `local_dP=0`, `local_dSw=0`, `local_dSo=0`, `local_dSg=0` before returning `DAMPING FAILED — invalid bounded Appleyard candidate`. The immediately accepted `4.192e-5 d` rung then converges on the residual check at iteration `0` on the same frozen 3x3-plus-vertical neighborhood. Updated interpretation: this is not a local physics/well-regime change that genuinely requires a smaller step. It is a Newton globalization issue in the zero-move invalid-step/Appleyard path, where the larger rung is rejected before any material state update occurs. The next real improvement belongs in that bounded-globalization logic, not in local physics or well formulation.
+    - 2026-04-11 the targeted Newton-side fix for that diagnosis is now positive on the heavy guard and remains bounded-clean. `fim/newton.rs` no longer retries every unchanged bounded-Appleyard candidate by default. When Appleyard damping produces an unchanged candidate, Newton now re-evaluates the unchanged state and accepts it only if the accepted-state residual and material-balance diagnostics are still effectively exact under the existing no-op band with the same `2x` guard. After rebuilding wasm (`bash ./scripts/build-wasm.sh`), the canonical heavy replay `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` changes materially: `water@1020` now accepts at `8.385e-5 d` instead of retrying once more to `4.192e-5 d`, so the heavy result drops from `substeps=16732`, `accepts=15+4+16713`, `retries=0/10/0`, `retry_ms=745.0`, `outer_ms=1828.0` to `substeps=8373`, `accepts=15+4+8354`, `retries=0/9/0`, `retry_ms=1214.0`, `outer_ms=2484.9` on the validating run. The runtime split is noisier because the accepted plateau now lives at the larger `0.000084 d` rung rather than the smaller `0.000042 d` rung, but the control-surface improvement is clear: one real retry rung is gone and the unchanged plateau is roughly halved. The filtered step trace confirms the mechanism directly with `ZERO-MOVE APPLEYARD ACCEPTED res=1.764e-8 mb=3.090e-9` at substep `13`, followed by a long unchanged `0.000084 d` hotspot-repeat plateau and only the final cleanup accept at `4.167e-5 d`. Exact bounded control rechecks on the same wasm build remain unchanged: `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, `20x20x3 gas -> 4`/`0/2/0`.
+    - 2026-04-11 a first direct timestep-side attempt to release that surviving `0.000084 d` hotspot-repeat plateau was rejected and reverted before promotion. The hypothesis was that exact unchanged hotspot-plateau accepts should age out hotspot memory so the controller could regrow sooner. In practice that reopened the old `water@1020` retry ladder immediately. After rebuilding wasm, the same heavy replay regressed from the Newton baseline to `substeps=15167`, `accepts=5052+6731+3384`, `retries=0/4218/0`, `dt_min=2.010e-5`, `growth=max-growth`, `retry_dom=nonlinear-bad:water@1020`, `outer_ms=343226.9`. That is the wrong direction in both controller behavior and runtime, so this branch should be treated as closed unless there is a materially different theory for how to release hotspot-repeat without reintroducing the ladder.
+    - 2026-04-11 the kept timestep follow-up is instead replay aggregation, not hotspot-memory release. `fim/timestep.rs` now preserves the exact post-Newton control surface and aggregates repeated unchanged replay accepts into one bookkeeping/history record while leaving controller state at the base accepted `dt`. After rebuilding wasm, the canonical heavy replay `node ./scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` now reports `substeps=16`, `accepts=15+4+8354`, `retries=0/9/0`, `dt=[4.167334932525524e-5,3.863879415000001e-2]`, `growth=hotspot-repeat`, `retry_dom=nonlinear-bad:water@1020`, `outer_ms=1736.97`. The important interpretation is that the real control surface is unchanged from the accepted Newton-side baseline (`15` real accepts, `4` replayed cooldown accepts, `8354` replayed hotspot-plateau accepts, same retry count), but the reported accepted-step fragmentation and replay bookkeeping cost collapse from `8373` accepted substeps down to `16`. Exact bounded rechecks on the documented controls remain unchanged on the same build: `water-pressure --grid 20x20x3 --steps 1 --dt 0.25 -> 12`/`0/5/0`, `water-pressure --grid 22x22x1 --steps 1 --dt 0.25 -> 4`/`0/2/0`, `water-pressure --grid 23x23x1 --steps 1 --dt 0.25 -> 4`/`0/2/0`, and `gas-rate --grid 20x20x3 --steps 1 --dt 0.25 -> 4`/`0/2/0`. The earlier `gas-pressure` mismatch should be treated as a preset-selection error during validation, not as a solver regression.
+    - 2026-04-12 the first narrow gas-only outer-step carryover experiment is now in and is partially positive. The change is deliberately smaller than the reverted shared carryover work: `fim/timestep.rs` now seeds only the next outer-step first trial, and only for gas, and only when the previous outer step ended on a flat `hotspot-repeat` gas shelf (`min_dt == max_dt == last_dt`, `last_growth_limiter=hotspot-repeat`, `last_retry_dominant_family=gas`). This means no shared cooldown memory, no cross-step water carryover, and no persistence once the next step regrows cleanly. After rebuilding wasm, the shipped replay `node ./scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` changes in exactly the predicted way: step 2 remains the old `4`/`0/2/0` entry shelf, but step 3 drops to `substeps=4`, `retries=0/0/0`, `dt=[5.005e-2,7.089e-2]`, `growth=newton-iters`, and step 5 does the same (`substeps=4`, `retries=0/0/0`, `dt=[4.807e-2,7.256e-2]`, `growth=newton-iters`). Steps 4 and 6 then return to `4`/`0/2/0` because the preceding clean-regrowth steps no longer end in `hotspot-repeat`, so the one-step carryover does not reseed there. Current interpretation: this is strong evidence that cross-step first-trial overshoot is part of the remaining shipped gas shelf, but the one-step cap is too narrow to stabilize the whole six-step replay by itself.
+    - 2026-04-12 the same gas-only carryover experiment stays bounded-clean on the current guard matrix. Rebuilding wasm and replaying the standard controls leaves heavy water unchanged at `12x12x3 water -> substeps=16, retries=0/9/0`, the medium water shelf unchanged at `20x20x3 water -> 12`/`0/5/0`, the threshold pair unchanged at `22x22x1 -> 4`/`0/2/0` and `23x23x1 -> 4`/`0/2/0`, and the bounded gas control unchanged at `20x20x3 gas-rate -> 4`/`0/2/0`. That means the experiment is safe enough to reason about, but promotion should still depend on whether the next slice can extend the gas improvement beyond every-other-step behavior.
+    - 2026-04-12 broadening that gas-only carryover into a tiny gas-region persistence rule is now materially stronger and still bounded-clean. The new rule still remains isolated from water behavior: when a step ends on a flat gas `hotspot-repeat` shelf, `fim/timestep.rs` seeds the next outer-step first trial at that accepted `dt`; if the next step regrows cleanly with no retries, the same gas-only first-trial cap persists for one more outer step before expiring. That is enough to survive one clean regrowth step without introducing any shared cross-step cooldown memory. After rebuilding wasm, the shipped replay `node ./scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` improves from the old baseline `0/3/0, 0/2/0, 0/2/0, 0/2/0, 0/2/0, 0/2/0` to `0/3/0, 0/2/0, 0/0/0, 0/0/0, 0/2/0, 0/0/0`. Step 3 remains the first clear proof point (`substeps=4`, `retries=0/0/0`, `dt=[5.005e-2,7.089e-2]`, `growth=newton-iters`), but now step 4 also stays clean (`substeps=4`, `retries=0/0/0`, `dt=[4.809e-2,7.223e-2]`, `growth=newton-iters`) because the gas cap survives that one clean regrowth. Step 5 still falls back to the gas hotspot-repeat shelf (`4`/`0/2/0`), but step 6 is then clean again (`4`/`0/0/0`, `dt=[4.412e-2,7.494e-2]`, `growth=newton-iters`). Total shipped-gas retries therefore drop from `13` down to `7`, which is the first meaningful reduction on that replay that comes from controller behavior rather than just runtime cost. Replaying the same non-regression matrix on the rebuilt wasm build leaves the existing controls unchanged: heavy `12x12x3 water -> 16`/`0/9/0`, `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, and `20x20x3 gas-rate -> 4`/`0/2/0`. Current interpretation: this is now strong enough to treat as the new gas-side working baseline. The remaining gas question is no longer whether cross-step overshoot matters; it is why one step in the middle of the replay still escapes the persisted gas-region cap and re-enters hotspot-repeat.
+    - 2026-04-12 the next natural bounded follow-up on that diagnosis is also positive. The gas-only persistence budget in `fim/timestep.rs` now allows two clean regrowth steps after a seeded flat gas `hotspot-repeat` shelf instead of one (`clean_steps_remaining = 2`). This is still only a substep-0 first-trial clamp, still only for gas, and still isolated from shared water cooldown behavior. Focused helper coverage is green via `cargo test gas_outer_step_trial_cap`, and the wasm rebuild is green apart from the existing unused-`verbose` warning in `fim/newton.rs`. On the rebuilt shipped replay `node ./scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`, the pattern improves again from `0/3/0, 0/2/0, 0/0/0, 0/0/0, 0/2/0, 0/0/0` to `0/3/0, 0/2/0, 0/0/0, 0/0/0, 0/0/0, 0/2/0`. Step 5 is now clean (`substeps=4`, `retries=0/0/0`, `dt=[4.807e-2,7.256e-2]`, `growth=newton-iters`), while step 6 becomes the sole remaining retrying shelf (`substeps=4`, `retries=0/2/0`, `dt=[6.250e-2,6.250e-2]`, `growth=hotspot-repeat`, `retry_dom=nonlinear-bad:gas@128`). A filtered sequential `--diagnostic step` replay confirms the exact in-run lifetime directly: step 3 enters clamped with `persist_left=2`, step 4 with `persist_left=1`, step 5 with `persist_left=0`, and step 6 then restarts uncapped at `trial_dt=0.250000`. Replaying the same non-regression matrix on the rebuilt build leaves the documented controls unchanged: heavy `12x12x3 water -> 16`/`0/9/0`, `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, and `20x20x3 gas-rate -> 4`/`0/2/0`. Current interpretation: this is the strongest gas-only cross-step result so far because it stabilizes the first five shipped gas steps without touching shared behavior. The remaining design choice is now narrow: either one more clean-step budget increment or a site-aware expiration rule for the final escaping step.
+    - 2026-04-12 extending that gas-only persistence budget by one more clean step is also positive and remains bounded-clean. `fim/timestep.rs` now seeds `clean_steps_remaining = 3`, so the same gas-only first-trial clamp can survive three clean regrowth steps after a flat gas `hotspot-repeat` shelf. Focused helper coverage remains green via `cargo test gas_outer_step_trial_cap`, and the wasm rebuild remains green apart from the existing unused-`verbose` warning in `fim/newton.rs`. On the rebuilt shipped replay `node ./scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json`, the full six-step gas sequence is now stabilized: `0/3/0, 0/2/0, 0/0/0, 0/0/0, 0/0/0, 0/0/0`. Step 6 is now also clean (`substeps=4`, `retries=0/0/0`, `dt=[4.412e-2,7.494e-2]`, `growth=newton-iters`), so after the known startup and the initial step-2 seeded shelf there are no remaining retrying gas shelves in the shipped replay. A filtered sequential `--diagnostic step` replay confirms the exact in-run lifetime directly: step 3 enters clamped with `persist_left=3`, step 4 with `persist_left=2`, step 5 with `persist_left=1`, and step 6 with `persist_left=0`. Replaying the same non-regression matrix on the rebuilt build leaves the documented controls unchanged: heavy `12x12x3 water -> 16`/`0/9/0`, `20x20x3 water -> 12`/`0/5/0`, `22x22x1 -> 4`/`0/2/0`, `23x23x1 -> 4`/`0/2/0`, and `20x20x3 gas-rate -> 4`/`0/2/0`. Current interpretation: this is the promotable gas-side baseline because it is explicitly bounded in all of the dimensions that mattered in the earlier shared-controller failures: gas-only, substep-0 only, first-trial only, and seeded only from a flat gas `hotspot-repeat` shelf. A narrower replacement was explicitly tested and rejected immediately afterward. The comparison branch added accepted hotspot-site plumbing in `fim/newton.rs` and then tried two site-aware continuation rules: exact gas-region matching and a relaxed same-injector match. Neither reproduced the clean six-step replay. Both reverted to the older every-other-step improvement pattern `0/3/0, 0/2/0, 0/0/0, 0/2/0, 0/0/0, 0/2/0`, with the filtered step trace showing that carryover expired before steps 4 and 6. So on current evidence the fixed three-step budget is not just the best-performing gas-only rule, but the narrowest one that has actually held the full shipped replay while preserving the documented guard matrix.
+- Current interpretation:
+  - coarse-pressure-solver quality is not the active blocker on the representative exact-dense shelf
+  - it remains an open issue for larger over-threshold CPR cases, but the problem is now narrower: coarse reduction quality improved, while full-system fallback burden did not
+  - Phase 1 should therefore be treated as implemented but parked pending later promotion; Phase 2 is implemented and test-green, but still not promoted as a runtime/convergence win until the over-threshold iterative path survives longer
+
+## Active Conclusions
+- Current-head hard shelves are best described as reservoir-row nonlinear problems with partial controller improvements already landed.
+- The water shelf has a measurable win from hotspot-aware cooldown and broader growth suppression.
+- The shipped gas shelf has better identity, damping activation, and classification, but still needs a stronger policy lever to reduce retries.
+- Cross-outer-step dt-cap carryover was tested twice, regressed the water guard both times, and has been reverted; keep the gas observation as evidence that stronger shared memory may help, but not in that form.
+- Coarse-pressure-solver quality should remain open only for over-threshold CPR cases; the bounded `22x22x1` vs `23x23x1` pair now isolates that penalty cleanly enough to treat it as the active linear-backend track.
+
+## Recommended Next Tests - 2026-04-08
+- Re-read against `docs/OPM_FLOW_MINIMAL_MAPPING.md` keeps the same two OPM lessons active on current head:
+  - broader nonlinear stabilization is the right follow-up for the representative shipped shelves
+  - explicit CPRW-style well-aware coarse pressure is the right follow-up only for over-threshold coarse systems
+- Best next test order:
+  1. Run the over-threshold CPR probe as the active linear-backend track first, anchored on the bounded `22x22x1` vs `23x23x1` comparison so coarse-stage quality can be measured separately from the shared nonlinear shelf.
+  2. Keep the shared reservoir-row controller refinement second: the next shared-policy slice should still avoid hard dt-cap carryover across outer-step boundaries.
+- Why this is the right split now:
+  - both water and gas are still materially behind mature FIM behavior, so a worthwhile next controller slice should be allowed to help both if the mechanism is genuinely shared
+  - the recent wins already came from shared hotspot/cooldown policy, not from fluid-specific physics rewrites
+  - current diagnostics still separate the two main open mechanisms cleanly: representative water/gas shelves are dominated by reservoir-row nonlinear behavior, while only the `>512` coarse-row path points back to OPM-style CPRW work
+- Concrete acceptance criteria for the shared controller test:
+  - shipped `gas-rate --grid 10x10x3 --steps 6 --dt 0.25` should improve beyond the current reverted baseline (`0/3/0`, then `0/2/0`, `0/2/0`, `0/0/0`, `0/2/0`, `0/2/0`), not just wall clock
+  - `hotspot_newton_caps` should stay active on steps `2-6`; losing that signal would mean the new policy is bypassing the intended controller path
+  - `water-pressure --grid 12x12x3 --steps 1 --dt 1` should stay at or better than `129` accepted substeps with no retry-class regression and should remain in the reverted runtime class rather than reintroducing the carryover-regression regimes (`120294.2` / `22175.0` or worse, and especially not the failed refinement `137259.1` / `26023.0`)
+- Concrete acceptance criteria for the over-threshold CPR track:
+  - use the bounded pair together: `water-pressure --grid 22x22x1 --steps 1 --dt 0.25` as the exact-dense control and `water-pressure --grid 23x23x1 --steps 1 --dt 0.25` as the over-threshold probe
+  - measure coarse-stage quality separately from nonlinear shelf behavior: coarse rows, solver kind, average and last reduction ratio, fallback frequency, and whether the step stays on the iterative backend long enough to matter
+  - require any next linear-backend slice to improve the over-threshold fallback burden or runtime class without worsening the bounded shelf counts (`substeps=8`, `retries=0/3/0`) before promoting it into a broader CPRW implementation slice
+- Tests that should not be the next slice from this review:
+  - do not reopen generic line-search or Appleyard work; the old OPM-gap note there is stale on current head
+  - do not reopen broad well-Schur experiments for the representative shelves; current diagnostics no longer show a well/perforation-dominated blocker on those cases
+  - do not generalize exact-dense water-shelf results into a closure for large-case CPR quality
+
+## Next Questions
+1. Water shelf archaeology: if `344980f` and `12ae00a` already sit at `12226` substeps, where did the much older documented `129` / `0/35/0` water baseline come from, and is that difference due to earlier solver code or to a replay/configuration path mismatch?
+2. Water shelf regression window: which post-`12ae00a` Newton/fallback change moved the representative water shelf from `12226` / `3636` / `water@1095` to the current `16448` / `4892` / `water@1020` regime?
+3. Exact-dense control regression window: which same post-`12ae00a` change first moved `22x22x1` from `substeps=8`, `retries=0/3/0` to `substeps=10`, `retries=0/4/0`?
+4. Gas shelf: once the representative baselines are re-established, is a softer first-regrowth throttle still the best next shared-controller candidate, or is the remaining leverage elsewhere in the gas-region memory path?
+5. Over-threshold CPR: what is the narrowest change that keeps the `23x23x1` iterative path alive longer or reduces fallback burden, while preserving a re-baselined exact-dense control?
+
+## Current Findings - 2026-04-18
+
+### Basin-escape proxy probe landed (diagnostic only)
+- Purpose: before re-attempting Newton initial-guess extrapolation (Slice A was reverted 2026-04-13), measure whether the globally-extrapolated iterate lands outside the Newton basin on current head, and where.
+- Mechanism: at each materially-changed, retry-free clean accept, evaluate the residual of the linearly-extrapolated state (uses last two clean accepts, regime inherited from curr, Sw clamped to [0,1]). Reports per-family scaled inf-norm + top cell via `fim_trace!`.
+- Implementation in [src/lib/ressim/src/fim/timestep.rs](src/lib/ressim/src/fim/timestep.rs): `linear_extrapolate_scalar`, `globally_extrapolated_state`, `evaluate_basin_escape_residual`, state buffer `basin_escape_prev{_prev}` threaded through `step_internal_fim_impl`, firing site after `accepted_rungs.push(...)`. 3 unit tests added.
+- Neutrality: heavy water `12x12x3 dt=1` summary with probe on matches pre-probe baseline exactly (`substeps=16, accepts=15+4+8354, retries=0/9/0`). No controller state is touched; probe purely emits trace.
+- Outcome across the shortlist: all amp ≥ 1 events are water, all on the advancing front (tight ring cluster). Shipped gas amp stays ≤ 0.672, risk cells cluster at injector neighbourhood. No diffuse-risk case observed.
+- Decision: proceed with direction A (per-cell Newton extrapolation with smoothness gating), anchored on the hotspot ring. Skip direction C for this slice.
+- Full tabulated results, raw traces, and the A/C decision rationale: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` — "Step 0 probe results — 2026-04-18".
+
+### Direction D (CPR local preconditioner augmentation) — not attempted, deferred to CPR plan 2026-04-18
+- Fresh baseline on commit `3e04e0e`: `22x22x1 dt=0.25` `pc_ms=983/1414`, `23x23x1 dt=0.25` `pc_ms=12/1060`. The bounded-pair premise in the forward-looking plan is stale: `22x22x1` is now the *slower* case. Step-level trace shows CPR block-Jacobi on `22x22x1` hits `reason=dead-state` with `prec_res≈1e10 × outer_res` on first iter of every substep, falling back to sparse-LU for the remaining Newton iterations.
+- The `dead-state` classifier ([src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs:1117](src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs#L1117)) is a global `prec_res > 4 × outer_res` termination gate, not a row-tagging pass — there are no "dead-state rows" to augment. D as originally framed cannot be implemented without a fundamentally different per-row classifier first.
+- `docs/FIM_CPR_IMPROVEMENT_PLAN.md` (authoritative for this track) already concludes: *"do not add another generic CPR heuristic; if a bounded linear slice is taken next, target the one-shot tiny/small-residual cleanup tails."* D is a generic CPR heuristic.
+- Decision: **D skipped entirely from the convergence improvements plan.** Any linear-backend work is proposed inside the CPR plan, not here. Next convergence slice is B (dt-aware replay tolerance).
+- Full rationale: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Direction D reconciliation — 2026-04-18".
+
+### Direction A (per-cell Newton extrapolation with smoothness gating) — attempted and reverted 2026-04-18
+- Attempted on top of `3e04e0e` (post-Step-0-probe). Design: linearly extrapolate each cell's `(p, sw, hv)` from last two clean accepts on retry 0, freeze cells in a Chebyshev ring (radius 2→3) around the previous probe's top risk cells or failing regime/dp/sw guards. Wells+perforations kept at baseline.
+- Outcome: **reverted same session, stop rule triggered.** Locked smoke test `spe1_fim_first_steps_converge_without_stall` collapses the timestep at t≈0.8103d after 1 Newton iteration, while the pre-A tree passes in ~26s. Guard tightening (50 bar, radius 2) → (20 bar, radius 3) produced bit-identical failure — the problem is not guard tuning but that the per-cell freeze anchor (probe's top risk cells) is insufficient for SPE1-class problems. Post-revert SPE1 suite back to green.
+- Implication: A is dead for this codebase without a fundamentally different anchor. Per `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Direction A attempt — 2026-04-18", next slice should be B (dt-aware replay tolerance) after D, not C — the Step 0 probe already ruled out regime hysteresis as the dominant amp≥1 family.
+
+### Direction B (dt-aware replay-acceptance tolerance) — attempted and reverted 2026-04-18
+- Attempted on top of commit `1b16219`. Design: new `iterate_has_material_change_scaled(prev, state, dt_days)` predicate scaling per-family tolerance linearly in `dt / dt_ref` (`dt_ref = 1 day`), floored at the current strict `1e-12` baseline and capped ≥ 2 decades below Newton `update_tolerance = 1e-3` (pressure cap `1e-5 bar`, sat/Rs/bhp/perf cap `1e-6`). Wired ONLY into the timestep-level accept-site gate at [src/lib/ressim/src/fim/timestep.rs:989](src/lib/ressim/src/fim/timestep.rs#L989); the five Newton-internal call sites of the original `iterate_has_material_change` kept strict. 4 new unit tests (floor / cap / midrange / always-detect-regime flip) pass.
+- Outcome: **reverted same session, no measured effect.** All six shortlist cases (heavy water `12x12x3 dt=1`, medium water `20x20x3 dt=0.25`, bounded pair `22x22x1` / `23x23x1`, gas-rate `10x10x3 steps=6`, gas-rate `20x20x3`) bit-identical in `substeps`, replay aggregates, retries, and dominant families on B vs pre-B (verified both directions). Locked smoke tests (all 3) green on the B tree.
+- Mechanism for the no-op: the plateau/cooldown replay gate requires `report.newton_iterations == 1 && report.final_update_inf_norm == 0.0` before `materially_changed` is consulted. When Newton takes one iteration and the inf-norm update is exactly zero, the per-family state differences are genuinely zero bit-for-bit, so `0 > eps` is false at every positive `eps` — scaling the tolerance has no room to act. The replay aggregation (`+4+8354` on heavy water) is already saturated by the existing predicate.
+- Implication: *B scaling alone* is a no-op; *B scaling + gate relaxation* reduces to Slice A round 2's Path 1, which regressed heavy water (see `project_fim_slice_a_attempt` Fact 2). Either form is dead. Remaining top-ranked candidates from the improvements doc are C (regime hysteresis — already deprioritized by Step 0 probe) and E (generalize Step 0 trial policy to medium water — not yet attempted). Recommended next action: run the Step 0 probe on `20x20x3` water and see whether its top-risk cells match the `oil@190` retry ladder, before picking the next direction.
+- Full rationale + shortlist table: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Direction B attempt — 2026-04-18".
+- Side finding (independent of B): the validation-shortlist header table near the top of `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` reports `gas-rate 10x10x3 steps=6` as `step1=8/0/3/0, steps2..6 4/0/0/0`. Actual current-head (commit `1b16219`) numbers are `step1=4/0/0/0, step2=8/0/3/0, step3=4/0/2/0, steps4-6 4/0/0/0`. Update on next doc touch.
+
+### Medium-water `20x20x3` step-1 cost profile — 2026-04-18 (reframes bottleneck)
+- Command: `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic step --no-json` on clean pre-E tree. Data source: existing `real_accept_rungs` / `retry_rungs` summary lines already in the trace.
+- **Total `lin_ms=19401`** (~98% of `fim_ms=19902`). Breakdown: `sparse-lu` 12 rungs / 122 Newton iters / **17141 ms (88.4%)**; `fgmres-cpr` 5 rungs / 24 Newton iters / 2260 ms (11.6%). `pc_ms` totals 123 ms (negligible).
+- **Cost is NOT retries:** 5 retry rungs account for only 6522 ms (~34%); 12 accepted rungs account for ~66%. Eliminating every retry would save ≤34% of cost. This invalidates the A/B/E retry-ladder framing.
+- **Cost is NOT the iterative backend:** FGMRES-CPR is 11.6% even though 2 rungs hit max_iters=150. Even those max-iter hits cost 477 and 536 ms — cheaper than ANY sparse-lu solve on the step.
+- **Cost IS per-Newton-iter sparse-LU refactorization:** at `n_rows=3604`, each LU factor+solve is ~140-180 ms; rungs with 5-20 Newton iters spend 600-3500 ms in `lin_ms`. Worst: retry s1 dt=6.25e-2 n=20 → 3491 ms; accept s3 dt=3.125e-2 n=12 → 2763 ms.
+- **Why sparse-LU dominates with `req=fgmres-cpr`:** bypass paths (zero-move hotspot direct bypass, restart-stagnation direct bypass, dead-state direct bypass, post-failure fallback) route nominally-iterative requests to direct. Each bypass pays ~1.5-2.7s of LU on a 3604-row system.
+- **Immediate implications:**
+  - Item 6 in TODO (Jacobian reuse / lagged Jacobian) is probably the highest-leverage remaining lever — precedent at `FIM_CONVERGENCE_WORKLOG.md:160` (heavy-shelf replay aggregation, 8× runtime collapse with zero control-surface change).
+  - Direct-bypass trigger audit is a second lever: if some bypasses could accept a slightly-wider iterative result, each substitution saves ~1.5s.
+  - Direction D (CPR completion) would optimize the 11.6% share, not the 88% — worth doing long-term, not the immediate lever.
+  - Directions A, B, E, and any Newton-trial-policy variants target retry cost, which is capped at ~34% savings even in the best case. They are not the right lever.
+- **Next concrete step:** instrument per-rung which bypass trigger fired (zero-move / restart-stagnation / dead-state / fallback) and correlate with Newton-iter count. Tells us whether Jacobian reuse is safe across most Newton iters or only a subset. See `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Medium-water `20x20x3` step-1 cost profile — 2026-04-18".
+
+### Direction E (water cross-outer-step first-trial carryover) — attempted and reverted 2026-04-18
+- Hypothesis: the shipped medium-water 6-step replay burns 3-5 redundant retry rungs at every outer-step boundary because substep 0 cold-starts at `dt=0.25` when the previous step accepted at `dt≈0.012`; a water-family mirror of the promoted gas carryover would clamp the next substep-0 trial to the last accepted `dt` and skip the rungs.
+- Implementation mirrored the promoted gas carryover exactly: new `WaterOuterStepTrialCarryover` struct in `fim/timestep.rs`, gated on `last_growth_limiter != "hotspot-repeat"` and `last_retry_dominant_family == Some("oil")`, one-clean-step persistence, wired as a `.min()` chain after the gas cap. 6 unit tests passed; all 3 locked baselines passed (drsdt0, spe1_first_steps, spe1_gas_injection).
+- Validation shortlist: all 6 cases bit-identical to pre-E baseline (heavy water, medium water, bounded pair, gas-rate single-step, gas-rate 6-step).
+- Target case (medium water 6 steps): also **bit-identical**, 102 substeps, 0/20/0 retries pre and post. E fired correctly — substep-0 traces log `water-carryover-clamped from 0.250000 persist_left=1` at steps 2 and 3 — but the first accepted substep dt was already identical across baseline and E (`dt=0.012426` at step 2 s0, `dt=0.019134` at step 3 s0). Existing Newton-side no-op-accept logic and Appleyard damping already short-circuit the retry-ladder descent; E replaced free internal proof work with the same work done at substep 0.
+- Reverted all three files (`timestep.rs`, `lib.rs`, `frontend.rs`) via `git checkout --`. Wasm rebuilt on clean tree; `git status` reports nothing to commit.
+- Full tabulated E validation: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Direction E attempt — 2026-04-18 (reverted, no measured effect)".
+- Lesson: the cross-step first-trial cold-start framing is not where medium-water cost lives. Remaining in-step nonlinear-bad retry rungs (0/5/0, 0/2/0, 0/2/0, 0/5/0, 0/2/0, 0/4/0 across the 6-step replay) are *within-step* ladder descent, not boundary overhead. Future medium-water work should stay in Newton-state-management (the Slice A direction) and not revisit cross-step trial clamping for water.
+
+### Medium-water Step-0 probe on `20x20x3 dt=0.25` — 2026-04-18 (positive, supports Direction E)
+- Command: `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --dt 0.25 --steps 1 --diagnostic step --no-json` on commit `1b16219`. Baseline numbers unchanged (`12 accepts, 0/5/0 retries, retry_dom=nonlinear-bad:oil@190`).
+- Probe top cells on clean accepts cluster on the `oil@190` retry-ladder cell and its Chebyshev-2 neighbours: substep 6 `(3,3,0)` amp=0.80, substep 7 `(3,3,0)` **amp=3.24**, substep 8 `(4,3,1)` amp=0.16, substep 9 `(4,3,1)` amp=0.26, substep 10 `(3,4,2)` amp=0.35, substep 11 `(4,4,0)` amp=0.21. All top-family label is `water` (advancing front), matching heavy-water probe semantics where amp≥1 events are water-family.
+- The labeled dominant family `oil@190` resolves to `cell63 = ijk(3,3,0)`, which is the probe's top cell on the two earliest emissions. Subsequent emissions drift to immediate Chebyshev-2 neighbours.
+- Caveat: the probe does NOT flag `cell0 = (0,0,0)` which drives the first three retry rungs — those are Dirichlet-boundary mobility degeneracy, not front advancement; probe cannot fire until 2 prior clean accepts exist. Direction E would target the `oil@190` front-patch rungs (s4, s5 in the ladder), not the boundary rungs.
+- Full tabulated probe trace: `docs/FIM_CONVERGENCE_IMPROVEMENTS.md` "Medium-water Step-0 probe on `20x20x3 dt=0.25` — 2026-04-18".
+- Decision: Direction E has a probe-grounded anchor on medium water. Next action (when resuming this track): design E's trial-policy freeze around substep 7's top cell `(3,3,0)` and its Chebyshev-2 neighbours.
+
+## Current Findings - 2026-04-19
+
+### Jacobian reuse (intra-rung lagged factorization) — Stage 1 PASS, Stage 2 REVERTED
+- Hypothesis from 2026-04-18 cost profile: 88% of medium-water `lin_ms` lives in per-Newton-iter `sparse-lu` refactorization; caching the `faer::sparse::linalg::solvers::Lu<usize, f64>` across Newton iters within a rung, gated on Appleyard-damped small steps (`damp * ||upd||_inf < threshold`), should save a large fraction of that cost.
+- **Stage 1 (measurement only, reverted):** instrumented `REUSE-PROBE` per Newton iter on current-head wasm. Eligibility at `damp_x_upd < 1e-2`: case 1 (medium-water step 1) 70% iters / 75% lin_ms, case 2 (medium-water 6-step) 45% / 41%, case 3 (heavy-water dt=1) 78% / 72%. Met exit criterion. Caveat: **strict gate** (`lin_conv && !fallback && !any_bypass && damp_x_upd < 1e-3`) captures **zero sparse-lu eligible** iters on case 1 because every sparse-lu iter there has `used_fallback=true` or an active bypass.
+- **Stage 2 (implementation, REVERTED):** added `JacobianReuseCache` in `sparse_lu_debug.rs`, cache-aware `solve_linearized_system_with_cache` in `linear/mod.rs`, rung-scoped cache + strict gate + age≤3 cap in `newton.rs`. Locked smoke tests stayed green (drsdt0, spe1_first_steps, spe1_gas_injection).
+- **A/B on same wasm build (stash-swap methodology):**
+  - case 1 step 1: baseline `outer=17358 lin=16931 sub=12` → Stage 2 `outer=17828 lin=18162 sub=12` (lin +7.3%)
+  - case 2 6-step total: baseline `outer≈121091 lin≈121919` → Stage 2 `outer≈124019 lin≈124359` (lin +2.0%)
+  - case 3: baseline `outer=1742 lin=1572 sub=16` → Stage 2 `outer=1812 lin=1621 sub=16` (lin +3.1%)
+- **Permissive gate variant tested** (allow reuse during bypass/fallback): case 1 went to `lin_ms=21371 substeps=16` — +26% lin_ms, trajectory divergence (reused factorization produces valid-but-non-Newton-enough steps that add retries whose cost dwarfs the saved factorization).
+- **Structural diagnosis:** the 88% sparse-lu lin_ms is structurally tied to bypass paths (zero-move hotspot, restart-stagnation, dead-state, post-failure fallback). On bypass iters reuse is unsafe (trajectory divergence); on clean iters reuse is safe but those iters are a minority of cost on the profiled case. No amount of gate tuning reconciles this: strict gate captures no savings, permissive gate diverges trajectories.
+- **Reverted** via `git checkout --` on `newton.rs`, `linear/mod.rs`, `linear/sparse_lu_debug.rs`. Clean wasm rebuilt. Locked smoke tests green on reverted tree.
+- **Direction closeout — intra-rung Jacobian reuse is shelved.** Any future reattempt must first restructure the bypass architecture so hot `lin_ms` iters solve same-shape linear systems as their neighbours.
+- **Next active lever** (from 2026-04-18 cost profile, now promoted): **direct-bypass trigger audit** — instrument which bypass fires per rung and correlate with `lin_ms` per bypass category. Tells us whether a subset of bypasses can be narrowed (converted back to iterative) without regressing the Newton stalls they were added to escape.
+- Full investigation narrative, gate designs, tables, and root-cause analysis: `docs/FIM_JACOBIAN_REUSE_INVESTIGATION.md`.
+
+### Direct-bypass trigger audit — reframes the cost hypothesis (probe reverted 2026-04-19)
+- Added a `BYPASS-AUDIT` per-Newton-iter probe in `newton.rs` attributing first-solve + fallback-solve lin_ms to one of seven categories: `clean`, `near-converged-accept`, `post-fail-fallback`, `dead-state`, `restart-stag`, `repeated-zm`, `zm-fallback`. Probe total matched step-reported lin_ms exactly on every case — no blind spots.
+- **Headline reframing:** the 2026-04-18 cost profile attributed the 88% sparse-lu lin_ms to four direct-bypass triggers. The audit shows those four triggers combined are only **2.3% (case 1) / 2.6% (case 2)** of medium-water lin_ms. The real cost is `fgmres-cpr fails → sparse-lu rescues` (category `post-fail-fallback`): **68.8% (case 1) / 74.5% (case 2) / 73.5% (case 3) / 34.5% (case 4)**. `near-converged-accept` (fgmres-cpr didn't converge but was accepted without sparse-lu rescue) is another 8.7% / 10.3% on medium-water.
+- **Together, `post-fail-fallback + near-converged-accept` is 77.5% of medium-water case 1 lin_ms and 84.8% of case 2 lin_ms.** These are the two failure outcomes of the iterative attempt; they share a driver: fgmres-cpr hitting `max-iters` with non-zero residual.
+- **Direction update:** direct-bypass narrowing is dead on medium-water. The real lever is iterative-backend failure handling.
+- **Active lever (Plan B, two-slice):**
+  1. **Lever 1** — widen `should_accept_near_converged_iterative_step` from `OUTER_FACTOR=16.0` to `200.0` to absorb more of the "close-to-tol" fgmres-cpr failures instead of paying the sparse-lu rescue. Projected savings: 20-34% of case 1 lin_ms.
+  2. **Lever 3** — post-fail short-circuit: after an iter's fgmres-cpr failed, skip the iterative attempt on the next iter and go straight to sparse-lu. Saves ~300-450 ms per consecutive-failure iter. Projected savings: 33-52% of case 1 lin_ms.
+- Both levers have Stage 1 measurement-only probes defined (Lever 3: `prev_iter_failed` flag + category correlation; Lever 1: dry-run the widened gate and count newly-accepted iters). Each slice is independently reversible and can be promoted or reverted without blocking the other.
+- Probe reverted via `git checkout -- src/lib/ressim/src/fim/newton.rs`. Clean wasm rebuilt. Locked smoke tests green.
+- Full tables (all 4 cases), gate design, staging plan, risks: `docs/FIM_BYPASS_AUDIT.md`.
+
+## Current Findings - 2026-07-02
+
+### Phase 5 AD-assembler cutover — two-phase Jacobian singularity found and fixed, benchmark result is mixed
+
+Context: `fim/assembly_ad.rs` (automatic-differentiation assembler, built and gated in Phases 0-4 of the AD migration) was wired in as the live production assembler at commit `86596ee` (`newton.rs`/`timestep.rs` alias `assemble_fim_system_ad` as `assemble_fim_system`). That cutover landed before the performance gate was run — see the discovered-issues note at the top of `TODO.md`.
+
+**Bug found:** the water-pressure `12x12x3 dt=1` canonical case did not terminate (ran past 1 hour wall clock; native reproduction also did not terminate). Root cause: two-phase mode (`three_phase_mode = false`) has a residual that genuinely does not depend on the third primary unknown (`hydrocarbon_var` — the flash pins `sg = 0` regardless of its value), so an exact AD Jacobian correctly produces a **structurally singular matrix** (one empty row + column per cell). Every existing AD gate (bit-parity residual, AD-vs-numerical Jacobian of both the AD and the real residual) passed anyway, because the numerical reference was equally rank-deficient — exactness checks cannot detect shared rank deficiency. The legacy assembler avoids this by applying the saturated-regime chain rule (`d_sg/d_hc = 1`) even in two-phase mode — a deliberate Jacobian/residual inconsistency that regularizes the inactive unknown. That inconsistency was load-bearing and the AD migration had not carried it forward.
+
+**Fix** (commit `ffd965a`): `cell_props_generic`'s two-phase branch now treats `sg` as the live variable (`hc.max(0).min(1-sw)`), mirroring the legacy regularization. On-trajectory `hc = 0`, so the residual is unchanged bit-for-bit; only the Jacobian structure changes. New structural gate `two_phase_singularity_check` in `assembly_ad.rs` asserts AD hc-row/column occupancy matches legacy occupancy on a two-phase system (not just "some nonzero value") — this is the gate class that was missing, and should be applied to any future primitive that has a formally-present-but-residual-inactive unknown.
+
+**Validation on commit `ffd965a`** (locked smoke tests green: `spe1_fim_first_steps_converge_without_stall`, `spe1_fim_gas_injection_creates_free_gas`, `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`; wasm rebuilt on this commit):
+
+| Case | Command | AD (`ffd965a`) | Legacy (pre-cutover, same session) |
+|---|---|---|---|
+| water-pressure 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=8 retries=0/3/0` | not re-measured this pass |
+| water-pressure 22x22x1 | `--grid 22x22x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=4 retries=0/2/0` | not re-measured this pass |
+| water-pressure 23x23x1 | `--grid 23x23x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=4 retries=0/2/0` | not re-measured this pass |
+| gas-rate 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | `substeps=2 retries=0/1/0` | not re-measured this pass |
+| gas-rate 10x10x3, 6 steps | `--grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` | **14 total substeps** (4,2,2,2,2,2), retries `0/2/0` then `0/1/0`x5 | **28** (8,4,4,4,4,4) on legacy, same session |
+| water-pressure 12x12x3 dt=1 (heavy) | `--grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` | `substeps=34 retries=0/12/0 outer_ms=27462.0` | `substeps=32 retries=0/11/0 outer_ms=12567.6` |
+
+**Interpretation — result is mixed, not a clean win:**
+- No case collapses or runs away anymore; the singularity was the actual cause of the multi-hour hang and it is resolved.
+- Gas shelf (10x10x3, 6-step) is a clear improvement: 14 vs 28 substeps on the same tree/session.
+- The heavy water shelf (12x12x3 dt=1) is roughly neutral-to-slightly-worse: 34 vs 32 substeps, ~2.2x wall clock (27.5s vs 12.6s), dt still bottoms out to `5.4e-5` near the end of the run, and `retry_dom` moves through four distinct hotspots across the replay (`water@0` -> `oil@430` -> `perf@1299` -> `water@1215`), not one stable stall.
+- Consistent with the expectation set before starting the cutover: `newton.rs`'s damping/growth/retry heuristics (hotspot-repeat cooldown, growth caps, etc.) were tuned empirically against the legacy assembler's approximate-Jacobian quirks. An exact Jacobian changes some interactions for the better (gas shelf) and some not yet (heavy water shelf). This is exactly the class of work Phase 7 (OPM-style Newton globalization, revisiting these heuristics against the now-exact Jacobian) is for — it is not yet attempted.
+
+**Baseline discipline note:** the numbers above supersede both the stale documented `246`-substep figure for the 12x12x3/dt=1 case (already known stale before this session) and the `32`-substep legacy figure measured earlier in this same session (superseded because the two-phase singularity fix landed on top of it). Reproduced on commit `ffd965a`, clean tree, exact commands recorded above — no longer provisional.
+
+**Follow-up sweep completed (same day):** compared FULL row/column occupancy (not just the previously-known hc row) between legacy and AD across every qualitatively distinct preset configuration. The 5 wasm-diagnostic presets reduce to exactly 2 structural configurations (water-pressure/water-rate/sweep-areal are all two-phase via `configureCommonTwoPhase`; gas-pressure/gas-rate are the only three-phase presets via `configureGasBase`) crossed with well control mode (BHP/rate) and regime — every Phase 0-4 gate had used a *uniform* regime across a fixture, so a mixed-regime three-phase grid (some cells saturated, some undersaturated) had never been exercised. New gates in `assembly_ad.rs::structural_parity_sweep` (5 tests): `two_phase_bhp_controlled_wells`, `two_phase_rate_controlled_wells`, `three_phase_uniform_saturated_with_wells`, `three_phase_mixed_regime_with_wells`, `three_phase_drsdt0_disabled_with_wells`.
+
+One more divergence found and characterized while building the mixed-regime fixture (NOT a new bug class): with a saturated cell sitting at exactly `sg = 0.0` and a producer well attached, legacy and AD disagreed on whether that cell's own `sg` column appears in its water-equation row. Root cause is a producer's water-fraction coefficient (`lambda_w / (lambda_w+lambda_o+lambda_g)`) genuinely depending on the cell's own `sg` through the shared total-mobility denominator, evaluated exactly at the `sg = 0` relperm kink — legacy's hand code and AD pick different one-sided derivatives there, same class as the already-known Phase 3 `s_gc` kink. Confirmed by moving the fixture off the kink (`sg = 0.05`): both assemblers then agree on occupancy *and* value to float noise (`5.607440846332977` vs `5.607440846332972`), and confirmed the term is well-driven (vanishes identically on both sides with wells excluded). Not fixed — it's a measure-zero kink disagreement of the accepted kind, not a structural singularity. Documented in the `three_phase_mixed_regime_with_wells` test.
+
+All 5 sweep gates green.
+
+### Full-suite rerun found two more real kink-convention bugs (both fixed, same day)
+
+The full test suite (not just the targeted sweep) surfaced 2 genuinely new failures beyond the pre-existing baseline: `fim::newton::tests::entry_guard_does_not_accept_unchanged_previous_state` and `fim::tests::wells::rate_controlled_injector_fim_path_converges`. Both traced to the same underlying pattern as the benign mixed-regime kink above, except this time the kink sat exactly at commonly-hit initial conditions, so it was not benign:
+
+1. **Stone2 upper-clamp kink.** At `Sw = Swc` and `Sg = 0` simultaneously (a completely standard initial condition — connate water, no free gas), Stone2 oil relperm (`k_ro_stone2`) lands exactly on its upper clamp bound (`val == kro_max`). Legacy's hand derivative explicitly guards `if val <= 0.0 || val >= kro_max { return 0.0; }` (zero derivative AT OR BEYOND either bound); the generic `.max_floor(0.0).min_ceil(kro_max)` AD combinators keep a live derivative AT the bound (value equality resolves to "still on the branch"). Fixed in `k_ro_stone2_generic` (`relperm.rs`) by mirroring legacy's explicit boundary guard directly, rather than changing the foundational `Ad` clamp convention — confirmed the convention is genuinely per-function and inconsistent in legacy (e.g. basic Corey `k_rw`'s floor-boundary derivative stays live in legacy, the opposite of Stone2's), so a single foundational change would have fixed one function while breaking another.
+2. **Connection-rate clamp kink.** `connection_rate_generic`'s injector/producer `.min_ceil(0.0)` / `.max_floor(0.0)` clamp on the well connection rate has the same AD-vs-legacy boundary disagreement, hit when a rate-controlled well's solved-consistent initial BHP puts drawdown at exactly zero. Legacy's `perforation_connection_bhp_derivative` / `perforation_connection_cell_derivatives` use a **strict** inequality (`raw_rate < 0.0` for injector-live, `raw_rate > 0.0` for producer-live) — AT the boundary is always the clamped/zero-derivative side for both directions. Fixed in `connection_rate_generic` (`wells_ad.rs`) by mirroring the same strict-inequality guard.
+
+Both fixes are residual-value-neutral (the clamped VALUE is identical either way; only the boundary derivative selection changes) and verified with the same technique as the mixed-regime finding: direct legacy-vs-AD Jacobian comparison at the exact failing state, isolating the diverging entries before touching any code.
+
+**Result:** both previously-failing tests now pass. Full suite rerun: 340 passed / 7 failed (down from 9), and the 7 remaining failures are confirmed pre-existing and unrelated — 6 match the original documented baseline exactly, and the 7th (`physics_gas_flood_case_matrix_remains_bounded_across_sat_perm_pvt_and_capillary_ranges`, `initial_sw = 0.06 < Swc = 0.10` — an extreme out-of-range initial condition) was verified via stash-swap to fail **identically on the legacy assembler**, confirming it predates and is unrelated to the entire AD migration.
+
+**Benchmark re-verified after both fixes** (wasm rebuilt, same commands as the earlier table): water-pressure 12x12x3/dt=1 heavy case is bit-for-bit unchanged in substeps/retries (`34`/`0/12/0` — this case is two-phase and BHP-controlled, so neither kink applies to it), gas-rate 10x10x3/6-step unchanged (`14` total substeps), and the full bounded control matrix (20x20x3 water/gas, 22x22x1, 23x23x1) all unchanged. No regression from either fix; the two rate-controlled/three-phase-corner scenarios these fixes target simply aren't exercised by the current benchmark shortlist — worth adding a rate-controlled-well case to the shortlist as a follow-up so this class of kink is covered by the routine gate set, not just by the unit tests that happened to hit it.
+
+Phase 6 (deleting the legacy assembler) is unblocked: the sweep plus the full-suite rerun found no further structural gaps beyond the three characterized above (two-phase singularity, Stone2 kink, connection-rate kink), all fixed, all gated.
+
+### Phase 6 completed: legacy Jacobian machinery gated `#[cfg(test)]`, not deleted
+
+Original plan scope was to delete `assembly.rs`'s hand-derivative Jacobian construction (`add_exact_*_jacobian`, `add_*_fd`, `finite_difference_step`) and the now-unused `d_*` helpers in `pvt.rs`/`relperm.rs`/`mobility.rs`/`wells.rs` outright. Revised on user decision: `assembly.rs`'s legacy assembler is now also the permanent parity reference for `structural_parity_sweep` and `two_phase_singularity_check` — the exact gates that caught the two-phase singularity, the Stone2 kink, and the connection-rate kink this session. Deleting it would remove that regression net entirely.
+
+**Resolution:** added `#[cfg(test)]` to all 38 warning-flagged dead-code items (individually, not by module-level gating, since `assembly.rs`/`wells.rs` still export live types and diagnostic helpers used by production `newton.rs`/`timestep.rs`) across `assembly.rs` (`assemble_fim_system` and all its Jacobian-construction internals), `wells.rs` (the `perforation_*_derivative*`/`local_phase_sensitivity`/`fischer_burmeister` hand-derivative family), `mobility.rs`, and `pvt.rs` (`d_*`/`get_d_*_for_state` families). Split a few `use` blocks into test-only and always-live halves where an import was needed only by now-gated code.
+
+**Verification:**
+- Clean `cargo build` (no `--test`, i.e. production profile): 38 warnings -> 0.
+- Full test suite: 340 passed / 7 failed, identical to the pre-Phase-6 count (same 7 confirmed-unrelated pre-existing failures) — the gating changed nothing test-observable.
+- wasm binary size: **unchanged** (844,001 bytes before and after). The release + `wasm-opt` toolchain was already stripping this genuinely-unreachable code at the binary level regardless of the `#[cfg(test)]` attribute or the dead-code lint. Phase 6's value here is zero compiler warnings and explicit, self-documenting intent (a reader now knows these are permanent test-only reference implementations, not accidentally-unused code) — not a binary-size win.
+- Benchmark shortlist (heavy water-pressure 12x12x3/dt=1, gas-rate 10x10x3/6-step) re-run after the wasm rebuild: bit-for-bit unchanged substeps/retries, as expected (this phase touches only what's compiled, not any residual/Jacobian formula).
+- Locked SPE1 smoke tests: green on the final tree.
+
+Phase 7 (OPM-style Newton globalization, revisiting `newton.rs`'s damping/retry heuristics for the exact Jacobian) is next and is now unblocked with a fully clean, warning-free, fully-gated tree as its starting point.
+
+### Phase 7 scope decided; starting baseline recorded on commit `a1d7fdc`
+
+Phase 7 plan (approved, folded into `/home/coder/.claude/plans/graceful-splashing-micali.md`) ports OPM's
+global oscillation-detection + persistent-relaxation scalar (`opm/simulators/flow/NonlinearSolver.cpp`
+`detectOscillations()`/`stabilizeNonlinearUpdate()`) as sub-phase 7.1/7.2, then empirically re-evaluates
+whether ResSim's ad-hoc `nonlinear_history_stabilization_decision` (7.3) and `producer_hotspot_stagnation_should_bail`
+(7.4) become redundant. Confirmed by direct code read (not assumed): ResSim's existing Appleyard damping
+(`appleyard_damping_breakdown`) already matches or exceeds OPM's per-variable chopping (it adds a Wang &
+Tchelepi 2013 fw-inflection trust region OPM lacks) — not a retirement/port target. The linear-solver-level
+bypasses (zero-move/repeated-zero-move/restart-stagnation/dead-state/near-converged-iterative, all keyed on
+`FimLinearFailureReason`) have no OPM analog and are explicitly out of scope. Residual-stagnation bailout /
+entry guard / zero-move-Appleyard acceptance are **diagnostic-only** this phase (user-confirmed decision) —
+this territory overlaps the skill's documented already-reverted lever class ("widening Newton stagnation
+acceptance above tolerance"), and an unpromoted `STAG-TREND`/`would_widen` probe already sits at that exact
+code location, so no removal is attempted there without a separate, explicitly-scoped follow-up.
+
+**Starting baseline** — clean tree, commit `a1d7fdca855658dfe0d48eac9a7b202c0e6138c2` ("Step 6 of the FIM
+plan completed"), `git status` clean. wasm rebuilt via `bash scripts/build-wasm.sh` on this commit
+(clean build, only a pre-existing `unused variable: verbose` warning at `newton.rs:525`, unrelated to Phase 7).
+
+Locked smoke set (`cargo test --manifest-path src/lib/ressim/Cargo.toml --lib -- --nocapture
+spe1_fim_first_steps_converge_without_stall spe1_fim_gas_injection_creates_free_gas
+drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`): **3 passed, 0 failed**, 364.82s.
+
+Full bounded control matrix + heavy case (exact commands under Validation Shortlist below):
+
+| Case | Command suffix | substeps | accepts | retries | outer_ms |
+|---|---|---|---|---|---|
+| water-pressure 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 8 | 8+0+0 | 0/3/0 | 28924.2 |
+| water-pressure 22x22x1 | `--grid 22x22x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 4 | 4+0+0 | 0/2/0 | 10794.5 |
+| water-pressure 23x23x1 | `--grid 23x23x1 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 4 | 4+0+0 | 0/2/0 | 4341.4 |
+| gas-rate 20x20x3 | `--grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json` | 2 | 2+0+0 | 0/1/0 | 9303.9 |
+| gas-rate 10x10x3, 6 steps | `--grid 10x10x3 --steps 6 --dt 0.25 --diagnostic outer --no-json` | 4,2,2,2,2,2 (14 total) | all clean | 0/2/0 then 0/1/0 x5 | 4121.3 total step1 |
+| water-pressure 12x12x3 dt=1 (heavy) | `--grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json` | 34 | 33+3+2154 | 0/12/0 | 28972.3 |
+
+All figures reproduce the `ffd965a`-commit numbers already on record exactly (heavy case: `34`/`0/12/0`,
+gas shelf: `14` total) — confirms the tree is stable across the two `#[cfg(test)]`-gating commits (Phase 6)
+and this is a valid re-derived starting point for Phase 7's own gates, per baseline discipline (do not reuse
+old doc numbers without re-running on the current tree).
+
+**Sub-phase 7.1 complete (uncommitted, this session)** — added `RelaxationState`/`PerFamilyNorms` plus
+`family_is_oscillating`/`detect_oscillation`/`next_relaxation_factor` (OPM's `detectOscillations` ported
+almost line-for-line, using the already-computed `ResidualFamilyDiagnostics.{water,oil_component,gas_component}.scaled_value`
+— no new residual computation). Wired into `run_fim_timestep` as **trace-only** (`OSC-DETECT osc_phases=N
+relax=X.XX` per iteration); does not touch `damping`. 4 new unit tests
+(`detect_oscillation_flags_single_phase_two_step_relative_change`,
+`detect_oscillation_requires_below_two_step_above_one_step_threshold`,
+`next_relaxation_factor_floors_at_newton_max_relax`, `next_relaxation_factor_holds_when_not_oscillating`), all
+green. Verified as a pure no-op per the sub-phase's gate: locked smoke set green (3/3, 411.35s); full control
+matrix + heavy 12x12x3/dt=1 case **bit-identical** to the just-recorded Phase 7 baseline (heavy case: `34`
+substeps, `accepts=33+3+2154`, `retries=0/12/0` — exact match; all other cases exact match on
+substeps/accepts/retries, timing-ms noise only). Proceeding to sub-phase 7.2 (fold the relaxation scalar into
+the `damping` `min()` fold).
+
+**Sub-phase 7.2 complete and PROMOTED (uncommitted, this session)** — extracted a small `compose_damping(appleyard_final_damping,
+history_stabilization_cap, oscillation_relaxation) -> f64` helper (three-way `min()` fold, tested directly via
+`appleyard_and_oscillation_relaxation_compose_via_min`) and wired it in at the existing composition site,
+replacing the two-way `history_stabilization`/`damping_breakdown` fold. `DAMP-BREAKDOWN` trace line extended
+with `osc_relax={:.2}`. This is OPM's "dampen" mode only (no "sor" blend — explicit non-goal per the plan,
+would require persisting a full `n_unknowns`-sized previous-update vector for a benefit not yet evidenced).
+
+Gate result — **clean improvement, no regressions**:
+
+| Case | substeps (7.1 baseline -> 7.2) | retries | accepts |
+|---|---|---|---|
+| water-pressure 20x20x3 | 8 -> 8 (unchanged) | 0/3/0 -> 0/3/0 | unchanged |
+| water-pressure 22x22x1 | 4 -> 4 (unchanged) | 0/2/0 -> 0/2/0 | unchanged |
+| water-pressure 23x23x1 | 4 -> 4 (unchanged) | 0/2/0 -> 0/2/0 | unchanged |
+| gas-rate 20x20x3 | 2 -> 2 (unchanged) | 0/1/0 -> 0/1/0 | unchanged |
+| gas-rate 10x10x3, 6 steps | 14 -> 14 total (unchanged) | unchanged | unchanged |
+| **water-pressure 12x12x3 dt=1 (heavy)** | **34 -> 31 (improved)** | 0/12/0 -> 0/12/0 (same retry count, fewer substeps) | `33+3+2154` -> `30+3+1678` |
+
+The heavy case — the one Phase 7 exists to address — improved for the first time in this migration (`hotspot_newton_caps`
+dropped `8` -> `6` too, consistent with the smooth relaxation scalar catching some oscillation earlier than the
+hard-capped `nonlinear_history_stabilization_decision` alone did). No case regressed. Locked smoke set green
+(3/3, 396.94s). **Promoted** — this sub-phase's code change is kept. Proceeding to sub-phase 7.3 (measure
+whether `nonlinear_history_stabilization_decision` is now redundant, then retire if so).
+
+**Sub-phase 7.3 Stage 1 measurement complete — hypothesis FALSIFIED, mechanism kept, no Stage 2 attempted.**
+
+Reused the existing `DAMP-BREAKDOWN` trace (extended in 7.2 with `osc_relax=`) rather than building new
+instrumentation — ran the heavy water-pressure 12x12x3/dt=1 case at `--diagnostic step` and grepped every
+`DAMP-BREAKDOWN` line (337 Newton iterations total). `nonlinear_history_stabilization_decision` actually fired
+(`hist_cap != none`) on 29 of those 337 iterations. In **all 29 of 29** firings, `hist_cap=0.500` was strictly
+tighter than or equal to `osc_relax` (which ranged `0.70`–`1.00` across those same iterations, i.e. `osc_relax`
+was still at or near its unrelaxed starting value of `1.0` in most of them). This directly falsifies the
+sub-phase's premise (that OPM's oscillation-relaxation scalar would make ResSim's ad-hoc history-stabilization
+cap redundant) — history-stabilization is doing real, currently-more-aggressive damping work at every site it
+fires, not duplicate work. Per the sub-phase's own decision gate ("confirm the new mechanism is at least as
+tight before deleting the old one"), the answer is unambiguously no.
+
+**Decision: do NOT proceed to Stage 2 removal.** Removing `nonlinear_history_stabilization_decision` now would
+loosen damping at 29 known iterations with no principled replacement in place — exactly the kind of ad hoc
+loosening the `fim-solver-debug` skill's discipline warns against attempting without evidence it's safe. No
+code changed in this sub-phase (measurement only, using existing trace fields) — the earlier hypothesis in the
+plan (that 7.2 alone would supersede this mechanism) was a reasonable a priori guess but is not supported by
+this tree's actual behavior. Kept as an open observation for a future revisit: `OSCILLATION_RELAX_INCREMENT`
+(currently OPM's stock `0.1`) is the constant most likely to close this gap if retuned, but the plan explicitly
+flags premature tuning of that constant as out of scope without separate evidence — not attempted here.
+Proceeding to sub-phase 7.4 (producer-hotspot stagnation bailout fire-rate measurement).
+
+**Sub-phase 7.4 complete and PROMOTED (uncommitted, this session)** — measured `producer_hotspot_stagnation_should_bail`'s
+fire rate (grep count of its `PRODUCER-HOTSPOT STAGNATION ... bailing out` trace line) across the heavy
+water-pressure 12x12x3/dt=1 case plus water-rate 20x20x3, gas-rate 20x20x3, and gas-rate 10x10x3/6-step — **zero
+fires in all four**, including the heavy case this mechanism was specifically built for. Proceeded to Stage 2:
+removed the mechanism and its bookkeeping together (per the plan's explicit "orphaned state is worse than
+keeping the hack" guidance) — `ProducerHotspotStagnationDiagnostics` struct, `producer_hotspot_stagnation_diagnostics`,
+`producer_hotspot_stagnation_trace`, `producer_hotspot_cell_index`, `producer_hotspot_stagnation_should_bail`,
+`classify_producer_hotspot_stagnation_failure`, the two now-dead-only helpers `cell_boundary_plane_count`/
+`cell_has_only_attached_producer_perforations`, the `previous_producer_hotspot_effective_move` loop state, the
+bailout `if` block and its `return FimStepReport{...}` at the consumption site, and the two now-unused constants
+`PRODUCER_HOTSPOT_MIN_BOUNDARY_PLANES`/`PRODUCER_HOTSPOT_STAGNATION_THRESHOLD`. Removed the 4 tests that
+existed solely to test this code (`cell_boundary_plane_count_detects_corner_cells`,
+`producer_hotspot_stagnation_requires_producer_boundary_cell`,
+`producer_hotspot_stagnation_bails_on_following_same_cell_stagnation`,
+`producer_hotspot_stagnation_does_not_bail_for_different_cell`). Confirmed via project-wide grep that nothing
+else referenced any removed identifier, and both `cargo build` and `cargo build --tests` are clean with zero
+new warnings.
+
+Gate result: full control matrix + heavy case **bit-identical** to the post-7.2 baseline on every case (heavy:
+`31` substeps, `accepts=30+3+1678`, `retries=0/12/0` — exact match down to the decimal; all other cases exact
+match). Locked smoke set green (3/3, 400.30s). **Promoted** — this sub-phase's removal is kept; the mechanism
+was confirmed dead weight on every case this project's own benchmark shortlist exercises. (Note: this does not
+prove it is dead on *every* possible topology — only that it does not fire on the shortlist, which is the
+agreed scope of evidence per the sub-phase's decision gate.) Proceeding to sub-phase 7.5 (diagnostic-only
+measurement of the residual-stagnation bailout / entry-guard / zero-move-Appleyard-acceptance gates — no code
+changes, per the phase's user-confirmed decision to treat that territory as diagnostic-only).
+
+**Sub-phase 7.5 measurement complete — gates are still load-bearing, NO code changes made or attempted (as
+decided).** Ran the heavy water-pressure 12x12x3/dt=1 case at `--diagnostic step` on the post-7.4 tree and
+grepped the existing trace tags (no new instrumentation): `STAGNATION-ATTRIB` (residual plateau detected,
+`stagnation_count` incremented) fired **61** times; the read-only `STAG-TREND` probe's `would_widen=true`
+condition (the already-tried-and-reverted "widen stagnation acceptance" gate from the skill's known-lever
+list) fired **0** times, consistent with that lever having been correctly rejected previously;
+`STAGNATION-ACCEPTED` (accept-despite-stagnation path) fired **0** times; **`STAGNATION-REJECTED` (the hard
+bailout at `stagnation_count >= 3`, which trips a dt-cutback retry) fired 4 times** — direct evidence this
+mechanism remains load-bearing on the exact case Phase 7 targets, even after the oscillation-relaxation scalar
+(7.2) is live. The literal "entry guard" trace substring did not appear in this replay (0 occurrences) — read
+as "this specific case doesn't hit the iteration-0-unchanged-state condition that mechanism guards," not as
+evidence the mechanism is unused generally (out of scope to investigate further this phase).
+
+**Conclusion: per the phase's decision, no Stage 2 attempted.** The residual-stagnation bailout is measurably
+still doing real work (4 rejections on the heavy case) — retiring or loosening it now would be indistinguishable
+from re-attempting the skill's already-reverted "widen stagnation acceptance above tolerance" lever, exactly
+what this sub-phase was scoped to avoid. Recorded as a candidate for a future, separately-scoped investigation
+(if ever revisited, it must start from a fresh hypothesis about *why* residual plateaus 61 times pre-bailout on
+this case, not from loosening the acceptance gate itself).
+
+### Phase 7 summary — all 5 sub-phases complete
+
+| Sub-phase | Outcome |
+|---|---|
+| 7.1 (oscillation detector, inert) | Landed as pure no-op scaffolding; verified bit-identical to baseline. |
+| 7.2 (fold relaxation into damping) | **Promoted.** Heavy case improved `34` -> `31` substeps (`hotspot_newton_caps` `8` -> `6`); all other shortlist cases unchanged; no regressions. |
+| 7.3 (retire history-stabilization) | **Not retired** — Stage 1 measurement falsified the redundancy hypothesis (history-stabilization is strictly tighter than oscillation-relaxation in all 29 of 29 observed firings). Both mechanisms kept, working together. |
+| 7.4 (retire producer-hotspot bailout) | **Promoted/removed.** Zero fires across the full shortlist including the heavy case; ~140 lines + 2 constants + 4 tests removed as confirmed dead weight, bit-identical benchmark result. |
+| 7.5 (stagnation/entry-guard gates) | **Diagnostic-only, no change** (as decided) — residual-stagnation bailout confirmed still load-bearing (4 rejections on the heavy case); left untouched per the skill's already-reverted-lever discipline. |
+
+Net result: the heavy water-pressure 12x12x3/dt=1 case — the one this migration's Phase 5 benchmark left
+"roughly neutral-to-slightly-worse" (`34` vs legacy's `32` substeps) — now stands at **`31` substeps**, a genuine
+improvement over both the AD-migration starting point and the pre-AD legacy baseline, achieved via a
+principled OPM-style mechanism rather than another tactical hack. One dead mechanism (`producer_hotspot_stagnation_should_bail`)
+was removed with hard evidence, not guesswork. Two mechanisms were investigated and deliberately left in place
+with recorded reasons rather than removed on schedule.
+
+### Phase 8 — hotspot state characterization (diagnostic-only), Step 8.1 landed
+
+Follow-up session: even with Phase 7's improvements, FIM is nowhere near OPM's real performance target
+(~2.5 Newton iterations per 30-day timestep). A live diagnostic on the heavy case found the FIM linear
+solver's "FgmresCpr" backend fails via `DeadStateDetected` on 42 of 45 iterative attempts, falling back to
+direct sparse-LU every time. A reversible experiment (`DEAD_STATE_DETECTOR_RESTART_INDEX` 1→999, rebuild,
+rerun, revert) proved this is not premature bailout: given 5x the iteration budget, residuals stayed flat
+at ~10^6-10^7x tolerance. The preconditioner is genuinely inadequate at specific nonlinear states, recurring
+at `water@0`/`oil@430`/`water@1215` (cells) and `perf@1299` (a well perforation).
+
+A pre-existing document, `docs/FIM_CPR_IMPROVEMENT_PLAN.md` (not previously read this session), independently
+reached the same conclusion on a *different* case (`23x23x1`) after a long history of bounded CPR/Krylov
+experiments — its own most recent entry says the dominant remaining hotspot family is "more of a nonlinear
+state-management/trust-region question than a coarse-pressure or Krylov question" and explicitly recommends
+against adding another generic CPR heuristic. Full plan continuing this numbering (Phase 8/9) is in
+`/home/coder/.claude/plans/graceful-splashing-micali.md`.
+
+**Step 8.1 (landed, uncommitted this session):** added one call to the already-existing
+`residual_family_detail_trace(...)` (confirmed present at `newton.rs:2053`, dispatches to
+`cell_residual_detail_trace`/`well_constraint_detail_trace`/an inline `perforation_local_block(...)
+.residual_diagnostics(sim)` branch — all fields needed, `connection_mobility`/`bhp_slack`/`rate_slack`/
+`frozen_consistent_*`, confirmed present verbatim) at the `"linear solver FAILED"` trace site
+(`newton.rs`, ~line 2972), which previously only emitted Krylov-level diagnostics (residual norms, restart
+history) with no nonlinear-state detail at all. New trace line: `FAIL-SITE-DETAIL {...}`, gated on
+`failure_diagnostics.is_some()` so it cannot fire on the solve-succeeds path.
+
+**Gate result:** full control matrix + heavy case bit-identical to the post-7.4 baseline on every case
+(heavy: `31` substeps, `accepts=30+3+1678`, `retries=0/12/0` — exact match; all other cases exact match).
+Locked smoke set green (3/3, 397.84s). Confirmed pure instrumentation, as required — proceeding to Step 8.2
+(run the diagnostic sequence, build the Hypothesis A/B interpretation table).
+
+**Step 8.2/8.3 complete — result does NOT cleanly match either pre-registered hypothesis; a third,
+narrower pattern emerged instead.** Ran `--diagnostic step` on both cases (heavy `12x12x3/dt=1`: 43 unique
+`FAIL-SITE-DETAIL` observations; bounded `23x23x1/dt=0.25`: 12). Zero perforation-row (`perf@N`) failures were
+captured in either run — Hypothesis A (Fischer-Burmeister slack/crossover) has **no supporting evidence** in
+this data (caveat: `residual_family_detail_trace` is keyed on the *nonlinear residual peak*, not necessarily
+the linear solver's own dominant offending row — see note below).
+
+Three distinct patterns emerged instead, split by whether the hotspot cell hosts a well:
+
+1. **Dominant family by occurrence count (`cell405`/heavy, 11 of 43; `cell50`/`cell71`/`cell26`/bounded) — no
+   well, no clean signature.** Balanced-magnitude flux terms in all directions (0.03–1.3 range), no single
+   term dominating, saturations comfortably mid-range (not near a phase-appearance boundary), no visible
+   regime oscillation in a single snapshot. This does **not** match Hypothesis B as scoped either — it looks
+   like ordinary hard two-phase transport, not an identifiable kink. This is Stop Condition 1 territory for
+   this specific family: no consistent signature this instrumentation can see.
+2. **Extreme well-dominance family (`cell143`/heavy, 4 of 43) — a NEW pattern, not pre-registered.** A
+   boundary corner cell attached to a well: two faces are literal grid boundaries, the other two show
+   `dphi=0.000e0` (no potential gradient at all) with all face fluxes and `accum` at `0.000e0`, yet
+   `well=8.999e2` to `1.800e3` — the well-source term is 2-3 **orders of magnitude** larger than every other
+   term in the row, with essentially zero live reservoir coupling back into the Jacobian.
+3. **Moderate well-dominance family (`cell0`/well-hosting corner cell, both cases, 3-4 occurrences each) —
+   same shape as #2, less extreme.** Two literal boundary faces, well term ~2-30x the largest flux term
+   (heavy: `well=-1.595e3` vs. flux terms ≤`44`; bounded: `well=-79.36` vs. flux terms ≤`35.4`) — real but
+   smaller reservoir coupling than family #1, still consistently well-source-dominated.
+
+**Interpretation:** families #2/#3 are a well-coupling pathology, but a different mechanism than Hypothesis A
+predicted — not an NCP complementarity crossover in the perforation *constraint* equation, but the *cell*
+mass-balance row being poorly scaled by an outsized well-source contribution relative to its (often nearly
+absent) reservoir-flux coupling. Call this **Hypothesis C (well-source row scaling)**. Family #1, the
+numerically dominant one by occurrence count, matches neither A nor B/C — flagging per the plan's Stop
+Condition 1 rather than force-fitting it into a branch.
+
+**Caveat on methodology:** the trace call added in Step 8.1 reports the *nonlinear residual peak*
+(`residual_diagnostics.global`), which is not guaranteed to be the same row the *linear* Krylov solver is
+specifically stuck on within that iteration — the two can differ. The `perf@1299`-style perforation hotspot
+seen in earlier (pre-Phase-8) diagnostic runs of this same heavy case never appeared in this capture; it may
+occur at a different substep than this run's 43 samples happened to catch, or the nonlinear-residual-peak
+proxy may simply not track it. Not confirmed either way — flagged rather than assumed resolved.
+
+**Status: paused for review before Phase 9, per the plan's own design** (Phase 8's deliverable is reviewed
+before any Phase 9 branch is chosen — this result doesn't cleanly select Branch 9-A or 9-B, so it is being
+presented to the user rather than picked autonomously).
+
+### Hypothesis C attempt — REVERTED, negative result recorded
+
+User elected to pursue Hypothesis C (well-source row scaling) directly. Confirmed via code read that no
+row/column scaling exists anywhere in the linear-solve path (`grep "scal"` in `gmres_block_jacobi.rs` matches
+nothing but the unrelated `scalar_inv_diag`; `EquationScaling` is used only for residual/convergence
+diagnostics in `newton.rs`, never applied to the Jacobian before the linear solve) — combined with the Step
+8.2 finding that well-hosting cells' rows are dominated 2-3 orders of magnitude by the well-source term, this
+is a textbook unscaled-linear-system conditioning problem.
+
+**Implementation:** added `row_scaled_system(jacobian, rhs) -> (CsMat, DVector)` in `gmres_block_jacobi.rs` —
+computes each row's infinity norm, scales that row (and the matching RHS entry) to unit norm. Applied only
+inside `solve_with_cpr_fine_smoother` (the shared FgmresCpr/GmresIlu0 entry point), via parameter shadowing
+right after the empty-matrix check, so every direct-solve backend is completely untouched and no other line
+in the ~440-line function needed to change. Row-only scaling is a left-multiply by a diagonal matrix and does
+not change the solution `x`, so no unscaling step was needed. 3 new unit tests
+(`row_scaled_system_normalizes_each_row_to_unit_infinity_norm`, `row_scaled_system_preserves_the_solution`,
+`row_scaled_system_leaves_all_zero_row_untouched`) all passed; all 32 pre-existing `fim::linear::*` tests
+passed unchanged.
+
+**Gate result — clear regression, reverted:**
+
+| Case | Before (Phase 8 baseline) | After (row-scaled) |
+|---|---|---|
+| water-pressure 20x20x3 | `8` substeps, `0/3/0` | `8` substeps, `0/3/0` (unchanged) |
+| water-pressure 22x22x1 | `4` substeps, `0/2/0` | `4` substeps, `0/2/0` (unchanged) |
+| water-pressure 23x23x1 | `4` substeps, `0/2/0` | `4` substeps, `0/2/0` (unchanged) |
+| gas-rate 20x20x3 | `2` substeps, `0/1/0` | `2` substeps, `0/1/0` (unchanged) |
+| gas-rate 10x10x3, 6 steps | `14` total substeps | `14` total substeps (unchanged) |
+| **water-pressure 12x12x3 dt=1 (heavy)** | **`31` substeps, `0/12/0`** | **`241` substeps, `0/54/0`** — severe regression |
+
+The heavy case — the one Hypothesis C specifically targets — got roughly 8x worse (`31` → `241` substeps),
+with `retry_dom` reverting to `perf@1299` (the perforation hotspot last seen before this migration's earlier
+fixes). All other control-matrix cases were unaffected either way, consistent with them not exercising the
+well-source-row-dominance pattern much. **Reverted immediately** (`git checkout -- gmres_block_jacobi.rs`),
+wasm rebuilt, heavy case re-confirmed at the exact `31`/`0/12/0` baseline.
+
+**Why this most likely failed:** naive per-row infinity-norm equilibration, applied uniformly with no
+awareness of equation-family structure (pressure vs. saturation vs. well rows) or the preconditioner's own
+block structure, likely destroyed relative-magnitude information that the block-Jacobi/ILU0/pressure-transfer-
+weight machinery was implicitly relying on — flattening every row to unit norm removes the *physical* scale
+differences between equation families (which the existing local-Schur `pressure_transfer_weights` computation
+and the coarse-pressure extraction both derive from), not just the *problematic* well-term-dominance pattern
+Step 8.2 identified. This is a known pitfall of pure row-only scaling in coupled multi-physics systems
+(OPM's own real CPR avoids it by using *quasi-IMPES weights* — a principled, physically-derived per-row
+weighting from the accumulation block specifically for pressure extraction, not a blanket infinity-norm
+equilibration applied to the whole system).
+
+**Recorded for future reference, not retried without new evidence:** blanket per-row infinity-norm scaling of
+the full linear system, applied before the iterative CPR/ILU0 path. If Hypothesis C is revisited, the more
+targeted next step (not yet attempted) would be scaling scoped narrowly to *only* the identified pathological
+rows (well-hosting boundary cells where the well term exceeds some threshold relative to the row's other
+entries), or an OPM-style quasi-IMPES per-row weighting applied specifically to the pressure-extraction stage
+rather than the whole system uniformly.
+
