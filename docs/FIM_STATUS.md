@@ -1,91 +1,134 @@
 # FIM Status
 
 This is the consolidated current-state summary for the Rust FIM solver.
+Last full rewrite: 2026-07-05 (previous version predated the AD migration and Phases 5-11 and
+described a state from ~Q1 2026).
 
 Use this file for:
 
 - current implementation state
-- current blockers and parity gaps
+- current baselines (with exact replay commands)
+- current blockers and the recommended next steps
 - canonical validation and diagnostic entry points
 
-Do not use this file as a detailed experiment log. Active reproductions and temporary hypotheses belong in `docs/FIM_CONVERGENCE_WORKLOG.md`.
-Do not use this file as an experiment index. Promoted, reverted, refuted, diagnostic, and open FIM levers belong in `docs/FIM_EXPERIMENT_REGISTRY.md`.
+Do not use this file as a detailed experiment log. Active reproductions and temporary hypotheses
+belong in `docs/FIM_CONVERGENCE_WORKLOG.md`. Do not use this file as an experiment index —
+promoted/reverted/refuted/open levers belong in `docs/FIM_EXPERIMENT_REGISTRY.md` (search it **by
+mechanism name**, not just target case, before proposing any solver change; see the
+`FIM-NEWTON-007`→`FIM-DAMP-004` lesson).
 
-## Current State
+## Current State (2026-07-05)
 
-- FIM remains under active convergence and parity work.
-- The immediate goal is to stabilize the working surface before another solver-tuning pass.
-- Cleanup is in progress so new convergence edits are judged against one consistent baseline instead of mixed tracker notes, debug probes, and stale artifacts.
+FIM is dev-only (public scenario runs use IMPES, `docs/FIM_DEFERRED_BACKLOG.md`). The solver is
+now substantially OPM-aligned, assembled over Phases 0-11:
 
-## Validated Fixes Kept In Baseline
+- **Assembly**: exact AD Jacobian (`fim/assembly_ad.rs`) is the live path; the legacy
+  hand-derivative assembler is kept `#[cfg(test)]` as the bit-parity oracle. Parity gates:
+  `cargo test --manifest-path src/lib/ressim/Cargo.toml assembly_ad`.
+- **Linear stack** (all matching OPM's shipped `cprw` recipe, each gated before promotion):
+  loose relative tolerance `5e-3` with iteration budget `20` (`FIM-LINEAR-008`), block-ILU0 fine
+  smoother on natural 3x3 cell blocks (Step 10.2), quasi-IMPES CPR pressure restriction
+  (`FIM-LINEAR-005`), well-BHP/perforation-rate Schur elimination each Newton iteration
+  (`FIM-LINEAR-010`, `fim/linear/well_schur.rs` — OPM's `StandardWellEquations` shape).
+- **Newton globalization**: OPM-ported oscillation detector + persistent relaxation scalar,
+  covering all five equation families including well/perforation (`FIM-NEWTON-001`/`006`);
+  Appleyard damping with fw-inflection trust region at `k=1.25` (`FIM-DAMP-004`); site-keyed
+  history stabilization kept (measured tighter than the OPM scalar at its sites,
+  `FIM-NEWTON-002`).
+- **Offline solver lab** (Phase 9): env-gated capture of real failing linear systems
+  (`FIM_CAPTURE_DIR`, `fim/linear/capture.rs`, `fim-capture-v2` format) + full-solve comparison
+  tests over captured corpora (`fim/linear/solver_lab.rs`, `#[ignore]`d). New linear-solver
+  hypotheses get tested here in seconds before any live change — this is mandatory workflow, not
+  optional (`fim-solver-debug` skill).
 
-- `DRSDT = 0` handling now reaches the actual gas-inventory split path instead of only the regime label.
-- FIM Newton no longer accepts ordinary-tolerance iteration-0 no-op states unless the unchanged state is effectively exact.
-- A focused PVT regression covers excess dissolved gas flashing to free gas under a base-`Rs` cap.
+## Current Baselines (re-derived 2026-07-05, commit `43c6a1d`)
 
-## Known Open Gaps
+Heavy target case:
 
-- Coupled FIM convergence and timestep fragmentation are still unresolved on harder 2D and 3D cases.
-- The remaining SPE1/FIM gas-path issue is not reduced to a stable canonical regression yet.
-- Test and diagnostic surfaces are not yet fully classified into regression, diagnostic, and obsolete buckets.
-- The remaining native diagnostic surface is still larger than the intended wasm-first end state.
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json
+→ substeps=32 accepts=31+4+1764 retries=0/13/0 hotspot_newton_caps=7 retry_dom=nonlinear-bad:water@1215
+```
+
+Control matrix (must stay bit-identical under any solver change not explicitly about them):
+
+```
+water-pressure 20x20x3 dt=0.25 → substeps=8,  retries=0/3/0
+water-pressure 22x22x1 dt=0.25 → substeps=4,  retries=0/2/0
+water-pressure 23x23x1 dt=0.25 → substeps=4,  retries=0/2/0
+gas-rate       20x20x3 dt=0.25 → substeps=2,  retries=0/1/0
+gas-rate       10x10x3 dt=0.25 x6 steps → 2 substeps/step steady state
+```
+
+Historical heavy-case trajectory for context: `26` (pre-Phase-10, tight-tolerance era) → `59`
+(Phase 10 bundle alone) → `160` (+ well elimination alone) → `62` (+ OSC-DETECT widening) → `32`
+(+ `k=1.25`). The remaining `32` vs `26` gap is not directly comparable substep-for-substep —
+the current bundle does far cheaper linear solves per substep — but no controlled wall-clock
+comparison against the pre-Phase-10 configuration has been recorded.
+
+The dominant remaining retry pattern on the heavy case (`water@1215` local-plateau retry ladders,
+`DAMPING FAILED — invalid bounded Appleyard candidate`) is **understood and benign**: a genuine
+local steady-state region colliding with intentionally-strict entry/zero-move acceptance gates;
+the ladder resolves it correctly by dt-halving. Do not "fix" it locally — three attempts all
+regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping architecture.
+
+## Known Open Gaps (priority order)
+
+1. **`k=1.25` is provisional on the physics-accuracy axis.** The April `FIM-DAMP-003` methodology
+   required a fine-dt FOPT reference alongside the k-sweep; the 2026-07-05 re-sweep
+   (`FIM-DAMP-004`) checked substeps/retries/control-matrix/smoke but did **not** re-derive a
+   fine-dt reference under the current bundle. Cheapest highest-value next validation.
+2. **AMG coarse solver for CPR ("Bundle C")** — the last major OPM architecture gap
+   (`FIM-LINEAR-006`). Everything else in the linear stack is aligned. Constraint: no mature
+   wasm32-compatible pure-Rust AMG crate; hand-roll ~1500-2000 LOC. Design skeleton:
+   `docs/FIM_CPR_IMPROVEMENT_PLAN.md` Phase 3. Per
+   `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md`, per-cell damping (OPM `dsMax` semantics) and
+   dropping the inflection chop should be revisited only **after** AMG lands.
+3. **Remaining OPM-gap items** from `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` (triaged 2026-07-05:
+   4 of 6 closed): variable substitution (regime switching inside Newton instead of frozen-regime
+   + post-hoc reclassify), and OPM-style post-step dSat/dP-proportional timestep growth limiting.
+4. **Wall-clock accounting**: substep counts improved dramatically but `lin_ms` still dominates
+   runtime on the heavy case; no recorded apples-to-apples wall-clock baseline across the
+   Phase 10/11 promotions.
 
 ## Canonical Sources
 
-- Active tracker: `TODO.md`
-- Experiment registry / anti-repeat ledger: `docs/FIM_EXPERIMENT_REGISTRY.md`
-- Active investigation log: `docs/FIM_CONVERGENCE_WORKLOG.md`
-- Architecture target: `docs/FIM_MIGRATION_PLAN.md`
-- Cleanup sequence: `docs/FIM_CLEANUP_PLAN.md`
-- Phase 2 classification inventory: `docs/FIM_TEST_CLASSIFICATION.md`
-- Historical March 2026 solver notes preserved from the live tracker: `docs/FIM_HISTORY_2026-03.md`
-
-## Current Validation Surface
+- Experiment registry / anti-repeat ledger (**check first, by mechanism name**):
+  `docs/FIM_EXPERIMENT_REGISTRY.md`
+- Active investigation log (Phase 9 onward): `docs/FIM_CONVERGENCE_WORKLOG.md`
+- Strategy: `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` (95%-track-OPM policy, Bundle A/B/C
+  sequencing + 2026-07-05 status), `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` (gap decomposition +
+  2026-07-05 triage)
+- Archives: `docs/FIM_CONVERGENCE_ARCHIVE_2026-04-08_to_2026-07-03.md` (shelf investigations,
+  AD cutover, Phases 5-8), `docs/FIM_CONVERGENCE_ARCHIVE_2026-03_to_2026-04-06.md`,
+  `docs/FIM_HISTORY_2026-03.md`
+- CPR/AMG design skeleton: `docs/FIM_CPR_IMPROVEMENT_PLAN.md`
+- Workflow: `.claude/skills/fim-solver-debug/SKILL.md` (control matrix, promotion discipline,
+  known-reverted lever classes)
 
 ## Locked Day-to-Day Baseline
 
-The short day-to-day FIM baseline is now fixed to the following fast regressions:
-
-- `src/lib/ressim/src/tests/pvt_properties.rs`
-  - `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`
-- `src/lib/ressim/src/fim/tests/spe1.rs`
-  - `spe1_fim_first_steps_converge_without_stall`
-  - `spe1_fim_gas_injection_creates_free_gas`
-
-Run the locked baseline with these exact commands:
+Fast smoke set (run before committing any FIM change):
 
 - `cargo test --manifest-path src/lib/ressim/Cargo.toml drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas -- --nocapture`
 - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_first_steps_converge_without_stall -- --nocapture`
 - `cargo test --manifest-path src/lib/ressim/Cargo.toml spe1_fim_gas_injection_creates_free_gas -- --nocapture`
 
-Keep outside the day-to-day baseline:
-
-- breakthrough-style 2D and 3D regressions
-- long scenario-driven wasm runs
-- verbose convergence diagnostics
-
-Diagnostic entry points for deeper convergence work:
-
-- canonical wasm diagnostic runner: `test-wasm.sh` backed by `scripts/fim-wasm-diagnostic.mjs`
-- deep solver traces now come from the wasm diagnostic runner itself via the new captured FIM trace path
-
-## Phase 2 Status
-
-- The classification inventory now lives in `docs/FIM_TEST_CLASSIFICATION.md`.
-- The approved direction is wasm-first diagnostics, with native retained only temporarily if wasm does not yet expose equivalent information.
-- Clearly broken scratch workflow files have been removed in the first execution pass.
-- Stable SPE1/FIM smoke regressions now live in `src/lib/ressim/src/fim/tests/spe1.rs`.
-- A canonical wasm diagnostic path now exists for waterflood and gas presets, multiple grids, and injector-only or producer-only or both well layouts.
-- The canonical wasm runner now also exposes captured per-Newton and retry traces through `stepWithDiagnostics()` / `getFimTrace()`.
-- Crate-root debug probes, the ad hoc `fim_spe1_bug.rs` file, and the redundant manual `test.sh` script have been removed from the active surface.
-- The temporary native-only harness and `test-native.sh` were removed once wasm gained equivalent deep-trace coverage.
-- Remaining Phase 2 work is now keeping the single wasm-first workflow current and using it for convergence follow-up.
+Deeper convergence work: rebuild wasm first (`bash scripts/build-wasm.sh`), then use
+`scripts/fim-wasm-diagnostic.mjs` (`--diagnostic summary|outer|step`). Full command set and
+reading guide: `fim-solver-debug` skill. Offline linear-solver hypotheses: capture a corpus with
+`FIM_CAPTURE_DIR=<dir> cargo test --release --lib -- --ignored repro_water_pressure_12x12x3`,
+then run the `solver_lab_*` tests against it.
 
 ## Current Working Rules
 
-- Keep `TODO.md` short and action-oriented.
-- Before proposing or implementing a FIM convergence change, search `docs/FIM_EXPERIMENT_REGISTRY.md` for equivalent mechanisms, files, cases, and failure families.
-- Put active reproductions, traces, and next hypotheses in `docs/FIM_CONVERGENCE_WORKLOG.md`.
-- Put short promoted/reverted/refuted verdicts in `docs/FIM_EXPERIMENT_REGISTRY.md`; keep detailed evidence in the linked source docs.
-- Keep `docs/FIM_MIGRATION_PLAN.md` focused on the intended end-state architecture, not current debugging status.
-- Do not promote a toy or unstable repro into the canonical regression set until it is reliable enough to gate edits.
+- Search `docs/FIM_EXPERIMENT_REGISTRY.md` **by mechanism name and by file** before proposing any
+  convergence change; respect each row's `Retry only if` condition.
+- Offline lab before live change for anything in `fim/linear/`; full control matrix + locked
+  smoke before promoting anything.
+- One registry row per lever, honest verdict either way; negative results are recorded, not
+  discarded.
+- Keep `TODO.md` short and action-oriented; long narratives go to the worklog.
+- Systemic steer (user, standing): track OPM's overall approach consistently rather than fixing
+  mechanisms piecemeal — individually-correct local fixes on an OPM-inconsistent base have
+  repeatedly regressed (`FIM-NEWTON-005`/`007`, `FIM-LINEAR-001`/`009`).

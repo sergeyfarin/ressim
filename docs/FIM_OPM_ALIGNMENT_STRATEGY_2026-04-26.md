@@ -1,3 +1,25 @@
+# FIM vs OPM Alignment Strategy (2026-04-26 session decision record)
+
+> Provenance: renamed 2026-07-05 from the orphaned `docs/20260426.md`. This is the session record
+> that set the "95% track OPM" policy and the Bundle A/B/C sequencing. It proved load-bearing on
+> 2026-07-05: its `FIM-DAMP-002`/`003` context (inflection chop removal already refuted; k-sweep
+> methodology) stopped a repeat experiment and led directly to `FIM-DAMP-004` (`k=1.25`).
+
+## Bundle status as of 2026-07-05 (added at rescue time)
+
+- **Bundle A** (per-cell damping + well-row scaling): the row-scaling half was tried and REVERTED
+  (`FIM-LINEAR-001`, blanket per-row scaling regressed heavy case 31→241). Per-cell damping was
+  never promoted — still gated on the linear-solver direction being tamed first (i.e. Bundle C).
+- **Bundle B** (summed-IMPES restriction): DONE, in improved form — the offline solver lab
+  (Phase 9) compared `sum-rows` vs `quasi-impes` on real captured failure corpora and promoted
+  `quasi-impes` (OPM's own construction), `FIM-LINEAR-005`/Step 9.3.
+- **Bundle C** (full CPR completion with AMG coarse solver): **STILL OPEN** — the last major
+  OPM architecture gap (`FIM-LINEAR-006`). After it lands, this doc's own plan says to revisit
+  per-cell damping and dropping the inflection chop "in a clean state". Note the constraint
+  recorded in the Phase 10 plan: no mature wasm32-compatible pure-Rust AMG crate exists;
+  hand-rolling is ~1500-2000 LOC. `docs/FIM_CPR_IMPROVEMENT_PLAN.md` Phase 3 has the design
+  skeleton.
+
 On "track OPM closely vs. preserve ressim originality"
 My honest take: 95% track OPM, 5% keep one ressim-specific piece.
 
