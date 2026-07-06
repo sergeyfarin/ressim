@@ -647,6 +647,55 @@ Task #37 baseline, and close to (though not exactly at) the pre-Phase-10 `26`. P
 the sweep), though a proper fine-dt reference re-derivation under the current bundle (matching the April
 methodology) has not been done and would be needed before treating `26` itself as the target to chase further.
 
+### Task #38 (continued, 2026-07-06) — fine-dt FOPT reference: `k=1.25` has a real accuracy cost
+
+Closed the gate this task's own writeup flagged as skipped: re-derived the April `FIM-DAMP-003` fine-dt
+methodology (`docs/FIM_CHOP_WIDEN_EXPERIMENT.md` "case 3") under the current bundle, commit `43c6a1d` plus
+the local `FW_INFLECTION_OVERSHOOT_FACTOR` edits described below (each rebuilt via `bash scripts/build-wasm.sh`
+before its run):
+
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 16 --dt 0.0625 --diagnostic outer --no-json
+```
+
+| Configuration | fine-dt FOPT (`oil` @ step 16, `time=1.0000d`) | vs. OPM converged (`3826.12`) |
+|---|---:|---:|
+| April, old (tight-tolerance) bundle, `k=1.2` (`FIM-DAMP-003`, historical) | 3826.36 | +0.01% |
+| **Current bundle, `k=1.2`** (isolation run, this task) | 3845.38 | +0.50% |
+| **Current bundle, `k=1.25`** (`FIM-DAMP-004`, live) | 3883.47 | +1.50% |
+
+Full 16-step trace for `k=1.25` (the live value): steps 1-11 climb smoothly (`oil` 3349→3902), step 12 turns
+over (3902.25, a small decline begins), steps 13-14 continue declining under retry fragmentation
+(`retry_dom` shifts to `nonlinear-bad:water@1215`), and steps 14-16 freeze bit-identically at `oil=3883.47`/
+`inj=3872.87` — confirmed as the documented benign local-plateau replay mechanism (`accepts=1+5+1018`, the
+`1018` being replayed hotspot-plateau bookkeeping per the `fim-solver-debug` skill's reading guide), not a
+stall bug. Both `k=1.2` and `k=1.25` isolation runs (rebuilt from a temporarily-edited constant, then
+restored to `1.25` and rebuilt again to confirm bit-identical reproduction — `3883.47` reproduced exactly)
+show this same tail shape; only the final magnitude differs.
+
+**Isolation result**: rerunning the identical fine-dt command at `k=1.2` under the *unchanged* current bundle
+(same tolerance/budget/block-ILU0/well-elimination) gives `3845.38`, almost 2x closer to the OPM reference
+than `k=1.25`'s `3883.47`. This cleanly separates two effects:
+
+1. The Phase 10/11 bundle itself (not touched by this row) already costs ~0.5% FOPT drift vs. April's
+   validated 0.01% match — a previously unquantified, unstated cost of the tolerance-loosening/block-ILU0/
+   well-elimination changes, not attributable to `k` at all.
+2. `k=1.25` specifically adds a further ~1.0 percentage point of drift on top of that (`0.50%→1.50%`) — a
+   real, measured accuracy cost from letting more "marginal" fw-inflection crossings through unchopped, not
+   a bug or measurement artifact.
+
+**Conclusion**: the `62→32` substep win from `FIM-DAMP-004` is real, but it is **not accuracy-neutral**. The
+promotion stands (registry verdict remains `PROMOTED`, updated with this caveat) because reverting outright
+would only buy back partial accuracy (`k=1.2` here is still `0.5%` off, not `0.01%`) at the cost of doubling
+substeps (`32→62`) — not an unambiguous win either way. This is a genuine, open trade-off, not a settled
+question; flagged to the user rather than resolved unilaterally. Candidates for a real fix, not yet
+attempted: (a) determine whether the bundle-level `0.5%` drift is itself fixable (tolerance-loosening
+accuracy cost was never checked against a fine-dt reference when `FIM-LINEAR-008` was promoted — this may be
+the bigger, more foundational gap); (b) a `k` value between `1.1` and `1.25` that hasn't been fine-dt-checked
+(the chaotic `k`↔substep relationship means this isn't a simple bisection); (c) revisit whether the inflection
+chop's role should shift once/if AMG (Bundle C) lands, per the existing `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md`
+guidance that per-cell damping and dropping the chop are deferred until after AMG.
+
 ## Validation Shortlist
 - Water shelf summary:
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json`
