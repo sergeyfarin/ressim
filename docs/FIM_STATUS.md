@@ -74,19 +74,17 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
 
 ## Known Open Gaps (priority order)
 
-1. **`k=1.25` has a measured, real physics-accuracy cost — not resolved, just quantified
-   (2026-07-06).** The fine-dt FOPT check the April `FIM-DAMP-003` methodology required (skipped
-   by the 2026-07-05 re-sweep) is now done: current-bundle `k=1.25` fine-dt FOPT is `3883.47` vs.
-   OPM's converged reference `3826.12` (+1.50%), vs. April's validated `3826.36` (+0.01%). Isolated
-   via a same-bundle `k=1.2` rerun (`3845.38`, +0.50%): roughly half the drift (+0.5 pp) is the
-   Phase 10/11 bundle itself (tolerance/budget/block-ILU0/well-elim — never fine-dt-checked when
-   promoted), and `k=1.25` specifically adds another ~1.0 pp on top. The `62→32` substep win is
-   real but not accuracy-neutral. Kept `k=1.25` live (reverting to `1.2` only buys back partial
-   accuracy at 2x the substeps — not an unambiguous win). See
-   `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)" for full numbers. Open follow-ups,
-   none yet attempted: check whether the bundle-level 0.5% drift is itself fixable (likely the
-   bigger, more foundational gap); a finer `k` sweep between `1.1`/`1.25` with fine-dt checks at
-   each point.
+1. **`k=1.25`'s ~1.5% fine-dt FOPT drift vs. OPM is accepted, not pursued further (user decision,
+   2026-07-06).** Measured 2026-07-06: current-bundle `k=1.25` fine-dt FOPT is `3883.47` vs. OPM's
+   converged reference `3826.12` (+1.50%), vs. April's validated `3826.36` (+0.01%); isolated via a
+   same-bundle `k=1.2` rerun (`3845.38`, +0.50%) into a ~0.5pp bundle-level cost (Phase 10/11
+   tolerance/budget/block-ILU0/well-elim, never fine-dt-checked when promoted) plus a further
+   ~1.0pp from `k=1.25` itself. User call: 1% is not material given the current overall gap to OPM
+   Flow (~2.5 Newton iters/step, zero cuts — ResSim is far from that regardless of this ~1%); do
+   not spend further sessions fine-tuning `k` or chasing this specific drift. `k=1.25` stays live.
+   See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)" for full numbers. **Do not reopen
+   this gap without new evidence that the drift has grown or that it's blocking something else** —
+   prioritize the larger architectural gaps below instead.
 2. **AMG coarse solver for CPR ("Bundle C")** — the last major OPM architecture gap
    (`FIM-LINEAR-006`). Everything else in the linear stack is aligned. Constraint: no mature
    wasm32-compatible pure-Rust AMG crate; hand-roll ~1500-2000 LOC. Design skeleton:
