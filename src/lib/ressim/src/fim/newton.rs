@@ -2,7 +2,7 @@ use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
 use crate::fim::assembly::{
-    CellFacePhaseDiagnostics, FaceUpwindSample, FacePhaseDiagnostics, FimAssemblyOptions,
+    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
     PhaseFluxDiagnostic, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
     collect_face_upwind_snapshot, diff_face_upwind_snapshots,
 };
@@ -511,9 +511,8 @@ fn small_dt_hotspot_neighborhood_indices(
             {
                 continue;
             }
-            let idx = center_k * sim.nx * sim.ny
-                + neighbor_j as usize * sim.nx
-                + neighbor_i as usize;
+            let idx =
+                center_k * sim.nx * sim.ny + neighbor_j as usize * sim.nx + neighbor_i as usize;
             indices.push(idx);
         }
     }
@@ -1322,7 +1321,11 @@ fn family_is_oscillating(f0: f64, f1: f64, f2: f64) -> bool {
     d1 < OSCILLATION_RELAX_REL_TOL && OSCILLATION_RELAX_REL_TOL < d2
 }
 
-fn detect_oscillation(current: PerFamilyNorms, prev1: PerFamilyNorms, prev2: PerFamilyNorms) -> u32 {
+fn detect_oscillation(
+    current: PerFamilyNorms,
+    prev1: PerFamilyNorms,
+    prev2: PerFamilyNorms,
+) -> u32 {
     [
         family_is_oscillating(current.water, prev1.water, prev2.water),
         family_is_oscillating(
@@ -1762,6 +1765,131 @@ fn update_family_peak(
     if current.is_none_or(|existing| candidate.scaled_value > existing.scaled_value) {
         *current = Some(candidate);
     }
+}
+
+/// OPM shipped convergence tolerances (Flow 2025.10 defaults, verified from the installed
+/// binary's `--help-all` and `opm-simulators` tag `release/2025.10/final` — see
+/// `docs/FIM_BUNDLE_N_DESIGN.md` §9.1). Used by the inert Bundle N checkpoint-1 diagnostic
+/// below; they do NOT participate in any accept/retry decision yet.
+const OPM_TOLERANCE_CNV: f64 = 1e-2;
+const OPM_TOLERANCE_CNV_RELAXED: f64 = 1.0;
+const OPM_TOLERANCE_MB: f64 = 1e-7;
+const OPM_RELAXED_MAX_PV_FRACTION: f64 = 0.03;
+
+/// Bundle N checkpoint 1 (read-only): OPM-style CNV/MB convergence measures computed from the
+/// RAW (unscaled) residual, mirroring `BlackoilModel::getReservoirConvergence` /
+/// `getMaxCoeff` / `characteriseCnvPvSplit`. ResSim's residual is already dt-integrated
+/// (surface m³), unlike OPM's rate residual, so OPM's `* dt` factor is intentionally absent —
+/// `CNV = B_avg * max_i(|R_i|/pv_i)` here is dimensionally identical to OPM's
+/// `B_avg * dt * max_i(|R_rate_i|/pv_i)`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CnvMbDiagnostics {
+    /// Per component (water, oil-component, gas-component): field-average FVF times the
+    /// worst per-cell pore-volume-normalized residual. Dimensionless local error.
+    cnv: [f64; 3],
+    /// Per component: |B_avg * signed residual sum| / total pore volume. Dimensionless
+    /// global mass-balance error (cancellation across cells intended).
+    mb: [f64; 3],
+    /// Fraction of total pore volume held by cells whose own worst-component CNV exceeds
+    /// the strict tolerance.
+    violating_pv_fraction: f64,
+    /// OPM's `relaxed-max-pv-fraction` rule: violating PV under 3% lets the whole CNV check
+    /// run at the relaxed tolerance this iteration.
+    pv_rule_relaxes: bool,
+    /// All components pass strict CNV and strict MB.
+    would_accept_strict: bool,
+    /// Strict MB, and CNV passing either strictly or via the 3%-PV relaxed tier — OPM's
+    /// effective accept condition at a non-final iteration.
+    would_accept: bool,
+}
+
+/// Pure core of the CNV/MB computation, split out for direct unit testing.
+/// `fvf_per_cell[i] = [B_w, B_o, B_g]` (reservoir m³ per surface m³) for cell `i`;
+/// `pore_volumes_m3` are REFERENCE pore volumes (porosity * bulk volume, no compressibility
+/// factor), matching OPM's `referencePorosity * dofTotalVolume`.
+fn cnv_mb_from_parts(
+    residual: &DVector<f64>,
+    pore_volumes_m3: &[f64],
+    fvf_per_cell: &[[f64; 3]],
+) -> CnvMbDiagnostics {
+    let n_cells = pore_volumes_m3.len();
+
+    let mut b_avg = [0.0_f64; 3];
+    for fvf in fvf_per_cell {
+        for c in 0..3 {
+            b_avg[c] += fvf[c];
+        }
+    }
+    for avg in &mut b_avg {
+        *avg /= n_cells.max(1) as f64;
+    }
+
+    let mut max_coeff = [0.0_f64; 3];
+    let mut r_sum = [0.0_f64; 3];
+    let mut pv_sum = 0.0_f64;
+    let mut violating_pv = 0.0_f64;
+    for i in 0..n_cells {
+        let pv = pore_volumes_m3[i].max(1e-9);
+        pv_sum += pv;
+        let mut cell_max_cnv = 0.0_f64;
+        for c in 0..3 {
+            let r = residual[i * 3 + c];
+            r_sum[c] += r;
+            max_coeff[c] = max_coeff[c].max(r.abs() / pv);
+            cell_max_cnv = cell_max_cnv.max(r.abs() * b_avg[c] / pv);
+        }
+        if cell_max_cnv > OPM_TOLERANCE_CNV {
+            violating_pv += pv;
+        }
+    }
+
+    let mut cnv = [0.0_f64; 3];
+    let mut mb = [0.0_f64; 3];
+    for c in 0..3 {
+        cnv[c] = b_avg[c] * max_coeff[c];
+        mb[c] = (b_avg[c] * r_sum[c]).abs() / pv_sum.max(1e-9);
+    }
+
+    let violating_pv_fraction = violating_pv / pv_sum.max(1e-9);
+    let pv_rule_relaxes = violating_pv < OPM_RELAXED_MAX_PV_FRACTION * pv_sum;
+    let mb_ok = mb.iter().all(|&v| v <= OPM_TOLERANCE_MB);
+    let cnv_strict_ok = cnv.iter().all(|&v| v <= OPM_TOLERANCE_CNV);
+    let cnv_effective_ok = cnv
+        .iter()
+        .all(|&v| v <= OPM_TOLERANCE_CNV || (pv_rule_relaxes && v <= OPM_TOLERANCE_CNV_RELAXED));
+
+    CnvMbDiagnostics {
+        cnv,
+        mb,
+        violating_pv_fraction,
+        pv_rule_relaxes,
+        would_accept_strict: cnv_strict_ok && mb_ok,
+        would_accept: cnv_effective_ok && mb_ok,
+    }
+}
+
+/// Sim-facing wrapper: extracts reference pore volumes and per-cell FVFs, then delegates to
+/// `cnv_mb_from_parts`. Only the cell rows of `residual` are read; well/perforation rows are
+/// excluded exactly as in OPM (wells have their own `tolerance-wells` criterion).
+fn cnv_mb_diagnostics(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    residual: &DVector<f64>,
+) -> CnvMbDiagnostics {
+    let n_cells = state.cells.len();
+    let mut pore_volumes = Vec::with_capacity(n_cells);
+    let mut fvf = Vec::with_capacity(n_cells);
+    let b_w = sim.b_w.max(1e-9);
+    for idx in 0..n_cells {
+        pore_volumes.push(sim.pore_volume_m3(idx));
+        let pressure_bar = state.cells[idx].pressure_bar;
+        fvf.push([
+            b_w,
+            sim.get_b_o_cell(idx, pressure_bar).max(1e-9),
+            sim.get_b_g(pressure_bar).max(1e-9),
+        ]);
+    }
+    cnv_mb_from_parts(residual, &pore_volumes, &fvf)
 }
 
 fn residual_family_diagnostics(
@@ -2468,6 +2596,33 @@ pub(crate) fn run_fim_timestep(
             relaxation_state.history_len += 1;
         }
 
+        // Bundle N checkpoint 1 (read-only): OPM CNV/MB criteria computed alongside the
+        // existing inf-norm acceptance, trace-only — measures at which iteration OPM's
+        // shipped convergence test would have accepted this state. No decision reads it.
+        {
+            let opm_conv = cnv_mb_diagnostics(sim, &state, &assembly.residual);
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: CNV-MB cnv=[{:.3e},{:.3e},{:.3e}] mb=[{:.3e},{:.3e},{:.3e}] viol_pv={:.4} would_accept={}",
+                iteration,
+                opm_conv.cnv[0],
+                opm_conv.cnv[1],
+                opm_conv.cnv[2],
+                opm_conv.mb[0],
+                opm_conv.mb[1],
+                opm_conv.mb[2],
+                opm_conv.violating_pv_fraction,
+                if opm_conv.would_accept_strict {
+                    "strict"
+                } else if opm_conv.would_accept {
+                    "pv-relaxed"
+                } else {
+                    "no"
+                },
+            );
+        }
+
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let previous_iteration_residual_norm = prev_residual_norm;
         let current_hotspot_site =
@@ -2721,17 +2876,15 @@ pub(crate) fn run_fim_timestep(
         // nor reset the stagnation budget — they make no progress by construction, so treating
         // them as either progress or stagnation is wrong.
         let prev_iter_was_zero_move = previous_effective_move_floor_site.is_some();
-        if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 && !prev_iter_was_zero_move
-        {
+        if iteration >= 2 && current_norm >= prev_residual_norm * 0.95 && !prev_iter_was_zero_move {
             stagnation_count += 1;
-            let stagnation_attrib_class: &'static str =
-                if current_norm > prev_residual_norm {
-                    stagnation_attrib_real_bump += 1;
-                    "real-bump"
-                } else {
-                    stagnation_attrib_slow_decay += 1;
-                    "slow-decay"
-                };
+            let stagnation_attrib_class: &'static str = if current_norm > prev_residual_norm {
+                stagnation_attrib_real_bump += 1;
+                "real-bump"
+            } else {
+                stagnation_attrib_slow_decay += 1;
+                "slow-decay"
+            };
             fim_trace!(
                 sim,
                 options.verbose,
@@ -2760,15 +2913,13 @@ pub(crate) fn run_fim_timestep(
             } else {
                 f64::NAN
             };
-            let progress_vs_best = if best_residual_so_far.is_finite()
-                && best_residual_so_far > 0.0
+            let progress_vs_best = if best_residual_so_far.is_finite() && best_residual_so_far > 0.0
             {
                 current_norm / best_residual_so_far
             } else {
                 f64::NAN
             };
-            let iters_remaining =
-                options.max_newton_iterations.saturating_sub(iteration + 1);
+            let iters_remaining = options.max_newton_iterations.saturating_sub(iteration + 1);
             let would_widen = stagnation_count >= 3
                 && trend_vs_entry.is_finite()
                 && trend_vs_entry < 0.5
@@ -3369,7 +3520,13 @@ pub(crate) fn run_fim_timestep(
             } else {
                 1.0
             };
-            let waste = |allowed: f64| if allowed > 0.0 { damping / allowed } else { 1.0 };
+            let waste = |allowed: f64| {
+                if allowed > 0.0 {
+                    damping / allowed
+                } else {
+                    1.0
+                }
+            };
             fim_trace!(
                 sim,
                 options.verbose,
@@ -3705,6 +3862,74 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cnv_mb_from_parts_matches_hand_computed_values() {
+        // Two cells, pv = [100, 300] m³; FVFs chosen distinct per component so a mix-up
+        // between components or between B_avg and per-cell B shows up in the numbers.
+        // B_avg = [(1.0+1.0)/2, (1.2+1.4)/2, (0.01+0.03)/2] = [1.0, 1.3, 0.02].
+        let residual = DVector::from_vec(vec![
+            2.0, -0.6, 0.0, // cell 0: water, oil, gas
+            -1.0, 0.9, 0.0, // cell 1
+        ]);
+        let pv = [100.0, 300.0];
+        let fvf = [[1.0, 1.2, 0.01], [1.0, 1.4, 0.03]];
+
+        let d = cnv_mb_from_parts(&residual, &pv, &fvf);
+
+        // maxCoeff per component: water max(2/100, 1/300)=0.02; oil max(0.6/100, 0.9/300)=0.006.
+        // CNV = B_avg * maxCoeff.
+        assert!((d.cnv[0] - 1.0 * 0.02).abs() < 1e-12);
+        assert!((d.cnv[1] - 1.3 * 0.006).abs() < 1e-12);
+        assert_eq!(d.cnv[2], 0.0);
+        // MB = |B_avg * signed sum| / pvSum; water sum = 1.0, oil sum = 0.3, pvSum = 400.
+        assert!((d.mb[0] - 1.0 * 1.0 / 400.0).abs() < 1e-12);
+        assert!((d.mb[1] - 1.3 * 0.3 / 400.0).abs() < 1e-12);
+        // Cell 0's own max CNV = max(2*1.0, 0.6*1.3)/100 = 0.02 > 1e-2 → violating.
+        // Cell 1's = max(1*1.0, 0.9*1.3)/300 = 0.0039 < 1e-2 → not violating.
+        assert!((d.violating_pv_fraction - 100.0 / 400.0).abs() < 1e-12);
+        assert!(!d.pv_rule_relaxes); // 25% of PV violating >> 3%
+        assert!(!d.would_accept_strict);
+        assert!(!d.would_accept);
+    }
+
+    #[test]
+    fn cnv_pv_rule_relaxes_when_violating_pv_below_three_percent() {
+        // Cell 0 is a tiny plateau cell (1% of PV) with a CNV way above strict tolerance
+        // but below the relaxed 1.0; cell 1 is huge and clean. MB stays tiny because the
+        // residual is small in absolute terms. OPM accepts this state; the strict check
+        // does not — exactly the water@1215 heavy-case pattern.
+        let residual = DVector::from_vec(vec![
+            0.5, 0.0, 0.0, // cell 0: water CNV = 0.5/10 = 0.05 (> 1e-2, < 1.0)
+            0.0, 0.0, 0.0, // cell 1: clean
+        ]);
+        let pv = [10.0, 990.0];
+        let fvf = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
+
+        let d = cnv_mb_from_parts(&residual, &pv, &fvf);
+
+        assert!((d.cnv[0] - 0.05).abs() < 1e-12);
+        assert!((d.violating_pv_fraction - 0.01).abs() < 1e-12);
+        assert!(d.pv_rule_relaxes);
+        assert!(!d.would_accept_strict, "0.05 > strict 1e-2");
+        // MB = 0.5/1000 = 5e-4 > 1e-7 → even the pv-relaxed accept must fail on MB.
+        assert!(!d.would_accept);
+
+        // Shrink the residual so MB passes while local CNV still violates strict:
+        // water residual 2e-4 on pv=10 → CNV 2e-5... too small. Use pv weighting instead:
+        // keep CNV at 0.05 but cancel MB with an opposite residual in the big cell.
+        let residual = DVector::from_vec(vec![
+            0.5, 0.0, 0.0, //
+            -0.5, 0.0, 0.0, // cancels the sum → MB = 0 exactly
+        ]);
+        let d = cnv_mb_from_parts(&residual, &pv, &fvf);
+        assert_eq!(d.mb[0], 0.0);
+        assert!(!d.would_accept_strict, "local CNV 0.05 still above strict");
+        assert!(
+            d.would_accept,
+            "1% violating PV < 3% rule → relaxed CNV 1.0 applies, MB clean → OPM accepts"
+        );
+    }
+
+    #[test]
     fn zero_residual_scaffold_converges_in_one_newton_step() {
         let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
         let state = FimState::from_simulator(&sim);
@@ -3900,9 +4125,7 @@ mod tests {
         let options = FimNewtonOptions::default();
         assert!(!zero_move_appleyard_acceptance_allows(
             true,
-            options.residual_tolerance
-                * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR,
+            options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR * ENTRY_RESIDUAL_GUARD_FACTOR,
             options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
                 * ENTRY_RESIDUAL_GUARD_FACTOR,
@@ -3921,9 +4144,7 @@ mod tests {
         ));
         assert!(!zero_move_appleyard_acceptance_allows(
             false,
-            options.residual_tolerance
-                * NOOP_ENTRY_EXACT_FACTOR
-                * ENTRY_RESIDUAL_GUARD_FACTOR,
+            options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR * ENTRY_RESIDUAL_GUARD_FACTOR,
             options.material_balance_tolerance
                 * NOOP_ENTRY_EXACT_FACTOR
                 * ENTRY_RESIDUAL_GUARD_FACTOR
@@ -5197,4 +5418,3 @@ mod tests {
         ));
     }
 }
-

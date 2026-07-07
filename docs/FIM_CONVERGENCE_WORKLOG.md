@@ -805,3 +805,57 @@ corrected a real error in the design doc's original sketch), substep failure/gro
 accepted with a warning; no direct-solver fallback exists in OPM's path). Also verified
 `convergence-monitoring` is default-off → excluded. Design doc updated in place; §9 is now the
 implementation contract for checkpoints 1-5.
+
+### Bundle N checkpoint 1 (2026-07-07) — inert CNV/MB measurement: criteria are NOT the direct waste; the damping stall is
+
+Implemented the OPM CNV/MB convergence measures (design doc §9.1) as a read-only per-iteration
+diagnostic in `fim/newton.rs` (`cnv_mb_from_parts` pure core + `cnv_mb_diagnostics` wrapper +
+`CNV-MB` trace line; 2 focused unit tests incl. the 3%-PV-rule case). One unit adaptation,
+recorded in code comments: ResSim's residual is already dt-integrated (surface m³), so OPM's
+`* dt` factor is intentionally absent; also noted that ResSim's existing `build_equation_scaling`
+is structurally `pv/(dt·B)` — i.e. the current scaled inf-norm is already a per-cell-B CNV times
+dt, which explains task #37's "residual scales quadratically with dt" observation.
+
+**Behavioral no-op gate (all passed, commit to follow this entry):** locked smoke 3/3; full
+control matrix bit-identical (20x20x3 `8, 0/3/0`; 22x22x1 `4, 0/2/0`; 23x23x1 `4, 0/2/0`;
+gas 20x20x3 `2, 0/1/0`; gas 10x10x3 x6 steady `2/step`); heavy case bit-identical
+(`substeps=32 | accepts=31+4+1764 | retries=0/13/0`, `oil=3893.94`, `hotspot_newton_caps=7`).
+
+**Measurement** (heavy case `--diagnostic step`, 44 Newton solve attempts, 358 traced
+iterations):
+
+- Iterations if OPM's criteria had decided acceptance on these same trajectories: **357 of 358 —
+  no saving.** OPM's test would accept earlier in only a handful of blocks (9), later or never in
+  the rest.
+- **35 of 44 blocks never pass OPM's criteria at all** within their attempted iterations. Binding
+  criterion: **MB(1e-7) alone in 32 blocks, both in 4, CNV alone in 0.** The "1000x looser local
+  CNV" framing is measured to be a non-factor on ResSim's own trajectories — CNV is comfortably
+  met whenever ResSim's trajectories settle.
+- The signature (longest block, dt=0.037, 20 iterations): MB contracts `1.7e-2 → 2e-3` over 9
+  iterations, drops to `1.1e-5`, then **stalls oscillating at ~2e-6 for 10 straight iterations**
+  with CNV at `8e-4` (passing) and violating-PV at 0. Neither ResSim's nor OPM's criteria accept
+  a stalled state; ResSim then dt-halves. Distribution across the 32 MB-blocked blocks: final MB
+  ranges `1.3e-7` (1x over) to `1e-3` (10000x, blowing-up rungs), median `2.2e-6` (~22x over).
+
+**Interpretation — this refutes the simple half of the design's §1 narrative and confirms the
+bundle thesis:**
+
+1. Porting OPM's *acceptance criteria* alone (N1) would fix nothing on this case and would
+   likely regress: OPM's MB `1e-7` is effectively TIGHTER than ResSim's exit states (23 of 31
+   ResSim-accepted substeps end at OPM-MB between `1.3e-7` and `~2e-6`). The criteria are not
+   where the 30x Newton-count factor lives *given ResSim's current update dynamics*.
+2. The waste lives in the *trajectory*: the damped-Newton stall at ~2e-6 (global damping scalar
+   collapsing the update at local plateaus — task #37's mechanism) burns half of every capped
+   block and forces the dt-halving ladder. OPM's per-cell chop (N2) is what lets its Newton walk
+   through the same plateau to `1e-7` in 11 iterations flat.
+3. Accuracy note: ResSim's accepted states sitting at `1-20x` of OPM's strict MB tolerance means
+   current physics acceptance is roughly OPM-comparable — no accuracy scandal in either
+   direction from the criteria themselves.
+
+**Consequence for the build order** (design doc §6 updated): checkpoint 2 becomes N2 (per-cell
+chopping) — the measured load-bearing item — with N1's acceptance flip moving after it. The
+bundle's end-state gates are unchanged; this is a development-order change only, fully within
+the "judge only at the end" principle.
+
+Replay: `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1
+--dt 1 --diagnostic step --no-json`, grep `CNV-MB`; analysis script inline in the session log.

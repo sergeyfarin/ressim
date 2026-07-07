@@ -39,14 +39,24 @@ from `/usr/bin/flow --help-all`, not from memory):
 | Pore-volume exemption (`relaxed-max-pv-fraction`) | `0.03` — 3% of PV may violate CNV **even during strict iterations** | none |
 | Well equations (`tolerance-wells`) | `1e-4` | folded into the same `1e-5` inf-norm |
 
-ResSim is ~1000x stricter locally than OPM, with no relaxed tier and no PV exemption. Every
-plateau-cell retry ladder in the diagnostics (`water@1215` etc.) is a single cell above `1e-5`
-that OPM's criteria accept. The whole compensating-mechanism stack — entry guards, zero-move
-acceptance gates, hotspot streak memory, plateau replay, retry-family classification, the
-inflection chop's load-bearing role — exists to manage the fallout of this one over-strict
-criterion plus the single global damping scalar (Task #37's root cause). This is why
-individually-correct local fixes keep cancelling out (`FIM-NEWTON-005`/`007`,
-`FIM-LINEAR-001`/`009`): the mechanisms brace against *each other*, not against the physics.
+ResSim is ~1000x stricter locally than OPM, with no relaxed tier and no PV exemption. The whole
+compensating-mechanism stack — entry guards, zero-move acceptance gates, hotspot streak memory,
+plateau replay, retry-family classification, the inflection chop's load-bearing role — exists to
+manage the fallout of this criterion plus the single global damping scalar (Task #37's root
+cause). This is why individually-correct local fixes keep cancelling out
+(`FIM-NEWTON-005`/`007`, `FIM-LINEAR-001`/`009`): the mechanisms brace against *each other*,
+not against the physics.
+
+**Checkpoint-1 correction (2026-07-07, measured — see worklog "Bundle N checkpoint 1"):** the
+inert CNV/MB measurement on the heavy case shows the criteria difference is NOT the direct
+source of the 30x on ResSim's *current* trajectories: CNV is never the binding constraint
+(0 of 44 Newton blocks), OPM's criteria would have saved ~0 iterations, and 35 of 44 blocks fail
+OPM's MB `1e-7` — because the *global-scalar-damped* Newton stalls at MB ≈ `2e-6` at local
+plateaus and stops contracting at all. The 30x lives in the update/damping dynamics (N2) and the
+retry ladder those stalls trigger (N3); the criteria (N1) matter as the piece that lets a
+post-N2 trajectory exit at the right time, not as a standalone win. This is measured
+confirmation that the bundle must land as a whole — N1 alone would regress (OPM's MB `1e-7` is
+tighter than 23 of 31 current accepted-substep exit states).
 
 ## 2. Design principle (standing user directive)
 
@@ -205,13 +215,15 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
    plus several load-bearing details nobody's memory had: the implied-`So` delta in the chop, the
    `converged-before-solve` iteration structure, the `reduction ≥ relaxed` linear acceptance, and
    the 3%-PV rule applying at *every* iteration (not only on exhaustion).
-1. **N1 inert**: compute CNV/MB alongside the existing criterion, trace-only
-   (`CNV-MB would_accept_iter=K actual_iter=M`). One heavy-case run quantifies how many
-   iterations/substeps the old criterion wastes — the direct empirical check on §1's root-cause
-   claim, before any behavior changes.
-2. **Flag on** (`OpmAligned`): N1 acceptance + N5 linear handling.
-3. N3 controller.
-4. N2 per-cell chopping (+ inflection-chop deletion).
+1. **N1 inert — DONE 2026-07-07**: CNV/MB computed alongside the existing criterion, trace-only
+   (`CNV-MB` line per iteration; behavioral no-op verified: control matrix + heavy case
+   bit-identical, locked smoke 3/3). Result (worklog "Bundle N checkpoint 1"): criteria-swap
+   alone saves ~nothing; the damped-Newton stall at MB≈2e-6 is the measured waste. Build order
+   below reordered accordingly (N2 first) — development order only; §5 end gates unchanged.
+2. **Flag on** (`OpmAligned`): **N2 per-cell chopping** (+ inflection-chop deletion) — the
+   measured load-bearing item.
+3. N1 acceptance criteria + N5 linear handling.
+4. N3 controller.
 5. N4 mechanism deletion sweep.
 6. End-metric evaluation (§5), A/B against Legacy. Promote → delete Legacy path in a follow-up
    commit; re-derive control-matrix baselines; update `FIM_STATUS`/registry/skill docs.
@@ -237,6 +249,7 @@ the default. No intermediate checkpoint is judged on old-architecture baselines.
 |---|---|
 | CNV 1e-2 loosening degrades physics accuracy | MB 1e-7 is tighter than today globally; fine-dt FOPT hard gate (§5.1); relaxed tier only fires on budget exhaustion |
 | Per-cell chopping without the inflection chop overshoots fw basins | `ds-max=0.2` bounds saturation moves; recorded single-retry fallback: per-cell inflection chop |
+| Deleting the direct-LU ladder loses a step-rescue OPM doesn't have | Real but narrow: exact LU occasionally powers through a step OPM's dt-cut would fragment. Counterweights (2026-07-07 review): the ladder *masked* the 0%-converging `row0-schur` restriction for months (42/45 silent fallbacks, Phase 8) because sims "worked"; LU doesn't scale past benchmark sizes; an exact direction on a bad linearization is confidently wrong. If §5 gates show step fragmentation traced to a solve LU would have survived, reintroduce ONE explicit rescue — never the ladder |
 | Big-bang change is hard to review | Flag-gated parallel path; Legacy stays bit-identical until promotion; per-checkpoint commits |
 | Port drift from OPM semantics | Step 0 fidelity pass against OPM source (§9, done); parameters pinned to installed-binary defaults |
 | Old baselines/registry become misleading | Explicit §7 annotation pass is part of promotion, not optional cleanup |
