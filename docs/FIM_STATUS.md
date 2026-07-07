@@ -85,18 +85,20 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)" for full numbers. **Do not reopen
    this gap without new evidence that the drift has grown or that it's blocking something else** —
    prioritize the larger architectural gaps below instead.
-2. **AMG coarse solver for CPR ("Bundle C")** — the last major OPM architecture gap
-   (`FIM-LINEAR-006`). Everything else in the linear stack is aligned. Constraint: no mature
-   wasm32-compatible pure-Rust AMG crate; hand-roll ~1500-2000 LOC. Design skeleton:
-   `docs/FIM_CPR_IMPROVEMENT_PLAN.md` Phase 3. Per
-   `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md`, per-cell damping (OPM `dsMax` semantics) and
-   dropping the inflection chop should be revisited only **after** AMG lands.
-3. **Remaining OPM-gap items** from `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` (triaged 2026-07-05:
-   4 of 6 closed): variable substitution (regime switching inside Newton instead of frozen-regime
-   + post-hoc reclassify), and OPM-style post-step dSat/dP-proportional timestep growth limiting.
-4. **Wall-clock accounting**: substep counts improved dramatically but `lin_ms` still dominates
-   runtime on the heavy case; no recorded apples-to-apples wall-clock baseline across the
-   Phase 10/11 promotions.
+2. **The 738x wall-clock gap to OPM Flow is now measured and attributed** (2026-07-07 factor
+   budget, worklog "Task #41"): ~30x from the nonlinear layer (acceptance criterion 1000x
+   stricter locally than OPM's CNV, retry-ladder waste, global-scalar damping) x ~24x from
+   per-Newton-iteration cost (preconditioner rebuilt every iteration; 89% of wall-clock).
+   **The active plan is `docs/FIM_BUNDLE_N_DESIGN.md`**: Bundle N replaces the nonlinear
+   acceptance/damping/timestep layer with OPM's shipped semantics as one flag-gated bundle
+   (judged on end metrics only, never mechanism-by-mechanism); Bundle P adds OPM-style
+   preconditioner reuse (`cpr-reuse-setup`). This supersedes the earlier per-item framing of
+   the remaining gaps.
+3. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
+   #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
+   current sizes. AMG is a scale-up item, not part of closing the current measured gap.
+4. **Variable substitution** (regime switching inside Newton; `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
+   gap #5) — deliberately excluded from Bundle N; candidate follow-on after it settles.
 
 ## Canonical Sources
 

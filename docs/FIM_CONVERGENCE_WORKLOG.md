@@ -708,3 +708,85 @@ guidance that per-cell damping and dropping the chop are deferred until after AM
 - Bounded control matrix additions (added 2026-07-02, part of the fim-solver-debug skill's routine gate set):
   - `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json`
   - `node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 20x20x3 --steps 1 --dt 0.25 --diagnostic summary --no-json`
+
+### Task #41 (2026-07-07) — Gap factor budget: heavy case, ResSim vs OPM Flow side-by-side
+
+User directive: stop optimizing individual mechanisms; attribute the full 2-3-orders-of-magnitude
+wall-clock gap to OPM Flow before designing the fix. Both sides measured on this machine, same
+day, commit `468a103` (clean tree; wasm rebuilt from exactly this source).
+
+**ResSim side** (exact command, verbatim summary):
+
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic step --no-json
+step=  1 | time=1.0000d | outer_ms=36705.8 | history+=32 | substeps=32 | accepts=31+4+1764 | retries=0/13/0 | avg_p=353.55 | oil=3893.94 | inj=3883.24 | gor=0.00 | dt=[4.003e-5,6.866e-2] | growth=hotspot-repeat | hotspot_newton_caps=7 | retry_dom=nonlinear-bad:water@1215 | fim_ms=36658.0 | lin_ms=34732.0 | pc_ms=32867.0 | retry_ms=11803.0
+```
+
+Counted from the step trace: **336 real Newton iterations** across **44 Newton solve attempts**
+(31 real accepted substeps + 13 retry rungs), 12 linear-solver failures, per-Newton linear
+iterations 1-4 (median 3). Wall-clock 36.9 s. A `--capillary false` rerun is bit-identical
+(`oil=3893.94`, same trajectory), confirming the preset's effective Pc is nil here.
+
+**OPM Flow side** (Flow 2025.10, `/usr/bin/flow`, default options): adapted the tracked parity
+deck `origin/fim-opm-continuation-plan:opm/reference-decks/water-medium-step1/CASE.DATA` to the
+heavy case (`DIMENS 12 12 3`, 432 cells, producer moved to 12 12, `TSTEP 1.0`, array counts
+rescaled — pure `sed`, no physics edits). Verbatim result:
+
+```
+ Newton its=11, linearizations=12 (0.0sec), linear its= 13 (0.0sec)
+Number of timesteps:             1
+Simulation time:                 0.05 s
+  Linear solve time:             0.03 s  (Linear setup: 0.03 s)
+Overall Newton Iterations:      11   Overall Linear Iterations:      13   (Wasted: 0; 0.0%)
+```
+
+**Caveat (recorded, not hidden):** the deck is a *cost-class* reference, not a physics reference —
+its FOPT (2609.5) does not match ResSim (3893.9); porosity/viscosity/relperm/Pc/wells/perm all
+verified matching, so the residual parity gap is inherited from the branch's Phase-0 deck lineage
+(whose own doc says numerics-parity tolerances were never stated). The April OPM converged FOPT
+(3826.12) remains the physics reference. An 11-Newton/zero-cut/0.05 s cost class is robust to
+this level of physics mismatch.
+
+**The factor budget (36.9 s / 0.05 s = 738x), multiplicative decomposition:**
+
+| Factor | OPM | ResSim | Ratio |
+|---|---:|---:|---:|
+| Newton iterations for the 1-day step | 11 | 336 | **30.5x** |
+| Wall-clock per Newton iteration | 4.5 ms | 109 ms | **24x** |
+
+`30.5 x 24 ≈ 730x` — the decomposition closes. Within each factor:
+
+- **Newton-count factor (30.5x)** is nonlinear-layer architecture: 32 substeps + 13 retry rungs
+  where OPM takes ONE step with zero cuts. Per solve attempt ResSim averages 7.6 iterations —
+  the same order as OPM's 11 for the whole day. The multiplication comes from acceptance +
+  timestep control, not from Newton being weak per-attempt. 32% of wall-clock (`retry_ms=11803`)
+  is spent on discarded retry-rung work (OPM wasted: 0%).
+- **Per-iteration cost factor (24x)** is almost entirely preconditioner build: `pc_ms=32867` =
+  95% of `lin_ms` = **89% of total wall-clock**. ResSim rebuilds quasi-IMPES weights + block-ILU0
+  + the O(n³) dense coarse inverse at every Newton iteration; OPM's default `--cpr-reuse-setup=4`
+  reuses the CPR setup and fully recreates it only every 30 linear solves.
+
+**OPM installed-binary defaults captured for the design work** (from `/usr/bin/flow --help-all`,
+Flow 2025.10 — no memory-derived numbers): `tolerance-mb=1e-7` (relative to total mass in place,
+relaxed `1e-6`), `tolerance-cnv=0.01` (LOCAL max saturation error, relaxed `1`),
+`relaxed-max-pv-fraction=0.03` (3% of pore volume may violate CNV even during strict iterations),
+`min-strict-cnv-iter=-1` (relaxed kicks in when the Newton budget is exhausted),
+`tolerance-wells=1e-4`, `ds-max=0.2`, `dp-max-rel=0.3`, `newton-max-iterations=20` /
+`newton-min-iterations=2`, `time-step-control=pid+newtoniteration` with
+`target-newton-iterations=8`, growth `1.25`, decay `0.75`, restart factor `0.33`, max restarts
+`10`; `linear-solver-reduction=0.01`, `linear-solver-max-iter=200`, `cpr-reuse-setup=4` /
+`cpr-reuse-interval=30`.
+
+Contrast with ResSim's acceptance: `scaled_residual_inf_norm` (`newton.rs:1425`) at
+`residual_tolerance=1e-5` — the single worst cell/equation in the grid must individually pass
+`1e-5`, roughly **1000x stricter locally than OPM's CNV `1e-2`**, with no relaxed tier, no
+pore-volume exemption, and no volume-averaged criterion. The `water@1215` plateau ladders that
+dominate the heavy case's retry burden are single cells sitting above `1e-5` that OPM's criteria
+would have accepted many iterations earlier.
+
+**Conclusion → design doc:** the gap splits cleanly into a nonlinear-architecture half (30x:
+acceptance criteria + controller + global-scalar damping) and a per-iteration-cost half (24x:
+preconditioner rebuild). Both are addressed as two coherent bundles in
+`docs/FIM_BUNDLE_N_DESIGN.md` (this measurement is its motivating section). Per the standing
+user directive, neither bundle is to be implemented or judged mechanism-by-mechanism against
+current-architecture baselines.

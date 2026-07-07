@@ -24,9 +24,11 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 ## FIM next steps (2026-07-05, see docs/FIM_STATUS.md "Known Open Gaps")
 
 - [x] **Fine-dt physics reference for `k=1.25`** — done 2026-07-06: current-bundle fine-dt FOPT is `3883.47` vs. OPM's `3826.12` (+1.50%), vs. April's validated `3826.36` (+0.01%). Isolated via same-bundle `k=1.2` (`3845.38`, +0.50%): ~half the drift is the Phase 10/11 bundle itself (untested for accuracy when promoted), the rest is `k=1.25` specifically. **User decision 2026-07-06: 1.5% is immaterial given ResSim's much larger overall gap to OPM (~2.5 Newton iters/step, zero cuts) — do not fine-tune `k` further on this basis.** `k=1.25` stays live. See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)".
-- [ ] **Wall-clock baseline**: record an apples-to-apples heavy-case wall-clock comparison across the Phase 10/11 promotions (substeps improved 62→32 but `lin_ms` still dominates; no controlled timing baseline exists).
-- [ ] **Decide on AMG/CPR completion ("Bundle C", `FIM-LINEAR-006`)**: the last major OPM architecture gap. Multi-week hand-roll (~1500-2000 LOC, no wasm32-compatible crate). After it lands, revisit per-cell damping + dropping the inflection chop per `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md`.
-- [ ] **Smaller OPM-gap items still open** (`docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` triage): variable substitution (regime switch inside Newton), OPM-style post-step dSat/dP-proportional growth limiting.
+- [x] **Wall-clock baseline / gap attribution** — done 2026-07-07 as a full factor budget vs OPM Flow on the same machine (worklog "Task #41"): 738x = 30.5x Newton count (nonlinear layer) x 24x per-iteration cost (preconditioner rebuild, 89% of wall-clock). OPM: 1 step, 11 Newtons, 0.05 s; ResSim: 32 substeps + 13 rungs, 336 Newtons, 36.9 s.
+- [ ] **Implement Bundle N** (`docs/FIM_BUNDLE_N_DESIGN.md`, registry `FIM-BUNDLE-N`): replace the nonlinear acceptance/damping/timestep layer with OPM's shipped semantics as one flag-gated bundle, judged on end metrics only. Step 0 is the OPM-source port-fidelity pass (exact CNV/MB/chopping/controller formulas).
+- [ ] **Implement Bundle P** (`FIM-BUNDLE-P`): OPM-style CPR setup reuse — kills most of the 24x per-iteration factor; independent of Bundle N, conventional gates.
+- [ ] **AMG ("Bundle C", `FIM-LINEAR-006`)**: stays deferred — Task #41 traces confirm coarse per-application quality is already ~1e-7 at current sizes; scale-up item only.
+- [ ] **Variable substitution** (`docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` gap #5): excluded from Bundle N by design; revisit after it settles.
 
 ## Now
 
