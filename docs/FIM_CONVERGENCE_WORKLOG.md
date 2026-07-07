@@ -790,3 +790,18 @@ preconditioner rebuild). Both are addressed as two coherent bundles in
 `docs/FIM_BUNDLE_N_DESIGN.md` (this measurement is its motivating section). Per the standing
 user directive, neither bundle is to be implemented or judged mechanism-by-mechanism against
 current-architecture baselines.
+
+### Task #43 (2026-07-07) — Bundle N step 0: port-fidelity pass against OPM source, done
+
+Cloned `opm-simulators` at `release/2025.10/final` (commit `b8b2b9e`, the exact release of the
+installed `/usr/bin/flow`) and extracted the verbatim formulas for every Bundle N item into
+`docs/FIM_BUNDLE_N_DESIGN.md` §9: CNV/MB convergence (incl. the per-cell pore-volume
+normalization, `B_avg` FVF weighting, and the 3%-PV relaxed-CNV rule that fires at ANY
+iteration), per-cell `dsMax`/`dpMaxRel` chopping (incl. the implied `dSo = -(dSw+dSg)` term),
+the `pid+newtoniteration` controller (`min(PID, iteration-target)` with damping factors
+1.0/3.2 — NOT the 1.25/0.75 rates, which belong to the non-default simple controller; this
+corrected a real error in the design doc's original sketch), substep failure/growth clamps
+(0.33 restart factor, 3x/2x growth clamps), and linear-failure handling (`reduction ≤ 0.01`
+accepted with a warning; no direct-solver fallback exists in OPM's path). Also verified
+`convergence-monitoring` is default-off → excluded. Design doc updated in place; §9 is now the
+implementation contract for checkpoints 1-5.

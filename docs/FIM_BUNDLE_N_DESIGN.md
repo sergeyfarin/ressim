@@ -1,8 +1,11 @@
 # Bundle N: Replace the FIM Nonlinear Layer with OPM's, as One Coherent Bundle
 
-Status: DESIGN (2026-07-07). Nothing here is implemented.
+Status: DESIGN, step 0 (port-fidelity pass) DONE 2026-07-07. Nothing implemented yet.
 Companion cost bundle: "Bundle P" (preconditioner reuse), Part 2 below.
 Motivating measurement: `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #41 (2026-07-07)".
+Exact formulas: §9 (verified against `opm-simulators` tag `release/2025.10/final`, the same
+release as the installed `/usr/bin/flow`; commit `b8b2b9e`). Where §3's prose and §9 differ,
+**§9 wins** — notably the timestep controller, whose original sketch here was wrong.
 
 ## 1. Why this bundle exists (the measured gap)
 
@@ -83,10 +86,10 @@ per component (water / oil-component / gas-component):
 - **Wells**: `tolerance-wells=1e-4` on the well-constraint/perforation families (they leave the
   cell inf-norm entirely).
 
-Implementation note: the exact CNV/MB formulas must be ported from `opm-simulators`
-(`BlackoilModel::getReservoirConvergence` and `localConvergenceData`), not re-derived — the
-tolerances above are meaningless under a home-grown normalization. ResSim already has per-cell
-pore volume and `equation_scaling`; the port is a normalization change, not new plumbing.
+Exact formulas: §9.1 (ported verbatim from `BlackoilModel::getReservoirConvergence` /
+`localConvergenceData` / `getMaxCoeff` / `characteriseCnvPvSplit` at the pinned tag — the
+tolerances are meaningless under a home-grown normalization). ResSim already has per-cell pore
+volume and `equation_scaling`; the port is a normalization change, not new plumbing.
 `material_balance_tolerance` (already separate in `FimNewtonOptions`) becomes the MB check.
 
 ### N2 — Per-cell update chopping replaces the global damping scalar
@@ -95,7 +98,8 @@ Replace `appleyard_damping_breakdown`'s single global factor with OPM's
 `updatePrimaryVariables_()` semantics: clamp **each cell's own update** to `ds-max=0.2`
 (absolute saturation change) and `dp-max-rel=0.3` (relative pressure change). No cell restricts
 any other cell's movement. Task #37 established the global scalar is the root cause of the
-chaotic `k`-sensitivity; this removes that mechanism class entirely.
+chaotic `k`-sensitivity; this removes that mechanism class entirely. Exact semantics (including
+the implied-`So` delta in the per-cell max): §9.2.
 
 - The **fw-inflection chop is deleted** in the same change. `FIM-DAMP-002` (April) proved
   removing it *under the old architecture* lost both speed and accuracy — but that architecture
@@ -110,14 +114,13 @@ chaotic `k`-sensitivity; this removes that mechanism class entirely.
 ### N3 — OPM timestep controller replaces the retry ladder
 
 Replace the retry-ladder/hotspot-memory controller (`fim/timestep.rs`) with OPM's shipped
-scheme (`time-step-control=pid+newtoniteration`):
-
-- PID-style dt proposal from relative state change, plus the Newton-iteration target: grow by
-  `1.25` when iterations < `target-newton-iterations=8`, decay by `0.75` when above.
-- On genuine nonconvergence (budget exhausted AND relaxed criteria still failing): dt x `0.33`
-  (`solver-restart-factor`), max `10` restarts. No failure-family classification, no
-  hotspot-repeat memory, no plateau replay, no carryover budgets.
-- `newton-min-iterations=2`, `newton-max-iterations=20` (ResSim's cap already matches).
+scheme (`time-step-control=pid+newtoniteration`). **Correction from step 0**: the original
+sketch here ("grow 1.25 / decay 0.75") described the *simple* `iterationcount` controller, not
+the default. The real default is `dt_next = min(PID estimate, iteration-target estimate)` with
+damping-factor formulas — exact port target in §9.3. On genuine nonconvergence: dt x `0.33`
+(`solver-restart-factor`), max `10` restarts, growth clamps `3x`/`2x` (§9.4). No failure-family
+classification, no hotspot-repeat memory, no plateau replay, no carryover budgets.
+`newton-min-iterations=2`, `newton-max-iterations=20` (ResSim's cap already matches).
 
 ### N4 — Delete the compensating mechanisms (same change, not one at a time)
 
@@ -134,10 +137,11 @@ they go together because their reason to exist (over-strict acceptance + global 
 Today a non-converged iterative solve triggers a direct sparse-LU fallback (expensive) or a
 retry-rung. OPM instead: accepts the iterative result if it achieved
 `relaxed-linear-solver-reduction=0.01`; otherwise the *Newton/timestep* layer handles it
-(`linear-solver-ignore-convergence-failure=false` aborts only on truly failed solves). In the
-`OpmAligned` path: keep the Newton direction whenever the relaxed reduction was met (ResSim's
-`should_accept_near_converged_iterative_step` generalizes to this), drop the direct-LU fallback
-ladder from the hot path (keep direct solvers for debug backends only).
+(`linear-solver-ignore-convergence-failure=false` aborts only on truly failed solves). Exact
+semantics: §9.5. In the `OpmAligned` path: keep the Newton direction whenever the relaxed
+reduction was met (ResSim's `should_accept_near_converged_iterative_step` generalizes to this),
+drop the direct-LU fallback ladder from the hot path (keep direct solvers for debug backends
+only).
 
 ### Explicitly NOT in Bundle N
 
@@ -195,10 +199,12 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
 
 ## 6. Build order (checkpoints, not gates)
 
-0. **Port fidelity pass**: read the OPM sources for each item (`getReservoirConvergence`,
-   `updatePrimaryVariables_`, `AdaptiveTimeStepping`/`PIDAndIterationCountTimeStepControl`,
-   linear-failure handling) and write the exact formulas into this doc before coding. The
-   installed Flow's `--help-all` defaults (Task #41 worklog) are the parameter truth.
+0. **Port fidelity pass — DONE 2026-07-07**: OPM sources read at the pinned release tag and the
+   exact formulas recorded in §9. The installed Flow's `--help-all` defaults (Task #41 worklog)
+   are the parameter truth. One design-level correction came out of it (N3's controller formula)
+   plus several load-bearing details nobody's memory had: the implied-`So` delta in the chop, the
+   `converged-before-solve` iteration structure, the `reduction ≥ relaxed` linear acceptance, and
+   the 3%-PV rule applying at *every* iteration (not only on exhaustion).
 1. **N1 inert**: compute CNV/MB alongside the existing criterion, trace-only
    (`CNV-MB would_accept_iter=K actual_iter=M`). One heavy-case run quantifies how many
    iterations/substeps the old criterion wastes — the direct empirical check on §1's root-cause
@@ -232,5 +238,159 @@ the default. No intermediate checkpoint is judged on old-architecture baselines.
 | CNV 1e-2 loosening degrades physics accuracy | MB 1e-7 is tighter than today globally; fine-dt FOPT hard gate (§5.1); relaxed tier only fires on budget exhaustion |
 | Per-cell chopping without the inflection chop overshoots fw basins | `ds-max=0.2` bounds saturation moves; recorded single-retry fallback: per-cell inflection chop |
 | Big-bang change is hard to review | Flag-gated parallel path; Legacy stays bit-identical until promotion; per-checkpoint commits |
-| Port drift from OPM semantics | Step 0 fidelity pass against OPM source; parameters pinned to installed-binary defaults |
+| Port drift from OPM semantics | Step 0 fidelity pass against OPM source (§9, done); parameters pinned to installed-binary defaults |
 | Old baselines/registry become misleading | Explicit §7 annotation pass is part of promotion, not optional cleanup |
+
+## 9. Verified OPM formulas (step 0, 2026-07-07)
+
+Source: `opm-simulators` tag `release/2025.10/final` (commit `b8b2b9e`), matching the installed
+`/usr/bin/flow` (Flow 2025.10). File/line references below are to that tag. Parameter defaults
+were independently confirmed from `/usr/bin/flow --help-all` (Task #41 worklog).
+
+Notation: cells `i`, components `c ∈ {water, oil-component, gas-component}`; `R[i][c]` = OPM's
+assembled residual entry (surface-volume rate units — ResSim's residual is the same quantity
+scaled; the port must use the RAW residual, not `equation_scaling`-divided values);
+`pv_i = referencePorosity_i * cellTotalVolume_i`; `dt` = substep length.
+
+### 9.1 Convergence criteria (`BlackoilModel_impl.hpp`)
+
+Per Newton iteration, from `localConvergenceData` (l.604) + `getMaxCoeff` (l.1083) +
+`getReservoirConvergence` (l.740):
+
+```
+B_avg[c]    = (1/N_cells) * Σ_i  B_i,c          # B_i,c = 1/invB = FVF of phase c in cell i
+R_sum[c]    = Σ_i  R[i][c]                       # SIGNED sum — cancellation intended
+maxCoeff[c] = max_i |R[i][c]| / pv_i
+
+CNV[c] = B_avg[c] * dt * maxCoeff[c]                       # local, dimensionless
+MB[c]  = |B_avg[c] * R_sum[c]| * dt / pvSum                # global, dimensionless
+```
+
+Failure levels (l.870-905): `NaN` residual → hard failure; `res > max-residual-allowed (1e7)` →
+TooLarge failure; both make the iteration count as failed (→ dt cut path, §9.4).
+
+**Relaxed-tolerance activation** (l.775-815) — three independent triggers, evaluated every
+iteration:
+
+1. `iteration == maxIter` and `min_strict_mb_iter == -1` → use `tolerance-mb-relaxed (1e-6)`.
+2. `iteration == maxIter` and `min_strict_cnv_iter == -1` → use `tolerance-cnv-relaxed (1.0)`.
+3. **The 3%-PV rule (CNV only, ANY iteration)** — from `characteriseCnvPvSplit` (l.655): per
+   cell compute `maxCnv_i = (dt/pv_i) * max_c(|R[i][c]| * B_avg[c])`, bucket cells into
+   {≤ tol_cnv, ≤ tol_cnv_relaxed, > relaxed} by pore volume; if
+   `PV(bucket2 + bucket3) < relaxed-max-pv-fraction (0.03) * eligiblePV`, the relaxed CNV
+   tolerance applies to the whole check *right now*. This is the mechanism that makes isolated
+   plateau cells (ResSim's `water@1215` class) a non-event in OPM.
+
+Converged iff every component passes `MB[c] ≤ tol_mb` and `CNV[c] ≤ tol_cnv` (with the active
+strict/relaxed tolerances), **and** the well report passes (`getWellConvergence(B_avg)`,
+`tolerance-wells=1e-4`; combined at `getConvergence`, l.985), **and** `iteration ≥
+newton-min-iterations (2)` (l.183-186: `report.converged = convrep.converged() && iteration >=
+minIter`).
+
+**Iteration structure that must be preserved** (l.179-290): convergence is evaluated from the
+freshly assembled residual BEFORE any linear solve; a converged iteration costs one assembly and
+zero linear solves. Loop condition (`NonlinearSolver.hpp`, l.167):
+`while ((!converged && iteration <= newton_max_iter) || iteration <= newton_min_iter)`.
+Exhaustion without convergence throws `TooManyIterations` → substep failure (§9.4).
+
+### 9.2 Per-cell update chopping (`opm/models/blackoil/blackoilnewtonmethod.hpp`, l.201-390)
+
+Per cell (no global coupling anywhere), with `update` = raw Newton update and the convention
+`next = current - delta`:
+
+```
+dSw = update[waterIdx]        (when water primary variable means Sw)
+dSg = update[gasIdx]          (when gas primary variable means Sg)
+dSo = -(dSw + dSg)                       # implied oil delta COUNTS toward the max
+maxSatDelta = max(|dSw|, |dSo|, |dSg|)
+satAlpha    = maxSatDelta > dsMax ? dsMax / maxSatDelta : 1     # dsMax = 0.2
+
+saturation deltas   *= satAlpha                                  # one scalar per CELL
+pressure delta       = clamp(dp, ±dpMaxRel * p_current)          # dpMaxRel = 0.3, independent
+next pressure        = clamp(next, pressMin, pressMax)
+```
+
+Notes: `satAlpha` preserves the update direction within the cell (both saturations scale
+together); the pressure chop is per-variable and NOT scaled by `satAlpha`; when the gas/water
+variable currently means `Rs`/`Rv`/`Rsw` the chop instead only prevents the factor from going
+negative (`delta = min(delta, current)`) — relevant once variable substitution exists, harmless
+to include now. The trailing "switch primary variable meaning" step (l.390+) is variable
+substitution — out of Bundle N scope.
+
+### 9.3 Timestep controller (`TimeStepControl.cpp`)
+
+Default `pid+newtoniteration` = `PIDAndIterationCountTimeStepControl::computeTimeStepSize`
+(l.274): **`dt_next = min(dt_PID, dt_iter)`** where, with `its` = Newton iterations of the
+accepted substep, `target = time-step-control-target-newton-iterations (8)`,
+`decayDamping = 1.0`, `growthDamping = 3.2`:
+
+```
+if its > target:  dt_iter = dt / (1 + (its-target)/target * decayDamping)
+else:             dt_iter = dt * (1 + (target-its)/target * growthDamping)
+```
+
+(e.g. its=2 → dt x 3.4; its=8 → dt x 1.0; its=16 → dt x 0.5. NOT the 1.25/0.75 rates — those
+belong to the non-default `iterationcount` controller.)
+
+`dt_PID` (`PIDTimeStepControl::computeTimeStepSize`, l.188), on the error series
+`e_0,e_1,e_2` (last three substeps) where `e = relativeChange()` and
+`tol = time-step-control-tolerance (0.1)` (times `safety-factor 0.8` where applied by the
+harness):
+
+```
+if e_2 > tol:        dt_PID = dt * tol / e_2
+elif any e_k == 0:   dt_PID = +inf     (no PID constraint)
+else:                dt_PID = dt * (e_1/e_2)^0.075 * (tol/e_2)^0.175 * (e_1²/(e_0·e_2))^0.01
+```
+
+`relativeChange()` (`BlackoilModel_impl.hpp`, l.371): between the accepted substep solution and
+the previous one, `Σ_i [(Δp_i)² + Σ_phases (ΔS_i)²] / Σ_i [p_i² + Σ_phases S_i²]` — one global
+scalar, saturations from primary variables with implied So. (OPM's own source carries an
+"NB fix me!" about mixing pressure and saturation units; port it as-is per the 95%-track-OPM
+policy — do not "improve" it.)
+
+### 9.4 Substep failure & growth clamps (`AdaptiveTimeStepping_impl.hpp`)
+
+- Any thrown failure (`TooManyIterations`, `NumericalProblem`, `LinearSolverProblem`, …) fails
+  the substep (l.1165-1186): `dt_next = solver-restart-factor (0.33) * dt` (l.818); terminate
+  after `solver-max-restarts (10)` consecutive restarts; abort below `solver-min-time-step
+  (1e-12 days)`.
+- Growth clamps on the controller's proposal (`maybeRestrictTimeStepGrowth_`, l.1067):
+  `dt_next = min(dt_next, solver-max-growth (3.0) * dt)` always; additionally
+  `min(solver-growth-factor (2.0) * dt, dt_next)` while `restarts > 0` in the current report
+  step.
+- There is no failure-family classification, no site memory, and no replay anywhere in this
+  path.
+
+### 9.5 Linear-solver failure handling (`AbstractISTLSolver.hpp::checkConvergence`, l.194)
+
+```
+if !result.converged:
+    if result.reduction < relaxed-linear-solver-reduction (0.01):  # note: '<' on reduction
+        → treat as CONVERGED, log a warning, keep the direction    #  achieved (smaller=better)
+    elif !linear-solver-ignore-convergence-failure (default false):
+        → throw NumericalProblem → substep failure path (§9.4)
+```
+
+i.e. a linear solve that hit its iteration cap but achieved the (relaxed) 100x reduction is
+simply **used**. There is no direct-solver fallback anywhere in OPM's path — ResSim's
+dead-state/zero-move/restart-stagnation direct-LU bypass ladder has no analog and is deleted in
+the `OpmAligned` path (N4/N5).
+
+### 9.6 CPR setup reuse — Bundle P target (`ISTLSolver.hpp`, l.515-552)
+
+Recreate-solver decision per linear solve: never recreate if the preconditioner
+`hasPerfectUpdate()` (values refreshed in-place); else by `cpr-reuse-setup`: `0` always, `1`
+first Newton iteration of each timestep, `2` when the previous solve took >10 iterations,
+`3` never, `4` (default) every `cpr-reuse-interval (30)` solve calls. ResSim mapping: the
+quasi-IMPES weights + coarse-operator construction + dense coarse factorization are the
+"setup" to reuse; block-ILU0 value refactorization each solve is the analog of the in-place
+`update()`.
+
+### 9.7 Explicitly excluded (verified default-off or out of scope)
+
+- `convergence-monitoring` (penalty-card early cuts): **default false** — not part of the port.
+- `min-time-step-based-on-newton-iterations (0)`, NLDD nonlinear domain decomposition, TUNING
+  keyword overrides: out of scope.
+- Newton relaxation type `dampen` (`stabilizeNonlinearUpdate`): already ported in Phase 7
+  (`FIM-NEWTON-001`/`006`) — unchanged.
