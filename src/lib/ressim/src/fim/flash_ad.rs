@@ -84,9 +84,13 @@ fn solve_rs_for_dissolved_gas_generic<S: Scalar>(
         return S::from_f64(rs_star);
     }
 
-    let g_theta =
-        dissolved_gas_value_generic(sim, pressure_bar, S::from_f64(rs_star), oil_saturation, pore_volume_m3)
-            - target;
+    let g_theta = dissolved_gas_value_generic(
+        sim,
+        pressure_bar,
+        S::from_f64(rs_star),
+        oil_saturation,
+        pore_volume_m3,
+    ) - target;
 
     S::from_f64(rs_star) - g_theta / d_g_d_rs
 }
@@ -116,7 +120,10 @@ pub(crate) fn split_gas_inventory_after_transport_generic<S: Scalar>(
     };
 
     let total_hydrocarbon_saturation = (S::from_f64(1.0) - water_saturation).max_floor(0.0);
-    let bg = table.interpolate_saturated_generic(pressure_bar).bg.max_floor(1e-9);
+    let bg = table
+        .interpolate_saturated_generic(pressure_bar)
+        .bg
+        .max_floor(1e-9);
     let free_gas_sc_transport = transported_free_gas_sc.max_floor(0.0);
     let sg_transport = ((free_gas_sc_transport * bg) / pore_volume_m3.max_floor(1e-9))
         .max_floor(0.0)
@@ -124,7 +131,10 @@ pub(crate) fn split_gas_inventory_after_transport_generic<S: Scalar>(
     let so_transport = (total_hydrocarbon_saturation - sg_transport).max_floor(0.0);
     let dissolved_gas_sc = dissolved_gas_sc.max_floor(0.0);
 
-    let rs_max = table.interpolate_saturated_generic(pressure_bar).rs.max_floor(0.0);
+    let rs_max = table
+        .interpolate_saturated_generic(pressure_bar)
+        .rs
+        .max_floor(0.0);
     let rs_dissolution_cap = if sim.gas_redissolution_enabled {
         rs_max
     } else {
@@ -162,7 +172,8 @@ pub(crate) fn split_gas_inventory_after_transport_generic<S: Scalar>(
     };
     let max_all_dissolved_sc =
         (total_hydrocarbon_saturation * pore_volume_m3 / bo_saturated) * rs_saturated;
-    if sim.gas_redissolution_enabled && total_gas_sc.value() <= max_all_dissolved_sc.value() + 1e-9 {
+    if sim.gas_redissolution_enabled && total_gas_sc.value() <= max_all_dissolved_sc.value() + 1e-9
+    {
         let rs = solve_rs_for_dissolved_gas_generic(
             sim,
             pressure_bar,
@@ -177,7 +188,8 @@ pub(crate) fn split_gas_inventory_after_transport_generic<S: Scalar>(
 
     let denom = bg.recip() - (rs_saturated / bo_saturated);
     let sg_saturated = if denom.value().abs() > 1e-12 {
-        ((total_gas_sc / pore_volume_m3) - (total_hydrocarbon_saturation * rs_saturated / bo_saturated))
+        ((total_gas_sc / pore_volume_m3)
+            - (total_hydrocarbon_saturation * rs_saturated / bo_saturated))
             / denom
     } else {
         sg_transport
@@ -187,7 +199,9 @@ pub(crate) fn split_gas_inventory_after_transport_generic<S: Scalar>(
     } else {
         sg_transport
     };
-    let sg = sg_saturated.max_of(sg_lower_bound).min_of(total_hydrocarbon_saturation);
+    let sg = sg_saturated
+        .max_of(sg_lower_bound)
+        .min_of(total_hydrocarbon_saturation);
     let so = (total_hydrocarbon_saturation - sg).max_floor(0.0);
     (sg, so, rs_saturated)
 }

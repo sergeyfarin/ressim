@@ -470,8 +470,13 @@ pub(crate) fn mass_balance_own_jacobian(
     let q_ad = Ad::<4>::variable(q, 3);
     let fractions_ad = fractions_with_connected_cell_active(sim, cell_ad, producer_neighborhood);
 
-    let coefficients =
-        component_rate_coefficients_generic(sim, injector, injected_fluid, &cell_ad, fractions_ad.as_ref());
+    let coefficients = component_rate_coefficients_generic(
+        sim,
+        injector,
+        injected_fluid,
+        &cell_ad,
+        fractions_ad.as_ref(),
+    );
 
     let mut block = [[0.0; 4]; 3];
     for (phase, coef) in coefficients.iter().enumerate() {
@@ -499,7 +504,8 @@ pub(crate) fn mass_balance_neighbor_jacobian(
         cell.hydrocarbon_var,
         cell.drsdt0_base_rs,
     );
-    let (_fractions, frac_block) = producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
+    let (_fractions, frac_block) =
+        producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
     let bo = props.bo.max(1e-9);
     let bg = props.bg.max(1e-9);
     let bw = sim.b_w.max(1e-9);
@@ -549,8 +555,10 @@ pub(crate) fn well_constraint_bhp_column_and_fb_gradient(
     let rate_slack = target_rate - actual_rate;
     let bhp_scale = control.bhp_limit.abs().max(1.0);
     let rate_scale = target_rate.abs().max(1.0);
-    let (dphi_da, dphi_db) =
-        crate::fim::wells::fischer_burmeister_gradient(bhp_slack / bhp_scale, rate_slack / rate_scale);
+    let (dphi_da, dphi_db) = crate::fim::wells::fischer_burmeister_gradient(
+        bhp_slack / bhp_scale,
+        rate_slack / rate_scale,
+    );
     let dslack_dbhp = if injector { -1.0 } else { 1.0 };
     let bhp_column = dphi_da * dslack_dbhp / bhp_scale;
     Some((bhp_column, dphi_db, rate_scale))
@@ -573,8 +581,16 @@ pub(crate) fn well_constraint_own_perforation_rate_jacobian(
     let q_ad = Ad::<4>::variable(q, 3);
 
     let rate = if uses_surface_target {
-        let fractions_ad = fractions_with_connected_cell_active(sim, cell_ad, producer_neighborhood);
-        perforation_surface_rate_generic(sim, injector, injected_fluid, &cell_ad, fractions_ad.as_ref(), q_ad)
+        let fractions_ad =
+            fractions_with_connected_cell_active(sim, cell_ad, producer_neighborhood);
+        perforation_surface_rate_generic(
+            sim,
+            injector,
+            injected_fluid,
+            &cell_ad,
+            fractions_ad.as_ref(),
+            q_ad,
+        )
     } else {
         perforation_reservoir_rate_generic(injector, q_ad)
     };
@@ -600,7 +616,8 @@ pub(crate) fn well_constraint_neighbor_rate_jacobian(
         cell.hydrocarbon_var,
         cell.drsdt0_base_rs,
     );
-    let (_fractions, frac_block) = producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
+    let (_fractions, frac_block) =
+        producer_fractions_neighbor_block(sim, neighborhood, neighbor_idx);
     let bo = props.bo.max(1e-9);
     let q_clamped = q.max(0.0);
 
@@ -634,7 +651,8 @@ pub(crate) fn perforation_residual_generic<S: Scalar>(
     let constraint =
         well_constraint_residual_fb_generic(sim, injector, injected_fluid, control, bhp, &solo)
             .expect("target_rate present for rate-controlled test wells");
-    let coefficients = component_rate_coefficients_generic(sim, injector, injected_fluid, cell, fractions);
+    let coefficients =
+        component_rate_coefficients_generic(sim, injector, injected_fluid, cell, fractions);
 
     [
         rate_consistency,
@@ -772,8 +790,10 @@ mod tests {
             ],
             sim.pvt.c_o,
         ));
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0)
-            .unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         sim
     }
 
@@ -1027,8 +1047,16 @@ mod tests {
 
         let mut sim = three_phase_sim();
         sim.set_injected_fluid("water").unwrap();
-        sim.add_well(0, 0, 0, if injector { 250.0 } else { 40.0 }, 0.1, 0.0, injector)
-            .unwrap();
+        sim.add_well(
+            0,
+            0,
+            0,
+            if injector { 250.0 } else { 40.0 },
+            0.1,
+            0.0,
+            injector,
+        )
+        .unwrap();
         if rate_controlled {
             sim.set_rate_controlled_wells(true);
             if uses_surface_target {
@@ -1086,7 +1114,8 @@ mod tests {
         // returns `None` on non-finite geometry); compare against the
         // always-`Some` case directly.
         let real_rate_residual = wells::perforation_rate_residual(&sim, &state, &topology, 0);
-        let generic_rate_residual = q - connection_rate_generic(&sim, wi_geom, injector, &cell, bhp);
+        let generic_rate_residual =
+            q - connection_rate_generic(&sim, wi_geom, injector, &cell, bhp);
         assert!(
             (real_rate_residual.unwrap() - generic_rate_residual).abs() < 1e-10,
             "rate residual: real={:?} generic={}",
@@ -1114,8 +1143,13 @@ mod tests {
 
         // Mass-balance well-source contribution (per phase).
         let real_components = perforation_component_rates_sc_day(&sim, &state, &topology, 0);
-        let generic_coefficients =
-            component_rate_coefficients_generic(&sim, injector, injected_fluid, &cell, fractions.as_ref());
+        let generic_coefficients = component_rate_coefficients_generic(
+            &sim,
+            injector,
+            injected_fluid,
+            &cell,
+            fractions.as_ref(),
+        );
         for phase in 0..3 {
             let generic_component = generic_coefficients[phase] * q;
             assert!(

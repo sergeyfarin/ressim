@@ -114,11 +114,19 @@ impl<const N: usize> Ad<N> {
     /// whichever operand is larger (matching a clamp/upwind switch that is frozen
     /// within a Newton iteration). Non-smooth exactly at the crossover point.
     pub(crate) fn max(self, other: Self) -> Self {
-        if self.value >= other.value { self } else { other }
+        if self.value >= other.value {
+            self
+        } else {
+            other
+        }
     }
 
     pub(crate) fn min(self, other: Self) -> Self {
-        if self.value <= other.value { self } else { other }
+        if self.value <= other.value {
+            self
+        } else {
+            other
+        }
     }
 
     /// Branch-selecting max against a constant floor.

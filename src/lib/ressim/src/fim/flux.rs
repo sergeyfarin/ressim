@@ -45,8 +45,22 @@ pub(crate) fn face_flux_terms_generic<S: Scalar>(
     i: &FaceCellInput<S>,
     j: &FaceCellInput<S>,
 ) -> FaceFluxTermsGeneric<S> {
-    let props_i = cell_props_generic(sim, i.regime, i.p, i.sw, i.hydrocarbon_var, i.drsdt0_base_rs);
-    let props_j = cell_props_generic(sim, j.regime, j.p, j.sw, j.hydrocarbon_var, j.drsdt0_base_rs);
+    let props_i = cell_props_generic(
+        sim,
+        i.regime,
+        i.p,
+        i.sw,
+        i.hydrocarbon_var,
+        i.drsdt0_base_rs,
+    );
+    let props_j = cell_props_generic(
+        sim,
+        j.regime,
+        j.p,
+        j.sw,
+        j.hydrocarbon_var,
+        j.drsdt0_base_rs,
+    );
 
     let rho_w_i = S::from_f64(sim.get_rho_w(i.p.value()));
     let rho_w_j = S::from_f64(sim.get_rho_w(j.p.value()));
@@ -229,8 +243,10 @@ mod tests {
             ],
             sim.pvt.c_o,
         ));
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0)
-            .unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         if capillary {
             sim.set_gas_oil_capillary_params(2.0, 2.0).unwrap();
         }
@@ -250,12 +266,7 @@ mod tests {
 
     /// One face-flux gate: AD-derived 4-block Jacobian must match the central-
     /// difference reference for the packed 6-unknown / 6-equation face system.
-    fn flux_gate(
-        gravity: bool,
-        capillary: bool,
-        i: FaceCellInput<f64>,
-        j: FaceCellInput<f64>,
-    ) {
+    fn flux_gate(gravity: bool, capillary: bool, i: FaceCellInput<f64>, j: FaceCellInput<f64>) {
         let sim = three_phase_sim(gravity, capillary);
         let geom_t = 3.5_f64;
         let dt_days = 0.4_f64;
@@ -271,17 +282,20 @@ mod tests {
             }
         }
 
-        let x0 = [
-            i.p,
-            i.sw,
-            i.hydrocarbon_var,
-            j.p,
-            j.sw,
-            j.hydrocarbon_var,
-        ];
+        let x0 = [i.p, i.sw, i.hydrocarbon_var, j.p, j.sw, j.hydrocarbon_var];
         let residual = |x: &[f64]| {
-            let i2 = FaceCellInput { p: x[0], sw: x[1], hydrocarbon_var: x[2], ..i };
-            let j2 = FaceCellInput { p: x[3], sw: x[4], hydrocarbon_var: x[5], ..j };
+            let i2 = FaceCellInput {
+                p: x[0],
+                sw: x[1],
+                hydrocarbon_var: x[2],
+                ..i
+            };
+            let j2 = FaceCellInput {
+                p: x[3],
+                sw: x[4],
+                hydrocarbon_var: x[5],
+                ..j
+            };
             face_flux_residual_f64(&sim, geom_t, dt_days, &i2, &j2).to_vec()
         };
         let numerical = central_difference_jacobian(&x0, 6, residual);
@@ -361,12 +375,25 @@ mod tests {
 
         let derived_0 = state.derive_cell(&sim, 0);
         let derived_1 = state.derive_cell(&sim, 1);
-        let legacy = assembly::interface_flux_terms(&sim, &state, 0, 1, 'x', 0, 0, &derived_0, &derived_1)
-            .expect("nonzero transmissibility");
+        let legacy =
+            assembly::interface_flux_terms(&sim, &state, 0, 1, 'x', 0, 0, &derived_0, &derived_1)
+                .expect("nonzero transmissibility");
 
         let geom_t = DARCY_METRIC_FACTOR * sim.geometric_transmissibility(0, 1, 'x');
-        let i = input(160.0, 0.3, 0.1, HydrocarbonState::Saturated, sim.depth_at_k(0));
-        let j = input(150.0, 0.25, 0.08, HydrocarbonState::Saturated, sim.depth_at_k(0));
+        let i = input(
+            160.0,
+            0.3,
+            0.1,
+            HydrocarbonState::Saturated,
+            sim.depth_at_k(0),
+        );
+        let j = input(
+            150.0,
+            0.25,
+            0.08,
+            HydrocarbonState::Saturated,
+            sim.depth_at_k(0),
+        );
         let generic = face_flux_terms_generic(&sim, geom_t, &i, &j);
 
         for phase in 0..3 {
@@ -405,8 +432,18 @@ mod tests {
 
         let x0 = [i.p, i.sw, i.hydrocarbon_var, j.p, j.sw, j.hydrocarbon_var];
         let residual = |x: &[f64]| {
-            let i2 = FaceCellInput { p: x[0], sw: x[1], hydrocarbon_var: x[2], ..i };
-            let j2 = FaceCellInput { p: x[3], sw: x[4], hydrocarbon_var: x[5], ..j };
+            let i2 = FaceCellInput {
+                p: x[0],
+                sw: x[1],
+                hydrocarbon_var: x[2],
+                ..i
+            };
+            let j2 = FaceCellInput {
+                p: x[3],
+                sw: x[4],
+                hydrocarbon_var: x[5],
+                ..j
+            };
             face_flux_residual_f64(&sim, geom_t, dt_days, &i2, &j2).to_vec()
         };
         let numerical = central_difference_jacobian(&x0, 6, residual);

@@ -37,7 +37,9 @@ use nalgebra::{DMatrix, DVector};
 use sprs::{CsMat, TriMatI};
 
 use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
-use super::{FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, solve_linearized_system};
+use super::{
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, solve_linearized_system,
+};
 use crate::fim::scaling::EquationScaling;
 
 pub(super) fn solve_with_well_elimination(
@@ -62,8 +64,11 @@ pub(super) fn solve_with_well_elimination(
     let mut tail_block = DMatrix::zeros(tail_count, tail_count);
     for tail_row in 0..tail_count {
         for tail_col in 0..tail_count {
-            tail_block[(tail_row, tail_col)] =
-                matrix_value(jacobian, well_bhp_start + tail_row, well_bhp_start + tail_col);
+            tail_block[(tail_row, tail_col)] = matrix_value(
+                jacobian,
+                well_bhp_start + tail_row,
+                well_bhp_start + tail_col,
+            );
         }
     }
     let tail_inverse = invert_tail_block(&tail_block);
@@ -102,10 +107,12 @@ pub(super) fn solve_with_well_elimination(
     }
 
     // r_R_eff = r_R - J_RW * (J_WW^-1 * r_W)
-    let rhs_tail = DVector::from_iterator(tail_count, (0..tail_count).map(|i| rhs[well_bhp_start + i]));
+    let rhs_tail =
+        DVector::from_iterator(tail_count, (0..tail_count).map(|i| rhs[well_bhp_start + i]));
     let tail_inverse_rhs = &tail_inverse * &rhs_tail;
 
-    let mut reduced_rhs = DVector::from_iterator(well_bhp_start, (0..well_bhp_start).map(|i| rhs[i]));
+    let mut reduced_rhs =
+        DVector::from_iterator(well_bhp_start, (0..well_bhp_start).map(|i| rhs[i]));
     for (row_idx, entries) in &j_rw {
         let mut correction = 0.0;
         for &(tail_col, value) in entries {
@@ -195,7 +202,9 @@ pub(super) fn solve_with_well_elimination(
     solution
         .rows_mut(0, well_bhp_start)
         .copy_from(&reduced_report.solution);
-    solution.rows_mut(well_bhp_start, tail_count).copy_from(&dx_tail);
+    solution
+        .rows_mut(well_bhp_start, tail_count)
+        .copy_from(&dx_tail);
 
     // End-to-end safety net: recompute the residual against the *original, full* system. Any
     // arithmetic bug in the elimination/recovery math surfaces here as a residual mismatch
@@ -221,8 +230,8 @@ pub(super) fn solve_with_well_elimination(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::{FimLinearSolverKind, sparse_lu_debug};
+    use super::*;
 
     /// Synthetic 2-cell + 1-well + 2-perforation system mirroring the real row layout: cells
     /// `[0..6)` (2 cells x 3 vars), well BHP at `6`, perforations at `7, 8`. Coupling mirrors the

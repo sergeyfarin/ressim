@@ -490,4 +490,3 @@ mod tests {
         accumulation_gate_with(&sim, HydrocarbonState::Saturated, 300.0, 0.2, 0.05, None);
     }
 }
-

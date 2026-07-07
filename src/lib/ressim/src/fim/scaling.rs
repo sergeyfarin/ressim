@@ -49,12 +49,15 @@ impl EquationScaling {
 
         let mut offset = n_cells * 3;
         for (i, scale) in self.well_constraint.iter().enumerate() {
-            peaks.well_constraint = peaks.well_constraint.max(residual[offset + i].abs() / scale);
+            peaks.well_constraint = peaks
+                .well_constraint
+                .max(residual[offset + i].abs() / scale);
         }
         offset += self.well_constraint.len();
         for (i, scale) in self.perforation_flow.iter().enumerate() {
-            peaks.perforation_flow =
-                peaks.perforation_flow.max(residual[offset + i].abs() / scale);
+            peaks.perforation_flow = peaks
+                .perforation_flow
+                .max(residual[offset + i].abs() / scale);
         }
 
         peaks

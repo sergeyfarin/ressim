@@ -24,11 +24,16 @@ use super::gmres_block_jacobi::{
     CprFineSmootherKind, CprPressureRestrictionKind, solve_with_restriction_kind,
     solve_with_smoother_and_restriction,
 };
-use super::{FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    solve_linearized_system};
+use super::{
+    FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind, solve_linearized_system,
+};
 use crate::fim::scaling::EquationScaling;
 
-fn residual_vector(jacobian: &CsMat<f64>, solution: &DVector<f64>, rhs: &DVector<f64>) -> DVector<f64> {
+fn residual_vector(
+    jacobian: &CsMat<f64>,
+    solution: &DVector<f64>,
+    rhs: &DVector<f64>,
+) -> DVector<f64> {
     let mut residual = rhs.clone();
     for (row, vec) in jacobian.outer_iterator().enumerate() {
         let mut sum = 0.0;
@@ -59,14 +64,28 @@ fn worst_family_overshoot(
     let initial = scaling.family_peaks(rhs);
     let current = scaling.family_peaks(residual);
     let ratio = |current: f64, initial: f64| {
-        current / (absolute_tolerance + relative_tolerance * initial.max(f64::EPSILON)).max(f64::EPSILON)
+        current
+            / (absolute_tolerance + relative_tolerance * initial.max(f64::EPSILON))
+                .max(f64::EPSILON)
     };
     let candidates = [
         ("water", ratio(current.water, initial.water)),
-        ("oil_component", ratio(current.oil_component, initial.oil_component)),
-        ("gas_component", ratio(current.gas_component, initial.gas_component)),
-        ("well_constraint", ratio(current.well_constraint, initial.well_constraint)),
-        ("perforation_flow", ratio(current.perforation_flow, initial.perforation_flow)),
+        (
+            "oil_component",
+            ratio(current.oil_component, initial.oil_component),
+        ),
+        (
+            "gas_component",
+            ratio(current.gas_component, initial.gas_component),
+        ),
+        (
+            "well_constraint",
+            ratio(current.well_constraint, initial.well_constraint),
+        ),
+        (
+            "perforation_flow",
+            ratio(current.perforation_flow, initial.perforation_flow),
+        ),
     ];
     candidates
         .into_iter()
@@ -228,7 +247,8 @@ fn run_restriction_variant(
         kind: FimLinearSolverKind::FgmresCpr,
         ..FimLinearSolveOptions::default()
     };
-    let report = solve_with_restriction_kind(&system.jacobian, &system.rhs, &options, system.layout, kind);
+    let report =
+        solve_with_restriction_kind(&system.jacobian, &system.rhs, &options, system.layout, kind);
     VariantOutcome {
         kind,
         converged: report.converged,
@@ -566,7 +586,8 @@ fn solver_lab_compare_family_aware_convergence() {
                 CprPressureRestrictionKind::QuasiImpes,
                 None,
             );
-            let base_residual = residual_vector(&system.jacobian, &base_report.solution, &system.rhs);
+            let base_residual =
+                residual_vector(&system.jacobian, &base_report.solution, &system.rhs);
             let (worst_label, worst_ratio) = worst_family_overshoot(
                 scaling,
                 &system.rhs,
@@ -594,7 +615,10 @@ fn solver_lab_compare_family_aware_convergence() {
     for (label, family, ratio) in overshoots.iter().take(15) {
         println!("{label:<16} worst_family={family:<18} overshoot={ratio:.2}x");
     }
-    let overshooting = overshoots.iter().filter(|(_, _, ratio)| *ratio > 1.0).count();
+    let overshooting = overshoots
+        .iter()
+        .filter(|(_, _, ratio)| *ratio > 1.0)
+        .count();
     println!(
         "{overshooting}/{} systems have at least one family left over its own target",
         overshoots.len()
@@ -605,7 +629,10 @@ fn solver_lab_compare_family_aware_convergence() {
     let median = |values: &[usize]| values[values.len() / 2];
     let mean = |values: &[usize]| values.iter().sum::<usize>() as f64 / values.len() as f64;
 
-    println!("=== convergence comparison over {} systems ===", systems.len());
+    println!(
+        "=== convergence comparison over {} systems ===",
+        systems.len()
+    );
     println!(
         "{:<36} converged={:>3}/{} median_iters={:>4} mean_iters={:>7.1}",
         base.label,
@@ -701,7 +728,8 @@ fn solver_lab_compare_well_elimination() {
 
         let mut delta = 0.0_f64;
         for row in 0..system.jacobian.rows() {
-            delta = delta.max((baseline_report.solution[row] - eliminated_report.solution[row]).abs());
+            delta =
+                delta.max((baseline_report.solution[row] - eliminated_report.solution[row]).abs());
         }
         if delta > max_solution_delta {
             max_solution_delta = delta;
@@ -726,7 +754,10 @@ fn solver_lab_compare_well_elimination() {
         }
     };
 
-    println!("=== well-elimination comparison over {} systems ===", baseline_iterations.len());
+    println!(
+        "=== well-elimination comparison over {} systems ===",
+        baseline_iterations.len()
+    );
     println!(
         "baseline (no elimination):   converged={:>3}/{} median_iters={:>4} mean_iters={:>7.1}",
         baseline_converged,

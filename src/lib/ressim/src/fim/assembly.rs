@@ -7,9 +7,9 @@ use crate::ReservoirSimulator;
 use crate::fim::scaling::{EquationScaling, VariableScaling};
 #[cfg(test)]
 use crate::fim::scaling::{build_equation_scaling, build_variable_scaling};
-use crate::fim::state::{FimCellDerived, FimState};
 #[cfg(test)]
 use crate::fim::state::HydrocarbonState;
+use crate::fim::state::{FimCellDerived, FimState};
 use crate::fim::wells::{FimWellTopology, perforation_component_rates_sc_day};
 #[cfg(test)]
 use crate::fim::wells::{
@@ -1707,8 +1707,7 @@ pub(crate) fn collect_face_upwind_snapshot(
     let derived: Vec<FimCellDerived> = (0..n_cells)
         .map(|idx| state.derive_cell(sim, idx))
         .collect();
-    let mut samples =
-        Vec::with_capacity(sim.nx * sim.ny * sim.nz * 3);
+    let mut samples = Vec::with_capacity(sim.nx * sim.ny * sim.nz * 3);
     for k in 0..sim.nz {
         for j in 0..sim.ny {
             for i in 0..sim.nx {
@@ -1716,7 +1715,15 @@ pub(crate) fn collect_face_upwind_snapshot(
                 if i + 1 < sim.nx {
                     let id_j = sim.idx(i + 1, j, k);
                     if let Some(sample) = face_upwind_sample(
-                        sim, state, id, id_j, 'x', k, k, &derived[id], &derived[id_j],
+                        sim,
+                        state,
+                        id,
+                        id_j,
+                        'x',
+                        k,
+                        k,
+                        &derived[id],
+                        &derived[id_j],
                     ) {
                         samples.push(sample);
                     }
@@ -1724,7 +1731,15 @@ pub(crate) fn collect_face_upwind_snapshot(
                 if j + 1 < sim.ny {
                     let id_j = sim.idx(i, j + 1, k);
                     if let Some(sample) = face_upwind_sample(
-                        sim, state, id, id_j, 'y', k, k, &derived[id], &derived[id_j],
+                        sim,
+                        state,
+                        id,
+                        id_j,
+                        'y',
+                        k,
+                        k,
+                        &derived[id],
+                        &derived[id_j],
                     ) {
                         samples.push(sample);
                     }
@@ -1732,7 +1747,15 @@ pub(crate) fn collect_face_upwind_snapshot(
                 if k + 1 < sim.nz {
                     let id_j = sim.idx(i, j, k + 1);
                     if let Some(sample) = face_upwind_sample(
-                        sim, state, id, id_j, 'z', k, k + 1, &derived[id], &derived[id_j],
+                        sim,
+                        state,
+                        id,
+                        id_j,
+                        'z',
+                        k,
+                        k + 1,
+                        &derived[id],
+                        &derived[id_j],
                     ) {
                         samples.push(sample);
                     }
@@ -1789,8 +1812,7 @@ pub(crate) fn diff_face_upwind_snapshots(
         for phase in 0..3 {
             if p.upwind[phase] != c.upwind[phase] {
                 flips[phase] += 1;
-                let is_hotspot = hotspot_cells.contains(&p.id_i)
-                    || hotspot_cells.contains(&p.id_j);
+                let is_hotspot = hotspot_cells.contains(&p.id_i) || hotspot_cells.contains(&p.id_j);
                 if is_hotspot {
                     hotspot_flips[phase] += 1;
                 }

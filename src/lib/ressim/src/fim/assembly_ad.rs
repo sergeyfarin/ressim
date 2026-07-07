@@ -46,7 +46,12 @@ fn cell_drsdt0_base_rs(sim: &ReservoirSimulator, cell_idx: usize) -> Option<f64>
     }
 }
 
-fn face_cell_input(sim: &ReservoirSimulator, state: &FimState, cell_idx: usize, depth_k: usize) -> FaceCellInput<f64> {
+fn face_cell_input(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    cell_idx: usize,
+    depth_k: usize,
+) -> FaceCellInput<f64> {
     let cell = state.cell(cell_idx);
     FaceCellInput {
         p: cell.pressure_bar,
@@ -58,7 +63,11 @@ fn face_cell_input(sim: &ReservoirSimulator, state: &FimState, cell_idx: usize, 
     }
 }
 
-fn well_cell_input(sim: &ReservoirSimulator, state: &FimState, cell_idx: usize) -> WellCellInput<f64> {
+fn well_cell_input(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    cell_idx: usize,
+) -> WellCellInput<f64> {
     let cell = state.cell(cell_idx);
     WellCellInput {
         p: cell.pressure_bar,
@@ -75,7 +84,9 @@ fn add_if_nonzero(tri: &mut TriMatI<f64, usize>, row: usize, col: usize, value: 
     }
 }
 
-fn well_control_generic(control: &crate::fim::wells::PhysicalWellControl) -> WellControlValuesGeneric {
+fn well_control_generic(
+    control: &crate::fim::wells::PhysicalWellControl,
+) -> WellControlValuesGeneric {
     WellControlValuesGeneric {
         enabled: control.enabled,
         rate_controlled: control.rate_controlled,
@@ -107,7 +118,8 @@ fn add_well_residual_terms(
         let bhp = state.well_bhp[well_idx];
         let q = state.perforation_rates_m3_day[perf_idx];
 
-        let neighborhood_cells = perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
+        let neighborhood_cells =
+            perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
         let neighborhood: Vec<WellCellInput<f64>> = neighborhood_cells
             .iter()
             .map(|&c| well_cell_input(sim, state, c))
@@ -116,10 +128,16 @@ fn add_well_residual_terms(
 
         well_perf_inputs[well_idx].push(WellPerforationInputGeneric { cell, fractions, q });
 
-        let coefficients =
-            component_rate_coefficients_generic(sim, injector, injected_fluid, &cell, fractions.as_ref());
+        let coefficients = component_rate_coefficients_generic(
+            sim,
+            injector,
+            injected_fluid,
+            &cell,
+            fractions.as_ref(),
+        );
         for local_eq in 0..3 {
-            residual[equation_offset(perforation.cell_index, local_eq)] += coefficients[local_eq] * q * dt_days;
+            residual[equation_offset(perforation.cell_index, local_eq)] +=
+                coefficients[local_eq] * q * dt_days;
         }
 
         if let Some(wi_geom) = geometric_well_index(sim, perforation) {
@@ -166,7 +184,8 @@ fn add_well_jacobian_terms(
         let bhp = state.well_bhp[well_idx];
         let q = state.perforation_rates_m3_day[perf_idx];
 
-        let neighborhood_cells = perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
+        let neighborhood_cells =
+            perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
         let neighborhood: Vec<WellCellInput<f64>> = neighborhood_cells
             .iter()
             .map(|&c| well_cell_input(sim, state, c))
@@ -175,7 +194,8 @@ fn add_well_jacobian_terms(
             .iter()
             .position(|&c| c == perforation.cell_index)
             .unwrap_or(0);
-        let producer_neighborhood = (!injector).then_some((neighborhood.as_slice(), connected_index));
+        let producer_neighborhood =
+            (!injector).then_some((neighborhood.as_slice(), connected_index));
         let fractions = (!injector).then(|| producer_fractions_generic::<f64>(sim, &neighborhood));
 
         well_perf_inputs[well_idx].push(WellPerforationInputGeneric { cell, fractions, q });
@@ -185,19 +205,42 @@ fn add_well_jacobian_terms(
         let bhp_col = state.well_bhp_unknown_offset(well_idx);
 
         if let Some(wi_geom) = geometric_well_index(sim, perforation) {
-            let ([dp, dsw, dhc], dbhp) = rate_consistency_cell_bhp_jacobian(sim, wi_geom, injector, &cell, bhp);
+            let ([dp, dsw, dhc], dbhp) =
+                rate_consistency_cell_bhp_jacobian(sim, wi_geom, injector, &cell, bhp);
             tri.add_triplet(perf_row, q_col, 1.0);
             add_if_nonzero(tri, perf_row, unknown_offset(perforation.cell_index, 0), dp);
-            add_if_nonzero(tri, perf_row, unknown_offset(perforation.cell_index, 1), dsw);
-            add_if_nonzero(tri, perf_row, unknown_offset(perforation.cell_index, 2), dhc);
+            add_if_nonzero(
+                tri,
+                perf_row,
+                unknown_offset(perforation.cell_index, 1),
+                dsw,
+            );
+            add_if_nonzero(
+                tri,
+                perf_row,
+                unknown_offset(perforation.cell_index, 2),
+                dhc,
+            );
             add_if_nonzero(tri, perf_row, bhp_col, dbhp);
         }
 
-        let own = mass_balance_own_jacobian(sim, injector, injected_fluid, &cell, producer_neighborhood, q);
+        let own = mass_balance_own_jacobian(
+            sim,
+            injector,
+            injected_fluid,
+            &cell,
+            producer_neighborhood,
+            q,
+        );
         for (local_eq, row) in own.iter().enumerate() {
             let eq_row = equation_offset(perforation.cell_index, local_eq);
             for v in 0..3 {
-                add_if_nonzero(tri, eq_row, unknown_offset(perforation.cell_index, v), row[v] * dt_days);
+                add_if_nonzero(
+                    tri,
+                    eq_row,
+                    unknown_offset(perforation.cell_index, v),
+                    row[v] * dt_days,
+                );
             }
             add_if_nonzero(tri, eq_row, q_col, row[3] * dt_days);
         }
@@ -210,7 +253,12 @@ fn add_well_jacobian_terms(
                 for (local_eq, row) in cross.iter().enumerate() {
                     let eq_row = equation_offset(perforation.cell_index, local_eq);
                     for v in 0..3 {
-                        add_if_nonzero(tri, eq_row, unknown_offset(neighbor_cell_idx, v), row[v] * dt_days);
+                        add_if_nonzero(
+                            tri,
+                            eq_row,
+                            unknown_offset(neighbor_cell_idx, v),
+                            row[v] * dt_days,
+                        );
                     }
                 }
             }
@@ -249,7 +297,8 @@ fn add_well_jacobian_terms(
             let q = state.perforation_rates_m3_day[perf_idx];
             let q_col = state.perforation_rate_unknown_offset(perf_idx);
 
-            let neighborhood_cells = perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
+            let neighborhood_cells =
+                perforation_local_block(topology, state, perf_idx).control_influence_cells(sim);
             let neighborhood: Vec<WellCellInput<f64>> = neighborhood_cells
                 .iter()
                 .map(|&c| well_cell_input(sim, state, c))
@@ -258,7 +307,8 @@ fn add_well_jacobian_terms(
                 .iter()
                 .position(|&c| c == perforation.cell_index)
                 .unwrap_or(0);
-            let producer_neighborhood = (!injector).then_some((neighborhood.as_slice(), connected_index));
+            let producer_neighborhood =
+                (!injector).then_some((neighborhood.as_slice(), connected_index));
 
             let own = well_constraint_own_perforation_rate_jacobian(
                 sim,
@@ -269,9 +319,24 @@ fn add_well_jacobian_terms(
                 producer_neighborhood,
                 q,
             );
-            add_if_nonzero(tri, row, unknown_offset(perforation.cell_index, 0), factor * own[0]);
-            add_if_nonzero(tri, row, unknown_offset(perforation.cell_index, 1), factor * own[1]);
-            add_if_nonzero(tri, row, unknown_offset(perforation.cell_index, 2), factor * own[2]);
+            add_if_nonzero(
+                tri,
+                row,
+                unknown_offset(perforation.cell_index, 0),
+                factor * own[0],
+            );
+            add_if_nonzero(
+                tri,
+                row,
+                unknown_offset(perforation.cell_index, 1),
+                factor * own[1],
+            );
+            add_if_nonzero(
+                tri,
+                row,
+                unknown_offset(perforation.cell_index, 2),
+                factor * own[2],
+            );
             add_if_nonzero(tri, row, q_col, factor * own[3]);
 
             if !injector && control_real.uses_surface_target {
@@ -279,9 +344,15 @@ fn add_well_jacobian_terms(
                     if n_idx == connected_index {
                         continue;
                     }
-                    let cross = well_constraint_neighbor_rate_jacobian(sim, &cell, &neighborhood, n_idx, q);
+                    let cross =
+                        well_constraint_neighbor_rate_jacobian(sim, &cell, &neighborhood, n_idx, q);
                     for v in 0..3 {
-                        add_if_nonzero(tri, row, unknown_offset(neighbor_cell_idx, v), factor * cross[v]);
+                        add_if_nonzero(
+                            tri,
+                            row,
+                            unknown_offset(neighbor_cell_idx, v),
+                            factor * cross[v],
+                        );
                     }
                 }
             }
@@ -314,11 +385,20 @@ fn add_face_residual(
     }
 }
 
-fn scatter_block(tri: &mut TriMatI<f64, usize>, row_cell: usize, col_cell: usize, block: [[f64; 3]; 3]) {
+fn scatter_block(
+    tri: &mut TriMatI<f64, usize>,
+    row_cell: usize,
+    col_cell: usize,
+    block: [[f64; 3]; 3],
+) {
     for (eq, row) in block.iter().enumerate() {
         for (var, value) in row.iter().enumerate() {
             if value.abs() > 1e-14 {
-                tri.add_triplet(equation_offset(row_cell, eq), unknown_offset(col_cell, var), *value);
+                tri.add_triplet(
+                    equation_offset(row_cell, eq),
+                    unknown_offset(col_cell, var),
+                    *value,
+                );
             }
         }
     }
@@ -399,10 +479,30 @@ pub(crate) fn assemble_fim_system_ad(
             for i in 0..sim.nx {
                 let id = sim.idx(i, j, k);
                 if i + 1 < sim.nx {
-                    add_face_residual(sim, state, options.dt_days, id, sim.idx(i + 1, j, k), 'x', k, k, &mut residual);
+                    add_face_residual(
+                        sim,
+                        state,
+                        options.dt_days,
+                        id,
+                        sim.idx(i + 1, j, k),
+                        'x',
+                        k,
+                        k,
+                        &mut residual,
+                    );
                 }
                 if j + 1 < sim.ny {
-                    add_face_residual(sim, state, options.dt_days, id, sim.idx(i, j + 1, k), 'y', k, k, &mut residual);
+                    add_face_residual(
+                        sim,
+                        state,
+                        options.dt_days,
+                        id,
+                        sim.idx(i, j + 1, k),
+                        'y',
+                        k,
+                        k,
+                        &mut residual,
+                    );
                 }
                 if k + 1 < sim.nz {
                     add_face_residual(
@@ -462,10 +562,30 @@ pub(crate) fn assemble_fim_system_ad(
             for i in 0..sim.nx {
                 let id = sim.idx(i, j, k);
                 if i + 1 < sim.nx {
-                    add_face_jacobian(sim, state, options.dt_days, id, sim.idx(i + 1, j, k), 'x', k, k, &mut tri);
+                    add_face_jacobian(
+                        sim,
+                        state,
+                        options.dt_days,
+                        id,
+                        sim.idx(i + 1, j, k),
+                        'x',
+                        k,
+                        k,
+                        &mut tri,
+                    );
                 }
                 if j + 1 < sim.ny {
-                    add_face_jacobian(sim, state, options.dt_days, id, sim.idx(i, j + 1, k), 'y', k, k, &mut tri);
+                    add_face_jacobian(
+                        sim,
+                        state,
+                        options.dt_days,
+                        id,
+                        sim.idx(i, j + 1, k),
+                        'y',
+                        k,
+                        k,
+                        &mut tri,
+                    );
                 }
                 if k + 1 < sim.nz {
                     add_face_jacobian(
@@ -533,8 +653,10 @@ mod tests {
             ],
             sim.pvt.c_o,
         ));
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0)
-            .unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         sim.set_gas_oil_capillary_params(2.0, 2.0).unwrap();
 
         let previous_state = FimState::from_simulator(&sim);
@@ -665,8 +787,10 @@ mod tests {
             ],
             sim.pvt.c_o,
         ));
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0)
-            .unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         sim.set_gas_oil_capillary_params(2.0, 2.0).unwrap();
 
         sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap(); // injector, corner
@@ -785,11 +909,15 @@ mod two_phase_singularity_check {
     use crate::fim::assembly::assemble_fim_system;
 
     fn row_nnz(m: &sprs::CsMat<f64>, row: usize) -> usize {
-        m.iter().filter(|(v, (r, _c))| v.abs() > 0.0 && *r == row).count()
+        m.iter()
+            .filter(|(v, (r, _c))| v.abs() > 0.0 && *r == row)
+            .count()
     }
 
     fn col_nnz(m: &sprs::CsMat<f64>, col: usize) -> usize {
-        m.iter().filter(|(v, (_r, c))| v.abs() > 0.0 && *c == col).count()
+        m.iter()
+            .filter(|(v, (_r, c))| v.abs() > 0.0 && *c == col)
+            .count()
     }
 
     /// Root-cause gate for the Phase 5 water-pressure dt-collapse.
@@ -842,10 +970,22 @@ mod two_phase_singularity_check {
             let old_col = col_nnz(&old.jacobian, hc_col);
             let new_col = col_nnz(&new.jacobian, hc_col);
 
-            assert!(new_row > 0, "cell {cell_idx}: AD hc row is empty (singular)");
-            assert!(new_col > 0, "cell {cell_idx}: AD hc column is empty (singular)");
-            assert_eq!(new_row, old_row, "cell {cell_idx}: hc row occupancy diverges from legacy");
-            assert_eq!(new_col, old_col, "cell {cell_idx}: hc column occupancy diverges from legacy");
+            assert!(
+                new_row > 0,
+                "cell {cell_idx}: AD hc row is empty (singular)"
+            );
+            assert!(
+                new_col > 0,
+                "cell {cell_idx}: AD hc column is empty (singular)"
+            );
+            assert_eq!(
+                new_row, old_row,
+                "cell {cell_idx}: hc row occupancy diverges from legacy"
+            );
+            assert_eq!(
+                new_col, old_col,
+                "cell {cell_idx}: hc column occupancy diverges from legacy"
+            );
         }
 
         for i in 0..old.residual.len() {
@@ -914,8 +1054,22 @@ mod structural_parity_sweep {
     fn three_phase_pvt() -> PvtTable {
         PvtTable::new(
             vec![
-                PvtRow { p_bar: 100.0, rs_m3m3: 10.0, bo_m3m3: 1.2, mu_o_cp: 1.4, bg_m3m3: 0.02, mu_g_cp: 0.03 },
-                PvtRow { p_bar: 200.0, rs_m3m3: 20.0, bo_m3m3: 1.1, mu_o_cp: 1.2, bg_m3m3: 0.01, mu_g_cp: 0.025 },
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.4,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.03,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.025,
+                },
             ],
             1e-5,
         )
@@ -964,7 +1118,10 @@ mod structural_parity_sweep {
         sim.set_fim_enabled(true);
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(three_phase_pvt());
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0).unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
@@ -976,10 +1133,20 @@ mod structural_parity_sweep {
             cell.pressure_bar = 210.0;
             cell.sw = 0.3;
         }
-        let options = FimAssemblyOptions { dt_days: 0.1, include_wells: true, assemble_residual_only: false, topology: None };
+        let options = FimAssemblyOptions {
+            dt_days: 0.1,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: None,
+        };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
-        assert_structural_parity(&old, &new, old.residual.len(), "three_phase_uniform_saturated_with_wells");
+        assert_structural_parity(
+            &old,
+            &new,
+            old.residual.len(),
+            "three_phase_uniform_saturated_with_wells",
+        );
     }
 
     /// The key untested configuration: a three-phase grid where cells span
@@ -1006,7 +1173,10 @@ mod structural_parity_sweep {
         sim.set_fim_enabled(true);
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(three_phase_pvt());
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0).unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
         sim.add_well(2, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
 
@@ -1026,10 +1196,20 @@ mod structural_parity_sweep {
         state.cells[2].pressure_bar = 195.0;
         state.cells[2].sw = 0.32;
 
-        let options = FimAssemblyOptions { dt_days: 0.1, include_wells: true, assemble_residual_only: false, topology: None };
+        let options = FimAssemblyOptions {
+            dt_days: 0.1,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: None,
+        };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
-        assert_structural_parity(&old, &new, old.residual.len(), "three_phase_mixed_regime_with_wells");
+        assert_structural_parity(
+            &old,
+            &new,
+            old.residual.len(),
+            "three_phase_mixed_regime_with_wells",
+        );
     }
 
     /// Three-phase, DRSDT0-disabled, with a cell whose Rs sits right at the
@@ -1042,7 +1222,10 @@ mod structural_parity_sweep {
         sim.set_fim_enabled(true);
         sim.set_three_phase_mode_enabled(true);
         sim.pvt_table = Some(three_phase_pvt());
-        sim.set_three_phase_rel_perm_props(0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0).unwrap();
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
         sim.set_gas_redissolution_enabled(false);
         sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
         sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
@@ -1060,10 +1243,19 @@ mod structural_parity_sweep {
         state.cells[1].pressure_bar = 200.0;
         state.cells[1].sw = 0.30;
 
-        let options = FimAssemblyOptions { dt_days: 0.1, include_wells: true, assemble_residual_only: false, topology: None };
+        let options = FimAssemblyOptions {
+            dt_days: 0.1,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: None,
+        };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
-        assert_structural_parity(&old, &new, old.residual.len(), "three_phase_drsdt0_disabled_with_wells");
+        assert_structural_parity(
+            &old,
+            &new,
+            old.residual.len(),
+            "three_phase_drsdt0_disabled_with_wells",
+        );
     }
 }
-

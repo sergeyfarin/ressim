@@ -152,8 +152,10 @@ impl FimBlockIlu0Factors {
         let mut y: Vec<DVector<f64>> = Vec::with_capacity(self.block_count);
         for i in 0..self.block_count {
             let start = i * self.block_size;
-            let mut rhs_block =
-                DVector::from_iterator(self.block_size, (0..self.block_size).map(|l| rhs[start + l]));
+            let mut rhs_block = DVector::from_iterator(
+                self.block_size,
+                (0..self.block_size).map(|l| rhs[start + l]),
+            );
             for &(k, ref l_ik) in &self.l_block_rows[i] {
                 rhs_block -= l_ik * &y[k];
             }
@@ -217,7 +219,8 @@ fn factorize_block_ilu0(
 
     // Discover the occupied block-column pattern per block-row from the original scalar
     // sparsity (ILU(0): no fill beyond this pattern).
-    let mut rows: Vec<std::collections::BTreeMap<usize, DMatrix<f64>>> = Vec::with_capacity(block_count);
+    let mut rows: Vec<std::collections::BTreeMap<usize, DMatrix<f64>>> =
+        Vec::with_capacity(block_count);
     for row_block in 0..block_count {
         let mut cols = std::collections::BTreeSet::new();
         cols.insert(row_block);
@@ -1487,11 +1490,13 @@ fn solve_with_cpr_fine_smoother(
     let initial_family_peaks = equation_scaling.map(|scaling| scaling.family_peaks(rhs));
     let family_ok = |residual_vec: &DVector<f64>| -> bool {
         match (equation_scaling, &initial_family_peaks) {
-            (Some(scaling), Some(initial)) => scaling.family_peaks(residual_vec).within_relative_reduction(
-                initial,
-                options.absolute_tolerance,
-                options.relative_tolerance,
-            ),
+            (Some(scaling), Some(initial)) => scaling
+                .family_peaks(residual_vec)
+                .within_relative_reduction(
+                    initial,
+                    options.absolute_tolerance,
+                    options.relative_tolerance,
+                ),
             _ => true,
         }
     };
@@ -1778,7 +1783,8 @@ fn solve_with_cpr_fine_smoother(
                 ));
                 restart_recorded = true;
 
-                let family_converged = candidate_residual <= tolerance && family_ok(&candidate_residual_vec);
+                let family_converged =
+                    candidate_residual <= tolerance && family_ok(&candidate_residual_vec);
                 if family_converged || iterations >= max_iterations {
                     let converged = family_converged;
                     return FimLinearSolveReport {

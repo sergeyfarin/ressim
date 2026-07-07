@@ -749,7 +749,10 @@ pub(crate) fn physical_well_control(
     }
 }
 
-pub(crate) fn geometric_well_index(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Option<f64> {
+pub(crate) fn geometric_well_index(
+    sim: &ReservoirSimulator,
+    perforation: &FimPerforation,
+) -> Option<f64> {
     let well = perforation_well(sim, perforation);
     let id = perforation.cell_index;
     let kx = sim.perm_x[id];

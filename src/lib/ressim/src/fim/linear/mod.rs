@@ -241,7 +241,8 @@ pub(crate) fn solve_linearized_system(
             options.kind,
             FimLinearSolverKind::FgmresCpr | FimLinearSolverKind::GmresIlu0
         )
-        && layout.is_some_and(|l| l.well_bhp_count > 0 || l.perforation_tail_start < jacobian.rows())
+        && layout
+            .is_some_and(|l| l.well_bhp_count > 0 || l.perforation_tail_start < jacobian.rows())
     {
         return well_schur::solve_with_well_elimination(
             jacobian,
@@ -315,8 +316,13 @@ mod tests {
         let jacobian = tri.to_csr();
         let rhs = DVector::from_vec(vec![4.0, 9.0]);
 
-        let report =
-            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None, None);
+        let report = solve_linearized_system(
+            &jacobian,
+            &rhs,
+            &FimLinearSolveOptions::default(),
+            None,
+            None,
+        );
 
         assert!(report.converged);
         assert!(!report.used_fallback);
@@ -333,8 +339,13 @@ mod tests {
         let jacobian = tri.to_csr();
         let rhs = DVector::from_element(n, 1.0);
 
-        let report =
-            solve_linearized_system(&jacobian, &rhs, &FimLinearSolveOptions::default(), None, None);
+        let report = solve_linearized_system(
+            &jacobian,
+            &rhs,
+            &FimLinearSolveOptions::default(),
+            None,
+            None,
+        );
 
         assert!(report.converged);
         assert!(!report.used_fallback);

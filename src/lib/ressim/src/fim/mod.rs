@@ -4,10 +4,10 @@ pub(crate) mod assembly_ad;
 pub(crate) mod flash;
 pub(crate) mod flash_ad;
 pub(crate) mod flux;
-#[cfg(test)]
-pub(crate) mod numjac;
 pub(crate) mod linear;
 pub(crate) mod newton;
+#[cfg(test)]
+pub(crate) mod numjac;
 pub(crate) mod properties;
 pub(crate) mod scaling;
 pub(crate) mod state;

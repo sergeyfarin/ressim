@@ -446,7 +446,8 @@ fn replayable_unchanged_accepts_after_retry(
     let mut replay_time_days = 0.0;
 
     while replay_time_days + accepted_dt_days <= remaining_dt_days + 1e-12 {
-        if cooldown.cap_dt_days == Some(accepted_dt_days) && cooldown.clean_successes_remaining > 0 {
+        if cooldown.cap_dt_days == Some(accepted_dt_days) && cooldown.clean_successes_remaining > 0
+        {
             cooldown.note_clean_accepted(false);
             cooldown_replayable += 1;
             replay_time_days += accepted_dt_days;
@@ -560,9 +561,7 @@ fn seed_gas_outer_step_trial_carryover(
 
     let accepted_dt_days = last_accepted_dt_days?;
 
-    if last_growth_limiter != Some("hotspot-repeat")
-        || last_retry_dominant_family != Some("gas")
-    {
+    if last_growth_limiter != Some("hotspot-repeat") || last_retry_dominant_family != Some("gas") {
         return None;
     }
 
@@ -767,14 +766,10 @@ impl BasinEscapeProbeResult {
     }
 
     fn top_family_and_cell(&self) -> (&'static str, Option<usize>) {
-        let (label, family) = [
-            ("water", self.water),
-            ("oil", self.oil),
-            ("gas", self.gas),
-        ]
-        .into_iter()
-        .max_by(|a, b| a.1.inf_norm.partial_cmp(&b.1.inf_norm).unwrap())
-        .unwrap();
+        let (label, family) = [("water", self.water), ("oil", self.oil), ("gas", self.gas)]
+            .into_iter()
+            .max_by(|a, b| a.1.inf_norm.partial_cmp(&b.1.inf_norm).unwrap())
+            .unwrap();
         (label, family.top_cell_idx)
     }
 }
@@ -914,7 +909,8 @@ impl ReservoirSimulator {
                 last_successful_dt,
                 last_growth_factor,
             );
-            let cooldown_clamped_trial = growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt);
+            let cooldown_clamped_trial =
+                growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt);
             let gas_carryover_clamped_trial = if substeps == 0 {
                 carried_gas_outer_step_trial_carryover
                     .map(|carryover| cooldown_clamped_trial.min(carryover.cap_dt_days))
@@ -924,15 +920,13 @@ impl ReservoirSimulator {
             };
             let initial_trial = gas_carryover_clamped_trial;
             let gas_carryover_trace = if substeps == 0
-                && carried_gas_outer_step_trial_carryover.is_some_and(|carryover| {
-                    carryover.cap_dt_days + 1e-12 < cooldown_clamped_trial
-                })
+                && carried_gas_outer_step_trial_carryover
+                    .is_some_and(|carryover| carryover.cap_dt_days + 1e-12 < cooldown_clamped_trial)
             {
                 let carryover = carried_gas_outer_step_trial_carryover.expect("checked above");
                 format!(
                     " [gas-carryover-clamped from {:.6} persist_left={}]",
-                    cooldown_clamped_trial,
-                    carryover.clean_steps_remaining,
+                    cooldown_clamped_trial, carryover.clean_steps_remaining,
                 )
             } else {
                 String::new()
@@ -988,10 +982,8 @@ impl ReservoirSimulator {
                 state_update_ms += report.state_update_ms;
 
                 if report.converged {
-                    let materially_changed = iterate_has_material_change(
-                        &previous_state,
-                        &report.accepted_state,
-                    );
+                    let materially_changed =
+                        iterate_has_material_change(&previous_state, &report.accepted_state);
                     let mut max_dsat: f64 = 0.0;
                     let mut max_dp: f64 = 0.0;
                     for (idx, new_cell) in report.accepted_state.cells.iter().enumerate() {
@@ -1112,19 +1104,18 @@ impl ReservoirSimulator {
                     // only once we have two prior such accepts to extrapolate
                     // from. Pure diagnostic — does not touch controller state.
                     if retry_count == 0 && materially_changed {
-                        if let (Some((prev_prev_state, _prev_prev_dt)), Some((prev_state, prev_dt))) =
-                            (basin_escape_prev_prev.as_ref(), basin_escape_prev.as_ref())
+                        if let (
+                            Some((prev_prev_state, _prev_prev_dt)),
+                            Some((prev_state, prev_dt)),
+                        ) = (basin_escape_prev_prev.as_ref(), basin_escape_prev.as_ref())
                         {
                             let dt_ratio = if *prev_dt > 0.0 {
                                 trial_dt / *prev_dt
                             } else {
                                 1.0
                             };
-                            let extrapolated = globally_extrapolated_state(
-                                prev_prev_state,
-                                prev_state,
-                                dt_ratio,
-                            );
+                            let extrapolated =
+                                globally_extrapolated_state(prev_prev_state, prev_state, dt_ratio);
                             let baseline = evaluate_basin_escape_residual(
                                 self,
                                 &previous_state,
@@ -1263,7 +1254,8 @@ impl ReservoirSimulator {
                 }
 
                 if let Some(failure_diagnostics) = &report.failure_diagnostics {
-                    let current_retry_hotspot = FimRetryHotspot::from_failure(self, failure_diagnostics);
+                    let current_retry_hotspot =
+                        FimRetryHotspot::from_failure(self, failure_diagnostics);
                     if let Some(current_retry_hotspot) = current_retry_hotspot {
                         if previous_retry_hotspot
                             .is_some_and(|previous| previous.same_site(current_retry_hotspot))
@@ -1313,7 +1305,9 @@ impl ReservoirSimulator {
                         linear_solve_ms: report.linear_solve_time_ms,
                         linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
                         retry_class: Some(failure_diagnostics.class.label().to_string()),
-                        dominant_family: Some(failure_diagnostics.dominant_family_label.to_string()),
+                        dominant_family: Some(
+                            failure_diagnostics.dominant_family_label.to_string(),
+                        ),
                         dominant_row: Some(failure_diagnostics.dominant_row),
                     });
                     match failure_diagnostics.class {
@@ -1560,14 +1554,13 @@ mod tests {
     use super::{
         AcceptedStepGrowthDecision, FimGrowthCooldown, GasOuterStepTrialCarryover,
         accelerated_retry_factor_for_repeated_hotspot_failure, accepted_step_growth_factor,
-        next_gas_outer_step_trial_carryover, seed_gas_outer_step_trial_carryover,
-        proposed_trial_dt_days, replayable_unchanged_accepts_after_retry,
-        replayable_unchanged_cooldown_accepts,
-        replayable_unchanged_hotspot_plateau_accepts,
+        next_gas_outer_step_trial_carryover, proposed_trial_dt_days,
+        replayable_unchanged_accepts_after_retry, replayable_unchanged_cooldown_accepts,
+        replayable_unchanged_hotspot_plateau_accepts, seed_gas_outer_step_trial_carryover,
     };
     use crate::ReservoirSimulator;
-    use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
     use crate::fim::newton::FimStepReport;
+    use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
     use crate::fim::state::FimState;
 
     fn failure_diagnostics(
@@ -2409,7 +2402,10 @@ mod tests {
         assert!((extrapolated.perforation_rates_m3_day[1] - expected_rate1).abs() < 1e-12);
         // Regime is inherited from curr, not re-classified.
         assert_eq!(extrapolated.cells[0].regime, HydrocarbonState::Saturated);
-        assert_eq!(extrapolated.cells[1].regime, HydrocarbonState::Undersaturated);
+        assert_eq!(
+            extrapolated.cells[1].regime,
+            HydrocarbonState::Undersaturated
+        );
     }
 
     #[test]
@@ -2523,7 +2519,8 @@ mod phase5_repro {
         let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
         sim.set_fim_enabled(true);
         sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
-        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0).unwrap();
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+            .unwrap();
         sim.set_initial_pressure(300.0);
         sim.set_initial_saturation(0.1);
         sim.set_fluid_properties(1.0, 0.5).unwrap();
@@ -2542,7 +2539,8 @@ mod phase5_repro {
         sim.set_well_bhp_limits(100.0, 500.0).unwrap();
         sim.set_rate_controlled_wells(false);
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
-        sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
+            .unwrap();
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);
