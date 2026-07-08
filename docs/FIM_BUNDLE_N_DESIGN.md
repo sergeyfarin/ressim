@@ -239,8 +239,15 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
    further live — an intermediate, known-mismatched state; `MAX_SUBSTEPS=100_000` means slow,
    not hung). Consequence: N3 is now load-bearing, not optional polish — the Legacy retry
    ladder is actively mismatched with N1/N2/N5, not merely neutral to them.
-4. N3 controller — next, and now the clear gate on heavy-case tractability.
-5. N4 mechanism deletion sweep.
+4. **N3 controller — DONE 2026-07-07** (worklog "Bundle N checkpoint 4"). Default-Legacy
+   no-op gate passed. Informational `22x22x1` run: **worse than checkpoint 3, not better**
+   (20 substeps/12 retries vs 14/7) — the stubborn retry site (`oil@415`) needs a more
+   aggressive dt cut than OPM's flat `solver-restart-factor=0.33` to escape, which is exactly
+   what Legacy's repeated-hotspot-acceleration (down to `0.2`) was tuned to provide and N3
+   deliberately does not replicate. Not chased further live (still an intermediate state).
+   Open question carried into N4/§5: does the full bundle resolve this, or is OPM's retry
+   backoff genuinely a small permanent trade-off?
+5. N4 mechanism deletion sweep — next.
 6. End-metric evaluation (§5), A/B against Legacy. Promote → delete Legacy path in a follow-up
    commit; re-derive control-matrix baselines; update `FIM_STATUS`/registry/skill docs.
 7. Bundle P (independent; conventional gates).

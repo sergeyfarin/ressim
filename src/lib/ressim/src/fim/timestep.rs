@@ -414,6 +414,116 @@ fn accepted_step_growth_decision(
     decision
 }
 
+/// Bundle N checkpoint 4 (N3, `OpmAligned` only, `docs/FIM_BUNDLE_N_DESIGN.md` §9.3/9.4): OPM
+/// shipped `time-step-control=pid+newtoniteration` defaults, verified from the installed
+/// `flow` binary and `opm-simulators` `release/2025.10/final` source at Bundle N step 0.
+const OPM_TIME_STEP_CONTROL_TOLERANCE: f64 = 0.1;
+const OPM_TARGET_NEWTON_ITERATIONS: f64 = 8.0;
+const OPM_ITER_DECAY_DAMPING: f64 = 1.0;
+const OPM_ITER_GROWTH_DAMPING: f64 = 3.2;
+const OPM_SOLVER_RESTART_FACTOR: f64 = 0.33;
+const OPM_SOLVER_MAX_GROWTH: f64 = 3.0;
+const OPM_SOLVER_GROWTH_FACTOR_AFTER_RESTART: f64 = 2.0;
+
+/// OPM's `BlackoilModel::relativeChange()`: one global scalar comparing consecutive ACCEPTED
+/// substep states (not Newton iterations) — sum-of-squares of pressure/saturation deltas,
+/// normalized by the sum-of-squares of the new state's own values. Implied `So` participates
+/// like the other phases, matching OPM's own (`NB fix me!`-flagged) mixing of pressure and
+/// saturation units verbatim — ported as-is, not "improved" (design doc §9.3).
+fn opm_relative_change(previous: &FimState, current: &FimState) -> f64 {
+    let mut delta = 0.0_f64;
+    let mut denom = 0.0_f64;
+    for (old_cell, new_cell) in previous.cells.iter().zip(current.cells.iter()) {
+        let dp = new_cell.pressure_bar - old_cell.pressure_bar;
+        delta += dp * dp;
+        denom += new_cell.pressure_bar * new_cell.pressure_bar;
+
+        let sg_of = |cell: &FimCellState| match cell.regime {
+            HydrocarbonState::Saturated => cell.hydrocarbon_var.max(0.0),
+            HydrocarbonState::Undersaturated => 0.0,
+        };
+        let new_sg = sg_of(new_cell);
+        let old_sg = sg_of(old_cell);
+        let new_so = 1.0 - new_cell.sw - new_sg;
+        let old_so = 1.0 - old_cell.sw - old_sg;
+
+        for (new_s, old_s) in [
+            (new_cell.sw, old_cell.sw),
+            (new_sg, old_sg),
+            (new_so, old_so),
+        ] {
+            let ds = new_s - old_s;
+            delta += ds * ds;
+            denom += new_s * new_s;
+        }
+    }
+    if denom > 0.0 { delta / denom } else { 0.0 }
+}
+
+/// OPM's `PIDTimeStepControl::computeTimeStepSize` half of the composite controller.
+/// `errors` holds the last three `opm_relative_change` values (oldest first), matching OPM's
+/// rolling `errors_` window (constructed filled with `tol`, design doc §9.3).
+fn opm_pid_dt(dt_days: f64, errors: [f64; 3]) -> f64 {
+    let tol = OPM_TIME_STEP_CONTROL_TOLERANCE;
+    let e2 = errors[2];
+    if e2 > tol {
+        dt_days * tol / e2
+    } else if errors[0] == 0.0 || errors[1] == 0.0 || e2 == 0.0 {
+        f64::MAX
+    } else {
+        dt_days
+            * (errors[1] / e2).powf(0.075)
+            * (tol / e2).powf(0.175)
+            * (errors[1] * errors[1] / (errors[0] * e2)).powf(0.01)
+    }
+}
+
+/// OPM's `PIDAndIterationCountTimeStepControl` iteration-target half: grow/decay dt toward
+/// hitting `target-newton-iterations` (8) on the next substep.
+fn opm_iteration_count_dt(dt_days: f64, newton_iterations: usize) -> f64 {
+    let its = newton_iterations as f64;
+    let target = OPM_TARGET_NEWTON_ITERATIONS;
+    if its > target {
+        dt_days / (1.0 + (its - target) / target * OPM_ITER_DECAY_DAMPING)
+    } else {
+        dt_days * (1.0 + (target - its) / target * OPM_ITER_GROWTH_DAMPING)
+    }
+}
+
+/// OPM's full accepted-substep dt proposal: `dt_next = min(dt_pid, dt_iter)`
+/// (`computeTimeStepSize`), then `maybeRestrictTimeStepGrowth_`'s two growth ceilings — always
+/// `solver-max-growth` (3.0), further tightened to `solver-growth-factor` (2.0) if this substep
+/// needed any retries. Returned as a growth FACTOR (matching `AcceptedStepGrowthDecision`) so
+/// it composes with the existing `proposed_trial_dt_days(last_successful_dt * last_growth_factor)`
+/// call site unchanged.
+fn opm_accepted_step_growth_decision(
+    dt_days: f64,
+    newton_iterations: usize,
+    errors: [f64; 3],
+    retries_this_substep: u32,
+) -> AcceptedStepGrowthDecision {
+    let dt_pid = opm_pid_dt(dt_days, errors);
+    let dt_iter = opm_iteration_count_dt(dt_days, newton_iterations);
+
+    let mut decision = AcceptedStepGrowthDecision {
+        factor: OPM_SOLVER_MAX_GROWTH,
+        limiter: "opm-max-growth",
+    };
+    for (dt_candidate, limiter) in [(dt_pid, "opm-pid"), (dt_iter, "opm-iter")] {
+        let factor = dt_candidate / dt_days;
+        if factor < decision.factor {
+            decision = AcceptedStepGrowthDecision { factor, limiter };
+        }
+    }
+    if retries_this_substep > 0 && OPM_SOLVER_GROWTH_FACTOR_AFTER_RESTART < decision.factor {
+        decision = AcceptedStepGrowthDecision {
+            factor: OPM_SOLVER_GROWTH_FACTOR_AFTER_RESTART,
+            limiter: "opm-restart-growth",
+        };
+    }
+    decision
+}
+
 #[cfg(test)]
 fn replayable_unchanged_cooldown_accepts(
     cooldown: FimGrowthCooldown,
@@ -899,9 +1009,16 @@ impl ReservoirSimulator {
         newton_options.verbose = verbose;
         newton_options.max_saturation_change = TARGET_MAX_SAT_CHANGE;
         newton_options.max_pressure_change_bar = TARGET_MAX_PRESSURE_CHANGE_BAR;
-        if self.fim_opm_aligned_nonlinear {
+        let opm_aligned = self.fim_opm_aligned_nonlinear;
+        if opm_aligned {
             newton_options.nonlinear_flavor = crate::fim::newton::FimNonlinearFlavor::OpmAligned;
         }
+        // Bundle N checkpoint 4 (N3, `OpmAligned` only): rolling `relativeChange()` history for
+        // OPM's PID controller half (design doc §9.3), reset each outer step — matching OPM's
+        // `PIDTimeStepControl` constructor (`errors_(3, tol_)`). Legacy's cooldown/carryover/
+        // hotspot-streak state below keeps updating unconditionally (harmless bookkeeping) but
+        // its output is only ever read on the Legacy path.
+        let mut opm_pid_errors: [f64; 3] = [OPM_TIME_STEP_CONTROL_TOLERANCE; 3];
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;
@@ -912,9 +1029,18 @@ impl ReservoirSimulator {
                 last_successful_dt,
                 last_growth_factor,
             );
-            let cooldown_clamped_trial =
-                growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt);
-            let gas_carryover_clamped_trial = if substeps == 0 {
+            // Bundle N checkpoint 4: the cooldown/gas-carryover trial clamps are Legacy-only
+            // hotspot mitigations with no OPM analog; `opm_aligned`'s own growth formula
+            // (computed on accept, below) already incorporates OPM's own caution (the
+            // iteration-target and post-retry growth ceilings), so skip them here.
+            let cooldown_clamped_trial = if opm_aligned {
+                proposed_trial.min(remaining_dt)
+            } else {
+                growth_cooldown.clamp_trial_dt(proposed_trial, remaining_dt)
+            };
+            let gas_carryover_clamped_trial = if opm_aligned {
+                cooldown_clamped_trial
+            } else if substeps == 0 {
                 carried_gas_outer_step_trial_carryover
                     .map(|carryover| cooldown_clamped_trial.min(carryover.cap_dt_days))
                     .unwrap_or(cooldown_clamped_trial)
@@ -1009,17 +1135,36 @@ impl ReservoirSimulator {
                         && report.final_update_inf_norm == 0.0
                         && !materially_changed;
 
-                    let uncapped_growth_decision =
-                        accepted_step_growth_decision(report.newton_iterations, max_dsat, max_dp);
-                    let growth_decision = growth_cooldown.stabilize_growth_decision(
-                        growth_cooldown.cap_growth_decision(uncapped_growth_decision),
-                    );
-                    if growth_decision.limiter == "hotspot-repeat"
-                        && uncapped_growth_decision.limiter == "newton-iters"
-                    {
-                        hotspot_repeat_suppressed_newton_iters_growth_count += 1;
-                    }
-                    let adjusted_growth_decision =
+                    // Bundle N checkpoint 4 (N3, `OpmAligned` only): OPM's own
+                    // `pid+newtoniteration` growth decision replaces the Legacy iteration/
+                    // sat/pressure-based decision AND its cooldown-capping/stabilization and
+                    // "retry-hold" override — those are Legacy-specific mitigations for a
+                    // problem (the hotspot-repeat pathology) that OPM's own growth ceilings
+                    // (`opm-max-growth`/`opm-restart-growth`) already guard against directly.
+                    let adjusted_growth_decision = if opm_aligned {
+                        let rel_change =
+                            opm_relative_change(&previous_state, &report.accepted_state);
+                        opm_pid_errors = [opm_pid_errors[1], opm_pid_errors[2], rel_change];
+                        opm_accepted_step_growth_decision(
+                            trial_dt,
+                            report.newton_iterations,
+                            opm_pid_errors,
+                            retry_count,
+                        )
+                    } else {
+                        let uncapped_growth_decision = accepted_step_growth_decision(
+                            report.newton_iterations,
+                            max_dsat,
+                            max_dp,
+                        );
+                        let growth_decision = growth_cooldown.stabilize_growth_decision(
+                            growth_cooldown.cap_growth_decision(uncapped_growth_decision),
+                        );
+                        if growth_decision.limiter == "hotspot-repeat"
+                            && uncapped_growth_decision.limiter == "newton-iters"
+                        {
+                            hotspot_repeat_suppressed_newton_iters_growth_count += 1;
+                        }
                         if retry_count > 0 && growth_decision.factor < 1.0 {
                             AcceptedStepGrowthDecision {
                                 factor: 1.0,
@@ -1027,7 +1172,8 @@ impl ReservoirSimulator {
                             }
                         } else {
                             growth_decision
-                        };
+                        }
+                    };
                     let unchanged_hotspot_plateau_accept = retry_count == 0
                         && report.newton_iterations == 1
                         && report.final_update_inf_norm == 0.0
@@ -1278,13 +1424,21 @@ impl ReservoirSimulator {
                     previous_retry_hotspot = None;
                 }
 
-                let effective_retry_factor = accelerated_retry_factor_for_repeated_hotspot_failure(
-                    report.retry_factor,
-                    repeated_same_hotspot_failures,
-                    growth_cooldown.hotspot_repeat_failures,
-                    trial_dt,
-                    &report,
-                );
+                // Bundle N checkpoint 4 (N3, `OpmAligned` only): OPM's flat
+                // `solver-restart-factor` (0.33) replaces both ResSim's failure-classified
+                // `retry_factor` and the repeated-hotspot acceleration on top of it — OPM's
+                // retry backoff carries no failure-family or site memory at all.
+                let effective_retry_factor = if opm_aligned {
+                    OPM_SOLVER_RESTART_FACTOR
+                } else {
+                    accelerated_retry_factor_for_repeated_hotspot_failure(
+                        report.retry_factor,
+                        repeated_same_hotspot_failures,
+                        growth_cooldown.hotspot_repeat_failures,
+                        trial_dt,
+                        &report,
+                    )
+                };
                 let next_dt = trial_dt * effective_retry_factor.clamp(0.1, 0.5);
                 retry_count += 1;
 
@@ -1556,15 +1710,18 @@ impl ReservoirSimulator {
 mod tests {
     use super::{
         AcceptedStepGrowthDecision, FimGrowthCooldown, GasOuterStepTrialCarryover,
-        accelerated_retry_factor_for_repeated_hotspot_failure, accepted_step_growth_factor,
-        next_gas_outer_step_trial_carryover, proposed_trial_dt_days,
-        replayable_unchanged_accepts_after_retry, replayable_unchanged_cooldown_accepts,
-        replayable_unchanged_hotspot_plateau_accepts, seed_gas_outer_step_trial_carryover,
+        OPM_SOLVER_GROWTH_FACTOR_AFTER_RESTART, OPM_SOLVER_MAX_GROWTH,
+        OPM_TIME_STEP_CONTROL_TOLERANCE, accelerated_retry_factor_for_repeated_hotspot_failure,
+        accepted_step_growth_factor, next_gas_outer_step_trial_carryover,
+        opm_accepted_step_growth_decision, opm_iteration_count_dt, opm_pid_dt,
+        opm_relative_change, proposed_trial_dt_days, replayable_unchanged_accepts_after_retry,
+        replayable_unchanged_cooldown_accepts, replayable_unchanged_hotspot_plateau_accepts,
+        seed_gas_outer_step_trial_carryover,
     };
     use crate::ReservoirSimulator;
     use crate::fim::newton::FimStepReport;
     use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
-    use crate::fim::state::FimState;
+    use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
 
     fn failure_diagnostics(
         class: FimRetryFailureClass,
@@ -1589,6 +1746,107 @@ mod tests {
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
         sim.add_well(19, 19, 0, 100.0, 0.1, 0.0, false).unwrap();
         sim
+    }
+
+    fn cell(pressure_bar: f64, sw: f64, hydrocarbon_var: f64, regime: HydrocarbonState) -> FimCellState {
+        FimCellState {
+            pressure_bar,
+            sw,
+            hydrocarbon_var,
+            regime,
+        }
+    }
+
+    #[test]
+    fn opm_relative_change_is_zero_for_identical_states() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        let state = FimState::from_simulator(&sim);
+        assert_eq!(opm_relative_change(&state, &state), 0.0);
+    }
+
+    #[test]
+    fn opm_relative_change_matches_hand_computed_sum_of_squares() {
+        let previous = FimState {
+            cells: vec![cell(200.0, 0.3, 0.1, HydrocarbonState::Saturated)],
+            well_bhp: vec![],
+            perforation_rates_m3_day: vec![],
+        };
+        let mut current = previous.clone();
+        current.cells[0].pressure_bar = 220.0; // dp = 20
+        current.cells[0].sw = 0.35; // dSw = 0.05
+        current.cells[0].hydrocarbon_var = 0.12; // dSg = 0.02, implied dSo = -0.07
+
+        // new: p=220, Sw=0.35, Sg=0.12, So=0.53; old: p=200, Sw=0.3, Sg=0.1, So=0.6
+        let delta = 20.0_f64.powi(2) + 0.05_f64.powi(2) + 0.02_f64.powi(2) + (-0.07_f64).powi(2);
+        let denom = 220.0_f64.powi(2) + 0.35_f64.powi(2) + 0.12_f64.powi(2) + 0.53_f64.powi(2);
+        let expected = delta / denom;
+
+        assert!((opm_relative_change(&previous, &current) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn opm_pid_dt_shrinks_when_error_exceeds_tolerance() {
+        // e2=0.2 > tol=0.1 -> dt * tol/e2 = dt * 0.5
+        let dt = opm_pid_dt(1.0, [0.1, 0.1, 0.2]);
+        assert!((dt - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn opm_pid_dt_returns_max_when_history_has_a_zero_error() {
+        let dt = opm_pid_dt(1.0, [0.0, 0.05, 0.05]);
+        assert_eq!(dt, f64::MAX);
+    }
+
+    #[test]
+    fn opm_pid_dt_uses_full_formula_below_tolerance_with_nonzero_history() {
+        // e2=0.05 <= tol=0.1, all errors nonzero -> full PID formula, not the shrink or max branch.
+        let dt = opm_pid_dt(1.0, [0.05, 0.05, 0.05]);
+        let expected = 1.0 * (0.05_f64 / 0.05).powf(0.075)
+            * (0.1_f64 / 0.05).powf(0.175)
+            * (0.05_f64 * 0.05 / (0.05 * 0.05)).powf(0.01);
+        assert!((dt - expected).abs() < 1e-9);
+        assert!(dt > 1.0, "error well below tolerance should propose growth");
+    }
+
+    #[test]
+    fn opm_iteration_count_dt_grows_below_target_and_shrinks_above() {
+        // its=2 < target=8: dt * (1 + 6/8*3.2) = dt * 3.4
+        assert!((opm_iteration_count_dt(1.0, 2) - 3.4).abs() < 1e-12);
+        // its=8 == target: no adjustment
+        assert!((opm_iteration_count_dt(1.0, 8) - 1.0).abs() < 1e-12);
+        // its=16 > target=8: dt / (1 + 8/8*1.0) = dt / 2.0
+        assert!((opm_iteration_count_dt(1.0, 16) - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn opm_accepted_step_growth_decision_picks_the_tightest_candidate() {
+        // A very clean history (errors far below tol) and a low iteration count both
+        // propose growth well past the ceiling; the max-growth ceiling (3.0) must win.
+        let tiny_errors = [1e-6, 1e-6, 1e-6];
+        let decision = opm_accepted_step_growth_decision(1.0, 0, tiny_errors, 0);
+        assert!((decision.factor - OPM_SOLVER_MAX_GROWTH).abs() < 1e-9);
+        assert_eq!(decision.limiter, "opm-max-growth");
+
+        // A high iteration count should bind via the iteration-count formula instead.
+        let decision = opm_accepted_step_growth_decision(1.0, 16, tiny_errors, 0);
+        assert!((decision.factor - 0.5).abs() < 1e-9);
+        assert_eq!(decision.limiter, "opm-iter");
+    }
+
+    #[test]
+    fn opm_accepted_step_growth_decision_tightens_after_a_retry() {
+        // Very clean history + low iteration count would otherwise propose max growth
+        // (3.0), but any retry this substep clamps further to solver-growth-factor (2.0).
+        let tiny_errors = [1e-6, 1e-6, 1e-6];
+        let decision = opm_accepted_step_growth_decision(1.0, 0, tiny_errors, 1);
+        assert!((decision.factor - OPM_SOLVER_GROWTH_FACTOR_AFTER_RESTART).abs() < 1e-9);
+        assert_eq!(decision.limiter, "opm-restart-growth");
+    }
+
+    #[test]
+    fn opm_time_step_control_tolerance_matches_opm_default() {
+        assert!((OPM_TIME_STEP_CONTROL_TOLERANCE - 0.1).abs() < 1e-12);
     }
 
     #[test]

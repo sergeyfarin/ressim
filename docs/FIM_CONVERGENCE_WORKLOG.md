@@ -960,3 +960,64 @@ still Legacy):**
 next step — it is very likely load-bearing for making the heavy case tractable again, not an
 optional polish item, since the Legacy retry ladder is now actively working against the
 already-fixed N1/N2/N5 mechanics rather than neutral to them.
+
+### Bundle N checkpoint 4 (2026-07-07) — N3 timestep controller live behind `OpmAligned`
+
+Implemented, under `OpmAligned` only (design doc §9.3/9.4): OPM's `pid+newtoniteration`
+controller (`opm_accepted_step_growth_decision` = `min(dt_pid, dt_iter)` then the two growth
+ceilings — always `solver-max-growth=3.0`, further `solver-growth-factor=2.0` if this substep
+needed any retries), backed by a new `opm_relative_change` (OPM's `BlackoilModel::relativeChange()`
+— sum-of-squares of pressure/saturation deltas between consecutive ACCEPTED substep states,
+normalized by the new state's own sum-of-squares, implied `So` included) feeding a 3-value
+rolling error history reset each outer step. On retry, the flat `solver-restart-factor=0.33`
+replaces both ResSim's failure-classified `retry_factor` and the repeated-hotspot acceleration
+on top of it. The Legacy cooldown/gas-carryover trial-dt clamps and the "retry-hold" growth
+override are skipped entirely for `OpmAligned` (no OPM analog); their bookkeeping keeps
+running unconditionally (harmless — nothing reads it under `OpmAligned`). 9 new unit tests
+(`opm_relative_change_*`, `opm_pid_dt_*`, `opm_iteration_count_dt_*`,
+`opm_accepted_step_growth_decision_*`).
+
+**Pre-existing, unrelated test failures found and ruled out before trusting the smoke gate**:
+`fim::timestep::tests::changing_hotspot_resets_extra_growth_cooldown_budget`,
+`repeated_same_hotspot_extends_growth_cooldown_budget`,
+`fim_enabled_step_advances_time_and_records_history_for_closed_system` fail on a clean checkout
+of commit `41d45f2` (checkpoint 3, before any of this checkpoint's edits) — confirmed via
+`git stash` + rerun. Unrelated to Bundle N; logged in `TODO.md`, not investigated further here.
+
+**No-op gate (default Legacy), all passed:** locked smoke 3/3; full control matrix + heavy case
+bit-identical to baseline (heavy: `substeps=32 | accepts=31+4+1764 | retries=0/13/0`,
+`oil=3893.94`, `hotspot_newton_caps=7`).
+
+**Informational `--opm-aligned` run (not a gate — full end-metric evaluation is §5, after N4):**
+
+`22x22x1` (same case tracked at checkpoints 2/3 for a consistent trend):
+
+| Checkpoint | substeps | retries | attempts |
+|---|---:|---:|---:|
+| Legacy | 4 | 2 | 6 |
+| 2 (chop only) | — (not separately run) | — | — |
+| 3 (chop + N1 + N5) | 14 | 7 | 21 |
+| 4 (+ N3 controller) | 20 | 12 | 32 |
+
+**Honest finding: N3 alone made this small case worse, not better.** Growth-decision trace
+breakdown across the 20 accepted substeps: 7 at the `3.0` ceiling (clean accepts), 11 at the
+`2.0` post-retry ceiling (i.e. the large majority of substeps needed at least one retry before
+accepting), 2 at smaller PID/iteration-bound values. The retry_dom stays pinned at the same
+site (`oil@415`) throughout. The most likely explanation: this case's stubborn site needs a
+*more aggressive* dt cut than OPM's flat `0.33` to get past — exactly what Legacy's
+repeated-hotspot-acceleration (shrinking to `0.2` after repeats) was tuned to do, and which N3
+deliberately does not replicate (OPM's own retry backoff really is failure-class- and
+site-agnostic). This is a genuine, not-yet-resolved open question the design's checkpoint list
+did not anticipate: N3's simplicity may trade away a real capability Legacy had for navigating
+specific repeated-failure sites. Not chased further live (heavy case not re-attempted this
+checkpoint either, for the same "don't chase intermediate mismatches" reason as checkpoint 3) —
+recorded honestly rather than declared a win.
+
+**Consequence for the build order**: proceed to N4 (mechanism deletion) as planned — deleting
+the compensating mechanisms is what actually tests whether the *combined* bundle (not each
+piece in isolation against a Legacy-shaped baseline) resolves the heavy case. If the full
+bundle's end-metric evaluation (§5) shows the retry-navigation gap is real and material, the
+recorded fallback is revisiting N3's retry-factor choice specifically (e.g., OPM's own
+`solver-max-restarts`-scaled backoff, or accepting this as a genuine, small, permanent
+trade-off versus OPM if the alternative — reintroducing site memory — reopens the
+architectural inconsistency this whole bundle exists to remove).
