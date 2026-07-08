@@ -247,7 +247,21 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
    deliberately does not replicate. Not chased further live (still an intermediate state).
    Open question carried into N4/§5: does the full bundle resolve this, or is OPM's retry
    backoff genuinely a small permanent trade-off?
-5. N4 mechanism deletion sweep — next.
+5. **N4 mechanism deletion sweep — DONE 2026-07-07 (first real win)** (worklog "Bundle N
+   checkpoint 5"). Deleted, `OpmAligned`-only: `candidate_materially_changed` as a validity
+   requirement (the dominant fix — checkpoint 4's own forensics showed 11/12 failures on the
+   tracked case were this exit firing on a harmless near-zero update); the residual-stagnation
+   trend bailout (`stagnation_count>=3`); the preemptive direct-solve bypass ladder (closing a
+   gap checkpoint 3 left: `repeated_zero_move_direct_bypass` didn't depend on `used_fallback`
+   like the other three bypass flags, so could still silently force a direct solve ahead of
+   any FGMRES-CPR attempt). Default-Legacy no-op gate passed. **`22x22x1` informational run: a
+   real, measured win** — 12 substeps/1 retry (was 20/12 at checkpoint 4), `DAMPING FAILED`
+   dropped from 11 to exactly 0 as predicted, now close to Legacy's 4/2. Two things NOT yet
+   resolved: the heavy case still times out (>400s, even at `--diagnostic summary`) — a
+   different pathology class (`water@1215`, genuine plateau) from the small case's site; and a
+   third case (`23x23x1`) surfaced a NEW failure mode, `linear-bad` retries (not
+   `nonlinear-bad`) at `retry_dom=linear-bad:oil@361` — suggesting N5's linear-failure handling
+   itself may need a second look before §5, not just N1-N4.
 6. End-metric evaluation (§5), A/B against Legacy. Promote → delete Legacy path in a follow-up
    commit; re-derive control-matrix baselines; update `FIM_STATUS`/registry/skill docs.
 7. Bundle P (independent; conventional gates).

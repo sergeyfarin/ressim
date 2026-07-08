@@ -3115,7 +3115,13 @@ pub(crate) fn run_fim_timestep(
                 iters_remaining,
                 would_widen,
             );
-            if stagnation_count >= 3 {
+            // Bundle N checkpoint 5 (N4, `OpmAligned` only): this residual-trend bailout has
+            // no OPM analog — OPM never inspects the residual TREND mid-solve, only its
+            // absolute value against CNV/MB at each iteration's entry check. Under
+            // `OpmAligned`, a stagnating trajectory simply keeps iterating (as OPM's does)
+            // until the entry check accepts it or the iteration budget is exhausted and the
+            // relaxed tiers decide (design doc N4).
+            if !opm_aligned && stagnation_count >= 3 {
                 let materially_changed = iterate_has_material_change(previous_state, &state);
                 let accepted_diagnostics = evaluate_accepted_state_convergence(
                     sim,
@@ -3295,10 +3301,15 @@ pub(crate) fn run_fim_timestep(
 
         let rhs = -&assembly.residual;
         let mut linear_options = options.linear;
-        let any_preexisting_bypass = dead_state_direct_bypass
-            || restart_stagnation_direct_bypass
-            || zero_move_fallback_direct_bypass
-            || repeated_zero_move_direct_bypass;
+        // Bundle N checkpoint 5 (N4, `OpmAligned` only): none of these preemptive direct-solve
+        // bypasses have an OPM analog (design doc N4 lists "the direct-solve bypass ladder" for
+        // deletion) — under `OpmAligned` every linear solve goes through the requested iterative
+        // backend first, with N5 (checkpoint 3) deciding after the fact whether to accept it.
+        let any_preexisting_bypass = !opm_aligned
+            && (dead_state_direct_bypass
+                || restart_stagnation_direct_bypass
+                || zero_move_fallback_direct_bypass
+                || repeated_zero_move_direct_bypass);
         if any_preexisting_bypass {
             linear_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
             fim_trace!(
@@ -3873,9 +3884,17 @@ pub(crate) fn run_fim_timestep(
             damping,
         );
         let candidate_materially_changed = iterate_has_material_change(&state, &candidate);
+        // Bundle N checkpoint 5 (N4): confirmed by checkpoint-4 forensics to be the dominant
+        // cause of "regression" on `--opm-aligned` runs — 11 of 12 failures on the tracked
+        // small case were this exit firing on a near-zero-move update, aborting the substep
+        // before OPM's relaxed exhaustion tiers ever got a chance to accept the (genuinely
+        // plateaued) state. OPM has no "was the raw update materially small" validity check
+        // at all — a near-zero update is still a normal Newton step; the loop simply keeps
+        // iterating and lets the entry check (or post-loop exhaustion) decide. Required only
+        // under Legacy.
         let candidate_is_valid = damping.is_finite()
             && damping > 0.0
-            && candidate_materially_changed
+            && (opm_aligned || candidate_materially_changed)
             && candidate.is_finite()
             && candidate.respects_basic_bounds(sim)
             // OpmAligned: the per-cell chop bounds the update by construction (§9.2 limits,

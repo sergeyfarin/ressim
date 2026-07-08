@@ -1021,3 +1021,75 @@ recorded fallback is revisiting N3's retry-factor choice specifically (e.g., OPM
 `solver-max-restarts`-scaled backoff, or accepting this as a genuine, small, permanent
 trade-off versus OPM if the alternative — reintroducing site memory — reopens the
 architectural inconsistency this whole bundle exists to remove).
+
+### Bundle N checkpoint 5 (2026-07-07) — N4 mechanism deletion sweep: the forensic prediction holds
+
+Deleted, under `OpmAligned` only, exactly the three mechanisms checkpoint 4's log forensics
+identified as having no OPM analog and actively causing the observed regressions:
+
+1. **`candidate_materially_changed` dropped from `candidate_is_valid`** (the dominant fix,
+   confirmed by checkpoint 4's forensics: 11 of 12 failures on the tracked small case were
+   this exact exit firing on a near-zero-move update). OPM has no "was the raw update
+   materially small" validity check at all — a near-zero update is still a normal Newton step;
+   the loop keeps iterating and the entry check (or post-loop exhaustion) decides.
+2. **Residual-stagnation bailout** (`stagnation_count >= 3` → accept-or-bail, both Legacy-scaled)
+   gated behind `!opm_aligned`. OPM never inspects residual *trend* mid-solve, only its
+   absolute value against CNV/MB at each entry check.
+3. **Preemptive direct-solve bypass ladder** (`any_preexisting_bypass`, gating dead-state/
+   restart-stagnation/zero-move/repeated-zero-move flags) gated behind `!opm_aligned` as a
+   whole, closing a latent gap checkpoint 3 didn't fully cover: `repeated_zero_move_direct_bypass`
+   doesn't depend on `used_fallback` (unlike the other three, already inert for `opm_aligned`
+   since `used_fallback` never becomes true under N5) and could still have forced a direct
+   solve ahead of any FGMRES-CPR attempt, silently reintroducing exactly the "no direct-solve
+   fallback in the loop" violation N5 (checkpoint 3) was built to remove.
+
+`repeated_hotspot_streak` checked and confirmed already safe (only read inside the
+already-`opm_aligned`-gated `nonlinear_history_stabilization_decision` call from checkpoint 3).
+
+**No-op gate (default Legacy), all passed:** locked smoke 3/3; full control matrix + heavy case
+bit-identical to baseline (heavy: `substeps=32 | accepts=31+4+1764 | retries=0/13/0`,
+`oil=3893.94`, `hotspot_newton_caps=7`).
+
+**Informational `--opm-aligned` runs — the forensic prediction confirmed directly:**
+
+`22x22x1` (the case tracked since checkpoint 2, full trend):
+
+| Checkpoint | substeps | retries | attempts | DAMPING FAILED |
+|---|---:|---:|---:|---:|
+| Legacy | 4 | 2 | 6 | n/a |
+| 3 (chop + N1 + N5) | 14 | 7 | 21 | (not counted) |
+| 4 (+ N3 controller) | 20 | 12 | 32 | 11 |
+| **5 (+ N4 sweep)** | **12** | **1** | **13** | **0** |
+
+`DAMPING FAILED` dropped to exactly 0 as predicted; `post-loop CONVERGED` still never fires
+(0) but `post-loop NOT CONVERGED` is now only 1 (a single genuine end-of-budget failure,
+`retry_dom` shifted from the stubborn `oil@415` to `water@0`) — the checkpoint-4 diagnosis was
+correct and the fix resolved it directly, not incidentally. 13 attempts is close to Legacy's 6
+and a completely different order of magnitude from checkpoint 4's 32.
+
+**Two honest findings that are NOT yet resolved:**
+
+- **Heavy case (`12x12x3`) still times out** — attempted at both `--diagnostic step` (280s) and
+  the cheaper `--diagnostic summary` (400s), both killed with zero output produced. The heavy
+  case's dominant site (`water@1215`, the genuine local-saturation-plateau from Task #37) is a
+  different pathology class from the small case's `oil@415`/`water@0` sites; N4's fix (aimed at
+  a spurious VALIDITY exit) does not obviously address a genuine physical plateau. Not
+  chased further live this checkpoint — still consistent with "the real test is §5," but this
+  is the first checkpoint where a *comparable* case (not just a differently-shaped small case)
+  showed a real, measured win, so the heavy case's continued intractability is now a specific,
+  named open risk rather than a generic "intermediate state" excuse.
+- **A third case (`23x23x1`, 529 cells, part of the control matrix) surfaced a DIFFERENT
+  failure mode**: `substeps=26 | retries=9/0/0` (all `linear-bad`, not `nonlinear-bad`) at
+  `retry_dom=linear-bad:oil@361` — fast in wall-clock (3s, this case's linear systems are cheap)
+  but structurally worse than Legacy's `4/0/2/0`. This is the first sign that N5's linear-failure
+  handling (accept if reduction `<0.01`, else fail outright, no rescue) may itself be a material
+  cost on some cases, distinct from the nonlinear-layer issues N1-N4 have been addressing. Not
+  investigated further this checkpoint — flagged for the N4/end-metric evaluation stage.
+
+**Consequence for the build order:** N4's sweep list (design doc, the remaining "site-keyed
+history stabilization remnants"/"plateau-replay bookkeeping"/"retry-family classification as a
+control input" items) is not yet fully exhausted — `history_stabilization` is already `None`
+under `opm_aligned` (checkpoint 3) and plateau-replay is Legacy-only bookkeeping already unread,
+but the newly-surfaced `linear-bad` finding on `23x23x1` suggests N5 itself may need a second
+look before §5's end-metric evaluation, not just N1-N4's mechanisms. Recommend one more
+targeted pass at the `linear-bad` finding before declaring N4 complete and moving to §5.
