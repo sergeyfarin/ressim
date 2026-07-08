@@ -859,3 +859,49 @@ the "judge only at the end" principle.
 
 Replay: `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1
 --dt 1 --diagnostic step --no-json`, grep `CNV-MB`; analysis script inline in the session log.
+
+### Bundle N checkpoint 2 (2026-07-07) — `OpmAligned` flag + N2 per-cell chopping live behind it
+
+Implemented `FimNonlinearFlavor::{Legacy, OpmAligned}` on `FimNewtonOptions` (default `Legacy`)
+and OPM's per-cell update chopping (`opm_per_cell_chopped_update`, design doc §9.2: per-cell
+`satAlpha = dsMax/maxSatDelta` incl. the implied `dSo = -(dSw+dSg)`, Rs-meaning non-negativity
+guard, `±0.3·p` relative pressure clamp; oscillation-relaxation scalar pre-multiplies the raw
+update matching OPM's dampen-then-chop order). Under `OpmAligned` the Legacy update-limiting
+layer (history stabilization + global Appleyard scalar + inflection chop +
+`candidate_respects_update_bounds`) is bypassed; everything else (acceptance, entry guards,
+retry ladder, controller) is still Legacy at this checkpoint. Plumbing:
+`setFimOpmAlignedNonlinear` wasm setter, `--opm-aligned` runner flag. 4 focused unit tests
+(implied-So chop, per-cell independence, relative dp clamp, Rs guard, relax-then-chop order).
+
+**No-op gate (default Legacy), all passed:** locked smoke 3/3; control matrix + heavy case
+bit-identical (heavy: `substeps=32 | accepts=31+4+1764 | retries=0/13/0`, `oil=3893.94`,
+`hotspot_newton_caps=7`).
+
+**Informational first `--opm-aligned` heavy-case run** (NOT a gate — intermediate bundle state
+under Legacy acceptance/controller, judged only at bundle end per the design principle):
+
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --opm-aligned --diagnostic step --no-json
+step= 1 | substeps=226 | accepts=224+5+1568 | retries=0/48/0 | oil=3804.38 | hotspot_newton_caps=132 | retry_dom=nonlinear-bad:perf@1299   (141.5 s)
+```
+
+End-to-end worse under Legacy gates, exactly as the bundle thesis predicts for a mismatched
+intermediate — but the CNV-MB probe (checkpoint 1, still live) shows the *Newton quality
+underneath* moved decisively in the right direction:
+
+| CNV-MB verdict per Newton solve attempt | Legacy damping (44 blocks) | Per-cell chop (272 blocks) |
+|---|---:|---:|
+| OPM-acceptable mid-solve (strict/pv-relaxed) | 9 | 7 |
+| OPM-acceptable at exhaustion (relaxed MB `1e-6` / CNV tier) | 12 | **251** |
+| Truly failing under full OPM rules | 23 (52%) | **14 (5%)** |
+| Median final MB in non-accepted blocks | `2.2e-6` | **`2.9e-7`** |
+
+The MB stall that checkpoint 1 identified as the binding failure (damped Newton frozen at
+`~2e-6`) is gone — per-cell chopping brings 95% of solve attempts to a state OPM's full
+acceptance rules would take (vs 48% before). The 226-substep fragmentation is now almost
+entirely the *Legacy acceptance layer* (inf-norm `1e-5` + entry guards) rejecting
+OPM-acceptable states, plus the Legacy hotspot controller reacting to those rejections.
+Checkpoints 3-4 (N1 acceptance incl. relaxed tiers + N5 linear handling, then N3 controller)
+are precisely the harvest step. Caveat recorded: "acceptable at exhaustion" means ~20-iteration
+substeps; the N3 controller's 8-iteration target should settle on fewer, larger substeps —
+end metrics (§5) remain the only judgment.

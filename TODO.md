@@ -2,6 +2,35 @@
 
 `TODO.md` is the active execution tracker. Completed work has been moved to `docs/DELIVERED_WORK_2026_Q1.md`.
 
+## Scenario library review — 2026-07-07
+
+Full proposal (6 "decision-insight" cases + rationale) written into `docs/CASE_LIBRARY_ROADMAP.md` Tier 5; enabler gaps below are the actionable backlog. Review finding: all 10 current scenarios are single-mechanism teaching cases with one-at-a-time sensitivities; nothing in the library yet demonstrates parameter interaction, history-match non-uniqueness, or match-vs-forecast divergence — the highest-value additions need no new physics (roadmap 5.1–5.3).
+
+- [ ] **Add scenario 5.1 "Matched history, different reserves"** (N·c_t ambiguity in depletion) — no engine gap, extends `dep_*` family, cheapest insight case.
+- [ ] **Add scenario 5.2 "The tornado plot lies"** (kv/kh × density-contrast interaction, 2D vertical waterflood) — no engine gap.
+- [ ] **Add scenario 5.3 "Two fluid models, one calibration point"** (correlation vs tabular PVT, same bubble point, divergent GOR/RF) — no engine gap; wants OPM reference (blocked on parser stub below).
+- [ ] **E1: expose per-cell permeability** (`permMode: 'field'` + `setPermeabilityField` wasm setter; core already stores per-cell vecs) — unblocks flagship Tavassoli SPE-86883 case (roadmap 5.4), SPE10 M1, Egg model. Small.
+- [ ] **E2: declarative time-based well schedule** in scenario params, worker-driven (`setWellSchedule`/`setInjectedFluid` wasm APIs exist but the worker applies schedules only at create, `sim.worker.ts` `applyWellSchedule`) — unblocks WAG cycle study (roadmap 5.5) and SPE9. Moderate.
+- [ ] **E5: history/forecast chart divider** (shaded history window) — small chart-layer feature that 5.1/5.4 need to land their point.
+- [ ] **Engine gaps noted, deferred**: relperm hysteresis (E4, needed for quantitative WAG), per-well injected fluid (E3, currently one global `injected_fluid`), inactive cells (E6, blocks *live* PUNQ-S3 only).
+
+### Pre-run exhibit class — 2026-07-07 follow-up (roadmap Tier 6)
+
+User decision: cases may ship fully precomputed (OPM Flow offline or published datasets), with live tweaking and 3D off — this removes the engine envelope as a constraint and unblocks previously parked ideas (PUNQ-S3, compositional lumping, SPE5 WAG, SPE11). Full case table in `docs/CASE_LIBRARY_ROADMAP.md` Tier 6.
+
+- [ ] **E7: `runPolicy: 'prerun-artifacts'` scenario class** — frontend-only: skip worker, variants map to bundled artifact keys, read-only param panel, 3D off, ensemble/fan chart support. Unblocks all of Tier 6; `opm-flow-precomputed` artifact plumbing already exists in `src/lib/catalog/opmFlowArtifacts.ts`.
+- [ ] **Add exhibit 6.5 SPE11 inter-simulator spread** — first Tier 6 case: published results of 18 simulators (spe.org/csp/spe11, public GitHub) — zero simulation work, needs only E7 + data curation.
+- [ ] **Add exhibit 6.1 PUNQ-S3 ensemble** — free Imperial College Eclipse deck runs in OPM as-is (corner-point + aquifer); truth + matched realizations → forecast fan. Needs E7 + OPM parser.
+- [ ] **Add exhibits 6.3/6.4 SPE5 WAG + hysteresis on/off** — ready decks in `opm-tests` (`spe5`, `spe5_ehystr2_*`, `waghystr`). Needs E7 + OPM parser.
+- [ ] **Pilot `flowexp_comp` compositional deck** to green-light exhibit 6.2 (lumped 5–7 component EOS vs full EOS — the original motivating idea); record verdict in the roadmap either way.
+- [ ] **Record dataset licenses/provenance** per Tier 6 case before bundling artifacts (Egg: 4TU free access; PUNQ-S3: Imperial College free; SPE11: public results repo; opm-tests: check ODbL terms for redistribution of derived curves).
+
+## Frontend planning review — 2026-07-07 (discoveries)
+
+- [ ] **Chart consolidation is now on the product critical path.** The scenario-library plan (roadmap Tiers 5–6: E5 history/forecast divider, E7 pre-run class, ensemble fan charts) cannot land cleanly on the three-generation chart stack — building it there grows `buildChartData.ts`, which the frontend-architecture skill forbids. Schedule a *scoped* version of ROADMAP P3.1 / COMPARISON_TOOLBOX_REVIEW Phase B before E5/E7, not after.
+- [ ] **The 2026-03-07 UI audit was never converted to backlog and is partially stale** (predates the scenario-first migration). Before any UX pass, re-verify its 14 confirmed findings against the current UI and keep only the survivors; don't execute it as written.
+- [ ] **Comparison-review Phase A (OPM parser) has had zero commits since the review (2026-07-01)** — every `src/` commit since then is FIM/solver work, while three docs (COMPARISON_TOOLBOX_REVIEW P0, TODO, FIM_DEFERRED_BACKLOG boundary) independently name the parser as the highest-leverage non-FIM item.
+
 ## Discovered issues — 2026-07-02 handoff review
 
 Found while building the `.claude/skills/` library. Small stale-doc/path items were fixed in the same pass (README pnpm quick start, `test-wasm.sh` hardcoded `/home/reken` path, Three.js version claims in copilot-instructions/ARCHITECTURE_NOTES, scenario count 9→10).
@@ -25,7 +54,7 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 
 - [x] **Fine-dt physics reference for `k=1.25`** — done 2026-07-06: current-bundle fine-dt FOPT is `3883.47` vs. OPM's `3826.12` (+1.50%), vs. April's validated `3826.36` (+0.01%). Isolated via same-bundle `k=1.2` (`3845.38`, +0.50%): ~half the drift is the Phase 10/11 bundle itself (untested for accuracy when promoted), the rest is `k=1.25` specifically. **User decision 2026-07-06: 1.5% is immaterial given ResSim's much larger overall gap to OPM (~2.5 Newton iters/step, zero cuts) — do not fine-tune `k` further on this basis.** `k=1.25` stays live. See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)".
 - [x] **Wall-clock baseline / gap attribution** — done 2026-07-07 as a full factor budget vs OPM Flow on the same machine (worklog "Task #41"): 738x = 30.5x Newton count (nonlinear layer) x 24x per-iteration cost (preconditioner rebuild, 89% of wall-clock). OPM: 1 step, 11 Newtons, 0.05 s; ResSim: 32 substeps + 13 rungs, 336 Newtons, 36.9 s.
-- [ ] **Implement Bundle N** (`docs/FIM_BUNDLE_N_DESIGN.md`, registry `FIM-BUNDLE-N`): replace the nonlinear acceptance/damping/timestep layer with OPM's shipped semantics as one flag-gated bundle, judged on end metrics only. **Step 0 done 2026-07-07** (formulas in design doc §9). **Checkpoint 1 done 2026-07-07** (inert CNV/MB measurement, no-op gated): criteria-swap alone saves nothing — CNV never binds; the global-scalar-damped Newton stalls at MB≈2e-6 at plateaus. Build order reordered: N2 per-cell chopping first. Next: checkpoint 2, `OpmAligned` flag + N2.
+- [ ] **Implement Bundle N** (`docs/FIM_BUNDLE_N_DESIGN.md`, registry `FIM-BUNDLE-N`): replace the nonlinear acceptance/damping/timestep layer with OPM's shipped semantics as one flag-gated bundle, judged on end metrics only. **Steps 0-2 done 2026-07-07** (worklog "Bundle N checkpoint 1/2"): formulas verified from OPM source (§9); inert CNV/MB measurement refuted criteria-only theory (damping stall at MB≈2e-6 is the waste); `OpmAligned` flag + N2 per-cell chopping live behind flag (default Legacy, no-op gated) — chopping fixes the MB stall, 95% of solve attempts now OPM-acceptable vs 48%, fragmentation now caused by the Legacy acceptance layer. Next: checkpoint 3, N1 acceptance criteria (incl. relaxed tiers) + N5 linear handling in the `OpmAligned` path.
 - [ ] **Implement Bundle P** (`FIM-BUNDLE-P`): OPM-style CPR setup reuse — kills most of the 24x per-iteration factor; independent of Bundle N, conventional gates.
 - [ ] **AMG ("Bundle C", `FIM-LINEAR-006`)**: stays deferred — Task #41 traces confirm coarse per-application quality is already ~1e-7 at current sizes; scale-up item only.
 - [ ] **Variable substitution** (`docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` gap #5): excluded from Bundle N by design; revisit after it settles.

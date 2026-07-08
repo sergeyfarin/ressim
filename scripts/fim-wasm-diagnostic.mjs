@@ -105,6 +105,7 @@ Options:
   --checkpoint-dir <dir>    Directory used with --checkpoint-every
   --json                    Emit final JSON summary to stdout (default true)
   --no-json                 Suppress final JSON summary
+  --opm-aligned             Bundle N dev flag: OPM-aligned nonlinear layer (per-cell chopping)
   --list                    List presets
   --help                    Show this help
 
@@ -231,6 +232,9 @@ function parseArgs(argv) {
         break;
       case '--no-json':
         options.emitJson = false;
+        break;
+      case '--opm-aligned':
+        options.opmAligned = true;
         break;
       case '--list':
         options.list = true;
@@ -646,6 +650,9 @@ async function main() {
 
   const sim = new ReservoirSimulator(options.nx, options.ny, options.nz, 0.2);
   options.presetConfig.configure(sim, options);
+  if (options.opmAligned) {
+    sim.setFimOpmAlignedNonlinear(true);
+  }
 
   if (options.checkpointIn) {
     const checkpoint = await readCheckpoint(options.checkpointIn);

@@ -425,6 +425,18 @@ fn retry_failure_trace_suffix(diagnostics: &FimRetryFailureDiagnostics) -> Strin
     parts.join("")
 }
 
+/// Bundle N (`FIM-BUNDLE-N`, `docs/FIM_BUNDLE_N_DESIGN.md`): selects which nonlinear-layer
+/// architecture the Newton loop runs. `Legacy` is the historical ResSim stack (global-scalar
+/// Appleyard damping + inflection chop + history stabilization). `OpmAligned` replaces the
+/// update-limiting layer with OPM's per-cell chopping (design doc §9.2); further bundle items
+/// (acceptance criteria, controller) flip in later checkpoints. Default `Legacy` keeps all
+/// existing behavior bit-identical.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimNonlinearFlavor {
+    Legacy,
+    OpmAligned,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FimNewtonOptions {
     pub(crate) max_newton_iterations: usize,
@@ -437,6 +449,7 @@ pub(crate) struct FimNewtonOptions {
     pub(crate) max_rs_change_fraction: f64,
     pub(crate) linear: FimLinearSolveOptions,
     pub(crate) verbose: bool,
+    pub(crate) nonlinear_flavor: FimNonlinearFlavor,
 }
 
 impl Default for FimNewtonOptions {
@@ -452,6 +465,7 @@ impl Default for FimNewtonOptions {
             max_rs_change_fraction: 1.0,
             linear: FimLinearSolveOptions::default(),
             verbose: false,
+            nonlinear_flavor: FimNonlinearFlavor::Legacy,
         }
     }
 }
@@ -1866,6 +1880,73 @@ fn cnv_mb_from_parts(
         would_accept_strict: cnv_strict_ok && mb_ok,
         would_accept: cnv_effective_ok && mb_ok,
     }
+}
+
+/// OPM shipped per-cell update-chopping limits (Flow 2025.10 defaults `--ds-max` /
+/// `--dp-max-rel`, verified from the installed binary and `blackoilnewtonmethod.hpp` at the
+/// pinned tag — `docs/FIM_BUNDLE_N_DESIGN.md` §9.2). Used by the `OpmAligned` nonlinear flavor.
+const OPM_DS_MAX: f64 = 0.2;
+const OPM_DP_MAX_REL: f64 = 0.3;
+
+/// Bundle N checkpoint 2 (N2, `OpmAligned` flavor only): OPM's per-cell update chopping,
+/// ported from `updatePrimaryVariables_` (`blackoilnewtonmethod.hpp`, design doc §9.2).
+/// Replaces the Legacy global damping scalar: each cell's own saturation deltas are scaled by
+/// that cell's `satAlpha = dsMax / maxSatDelta` (including the IMPLIED oil delta
+/// `dSo = -(dSw + dSg)`), and its pressure delta is clamped to `±dpMaxRel * p_current` —
+/// no cell restricts any other cell's movement. Matching OPM's composition order, the global
+/// oscillation-relaxation scalar (`dampen` mode, Phase 7) multiplies the RAW update first,
+/// then the chop applies per cell.
+///
+/// Sign convention: ResSim applies `next = current + update` (OPM uses `current - delta`);
+/// the chop is symmetric in sign so only the Rs non-negativity guard direction differs.
+/// Well-BHP/perforation tail entries are relaxation-scaled but NOT chopped: OPM handles well
+/// updates in a separate well-model layer (`StandardWell`), and ResSim's Schur-recovered well
+/// state is post-processed by `relax_well_state_toward_local_consistency` after application.
+fn opm_per_cell_chopped_update(
+    state: &FimState,
+    update: &DVector<f64>,
+    relaxation: f64,
+) -> DVector<f64> {
+    let mut chopped = update * relaxation;
+    for (idx, cell) in state.cells.iter().enumerate() {
+        let offset = idx * 3;
+        let dp = chopped[offset];
+        let dsw = chopped[offset + 1];
+        let dhc = chopped[offset + 2];
+
+        // Saturation deltas, including the implied oil delta (design doc §9.2: OPM counts
+        // dSo = -(dSw + dSg) toward the per-cell max even though So is not a primary var).
+        let (dsg, dso) = match cell.regime {
+            HydrocarbonState::Saturated => (dhc, -(dsw + dhc)),
+            HydrocarbonState::Undersaturated => (0.0, -dsw),
+        };
+        let max_sat_delta = dsw.abs().max(dso.abs()).max(dsg.abs());
+        let sat_alpha = if max_sat_delta > OPM_DS_MAX {
+            OPM_DS_MAX / max_sat_delta
+        } else {
+            1.0
+        };
+        chopped[offset + 1] = dsw * sat_alpha;
+        match cell.regime {
+            HydrocarbonState::Saturated => {
+                chopped[offset + 2] = dhc * sat_alpha;
+            }
+            HydrocarbonState::Undersaturated => {
+                // hydrocarbon_var means Rs: not a saturation, so no satAlpha — only OPM's
+                // guard that the R factor cannot go negative after the update.
+                if cell.hydrocarbon_var + chopped[offset + 2] < 0.0 {
+                    chopped[offset + 2] = -cell.hydrocarbon_var;
+                }
+            }
+        }
+
+        // Pressure: relative clamp, independent of satAlpha.
+        let dp_cap = OPM_DP_MAX_REL * cell.pressure_bar.abs();
+        if dp.abs() > dp_cap {
+            chopped[offset] = dp.signum() * dp_cap;
+        }
+    }
+    chopped
 }
 
 /// Sim-facing wrapper: extracts reference pore volumes and per-cell FVFs, then delegates to
@@ -3432,120 +3513,171 @@ pub(crate) fn run_fim_timestep(
             };
         }
 
-        let history_stabilization = nonlinear_history_stabilization_decision(
-            &linear_report,
-            &residual_diagnostics,
-            current_norm,
-            options,
-            repeated_hotspot_streak,
-            current_hotspot_site,
-        );
-        let damping_breakdown =
-            appleyard_damping_breakdown(sim, &state, &linear_report.solution, options);
-        // Phase 7 sub-phase 7.2: fold OPM's global oscillation-relaxation scalar into the
-        // same damping bound as Appleyard and history-stabilization — matching how OPM
-        // itself composes per-variable chopping and oscillation relaxation as two
-        // independent multiplicative bounds on the same update, not layered stages.
-        let damping = compose_damping(
-            damping_breakdown.final_damping,
-            history_stabilization.as_ref().map(|d| d.damping_cap),
-            relaxation_state.current_relaxation,
-        );
-        // Fix A3 Stage 1 probe: read-only damping breakdown — which constraint bound
-        // the Appleyard chop, raw per-variable update peaks, and whether history
-        // stabilization further capped it. Used to investigate why initial-iter
-        // damping is 0.005-0.07 on the case 2 medium-water step.
-        fim_trace!(
-            sim,
-            options.verbose,
-            "    iter {:>2}: DAMP-BREAKDOWN final={:.4} appleyard={:.4} hist_cap={} osc_relax={:.2} bind={}@{} raw_dp={:.3e}@cell{} raw_dsw={:.3e}@cell{} raw_dh={:.3e}@cell{} raw_dbhp={:.3e}@well{} inflection={}",
-            iteration,
-            damping,
-            damping_breakdown.final_damping,
-            history_stabilization
-                .as_ref()
-                .map(|d| format!("{:.3}", d.damping_cap))
-                .unwrap_or_else(|| "none".to_string()),
-            relaxation_state.current_relaxation,
-            damping_breakdown.binding_kind,
-            damping_breakdown
-                .binding_cell
-                .map(|c| format!("cell{}", c))
-                .or_else(|| damping_breakdown.binding_well.map(|w| format!("well{}", w)))
-                .unwrap_or_else(|| "none".to_string()),
-            damping_breakdown.raw_dp_peak,
-            damping_breakdown
-                .raw_dp_peak_cell
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "-".to_string()),
-            damping_breakdown.raw_dsw_peak,
-            damping_breakdown
-                .raw_dsw_peak_cell
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "-".to_string()),
-            damping_breakdown.raw_dh_peak,
-            damping_breakdown
-                .raw_dh_peak_cell
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "-".to_string()),
-            damping_breakdown.raw_dbhp_peak,
-            damping_breakdown
-                .raw_dbhp_peak_well
-                .map(|w| w.to_string())
-                .unwrap_or_else(|| "-".to_string()),
-            damping_breakdown.inflection_crossings,
-        );
-        // Stage 1 over-damping probe: compute the per-variable damp candidate
-        // each component would have allowed in isolation, and report the wasted
-        // ratio (applied_damp / per_var_candidate). Ratios <1 mean the global
-        // single-scalar damping is over-damping that component.
-        {
-            let damp_dp_only = if damping_breakdown.raw_dp_peak > 1e-12 {
-                (options.max_pressure_change_bar / damping_breakdown.raw_dp_peak).min(1.0)
-            } else {
-                1.0
-            };
-            let damp_dsw_only = if damping_breakdown.raw_dsw_peak > 1e-12 {
-                (options.max_saturation_change / damping_breakdown.raw_dsw_peak).min(1.0)
-            } else {
-                1.0
-            };
-            let damp_dh_only = if damping_breakdown.raw_dh_peak > 1e-12 {
-                (options.max_saturation_change / damping_breakdown.raw_dh_peak).min(1.0)
-            } else {
-                1.0
-            };
-            let damp_dbhp_only = if damping_breakdown.raw_dbhp_peak > 1e-12 {
-                (options.max_pressure_change_bar / damping_breakdown.raw_dbhp_peak).min(1.0)
-            } else {
-                1.0
-            };
-            let waste = |allowed: f64| {
-                if allowed > 0.0 {
-                    damping / allowed
-                } else {
-                    1.0
+        let opm_aligned = options.nonlinear_flavor == FimNonlinearFlavor::OpmAligned;
+        // Bundle N checkpoint 2 (N2): under `OpmAligned` the entire Legacy update-limiting
+        // layer (history stabilization + global Appleyard scalar + inflection chop) is
+        // replaced by OPM's per-cell chopping; the oscillation-relaxation scalar stays and
+        // pre-multiplies the raw update, matching OPM's `dampen`-then-chop order (§9.2/§9.3
+        // of `docs/FIM_BUNDLE_N_DESIGN.md`).
+        let opm_chopped_update = if opm_aligned {
+            let chopped = opm_per_cell_chopped_update(
+                &state,
+                &linear_report.solution,
+                relaxation_state.current_relaxation,
+            );
+            let mut sat_chopped_cells = 0usize;
+            let mut dp_clamped_cells = 0usize;
+            let relax = relaxation_state.current_relaxation;
+            for idx in 0..state.cells.len() {
+                let offset = idx * 3;
+                if (chopped[offset + 1] - relax * linear_report.solution[offset + 1]).abs() > 1e-15
+                {
+                    sat_chopped_cells += 1;
                 }
-            };
+                if (chopped[offset] - relax * linear_report.solution[offset]).abs() > 1e-15 {
+                    dp_clamped_cells += 1;
+                }
+            }
             fim_trace!(
                 sim,
                 options.verbose,
-                "    iter {:>2}: COMPONENT-CLIP applied={:.4} dp_allowed={:.4}(waste={:.4}) dsw_allowed={:.4}(waste={:.4}) dh_allowed={:.4}(waste={:.4}) dbhp_allowed={:.4}(waste={:.4})",
+                "    iter {:>2}: PERCELL-CHOP relax={:.2} sat_chopped_cells={} dp_clamped_cells={}",
+                iteration,
+                relax,
+                sat_chopped_cells,
+                dp_clamped_cells,
+            );
+            Some(chopped)
+        } else {
+            None
+        };
+        let history_stabilization = if opm_aligned {
+            None
+        } else {
+            nonlinear_history_stabilization_decision(
+                &linear_report,
+                &residual_diagnostics,
+                current_norm,
+                options,
+                repeated_hotspot_streak,
+                current_hotspot_site,
+            )
+        };
+        let damping = if opm_aligned {
+            // Per-cell chopping already limited the update; relaxation is folded into the
+            // chopped vector. The scalar passed to the state application must be exactly 1.
+            1.0
+        } else {
+            let damping_breakdown =
+                appleyard_damping_breakdown(sim, &state, &linear_report.solution, options);
+            // Phase 7 sub-phase 7.2: fold OPM's global oscillation-relaxation scalar into the
+            // same damping bound as Appleyard and history-stabilization — matching how OPM
+            // itself composes per-variable chopping and oscillation relaxation as two
+            // independent multiplicative bounds on the same update, not layered stages.
+            let damping = compose_damping(
+                damping_breakdown.final_damping,
+                history_stabilization.as_ref().map(|d| d.damping_cap),
+                relaxation_state.current_relaxation,
+            );
+            // Fix A3 Stage 1 probe: read-only damping breakdown — which constraint bound
+            // the Appleyard chop, raw per-variable update peaks, and whether history
+            // stabilization further capped it. Used to investigate why initial-iter
+            // damping is 0.005-0.07 on the case 2 medium-water step.
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: DAMP-BREAKDOWN final={:.4} appleyard={:.4} hist_cap={} osc_relax={:.2} bind={}@{} raw_dp={:.3e}@cell{} raw_dsw={:.3e}@cell{} raw_dh={:.3e}@cell{} raw_dbhp={:.3e}@well{} inflection={}",
                 iteration,
                 damping,
-                damp_dp_only,
-                waste(damp_dp_only),
-                damp_dsw_only,
-                waste(damp_dsw_only),
-                damp_dh_only,
-                waste(damp_dh_only),
-                damp_dbhp_only,
-                waste(damp_dbhp_only),
+                damping_breakdown.final_damping,
+                history_stabilization
+                    .as_ref()
+                    .map(|d| format!("{:.3}", d.damping_cap))
+                    .unwrap_or_else(|| "none".to_string()),
+                relaxation_state.current_relaxation,
+                damping_breakdown.binding_kind,
+                damping_breakdown
+                    .binding_cell
+                    .map(|c| format!("cell{}", c))
+                    .or_else(|| damping_breakdown.binding_well.map(|w| format!("well{}", w)))
+                    .unwrap_or_else(|| "none".to_string()),
+                damping_breakdown.raw_dp_peak,
+                damping_breakdown
+                    .raw_dp_peak_cell
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                damping_breakdown.raw_dsw_peak,
+                damping_breakdown
+                    .raw_dsw_peak_cell
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                damping_breakdown.raw_dh_peak,
+                damping_breakdown
+                    .raw_dh_peak_cell
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                damping_breakdown.raw_dbhp_peak,
+                damping_breakdown
+                    .raw_dbhp_peak_well
+                    .map(|w| w.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                damping_breakdown.inflection_crossings,
             );
-        }
+            // Stage 1 over-damping probe: compute the per-variable damp candidate
+            // each component would have allowed in isolation, and report the wasted
+            // ratio (applied_damp / per_var_candidate). Ratios <1 mean the global
+            // single-scalar damping is over-damping that component.
+            {
+                let damp_dp_only = if damping_breakdown.raw_dp_peak > 1e-12 {
+                    (options.max_pressure_change_bar / damping_breakdown.raw_dp_peak).min(1.0)
+                } else {
+                    1.0
+                };
+                let damp_dsw_only = if damping_breakdown.raw_dsw_peak > 1e-12 {
+                    (options.max_saturation_change / damping_breakdown.raw_dsw_peak).min(1.0)
+                } else {
+                    1.0
+                };
+                let damp_dh_only = if damping_breakdown.raw_dh_peak > 1e-12 {
+                    (options.max_saturation_change / damping_breakdown.raw_dh_peak).min(1.0)
+                } else {
+                    1.0
+                };
+                let damp_dbhp_only = if damping_breakdown.raw_dbhp_peak > 1e-12 {
+                    (options.max_pressure_change_bar / damping_breakdown.raw_dbhp_peak).min(1.0)
+                } else {
+                    1.0
+                };
+                let waste = |allowed: f64| {
+                    if allowed > 0.0 {
+                        damping / allowed
+                    } else {
+                        1.0
+                    }
+                };
+                fim_trace!(
+                    sim,
+                    options.verbose,
+                    "    iter {:>2}: COMPONENT-CLIP applied={:.4} dp_allowed={:.4}(waste={:.4}) dsw_allowed={:.4}(waste={:.4}) dh_allowed={:.4}(waste={:.4}) dbhp_allowed={:.4}(waste={:.4})",
+                    iteration,
+                    damping,
+                    damp_dp_only,
+                    waste(damp_dp_only),
+                    damp_dsw_only,
+                    waste(damp_dsw_only),
+                    damp_dh_only,
+                    waste(damp_dh_only),
+                    damp_dbhp_only,
+                    waste(damp_dbhp_only),
+                );
+            }
+            damping
+        };
         let state_update_timer = PerfTimer::start();
-        let candidate =
-            state.apply_newton_update_frozen(sim, &linear_report.solution, damping, &topology);
+        let update_to_apply = opm_chopped_update
+            .as_ref()
+            .unwrap_or(&linear_report.solution);
+        let candidate = state.apply_newton_update_frozen(sim, update_to_apply, damping, &topology);
         state_update_ms += state_update_timer.elapsed_ms();
         let effective_update_peak =
             scaled_applied_update_peak(&state, &candidate, &assembly.variable_scaling);
@@ -3572,7 +3704,9 @@ pub(crate) fn run_fim_timestep(
             && candidate_materially_changed
             && candidate.is_finite()
             && candidate.respects_basic_bounds(sim)
-            && candidate_respects_update_bounds(&state, &candidate, options);
+            // OpmAligned: the per-cell chop bounds the update by construction (§9.2 limits,
+            // not the Legacy max_pressure/saturation_change options this check enforces).
+            && (opm_aligned || candidate_respects_update_bounds(&state, &candidate, options));
         let iteration_suffix = format!(
             "{}{}",
             if stagnation_count > 0 {
@@ -3860,6 +3994,101 @@ mod tests {
     use crate::pvt::{PvtRow, PvtTable};
 
     use super::*;
+
+    fn two_cell_state_for_chop(regimes: [HydrocarbonState; 2]) -> FimState {
+        let sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        let mut state = FimState::from_simulator(&sim);
+        for (idx, regime) in regimes.iter().enumerate() {
+            state.cells[idx].pressure_bar = 200.0;
+            state.cells[idx].sw = 0.3;
+            state.cells[idx].hydrocarbon_var = match regime {
+                HydrocarbonState::Saturated => 0.1,       // Sg meaning
+                HydrocarbonState::Undersaturated => 50.0, // Rs meaning
+            };
+            state.cells[idx].regime = *regime;
+        }
+        state
+    }
+
+    #[test]
+    fn opm_per_cell_chop_scales_only_the_violating_cell_and_counts_implied_so() {
+        let state = two_cell_state_for_chop([HydrocarbonState::Saturated; 2]);
+        let mut update = DVector::zeros(state.n_unknowns());
+        // Cell 0: dSw=0.15, dSg=0.15 → implied dSo=-0.3 is the max → satAlpha=0.2/0.3.
+        update[1] = 0.15;
+        update[2] = 0.15;
+        // Cell 1: small, untouched.
+        update[4] = 0.01;
+        update[5] = -0.02;
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 1.0);
+
+        let alpha = OPM_DS_MAX / 0.3;
+        assert!((chopped[1] - 0.15 * alpha).abs() < 1e-12);
+        assert!((chopped[2] - 0.15 * alpha).abs() < 1e-12);
+        // Neither dSw=0.15 nor dSg=0.15 alone exceeds 0.2 — only the implied So does;
+        // a port missing the implied-So term would leave cell 0 unchopped.
+        assert!(alpha < 1.0);
+        // Cell 1 must be exactly untouched — no global coupling.
+        assert_eq!(chopped[4], 0.01);
+        assert_eq!(chopped[5], -0.02);
+    }
+
+    #[test]
+    fn opm_per_cell_chop_clamps_pressure_relative_and_independent_of_saturation() {
+        let state = two_cell_state_for_chop([HydrocarbonState::Saturated; 2]);
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[0] = -100.0; // |dp| > 0.3 * 200 = 60 → clamp to -60
+        update[1] = 0.5; // dSw drives satAlpha = 0.2/0.5 = 0.4
+        update[3] = 30.0; // cell 1: within cap, untouched
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 1.0);
+
+        assert!(
+            (chopped[0] - (-60.0)).abs() < 1e-12,
+            "dp clamped to signum*0.3*p"
+        );
+        assert!((chopped[1] - 0.5 * 0.4).abs() < 1e-12);
+        assert_eq!(chopped[3], 30.0);
+    }
+
+    #[test]
+    fn opm_per_cell_chop_guards_rs_nonnegative_without_sat_alpha() {
+        let state = two_cell_state_for_chop([
+            HydrocarbonState::Undersaturated,
+            HydrocarbonState::Undersaturated,
+        ]);
+        let mut update = DVector::zeros(state.n_unknowns());
+        // Rs delta would take hydrocarbon_var (50.0) to -30 → guard to exactly -50.
+        update[2] = -80.0;
+        // dSw alone at 0.25 → implied dSo=-0.25 → satAlpha=0.8; Rs delta must NOT be
+        // scaled by satAlpha (it is not a saturation).
+        update[1] = 0.25;
+        update[5] = -10.0; // cell 1: Rs delta within bounds, untouched
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 1.0);
+
+        assert!(
+            (chopped[2] - (-50.0)).abs() < 1e-12,
+            "Rs guard: current + delta >= 0"
+        );
+        assert!((chopped[1] - 0.25 * 0.8).abs() < 1e-12);
+        assert_eq!(chopped[5], -10.0);
+    }
+
+    #[test]
+    fn opm_per_cell_chop_applies_relaxation_before_chopping() {
+        let state = two_cell_state_for_chop([HydrocarbonState::Saturated; 2]);
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[1] = 0.3; // raw dSw exceeds dsMax, but relax=0.5 brings it to 0.15 → no chop
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 0.5);
+
+        assert!(
+            (chopped[1] - 0.15).abs() < 1e-12,
+            "relaxation applies first, then chop"
+        );
+    }
 
     #[test]
     fn cnv_mb_from_parts_matches_hand_computed_values() {

@@ -258,6 +258,14 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setFimEnabled(this.__wbg_ptr, enabled);
     }
     /**
+     * Bundle N dev flag (`docs/FIM_BUNDLE_N_DESIGN.md`): switch the FIM Newton loop to the
+     * OPM-aligned nonlinear layer (per-cell update chopping). Default false = legacy.
+     * @param {boolean} enabled
+     */
+    setFimOpmAlignedNonlinear(enabled) {
+        wasm.reservoirsimulator_setFimOpmAlignedNonlinear(this.__wbg_ptr, enabled);
+    }
+    /**
      * @param {number} c_o
      * @param {number} c_w
      */

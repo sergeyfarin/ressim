@@ -899,6 +899,9 @@ impl ReservoirSimulator {
         newton_options.verbose = verbose;
         newton_options.max_saturation_change = TARGET_MAX_SAT_CHANGE;
         newton_options.max_pressure_change_bar = TARGET_MAX_PRESSURE_CHANGE_BAR;
+        if self.fim_opm_aligned_nonlinear {
+            newton_options.nonlinear_flavor = crate::fim::newton::FimNonlinearFlavor::OpmAligned;
+        }
 
         while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
             let remaining_dt = target_dt_days - time_stepped;

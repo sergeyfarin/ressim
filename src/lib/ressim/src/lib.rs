@@ -112,6 +112,10 @@ pub struct ReservoirSimulator {
     last_solver_warning: String,
     last_fim_trace: String,
     capture_fim_trace: bool,
+    /// Bundle N (`docs/FIM_BUNDLE_N_DESIGN.md`): opt into the OPM-aligned nonlinear layer
+    /// (per-cell update chopping instead of global-scalar damping). Dev/diagnostic flag,
+    /// default false = legacy behavior bit-identical.
+    pub(crate) fim_opm_aligned_nonlinear: bool,
     pub(crate) gas_outer_step_trial_carryover:
         Option<crate::fim::timestep::GasOuterStepTrialCarryover>,
     last_fim_step_stats: Option<reporting::FimStepStats>,

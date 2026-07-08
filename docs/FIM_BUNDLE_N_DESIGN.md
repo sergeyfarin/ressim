@@ -220,8 +220,13 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
    bit-identical, locked smoke 3/3). Result (worklog "Bundle N checkpoint 1"): criteria-swap
    alone saves ~nothing; the damped-Newton stall at MB≈2e-6 is the measured waste. Build order
    below reordered accordingly (N2 first) — development order only; §5 end gates unchanged.
-2. **Flag on** (`OpmAligned`): **N2 per-cell chopping** (+ inflection-chop deletion) — the
-   measured load-bearing item.
+2. **Flag on (`OpmAligned`) + N2 per-cell chopping — DONE 2026-07-07** (worklog "Bundle N
+   checkpoint 2"). Default-Legacy no-op gate passed (control matrix + heavy bit-identical,
+   smoke 3/3). Informational `--opm-aligned` heavy run: end-to-end worse under Legacy gates
+   (226 substeps — expected for the mismatched intermediate), but the CNV-MB probe shows the
+   MB stall is fixed: 95% of solve attempts now reach a full-OPM-rules-acceptable state
+   (vs 48% under Legacy damping); median stall MB `2.2e-6 → 2.9e-7`. The fragmentation is now
+   the Legacy acceptance layer rejecting OPM-acceptable states — checkpoint 3 harvests it.
 3. N1 acceptance criteria + N5 linear handling.
 4. N3 controller.
 5. N4 mechanism deletion sweep.
