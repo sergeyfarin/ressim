@@ -905,3 +905,58 @@ Checkpoints 3-4 (N1 acceptance incl. relaxed tiers + N5 linear handling, then N3
 are precisely the harvest step. Caveat recorded: "acceptable at exhaustion" means ~20-iteration
 substeps; the N3 controller's 8-iteration target should settle on fewer, larger substeps —
 end metrics (§5) remain the only judgment.
+
+### Bundle N checkpoint 3 (2026-07-07) — N1 acceptance criteria + N5 linear handling live behind `OpmAligned`
+
+Implemented, under `OpmAligned` only: (N1) the per-iteration entry check now decides
+acceptance purely via `opm_conv.would_accept` (design doc §9.1's CNV/MB, including the
+final-iteration relaxed tiers via a new `relax_final_iteration: bool` param on
+`cnv_mb_from_parts`/`cnv_mb_diagnostics`), gated on `iteration >= 1` (OPM's
+`newton-min-iterations=2` translated to this loop's 0-indexing); (N5) the linear-solve
+failure branch is replaced entirely — no direct-LU fallback ladder, no
+dead-state/restart-stagnation/zero-move bypass bookkeeping; a solve is used as-is if
+converged, accepted with a trace if it achieved OPM's relaxed reduction (`< 0.01` relative to
+`rhs_norm`, both already present on `FimLinearFailureDiagnostics`), else the Newton iteration
+fails immediately (returns, no rescue) exactly like OPM's `NumericalProblem` throw. 1 new unit
+test (`cnv_mb_relax_final_iteration_applies_relaxed_tiers_unconditionally`).
+
+**A real bug was found and fixed during this checkpoint's own gating, before any live-run
+measurement was trusted** (worth recording since it nearly produced a false read): two
+*additional* Legacy-only acceptance shortcuts inside the loop were not yet gated on
+`opm_aligned` — a mid-iteration "raw update is already tiny" check (`update_tolerance` +
+`ENTRY_RESIDUAL_GUARD_FACTOR`, no OPM analog) and the zero-move-Appleyard rescue on an invalid
+candidate — plus the post-loop exhaustion check (which must use OPM's final-iteration-relaxed
+CNV/MB, not Legacy's strict tolerances, since it genuinely corresponds to OPM's
+`iteration == maxIter` case). Caught because a first small-case (`22x22x1`) test run showed
+zero `OPM-CONVERGED`/`LINEAR-ACCEPT`/`LINEAR FAILED` trace lines fire across 37 iterations —
+i.e. the new mechanisms were silently never reached, exactly the kind of "looks fine, isn't"
+result the project's own baseline discipline exists to catch before trusting a number. Fixed
+all three sites; re-ran the same small case and confirmed `OPM-CONVERGED` now fires exactly
+once per accepted substep.
+
+**No-op gate (default Legacy), all passed:** locked smoke 3/3; full control matrix + heavy
+case bit-identical to the recorded baseline (heavy: `substeps=32 | accepts=31+4+1764 |
+retries=0/13/0`, `oil=3893.94`, `hotspot_newton_caps=7`).
+
+**Informational `--opm-aligned` runs (not gates — intermediate bundle state, N3 controller
+still Legacy):**
+
+- `22x22x1` (bounded control-matrix case, 484 cells, comparable size to the heavy target):
+  `substeps=14 | retries=0/7/0 | hotspot_newton_caps=9`, 15.8s — vs Legacy's `substeps=4 |
+  retries=0/2/0` at well under 1s. Worse, as expected for a mismatched intermediate: the
+  Legacy retry ladder (hotspot-repeat cooldown, retry factor selection) was tuned against
+  Legacy's own acceptance/damping behavior and doesn't yet know how to drive dt for the new
+  per-cell-chopped, CNV/MB-accepted trajectory efficiently.
+- Heavy case (`12x12x3`, the actual target): **timed out past 280s** (previously 141s under
+  checkpoint 2's chop-only state). Not investigated further live — burning more wall-clock on
+  a known-intermediate, known-mismatched state contradicts the bundle's own "judge only at the
+  end" principle, and `MAX_SUBSTEPS=100_000` means this is a slow, not infinite, run (a
+  genuine safety-valve ceiling, not evidence of a hang). The retry ladder is very likely
+  driving dt down repeatedly against `water@1215`'s local plateau without an N3-shaped
+  mechanism to recognize "OPM would already call this converged" and stop shrinking — exactly
+  the gap checkpoint 4 (N3, the `pid+newtoniteration` controller) closes.
+
+**Consequence for the build order:** checkpoint 4 (N3, timestep controller) is now the clear
+next step — it is very likely load-bearing for making the heavy case tractable again, not an
+optional polish item, since the Legacy retry ladder is now actively working against the
+already-fixed N1/N2/N5 mechanics rather than neutral to them.

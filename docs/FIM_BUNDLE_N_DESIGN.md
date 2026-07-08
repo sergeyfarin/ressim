@@ -227,8 +227,19 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
    MB stall is fixed: 95% of solve attempts now reach a full-OPM-rules-acceptable state
    (vs 48% under Legacy damping); median stall MB `2.2e-6 → 2.9e-7`. The fragmentation is now
    the Legacy acceptance layer rejecting OPM-acceptable states — checkpoint 3 harvests it.
-3. N1 acceptance criteria + N5 linear handling.
-4. N3 controller.
+3. **N1 acceptance criteria + N5 linear handling — DONE 2026-07-07** (worklog "Bundle N
+   checkpoint 3"). Default-Legacy no-op gate passed. A real bug was caught and fixed during
+   this checkpoint's own gating (two more Legacy-only acceptance shortcuts — a mid-iteration
+   "tiny update" exit and the zero-move-Appleyard rescue — plus the post-loop exhaustion
+   check — were not yet gated on `opm_aligned`; a first small-case test run showing zero
+   `OPM-CONVERGED` traces caught it before any number was trusted). Informational
+   `--opm-aligned` runs: `22x22x1` (bounded, comparable size to heavy) worse than Legacy
+   (14 substeps vs 4) — expected, since the Legacy retry ladder doesn't yet know how to drive
+   dt for the new acceptance dynamics. **Heavy case timed out past 280s** (not investigated
+   further live — an intermediate, known-mismatched state; `MAX_SUBSTEPS=100_000` means slow,
+   not hung). Consequence: N3 is now load-bearing, not optional polish — the Legacy retry
+   ladder is actively mismatched with N1/N2/N5, not merely neutral to them.
+4. N3 controller — next, and now the clear gate on heavy-case tractability.
 5. N4 mechanism deletion sweep.
 6. End-metric evaluation (§5), A/B against Legacy. Promote → delete Legacy path in a follow-up
    commit; re-derive control-matrix baselines; update `FIM_STATUS`/registry/skill docs.

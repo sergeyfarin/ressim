@@ -1788,7 +1788,17 @@ fn update_family_peak(
 const OPM_TOLERANCE_CNV: f64 = 1e-2;
 const OPM_TOLERANCE_CNV_RELAXED: f64 = 1.0;
 const OPM_TOLERANCE_MB: f64 = 1e-7;
+const OPM_TOLERANCE_MB_RELAXED: f64 = 1e-6;
 const OPM_RELAXED_MAX_PV_FRACTION: f64 = 0.03;
+/// OPM `newton-min-iterations` default (2), translated to ResSim's 0-indexed per-iteration
+/// assembly loop: `iteration >= 1` means at least two residual evaluations have occurred
+/// (the entry check at `iteration=0` plus this one), matching OPM's `iteration >= minIter`
+/// gate on its own per-call assembly-then-check loop (design doc §9.1).
+const OPM_NEWTON_MIN_ITERATION_INDEX: usize = 1;
+/// OPM `relaxed-linear-solver-reduction` default: a linear solve that didn't fully converge
+/// but reduced the residual by at least this factor relative to `rhs_norm` (x0=0 so
+/// r0=rhs, design doc §9.5) is accepted with a warning rather than triggering a fallback.
+const OPM_RELAXED_LINEAR_SOLVER_REDUCTION: f64 = 0.01;
 
 /// Bundle N checkpoint 1 (read-only): OPM-style CNV/MB convergence measures computed from the
 /// RAW (unscaled) residual, mirroring `BlackoilModel::getReservoirConvergence` /
@@ -1812,19 +1822,26 @@ struct CnvMbDiagnostics {
     pv_rule_relaxes: bool,
     /// All components pass strict CNV and strict MB.
     would_accept_strict: bool,
-    /// Strict MB, and CNV passing either strictly or via the 3%-PV relaxed tier — OPM's
-    /// effective accept condition at a non-final iteration.
+    /// Effective accept condition at the CURRENT iteration and its `relax_final_iteration`
+    /// flag: strict CNV/MB, or CNV via the 3%-PV relaxed tier, or (only when
+    /// `relax_final_iteration` was passed in) OPM's unconditional final-iteration relaxed
+    /// MB/CNV tolerances (design doc §9.1's `relax_final_iteration_mb`/`_cnv`).
     would_accept: bool,
 }
 
 /// Pure core of the CNV/MB computation, split out for direct unit testing.
 /// `fvf_per_cell[i] = [B_w, B_o, B_g]` (reservoir m³ per surface m³) for cell `i`;
 /// `pore_volumes_m3` are REFERENCE pore volumes (porosity * bulk volume, no compressibility
-/// factor), matching OPM's `referencePorosity * dofTotalVolume`.
+/// factor), matching OPM's `referencePorosity * dofTotalVolume`. `relax_final_iteration`
+/// mirrors OPM's `iteration == maxIter && min_strict_{mb,cnv}_iter == -1` triggers (the
+/// shipped defaults — `min_strict_mb_iter`/`min_strict_cnv_iter` are not modeled since they
+/// default to "off"): true unconditionally applies `tolerance-mb-relaxed`/`tolerance-cnv-relaxed`
+/// to the WHOLE check, independent of the 3%-PV rule below.
 fn cnv_mb_from_parts(
     residual: &DVector<f64>,
     pore_volumes_m3: &[f64],
     fvf_per_cell: &[[f64; 3]],
+    relax_final_iteration: bool,
 ) -> CnvMbDiagnostics {
     let n_cells = pore_volumes_m3.len();
 
@@ -1868,9 +1885,20 @@ fn cnv_mb_from_parts(
     let pv_rule_relaxes = violating_pv < OPM_RELAXED_MAX_PV_FRACTION * pv_sum;
     let mb_ok = mb.iter().all(|&v| v <= OPM_TOLERANCE_MB);
     let cnv_strict_ok = cnv.iter().all(|&v| v <= OPM_TOLERANCE_CNV);
-    let cnv_effective_ok = cnv
-        .iter()
-        .all(|&v| v <= OPM_TOLERANCE_CNV || (pv_rule_relaxes && v <= OPM_TOLERANCE_CNV_RELAXED));
+    let mb_tol_effective = if relax_final_iteration {
+        OPM_TOLERANCE_MB_RELAXED
+    } else {
+        OPM_TOLERANCE_MB
+    };
+    let cnv_tol_effective = if relax_final_iteration {
+        OPM_TOLERANCE_CNV_RELAXED
+    } else {
+        OPM_TOLERANCE_CNV
+    };
+    let mb_effective_ok = mb.iter().all(|&v| v <= mb_tol_effective);
+    let cnv_effective_ok = cnv.iter().all(|&v| {
+        v <= cnv_tol_effective || (pv_rule_relaxes && v <= OPM_TOLERANCE_CNV_RELAXED)
+    });
 
     CnvMbDiagnostics {
         cnv,
@@ -1878,7 +1906,7 @@ fn cnv_mb_from_parts(
         violating_pv_fraction,
         pv_rule_relaxes,
         would_accept_strict: cnv_strict_ok && mb_ok,
-        would_accept: cnv_effective_ok && mb_ok,
+        would_accept: cnv_effective_ok && mb_effective_ok,
     }
 }
 
@@ -1956,6 +1984,7 @@ fn cnv_mb_diagnostics(
     sim: &ReservoirSimulator,
     state: &FimState,
     residual: &DVector<f64>,
+    relax_final_iteration: bool,
 ) -> CnvMbDiagnostics {
     let n_cells = state.cells.len();
     let mut pore_volumes = Vec::with_capacity(n_cells);
@@ -1970,7 +1999,7 @@ fn cnv_mb_diagnostics(
             sim.get_b_g(pressure_bar).max(1e-9),
         ]);
     }
-    cnv_mb_from_parts(residual, &pore_volumes, &fvf)
+    cnv_mb_from_parts(residual, &pore_volumes, &fvf, relax_final_iteration)
 }
 
 fn residual_family_diagnostics(
@@ -2620,6 +2649,8 @@ pub(crate) fn run_fim_timestep(
         active_direct_solve_row_threshold()
     );
 
+    let opm_aligned = options.nonlinear_flavor == FimNonlinearFlavor::OpmAligned;
+
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
             sim,
@@ -2677,32 +2708,40 @@ pub(crate) fn run_fim_timestep(
             relaxation_state.history_len += 1;
         }
 
-        // Bundle N checkpoint 1 (read-only): OPM CNV/MB criteria computed alongside the
-        // existing inf-norm acceptance, trace-only — measures at which iteration OPM's
-        // shipped convergence test would have accepted this state. No decision reads it.
-        {
-            let opm_conv = cnv_mb_diagnostics(sim, &state, &assembly.residual);
-            fim_trace!(
-                sim,
-                options.verbose,
-                "    iter {:>2}: CNV-MB cnv=[{:.3e},{:.3e},{:.3e}] mb=[{:.3e},{:.3e},{:.3e}] viol_pv={:.4} would_accept={}",
-                iteration,
-                opm_conv.cnv[0],
-                opm_conv.cnv[1],
-                opm_conv.cnv[2],
-                opm_conv.mb[0],
-                opm_conv.mb[1],
-                opm_conv.mb[2],
-                opm_conv.violating_pv_fraction,
-                if opm_conv.would_accept_strict {
-                    "strict"
-                } else if opm_conv.would_accept {
-                    "pv-relaxed"
-                } else {
-                    "no"
-                },
-            );
-        }
+        // OPM's `newton-max-iterations` triggers its final-iteration relaxed MB/CNV tiers
+        // (design doc §9.1) when this is the last attempt; `iters_remaining` (computed later
+        // in the loop for a different purpose) is not yet in scope here, so recompute cheaply.
+        let is_final_newton_iteration = iteration + 1 == options.max_newton_iterations;
+
+        // Bundle N checkpoints 1+3: OPM CNV/MB criteria, computed unconditionally alongside
+        // the existing inf-norm acceptance (trace-only under Legacy; the sole acceptance
+        // decision under `OpmAligned` — see the `converged_on_entry` branch below).
+        let opm_conv = cnv_mb_diagnostics(
+            sim,
+            &state,
+            &assembly.residual,
+            is_final_newton_iteration,
+        );
+        fim_trace!(
+            sim,
+            options.verbose,
+            "    iter {:>2}: CNV-MB cnv=[{:.3e},{:.3e},{:.3e}] mb=[{:.3e},{:.3e},{:.3e}] viol_pv={:.4} would_accept={}",
+            iteration,
+            opm_conv.cnv[0],
+            opm_conv.cnv[1],
+            opm_conv.cnv[2],
+            opm_conv.mb[0],
+            opm_conv.mb[1],
+            opm_conv.mb[2],
+            opm_conv.violating_pv_fraction,
+            if opm_conv.would_accept_strict {
+                "strict"
+            } else if opm_conv.would_accept {
+                "pv-relaxed"
+            } else {
+                "no"
+            },
+        );
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);
         let previous_iteration_residual_norm = prev_residual_norm;
@@ -2800,7 +2839,14 @@ pub(crate) fn run_fim_timestep(
             current_hotspot_site,
         );
         let materially_changed = iterate_has_material_change(previous_state, &state);
-        let converged_on_entry = if iteration == 0 && !materially_changed {
+        // Bundle N checkpoint 3 (N1): under `OpmAligned`, acceptance is decided purely by
+        // OPM's CNV/MB criteria (already computed above as `opm_conv`, including its
+        // final-iteration relaxed tiers) gated on OPM's `newton-min-iterations` (design doc
+        // §9.1) — replacing every Legacy entry-guard mechanism (`NOOP_ENTRY_EXACT_FACTOR`,
+        // `ENTRY_RESIDUAL_GUARD_FACTOR`) for this decision.
+        let converged_on_entry = if opm_aligned {
+            iteration >= OPM_NEWTON_MIN_ITERATION_INDEX && opm_conv.would_accept
+        } else if iteration == 0 && !materially_changed {
             current_norm <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR
         } else {
             current_norm <= options.residual_tolerance
@@ -2808,6 +2854,56 @@ pub(crate) fn run_fim_timestep(
                     && materially_changed
                     && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR)
         };
+        if converged_on_entry && opm_aligned {
+            // OPM-shaped accept: `opm_conv` was computed directly from the residual this
+            // iteration already assembled — no re-assembly needed (matching OPM's own
+            // "check convergence, then solve only if not converged" structure exactly,
+            // unlike the Legacy path below which re-derives via a fresh residual-only
+            // assembly for extra safety).
+            final_update_inf_norm = 0.0;
+            let mb_value = global_material_balance_diagnostics(
+                &assembly.residual,
+                &assembly.equation_scaling,
+            )
+            .global_value;
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: OPM-CONVERGED cnv=[{:.3e},{:.3e},{:.3e}] mb=[{:.3e},{:.3e},{:.3e}]{}",
+                iteration,
+                opm_conv.cnv[0],
+                opm_conv.cnv[1],
+                opm_conv.cnv[2],
+                opm_conv.mb[0],
+                opm_conv.mb[1],
+                opm_conv.mb[2],
+                if is_final_newton_iteration {
+                    " (final-iteration relaxed tiers)"
+                } else if opm_conv.pv_rule_relaxes && !opm_conv.would_accept_strict {
+                    " (pv-relaxed)"
+                } else {
+                    ""
+                },
+            );
+            return FimStepReport {
+                accepted_state: state,
+                converged: true,
+                newton_iterations: iteration + 1,
+                final_residual_inf_norm: current_norm,
+                final_material_balance_inf_norm: mb_value,
+                final_update_inf_norm,
+                last_linear_report,
+                accepted_hotspot_site: Some(current_hotspot_site),
+                failure_diagnostics: None,
+                retry_factor: 1.0,
+                total_time_ms: total_timer.elapsed_ms(),
+                assembly_ms,
+                property_eval_ms,
+                linear_solve_time_ms,
+                linear_preconditioner_build_time_ms,
+                state_update_ms,
+            };
+        }
         if converged_on_entry {
             final_update_inf_norm = 0.0;
             let use_guard_band = current_norm > options.residual_tolerance;
@@ -3275,112 +3371,185 @@ pub(crate) fn run_fim_timestep(
         }
 
         let mut used_fallback = false;
-        if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
-        {
-            if should_accept_near_converged_iterative_step(&linear_report) {
+        if !opm_aligned {
+            if !linear_report.converged
+                || !linear_report.solution.iter().all(|value| value.is_finite())
+            {
+                if should_accept_near_converged_iterative_step(&linear_report) {
+                    fim_trace!(
+                        sim,
+                        options.verbose,
+                        "    iter {:>2}: accepting near-converged iterative step without direct fallback{}{}",
+                        iteration,
+                        linear_report_trace_suffix(&linear_report, requested_linear_kind),
+                        linear_failure_trace_suffix(&linear_report),
+                    );
+                    linear_report.converged = true;
+                }
+            }
+            if !linear_report.converged
+                || !linear_report.solution.iter().all(|value| value.is_finite())
+            {
+                let iterative_failure_reason = linear_report
+                    .failure_diagnostics
+                    .as_ref()
+                    .map(|diagnostics| diagnostics.reason);
                 fim_trace!(
                     sim,
                     options.verbose,
-                    "    iter {:>2}: accepting near-converged iterative step without direct fallback{}{}",
+                    "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback{}{}",
                     iteration,
+                    linear_report.converged,
+                    linear_report.solution.iter().all(|v| v.is_finite()),
                     linear_report_trace_suffix(&linear_report, requested_linear_kind),
                     linear_failure_trace_suffix(&linear_report),
                 );
-                linear_report.converged = true;
-            }
-        }
-        if !linear_report.converged || !linear_report.solution.iter().all(|value| value.is_finite())
-        {
-            let iterative_failure_reason = linear_report
-                .failure_diagnostics
-                .as_ref()
-                .map(|diagnostics| diagnostics.reason);
-            fim_trace!(
-                sim,
-                options.verbose,
-                "    iter {:>2}: linear solver FAILED (converged={}, finite={}), trying fallback{}{}",
-                iteration,
-                linear_report.converged,
-                linear_report.solution.iter().all(|v| v.is_finite()),
-                linear_report_trace_suffix(&linear_report, requested_linear_kind),
-                linear_failure_trace_suffix(&linear_report),
-            );
-            // Phase 8 step 8.1: on a linear-solve failure only, capture the actual nonlinear
-            // state (saturations/regime/mobility for cells; slack/freeze/mobility for
-            // perforations) at the hotspot row so failure characterization doesn't require a
-            // separate repro. Gated on failure_diagnostics being Some (i.e. only this already-
-            // failing branch) so it cannot affect the solve-succeeds path.
-            if let Some(detail) = residual_family_detail_trace(
-                sim,
-                previous_state,
-                &state,
-                &topology,
-                dt_days,
-                &residual_diagnostics,
-            ) {
-                fim_trace!(
+                // Phase 8 step 8.1: on a linear-solve failure only, capture the actual nonlinear
+                // state (saturations/regime/mobility for cells; slack/freeze/mobility for
+                // perforations) at the hotspot row so failure characterization doesn't require a
+                // separate repro. Gated on failure_diagnostics being Some (i.e. only this already-
+                // failing branch) so it cannot affect the solve-succeeds path.
+                if let Some(detail) = residual_family_detail_trace(
                     sim,
-                    options.verbose,
-                    "    iter {:>2}: FAIL-SITE-DETAIL {}",
-                    iteration,
-                    detail,
+                    previous_state,
+                    &state,
+                    &topology,
+                    dt_days,
+                    &residual_diagnostics,
+                ) {
+                    fim_trace!(
+                        sim,
+                        options.verbose,
+                        "    iter {:>2}: FAIL-SITE-DETAIL {}",
+                        iteration,
+                        detail,
+                    );
+                }
+                // Phase 9 step 9.1: offline solver-lab capture. Native-only and inert unless
+                // FIM_CAPTURE_DIR is set — dumps the exact failed system so preconditioner
+                // variants can be compared as full solves out-of-loop instead of via live
+                // solver changes.
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env() {
+                    let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                        newton_iteration: iteration,
+                        failure_reason: iterative_failure_reason
+                            .map(|reason| reason.label().to_string())
+                            .unwrap_or_else(|| "non-finite".to_string()),
+                        dominant_family: residual_diagnostics.global.family.label().to_string(),
+                        dominant_item_index: residual_diagnostics.global.item_index,
+                    };
+                    crate::fim::linear::capture::write_capture(
+                        &capture_dir,
+                        crate::fim::linear::capture::next_capture_sequence(),
+                        &metadata,
+                        block_layout,
+                        &assembly.jacobian,
+                        &rhs,
+                        Some(&assembly.equation_scaling),
+                    );
+                }
+                if linear_report
+                    .failure_diagnostics
+                    .as_ref()
+                    .is_some_and(|diagnostics| {
+                        diagnostics.reason == FimLinearFailureReason::DeadStateDetected
+                    })
+                {
+                    dead_state_direct_bypass = true;
+                }
+                restart_stagnation_fallback_streak = next_restart_stagnation_fallback_streak(
+                    restart_stagnation_fallback_streak,
+                    iterative_failure_reason,
                 );
-            }
-            // Phase 9 step 9.1: offline solver-lab capture. Native-only and inert unless
-            // FIM_CAPTURE_DIR is set — dumps the exact failed system so preconditioner
-            // variants can be compared as full solves out-of-loop instead of via live
-            // solver changes.
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env() {
-                let metadata = crate::fim::linear::capture::FimCaptureMetadata {
-                    newton_iteration: iteration,
-                    failure_reason: iterative_failure_reason
-                        .map(|reason| reason.label().to_string())
-                        .unwrap_or_else(|| "non-finite".to_string()),
-                    dominant_family: residual_diagnostics.global.family.label().to_string(),
-                    dominant_item_index: residual_diagnostics.global.item_index,
-                };
-                crate::fim::linear::capture::write_capture(
-                    &capture_dir,
-                    crate::fim::linear::capture::next_capture_sequence(),
-                    &metadata,
-                    block_layout,
+                if should_enable_restart_stagnation_direct_bypass(restart_stagnation_fallback_streak)
+                {
+                    restart_stagnation_direct_bypass = true;
+                }
+                let mut fallback_options = options.linear;
+                fallback_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
+                linear_report = solve_linearized_system(
                     &assembly.jacobian,
                     &rhs,
-                    Some(&assembly.equation_scaling),
+                    &fallback_options,
+                    block_layout,
+                    None,
                 );
+                used_fallback = true;
+                linear_report.used_fallback = true;
+                linear_solve_time_ms += linear_report.total_time_ms;
+                linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
+            } else {
+                restart_stagnation_fallback_streak = 0;
             }
-            if linear_report
-                .failure_diagnostics
-                .as_ref()
-                .is_some_and(|diagnostics| {
-                    diagnostics.reason == FimLinearFailureReason::DeadStateDetected
-                })
-            {
-                dead_state_direct_bypass = true;
-            }
-            restart_stagnation_fallback_streak = next_restart_stagnation_fallback_streak(
-                restart_stagnation_fallback_streak,
-                iterative_failure_reason,
-            );
-            if should_enable_restart_stagnation_direct_bypass(restart_stagnation_fallback_streak) {
-                restart_stagnation_direct_bypass = true;
-            }
-            let mut fallback_options = options.linear;
-            fallback_options.kind = direct_fallback_kind_for_rows(assembly.jacobian.rows());
-            linear_report = solve_linearized_system(
-                &assembly.jacobian,
-                &rhs,
-                &fallback_options,
-                block_layout,
-                None,
-            );
-            used_fallback = true;
-            linear_report.used_fallback = true;
-            linear_solve_time_ms += linear_report.total_time_ms;
-            linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
         } else {
-            restart_stagnation_fallback_streak = 0;
+            // Bundle N checkpoint 3 (N5, `OpmAligned` only): OPM's linear-failure handling
+            // (design doc §9.5) — no direct-solve fallback ladder exists in OPM's path at
+            // all. A solve that fully converged is used as-is. One that missed its target
+            // but still achieved the relaxed reduction (`< relaxed-linear-solver-reduction`,
+            // i.e. at least ~100x) is accepted with a warning, matching OPM's
+            // `checkConvergence` exactly. Anything else — including a non-finite solution —
+            // is a genuine failure that aborts this Newton iteration immediately (OPM's
+            // `NumericalProblem` throw): no dead-state/restart-stagnation/zero-move
+            // bypass bookkeeping, no direct-LU rescue.
+            let all_finite = linear_report.solution.iter().all(|value| value.is_finite());
+            if !linear_report.converged || !all_finite {
+                let reduction = linear_report
+                    .failure_diagnostics
+                    .as_ref()
+                    .map(|failure| failure.outer_residual_norm / failure.rhs_norm.max(1e-30));
+                let accept_relaxed = all_finite
+                    && reduction.is_some_and(|r| r < OPM_RELAXED_LINEAR_SOLVER_REDUCTION);
+                if accept_relaxed {
+                    fim_trace!(
+                        sim,
+                        options.verbose,
+                        "    iter {:>2}: LINEAR-ACCEPT relaxed reduction={:.3e} (< {:.0e}){}",
+                        iteration,
+                        reduction.unwrap_or(f64::NAN),
+                        OPM_RELAXED_LINEAR_SOLVER_REDUCTION,
+                        linear_report_trace_suffix(&linear_report, requested_linear_kind),
+                    );
+                    linear_report.converged = true;
+                } else {
+                    fim_trace!(
+                        sim,
+                        options.verbose,
+                        "    iter {:>2}: LINEAR FAILED (opm-aligned, no fallback) converged={} finite={} reduction={}{}",
+                        iteration,
+                        linear_report.converged,
+                        all_finite,
+                        reduction
+                            .map(|r| format!("{:.3e}", r))
+                            .unwrap_or_else(|| "n/a".to_string()),
+                        linear_failure_trace_suffix(&linear_report),
+                    );
+                    let failure_diagnostics = classify_retry_failure_with_site(
+                        Some(&linear_report),
+                        &residual_diagnostics,
+                        current_hotspot_site,
+                    );
+                    let retry_factor = retry_factor_for_failure(Some(&failure_diagnostics));
+                    return FimStepReport {
+                        accepted_state: state,
+                        converged: false,
+                        newton_iterations: iteration + 1,
+                        final_residual_inf_norm: current_norm,
+                        final_material_balance_inf_norm,
+                        final_update_inf_norm,
+                        last_linear_report: Some(linear_report),
+                        accepted_hotspot_site: None,
+                        failure_diagnostics: Some(failure_diagnostics),
+                        retry_factor,
+                        total_time_ms: total_timer.elapsed_ms(),
+                        assembly_ms,
+                        property_eval_ms,
+                        linear_solve_time_ms,
+                        linear_preconditioner_build_time_ms,
+                        state_update_ms,
+                    };
+                }
+            }
         }
         iterative_failed_last_iter = used_fallback && !any_preexisting_bypass;
 
@@ -3390,7 +3559,13 @@ pub(crate) fn run_fim_timestep(
         debug_assert!((update_peak.scaled_value - final_update_inf_norm).abs() < 1e-12);
         last_linear_report = Some(linear_report.clone());
 
-        let converged = final_update_inf_norm <= options.update_tolerance
+        // Bundle N checkpoint 3: this "raw update is already tiny" shortcut has no OPM
+        // analog — OPM's only acceptance test is CNV/MB, freshly re-evaluated at the top of
+        // the next iteration (`converged_on_entry` above). Disabled entirely under
+        // `OpmAligned` so control falls through to the candidate-validity check and the
+        // next loop iteration's entry check, instead of this Legacy-only mid-iteration exit.
+        let converged = !opm_aligned
+            && final_update_inf_norm <= options.update_tolerance
             && current_norm <= options.residual_tolerance * ENTRY_RESIDUAL_GUARD_FACTOR
             && iterate_has_material_change(previous_state, &state);
         if converged {
@@ -3513,7 +3688,6 @@ pub(crate) fn run_fim_timestep(
             };
         }
 
-        let opm_aligned = options.nonlinear_flavor == FimNonlinearFlavor::OpmAligned;
         // Bundle N checkpoint 2 (N2): under `OpmAligned` the entire Legacy update-limiting
         // layer (history stabilization + global Appleyard scalar + inflection chop) is
         // replaced by OPM's per-cell chopping; the oscillation-relaxation scalar stays and
@@ -3767,12 +3941,21 @@ pub(crate) fn run_fim_timestep(
                 &topology,
                 dt_days,
             );
-            if zero_move_appleyard_acceptance_allows(
-                candidate_materially_changed,
-                accepted_diagnostics.residual_inf_norm,
-                accepted_diagnostics.material_balance_inf_norm,
-                options,
-            ) {
+            // Bundle N checkpoint 3: this Legacy rescue has no OPM analog and uses
+            // Legacy-scaled thresholds (`NOOP_ENTRY_EXACT_FACTOR`/`ENTRY_RESIDUAL_GUARD_FACTOR`)
+            // that don't apply under `OpmAligned` — never take it there. A zero-move/invalid
+            // candidate under `OpmAligned` instead falls straight through to the "DAMPING
+            // FAILED"-style genuine-failure return below, matching OPM's own behavior of a
+            // stalled Newton iteration eventually failing the substep for the outer retry
+            // ladder to handle (dt cut), rather than being locally rescued.
+            if !opm_aligned
+                && zero_move_appleyard_acceptance_allows(
+                    candidate_materially_changed,
+                    accepted_diagnostics.residual_inf_norm,
+                    accepted_diagnostics.material_balance_inf_norm,
+                    options,
+                )
+            {
                 final_update_inf_norm = 0.0;
                 let use_guard_band =
                     accepted_diagnostics.residual_inf_norm > options.residual_tolerance;
@@ -3900,9 +4083,16 @@ pub(crate) fn run_fim_timestep(
         &final_assembly.equation_scaling,
     );
     final_material_balance_inf_norm = final_material_balance_diagnostics.global_value;
-    if final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
-        && final_material_balance_inf_norm <= options.material_balance_tolerance
-    {
+    // Bundle N checkpoint 3: this is genuinely OPM's `iteration == maxIter` case (the Newton
+    // budget is exhausted), so the final-iteration relaxed MB/CNV tiers always apply here
+    // under `OpmAligned` — matching design doc §9.1 exactly, not just approximating it.
+    let post_loop_converged = if opm_aligned {
+        cnv_mb_diagnostics(sim, &state, &final_assembly.residual, true).would_accept
+    } else {
+        final_residual_inf_norm.unwrap_or(f64::INFINITY) <= options.residual_tolerance
+            && final_material_balance_inf_norm <= options.material_balance_tolerance
+    };
+    if post_loop_converged {
         fim_trace!(
             sim,
             options.verbose,
@@ -4102,7 +4292,7 @@ mod tests {
         let pv = [100.0, 300.0];
         let fvf = [[1.0, 1.2, 0.01], [1.0, 1.4, 0.03]];
 
-        let d = cnv_mb_from_parts(&residual, &pv, &fvf);
+        let d = cnv_mb_from_parts(&residual, &pv, &fvf, false);
 
         // maxCoeff per component: water max(2/100, 1/300)=0.02; oil max(0.6/100, 0.9/300)=0.006.
         // CNV = B_avg * maxCoeff.
@@ -4133,7 +4323,7 @@ mod tests {
         let pv = [10.0, 990.0];
         let fvf = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
 
-        let d = cnv_mb_from_parts(&residual, &pv, &fvf);
+        let d = cnv_mb_from_parts(&residual, &pv, &fvf, false);
 
         assert!((d.cnv[0] - 0.05).abs() < 1e-12);
         assert!((d.violating_pv_fraction - 0.01).abs() < 1e-12);
@@ -4149,12 +4339,33 @@ mod tests {
             0.5, 0.0, 0.0, //
             -0.5, 0.0, 0.0, // cancels the sum → MB = 0 exactly
         ]);
-        let d = cnv_mb_from_parts(&residual, &pv, &fvf);
+        let d = cnv_mb_from_parts(&residual, &pv, &fvf, false);
         assert_eq!(d.mb[0], 0.0);
         assert!(!d.would_accept_strict, "local CNV 0.05 still above strict");
         assert!(
             d.would_accept,
             "1% violating PV < 3% rule → relaxed CNV 1.0 applies, MB clean → OPM accepts"
+        );
+    }
+
+    #[test]
+    fn cnv_mb_relax_final_iteration_applies_relaxed_tiers_unconditionally() {
+        // A state that fails BOTH strict tolerances and the PV-rule tier (>3% of PV
+        // violating strict CNV) — the pv-relaxed path alone must not accept it. Both cells
+        // have CNV 25/500 = 0.05 (> strict 1e-2); residuals cancel so MB = 0.
+        let residual = DVector::from_vec(vec![25.0, 0.0, 0.0, -25.0, 0.0, 0.0]);
+        let pv = [500.0, 500.0];
+        let fvf = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
+
+        let not_final = cnv_mb_from_parts(&residual, &pv, &fvf, false);
+        assert!(!not_final.pv_rule_relaxes, "100% violating PV >> 3% rule");
+        assert!(!not_final.would_accept, "CNV 0.05 > strict 1e-2, PV rule doesn't apply");
+
+        let final_iter = cnv_mb_from_parts(&residual, &pv, &fvf, true);
+        assert!(
+            final_iter.would_accept,
+            "relax_final_iteration unconditionally applies CNV-relaxed(1.0)/MB-relaxed(1e-6), \
+             independent of the PV rule"
         );
     }
 
