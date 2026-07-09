@@ -1217,3 +1217,39 @@ paths, in order of preference:
 Path 1 is recommended as the next step: cheap to try, directly targets the confirmed mechanism,
 and testable on the same heavy-case repro without another 176-minute wait if a bounded substep
 cap is added to the test for iteration purposes.
+
+### Bundle N §5 follow-up (2026-07-09) — well-BHP update chop implemented, heavy-case rerun pending
+
+Implemented the recommended fix from the §5 evaluation: OPM's well-BHP update clamp
+(`--dbhp-max-rel`, default `1.0`), verified from `StandardWellPrimaryVariables.cpp::updateNewton`
+at the pinned tag (not invented): `dBHP_limited = sign(dBHP) * min(|dBHP|, |bhp_current| *
+dbhp_max_rel)`, then floored so the next BHP stays `>= 1 bar` (OPM's own
+`bhp_lower_limit = 1 bar - 1 Pa`, simplified to `1.0` here). Added to `opm_per_cell_chopped_update`
+alongside the existing per-cell reservoir chop. Perforation-rate deltas remain deliberately
+unchopped — confirmed directly from the same OPM source that `WQTotal` (well rate) has no
+magnitude clamp at all, only a post-hoc sign-consistency check (injector can't produce, producer
+can't inject) — so adding a rate clamp would have been inventing a limit OPM itself doesn't have.
+
+**Note on the originally-proposed "decouple well iteration count from N3's growth formula" fix**:
+re-examined before implementing and found it would be a no-op. N1's acceptance check
+(`opm_conv.would_accept`) already excludes well/perforation rows entirely (matching OPM's
+`getReservoirConvergence`), and under `OpmAligned` it is the *only* path to acceptance
+(checkpoint 5 removed every other exit) — so `report.newton_iterations` fed to N3's growth
+formula already reflects "how long reservoir-only convergence took," by construction. There was
+no well-iteration count mixed into it to decouple. The trace instead showed the reservoir's own
+MB residual genuinely stalling (`stagnation_count=17`) while the well/perforation family
+dominated the residual mix — consistent with an unchopped, oscillating well update perturbing
+the coupled linear solve and dragging out the reservoir's own convergence, not "extra iterations
+tacked on for the well's sake." This is why the BHP chop (not an iteration-count change) was
+implemented instead.
+
+**Gates so far:** 3 new unit tests (`opm_per_cell_chop_clamps_well_bhp_relative_when_increasing`,
+`_well_bhp_within_cap_is_untouched`, `_well_bhp_floors_above_lower_limit`); locked smoke 3/3;
+full control matrix + heavy case bit-identical under default Legacy (no-op preserved). `22x22x1`
+and `23x23x1` under `--opm-aligned` are unchanged (`12/1` each, both previously used to validate
+checkpoints 5-6) — expected, since neither case has a well pinned at its BHP limit.
+
+**Heavy-case rerun**: in progress (native `--release`, no-trace variant, background). Given the
+previous full run took 176 minutes, this is the actual test of whether the fix addresses the
+identified mechanism — result to be appended once available, not assumed from the mechanism
+analysis alone.

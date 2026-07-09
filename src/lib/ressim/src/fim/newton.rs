@@ -1915,6 +1915,17 @@ fn cnv_mb_from_parts(
 /// pinned tag — `docs/FIM_BUNDLE_N_DESIGN.md` §9.2). Used by the `OpmAligned` nonlinear flavor.
 const OPM_DS_MAX: f64 = 0.2;
 const OPM_DP_MAX_REL: f64 = 0.3;
+/// OPM shipped well-BHP update-chopping limit (`--dbhp-max-rel`, default `1.0`, verified from
+/// the installed binary and `StandardWellPrimaryVariables.cpp::updateNewton` at the pinned
+/// tag — Bundle N §5 follow-up, worklog "Bundle N §5 end-metric evaluation (2026-07-09)").
+/// OPM clamps the ABSOLUTE BHP delta to at most this fraction of the CURRENT BHP magnitude
+/// (`dx = sign(dx) * min(|dx|, |bhp_current| * dBHPLimit)`), then floors the result just above
+/// zero (`bhp_lower_limit = 1 bar - 1 Pa`, i.e. effectively `>= 1.0` bar here). OPM does NOT
+/// clamp well RATE (`WQTotal`) magnitude at all — only a post-hoc sign-consistency check
+/// (injector can't produce, producer can't inject) — so ResSim's perforation-rate deltas stay
+/// unchopped, matching OPM's own choice rather than inventing a new limit it doesn't have.
+const OPM_DBHP_MAX_REL: f64 = 1.0;
+const OPM_BHP_LOWER_LIMIT_BAR: f64 = 1.0;
 
 /// Bundle N checkpoint 2 (N2, `OpmAligned` flavor only): OPM's per-cell update chopping,
 /// ported from `updatePrimaryVariables_` (`blackoilnewtonmethod.hpp`, design doc §9.2).
@@ -1927,15 +1938,36 @@ const OPM_DP_MAX_REL: f64 = 0.3;
 ///
 /// Sign convention: ResSim applies `next = current + update` (OPM uses `current - delta`);
 /// the chop is symmetric in sign so only the Rs non-negativity guard direction differs.
-/// Well-BHP/perforation tail entries are relaxation-scaled but NOT chopped: OPM handles well
-/// updates in a separate well-model layer (`StandardWell`), and ResSim's Schur-recovered well
-/// state is post-processed by `relax_well_state_toward_local_consistency` after application.
+///
+/// Bundle N §5 follow-up (worklog "Bundle N §5 end-metric evaluation (2026-07-09)"): the
+/// well-BHP tail entry is now chopped too, matching OPM's `dbhp-max-rel` exactly — added after
+/// the heavy case's §5 failure traced to a producer pinned at its BHP limit whose raw,
+/// previously-unchopped BHP update oscillated each iteration, perturbing the coupled
+/// reservoir residual via the shared linear solve and stalling its own MB convergence for
+/// ~20 iterations per substep. Perforation-rate entries stay unchopped, matching OPM's own
+/// choice not to limit well rate (`WQTotal`) magnitude. ResSim's Schur-recovered well state is
+/// still post-processed by `relax_well_state_toward_local_consistency` after application.
 fn opm_per_cell_chopped_update(
     state: &FimState,
     update: &DVector<f64>,
     relaxation: f64,
 ) -> DVector<f64> {
     let mut chopped = update * relaxation;
+    for (well_idx, &bhp_bar) in state.well_bhp.iter().enumerate() {
+        let offset = state.well_bhp_unknown_offset(well_idx);
+        let dbhp = chopped[offset];
+        let dbhp_cap = OPM_DBHP_MAX_REL * bhp_bar.abs();
+        let dbhp_limited = if dbhp.abs() > dbhp_cap {
+            dbhp.signum() * dbhp_cap
+        } else {
+            dbhp
+        };
+        chopped[offset] = if bhp_bar + dbhp_limited < OPM_BHP_LOWER_LIMIT_BAR {
+            OPM_BHP_LOWER_LIMIT_BAR - bhp_bar
+        } else {
+            dbhp_limited
+        };
+    }
     for (idx, cell) in state.cells.iter().enumerate() {
         let offset = idx * 3;
         let dp = chopped[offset];
@@ -4310,6 +4342,61 @@ mod tests {
         assert!(
             (chopped[1] - 0.15).abs() < 1e-12,
             "relaxation applies first, then chop"
+        );
+    }
+
+    #[test]
+    fn opm_per_cell_chop_clamps_well_bhp_relative_when_increasing() {
+        // An INCREASING dBHP isolates the relative clamp from the positivity floor (a
+        // decreasing dBHP at dbhp_max_rel=1.0 always drives next_bhp to exactly 0, which is
+        // always below the floor too — covered separately below).
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        let state = FimState::from_simulator(&sim);
+        let mut update = DVector::zeros(state.n_unknowns());
+        // Raw dBHP=+600 exceeds dbhp-max-rel=1.0 * bhp(500) = 500 → clamp to +500.
+        update[state.well_bhp_unknown_offset(0)] = 600.0;
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 1.0);
+
+        assert!(
+            (chopped[state.well_bhp_unknown_offset(0)] - 500.0).abs() < 1e-12,
+            "dBHP clamped to +dbhp_max_rel*bhp_current"
+        );
+    }
+
+    #[test]
+    fn opm_per_cell_chop_well_bhp_within_cap_is_untouched() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        let state = FimState::from_simulator(&sim);
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[state.well_bhp_unknown_offset(0)] = 200.0; // within 1.0*500 cap
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 1.0);
+
+        assert_eq!(chopped[state.well_bhp_unknown_offset(0)], 200.0);
+    }
+
+    #[test]
+    fn opm_per_cell_chop_well_bhp_floors_above_lower_limit() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 1.5, 0.1, 0.0, true).unwrap();
+        let state = FimState::from_simulator(&sim);
+        let mut update = DVector::zeros(state.n_unknowns());
+        // bhp=1.5; dbhp_max_rel*1.5=1.5 caps |dbhp| at 1.5, which alone would take bhp to 0.0 —
+        // below OPM_BHP_LOWER_LIMIT_BAR (1.0) — so the floor must bind instead of the raw clamp.
+        update[state.well_bhp_unknown_offset(0)] = -3.0;
+
+        let chopped = opm_per_cell_chopped_update(&state, &update, 1.0);
+
+        let next_bhp = 1.5 + chopped[state.well_bhp_unknown_offset(0)];
+        assert!(
+            (next_bhp - OPM_BHP_LOWER_LIMIT_BAR).abs() < 1e-12,
+            "next bhp floored at OPM_BHP_LOWER_LIMIT_BAR, got {next_bhp}"
         );
     }
 
