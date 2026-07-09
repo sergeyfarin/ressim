@@ -2763,6 +2763,86 @@ mod phase5_repro {
         run_water_pressure_capture_driver(12, 12, 3, 1.0);
     }
 
+    /// Bundle N `docs/FIM_BUNDLE_N_DESIGN.md` §5 end-metric evaluation: the same heavy-case
+    /// repro as `repro_water_pressure_12x12x3`, but with `OpmAligned` turned on. Native +
+    /// `--release` so the run isn't gated by the wasm diagnostic runner's I/O-buffering/
+    /// timeout issues that blocked live `--opm-aligned` measurement on this case at
+    /// checkpoints 3-6. Run with:
+    /// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib repro_water_pressure_12x12x3_opm_aligned -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_12x12x3_opm_aligned() {
+        run_water_pressure_capture_driver_with_flavor(12, 12, 3, 1.0, true);
+    }
+
+    /// Bundle N §5 follow-up: isolate genuine solver cost from trace overhead. The
+    /// `_opm_aligned` repro above used `step_with_diagnostics` (`capture_fim_trace=true`),
+    /// which stores every `fim_trace!` line into a growing `String` across all 18,002
+    /// substeps it took (176 real minutes). `fim_trace!`'s `format!()` call — and any
+    /// function calls embedded in its arguments (e.g. `residual_family_detail_trace`) — run
+    /// unconditionally regardless of `capture_fim_trace`, so this does NOT isolate all
+    /// per-iteration overhead, only the string-storage/growth cost. Uses the production
+    /// `step()` path (`capture_fim_trace=false`) and reads the compact `FimStepStats` summary
+    /// instead of the full text trace. Run with:
+    /// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_12x12x3_opm_aligned_no_trace() {
+        let (nx, ny, nz, dt_days) = (12usize, 12usize, 3usize, 1.0_f64);
+        let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
+        sim.set_rel_perm_props(0.1, 0.1, 2.0, 2.0, 1.0, 1.0)
+            .unwrap();
+        sim.set_initial_pressure(300.0);
+        sim.set_initial_saturation(0.1);
+        sim.set_fluid_properties(1.0, 0.5).unwrap();
+        sim.set_fluid_compressibilities(1e-5, 3e-6).unwrap();
+        sim.set_rock_properties(1e-6, 0.0, 1.0, 1.0).unwrap();
+        sim.set_fluid_densities(800.0, 1000.0).unwrap();
+        sim.set_capillary_params(0.0, 2.0).unwrap();
+        sim.set_gravity_enabled(false);
+        sim.set_permeability_per_layer(vec![2000.0; nz], vec![2000.0; nz], vec![200.0; nz])
+            .unwrap();
+        sim.set_stability_params(0.05, 75.0, 0.75);
+        sim.set_well_control_modes("pressure".to_string(), "pressure".to_string());
+        sim.set_target_well_rates(0.0, 0.0).unwrap();
+        sim.set_well_bhp_limits(100.0, 500.0).unwrap();
+        sim.set_rate_controlled_wells(false);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
+            .unwrap();
+        sim.set_fim_opm_aligned_nonlinear(true);
+
+        let start = Instant::now();
+        sim.step(dt_days);
+        let elapsed = start.elapsed();
+        println!("native step (no trace) elapsed: {:.3}s", elapsed.as_secs_f64());
+        if let Some(stats) = sim.last_fim_step_stats_ref() {
+            println!(
+                "accepted_substeps={} advanced_dt={:.6}/{:.6} linear_bad={} nonlinear_bad={} mixed={} solver_ms={:?} min_dt={:?} max_dt={:?} last_dt={:?}",
+                stats.accepted_substeps,
+                stats.advanced_dt_days,
+                stats.target_dt_days,
+                stats.linear_bad_retries,
+                stats.nonlinear_bad_retries,
+                stats.mixed_retries,
+                stats.solver_ms,
+                stats.min_accepted_dt_days,
+                stats.max_accepted_dt_days,
+                stats.last_accepted_dt_days,
+            );
+        } else {
+            println!("no FimStepStats recorded");
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_23x23x1_opm_aligned() {
+        run_water_pressure_capture_driver_with_flavor(23, 23, 1, 0.25, true);
+    }
+
     /// Sibling capture driver mirroring the wasm diagnostic's bounded
     /// `water-pressure --grid 23x23x1 --steps 1 --dt 0.25` control case —
     /// the second case the offline solver lab compares against (the
@@ -2777,6 +2857,16 @@ mod phase5_repro {
     /// mirror of `configureCommonTwoPhase` + `waterWellConfig` (pressure
     /// control) in `scripts/fim-wasm-diagnostic.mjs`.
     fn run_water_pressure_capture_driver(nx: usize, ny: usize, nz: usize, dt_days: f64) {
+        run_water_pressure_capture_driver_with_flavor(nx, ny, nz, dt_days, false);
+    }
+
+    fn run_water_pressure_capture_driver_with_flavor(
+        nx: usize,
+        ny: usize,
+        nz: usize,
+        dt_days: f64,
+        opm_aligned: bool,
+    ) {
         let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
         sim.set_fim_enabled(true);
         sim.set_cell_dimensions(10.0, 10.0, 1.0).unwrap();
@@ -2802,11 +2892,16 @@ mod phase5_repro {
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
             .unwrap();
+        sim.set_fim_opm_aligned_nonlinear(opm_aligned);
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);
         let elapsed = start.elapsed();
-        println!("native step elapsed: {:.3}s", elapsed.as_secs_f64());
+        println!(
+            "native step elapsed: {:.3}s (opm_aligned={})",
+            elapsed.as_secs_f64(),
+            opm_aligned
+        );
         println!("trace tail (last 4000 chars):");
         let tail_start = trace.len().saturating_sub(4000);
         println!("{}", &trace[tail_start..]);

@@ -1134,3 +1134,86 @@ which the design's own build order already treats as the terrain N1-N4 were mean
 Recommend proceeding to the §5 end-metric evaluation next; further live probing of the heavy
 case's `nonlinear-bad` failures without a fresh forensic angle risks repeating the same
 "chase an intermediate state" pattern already flagged as unproductive at checkpoints 3-4.
+
+### Bundle N §5 end-metric evaluation (2026-07-09) — heavy case FAILS decisively; root cause identified
+
+Ran the heavy case (`water-pressure 12x12x3`, `dt=1`) natively in `--release` mode under
+`OpmAligned` (new test `repro_water_pressure_12x12x3_opm_aligned`, added specifically because
+the wasm diagnostic runner's I/O buffering made this case's timeout at checkpoints 3-6
+inconclusive — the previous "times out at 280-400s" data points were never resolved to a real
+number). Result, verbatim (`176m25s` wall-clock):
+
+```
+FIM step done: 18002 substeps, advanced 1.000000 of 1.000000 days
+FIM retry summary: linear-bad=7 nonlinear-bad=2 mixed=0
+```
+
+**18,002 substeps** — vs Legacy's `32`, vs the §5 gate's `≤35` Newton-iteration target. This is
+not a "close but not quite" result; it is 2-3 orders of magnitude over every efficiency gate in
+§5. Per §5's own rule ("any gate failing → the bundle as a whole is reworked or reverted"),
+**Bundle N as currently implemented does not promote.**
+
+**Root cause identified — a specific, narrow architectural gap, not a diffuse problem across
+N1-N5.** The trace tail shows the run entering a compounding dt-collapse: consecutive accepted
+substeps with `max_dSat=0.0000 max_dP=0.00` (essentially zero physical change — the reservoir
+has reached steady state, injector/producer balanced) but `iters=20` (hit the Newton cap) and
+`growth=0.400` — repeating substep after substep. The detail trace pinpoints the cause:
+`perf1 well1 ... bhp=100.000 frozen_bhp=100.000 ... dq=1.802e-1` — a producer pinned exactly at
+its BHP limit, its rate-vs-BHP complementarity residual not fully resolved. This residual does
+not shrink with dt (it is a discrete control-mode condition, not a smooth PDE term), so a
+smaller substep does not make it converge faster — yet `opm_iteration_count_dt` (checkpoint 4)
+applies its full penalty regardless: `its=20 > target=8 → dt_iter = dt/(1+(20-8)/8*1.0) = 0.4·dt`.
+Because the SAME well-pinned state recurs across many consecutive substeps (nothing about it
+changes as dt shrinks), the `0.4×` penalty compounds: `0.4^N → 0` rapidly, and no ordinary
+substep is "lucky" enough to escape since the underlying cause is structural, not transient.
+
+**Verified directly against the OPM source** (not assumed) that this is a genuine architecture
+mismatch, not a formula bug: OPM's well equations are resolved via a **dedicated inner
+iteration loop** — `WellInterface::iterateWellEquations` /
+`StandardWell::iterateWellEqWithControl` / `iterateWellEqWithSwitching`
+(`opm/simulators/wells/{WellInterface,StandardWell}.hpp`), called *within* a single outer
+reservoir Newton iteration. OPM's `total_newton_iterations` (the exact quantity fed to
+`computeTimeStepSize`, confirmed at `BlackoilModel_impl.hpp:270` and
+`AdaptiveTimeStepping_impl.hpp:790` `getNumIterations_`) counts only the **outer reservoir**
+iterations — well-control-switching cost is resolved inside that inner loop and is invisible
+to the timestep controller. ResSim's FIM solver has no such two-level split: it is one flat
+Newton loop over reservoir + well + perforation unknowns together (well-BHP/perforation-rate
+rows are Schur-eliminated at the *linear* level per Phase 11, `FIM-LINEAR-010`, but not at the
+*nonlinear* level — the outer Newton loop still iterates until the recovered well variables
+also satisfy nonlinear convergence). Porting OPM's iteration-count growth formula literally,
+using ResSim's own combined count, therefore punishes well-control-switching cost as if it were
+"physics moving too fast" — a category error that OPM's own architecture never exposes because
+the two costs are structurally separated there.
+
+**This is exactly "Hypothesis A" from the original Phase 8/9 well-coupling investigation**
+(`docs/FIM_CONVERGENCE_ARCHIVE_*`), independently re-derived here from a completely different
+angle (a timestep-controller pathology instead of a linear-solver pathology) — a second,
+convergent line of evidence that ResSim's flat well/reservoir coupling, not any single
+mechanism tuning, is the real remaining architectural gap to OPM.
+
+**What this does and does not indict:**
+- N1 (acceptance), N2 (chopping), N4 (mechanism deletion), and N5 (once the checkpoint-6 bug
+  was fixed) each showed real, measured, positive results in isolation on the `22x22x1` and
+  `23x23x1` cases (checkpoints 5-6). This finding does not undo those.
+- N3's specific formula — using the *combined* reservoir+well iteration count — is the
+  identified defect. It is a narrow, well-understood gap, not a reason to distrust the whole
+  bundle's design.
+- The heavy case is disproportionately exposed to this gap because its geometry (a single
+  producer/injector pair) reaches a well-pinned steady state partway through the 1-day step and
+  stays there — exactly the condition that triggers the compounding shrink. Cases without a
+  well hitting a hard control limit (most of the control matrix) would not exhibit this at all,
+  which is consistent with `22x22x1`/`23x23x1` both showing genuine improvements.
+
+**Recommendation:** do not promote Bundle N in its current form. Two concrete, scoped remediation
+paths, in order of preference:
+1. **Decouple the well/perforation iteration count from N3's growth formula** — track reservoir-
+   cell Newton iterations separately from well/perforation-driven retries within the same
+   substep, and feed only the reservoir-cell count to `opm_iteration_count_dt`. This is a
+   bounded, well-scoped fix consistent with Bundle N's existing architecture (no new nonlinear
+   well layer needed) and directly targets the identified mechanism.
+2. **Build a genuine nested well-equation solve** (matching OPM's `iterateWellEquations`) —
+   correct architecturally, but a materially larger undertaking, effectively a new sub-phase of
+   its own; not scoped for this bundle.
+Path 1 is recommended as the next step: cheap to try, directly targets the confirmed mechanism,
+and testable on the same heavy-case repro without another 176-minute wait if a bounded substep
+cap is added to the test for iteration purposes.

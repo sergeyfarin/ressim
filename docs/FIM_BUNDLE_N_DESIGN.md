@@ -1,6 +1,10 @@
 # Bundle N: Replace the FIM Nonlinear Layer with OPM's, as One Coherent Bundle
 
-Status: DESIGN, step 0 (port-fidelity pass) DONE 2026-07-07. Nothing implemented yet.
+Status: Checkpoints 0-6 implemented and gated (inert by default, `OpmAligned` opt-in).
+**§5 end-metric evaluation (2026-07-09): heavy case FAILS decisively — DO NOT PROMOTE as-is.**
+18,002 substeps (vs the `≤35` gate) traced to a specific, scoped root cause (§5 write-up below)
+— not a reason to distrust N1/N2/N4/N5, which each showed real wins in isolation. See worklog
+"Bundle N §5 end-metric evaluation (2026-07-09)" for full diagnosis and recommended fix.
 Companion cost bundle: "Bundle P" (preconditioner reuse), Part 2 below.
 Motivating measurement: `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #41 (2026-07-07)".
 Exact formulas: §9 (verified against `opm-simulators` tag `release/2025.10/final`, the same
@@ -206,6 +210,57 @@ Bundle N promotes if, on the final post-cleanup tree:
 
 Any gate failing → the bundle as a whole is reworked or reverted; no salvaging individual pieces
 into the Legacy path (that is the piecemeal pattern this design exists to end).
+
+### 5.1 Evaluation result (2026-07-09): FAILED — heavy case, root cause identified
+
+Ran natively in `--release` (the wasm diagnostic runner's I/O buffering made this case
+inconclusive at checkpoints 3-6): **18,002 substeps**, `176m25s` wall-clock, `linear-bad=7
+nonlinear-bad=2` retries. Catastrophically over every efficiency gate above. Per this
+section's own rule, **Bundle N does not promote in its current form.**
+
+**Root cause, verified against both the ResSim trace and the OPM source directly (not
+assumed):** the run enters a compounding dt-collapse once a producer well hits its BHP limit
+and the system reaches steady state (`max_dSat=0.0000 max_dP=0.00`, but `iters=20`, hitting the
+Newton cap on the well's rate-vs-BHP complementarity residual, which does not shrink with dt
+since it's a discrete control condition, not a smooth PDE term). N3's iteration-count growth
+formula (checkpoint 4) applies its full penalty regardless (`its=20 > target=8 → growth=0.4`),
+and because the same well-pinned state persists across many consecutive substeps, the penalty
+compounds (`0.4^N → 0`).
+
+Confirmed via direct OPM source read that this is a genuine **architecture mismatch**, not a
+formula bug: OPM resolves well-control switching through a *dedicated inner iteration loop*
+(`WellInterface::iterateWellEquations` / `StandardWell::iterateWellEqWithControl`/
+`iterateWellEqWithSwitching`, `opm/simulators/wells/{WellInterface,StandardWell}.hpp`) invoked
+*within* a single outer reservoir Newton iteration — its `total_newton_iterations` (the exact
+quantity fed to `computeTimeStepSize`, confirmed at `BlackoilModel_impl.hpp:270` and
+`AdaptiveTimeStepping_impl.hpp` `getNumIterations_`) counts only outer reservoir iterations;
+well-switching cost is invisible to it. ResSim's FIM solver has no such split — one flat Newton
+loop over reservoir + well + perforation unknowns (Schur-eliminated at the *linear* level per
+Phase 11, not the *nonlinear* level). Porting OPM's growth formula literally, using ResSim's
+own combined iteration count, punishes well-switching cost as "physics moving too fast" — a
+category error OPM's own architecture never exposes.
+
+This independently re-derives **"Hypothesis A"** from the original Phase 8/9 well-coupling
+investigation (`docs/FIM_CONVERGENCE_ARCHIVE_*`) from a completely different angle (timestep
+controller, not linear solver) — a second, convergent line of evidence that ResSim's flat
+well/reservoir coupling is the real remaining architectural gap, not any single mechanism's
+tuning.
+
+**Scope of the finding:** narrow. N1/N2/N4/N5 each showed real, measured wins in isolation on
+`22x22x1`/`23x23x1` (checkpoints 5-6) — this does not undo those. N3's specific formula (using
+the *combined* count) is the identified defect. The heavy case is disproportionately exposed
+because its single producer/injector geometry reaches a well-pinned steady state partway
+through the step and stays there; cases without a hard-limited well would not trigger this.
+
+**Recommended fix (not yet implemented):** decouple well/perforation iteration count from N3's
+growth formula — track reservoir-cell Newton iterations separately from well/perforation-driven
+retries within the same substep, feed only the reservoir-cell count to `opm_iteration_count_dt`.
+Bounded, targets the confirmed mechanism directly, no new nonlinear well layer needed. (A
+correct-but-larger alternative — a genuine nested well-equation solve matching OPM's
+`iterateWellEquations` — is out of scope for this bundle.)
+
+Full write-up: `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle N §5 end-metric evaluation
+(2026-07-09)".
 
 ## 6. Build order (checkpoints, not gates)
 
