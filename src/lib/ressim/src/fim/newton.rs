@@ -3505,10 +3505,24 @@ pub(crate) fn run_fim_timestep(
             // bypass bookkeeping, no direct-LU rescue.
             let all_finite = linear_report.solution.iter().all(|value| value.is_finite());
             if !linear_report.converged || !all_finite {
+                // Bundle N checkpoint 6 (N5 follow-up, bug fix): `failure.outer_residual_norm`
+                // is the residual at the START of the FINAL restart cycle (computed from the
+                // last *committed* solution, before that cycle's candidate is evaluated) — on
+                // a solve that never fully converges it can stay pinned at `rhs_norm` (the
+                // x_0=0 starting point) even though later restarts produced a materially
+                // better, already-returned candidate. `final_residual_norm` on the report
+                // itself is exactly that candidate's true residual (`gmres_block_jacobi.rs`
+                // sets it from `candidate_residual` at the max-iterations return site) — the
+                // correct quantity for OPM's reduction check, matching Dune ISTL's
+                // `result.reduction` (computed from the solution actually returned, not an
+                // intermediate diagnostic). Confirmed via the `23x23x1` trace: every observed
+                // failure previously reported `reduction=1.000e0` regardless of how much the
+                // candidate had actually improved.
+                let final_residual_norm = linear_report.final_residual_norm;
                 let reduction = linear_report
                     .failure_diagnostics
                     .as_ref()
-                    .map(|failure| failure.outer_residual_norm / failure.rhs_norm.max(1e-30));
+                    .map(|failure| final_residual_norm / failure.rhs_norm.max(1e-30));
                 let accept_relaxed = all_finite
                     && reduction.is_some_and(|r| r < OPM_RELAXED_LINEAR_SOLVER_REDUCTION);
                 if accept_relaxed {

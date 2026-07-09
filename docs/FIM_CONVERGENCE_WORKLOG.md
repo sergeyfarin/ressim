@@ -1093,3 +1093,44 @@ under `opm_aligned` (checkpoint 3) and plateau-replay is Legacy-only bookkeeping
 but the newly-surfaced `linear-bad` finding on `23x23x1` suggests N5 itself may need a second
 look before §5's end-metric evaluation, not just N1-N4's mechanisms. Recommend one more
 targeted pass at the `linear-bad` finding before declaring N4 complete and moving to §5.
+
+### Bundle N checkpoint 6 (2026-07-07) — N5 bug fix: wrong residual field, not a design gap
+
+Investigated checkpoint 5's open item (`23x23x1`'s `linear-bad` retries) directly. Root cause:
+N5's reduction check (`docs/FIM_BUNDLE_N_DESIGN.md` §9.5) used
+`failure.outer_residual_norm / failure.rhs_norm`, but `outer_residual_norm` is computed at the
+TOP of `gmres_block_jacobi.rs`'s restart loop from the last COMMITTED solution — on a solve
+that never converges, this can stay pinned at the seed value (`rhs_norm`, i.e. the residual at
+`x_0=0`) even when later restarts produced a materially better, already-*returned* candidate.
+Confirmed directly from the `23x23x1` trace: every one of the 9 `LINEAR FAILED` lines reported
+`reduction=1.000e0` regardless of wildly different residual magnitudes (`2.542e3` down to
+`1.696e-4`) — a dead giveaway, not a coincidence. The correct quantity (matching Dune ISTL's own
+`result.reduction`, computed from the solution actually returned, not an intermediate
+diagnostic) is `FimLinearSolveReport::final_residual_norm`, which `gmres_block_jacobi.rs`
+already sets correctly to the candidate's true residual at the max-iterations return site.
+One-line fix: read `linear_report.final_residual_norm` instead of
+`failure.outer_residual_norm`.
+
+**No-op gate (default Legacy):** trivially preserved — this code path only executes under
+`opm_aligned`; re-ran the full control matrix + heavy case + locked smoke 3/3 anyway (all
+bit-identical to baseline) since the fix touched a function called from the shared linear
+report handling.
+
+**Informational re-runs, dramatic and directly attributable improvement:**
+
+| Case | Before fix | After fix |
+|---|---|---|
+| `23x23x1` | `substeps=26, retries=9/0/0` (35 attempts), all `linear-bad`, `reduction=1.000e0` always | `substeps=12, retries=1/0/0` (13 attempts) — `LINEAR-ACCEPT relaxed reduction=9.928e-3` fires once (correctly, just under the `0.01` bar), one genuine `LINEAR FAILED` remains (`reduction=1.520e-2`) |
+| `22x22x1` | `substeps=12, retries=0/1/0` | unchanged (its one remaining retry was already `nonlinear-bad`, untouched by this fix) |
+| Heavy (`12x12x3`) | times out >280s | **still times out >280s** (tried again after the fix) — its dominant `water@1215` failure is `nonlinear-bad` (Task #37's genuine physical plateau), a different pathology class this fix does not touch |
+
+**Consequence:** N5 is now correctly implemented per design, not just "inert by default and
+plausible." Two of three tracked comparable-size cases (`22x22x1`, `23x23x1`) are now close to
+or better than Legacy in attempt count. The heavy case remains the one unresolved item, and its
+failure class (`nonlinear-bad`, not `linear-bad`) means this specific fix class is exhausted for
+it — the next lead, if pursued, would need to look at the `nonlinear-bad` retry path itself
+(effectively re-opening the N2/chop or N1/acceptance question specifically for that site,
+which the design's own build order already treats as the terrain N1-N4 were meant to cover).
+Recommend proceeding to the §5 end-metric evaluation next; further live probing of the heavy
+case's `nonlinear-bad` failures without a fresh forensic angle risks repeating the same
+"chase an intermediate state" pattern already flagged as unproductive at checkpoints 3-4.

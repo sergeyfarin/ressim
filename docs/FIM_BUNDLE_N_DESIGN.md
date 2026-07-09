@@ -262,9 +262,20 @@ into the Legacy path (that is the piecemeal pattern this design exists to end).
    third case (`23x23x1`) surfaced a NEW failure mode, `linear-bad` retries (not
    `nonlinear-bad`) at `retry_dom=linear-bad:oil@361` — suggesting N5's linear-failure handling
    itself may need a second look before §5, not just N1-N4.
-6. End-metric evaluation (§5), A/B against Legacy. Promote → delete Legacy path in a follow-up
+6. **N5 bug fix — DONE 2026-07-07** (worklog "Bundle N checkpoint 6"). The `linear-bad` finding
+   was a genuine bug, not a design gap: N5's reduction check read
+   `failure.outer_residual_norm` (which can stay pinned at `rhs_norm` on a solve that never
+   converges, even after later restarts genuinely improved) instead of
+   `FimLinearSolveReport::final_residual_norm` (the actual candidate residual, matching Dune
+   ISTL's `result.reduction` semantics). Confirmed directly: every failure on `23x23x1`
+   reported `reduction=1.000e0` regardless of residual magnitude. One-line fix. `23x23x1`:
+   `26/9` → `12/1` attempts, `LINEAR-ACCEPT` now correctly fires. `22x22x1` unchanged (its
+   remaining retry was already `nonlinear-bad`). **Heavy case still times out** — its
+   dominant failure is `nonlinear-bad` (Task #37's `water@1215` plateau), a different class
+   this fix doesn't touch. No-op gate preserved (code only reachable under `opm_aligned`).
+7. End-metric evaluation (§5), A/B against Legacy. Promote → delete Legacy path in a follow-up
    commit; re-derive control-matrix baselines; update `FIM_STATUS`/registry/skill docs.
-7. Bundle P (independent; conventional gates).
+8. Bundle P (independent; conventional gates).
 
 Checkpoints 2-5 are commits on a branch with the flag defaulting to Legacy; only step 6 flips
 the default. No intermediate checkpoint is judged on old-architecture baselines.
