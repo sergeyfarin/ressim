@@ -169,22 +169,19 @@ only).
 
 ## 4. Part 2, "Bundle P": per-iteration cost (~24x factor, independent)
 
-89% of heavy-case wall-clock is preconditioner **build** (`pc_ms=32867/36706`): quasi-IMPES
-weights + block-ILU0 + an O(n³) dense coarse inverse, rebuilt every Newton iteration. OPM's
-default is `cpr-reuse-setup=4`: reuse the CPR setup, fully recreate every `cpr-reuse-interval=30`
-linear solves (option 2: recreate when a solve exceeds 10 iterations — simpler and also shipped).
+89% of heavy-case wall-clock is preconditioner **build** (`pc_ms=32867/36706`), rebuilt every
+Newton iteration; OPM's default (`cpr-reuse-setup=4`) reuses the setup across 30 linear solves.
 
-- **P1**: cache `FimCprPreconditioner` across Newton iterations within a substep; recreate on
-  OPM's triggers (every N solves, or after a >10-iteration solve, or on dt change). The Jacobian
-  changes between iterations but CPR setup tolerates lagged preconditioners by design — this is
-  literally what OPM ships.
-- **P2**: if the dense coarse path survives P1 profiling: replace the explicit `try_inverse()`
-  with an LU factorization (solve per application instead of explicit inverse; ~3x cheaper build,
-  same apply cost).
-
-Bundle P is gated conventionally (it must be behavior-preserving up to linear-solver noise):
-control matrix + locked smoke + wall-clock. It can land before or after Bundle N. Expected
-combined effect of N+P on the heavy case: 36.9 s → well under 1 s.
+**Full implementation plan (2026-07-10): `docs/FIM_BUNDLE_P_PLAN.md`** — supersedes the sketch
+that used to live here. Key corrections made when planning against the actual code: the
+"conventional gates (behavior-preserving)" assumption stated here originally is wrong — a stale
+preconditioner shifts Krylov iterates and, on this system's measured trajectory chaos, substep
+counts; the plan gates the promotion flip on bounded drift + physics (fine-dt FOPT) + a ≥5x
+heavy-case wall-clock win instead of bit-identity (bit-identity is still required for the inert
+wiring commit). The plan also adds a mandatory offline-first P0 (build-cost breakdown +
+stale-setup iteration-inflation study on the captured corpora) per the fim/linear workflow, and
+handles the seams the sketch missed (pure-function `solve_linearized_system`, the
+well-elimination recursion solving the reduced system, the wasm ≤512-row direct bypass).
 
 ## 5. Gates (end metrics only)
 
