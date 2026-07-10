@@ -1253,3 +1253,47 @@ checkpoints 5-6) — expected, since neither case has a well pinned at its BHP l
 previous full run took 176 minutes, this is the actual test of whether the fix addresses the
 identified mechanism — result to be appended once available, not assumed from the mechanism
 analysis alone.
+
+### Bundle N §5 follow-up — trace-overhead isolation result (2026-07-09)
+
+The no-trace native repro (old/unfixed code, run concurrently with the BHP-chop fix's own
+confirmation run below — the two competed for CPU, inflating this run's wall-clock to
+`304m59s` real / `178m23s` user) confirms: **`accepted_substeps=18002`, exactly matching** the
+original `step_with_diagnostics` run. Tracing overhead was not inflating the substep count —
+the `18,002`-substep pathology is a genuine solver/controller behavior, not a diagnostics
+artifact. User CPU time (`178m23s`) is also close to the original traced run's wall-clock
+(`176m25s`), confirming the `fim_trace!` macro's unconditional `format!()`/detail-computation
+calls (not the trace-string storage) account for most of the tracing-adjacent cost, as
+suspected — but that cost is small next to the substep count itself, which is the real problem.
+
+### Bundle N §5 follow-up — well-BHP chop fix REFUTED (2026-07-09)
+
+Result, verbatim (native `--release`, no-trace, `298m13s` wall-clock running solo):
+
+```
+accepted_substeps=18002 advanced_dt=1.000000/1.000000 linear_bad=7 nonlinear_bad=2 mixed=0
+min_dt=Some(1.0868125188689959e-7) max_dt=Some(0.1850314752) last_dt=Some(1.0868125188689959e-7)
+```
+
+**Identical to both prior runs — `accepted_substeps=18002`, and `min_dt`/`max_dt`/`last_dt`
+match to the exact same floating-point bits.** The well-BHP chop had zero effect and, given the
+bit-identical `min_dt`/`max_dt`, most likely never engaged at all: the well's raw per-iteration
+BHP delta apparently never exceeded the `dbhp-max-rel=1.0` (100% of current BHP) cap in this
+scenario. **The hypothesis that an unchopped, oscillating BHP update was perturbing the coupled
+reservoir residual is REFUTED.** BHP itself is not the oscillating variable.
+
+**Consequence — do not guess again.** Two well-reasoned, OPM-verified fixes have now been tried
+(iteration-count decoupling, ruled out by code inspection before implementation; BHP chop, ruled
+out empirically at a cost of ~5 hours of compute across two runs). Continuing to guess at a
+third fix without better visibility into what is *actually* oscillating (candidates not yet
+ruled out: the perforation-rate variable itself, deliberately left unchopped to match OPM's own
+lack of a `WQTotal` clamp; or ResSim's own `relax_well_state_toward_local_consistency`
+post-processing step — a RESSIM-SPECIFIC mechanism with no direct OPM counterpart, run after
+every Newton update, which is a plausible oscillation source the OPM-fidelity review has not
+yet examined) would repeat exactly the trial-and-error pattern flagged as unproductive earlier
+in this session. Recorded as an open item requiring cheaper diagnostic tooling (e.g. a modified
+native test that writes the full trace to a file for the specific late-time window, since the
+pathology's substep count implies it is concentrated very close to the end of the simulated
+day — `max_dt=0.185` days means the "healthy" phase likely covers the bulk of the day in a
+handful of substeps, with virtually all 18,002 substeps spent crawling through a tiny residual
+sliver of time) before attempting a further live fix.

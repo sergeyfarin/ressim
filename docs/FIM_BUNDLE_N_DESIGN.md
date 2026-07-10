@@ -252,15 +252,37 @@ the *combined* count) is the identified defect. The heavy case is disproportiona
 because its single producer/injector geometry reaches a well-pinned steady state partway
 through the step and stays there; cases without a hard-limited well would not trigger this.
 
-**Recommended fix (not yet implemented):** decouple well/perforation iteration count from N3's
-growth formula — track reservoir-cell Newton iterations separately from well/perforation-driven
-retries within the same substep, feed only the reservoir-cell count to `opm_iteration_count_dt`.
-Bounded, targets the confirmed mechanism directly, no new nonlinear well layer needed. (A
-correct-but-larger alternative — a genuine nested well-equation solve matching OPM's
-`iterateWellEquations` — is out of scope for this bundle.)
+**Follow-up (2026-07-09) — two fix attempts, both ruled out:**
+
+1. *Decouple well/perforation iteration count from N3's growth formula.* Re-examined before
+   implementing: N1's acceptance check (`opm_conv.would_accept`) already excludes well/
+   perforation rows entirely and is the *only* path to acceptance under `OpmAligned`
+   (checkpoint 5 removed every other exit) — so `report.newton_iterations` fed to N3 already
+   reflects reservoir-only convergence timing, by construction. Nothing to decouple. **Ruled
+   out by code inspection, not implemented.**
+2. *Chop the well-BHP update* (OPM's `--dbhp-max-rel`, ported verbatim from
+   `StandardWellPrimaryVariables.cpp::updateNewton`). Implemented, gated (no-op under Legacy,
+   `22x22x1`/`23x23x1` unchanged under `OpmAligned`), and tested on the heavy case natively:
+   **`accepted_substeps=18002` — bit-identical to the unfixed run, down to `min_dt`/`max_dt`
+   matching to the exact same floating-point bits.** The chop had zero effect and apparently
+   never engaged (the well's raw BHP delta never exceeded the cap in this scenario). **The
+   hypothesis that BHP itself was the oscillating variable is refuted.**
+
+Two well-reasoned, OPM-verified fixes ruled out (one by inspection, one empirically at ~5 hours
+of compute across two full native runs) without identifying the actual oscillating mechanism.
+Continuing to guess at a third fix blind would repeat the trial-and-error pattern this bundle's
+own discipline exists to avoid. Untested candidates: the perforation-rate variable (deliberately
+left unchopped to match OPM, which also has no `WQTotal` clamp — but ResSim's architecture may
+not transfer that choice cleanly); ResSim's own `relax_well_state_toward_local_consistency`
+post-processing step (no direct OPM counterpart, runs after every Newton update, never examined
+by the OPM-fidelity review). **Recommended next step: build cheaper diagnostic visibility**
+(e.g. a native test that writes the full trace to a file for the specific late-time window,
+since `max_dt=0.185` days implies the pathology is concentrated very close to the end of the
+simulated day) before attempting a third live fix — not another blind multi-hour guess.
 
 Full write-up: `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle N §5 end-metric evaluation
-(2026-07-09)".
+(2026-07-09)", "Bundle N §5 follow-up: well-BHP update chop (opm-aligned only)",
+"Bundle N §5 follow-up — well-BHP chop fix REFUTED (2026-07-09)".
 
 ## 6. Build order (checkpoints, not gates)
 
