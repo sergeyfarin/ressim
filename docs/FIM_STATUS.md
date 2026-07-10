@@ -1,8 +1,7 @@
 # FIM Status
 
 This is the consolidated current-state summary for the Rust FIM solver.
-Last full rewrite: 2026-07-05 (previous version predated the AD migration and Phases 5-11 and
-described a state from ~Q1 2026).
+Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 2026-07-10.
 
 Use this file for:
 
@@ -40,6 +39,49 @@ now substantially OPM-aligned, assembled over Phases 0-11:
   tests over captured corpora (`fim/linear/solver_lab.rs`, `#[ignore]`d). New linear-solver
   hypotheses get tested here in seconds before any live change — this is mandatory workflow, not
   optional (`fim-solver-debug` skill).
+
+## Bundle N: OPM-shaped nonlinear layer (2026-07-07..10) — built, evaluated, NOT promoted
+
+The full OPM nonlinear layer (CNV/MB acceptance with relaxed tiers, per-cell `dsMax`/`dpMaxRel`
+chopping incl. a `dbhp-max-rel` well-BHP chop, `pid+newtoniteration` controller, OPM
+linear-failure handling, deletion of the Legacy compensating-mechanism stack) is fully
+implemented behind `FimNonlinearFlavor::OpmAligned` — **default `Legacy`, verified bit-identical
+no-op on every checkpoint** (`setFimOpmAlignedNonlinear` wasm setter / `--opm-aligned`
+diagnostic flag). Design + per-checkpoint evidence: `docs/FIM_BUNDLE_N_DESIGN.md`; registry row
+`FIM-BUNDLE-N` (**REWORK REQUIRED**).
+
+Outcome in one paragraph: the ported mechanisms each did their job in isolation — per-cell
+chopping fixed the measured MB-stall (95% of Newton solve attempts now reach a state OPM's full
+rules would accept, vs 48% under Legacy damping), and the bounded cases improved checkpoint over
+checkpoint once three Legacy leftovers and one real N5 bug were found and fixed via log
+forensics. But the §5 end-metric evaluation on the heavy case failed decisively: **18,002
+substeps vs the ≤35 gate** (native `--release`, verified twice, not a tracing artifact — trace
+overhead isolated separately). The pathology: once the producer pins at its BHP limit near
+steady state, a well/perforation residual that does NOT shrink with dt forces `iters=20` every
+substep, and the OPM-ported controller compounds `growth=0.4` into a dt collapse
+(`min_dt≈1e-7` days). Verified against OPM source: OPM structurally cannot hit this because
+well-control switching resolves inside a *nested well iteration*
+(`WellInterface::iterateWellEquations`) invisible to the outer count feeding its controller;
+ResSim's flat single-level Newton loop (wells Schur-eliminated at the linear level only, Phase
+11) has no equivalent. Two follow-up fixes were ruled out honestly: iteration-count decoupling
+(no-op by code inspection — N1 already counts reservoir-only convergence) and the verbatim
+`dbhp-max-rel` BHP chop (zero effect, bit-identical rerun — BHP is not the oscillating
+variable). The actual oscillating quantity is still unidentified; candidates are the
+perforation-rate variable and ResSim's own `relax_well_state_toward_local_consistency`
+post-processing (no OPM counterpart, never examined).
+
+Two independent investigations now converge on the same conclusion — the old Phase 8/9
+"Hypothesis A" (linear-solver angle) and this §5 failure (controller angle): **the deepest
+remaining architecture gap to OPM is the missing nested well-equation solve**, not any
+mechanism's tuning. Known OpmAligned fidelity gap recorded for that future work: N1 acceptance
+currently has no counterpart of OPM's `getWellConvergence` (`tolerance-wells=1e-4`) — OPM gets
+away with a light well check because its inner well solve converges wells by construction each
+outer iteration.
+
+Current `OpmAligned` numbers for reference (all with Legacy defaults unaffected): `22x22x1` =
+12 substeps/1 retry, `23x23x1` = 12/1 (Legacy: 4/2 each — close on attempts, not yet better),
+heavy `12x12x3` = 18,002 (Legacy: 32). Wall-clock under `OpmAligned` is additionally dominated
+by the per-iteration preconditioner rebuild — the independent 24x factor Bundle P addresses.
 
 ## Current Baselines (re-derived 2026-07-05, commit `43c6a1d`)
 
@@ -85,20 +127,32 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)" for full numbers. **Do not reopen
    this gap without new evidence that the drift has grown or that it's blocking something else** —
    prioritize the larger architectural gaps below instead.
-2. **The 738x wall-clock gap to OPM Flow is now measured and attributed** (2026-07-07 factor
-   budget, worklog "Task #41"): ~30x from the nonlinear layer (acceptance criterion 1000x
-   stricter locally than OPM's CNV, retry-ladder waste, global-scalar damping) x ~24x from
-   per-Newton-iteration cost (preconditioner rebuilt every iteration; 89% of wall-clock).
-   **The active plan is `docs/FIM_BUNDLE_N_DESIGN.md`**: Bundle N replaces the nonlinear
-   acceptance/damping/timestep layer with OPM's shipped semantics as one flag-gated bundle
-   (judged on end metrics only, never mechanism-by-mechanism); Bundle P adds OPM-style
-   preconditioner reuse (`cpr-reuse-setup`). This supersedes the earlier per-item framing of
-   the remaining gaps.
-3. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
+2. **The 738x wall-clock gap to OPM Flow: measured (Task #41), half-addressed, half-blocked.**
+   The ~30x nonlinear factor was attacked by Bundle N (section above): mechanisms validated,
+   end-to-end promotion blocked by the flat well/reservoir coupling. The ~24x per-iteration
+   factor (preconditioner rebuilt every Newton iteration = 89% of wall-clock) is untouched —
+   that is **Bundle P** (`FIM-BUNDLE-P`: OPM's `cpr-reuse-setup=4` semantics + LU-factor
+   instead of explicit dense coarse inverse), independent of Bundle N, conventional gates,
+   and now also the biggest lever for making further heavy-case experiments affordable
+   (each Bundle N confirmation run currently costs ~3-5 hours, ~90% of it preconditioner
+   rebuild).
+3. **Nested well-equation solve ("Bundle W" candidate — the twice-confirmed architecture gap).**
+   Phase 8/9's "Hypothesis A" and Bundle N's §5 failure independently converge on ResSim's flat
+   well/reservoir Newton coupling as the root blocker. The natural shape (from OPM):
+   per outer Newton iteration, solve each well's tiny local system (BHP + perforation rates —
+   1-2 wells, 1 perf each on current benchmark cases) to convergence against the frozen
+   reservoir state, replacing `relax_well_state_toward_local_consistency`; check wells
+   separately at `tolerance-wells` instead of folding them into the outer criteria; keep
+   well-switching cost invisible to the timestep controller. Before building it, spend the now
+   cheap (post-Bundle-P) diagnostic pass identifying the actual oscillating variable in the
+   18k-substep pathology — two blind fixes already refuted; a third guess without visibility is
+   not acceptable.
+4. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.
-4. **Variable substitution** (regime switching inside Newton; `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
-   gap #5) — deliberately excluded from Bundle N; candidate follow-on after it settles.
+5. **Variable substitution** (regime switching inside Newton; `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
+   gap #5) — deliberately excluded from Bundle N; candidate follow-on after the well-coupling
+   question settles.
 
 ## Canonical Sources
 

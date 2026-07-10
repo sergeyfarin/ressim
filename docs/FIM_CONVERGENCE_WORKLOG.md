@@ -1297,3 +1297,13 @@ pathology's substep count implies it is concentrated very close to the end of th
 day — `max_dt=0.185` days means the "healthy" phase likely covers the bulk of the day in a
 handful of substeps, with virtually all 18,002 substeps spent crawling through a tiny residual
 sliver of time) before attempting a further live fix.
+
+### Bundle N disposition (2026-07-10) — parked; retrospective written
+
+Consolidated retrospective + recommended sequencing written to `docs/FIM_BUNDLE_N_DESIGN.md`
+§10 (what was established with evidence, disposition, and the P → diagnostic → W plan);
+`docs/FIM_STATUS.md` updated with a Bundle N section and reprioritized "Known Open Gaps"
+(Bundle P first, then the late-window diagnostic, then the nested well solve "Bundle W");
+`TODO.md` FIM next steps refreshed to match. Bundle N's code stays behind the `OpmAligned`
+flag, default `Legacy`, fully no-op gated — inert, not deleted (its pieces are the building
+blocks the eventual OPM-shaped solver still needs) and not promoted (§5 failed).

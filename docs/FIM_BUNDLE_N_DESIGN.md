@@ -532,3 +532,68 @@ quasi-IMPES weights + coarse-operator construction + dense coarse factorization 
   keyword overrides: out of scope.
 - Newton relaxation type `dampen` (`stabilizeNonlinearUpdate`): already ported in Phase 7
   (`FIM-NEWTON-001`/`006`) — unchanged.
+
+## 10. Retrospective & disposition (2026-07-10)
+
+Bundle N is **built, gated, and parked**: all of N1-N5 live behind `FimNonlinearFlavor::OpmAligned`
+(default `Legacy`, bit-identical no-op verified at every checkpoint), §5 evaluation failed on the
+heavy case, two follow-up fixes ruled out. This section is the condensed record of what the work
+established, so future sessions don't have to reconstruct it from seven checkpoint entries.
+
+### What was established (with evidence)
+
+1. **The 738x gap decomposes cleanly** (Task #41): ~30x nonlinear architecture x ~24x
+   per-iteration preconditioner-rebuild cost. Both measured against a real OPM Flow run on the
+   same machine, same deck geometry.
+2. **The old acceptance criteria were never the direct waste** (checkpoint 1, inert
+   measurement): CNV never binds; the global-scalar-damped Newton genuinely stalled at MB≈2e-6.
+   The intuitive "1000x stricter tolerance is the problem" story was refuted before any behavior
+   changed — the stall was in the update dynamics.
+3. **Per-cell chopping fixes the stall** (checkpoint 2): 95% of Newton solve attempts reach
+   full-OPM-rules-acceptable states vs 48% under Legacy global damping. This is the single
+   biggest validated mechanical win of the bundle.
+4. **Every intermediate regression traced to a Legacy leftover, never to a ported OPM
+   mechanism**: checkpoint 3's dead traces (gating bug), checkpoint 4's failures (11/12 were the
+   Legacy zero-move validity exit), checkpoint 6's `linear-bad` storm (stale residual field in
+   N5's reduction check, `reduction=1.000e0` always). Log forensics before live reruns caught
+   all three cheaply; the one time a fix was live-tested on mechanism-reasoning alone (BHP chop),
+   it burned ~5 hours to a bit-identical refutation.
+5. **The heavy case's failure is architectural, twice-confirmed**: a well pinned at its BHP
+   limit produces a dt-insensitive complementarity residual that costs `iters=20` every substep;
+   the OPM-ported controller compounds `0.4^N` into a dt collapse (18,002 substeps). OPM
+   structurally cannot exhibit this: `WellInterface::iterateWellEquations` resolves well
+   switching inside each outer iteration, invisible to its controller. This independently
+   re-derives Phase 8/9's "Hypothesis A" from a different angle. The actual oscillating variable
+   is still unidentified (BHP refuted empirically; perforation rate and
+   `relax_well_state_toward_local_consistency` untested).
+6. **Small/mid cases under `OpmAligned` are close to but not better than Legacy** (12/1 vs 4/2
+   attempts on both bounded cases) — the residual ~3x gap there is unexplained and worth one
+   diagnostic look if `OpmAligned` is ever revisited, but is not the blocker.
+
+### Disposition
+
+- Code stays in place behind the flag (default `Legacy`); it is inert, gated, and its pieces
+  (CNV/MB criteria, per-cell chop, controller, §9 formula reference) are the building blocks the
+  eventual OPM-shaped solver still needs. Deleting it would discard validated work; promoting it
+  is blocked by §5.
+- Registry: `FIM-BUNDLE-N` = REWORK REQUIRED. `FIM-BUNDLE-P` = OPEN, now the recommended next
+  item (independent 24x factor; also makes every future heavy-case experiment ~an order of
+  magnitude cheaper, which the two ~5-hour §5 confirmation runs demonstrated is the real cost of
+  working on this case).
+- The nested well-equation solve ("Bundle W") is the identified path to unblocking §5, AFTER a
+  cheap diagnostic pass identifies the oscillating variable — two refuted fixes is the budget
+  for guessing; the third attempt must be evidence-driven.
+
+### Recommended sequencing (2026-07-10)
+
+1. **Bundle P** (preconditioner reuse) — independent, conventionally gated, benefits Legacy and
+   `OpmAligned` alike, and cuts the cost of all future heavy-case work by ~10-20x.
+2. **Late-window trace diagnostic** on the 18k pathology (cheap after Bundle P): capped-substep
+   native run writing the full trace to a file; identify the oscillating variable.
+3. **Bundle W** (nested well solve) with that evidence in hand — replaces
+   `relax_well_state_toward_local_consistency` with a per-well inner Newton against frozen
+   reservoir state; wells leave the outer convergence criteria (checked separately at
+   `tolerance-wells`, closing N1's known fidelity gap); well-switching cost becomes invisible to
+   the N3 controller, matching OPM structurally.
+4. **Re-run §5** with N1-N5 + W together; promote or revert the whole bundle per the original
+   rule.
