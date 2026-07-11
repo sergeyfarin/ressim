@@ -175,11 +175,17 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    the final-iteration relaxed tier. Consistent with (not proven identical to) the already-
    documented "benign" Legacy `water@1215` plateau below — a genuine near-steady-state region
    colliding with strict acceptance criteria, but manifesting through the `OpmAligned` CNV entry
-   criterion rather than Legacy's Appleyard-damping retry ladder. **Not yet independently
-   diagnosed** — first look only, incidental to the Bundle W trace. Needs its own dedicated
-   `WELLTRACE`/`LEDGER`-style pass (reusing `FIM-DIAG-002`'s tooling) targeting `cnv`/`mb`
-   per-iteration evolution before any fix is proposed; no guessing budget has been spent on it
-   yet, unlike gap #3's well standoff.
+   criterion rather than Legacy's Appleyard-damping retry ladder. Sharpened by the 2026-07-11
+   week retrospective (worklog): **MB alone binds** (CNV passes by 160x; MB fails strict by
+   1.41x, frozen = an invariant point of the iteration map), tiers verified identical to OPM's
+   pinned source — so OPM's MB genuinely converges below `1e-7` here where ours cannot.
+   **Execution plan: `docs/FIM_DIAG_003_PLAN.md` (D0-D5)** — binding-cell trace +
+   forced-direct-linear discrimination, MB formula audit, OPM Flow INFOITER differential
+   trajectory (`/usr/bin/flow` is installed), Legacy+W combination. Candidate stack
+   (`OpmAligned`+`nested_well_solve`) baseline: `18,015` substeps @ `c916c87`; progress metric
+   is the binding-constraint margin, not the substep count (which is a step function over the
+   conjunction). No fix attempts yet; `min_strict_mb_iter` explicitly out of scope until the
+   hypotheses are discriminated.
 5. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.
