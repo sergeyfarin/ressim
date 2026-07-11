@@ -1894,3 +1894,109 @@ under which the final-iteration relaxed tier is needed, before proposing any fix
 discipline that produced `FIM-DIAG-002` (evidence before a third guess) applies here by direct
 extension: this is effectively a *first* look at a newly-exposed mechanism, not a well-trodden
 one, so there is no guessing budget to spend carelessly.
+
+### Week retrospective (2026-07-11): the heavy-case failure is a conjunction, and the chain is nearly exhausted
+
+Prompted by a user review question: three consecutive NOT-PROMOTED verdicts (Bundle N, Bundle P,
+Bundle W) under end-metric-only gating — if the heavy case fails on a *combination* of errors,
+element-by-element evaluation can never promote anything and never "solves" the case. Analysis
+of the week's own recorded traces, plus two fresh source checks, confirms the combination
+structure directly and sharpens the remaining problem to a single measurable quantity.
+
+**1. The conjunction is real and is directly visible in the traces already recorded.**
+The `FIM-DIAG-002` window trace (substep 27, pre-Bundle-W) shows TWO criteria frozen above
+tolerance simultaneously: the perforation-flow residual floored at `~5e-5` (the diagnosed
+standoff) AND `mb=[1.858e-7, 4.668e-7]` frozen from iteration 2 onward — both > `1e-7`, both
+immobile. Bundle W's W4 trace (substep 997) shows exactly ONE remaining: `res_pf` now at machine
+epsilon, `mb=[1.412e-7, 1.423e-7]` still frozen. The end gate (substep count) is a step function
+over a conjunction: it cannot move until the LAST frozen criterion clears, which is why fixing
+the well standoff produced `17,990 → 18,015` (no change) despite being a genuine fix. The user's
+critique is confirmed by the data — with the caveat that the *construction* side of the week was
+already combination-aware (N1-N5 were deliberately built as one bundle; W was evaluated stacked
+on N) — the gap is on the *measurement* side: end-metric gating is conjunction-blind, and the
+NOT-PROMOTED bookkeeping makes cumulative progress read as serial failure.
+
+**2. The hidden progression the substep count can't show.** Re-reading the week's numbers as a
+sequence of binding-constraint margins instead of substep counts:
+- pre-Bundle-N: MB stalls at `≈2e-6` (20x over the `1e-7` tolerance) — fixed by N2 per-cell chop
+  (95% vs 48% OPM-acceptable attempts, checkpoint 2);
+- post-N: perforation-flow residual floored at `≈5e-5` scaled (the `FIM-DIAG-002` standoff) —
+  fixed by Bundle W (machine epsilon, W4);
+- post-W: MB frozen at `1.41e-7` — **1.4x over tolerance**, the sole survivor.
+The binding margin has tightened >100x across the week. The chain is nearly exhausted, which
+argues for finishing the serial-peeling approach rather than abandoning it — but with the
+measurement and bookkeeping changes below.
+
+**3. The remaining bottleneck, sharpened from already-recorded data + two fresh checks.**
+Fresh check 1 (OPM pinned source): `ToleranceMb=1e-7`, `ToleranceMbRelaxed=1e-6`,
+`ToleranceCnv=1e-2`, relaxed MB applies at the final iteration only by default
+(`MinStrictMbIter=-1`, `NonlinearSystemBlackOilReservoir_impl.hpp:751`) — our port's constants
+and tier logic match exactly (`newton.rs:1794-1797`). Fresh check 2: on the stuck substeps,
+CNV passes by **160x** (`6.1e-5` vs `1e-2`); **MB alone binds, at 1.41x over strict**, for 18
+straight iterations until the final-iteration relaxed tier (`1e-6`) accepts — then N3 sees
+`iters=20` and collapses dt. The entire 18k-substep catastrophe now rests on one number: why
+does our MB freeze at `1.41e-7` when OPM solves this same case at ~2.5 iters/step (i.e., its MB
+genuinely drops below `1e-7`, since its acceptance tiers are identical to ours)?
+
+Frozen at 4 significant figures across 18 iterations means the state is an **invariant point of
+the modified iteration map** (Newton step + per-cell chop + nested well solve + bounds), not
+slow convergence. The trace shows the mechanism: each iteration the coupled linear solve
+proposes `dq≈+0.58` for the producer (its way of zeroing the well-cell mass-balance rows via the
+source term) and the nested well solve vetoes it back to the perforation-consistent value.
+Three ranked hypotheses, each with a cheap decisive test:
+- **H1 (displaced standoff / constrained fixed point)**: enforcing the perforation equation
+  exactly displaces the same underlying inconsistency into the well-cell mass-balance rows —
+  the `1.41e-7` MB *is* the old standoff wearing a different family label. Test: locate the
+  peak-MB cell during the freeze (extend the CNV-MB trace line to name the binding cell/family
+  — the FAIL-SITE-DETAIL machinery already exists); if it's the producer's perforation cell
+  (cell 143) or its column, H1 confirmed. ~70s capped run.
+- **H2 (linear-precision floor)**: the loose `5e-3` outer linear tolerance (`FIM-LINEAR-008`)
+  caps achievable MB reduction near steady state. Test: force the direct linear backend on a
+  capped heavy run — if the freeze breaks, H2. Also testable offline against captured frozen
+  substeps (`FIM_CAPTURE_SEQUENCE_DIR` + solver lab, exact-vs-iterative post-step MB).
+- **H3 (MB formula fidelity)**: our MB formula runs ~1.4x hot vs OPM's at the same state — a
+  units/pore-volume/dt-factor discrepancy would explain everything, including the unexplained
+  3x bounded-case gap (Bundle N §10 obs. 6: `12/1` vs Legacy `4/2` — if our MB reads hot,
+  *every* `OpmAligned` case pays extra iterations chasing `1e-7`). Test: W0-style formula audit
+  of `cnv_mb_diagnostics` against `NonlinearSystemBlackOilReservoir_impl.hpp`'s
+  `getReservoirConvergence` (B_avg construction, pore-volume weighting, dt factor).
+
+**4. The unexploited asset: OPM Flow is installed (`/usr/bin/flow`).** All week we compared
+against OPM's *source* (static fidelity, W0-style) and its *end physics* (fine-dt FOPT) — never
+its *per-iteration runtime trajectory* on the pathological window. A differential run — OPM Flow
+on the heavy-case deck (the FOPT reference deck already exists per the opm-reference-pipeline)
+with convergence logging, diffed against our ledger through the steady-state tail (t≈0.83-1.0) —
+answers H2/H3 from the oracle side: what are OPM's actual MB values at the same simulated times,
+and does it ever need its relaxed tier there? This should become a standing method, not a
+one-off: trajectory-level differential testing is the direct form of "learn from OPM Flow".
+
+**5. Combination coverage gaps found in the review** (now cheap post-`FIM-LINEAR-011`: capped
+heavy runs are ~70s, full runs ~21 min — a factorial that would have cost 40+ hours a week ago
+costs an afternoon now):
+- **Legacy + W on the heavy case: never run** (only the `22x22x1` sanity check). Legacy's own
+  heavy-case issues (the `perf@1299` mixed retries, the `water@1215` plateau ladders) are
+  well-adjacent; if Legacy+W beats Legacy's current `52`, that is a *promotable Legacy-side win*
+  independent of the whole `OpmAligned` question (own full gate per plan §7).
+- OpmAligned+W ± forced-direct linear backend (the H2 test).
+- OpmAligned+W with `min_strict_mb_iter` set positive — OPM's own shipped knob for "use relaxed
+  MB after N iterations" — recorded as a *fallback only*: OPM's defaults solve this case without
+  it, so reaching for the knob before understanding H1-H3 would be acceptance-widening in OPM
+  clothing (`FIM-NEWTON-005` lesson applies).
+- The `22x22x1` OpmAligned+W `12→24` regression and the `23x23x1` first-substep
+  `linear-bad:oil@1585` — both uninvestigated, both cheap windowed traces.
+
+**6. Bookkeeping reframe (the direct answer to "element by element you never promote"):**
+declare the candidate stack (`OpmAligned` + `nested_well_solve`) a first-class tracked
+configuration with its own registry identity and baseline (`18,015` @ this commit), measure
+per-fix progress by **binding-constraint margin** (currently MB `1.41e-7` vs `1e-7`) and
+substeps-to-t=0.9 on capped runs, and make the promotion decision once, for the stack, when the
+chain is exhausted. Mid-chain mechanisms get "validated-in-stack" dispositions rather than
+reading as failures. One porting nit to fold into the next verification pass: OPM's
+`NewtonMinIterations` default is **2**; our `OPM_NEWTON_MIN_ITERATION_INDEX` is 1 — re-verify
+the intended off-by-one semantics against `iterCtx.iteration()`.
+
+**Recommended order**: (1) the FIM-DIAG-003 binding-cell trace + forced-direct capped run
+(hours, discriminates H1/H2); (2) MB formula audit (hours, H3, also explains the bounded-case
+3x if it hits); (3) OPM Flow differential trajectory on the heavy deck (a day, decisive from
+the oracle side); (4) Legacy+W heavy case (minutes, possible independent win); (5) only then
+decide whether the stack promotes or the approach changes.
