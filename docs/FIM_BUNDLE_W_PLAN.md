@@ -227,3 +227,176 @@ evaluation validates the mechanism.
 - On promotion: update `docs/FIM_STATUS.md` (gap #3 closes; baselines superseded — name which),
   `docs/FIM_BUNDLE_N_DESIGN.md` §10 sequencing, `TODO.md` item 3.
 - `FIM-DIAG-002`'s tooling is the verification instrument for W4 step 1 — keep it intact.
+
+## Appendix: W0 OPM source verification (2026-07-11)
+
+Verified against the pinned local checkout `OPM/opm-simulators`
+(`062cb19986aa8f11cffc30351fd2fee355d0ccb4`, tag `interim_release/2024.12-4152-g062cb1998`,
+authored 2026-07-01). **Correction to prior citations**: this checkout has the reservoir Newton
+model class renamed from `BlackoilModel`/`BlackoilModel_impl.hpp` (cited in
+`docs/FIM_BUNDLE_N_DESIGN.md` §9.1, `docs/FIM_STATUS.md`'s Bundle N section) to
+`NonlinearSystemBlackOilReservoir`/`NonlinearSystemBlackOilReservoir_impl.hpp` — an upstream
+rename that postdates whichever checkout those docs originally verified against. Re-verify any
+future OPM citation against the checkout actually in the tree at the time, not by file-name
+pattern-matching to older docs.
+
+### A. Loop structure — `iterateWellEquations` and where it fits in one outer iteration
+
+- Per-well entry point: `WellInterface::iterateWellEquations`
+  (`opm/simulators/wells/WellInterface_impl.hpp:532`). Dispatches to
+  `iterateWellEqWithControl` or (default config) `iterateWellEqWithSwitching`
+  (`StandardWell_impl.hpp:2458`), based on `local_well_solver_control_switching_`
+  (`LocalWellSolveControlSwitching`, default `true` — the switching path is the one that
+  matters for a default-config comparison).
+- Called from `WellInterface::prepareWellBeforeAssembling`
+  (`WellInterface_impl.hpp:1018`, call site `:1066`), itself called once per outer iteration
+  from `updateWellControlsAndNetworkIteration` → `updateWellControlsAndNetwork`, invoked from
+  `BlackoilWellModel::assemble()` **before** `assembleWellEqWithoutIteration(dt)`
+  (`BlackoilWellModel_impl.hpp:1186` — the call sequence documents itself: wells are iterated
+  to (bounded) convergence first, then linearized "without iteration" into the global system).
+  This confirms the plan's assumed shape: well convergence happens *inside* one outer
+  reservoir-Newton iteration, ahead of the global assembly that iteration produces.
+- **Gated, not unconditional**: `prepareWellBeforeAssembling` only calls `iterateWellEquations`
+  when `iterCtx.shouldRunInnerWellIterations(max_niter_inner_well_iter_)`
+  (`WellInterface_impl.hpp:1032`; gate defined `NewtonIterationContext.hpp:95` — true while
+  `globalIteration_ < maxIter` and never during a local/NLDD solve). Default
+  `max_niter_inner_well_iter_` (`MaxNewtonIterationsWithInnerWellIterations`,
+  `BlackoilModelParameters.hpp:117`) = **99** — effectively unconditional for realistic outer
+  iteration counts (rarely exceeds ~20), but not a hardcoded "always"; a config with a very low
+  value would fall back to assembling wells at their last-reached state with no further inner
+  solve for later outer iterations. Not scoped as a Bundle W knob; note the mechanism exists.
+
+### B. Inner loop body (`iterateWellEqWithSwitching`, `StandardWell_impl.hpp:2458`)
+
+`do { ... } while (it < max_iter)`, `max_iter = max_inner_iter_wells_`
+(`MaxInnerIterWells`, `BlackoilModelParameters.hpp` = **50** for standard wells, 100 for MSW):
+
+1. Every `min_its_after_switch` (= 4, hardcoded) iterations since the last control/status
+   switch, `updateWellControlAndStatusLocalIteration` checks/applies **discrete** control-mode
+   switching (rate↔BHP↔THP, open↔stop) — bounded by `max_well_status_switch_inner_iter_`
+   (`MaxWellStatusSwitchInInnerIterWells` = 99, effectively unlimited). **This is structurally
+   different from ResSim's continuous Fischer-Burmeister complementarity row** — OPM does
+   periodic discrete re-evaluation of which control mode is active, not a smooth relaxation of
+   an NCP residual. Per plan §5 "Explicitly NOT in Bundle W", ResSim's FB row is kept as-is;
+   this is documented as a known structural divergence, not something to port.
+2. `assembleWellEqWithoutIteration(...)` — linearizes the *local* well system at current
+   primary variables.
+3. Convergence check: `getWellConvergence(...)` (below). After `it > strict_inner_iter_wells_`
+   (`StrictInnerIterWells` = 40), `relax_convergence = true` switches to the looser tolerance.
+4. If converged and a switch happened recently (within `min_its_after_switch`), one more
+   "final_check" pass runs before accepting, to make sure the post-switch state itself is
+   consistent — else `break`.
+5. `solveEqAndUpdateWellState(...)` — solves the local linear system and calls
+   `updateNewton` (§C) to apply the chopped update; loop continues.
+
+### C. Convergence test (`StandardWellEval::getWellConvergence`, `StandardWellEval.cpp:156`)
+
+Two **separately-tolergranced** checks, not one blanket number — corrects the "tolerance-wells
+= 1e-4" shorthand used loosely elsewhere in these docs to what it actually is:
+
+- **Flux/mass-balance rows** (`res[eq_idx] = |linSys_.residual()[0][eq_idx]|` for
+  `eq_idx` over the conservation-quantity indices, scaled by `B_avg[compIdx]`): checked against
+  `tol_wells` = `ToleranceWells<Scalar>` = **`1e-4`** (`BlackoilModelParameters.hpp`), or
+  `relaxed_tolerance_flow_well_` (`RelaxedWellFlowTol` = **`1e-3`**) once `relax_convergence`
+  is set; hard fail above `max_residual_allowed_` (`MaxResidualAllowed` = **`1e7`**).
+- **Control-equation row** (`checkConvergenceControlEq`, `WellConvergence.cpp:39`, residual =
+  `|linSys_.residual()[0][Bhp]|`): tolerance **depends on the well's current active control
+  mode** — `{rates: 1e3, grup: 1e4, bhp: 1e-4, thp: 1e-6}` (`StandardWellEval.cpp:211`,
+  hardcoded literals, not named params). So "`tolerance-wells=1e-4`" is correct only for the
+  BHP-controlled case (which is what the heavy repro case uses, both wells pinned at their BHP
+  limits) and for the flux rows generally — a rate-controlled well's control-row tolerance is
+  four orders of magnitude looser in absolute terms. **For Bundle W's `tolerance-wells` outer
+  check (plan §5 step 3), use `1e-4` since the target cases are BHP-limited — but do not
+  generalize that single number to rate-controlled wells without re-deriving it.**
+- Additional check for BHP/THP-controlled wells: flow-direction sign consistency (producer
+  must not have positive `WQTotal`, injector not negative) — a hard `WrongFlowDirection`
+  failure, not a tolerance. ResSim's equivalent sign handling already lives in
+  `apply_raw_update`/`enforce_control_bounds`.
+
+### D. `updateNewton` chop (`StandardWellPrimaryVariables.cpp:262`, called via
+`updatePrimaryVariablesNewton`, `StandardWell_impl.hpp:791`, from `updateWellState` →
+`solveEqAndUpdateWellState`, i.e. every inner iteration)
+
+- **BHP**: `dx1_limited = sign * min(|dwells[Bhp]|, |value_[Bhp]| * dbhp_max_rel_)`, floored at
+  `bhp_lower_limit = 1 bar − 1 Pa`. `dbhp_max_rel_` (`DbhpMaxRel<Scalar>`) = **`1.0`** — matches
+  exactly what the refuted Bundle N §5 follow-up ported verbatim
+  (`opm_per_cell_chopped_update`'s well-BHP clamp). **Confirms plan §3's claim: this refuted
+  fix's correct home is inside the inner well loop, not the outer Newton loop** — it was tested
+  in the wrong place, not built wrong.
+- **`WQTotal` (total well rate)**: `value_[WQTotal] -= dwells[0][WQTotal]` — **no magnitude
+  clamp whatsoever**, only a post-hoc sign floor (injector ≥ 0, producer ≤ 0) and a hard zero
+  for stopped/zero-rate-target wells. Reconfirms the already-established finding (worklog
+  "Bundle N §5 follow-up", 2026-07-09) with a fresh, exact citation.
+- **Fraction variables** (`WFrac`/`GFrac`, OPM's phase-split unknowns): chopped at
+  `dwell_fraction_max_` (`DwellFractionMax<Scalar>` = **`0.2`**) with an extra
+  producer-only relaxation factor. **No ResSim counterpart** — see note E below on the
+  parametrization difference; not applicable to Bundle W's design as-is.
+
+### E. Primary-variable parametrization difference (informative, does not change the design)
+
+OPM's `StandardWell` (no polymer/MSW) uses **`[WQTotal, WFrac, GFrac, Bhp]`** — one *lumped*
+total-rate unknown per well plus phase-fraction unknowns, **not one rate unknown per
+perforation**. Per-perforation rates are *derived* from `WQTotal` + fractions + per-connection
+transmissibility/mobility at solve time (`computePerfRate`), not solved as independent
+unknowns. ResSim's `FimState` has one `perforation_rates_m3_day` entry per perforation
+(confirmed `fim/state.rs`) — a different, more granular parametrization already baked into the
+existing AD assembly (`wells_ad.rs`) that Bundle N/`FIM-LINEAR-010`/`FIM-DIAG-002` were all
+built against. **This does not block Bundle W**: plan §2's constraint is that the inner solve
+drives ResSim's *own* assembled residual rows, not that it replicates OPM's exact unknown
+choice. It does mean the "bordered arrow system" shape described in plan §3 for multi-perf
+wells is a ResSim-specific consequence of ResSim's own parametrization, not something mirrored
+from OPM — call this out to any future reader diffing Bundle W's code against OPM 1:1. Only the
+*structural* pattern (nested bounded Newton, converged before global assembly, excluded from
+outer iteration count) transfers from OPM; the unknown parametrization does not.
+
+### F. Failure policy
+
+Non-convergence of `iterateWellEquations` (`WellInterface_impl.hpp:1081`, the `else` branch of
+the `converged` check) sets `operability_status_.solvable = false` when
+`shut_unsolvable_wells_` (`ShutUnsolvableWells` = **`true`**, default) — which the surrounding
+`well_operable` check (`:1109`) turns into `stopWell()` + `solveWellWithZeroRate(...)`. **OPM
+does not accept an under-converged well state and move on** — it forces the well to a
+well-defined degraded state (zero rate) rather than propagating a stale/oscillating rate
+forward. Confirms plan §5 step 2's "keep the last iterate and report not-converged... do not
+widen acceptance" instinct, but sharpens it: the honest OPM-aligned behavior on inner-solve
+failure is closer to "stop the well for this outer iteration" than "retry the outer substep" —
+worth considering directly in W2's failure-reporting design rather than only bubbling up to the
+existing outer retry ladder. Flag as an open design question for W2, not resolved here.
+
+### G. Outer-criteria well exclusion — reconfirmed, one correction
+
+- **Iteration count**: `SubStepIteration::getNumIterations_`
+  (`AdaptiveTimeStepping_impl.hpp:1186`) reads `substep_report.total_newton_iterations`, which
+  is accumulated once per call to `nonlinearIterationNewton`
+  (`NonlinearSystemBlackOilReservoir_impl.hpp:237`, `report.total_newton_iterations = 1` per
+  call = one *outer* iteration). Since all of a well's inner iterations (up to 50) happen
+  *inside* the `assemble()` call within that one outer iteration, they never separately
+  increment this counter. **Reconfirms the core Bundle N §5 claim** ("well-switching cost
+  invisible to the outer iteration count feeding the timestep controller") with current
+  citations, replacing the stale `BlackoilModel_impl.hpp:270` reference.
+- **Correction**: the OUTER **convergence** check (as opposed to the iteration *count*) is NOT
+  well-blind. `NonlinearSystemBlackOilReservoir::getConvergence`
+  (`NonlinearSystemBlackOilReservoir_impl.hpp:1008`) computes
+  `report = getReservoirConvergence(...)` then `report += wellModel().getWellConvergence(...)`
+  — the aggregate outer convergence report *does* include a well-convergence term. In practice
+  this rarely blocks anything additional (wells already converged via their own inner loop by
+  the time this runs), but it means "N1's acceptance excludes well/perforation rows entirely"
+  (`docs/FIM_BUNDLE_N_DESIGN.md` §5.1) describes ResSim's simplification, not literally OPM's
+  structure. This is exactly the gap plan §5 step 3 already proposes closing (the
+  `tolerance-wells` outer check) — now backed by a precise citation instead of an inference.
+
+### H. Numeric defaults collected (for W2 implementation)
+
+| Constant | OPM name | Value | Citation |
+|---|---|---|---|
+| Inner well iteration cap | `MaxInnerIterWells` | 50 | `BlackoilModelParameters.hpp` |
+| Strict→relaxed inner switch | `StrictInnerIterWells` | 40 | same |
+| Inner well flux tolerance | `ToleranceWells` | 1e-4 | same |
+| Relaxed inner flux tolerance | `RelaxedWellFlowTol` | 1e-3 | same |
+| Max residual (hard fail) | `MaxResidualAllowed` | 1e7 | same |
+| BHP control-row tolerance | (hardcoded) | 1e-4 | `StandardWellEval.cpp:211` |
+| BHP chop | `DbhpMaxRel` | 1.0 | `BlackoilModelParameters.hpp` |
+| Outer iterations with inner well solve | `MaxNewtonIterationsWithInnerWellIterations` | 99 | same |
+| Outer strict→relaxed well switch | `StrictOuterIterWells` | 6 | same |
+| Shut on inner non-convergence | `ShutUnsolvableWells` | true | same |
+| Min iterations before allowing a switch | (hardcoded `min_its_after_switch`) | 4 | `StandardWell_impl.hpp:2482` |
