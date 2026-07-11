@@ -360,6 +360,7 @@ impl PressureCorrectionAccumulator {
                 coarse_applications: 0,
                 average_reduction_ratio: 1.0,
                 last_reduction_ratio: 1.0,
+                build_timing: None,
             });
         }
 
@@ -370,6 +371,7 @@ impl PressureCorrectionAccumulator {
             coarse_applications: self.applications,
             average_reduction_ratio: self.accumulated_reduction_ratio / self.applications as f64,
             last_reduction_ratio: self.last_reduction_ratio,
+            build_timing: None,
         })
     }
 }
@@ -955,13 +957,27 @@ fn build_pressure_transfer_weights(
     (restriction, prolongation)
 }
 
+/// Bundle P (`FIM-BUNDLE-P`) P0.1: per-phase build-cost breakdown for
+/// `build_block_jacobi_preconditioner`, in build-cost order. Always populated (timers are
+/// cheap relative to the O(n^3)/O(nnz) work they wrap) so the offline lab can measure which
+/// phases actually dominate before any reuse/factorization change is attempted.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct CprBuildTiming {
+    pub(crate) weights_ms: f64,
+    pub(crate) coarse_assembly_ms: f64,
+    pub(crate) coarse_factorization_ms: f64,
+    pub(crate) fine_smoother_ms: f64,
+    pub(crate) block_inverses_ms: f64,
+}
+
 fn build_block_jacobi_preconditioner(
     matrix: &CsMat<f64>,
     layout: Option<FimLinearBlockLayout>,
     fine_smoother_kind: CprFineSmootherKind,
     restriction_kind: CprPressureRestrictionKind,
-) -> BlockJacobiPreconditioner {
+) -> (BlockJacobiPreconditioner, CprBuildTiming) {
     let Some(layout) = layout else {
+        let scalar_timer = PerfTimer::start();
         let scalar_inv_diag = (0..matrix.rows())
             .map(|idx| {
                 let diag = matrix_value(matrix, idx, idx);
@@ -972,29 +988,36 @@ fn build_block_jacobi_preconditioner(
                 }
             })
             .collect();
-        return BlockJacobiPreconditioner {
-            fine_smoother_kind: CprFineSmootherKind::BlockJacobi,
-            post_pressure_block_jacobi_experiment: false,
-            cell_block_size: 0,
-            cell_block_inverses: Vec::new(),
-            well_bhp_start: 0,
-            well_bhp_count: 0,
-            noncell_start: 0,
-            perforation_tail_start: 0,
-            scalar_inv_diag,
-            tail_inverse: DMatrix::zeros(0, 0),
-            pressure_tail_coupling: Vec::new(),
-            pressure_tail_prolongation: Vec::new(),
-            pressure_restriction: Vec::new(),
-            pressure_prolongation: Vec::new(),
-            pressure_rows: Vec::new(),
-            pressure_dense_inverse: None,
-            pressure_l_rows: Vec::new(),
-            pressure_u_diag: Vec::new(),
-            pressure_u_rows: Vec::new(),
-            full_ilu: None,
-            block_ilu: None,
+        let timing = CprBuildTiming {
+            block_inverses_ms: scalar_timer.elapsed_ms(),
+            ..CprBuildTiming::default()
         };
+        return (
+            BlockJacobiPreconditioner {
+                fine_smoother_kind: CprFineSmootherKind::BlockJacobi,
+                post_pressure_block_jacobi_experiment: false,
+                cell_block_size: 0,
+                cell_block_inverses: Vec::new(),
+                well_bhp_start: 0,
+                well_bhp_count: 0,
+                noncell_start: 0,
+                perforation_tail_start: 0,
+                scalar_inv_diag,
+                tail_inverse: DMatrix::zeros(0, 0),
+                pressure_tail_coupling: Vec::new(),
+                pressure_tail_prolongation: Vec::new(),
+                pressure_restriction: Vec::new(),
+                pressure_prolongation: Vec::new(),
+                pressure_rows: Vec::new(),
+                pressure_dense_inverse: None,
+                pressure_l_rows: Vec::new(),
+                pressure_u_diag: Vec::new(),
+                pressure_u_rows: Vec::new(),
+                full_ilu: None,
+                block_ilu: None,
+            },
+            timing,
+        );
     };
 
     let well_bhp_start = layout.well_bhp_start();
@@ -1008,6 +1031,8 @@ fn build_block_jacobi_preconditioner(
     let mut cell_block_inverses = Vec::with_capacity(layout.cell_block_count);
     let mut pressure_restriction = Vec::with_capacity(layout.cell_block_count);
     let mut pressure_prolongation = Vec::with_capacity(layout.cell_block_count);
+    let mut block_inverses_ms = 0.0;
+    let mut weights_ms = 0.0;
     for block_idx in 0..layout.cell_block_count {
         let start = block_idx * layout.cell_block_size;
         let mut block = DMatrix::zeros(layout.cell_block_size, layout.cell_block_size);
@@ -1017,6 +1042,7 @@ fn build_block_jacobi_preconditioner(
             }
         }
 
+        let block_inverse_timer = PerfTimer::start();
         let inverse = block.clone().try_inverse().unwrap_or_else(|| {
             let mut fallback = DMatrix::zeros(layout.cell_block_size, layout.cell_block_size);
             for diag_idx in 0..layout.cell_block_size {
@@ -1029,13 +1055,17 @@ fn build_block_jacobi_preconditioner(
             }
             fallback
         });
+        block_inverses_ms += block_inverse_timer.elapsed_ms();
         cell_block_inverses.push(inverse);
 
+        let weights_timer = PerfTimer::start();
         let (restriction, prolongation) = build_pressure_transfer_weights(&block, restriction_kind);
+        weights_ms += weights_timer.elapsed_ms();
         pressure_restriction.push(restriction);
         pressure_prolongation.push(prolongation);
     }
 
+    let coarse_assembly_timer = PerfTimer::start();
     let schur_tail_count = matrix.rows().saturating_sub(perforation_tail_start);
     let tail_inverse = if schur_tail_count > 0 {
         let mut tail_block = DMatrix::zeros(schur_tail_count, schur_tail_count);
@@ -1211,12 +1241,16 @@ fn build_block_jacobi_preconditioner(
             }
         }
     }
+    let coarse_assembly_ms = coarse_assembly_timer.elapsed_ms();
 
+    let coarse_factorization_timer = PerfTimer::start();
     let pressure_dense_inverse = invert_pressure_block(&pressure_rows);
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
+    let coarse_factorization_ms = coarse_factorization_timer.elapsed_ms();
     let post_pressure_block_jacobi_experiment =
         fine_smoother_kind == CprFineSmootherKind::FullIlu0 && pressure_dense_inverse.is_none();
+    let fine_smoother_timer = PerfTimer::start();
     let full_ilu = if fine_smoother_kind == CprFineSmootherKind::FullIlu0 {
         factorize_full_ilu0(matrix)
     } else {
@@ -1227,6 +1261,7 @@ fn build_block_jacobi_preconditioner(
     } else {
         None
     };
+    let fine_smoother_ms = fine_smoother_timer.elapsed_ms();
 
     let scalar_inv_diag = (noncell_start..matrix.rows())
         .map(|idx| {
@@ -1239,29 +1274,40 @@ fn build_block_jacobi_preconditioner(
         })
         .collect();
 
-    BlockJacobiPreconditioner {
-        fine_smoother_kind,
-        post_pressure_block_jacobi_experiment,
-        cell_block_size: layout.cell_block_size,
-        cell_block_inverses,
-        well_bhp_start,
-        well_bhp_count: layout.well_bhp_count,
-        noncell_start,
-        perforation_tail_start,
-        scalar_inv_diag,
-        tail_inverse,
-        pressure_tail_coupling,
-        pressure_tail_prolongation,
-        pressure_restriction,
-        pressure_prolongation,
-        pressure_rows,
-        pressure_dense_inverse,
-        pressure_l_rows,
-        pressure_u_diag,
-        pressure_u_rows,
-        full_ilu,
-        block_ilu,
-    }
+    let timing = CprBuildTiming {
+        weights_ms,
+        coarse_assembly_ms,
+        coarse_factorization_ms,
+        fine_smoother_ms,
+        block_inverses_ms,
+    };
+
+    (
+        BlockJacobiPreconditioner {
+            fine_smoother_kind,
+            post_pressure_block_jacobi_experiment,
+            cell_block_size: layout.cell_block_size,
+            cell_block_inverses,
+            well_bhp_start,
+            well_bhp_count: layout.well_bhp_count,
+            noncell_start,
+            perforation_tail_start,
+            scalar_inv_diag,
+            tail_inverse,
+            pressure_tail_coupling,
+            pressure_tail_prolongation,
+            pressure_restriction,
+            pressure_prolongation,
+            pressure_rows,
+            pressure_dense_inverse,
+            pressure_l_rows,
+            pressure_u_diag,
+            pressure_u_rows,
+            full_ilu,
+            block_ilu,
+        },
+        timing,
+    )
 }
 
 pub(super) fn cs_mat_mul_vec(matrix: &CsMat<f64>, x: &DVector<f64>) -> DVector<f64> {
@@ -1475,6 +1521,48 @@ fn solve_with_cpr_fine_smoother(
         };
     }
 
+    let preconditioner_timer = PerfTimer::start();
+    let (preconditioner, build_timing) = build_block_jacobi_preconditioner(
+        jacobian,
+        layout,
+        cpr_fine_smoother_kind,
+        restriction_kind,
+    );
+    let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
+
+    let mut report = run_cpr_iterative_solve(
+        jacobian,
+        rhs,
+        options,
+        used_fallback,
+        backend_used,
+        &preconditioner,
+        equation_scaling,
+        &total_timer,
+    );
+    report.preconditioner_build_time_ms = preconditioner_build_time_ms;
+    if let Some(diagnostics) = report.cpr_diagnostics.as_mut() {
+        diagnostics.build_timing = Some(build_timing);
+    }
+    report
+}
+
+/// Bundle P (`FIM-BUNDLE-P`) P0: the actual CPR/FGMRES iterative solve, taking an
+/// already-built preconditioner by reference instead of building its own. Split out of
+/// `solve_with_cpr_fine_smoother` so the offline reuse lab (`solve_reusing_stale_preconditioner`
+/// below) can drive the identical solve loop against a preconditioner built from a *different*
+/// system, without duplicating ~400 lines of FGMRES bookkeeping.
+fn run_cpr_iterative_solve(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    used_fallback: bool,
+    backend_used: FimLinearSolverKind,
+    preconditioner: &BlockJacobiPreconditioner,
+    equation_scaling: Option<&EquationScaling>,
+    total_timer: &PerfTimer,
+) -> FimLinearSolveReport {
+    let preconditioner_build_time_ms = 0.0;
     let restart = options.restart.max(2);
     let max_iterations = options.max_iterations.max(restart);
     let rhs_norm = rhs.norm();
@@ -1500,14 +1588,6 @@ fn solve_with_cpr_fine_smoother(
             _ => true,
         }
     };
-    let preconditioner_timer = PerfTimer::start();
-    let preconditioner = build_block_jacobi_preconditioner(
-        jacobian,
-        layout,
-        cpr_fine_smoother_kind,
-        restriction_kind,
-    );
-    let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
     let mut solution = DVector::zeros(rhs.len());
     let mut iterations = 0usize;
@@ -1535,7 +1615,7 @@ fn solve_with_cpr_fine_smoother(
                 used_fallback,
                 backend_used,
                 cpr_diagnostics: if use_pressure_correction {
-                    pressure_correction_stats.build_report(&preconditioner)
+                    pressure_correction_stats.build_report(preconditioner)
                 } else {
                     None
                 },
@@ -1561,7 +1641,7 @@ fn solve_with_cpr_fine_smoother(
                 used_fallback,
                 backend_used,
                 cpr_diagnostics: if use_pressure_correction {
-                    pressure_correction_stats.build_report(&preconditioner)
+                    pressure_correction_stats.build_report(preconditioner)
                 } else {
                     None
                 },
@@ -1702,7 +1782,7 @@ fn solve_with_cpr_fine_smoother(
                         used_fallback,
                         backend_used,
                         cpr_diagnostics: if use_pressure_correction {
-                            pressure_correction_stats.build_report(&preconditioner)
+                            pressure_correction_stats.build_report(preconditioner)
                         } else {
                             None
                         },
@@ -1809,7 +1889,7 @@ fn solve_with_cpr_fine_smoother(
                         used_fallback,
                         backend_used,
                         cpr_diagnostics: if use_pressure_correction {
-                            pressure_correction_stats.build_report(&preconditioner)
+                            pressure_correction_stats.build_report(preconditioner)
                         } else {
                             None
                         },
@@ -2006,6 +2086,58 @@ pub(super) fn solve_with_smoother_and_restriction(
     )
 }
 
+/// Lab-only opaque handle (Bundle P `FIM-BUNDLE-P`, P0.2 staleness study): a CPR preconditioner
+/// built once from one captured system, reused to solve many *different* systems without
+/// rebuilding — the offline stand-in for what `cpr_reuse_interval` will do live. Kept opaque
+/// (internals stay private to this module) previewing the same shape the real P1 cache will
+/// need; never called from the production path.
+#[cfg(test)]
+pub(super) struct CprLabPreconditionerHandle(BlockJacobiPreconditioner);
+
+/// Builds a lab preconditioner handle from one captured `(jacobian, layout)`. Build once per
+/// "stale from here" origin system, then reuse the returned handle across many `k` via
+/// `solve_with_prebuilt_preconditioner` instead of rebuilding per `k` (rebuilding per pair would
+/// redo the O(n^3) coarse factorization up to 30x more than the staleness study needs).
+#[cfg(test)]
+pub(super) fn build_preconditioner_for_lab(
+    jacobian: &CsMat<f64>,
+    layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+) -> CprLabPreconditionerHandle {
+    let (preconditioner, _build_timing) =
+        build_block_jacobi_preconditioner(jacobian, layout, fine_smoother_kind, restriction_kind);
+    CprLabPreconditionerHandle(preconditioner)
+}
+
+/// Solves `(jacobian, rhs)` reusing a preconditioner built (possibly for a different, earlier
+/// system) by `build_preconditioner_for_lab`, instead of building a fresh one.
+#[cfg(test)]
+pub(super) fn solve_with_prebuilt_preconditioner(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    handle: &CprLabPreconditionerHandle,
+    equation_scaling: Option<&EquationScaling>,
+) -> FimLinearSolveReport {
+    let backend_used = if options.kind == FimLinearSolverKind::FgmresCpr {
+        FimLinearSolverKind::FgmresCpr
+    } else {
+        FimLinearSolverKind::GmresIlu0
+    };
+    let total_timer = PerfTimer::start();
+    run_cpr_iterative_solve(
+        jacobian,
+        rhs,
+        options,
+        false,
+        backend_used,
+        &handle.0,
+        equation_scaling,
+        &total_timer,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::DVector;
@@ -2022,7 +2154,7 @@ mod tests {
         tri.add_triplet(2, 2, 1.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
@@ -2053,7 +2185,7 @@ mod tests {
         tri.add_triplet(3, 3, 5.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
@@ -2082,7 +2214,7 @@ mod tests {
         tri.add_triplet(3, 3, 5.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
@@ -2114,7 +2246,7 @@ mod tests {
         tri.add_triplet(5, 5, 7.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 2,
@@ -2202,7 +2334,7 @@ mod tests {
         tri.add_triplet(4, 4, 7.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
@@ -2235,7 +2367,7 @@ mod tests {
         tri.add_triplet(4, 4, 7.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 1,
@@ -2526,7 +2658,7 @@ mod tests {
         tri.add_triplet(5, 5, 7.0);
         let matrix = tri.to_csr();
 
-        let preconditioner = build_block_jacobi_preconditioner(
+        let (preconditioner, _timing) = build_block_jacobi_preconditioner(
             &matrix,
             Some(FimLinearBlockLayout {
                 cell_block_count: 2,

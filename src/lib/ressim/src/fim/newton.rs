@@ -3385,6 +3385,34 @@ pub(crate) fn run_fim_timestep(
         linear_solve_time_ms += linear_report.total_time_ms;
         linear_preconditioner_build_time_ms += linear_report.preconditioner_build_time_ms;
 
+        // Bundle P (`FIM-BUNDLE-P`) P0.2: unconditional per-iteration capture of every linear
+        // system actually solved, gated on a distinct env var from the failure-only
+        // `FIM_CAPTURE_DIR` below — the offline CPR-setup-reuse staleness study needs truly
+        // consecutive Newton-iteration systems (file order == solve order within a run), which
+        // the failure/near-miss-only capture cannot provide.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(sequence_dir) = crate::fim::linear::capture::capture_sequence_dir_from_env() {
+            let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                newton_iteration: iteration,
+                failure_reason: if linear_report.converged {
+                    "converged".to_string()
+                } else {
+                    "not-converged".to_string()
+                },
+                dominant_family: residual_diagnostics.global.family.label().to_string(),
+                dominant_item_index: residual_diagnostics.global.item_index,
+            };
+            crate::fim::linear::capture::write_capture(
+                &sequence_dir,
+                crate::fim::linear::capture::next_capture_sequence(),
+                &metadata,
+                block_layout,
+                &assembly.jacobian,
+                &rhs,
+                Some(&assembly.equation_scaling),
+            );
+        }
+
         // Step 10.1 follow-up (`FIM-LINEAR-008` reopened): under the loosened Phase 10 CPR
         // tolerance the linear solve itself usually succeeds, but the *Newton* loop can still
         // exhaust `max_newton_iterations` on a near-miss (see the worklog's "Step 10.4
@@ -5006,6 +5034,7 @@ mod tests {
                 coarse_applications: 4,
                 average_reduction_ratio: 1e-12,
                 last_reduction_ratio: 1e-12,
+                build_timing: None,
             }),
             total_time_ms: 0.0,
             preconditioner_build_time_ms: 0.0,
@@ -5112,6 +5141,7 @@ mod tests {
                 coarse_applications: 4,
                 average_reduction_ratio: 0.6,
                 last_reduction_ratio: 0.8,
+                build_timing: None,
             }),
             total_time_ms: 0.0,
             preconditioner_build_time_ms: 0.0,

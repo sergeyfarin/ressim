@@ -25,6 +25,13 @@ use crate::fim::scaling::EquationScaling;
 
 pub(crate) const CAPTURE_DIR_ENV: &str = "FIM_CAPTURE_DIR";
 
+/// Bundle P (`FIM-BUNDLE-P`) P0.2: a second, distinct capture directory that dumps *every*
+/// linear system actually solved (converged or not), not just failures/near-misses. The
+/// offline CPR-setup-reuse staleness study needs truly consecutive Newton-iteration systems
+/// to measure "build on system i, reuse across i+1..i+k" — the failure-only corpus above
+/// captures isolated snapshots (usually one every few dozen substeps), not a sequence.
+pub(crate) const CAPTURE_SEQUENCE_DIR_ENV: &str = "FIM_CAPTURE_SEQUENCE_DIR";
+
 /// Process-wide monotonically increasing capture sequence. `run_fim_timestep` is called
 /// once per substep/retry rung, so a per-call counter would overwrite earlier files —
 /// this gives every captured system in a run a unique filename.
@@ -58,6 +65,11 @@ pub(crate) struct FimCapturedSystem {
 /// Returns the capture directory if capture is enabled via `FIM_CAPTURE_DIR`.
 pub(crate) fn capture_dir_from_env() -> Option<PathBuf> {
     std::env::var_os(CAPTURE_DIR_ENV).map(PathBuf::from)
+}
+
+/// Returns the sequential-capture directory if enabled via `FIM_CAPTURE_SEQUENCE_DIR`.
+pub(crate) fn capture_sequence_dir_from_env() -> Option<PathBuf> {
+    std::env::var_os(CAPTURE_SEQUENCE_DIR_ENV).map(PathBuf::from)
 }
 
 /// Writes one failed system to `<dir>/fim_capture_<seq>.txt`. Errors are reported to

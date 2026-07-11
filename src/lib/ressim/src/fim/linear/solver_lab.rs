@@ -21,11 +21,13 @@ use sprs::CsMat;
 
 use super::capture::{FimCapturedSystem, capture_dir_from_env, load_captures};
 use super::gmres_block_jacobi::{
-    CprFineSmootherKind, CprPressureRestrictionKind, solve_with_restriction_kind,
+    self, CprFineSmootherKind, CprPressureRestrictionKind, solve_with_restriction_kind,
     solve_with_smoother_and_restriction,
 };
+use super::well_schur;
 use super::{
-    FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind, solve_linearized_system,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -774,5 +776,285 @@ fn solver_lab_compare_well_elimination() {
     );
     println!(
         "max solution delta across all systems: {max_solution_delta:.3e} (capture {worst_delta_capture:05})"
+    );
+}
+
+/// Bundle P (`FIM-BUNDLE-P`) P0.1: per-phase CPR preconditioner build-cost breakdown over a
+/// captured corpus, using the exact production entry point (`solve_linearized_system`, default
+/// options — well elimination included, matching `eliminate_wells: true`) so the timings
+/// reflect what the live path actually builds against. Decides whether P2 (LU factorization
+/// instead of an explicit dense inverse for the coarse pressure operator) matters independently
+/// of P1 (setup reuse) — see `docs/FIM_BUNDLE_P_PLAN.md`.
+///
+/// Manual lab entry point; requires `FIM_CAPTURE_DIR` pointing at a captured corpus.
+#[test]
+#[ignore]
+fn solver_lab_cpr_build_cost_breakdown() {
+    let dir = capture_dir_from_env()
+        .expect("set FIM_CAPTURE_DIR to a directory produced by a capture driver run");
+    let systems = load_captures(&dir).expect("load captured systems");
+    assert!(
+        !systems.is_empty(),
+        "no fim_capture_*.txt files in {}",
+        dir.display()
+    );
+
+    println!(
+        "build-cost breakdown lab: {} captured systems from {}",
+        systems.len(),
+        dir.display()
+    );
+
+    let mut weights_ms = Vec::with_capacity(systems.len());
+    let mut coarse_assembly_ms = Vec::with_capacity(systems.len());
+    let mut coarse_factorization_ms = Vec::with_capacity(systems.len());
+    let mut fine_smoother_ms = Vec::with_capacity(systems.len());
+    let mut block_inverses_ms = Vec::with_capacity(systems.len());
+    let mut build_fraction_of_total = Vec::with_capacity(systems.len());
+    let mut with_timing = 0usize;
+
+    for system in &systems {
+        let options = FimLinearSolveOptions::default();
+        let report = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &options,
+            system.layout,
+            system.equation_scaling.as_ref(),
+        );
+        let Some(timing) = report
+            .cpr_diagnostics
+            .as_ref()
+            .and_then(|diagnostics| diagnostics.build_timing)
+        else {
+            continue;
+        };
+        with_timing += 1;
+        weights_ms.push(timing.weights_ms);
+        coarse_assembly_ms.push(timing.coarse_assembly_ms);
+        coarse_factorization_ms.push(timing.coarse_factorization_ms);
+        fine_smoother_ms.push(timing.fine_smoother_ms);
+        block_inverses_ms.push(timing.block_inverses_ms);
+        if report.total_time_ms > 0.0 {
+            build_fraction_of_total.push(report.preconditioner_build_time_ms / report.total_time_ms);
+        }
+    }
+
+    assert!(
+        with_timing > 0,
+        "no captured system produced CPR build timing — check that FimLinearSolveOptions::default() \
+         actually dispatches to the CPR/FGMRES backend"
+    );
+
+    fn median(values: &mut [f64]) -> f64 {
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        values[values.len() / 2]
+    }
+
+    println!("=== per-phase build-cost medians over {with_timing} systems (ms) ===");
+    println!(
+        "weights_ms              median={:.4}",
+        median(&mut weights_ms)
+    );
+    println!(
+        "coarse_assembly_ms      median={:.4}",
+        median(&mut coarse_assembly_ms)
+    );
+    println!(
+        "coarse_factorization_ms median={:.4}",
+        median(&mut coarse_factorization_ms)
+    );
+    println!(
+        "fine_smoother_ms        median={:.4}",
+        median(&mut fine_smoother_ms)
+    );
+    println!(
+        "block_inverses_ms       median={:.4}",
+        median(&mut block_inverses_ms)
+    );
+    if !build_fraction_of_total.is_empty() {
+        println!(
+            "preconditioner_build_time_ms / total_time_ms median={:.3}",
+            median(&mut build_fraction_of_total)
+        );
+    }
+}
+
+/// Reduces a captured `(jacobian, rhs, layout)` triple by Schur-eliminating the well/perforation
+/// tail (mirrors `eliminate_wells: true`, the production default) so the offline reuse study
+/// below builds/reuses a CPR preconditioner against the exact same reduced system the live path
+/// actually solves against. Falls through unchanged when there is no tail to eliminate. Returns
+/// `None` only when the captured system has no layout at all.
+fn reduced_system_for_lab(
+    system: &FimCapturedSystem,
+) -> Option<(CsMat<f64>, DVector<f64>, FimLinearBlockLayout)> {
+    let layout = system.layout?;
+    match well_schur::eliminate_wells(
+        &system.jacobian,
+        &system.rhs,
+        layout,
+        system.equation_scaling.as_ref(),
+    ) {
+        Some(elimination) => Some((
+            elimination.reduced_jacobian,
+            elimination.reduced_rhs,
+            elimination.reduced_layout,
+        )),
+        None => Some((system.jacobian.clone(), system.rhs.clone(), layout)),
+    }
+}
+
+/// Bundle P (`FIM-BUNDLE-P`) P0.2: offline CPR-setup-reuse staleness study. For every pair of
+/// consecutive-in-file-order captured systems `(i, i+k)` (`k` up to OPM's own reuse interval,
+/// 30) whose *reduced* (well-Schur-eliminated) systems share the same row count and block
+/// layout, builds the preconditioner once on system `i` and reuses it — stale — to solve system
+/// `i+k`, comparing iteration count and convergence against a fresh-preconditioner baseline
+/// solved directly on `i+k`. Pairs whose reduced systems don't share a key are skipped (the same
+/// rebuild-on-key-mismatch rule the live cache will use — no reuse would happen there anyway).
+///
+/// Offline gate (`docs/FIM_BUNDLE_P_PLAN.md` P0.2): median inflation <= +2 iterations and no new
+/// convergence failures (fresh converged, reused did not) at k <= 30. Asserted, not just printed
+/// — a failure here means live wiring is not attempted and `FIM-BUNDLE-P` closes REFUTED.
+///
+/// Manual lab entry point; requires `FIM_CAPTURE_SEQUENCE_DIR` (not `FIM_CAPTURE_DIR` — that
+/// corpus is failures-only and not a consecutive sequence) pointing at a corpus captured by
+/// setting that env var on a capture-driver run.
+#[test]
+#[ignore]
+fn solver_lab_cpr_reuse_inflation_study() {
+    let dir = super::capture::capture_sequence_dir_from_env().expect(
+        "set FIM_CAPTURE_SEQUENCE_DIR to a directory produced by a capture driver run with \
+         FIM_CAPTURE_SEQUENCE_DIR set (not FIM_CAPTURE_DIR — that corpus is failures-only and \
+         not a consecutive sequence)",
+    );
+    let systems = load_captures(&dir).expect("load captured systems");
+    assert!(
+        !systems.is_empty(),
+        "no fim_capture_*.txt files in {}",
+        dir.display()
+    );
+
+    println!(
+        "reuse-inflation lab: {} captured systems from {}",
+        systems.len(),
+        dir.display()
+    );
+
+    let reduced: Vec<Option<(CsMat<f64>, DVector<f64>, FimLinearBlockLayout)>> =
+        systems.iter().map(reduced_system_for_lab).collect();
+
+    const MAX_K: usize = 30;
+    let options = FimLinearSolveOptions::default();
+    let fine_smoother_kind = CprFineSmootherKind::BlockIlu0;
+    let restriction_kind = CprPressureRestrictionKind::QuasiImpes;
+
+    // Each target system's fresh-preconditioner baseline doesn't depend on which origin `i`
+    // reused a stale preconditioner into it — compute it once per system instead of once per
+    // (i, k) pair (a given target is the `i+k` for up to `MAX_K` different origins).
+    let fresh_reports: Vec<Option<(usize, bool)>> = reduced
+        .iter()
+        .map(|entry| {
+            let (jacobian, rhs, layout) = entry.as_ref()?;
+            let report =
+                solve_linearized_system(jacobian, rhs, &options, Some(*layout), None);
+            Some((report.iterations, report.converged))
+        })
+        .collect();
+
+    let mut inflations: Vec<i64> = Vec::new();
+    let mut new_failures = 0usize;
+    let mut pairs_evaluated = 0usize;
+    let mut pairs_skipped_key_mismatch = 0usize;
+    // Bundle P P0.2 follow-up: bucket by staleness distance `k` so a gate failure can
+    // distinguish "breaks at any k" (REFUTED) from "only breaks past some smaller k" (adjust
+    // the target reuse interval instead of abandoning the bundle).
+    let mut by_k_total = vec![0usize; MAX_K + 1];
+    let mut by_k_failures = vec![0usize; MAX_K + 1];
+
+    for i in 0..reduced.len() {
+        let Some((build_jacobian, _build_rhs, build_layout)) = &reduced[i] else {
+            continue;
+        };
+        let max_k = MAX_K.min(reduced.len().saturating_sub(i + 1));
+        if max_k == 0 {
+            continue;
+        }
+        // Build once per origin system `i`, reuse across every `k` — rebuilding per (i, k) pair
+        // would redo the O(n^3) coarse factorization up to `MAX_K`x more than necessary.
+        let handle = gmres_block_jacobi::build_preconditioner_for_lab(
+            build_jacobian,
+            Some(*build_layout),
+            fine_smoother_kind,
+            restriction_kind,
+        );
+        for k in 1..=max_k {
+            let Some((solve_jacobian, solve_rhs, solve_layout)) = &reduced[i + k] else {
+                continue;
+            };
+            if solve_jacobian.rows() != build_jacobian.rows() || solve_layout != build_layout {
+                pairs_skipped_key_mismatch += 1;
+                continue;
+            }
+
+            let (fresh_iterations, fresh_converged) =
+                fresh_reports[i + k].expect("reduced[i + k] is Some, so fresh_reports[i + k] is too");
+            let reused = gmres_block_jacobi::solve_with_prebuilt_preconditioner(
+                solve_jacobian,
+                solve_rhs,
+                &options,
+                &handle,
+                None,
+            );
+
+            pairs_evaluated += 1;
+            inflations.push(reused.iterations as i64 - fresh_iterations as i64);
+            by_k_total[k] += 1;
+            if fresh_converged && !reused.converged {
+                new_failures += 1;
+                by_k_failures[k] += 1;
+            }
+        }
+    }
+
+    println!("=== new-convergence-failures by staleness distance k ===");
+    for k in 1..=MAX_K {
+        if by_k_total[k] > 0 {
+            println!(
+                "k={k:>2} failures={:>4}/{:<4} ({:.1}%)",
+                by_k_failures[k],
+                by_k_total[k],
+                100.0 * by_k_failures[k] as f64 / by_k_total[k] as f64
+            );
+        }
+    }
+
+    assert!(
+        pairs_evaluated > 0,
+        "no matching-key consecutive pairs found in {} systems ({} skipped for key mismatch) — \
+         corpus too small or too fragmented to run the staleness study",
+        reduced.len(),
+        pairs_skipped_key_mismatch
+    );
+
+    inflations.sort_unstable();
+    let median_inflation = inflations[inflations.len() / 2];
+    let mean_inflation: f64 = inflations.iter().sum::<i64>() as f64 / inflations.len() as f64;
+
+    println!(
+        "=== reuse-inflation over {pairs_evaluated} matching-key pairs ({pairs_skipped_key_mismatch} skipped for key mismatch) ==="
+    );
+    println!(
+        "median_inflation_iters={median_inflation} mean_inflation_iters={mean_inflation:.2} new_convergence_failures={new_failures}"
+    );
+
+    assert!(
+        median_inflation <= 2,
+        "median reuse inflation {median_inflation} exceeds the offline gate of +2 iterations \
+         (FIM_BUNDLE_P_PLAN.md P0.2) — do not attempt live wiring, close FIM-BUNDLE-P REFUTED"
+    );
+    assert_eq!(
+        new_failures, 0,
+        "{new_failures} pairs converged fresh but failed to converge when reusing a stale \
+         preconditioner — offline gate (P0.2) failed, do not attempt live wiring"
     );
 }

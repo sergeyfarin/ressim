@@ -1,6 +1,8 @@
 # Bundle P: CPR Preconditioner Setup Reuse (the 24x per-iteration factor)
 
-Status: PLAN (2026-07-10). Registry row: `FIM-BUNDLE-P` (OPEN). Nothing implemented.
+Status: REFUTED at P0 (2026-07-10 plan, 2026-07-10 P0 result — same day). Registry row:
+`FIM-BUNDLE-P` (REFUTED). P0 offline measurement built and run (see "P0 results" below); P1/P2
+live wiring not attempted — the P0.2 offline gate failed decisively on both corpora.
 Origin: Task #41 factor budget (`docs/FIM_CONVERGENCE_WORKLOG.md`) — preconditioner build is
 `pc_ms = 32.9s of 36.7s` (89% of wall-clock) on the heavy Legacy case, because ResSim rebuilds
 the full CPR setup at every Newton iteration of every substep of every retry rung. OPM's
@@ -59,7 +61,67 @@ corpora (heavy-case + bounded, `fim-capture-v2`):
    k ≤ 30.** If staleness blows up convergence offline, the live wiring is not attempted and
    the row is closed REFUTED — same discipline as `FIM-LINEAR-008`'s offline-first bet.
 
-## P1 — Reuse wiring (inert by default, one flag flip to promote)
+## P0 results (2026-07-10) — offline gate FAILED, REFUTED
+
+**Provisional**: measured on top of uncommitted P0 instrumentation (this session's addition of
+`CprBuildTiming`, the `FIM_CAPTURE_SEQUENCE_DIR` capture path, the `eliminate_wells` shared
+helper, and the two lab tests below) applied on top of committed `6119726d`. Not yet its own
+commit at measurement time — rerun after committing if an exact-hash baseline is needed later.
+
+**Corpora** (native, `--release`):
+```
+FIM_CAPTURE_SEQUENCE_DIR=<bounded-dir> cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib -- --ignored --nocapture repro_water_pressure_23x23x1
+# -> 185 captured systems (both the plain and _opm_aligned repro, dt=0.25, rows=1591, coarse rows=529)
+
+FIM_CAPTURE_SEQUENCE_DIR=<heavy-dir> cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib -- --ignored --nocapture --exact fim::timestep::phase5_repro::repro_water_pressure_12x12x3
+# -> 414 captured systems (dt=1, 45 substeps, rows=1300, coarse rows=432)
+```
+
+**P0.1 build-cost breakdown** (`FIM_CAPTURE_DIR=<dir> cargo test --release ... -- --ignored --nocapture solver_lab_cpr_build_cost_breakdown`):
+
+| corpus | weights_ms | coarse_assembly_ms | coarse_factorization_ms | fine_smoother_ms | block_inverses_ms | build/total |
+|---|---|---|---|---|---|---|
+| bounded (n=185, coarse rows=529 → BiCGStab+ILU0, over threshold) | 0.097 | 0.191 | 0.099 | **1.005** | 0.043 | 0.292 |
+| heavy (n=414, coarse rows=432 → dense inverse, at threshold) | 0.081 | 0.195 | **48.669** | 1.151 | 0.035 | 0.975 |
+
+Confirms the plan's premise on the heavy case exactly: `coarse_factorization_ms` (the explicit
+dense inverse, O(n³) on the 432×432 coarse operator) is 97.5% of the whole preconditioner build,
+dwarfing every other phase by 25-500x. P2 (LU factorization instead of the explicit dense
+inverse) is **not conditional** — it is the dominant cost whenever the coarse system stays at or
+under the dense-inverse threshold. On the bounded case (coarse rows over threshold, already using
+BiCGStab+ILU0) the fine ILU0 smoother dominates instead — P2 only matters for cases like the
+heavy one.
+
+**P0.2 stale-preconditioner inflation study** (`FIM_CAPTURE_SEQUENCE_DIR=<dir> cargo test
+--release ... -- --ignored --nocapture solver_lab_cpr_reuse_inflation_study`):
+
+| corpus | matching-key pairs | median inflation | new convergence failures | failure rate at k=1 | failure rate at k=30 |
+|---|---|---|---|---|---|
+| bounded | 5085 | +1 iter | 315 | 2.2% (4/184) | 10.3% (16/155) |
+| heavy | 11955 | +1 iter | 412 | 0.2% (1/413) | 5.7% (22/384) |
+
+The median-inflation half of the gate passes cleanly on both corpora (+1 ≤ +2). The
+convergence-failure half **fails decisively on both corpora**, and not in a "safe up to some k"
+shape the mode-2 (>10-iteration) guard could rescue: the failure rate is already nonzero at
+`k=1` — reusing the preconditioner from just *one* Newton iteration earlier — and climbs
+roughly monotonically with `k` on both corpora (bounded 2.2%→10.3%, heavy 0.2%→5.7%). There is no
+staleness distance at which reuse is free of new failures.
+
+**Verdict: `FIM-BUNDLE-P` closes REFUTED at P0.** Per the plan's own offline-first discipline
+(mirroring `FIM-LINEAR-008`), a decisive P0.2 failure means P1 inert wiring and the live
+promotion flip are **not attempted** — there is no `k` for `cpr_reuse_interval` where reuse is
+convergence-neutral, so wiring it live would only reproduce this offline failure at some
+production cost instead of catching it for free. Neither recorded fallback lever changes this
+disposition: the mode-1-like per-step invalidation lever is equivalent to `cpr_reuse_interval ≈
+0` (no reuse, no benefit) since even `k=1` already fails; the mode-2 `>10`-iteration guard only
+gates on the *previous* solve's iteration count, not on the failure being present already at
+`k=1..10` (2.2-6.9% bounded, 0.2-2.5% heavy). The P0.1 build-cost breakdown and the well-Schur
+refactor/instrumentation built to run this study are kept (real, validated lab tooling — the
+`eliminate_wells` extraction and `CprBuildTiming` breakdown have standalone value for any future
+P2-only or coarse-solver work), but the reuse mechanism itself (P1/P2 as CPR-preconditioner-reuse
+levers) is not pursued further under this row.
+
+## P1 — Reuse wiring (inert by default, one flag flip to promote) — NOT ATTEMPTED, see P0 results above
 
 - New opaque `FimCprSetupCache` (internals in `gmres_block_jacobi.rs`): holds the built
   `BlockJacobiPreconditioner` plus its key (`rows`, `layout`, `kind`, smoother/restriction

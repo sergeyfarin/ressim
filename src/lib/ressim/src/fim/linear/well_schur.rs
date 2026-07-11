@@ -42,20 +42,36 @@ use super::{
 };
 use crate::fim::scaling::EquationScaling;
 
-pub(super) fn solve_with_well_elimination(
+/// Result of Schur-eliminating the well-BHP/perforation tail: the reduced (tail-free) system to
+/// solve, plus everything needed to recover the tail unknowns afterward.
+pub(super) struct WellEliminationResult {
+    pub(super) reduced_jacobian: CsMat<f64>,
+    pub(super) reduced_rhs: DVector<f64>,
+    pub(super) reduced_layout: FimLinearBlockLayout,
+    pub(super) reduced_equation_scaling: Option<EquationScaling>,
+    tail_inverse: DMatrix<f64>,
+    j_wr: Vec<Vec<(usize, f64)>>,
+    well_bhp_start: usize,
+    tail_count: usize,
+}
+
+/// Reduces `(jacobian, rhs, layout)` by Schur-eliminating the well-BHP/perforation tail.
+/// Returns `None` when there is no tail to eliminate (nothing to reduce). Shared by the
+/// production solve path (`solve_with_well_elimination`) and the offline CPR-reuse lab
+/// (`solver_lab.rs`'s Bundle P `FIM-BUNDLE-P` P0.2 study), which needs to build/reuse a
+/// preconditioner against the exact same reduced system the live path actually solves against
+/// (`eliminate_wells` defaults `true` in production).
+pub(super) fn eliminate_wells(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
-    options: &FimLinearSolveOptions,
     layout: FimLinearBlockLayout,
     equation_scaling: Option<&EquationScaling>,
-) -> FimLinearSolveReport {
+) -> Option<WellEliminationResult> {
     let well_bhp_start = layout.well_bhp_start();
     let tail_count = jacobian.rows().saturating_sub(well_bhp_start);
 
     if tail_count == 0 {
-        // Nothing to eliminate. The dispatcher in `solve_linearized_system` already checks this
-        // before calling here, but stay correct if called directly (e.g. from a future test).
-        return solve_linearized_system(jacobian, rhs, options, Some(layout), equation_scaling);
+        return None;
     }
 
     // J_WW: dense tail-diagonal block (well BHP + perforation rows/cols), same extraction as the
@@ -174,29 +190,58 @@ pub(super) fn solve_with_well_elimination(
         perforation_flow: Vec::new(),
     });
 
+    Some(WellEliminationResult {
+        reduced_jacobian,
+        reduced_rhs,
+        reduced_layout,
+        reduced_equation_scaling,
+        tail_inverse,
+        j_wr,
+        well_bhp_start,
+        tail_count,
+    })
+}
+
+pub(super) fn solve_with_well_elimination(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: FimLinearBlockLayout,
+    equation_scaling: Option<&EquationScaling>,
+) -> FimLinearSolveReport {
+    let Some(elimination) = eliminate_wells(jacobian, rhs, layout, equation_scaling) else {
+        // Nothing to eliminate. The dispatcher in `solve_linearized_system` already checks this
+        // before calling here, but stay correct if called directly (e.g. from a future test).
+        return solve_linearized_system(jacobian, rhs, options, Some(layout), equation_scaling);
+    };
+
     // Solve the reduced (tail-free) system through the normal dispatcher. This recursion is safe
     // and terminates in one step: `reduced_layout` has no well/perforation tail, so the
     // `eliminate_wells` check in `solve_linearized_system` is false for this call regardless of
     // `options.eliminate_wells`, and it falls straight through to the ordinary iterative/direct
     // path.
     let reduced_report = solve_linearized_system(
-        &reduced_jacobian,
-        &reduced_rhs,
+        &elimination.reduced_jacobian,
+        &elimination.reduced_rhs,
         options,
-        Some(reduced_layout),
-        reduced_equation_scaling.as_ref(),
+        Some(elimination.reduced_layout),
+        elimination.reduced_equation_scaling.as_ref(),
     );
 
+    let well_bhp_start = elimination.well_bhp_start;
+    let tail_count = elimination.tail_count;
+
     // Recover the tail: dx_W = J_WW^-1 * (r_W - J_WR * dx_R).
-    let mut residual_tail = rhs_tail;
+    let mut residual_tail =
+        DVector::from_iterator(tail_count, (0..tail_count).map(|i| rhs[well_bhp_start + i]));
     for (tail_idx, row) in residual_tail.iter_mut().enumerate() {
         let mut sum = 0.0;
-        for &(col, value) in &j_wr[tail_idx] {
+        for &(col, value) in &elimination.j_wr[tail_idx] {
             sum += value * reduced_report.solution[col];
         }
         *row -= sum;
     }
-    let dx_tail = &tail_inverse * &residual_tail;
+    let dx_tail = &elimination.tail_inverse * &residual_tail;
 
     let mut solution = DVector::zeros(jacobian.rows());
     solution

@@ -211,6 +211,9 @@ pub(crate) struct FimCprDiagnostics {
     pub(crate) coarse_applications: usize,
     pub(crate) average_reduction_ratio: f64,
     pub(crate) last_reduction_ratio: f64,
+    /// Bundle P (`FIM-BUNDLE-P`) P0.1: per-phase preconditioner build-cost breakdown, filled in
+    /// by `gmres_block_jacobi::solve_with_cpr_fine_smoother` after the preconditioner is built.
+    pub(crate) build_timing: Option<gmres_block_jacobi::CprBuildTiming>,
 }
 
 pub(crate) fn solve_linearized_system(
