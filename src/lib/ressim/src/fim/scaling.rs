@@ -98,6 +98,25 @@ pub(crate) struct VariableScaling {
     pub(crate) perforation_rate: Vec<f64>,
 }
 
+/// `well_constraint` row scale for one well: `1.0` for a rate-controlled well with feasible
+/// control slacks (the FB residual is already O(1)), else `|bhp|.max(1.0)`. `pub(crate)` so
+/// `fim/wells_inner.rs` (Bundle W) uses the identical formula for its inner-solve convergence
+/// check as the global assembly's `EquationScaling` uses — "inner converged" and "outer sees
+/// zero" must be the same statement (`docs/FIM_BUNDLE_W_PLAN.md` §5).
+pub(crate) fn well_constraint_scale(bhp_bar: f64, control_slacks: Option<(f64, f64)>) -> f64 {
+    if control_slacks.is_some() {
+        1.0
+    } else {
+        bhp_bar.abs().max(1.0)
+    }
+}
+
+/// `perforation_flow` row scale for one perforation: `|rate|.max(1.0)`. Same reuse rationale
+/// as `well_constraint_scale`.
+pub(crate) fn perforation_flow_scale(rate_m3_day: f64) -> f64 {
+    rate_m3_day.abs().max(1.0)
+}
+
 pub(crate) fn build_equation_scaling(
     sim: &ReservoirSimulator,
     state: &FimState,
@@ -128,17 +147,15 @@ pub(crate) fn build_equation_scaling(
         let block = well_local_block(topology, state, well_idx);
         let bhp_bar = block.bhp_bar();
         let control = physical_well_control(sim, topology, well_idx);
-        if control.rate_controlled {
-            if let Some((_bhp_slack, _rate_slack)) = block.control_slacks(sim) {
-                // Scaled FB residual is O(1), so equation scale = 1.0
-                well_constraint.push(1.0);
-                continue;
-            }
-        }
-        well_constraint.push(bhp_bar.abs().max(1.0));
+        let control_slacks = if control.rate_controlled {
+            block.control_slacks(sim)
+        } else {
+            None
+        };
+        well_constraint.push(well_constraint_scale(bhp_bar, control_slacks));
     }
     for rate in &state.perforation_rates_m3_day {
-        perforation_flow.push(rate.abs().max(1.0));
+        perforation_flow.push(perforation_flow_scale(*rate));
     }
 
     EquationScaling {

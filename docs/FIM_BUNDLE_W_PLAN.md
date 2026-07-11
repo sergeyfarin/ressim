@@ -196,10 +196,34 @@ under both flavors):
   genuinely nonlinear (the FB complementarity row *does* depend on `q` through the rate slack),
   so W2 still needs a real bounded Newton loop — this observation is about why the BHP-limited
   heavy case specifically should resolve cleanly, not a reason to special-case the code.
-- **W2 — inner Newton loop.** Damping/chop, scaled convergence, iteration bound, failure
-  reporting. Unit tests: BHP-pinned trivial case converges in 1 iteration; rate-controlled FB
-  case converges and lands on slack-feasible (bhp, q); a deliberately infeasible case reports
-  non-convergence without panicking.
+- **W2 — DONE (2026-07-11).** `fim/wells_inner.rs`: `solve_well_locally`/`solve_wells_locally`,
+  a bounded chopped Newton loop over `assemble_well_local_system` (W1). `dbhp-max-rel` chop
+  (`chop_bhp_update`, OPM's exact formula incl. the `1 bar − 1 Pa` floor); no magnitude clamp on
+  `q` (matches OPM's `WQTotal`); convergence uses `fim/scaling.rs`'s `well_constraint_scale`/
+  `perforation_flow_scale` — extracted from `build_equation_scaling` into standalone `pub(crate)`
+  functions (zero-behavior-change refactor, verified via `fim::scaling` + `assembly_ad` parity)
+  so the inner-solve convergence test and the global assembly's convergence test are provably
+  the same formula, not two hand-matched copies. Added OPM's `WrongFlowDirection` check (W0
+  appendix C) scoped to pressure-controlled wells, per-perforation (ResSim has no aggregate
+  `WQTotal`) — residual-converged-but-wrong-sign correctly reports not-converged, not silently
+  accepted. On a singular local Jacobian or exhausted budget: last iterate kept, `converged:
+  false` reported, no panic, no acceptance-widening (`FIM-NEWTON-005` lesson).
+
+  **10 tests, all passing.** Confirms the W1 closed-form observation empirically, not just in
+  theory: `bhp_controlled_well_converges_from_perturbed_state` converges in exactly **1
+  iteration** (residual ~1e-16, machine epsilon) starting from a state perturbed 800 m³/day away
+  from consistency. `rate_controlled_well_converges_to_slack_feasible_state` (genuinely
+  nonlinear FB case) converges to a feasible (bhp, q). `exhausted_budget_reports_not_converged_
+  without_panicking` (0-iteration budget) exercises the give-up path deterministically, standing
+  in for a contrived physically-infeasible scenario per the plan's original wording. Plus chop
+  and sign-check unit tests.
+
+  No-op gate: full `fim::` suite 277 passed / 3 failed — the failures are byte-identical to the
+  pre-existing 2026-07-07 known failures (`fim::timestep::tests::changing_hotspot_resets_extra_
+  growth_cooldown_budget`, `repeated_same_hotspot_extends_growth_cooldown_budget`,
+  `fim_enabled_step_advances_time_and_records_history_for_closed_system`, documented in
+  `TODO.md`), confirmed by exact name match, not a new regression. `assembly_ad` parity 10/10,
+  wasm build green (new code still unreachable until W3 wires it in).
 - **W3 — wiring behind the flag.** Replace the relax call under the flag; add the well
   convergence check to the `OpmAligned` acceptance; wasm setter + `--nested-well-solve`
   diagnostic flag (runner passthrough like `--opm-aligned`). Gates: flag off ⇒ full control

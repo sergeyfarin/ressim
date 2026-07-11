@@ -179,12 +179,171 @@ pub(crate) fn assemble_well_local_system(
     }
 }
 
+/// OPM-verified inner-solve budget/tolerance/chop defaults (`docs/FIM_BUNDLE_W_PLAN.md` W0
+/// appendix H, `BlackoilModelParameters.hpp`): `MaxInnerIterWells` = 50, `ToleranceWells` =
+/// 1e-4, `DbhpMaxRel` = 1.0.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FimWellInnerSolveOptions {
+    pub(crate) max_iterations: usize,
+    pub(crate) tolerance: f64,
+    pub(crate) dbhp_max_rel: f64,
+}
+
+impl Default for FimWellInnerSolveOptions {
+    fn default() -> Self {
+        Self {
+            max_iterations: 50,
+            tolerance: 1e-4,
+            dbhp_max_rel: 1.0,
+        }
+    }
+}
+
+/// Result of converging one physical well's local system.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FimWellInnerSolveReport {
+    pub(crate) well_idx: usize,
+    pub(crate) converged: bool,
+    pub(crate) iterations: usize,
+    pub(crate) final_scaled_residual_peak: f64,
+}
+
+/// `StandardWellPrimaryVariables::updateNewton`'s BHP lower limit (W0 appendix D): "some cases
+/// might have defaulted bhp constraint of 1 bar, we use a slightly smaller value... so that bhp
+/// constraint can be an active control when needed" — `1 bar - 1 Pa`.
+const BHP_LOWER_LIMIT_BAR: f64 = 1.0 - 1.0e-5;
+
+/// OPM's `dbhp-max-rel` chop (W0 appendix D, `StandardWellPrimaryVariables.cpp:262`): the BHP
+/// update magnitude is capped at `dbhp_max_rel * |current bhp|`, then floored at
+/// `BHP_LOWER_LIMIT_BAR`. `raw_delta_bhp` is the *signed* proposed increment
+/// (`bhp_new = bhp + raw_delta_bhp`) — algebraically identical to OPM's own
+/// subtract-a-signed-magnitude form, just consistent with this module's `delta` sign
+/// convention (`jacobian * delta = -residual`).
+fn chop_bhp_update(bhp: f64, raw_delta_bhp: f64, dbhp_max_rel: f64) -> f64 {
+    let cap = bhp.abs() * dbhp_max_rel;
+    let delta_limited = raw_delta_bhp.clamp(-cap, cap);
+    (bhp + delta_limited).max(BHP_LOWER_LIMIT_BAR)
+}
+
+/// OPM's flow-direction sign check (W0 appendix C, `StandardWellEval.cpp`'s
+/// `WrongFlowDirection` failure inside `getWellConvergence`), scoped to pressure-controlled
+/// (non-rate-controlled) wells only — matches OPM's `isPressureControlled` gating exactly.
+/// Applied per-perforation since ResSim has no single aggregate `WQTotal` unknown the way OPM's
+/// `StandardWell` does (see plan §0 appendix E). ResSim's own sign convention (confirmed via
+/// `relax_well_state_toward_local_consistency`'s prior clamp and the `FIM-DIAG-002` trace
+/// data): injector perforation rates are `<= 0`, producer rates are `>= 0`.
+fn perforation_flow_direction_ok(injector: bool, q: f64) -> bool {
+    if injector { q <= 0.0 } else { q >= 0.0 }
+}
+
+fn well_constraint_scale_for(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    well_idx: usize,
+    control_real: &crate::fim::wells::PhysicalWellControl,
+) -> f64 {
+    let control_slacks = if control_real.rate_controlled {
+        crate::fim::wells::well_local_block(topology, state, well_idx).control_slacks(sim)
+    } else {
+        None
+    };
+    crate::fim::scaling::well_constraint_scale(state.well_bhp[well_idx], control_slacks)
+}
+
+/// Converges one physical well's local system (`assemble_well_local_system`) via a bounded,
+/// chopped Newton loop, mutating `state.well_bhp[well_idx]` / `state.perforation_rates_m3_day`
+/// in place — same call shape as `relax_well_state_toward_local_consistency`, so this is a
+/// drop-in replacement at that call site (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 1). Convergence
+/// uses the identical `EquationScaling` family-scale formulas (`fim/scaling.rs`) the global
+/// assembly's convergence test uses, so "inner converged" and "outer sees zero" are the same
+/// statement (plan §5 item 2). On a singular local Jacobian or exhausted budget, the last
+/// iterate is kept and `converged: false` is reported — the caller's outer retry ladder handles
+/// it; this function never widens acceptance to paper over an inner failure (`FIM-NEWTON-005`
+/// lesson).
+pub(crate) fn solve_well_locally(
+    sim: &ReservoirSimulator,
+    state: &mut FimState,
+    topology: &FimWellTopology,
+    well_idx: usize,
+    options: &FimWellInnerSolveOptions,
+) -> FimWellInnerSolveReport {
+    let injector = topology.wells[well_idx].injector;
+    let control_real = physical_well_control(sim, topology, well_idx);
+    let pressure_controlled = !control_real.rate_controlled;
+
+    let mut iterations = 0usize;
+    let mut converged: bool;
+    let mut final_scaled_residual_peak: f64;
+
+    loop {
+        let local = assemble_well_local_system(sim, state, topology, well_idx);
+
+        let well_scale = well_constraint_scale_for(sim, state, topology, well_idx, &control_real);
+        let mut scaled_peak = local.residual[0].abs() / well_scale;
+        for (local_perf, &perf_idx) in local.perforation_indices.iter().enumerate() {
+            let perf_scale = crate::fim::scaling::perforation_flow_scale(
+                state.perforation_rates_m3_day[perf_idx],
+            );
+            scaled_peak = scaled_peak.max(local.residual[1 + local_perf].abs() / perf_scale);
+        }
+        final_scaled_residual_peak = scaled_peak;
+
+        let direction_ok = !pressure_controlled
+            || local.perforation_indices.iter().all(|&perf_idx| {
+                perforation_flow_direction_ok(injector, state.perforation_rates_m3_day[perf_idx])
+            });
+
+        converged = scaled_peak <= options.tolerance && direction_ok;
+        if converged || iterations >= options.max_iterations {
+            break;
+        }
+
+        let neg_residual = -local.residual.clone();
+        let Some(delta) = local.jacobian.lu().solve(&neg_residual) else {
+            // Singular local Jacobian: cannot proceed. Keep the last iterate, report
+            // not-converged (see doc comment above — do not paper over this).
+            break;
+        };
+
+        state.well_bhp[well_idx] =
+            chop_bhp_update(state.well_bhp[well_idx], delta[0], options.dbhp_max_rel);
+        for (local_perf, &perf_idx) in local.perforation_indices.iter().enumerate() {
+            // No magnitude clamp on q, matching OPM's WQTotal update (W0 appendix D).
+            state.perforation_rates_m3_day[perf_idx] += delta[1 + local_perf];
+        }
+
+        iterations += 1;
+    }
+
+    FimWellInnerSolveReport {
+        well_idx,
+        converged,
+        iterations,
+        final_scaled_residual_peak,
+    }
+}
+
+/// Converges every physical well's local system, in well-index order. Same aggregate call
+/// shape as the code it will replace at the `apply_raw_update` site (plan §5 item 1) — one call
+/// covers all wells for a candidate state.
+pub(crate) fn solve_wells_locally(
+    sim: &ReservoirSimulator,
+    state: &mut FimState,
+    topology: &FimWellTopology,
+    options: &FimWellInnerSolveOptions,
+) -> Vec<FimWellInnerSolveReport> {
+    (0..topology.wells.len())
+        .map(|well_idx| solve_well_locally(sim, state, topology, well_idx, options))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::fim::assembly::FimAssemblyOptions;
     use crate::fim::assembly_ad::assemble_fim_system_ad;
-    use crate::fim::wells::build_well_topology;
+    use crate::fim::wells::{build_well_topology, well_local_block};
 
     /// W1's core agreement test: the local system's rows/columns must be bit-identical to the
     /// corresponding slice of a full global assembly — not "close", not "structurally
@@ -369,6 +528,177 @@ mod tests {
             assert_eq!(local.residual.len(), local.dim());
             assert_eq!(local.jacobian.nrows(), local.dim());
             assert_eq!(local.jacobian.ncols(), local.dim());
+        }
+    }
+
+    // --- W2: inner Newton loop tests ---
+
+    #[test]
+    fn chop_bhp_update_caps_at_dbhp_max_rel_and_floors_at_lower_limit() {
+        // Within cap: applied as-is.
+        assert!((chop_bhp_update(200.0, 10.0, 1.0) - 210.0).abs() < 1e-12);
+        // Exceeds cap (100% of |bhp|=200 -> cap=200): clamped to +200, not the raw +500.
+        assert!((chop_bhp_update(200.0, 500.0, 1.0) - 400.0).abs() < 1e-12);
+        // Negative direction, same cap logic: 200 - cap(200) = 0.0, which is then floored at
+        // BHP_LOWER_LIMIT_BAR (the floor applies here too, not just to extreme inputs).
+        assert!((chop_bhp_update(200.0, -500.0, 1.0) - BHP_LOWER_LIMIT_BAR).abs() < 1e-12);
+        // Tighter relative cap (10%).
+        assert!((chop_bhp_update(200.0, 500.0, 0.1) - 220.0).abs() < 1e-12);
+        // Floored at BHP_LOWER_LIMIT_BAR even when the chopped step would go lower.
+        assert!((chop_bhp_update(0.5, -100.0, 1.0) - BHP_LOWER_LIMIT_BAR).abs() < 1e-12);
+    }
+
+    #[test]
+    fn perforation_flow_direction_ok_matches_ressim_sign_convention() {
+        assert!(perforation_flow_direction_ok(true, -100.0));
+        assert!(perforation_flow_direction_ok(true, 0.0));
+        assert!(!perforation_flow_direction_ok(true, 100.0));
+        assert!(perforation_flow_direction_ok(false, 100.0));
+        assert!(perforation_flow_direction_ok(false, 0.0));
+        assert!(!perforation_flow_direction_ok(false, -100.0));
+    }
+
+    /// Plan §2's closed-form observation from W1, now exercised end-to-end: a BHP-controlled
+    /// well's local system has `well_constraint` (no `q` dependence) and `rate_consistency`
+    /// (linear identity in `q`, `connection_rate_generic` doesn't depend on `q`) — so once `bhp`
+    /// is at target, `q` has an exact one-shot solution. Starting from a state perturbed away
+    /// from consistency (not the already-near-consistent `FimState::from_simulator` output),
+    /// this should converge in very few iterations.
+    #[test]
+    fn bhp_controlled_well_converges_from_perturbed_state() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        for q in state.perforation_rates_m3_day.iter_mut() {
+            *q += 800.0;
+        }
+        let topology = build_well_topology(&sim);
+        let options = FimWellInnerSolveOptions::default();
+
+        for well_idx in 0..topology.wells.len() {
+            let bhp_target = physical_well_control(&sim, &topology, well_idx).bhp_target;
+            let report = solve_well_locally(&sim, &mut state, &topology, well_idx, &options);
+            assert!(
+                report.converged,
+                "well {well_idx} failed to converge: {report:?}"
+            );
+            // Empirically exactly 1 iteration (residual ~1e-16, machine epsilon) — the W1
+            // closed-form observation confirmed, not just bounded: `connection_rate_generic`
+            // doesn't depend on `q`, so once `bhp` is pinned at target the single Newton step
+            // lands exactly on the closed-form solution.
+            assert!(
+                report.iterations <= 3,
+                "well {well_idx} took {} iterations, expected the closed-form case to be fast",
+                report.iterations
+            );
+            assert!(
+                (state.well_bhp[well_idx] - bhp_target).abs() < 1e-9,
+                "well {well_idx} bhp should stay pinned at target"
+            );
+
+            // The converged local system's own residual must actually be at/under tolerance —
+            // don't just trust the report, recheck independently.
+            let local = assemble_well_local_system(&sim, &state, &topology, well_idx);
+            assert!(
+                local.residual.iter().all(|r| r.abs() < 1e-6),
+                "well {well_idx} local residual not actually small: {:?}",
+                local.residual
+            );
+        }
+    }
+
+    /// Rate-controlled (Fischer-Burmeister) well: genuinely nonlinear, unlike the BHP-controlled
+    /// case above. Converges and lands on a slack-feasible (bhp, q): either bhp is at its limit,
+    /// or the aggregate rate matches its target (within the well's own convergence tolerance).
+    #[test]
+    fn rate_controlled_well_converges_to_slack_feasible_state() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.set_injected_fluid("water").unwrap();
+        sim.add_well(0, 0, 0, 400.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_surface_rates(30.0, 20.0).unwrap();
+        sim.well_bhp_min = 50.0;
+        sim.well_bhp_max = 500.0;
+
+        let mut state = FimState::from_simulator(&sim);
+        for q in state.perforation_rates_m3_day.iter_mut() {
+            *q *= 0.3;
+        }
+        let topology = build_well_topology(&sim);
+        let options = FimWellInnerSolveOptions::default();
+
+        for well_idx in 0..topology.wells.len() {
+            let report = solve_well_locally(&sim, &mut state, &topology, well_idx, &options);
+            assert!(
+                report.converged,
+                "well {well_idx} failed to converge: {report:?}"
+            );
+
+            let block = well_local_block(&topology, &state, well_idx);
+            let control = block.control(&sim);
+            let (bhp_slack, rate_slack) = block
+                .control_slacks(&sim)
+                .expect("rate-controlled well should report slacks");
+            let bhp_scale = control.bhp_limit.abs().max(1.0);
+            let rate_scale = control.target_rate.unwrap_or(1.0).abs().max(1.0);
+            assert!(
+                bhp_slack / bhp_scale > -1e-3 || rate_slack / rate_scale > -1e-3,
+                "well {well_idx} converged to an infeasible (bhp,q): bhp_slack={bhp_slack} rate_slack={rate_slack}"
+            );
+        }
+    }
+
+    /// A zero-iteration budget can never converge (unless already exactly at the residual on
+    /// entry) — used here as a deterministic way to exercise the exhausted-budget path without
+    /// panicking, matching the plan's "deliberately infeasible case reports non-convergence"
+    /// requirement without needing a contrived physically-infeasible scenario.
+    #[test]
+    fn exhausted_budget_reports_not_converged_without_panicking() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        for q in state.perforation_rates_m3_day.iter_mut() {
+            *q += 800.0;
+        }
+        let topology = build_well_topology(&sim);
+        let options = FimWellInnerSolveOptions {
+            max_iterations: 0,
+            ..FimWellInnerSolveOptions::default()
+        };
+
+        let report = solve_well_locally(&sim, &mut state, &topology, 1, &options);
+        assert!(!report.converged);
+        assert_eq!(report.iterations, 0);
+        assert!(report.final_scaled_residual_peak.is_finite());
+    }
+
+    #[test]
+    fn solve_wells_locally_covers_every_well() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        for q in state.perforation_rates_m3_day.iter_mut() {
+            *q += 800.0;
+        }
+        let topology = build_well_topology(&sim);
+        let options = FimWellInnerSolveOptions::default();
+
+        let reports = solve_wells_locally(&sim, &mut state, &topology, &options);
+        assert_eq!(reports.len(), topology.wells.len());
+        assert!(reports.iter().all(|r| r.converged));
+        for (well_idx, report) in reports.iter().enumerate() {
+            assert_eq!(report.well_idx, well_idx);
         }
     }
 }
