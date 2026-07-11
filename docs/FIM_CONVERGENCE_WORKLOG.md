@@ -1486,3 +1486,189 @@ deferred to its own experiment (plan §7). Also corrected the "Hypothesis A" cit
 the plan's evidence section: Phase 8's original FB-crossover hypothesis found no supporting
 evidence — what survived was the well-source-dominance pattern plus Bundle N §5's controller
 pathology, now sharpened by the diagnostic's standoff mechanism.
+
+### Bundle W checkpoint W0: OPM source verification (2026-07-11, commit `2f0f284`)
+
+Full findings live as an appendix in `docs/FIM_BUNDLE_W_PLAN.md` ("Appendix: W0 OPM source
+verification"); this entry is the worklog-discipline summary with the numbers that matter for
+later checkpoints. Verified against the pinned local checkout `OPM/opm-simulators`
+(`062cb19986aa8f11cffc30351fd2fee355d0ccb4`, tag `interim_release/2024.12-4152-g062cb1998`).
+
+**Correction to prior citations**: the reservoir Newton model class was renamed upstream from
+`BlackoilModel`/`BlackoilModel_impl.hpp` (what earlier Bundle N docs cite) to
+`NonlinearSystemBlackOilReservoir`/`NonlinearSystemBlackOilReservoir_impl.hpp`, between whatever
+checkout Bundle N's session used and this one. All citations below are against the file names
+actually present in this checkout — don't trust old file-name citations without re-verifying.
+
+**Loop structure confirmed**: `WellInterface::iterateWellEquations`
+(`WellInterface_impl.hpp:532`) is called from `prepareWellBeforeAssembling`
+(`WellInterface_impl.hpp:1018`, call site `:1066`), itself invoked once per outer Newton
+iteration from `BlackoilWellModel::assemble()`, **before** `assembleWellEqWithoutIteration(dt)`
+(`BlackoilWellModel_impl.hpp:1186`) — wells converge first, then get linearized into the global
+system without further iteration that same outer step. Gated (not literally unconditional) by
+`shouldRunInnerWellIterations` (`NewtonIterationContext.hpp:95`): true while
+`globalIteration_ < max_niter_inner_well_iter_` (`MaxNewtonIterationsWithInnerWellIterations` =
+**99**, effectively always-on for realistic outer iteration counts).
+
+**Inner loop body** (`iterateWellEqWithSwitching`, `StandardWell_impl.hpp:2458` — the default
+path since `LocalWellSolveControlSwitching` defaults `true`): `do {...} while (it < max_iter)`,
+`max_iter = MaxInnerIterWells` = **50**. Control-mode switching (rate↔BHP↔THP, open↔stop) is
+checked via periodic discrete re-evaluation every 4 iterations
+(`min_its_after_switch`, `StandardWell_impl.hpp:2482`) — structurally different from ResSim's
+continuous Fischer-Burmeister complementarity row. Documented as a deliberate divergence, not
+something Bundle W ports; ResSim's FB row stays as the existing assembled equation.
+
+**Convergence test** (`StandardWellEval::getWellConvergence`, `StandardWellEval.cpp:156`): two
+*separately*-toleranced checks, correcting the "tolerance-wells=1e-4" shorthand used loosely
+elsewhere in these docs — that number is only exactly right for the flux/mass-balance rows and
+for BHP-controlled wells specifically:
+- flux rows: `ToleranceWells` = **1e-4** (relaxed to `RelaxedWellFlowTol` = **1e-3** after
+  `StrictInnerIterWells` = **40** iterations); hard fail above `MaxResidualAllowed` = **1e7**.
+- control-equation row (`checkConvergenceControlEq`, `WellConvergence.cpp:39`): tolerance
+  depends on the well's *current active control mode* — `{rates: 1e3, grup: 1e4, bhp: 1e-4,
+  thp: 1e-6}` (`StandardWellEval.cpp:211`), four orders of magnitude looser for rate control
+  than for BHP control.
+- a hard `WrongFlowDirection` sign-consistency check for pressure-controlled wells (not a
+  tolerance) — producer flux must not be negative, injector flux must not be positive.
+
+**`updateNewton` chop** (`StandardWellPrimaryVariables.cpp:262`, called every inner iteration):
+BHP capped at `DbhpMaxRel` = **1.0** (100% relative), floored at `1 bar − 1 Pa`. **This is the
+exact value the refuted Bundle N §5 BHP-chop follow-up ported verbatim** — confirms that fix was
+tested in the wrong place (the outer Newton loop) rather than built with the wrong formula; its
+correct home is the inner well loop this bundle builds. `WQTotal` (total well rate) has **no
+magnitude clamp at all**, only a post-hoc sign floor — reconfirms the 2026-07-09 finding with a
+fresh citation.
+
+**Parametrization note** (informative, doesn't change the design): OPM's `StandardWell` uses a
+*lumped* `[WQTotal, WFrac, GFrac, Bhp]` unknown set, not one rate unknown per perforation the
+way ResSim's `FimState::perforation_rates_m3_day` does. Bundle W targets ResSim's own assembled
+rows (plan §2), not OPM's exact variable choice — only the *structural* pattern (nested bounded
+Newton, converged before global assembly, invisible to the outer iteration count) transfers.
+
+**Failure policy**: non-convergent wells get `stopWell()` + `solveWellWithZeroRate(...)`
+(`ShutUnsolvableWells` = **true** default) — OPM does not silently accept an under-converged
+well state, it forces a well-defined degraded state. Flagged as an open design question for W2
+(resolved there: keep the last iterate, report not-converged, let the outer retry ladder decide
+— did not implement OPM's stop-the-well escalation, which is a larger behavior change than this
+bundle's scope).
+
+**One real correction to the standing Bundle N narrative**: the *iteration count* fed to the
+timestep controller is confirmed outer-only (`getNumIterations_`,
+`AdaptiveTimeStepping_impl.hpp:1186`, reads `total_newton_iterations` which increments once per
+call to `nonlinearIterationNewton`, `NonlinearSystemBlackOilReservoir_impl.hpp:237` — wells'
+internal iterations never separately increment it). But the outer **convergence check** is NOT
+well-blind: `NonlinearSystemBlackOilReservoir::getConvergence`
+(`NonlinearSystemBlackOilReservoir_impl.hpp:1008`) computes `report = getReservoirConvergence(...)`
+then `report += wellModel().getWellConvergence(...)` — the aggregate outer report does include a
+well term. In practice this rarely blocks anything extra (wells already converged via the inner
+loop by the time this runs), but "N1's acceptance excludes well/perforation rows entirely"
+(`docs/FIM_BUNDLE_N_DESIGN.md` §5.1) describes ResSim's `OpmAligned` simplification, not
+literally OPM's structure — this is exactly the gap plan §5 step 3 proposes closing, now backed
+by a precise citation instead of an inference.
+
+### Bundle W checkpoint W1: local well system + agreement tests (2026-07-11, commit `7509289`)
+
+New `fim/wells_inner.rs`: `assemble_well_local_system(sim, state, topology, well_idx) ->
+FimWellLocalSystem` builds one physical well's local residual (`well_constraint` row, then one
+`rate_consistency` row per perforation) and Jacobian w.r.t. `[bhp, q_perf...]`, with the
+reservoir cell state held frozen (read as input, not solved-for). Built by calling the exact
+same shared AD primitives `assembly_ad.rs`'s `add_well_residual_terms`/`add_well_jacobian_terms`
+call for these rows (`well_constraint_residual_fb_generic`,
+`well_constraint_bhp_column_and_fb_gradient`, `well_constraint_own_perforation_rate_jacobian`,
+`connection_rate_generic`, `rate_consistency_cell_bhp_jacobian`, `producer_fractions_generic`)
+— not a reimplementation. Two small `assembly_ad.rs` helpers (`well_cell_input`,
+`well_control_generic`) promoted from private to `pub(crate)` for reuse; verified zero behavior
+change via `assembly_ad` parity (10/10 unaffected).
+
+**Agreement tests** (4, all passing) directly encode the design constraint from plan §2: for a
+constructed state, the local system's rows/columns must exactly match the corresponding
+rows/columns of a full `assemble_fim_system_ad` call.
+- `local_system_matches_global_assembly_bhp_controlled` / `..._rate_controlled`: both control
+  modes, two-well fixtures mirroring `assembly_ad.rs`'s own `two_phase_bhp_controlled_wells`/
+  `two_phase_rate_controlled_wells` structural-parity fixtures.
+- `local_system_matches_global_assembly_away_from_convergence`: perforation rates perturbed
+  `+500` before comparing — deliberately not a near-zero-residual state, where a formula bug
+  could hide behind both sides evaluating to ~0.
+- A no-cross-coupling check: one perforation's `rate_consistency` row never touches another
+  perforation's `q` column, matching the global assembler's `tri.add_triplet(perf_row, q_col,
+  1.0)` (each row only ever writes its own `q_col`).
+
+Residuals compare bit-identical (`assert_eq!`). Jacobian entries needed a `1e-12` tolerance, not
+exact equality — one test failure at `local=-9.414691248821328e-16 global=0.0` before the fix
+traced to the global sparse assembler's `add_if_nonzero` dropping `|value| <= 1e-14` as an
+implicit zero, while the dense local Jacobian stores the raw computed value. Confirmed as a
+sparse-storage convention difference, not a formula divergence, by inspecting `assembly_ad.rs`'s
+`add_if_nonzero` directly before accepting the tolerance fix (not just widening the assertion
+until it passed).
+
+**Closed-form observation** (not exploited yet at W1, confirmed empirically at W2 below):
+`connection_rate_generic` takes `(bhp, cell)` and does not depend on `q` at all — the
+`rate_consistency` row's dependence on `q` is the trivial identity (`tri.add_triplet(perf_row,
+q_col, 1.0)`). For a BHP-controlled well (`well_constraint = bhp − bhp_target`, no `q`
+dependence either — exactly why `FIM-DIAG-002` measured `raw_dbhp` at exactly `0.0` every
+iteration) with frozen reservoir cells, `q = connection_rate_generic(bhp_target, cell)` is a
+one-shot closed-form evaluation, not an iterative fixed point. This reframes the `FIM-DIAG-002`
+standoff: very likely an artifact of the *coupled global iterative linear solve*'s imprecision
+on that specific row/unknown pair (fgmres-cpr/BiCGStab solving the FULL system approximately),
+not genuine nonlinear difficulty in the isolated well subsystem.
+
+Gates: `assembly_ad` parity 10/10, `fim::wells` 18/18, locked smoke 3/3, wasm build green (new
+code unreachable in production until W3 wires it in — same "kept in the tree, no-op verified"
+pattern as `trace_sink.rs`).
+
+### Bundle W checkpoint W2: inner Newton loop (2026-07-11, commit `5765f28`)
+
+`solve_well_locally`/`solve_wells_locally` (`fim/wells_inner.rs`): a bounded, chopped Newton
+loop over W1's `assemble_well_local_system`, mutating `state.well_bhp[well_idx]`/
+`state.perforation_rates_m3_day[perf_idx]` in place — same call shape as
+`relax_well_state_toward_local_consistency`, so it is a drop-in replacement at that single call
+site (`state.rs:424`) once W3 flips the flag. Defaults per W0's numbers:
+`max_iterations = 50` (`MaxInnerIterWells`), `tolerance = 1e-4` (`ToleranceWells`),
+`dbhp_max_rel = 1.0` (`DbhpMaxRel`).
+
+**`chop_bhp_update`**: OPM's exact chop formula (`raw_delta_bhp.clamp(-cap, cap)` where
+`cap = |bhp| * dbhp_max_rel`, then floored at `BHP_LOWER_LIMIT_BAR = 1.0 − 1e-5` bar) — the
+formula the refuted Bundle N follow-up ported to the wrong (outer) loop; this is its correct
+home. No magnitude clamp on `q`, matching OPM's `WQTotal` update exactly.
+
+**Convergence check reuses the exact scaling formula the global assembly's own convergence test
+uses** — a small refactor of `fim/scaling.rs` extracted `well_constraint_scale(bhp_bar,
+control_slacks)` and `perforation_flow_scale(rate_m3_day)` out of `build_equation_scaling`'s
+inline logic into standalone `pub(crate)` functions, with `build_equation_scaling` itself
+updated to call them (zero-behavior-change refactor: verified via `fim::scaling` 3/3 and
+`assembly_ad` parity 10/10 unaffected). `wells_inner.rs` calls these same two functions for its
+own scaled-residual-peak convergence check, so "inner converged" and "outer sees zero" cannot
+silently drift into two hand-matched copies of the same formula.
+
+**`perforation_flow_direction_ok`**: OPM's `WrongFlowDirection` check (W0), scoped to
+pressure-controlled (non-rate-controlled) wells, applied per-perforation since ResSim has no
+single aggregate `WQTotal` the way OPM's lumped parametrization does. A state whose residual is
+within tolerance but has the wrong sign correctly reports `converged: false`, not silently
+accepted.
+
+**Failure handling**: a singular local Jacobian (`.lu().solve()` returns `None`) or exhausted
+iteration budget both keep the last iterate and report `converged: false` — no acceptance
+widening, per the `FIM-NEWTON-005` lesson (don't paper over an inner failure by loosening what
+counts as "close enough").
+
+**10 tests, all passing — the closed-form observation from W1 confirmed empirically, not just
+in theory**: `bhp_controlled_well_converges_from_perturbed_state` starts from perforation rates
+perturbed `+800` m³/day away from consistency and converges in **exactly 1 iteration**, final
+scaled residual peak `2.3e-16`/`8.5e-16` (verified via a temporary debug print, removed before
+commit) — machine epsilon, exactly matching the "one Newton step lands on the closed-form
+solution" prediction. `rate_controlled_well_converges_to_slack_feasible_state` (genuinely
+nonlinear FB case, since the constraint row *does* depend on `q` there) converges and lands on a
+feasible `(bhp, q)` per the well's own slack tolerances. `exhausted_budget_reports_not_converged_
+without_panicking` uses a deliberate `max_iterations: 0` to exercise the give-up path
+deterministically — standing in for the plan's "deliberately infeasible case" wording, since the
+FB reformulation is specifically designed to avoid genuine physical infeasibility rather than
+produce a clean pathological test fixture.
+
+**Regression gate**: full `fim::` test suite, 277 passed / 3 failed / 20 ignored (197.53s). The
+3 failures were confirmed byte-identical *by exact test name* to the pre-existing 2026-07-07
+known failures recorded in `TODO.md` (`fim::timestep::tests::
+changing_hotspot_resets_extra_growth_cooldown_budget`, `repeated_same_hotspot_extends_growth_
+cooldown_budget`, `fim_enabled_step_advances_time_and_records_history_for_closed_system`) — not
+a new regression, verified by rerunning the full suite with output saved to a file and grepping
+the `failures:` block, not assumed from the count alone. `assembly_ad` parity 10/10, wasm build
+green.
