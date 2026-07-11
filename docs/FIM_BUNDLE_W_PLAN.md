@@ -1,6 +1,8 @@
 # Bundle W: Nested Well-Equation Solve (replace `relax_well_state_toward_local_consistency`)
 
-Status: PLANNED (2026-07-11). Registry: `FIM-BUNDLE-W` (OPEN).
+Status: **EVALUATED, NOT PROMOTED (2026-07-11)** — mechanism validated (the diagnosed well
+standoff is confirmed fixed), heavy-case gate failed for a separate, newly-exposed reason.
+Kept in the tree, default off. See §6 W4/W5 for the full result. Registry: `FIM-BUNDLE-W`.
 Prerequisite evidence: `FIM-DIAG-002` (`docs/FIM_CONVERGENCE_WORKLOG.md` "Late-window trace
 diagnostic on the 18k pathology (2026-07-11)").
 
@@ -258,30 +260,80 @@ under both flavors):
   changing acceptance decisions, not inert. This is a real behavior change worth investigating
   at W4, explicitly not evaluated here (plan's own W4 step ordering: mechanism gate on the
   *heavy* case first, bounded cases after).
-- **W4 — evaluation (end metrics only, Bundle N lesson: no per-mechanism baselining against the
-  old architecture).** Order matters — cheapest, most-diagnostic first:
-  1. **Mechanism check** (minutes): windowed `FIM-DIAG-002` rerun (`FIM_TRACE_FILE` +
-     `FIM_TRACE_SUBSTEP_START` + `FIM_MAX_SUBSTEPS`) with `OpmAligned`+W on the heavy case.
-     PASS = the `WELLTRACE` standoff signature is gone: post−(pre+raw) for the producer's q no
-     longer cancels the raw update at a persistent plateau, and `res_pf` drops below tolerance
-     within the inner-converged iterations instead of flooring. If the standoff persists, STOP
-     and re-diagnose before burning the full run.
-  2. **§5 re-run** (~22 min): full uncapped heavy case `OpmAligned`+W, exact command in §3.
-     Gates per the original Bundle N §5: substep/cut behavior in the ≤35-substep class, not
-     18k-class. Partial-credit outcomes (e.g. 100-500 substeps) are a real finding — record
-     honestly, do not promote.
-  3. **Bounded cases**: `22x22x1`/`23x23x1` `OpmAligned`+W (target: ≤ the current 12/1; watch
-     whether the unexplained ~3x-vs-Legacy gap from Bundle N §10 obs. 6 narrows).
-  4. **Physics**: fine-dt FOPT on the heavy case under the evaluated config vs OPM `3826.12`
-     (current accepted +0.56%; do not regress materially).
-  5. **Full control matrix + locked smoke + parity** on the final tree, flag off (bit-identity)
-     AND flag on under Legacy (informational — expect trajectory changes; this is the §7 input,
-     not a gate).
-- **W5 — Bundle N §5 verdict.** With W in: re-apply the original Bundle N promotion rule
-  (promote N1-N5+W as one bundle, or record precisely why not). Update `FIM-BUNDLE-N` and
-  `FIM-BUNDLE-W` registry rows either way; on promotion, annotate the superseded rows listed in
-  the `FIM-BUNDLE-N` row and delete the relax mechanism + Legacy compensators per N4's original
-  scope.
+- **W4 — DONE (2026-07-11). Mechanism confirmed fixed; heavy-case gate FAILED for a different,
+  newly-exposed reason. Do not promote as a heavy-case fix; keep the mechanism, open a new
+  diagnostic item.**
+
+  1. **Mechanism check — PASSED cleanly.** Capped run (`FIM_MAX_SUBSTEPS=1000`,
+     `FIM_NESTED_WELL_SOLVE=1` + `--opm-aligned`) then a windowed `WELLTRACE` rerun at substeps
+     980-1000 (both native `--release`, ~70s each). Inspected a stuck (`iters=20`) substep in
+     full: `res_wc`/`res_pf` are `0.0`/`~1e-16` from **iteration 1 onward** (previously floored
+     at a non-vanishing ≈5e-5–5.5e-5 per `FIM-DIAG-002`) and `q_post` is stable to 8 decimal
+     places from iteration 1 — the well subsystem is genuinely, completely converged almost
+     immediately. **The standoff `FIM-DIAG-002` diagnosed is gone.**
+  2. **§5 re-run — FAILED.** Same command, uncapped:
+     ```
+     FIM_NESTED_WELL_SOLVE=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+       fim::timestep::phase5_repro::repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture --exact
+     → accepted_substeps=18015 advanced_dt=1.000000/1.000000 linear_bad=8 nonlinear_bad=1 mixed=3
+       min_dt=1.034e-6 max_dt=0.185 last_dt=1.478e-6, wall-clock 1235.5s (~20.6 min)
+     ```
+     **Essentially unchanged from the `17,990`-substep `OpmAligned`-only baseline** (commit
+     `a362e29`) — nowhere near the `≤35` gate. **Root cause, found via the same windowed trace**:
+     with wells no longer the bottleneck, a *separate, previously-masked* reservoir-side
+     convergence plateau is now what drives `iters=20`/dt-collapse — `cnv=[6.1e-5, 6.146e-5,
+     0.0]` sits completely frozen (unchanged past the 4th significant digit) across all ~19
+     iterations of a stuck substep, only accepted via the final-iteration relaxed tier
+     (`would_accept=pv-relaxed`). Only 12 retry events across the whole 18k-substep run (all
+     `dominant=oil@430`, none well-related) — the substep explosion comes from the tiny-dt
+     accept/growth cycle (`opm-iter` 0.4 shrink alternating with `opm-max-growth` 3.0 recovery),
+     not retry failures. The final accepted state at `t=1.0` (`q≈[-3628.19, 3627.10]`) matches
+     the *original* unfixed baseline's own ending almost exactly — this looks like the same
+     class of phenomenon `docs/FIM_STATUS.md` already documents as "understood and benign" for
+     Legacy's own `water@1215` plateau (a genuine near-steady-state region colliding with strict
+     entry criteria) — consistent with, though not proven identical to, that finding: different
+     cell, different controller (CNV entry-criterion vs Appleyard-damping retry ladder), same
+     category (steady-state plateau vs. strict acceptance). **Bundle W does not touch this at
+     all** — it was never in scope (plan §5 "Explicitly NOT in Bundle W" already excludes
+     acceptance-criteria changes).
+  3. **Bounded cases — mixed, informative.** `23x23x1`: `--opm-aligned --nested-well-solve` gives
+     `12 substeps, retries=1/0/0, retry_dom=linear-bad:oil@1585` — **identical** to
+     `--opm-aligned` alone (down to the same dominant retry cell); the nested solve is a
+     genuine no-op here (this case's bottleneck was never well-related). `22x22x1`: `24`
+     substeps (vs `12` for `--opm-aligned` alone, first observed in W3's flag-on sanity check) —
+     a real regression, not yet root-caused with the same rigor as the heavy case; plausibly the
+     same "fixing wells exposes a reservoir-side plateau" story given the heavy case's pattern,
+     but not confirmed by a dedicated trace. Recorded as an open, unresolved point rather than
+     assumed.
+  4. **Physics (fine-dt FOPT) — deliberately not run.** The primary (§5) and one bounded-case
+     gate both already fail/regress decisively; per Bundle N's own §5 precedent (moved straight
+     to root-cause analysis once its gate failed decisively, not through every remaining
+     checklist step), spending the additional wall-clock on a physics-accuracy check when the
+     convergence verdict is already clear would not change the disposition. Revisit only if a
+     future fix for the reservoir-CNV plateau reopens the heavy-case gate.
+  5. **Full control matrix + locked smoke + parity — done at W3** (flag-off bit-identity). Not
+     repeated here since nothing changed the flag-off path between W3 and W4.
+
+- **W5 — Bundle N §5 verdict — NOT PROMOTED, mechanism validated and kept.** Applying the
+  original Bundle N promotion rule (`docs/FIM_BUNDLE_N_DESIGN.md` §5's own rule: end metrics
+  only, no per-mechanism partial credit) to the heavy case: **FAILS** (`18,015` vs `≤35`).
+  Exactly Bundle N's own disposition pattern repeats: the targeted mechanism is real and
+  validated (W1's agreement tests + W2's empirical 1-iteration convergence + W4's windowed
+  confirmation that the standoff it targeted is gone) but insufficient alone, because a *second*
+  independent architecture gap was masked behind the first and is now exposed. `nested_well_solve`
+  stays in the tree, default `false`, fully no-op verified (W3) — inert, not deleted, matching
+  Bundle N's own "validated building block, not promoted" precedent. `FIM-BUNDLE-N` remains
+  REWORK REQUIRED (its own §5 gate is unaffected by this — Bundle N is evaluated independently
+  of `nested_well_solve`, which defaults off).
+
+  **New open item, not Bundle W's to fix**: the reservoir-side CNV plateau at near-steady-state
+  under `OpmAligned`'s entry criterion. Recommend a fresh diagnostic pass in the same spirit as
+  `FIM-DIAG-002` (this bundle's own `WELLTRACE`/`LEDGER` tooling already captured the signature
+  once, incidentally, while investigating wells — a dedicated pass would target `cnv`/`mb`
+  evolution and the `pv-relaxed`/final-iteration-tier acceptance path directly) before proposing
+  a fix. Do not guess at a fix without that evidence — this is the same discipline that produced
+  `FIM-DIAG-002` in the first place, and the same "two blind fixes were already refused" caution
+  from Bundle N §5 applies by extension to any adjacent acceptance-criteria mechanism.
 
 ## 7. Open question deliberately deferred: Legacy adoption
 

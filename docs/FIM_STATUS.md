@@ -2,7 +2,8 @@
 
 This is the consolidated current-state summary for the Rust FIM solver.
 Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 2026-07-10; gap #3
-updated with the late-window trace diagnostic finding 2026-07-11.
+updated with the late-window trace diagnostic finding 2026-07-11; gap #3 closed out (Bundle W
+evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11.
 
 Use this file for:
 
@@ -151,31 +152,38 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    nonlinear side. Remaining unaddressed cost within the ~24x factor: nothing further scoped;
    the reuse half of the lever is closed unless a materially different invalidation scheme is
    proposed (see `FIM-BUNDLE-P`'s retry condition).
-3. **Nested well-equation solve ("Bundle W" candidate — the twice-confirmed architecture gap).**
-   Phase 8/9's "Hypothesis A" and Bundle N's §5 failure independently converge on ResSim's flat
-   well/reservoir Newton coupling as the root blocker. The natural shape (from OPM):
-   per outer Newton iteration, solve each well's tiny local system (BHP + perforation rates —
-   1-2 wells, 1 perf each on current benchmark cases) to convergence against the frozen
-   reservoir state, replacing `relax_well_state_toward_local_consistency`; check wells
-   separately at `tolerance-wells` instead of folding them into the outer criteria; keep
-   well-switching cost invisible to the timestep controller. **Diagnostic pass complete
-   (2026-07-11, `FIM-DIAG-002`, `docs/FIM_CONVERGENCE_WORKLOG.md` "Late-window trace diagnostic
-   on the 18k pathology")**: the pathology persists post-`FIM-LINEAR-011` (`17,990` substeps).
-   The stuck variable is the BHP-limited producer's perforation rate — not an oscillation in the
-   OSC-DETECT sense, but a persistent per-iteration *disagreement* between the raw Newton
-   correction and `relax_well_state_toward_local_consistency`'s independently-derived rate
-   (near-exact cancellation every iteration, so the state looks converged while the
-   `perforation_flow` residual plateaus above tolerance, burning `iters=20` every substep). BHP
-   itself is even more strongly ruled out than before (raw Newton correction is exactly `0.0`
-   every iteration for both wells). Bundle W should replace `relax_well_state_toward_local_consistency`
-   outright with a converged inner solve, not retune its blend/trust-radius constants — the
-   diagnosis is structural, not a tuning gap. **Implementation plan: `docs/FIM_BUNDLE_W_PLAN.md`
-   (2026-07-11, registry `FIM-BUNDLE-W` OPEN)** — checkpointed W0-W5, mechanism-gated via the
-   `FIM-DIAG-002` trace tooling before the full §5 re-run.
-4. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
+3. **Nested well-equation solve ("Bundle W") — COMPLETE, mechanism validated, NOT PROMOTED.**
+   Phase 8/9's "Hypothesis A" and Bundle N's §5 failure independently converged on ResSim's flat
+   well/reservoir Newton coupling as a root blocker; `FIM-DIAG-002` (2026-07-11) diagnosed the
+   exact mechanism (a persistent per-iteration disagreement between the raw Newton correction and
+   `relax_well_state_toward_local_consistency`'s independently-derived rate, not a classical
+   oscillation); `docs/FIM_BUNDLE_W_PLAN.md` (W0-W5, all complete 2026-07-11) built and evaluated
+   the fix. **Result**: the diagnosed standoff is genuinely fixed — a windowed trace on the real
+   heavy-case trajectory confirms the well residual converges to machine epsilon within one
+   iteration (was floored at a non-vanishing ~5e-5). **But the heavy-case `≤35`-substep gate
+   still fails** (`18,015` substeps, essentially unchanged from the `17,990` pre-fix baseline):
+   fixing the well side exposed a *second, previously-masked* reservoir-side CNV/MB entry-
+   criterion plateau (gap #4 below) that now drives the identical `iters=20`/dt-collapse pattern
+   for a different reason. `nested_well_solve` stays in the tree, default off, fully validated —
+   the disposition mirrors Bundle N's own (real mechanism, insufficient alone). Full result:
+   `docs/FIM_BUNDLE_W_PLAN.md` §6 W4/W5; `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle W checkpoint
+   W0-W5"; registry `FIM-BUNDLE-W`.
+4. **Reservoir-side CNV/MB entry-criterion plateau under `OpmAligned` (new, `FIM-DIAG-003`,
+   first observed 2026-07-11).** Exposed by closing gap #3: once wells stopped being the
+   bottleneck, a heavy-case substep's `cnv`/`mb` values (`≈6.1e-5`/`≈1.4e-7`) were found frozen
+   —unchanged past the 4th significant digit — across ~19 Newton iterations, only accepted via
+   the final-iteration relaxed tier. Consistent with (not proven identical to) the already-
+   documented "benign" Legacy `water@1215` plateau below — a genuine near-steady-state region
+   colliding with strict acceptance criteria, but manifesting through the `OpmAligned` CNV entry
+   criterion rather than Legacy's Appleyard-damping retry ladder. **Not yet independently
+   diagnosed** — first look only, incidental to the Bundle W trace. Needs its own dedicated
+   `WELLTRACE`/`LEDGER`-style pass (reusing `FIM-DIAG-002`'s tooling) targeting `cnv`/`mb`
+   per-iteration evolution before any fix is proposed; no guessing budget has been spent on it
+   yet, unlike gap #3's well standoff.
+5. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.
-5. **Variable substitution** (regime switching inside Newton; `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
+6. **Variable substitution** (regime switching inside Newton; `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md`
    gap #5) — deliberately excluded from Bundle N; candidate follow-on after the well-coupling
    question settles.
 

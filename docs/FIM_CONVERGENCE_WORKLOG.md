@@ -1756,3 +1756,141 @@ investigating, deliberately **not evaluated here**: the plan's own W4 ordering r
 This `22x22x1` regression (relative to `--opm-aligned` alone) is exactly the kind of finding W4
 step 3 ("bounded cases... watch whether the gap narrows") is designed to characterize honestly,
 not something to explain away here.
+
+### Bundle W checkpoint W4: evaluation — mechanism fixed, heavy-case gate failed for a different reason (2026-07-11)
+
+**Step 1, mechanism check (PASSED).** Native `--release` capped run,
+`FIM_NESTED_WELL_SOLVE=1 FIM_TRACE_FILE=<ledger> FIM_MAX_SUBSTEPS=1000` on
+`repro_water_pressure_12x12x3_opm_aligned_no_trace`: `accepted_substeps=1000
+advanced_dt=0.916822/1.000000 ... min_dt=6.309373552505448e-6 ... elapsed 67.617s`. Immediately
+notable: the pathology's `min_dt` floor (`6.3e-6`) is roughly 6x less extreme than the
+post-`FIM-LINEAR-011` baseline's `1.03e-6` and ~60x less extreme than the original
+pre-`FIM-LINEAR-011` `1.09e-7` — a hint, confirmed below, that *something* did genuinely
+improve even though the substep count did not.
+
+Followed with a windowed rerun (`FIM_TRACE_SUBSTEP_START=980`, same cap) to get full
+per-iteration `WELLTRACE` on a stuck (`iters=20`) substep (substep 997, deterministically
+reproduced — the ledger's last 5 lines matched the uncapped-cap run bit-for-bit, confirming no
+run-to-run nondeterminism). Inspected all 20 iterations in full:
+
+- `res_wc=0.000000e0` every single iteration (well-constraint row trivially satisfied, as
+  expected for a BHP-pinned well — matches `FIM-DIAG-002`'s finding that `raw_dbhp` is exactly
+  `0.0`, now doubly confirmed).
+- `res_pf` (perforation-flow row): `0.0` at iter 0, then `3.56e-12, 4.76e-16, 3.57e-16, 7.14e-16,
+  ...` for the rest — **machine epsilon from iteration 1 onward**. Previously (`FIM-DIAG-002`,
+  pre-Bundle-W) this same field floored at a non-vanishing `~5e-5`–`5.5e-5` and stayed there for
+  all 20 iterations. **This is the standoff, gone.**
+- `q_post` for the producer: `3821.179165213835` (iter 0) → `3821.1791704584202` (iter 1) →
+  `3821.1791703504177` (iter 2) → ... → `3821.179169910965` (iter 19) — stable to **8 decimal
+  places** from iteration 1 onward. The well variable itself converges almost immediately and
+  stays put.
+- `raw_dq[1]` (producer) is still a persistent, non-vanishing ~0.58 m³/day every iteration, and
+  `relax_dq_approx[1]` (the WELLTRACE field's name predates Bundle W and still reads "relax" —
+  it is arithmetically the same `post − (pre + raw)` decomposition, now attributing the *nested
+  solve's* multi-step internal convergence work rather than the old relax blend) still tracks
+  its near-exact negative. **This surface pattern looks unchanged from `FIM-DIAG-002`'s trace at
+  first glance — the numbers that actually matter (`res_pf`, `q_post`'s stability) show the
+  underlying meaning has completely changed**: before, this cancellation was two mechanisms
+  fighting to a non-converging standoff; now it's the nested solve's own internal Newton
+  iterations converging smoothly to a fixed point that the outer linear solve's raw proposal
+  simply doesn't move away from. A reminder to read the *converged quantity*, not just the
+  presence of a cancellation pattern, when judging whether a standoff is real.
+- `cnv=[6.100e-5, 6.146e-5, 0.000e0]` (water, oil, gas): **frozen** — unchanged past the 4th
+  significant digit across all 19 iterations shown (`6.100e-5`/`6.146e-5` at iter 1 through
+  `6.100e-5`/`6.146e-5` at iter 18). `mb=[1.412e-7, 1.423e-7, 0.000e0]` similarly frozen. This is
+  the reservoir-side CNV/MB entry criterion — completely unaffected by the well fix, and it is
+  what keeps `would_accept=no` for 19 straight iterations before the final-iteration relaxed
+  tier (`would_accept=pv-relaxed` at iteration 19) finally accepts.
+
+**Verdict for step 1**: the mechanism check's literal pass condition ("`res_pf` drops below
+tolerance within the inner-converged iterations instead of flooring") is unambiguously met.
+
+**Step 2, full uncapped §5 re-run (FAILED).** Same command without the cap, background,
+native `--release`:
+```
+FIM_NESTED_WELL_SOLVE=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  fim::timestep::phase5_repro::repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture --exact
+→ accepted_substeps=18015 advanced_dt=1.000000/1.000000 linear_bad=8 nonlinear_bad=1 mixed=3
+  solver_ms=1220457.88 min_dt=1.0337753842559846e-6 max_dt=0.1850314752 last_dt=1.4780226131883012e-6
+  elapsed 1235.482s (~20.6 min)
+```
+**`18,015` vs the `17,990`-substep `OpmAligned`-only baseline (commit `a362e29`) — a `25`-substep
+difference, well within this case's already-documented chaos-sensitivity to small perturbations
+(cf. `FIM-LINEAR-011`'s Legacy `32→52` shift), i.e. essentially unchanged.** Wall-clock `1235.5s`
+vs `1288.7s` — also essentially the same. **Decisively fails the `≤35` gate**, exactly as
+severely as before Bundle W.
+
+Root cause, from the same ledger: only **12 retry events** across all 18,015 substeps (`8
+linear-bad, 1 nonlinear-bad, 3 mixed`), all with `dominant=oil@430` — none well-related, and far
+too few to explain 18k substeps on their own. The substep explosion is entirely the *accepted*-
+substep dt cycle: `growth=0.400 limiter=opm-iter` (an `iters=20` substep, shrinking) alternating
+with `growth=3.000 limiter=opm-max-growth` (an `iters=2` substep, recovering) — the exact same
+alternation pattern `FIM-DIAG-002` originally found, but now driven by the reservoir CNV
+plateau confirmed above, not the well standoff. The run's final accepted state at `t=1.000000`
+(`q≈[-3628.19, 3627.10]`) matches the *original, pre-Bundle-W* baseline's own final `q` values
+closely — the two runs converge to essentially the same physical endpoint via the same
+pathological path, just for a different underlying reason at the per-iteration level.
+
+This pattern — a small residual (`cnv≈6e-5`) that won't shrink further and only clears via a
+relaxed final-iteration tier — is consistent with (though not proven identical to; different
+cell, different controller mechanism) the phenomenon `docs/FIM_STATUS.md` already documents as
+"understood and benign" for Legacy's own `water@1215` plateau: "a genuine local steady-state
+region colliding with intentionally-strict entry/zero-move acceptance gates." Bundle W's scope
+never included this — plan §5's "Explicitly NOT in Bundle W" already excludes any acceptance-
+criteria change.
+
+**Step 3, bounded cases (mixed).**
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 23x23x1 --steps 1 --dt 0.25 \
+  --diagnostic summary --no-json --opm-aligned --nested-well-solve
+→ substeps=12 retries=1/0/0 retry_dom=linear-bad:oil@1585
+```
+**Identical** to `--opm-aligned` alone (same substep count, same retry count, same dominant
+retry cell — differs only in wall-clock `outer_ms`, expected run-to-run timing noise). The
+nested solve is a genuine no-op on this case: `23x23x1`'s own bottleneck (`linear-bad:oil@1585`)
+was never well-related, so fixing wells here changes nothing, for or against.
+
+`22x22x1` (first measured in W3's flag-on sanity check, re-cited here since it's directly
+relevant to this evaluation): `24` substeps vs `12` for `--opm-aligned` alone — a real
+regression. **Not root-caused with the same rigor as the heavy case** — plausible by analogy
+(fixing wells could equally expose a reservoir-side plateau on this smaller grid) but not
+confirmed by a dedicated windowed trace. Recorded honestly as an open, unresolved data point,
+not assumed to match the heavy case's story just because the shape rhymes.
+
+**Step 4, fine-dt FOPT: deliberately not run.** With the primary gate failing decisively and one
+bounded case regressing, running the more expensive physics-accuracy check would not change the
+disposition — mirrors Bundle N §5's own precedent (moved straight to root-cause analysis once
+its gate failed decisively, rather than completing every remaining checklist item first). Revisit
+only if a future fix for the reservoir-CNV plateau reopens the heavy-case gate.
+
+**Step 5, control matrix**: already done and gated at W3 (flag-off bit-identity); nothing in W4
+touched the flag-off path, so not repeated.
+
+### Bundle W checkpoint W5: verdict — NOT PROMOTED, mechanism kept (2026-07-11)
+
+Applying the original Bundle N `docs/FIM_BUNDLE_N_DESIGN.md` §5 promotion rule (end metrics
+only, heavy-case substep/cut behavior in the `≤35` class or nothing) to the heavy case with W
+in: **FAILS** (`18,015` substeps). This is the same disposition shape as Bundle N itself: the
+targeted mechanism is real, independently validated three separate ways (W1's bit-exact
+agreement tests against the global assembly, W2's empirical 1-iteration/machine-epsilon
+convergence on synthetic perturbed states, and W4's windowed trace confirming the exact
+diagnosed standoff is gone on the real heavy-case trajectory) — but insufficient alone, because
+fixing it exposed a second, independent, previously-masked architecture gap (the reservoir CNV
+plateau) that Bundle W was never scoped to address.
+
+**Disposition**: `nested_well_solve` stays in the tree, default `false`, fully no-op verified
+(W3's control-matrix bit-identity gate). Not deleted — it is validated, correct, and the
+`getWellConvergence`-equivalent well-convergence checking it introduces is exactly the building
+block a future combined fix would still need. `FIM-BUNDLE-N`'s own registry status
+(REWORK REQUIRED) is unaffected — Bundle N is evaluated independently of this flag, which
+defaults off, so Bundle N's own heavy-case number is unchanged by this work.
+
+**New open item** (not Bundle W's to fix): the reservoir-side CNV plateau at near-steady-state
+under `OpmAligned`'s entry criterion, now clearly exposed as the heavy case's dominant remaining
+blocker. Recommend a fresh, dedicated diagnostic pass — reusing `FIM-DIAG-002`'s own
+`WELLTRACE`/`LEDGER` tooling, which already incidentally captured this signature while
+investigating wells — targeting `cnv`/`mb` per-iteration evolution and the exact conditions
+under which the final-iteration relaxed tier is needed, before proposing any fix. The same
+discipline that produced `FIM-DIAG-002` (evidence before a third guess) applies here by direct
+extension: this is effectively a *first* look at a newly-exposed mechanism, not a well-trodden
+one, so there is no guessing budget to spend carelessly.
