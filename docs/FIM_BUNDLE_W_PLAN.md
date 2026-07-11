@@ -154,12 +154,48 @@ under both flavors):
 
 ## 6. Build order (checkpoints, each no-op gated with the flag off)
 
-- **W1 — local system extraction + the agreement test.** New `fim/wells_inner.rs` (or a module
-  in `wells_ad.rs`): per-well local residual/Jacobian from the existing AD building blocks.
-  THE key unit test, directly encoding the §2 constraint: for a constructed state, the local
-  residual entries bit-match the corresponding rows of the full `assemble_fim_system_ad`
-  residual, and the local Jacobian matches the corresponding global sub-block (single-perf and
-  ≥2-perf physical well cases).
+- **W1 — DONE (2026-07-11).** `fim/wells_inner.rs`: `assemble_well_local_system(sim, state,
+  topology, well_idx) -> FimWellLocalSystem` (`residual: DVector`, `jacobian: DMatrix`, local
+  row 0 = `well_constraint`/`bhp`, rows `1..=n` = each perforation's `rate_consistency`/`q`).
+  Built by calling the exact same shared primitives `assembly_ad.rs`'s
+  `add_well_residual_terms`/`add_well_jacobian_terms` call for these rows
+  (`well_constraint_residual_fb_generic`, `well_constraint_bhp_column_and_fb_gradient`,
+  `well_constraint_own_perforation_rate_jacobian`, `connection_rate_generic`,
+  `rate_consistency_cell_bhp_jacobian`, `producer_fractions_generic`) — not a reimplementation.
+  Two small `assembly_ad.rs` helpers (`well_cell_input`, `well_control_generic`) promoted from
+  private to `pub(crate)` for reuse; zero behavior change (verified: `assembly_ad` parity 10/10
+  unaffected). Agreement tests (4, all passing) directly encode plan §2's constraint: BHP-
+  controlled and rate-controlled (Fischer-Burmeister) two-well fixtures, including a state
+  deliberately away from convergence (not just near-zero-residual, where a formula bug could
+  hide) — local residual bit-identical to the corresponding global row, local Jacobian entries
+  match the corresponding global sub-block within `1e-12` (the global sparse assembler's
+  `add_if_nonzero` drops `|value|≤1e-14` entries as implicit zeros; the dense local Jacobian
+  doesn't — a storage-convention difference, not a formula divergence, confirmed by one test
+  failure at `~9.4e-16` before the tolerance fix). A no-cross-coupling test confirms one perf's
+  `rate_consistency` row never touches another perf's `q`, matching the global assembler's
+  per-perforation `tri.add_triplet(perf_row, q_col, 1.0)`. Full no-op gate: control-flow
+  unaffected (code is unreachable until W3 wires it in — wasm build green, `assembly_ad`
+  parity 10/10, locked smoke 3/3, `fim::wells` 18/18).
+
+  **Closed-form observation surfaced while building W1** (not yet exploited — flag for W2's
+  design): `connection_rate_generic` takes `(bhp, cell)` and does *not* depend on `q` — the
+  `rate_consistency` row's dependence on `q` is the trivial identity (coefficient `1.0`,
+  confirmed in the Jacobian: `tri.add_triplet(perf_row, q_col, 1.0)`). For a BHP-controlled
+  well (`well_constraint` = pure `bhp − bhp_target`, no `q` dependence at all — exactly why
+  `FIM-DIAG-002` measured `raw_dbhp` at exactly `0.0` every iteration) with a frozen reservoir
+  cell, `q = connection_rate_generic(bhp_target, cell)` is a **one-shot closed-form
+  evaluation**, not an iterative fixed point — there is nothing for a Newton loop to actually
+  iterate on once bhp and cell state are fixed. This means the `FIM-DIAG-002` standoff (`q`'s
+  raw correction stuck at a non-vanishing plateau every iteration) was very likely an artifact
+  of the *coupled global iterative linear solve*'s imprecision on that specific row/unknown
+  pair, not genuine nonlinear difficulty in the well subsystem itself — isolating the well
+  system into its own small dense direct solve should converge it in very few iterations for
+  the BHP-controlled case (this is exactly what `FimStepStats`' `iters=20` compares against —
+  OPM's own well solves typically settle in 1-3 inner iterations, `docs/FIM_BUNDLE_N_DESIGN.md`
+  §1's "~2.5 Newton iterations/step" OPM reference target). Rate-controlled wells remain
+  genuinely nonlinear (the FB complementarity row *does* depend on `q` through the rate slack),
+  so W2 still needs a real bounded Newton loop — this observation is about why the BHP-limited
+  heavy case specifically should resolve cleanly, not a reason to special-case the code.
 - **W2 — inner Newton loop.** Damping/chop, scaled convergence, iteration bound, failure
   reporting. Unit tests: BHP-pinned trivial case converges in 1 iteration; rate-controlled FB
   case converges and lands on slack-feasible (bhp, q); a deliberately infeasible case reports

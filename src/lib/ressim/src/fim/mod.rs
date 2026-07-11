@@ -15,6 +15,7 @@ pub(crate) mod timestep;
 pub(crate) mod trace_sink;
 pub(crate) mod wells;
 pub(crate) mod wells_ad;
+pub(crate) mod wells_inner;
 
 #[cfg(test)]
 mod tests;

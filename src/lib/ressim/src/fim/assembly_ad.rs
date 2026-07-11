@@ -63,7 +63,10 @@ fn face_cell_input(
     }
 }
 
-fn well_cell_input(
+/// `pub(crate)`: reused by `fim/wells_inner.rs` (Bundle W) so the local per-well system is
+/// built from literally the same cell-input construction as the global assembler, not a
+/// re-derivation of it.
+pub(crate) fn well_cell_input(
     sim: &ReservoirSimulator,
     state: &FimState,
     cell_idx: usize,
@@ -84,7 +87,8 @@ fn add_if_nonzero(tri: &mut TriMatI<f64, usize>, row: usize, col: usize, value: 
     }
 }
 
-fn well_control_generic(
+/// `pub(crate)`: reused by `fim/wells_inner.rs` (Bundle W), same reason as `well_cell_input`.
+pub(crate) fn well_control_generic(
     control: &crate::fim::wells::PhysicalWellControl,
 ) -> WellControlValuesGeneric {
     WellControlValuesGeneric {
