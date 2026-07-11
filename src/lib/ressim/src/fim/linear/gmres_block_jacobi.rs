@@ -11,7 +11,16 @@ use super::{
 use crate::fim::scaling::EquationScaling;
 use crate::timing::PerfTimer;
 
-const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 512;
+// Coarse-factorization cost lever (2026-07-10, follow-up to `FIM-BUNDLE-P`'s P0): offline
+// comparison on 599 captured systems (heavy 432 coarse rows, bounded 529) found the explicit
+// dense inverse taken below this threshold costs ~45-90ms to build, while the BiCGStab+ILU0
+// path already used above it costs ~0.5ms — ~100-170x cheaper — with zero convergence failures
+// and residual reduction ~4e-7 (far tighter than needed) on every single captured system.
+// Lowered from 512 to 300 to move the heavy case (432 rows) and the `22x22x1` control-matrix
+// case (484 rows) onto the already-proven BiCGStab path; 300 keeps the smallest control-matrix
+// case (`gas-rate 10x10x3`, exactly 300 rows) on the dense path, untested at that size and
+// trivially cheap regardless. See `docs/FIM_BUNDLE_P_PLAN.md` for the full comparison numbers.
+const PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD: usize = 300;
 const PRESSURE_DEFECT_CORRECTION_MAX_ITERS: usize = 50;
 const PRESSURE_DEFECT_CORRECTION_REL_TOL: f64 = 1e-6;
 const FULL_ILU_ROW_LIMIT: usize = 4096;
@@ -965,7 +974,12 @@ fn build_pressure_transfer_weights(
 pub(crate) struct CprBuildTiming {
     pub(crate) weights_ms: f64,
     pub(crate) coarse_assembly_ms: f64,
-    pub(crate) coarse_factorization_ms: f64,
+    /// Split from the original single `coarse_factorization_ms` (coarse-factorization cost
+    /// lever follow-up, 2026-07-10): `factorize_pressure_ilu0` runs unconditionally alongside
+    /// `invert_pressure_block` even when the dense inverse succeeds, so the two must be
+    /// measured separately to confirm which one actually dominates before proposing a fix.
+    pub(crate) dense_inverse_ms: f64,
+    pub(crate) coarse_ilu0_ms: f64,
     pub(crate) fine_smoother_ms: f64,
     pub(crate) block_inverses_ms: f64,
 }
@@ -1243,11 +1257,13 @@ fn build_block_jacobi_preconditioner(
     }
     let coarse_assembly_ms = coarse_assembly_timer.elapsed_ms();
 
-    let coarse_factorization_timer = PerfTimer::start();
+    let dense_inverse_timer = PerfTimer::start();
     let pressure_dense_inverse = invert_pressure_block(&pressure_rows);
+    let dense_inverse_ms = dense_inverse_timer.elapsed_ms();
+    let coarse_ilu0_timer = PerfTimer::start();
     let (pressure_l_rows, pressure_u_diag, pressure_u_rows) =
         factorize_pressure_ilu0(&pressure_rows);
-    let coarse_factorization_ms = coarse_factorization_timer.elapsed_ms();
+    let coarse_ilu0_ms = coarse_ilu0_timer.elapsed_ms();
     let post_pressure_block_jacobi_experiment =
         fine_smoother_kind == CprFineSmootherKind::FullIlu0 && pressure_dense_inverse.is_none();
     let fine_smoother_timer = PerfTimer::start();
@@ -1277,7 +1293,8 @@ fn build_block_jacobi_preconditioner(
     let timing = CprBuildTiming {
         weights_ms,
         coarse_assembly_ms,
-        coarse_factorization_ms,
+        dense_inverse_ms,
+        coarse_ilu0_ms,
         fine_smoother_ms,
         block_inverses_ms,
     };
@@ -2108,6 +2125,83 @@ pub(super) fn build_preconditioner_for_lab(
     let (preconditioner, _build_timing) =
         build_block_jacobi_preconditioner(jacobian, layout, fine_smoother_kind, restriction_kind);
     CprLabPreconditionerHandle(preconditioner)
+}
+
+/// Lab-only (coarse-factorization cost lever, 2026-07-10 follow-up to `FIM-BUNDLE-P`'s P0):
+/// on the SAME coarse pressure operator `build_block_jacobi_preconditioner` already assembled
+/// for a captured system, times an explicit dense inverse (`try_inverse()`, today's production
+/// path when coarse rows are within threshold) against an LU factorization (`nalgebra`'s
+/// `.lu()`), verifies LU-based solve reproduces the inverse-based solution (correctness, not
+/// assumed), and times the existing BiCGStab+ILU0 coarse solve (today's over-threshold path)
+/// on the identical system for comparison. Reuses `build_block_jacobi_preconditioner` itself
+/// (not a parallel reimplementation) so the coarse operator is bit-identical to production.
+#[cfg(test)]
+pub(super) struct CoarseFactorizationLabResult {
+    pub(super) coarse_rows: usize,
+    pub(super) dense_inverse_ms: f64,
+    pub(super) lu_factorization_ms: f64,
+    pub(super) lu_vs_inverse_solution_diff_norm: Option<f64>,
+    pub(super) bicgstab_ms: f64,
+    pub(super) bicgstab_reduction_ratio: f64,
+}
+
+#[cfg(test)]
+pub(super) fn coarse_factorization_lab_compare(
+    jacobian: &CsMat<f64>,
+    layout: Option<FimLinearBlockLayout>,
+) -> Option<CoarseFactorizationLabResult> {
+    let (preconditioner, _build_timing) = build_block_jacobi_preconditioner(
+        jacobian,
+        layout,
+        CprFineSmootherKind::BlockIlu0,
+        CprPressureRestrictionKind::QuasiImpes,
+    );
+    let n = preconditioner.pressure_rows.len();
+    if n == 0 {
+        return None;
+    }
+
+    let mut dense = DMatrix::zeros(n, n);
+    for (row_idx, row) in preconditioner.pressure_rows.iter().enumerate() {
+        for &(col_idx, value) in row {
+            dense[(row_idx, col_idx)] = value;
+        }
+    }
+    let rhs = DVector::from_element(n, 1.0);
+
+    let inv_timer = PerfTimer::start();
+    let inverse = dense.clone().try_inverse();
+    let dense_inverse_ms = inv_timer.elapsed_ms();
+
+    let lu_timer = PerfTimer::start();
+    let lu = dense.clone().lu();
+    let lu_factorization_ms = lu_timer.elapsed_ms();
+
+    let lu_vs_inverse_solution_diff_norm = inverse.as_ref().map(|inv| {
+        let via_inverse = inv * &rhs;
+        let via_lu = lu.solve(&rhs).unwrap_or_else(|| DVector::zeros(n));
+        (via_inverse - via_lu).norm()
+    });
+
+    let bicg_tolerance = rhs.norm().max(f64::EPSILON) * PRESSURE_DEFECT_CORRECTION_REL_TOL;
+    let bicg_timer = PerfTimer::start();
+    let bicg_solution = preconditioner.solve_pressure_with_bicgstab(
+        &rhs,
+        PRESSURE_DEFECT_CORRECTION_MAX_ITERS,
+        bicg_tolerance,
+    );
+    let bicgstab_ms = bicg_timer.elapsed_ms();
+    let bicg_residual = &rhs - preconditioner.pressure_mat_vec(&bicg_solution);
+    let bicgstab_reduction_ratio = bicg_residual.norm() / rhs.norm().max(f64::EPSILON);
+
+    Some(CoarseFactorizationLabResult {
+        coarse_rows: n,
+        dense_inverse_ms,
+        lu_factorization_ms,
+        lu_vs_inverse_solution_diff_norm,
+        bicgstab_ms,
+        bicgstab_reduction_ratio,
+    })
 }
 
 /// Solves `(jacobian, rhs)` reusing a preconditioner built (possibly for a different, earlier

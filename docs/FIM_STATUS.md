@@ -83,7 +83,7 @@ Current `OpmAligned` numbers for reference (all with Legacy defaults unaffected)
 heavy `12x12x3` = 18,002 (Legacy: 32). Wall-clock under `OpmAligned` is additionally dominated
 by the per-iteration preconditioner rebuild — the independent 24x factor Bundle P addresses.
 
-## Current Baselines (re-derived 2026-07-05, commit `43c6a1d`)
+## Current Baselines (re-derived 2026-07-05, commit `43c6a1d`; heavy case superseded 2026-07-10, see below)
 
 Heavy target case:
 
@@ -92,7 +92,16 @@ node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --st
 → substeps=32 accepts=31+4+1764 retries=0/13/0 hotspot_newton_caps=7 retry_dom=nonlinear-bad:water@1215
 ```
 
-Control matrix (must stay bit-identical under any solver change not explicitly about them):
+**Superseded 2026-07-10 by `FIM-LINEAR-011`** (coarse-factorization cost lever, `PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD` `512→300`): the heavy case (432 coarse rows) moved from the explicit dense inverse onto the already-production BiCGStab+ILU0 coarse path. This is a linear-solver cost/precision change, not a nonlinear-controller change, so the substep trajectory shifted (this case is known chaos-sensitive to solver precision, cf. the `k`-sweep in Task #37):
+
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --diagnostic summary --no-json
+→ substeps=52 (new "mixed" retry class), wall-clock 36.9s→6.8s (5.4x faster)
+```
+
+Fine-dt FOPT physics gate re-checked under the new config: `3847.59` vs OPM's `3826.12` (+0.56%) — **better** than the currently-accepted bundle's own +1.50% (`3883.47`, `k=1.25`/`FIM-DAMP-004`). Full comparison and gate results: `docs/FIM_CONVERGENCE_WORKLOG.md` "Coarse-factorization cost lever (2026-07-10)"; registry row `FIM-LINEAR-011` (PROMOTED).
+
+Control matrix (must stay bit-identical under any solver change not explicitly about them; reconfirmed bit-identical under `FIM-LINEAR-011` on all 5 non-heavy cases below, including `22x22x1`, whose 484 coarse rows also crossed the new 300-row threshold):
 
 ```
 water-pressure 20x20x3 dt=0.25 → substeps=8,  retries=0/3/0
@@ -127,15 +136,20 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    See `docs/FIM_CONVERGENCE_WORKLOG.md` "Task #38 (continued)" for full numbers. **Do not reopen
    this gap without new evidence that the drift has grown or that it's blocking something else** —
    prioritize the larger architectural gaps below instead.
-2. **The 738x wall-clock gap to OPM Flow: measured (Task #41), half-addressed, half-blocked.**
+2. **The 738x wall-clock gap to OPM Flow: measured (Task #41), partially addressed, partially blocked.**
    The ~30x nonlinear factor was attacked by Bundle N (section above): mechanisms validated,
    end-to-end promotion blocked by the flat well/reservoir coupling. The ~24x per-iteration
-   factor (preconditioner rebuilt every Newton iteration = 89% of wall-clock) is untouched —
-   that is **Bundle P** (`FIM-BUNDLE-P`: OPM's `cpr-reuse-setup=4` semantics + LU-factor
-   instead of explicit dense coarse inverse), independent of Bundle N, conventional gates,
-   and now also the biggest lever for making further heavy-case experiments affordable
-   (each Bundle N confirmation run currently costs ~3-5 hours, ~90% of it preconditioner
-   rebuild).
+   factor (preconditioner rebuilt every Newton iteration = 89% of wall-clock) split into two
+   independent sub-levers: **reuse** (`FIM-BUNDLE-P`, REFUTED at P0 2026-07-10 — no fixed
+   reuse interval is failure-free, not even `k=1`) and **cheaper fresh build**
+   (`FIM-LINEAR-011`, PROMOTED 2026-07-10 — the coarse block's explicit dense inverse, not its
+   ILU0 setup, was the dominant cost; BiCGStab+ILU0, already production code above the old
+   512-row threshold, is 100-170x cheaper with zero convergence failures on 599 captured
+   systems; threshold lowered `512→300`). Net effect: heavy-case wall-clock `36.9s→6.8s`
+   (5.4x), independent of and stacking with whatever Bundle N eventually resolves on the
+   nonlinear side. Remaining unaddressed cost within the ~24x factor: nothing further scoped;
+   the reuse half of the lever is closed unless a materially different invalidation scheme is
+   proposed (see `FIM-BUNDLE-P`'s retry condition).
 3. **Nested well-equation solve ("Bundle W" candidate — the twice-confirmed architecture gap).**
    Phase 8/9's "Hypothesis A" and Bundle N's §5 failure independently converge on ResSim's flat
    well/reservoir Newton coupling as the root blocker. The natural shape (from OPM):

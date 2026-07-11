@@ -1307,3 +1307,61 @@ Consolidated retrospective + recommended sequencing written to `docs/FIM_BUNDLE_
 `TODO.md` FIM next steps refreshed to match. Bundle N's code stays behind the `OpmAligned`
 flag, default `Legacy`, fully no-op gated — inert, not deleted (its pieces are the building
 blocks the eventual OPM-shaped solver still needs) and not promoted (§5 failed).
+
+### Coarse-factorization cost lever (2026-07-10) — offline decisive, live promoted, `FIM-LINEAR-011`
+
+Follow-up to `FIM-BUNDLE-P`'s P0 (REFUTED for reuse). P0.1's build-cost breakdown was re-run
+with `coarse_factorization_ms` split into `dense_inverse_ms`/`coarse_ilu0_ms` (they were
+conflated in one timer) to confirm precisely which piece dominates: on the heavy corpus,
+`dense_inverse_ms=48.8` vs `coarse_ilu0_ms=0.12` — **400x**, confirming the dense inverse
+(`invert_pressure_block`'s `try_inverse()`) alone is the cost, not the ILU0 setup that runs
+alongside it.
+
+**Offline 3-way comparison** (new `coarse_factorization_lab_compare` in `gmres_block_jacobi.rs`,
+new `solver_lab_coarse_factorization_comparison` test; recaptured both corpora identically —
+185 bounded + 414 heavy systems, exact counts matching the original P0 run):
+
+| | dense inverse | LU factorization | BiCGStab+ILU0 |
+|---|---:|---:|---:|
+| bounded (529 coarse rows) | 90.7ms | 20.5ms (4.4x cheaper) | 0.54ms (**168x cheaper**) |
+| heavy (432 coarse rows) | 45.3ms | 10.6ms (4.3x cheaper) | 0.45ms (**101x cheaper**) |
+
+LU reproduces the inverse's solution to `~1e-10` (machine precision, exact). BiCGStab —
+already the production coarse-solve path above the 512-row threshold — converges on **every
+one of 599 captured systems with zero failures**, residual reduction ratio median `~4e-7`, max
+`~1e-6` (far tighter than Newton's own tolerance needs). BiCGStab strictly dominates LU here:
+cheaper by another ~20-25x, and already proven production code (no new solver path).
+
+**Live promotion**: `PRESSURE_DIRECT_SOLVE_ROW_THRESHOLD` lowered `512→300` (coarse rows =
+cell count post-well-elimination: heavy=432, `22x22x1`=484, `23x23x1`=529 already above 512,
+`20x20x3`x2=1200 already above; `gas-rate 10x10x3`=300 stays on dense, exactly at the new
+threshold, untested at that size but trivially cheap regardless). Gates:
+
+- `cargo test --lib -- fim::linear::`: 36/36 pass (0 changes needed — thresholds referenced
+  symbolically everywhere).
+- Locked smoke 3/3; Buckley-Leverett benchmarks 3/3.
+- Full control matrix: **bit-identical on all 5 non-heavy cases**, including `22x22x1` (newly
+  flipped from dense to BiCGStab) — `substeps=4 | accepts=4+0+0 | retries=0/2/0`, unchanged.
+- Heavy case (`--dt 1`): wall-clock `36.9s → 6.8s` (**5.4x**). Substep count/trajectory DID
+  shift (`32→52` substeps, `retries=0/13/0→0/8/7` — a new "mixed" retry classification appears
+  for the first time), consistent with this system's already-established chaotic sensitivity to
+  linear-solve perturbations (Task #37, the `k`-sweep) — the coarse solve is now approximate
+  (`~4e-7` residual) rather than exact, and this system's Newton trajectory is known to bifurcate
+  on changes this small.
+- **Fine-dt FOPT** (`--steps 16 --dt 0.0625`, the physics gate that actually matters):
+  `oil=3847.59` vs OPM's converged `3826.12` — **+0.56% drift, better than the currently-accepted
+  bundle's own +1.50%** (`3883.47`, `k=1.25`'s accepted result). The coarse-solve swap did not
+  cost accuracy; if anything the trajectory it lands on tracks OPM slightly more closely.
+
+**Verdict: PROMOTED as `FIM-LINEAR-011`.** Net: dramatic, validated per-solve cost win (100-170x
+on the coarse stage, 5.4x heavy-case wall-clock) with no physics-accuracy cost — the opposite of
+`FIM-DAMP-004`'s trade-off. The heavy-case substep-count change is not itself a regression signal
+(this system's substep counts have never been directly comparable across bundle configurations —
+`docs/FIM_STATUS.md`'s own historical trajectory note says as much); the fine-dt FOPT check is
+the metric that was actually at risk, and it improved.
+
+**Not investigated (candidate follow-ups, not required for this promotion):** whether `k=1.25`
+(tuned against the OLD dense-inverse coarse solver) is still the best value under this new
+config — the "mixed" retry class appearing for the first time is worth a first-principles look
+if a future k-resweep happens, but per the user's own 2026-07-06 guidance not to chase small
+accuracy deltas, this is deferred, not urgent.

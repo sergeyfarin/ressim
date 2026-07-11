@@ -21,8 +21,8 @@ use sprs::CsMat;
 
 use super::capture::{FimCapturedSystem, capture_dir_from_env, load_captures};
 use super::gmres_block_jacobi::{
-    self, CprFineSmootherKind, CprPressureRestrictionKind, solve_with_restriction_kind,
-    solve_with_smoother_and_restriction,
+    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
+    solve_with_restriction_kind, solve_with_smoother_and_restriction,
 };
 use super::well_schur;
 use super::{
@@ -807,7 +807,8 @@ fn solver_lab_cpr_build_cost_breakdown() {
 
     let mut weights_ms = Vec::with_capacity(systems.len());
     let mut coarse_assembly_ms = Vec::with_capacity(systems.len());
-    let mut coarse_factorization_ms = Vec::with_capacity(systems.len());
+    let mut dense_inverse_ms = Vec::with_capacity(systems.len());
+    let mut coarse_ilu0_ms = Vec::with_capacity(systems.len());
     let mut fine_smoother_ms = Vec::with_capacity(systems.len());
     let mut block_inverses_ms = Vec::with_capacity(systems.len());
     let mut build_fraction_of_total = Vec::with_capacity(systems.len());
@@ -832,7 +833,8 @@ fn solver_lab_cpr_build_cost_breakdown() {
         with_timing += 1;
         weights_ms.push(timing.weights_ms);
         coarse_assembly_ms.push(timing.coarse_assembly_ms);
-        coarse_factorization_ms.push(timing.coarse_factorization_ms);
+        dense_inverse_ms.push(timing.dense_inverse_ms);
+        coarse_ilu0_ms.push(timing.coarse_ilu0_ms);
         fine_smoother_ms.push(timing.fine_smoother_ms);
         block_inverses_ms.push(timing.block_inverses_ms);
         if report.total_time_ms > 0.0 {
@@ -861,8 +863,12 @@ fn solver_lab_cpr_build_cost_breakdown() {
         median(&mut coarse_assembly_ms)
     );
     println!(
-        "coarse_factorization_ms median={:.4}",
-        median(&mut coarse_factorization_ms)
+        "dense_inverse_ms        median={:.4}",
+        median(&mut dense_inverse_ms)
+    );
+    println!(
+        "coarse_ilu0_ms          median={:.4}",
+        median(&mut coarse_ilu0_ms)
     );
     println!(
         "fine_smoother_ms        median={:.4}",
@@ -878,6 +884,99 @@ fn solver_lab_cpr_build_cost_breakdown() {
             median(&mut build_fraction_of_total)
         );
     }
+}
+
+/// Coarse-factorization cost lever (2026-07-10 follow-up to `FIM-BUNDLE-P`'s P0, which found
+/// `dense_inverse_ms` alone — not the ILU0 setup running alongside it — is 97.5% of build cost
+/// on the heavy corpus, ~400x the coarse ILU0 factorization on the identical system). Offline
+/// 3-way comparison on both captured corpora: today's explicit dense inverse (production
+/// baseline when coarse rows are within threshold) vs. an LU factorization of the same coarse
+/// operator vs. today's BiCGStab+ILU0 coarse solve (production baseline when coarse rows are
+/// over threshold — already used by the bounded corpus, forced here on the heavy corpus too).
+/// Correctness (LU must reproduce the inverse's solution) and BiCGStab's residual reduction are
+/// both measured, not assumed — a build-time win that changes the answer is not a win.
+#[test]
+#[ignore]
+fn solver_lab_coarse_factorization_comparison() {
+    let dir = capture_dir_from_env()
+        .expect("set FIM_CAPTURE_DIR to a directory produced by a capture driver run");
+    let systems = load_captures(&dir).expect("load captured systems");
+    assert!(
+        !systems.is_empty(),
+        "no fim_capture_*.txt files in {}",
+        dir.display()
+    );
+
+    let mut coarse_rows_seen = 0usize;
+    let mut dense_inverse_ms = Vec::new();
+    let mut lu_factorization_ms = Vec::new();
+    let mut bicgstab_ms = Vec::new();
+    let mut lu_diff_norms = Vec::new();
+    let mut bicgstab_reductions = Vec::new();
+    let mut bicgstab_failures = 0usize;
+    let mut dense_inverse_unavailable = 0usize;
+
+    for system in &systems {
+        let Some((jacobian, _rhs, layout)) = reduced_system_for_lab(system) else {
+            continue;
+        };
+        let Some(result) = coarse_factorization_lab_compare(&jacobian, Some(layout)) else {
+            continue;
+        };
+        coarse_rows_seen = result.coarse_rows;
+        dense_inverse_ms.push(result.dense_inverse_ms);
+        lu_factorization_ms.push(result.lu_factorization_ms);
+        bicgstab_ms.push(result.bicgstab_ms);
+        match result.lu_vs_inverse_solution_diff_norm {
+            Some(diff) => lu_diff_norms.push(diff),
+            None => dense_inverse_unavailable += 1,
+        }
+        bicgstab_reductions.push(result.bicgstab_reduction_ratio);
+        if result.bicgstab_reduction_ratio > 1e-4 {
+            bicgstab_failures += 1;
+        }
+    }
+
+    assert!(
+        !dense_inverse_ms.is_empty(),
+        "no captured system produced a coarse-factorization comparison"
+    );
+
+    fn median(values: &mut [f64]) -> f64 {
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        values[values.len() / 2]
+    }
+    fn max_of(values: &[f64]) -> f64 {
+        values.iter().cloned().fold(0.0, f64::max)
+    }
+
+    println!(
+        "=== coarse-factorization comparison: {} systems, coarse_rows={} ===",
+        dense_inverse_ms.len(),
+        coarse_rows_seen
+    );
+    println!(
+        "dense_inverse_ms      median={:.4} (unavailable on {} systems, over threshold)",
+        median(&mut dense_inverse_ms),
+        dense_inverse_unavailable
+    );
+    println!(
+        "lu_factorization_ms   median={:.4}",
+        median(&mut lu_factorization_ms)
+    );
+    println!("bicgstab_ms           median={:.4}", median(&mut bicgstab_ms));
+    println!(
+        "lu_vs_inverse solution diff norm: max={:.3e} (n={})",
+        max_of(&lu_diff_norms),
+        lu_diff_norms.len()
+    );
+    println!(
+        "bicgstab reduction ratio: median={:.3e} max={:.3e}, failures (ratio>1e-4)={}/{}",
+        median(&mut bicgstab_reductions),
+        max_of(&bicgstab_reductions),
+        bicgstab_failures,
+        bicgstab_reductions.len()
+    );
 }
 
 /// Reduces a captured `(jacobian, rhs, layout)` triple by Schur-eliminating the well/perforation
