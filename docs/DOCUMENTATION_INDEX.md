@@ -18,7 +18,8 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` | The 95%-track-OPM policy decision and Bundle A/B/C sequencing, with 2026-07-05 status addendum |
 | `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition, with 2026-07-05 triage (4 of 6 closed) |
 | `docs/FIM_BUNDLE_N_DESIGN.md` | Bundle N (OPM nonlinear layer): design, §9 verified OPM formulas, §5.1 failed end-metric evaluation, §10 retrospective/disposition — parked behind the `OpmAligned` flag |
-| `docs/FIM_BUNDLE_P_PLAN.md` | Active plan: CPR preconditioner setup reuse (OPM `cpr-reuse-setup`), the 24x per-iteration wall-clock factor; offline-first P0 measurement, inert P1 wiring, honest non-bit-identical promotion gates |
+| `docs/FIM_BUNDLE_P_PLAN.md` | Bundle P (CPR setup reuse): REFUTED at P0 2026-07-10 (no failure-free reuse interval); P0 measurement tooling kept; superseded on the cost axis by `FIM-LINEAR-011` |
+| `docs/FIM_BUNDLE_W_PLAN.md` | Active plan: Bundle W nested well-equation solve replacing `relax_well_state_toward_local_consistency`, driven by `FIM-DIAG-002`'s standoff diagnosis; checkpoints W0-W5, mechanism-gated evaluation |
 | `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
 | `docs/FIM_CLEANUP_PLAN.md` | FIM doc/test/diagnostic cleanup sequence and ownership boundaries |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |

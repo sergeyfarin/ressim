@@ -1472,3 +1472,17 @@ reference but not a promising tuning target given this finding.
 **Scope**: read-only diagnostic, no solver-behavior change. Instrumentation kept in the tree,
 gated off by default (verified no-op above). Raw ledger/window trace files are scratch output,
 not committed.
+
+### Bundle W plan written (2026-07-11)
+
+Follow-up to the diagnostic above: full checkpointed implementation plan for the nested
+well-equation solve written to `docs/FIM_BUNDLE_W_PLAN.md`; registry row `FIM-BUNDLE-W` (OPEN)
+added. Key plan decisions, all downstream of `FIM-DIAG-002`'s finding: (1) the inner solve must
+drive the same assembled well residual rows as the global assembly (W1's bit-match agreement
+test encodes this), (2) the previously-refuted `dbhp-max-rel` chop is re-homed inside the inner
+loop where OPM actually applies it, (3) the cheap WELLTRACE mechanism gate runs before the full
+§5 re-run so a wrong design fails in minutes not hours, (4) Legacy adoption is explicitly
+deferred to its own experiment (plan §7). Also corrected the "Hypothesis A" citation history in
+the plan's evidence section: Phase 8's original FB-crossover hypothesis found no supporting
+evidence — what survived was the well-source-dominance pattern plus Bundle N §5's controller
+pathology, now sharpened by the diagnostic's standoff mechanism.

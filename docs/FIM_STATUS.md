@@ -169,7 +169,9 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    itself is even more strongly ruled out than before (raw Newton correction is exactly `0.0`
    every iteration for both wells). Bundle W should replace `relax_well_state_toward_local_consistency`
    outright with a converged inner solve, not retune its blend/trust-radius constants — the
-   diagnosis is structural, not a tuning gap.
+   diagnosis is structural, not a tuning gap. **Implementation plan: `docs/FIM_BUNDLE_W_PLAN.md`
+   (2026-07-11, registry `FIM-BUNDLE-W` OPEN)** — checkpointed W0-W5, mechanism-gated via the
+   `FIM-DIAG-002` trace tooling before the full §5 re-run.
 4. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.
