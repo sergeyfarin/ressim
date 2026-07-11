@@ -1896,9 +1896,9 @@ fn cnv_mb_from_parts(
         OPM_TOLERANCE_CNV
     };
     let mb_effective_ok = mb.iter().all(|&v| v <= mb_tol_effective);
-    let cnv_effective_ok = cnv.iter().all(|&v| {
-        v <= cnv_tol_effective || (pv_rule_relaxes && v <= OPM_TOLERANCE_CNV_RELAXED)
-    });
+    let cnv_effective_ok = cnv
+        .iter()
+        .all(|&v| v <= cnv_tol_effective || (pv_rule_relaxes && v <= OPM_TOLERANCE_CNV_RELAXED));
 
     CnvMbDiagnostics {
         cnv,
@@ -2748,12 +2748,8 @@ pub(crate) fn run_fim_timestep(
         // Bundle N checkpoints 1+3: OPM CNV/MB criteria, computed unconditionally alongside
         // the existing inf-norm acceptance (trace-only under Legacy; the sole acceptance
         // decision under `OpmAligned` — see the `converged_on_entry` branch below).
-        let opm_conv = cnv_mb_diagnostics(
-            sim,
-            &state,
-            &assembly.residual,
-            is_final_newton_iteration,
-        );
+        let opm_conv =
+            cnv_mb_diagnostics(sim, &state, &assembly.residual, is_final_newton_iteration);
         fim_trace!(
             sim,
             options.verbose,
@@ -2893,11 +2889,9 @@ pub(crate) fn run_fim_timestep(
             // unlike the Legacy path below which re-derives via a fresh residual-only
             // assembly for extra safety).
             final_update_inf_norm = 0.0;
-            let mb_value = global_material_balance_diagnostics(
-                &assembly.residual,
-                &assembly.equation_scaling,
-            )
-            .global_value;
+            let mb_value =
+                global_material_balance_diagnostics(&assembly.residual, &assembly.equation_scaling)
+                    .global_value;
             fim_trace!(
                 sim,
                 options.verbose,
@@ -3533,8 +3527,9 @@ pub(crate) fn run_fim_timestep(
                     restart_stagnation_fallback_streak,
                     iterative_failure_reason,
                 );
-                if should_enable_restart_stagnation_direct_bypass(restart_stagnation_fallback_streak)
-                {
+                if should_enable_restart_stagnation_direct_bypass(
+                    restart_stagnation_fallback_streak,
+                ) {
                     restart_stagnation_direct_bypass = true;
                 }
                 let mut fallback_options = options.linear;
@@ -3938,6 +3933,53 @@ pub(crate) fn run_fim_timestep(
             .unwrap_or(&linear_report.solution);
         let candidate = state.apply_newton_update_frozen(sim, update_to_apply, damping, &topology);
         state_update_ms += state_update_timer.elapsed_ms();
+        // Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10): per-iteration
+        // well/perforation state, window-gated so this never runs unconditionally (unlike
+        // `fim_trace!`'s own `format!()`, which does — see the trace-overhead note on the
+        // `_opm_aligned_no_trace` repro). `relax_dbhp_approx`/`relax_dq_approx` attribute
+        // `relax_well_state_toward_local_consistency`'s contribution by arithmetic
+        // (`candidate − (state + damping·update)`), which ignores `enforce_control_bounds`
+        // clamping that can also land in between — a first-order approximation, not exact.
+        #[cfg(not(target_arch = "wasm32"))]
+        if sim.fim_trace_window_active {
+            let raw_dbhp: Vec<f64> = (0..state.n_well_unknowns())
+                .map(|well_idx| damping * update_to_apply[state.well_bhp_unknown_offset(well_idx)])
+                .collect();
+            let raw_dq: Vec<f64> = (0..state.n_perforation_unknowns())
+                .map(|perf_idx| {
+                    damping * update_to_apply[state.perforation_rate_unknown_offset(perf_idx)]
+                })
+                .collect();
+            let relax_dbhp_approx: Vec<f64> = (0..state.n_well_unknowns())
+                .map(|well_idx| {
+                    candidate.well_bhp[well_idx] - (state.well_bhp[well_idx] + raw_dbhp[well_idx])
+                })
+                .collect();
+            let relax_dq_approx: Vec<f64> = (0..state.n_perforation_unknowns())
+                .map(|perf_idx| {
+                    candidate.perforation_rates_m3_day[perf_idx]
+                        - (state.perforation_rates_m3_day[perf_idx] + raw_dq[perf_idx])
+                })
+                .collect();
+            crate::fim::trace_sink::write_line(&format!(
+                "WELLTRACE iter={:>2} bhp_pre={:?} bhp_post={:?} q_pre={:?} q_post={:?} raw_dbhp={:?} raw_dq={:?} relax_dbhp_approx={:?} relax_dq_approx={:?} res_wc={:.6e} res_pf={:.6e}",
+                iteration,
+                state.well_bhp,
+                candidate.well_bhp,
+                state.perforation_rates_m3_day,
+                candidate.perforation_rates_m3_day,
+                raw_dbhp,
+                raw_dq,
+                relax_dbhp_approx,
+                relax_dq_approx,
+                residual_diagnostics
+                    .well_constraint
+                    .map_or(f64::INFINITY, |peak| peak.scaled_value),
+                residual_diagnostics
+                    .perforation_flow
+                    .map_or(f64::INFINITY, |peak| peak.scaled_value),
+            ));
+        }
         let effective_update_peak =
             scaled_applied_update_peak(&state, &candidate, &assembly.variable_scaling);
         last_effective_update_inf_norm = effective_update_peak.scaled_value;
@@ -4507,7 +4549,10 @@ mod tests {
 
         let not_final = cnv_mb_from_parts(&residual, &pv, &fvf, false);
         assert!(!not_final.pv_rule_relaxes, "100% violating PV >> 3% rule");
-        assert!(!not_final.would_accept, "CNV 0.05 > strict 1e-2, PV rule doesn't apply");
+        assert!(
+            !not_final.would_accept,
+            "CNV 0.05 > strict 1e-2, PV rule doesn't apply"
+        );
 
         let final_iter = cnv_mb_from_parts(&residual, &pv, &fvf, true);
         assert!(

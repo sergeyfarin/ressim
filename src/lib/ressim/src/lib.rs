@@ -112,6 +112,12 @@ pub struct ReservoirSimulator {
     last_solver_warning: String,
     last_fim_trace: String,
     capture_fim_trace: bool,
+    /// Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10): sticky flag set by the
+    /// native-only, env-gated `fim::trace_sink` once a substep's trial dt drops below
+    /// `FIM_TRACE_DT_BELOW` (or the substep index reaches `FIM_TRACE_SUBSTEP_START`). While
+    /// true, every `fim_trace!` line and the per-iteration `WELLTRACE` line stream to the
+    /// `FIM_TRACE_FILE` sink. Always false when `FIM_TRACE_FILE` is unset — never set on wasm.
+    fim_trace_window_active: bool,
     /// Bundle N (`docs/FIM_BUNDLE_N_DESIGN.md`): opt into the OPM-aligned nonlinear layer
     /// (per-cell update chopping instead of global-scalar damping). Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.

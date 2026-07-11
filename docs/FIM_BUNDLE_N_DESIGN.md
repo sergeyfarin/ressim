@@ -581,16 +581,26 @@ established, so future sessions don't have to reconstruct it from seven checkpoi
   cheap diagnostic pass identifies the oscillating variable — two refuted fixes is the budget
   for guessing; the third attempt must be evidence-driven.
 
-### Recommended sequencing (2026-07-10)
+### Recommended sequencing (2026-07-10, step 2 completed 2026-07-11)
 
-1. **Bundle P** (preconditioner reuse) — independent, conventionally gated, benefits Legacy and
-   `OpmAligned` alike, and cuts the cost of all future heavy-case work by ~10-20x.
-2. **Late-window trace diagnostic** on the 18k pathology (cheap after Bundle P): capped-substep
-   native run writing the full trace to a file; identify the oscillating variable.
+1. **Bundle P** (preconditioner reuse) — REFUTED at P0 2026-07-10 (`FIM-BUNDLE-P`); superseded by
+   `FIM-LINEAR-011` (coarse-factorization cost lever), which delivered the same "cheaper future
+   heavy-case work" goal via a different mechanism (~13.9x wall-clock on this exact repro).
+2. **Late-window trace diagnostic** on the 18k pathology — **DONE (2026-07-11, `FIM-DIAG-002`,
+   `docs/FIM_CONVERGENCE_WORKLOG.md` "Late-window trace diagnostic on the 18k pathology")**.
+   Pathology confirmed to persist post-`FIM-LINEAR-011` (`17,990` substeps). The stuck variable
+   is the BHP-limited producer's perforation rate: a persistent per-iteration *disagreement*
+   between the raw Newton correction and `relax_well_state_toward_local_consistency`'s
+   independently-derived rate (near-exact cancellation each iteration — not a classical
+   OSC-DETECT-style oscillation, which is why `FIM-NEWTON-006`'s widening didn't catch it). BHP
+   is ruled out even more strongly than before (raw Newton correction to BHP is exactly `0.0`,
+   every well, every iteration).
 3. **Bundle W** (nested well solve) with that evidence in hand — replaces
-   `relax_well_state_toward_local_consistency` with a per-well inner Newton against frozen
-   reservoir state; wells leave the outer convergence criteria (checked separately at
-   `tolerance-wells`, closing N1's known fidelity gap); well-switching cost becomes invisible to
-   the N3 controller, matching OPM structurally.
+   `relax_well_state_toward_local_consistency` **outright** with a per-well inner Newton against
+   frozen reservoir state (the diagnostic's finding is a structural disagreement between two
+   independently-derived rate formulas, not a blend/trust-radius tuning gap); wells leave the
+   outer convergence criteria (checked separately at `tolerance-wells`, closing N1's known
+   fidelity gap); well-switching cost becomes invisible to the N3 controller, matching OPM
+   structurally.
 4. **Re-run §5** with N1-N5 + W together; promote or revert the whole bundle per the original
    rule.

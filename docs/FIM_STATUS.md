@@ -1,7 +1,8 @@
 # FIM Status
 
 This is the consolidated current-state summary for the Rust FIM solver.
-Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 2026-07-10.
+Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 2026-07-10; gap #3
+updated with the late-window trace diagnostic finding 2026-07-11.
 
 Use this file for:
 
@@ -157,10 +158,18 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    1-2 wells, 1 perf each on current benchmark cases) to convergence against the frozen
    reservoir state, replacing `relax_well_state_toward_local_consistency`; check wells
    separately at `tolerance-wells` instead of folding them into the outer criteria; keep
-   well-switching cost invisible to the timestep controller. Before building it, spend the now
-   cheap (post-Bundle-P) diagnostic pass identifying the actual oscillating variable in the
-   18k-substep pathology — two blind fixes already refuted; a third guess without visibility is
-   not acceptable.
+   well-switching cost invisible to the timestep controller. **Diagnostic pass complete
+   (2026-07-11, `FIM-DIAG-002`, `docs/FIM_CONVERGENCE_WORKLOG.md` "Late-window trace diagnostic
+   on the 18k pathology")**: the pathology persists post-`FIM-LINEAR-011` (`17,990` substeps).
+   The stuck variable is the BHP-limited producer's perforation rate — not an oscillation in the
+   OSC-DETECT sense, but a persistent per-iteration *disagreement* between the raw Newton
+   correction and `relax_well_state_toward_local_consistency`'s independently-derived rate
+   (near-exact cancellation every iteration, so the state looks converged while the
+   `perforation_flow` residual plateaus above tolerance, burning `iters=20` every substep). BHP
+   itself is even more strongly ruled out than before (raw Newton correction is exactly `0.0`
+   every iteration for both wells). Bundle W should replace `relax_well_state_toward_local_consistency`
+   outright with a converged inner solve, not retune its blend/trust-radius constants — the
+   diagnosis is structural, not a tuning gap.
 4. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.

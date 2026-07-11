@@ -1365,3 +1365,110 @@ the metric that was actually at risk, and it improved.
 config — the "mixed" retry class appearing for the first time is worth a first-principles look
 if a future k-resweep happens, but per the user's own 2026-07-06 guidance not to chase small
 accuracy deltas, this is deferred, not urgent.
+
+### Late-window trace diagnostic on the 18k pathology (2026-07-11)
+
+Per `docs/FIM_BUNDLE_N_DESIGN.md` §10's recommended sequencing (Bundle P → this diagnostic →
+Bundle W) and `TODO.md` "FIM next steps" #2: two fixes for the heavy-case `OpmAligned`
+18,002-substep pathology were already honestly refuted (iteration-count decoupling — no-op by
+inspection; verbatim `dbhp-max-rel` BHP chop — bit-identical 18,002 rerun). Two refuted fixes is
+the guessing budget; this builds the cheap diagnostic visibility instead of a third blind guess.
+
+**Instrumentation** (`src/lib/ressim/src/fim/trace_sink.rs`, new module; wiring in
+`fim/timestep.rs`/`fim/newton.rs`): a native-only, env-gated file trace sink
+(`FIM_TRACE_FILE`), mirroring `fim/linear/capture.rs`'s pattern. `FIM_TRACE_FILE` alone gets a
+per-substep `LEDGER` line (BHP, perforation rates, iters, growth, dt) for the whole run, cheap
+enough to run unconditionally. `FIM_TRACE_DT_BELOW`/`FIM_TRACE_SUBSTEP_START` narrow full
+per-iteration tracing (every existing `fim_trace!` line, plus a new `WELLTRACE` line with
+per-iteration well/perforation state) to just the collapse window. `FIM_MAX_SUBSTEPS` overrides
+the hardcoded 100,000 cap so a windowed rerun can abort shortly after capturing the window.
+All four are no-ops when unset — verified: full control matrix (all 6 commands) bit-identical,
+locked smoke 3/3, `assembly_ad` parity 10/10, wasm build green (module compiles for wasm like
+`capture.rs` but every call site is `#[cfg(not(target_arch = "wasm32"))]`, so it's dead code
+there — confirmed harmless, same as the existing `capture.rs` precedent).
+
+**Re-baseline** (commit `9554e9f` + this no-op-verified instrumentation on top; working tree
+otherwise had only an unrelated pre-existing `docs/CASE_LIBRARY_ROADMAP.md` edit — treated as
+non-provisional since the instrumentation's no-op behavior was independently proven via the
+bit-identical control-matrix check above, not merely assumed):
+
+```
+FIM_TRACE_FILE=<path> cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  fim::timestep::phase5_repro::repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture --exact
+→ accepted_substeps=17990 advanced_dt=1.000000/1.000000 linear_bad=7 nonlinear_bad=1 mixed=1
+  min_dt=Some(1.032244883492794e-6) max_dt=Some(0.1850314752) last_dt=Some(3.5426427140716754e-6)
+  wall-clock: 1288.708s (~21.5 min)
+```
+
+**The pathology persists post-`FIM-LINEAR-011`**: `17,990` substeps (vs. the prior `18,002`,
+both catastrophically over the `≤35` gate) — the small shift is the same chaos-sensitivity to
+linear-solve precision already documented for this case (cf. Legacy's `32→52` shift under the
+same lever), not a meaningful change. Wall-clock dropped from the cleanest prior solo run's
+`298m13s` (`17893s`) to `1288.7s` — **~13.9x faster**, confirming `FIM-LINEAR-011`'s own framing
+("makes every future heavy-case experiment ~an order of magnitude cheaper") and making this kind
+of diagnostic run tractable within a session for the first time.
+
+**Windowed rerun** (`FIM_TRACE_SUBSTEP_START=25 FIM_MAX_SUBSTEPS=530`, same driver): completed
+in `40.14s` (`accepted_substeps=530`, capped as expected). The run is bit-for-bit deterministic
+across invocations — early substeps (dt, iters, bhp, q) match the uncapped re-baseline run
+exactly at the same indices — so this window is representative of the full pathology, not an
+artifact of a different trajectory.
+
+**Finding — the oscillating/stuck variable, with a mechanism, not just a name:**
+
+BHP is independently reconfirmed, more strongly than the earlier chop refutation, as not the
+culprit: `raw_dbhp=[0.0, 0.0]` for both wells, **exactly** (not merely small) on every single
+Newton iteration across every substep inspected — the well-constraint row is trivially satisfied
+every iteration because BHP is pinned at its control limit (`bhp=[500.0, 100.0]` bit-identical
+across the entire window).
+
+The actual culprit is the **producer well's perforation rate**, and the mechanism is a
+**persistent disagreement between the raw Newton correction and
+`relax_well_state_toward_local_consistency`** ([state.rs:307](../src/lib/ressim/src/fim/state.rs:307)),
+not a classical back-and-forth oscillation. Inspected 5 independent `iters=20` substeps (27, 30,
+32, 33, 35) via the new `WELLTRACE` line — same signature every time:
+
+- The raw (pre-relax) Newton correction to the producer's perforation rate (`raw_dq[1]`)
+  settles into a **non-vanishing plateau** within the first few iterations and stays there
+  through iteration 18+ (e.g. substep 27: settles at `≈+0.581 m³/day`; substep 30: `≈+0.405`;
+  substep 32: `≈+0.641`; substep 33: `≈+0.278`; substep 35: `≈+0.381` — different per substep,
+  constant *within* a substep).
+- `relax_well_state_toward_local_consistency`'s contribution (`relax_dq_approx`, computed as
+  `candidate − (state + damping·raw_update)`) tracks the **near-exact negative** of that same
+  plateau every iteration (e.g. substep 27: `≈−0.581`), so the two nearly cancel — net movement
+  per iteration is tiny, which is why `q` and the reservoir-side CNV/MB both *look* converged
+  (flat) from iteration ~2 onward.
+- Despite that, the `perforation_flow` residual family (`res_pf`) never drops to zero — it
+  plateaus at a small-but-nonzero floor that scales linearly with the same `raw_dq[1]` plateau
+  (ratio `≈8.63e-5`, consistent across all 5 substeps to 3 significant figures — i.e. `res_pf`
+  and `raw_dq[1]` are literally measuring the same underlying disagreement).
+- The injector well is unaffected throughout (`raw_dq[0]`/`relax_dq_approx[0]` both stay at
+  `~1e-7`/`~1e-12`, negligible) — this is specific to the BHP-limited producer.
+
+Mechanistic read: `relax_well_state_toward_local_consistency` recomputes its own "consistent"
+perforation rate from the current candidate reservoir state each iteration
+(`connection_rate_for_bhp`) and blends toward it — a rate formula independent of, and evidently
+not agreeing with, the AD-linearized Jacobian's implicit perforation-flow equation, by a
+persistent offset. Every iteration: the raw Newton step corrects toward *its* zero, relax
+immediately pulls back toward a *different* implied value by nearly the same magnitude, and the
+next iteration's Newton correction (computed against the post-relax state) reproduces the same
+disagreement — a standoff, not a convergence, and not a 2-period oscillation either (`res_pf`'s
+own iteration-to-iteration delta stays small throughout, which is precisely why `FIM-NEWTON-006`'s
+OSC-DETECT widening — tuned to the classical `d1≈0, d2≥0.2` signature — doesn't and structurally
+can't see this: the large raw/relax components cancel before they ever show up as a residual
+swing). This is consistent with, and sharpens, the original §5 finding ("a well/perforation
+residual that does NOT shrink with dt forces `iters=20`") — the missing piece is *why* it doesn't
+shrink: not the perforation-rate unknown itself (which converges fine on its own, per the
+raw-Newton-only trajectory), but its forced disagreement with `relax_well_state_toward_local_consistency`.
+
+**Consequence for Bundle W**: the nested well-equation solve (`docs/FIM_STATUS.md` gap #3)
+should replace `relax_well_state_toward_local_consistency` outright with a converged per-well
+inner solve (matching OPM's `iterateWellEquations`), rather than trying to patch the relax
+step's blend factor or trust radius — the diagnosis is a structural disagreement between two
+independently-derived rate formulas, not a tuning parameter. `WELL_RATE_MANIFOLD_BLEND`/
+`WELL_RATE_TRUST_RADIUS_*` in `state.rs` are the relax step's current constants, kept for
+reference but not a promising tuning target given this finding.
+
+**Scope**: read-only diagnostic, no solver-behavior change. Instrumentation kept in the tree,
+gated off by default (verified no-op above). Raw ledger/window trace files are scratch output,
+not committed.

@@ -941,6 +941,14 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 
 impl ReservoirSimulator {
     pub(crate) fn append_fim_trace_line(&mut self, line: &str) {
+        // Late-window trace diagnostic: runs on the production `step()` path too (independent
+        // of `capture_fim_trace`) so a native no-trace run still gets full per-iteration
+        // visibility once the dt-collapse window activates. No-op when `FIM_TRACE_FILE` is
+        // unset — `fim_trace_window_active` is then always false.
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.fim_trace_window_active {
+            crate::fim::trace_sink::write_line(line);
+        }
         if !self.capture_fim_trace {
             return;
         }
@@ -957,6 +965,14 @@ impl ReservoirSimulator {
     fn step_internal_fim_impl(&mut self, target_dt_days: f64, verbose: bool) {
         let mut time_stepped = 0.0;
         const MAX_SUBSTEPS: u32 = 100_000;
+        // Late-window trace diagnostic: `FIM_MAX_SUBSTEPS` lets a windowed rerun abort shortly
+        // after the trace window is captured instead of running to completion. Unset (the
+        // common/production case) falls back to the same `MAX_SUBSTEPS` constant as before.
+        #[cfg(not(target_arch = "wasm32"))]
+        let max_substeps =
+            crate::fim::trace_sink::max_substeps_override_from_env().unwrap_or(MAX_SUBSTEPS);
+        #[cfg(target_arch = "wasm32")]
+        let max_substeps = MAX_SUBSTEPS;
         const MAX_NEWTON_RETRIES_PER_SUBSTEP: u32 = 16;
         const MAX_GROWTH: f64 = 3.0;
         const TARGET_MAX_SAT_CHANGE: f64 = 0.2;
@@ -1020,7 +1036,7 @@ impl ReservoirSimulator {
         // its output is only ever read on the Legacy path.
         let mut opm_pid_errors: [f64; 3] = [OPM_TIME_STEP_CONTROL_TOLERANCE; 3];
 
-        while time_stepped < target_dt_days && substeps < MAX_SUBSTEPS {
+        while time_stepped < target_dt_days && substeps < max_substeps {
             let remaining_dt = target_dt_days - time_stepped;
             let proposed_trial = proposed_trial_dt_days(
                 self.time_days,
@@ -1077,6 +1093,21 @@ impl ReservoirSimulator {
             let previous_state = FimState::from_simulator(self);
 
             loop {
+                // Late-window trace diagnostic: sticky activation, checked every pass
+                // (initial trial + every retry) since `trial_dt` shrinks across retries.
+                // `should_activate_window` short-circuits on `sink_enabled()` first, so this
+                // is a single cheap no-op check when `FIM_TRACE_FILE` is unset.
+                #[cfg(not(target_arch = "wasm32"))]
+                if !self.fim_trace_window_active
+                    && crate::fim::trace_sink::should_activate_window(trial_dt, substeps)
+                {
+                    self.fim_trace_window_active = true;
+                    crate::fim::trace_sink::write_line(&format!(
+                        "WINDOW-START substep={} t={:.6} trial_dt={:.9}",
+                        substeps, self.time_days, trial_dt
+                    ));
+                }
+
                 fim_trace!(
                     self,
                     verbose,
@@ -1247,6 +1278,28 @@ impl ReservoirSimulator {
                         linear_solve_ms: report.linear_solve_time_ms,
                         linear_preconditioner_ms: report.linear_preconditioner_build_time_ms,
                     });
+
+                    // Late-window trace diagnostic: one ledger line per accepted substep,
+                    // always on when the sink is enabled (not just inside the trace window) —
+                    // substep-scale BHP/perforation-rate oscillation may already be visible
+                    // here without needing the finer per-iteration WELLTRACE lines.
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if crate::fim::trace_sink::sink_enabled() {
+                        crate::fim::trace_sink::write_line(&format!(
+                            "LEDGER accept substep={} t={:.6} dt={:.9} iters={} retry_count={} growth={:.3} limiter={} res={:.6e} mb={:.6e} bhp={:?} q={:?}",
+                            substeps,
+                            self.time_days + trial_dt,
+                            trial_dt,
+                            report.newton_iterations,
+                            retry_count,
+                            adjusted_growth_decision.factor,
+                            adjusted_growth_decision.limiter,
+                            report.final_residual_inf_norm,
+                            report.final_material_balance_inf_norm,
+                            report.accepted_state.well_bhp,
+                            report.accepted_state.perforation_rates_m3_day,
+                        ));
+                    }
 
                     // Basin-escape diagnostic probe: only on real, clean,
                     // materially-changed accepts (no retries, no replay) and
@@ -1467,6 +1520,28 @@ impl ReservoirSimulator {
                         ),
                         dominant_row: Some(failure_diagnostics.dominant_row),
                     });
+
+                    // Late-window trace diagnostic: mirror the accept-side ledger line for
+                    // retries, using the last attempted (unconverged) candidate state — still
+                    // useful for spotting BHP/perforation-rate oscillation on failed attempts.
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if crate::fim::trace_sink::sink_enabled() {
+                        crate::fim::trace_sink::write_line(&format!(
+                            "LEDGER retry substep={} t={:.6} dt={:.9} iters={} retry_count={} retry_class={} dominant={}@{} res={:.6e} mb={:.6e} bhp={:?} q={:?}",
+                            substeps,
+                            self.time_days,
+                            trial_dt,
+                            report.newton_iterations,
+                            retry_count,
+                            failure_diagnostics.class.label(),
+                            failure_diagnostics.dominant_family_label,
+                            failure_diagnostics.dominant_row,
+                            report.final_residual_inf_norm,
+                            report.final_material_balance_inf_norm,
+                            report.accepted_state.well_bhp,
+                            report.accepted_state.perforation_rates_m3_day,
+                        ));
+                    }
                     match failure_diagnostics.class {
                         FimRetryFailureClass::LinearBad => linear_bad_retries += 1,
                         FimRetryFailureClass::NonlinearBad => nonlinear_bad_retries += 1,
@@ -1597,8 +1672,8 @@ impl ReservoirSimulator {
             }
         }
 
-        if substeps == MAX_SUBSTEPS && time_stepped < target_dt_days {
-            fim_trace!(self, verbose, "  ABORT: hit MAX_SUBSTEPS={}", MAX_SUBSTEPS);
+        if substeps == max_substeps && time_stepped < target_dt_days {
+            fim_trace!(self, verbose, "  ABORT: hit MAX_SUBSTEPS={}", max_substeps);
             self.last_solver_warning = format!(
                 "FIM adaptive timestep hit MAX_SUBSTEPS before completing requested dt (advanced {:.6} of {:.6} days)",
                 time_stepped, target_dt_days
@@ -1713,8 +1788,8 @@ mod tests {
         OPM_SOLVER_GROWTH_FACTOR_AFTER_RESTART, OPM_SOLVER_MAX_GROWTH,
         OPM_TIME_STEP_CONTROL_TOLERANCE, accelerated_retry_factor_for_repeated_hotspot_failure,
         accepted_step_growth_factor, next_gas_outer_step_trial_carryover,
-        opm_accepted_step_growth_decision, opm_iteration_count_dt, opm_pid_dt,
-        opm_relative_change, proposed_trial_dt_days, replayable_unchanged_accepts_after_retry,
+        opm_accepted_step_growth_decision, opm_iteration_count_dt, opm_pid_dt, opm_relative_change,
+        proposed_trial_dt_days, replayable_unchanged_accepts_after_retry,
         replayable_unchanged_cooldown_accepts, replayable_unchanged_hotspot_plateau_accepts,
         seed_gas_outer_step_trial_carryover,
     };
@@ -1748,7 +1823,12 @@ mod tests {
         sim
     }
 
-    fn cell(pressure_bar: f64, sw: f64, hydrocarbon_var: f64, regime: HydrocarbonState) -> FimCellState {
+    fn cell(
+        pressure_bar: f64,
+        sw: f64,
+        hydrocarbon_var: f64,
+        regime: HydrocarbonState,
+    ) -> FimCellState {
         FimCellState {
             pressure_bar,
             sw,
@@ -1802,7 +1882,8 @@ mod tests {
     fn opm_pid_dt_uses_full_formula_below_tolerance_with_nonzero_history() {
         // e2=0.05 <= tol=0.1, all errors nonzero -> full PID formula, not the shrink or max branch.
         let dt = opm_pid_dt(1.0, [0.05, 0.05, 0.05]);
-        let expected = 1.0 * (0.05_f64 / 0.05).powf(0.075)
+        let expected = 1.0
+            * (0.05_f64 / 0.05).powf(0.075)
             * (0.1_f64 / 0.05).powf(0.175)
             * (0.05_f64 * 0.05 / (0.05 * 0.05)).powf(0.01);
         assert!((dt - expected).abs() < 1e-9);
@@ -2785,6 +2866,32 @@ mod phase5_repro {
     /// `step()` path (`capture_fim_trace=false`) and reads the compact `FimStepStats` summary
     /// instead of the full text trace. Run with:
     /// `cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture`
+    ///
+    /// Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10, `fim::trace_sink`):
+    /// this same driver is also the vehicle for both diagnostic passes, still on the
+    /// production `step()` path — no code path change, only env vars:
+    ///
+    /// ```text
+    /// # Re-baseline + per-substep ledger (background; uncapped)
+    /// FIM_TRACE_FILE=/path/to/ledger.log \
+    /// cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    ///   repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture
+    ///
+    /// # Windowed deep-trace rerun once the ledger shows where dt collapses (cheap, capped)
+    /// FIM_TRACE_FILE=/path/to/window.log FIM_TRACE_DT_BELOW=1e-3 \
+    /// FIM_MAX_SUBSTEPS=<onset_substep + ~500> \
+    /// cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    ///   repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture
+    /// ```
+    ///
+    /// `FIM_TRACE_FILE` alone gets one `LEDGER` line per accepted substep/retry (BHP,
+    /// perforation rates, iters, growth) for the whole run. Adding `FIM_TRACE_DT_BELOW`
+    /// (days) additionally activates full per-iteration tracing — every existing `fim_trace!`
+    /// line plus `WELLTRACE` (per-iteration well/perforation state) — once a trial dt drops
+    /// below the threshold; `FIM_TRACE_SUBSTEP_START=<n>` is the substep-indexed alternative
+    /// once the onset substep is already known. `FIM_MAX_SUBSTEPS` overrides the hardcoded
+    /// 100,000 cap so a windowed rerun can abort shortly after the window instead of running
+    /// to completion. All four are no-ops when unset (see `fim::trace_sink`).
     #[test]
     #[ignore]
     fn repro_water_pressure_12x12x3_opm_aligned_no_trace() {
@@ -2817,7 +2924,10 @@ mod phase5_repro {
         let start = Instant::now();
         sim.step(dt_days);
         let elapsed = start.elapsed();
-        println!("native step (no trace) elapsed: {:.3}s", elapsed.as_secs_f64());
+        println!(
+            "native step (no trace) elapsed: {:.3}s",
+            elapsed.as_secs_f64()
+        );
         if let Some(stats) = sim.last_fim_step_stats_ref() {
             println!(
                 "accepted_substeps={} advanced_dt={:.6}/{:.6} linear_bad={} nonlinear_bad={} mixed={} solver_ms={:?} min_dt={:?} max_dt={:?} last_dt={:?}",
