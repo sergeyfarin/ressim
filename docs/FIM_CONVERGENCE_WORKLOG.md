@@ -1672,3 +1672,87 @@ cooldown_budget`, `fim_enabled_step_advances_time_and_records_history_for_closed
 a new regression, verified by rerunning the full suite with output saved to a file and grepping
 the `failures:` block, not assumed from the count alone. `assembly_ad` parity 10/10, wasm build
 green.
+
+### Bundle W checkpoint W3: flag wiring + no-op gates (2026-07-11)
+
+**`state.rs`**: `apply_raw_update`'s last parameter changed from `relax_well_state: bool` to a
+new `WellStateUpdateMode` enum (`None`/`Relax`/`NestedSolve`), matched in a 3-way `match` at the
+single call site where well post-processing happens (right after the raw Newton update and
+`enforce_control_bounds`). `NestedSolve` calls `wells_inner::solve_wells_locally` then
+`enforce_control_bounds` again, mirroring `Relax`'s existing shape exactly. The only other
+caller (`apply_newton_update`, `#[cfg(test)]`) passes `None`, and one existing test
+(`apply_newton_update_frozen_limits_well_overshoot_toward_local_consistency`, which specifically
+tests the Legacy relax trust-radius behavior) was updated to pass `Relax` explicitly so it keeps
+testing what it always tested.
+
+**`newton.rs`**: `FimNewtonOptions` gained `nested_well_solve: bool` (default `false` in the
+`Default` impl — the two existing literal-construction sites both already use
+`..FimNewtonOptions::default()`, so neither needed updating). The single
+`apply_newton_update_frozen` call site picks `NestedSolve` vs `Relax` based on the flag,
+independent of `nonlinear_flavor` (plan §5: "an independent flag... evaluable under both
+flavors" — confirmed live by the flag-on sanity check below, which ran `--nested-well-solve`
+under *Legacy*, not just `OpmAligned`).
+
+Plan §5 item 3 (the outer-criteria addition): the `converged_on_entry` computation's
+`opm_aligned` branch gained a `wells_ok` term —
+```rust
+let wells_ok = !opm_aligned
+    || !options.nested_well_solve
+    || wells_inner::all_wells_converged(sim, &state, &topology, &FimWellInnerSolveOptions::default());
+let converged_on_entry = if opm_aligned {
+    iteration >= OPM_NEWTON_MIN_ITERATION_INDEX && opm_conv.would_accept && wells_ok
+} else { ... };
+```
+`wells_ok` is trivially `true` whenever either flag is off, so this is provably a no-op unless
+*both* `opm_aligned` and `nested_well_solve` are set — verified by the control-matrix bit-
+identity gate below, not just by inspection. This was the only acceptance decision site in the
+whole file that reads `opm_conv.would_accept` under `opm_aligned` (confirmed by grep before
+writing the change — a single site, not the many-return-points shape some other Bundle N
+mechanisms have had to thread through).
+
+**`wells_inner.rs`**: refactored the per-iteration scaled-residual-peak + flow-direction check
+out of `solve_well_locally`'s loop body into a standalone `well_convergence_status` helper
+(takes an already-assembled `FimWellLocalSystem`, returns `{converged, scaled_residual_peak}`).
+Two new public functions built on it: `well_is_converged` (one well, read-only — assembles
+once, checks, returns) and `all_wells_converged` (all wells, `.all(...)`) — together these are
+the `getWellConvergence` analog from W0 appendix G, a pure *check*, not a solve. Two new tests:
+`well_is_converged_matches_solve_result_before_and_after` (asserts the read-only check agrees
+with `solve_well_locally`'s own verdict, both before solving on a perturbed state and after) and
+`all_wells_converged_requires_every_well` (converges only one of two wells, confirms the
+aggregate check still fails). `fim::wells_inner` now 12/12.
+
+**Diagnostic/API surface** (mirrors the existing `fim_opm_aligned_nonlinear`/
+`setFimOpmAlignedNonlinear`/`--opm-aligned` triple exactly): `ReservoirSimulator.fim_nested_well_solve: bool`
+field (`lib.rs`), initialized `false` in the constructor (`frontend.rs`), `setFimNestedWellSolve`
+wasm setter, threaded into `newton_options.nested_well_solve` in `timestep.rs`'s
+`step_internal_fim_impl`, `--nested-well-solve` CLI flag in `scripts/fim-wasm-diagnostic.mjs`
+(help text + parsing + `sim.setFimNestedWellSolve(true)` call, alongside the existing
+`--opm-aligned` wiring). The native `repro_water_pressure_12x12x3_opm_aligned_no_trace` driver
+(the exact `FIM-DIAG-002` re-baseline vehicle) gained a `FIM_NESTED_WELL_SOLVE` env-var toggle
+so it doubles as the W4 §5 re-run vehicle without a new test function.
+
+**No-op gate** (flag off): full `fim::` suite `279 passed / 3 failed / 20 ignored` (192.93s) —
+the 3 failures are the identical pre-existing 2026-07-07 names (confirmed by grepping the
+`failures:` block, not inferred from count), `+2` from this checkpoint's own new tests vs W2's
+277. Full 6-command control matrix, rebuilt wasm, bit-identical to documented baselines
+including the heavy Legacy case (`substeps=52 accepts=51+3+2060 retries=0/8/7
+retry_dom=nonlinear-bad:water@1215` — exact match). Wasm build green (`bash scripts/build-wasm.sh`,
+only the pre-existing harmless `dim()`-never-used warning).
+
+**Flag-on sanity check** (informational, not a W4 gate — just confirms the wiring is live code,
+not dead): `node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 22x22x1 --steps 1
+--dt 0.25 --diagnostic summary --no-json --nested-well-solve` (Legacy flavor) lands on the same
+coarse substep/retry counts as the flag-off baseline (`4 substeps, retries=0/2/0`) but with
+visibly different per-substep Newton iteration counts (`n10,n9,n8,n6` vs the baseline's
+`n13,n9,n7,n7`) — a genuinely different trajectory that happens to match on the coarse metric,
+not a silent no-op. Adding `--opm-aligned` on top of `--nested-well-solve` on the same case
+changes the outcome much more visibly: `24` substeps (vs `12` for `--opm-aligned` alone,
+previously recorded), a new dominant retry class (`linear-bad:oil@1450`, previously
+`nonlinear-bad`), and a much lower minimum dt (`2.813e-5` vs whatever `--opm-aligned` alone
+reached). This confirms the new `wells_ok` outer-criteria gate is genuinely firing and changing
+acceptance decisions under the combined flags — a real, substantial behavior change worth
+investigating, deliberately **not evaluated here**: the plan's own W4 ordering runs the cheap
+`FIM-DIAG-002` mechanism gate on the *heavy* case first, bounded cases only after that passes.
+This `22x22x1` regression (relative to `--opm-aligned` alone) is exactly the kind of finding W4
+step 3 ("bounded cases... watch whether the gap narrows") is designed to characterize honestly,
+not something to explain away here.

@@ -6,6 +6,19 @@ use crate::fim::wells::{
     build_well_topology, perforation_local_block, physical_well_control, well_local_block,
 };
 
+/// Which well-state post-processing `apply_raw_update` applies after the raw Newton update.
+/// `docs/FIM_BUNDLE_W_PLAN.md` §5 item 1: Bundle W's `NestedSolve` replaces `Relax` as a
+/// drop-in at the single call site (`apply_newton_update_frozen`), flag-gated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WellStateUpdateMode {
+    /// No well-state post-processing (test-only path, `apply_newton_update`).
+    None,
+    /// Legacy: `relax_well_state_toward_local_consistency` (blend + trust radius).
+    Relax,
+    /// Bundle W: converged per-well inner Newton solve (`fim/wells_inner.rs`).
+    NestedSolve,
+}
+
 const WELL_BHP_MANIFOLD_BLEND: f64 = 0.9;
 const WELL_BHP_TRUST_RADIUS_BAR: f64 = 25.0;
 const WELL_RATE_MANIFOLD_BLEND: f64 = 0.75;
@@ -370,7 +383,8 @@ impl FimState {
         damping: f64,
     ) -> Self {
         let topology = build_well_topology(sim);
-        let mut next = self.apply_raw_update(sim, update, damping, &topology, false);
+        let mut next =
+            self.apply_raw_update(sim, update, damping, &topology, WellStateUpdateMode::None);
         next.classify_regimes(sim);
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
@@ -386,8 +400,9 @@ impl FimState {
         update: &DVector<f64>,
         damping: f64,
         topology: &crate::fim::wells::FimWellTopology,
+        well_update_mode: WellStateUpdateMode,
     ) -> Self {
-        self.apply_raw_update(sim, update, damping, topology, true)
+        self.apply_raw_update(sim, update, damping, topology, well_update_mode)
     }
 
     fn apply_raw_update(
@@ -396,7 +411,7 @@ impl FimState {
         update: &DVector<f64>,
         damping: f64,
         topology: &crate::fim::wells::FimWellTopology,
-        relax_well_state: bool,
+        well_update_mode: WellStateUpdateMode,
     ) -> Self {
         let mut next = self.clone();
 
@@ -421,9 +436,21 @@ impl FimState {
             next.enforce_cell_bounds(sim, idx);
         }
         next.enforce_control_bounds(sim, topology);
-        if relax_well_state {
-            next.relax_well_state_toward_local_consistency(sim, topology);
-            next.enforce_control_bounds(sim, topology);
+        match well_update_mode {
+            WellStateUpdateMode::None => {}
+            WellStateUpdateMode::Relax => {
+                next.relax_well_state_toward_local_consistency(sim, topology);
+                next.enforce_control_bounds(sim, topology);
+            }
+            WellStateUpdateMode::NestedSolve => {
+                crate::fim::wells_inner::solve_wells_locally(
+                    sim,
+                    &mut next,
+                    topology,
+                    &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
+                );
+                next.enforce_control_bounds(sim, topology);
+            }
         }
 
         next
@@ -725,7 +752,13 @@ mod tests {
         update[state.well_bhp_unknown_offset(0)] = 400.0;
         update[state.perforation_rate_unknown_offset(0)] = 100_000.0;
 
-        let updated = state.apply_newton_update_frozen(&sim, &update, 1.0, &topology);
+        let updated = state.apply_newton_update_frozen(
+            &sim,
+            &update,
+            1.0,
+            &topology,
+            WellStateUpdateMode::Relax,
+        );
         let consistent_q = perforation_local_block(&topology, &updated, 0)
             .connection_rate_for_bhp(&sim, updated.well_bhp[0])
             .unwrap();

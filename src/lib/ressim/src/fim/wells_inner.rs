@@ -251,6 +251,47 @@ fn well_constraint_scale_for(
     crate::fim::scaling::well_constraint_scale(state.well_bhp[well_idx], control_slacks)
 }
 
+/// One well's scaled-residual-peak + flow-direction convergence status at its *current* local
+/// system — the single formula shared by `solve_well_locally`'s per-iteration loop check and
+/// the standalone `well_is_converged`/`all_wells_converged` outer-criteria check (plan §5 item
+/// 3: "inner converged" and "outer sees zero" must be the same statement, not two hand-matched
+/// copies of the same test).
+struct FimWellConvergenceStatus {
+    converged: bool,
+    scaled_residual_peak: f64,
+}
+
+fn well_convergence_status(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    well_idx: usize,
+    control_real: &crate::fim::wells::PhysicalWellControl,
+    local: &FimWellLocalSystem,
+    options: &FimWellInnerSolveOptions,
+) -> FimWellConvergenceStatus {
+    let injector = topology.wells[well_idx].injector;
+    let pressure_controlled = !control_real.rate_controlled;
+
+    let well_scale = well_constraint_scale_for(sim, state, topology, well_idx, control_real);
+    let mut scaled_peak = local.residual[0].abs() / well_scale;
+    for (local_perf, &perf_idx) in local.perforation_indices.iter().enumerate() {
+        let perf_scale =
+            crate::fim::scaling::perforation_flow_scale(state.perforation_rates_m3_day[perf_idx]);
+        scaled_peak = scaled_peak.max(local.residual[1 + local_perf].abs() / perf_scale);
+    }
+
+    let direction_ok = !pressure_controlled
+        || local.perforation_indices.iter().all(|&perf_idx| {
+            perforation_flow_direction_ok(injector, state.perforation_rates_m3_day[perf_idx])
+        });
+
+    FimWellConvergenceStatus {
+        converged: scaled_peak <= options.tolerance && direction_ok,
+        scaled_residual_peak: scaled_peak,
+    }
+}
+
 /// Converges one physical well's local system (`assemble_well_local_system`) via a bounded,
 /// chopped Newton loop, mutating `state.well_bhp[well_idx]` / `state.perforation_rates_m3_day`
 /// in place — same call shape as `relax_well_state_toward_local_consistency`, so this is a
@@ -268,9 +309,7 @@ pub(crate) fn solve_well_locally(
     well_idx: usize,
     options: &FimWellInnerSolveOptions,
 ) -> FimWellInnerSolveReport {
-    let injector = topology.wells[well_idx].injector;
     let control_real = physical_well_control(sim, topology, well_idx);
-    let pressure_controlled = !control_real.rate_controlled;
 
     let mut iterations = 0usize;
     let mut converged: bool;
@@ -278,23 +317,18 @@ pub(crate) fn solve_well_locally(
 
     loop {
         let local = assemble_well_local_system(sim, state, topology, well_idx);
+        let status = well_convergence_status(
+            sim,
+            state,
+            topology,
+            well_idx,
+            &control_real,
+            &local,
+            options,
+        );
+        converged = status.converged;
+        final_scaled_residual_peak = status.scaled_residual_peak;
 
-        let well_scale = well_constraint_scale_for(sim, state, topology, well_idx, &control_real);
-        let mut scaled_peak = local.residual[0].abs() / well_scale;
-        for (local_perf, &perf_idx) in local.perforation_indices.iter().enumerate() {
-            let perf_scale = crate::fim::scaling::perforation_flow_scale(
-                state.perforation_rates_m3_day[perf_idx],
-            );
-            scaled_peak = scaled_peak.max(local.residual[1 + local_perf].abs() / perf_scale);
-        }
-        final_scaled_residual_peak = scaled_peak;
-
-        let direction_ok = !pressure_controlled
-            || local.perforation_indices.iter().all(|&perf_idx| {
-                perforation_flow_direction_ok(injector, state.perforation_rates_m3_day[perf_idx])
-            });
-
-        converged = scaled_peak <= options.tolerance && direction_ok;
         if converged || iterations >= options.max_iterations {
             break;
         }
@@ -336,6 +370,44 @@ pub(crate) fn solve_wells_locally(
     (0..topology.wells.len())
         .map(|well_idx| solve_well_locally(sim, state, topology, well_idx, options))
         .collect()
+}
+
+/// Read-only check: is this one well converged at `state` as it stands, with no update applied?
+/// A single `assemble_well_local_system` call plus the shared `well_convergence_status` test —
+/// this is the outer-criteria counterpart of OPM's `getWellConvergence`
+/// (`docs/FIM_BUNDLE_W_PLAN.md` W0 appendix G), a pure convergence *test*, not a solve.
+pub(crate) fn well_is_converged(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    well_idx: usize,
+    options: &FimWellInnerSolveOptions,
+) -> bool {
+    let control_real = physical_well_control(sim, topology, well_idx);
+    let local = assemble_well_local_system(sim, state, topology, well_idx);
+    well_convergence_status(
+        sim,
+        state,
+        topology,
+        well_idx,
+        &control_real,
+        &local,
+        options,
+    )
+    .converged
+}
+
+/// Read-only check across every physical well — the `OpmAligned` outer-criteria analog of
+/// OPM's `getWellConvergence` (plan §5 item 3), used to gate acceptance when `nested_well_solve`
+/// is enabled.
+pub(crate) fn all_wells_converged(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    options: &FimWellInnerSolveOptions,
+) -> bool {
+    (0..topology.wells.len())
+        .all(|well_idx| well_is_converged(sim, state, topology, well_idx, options))
 }
 
 #[cfg(test)]
@@ -700,5 +772,69 @@ mod tests {
         for (well_idx, report) in reports.iter().enumerate() {
             assert_eq!(report.well_idx, well_idx);
         }
+    }
+
+    /// `well_is_converged`/`all_wells_converged` must agree with `solve_well_locally`'s own
+    /// convergence verdict (the shared `well_convergence_status` formula is the whole point of
+    /// plan §5 item 3: "inner converged" and "outer sees zero" are the same statement).
+    #[test]
+    fn well_is_converged_matches_solve_result_before_and_after() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        for q in state.perforation_rates_m3_day.iter_mut() {
+            *q += 800.0;
+        }
+        let topology = build_well_topology(&sim);
+        let options = FimWellInnerSolveOptions::default();
+
+        assert!(
+            !all_wells_converged(&sim, &state, &topology, &options),
+            "perturbed state should not read as converged before solving"
+        );
+        for well_idx in 0..topology.wells.len() {
+            assert!(!well_is_converged(
+                &sim, &state, &topology, well_idx, &options
+            ));
+        }
+
+        for well_idx in 0..topology.wells.len() {
+            let report = solve_well_locally(&sim, &mut state, &topology, well_idx, &options);
+            assert!(report.converged);
+            assert_eq!(
+                well_is_converged(&sim, &state, &topology, well_idx, &options),
+                report.converged,
+                "well {well_idx}: read-only check must agree with the solve's own verdict"
+            );
+        }
+        assert!(all_wells_converged(&sim, &state, &topology, &options));
+    }
+
+    #[test]
+    fn all_wells_converged_requires_every_well() {
+        let mut sim = ReservoirSimulator::new(2, 1, 1, 0.2);
+        sim.set_fim_enabled(true);
+        sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(1, 0, 0, 100.0, 0.1, 0.0, false).unwrap();
+
+        let mut state = FimState::from_simulator(&sim);
+        for q in state.perforation_rates_m3_day.iter_mut() {
+            *q += 800.0;
+        }
+        let topology = build_well_topology(&sim);
+        let options = FimWellInnerSolveOptions::default();
+
+        // Converge only well 0, leave well 1 perturbed.
+        let report = solve_well_locally(&sim, &mut state, &topology, 0, &options);
+        assert!(report.converged);
+        assert!(well_is_converged(&sim, &state, &topology, 0, &options));
+        assert!(!well_is_converged(&sim, &state, &topology, 1, &options));
+        assert!(
+            !all_wells_converged(&sim, &state, &topology, &options),
+            "one converged well should not make the aggregate check pass"
+        );
     }
 }

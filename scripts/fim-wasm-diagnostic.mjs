@@ -106,6 +106,7 @@ Options:
   --json                    Emit final JSON summary to stdout (default true)
   --no-json                 Suppress final JSON summary
   --opm-aligned             Bundle N dev flag: OPM-aligned nonlinear layer (per-cell chopping)
+  --nested-well-solve       Bundle W dev flag: converged per-well inner Newton solve
   --list                    List presets
   --help                    Show this help
 
@@ -235,6 +236,9 @@ function parseArgs(argv) {
         break;
       case '--opm-aligned':
         options.opmAligned = true;
+        break;
+      case '--nested-well-solve':
+        options.nestedWellSolve = true;
         break;
       case '--list':
         options.list = true;
@@ -652,6 +656,9 @@ async function main() {
   options.presetConfig.configure(sim, options);
   if (options.opmAligned) {
     sim.setFimOpmAlignedNonlinear(true);
+  }
+  if (options.nestedWellSolve) {
+    sim.setFimNestedWellSolve(true);
   }
 
   if (options.checkpointIn) {

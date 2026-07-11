@@ -122,6 +122,11 @@ pub struct ReservoirSimulator {
     /// (per-cell update chopping instead of global-scalar damping). Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.
     pub(crate) fim_opm_aligned_nonlinear: bool,
+    /// Bundle W (`docs/FIM_BUNDLE_W_PLAN.md`): opt into the converged per-well inner Newton
+    /// solve, replacing `relax_well_state_toward_local_consistency`. Independent of
+    /// `fim_opm_aligned_nonlinear` — evaluable under either flavor. Dev/diagnostic flag,
+    /// default false = legacy behavior bit-identical.
+    pub(crate) fim_nested_well_solve: bool,
     pub(crate) gas_outer_step_trial_carryover:
         Option<crate::fim::timestep::GasOuterStepTrialCarryover>,
     last_fim_step_stats: Option<reporting::FimStepStats>,

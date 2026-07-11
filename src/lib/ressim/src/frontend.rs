@@ -88,6 +88,7 @@ impl ReservoirSimulator {
             capture_fim_trace: false,
             fim_trace_window_active: false,
             fim_opm_aligned_nonlinear: false,
+            fim_nested_well_solve: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
             fim_step_stats_history: Vec::new(),
@@ -298,6 +299,14 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setFimOpmAlignedNonlinear)]
     pub fn set_fim_opm_aligned_nonlinear(&mut self, enabled: bool) {
         self.fim_opm_aligned_nonlinear = enabled;
+    }
+
+    /// Bundle W dev flag (`docs/FIM_BUNDLE_W_PLAN.md`): replace
+    /// `relax_well_state_toward_local_consistency` with the converged per-well inner Newton
+    /// solve. Independent of `setFimOpmAlignedNonlinear`. Default false = legacy.
+    #[wasm_bindgen(js_name = setFimNestedWellSolve)]
+    pub fn set_fim_nested_well_solve(&mut self, enabled: bool) {
+        self.fim_nested_well_solve = enabled;
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]

@@ -33,6 +33,12 @@ export class ReservoirSimulator {
     setCellDimensionsPerLayer(dx: number, dy: number, dz_per_layer: Float64Array): void;
     setFimEnabled(enabled: boolean): void;
     /**
+     * Bundle W dev flag (`docs/FIM_BUNDLE_W_PLAN.md`): replace
+     * `relax_well_state_toward_local_consistency` with the converged per-well inner Newton
+     * solve. Independent of `setFimOpmAlignedNonlinear`. Default false = legacy.
+     */
+    setFimNestedWellSolve(enabled: boolean): void;
+    /**
      * Bundle N dev flag (`docs/FIM_BUNDLE_N_DESIGN.md`): switch the FIM Newton loop to the
      * OPM-aligned nonlinear layer (per-cell update chopping). Default false = legacy.
      */
@@ -116,6 +122,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setCellDimensions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
+    readonly reservoirsimulator_setFimNestedWellSolve: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimOpmAlignedNonlinear: (a: number, b: number) => void;
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];

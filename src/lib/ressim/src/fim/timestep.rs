@@ -1029,6 +1029,7 @@ impl ReservoirSimulator {
         if opm_aligned {
             newton_options.nonlinear_flavor = crate::fim::newton::FimNonlinearFlavor::OpmAligned;
         }
+        newton_options.nested_well_solve = self.fim_nested_well_solve;
         // Bundle N checkpoint 4 (N3, `OpmAligned` only): rolling `relativeChange()` history for
         // OPM's PID controller half (design doc §9.3), reset each outer step — matching OPM's
         // `PIDTimeStepControl` constructor (`errors_(3, tol_)`). Legacy's cooldown/carryover/
@@ -2892,6 +2893,12 @@ mod phase5_repro {
     /// once the onset substep is already known. `FIM_MAX_SUBSTEPS` overrides the hardcoded
     /// 100,000 cap so a windowed rerun can abort shortly after the window instead of running
     /// to completion. All four are no-ops when unset (see `fim::trace_sink`).
+    ///
+    /// Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): `FIM_NESTED_WELL_SOLVE=1` additionally
+    /// enables the converged per-well inner Newton solve
+    /// (`setFimNestedWellSolve`/`nested_well_solve`), independent of the trace env vars above —
+    /// this is the §5 re-run vehicle for the mechanism this bundle targets, layered on the same
+    /// `FIM-DIAG-002` re-baseline driver. No-op (Legacy relax path) when unset.
     #[test]
     #[ignore]
     fn repro_water_pressure_12x12x3_opm_aligned_no_trace() {
@@ -2920,12 +2927,16 @@ mod phase5_repro {
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(true);
+        // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
+        // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
+        let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
+        sim.set_fim_nested_well_solve(nested_well_solve);
 
         let start = Instant::now();
         sim.step(dt_days);
         let elapsed = start.elapsed();
         println!(
-            "native step (no trace) elapsed: {:.3}s",
+            "native step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve})",
             elapsed.as_secs_f64()
         );
         if let Some(stats) = sim.last_fim_step_stats_ref() {

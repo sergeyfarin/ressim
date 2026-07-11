@@ -224,10 +224,40 @@ under both flavors):
   `fim_enabled_step_advances_time_and_records_history_for_closed_system`, documented in
   `TODO.md`), confirmed by exact name match, not a new regression. `assembly_ad` parity 10/10,
   wasm build green (new code still unreachable until W3 wires it in).
-- **W3 — wiring behind the flag.** Replace the relax call under the flag; add the well
-  convergence check to the `OpmAligned` acceptance; wasm setter + `--nested-well-solve`
-  diagnostic flag (runner passthrough like `--opm-aligned`). Gates: flag off ⇒ full control
-  matrix + heavy case bit-identical, locked smoke 3/3, `assembly_ad` parity, wasm build green.
+- **W3 — DONE (2026-07-11).** `state.rs`: `apply_raw_update`'s `relax_well_state: bool` became
+  `WellStateUpdateMode` (`None`/`Relax`/`NestedSolve`) — a 3-way match at the single call site
+  (`apply_newton_update_frozen`), `NestedSolve` calling `wells_inner::solve_wells_locally`.
+  `newton.rs`: `FimNewtonOptions.nested_well_solve: bool` (default `false`); the call site picks
+  `NestedSolve` vs `Relax`; the `converged_on_entry` `OpmAligned` branch now ANDs with a
+  `wells_ok` term (`wells_inner::all_wells_converged`) that is trivially `true` whenever
+  `!opm_aligned || !nested_well_solve`, so it's a no-op unless BOTH flags are on — plan §5 item
+  3's outer-criteria addition. `wells_inner.rs`: refactored the per-iteration convergence check
+  in `solve_well_locally` into a shared `well_convergence_status` helper, now also used by two
+  new read-only functions, `well_is_converged`/`all_wells_converged` (OPM's `getWellConvergence`
+  analog, W0 appendix G — a pure check, not a solve). `fim_nested_well_solve` field +
+  `setFimNestedWellSolve` wasm setter (mirrors `fim_opm_aligned_nonlinear`/
+  `setFimOpmAlignedNonlinear` exactly); `--nested-well-solve` CLI flag in
+  `fim-wasm-diagnostic.mjs`; `FIM_NESTED_WELL_SOLVE` env var added to the native
+  `repro_water_pressure_12x12x3_opm_aligned_no_trace` driver (the `FIM-DIAG-002` re-baseline
+  vehicle, now also the §5 re-run vehicle for W4 — no new driver needed). 2 new tests
+  (`well_is_converged_matches_solve_result_before_and_after`,
+  `all_wells_converged_requires_every_well`), 12/12 in `fim::wells_inner`.
+
+  **No-op gate (flag off)**: full `fim::` suite 279/282 (the 3 failures are the same
+  byte-identical pre-existing ones as W2's gate, `+2` from W3's new tests); all 6 control-matrix
+  commands bit-identical to their documented baselines including the heavy Legacy case
+  (`substeps=52`); wasm build green.
+
+  **Flag-on sanity check** (not a W4 gate, just confirms the wiring is live, not dead code):
+  `--nested-well-solve` alone on `22x22x1` lands on the same substep/retry counts as Legacy
+  (`4/0/2/0`) but with visibly different per-substep Newton iteration counts — a genuinely
+  different trajectory that happens to match on the coarse metric, not a silent no-op.
+  `--opm-aligned --nested-well-solve` together on the same case: `24` substeps (vs `12` for
+  `--opm-aligned` alone) with a new dominant retry class (`linear-bad:oil@1450` vs the previous
+  `nonlinear-bad`) — confirms the new outer well-convergence gate is actually firing and
+  changing acceptance decisions, not inert. This is a real behavior change worth investigating
+  at W4, explicitly not evaluated here (plan's own W4 step ordering: mechanism gate on the
+  *heavy* case first, bounded cases after).
 - **W4 — evaluation (end metrics only, Bundle N lesson: no per-mechanism baselining against the
   old architecture).** Order matters — cheapest, most-diagnostic first:
   1. **Mechanism check** (minutes): windowed `FIM-DIAG-002` rerun (`FIM_TRACE_FILE` +

@@ -450,6 +450,11 @@ pub(crate) struct FimNewtonOptions {
     pub(crate) linear: FimLinearSolveOptions,
     pub(crate) verbose: bool,
     pub(crate) nonlinear_flavor: FimNonlinearFlavor,
+    /// Bundle W (`docs/FIM_BUNDLE_W_PLAN.md`): replace `relax_well_state_toward_local_consistency`
+    /// with the converged per-well inner Newton solve (`fim/wells_inner.rs`). Independent of
+    /// `nonlinear_flavor` — evaluable under either flavor. Default `false` = bit-identical to
+    /// before this flag existed.
+    pub(crate) nested_well_solve: bool,
 }
 
 impl Default for FimNewtonOptions {
@@ -466,6 +471,7 @@ impl Default for FimNewtonOptions {
             linear: FimLinearSolveOptions::default(),
             verbose: false,
             nonlinear_flavor: FimNonlinearFlavor::Legacy,
+            nested_well_solve: false,
         }
     }
 }
@@ -2872,8 +2878,21 @@ pub(crate) fn run_fim_timestep(
         // final-iteration relaxed tiers) gated on OPM's `newton-min-iterations` (design doc
         // §9.1) — replacing every Legacy entry-guard mechanism (`NOOP_ENTRY_EXACT_FACTOR`,
         // `ENTRY_RESIDUAL_GUARD_FACTOR`) for this decision.
+        //
+        // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 3): when `nested_well_solve` is on,
+        // AND in OPM's own well-convergence analog (`getWellConvergence`, W0 appendix G) —
+        // closes N1's recorded fidelity gap (reservoir-only acceptance had no well check at
+        // all). No-op when the flag is off: `wells_ok` is trivially `true`.
+        let wells_ok = !opm_aligned
+            || !options.nested_well_solve
+            || crate::fim::wells_inner::all_wells_converged(
+                sim,
+                &state,
+                &topology,
+                &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
+            );
         let converged_on_entry = if opm_aligned {
-            iteration >= OPM_NEWTON_MIN_ITERATION_INDEX && opm_conv.would_accept
+            iteration >= OPM_NEWTON_MIN_ITERATION_INDEX && opm_conv.would_accept && wells_ok
         } else if iteration == 0 && !materially_changed {
             current_norm <= options.residual_tolerance * NOOP_ENTRY_EXACT_FACTOR
         } else {
@@ -3931,7 +3950,20 @@ pub(crate) fn run_fim_timestep(
         let update_to_apply = opm_chopped_update
             .as_ref()
             .unwrap_or(&linear_report.solution);
-        let candidate = state.apply_newton_update_frozen(sim, update_to_apply, damping, &topology);
+        // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 1): independent flag, evaluable under
+        // either `nonlinear_flavor` — default false selects `Relax`, bit-identical to before.
+        let well_update_mode = if options.nested_well_solve {
+            crate::fim::state::WellStateUpdateMode::NestedSolve
+        } else {
+            crate::fim::state::WellStateUpdateMode::Relax
+        };
+        let candidate = state.apply_newton_update_frozen(
+            sim,
+            update_to_apply,
+            damping,
+            &topology,
+            well_update_mode,
+        );
         state_update_ms += state_update_timer.elapsed_ms();
         // Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10): per-iteration
         // well/perforation state, window-gated so this never runs unconditionally (unlike
