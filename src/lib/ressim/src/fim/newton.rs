@@ -4,7 +4,7 @@ use crate::ReservoirSimulator;
 use crate::fim::assembly::{
     CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
     PhaseFluxDiagnostic, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
-    collect_face_upwind_snapshot, diff_face_upwind_snapshots,
+    collect_face_upwind_snapshot, diff_face_upwind_snapshots, equation_offset, unknown_offset,
 };
 // Phase 5 cutover: production Newton now assembles the coupled residual/
 // Jacobian via automatic differentiation (`assembly_ad`) instead of the
@@ -4141,6 +4141,94 @@ pub(crate) fn run_fim_timestep(
                     .perforation_flow
                     .map_or(f64::INFINITY, |peak| peak.scaled_value),
             ));
+            // FIM-BUNDLE-X X0 (`docs/FIM_BUNDLE_X_PLAN.md`): stage-by-stage first-order-
+            // consistency forensics. `enforce_cell_bounds`/`enforce_control_bounds` never touch
+            // perforation rates (verified by inspection: neither function references
+            // `perforation_rates_m3_day`) and `opm_per_cell_chopped_update` never chops
+            // perforation-rate entries either — so `raw_dq` above (post relaxation-scalar,
+            // post chop) is the coupled linear system's dq unmodified by anything except the
+            // `NestedSolve` override that follows. This line answers X0's "why does the coupled
+            // solve propose a large dq when rate_consistency's own residual is already ~0"
+            // question directly from the assembled Jacobian: per perforation, its own
+            // `rate_consistency` row's residual and `d/dq` diagonal, plus its cell's
+            // water/oil/gas row residuals and their `d/dq` coupling (the well source term's
+            // sensitivity to this perforation's rate) — read straight from `assembly.jacobian`
+            // via the same `CsMat::get(row, col)` accessor the W1 agreement test uses.
+            for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
+                let perf_row = state.perforation_equation_offset(perf_idx);
+                let q_col = state.perforation_rate_unknown_offset(perf_idx);
+                let cell_idx = perforation.cell_index;
+                let p_col = unknown_offset(cell_idx, 0);
+                let sw_col = unknown_offset(cell_idx, 1);
+                let d_pf_dq = assembly.jacobian.get(perf_row, q_col).copied().unwrap_or(0.0);
+                let d_pf_dp = assembly.jacobian.get(perf_row, p_col).copied().unwrap_or(0.0);
+                let d_pf_dsw = assembly.jacobian.get(perf_row, sw_col).copied().unwrap_or(0.0);
+                let cell_rows = [
+                    ("water", equation_offset(cell_idx, 0)),
+                    ("oil", equation_offset(cell_idx, 1)),
+                    ("gas", equation_offset(cell_idx, 2)),
+                ];
+                let cell_terms: Vec<String> = cell_rows
+                    .iter()
+                    .map(|(label, row)| {
+                        let r = assembly.residual[*row];
+                        let d_dq = assembly.jacobian.get(*row, q_col).copied().unwrap_or(0.0);
+                        let d_dp = assembly.jacobian.get(*row, p_col).copied().unwrap_or(0.0);
+                        let d_dsw = assembly.jacobian.get(*row, sw_col).copied().unwrap_or(0.0);
+                        format!(
+                            "{label}=[r={r:.6e} d/dq={d_dq:.6e} d/dp={d_dp:.6e} d/dsw={d_dsw:.6e}]"
+                        )
+                    })
+                    .collect();
+                let raw_dp_cell = update_to_apply[p_col];
+                let raw_dsw_cell = update_to_apply[sw_col];
+                let sw_current = state.cells[cell_idx].sw;
+                let sw_wc = if sim.three_phase_mode {
+                    sim.scal_3p.as_ref().map(|s| s.s_wc).unwrap_or(sim.scal.s_wc)
+                } else {
+                    sim.scal.s_wc
+                };
+                crate::fim::trace_sink::write_line(&format!(
+                    "WELLJAC iter={:>2} perf={} cell={} res_pf={:.6e} d(res_pf)/dq={:.6e} d(res_pf)/dp={:.6e} d(res_pf)/dsw={:.6e} sw={:.6} sw_wc={:.6} raw_dp={:.6e} raw_dsw={:.6e} sw_unclamped_would_be={:.6} {}",
+                    iteration,
+                    perf_idx,
+                    cell_idx,
+                    assembly.residual[perf_row],
+                    d_pf_dq,
+                    d_pf_dp,
+                    d_pf_dsw,
+                    sw_current,
+                    sw_wc,
+                    raw_dp_cell,
+                    raw_dsw_cell,
+                    sw_current + raw_dsw_cell,
+                    cell_terms.join(" "),
+                ));
+                if let Some(water_breakdown) = cell_equation_residual_breakdown(
+                    sim,
+                    previous_state,
+                    &state,
+                    &topology,
+                    dt_days,
+                    cell_idx,
+                    0,
+                ) {
+                    crate::fim::trace_sink::write_line(&format!(
+                        "WELLJAC-WATER iter={:>2} cell={} accum={:.6e} x-={:.6e} x+={:.6e} y-={:.6e} y+={:.6e} z-={:.6e} z+={:.6e} well={:.6e} total={:.6e}",
+                        iteration,
+                        cell_idx,
+                        water_breakdown.accumulation,
+                        water_breakdown.x_minus,
+                        water_breakdown.x_plus,
+                        water_breakdown.y_minus,
+                        water_breakdown.y_plus,
+                        water_breakdown.z_minus,
+                        water_breakdown.z_plus,
+                        water_breakdown.well_source,
+                        water_breakdown.total,
+                    ));
+                }
+            }
         }
         let effective_update_peak =
             scaled_applied_update_peak(&state, &candidate, &assembly.variable_scaling);

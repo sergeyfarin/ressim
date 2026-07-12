@@ -1,11 +1,58 @@
-# FIM Bundle X: Well-Update Ordering (the H1 structural fix)
+# FIM Bundle X: Well-Update Ordering / Producer-Fraction Fidelity (the H1 structural fix)
 
-Status: PLANNED (2026-07-12). Registry: `FIM-BUNDLE-X` (OPEN).
+Status: X0 COMPLETE (2026-07-12) — **root-cause hypothesis revised**, see §1a. Registry:
+`FIM-BUNDLE-X` (OPEN).
 Prerequisite evidence: `docs/FIM_DIAG_003_PLAN.md` (closed 2026-07-12, D0-D5) — H1 confirmed by
 three independent methods, H2/H3 refuted. This bundle is the "scoped fix bundle for the
 confirmed mechanism" that D5 named as the next unit of work. `FIM-BUNDLE-W`'s retry condition
 ("retry only after FIM-DIAG-003 ... and, if fixable, a fix — re-run W4's §5 gate with both in
 place") is satisfied by this plan's X3.
+
+## 1a. X0 result: a different, more precise root cause than originally planned
+
+X0 (`docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X0") measured, rather than assumed,
+where first-order consistency breaks — and the answer eliminates §1/§2's original suspects
+(relaxation, chop, bounds enforcement, `NestedSolve`'s ordering) as the *primary* mechanism and
+identifies a different one:
+
+**`producer_fractions_generic` (`fim/wells_ad.rs:52-81`) is fed a 3x3 areal-neighborhood window
+around every producer perforation (`perforation_control_cells`, `fim/wells.rs:822-838` — the
+single shared call site for both the coupled assembly, `assembly_ad.rs`, and the nested solve,
+`wells_inner.rs`), not just the perforated cell itself.** Injectors already get the single-cell
+treatment (`if perforation.injector { return vec![perforation.cell_index]; }`); only the
+producer branch pulls in neighbors. At the heavy case's producer (cell 143, corner, pre-
+breakthrough, `sw` pinned exactly at the connate floor `s_wc=0.1` with `krw=0` there exactly),
+the 3x3 window includes near-front neighbors (cell 130 among them — D1's secondary binding cell)
+whose slightly-elevated `sw` leaks nonzero water mobility into the *well's* aggregate
+`water_fraction`. That manufactured water withdrawal is then debited entirely against cell 143's
+own water balance — a residual (`water=+1.696e-3` raw) with no available fix: `dsw` is the only
+lever with meaningful sensitivity there (`d/dsw≈±20` vs `d/dp≈1e-3`-`1e-6`, `d/dq≈1e-5`-`1e-7`)
+and `dsw` is legitimately clamped at the connate floor every iteration
+(`enforce_cell_bounds`, unconditional, before any `WellStateUpdateMode` branch — so this fires
+identically under `Relax`/`NestedSolve`/`None`).
+
+OPM's `WellInterface::getMobility` (`WellInterface_impl.hpp:2105-2143`, pinned `062cb1998`) uses
+**only** the single connected cell's own mobility for every well, producer or injector, no
+neighborhood — confirmed by reading the source, not inferred. OPM's equivalent producer would
+compute `water_fraction=0` exactly and never manufacture this residual. This directly explains
+D3's oracle finding (OPM transits the same MB magnitude cleanly).
+
+**Consequence for this plan**: the well-update-ordering hypothesis (originally X1/X2) is
+downgraded to secondary/contingent — real (the `dq` veto D1/W measured is genuine), but
+downstream of, not the cause of, the frozen residual. The new primary candidate fix is narrower,
+more surgical, and different in kind: restrict `perforation_control_cells`'s producer branch to
+the single perforated cell. It is also **broader-reaching** than an ordering change — it alters
+producer water-cut/GOR physics for every FIM case with a producer under any control mode, not
+just the heavy case — so it needs the full control-matrix + locked-smoke + BL-benchmark gate
+before any promotion decision, not just a capped heavy-case check. Origin note: the 3x3 design
+traces to `d824f4f` ("Add producer control state management..."), part of the original pre-FIM,
+pre-OPM-alignment simulator; `wells_ad.rs` faithfully mirrored it into the FIM/AD layer without
+re-examining it against OPM. Not a deliberate OPM-motivated choice — an inherited, unexamined
+divergence.
+
+The checkpoints below (X1-X3) are retargeted accordingly. §2's original suspects (relaxation,
+chop, bounds, `NestedSolve` ordering) remain correctly ruled out/measured by X0 and do not need
+re-investigation.
 
 ## 1. The structural defect, stated precisely
 
@@ -87,44 +134,40 @@ Window-gated trace line (same `FIM_TRACE_SUBSTEP_START` machinery as D1) dumping
 above. Native-only, no wasm surface, no-op when the trace window is inactive. Gates: trace off
 ⇒ control matrix bit-identical + locked smoke 3/3.
 
-### X1 — cheapest structural probe: pure coupled well update (never live-tested)
+### X1 — single-cell producer fraction, capped probe (retargeted 2026-07-12 per X0)
 
-`WellStateUpdateMode::None` is currently test-only (`state.rs:387`) — the matrix cell "trust
-the coupled system's well update, no post-application override at all" has **never been run
-live** (Legacy always had `Relax`; Bundle W replaced `Relax` with `NestedSolve`; nobody ran
-`None`). This is also the closest analog of OPM's step 3 for a system that carries well
-unknowns un-eliminated: when the coupled system is solved with well rows in it, the returned
-well entries ARE the back-substituted values `recoverSolutionWell` would produce.
+Change `perforation_control_cells` (`fim/wells.rs:822-838`) to return `vec![perforation.cell_index]`
+for producers too, matching the injector branch (already single-cell) and OPM's `getMobility`
+exactly. This is the one shared call site (`assembly_ad.rs`, `wells_inner.rs` both go through
+`control_influence_cells` → `perforation_control_cells`) — a single, well-scoped change.
 
-One flag (`FIM_WELL_UPDATE_NONE` env on the native driver, or a third
-`well_update_mode` value threaded like `nested_well_solve`), one ~70s capped heavy run
-(`OpmAligned`, `FIM_TRACE_SUBSTEP_START≈980`, `FIM_MAX_SUBSTEPS=1000`), plus the D0
-binding-criterion trace:
-- Freeze breaks (MB drops below `1e-7`, `advanced_dt` materially past `0.92`) ⇒ the override
-  alone is the whole defect; X2 becomes primarily an OPM-fidelity refinement (the pre-assembly
-  inner solve for robustness on harder cases), not the fix itself.
-- Freeze persists ⇒ combined with X0's stage attribution, the defect is upstream of the
-  override (chop/damping/bounds or `rate_consistency` Jacobian fidelity) — re-plan within this
-  bundle before touching ordering.
-- Wells drift/diverge early in the run (the risk `Relax` was originally added for) ⇒ X2's
-  pre-assembly inner solve is load-bearing, not optional; proceed to X2 directly.
+Flag-gate it first for the capped probe (env var on the native driver, e.g.
+`FIM_SINGLE_CELL_PRODUCER_FRACTION`, or a `ReservoirSimulator` field threaded the same way as
+`fim_force_direct_linear` — decide at implementation; native-diagnostic-only is enough for this
+checkpoint, promotion to a permanent change happens at X3): one ~70s capped heavy run
+(`OpmAligned`+`nested_well_solve`, `FIM_TRACE_SUBSTEP_START≈980`, `FIM_MAX_SUBSTEPS=1000`), plus
+the D0 binding-criterion trace and the new `WELLJAC`/`WELLJAC-WATER` X0 trace:
+- Freeze breaks (MB drops below `1e-7`, `advanced_dt` materially past `0.92`, `WELLJAC-WATER`'s
+  `well=` term at cell 143 drops to ~0) ⇒ X0's diagnosis confirmed live, proceed to X3's full
+  gate on this fix.
+- Freeze persists but the `well=` term at cell 143 is now ~0 (confirms the fraction fix landed)
+  ⇒ a second, still-hidden mechanism remains — re-open X0-style forensics rather than guessing.
+- Freeze persists and `well=` is unchanged ⇒ the fix didn't take (wiring bug) or the hypothesis
+  itself needs re-examination — do not proceed to X3 blind.
 
-`all_wells_converged` (the W3 outer acceptance gate) stays active in every variant — acceptance
-never widens (`FIM-NEWTON-005` lesson).
+Also re-run the two bounded no-op cases the same way D1/D4 checked nested_well_solve
+(`22x22x1`/`23x23x1` under `OpmAligned`) — this change touches every producer's phase split, so
+even the capped probe should sanity-check it isn't silently breaking a currently-passing case.
 
-### X2 — the OPM ordering, flag-gated
+### X2 — well-update-ordering (secondary/contingent, only if X1 does not fully resolve it)
 
-Move the well-consistency enforcement to OPM's position:
-1. At the top of each Newton iteration, **before assembly** (the
-   `prepareWellBeforeAssembling` analog): run `solve_wells_locally` against the current
-   reservoir state. Also once at substep entry (OPM's `SolveWelleqInitially=1`).
-2. After the linear solve: apply the coupled update's well components as returned (mode `None`
-   semantics + `enforce_control_bounds`). The `NestedSolve` post-update override is **removed**
-   from the applied path (the mode stays in the enum for the W1 agreement tests).
-
-Flag-gated (`nested_well_solve` gains a mode or a sibling flag — decide at implementation
-against wasm-surface minimalism), default off, Legacy path bit-identical. Unit test for the
-ordering (well solve mutates state before assembly sees it); W1 agreement tests unchanged.
+The original §1/§2 ordering hypothesis, kept as a fallback: move the well-consistency
+enforcement to OPM's position (pre-assembly inner solve, apply the coupled update's well
+components as-returned, no post-update override). Only pursue this if X1 leaves a residual
+freeze after the fraction fix — X0 already showed the `dq` veto is real but secondary, so it may
+still matter as a second-order cleanup once the primary (fraction) defect is fixed. Design
+unchanged from the original plan (see §1/§2 above for the OPM-vs-ResSim ordering comparison and
+the `WellStateUpdateMode::None` probe), flag-gated, default off, Legacy path bit-identical.
 
 Gates: flag off ⇒ control matrix bit-identical + locked smoke 3/3 + `assembly_ad` parity 10/10
 + wasm build green.
@@ -138,22 +181,32 @@ Gates: flag off ⇒ control matrix bit-identical + locked smoke 3/3 + `assembly_
 3. Verification oracle: the D3 deck (`opm/reference-decks/water-heavy-step1/`) INFOITER
    trajectory — ResSim's per-iteration MB should now transit the `1e-7`-`2e-7` zone the way
    OPM's does (one clean step, not 18 frozen ones).
-4. Stack-level promotion decision (the original Bundle N §5 gate: heavy `≤35`-class + fine-dt
-   FOPT + control matrix + bounded cases not worse than Legacy). This is where
-   `OpmAligned`+well-ordering either promotes as a stack or the program re-plans honestly.
+4. **Full control-matrix + locked-smoke + BL-benchmark gate** (not just the heavy case) — the
+   producer-fraction fix changes water-cut/GOR physics for every FIM producer, broader-reaching
+   than a pure ordering change. Compare reported production numbers on at least one case with a
+   producer that sees breakthrough mid-run (e.g. `water-medium-6step`), not just pre-breakthrough
+   cases, to confirm the fix doesn't regress the *converged*, physically-correct answer once
+   water genuinely should be co-produced.
+5. Stack-level promotion decision (the original Bundle N §5 gate: heavy `≤35`-class + fine-dt
+   FOPT + control matrix + bounded cases not worse than Legacy). This is where the fix either
+   promotes (independent of `nested_well_solve`/`OpmAligned` — a `perforation_control_cells`
+   fix is a physics-fidelity correction with its own merit even outside the heavy-case stack
+   question) or the program re-plans honestly.
 
-### Fallback (own future bundle, only if X0-X2 refute the ordering thesis)
+### Fallback (own future bundle, only if X1-X3 refute the fraction-fidelity thesis)
 
 OPM's well primary-variable structure itself: per-well `WQTotal`/fractions/`bhp` unknowns with
 connection rates *derived* at assembly (no per-perforation `q` unknowns, no `rate_consistency`
 rows). Large — a rewrite of `wells_ad.rs`/`assembly_ad.rs` well blocks. Not attempted while a
-small ordering fix remains unfalsified.
+small, precisely-located fraction fix remains unfalsified.
 
 ## 4. Cost estimate
 
-X0 ~1-2h (trace + one capped run + analysis); X1 ~1h (flag + capped run); X2 ~3-5h
-(restructure + tests + gates); X3 ~1h capped, +~25min full heavy run, +gates if promoting.
-Everything except X3's full run fits capped-run economics.
+X0 ~1-2h (trace + capped runs + analysis, done — WELLJAC/WELLJAC-WATER instrumentation plus the
+OPM source read). X1 ~1-2h (flag + fix + capped probe + bounded no-op re-checks). X2 ~3-5h, only
+if needed after X1. X3 ~1h capped, +~25min full heavy run, +full control-matrix/smoke/BL gate
+(~30-60min) given the broader blast radius. Everything except X3's full runs fits capped-run
+economics.
 
 ## 5. Documentation consequences
 

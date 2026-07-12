@@ -2331,3 +2331,105 @@ retracted (the `22x22x1` "regression," D4), one refuted formula-fidelity concern
 one refuted linear-tolerance concern closed (H2, D1), and the mechanism precisely located for a
 future fix bundle (H1, D1+D3) — all without a single guess spent on the mechanism itself before
 the evidence was in hand.
+
+## Bundle X (`docs/FIM_BUNDLE_X_PLAN.md`): well-update ordering / well-fraction fidelity
+
+### Bundle X checkpoint X0: stage-by-stage forensics — a DIFFERENT root cause than planned (2026-07-12)
+
+Per `docs/FIM_BUNDLE_X_PLAN.md` X0. Commit base `1fdd157`. Extended the D0 window instrumentation
+with a new `WELLJAC` trace line (`fim/newton.rs`, window-gated, no-op when inactive) dumping,
+per perforation, the `rate_consistency` row's own residual/diagonal plus its cell's water/oil/gas
+row residuals and their `d/dq`, `d/dp`, `d/dsw` couplings — read directly from `assembly.jacobian`
+via the same `CsMat::get(row, col)` accessor the W1 agreement test uses — plus a `WELLJAC-WATER`
+line with the full face-by-face flux/accumulation/well-source breakdown
+(`cell_equation_residual_breakdown`, the same helper `FAIL-SITE-DETAIL` uses). Windowed capped run
+(`FIM_TRACE_SUBSTEP_START=980 FIM_MAX_SUBSTEPS=1000 FIM_NESTED_WELL_SOLVE=1`, same window as D1).
+
+**Finding 1 — the planned question is answered, and it eliminates the planned suspects.**
+`res_pf=0.000000e0` and `d(res_pf)/dq=1.000000e0` (a trivial, always-1 diagonal — the row is
+definitional, `residual = q − f(p_cell, bhp, mobility)`) at every frozen iteration. A row with
+zero residual and a unit diagonal contributes **zero** pull toward any `dq` change on its own —
+the observed `raw_dq≈+0.70` is not coming from the well's own equation at all. Ruled out by
+direct measurement, not inference: relaxation (`PERCELL-CHOP relax=1.00`, already on record),
+chop (`sat_chopped_cells=0`, already on record; confirmed `opm_per_cell_chopped_update` never
+touches perforation-rate entries by code inspection), `enforce_cell_bounds`/`enforce_control_bounds`
+(confirmed by code inspection: neither function references `perforation_rates_m3_day` at all).
+
+**Finding 2 — cell 143's own mass-balance residual is real and large relative to its only
+effective lever.** Raw (unscaled) water/oil residuals at cell 143: `water=+1.696e-3`,
+`oil=−1.721e-3` — genuinely nonzero (the `~1e-9`-scale figures seen earlier were
+`EquationScaling`-normalized, not raw). Their Jacobian sensitivities: `d/dsw≈±20` (water `+20.00`,
+oil `−20.04`, nearly exact opposites — a saturation move trades almost 1:1 between the two,
+the expected mass-conservation identity), `d/dp≈2.7e-6` (water) `/5.55e-3` (oil), `d/dq≈4.5e-7`
+(water) `/2.59e-5` (oil). **`dsw` is 3-4 orders of magnitude the dominant lever** — a fix via `dq`
+alone would need `dq≈66` (vs the observed `0.70`); a fix via `dsw` alone needs only `≈-8.5e-5`.
+
+**Finding 3 — `dsw` is legitimately clamped and cannot move.** `sw=0.100000` exactly, every
+iteration — matching `s_wc=0.1` exactly (the repro's connate/irreducible water saturation, also
+the reservoir's uniform initial condition — cell 143 is the producer, farthest corner from the
+injector in a 12x12 grid, and genuinely has not yet seen breakthrough at `t≈0.92d` of `1.0d`).
+`raw_dsw≈-7.6e-5` (the coupled linear solve's own proposed step) would push `sw` to `≈0.09992`,
+**below** the connate floor — `enforce_cell_bounds`'s `cell.sw = cell.sw.clamp(sim.scal.s_wc, ...)`
+clamps it straight back to exactly `0.1` every iteration, discarding the correction. This clamp
+runs **unconditionally**, before the `WellStateUpdateMode` branch (`state.rs:435-438`) — i.e. it
+would fire identically under `Relax`, `NestedSolve`, or `None`. **The `nested_well_solve`
+ordering (the original Bundle X hypothesis) is not the primary mechanism** — the `dq` veto is
+real (confirmed in D1/W's own traces) but it is downstream of, and secondary to, a saturation-bound
+collision that has nothing to do with which well-update mode is active.
+
+**Finding 4 — where the persistent residual actually comes from, and why it's structural, not
+numerical noise.** `WELLJAC-WATER`: `accum≈-9.7e-9` (negligible — `sw` isn't moving, consistent
+with Finding 3), `x-`/`y-` flux ≈`-1.7e-5` each (negligible — near-zero cross-cell water mobility,
+as expected this close to the front), **`well=+1.730e-3`** — the well source term alone accounts
+for essentially the entire residual (`total=1.695941e-3 ≈ well`). The producer's phase-split
+(`producer_fractions_generic`, `fim/wells_ad.rs:52-81`) is **not** computed from the perforated
+cell's own mobility alone — `perforation_control_cells` (`fim/wells.rs:822-838`, the single
+shared call site for both the coupled assembly, `assembly_ad.rs:126/192/305`, and the nested
+solve, `wells_inner.rs:82-92`) builds a **3x3 areal window** around every *producer* perforation
+(injectors already get the single-cell treatment, `if perforation.injector { return
+vec![perforation.cell_index]; }`) and sums mobility across it. Cell 143's own `krw` is exactly `0`
+at `sw=0.1` (`SWOF` table endpoint), but its 3x3 neighborhood includes cell 130 (D1's secondary
+binding cell, 9% of iterations) and other near-front neighbors with slightly elevated `sw` — their
+nonzero water mobility leaks into the *well's* aggregate `water_fraction`, producing a small but
+persistent nonzero water withdrawal that gets debited entirely against cell 143's own water
+balance (the well source term is applied at the perforated cell, not distributed across the
+neighborhood that supplied the mobility estimate). This is a structural mismatch, not noise — it
+recurs identically every iteration because both the neighborhood-averaged fraction and cell 143's
+own zero local mobility are themselves stable/converged; there is no lever in the system that can
+zero it (Finding 2/3).
+
+**Finding 5 — OPM does not do this.** Read `WellInterface<TypeTag>::getMobility`
+(`WellInterface_impl.hpp:2105-2143`, pinned `062cb1998`): `mob[activeCompIdx] =
+intQuants.mobility(phaseIdx)` at `intQuants = simulator.model().intensiveQuantities(cell_idx, 0)`,
+where `cell_idx = this->well_cells_[local_perf_index]` — **the single connected cell only**, for
+every well type (no producer/injector distinction, no neighborhood). `StandardWell::getMobility`
+(`StandardWell_impl.hpp:706-756`) layers polymer/solvent/`WINJMULT` adjustments on top of that
+same single-cell mobility — still no neighborhood averaging anywhere in the connection-rate path.
+OPM's producer at the equivalent state would compute `water_fraction=0` **exactly** (its own
+`krw=0` at the connate floor, nothing to blend in), withdrawing pure oil with no residual to
+create. This directly explains D3's oracle finding (OPM transits the same MB magnitude cleanly in
+one more iteration): OPM's local-only formulation never manufactures this residual in the first
+place.
+
+**Origin of the 3x3 design**: `git log -S "producer_control_state"` traces it to `d824f4f`
+("Add producer control state management and enhance well control logic"), part of the original
+pre-FIM, pre-OPM-alignment simulator design. `wells_ad.rs::producer_fractions_generic` is
+documented as "a generic mirror of `wells::producer_control_state`'s fraction computation" — the
+FIM/AD layer faithfully carried this convention forward without re-examining it against OPM. Not
+a deliberate OPM-motivated design choice; an inherited, never-revisited divergence.
+
+**Revised diagnosis for `FIM-BUNDLE-X`**: the well-update-ordering hypothesis (X1/X2 as originally
+planned) is downgraded from primary to secondary/contingent. The primary, now-precisely-located
+candidate fix is narrower and different in kind: **restrict `perforation_control_cells`'s producer
+branch to the single perforated cell**, matching both the injector branch's existing behavior and
+OPM's `getMobility` exactly. This is a single shared function (confirmed one call site pattern
+across `assembly_ad.rs` and `wells_inner.rs`), scoped to the FIM engine only (`fim/wells.rs` is
+separate from the legacy/IMPES `well_control.rs::producer_control_state_for_pressures`, confirmed
+by grep — no legacy/public-simulator blast radius). Higher-leverage and more surgical than an
+ordering change, but broader-reaching (it changes producer water-cut/GOR physics for every FIM
+case with a producer, not just the heavy case) — needs the full control-matrix + locked-smoke +
+BL-benchmark gate, not just a capped heavy-case check, before any promotion decision.
+
+Plan doc (`docs/FIM_BUNDLE_X_PLAN.md`) updated to record this pivot; X1 retargeted from "pure
+coupled well update" to "single-cell producer fraction," the original ordering probe kept as a
+secondary/fallback item.
