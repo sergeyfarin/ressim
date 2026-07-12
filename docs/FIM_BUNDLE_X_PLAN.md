@@ -1,11 +1,15 @@
 # FIM Bundle X: Well-Update Ordering / Producer-Fraction Fidelity (the H1 structural fix)
 
-Status: X0 + X1 COMPLETE (2026-07-12) — **root-cause hypothesis revised (§1a) and the fix is
-decisive**: heavy case `18,015 → 16` substeps (~1126x), full gate green (control matrix, bounded
-no-ops, parity, locked smoke, `validate-solver-coverage.sh fim`+`shared`, BL benchmarks — see
-`docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"). X2 (ordering) not needed. Remaining:
-X3 (D3 oracle re-comparison + formal stack-level promotion decision). Registry: `FIM-BUNDLE-X`
-(OPEN, X1 promotable).
+Status: **CLOSED (2026-07-12), X1 PROMOTABLE.** X0 revised the root-cause hypothesis (§1a) and
+X1's fix is decisive: heavy case `18,015 → 16` substeps (~1126x), full gate green (control
+matrix, bounded no-ops, parity, locked smoke, `validate-solver-coverage.sh fim`+`shared`, BL
+benchmarks). X2 (ordering) not needed — X1 alone fully resolves the heavy case. X3 (D3 oracle
+re-comparison + generality checks on Legacy and a second broken case + stack promotion decision)
+found `single_cell_producer_fraction` itself independently promotable now, while the *separate*
+`OpmAligned`+`nested_well_solve`-as-default stack question stays open (blocked on a pre-existing,
+unrelated bounded-case cost tradeoff, never this bundle's scope). See
+`docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X0/X1/X3". Registry: `FIM-BUNDLE-X`
+(PROMOTED — the fix; stack question spun off, not closed here).
 Prerequisite evidence: `docs/FIM_DIAG_003_PLAN.md` (closed 2026-07-12, D0-D5) — H1 confirmed by
 three independent methods, H2/H3 refuted. This bundle is the "scoped fix bundle for the
 confirmed mechanism" that D5 named as the next unit of work. `FIM-BUNDLE-W`'s retry condition

@@ -5,7 +5,8 @@ Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 202
 updated with the late-window trace diagnostic finding 2026-07-11; gap #3 closed out (Bundle W
 evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11; gap #4 updated
 2026-07-12 with the `FIM-DIAG-003` D0-D5 diagnostic verdict (H1 confirmed, H2/H3 refuted,
-mechanism located but not yet fixed; `FIM-NEWTON-008` promoted).
+mechanism located but not yet fixed; `FIM-NEWTON-008` promoted); **gap #4 CLOSED 2026-07-12**
+(`FIM-BUNDLE-X` `single_cell_producer_fraction` fix, heavy case `18,015 → 16` substeps).
 
 Use this file for:
 
@@ -194,17 +195,43 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    the zone is not an inherent numerical floor. D4 averted a false "win" (Legacy+
    `nested_well_solve` on the heavy case looks better on the raw substep ledger but is a genuine
    regression once `real_accepted_substeps` is read correctly) and retracted the stale
-   "`22x22x1` regression" claim (does not reproduce at current HEAD). **The pathology is now
-   precisely located but not yet fixed** — the fix bundle is planned:
-   **`docs/FIM_BUNDLE_X_PLAN.md` (`FIM-BUNDLE-X`, 2026-07-12)**, built on a source-verified
-   structural diff vs OPM (OPM: inner well solve *before* linearization + coupled/back-substituted
-   well update applied after the solve with no re-solve; ResSim+W: coupled update applied then
-   its well component *overridden* post-application — the first-order veto that generates the
-   invariant point). Candidate stack (`OpmAligned`+`nested_well_solve`) baseline: `18,015` substeps
-   @ `c916c87`; stack promotion stays open until that fix exists and clears the original Bundle N
-   §5 gate. `min_strict_mb_iter` remains explicitly out of scope — H1 is a genuine structural
-   fixed point (bit-identical residual across 18 iterations), not slow convergence, so relaxing
-   *when* the relaxed tier applies would not fix anything.
+   "`22x22x1` regression" claim (does not reproduce at current HEAD).
+
+   **GAP CLOSED (`docs/FIM_BUNDLE_X_PLAN.md`, `FIM-BUNDLE-X`, PROMOTED 2026-07-12).** `FIM-BUNDLE-X`'s
+   own X0 checkpoint measured (not assumed) where first-order consistency actually breaks, and
+   found a *different* root cause than the well-update-ordering hypothesis H1's framing implied:
+   `perforation_control_cells` (`fim/wells.rs:822`) fed a producer's phase-fraction calculation a
+   **3x3 areal-neighborhood mobility window** instead of the perforated cell's own mobility
+   (injectors already got single-cell treatment) — a pre-FIM, pre-OPM-alignment design (`git log
+   -S "producer_control_state"` → `d824f4f`) mirrored unexamined into the FIM/AD layer. OPM's
+   `WellInterface::getMobility` uses only the single connected cell for every well, confirmed by
+   source read. Near a pre-breakthrough producer (the heavy case's exact scenario — corner
+   producer, `sw` pinned at the connate floor with `krw=0` there, but its 3x3 neighborhood
+   included cells that had started to see the front), the neighborhood-blended fraction
+   manufactured a small water withdrawal debited entirely against a cell whose only effective
+   lever (`dsw`) was legitimately clamped — the actual invariant-point generator; the well-update
+   override the original H1 framing suspected was real but secondary, not primary (confirmed by
+   testing the fix with and without `nested_well_solve`: identical result either way).
+
+   **Fix** (`fim_single_cell_producer_fraction`, `perforation_control_cells`'s producer branch
+   restricted to the single perforated cell, matching the injector branch and OPM exactly):
+   heavy case **`18,015 → 16` substeps** (~1126x, `1235.5s → ~3s`), works identically with or
+   without `nested_well_solve`, and Legacy flavor improves too (`52 → 25`, unconditional — the
+   fix is a physics-formula correction, not flavor-specific). Full gate green (control matrix,
+   bounded no-ops, parity, locked smoke, `validate-solver-coverage.sh fim`+`shared`, BL
+   benchmarks); D3 oracle re-comparison shows the fixed trajectory reaching the same `dt≈0.185`-
+   `0.259`-class steps OPM holds, now in single-digit iteration counts. A second,
+   independently-discovered case (`water-medium-6step`) with the identical pathology also
+   resolves cleanly. Full writeup: `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint
+   X0"/"X1"/"X3".
+
+   **Two things this does NOT close, tracked separately**: (a) the bounded-case cost tradeoff
+   (`OpmAligned` still costs more retries than Legacy on the already-easy cases — pre-existing,
+   confirmed unrelated/unchanged by this fix, never `FIM-BUNDLE-X`'s scope) still blocks
+   `OpmAligned`+`nested_well_solve` from becoming the *default* flavor; (b) whether
+   `single_cell_producer_fraction` itself should become unconditional (delete the flag) rather
+   than stay opt-in is an open product question, not a technical one — deferred pending user
+   decision. `min_strict_mb_iter` remains out of scope regardless — it was never the fix.
 5. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.

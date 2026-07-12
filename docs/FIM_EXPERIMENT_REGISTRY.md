@@ -93,11 +93,23 @@ question and has merit as its own physics-fidelity correction either way) | `fim
 (`producer_fractions_generic`), `fim/newton.rs` (X0 `WELLJAC`/`WELLJAC-WATER` trace),
 `frontend.rs`/`lib.rs` (`fim_single_cell_producer_fraction` flag) | Heavy `12x12x3 --dt 1
 --opm-aligned` capped + full §5; control matrix; BL benchmarks; D3 deck INFOITER; bounded
-`22x22x1`/`23x23x1` no-op re-checks | X0 + X1 complete, decisive (see above); X2 not needed; X3
-(D3 oracle + stack promotion) remaining | OPEN — X0/X1 done, X1 promotable | Satisfies
-`FIM-BUNDLE-W`'s retry condition (FIM-DIAG-003 complete + fix in hand → re-run W4's §5 gate with
-both in place at X3) | `docs/FIM_BUNDLE_X_PLAN.md`; `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X
-checkpoint X0"/"checkpoint X1" |
+`22x22x1`/`23x23x1` no-op re-checks | X0-X3 complete. **X3**: D3 oracle re-comparison (fixed run's `LEDGER`
+reaches the exact `dt≈0.185`/`0.259`-class steps the original D3 question asked about, in
+7/12 iterations — `168` total iterations across 16 substeps vs OPM's `11` in one, still ~15x
+less iteration-efficient but firmly functional, not pathological). Generality checks (not
+required, run because the finding was too clean not to stress): Legacy flavor also improves
+(`52→25` substeps, unconditional); a second independently-discovered broken case
+(`water-medium-6step`, steps 5-6 had the identical plateau-replay-explosion pathology) also
+resolves cleanly, with previously-frozen reported production numbers now correctly continuing to
+climb instead of freezing. Stack-level Bundle N §5 gate: heavy-case class **PASSED decisively**
+(`16≤35`, better than Legacy's own `52`); bounded-case "not worse than Legacy" **still open**
+but confirmed unrelated/unchanged by this fix (pre-existing `OpmAligned`-vs-Legacy cost tradeoff,
+never this bundle's scope) | **PROMOTED** (the fix itself; the separate `OpmAligned`+
+`nested_well_solve`-as-default stack question is spun off, not closed by this bundle — blocked
+only on the pre-existing bounded-case tradeoff) | Re-open the stack question once/if the
+bounded-case tradeoff has its own diagnostic pass; re-verify `single_cell_producer_fraction` if
+`perforation_control_cells`'s call sites change | `docs/FIM_BUNDLE_X_PLAN.md`;
+`docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X0"/"checkpoint X1"/"checkpoint X3" |
 | FIM-DIAG-002 | Diagnostics / well coupling | Late-window native file trace sink (`fim/trace_sink.rs`, `FIM_TRACE_FILE`/`FIM_TRACE_DT_BELOW`/`FIM_TRACE_SUBSTEP_START`/`FIM_MAX_SUBSTEPS`) + per-iteration `WELLTRACE` line, to identify the actually-oscillating variable in Bundle N §5's 18k-substep heavy-case pathology without a multi-hour blind guess | `fim/trace_sink.rs` (new), `fim/timestep.rs`, `fim/newton.rs` | Heavy `12x12x3 --dt 1 --opm-aligned` | Re-baseline post-`FIM-LINEAR-011`: pathology persists, `17,990` substeps (vs prior `18,002`, same chaos-sensitivity shift as Legacy's `32→52`), wall-clock `298m13s→1288.7s` (~13.9x, confirms `FIM-LINEAR-011`'s cost-lowering framing). Windowed rerun (5 independent `iters=20` substeps inspected via `WELLTRACE`): BHP raw Newton correction is **exactly** `0.0` every iteration for both wells (strongest confirmation yet that BHP is not the culprit). The producer well's perforation rate is: raw (pre-relax) Newton correction settles into a non-vanishing per-substep plateau (`0.28`-`0.64` m³/day across the 5 substeps); `relax_well_state_toward_local_consistency`'s contribution tracks its near-exact negative every iteration (net movement ≈0, which is why CNV/MB and `q` look converged); `perforation_flow` residual plateaus at a nonzero floor scaling linearly with the same raw-correction plateau (ratio `≈8.63e-5`, consistent to 3 sig figs across all 5 substeps) instead of vanishing — a persistent **disagreement** between the Newton linearization and the relax step's independently-derived rate formula, not a classical 2-period oscillation (small iteration-to-iteration `res_pf` deltas are exactly why `FIM-NEWTON-006`'s OSC-DETECT widening can't and doesn't see this). Injector well unaffected (`~1e-7`/`~1e-12`, negligible) | DIAGNOSTIC | N/A — instrumentation stays in the tree (no-op verified: control matrix bit-identical, locked smoke 3/3, `assembly_ad` parity 10/10, wasm build green); re-run only if the well-pinned pathology's mechanism is disputed after Bundle W lands | `docs/FIM_CONVERGENCE_WORKLOG.md` "Late-window trace diagnostic on the 18k pathology (2026-07-11)" |
 
 ## How To Add A Row

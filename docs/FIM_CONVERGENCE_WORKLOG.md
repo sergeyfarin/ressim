@@ -2522,3 +2522,87 @@ one `||` condition added) resolving what had been, across the whole `FIM-BUNDLE-
 `FIM-DIAG-002`/`FIM-DIAG-003` arc, an ~18,000-substep catastrophic failure — because the arc had
 been chasing a downstream symptom (the well-cell MB freeze) of an upstream formula-fidelity gap
 that had never been compared against OPM's actual source until D3/X0 did so directly.
+
+### Bundle X checkpoint X3: D3 oracle re-comparison, generality checks, stack promotion (2026-07-12)
+
+Per `docs/FIM_BUNDLE_X_PLAN.md` X3. Commit base `9bb4925`.
+
+**D3 oracle re-comparison.** Full unwindowed `LEDGER` trace of the fixed run
+(`OpmAligned`+`nested_well_solve`+`single_cell_producer_fraction`, `FIM_TRACE_SUBSTEP_START=0`,
+no cap needed — only 16 substeps): dt schedule climbs cleanly from `0.0825` to `0.259` days,
+reaching the exact `dt≈0.185`-class step the original D3 plan asked about
+("does OPM hold `dt=0.185`-class steps at 2-3 iterations where we collapse?") — substep 12 covers
+`t=0.313→0.498` at `dt=0.185031` in **7 iterations**, substep 13 covers `t=0.757→1.0`-ish at
+`dt=0.259044` in **12 iterations**. `mb` values throughout: `1e-8`-`1e-10` range, comfortably
+under strict tolerance — no plateau anywhere in the trace. Total Newton iterations across all 16
+substeps: **168** (summing the `iters` column) vs OPM's **11** in its single one-substep solve
+(`docs/FIM_CONVERGENCE_WORKLOG.md` "FIM-DIAG-003 checkpoint D3"). ResSim is now firmly in a
+*functional* regime — clearing the `≤35`-substep gate by more than 2x — but still ~15x less
+iteration-efficient than OPM per unit of simulated time, consistent with `OpmAligned`'s known,
+separately-tracked per-iteration cost gap (Bundle P's own wall-clock attribution work) and not
+something this fix was aimed at closing.
+
+**Generality checks (not required by the plan, run because the finding was too clean not to
+stress further):**
+
+1. **Legacy flavor benefits too.** `water-pressure 12x12x3 --dt 1` under Legacy (no
+   `--opm-aligned` at all) + `single_cell_producer_fraction`: **`52 → 25` substeps**. Smaller
+   improvement than `OpmAligned`'s `18,015 → 16` (Legacy's Appleyard-damping retry ladder was
+   already tolerating the old formula's residual, just at higher cost — `OpmAligned`'s strict
+   CNV/MB gate could not), but a real, unconditional improvement — confirms the fix is a genuine
+   physics-formula correction, not something that only matters under a specific Newton-loop
+   flavor. Reported production numbers shift (`oil=3887.33 → 2900.00` at this snapshot) — expected
+   and correct, not a regression: the old numbers included a manufactured water-fraction leak at
+   the producer that this fix removes.
+2. **`water-medium-6step` (`water-pressure 20x20x3 --steps 6 --dt 0.25`), a second,
+   independently-discovered broken case.** Not part of the standard 6-command control matrix, but
+   checked per the plan's own X3 item 4 ("a producer that sees breakthrough mid-run"). Baseline
+   (flag off): steps 1-4 clean (`8/3/4/5` substeps), but **steps 5-6 exhibit the same
+   plateau-replay-explosion pathology** as the heavy case (`accepts=3+5+1018`, then
+   `accepts=1+5+2042` — `real_accepted_substeps` collapsing while `accepts` balloons via the same
+   ledger-collapsing mechanism D4 diagnosed for `FIM-DIAG-003`). Reported `oil` **freezes** at
+   `3560.89` identically across both stuck steps — itself evidence the run wasn't making genuine
+   progress. With the fix: steps 5-6 resolve cleanly (`8`/`3` real substeps, `accepts=8+0+0`/
+   `3+0+0`), and reported `oil` **continues climbing** (`3543.90 → 3578.05 → 3599.27`) instead of
+   freezing. Steps 1-4 (pre-breakthrough, before the fix's mechanism is even exercised) are
+   near-identical between the two runs (`oil` differs by `<0.1` at every step) — the fix changes
+   nothing until the physics it corrects actually matters, exactly as expected.
+
+**Stack-level Bundle N §5 promotion decision.** The original gate (heavy `≤35`-substep class +
+fine-dt FOPT + control matrix + bounded cases not worse than Legacy) had TWO independent parts,
+and this fix resolves only one of them cleanly:
+- **Heavy-case substep class: PASSED, decisively** (`16 ≤ 35`, and `16` is also *better* than
+  Legacy's own `52` — the fix doesn't just clear the bar, it makes `OpmAligned` the better choice
+  on this specific case).
+- **Bounded cases "not worse than Legacy": still open, unrelated to this fix.** Re-confirmed
+  unchanged by `single_cell_producer_fraction` (bit-identical on `22x22x1`/`23x23x1` with the flag
+  on or off): `OpmAligned` alone was already costlier than Legacy on the bounded cases *before*
+  this fix (`docs/FIM_STATUS.md` "Bundle N" section, recorded at the time as "close on attempts,
+  not yet better") and remains so — `20x20x3` `8→15`, `22x22x1` `4→24`, `23x23x1` `4→12`,
+  `gas-rate 20x20x3` `2→459`. This is a pre-existing, separately-tracked characteristic of
+  `OpmAligned`'s more conservative per-cell chopping / stricter CNV-MB acceptance vs Legacy's
+  Appleyard-damping ladder — not something `FIM-BUNDLE-X` was ever scoped to fix, and this fix
+  neither helps nor hurts it (structurally cannot, per X0's finding that the mechanism only fires
+  near a pre-breakthrough producer's saturation-bound collision, which these bounded cases don't
+  hit in a way that changes their substep count).
+
+**Verdict, split into two independent decisions**:
+1. **`single_cell_producer_fraction` itself: PROMOTABLE now, independent of the
+   `OpmAligned`/`nested_well_solve` stack question.** It is a physics-fidelity bug fix (matches
+   OPM's actual formula exactly), strictly improves every case tested under every flavor
+   combination, and has zero observed regression. This is the kind of fix the "systemic steer"
+   guidance favors (fix the OPM-inconsistent base, not another mechanism layered on top of it).
+2. **The `OpmAligned`+`nested_well_solve` stack (the original Bundle N §5 question — should this
+   *become the default*, replacing Legacy): still NOT closed.** The heavy-case blocker that
+   stalled it across `FIM-BUNDLE-N`/`FIM-BUNDLE-W`/`FIM-DIAG-002`/`FIM-DIAG-003` is now removed,
+   but the bounded-case cost tradeoff (never this bundle's target) remains as the standing
+   obstacle to full stack promotion. That is a distinct, pre-existing question, appropriately
+   left for its own future work rather than folded into this bundle's scope.
+
+**Open product question, not a technical one: should `single_cell_producer_fraction` become
+unconditional (delete the flag, always match OPM) rather than stay an opt-in dev flag?** It
+changes reported production numbers on any FIM scenario where a producer's 3x3 neighborhood
+differs from its own cell's saturation (i.e. once water is near but hasn't reached a producer) —
+this is more physically correct, but is a default-behavior change for the public-facing FIM path
+(FIM is currently dev-only per `docs/FIM_DEFERRED_BACKLOG.md`, which lowers the stakes, but
+worth an explicit decision rather than a silent default flip). Deferred to the user.
