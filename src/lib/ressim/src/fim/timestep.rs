@@ -940,6 +940,13 @@ pub(crate) fn step_internal(sim: &mut ReservoirSimulator, target_dt_days: f64) {
 }
 
 impl ReservoirSimulator {
+    /// `FIM-DIAG-003` D0/D1 dev setter (`docs/FIM_DIAG_003_PLAN.md`): see
+    /// `fim_force_direct_linear` doc comment. No wasm surface — set by the native repro test
+    /// driver from `FIM_FORCE_DIRECT_LINEAR`, same pattern as `set_fim_nested_well_solve`.
+    pub(crate) fn set_fim_force_direct_linear(&mut self, enabled: bool) {
+        self.fim_force_direct_linear = enabled;
+    }
+
     pub(crate) fn append_fim_trace_line(&mut self, line: &str) {
         // Late-window trace diagnostic: runs on the production `step()` path too (independent
         // of `capture_fim_trace`) so a native no-trace run still gets full per-iteration
@@ -1030,6 +1037,11 @@ impl ReservoirSimulator {
             newton_options.nonlinear_flavor = crate::fim::newton::FimNonlinearFlavor::OpmAligned;
         }
         newton_options.nested_well_solve = self.fim_nested_well_solve;
+        // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
+        // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
+        if self.fim_force_direct_linear {
+            newton_options.linear.kind = crate::fim::linear::FimLinearSolverKind::SparseLuDebug;
+        }
         // Bundle N checkpoint 4 (N3, `OpmAligned` only): rolling `relativeChange()` history for
         // OPM's PID controller half (design doc §9.3), reset each outer step — matching OPM's
         // `PIDTimeStepControl` constructor (`errors_(3, tol_)`). Legacy's cooldown/carryover/
@@ -2931,12 +2943,16 @@ mod phase5_repro {
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
         sim.set_fim_nested_well_solve(nested_well_solve);
+        // FIM-DIAG-003 D0/D1 (`docs/FIM_DIAG_003_PLAN.md`): same env-gated pattern, forces
+        // every Newton linear solve through the exact direct backend for H1/H2 discrimination.
+        let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
+        sim.set_fim_force_direct_linear(force_direct_linear);
 
         let start = Instant::now();
         sim.step(dt_days);
         let elapsed = start.elapsed();
         println!(
-            "native step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve})",
+            "native step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear})",
             elapsed.as_secs_f64()
         );
         if let Some(stats) = sim.last_fim_step_stats_ref() {

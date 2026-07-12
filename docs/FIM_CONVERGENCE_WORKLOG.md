@@ -2000,3 +2000,101 @@ the intended off-by-one semantics against `iterCtx.iteration()`.
 3x if it hits); (3) OPM Flow differential trajectory on the heavy deck (a day, decisive from
 the oracle side); (4) Legacy+W heavy case (minutes, possible independent win); (5) only then
 decide whether the stack promotes or the approach changes.
+
+### FIM-DIAG-003 checkpoint D0: instrumentation (2026-07-11)
+
+Per `docs/FIM_DIAG_003_PLAN.md` D0. No-op gated; both additions are diagnostic-only and neither
+touches the accept/retry decision.
+
+**1. Binding-criterion trace.** `cnv_mb_from_parts` (`fim/newton.rs`) now also computes, per
+component: `cnv_peak_cell[c]` (the cell realizing `max_coeff[c]`, tracked inline in the existing
+loop) and `mb_peak_cell[c]` (the largest `|r_i,c|` among cells whose sign agrees with the summed
+imbalance `r_sum[c]` — the cell(s) actually driving the MB error rather than one that cancels
+against it). A new `binding: Option<BindingCriterion>` field names the single failing
+criterion (CNV or MB, which component) with the largest `value/tolerance` overshoot ratio. The
+`CNV-MB` trace line gained a trailing `binding=[...]` field, e.g.
+`binding=[mb[water]=1.412e-07/1.000e-07 cell=143]`, or `binding=[none]` when `would_accept`.
+`fim_trace!` always runs (writes to the sim's trace buffer unconditionally); this is pure
+diagnostic output, no control-flow change.
+
+**2. Forced-direct-linear switch.** New `fim_force_direct_linear: bool` field on
+`ReservoirSimulator` (`lib.rs`, default `false`), set only via a `pub(crate)`
+`set_fim_force_direct_linear` (added to the existing plain `impl ReservoirSimulator` in
+`timestep.rs`, alongside `append_fim_trace_line` — no `#[wasm_bindgen]`, no wasm surface, same
+as the pattern established for `fim_nested_well_solve`). When set, `step_internal_fim_impl`
+forces `newton_options.linear.kind = FimLinearSolverKind::SparseLuDebug` — every Newton
+iteration solves exactly via the direct backend instead of the default iterative CPR/GMRES
+stack. Wired into the native repro driver
+(`repro_water_pressure_12x12x3_opm_aligned_no_trace`, same env-gated pattern as
+`FIM_NESTED_WELL_SOLVE`): `FIM_FORCE_DIRECT_LINEAR=1` sets the flag before `sim.step()`.
+
+**Gate results** (clean tree, commit pending this checkpoint):
+- `cargo build --manifest-path src/lib/ressim/Cargo.toml` (lib only): clean, no new warnings.
+- `cargo build --manifest-path src/lib/ressim/Cargo.toml --tests`: clean (the `set_...` setter
+  warning under lib-only build is expected — it's only called from the `#[cfg(test)]` repro
+  driver).
+- `cargo test assembly_ad`: 10/10 pass (parity gates untouched).
+- Locked smoke: `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+  `spe1_fim_first_steps_converge_without_stall` (124.5s), `spe1_fim_gas_injection_creates_free_gas`
+  (425.1s) — all pass.
+- `bash scripts/build-wasm.sh`: succeeds (`release` profile, `wasm-opt` optimized).
+- Control matrix (`fim-solver-debug` skill, all 6 commands): pending — the sandbox's Bash safety
+  classifier went temporarily unavailable mid-session; will complete and record before D1.
+
+### FIM-DIAG-003 checkpoint D2: H3 MB formula audit (2026-07-11)
+
+Per `docs/FIM_DIAG_003_PLAN.md` D2. Static, line-by-line comparison of `cnv_mb_from_parts`
+(`fim/newton.rs:1846-` — updated line numbers post-D0) against the pinned OPM checkout at
+`OPM/opm-simulators` (verified `git log -1` = `062cb19986aa8f11cffc30351fd2fee355d0ccb4`,
+`interim_release/2024.12-4152-g062cb1998`, clean tree — this IS the tag the design doc cites).
+
+**Quantity-by-quantity comparison**, OPM source in
+`opm/simulators/flow/NonlinearSystemBlackOilReservoir_impl.hpp`:
+
+| Quantity | OPM (file:line) | ResSim (`fim/newton.rs`) | Verdict |
+|---|---|---|---|
+| `B_avg[c]` | `getMaxCoeff` (`:1114` etc.): `Σ 1/invB(phase)` per cell, then `/= global_nc_` in `localConvergenceData` (`:621-623`) — current-iterate pressure | `b_avg[c] = Σ fvf[c] / n_cells`, `fvf` from `state.cells[idx].pressure_bar` (current iterate) | **Matches** |
+| `R_sum[c]` | `getMaxCoeff` (`:1117`): raw `modelResid[cell][compIdx]` accumulated, no PV weight | `r_sum[c] += residual[i*3+c]` raw | **Matches** |
+| `maxCoeff[c]` (CNV) | `getMaxCoeff` (`:1118-1121`): `max_i(|R_i|/pvValue_i)`, `pvValue = referencePorosity(cell,t=0) * dofTotalVolume(cell)` — fixed reference PV | `max_coeff[c] = max_i(|r|/pv_i)`, `pv_i = sim.pore_volume_m3(i) = dx*dy*dz*porosity` (pure geometric reference, no rock-compressibility factor — confirmed via `grid.rs:17-19`, contrasted with the compressibility-adjusted PV the actual accumulation term uses, `properties.rs:136-145`) | **Matches** — both use fixed reference PV for the convergence check, deliberately different from the compressed PV inside the physics itself |
+| per-cell max-over-components (CNV-PV-split) | `characteriseCnvPvSplit` (`:646-656`): `maxCnv = max_c(\|r_c\| * B_avg[c])` (inner_product with `max` combine, `multiplies` per-element — **not** a sum, re-checked after an initial misread) | `cell_max_cnv = cell_max_cnv.max(r.abs()*b_avg[c]/pv)` | **Matches** |
+| `pv_sum` | `localConvergenceData` (`:607`): same `pvValue` accumulated across all cells | `pv_sum += pv` (same `pore_volumes_m3[i]`) | **Matches** |
+| `CNV[c]` | `:827`: `B_avg[c] * dt * maxCoeff[c]` (`dt` explicit — OPM's residual is a **rate**, verified via `fvbaselocalresidual.hh:590-596`: storage `(V_new-V_old)*scvVolume/dt`, flux already a rate via `computeFlux`/`alpha`) | `cnv[c] = b_avg[c] * max_coeff[c]` (no `dt` — ResSim's residual is dt-integrated: accumulation is a raw `current-previous` volume difference with **no** `/dt`, verified `properties.rs::cell_accumulation_generic:199-203`; flux/well terms are `coefficients * q * dt_days`, verified `assembly_ad.rs:144,246,249`) | **Matches structurally** — `ResSim_residual ≡ dt_days * OPM_rate_residual` by construction, so the `dt` factor is legitimately absorbed; this is inherently a dimensionless ratio either way (the `dt` cancels within each system's own formula), not a source of a fixed cross-system scale error |
+| `mb[c]` | `:828`: `\|B_avg[c]*R_sum[c]\| * dt / pvSum` | `mb[c] = \|b_avg[c]*r_sum[c]\| / pv_sum` | **Matches** (same dt-absorption argument) |
+| `ToleranceMb` / `ToleranceMbRelaxed` / `ToleranceCnv` | `1e-7` / `1e-6` / `1e-2` (already verified week-retrospective) | same constants | **Matches** (re-confirmed) |
+| `RelaxedMaxPvFraction` | `BlackoilModelParameters.hpp:50`: `0.03` | `OPM_RELAXED_MAX_PV_FRACTION = 0.03` | **Matches** |
+| `min_strict_mb_iter_` relax-final-iteration gate | `:752-753`: `relax_final_iteration_mb = min_strict_mb_iter_ < 0 && iteration() == maxIter` | `relax_final_iteration` passed in as `is_final_newton_iteration = iteration+1 == max_newton_iterations` | **Matches** |
+
+**No `~1.4x`-shaped formula bug found.** Every sub-quantity in the MB/CNV computation is a
+faithful, source-verified port. **H3 (MB formula fidelity) is REFUTED** as an explanation for
+the `1.41e-7` freeze — the formula itself is correct.
+
+**Independent finding (not H3): confirmed off-by-one in `OPM_NEWTON_MIN_ITERATION_INDEX`.**
+Traced the exact semantics of OPM's `iteration() >= minIter` gate:
+`NewtonIterationContext::iteration()` (`NewtonIterationContext.hpp:52-55`) is 0-based and starts
+at 0 each timestep (`resetForNewTimestep`, `:122-128`); `NonlinearSystemBlackOilReservoir::
+nonlinearIteration` (`:203-231`) calls `initialLinearization` (assemble + convergence check
+against the **current** `iteration()` value, **before** any update this pass) then, only after
+that, `this->simulator_.problem().advanceIteration()` (`:229`) — so `iteration()` at each check
+equals the number of Newton **updates already applied** in this timestep, exactly mirroring
+ResSim's own `for iteration in 0..max_newton_iterations` loop structure (`newton.rs:2802` region:
+assemble → check `converged_on_entry` → apply update only if not converged). `NewtonMinIterations`
+default is **2** (`BlackoilModelParameters.hpp:163`), checked as `iteration() >= minIter`
+(`NonlinearSystemBlackOilReservoir_impl.hpp:175`) — so OPM requires `iteration() >= 2`, i.e. at
+least **2 Newton updates already applied** (3 total residual evaluations) before acceptance is
+even possible. ResSim's `OPM_NEWTON_MIN_ITERATION_INDEX = 1` only requires `iteration >= 1` (1
+update applied, 2 evaluations) — **one iteration too permissive**, confirmed by direct
+correspondence between the two loop structures, not just parameter-name pattern-matching.
+
+This is a real, independently-scoped correctness bug, but **does not explain the heavy-case
+plateau**: the stuck substeps run ~18-20 Newton iterations, far past either gate value, so
+`minIter=1` vs `minIter=2` is irrelevant once the substep is already this deep. It could plausibly
+explain (or contribute to) the still-unexplained bounded-case 3x gap (`OpmAligned` 12/1 vs
+Legacy 4/2 — Bundle N §10 obs. 6) for fast-converging cases where the gate is the actual limiter.
+**Not fixed in this checkpoint** — flagged as a candidate follow-on fix, own registry row, own
+control-matrix + locked-smoke gate per the project's promotion discipline (changes acceptance
+behavior under `OpmAligned` everywhere, not just the heavy case). Decision on fix timing deferred
+to D5.
+
+**D2 verdict**: H3 refuted via source-cited static audit. No fix, no re-run triggered by this
+checkpoint (the plan's "if a discrepancy is found, fix it" branch does not fire for H3 itself).
+Effort: ~1.5h (audit) vs the ~2-4h estimate.

@@ -127,6 +127,12 @@ pub struct ReservoirSimulator {
     /// `fim_opm_aligned_nonlinear` — evaluable under either flavor. Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.
     pub(crate) fim_nested_well_solve: bool,
+    /// `FIM-DIAG-003` D0/D1 (`docs/FIM_DIAG_003_PLAN.md`): force every Newton iteration's
+    /// linear solve through the exact direct backend (`SparseLuDebug`) instead of the default
+    /// iterative CPR/GMRES stack, to discriminate H1 (displaced well-cell standoff) from H2
+    /// (linear-precision floor). Native diagnostic driver only, set via
+    /// `set_fim_force_direct_linear`; no wasm surface. Default false = unchanged behavior.
+    pub(crate) fim_force_direct_linear: bool,
     pub(crate) gas_outer_step_trial_carryover:
         Option<crate::fim::timestep::GasOuterStepTrialCarryover>,
     last_fim_step_stats: Option<reporting::FimStepStats>,

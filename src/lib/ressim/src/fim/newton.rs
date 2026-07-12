@@ -1833,6 +1833,56 @@ struct CnvMbDiagnostics {
     /// `relax_final_iteration` was passed in) OPM's unconditional final-iteration relaxed
     /// MB/CNV tolerances (design doc §9.1's `relax_final_iteration_mb`/`_cnv`).
     would_accept: bool,
+    /// Per component, the cell with the largest `|r_i,c|` among cells whose sign matches the
+    /// summed residual `r_sum[c]` (i.e. the cell actually driving the MB imbalance, not one
+    /// that partly cancels against it). `FIM-DIAG-003` D0 instrumentation.
+    mb_peak_cell: [usize; 3],
+    /// Per component, the cell with the largest scaled CNV coefficient (`|r_i,c| * B_avg[c] /
+    /// pv_i`, the same quantity `cnv[c]` is the max of). `FIM-DIAG-003` D0 instrumentation.
+    cnv_peak_cell: [usize; 3],
+    /// The single failing criterion with the largest `value / effective_tolerance` ratio, or
+    /// `None` when `would_accept`. `FIM-DIAG-003` D0 instrumentation — names which criterion
+    /// blocks acceptance so the trace line doesn't require reading six numbers by hand.
+    binding: Option<BindingCriterion>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum BindingCriterionKind {
+    Cnv,
+    Mb,
+}
+
+impl BindingCriterionKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cnv => "cnv",
+            Self::Mb => "mb",
+        }
+    }
+}
+
+const RESIDUAL_COMPONENT_LABELS: [&str; 3] = ["water", "oil", "gas"];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct BindingCriterion {
+    kind: BindingCriterionKind,
+    component: usize,
+    peak_cell: usize,
+    value: f64,
+    tolerance: f64,
+}
+
+impl BindingCriterion {
+    fn trace_string(&self) -> String {
+        format!(
+            "{}[{}]={:.3e}/{:.3e} cell={}",
+            self.kind.label(),
+            RESIDUAL_COMPONENT_LABELS[self.component],
+            self.value,
+            self.tolerance,
+            self.peak_cell,
+        )
+    }
 }
 
 /// Pure core of the CNV/MB computation, split out for direct unit testing.
@@ -1862,6 +1912,7 @@ fn cnv_mb_from_parts(
     }
 
     let mut max_coeff = [0.0_f64; 3];
+    let mut cnv_peak_cell = [0usize; 3];
     let mut r_sum = [0.0_f64; 3];
     let mut pv_sum = 0.0_f64;
     let mut violating_pv = 0.0_f64;
@@ -1872,7 +1923,11 @@ fn cnv_mb_from_parts(
         for c in 0..3 {
             let r = residual[i * 3 + c];
             r_sum[c] += r;
-            max_coeff[c] = max_coeff[c].max(r.abs() / pv);
+            let coeff = r.abs() / pv;
+            if coeff > max_coeff[c] {
+                max_coeff[c] = coeff;
+                cnv_peak_cell[c] = i;
+            }
             cell_max_cnv = cell_max_cnv.max(r.abs() * b_avg[c] / pv);
         }
         if cell_max_cnv > OPM_TOLERANCE_CNV {
@@ -1885,6 +1940,22 @@ fn cnv_mb_from_parts(
     for c in 0..3 {
         cnv[c] = b_avg[c] * max_coeff[c];
         mb[c] = (b_avg[c] * r_sum[c]).abs() / pv_sum.max(1e-9);
+    }
+
+    // Peak-contributing cell per component for MB: the largest |r_i,c| among cells whose sign
+    // agrees with the summed imbalance r_sum[c] — the cell(s) actually driving the mass-balance
+    // error rather than one that cancels against it. `FIM-DIAG-003` D0 instrumentation.
+    let mut mb_peak_cell = [0usize; 3];
+    let mut mb_peak_abs = [0.0_f64; 3];
+    for c in 0..3 {
+        let sign = r_sum[c].signum();
+        for i in 0..n_cells {
+            let r = residual[i * 3 + c];
+            if r.signum() == sign && r.abs() > mb_peak_abs[c] {
+                mb_peak_abs[c] = r.abs();
+                mb_peak_cell[c] = i;
+            }
+        }
     }
 
     let violating_pv_fraction = violating_pv / pv_sum.max(1e-9);
@@ -1901,10 +1972,46 @@ fn cnv_mb_from_parts(
     } else {
         OPM_TOLERANCE_CNV
     };
-    let mb_effective_ok = mb.iter().all(|&v| v <= mb_tol_effective);
-    let cnv_effective_ok = cnv
-        .iter()
-        .all(|&v| v <= cnv_tol_effective || (pv_rule_relaxes && v <= OPM_TOLERANCE_CNV_RELAXED));
+    let cnv_component_ok: [bool; 3] = std::array::from_fn(|c| {
+        cnv[c] <= cnv_tol_effective || (pv_rule_relaxes && cnv[c] <= OPM_TOLERANCE_CNV_RELAXED)
+    });
+    let mb_component_ok: [bool; 3] = std::array::from_fn(|c| mb[c] <= mb_tol_effective);
+    let cnv_effective_ok = cnv_component_ok.iter().all(|&ok| ok);
+    let mb_effective_ok = mb_component_ok.iter().all(|&ok| ok);
+
+    // Binding criterion: among the failing components, the one with the largest
+    // value/tolerance overshoot ratio. `FIM-DIAG-003` D0 — names which criterion blocks
+    // acceptance without requiring a human to compare six numbers against two tolerances.
+    let mut binding: Option<BindingCriterion> = None;
+    let mut worst_ratio = 1.0_f64;
+    for c in 0..3 {
+        if !cnv_component_ok[c] {
+            let ratio = cnv[c] / cnv_tol_effective.max(1e-300);
+            if ratio > worst_ratio {
+                worst_ratio = ratio;
+                binding = Some(BindingCriterion {
+                    kind: BindingCriterionKind::Cnv,
+                    component: c,
+                    peak_cell: cnv_peak_cell[c],
+                    value: cnv[c],
+                    tolerance: cnv_tol_effective,
+                });
+            }
+        }
+        if !mb_component_ok[c] {
+            let ratio = mb[c] / mb_tol_effective.max(1e-300);
+            if ratio > worst_ratio {
+                worst_ratio = ratio;
+                binding = Some(BindingCriterion {
+                    kind: BindingCriterionKind::Mb,
+                    component: c,
+                    peak_cell: mb_peak_cell[c],
+                    value: mb[c],
+                    tolerance: mb_tol_effective,
+                });
+            }
+        }
+    }
 
     CnvMbDiagnostics {
         cnv,
@@ -1913,6 +2020,9 @@ fn cnv_mb_from_parts(
         pv_rule_relaxes,
         would_accept_strict: cnv_strict_ok && mb_ok,
         would_accept: cnv_effective_ok && mb_effective_ok,
+        mb_peak_cell,
+        cnv_peak_cell,
+        binding,
     }
 }
 
@@ -2759,7 +2869,7 @@ pub(crate) fn run_fim_timestep(
         fim_trace!(
             sim,
             options.verbose,
-            "    iter {:>2}: CNV-MB cnv=[{:.3e},{:.3e},{:.3e}] mb=[{:.3e},{:.3e},{:.3e}] viol_pv={:.4} would_accept={}",
+            "    iter {:>2}: CNV-MB cnv=[{:.3e},{:.3e},{:.3e}] mb=[{:.3e},{:.3e},{:.3e}] viol_pv={:.4} would_accept={} binding=[{}]",
             iteration,
             opm_conv.cnv[0],
             opm_conv.cnv[1],
@@ -2775,6 +2885,11 @@ pub(crate) fn run_fim_timestep(
             } else {
                 "no"
             },
+            opm_conv
+                .binding
+                .as_ref()
+                .map(BindingCriterion::trace_string)
+                .unwrap_or_else(|| "none".to_string()),
         );
 
         let current_norm = final_residual_inf_norm.unwrap_or(f64::INFINITY);

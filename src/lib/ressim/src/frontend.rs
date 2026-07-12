@@ -89,6 +89,7 @@ impl ReservoirSimulator {
             fim_trace_window_active: false,
             fim_opm_aligned_nonlinear: false,
             fim_nested_well_solve: false,
+            fim_force_direct_linear: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
             fim_step_stats_history: Vec::new(),
