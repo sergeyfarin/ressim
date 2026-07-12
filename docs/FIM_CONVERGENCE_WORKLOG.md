@@ -2149,3 +2149,50 @@ signature for **pure H1**.
   bug.
 
 Effort: ~15 min setup + 76s + 172s run time + analysis, well under the ~1h estimate.
+
+### FIM-DIAG-003 checkpoint D4: combination coverage (2026-07-12)
+
+Per `docs/FIM_DIAG_003_PLAN.md` D4, both items, using `scripts/fim-wasm-diagnostic.mjs`
+(`--opm-aligned`/`--nested-well-solve` flags), commit `e12b95d`.
+
+**1. Legacy + `nested_well_solve` on the heavy case (never run before).** Raw summary line:
+`substeps=8 accepts=7+4+14907 dt=[6.104e-5,3.125e-2]`, real accept rungs `s0@3.125e-2 →
+s6@6.104e-5` (7 entries, dt collapsing monotonically over just 7 real Newton-solved steps).
+**Read carefully, not at face value**: `substeps=8` looks dramatically better than Legacy's own
+baseline `substeps=52` (`real=51,cooldown=3,hotspot_plateau=2060`, real accept rungs run
+`s0@3.125e-2` through the high-30s/40s before the tail collapses) — but the `accepted_substeps`
+ledger field collapses an entire hotspot-plateau replay block into ~1 history entry regardless of
+its size (`51 real + 1 collapsed block ≈ 52`; `7 real + 1 collapsed block ≈ 8` — the arithmetic
+matches exactly in both cases). The real signal is `real_accepted_substeps`: Legacy alone does
+**51** genuine Newton-solved dt advances before the tail-end plateau; Legacy+`nested_well_solve`
+does only **7** before permanently stalling at `dt=6.1e-5` and having the remaining ~99.8% of the
+timestep auto-filled by cheap plateau-replay bookkeeping (14,907 replayed units, vs Legacy's own
+2,060). **This is a regression, not a win** — `nested_well_solve` under Legacy causes a much
+*earlier and more severe* stall (dt collapses to the plateau floor after 7 real attempts instead
+of ~50), the opposite of the `docs/FIM_DIAG_003_PLAN.md` "possible independent win" framing
+(condition explicitly required "physics intact," which this fails). This is exactly the
+measurement trap the skill (`.claude/skills/fim-solver-debug/SKILL.md` "Reading the summary
+line") and the week retrospective (§2, "the measurement was blind") both warn about — do not
+read `accepted_substeps` alone as the gate metric when a plateau-replay block is present; check
+`real_accepted_substeps` first. **Not a promotable win. No further action.**
+
+**2. The `22x22x1` OpmAligned+`nested_well_solve` "`12→24` regression" and the `23x23x1`
+`linear-bad:oil@1585` ride-along.** Re-derived at current HEAD (baseline discipline: "do not
+trust expected counts written in old docs"):
+
+| Case | OpmAligned alone | OpmAligned + `nested_well_solve` | Delta |
+|---|---|---|---|
+| `22x22x1` | `substeps=24`, `retry_dom=linear-bad:oil@1450`, `avg_p=319.00` | `substeps=24`, same `retry_dom`, same `avg_p` | **bit-identical** |
+| `23x23x1` | `substeps=12`, `retry_dom=linear-bad:oil@1585`, `avg_p=317.18` | `substeps=12`, same `retry_dom`, same `avg_p` | **bit-identical** |
+
+**Does not reproduce.** Both bounded cases are confirmed no-ops for `nested_well_solve` at the
+current tree (matches every other field checked: `oil`, `inj`, `gor`, `dt` bounds). Note `23x23x1`
+OpmAligned-alone's own number (`12`) matches the "`12`" the retrospective attributed to
+`22x22x1` — most likely a mislabel/stale reading from an earlier commit, not a real regression
+that has since been fixed (no intervening commit touched the `nested_well_solve`-off path). The
+week-retrospective row is superseded: **no `22x22x1` regression exists on the current tree; both
+bounded no-ops reconfirmed.**
+
+**D4 verdict**: heavy Legacy+W = confirmed regression (not promotable); both bounded no-ops
+reconfirmed clean, prior "regression" claim was stale/non-reproducible. No fixes triggered, no
+new registry rows needed beyond this record (kept as this checkpoint's own evidence).
