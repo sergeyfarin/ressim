@@ -3753,6 +3753,46 @@ pub(crate) fn run_fim_timestep(
                             .unwrap_or_else(|| "n/a".to_string()),
                         linear_failure_trace_suffix(&linear_report),
                     );
+                    // Bundle Y Y1a (`docs/FIM_OPM_PARITY_PLAN.md` §7): the offline solver lab's
+                    // entire evidence base (`FIM-LINEAR-005`/`008`/`010`) was captured exclusively
+                    // via the `!opm_aligned` branch above — this `OpmAligned` abort path had no
+                    // capture call at all, so no linear-stack decision has ever been validated
+                    // against an actual `OpmAligned` failure. Mirrors the Legacy capture site
+                    // exactly (same metadata shape, same `FIM_CAPTURE_DIR` gate); native-only and
+                    // inert unless the env var is set.
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env()
+                    {
+                        let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                            newton_iteration: iteration,
+                            failure_reason: linear_report
+                                .failure_diagnostics
+                                .as_ref()
+                                .map(|diagnostics| diagnostics.reason.label().to_string())
+                                .unwrap_or_else(|| {
+                                    if all_finite {
+                                        "opm-aligned-no-diagnostics".to_string()
+                                    } else {
+                                        "non-finite".to_string()
+                                    }
+                                }),
+                            dominant_family: residual_diagnostics
+                                .global
+                                .family
+                                .label()
+                                .to_string(),
+                            dominant_item_index: residual_diagnostics.global.item_index,
+                        };
+                        crate::fim::linear::capture::write_capture(
+                            &capture_dir,
+                            crate::fim::linear::capture::next_capture_sequence(),
+                            &metadata,
+                            block_layout,
+                            &assembly.jacobian,
+                            &rhs,
+                            Some(&assembly.equation_scaling),
+                        );
+                    }
                     let failure_diagnostics = classify_retry_failure_with_site(
                         Some(&linear_report),
                         &residual_diagnostics,

@@ -259,6 +259,30 @@ pub(super) fn solve_with_well_elimination(
     let tolerance =
         options.absolute_tolerance + options.relative_tolerance * rhs.norm().max(f64::EPSILON);
 
+    // Bundle Y Y1b (`docs/FIM_OPM_PARITY_PLAN.md` §7): `FIM_WELL_SCHUR_DEBUG=1` prints this
+    // report's inputs whenever the wrapper's outer safety-net check disagrees with the reduced
+    // solve's own verdict — the exact shape observed on the `OpmAligned` gas-rate case's
+    // `linear-bad` storm: `reduced_converged=true` at `reduced_iters=0` (the reduced solve's
+    // `x_0=0` trivially satisfied its own tolerance/`family_ok` check) while `full_residual_norm`
+    // stays at essentially the pre-solve `rhs_norm` — i.e. the recovered full-system solution is
+    // effectively zero, not actually converged, correctly caught here (`converged=false`) but
+    // with `failure_diagnostics` forwarded unchanged from the (`converged=true`, therefore
+    // `None`) reduced report — so `OpmAligned`'s no-fallback abort path (`newton.rs` ~line 3726)
+    // can never compute a `reduction` value and always hard-aborts, regardless of how good the
+    // true state was. Native-only, off unless the env var is set; no-op verified (control matrix
+    // bit-identical, `assembly_ad` parity 10/10).
+    if std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some() {
+        eprintln!(
+            "WELL-SCHUR-DEBUG reduced_converged={} reduced_iters={} full_residual_norm={:.6e} tolerance={:.6e} rhs_norm={:.6e} reduced_final_residual_norm={:.6e}",
+            reduced_report.converged,
+            reduced_report.iterations,
+            full_residual_norm,
+            tolerance,
+            rhs.norm(),
+            reduced_report.final_residual_norm,
+        );
+    }
+
     FimLinearSolveReport {
         solution,
         converged: reduced_report.converged && full_residual_norm <= tolerance,

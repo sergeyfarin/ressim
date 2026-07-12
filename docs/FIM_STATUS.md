@@ -8,7 +8,11 @@ evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11
 mechanism located but not yet fixed; `FIM-NEWTON-008` promoted); **gap #4 CLOSED 2026-07-12**
 (`FIM-BUNDLE-X` producer-fraction fix, heavy case `18,015 → 16` substeps under
 `OpmAligned`+`nested_well_solve`, `52 → 25` under default Legacy — made unconditional 2026-07-12,
-no dev flag remains).
+no dev flag remains). Post-X, the residual gap to OPM (heavy: `16` substeps vs OPM's `1`;
+bounded `OpmAligned` cases `1.5-4x` costlier than Legacy; gas-rate `OpmAligned` `459` substeps)
+is tracked as its own roadmap, `docs/FIM_OPM_PARITY_PLAN.md` — Y0 diagnostics closed 2026-07-12,
+attributing both the heavy-case transient and the gas-rate catastrophe to the linear stack (G2),
+with an explicit open question (not yet resolved) of whether they share one root cause.
 
 Use this file for:
 

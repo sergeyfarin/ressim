@@ -1,7 +1,11 @@
 # FIM Bundle Y: OPM Convergence Parity (post-Bundle-X roadmap)
 
-Status: PLANNED (2026-07-12). Registry: rows to be opened per checkpoint (`FIM-LINEAR-005` is
-the standing OPEN row Y2 executes).
+Status: Y0 diagnostics complete (2026-07-12, see §6). **Y1 attempted 2026-07-12, redirected —
+see §7: the literal action ("promote quasi-impes to live") was already done weeks ago and the
+registry row describing it as OPEN was stale.** The real gap Y1 surfaced is that the offline
+solver lab which justified that (and every other live linear-stack default) has never captured
+an `OpmAligned` failure — it structurally cannot, today. Next step is not yet executed; see §7.5
+for the options. Registry: rows to be opened per checkpoint.
 Prerequisite evidence: `docs/FIM_DIAG_003_PLAN.md` (closed) and `docs/FIM_BUNDLE_X_PLAN.md`
 (closed, PROMOTED unconditional). Baselines below re-derived on the committed tree at
 `53cae5c` (2026-07-12) — the exact runs are in the worklog note accompanying this plan's commit.
@@ -87,16 +91,33 @@ through the same transient, at 12x the dt. The gap therefore decomposes:
    Y1), three-phase Jacobian/regime issue (⇒ G5, own bundle), or controller compounding.
 3. Verdict: attribute G1 and the gas-rate catastrophe to G2/G4/G5 with evidence. No fixes here.
 
+**DONE — see §6 for the full writeup.** Short version: (1) is a genuine raw-Newton-step
+oscillation at the injector-connected cell, not a chop/damping fidelity bug (the damping port
+was verified byte-for-byte against pinned OPM source and is faithful); root cause is upstream,
+not yet localized to G2 vs G4. (2) is confirmed G2 (linear stack) but via a different mechanism
+than guessed: `retry_class=linear-bad` fires on iterations whose nonlinear state is *already*
+converged (CNV-MB `would_accept=strict`), because the linear solve's own internal
+converged-flag is stricter than what the Newton step actually needed — not a slow/bad search
+direction. §6.4 flags a plausible (unconfirmed) unifying hypothesis linking both to the same
+under-resourced CPR/GMRES budget.
+
 ### Y1 — CPR pressure-restriction promotion (`FIM-LINEAR-005` → live, "Step 9.3")
 
-The already-evidenced lever, executed per its own registry retry condition: promote
+~~The already-evidenced lever, executed per its own registry retry condition: promote
 `sum-rows` or `quasi-impes` (pick by OPM fidelity — OPM's `cprw` uses quasi-IMPES weighting;
 `docs/FIM_CPR_IMPROVEMENT_PLAN.md` has the design skeleton) to the live CPR path, flag-gated
 through the standard offline-lab-first workflow (the 54+13-system corpora already exist;
 re-capture on the post-X4 tree first since trajectories changed). Gates: offline lab
 non-regression, then full control matrix + locked smoke + BL benchmarks. Success metric:
 gas-rate `OpmAligned` 459 and `22x22x1`'s `linear-bad` retries move materially; heavy
-iterations-per-substep drop toward single digits in the transient.
+iterations-per-substep drop toward single digits in the transient.~~
+
+**MOOT — this checkpoint's literal action was already executed weeks before this plan was
+written.** `quasi-impes` has been the live restriction since commit `77ec900e` (2026-07-05);
+the loosened tolerance/budget + block-ILU0 smoother (`FIM-LINEAR-008`) and well-Schur
+elimination (`FIM-LINEAR-010`) are also both live defaults. The registry row this checkpoint
+cites as its authorization was simply never updated after Step 9.3 landed. See §7 for what Y1
+actually found once this was discovered, and for what real next step (if any) replaces it.
 
 ### Y2 — evidence-directed structural bundle (shaped by Y0)
 
@@ -144,3 +165,472 @@ re-plan honestly.
   economics for everything except Y3/Y4 full gates.
 - The worklog note accompanying this plan's commit records the exact post-X4 baseline
   commands; treat those as the replay set for Y0's before/after.
+
+## 6. Y0 findings (2026-07-12)
+
+Tree: `b2dd34a` (clean) plus one additive, diagnostic-only change not yet committed at the time
+of this writeup — a native `repro_gas_rate_20x20x3_opm_aligned_no_trace` test
+(`src/lib/ressim/src/fim/timestep.rs`, `mod phase5_repro`), added because the wasm diagnostic
+runner cannot host `fim::trace_sink`'s env-gated file trace (every call site is `#[cfg(not(
+target_arch = "wasm32"))]`) and no native gas-rate repro driver existed. It was validated
+bit-identical to the wasm-recorded baseline before being trusted for tracing:
+`accepted_substeps=459 linear_bad=337 nonlinear_bad=0 dt=[7.032e-5,9.539e-4]` — exact match to
+the plan's §1 table. **This test should be committed alongside this doc update** so the traces
+below are replayable; it changes no production or wasm-exposed path.
+
+### 6.1 Heavy substep 0: not a slow-convergence plateau — a genuine raw-Newton oscillation
+
+Command: `FIM_TRACE_FILE=<f> FIM_TRACE_SUBSTEP_START=0 FIM_NESTED_WELL_SOLVE=1 cargo test
+--release --manifest-path src/lib/ressim/Cargo.toml --lib
+repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture` (heavy case, `16`
+substeps this run — within the case's recorded ±1 chaos band vs the plan's `17`).
+
+The first trial (`dt=0.25`, a quarter of the report step) **never converges**: after 20
+iterations, `cnv[water]` oscillates in the range `90–150` and `mb[water]` in `0.2–0.35` with no
+monotonic trend, and the injector's connected cell (cell 0, `(0,0,0)`) has its water saturation
+bounce `sw = 0.10 → 0.30 → 0.50 → 0.30 → 0.50 → 0.30 → 0.41 → 0.21 → 0.33 → 0.40 → 0.20 → 0.29 →
+0.49 → 0.29 → 0.33 → 0.53 → 0.33 → 0.36 → 0.56 → 0.36 → (post-loop 0.38)` iteration-by-iteration
+— a textbook 2-period oscillation, not slow decay. The substep is rejected
+(`retry_class=nonlinear-bad dominant=water@0`); the retry at `dt=0.0825` is accepted but *still*
+burns the full 20-iteration budget (`accept ... iters=20 ... res=3.04e-7 mb=1.02e-8`), meaning
+the oscillation is damped-but-not-eliminated at the smaller dt, resolved only by hitting the
+final-iteration relaxed acceptance tier. This directly explains the ledger's `iters=20 →
+growth=0.4 (opm-iter) → dt-collapse` cycle the plan's §2 already named — the mechanism is now
+observed, not inferred.
+
+**Against OPM's oracle** (`/usr/bin/flow opm/reference-decks/water-heavy-step1/CASE.DATA
+--output-extra-convergence-info=steps,iterations`, rerun fresh this session, reproducing the
+recorded `11 Newton its / 12 linearizations / 14 linear its / 0 cuts` exactly): OPM's
+`CASE.INFOITER` shows `MB_Oil` falling `0.674 → 0.370 → 0.267 → 0.260 → 0.209 → 0.0736 → 0.00741
+→ 0.0033 → 8.8e-5 → 3.05e-6 → 6.95e-7 → 1.09e-9` — monotonic-ish with a genuine quadratic tail,
+**for the whole 1.0-day step**, 4x ResSim's failing 0.25-day trial. No oscillation signature at
+all in OPM's trajectory.
+
+**Why this is not the already-diagnosed damping/chop mechanism** (verified by reading source,
+not assumed): the applied saturation step is capped at exactly `OPM_DS_MAX = 0.2`
+([newton.rs:2047](../src/lib/ressim/src/fim/newton.rs)) regardless of the OSC-DETECT relaxation
+scalar (`relax` drops `1.00 → 0.90 → 0.80 → 0.70 → 0.60 → 0.50` from iter 7 onward as oscillation
+is detected) — `raw_dsw` and `step_dS` stay pinned at `±0.2` through iters 11, 14, 15, 17, 18
+*despite* `relax ≤ 0.6` at all of them. Read literally this looks like the relaxation is being
+masked by the chop. **Checked against OPM's actual pinned source before concluding that**:
+- `opm_per_cell_chopped_update` ([newton.rs:2081-2141](../src/lib/ressim/src/fim/newton.rs))
+  composes `chopped = update * relaxation` **then** re-clamps any cell still over `dsMax` back
+  to exactly `dsMax` — so a cell whose raw (pre-relaxation) delta exceeds `dsMax / relaxation`
+  gets reset to the same `±0.2` ceiling every iteration no matter how far `relaxation` has
+  decayed. This composition order is a straight port of OPM's own
+  `updatePrimaryVariables_` — `blackoilnewtonmethod.hpp:265-268,286-289` computes `satAlpha =
+  dsMax_ / maxSatDelta` and applies it to `delta` with **no** prior relaxation multiply inside
+  this function.
+- The relaxation multiply itself is applied **before** that chop in OPM too, one layer up:
+  `NonlinearSystemBlackOilReservoir_impl.hpp:283-301` calls
+  `nonlinear_solver.stabilizeNonlinearUpdate(x, dx_old_, current_relaxation_)` (which does
+  `dx *= omega` — `NonlinearSolver.cpp:70-88`) immediately before `this->updateSolution(x)`
+  (which triggers the dsMax chop). **Same order, same masking-when-raw-delta-is-large-enough
+  property, in OPM's real code.**
+- Constants match exactly: `relaxMax_=0.5, relaxIncrement_=0.1, relaxRelTol_=0.2`
+  ([NonlinearSolver.cpp:167-169](../OPM/opm-simulators/opm/simulators/flow/NonlinearSolver.cpp))
+  vs ResSim's `OSCILLATION_MAX_RELAX_FLOOR=0.5, OSCILLATION_RELAX_INCREMENT=0.1,
+  OSCILLATION_RELAX_REL_TOL=0.2` ([newton.rs:1271-1274](../src/lib/ressim/src/fim/newton.rs)).
+- One real ambiguity chased and closed: OPM also ships a *separate*, well-scoped relaxation
+  (`relaxationFactorFraction`/`relaxationFactorFractionsProducer`,
+  `StandardWellPrimaryVariables.cpp:62,738`) that damps producer `WFrac`/`GFrac` primary
+  variables specifically. This is a **different mechanism** from the global
+  `detectOscillations`/`stabilizeNonlinearUpdate` one ResSim's Phase 7 ported (confirmed by
+  `grep`: `dampen`/`relaxationFactor`/`oscillat` appear only in `opm/simulators/wells/*`, never
+  in `opm/models/nonlinear/*`) — it does **not** invalidate the composition-order check above,
+  but is worth knowing about since a future well-structure bundle (G4) will touch that file too.
+
+**Conclusion**: ResSim's oscillation-detection-and-damping port is faithful to OPM's real
+composition, order, and constants. The divergence is upstream of it — **OPM's raw (pre-damping)
+Newton correction at the injector-connected cell apparently never reaches the magnitude that
+needs `dsMax` clamping in the first place**, for the same physical case at 4x the dt, while
+ResSim's does, repeatedly, in alternating sign. That points at the Jacobian/flux linearization
+or the well-perforation coupling at that cell, not at the damping/chop machinery. Circumstantial
+detail worth carrying into the next diagnostic pass: the well-perforation Jacobian entry
+`d(res_pf)/dsw` at cell 0 swings `-1.79e4 → -6.51e3 → +1.58e4 → -8.91e3 → +1.72e4 → -9.39e3 →
++5.64e3 → -2.26e4 → ...` — sign-flipping almost every iteration, magnitude `1e3`–`2e4` — but
+this is evaluated *at* the oscillating state, so it is as likely a symptom of the oscillation as
+a cause. **Not discriminated this session; flagged for Y0.1-continuation, not Y1.**
+
+### 6.2 Gas-rate 459: confirmed G2, but a different mechanism than guessed
+
+Full LEDGER command: `FIM_TRACE_FILE=<f> cargo test --release --manifest-path
+src/lib/ressim/Cargo.toml --lib repro_gas_rate_20x20x3_opm_aligned_no_trace -- --ignored
+--nocapture` (bit-identical to the recorded baseline: `459/337/0/0`,
+`dt=[7.032e-5,9.539e-4]`).
+
+**Not a transient.** The plan's §1/§2 framed this as a dt-collapse "window"; the ledger shows
+it is a **steady-state limit cycle spanning nearly the entire run**, from substep ~4 through
+substep 458 (the last substep, reaching `t=0.250000` exactly): every accepted substep grows the
+next trial dt by `2x`–`3x` (`limiter=opm-restart-growth`/`opm-max-growth`), the grown trial
+almost always fails (`retry_class=linear-bad`), retries once at roughly half the failed dt, and
+accepts — then immediately grows again into the same failure next step. This grow→fail→retry→
+accept cycle alone accounts for the bulk of the 337 linear-bad retries (**zero**
+`nonlinear-bad`, all 459 substeps). Every accept and every failing trial alike take only `3`
+Newton iterations — this is not a slow grind, it fails fast and retries fast, over and over.
+
+**The dominant retry site drifts, it is not fixed at one cell** — histogram over all 337
+retries: `oil@121` (113), `well@3600` (80, the first well-row past the 3600 reservoir rows —
+`n_cells=1200 × 3 eqs`), `oil@1201` (66), `oil@7` (55), `oil@1204` (12), `oil@1261` (5, the site
+the plan's baseline table happened to record — that field is the *last-observed* dominant site,
+not the mode; worth fixing in future baseline tables since it undersells how much the failure
+moves with the advancing front). This is consistent with a genuine near-front/well
+CPR-preconditioner weakness, not one stuck degree of freedom.
+
+**The key mechanism finding, from a windowed per-iteration trace at substeps 60-62** (`
+FIM_TRACE_FILE=<f> FIM_TRACE_SUBSTEP_START=60 FIM_MAX_SUBSTEPS=63 cargo test --release ...`):
+iterations classified `linear-bad` are frequently ones whose **nonlinear state is already
+converged** — e.g. a retried trial's iteration 1 shows `CNV-MB ... would_accept=strict
+binding=[none]` (i.e. the simulator's own strict CNV+MB criteria are already satisfied) with
+`res=3.25e-5`, yet the ledger still records that substep's outcome as `retry_class=linear-bad`.
+Reading `classify_retry_failure_with_site`
+([newton.rs:345-388](../src/lib/ressim/src/fim/newton.rs)): the class is `LinearBad` iff
+`!report.converged` for that iteration's linear solve — a flag entirely independent of the
+outer CNV-MB/Newton-residual state. The reduction-ratio diagnostics at these same iterations
+(`avg_rr` `~1e-4`–`1e-7`, `last_rr` `~1e-7`) sit **far under** the `STRONG_CPR_AVERAGE_
+REDUCTION_RATIO=0.25`/`STRONG_CPR_LAST_REDUCTION_RATIO=0.5` thresholds
+([newton.rs:38-39](../src/lib/ressim/src/fim/newton.rs)) that would otherwise reclassify a
+converged-but-unimpressive solve as `NonlinearBad`/strong-CPR — meaning `report.converged` is
+false here for a reason *other* than reduction quality (most likely a small
+iteration/application budget: `apps=2`–`3` per Newton iteration throughout this trace, i.e. the
+CPR/BiCGSTAB solve is stopping well short of whatever hard convergence gate it checks, even
+though the *result* it already has is numerically excellent).
+
+**Conclusion**: the gas-rate 459-substep count is not the reservoir Newton loop struggling
+(zero `nonlinear-bad`, fast per-substep convergence) — it is the **linear solve's own internal
+convergence gate rejecting solves that were already good enough for the nonlinear iteration**,
+compounded by a growth policy that immediately re-attempts a similar dt with no memory of the
+retry it just took. This confirms G2 (linear stack quality) as the dominant driver, as the plan
+suspected, but via a specific, different mechanism than "the search direction is bad" — it's
+"the gate is stricter than the need." This directly matches the FIM-DIAG-003 "H2 — linear-
+precision floor" hypothesis shape, in a **different case, different site, different symptom**
+than where H2 was refuted (the heavy-case near-`1e-7` MB plateau, refuted in D1 by forced-
+direct-linear showing no material change). *That refutation does not transfer here* — it was
+scoped to one mechanism on one case; this is a distinct linear-gate-vs-need mismatch on a
+three-phase, well-row-dominated case. Treat H2 as live again for this case specifically.
+
+### 6.3 What Y0 did *not* resolve (explicitly, so it isn't silently dropped)
+
+- **G1's true root cause** (why ResSim's raw Newton step at the well-connected cell oscillates
+  where OPM's doesn't) is unlocalized — narrowed out of the damping/chop layer, not yet pinned
+  on the Jacobian, the well formulation (G4), or the linear solve (see §6.4).
+- **G5 (three-phase regime-switching)** was not implicated by the gas-rate trace — every
+  observed failure is `linear-bad` with a clean `Saturated` regime in the traced cells, no
+  variable-substitution activity visible in the windowed sample. Not ruled out elsewhere in the
+  run (only substeps 60-62 were traced in per-iteration detail), but no positive evidence for it
+  either. Y2(b) should not be scheduled from this evidence alone.
+- **G4 (well primary-variable structure)** is untouched by direct measurement this session; it
+  remains a plausible contributor to §6.1's raw-step-magnitude gap by architecture argument
+  only (per-perforation `q` + `rate_consistency` rows vs OPM's `WQTotal`/fractions/`bhp`), not
+  by trace evidence.
+
+### 6.4 Masking caution: two findings, possibly one cause — not yet discriminated
+
+Per the standing lesson of this program (Bundle W's mechanism fix exposed a second hidden gap;
+X0 found the "obvious" ordering hypothesis was the wrong root cause) — **do not read §6.1 and
+§6.2 as two independent, fully-explained findings.** Both traces show the `fgmres-cpr`/CPR-
+BiCGSTAB linear solve running a small number of applications (`apps=2`–`4`) and few linear
+iterations (`linear_iters=1`–`3`) per Newton iteration, on both the heavy case's oscillating
+substep 0 and the gas-rate case's rejected-but-converged retries. A single, unconfirmed,
+plausible unifying hypothesis: **an under-resourced/low-quality CPR linear solve could
+simultaneously (a) produce a poor-quality raw Newton *direction* at well-adjacent cells under
+the heavy case's larger dt, feeding §6.1's oscillation, and (b) fail its own internal
+convergence gate on the gas-rate case's well/near-front rows despite the resulting *state*
+being fine, feeding §6.2** — i.e. one linear-stack deficiency wearing two different masks
+depending on dt/regime. This would mean Y1's CPR-restriction-variant promotion
+(`FIM-LINEAR-005`) is not just the confirmed fix for §6.2 but a candidate fix for §6.1 too — or
+it could resolve only one and leave the other exposed, exactly as Bundle X's fix resolved the
+well-side standoff but left the reservoir CNV plateau newly visible. **Y1 must re-measure both
+the heavy-case raw-step oscillation (§6.1's iteration-by-iteration `sw`/CNV-MB trace) and the
+gas-rate limit cycle (§6.2's retry histogram) before and after the restriction-variant swap** —
+do not declare G1 resolved just because Y1's own target metric (gas-rate retries, bounded-case
+counts) improves.
+
+### 6.5 Priority update for Y1
+
+Y0's evidence sharpens, rather than changes, the plan's existing sequencing: Y1
+(`FIM-LINEAR-005`, CPR restriction-variant promotion) remains the correct next lever — now with
+two independent, mechanism-level reasons to expect it to matter (§6.2 directly, §6.4
+speculatively for §6.1) instead of one plausibility argument. Y1's gate should explicitly
+include the two traces above as before/after checks, not just the summary substep counts.
+
+**§6.5 turned out to be wrong — see §7.** `FIM-LINEAR-005` was not a pending lever; it was
+already live. Kept unedited above for provenance (it's what motivated attempting Y1 next); do
+not re-read it as current guidance.
+
+## 7. Y1 attempt (2026-07-12): the promotion was already live — what that exposes
+
+### 7.1 What was actually found, in order of discovery
+
+1. **`solve()`'s hardcoded CPR restriction is `CprPressureRestrictionKind::QuasiImpes`**, not
+   `Row0Schur`
+   ([gmres_block_jacobi.rs:2047](../src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs)). `git
+   blame` on that exact line: commit `77ec900e`, **2026-07-05** — a full week before this plan
+   was written. The code comment at the same site says outright: "Promoted 2026-07-04 (Phase 9
+   Step 9.3, `FIM-LINEAR-005`)."
+2. **`FimLinearSolveOptions::default()` already carries the loosened Phase 10 bundle**
+   (`FIM-LINEAR-008`): `max_iterations: 20, relative_tolerance: 5e-3, absolute_tolerance: 1e-12`
+   ([linear/mod.rs:181-183](../src/lib/ressim/src/fim/linear/mod.rs)), and `solve()`'s fine
+   smoother is `CprFineSmootherKind::BlockIlu0` when the backend is `FgmresCpr`
+   ([gmres_block_jacobi.rs:2029-2033](../src/lib/ressim/src/fim/linear/gmres_block_jacobi.rs)).
+   The comment there: "Re-applied after a first live attempt regressed the heavy case... see
+   Phase 10" — confirming the earlier-documented revert (worklog "Step 10.4") was superseded by
+   a later, successful re-application this plan's own §1 baseline table never mentioned.
+3. **`FIM-LINEAR-010` (well-Schur elimination) is also live by default**
+   (`eliminate_wells: true`, [linear/mod.rs:187](../src/lib/ressim/src/fim/linear/mod.rs)) —
+   `solve_linearized_system` routes any system with well/perforation rows through
+   `well_schur::solve_with_well_elimination` before it ever reaches `gmres_block_jacobi::solve`
+   ([linear/mod.rs:242-257](../src/lib/ressim/src/fim/linear/mod.rs)).
+
+**Net: the three linear-stack levers Y1 was written to promote — restriction, tolerance/
+smoother bundle, well elimination — are all three already live.** `docs/FIM_EXPERIMENT_
+REGISTRY.md`'s `FIM-LINEAR-005` row said `OPEN` with `row0-schur (current, live)`; that was
+stale from the moment Phase 10 built on top of the Step 9.3 promotion without anyone circling
+back to close the row. Corrected in the registry as part of this checkpoint. **Every baseline
+number in this plan's §1 table (heavy `17`, gas-rate `459`, etc.) was already measured with
+this entire bundle active** — Y0's findings are not "what happens before Y1," they are "what
+`OpmAligned` still does wrong after every linear-stack lever tried so far."
+
+### 7.2 Why the evidence behind that promotion doesn't cover the case this plan targets
+
+Went looking for whether an even-better restriction variant exists unpromoted (the honest
+version of "perform Y1" once the literal action turned out to be done) by re-capturing a fresh
+corpus on the current tree, under `OpmAligned`, per this plan's own Y1 text ("re-capture on the
+post-X4 tree first since trajectories changed"). This is what actually happened:
+
+- **Heavy case** (`FIM_CAPTURE_DIR=<dir> FIM_NESTED_WELL_SOLVE=1 cargo test --release ...
+  repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored`): **1 file captured.** The
+  case now has `linear_bad=0, nonlinear_bad=1` (confirmed by the same run's summary line) — its
+  remaining problem (§6.1's raw-Newton oscillation) essentially never trips a linear-solve
+  *failure* to capture. This on its own is informative: the linear stack is not what's failing
+  on the heavy case anymore.
+- **Gas-rate case** (`FIM_CAPTURE_DIR=<dir> cargo test --release ...
+  repro_gas_rate_20x20x3_opm_aligned_no_trace -- --ignored`, the case with **337** `linear-bad`
+  retries per §6.2): **0 files captured.** Not a capture-harness bug — reading
+  `fim/newton.rs` line by line found why: the whole capture-on-linear-failure block (direct-LU
+  fallback ladder, dead-state/restart-stagnation bypass bookkeeping, and the `FIM_CAPTURE_DIR`
+  write call at line ~3647) lives inside **`if !opm_aligned { ... }`**
+  ([newton.rs:3588](../src/lib/ressim/src/fim/newton.rs)). `OpmAligned`'s own linear-failure
+  handling is a completely separate branch (`newton.rs:3700-3780`, "Bundle N checkpoint 3 (N5,
+  `OpmAligned` only)"): no fallback ladder, no capture call — either the relaxed-reduction
+  check (`OPM_RELAXED_LINEAR_SOLVER_REDUCTION = 0.01`,
+  [newton.rs:1822](../src/lib/ressim/src/fim/newton.rs)) accepts the near-miss, or the Newton
+  iteration aborts immediately via `classify_retry_failure_with_site` and returns.
+
+**This means every restriction/tolerance/smoother/well-elimination decision made in Phase 9-11
+was validated exclusively against `Legacy`-flavor captured failures** (confirmed separately:
+the original 54+13-system corpora were captured via `repro_water_pressure_12x12x3`/
+`repro_water_pressure_23x23x1`, whose driver hardcodes `opm_aligned=false`) — **and the capture
+mechanism cannot see an `OpmAligned` failure at all, structurally, as the code stands today.**
+Bundle Y exists specifically to close the `OpmAligned`-vs-OPM gap. Every "PROMOTED" linear-stack
+verdict in the registry to date has zero direct empirical evidence from the flavor this whole
+program targets — it happens to be shared code, so the settings apply to both flavors, but
+nobody has ever measured whether they're the *right* settings for `OpmAligned`'s specific
+failure shapes (the §6.1 oscillation, the §6.2 well-row/near-front CPR struggle).
+
+A second, smaller gap in the same lab: `solver_lab_compare_restriction_variants`
+([solver_lab.rs:270](../src/lib/ressim/src/fim/linear/solver_lab.rs)) calls
+`solve_with_restriction_kind`, which calls `gmres_block_jacobi::solve_with_cpr_fine_smoother`
+**directly** — bypassing `solve_linearized_system`'s well-Schur-elimination dispatch entirely.
+So even a same-flavor rerun of the existing lab today would not exercise the actual live code
+path once `FIM-LINEAR-010` is accounted for.
+
+### 7.3 A loose thread noticed in passing, not chased down
+
+While reading the `OpmAligned` no-fallback branch to understand why gas-rate's captures came up
+empty, one of the trace lines from §6.2's windowed run reads `LINEAR FAILED (opm-aligned, no
+fallback) converged=false finite=true reduction=n/a` — `reduction` is `None`, meaning
+`linear_report.failure_diagnostics` was `None` despite `converged=false`. A brief look at
+`gmres_block_jacobi.rs` found every `failure_diagnostics: None` site sits on a `converged: true`
+return path — none of them explain a `converged: false` result with no diagnostics attached.
+The likely explanation is that this system actually went through `well_schur::
+solve_with_well_elimination` (§7.2's second gap) rather than `gmres_block_jacobi::solve`
+directly, and that wrapper's own failure/recovery path was not read this session. **Not
+resolved — flagged for whoever picks this up next; it may be the literal mechanism inside
+§6.2's "linear-bad fires on an already-converged nonlinear state."**
+
+### 7.4 What this does and doesn't change about §6
+
+§6.1 and §6.2's factual observations (the oscillation trace, the retry histogram, the
+already-converged-nonlinear-state pattern) stand — they were measured directly, not inferred
+from docs. What changes is the *interpretation* of §6.2 as "G2, fixable by a restriction swap":
+that swap already happened, is already live, and the problem persists. §6.4's "masking"
+hypothesis (one under-resourced CPR solve wearing two masks) is neither confirmed nor refuted by
+this — it's simply now clear that *further* restriction-variant tuning cannot be trusted without
+first fixing the evidence-gathering gap in §7.2, because there is currently no way to measure
+whether a candidate change helps or hurts on the actual `OpmAligned` failures.
+
+### 7.5 Options for the real next step (not decided in this session)
+
+1. **Close the evidence gap first.** Add an `OpmAligned`-side capture call (small, additive,
+   same no-op-gated pattern as every other diagnostic hook in this codebase — mirror the
+   existing `!opm_aligned` block's capture call at the `OpmAligned` abort site,
+   `newton.rs:3744-3755`), re-capture the gas-rate case's 337 failures and whatever the heavy
+   case's rarer ones look like, and re-run the restriction/tolerance/smoother comparison lab
+   *through* `solve_linearized_system` (so well-Schur elimination is included) against those
+   real systems. This is the honest version of what this checkpoint set out to do, gated on
+   confirming with the user before adding new instrumentation to the Newton hot path.
+2. **Chase §7.3's loose thread**: understand exactly why `OpmAligned`'s abort path produces
+   `reduction=n/a`, and whether `well_schur::solve_with_well_elimination`'s own failure
+   reporting is the missing piece — this might directly explain §6.2's mechanism rather than
+   requiring a whole new capture corpus.
+3. **Skip the linear stack for now and act on §6.1 instead** — the heavy case's raw-Newton
+   oscillation has near-zero linear-solve failures to investigate via this route anyway; G4
+   (well primary-variable restructure) or a targeted Jacobian audit at the injector-connected
+   cell may be more tractable than re-litigating a linear stack that's already been tuned three
+   times this quarter.
+
+No code promoted this checkpoint. `FIM-LINEAR-005`'s registry row corrected to `PROMOTED`
+(reflecting reality, not new work). Two fresh capture directories exist in scratch
+(`/tmp/.../fim-y1/{heavy,gasrate}-capture`) — not committed, not durable; re-capture if this
+work resumes in a future session.
+
+## 8. Y1a executed (2026-07-12): the gas-rate catastrophe is not a linear-solve-quality problem
+
+Registry: `FIM-LINEAR-012` (DIAGNOSTIC). Picked option 1 from §7.5. Two additive, no-op-gated
+changes landed (both verified no-op: bit-identical control runs with the env vars unset,
+`assembly_ad` parity 10/10, wasm rebuilt green):
+
+- **`fim/newton.rs`**: a capture call mirroring the existing `!opm_aligned` one, added at the
+  `OpmAligned` no-fallback abort site (the `else` branch after `LINEAR FAILED (opm-aligned, no
+  fallback)`). Gated on `FIM_CAPTURE_DIR`, same as the Legacy-side call.
+- **`fim/linear/well_schur.rs`**: an `FIM_WELL_SCHUR_DEBUG=1` diagnostic print at the wrapper's
+  existing full-residual safety-net check, reporting the reduced solve's own verdict alongside
+  the wrapper's outer verdict.
+
+### 8.1 Fresh corpora, captured on the current tree, under `OpmAligned`
+
+| Case | Command | Systems captured |
+|---|---|---|
+| Heavy (`12x12x3 --dt 1`, `+nested_well_solve`) | `FIM_CAPTURE_DIR=<dir> FIM_NESTED_WELL_SOLVE=1 cargo test --release ... repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored` | **1** |
+| Bounded (`23x23x1 --dt 0.25`) | `FIM_CAPTURE_DIR=<dir> cargo test --release ... repro_water_pressure_23x23x1_opm_aligned -- --ignored` | **1** |
+| Gas-rate (`20x20x3 --dt 0.25`) | `FIM_CAPTURE_DIR=<dir> cargo test --release ... repro_gas_rate_20x20x3_opm_aligned_no_trace -- --ignored` | **337** |
+
+The heavy/bounded counts (1 each) independently corroborate §6.1: those cases' remaining
+problems are essentially not linear-solve failures anymore. Gas-rate's `337` matches its live
+`linear_bad` count exactly — the new hook captures everything it should.
+
+### 8.2 Restriction choice: re-confirmed correct on real `OpmAligned` data (not just re-asserted)
+
+`solver_lab_compare_restriction_variants` on the fresh 337-system gas-rate corpus (using
+`FimLinearSolveOptions::default()`, i.e. today's live tolerance/budget, but the lab's
+restriction-isolation path forces `CprFineSmootherKind::FullIlu0`, not the live `BlockIlu0` —
+a known lab limitation, see §7.2):
+
+| Variant | Converged | Wins | Median rel. residual |
+|---|---|---|---|
+| `row0-schur` | 336/337 | 25/337 | `6.512e-4` |
+| `sum-rows` | 337/337 | 54/337 | `2.131e-3` |
+| `diag-balanced-sum` | 12/337 | 0/337 | `1.154e0` |
+| `dominant-diag-row` | 337/337 | 38/337 | `1.788e-3` |
+| `local-schur-balanced` | 336/337 | 0/337 | `6.512e-4` |
+| **`quasi-impes`** | **336/337** | **220/337 (65%)** | **`1.133e-4`** |
+
+Unlike the old Legacy-flavor corpora (where `row0-schur` converged `0/54` and `0/13` —
+convergence pass/fail was the differentiator), on these real `OpmAligned` systems almost every
+variant converges; `quasi-impes` wins on solution *quality* by 5-6x over the next-best. **This
+is the first time `FIM-LINEAR-005`'s restriction choice has been checked against the flavor it
+actually runs under — and it holds up.** The already-live choice is confirmed, not merely
+inherited from stale evidence.
+
+### 8.3 The decisive result: today's exact live configuration converges every one of these systems offline
+
+`solver_lab_compare_backends` (`run_backend`, which calls `solve_linearized_system` — the real
+production dispatcher, so well-Schur elimination fires exactly as it does live) on the same
+337-system corpus:
+
+```
+=== aggregate over 337 systems ===
+sparse-lu reference failures: 0
+gmres-ilu0 converged: 337
+fgmres-cpr converged: 337
+fgmres-cpr reproduced live failure offline: 0
+```
+
+Every single system that was captured **at the exact moment it was classified as a live
+`linear-bad` failure** — same Jacobian, same RHS, same layout, same equation scaling, same
+`FimLinearSolveOptions::default()` (quasi-impes, block-ILU0, `5e-3`/`20`, well-Schur
+elimination) — converges cleanly when replayed through the real dispatcher in isolation:
+`iters=2`, relative residuals in the `2e-5`-`7e-5` range (individual capture lines, e.g.
+capture `00334`: `true_res=4.625e-7 rel=1.910e-5`; capture `00336`: `true_res=1.516e-6
+rel=4.793e-5`). The lab's own built-in "stop condition 2" assertion — written under the old
+Legacy-corpus assumption that a captured failure should still fail offline, else "the capture is
+missing state" — panics on this corpus: `current FgmresCpr converged offline on 337/337 systems
+that failed live — capture fidelity is suspect`. That assertion firing is itself the finding,
+not a broken test: **the gas-rate catastrophe is not caused by the linear solve being unable to
+solve these systems.**
+It is caused by something in how the live call site interprets or reports an otherwise-good
+solve as a failure.
+
+### 8.4 Mechanism, localized to the well-Schur-elimination wrapper (not fully pinned to one line)
+
+Added the `FIM_WELL_SCHUR_DEBUG` print (§ above) and re-ran a live windowed trace
+(`FIM_TRACE_SUBSTEP_START=60 FIM_MAX_SUBSTEPS=61`, same window as §6.2). Repeating pattern in
+the output:
+
+```
+WELL-SCHUR-DEBUG reduced_converged=true reduced_iters=0 full_residual_norm=4.666025e-2 tolerance=2.333004e-4 rhs_norm=4.666007e-2 reduced_final_residual_norm=4.666025e-2
+WELL-SCHUR-DEBUG reduced_converged=true reduced_iters=0 full_residual_norm=8.705666e-2 tolerance=4.352834e-4 rhs_norm=8.705667e-2 reduced_final_residual_norm=8.705666e-2
+WELL-SCHUR-DEBUG reduced_converged=true reduced_iters=0 full_residual_norm=5.751940e-2 tolerance=2.875970e-4 rhs_norm=5.751940e-2 reduced_final_residual_norm=5.751940e-2
+```
+
+(interleaved with many `reduced_iters=1`/`2` lines that converge correctly — this is not every
+solve, just a recurring subset). In each of these lines: the **reduced** (well-eliminated)
+solve reports `converged=true` after doing **zero iterations** — i.e. the trivial `x_0=0`
+starting guess satisfied the reduced system's own tolerance/`family_ok` check immediately — yet
+`full_residual_norm` (the recovered full-system residual, `well_schur.rs:257-258`) sits at
+essentially the *original* `rhs_norm`, 200x over `tolerance`. The full-system solution this
+produces is effectively zero — obviously not converged. `well_schur.rs`'s own safety-net check
+(`well_schur.rs:264`, `converged: reduced_report.converged && full_residual_norm <= tolerance`)
+correctly catches this and downgrades to `converged=false` overall. But
+`failure_diagnostics: reduced_report.failure_diagnostics` (`well_schur.rs:267`) is forwarded
+unchanged — and since `reduced_report.converged == true`, every `converged: true` return path in
+`gmres_block_jacobi.rs` sets `failure_diagnostics: None` (verified: every such site checked, none
+is an exception). So the wrapper's overall report is `converged: false, failure_diagnostics:
+None` — precisely the `reduction=n/a` shape from §7.3/§6.2's original trace. Tracing this up to
+`newton.rs`'s `OpmAligned` abort branch: `reduction = failure_diagnostics.map(...)` is `None`,
+`accept_relaxed` is unconditionally `false` (needs `reduction.is_some_and(...)`), so the Newton
+iteration hard-aborts — with no way to ever discover, from inside that branch, that the
+underlying linear solve was actually fine.
+
+**What is confirmed**: this exact bug shape (spurious `reduced_iters=0` "convergence" → correct
+safety-net rejection → lost `failure_diagnostics` → forced hard abort regardless of solution
+quality) reproduces repeatedly on the live gas-rate run, and independently explains §8.3's
+offline/live discrepancy without needing any other hypothesis. **What is not yet confirmed**:
+direct line-by-line correlation between a specific `FIM_WELL_SCHUR_DEBUG` line and a specific
+`LEDGER retry ... retry_class=linear-bad` line in the same run (the two trace streams weren't
+cross-referenced by iteration index this session) — so treat "this is *the* mechanism" as
+strongly evidenced, not proven exhaustive; there could be a second contributing path not yet
+seen. Per the standing masking caution (§6.4): confirm by correlation before treating this as
+fully closed.
+
+**Why does the reduced solve return `converged=true` at zero iterations for a state that clearly
+isn't converged?** Not resolved this session. Two candidate mechanisms, not yet distinguished:
+(a) a `family_ok`/tolerance-basis bug specific to the *reduced* system (its own internal
+tolerance check uses `elimination.reduced_rhs`'s norm, not the wrapper's later full-`rhs`-based
+`tolerance` — if the reduced RHS is disproportionately small relative to the full RHS for these
+particular well-row-dominated states, the reduced solve's own check could pass trivially while
+the eliminated well-tail still carries most of the real residual); (b) something in the
+elimination/recovery arithmetic (`well_schur.rs:234-252`) producing a degenerate `dx_tail` that
+happens to leave the full solution near zero even when the reduced correction is also near zero.
+(a) is favored by the numbers (`full_residual_norm ≈ rhs_norm` suggests the *whole* solution
+stayed near zero, cause unclear) but not confirmed.
+
+### 8.5 What this means for the plan
+
+This is very likely the primary mechanism behind the plan's gas-rate `2→459` catastrophe and a
+strong contributor to `OpmAligned`'s general bounded-case cost disadvantage vs Legacy (every
+bounded `OpmAligned` case's `retry_dom` is `linear-bad`, per the plan's original §2 G2 framing —
+now reframed: not "the linear stack is weak," but "a subset of results the linear stack
+correctly produces are being discarded due to a diagnostics-propagation bug"). It does **not**
+explain §6.1 (the heavy case's raw-Newton oscillation) — that case has almost no linear failures
+to trigger this path in the first place (§8.1's `1`-system capture). G1 and G2 remain separate
+problems; §6.4's "one root cause wearing two masks" hypothesis is **not** supported by this
+finding and should be considered weakened, not confirmed.
+
+**Not yet done, deliberately**: no fix implemented. The two candidate fixes named in the
+registry row (fix the reduced solve's spurious check, or make the wrapper synthesize proper
+`failure_diagnostics` on its safety-net downgrade) are both small and low-risk in isolation, but
+per this project's standing discipline, the mechanism should be pinned down further (the §8.4
+correlation gap) before writing code that changes live acceptance behavior — a wrong fix here
+changes what `OpmAligned` accepts on every bounded/gas case, not just the target one.

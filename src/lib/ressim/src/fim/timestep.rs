@@ -3043,4 +3043,125 @@ mod phase5_repro {
         let tail_start = trace.len().saturating_sub(4000);
         println!("{}", &trace[tail_start..]);
     }
+
+    /// Native mirror of the wasm diagnostic's `gas-rate --grid 20x20x3 --steps 1 --dt 0.25
+    /// --opm-aligned` case (`scripts/fim-wasm-diagnostic.mjs` `configureGasBase` +
+    /// `gasWellConfig` rate control + `setWells`, both-wells layout). Built for `FIM_BUNDLE_Y`
+    /// Y0 (`docs/FIM_OPM_PARITY_PLAN.md`): the wasm runner cannot host `fim::trace_sink`'s
+    /// env-gated file trace (every call site is `#[cfg(not(target_arch = "wasm32"))]`), so the
+    /// 459-substep gas-rate catastrophe needed this native equivalent before it could be
+    /// windowed-traced the same way the heavy water case was in `FIM-DIAG-002`/`003`. Run with:
+    /// `FIM_TRACE_FILE=<path> FIM_TRACE_DT_BELOW=<days> FIM_MAX_SUBSTEPS=<n> \
+    ///  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+    ///  repro_gas_rate_20x20x3_opm_aligned_no_trace -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn repro_gas_rate_20x20x3_opm_aligned_no_trace() {
+        use crate::pvt::{PvtRow, PvtTable};
+
+        let (nx, ny, nz, dt_days) = (20usize, 20usize, 3usize, 0.25_f64);
+        let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
+
+        // configureGasBase
+        sim.set_fim_enabled(true);
+        sim.set_cell_dimensions(10.0, 10.0, 5.0).unwrap();
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.15);
+        sim.set_initial_gas_saturation(0.0);
+        sim.set_fluid_properties(0.8, 0.4).unwrap();
+        sim.set_fluid_compressibilities(1e-4, 5e-5).unwrap();
+        sim.set_rock_properties(4e-5, 2500.0, 1.2, 1.0).unwrap();
+        sim.set_fluid_densities(850.0, 1020.0).unwrap();
+        sim.set_gas_fluid_properties(0.02, 1e-4, 0.8).unwrap();
+        sim.set_capillary_params(0.0, 2.0).unwrap();
+        // gravity: null resolves to `nz > 1` in the wasm runner (`configureOptions`); nz=3 here.
+        sim.set_gravity_enabled(true);
+        sim.set_permeability_per_layer(vec![500.0; nz], vec![500.0; nz], vec![50.0; nz])
+            .unwrap();
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 50.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.25,
+                    mu_o_cp: 0.7,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 250.0,
+                    rs_m3m3: 140.0,
+                    bo_m3m3: 1.4,
+                    mu_o_cp: 0.5,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 200.0,
+                    bo_m3m3: 1.55,
+                    mu_o_cp: 0.4,
+                    bg_m3m3: 0.004,
+                    mu_g_cp: 0.025,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_initial_rs(80.0);
+        sim.set_three_phase_rel_perm_props(
+            0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_gas_redissolution_enabled(false);
+        sim.set_stability_params(0.05, 75.0, 0.75);
+
+        // gasWellConfig(rate) + setWells (both wells)
+        sim.set_well_control_modes("rate".to_string(), "rate".to_string());
+        sim.set_target_well_rates(500.0, 200.0).unwrap();
+        sim.set_well_bhp_limits(50.0, 400.0).unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.add_well(0, 0, 0, 350.0, 0.1, 0.0, true).unwrap();
+        sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
+            .unwrap();
+        sim.set_fim_opm_aligned_nonlinear(true);
+        let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
+        sim.set_fim_nested_well_solve(nested_well_solve);
+        let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
+        sim.set_fim_force_direct_linear(force_direct_linear);
+
+        let start = Instant::now();
+        sim.step(dt_days);
+        let elapsed = start.elapsed();
+        println!(
+            "native gas-rate step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear})",
+            elapsed.as_secs_f64()
+        );
+        if let Some(stats) = sim.last_fim_step_stats_ref() {
+            println!(
+                "accepted_substeps={} advanced_dt={:.6}/{:.6} linear_bad={} nonlinear_bad={} mixed={} solver_ms={:?} min_dt={:?} max_dt={:?} last_dt={:?}",
+                stats.accepted_substeps,
+                stats.advanced_dt_days,
+                stats.target_dt_days,
+                stats.linear_bad_retries,
+                stats.nonlinear_bad_retries,
+                stats.mixed_retries,
+                stats.solver_ms,
+                stats.min_accepted_dt_days,
+                stats.max_accepted_dt_days,
+                stats.last_accepted_dt_days,
+            );
+        } else {
+            println!("no FimStepStats recorded");
+        }
+    }
 }
