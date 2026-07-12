@@ -2196,3 +2196,69 @@ bounded no-ops reconfirmed.**
 **D4 verdict**: heavy Legacy+W = confirmed regression (not promotable); both bounded no-ops
 reconfirmed clean, prior "regression" claim was stale/non-reproducible. No fixes triggered, no
 new registry rows needed beyond this record (kept as this checkpoint's own evidence).
+
+### FIM-DIAG-003 checkpoint D3: OPM Flow differential trajectory (2026-07-12)
+
+Per `docs/FIM_DIAG_003_PLAN.md` D3, commit `c9d041e`. `/usr/bin/flow` (confirmed installed);
+`origin/fim-opm-continuation-plan` has the deck harness but is stale relative to current master
+(pre-dates most of `.claude/skills/`, several docs) — did **not** merge that branch; instead
+recreated the specific deck adapted from its `water-medium-step1` template and tracked it fresh
+on this branch as `opm/reference-decks/water-heavy-step1/CASE.DATA` (`DIMENS 12 12 3`, perms
+2000/2000/200 mD matching `water-medium-step1` exactly, corner wells BHP 500/100, `TSTEP 1.0`).
+One deliberate deviation from the template: `COMPDAT` well radius `0.1`, not the template's
+`0.2` — verified against `frontend.rs::add_well` call sites that the actual repro driver
+(`repro_water_pressure_12x12x3_opm_aligned_no_trace`) and the `fim-wasm-diagnostic.mjs` preset
+both pass `well_radius=0.1`; the medium-step1 template's `0.2` does not match either and appears
+to be its own pre-existing discrepancy (out of scope to fix here — noted for future cleanup).
+
+Ran: `flow CASE.DATA --output-extra-convergence-info=steps,iterations` in a scratch working
+directory (matching the harness's own copy-before-run pattern, keeping the tree clean).
+
+**Result: OPM solves the entire `t=0→1.0` interval in ONE Newton solve, 11 iterations, ZERO
+timestep cuts.** `CASE.INFOSTEP`: `Time=0 TStep=1 ... NewtIt=11 LinIt=14 Conv=1`. Total wall
+time `0.03s`. This alone is a stark contrast with ResSim: Legacy needs 52 substeps (51 real),
+Legacy+`nested_well_solve` collapses to 7 real substeps before stalling (D4), and
+`OpmAligned`+`nested_well_solve` needs 18,015 substeps to cover the same interval.
+
+**`CASE.INFOITER` per-iteration trajectory** (the decisive piece — answers the plan's D3
+question #2 directly): at **iteration 10**, `MB_Oil=6.947e-7 MB_Water=1.970e-7` — the SAME
+order of magnitude ResSim is frozen at (`1.41e-7`-`2.33e-7` across D1's runs), both still above
+OPM's own strict `ToleranceMb=1e-7`. At **iteration 11** (the very next, and final, iteration),
+`MB_Oil=1.088e-9 MB_Water=1.130e-8` — a clean **2-3 order-of-magnitude drop in a single Newton
+step**, comfortably below tolerance (matching `CNV_Oil`/`CNV_Water`'s own `~250x` one-step drop,
+the classic quadratic-convergence tail of a well-posed Newton iteration). `WellStatus=CONV` and
+`PenaltyWellRes=0` at every iteration — no well-side distress recorded anywhere in the OPM
+trajectory.
+
+This directly answers the plan's own framing: **"is its MB at these states `~1e-8`, or
+`~1.4e-7`-but-still-converging, or does it also touch its relaxed tier?"** — the answer is
+**still-converging**: OPM transiently occupies the exact same residual-magnitude neighborhood
+ResSim is stuck at, and takes one clean further Newton step through it. This is oracle-side proof
+that `1e-7`-to-`2e-7` MB is not an inherent numerical floor for this physics/grid/well
+configuration — it is a ResSim-specific structural stall, independently confirming H1 (D1) and
+reinforcing H3's refutation (D2): a correctly-behaving Newton iteration passes through this exact
+zone in one step, so there is nothing "hot" about the tolerance comparison itself, only about
+ResSim's own iteration map having an invariant point there that OPM's doesn't.
+
+`CASE.PRT` well-solver defaults (context, not a new lever): OPM's own well-equation inner solve
+tolerance is `ToleranceWells=1e-4` — two orders looser than the reservoir `ToleranceMb=1e-7` — and
+its own inner well iteration budget is `MaxInnerIterWells=50`/`StrictInnerIterWells=40`, far more
+generous than ResSim's `nested_well_solve` inner solve. Consistent with (not new evidence beyond)
+the already-recorded Bundle W design intent; not investigated further here, out of D3's scope.
+
+**Not attempted in this checkpoint** (time-boxed per the user's "do D3 now, full plan" but the
+single-shot result already being decisive): a matching multi-`TSTEP` OPM run replaying ResSim's
+own accepted-dt sequence to compare dt-by-dt through the `t≈0.83-1.0` steady tail specifically.
+The single-shot per-iteration trajectory already answers the load-bearing question (H1
+independent oracle confirmation); the dt-sequence comparison would be corroborating, not
+decisive, and is left as a candidate follow-on if a future fix needs finer trajectory-level
+verification (this checkpoint doubles as the "adopt trajectory-level differential comparison as
+a standing method" pilot per the week retrospective §4 — the method works and is cheap: one deck
++ one `flow` invocation + reading two small text files, seconds not hours).
+
+**D3 verdict**: OPM oracle confirms H1 independently — a well-posed Newton iteration passes
+cleanly through the exact MB magnitude ResSim is frozen at. No fix attempted (out of scope for a
+diagnostic checkpoint); fix direction guidance for D5 is now well-triangulated from three
+independent angles (D1's binding-cell census, D2's formula-fidelity audit, D3's oracle
+trajectory): nonlinear/well-coupling, not linear tolerance, not CNV/MB formula fidelity, not an
+inherent numerical floor at this residual magnitude.

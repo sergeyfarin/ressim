@@ -2,12 +2,14 @@
 
 Status: IN PROGRESS (2026-07-12) — D0 done, D2 done (H3 refuted), D1 done (H1 CONFIRMED, H2
 REFUTED), D4 done (heavy Legacy+W = regression not a win; both bounded no-ops reconfirmed,
-prior "22x22x1 regression" did not reproduce), D3/D5 open.
+prior "22x22x1 regression" did not reproduce), D3 done (OPM oracle independently confirms H1:
+solves the whole interval in one 11-iteration Newton solve, its own MB trajectory transits the
+exact magnitude ResSim is frozen at with one further clean step). Only D5 (verdict) remains.
 Registry: `FIM-DIAG-003` (DIAGNOSTIC, open), `FIM-DIAG-003-D4` (REFUTED, both items).
 Prerequisite evidence: `docs/FIM_CONVERGENCE_WORKLOG.md` "Week retrospective (2026-07-11)"
 (commit `ec47e62`) and "Bundle W checkpoint W4/W5" (commit `c916c87`).
 Progress: `docs/FIM_CONVERGENCE_WORKLOG.md` "FIM-DIAG-003 checkpoint D0", "checkpoint D2",
-"checkpoint D1", and "checkpoint D4" (2026-07-11/12).
+"checkpoint D1", "checkpoint D4", and "checkpoint D3" (2026-07-11/12).
 
 ## 1. Context — what is established, what is not
 

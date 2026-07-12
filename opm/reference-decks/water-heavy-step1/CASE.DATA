@@ -1,0 +1,124 @@
+-- ============================================================================
+-- ResSim/OPM FIM-DIAG-003 D3 parity deck: water-heavy-step1
+-- Mirrors:
+--   cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+--     repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture
+-- (the FIM-DIAG-002/Bundle W/FIM-DIAG-003 heavy-case re-baseline driver,
+-- fim/timestep.rs). Adapted from opm/reference-decks/water-medium-step1
+-- (origin/fim-opm-continuation-plan) with DIMENS 12x12x3, TSTEP 1.0, and
+-- COMPDAT well radius 0.1 (NOT the template's 0.2 -- the repro driver's
+-- add_well calls pass well_radius=0.1, not the fim-wasm-diagnostic.mjs
+-- preset default of 0.2; verified against frontend.rs::add_well call sites
+-- in both places before writing this deck).
+-- ============================================================================
+
+RUNSPEC
+
+TITLE
+   water-heavy-step1 - 12x12x3 water-pressure dt=1.0d (FIM-DIAG-003 D3)
+
+DIMENS
+   12 12 3 /
+
+OIL
+WATER
+
+METRIC
+
+START
+   1 'JAN' 2024 /
+
+WELLDIMS
+   2 1 1 2 /
+
+TABDIMS
+   1 1 9 9 1 1 /
+
+UNIFOUT
+
+GRID
+
+INIT
+
+DXV
+   12*10 /
+DYV
+   12*10 /
+DZV
+   3*1 /
+
+TOPS
+   144*1000 /
+
+PORO
+   432*0.2 /
+
+PERMX
+   432*2000 /
+PERMY
+   432*2000 /
+PERMZ
+   432*200 /
+
+PROPS
+
+DENSITY
+   800.0  1000.0  1.0 /
+
+PVTW
+   300.0  1.0  3.0E-6  0.5  0.0 /
+
+PVCDO
+   300.0  1.0  1.0E-5  1.0  0.0 /
+
+ROCK
+   300.0  1.0E-6 /
+
+SWOF
+   0.10   0.0000   1.0000   0.0
+   0.20   0.0156   0.7656   0.0
+   0.30   0.0625   0.5625   0.0
+   0.40   0.1406   0.3906   0.0
+   0.50   0.2500   0.2500   0.0
+   0.60   0.3906   0.1406   0.0
+   0.70   0.5625   0.0625   0.0
+   0.80   0.7656   0.0156   0.0
+   0.90   1.0000   0.0000   0.0
+/
+
+SOLUTION
+
+PRESSURE
+   432*300.0 /
+
+SWAT
+   432*0.1 /
+
+SUMMARY
+
+ALL
+
+SCHEDULE
+
+WELSPECS
+   'INJ'  'G' 1  1  1*  'WATER' /
+   'PRO'  'G' 12 12 1*  'OIL'   /
+/
+
+COMPDAT
+   'INJ' 1  1  1 1 'OPEN' 1*  1*  0.1 /
+   'PRO' 12 12 1 1 'OPEN' 1*  1*  0.1 /
+/
+
+WCONINJE
+   'INJ' 'WATER' 'OPEN' 'BHP' 1*  1*  500.0 /
+/
+
+WCONPROD
+   'PRO' 'OPEN' 'BHP' 5*  100.0 /
+/
+
+TSTEP
+   1.0 /
+
+END
