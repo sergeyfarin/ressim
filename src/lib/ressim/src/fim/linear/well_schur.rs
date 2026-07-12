@@ -272,7 +272,7 @@ pub(super) fn solve_with_well_elimination(
     // true state was. Native-only, off unless the env var is set; no-op verified (control matrix
     // bit-identical, `assembly_ad` parity 10/10).
     if std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some() {
-        eprintln!(
+        let line = format!(
             "WELL-SCHUR-DEBUG reduced_converged={} reduced_iters={} full_residual_norm={:.6e} tolerance={:.6e} rhs_norm={:.6e} reduced_final_residual_norm={:.6e}",
             reduced_report.converged,
             reduced_report.iterations,
@@ -281,6 +281,12 @@ pub(super) fn solve_with_well_elimination(
             rhs.norm(),
             reduced_report.final_residual_norm,
         );
+        // Bundle Y Y1c correlation: also write to the FIM_TRACE_FILE sink (when set) so this
+        // line lands in the same file, in true call order, as the `LEDGER retry
+        // retry_class=linear-bad` lines it needs to be correlated against — stderr and the trace
+        // file are otherwise separate streams with no shared ordering guarantee.
+        crate::fim::trace_sink::write_line(&line);
+        eprintln!("{line}");
     }
 
     FimLinearSolveReport {

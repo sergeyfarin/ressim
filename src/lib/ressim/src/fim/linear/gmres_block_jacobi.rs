@@ -1649,6 +1649,25 @@ fn run_cpr_iterative_solve(
         let beta = preconditioned_residual.norm();
         last_preconditioned_residual_norm = Some(beta);
         if beta <= tolerance && family_ok(&residual) {
+            // Bundle Y Y1c correlation (`docs/FIM_OPM_PARITY_PLAN.md` §8.4, `FIM-LINEAR-012`):
+            // this is the exact accept path that produces well_schur's spurious `reduced_iters=0`
+            // "converged" claim — a single preconditioner application can crush the PRECONDITIONED
+            // residual `beta` below `tolerance` while the raw (unpreconditioned) `residual_norm`,
+            // which is what the recovered full-system solution's quality actually tracks, stays
+            // far above it. Prints only the degenerate case (`beta` far tighter than the raw
+            // residual) so a clean two-iteration convergence doesn't spam the trace. Reuses
+            // `FIM_WELL_SCHUR_DEBUG` since it is scoped to this same investigation; no-op unless
+            // set.
+            if residual_norm > 10.0 * tolerance && std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some()
+            {
+                let line = format!(
+                    "CPR-ACCEPT-DEBUG iterations={} beta={:.6e} residual_norm={:.6e} tolerance={:.6e} rhs_norm={:.6e}",
+                    iterations, beta, residual_norm, tolerance, rhs_norm,
+                );
+                #[cfg(not(target_arch = "wasm32"))]
+                crate::fim::trace_sink::write_line(&line);
+                eprintln!("{line}");
+            }
             return FimLinearSolveReport {
                 solution,
                 converged: true,

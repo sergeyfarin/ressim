@@ -634,3 +634,87 @@ registry row (fix the reduced solve's spurious check, or make the wrapper synthe
 per this project's standing discipline, the mechanism should be pinned down further (the §8.4
 correlation gap) before writing code that changes live acceptance behavior — a wrong fix here
 changes what `OpmAligned` accepts on every bounded/gas case, not just the target one.
+
+### 8.6 Y1d: correlation closed, root cause re-localized (2026-07-12)
+
+(Named Y1d, not Y1c — `Y1c` is already reserved in `TODO.md`/§8.5's own next-steps list for
+"skip the linear stack, work G1 directly".)
+
+Closed §8.4's two open items — the correlation gap, and the (a)/(b) discrimination — with two
+additive, no-op-verified debug prints (`assembly_ad` parity 10/10 before trusting the run) and
+one native run of `repro_gas_rate_20x20x3_opm_aligned_no_trace` (`--release`, `FIM_TRACE_FILE`
++ `FIM_WELL_SCHUR_DEBUG=1` set together so both prints land in the same file, in true call
+order, as the existing `LEDGER retry` lines):
+
+1. **`well_schur.rs`'s existing `FIM_WELL_SCHUR_DEBUG` print now also writes through
+   `trace_sink::write_line`** (previously `eprintln!`-only, an untimestamped separate stream
+   with no ordering guarantee against the trace file).
+2. **New `CPR-ACCEPT-DEBUG` print in `gmres_block_jacobi.rs:1651`** (the `beta <= tolerance &&
+   family_ok(&residual)` branch — the *preconditioned*-residual accept check, evaluated at
+   `iterations == 0` before any Krylov step), gated the same way, firing only when
+   `residual_norm > 10 * tolerance` (i.e. only the degenerate case, not every clean 2-iteration
+   convergence).
+
+Result: reproduced the exact `459/337` baseline again (`accepted_substeps=459 linear_bad=337`),
+confirming the instrumented run is representative. Trace file analysis (3,066 lines):
+
+- **337 `CPR-ACCEPT-DEBUG` lines, 337 `WELL-SCHUR-DEBUG reduced_iters=0` lines, 337 `LEDGER
+  retry retry_class=linear-bad` lines — and all three counts are the same 337 events.** Checked
+  programmatically, not by inspection: every single one of the 337 `LEDGER retry` lines is
+  *immediately* preceded by a `WELL-SCHUR-DEBUG reduced_iters=0` line, itself *immediately*
+  preceded by the matching `CPR-ACCEPT-DEBUG iterations=0` line. Zero exceptions, zero
+  unexplained `linear-bad` retries, zero `WELL-SCHUR-DEBUG reduced_iters=0` lines that *don't*
+  lead to a retry. This closes the §8.4 correlation gap completely — not "strongly evidenced",
+  proven exhaustive for this run. The masking-caution question from §6.4 is now further
+  weakened for G2 specifically: there is exactly one mechanism producing every gas-rate
+  `linear-bad` retry, not several.
+
+- **Discrimination result — neither original candidate is the primary driver:**
+  - **(b) degenerate elimination/recovery arithmetic**: refuted by inspection, not just
+    measurement. `well_schur.rs:64-252`'s elimination/recovery is exact dense/sparse linear
+    algebra (a textbook Schur complement), and it is independently checked by the very safety
+    net that catches this bug (`full_residual = rhs - jacobian * solution`, recomputed against
+    the *original* system) — if the recovery arithmetic were wrong, that check would report a
+    residual inconsistent with a correctly-solved reduced system, not (as observed) a residual
+    that exactly equals what an untouched `x=0` guess produces.
+  - **(a) tolerance-basis mismatch** (reduced solve's own tolerance uses `reduced_rhs.norm()`,
+    not the wrapper's full-`rhs.norm()`): real, but small — measured directly across all 337
+    pairs, the relative difference between the two rhs norms is **median 0.00%, max 3.69%**.
+    This cannot explain a 200x gap; downgrade from "favored" to "a minor, second-order
+    contributor" (§8.4's "(a) is favored by the numbers" is superseded by this measurement).
+  - **The actual mechanism**: `gmres_block_jacobi.rs:1651`'s `beta <= tolerance &&
+    family_ok(&residual)` check accepts convergence based purely on the *preconditioned*
+    residual `beta`, evaluated after exactly one preconditioner application to the untouched
+    initial residual (`x=0`, `iterations == 0`, before any Krylov step). Measured across all 337
+    events: `tolerance / beta` (how far under tolerance `beta` lands) has **median 12.5x, max
+    31.2x**; `residual_norm / tolerance` (how far *over* tolerance the true, unpreconditioned
+    residual sits) is **200.0x in every single case** (median = max — this is simply
+    `1/relative_tolerance`, confirming it's a fixed structural ratio, not case-specific noise).
+    In other words: for these particular well-Schur-*reduced* systems, one preconditioner
+    application crushes the preconditioned norm 12-31x past the acceptance threshold while the
+    quantity that actually determines full-system solution quality (the raw residual, which is
+    what the safety net and the eventual full-system recovery depend on) is still 200x over
+    threshold. The preconditioner is not lying about anything invalid — CPR's pressure-block
+    inverse genuinely does reduce this particular residual's preconditioned norm sharply — but
+    `beta` alone is not a trustworthy proxy for solution quality on these reduced systems, and
+    the accept check has no raw-residual floor to catch that.
+
+- **Why "reduced" specifically, not the ordinary full system**: not established this session —
+  `run_cpr_iterative_solve` is the same generic function used for both, so this isn't literally
+  well-Schur-specific code. Plausible candidates for a follow-up (not investigated): the
+  preconditioner is built fresh against the *reduced* Jacobian each call, whose block/pressure
+  structure has shifted (well/perforation rows removed) relative to what the restriction
+  operator (`quasi-impes`) was tuned against; or these particular states are simply the ones
+  where CPR's coarse solve happens to overshoot — the same failure mode could in principle occur
+  on non-eliminated systems too, just not observed in this corpus (§8.1: only `1` non-reduced
+  capture exists for comparison, too small to check).
+
+**Verdict**: `FIM-LINEAR-012`'s "candidate mechanisms" section is superseded. The bug is not a
+tolerance-*basis* mismatch and not elimination arithmetic — it is a missing raw-residual sanity
+check on the generic CPR/FGMRES preconditioned-residual accept path, exposed (at least in this
+corpus) specifically through well-Schur-reduced systems. No fix implemented this checkpoint —
+per standing discipline, a candidate fix (e.g. requiring `residual_norm <= factor * tolerance`
+as an additional guard on the `beta`-only accept, or on `iterations == 0` specifically) needs
+its own measurement pass before being written, since `gmres_block_jacobi.rs:1651` is shared by
+every `FgmresCpr`/`GmresIlu0` solve in the codebase, not just the well-Schur path — a wrong
+guard here changes acceptance behavior far beyond `OpmAligned` gas-rate cases.

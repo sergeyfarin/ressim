@@ -2833,3 +2833,47 @@ this finding, not confirmed — G1 and G2 look like genuinely separate problems 
 No fix implemented — deliberately. Two candidate fixes named in the registry row; both need the
 correlation gap closed first before changing live acceptance behavior, since a wrong fix here
 would change what `OpmAligned` accepts across every bounded/gas case, not just the target one.
+
+### Bundle Y checkpoint Y1d: correlation closed, root cause re-localized — both original candidates wrong (2026-07-12)
+
+Full writeup: `docs/FIM_OPM_PARITY_PLAN.md` §8.6. Registry: `FIM-LINEAR-012` updated. Closed
+both items §8.4 left open: the correlation gap, and the (a) tolerance-basis-mismatch vs (b)
+degenerate-elimination-arithmetic discrimination.
+
+Made `FIM_WELL_SCHUR_DEBUG`'s print also write through `trace_sink::write_line` (was
+`eprintln!`-only, an unordered separate stream), and added a new `CPR-ACCEPT-DEBUG` print at
+`gmres_block_jacobi.rs:1651` (the `beta <= tolerance && family_ok(&residual)` branch — the
+preconditioned-residual accept check, gated to fire only when the raw residual is >10x
+tolerance so clean convergences don't spam the trace). Both additive, no-op-verified
+(`assembly_ad` 10/10). Ran the native gas-rate repro test once with `FIM_TRACE_FILE` +
+`FIM_WELL_SCHUR_DEBUG=1` set together so both prints interleave with the existing `LEDGER
+retry` lines in one file, in true call order. Reproduced `459/337` exactly, confirming the
+instrumented run is representative.
+
+**Correlation, checked programmatically over all 3,066 trace lines**: 337 `CPR-ACCEPT-DEBUG`,
+337 `WELL-SCHUR-DEBUG reduced_iters=0`, 337 `LEDGER retry retry_class=linear-bad` — and every
+single `LEDGER retry` line is immediately preceded by its matching `WELL-SCHUR-DEBUG
+reduced_iters=0` line, immediately preceded by its matching `CPR-ACCEPT-DEBUG` line. Zero
+exceptions. One mechanism accounts for every gas-rate `linear-bad` retry in this run — the
+§8.4 correlation gap is closed exhaustively, not just strongly evidenced.
+
+**Discrimination: both original candidates refuted.**
+- (b) elimination/recovery arithmetic: refuted by inspection (exact Schur-complement linear
+  algebra, independently checked by the very safety net that catches this bug).
+- (a) tolerance-basis mismatch (reduced vs full `rhs.norm()`): real but negligible — measured
+  across all 337 pairs, relative difference is median 0.00%, max 3.69%. Cannot explain a 200x
+  gap; downgraded from "favored" to "minor contributor."
+- **Actual mechanism**: `gmres_block_jacobi.rs:1651` accepts convergence on the *preconditioned*
+  residual `beta` alone, at `iterations == 0` (one preconditioner application to the untouched
+  `x=0` residual, before any Krylov step) — no raw-residual floor guards this branch. Measured:
+  `tolerance/beta` median 12.5x, max 31.2x (comfortably "passes"); `residual_norm/tolerance` is
+  a constant `200.0x` in every one of the 337 cases (`= 1/relative_tolerance`, confirming this
+  is a fixed structural ratio, not noise). The preconditioner isn't malfunctioning — it
+  genuinely shrinks the preconditioned norm of these particular residuals — but `beta` alone is
+  not a trustworthy solution-quality proxy for well-Schur-*reduced* systems specifically. Why
+  "reduced" and not the ordinary full system triggers this is not established (same generic
+  function serves both paths); flagged as an open follow-up, not investigated this checkpoint.
+
+No fix implemented — `gmres_block_jacobi.rs:1651` is shared by every `FgmresCpr`/`GmresIlu0`
+solve in the codebase, not just well-Schur-reduced ones, so a guard added there needs its own
+measurement pass before being written.
