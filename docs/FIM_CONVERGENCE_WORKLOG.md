@@ -2877,3 +2877,47 @@ exceptions. One mechanism accounts for every gas-rate `linear-bad` retry in this
 No fix implemented — `gmres_block_jacobi.rs:1651` is shared by every `FgmresCpr`/`GmresIlu0`
 solve in the codebase, not just well-Schur-reduced ones, so a guard added there needs its own
 measurement pass before being written.
+
+### Bundle Y checkpoint Y1e: the accept-check fix, measured and promoted (2026-07-12)
+
+Full writeup: `docs/FIM_OPM_PARITY_PLAN.md` §9. Registry: `FIM-LINEAR-013` (PROMOTED). The
+measurement pass Y1d's own writeup called for before touching `gmres_block_jacobi.rs:1651`.
+
+Fix: `beta <= tolerance && family_ok(&residual)` → `iterations > 0 && beta <= tolerance &&
+family_ok(&residual)`. At `iterations == 0`, `solution` is provably still the untouched `x_0 =
+0` initial guess — no Krylov correction has run yet — so accepting there on the preconditioned
+residual alone returns the zero vector as "the solution" regardless of whether `x_0 = 0` is
+actually close to correct. One-condition change, generic (not well-Schur-specific), correctness-
+neutral at `iterations >= 1` (unchanged there).
+
+Added a synthetic regression test (`beta_only_accept_never_fires_on_the_untouched_initial_guess`,
+`fim/linear/gmres_block_jacobi.rs`): two independent 3x3 diagonal blocks, block 0's diagonal
+inflated to `1e6` vs block 1's `1.0`, all RHS mass in block 0. Block-Jacobi's exact per-block
+inverse crushes `beta` to `~1.7e-6` in one application while the raw residual at `x_0=0` stays
+at `~1.732` — ~200x over the default tolerance, the same order as the live corpus. Confirmed
+by temporarily reverting the guard that the test fails without it and passes with it.
+
+The 337-system gas-rate capture corpus from Y1a/Y1b/Y1d turned out unusable for an offline
+before/after comparison: `solver_lab.rs::run_backend` builds `FimLinearSolveOptions::default()`
+rather than the live Newton loop's actual options, so it never reproduced the live
+tolerance/`beta` relationship that triggers the bug — this resolves Y1d's open question of why
+offline replay of the same live-failed systems converged cleanly (`iters=2`) while live didn't:
+different options, not a capture-fidelity problem. Validated live instead.
+
+**Live measurement** (native `repro_gas_rate_20x20x3_opm_aligned_no_trace`, `--release`):
+`linear_bad` `337 → 1`, `nonlinear_bad` `0 → 4` (new but small and expected — Newton iterations
+that previously got a rejected linear solve now get the genuinely-converged one, and a few need
+slightly more nonlinear massaging), `accepted_substeps` `459 → 238`. `linear_bad` collapsing to
+near-zero is direct confirmation this was the dominant driver of the storm, not correlation.
+
+**Full control matrix, wasm rebuilt, zero regressions**: Legacy `8/4/4/2` bit-identical; Legacy
+heavy (`dt=1`) `25` substeps bit-identical, same `retry_dom`/rung breakdown; `OpmAligned`
+bounded `16/24/12` bit-identical; `OpmAligned` bounded `12x12x3`+`nested_well_solve` `12`
+unchanged — consistent with these cases barely exercising the well-Schur-reduced `linear-bad`
+path in the first place (§8.1). Gates: `assembly_ad` 10/10, full `fim::linear` module suite
+37/37 (8 offline-lab tests correctly `ignored`, need `FIM_CAPTURE_DIR`), locked smoke 3/3.
+
+Does not close G2 on its own — gas-rate `OpmAligned` is still `238` substeps vs Legacy's `2` —
+but removes a measured, non-physical source of retries; the remaining gap is more likely to
+reflect genuine behavior now, not this artifact. Does not touch G1 (heavy case's linear failure
+count was always too small for this bug to matter there).

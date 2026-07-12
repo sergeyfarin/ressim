@@ -1648,16 +1648,20 @@ fn run_cpr_iterative_solve(
         }
         let beta = preconditioned_residual.norm();
         last_preconditioned_residual_norm = Some(beta);
-        if beta <= tolerance && family_ok(&residual) {
-            // Bundle Y Y1c correlation (`docs/FIM_OPM_PARITY_PLAN.md` §8.4, `FIM-LINEAR-012`):
-            // this is the exact accept path that produces well_schur's spurious `reduced_iters=0`
-            // "converged" claim — a single preconditioner application can crush the PRECONDITIONED
-            // residual `beta` below `tolerance` while the raw (unpreconditioned) `residual_norm`,
-            // which is what the recovered full-system solution's quality actually tracks, stays
-            // far above it. Prints only the degenerate case (`beta` far tighter than the raw
-            // residual) so a clean two-iteration convergence doesn't spam the trace. Reuses
-            // `FIM_WELL_SCHUR_DEBUG` since it is scoped to this same investigation; no-op unless
-            // set.
+        // Bundle Y Y1e (`docs/FIM_OPM_PARITY_PLAN.md` §8.6-§9, `FIM-LINEAR-013`): `iterations > 0`
+        // guards the exact defect Y1d measured on 337 real captured systems. At `iterations ==
+        // 0`, `solution` is still the untouched `x_0 = 0` initial guess (no Krylov correction has
+        // been applied yet) — accepting here purely because the PRECONDITIONED residual `beta`
+        // happens to be small returns the zero vector as "the solution" whenever the
+        // preconditioner alone crushes `beta`, regardless of whether `x_0 = 0` is actually close
+        // to correct (checked separately, correctly, by the raw-residual test above). Measured:
+        // `beta` can land 12-31x under tolerance while the raw residual sits a constant 200x over
+        // it (`= 1/relative_tolerance`) for well-Schur-reduced systems specifically, but nothing
+        // in the check is well-Schur-specific — this guard applies to every `FgmresCpr`/
+        // `GmresIlu0` call. From `iterations >= 1` onward `solution` reflects at least one real
+        // Krylov correction built from a preconditioned basis, so trusting `beta` there is the
+        // ordinary (unchanged) preconditioned-residual convergence test.
+        if iterations > 0 && beta <= tolerance && family_ok(&residual) {
             if residual_norm > 10.0 * tolerance && std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some()
             {
                 let line = format!(
@@ -2756,6 +2760,64 @@ mod tests {
         assert!(report.converged);
         assert_eq!(report.backend_used, FimLinearSolverKind::GmresIlu0);
         assert!(report.cpr_diagnostics.is_none());
+    }
+
+    #[test]
+    fn beta_only_accept_never_fires_on_the_untouched_initial_guess() {
+        // Bundle Y Y1e (`docs/FIM_OPM_PARITY_PLAN.md` §9, `FIM-LINEAR-013`): reproduces the
+        // defect class Y1d measured on 337 real captured well-Schur-reduced systems, using a
+        // minimal synthetic system instead of a real capture. Two independent 3x3 diagonal
+        // blocks, no cross-block coupling — block 0's diagonal is inflated (`1e6`) relative to
+        // block 1's (`1.0`), and all of the RHS mass sits in block 0's rows. Block-Jacobi's
+        // per-block *exact* inverse crushes the preconditioned residual `beta` to ~`1.7e-6`
+        // (`1e-6 * ||[1,1,1]||`) in a single application, while the raw (unpreconditioned)
+        // residual at `x_0 = 0` stays at `||rhs|| ≈ 1.732` — about 200x over the default
+        // `5e-3`-relative tolerance, the same order as the live gas-rate corpus. Before the
+        // `iterations > 0` guard, this returned `converged: true` at `iterations == 0` with
+        // `solution` still the untouched zero vector — i.e. "converged" on a state that was
+        // never actually updated. The guard forces at least one real Krylov step, which (since
+        // the preconditioner is exact for this diagonal system) finds the true, small-but-
+        // nonzero solution and converges genuinely.
+        let mut tri = TriMatI::<f64, usize>::new((6, 6));
+        for idx in 0..3 {
+            tri.add_triplet(idx, idx, 1.0e6);
+        }
+        for idx in 3..6 {
+            tri.add_triplet(idx, idx, 1.0);
+        }
+        let matrix = tri.to_csr();
+        let rhs = DVector::from_vec(vec![1.0, 1.0, 1.0, 0.0, 0.0, 0.0]);
+
+        let report = solve(
+            &matrix,
+            &rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::GmresIlu0,
+                ..FimLinearSolveOptions::default()
+            },
+            Some(FimLinearBlockLayout {
+                cell_block_count: 2,
+                cell_block_size: 3,
+                well_bhp_count: 0,
+                perforation_tail_start: 6,
+            }),
+            false,
+            None,
+        );
+
+        assert!(
+            report.iterations >= 1,
+            "beta-only accept fired at iterations == 0 again (solution never updated from x_0 \
+             = 0) — the `iterations > 0` guard at gmres_block_jacobi.rs's preconditioned-residual \
+             accept branch has regressed"
+        );
+        let true_residual = &rhs - &cs_mat_mul_vec(&matrix, &report.solution);
+        assert!(
+            !report.converged || true_residual.norm() < 1e-8,
+            "reported converged=true but the raw residual against the original system is {:.3e} \
+             — the report's solution does not actually satisfy the original problem",
+            true_residual.norm()
+        );
     }
 
     #[test]

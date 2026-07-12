@@ -718,3 +718,71 @@ as an additional guard on the `beta`-only accept, or on `iterations == 0` specif
 its own measurement pass before being written, since `gmres_block_jacobi.rs:1651` is shared by
 every `FgmresCpr`/`GmresIlu0` solve in the codebase, not just the well-Schur path — a wrong
 guard here changes acceptance behavior far beyond `OpmAligned` gas-rate cases.
+
+## 9. Y1e: `FIM-LINEAR-013` — the accept-check fix, measured and promoted (2026-07-12)
+
+(Named Y1e, not Y2 — `Y2` is already reserved in `TODO.md`/§4's own roadmap for "evidence-
+directed structural bundle (G4 xor G5)", a later, unstarted phase. This checkpoint is a direct
+continuation of Y1d's own "needs its own measurement pass" recommendation.)
+
+Fix: `gmres_block_jacobi.rs:1651`'s condition changed from `beta <= tolerance &&
+family_ok(&residual)` to `iterations > 0 && beta <= tolerance && family_ok(&residual)`. At
+`iterations == 0`, `solution` is provably still the untouched `x_0 = 0` initial guess (no Krylov
+correction has happened yet) — the guard simply stops the code from ever reporting `converged:
+true` on that untouched guess based on the preconditioned residual alone. From `iterations >= 1`
+onward, `solution` reflects at least one real Krylov step, so the existing preconditioned-residual
+test there is unchanged.
+
+Minimal, generic — not well-Schur-specific — and low-risk: any case that previously exited
+instantly at `iterations == 0` via this branch now does one more real Krylov step before
+converging (correctness-neutral, marginal extra cost only in the rare cases where the fast-path
+was actually legitimate).
+
+**Offline validation note**: the 337-system gas-rate capture corpus from Y1a/Y1b/Y1d turned out
+*not* to be usable for a before/after offline comparison here — `solver_lab.rs`'s `run_backend`
+constructs `FimLinearSolveOptions::default()` rather than the live Newton loop's actual options,
+so it never reproduced the live tolerance/`beta` relationship that triggers this bug in the
+first place (this likely also explains Y1d's "334/337 offline, `iters=2`" result despite all 337
+being live `linear_bad` failures — an open question from Y1d, now resolved). The only reliable
+validation is the live re-measurement below, plus a new synthetic unit test
+(`beta_only_accept_never_fires_on_the_untouched_initial_guess`,
+`fim/linear/gmres_block_jacobi.rs`) that reproduces the same defect *class* — two independent
+diagonal blocks, one with an inflated (`1e6`) diagonal — and is confirmed to fail without the
+guard and pass with it.
+
+**Live measurement** (native `repro_gas_rate_20x20x3_opm_aligned_no_trace`, `--release`):
+
+| | `linear_bad` | `nonlinear_bad` | `accepted_substeps` |
+|---|---|---|---|
+| Before (Y1d baseline) | 337 | 0 | 459 |
+| After (`FIM-LINEAR-013`) | 1 | 4 | 238 |
+
+`linear_bad` collapses from 337 to 1 — direct confirmation that this accept-check defect was the
+dominant driver of the gas-rate `linear-bad` storm, not a coincidental correlation. A small
+`nonlinear_bad` count (4) appears where none existed before: expected, not concerning — Newton
+iterations that were previously fed a *rejected* (aborted) linear solve are now fed the
+*genuinely converged* one, and a handful of those now need slightly more nonlinear massaging
+before their own acceptance test passes. Net: `accepted_substeps` `459 → 238` (48% reduction).
+
+**Control matrix, both flavors, wasm rebuilt**: Legacy `8/4/4/2` unchanged (bit-identical);
+Legacy heavy (`dt=1`, `25` substeps) unchanged, same `retry_dom`/rung breakdown; `OpmAligned`
+bounded cases `16/24/12` unchanged (bit-identical) — consistent with §8.1's finding that these
+cases barely exercise the well-Schur-reduced linear-bad path in the first place; `OpmAligned`
+gas-rate `459 → 238` (matches the native measurement); `OpmAligned` bounded `12x12x3`+
+`nested_well_solve` unchanged at `12`. **Zero regressions across the entire matrix** —
+`gmres_block_jacobi.rs:1651` is shared code, so this is the load-bearing check for "did loosening
+this accept path break anything relying on the old (buggy) fast exit," and it didn't.
+
+**Gates**: `assembly_ad` parity 10/10; full `fim::linear` module test suite 37/37 (8 offline-lab
+tests correctly `ignored` — they need `FIM_CAPTURE_DIR`); new regression test added and
+confirmed to fail on the pre-fix code; locked smoke 3/3.
+
+**Verdict: PROMOTED.** Registry: `FIM-LINEAR-013`. This does not close G2 on its own — gas-rate
+`OpmAligned` is still `238` substeps vs Legacy's `2` and OPM's presumed low single digits — but
+it removes a measured, non-physical source of retries, and the reduction (459→238) is large
+enough that the *remaining* gap is now more likely to reflect genuine linear/nonlinear behavior
+worth investigating on its own terms, not an artifact of this bug. Next candidates, not decided:
+(1) chase the new `nonlinear_bad=4` — is it a real regression risk or a one-time reclassification
+artifact; (2) continue toward gas-rate parity now that the accept-check noise is gone; (3) pivot
+to G1 (Y1c, heavy-case oscillation), still untouched by this fix (heavy case's linear failure
+count was always too small for this bug to matter there).

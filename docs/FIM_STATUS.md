@@ -12,7 +12,13 @@ no dev flag remains). Post-X, the residual gap to OPM (heavy: `16` substeps vs O
 bounded `OpmAligned` cases `1.5-4x` costlier than Legacy; gas-rate `OpmAligned` `459` substeps)
 is tracked as its own roadmap, `docs/FIM_OPM_PARITY_PLAN.md` — Y0 diagnostics closed 2026-07-12,
 attributing both the heavy-case transient and the gas-rate catastrophe to the linear stack (G2),
-with an explicit open question (not yet resolved) of whether they share one root cause.
+with an explicit open question (not yet resolved) of whether they share one root cause. Y1a-Y1e
+(2026-07-12) chased the gas-rate half of G2 to ground: `well_schur`-reduced systems were hitting
+a generic CPR/FGMRES accept-check bug (`gmres_block_jacobi.rs:1651` accepting on the
+preconditioned residual alone at `iterations == 0`, before any real correction), fixed and
+promoted as `FIM-LINEAR-013` — gas-rate `OpmAligned` `459 → 238` substeps, `linear_bad` `337 →
+1`. Does not close G2 (gas-rate is still `238` vs Legacy's `2`) and does not touch G1 (heavy-case
+oscillation, still open, tracked as Bundle Y's unstarted `Y1c`).
 
 Use this file for:
 
