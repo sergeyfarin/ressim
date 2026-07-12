@@ -2921,3 +2921,26 @@ Does not close G2 on its own — gas-rate `OpmAligned` is still `238` substeps v
 but removes a measured, non-physical source of retries; the remaining gap is more likely to
 reflect genuine behavior now, not this artifact. Does not touch G1 (heavy case's linear failure
 count was always too small for this bug to matter there).
+
+### Bundle Y checkpoint Y1f: chasing `nonlinear_bad=4` — closed, benign (2026-07-12)
+
+Full writeup: `docs/FIM_OPM_PARITY_PLAN.md` §9.1. Registry: `FIM-LINEAR-013` updated. Closed
+the one open follow-up Y1e's own writeup flagged.
+
+Reran the native gas-rate repro test post-fix with `FIM_TRACE_FILE` set, diffed its `LEDGER`
+lines against the pre-fix trace already captured for Y1d (same test, `ccbcf37`, before
+`FIM-LINEAR-013`). Reproduced `238/1/4` exactly first.
+
+All 4 `nonlinear_bad` retries turned out to be one event, not four: the very first substep of
+the run (`substep=0, t=0`), across its own `retry_count=1..4` ladder. Before the fix, this exact
+substep needed **7** retries (all `linear-bad`, `mb=inf` on every one — the signature of the
+`FIM-LINEAR-012` bug firing on every single attempt, no real Newton work ever happening) before
+accepting at `dt=0.000106546`. After the fix, the same substep needs only **4** retries (now
+correctly `nonlinear-bad` — genuine, finite, shrinking `mb`: `7.7e-6 → 8.6e-7 → 1.1e-7 →
+1.7e-8` — close to converging but not quite clearing tolerance within the 20-iteration Newton
+budget at the larger trial `dt`s) and accepts at `dt=0.002964803` — **28x larger**, in **3 fewer
+retries**.
+
+Verdict: not a regression. This is the same known "aggressive initial trial `dt=0.25` needs a
+shrink ladder" behavior (G3, controller policy), now visible and correctly classified instead
+of being masked by the linear-accept bug firing on every attempt. No further action.

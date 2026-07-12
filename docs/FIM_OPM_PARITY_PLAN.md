@@ -786,3 +786,41 @@ worth investigating on its own terms, not an artifact of this bug. Next candidat
 artifact; (2) continue toward gas-rate parity now that the accept-check noise is gone; (3) pivot
 to G1 (Y1c, heavy-case oscillation), still untouched by this fix (heavy case's linear failure
 count was always too small for this bug to matter there).
+
+### 9.1 Y1f: chasing `nonlinear_bad=4` — closed, benign (2026-07-12)
+
+Full replay method: reran the native `repro_gas_rate_20x20x3_opm_aligned_no_trace` test with
+`FIM_TRACE_FILE` set (post-`FIM-LINEAR-013`), then diffed its `LEDGER` lines against the
+pre-fix trace already captured for Y1d's correlation work (same test, tree at `ccbcf37`, before
+`FIM-LINEAR-013`). Reproduced `238/1/4` exactly before analyzing.
+
+**Finding**: all 4 `nonlinear_bad` retries come from a single event — the very first substep of
+the run (`substep=0`, `t=0.000000`), across its own retry ladder (`retry_count=1..4`). This is
+not 4 scattered failures; it is one already-known "large initial trial `dt` needs shrinking"
+transient, now classified differently.
+
+Direct before/after comparison of that exact substep's retry ladder:
+
+| | retries before accept | `dt` at accept | `mb` progression | classification |
+|---|---|---|---|---|
+| Before (`ccbcf37`, pre-fix) | 7 | `0.000106546` | `inf` on every retry | `linear-bad` (all 7) |
+| After (`a88072b`, `FIM-LINEAR-013`) | 4 | `0.002964803` | `7.7e-6 → 8.6e-7 → 1.1e-7 → 1.7e-8` (shrinking, finite) | `nonlinear-bad` (all 4) |
+
+Before the fix, this substep's retry ladder was hitting the exact `FIM-LINEAR-012` bug on
+*every* attempt — `mb=inf` on all 7 retries is the signature of a linear solve that never
+actually ran (the spurious `reduced_iters=0` accept, immediately downgraded and hard-aborted
+with no real Newton work done) — so the ladder had to shrink `dt` almost three orders of
+magnitude (`0.25 → 0.000107`) before finally finding a `dt` small enough to sidestep the linear
+bug entirely. After the fix, the *same* substep now gets a real, working linear solve on every
+attempt; the residual/mb genuinely converge but don't quite clear the strict tolerance within
+the `20`-iteration Newton budget at `dt=0.25/0.0825/0.027`, so it correctly retries as
+`nonlinear-bad` (OPM's own `solver-restart-factor=0.33` ladder) — and finds an accepted `dt`
+`~28x` larger than before (`0.002965` vs `0.000107`) in 3 fewer retries.
+
+**Verdict**: not a regression, not a new failure mode — a strict improvement, correctly
+reclassified. The `nonlinear_bad` count exists because the substep still needs *some* dt-shrink
+ladder at the very start of the transient (expected: the initial trial `dt=0.25` is aggressive
+by policy, `docs/FIM_OPM_PARITY_PLAN.md` §2 G3), not because `FIM-LINEAR-013` introduced new
+nonlinear instability. No further action needed on this thread. Confirms (does not newly show)
+that G3 (controller policy, initial `dt`/growth caps) remains a real, separate, later-priority
+gap — visible now without the linear-bug noise on top of it.
