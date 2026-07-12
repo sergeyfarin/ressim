@@ -2944,3 +2944,43 @@ retries**.
 Verdict: not a regression. This is the same known "aggressive initial trial `dt=0.25` needs a
 shrink ladder" behavior (G3, controller policy), now visible and correctly classified instead
 of being masked by the linear-accept bug firing on every attempt. No further action.
+
+### Bundle Y checkpoint Y1g: the real driver of `238` substeps — a well-cell Newton stall (2026-07-12)
+
+Full writeup: `docs/FIM_OPM_PARITY_PLAN.md` §10. Continuing toward gas-rate parity per explicit
+instruction, now that `FIM-LINEAR-013` has removed the linear-accept noise.
+
+Ran the gas-rate case through `--diagnostic step` (17,918 lines, `243` substep attempts,
+matching the native `238/1/4` baseline exactly) and found the `238`-substep count is a
+persistent limit cycle spanning the *entire* run: `129/238` accepted substeps hit the full
+`20`-iteration Newton budget, each triggering OPM's own iteration-count growth throttle
+(`growth=0.400`, faithfully reproducing `opm_iteration_count_dt`'s formula exactly), alternating
+with fast `iters=3` substeps that grow `3.0x`. Net ~`1.2x` per two-step cycle — the growth
+policy is not a bug, it's correctly responding to genuinely high iteration counts.
+
+Ruled out G1 (oscillation) directly: `OSC-DETECT osc_phases>0` fires on only `4`/`2,989`
+iteration checks in the whole run, all from the initial transient, none from any of the `129`
+`iters=20` substeps sampled afterward.
+
+The real mechanism, confirmed on 6 widely-spaced `iters=20` substeps (8, 19, 27, 42, 65, 91,
+158): the residual reaches near-tolerance within 2-3 iterations, then **freezes bit-for-bit
+identical** for the remaining 14-17 iterations (`upd=5.933e-7` the *exact same value* every
+iteration in substep 19's detail trace) — always just over the `1e-7` `mb` target (`1.02x` to
+`2.6x` observed), always at a cell touching the injector well (cell `0`/`1`/`20`/`400`). Same
+structural shape as `FIM-DIAG-003`'s original H1 "displaced well-cell standoff" finding, now
+recurring at the injector under gas-rate `OpmAligned` rather than the producer Bundle X fixed.
+The existing (not new) `STAGNATION-ATTRIB`/`STAG-TREND` classifier correctly detects and labels
+every frozen iteration, but its only remedy (`would_widen`, requiring `trend_vs_entry < 0.5`) is
+explicitly gated `if !opm_aligned` (`newton.rs:3299`) — a standing design comment
+(`newton.rs:3293-3298`) states this is intentional, modeling a belief that OPM itself has no
+trend-based bailout and would also just grind through the full budget.
+
+That belief is asserted in a code comment, not verified against pinned OPM source or a real run
+for this specific well-adjacent-stall scenario. Per standing "measure, don't guess a fix
+mechanism" discipline, closing this needs an OPM ground-truth comparison (INFOITER differential
+trajectory, the established D3/Y0 method) at one of these well-adjacent stall states — not
+attempted this checkpoint, since no gas-rate-comparable OPM reference deck exists in this
+working tree (existing decks live on `origin/fim-opm-continuation-plan`, a different branch).
+
+Verdict: DIAGNOSTIC. No code changed. Next step: obtain/author an OPM gas-rate reference deck
+and run the differential comparison before touching the `would_widen` `OpmAligned` exclusion.

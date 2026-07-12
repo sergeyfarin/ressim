@@ -824,3 +824,120 @@ by policy, `docs/FIM_OPM_PARITY_PLAN.md` §2 G3), not because `FIM-LINEAR-013` i
 nonlinear instability. No further action needed on this thread. Confirms (does not newly show)
 that G3 (controller policy, initial `dt`/growth caps) remains a real, separate, later-priority
 gap — visible now without the linear-bug noise on top of it.
+
+## 10. Y1g: what actually drives `238` substeps — a well-cell Newton stall, not the linear stack (2026-07-12)
+
+Continuing toward gas-rate parity (`238` `OpmAligned` vs Legacy's `2`) now that `FIM-LINEAR-013`
+has removed the linear-accept noise. Full method: reran the gas-rate case through the wasm
+`--diagnostic step` runner (`--preset gas-rate --grid 20x20x3 --steps 1 --dt 0.25
+--opm-aligned`), which captures per-Newton-iteration `CNV-MB`/`STAGNATION-ATTRIB`/`STAG-TREND`
+trace lines for every substep — 17,918 lines total, `243` substep attempts (`238` accepted, `5`
+retries, matching the native measurement exactly).
+
+### 10.1 The substep count is a limit cycle, not scattered failures
+
+Across all `238` accepted substeps: `129` hit `iters=20` (the full Newton budget) and `109`
+converge fast at `iters=3`. This pairing is not incidental — the growth-decision trace shows a
+persistent 2-step cycle for the *entire* run, start to finish (checked substeps 0-19 and
+223-237, both ends of the run show the identical pattern): an `iters=20` substep triggers OPM's
+own iteration-count growth throttle (`growth=0.400 limiter=opm-iter`, shrinking the next trial
+`dt`), the resulting smaller-`dt` substep converges fast (`iters=3`, `growth=3.000
+limiter=opm-max-growth`, the max-growth ceiling), and the larger `dt` that produces immediately
+hits `iters=20` again. Net growth per full cycle ≈ `0.4 × 3 = 1.2x` — this alone, compounded
+over the run, is most of why `238` substeps are needed to cover 0.25 days.
+
+**This is not a growth-policy bug.** `opm_iteration_count_dt` (`timestep.rs:483`) is a faithful
+port of OPM's `PIDAndIterationCountTimeStepControl`: at `its=20, target=8`, `dt/(1 + (20-8)/8 *
+1.0) = dt/2.5 = dt×0.4` — exactly the observed factor. The growth throttle is doing exactly what
+OPM's own policy says to do given `20` iterations were used. **The real question is why Newton
+needs `20` iterations so often** when the skill's own OPM reference point is "~2.5 Newton
+iterations/step."
+
+### 10.2 Oscillation is not the cause (ruling out a G1-style explanation)
+
+`OSC-DETECT osc_phases>0` fires on only `4` of `2,989` per-iteration checks in the whole run,
+all from the very first (transient-startup) substep, not from any of the `129` `iters=20`
+substeps sampled afterward. G1's heavy-case mechanism (a genuine oscillating Newton trajectory)
+does not explain this case's `iters=20` substeps.
+
+### 10.3 The actual mechanism: a genuine, exactly-frozen fixed point at a well-adjacent cell
+
+Sampled `6` `iters=20` substeps at wide intervals (substeps 8, 19, 27, 42, 65, 91, 158 — early,
+middle, and late in the run) and inspected their full per-iteration `CNV-MB` trace. All six show
+the identical shape: the residual reaches a near-tolerance value within the first 2-3
+iterations, then **freezes bit-for-bit identical** for the remaining 14-17 iterations —
+`cnv`/`mb` arrays exactly unchanged to the last printed digit, iteration after iteration — until
+the final iteration (`19`) accepts via OPM's relaxed final-iteration tier (`would_accept=pv-relaxed`),
+not because the strict criterion was ever cleared.
+
+The frozen value is always *just* over the `1e-7` `mb` target — ratios observed from `1.02x`
+(substep 65) to `2.6x` (substep 42) — and the binding cell is always well-adjacent: cell `0`/`1`
+(the injector's own cell and its immediate neighbor), cell `20` (the injector's other areal
+neighbor), or cell `400` (the injector's neighbor directly below it, `(0,0,1)` in a 20×20×3
+grid where the injector sits at `(0,0,0)`). Every single sampled substep's stall localizes to a
+cell touching the injector — the same structural shape as `FIM-DIAG-003`'s original H1 finding
+("displaced well-cell standoff", confirmed there via 100% of frozen-MB iterations sitting at the
+producer's own perforation cell or its immediate neighbor) — except here it recurs at the
+**injector** under gas-rate `OpmAligned`, not the producer Bundle X's fix targeted.
+
+The per-iteration `res=`/`upd=` detail line for substep 19 makes the freeze mechanical, not just
+numerical: from iteration 3 onward, `upd=5.933e-7` is the *exact same floating-point value*
+every iteration, and the existing `STAGNATION-ATTRIB`/`STAG-TREND` classifier (already
+instrumented in the code, not new) correctly labels every one of these iterations `real-bump` or
+`slow-decay` (alternating), accumulating `stagnation_count` up to `16`. This machinery already
+exists specifically to detect this pattern — it was built for an earlier stagnation
+investigation (`newton.rs:2689-2790`, `stagnation_acceptance_*`) and is firing exactly as
+designed.
+
+### 10.4 Why nothing intervenes: the escape mechanism is deliberately Legacy-only
+
+`newton.rs:3275`'s `would_widen` gate (`stagnation_count >= 3 && trend_vs_entry < 0.5 &&
+iters_remaining >= 3`) requires the residual to have dropped to *less than half* its
+value-at-stagnation-entry before it will relax anything. In substep 19's trace, `trend_vs_entry
+= 1.0570` (the residual is slightly *worse* than when stagnation began, not better) — so
+`would_widen=false` is the objectively correct evaluation of that condition, not a bug in the
+gate itself.
+
+But the containing block never even runs under `OpmAligned` in the first place —
+`newton.rs:3299`: `if !opm_aligned && stagnation_count >= 3 { ... }`, with an explicit standing
+comment (`newton.rs:3293-3298`) stating this is intentional: *"this residual-trend bailout has
+no OPM analog... Under `OpmAligned`, a stagnating trajectory simply keeps iterating (as OPM's
+does) until the entry check accepts it or the iteration budget is exhausted and the relaxed
+tiers decide."* So ResSim's `OpmAligned` flavor is, by explicit design, faithfully reproducing
+what the code's authors believed OPM itself does in this situation: grind through the full
+iteration budget with no early trend-based bailout, then rely on the final-iteration relaxed
+tier.
+
+### 10.5 What is and isn't established
+
+**Established, with direct evidence**: the `238`-substep count is dominated by a real,
+mechanically-understood Newton stall at well-adjacent cells, recurring on `~54%` of accepted
+substeps throughout the *entire* run (not a transient), correctly detected by existing
+instrumentation but not remedied under `OpmAligned` by design. Not a linear-solve problem (G2,
+now largely closed by `FIM-LINEAR-013`) and not an oscillation problem (G1's mechanism, ruled
+out directly).
+
+**Not established — the load-bearing open question**: whether OPM itself actually needs a
+comparable iteration count for equivalent well-adjacent states in a real gas-rate/injector case,
+or whether OPM's own Newton trajectory for this configuration simply never reaches this
+near-tolerance-but-frozen fixed point in the first place (e.g. because OPM's well/perforation
+Jacobian terms, primary-variable choice, or exact CNV/MB formula differ enough at the
+well-connected cell to avoid the stall entirely). The `newton.rs:3293` comment's claim about
+OPM's own behavior is asserted, not verified against pinned OPM source or a real run for this
+specific well-adjacent-stall scenario — the same "verify doc claims against source" discipline
+that caught the stale `FIM-LINEAR-005` registry row (`FIM-LINEAR-012`, Y1) applies here to a
+design comment, not a doc, but the standard is the same. Per this project's standing "measure,
+don't guess a fix mechanism" discipline, this must be answered with OPM ground truth (an
+INFOITER differential trajectory, the established D3/Y0 method) before touching either the
+`would_widen` gate's `OpmAligned` exclusion or anything else here — this session did not attempt
+that; it requires a gas-rate-comparable OPM reference deck, which does not currently exist in
+this working tree (the existing reference decks referenced by the `opm-reference-pipeline` skill
+live on a different branch, `origin/fim-opm-continuation-plan`).
+
+**Verdict**: DIAGNOSTIC, not yet registered as its own experiment row (no code touched this
+checkpoint). Next concrete step, not started: obtain or author an OPM gas-rate/injector
+reference deck and run the INFOITER differential-trajectory comparison at one of these
+well-adjacent stall states, to determine whether this is a genuine ResSim-vs-OPM divergence
+(actionable) or an already-faithful reproduction of OPM's own behavior (in which case gas-rate
+parity has to come from elsewhere — e.g. G3 controller tuning, or accepting `238` as correct
+given the underlying physics/discretization).
