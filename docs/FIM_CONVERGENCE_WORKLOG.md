@@ -2098,3 +2098,54 @@ to D5.
 **D2 verdict**: H3 refuted via source-cited static audit. No fix, no re-run triggered by this
 checkpoint (the plan's "if a discrepancy is found, fix it" branch does not fire for H3 itself).
 Effort: ~1.5h (audit) vs the ~2-4h estimate.
+
+### FIM-DIAG-003 checkpoint D1: H1 CONFIRMED, H2 REFUTED (2026-07-12)
+
+Per `docs/FIM_DIAG_003_PLAN.md` D1. Two windowed capped runs, native `--release`, commit
+`a4fad1c` (D0+D2 checkpoint): `FIM_TRACE_SUBSTEP_START=980 FIM_MAX_SUBSTEPS=1000
+FIM_NESTED_WELL_SOLVE=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib
+repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture`, with/without
+`FIM_FORCE_DIRECT_LINEAR=1`, `FIM_TRACE_FILE` pointed at a scratch log.
+
+**Run 1 (baseline, default `fgmres-cpr`)**: `accepted_substeps=1000 advanced_dt=0.916822/1.0
+linear_bad=8 nonlinear_bad=1 mixed=3`, wall `75.85s`. Binding-cell census over the whole window
+(238 `binding=[mb...]` lines): **198/218 (91%) at cell 143, 20/218 (9%) at cell 130** — zero
+lines anywhere else. Cell 143 is `idx(11,11,0)` — the producer's own perforation cell (`nx-1,
+ny-1, 0`, confirmed from the repro driver's `add_well` call). Cell 130 is `idx(10,10,0)`, the
+producer's immediate diagonal neighbor in the same (only-completed) layer. **100% of the frozen
+MB is concentrated at the well or its immediate neighborhood.**
+
+**Run 2 (`FIM_FORCE_DIRECT_LINEAR=1`, every Newton iteration solved exactly via
+`SparseLuDebug`)**: `accepted_substeps=1000 advanced_dt=0.922922/1.0 linear_bad=0
+nonlinear_bad=13 mixed=0`, wall `171.58s` (2.3x slower, as expected — direct factorization vs
+iterative CPR/GMRES, consistent with `FIM-LINEAR-011`'s own cost measurements). **The freeze does
+not break**: binding-cell census (220 lines) is **180/200 (90%) at cell 143, 20/200 (10%) at
+cell 130** — same cells, same ~91/9 split. MB magnitude at the frozen plateau is `2.301e-7`/
+`2.331e-7` in this run's tail window vs `1.412e-7`/`1.423e-7` in the baseline's — **higher**, not
+lower, with exact linear solves (different substep/trajectory state, not a strict single-point
+comparison, but decisively not "drops below `1e-7`"). Progress metric: `advanced_dt` moved
+`0.9168→0.9229`, a **0.6% improvement** — nowhere near the plan's decisive-test bar ("materially
+improves").
+
+**This run is also the D1 point-3 cross-check** (forced-direct + binding-cell trace together):
+exact linear solves with the residual still parked at the well cells is the plan's own stated
+signature for **pure H1**.
+
+**Verdict**:
+- **H1 (displaced standoff) CONFIRMED.** The frozen `1.41e-7`-class MB literally lives at the
+  producer's perforation cell (and its immediate neighbor) in both runs, regardless of linear
+  solve exactness — direct evidence that Bundle W's fix (which drove the perforation-flow
+  residual itself to machine epsilon, W4) displaced the same underlying well/reservoir
+  inconsistency into the well-cell mass-balance row rather than resolving it. This matches the
+  mechanism already on record from the pre-D1 trace: the coupled linear solve proposes `dq≈+0.58`
+  each iteration to zero those rows via the source term, and the nested well solve vetoes it back
+  — an invariant point of the modified iteration map, now confirmed to be spatially exactly where
+  H1 predicted.
+- **H2 (linear-precision floor) REFUTED.** Forcing exact linear solves neither breaks the freeze
+  nor moves it off the well cells nor materially improves progress — the `5e-3` outer linear
+  tolerance is not the limiting factor near this plateau.
+- H1 and H3 (refuted at D2) together leave H1 as the sole standing explanation. The fix direction
+  is therefore **nonlinear/well-coupling**, not linear-tolerance policy and not a CNV/MB formula
+  bug.
+
+Effort: ~15 min setup + 76s + 172s run time + analysis, well under the ~1h estimate.

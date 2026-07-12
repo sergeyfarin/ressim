@@ -1,11 +1,12 @@
 # FIM-DIAG-003: The Last Frozen Criterion (MB plateau under `OpmAligned`)
 
-Status: IN PROGRESS (2026-07-11) — D0 done, D2 done (H3 refuted), D1/D3/D4/D5 open.
+Status: IN PROGRESS (2026-07-12) — D0 done, D2 done (H3 refuted), D1 done (H1 CONFIRMED, H2
+REFUTED), D3/D4/D5 open.
 Registry: `FIM-DIAG-003` (DIAGNOSTIC, open).
 Prerequisite evidence: `docs/FIM_CONVERGENCE_WORKLOG.md` "Week retrospective (2026-07-11)"
 (commit `ec47e62`) and "Bundle W checkpoint W4/W5" (commit `c916c87`).
-Progress: `docs/FIM_CONVERGENCE_WORKLOG.md` "FIM-DIAG-003 checkpoint D0" and
-"FIM-DIAG-003 checkpoint D2" (2026-07-11).
+Progress: `docs/FIM_CONVERGENCE_WORKLOG.md` "FIM-DIAG-003 checkpoint D0", "checkpoint D2", and
+"checkpoint D1" (2026-07-11/12).
 
 ## 1. Context — what is established, what is not
 
