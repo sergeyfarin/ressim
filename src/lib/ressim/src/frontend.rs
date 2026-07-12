@@ -90,6 +90,7 @@ impl ReservoirSimulator {
             fim_opm_aligned_nonlinear: false,
             fim_nested_well_solve: false,
             fim_force_direct_linear: false,
+            fim_single_cell_producer_fraction: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
             fim_step_stats_history: Vec::new(),
@@ -308,6 +309,15 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setFimNestedWellSolve)]
     pub fn set_fim_nested_well_solve(&mut self, enabled: bool) {
         self.fim_nested_well_solve = enabled;
+    }
+
+    /// `FIM-BUNDLE-X` X1 dev flag (`docs/FIM_BUNDLE_X_PLAN.md`): restrict a producer
+    /// perforation's phase-fraction mobility window to the single perforated cell (matching
+    /// the injector branch and OPM's `WellInterface::getMobility`), instead of the original
+    /// 3x3 areal-neighborhood window. Default false = unchanged behavior.
+    #[wasm_bindgen(js_name = setFimSingleCellProducerFraction)]
+    pub fn set_fim_single_cell_producer_fraction(&mut self, enabled: bool) {
+        self.fim_single_cell_producer_fraction = enabled;
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]

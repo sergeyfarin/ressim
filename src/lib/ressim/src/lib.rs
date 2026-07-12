@@ -133,6 +133,13 @@ pub struct ReservoirSimulator {
     /// (linear-precision floor). Native diagnostic driver only, set via
     /// `set_fim_force_direct_linear`; no wasm surface. Default false = unchanged behavior.
     pub(crate) fim_force_direct_linear: bool,
+    /// `FIM-BUNDLE-X` X1 (`docs/FIM_BUNDLE_X_PLAN.md`): restrict a producer perforation's
+    /// phase-fraction mobility window (`perforation_control_cells`) to the single perforated
+    /// cell, matching the injector branch (already single-cell) and OPM's `WellInterface::
+    /// getMobility` (which uses only the connected cell, no neighborhood, for every well type).
+    /// Default false = the existing 3x3 areal-neighborhood window, unchanged behavior. Dev flag,
+    /// `setFimSingleCellProducerFraction`.
+    pub(crate) fim_single_cell_producer_fraction: bool,
     pub(crate) gas_outer_step_trial_carryover:
         Option<crate::fim::timestep::GasOuterStepTrialCarryover>,
     last_fim_step_stats: Option<reporting::FimStepStats>,

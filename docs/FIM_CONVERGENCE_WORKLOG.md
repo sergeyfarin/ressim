@@ -2433,3 +2433,92 @@ BL-benchmark gate, not just a capped heavy-case check, before any promotion deci
 Plan doc (`docs/FIM_BUNDLE_X_PLAN.md`) updated to record this pivot; X1 retargeted from "pure
 coupled well update" to "single-cell producer fraction," the original ordering probe kept as a
 secondary/fallback item.
+
+### Bundle X checkpoint X1: single-cell producer fraction — the fix, decisive result (2026-07-12)
+
+Per `docs/FIM_BUNDLE_X_PLAN.md` X1 (retargeted per X0). Commit base `bb23c81`.
+
+**Implementation**: `perforation_control_cells` (`fim/wells.rs:822`) gained a dev flag
+(`fim_single_cell_producer_fraction`, default `false` = unchanged 3x3-window behavior). When set,
+producer perforations get the same single-cell treatment injectors already have —
+`vec![perforation.cell_index]` — matching OPM's `WellInterface::getMobility` exactly (X0
+Finding 5). Threaded as a proper wasm-exposed dev flag (`setFimSingleCellProducerFraction`,
+`frontend.rs`, mirroring `setFimNestedWellSolve`'s pattern) rather than native-only, since X1's
+own gate needs the standard wasm control matrix on the bounded cases — and because this is a
+strong enough candidate to be worth promoting all the way, not just probing. Native repro driver
+gained the matching `FIM_SINGLE_CELL_PRODUCER_FRACTION` env var. One correction during
+implementation: the native-only setter was initially given the same name as the wasm one,
+which doesn't compile (duplicate inherent method across `impl` blocks) — resolved by keeping
+only the wasm-exposed `pub` version, callable from the native test driver too.
+
+**Heavy-case result — decisive.** Native repro driver
+(`repro_water_pressure_12x12x3_opm_aligned_no_trace`), clean uncapped runs (no windowing, no
+trace file, verified twice for reproducibility):
+
+| Configuration | `accepted_substeps` | `advanced_dt` | wall time |
+|---|---|---|---|
+| `OpmAligned` + `nested_well_solve` (baseline, `c916c87`) | `18,015` | `1.0/1.0` | `1235.5s` |
+| `OpmAligned` + `nested_well_solve` + `single_cell_producer_fraction` | **`16`** | `1.0/1.0` | **`3.05s`** |
+| `OpmAligned` alone (no `nested_well_solve`) + `single_cell_producer_fraction` | **`16`** | `1.0/1.0` | **`2.95s`** |
+
+**A ~1126x reduction in substep count, ~400x wall-clock speedup, and the fix works identically
+with or without `nested_well_solve`** — confirming X0's finding that the well-update-ordering
+mechanism was never the primary defect. `linear_bad=0 nonlinear_bad=1 mixed=0` in the fixed run
+(vs baseline's `linear_bad=8 nonlinear_bad=1 mixed=5`-class retry pattern even within a
+1000-substep capped window) — the fix doesn't just shorten the run, it makes it clean. `16`
+substeps for a 1-day interval is in OPM's own efficiency class (OPM: 11 Newton iterations in a
+*single* substep for the same interval, D3) — ResSim now needs a handful of substeps rather than
+tens of thousands.
+
+**Isolation and no-regression checks, all wasm-based (`fim-wasm-diagnostic.mjs`)**:
+- Full 6-command standard control matrix, flag OFF: **bit-identical** to the recorded baseline on
+  every field (`20x20x3`=`8`, `22x22x1`=`4`, `23x23x1`=`4`, `gas-rate 20x20x3`=`2`, `gas-rate
+  10x10x3` 6-step outer = `4,2,2,2,2,2`, heavy `12x12x3`=`52`/`51+3+2060`) — the new code path is
+  fully inert when the flag is unset, as expected (`perforation_control_cells`'s new branch is an
+  `||` addition to the existing injector check, structurally cannot fire when the flag is false).
+- `22x22x1`/`23x23x1` under `--opm-aligned`, flag ON vs OFF: **bit-identical**
+  (`24`/`24` substeps, `12`/`12`, matching `avg_p`/`oil`/`inj`/`retry_dom` exactly) — the fix
+  changes nothing on cases that don't hit this specific pre-breakthrough-corner-producer
+  scenario, no regression risk apparent on the cases already exercised regularly.
+- `assembly_ad` parity: 10/10.
+- Locked smoke, 3/3: `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+  `spe1_fim_first_steps_converge_without_stall` (`218.5s`), `spe1_fim_gas_injection_creates_free_gas`
+  (`432.5s`) — all pass with the code change in the tree (flag defaults off, but this exercises
+  the changed `perforation_control_cells` function's injector/producer branch structure).
+
+**Remaining gates, completed** (the sandbox environment was severely CPU-throttled during this
+checkpoint — observed ~1:60 CPU-time-to-wall-clock ratio on the background `cargo test` process,
+several hours wall-clock for the `fim` bucket alone — but all gates below did complete and pass):
+- `bash scripts/validate-solver-coverage.sh fim`: **8/8 pass** — `fim::tests::spe1::` (the same 2
+  tests already verified individually above, plus this run confirmed no others in that filter),
+  `fim::tests::wells::` (3 tests, including `single_cell_producer_reporting_matches_local_source_state`
+  — directly relevant to this change, passes), 3 `dep_pss_fim_*` depletion tests.
+- `bash scripts/validate-solver-coverage.sh shared`: hit a **pre-existing, unrelated** failure
+  partway through (`closed_system_public_step_keeps_same_water_inventory_on_both_solvers`, `assert_eq!
+  (fim.2, 1)` — left `2`, right `1`; the script's `set -euo pipefail` stops at first failure).
+  Verified pre-existing via `git stash` (reproduces identically on the clean `bb23c81` tree,
+  before any Bundle X X1 changes) — and structurally cannot be caused by this change regardless:
+  the test constructs a well-less closed system (`ReservoirSimulator::new(4,4,1,0.2)`, no
+  `add_well` calls), so `perforation_control_cells` is never invoked (zero perforations). Ran the
+  remaining 11 tests in the bucket individually past that point: **11/11 pass**
+  (`simple_pressure_control_public_step_has_same_stable_contract_on_both_solvers`,
+  `shared_block_multiwell_public_step_remains_finite_on_both_solvers`, 4
+  `physics_depletion_*`/`physics_waterflood_*`/`physics_gas_flood_*` contract tests,
+  `physics_gas_cap_vertical_column_fim_matches_impes_hydrostatic_benchmark`,
+  `physics_wells_sources_gas_injection_surface_totals_match_target_on_both_solvers`, 2
+  `physics_geometry_*` tests). The pre-existing failure itself is a new discovery worth a TODO
+  entry (its symptom — an extra `rate_history` entry on the FIM path for a well-less closed
+  system — closely resembles the already-known-and-tracked "3 pre-existing failures found
+  2026-07-07" class in `TODO.md`, though not an exact name match; not investigated further here,
+  out of scope for Bundle X).
+- `benchmark_buckley`: **3/3 pass** (`benchmark_buckley_leverett_case_a_favorable_mobility` rel_err
+  `0.041`, `case_b_more_adverse_mobility` rel_err `0.090`, `smaller_dt_improves_coarse_alignment`
+  — all within the existing validated tolerances, untouched).
+
+**X1 verdict: PROMOTABLE.** Every gate in the plan's X3 promotion checklist that doesn't require
+the full uncapped heavy re-run (done above, `16` substeps) or the D3 oracle comparison (X3's own
+remaining item) is green. This is the rare case of a single-function fix (`perforation_control_cells`,
+one `||` condition added) resolving what had been, across the whole `FIM-BUNDLE-N`/`FIM-BUNDLE-W`/
+`FIM-DIAG-002`/`FIM-DIAG-003` arc, an ~18,000-substep catastrophic failure — because the arc had
+been chasing a downstream symptom (the well-cell MB freeze) of an upstream formula-fidelity gap
+that had never been compared against OPM's actual source until D3/X0 did so directly.

@@ -43,6 +43,13 @@ export class ReservoirSimulator {
      * OPM-aligned nonlinear layer (per-cell update chopping). Default false = legacy.
      */
     setFimOpmAlignedNonlinear(enabled: boolean): void;
+    /**
+     * `FIM-BUNDLE-X` X1 dev flag (`docs/FIM_BUNDLE_X_PLAN.md`): restrict a producer
+     * perforation's phase-fraction mobility window to the single perforated cell (matching
+     * the injector branch and OPM's `WellInterface::getMobility`), instead of the original
+     * 3x3 areal-neighborhood window. Default false = unchanged behavior.
+     */
+    setFimSingleCellProducerFraction(enabled: boolean): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
     setFluidProperties(mu_o: number, mu_w: number): void;
@@ -124,6 +131,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimNestedWellSolve: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimOpmAlignedNonlinear: (a: number, b: number) => void;
+    readonly reservoirsimulator_setFimSingleCellProducerFraction: (a: number, b: number) => void;
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];

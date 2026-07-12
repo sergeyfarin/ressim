@@ -820,7 +820,11 @@ pub(crate) fn producer_control_state(
 }
 
 fn perforation_control_cells(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Vec<usize> {
-    if perforation.injector {
+    // `FIM-BUNDLE-X` X1 (`docs/FIM_BUNDLE_X_PLAN.md`): dev/diagnostic override, default false =
+    // the original 3x3-neighborhood behavior unchanged. OPM's `WellInterface::getMobility`
+    // (`WellInterface_impl.hpp:2105-2143`, pinned `062cb1998`) uses only the single connected
+    // cell's own mobility for every well type, injector or producer — no neighborhood at all.
+    if perforation.injector || sim.fim_single_cell_producer_fraction {
         return vec![perforation.cell_index];
     }
 
