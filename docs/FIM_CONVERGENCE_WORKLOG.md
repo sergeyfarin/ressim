@@ -2262,3 +2262,72 @@ diagnostic checkpoint); fix direction guidance for D5 is now well-triangulated f
 independent angles (D1's binding-cell census, D2's formula-fidelity audit, D3's oracle
 trajectory): nonlinear/well-coupling, not linear tolerance, not CNV/MB formula fidelity, not an
 inherent numerical floor at this residual magnitude.
+
+### FIM-DIAG-003 checkpoint D5: verdict + `FIM-NEWTON-008` (2026-07-12)
+
+Per `docs/FIM_DIAG_003_PLAN.md` D5, commit `08fe69b`.
+
+**Verdict on H1/H2/H3**: the plan's three-way discrimination is complete and unanimous across
+three independent methods:
+
+- **H1 (displaced standoff into well-cell MB rows) — CONFIRMED.** D1's binding-cell census: 100%
+  of the frozen-MB iterations bind at the producer's own perforation cell (91%) or its immediate
+  neighbor (9%), in both the default and forced-exact-linear runs. D3's OPM oracle: a well-posed
+  Newton step transits the exact same MB magnitude in one clean iteration with a 2-3
+  order-of-magnitude drop, `WellStatus=CONV`/`PenaltyWellRes=0` throughout — proving the frozen
+  magnitude is not intrinsically hard, only ResSim's own well-coupled iteration map has an
+  invariant point there.
+- **H2 (linear-precision floor) — REFUTED.** D1: forcing every Newton iteration through the
+  exact `SparseLuDebug` backend neither breaks the freeze, moves it off the well cells, nor
+  materially improves progress (`advanced_dt` `+0.6%` only).
+- **H3 (MB formula fidelity) — REFUTED.** D2: line-by-line audit of `cnv_mb_from_parts` against
+  the pinned OPM source found every sub-quantity a faithful, source-cited port; no `~1.4x`-shaped
+  translation bug exists.
+
+This is plan case **(a)**: "a scoped fix bundle for the confirmed mechanism." The mechanism is
+now precisely located (the well-cell mass-balance rows, under `nested_well_solve`'s handling of
+the coupled linear solve's `dq≈+0.58` proposal each iteration, vetoed back by the nested solve —
+the exact signature already on record from before D1 even ran). **Designing and building that fix
+bundle is out of scope for this diagnostic plan** (D0-D5 was explicitly instrumentation +
+discrimination, "zero guessing budget spent on this mechanism" per the plan's own framing) — it
+is the natural next unit of work, to be scoped as its own plan/bundle document with the same
+checkpoint discipline as Bundles N/P/W, once opened.
+
+**`min_strict_mb_iter` still explicitly out of scope**, now for a sharper reason than before: H1
+is a genuine structural fixed point (the residual is bit-identical across 18 iterations, not
+slowly converging), so relaxing WHEN the relaxed tolerance kicks in would not fix anything — it
+would only widen acceptance around an unfixed defect, the exact `FIM-NEWTON-005` anti-pattern.
+
+**Independent fix, PROMOTED this checkpoint (`FIM-NEWTON-008`)**: D2's off-by-one
+(`OPM_NEWTON_MIN_ITERATION_INDEX` `1→2`) is small, well-understood, and orthogonal to H1 — fixed
+and gated here rather than left open. Full control matrix (all 6 standard commands): **bit-identical**
+(the constant is `OpmAligned`-only, so the Legacy/flag-off path is provably untouched — confirmed,
+not just argued). `OpmAligned`-flavored re-runs of the three fast bounded cases:
+`22x22x1`/`23x23x1` substep counts **unchanged**, `20x20x3` shows a small **expected increase**
+(`15→16`, matching the fix's direction — stricter acceptance, closer to OPM's actual default,
+which requires more not fewer forced iterations). Heavy-case pathology is unaffected by
+construction (the floor only gates iterations 0-1; the heavy case fails at iteration ~18-20) — not
+re-run for this fix, the code-path argument is exact. Locked smoke 3/3, `assembly_ad` parity
+10/10. **This fix does NOT explain or close the bounded-case 3x gap** (`OpmAligned` `12/1` vs
+Legacy `4/2`, Bundle N §10 obs. 6) — if anything it moves `OpmAligned` iteration counts up
+slightly, the opposite direction from "explaining away the gap." That gap remains open and
+unexplained; H3's refutation (D2) already ruled out the leading hypothesis for it (a hot MB
+formula), so it is now itself a small standing question, not urgent enough to warrant its own
+diagnostic plan yet.
+
+**Stack promotion status: still OPEN.** The candidate stack (`OpmAligned` + `nested_well_solve`,
+baseline `18,015` substeps @ `c916c87`) has not been re-evaluated end-to-end — that gate is the
+original Bundle N §5 gate (heavy `≤35`-substep class + fine-dt FOPT + control matrix + bounded
+cases not worse than Legacy) and stays closed until a fix for the now-precisely-located H1
+mechanism exists and is evaluated. `FIM-DIAG-003` itself is **closed as a diagnostic** (D0-D5
+complete, unanimous verdict, zero unresolved hypotheses) even though the underlying pathology is
+not yet fixed — this is the correct disposition per the retrospective's own bookkeeping reframe
+("mid-chain mechanisms get 'validated-in-stack' dispositions rather than reading as failures").
+
+**Summary of this diagnostic's yield**: one independently promoted correctness fix
+(`FIM-NEWTON-008`), one confirmed regression averted (`nested_well_solve` under Legacy, D4 — would
+have been a false "win" without the `real_accepted_substeps` correction), one stale claim
+retracted (the `22x22x1` "regression," D4), one refuted formula-fidelity concern closed (H3, D2),
+one refuted linear-tolerance concern closed (H2, D1), and the mechanism precisely located for a
+future fix bundle (H1, D1+D3) — all without a single guess spent on the mechanism itself before
+the evidence was in hand.

@@ -1796,11 +1796,26 @@ const OPM_TOLERANCE_CNV_RELAXED: f64 = 1.0;
 const OPM_TOLERANCE_MB: f64 = 1e-7;
 const OPM_TOLERANCE_MB_RELAXED: f64 = 1e-6;
 const OPM_RELAXED_MAX_PV_FRACTION: f64 = 0.03;
-/// OPM `newton-min-iterations` default (2), translated to ResSim's 0-indexed per-iteration
-/// assembly loop: `iteration >= 1` means at least two residual evaluations have occurred
-/// (the entry check at `iteration=0` plus this one), matching OPM's `iteration >= minIter`
-/// gate on its own per-call assembly-then-check loop (design doc §9.1).
-const OPM_NEWTON_MIN_ITERATION_INDEX: usize = 1;
+/// OPM `newton-min-iterations` default (2): `iteration() >= minIter` gates
+/// `NonlinearSystemBlackOilReservoir::initialLinearization`'s accept decision
+/// (`NonlinearSystemBlackOilReservoir_impl.hpp:175`), where `iteration()` is
+/// `NewtonIterationContext`'s 0-based counter, incremented once per full
+/// assemble-check-then-update cycle via `advanceIteration()` — called only
+/// *after* `nonlinearIteration()` completes (`:229`), i.e. after the check.
+/// ResSim's own `for iteration in 0..max_newton_iterations` loop has the
+/// identical shape (assemble, check `converged_on_entry`, apply update only
+/// if not converged), so `iteration` here is the direct analog of OPM's
+/// `iteration()`: both equal the number of Newton updates already applied
+/// prior to the current check. OPM's default `minIter=2` therefore requires
+/// `iteration >= 2` (two prior updates, three total residual evaluations)
+/// before acceptance is even possible. `FIM-DIAG-003` D2 (2026-07-11/12,
+/// `docs/FIM_CONVERGENCE_WORKLOG.md` "checkpoint D2"/"checkpoint D5")
+/// source-traced this exactly and fixed a confirmed off-by-one that
+/// previously read `1` here (letting acceptance fire one iteration too
+/// early on fast-converging cases) — verified isolated to `OpmAligned`
+/// (bounded-case control matrix bit-identical on the Legacy/flag-off path,
+/// which never reads this constant).
+const OPM_NEWTON_MIN_ITERATION_INDEX: usize = 2;
 /// OPM `relaxed-linear-solver-reduction` default: a linear solve that didn't fully converge
 /// but reduced the residual by at least this factor relative to `rhs_norm` (x0=0 so
 /// r0=rhs, design doc §9.5) is accepted with a warning rather than triggering a fallback.

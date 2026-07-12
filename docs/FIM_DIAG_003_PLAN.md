@@ -1,15 +1,23 @@
 # FIM-DIAG-003: The Last Frozen Criterion (MB plateau under `OpmAligned`)
 
-Status: IN PROGRESS (2026-07-12) — D0 done, D2 done (H3 refuted), D1 done (H1 CONFIRMED, H2
-REFUTED), D4 done (heavy Legacy+W = regression not a win; both bounded no-ops reconfirmed,
-prior "22x22x1 regression" did not reproduce), D3 done (OPM oracle independently confirms H1:
-solves the whole interval in one 11-iteration Newton solve, its own MB trajectory transits the
-exact magnitude ResSim is frozen at with one further clean step). Only D5 (verdict) remains.
-Registry: `FIM-DIAG-003` (DIAGNOSTIC, open), `FIM-DIAG-003-D4` (REFUTED, both items).
+Status: **CLOSED as a diagnostic (2026-07-12)** — D0-D5 all complete, unanimous verdict: H1
+(displaced standoff into well-cell MB rows) CONFIRMED via three independent methods (D1
+binding-cell census + forced-direct-linear cross-check, D3 OPM oracle trajectory); H2
+(linear-precision floor) and H3 (MB formula fidelity) both REFUTED (D1, D2). D4 found and averted
+a false "win" (Legacy+`nested_well_solve` on the heavy case looked like an improvement on the raw
+substep ledger but is a genuine regression once `real_accepted_substeps` is read correctly) and
+retracted a stale claim (the "`22x22x1` `12→24` regression" does not reproduce). One independent
+correctness fix promoted (`FIM-NEWTON-008`, the `OPM_NEWTON_MIN_ITERATION_INDEX` off-by-one).
+**The underlying pathology is diagnosed but NOT fixed** — designing the H1 fix bundle is the next
+unit of work, out of scope for this diagnostic plan; stack promotion (candidate
+`OpmAligned`+`nested_well_solve`, baseline `18,015` @ `c916c87`) stays open until that fix exists
+and clears the original Bundle N §5 gate.
+Registry: `FIM-DIAG-003` (DIAGNOSTIC, closed), `FIM-DIAG-003-D3`/`FIM-DIAG-003-D4` (DIAGNOSTIC),
+`FIM-NEWTON-008` (PROMOTED).
 Prerequisite evidence: `docs/FIM_CONVERGENCE_WORKLOG.md` "Week retrospective (2026-07-11)"
 (commit `ec47e62`) and "Bundle W checkpoint W4/W5" (commit `c916c87`).
 Progress: `docs/FIM_CONVERGENCE_WORKLOG.md` "FIM-DIAG-003 checkpoint D0", "checkpoint D2",
-"checkpoint D1", "checkpoint D4", and "checkpoint D3" (2026-07-11/12).
+"checkpoint D1", "checkpoint D4", "checkpoint D3", and "checkpoint D5" (2026-07-11/12).
 
 ## 1. Context — what is established, what is not
 

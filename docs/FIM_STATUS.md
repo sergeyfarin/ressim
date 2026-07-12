@@ -3,7 +3,9 @@
 This is the consolidated current-state summary for the Rust FIM solver.
 Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 2026-07-10; gap #3
 updated with the late-window trace diagnostic finding 2026-07-11; gap #3 closed out (Bundle W
-evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11.
+evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11; gap #4 updated
+2026-07-12 with the `FIM-DIAG-003` D0-D5 diagnostic verdict (H1 confirmed, H2/H3 refuted,
+mechanism located but not yet fixed; `FIM-NEWTON-008` promoted).
 
 Use this file for:
 
@@ -179,13 +181,27 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    week retrospective (worklog): **MB alone binds** (CNV passes by 160x; MB fails strict by
    1.41x, frozen = an invariant point of the iteration map), tiers verified identical to OPM's
    pinned source — so OPM's MB genuinely converges below `1e-7` here where ours cannot.
-   **Execution plan: `docs/FIM_DIAG_003_PLAN.md` (D0-D5)** — binding-cell trace +
-   forced-direct-linear discrimination, MB formula audit, OPM Flow INFOITER differential
-   trajectory (`/usr/bin/flow` is installed), Legacy+W combination. Candidate stack
-   (`OpmAligned`+`nested_well_solve`) baseline: `18,015` substeps @ `c916c87`; progress metric
-   is the binding-constraint margin, not the substep count (which is a step function over the
-   conjunction). No fix attempts yet; `min_strict_mb_iter` explicitly out of scope until the
-   hypotheses are discriminated.
+   **Diagnostic complete (`docs/FIM_DIAG_003_PLAN.md` D0-D5, closed 2026-07-12), verdict
+   unanimous: H1 (displaced standoff into well-cell MB rows) CONFIRMED, H2 (linear-precision
+   floor) and H3 (MB formula fidelity) REFUTED.** D1's binding-cell trace: 100% of the frozen-MB
+   iterations bind at the producer's own perforation cell (91%) or its immediate neighbor (9%),
+   unaffected by forcing exact linear solves. D2's line-by-line audit of the MB/CNV formula
+   against the pinned OPM source found no fidelity bug (independently found and fixed a small,
+   orthogonal off-by-one, `FIM-NEWTON-008`: `OPM_NEWTON_MIN_ITERATION_INDEX` `1→2`). D3's OPM
+   Flow oracle run (new tracked deck `opm/reference-decks/water-heavy-step1/`): solves the whole
+   interval in one 11-iteration Newton solve, its own MB trajectory transits the exact magnitude
+   ResSim is frozen at with one clean further iteration (2-3 order-of-magnitude drop) — proving
+   the zone is not an inherent numerical floor. D4 averted a false "win" (Legacy+
+   `nested_well_solve` on the heavy case looks better on the raw substep ledger but is a genuine
+   regression once `real_accepted_substeps` is read correctly) and retracted the stale
+   "`22x22x1` regression" claim (does not reproduce at current HEAD). **The pathology is now
+   precisely located but not yet fixed** — designing a scoped H1 fix bundle for the well-cell MB
+   row handling is the next unit of work (own plan document, same checkpoint discipline as
+   Bundles N/P/W). Candidate stack (`OpmAligned`+`nested_well_solve`) baseline: `18,015` substeps
+   @ `c916c87`; stack promotion stays open until that fix exists and clears the original Bundle N
+   §5 gate. `min_strict_mb_iter` remains explicitly out of scope — H1 is a genuine structural
+   fixed point (bit-identical residual across 18 iterations), not slow convergence, so relaxing
+   *when* the relaxed tier applies would not fix anything.
 5. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.
