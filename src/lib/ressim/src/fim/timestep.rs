@@ -2947,17 +2947,12 @@ mod phase5_repro {
         // every Newton linear solve through the exact direct backend for H1/H2 discrimination.
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         sim.set_fim_force_direct_linear(force_direct_linear);
-        // FIM-BUNDLE-X X1 (`docs/FIM_BUNDLE_X_PLAN.md`): same env-gated pattern, restricts a
-        // producer perforation's phase-fraction mobility window to the single perforated cell.
-        let single_cell_producer_fraction =
-            std::env::var_os("FIM_SINGLE_CELL_PRODUCER_FRACTION").is_some();
-        sim.set_fim_single_cell_producer_fraction(single_cell_producer_fraction);
 
         let start = Instant::now();
         sim.step(dt_days);
         let elapsed = start.elapsed();
         println!(
-            "native step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear} single_cell_producer_fraction={single_cell_producer_fraction})",
+            "native step (no trace) elapsed: {:.3}s (nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear})",
             elapsed.as_secs_f64()
         );
         if let Some(stats) = sim.last_fim_step_stats_ref() {

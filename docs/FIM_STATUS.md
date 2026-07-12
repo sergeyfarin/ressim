@@ -6,7 +6,9 @@ updated with the late-window trace diagnostic finding 2026-07-11; gap #3 closed 
 evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11; gap #4 updated
 2026-07-12 with the `FIM-DIAG-003` D0-D5 diagnostic verdict (H1 confirmed, H2/H3 refuted,
 mechanism located but not yet fixed; `FIM-NEWTON-008` promoted); **gap #4 CLOSED 2026-07-12**
-(`FIM-BUNDLE-X` `single_cell_producer_fraction` fix, heavy case `18,015 → 16` substeps).
+(`FIM-BUNDLE-X` producer-fraction fix, heavy case `18,015 → 16` substeps under
+`OpmAligned`+`nested_well_solve`, `52 → 25` under default Legacy — made unconditional 2026-07-12,
+no dev flag remains).
 
 Use this file for:
 
@@ -213,25 +215,28 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    override the original H1 framing suspected was real but secondary, not primary (confirmed by
    testing the fix with and without `nested_well_solve`: identical result either way).
 
-   **Fix** (`fim_single_cell_producer_fraction`, `perforation_control_cells`'s producer branch
-   restricted to the single perforated cell, matching the injector branch and OPM exactly):
-   heavy case **`18,015 → 16` substeps** (~1126x, `1235.5s → ~3s`), works identically with or
-   without `nested_well_solve`, and Legacy flavor improves too (`52 → 25`, unconditional — the
-   fix is a physics-formula correction, not flavor-specific). Full gate green (control matrix,
-   bounded no-ops, parity, locked smoke, `validate-solver-coverage.sh fim`+`shared`, BL
-   benchmarks); D3 oracle re-comparison shows the fixed trajectory reaching the same `dt≈0.185`-
-   `0.259`-class steps OPM holds, now in single-digit iteration counts. A second,
-   independently-discovered case (`water-medium-6step`) with the identical pathology also
-   resolves cleanly. Full writeup: `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint
-   X0"/"X1"/"X3".
+   **Fix** (`perforation_control_cells`'s producer branch restricted to the single perforated
+   cell, matching the injector branch and OPM exactly — **unconditional**, no dev flag, per
+   user decision 2026-07-12): heavy case (Legacy, the default flavor) **`52 → 25` substeps**;
+   under `OpmAligned`+`nested_well_solve` (X1's own measurement behind the now-deleted flag)
+   **`18,015 → 16`** (~1126x, `1235.5s → ~3s`) — the fix is flavor-independent, a physics-formula
+   correction, not a Newton-loop-specific patch. Deleting the flag surfaced and fixed a *second*,
+   independent duplicate of the same bug in `producer_control_state` (feeds the legacy assembler
+   and `reporting.rs`'s water-cut reporting) — caught immediately by the `assembly_ad`/legacy
+   parity gate failing on the first post-removal rebuild, fixed in lockstep. Full gate green
+   throughout (control matrix — every non-heavy case's substep count bit-identical to the
+   pre-fix baseline, only 4th-sig-fig production-number drift — parity 10/10, locked smoke 3/3,
+   `validate-solver-coverage.sh fim` 9/9 + `shared` 14/14, BL benchmarks 3/3); D3 oracle
+   re-comparison shows the fixed trajectory reaching the same `dt≈0.185`-`0.259`-class steps OPM
+   holds, now in single-digit iteration counts. A second, independently-discovered case
+   (`water-medium-6step`) with the identical pathology also resolves cleanly. Full writeup:
+   `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X0"/"X1"/"X3"/"X4".
 
-   **Two things this does NOT close, tracked separately**: (a) the bounded-case cost tradeoff
+   **One thing this does NOT close, tracked separately**: the bounded-case cost tradeoff
    (`OpmAligned` still costs more retries than Legacy on the already-easy cases — pre-existing,
    confirmed unrelated/unchanged by this fix, never `FIM-BUNDLE-X`'s scope) still blocks
-   `OpmAligned`+`nested_well_solve` from becoming the *default* flavor; (b) whether
-   `single_cell_producer_fraction` itself should become unconditional (delete the flag) rather
-   than stay opt-in is an open product question, not a technical one — deferred pending user
-   decision. `min_strict_mb_iter` remains out of scope regardless — it was never the fix.
+   `OpmAligned`+`nested_well_solve` from becoming the *default* flavor. `min_strict_mb_iter`
+   remains out of scope regardless — it was never the fix.
 5. **AMG coarse solver for CPR ("Bundle C", `FIM-LINEAR-006`)** — still deferred, and the Task
    #41 traces confirm the deferral: coarse-stage per-application quality is already ~1e-7 at
    current sizes. AMG is a scale-up item, not part of closing the current measured gap.

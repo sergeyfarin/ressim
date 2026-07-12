@@ -32,7 +32,6 @@ export const reservoirsimulator_setCellDimensionsPerLayer: (a: number, b: number
 export const reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
 export const reservoirsimulator_setFimNestedWellSolve: (a: number, b: number) => void;
 export const reservoirsimulator_setFimOpmAlignedNonlinear: (a: number, b: number) => void;
-export const reservoirsimulator_setFimSingleCellProducerFraction: (a: number, b: number) => void;
 export const reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
 export const reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];

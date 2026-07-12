@@ -275,16 +275,6 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setFimOpmAlignedNonlinear(this.__wbg_ptr, enabled);
     }
     /**
-     * `FIM-BUNDLE-X` X1 dev flag (`docs/FIM_BUNDLE_X_PLAN.md`): restrict a producer
-     * perforation's phase-fraction mobility window to the single perforated cell (matching
-     * the injector branch and OPM's `WellInterface::getMobility`), instead of the original
-     * 3x3 areal-neighborhood window. Default false = unchanged behavior.
-     * @param {boolean} enabled
-     */
-    setFimSingleCellProducerFraction(enabled) {
-        wasm.reservoirsimulator_setFimSingleCellProducerFraction(this.__wbg_ptr, enabled);
-    }
-    /**
      * @param {number} c_o
      * @param {number} c_w
      */

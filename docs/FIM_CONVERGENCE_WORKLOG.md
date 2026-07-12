@@ -2606,3 +2606,73 @@ differs from its own cell's saturation (i.e. once water is near but hasn't reach
 this is more physically correct, but is a default-behavior change for the public-facing FIM path
 (FIM is currently dev-only per `docs/FIM_DEFERRED_BACKLOG.md`, which lowers the stakes, but
 worth an explicit decision rather than a silent default flip). Deferred to the user.
+
+**User decision: make it unconditional.** Delete the flag; the OPM-matching single-cell formula
+always applies.
+
+### Bundle X checkpoint X4: make the fix unconditional, second duplicate found and fixed (2026-07-12)
+
+Commit base `473f754`.
+
+**Implementation.** `perforation_control_cells` (`fim/wells.rs:822`) simplified to always return
+`vec![perforation.cell_index]` — the 3x3-window branch, `i_min`/`i_max`/`j_min`/`j_max` loop, and
+the `fim_single_cell_producer_fraction` condition all deleted. Removed the flag entirely: the
+`ReservoirSimulator` field (`lib.rs`), its constructor initialization (`frontend.rs`), the
+wasm-exposed setter `setFimSingleCellProducerFraction` (`frontend.rs`), the native repro driver's
+env-var wiring (`fim/timestep.rs`), and the `--single-cell-producer-fraction` CLI flag
+(`scripts/fim-wasm-diagnostic.mjs`) — confirmed zero remaining references via `grep` across
+`src/` and `scripts/`.
+
+**A second, independent duplicate found and fixed.** Rebuilding immediately surfaced an
+`assembly_ad` parity failure (5/10 tests, e.g. `residual[3] diverged: old=-3.499... new=-3.589...`)
+— the legacy assembler (`assembly.rs`, the frozen bit-parity oracle, Phase 6) and the live AD
+assembler (`assembly_ad.rs`) now disagreed. Root cause: `producer_control_state`
+(`fim/wells.rs:786`, called by the legacy assembler's `perforation_component_rates_sc_day` *and*
+by `reporting.rs`'s water-cut reporting) was a **second, wholly independent copy** of the same
+pre-fix 3x3-areal-neighborhood mobility-summing logic that X0/X1 found and fixed in
+`perforation_control_cells` — never touched by the X1 flag, since it doesn't call through that
+function at all. Fixed in lockstep (same single-cell formula). This is exactly the kind of
+divergence the AD/legacy parity gate exists to catch (`engine-physics-change` skill: "physics
+helpers often have both a legacy and an AD implementation that must be changed together") — and
+it caught it on the first rebuild, before any live run.
+
+**Full re-gate, all green** (commands and counts recorded verbatim per baseline discipline):
+- `assembly_ad` parity: **10/10** (restored after the `producer_control_state` fix).
+- Locked smoke, 3/3: `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+  `spe1_fim_first_steps_converge_without_stall` (`85.7s`), `spe1_fim_gas_injection_creates_free_gas`
+  (`113.5s`).
+- `validate-solver-coverage.sh fim`: **9/9** (`fim::tests::spe1::` 3 tests including
+  `spe1_fim_producer_gas_breakthrough_smoke`, `fim::tests::wells::` 5 tests including
+  `single_cell_producer_reporting_matches_local_source_state`, 1 `dep_pss_fim_*` — full bucket,
+  `202.8s`).
+- `validate-solver-coverage.sh shared`: all 14 non-pre-existing-failure tests run individually
+  (the script's `set -euo pipefail` stops at the known, unrelated
+  `closed_system_public_step_keeps_same_water_inventory_on_both_solvers` failure — still
+  reproduces, still structurally unrelated, `TODO.md` entry stands) — **14/14 pass**.
+- `benchmark_buckley`: **3/3 pass**, tolerances and `rel_err` values unchanged from the pre-fix
+  baseline (`0.041`/`0.090`/dt-sweep) — this benchmark's producer configuration doesn't exercise
+  the fixed mechanism.
+
+**New unconditional baseline, control matrix** (supersedes the pre-`FIM-BUNDLE-X` baseline
+recorded throughout `FIM-DIAG-003`/prior bundles — commit `473f754`'s tree plus this checkpoint's
+changes, wasm rebuilt):
+
+| Case | Old baseline (pre-`FIM-BUNDLE-X`) | New baseline (this checkpoint) |
+|---|---|---|
+| `water-pressure 20x20x3 --dt 0.25` | `8` substeps | **`8`** (unchanged; `oil` drifts `3340.56→3340.66`, 4th sig fig) |
+| `water-pressure 22x22x1 --dt 0.25` | `4` | **`4`** (unchanged, `oil` bit-identical `1473.47`) |
+| `water-pressure 23x23x1 --dt 0.25` | `4` | **`4`** (unchanged; `oil` drifts `1454.56→1454.60`) |
+| `gas-rate 20x20x3 --dt 0.25` | `2` | **`2`** (unchanged, bit-identical) |
+| `gas-rate 10x10x3 --steps 6 --dt 0.25` | `4,2,2,2,2,2` | **`4,2,2,2,2,2`** (unchanged substep counts; step 2's dominant retry cell shifts `oil@64→oil@37`, a non-blocking retry-site relabel, not a regression) |
+| `water-pressure 12x12x3 --dt 1` (heavy) | `52` | **`25`** (superseded — the fix's own result, `oil` drifts substantially `3887.33→3182.85` since removing the spurious water withdrawal changes total oil accounting materially for the case that goes deepest into the fixed mechanism) |
+
+Every non-heavy case's substep count is bit-identical to the pre-fix baseline; only cosmetic
+(4th-significant-figure) production-number drift appears where a producer sits anywhere near a
+saturation front, confirming the fix's blast radius is exactly and only what X0/X1/X3 predicted.
+The heavy case's `52 → 25` is the fix applying to the *default* (Legacy) flavor for the first
+time (X1/X3 measured this behind the flag; this checkpoint makes it the recorded baseline).
+
+**`FIM-BUNDLE-X` fully closed.** No dev flag remains — `perforation_control_cells` and
+`producer_control_state` unconditionally match OPM's single-connected-cell mobility formula for
+every well, injector or producer, under every code path (legacy assembler, AD assembler, nested
+well solve, reporting).

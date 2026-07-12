@@ -777,68 +777,49 @@ pub(crate) fn geometric_well_index(
     Some(DARCY_METRIC_FACTOR * 2.0 * std::f64::consts::PI * k_avg * sim.dz_at(id) / denom)
 }
 
+/// `FIM-BUNDLE-X` (`docs/FIM_BUNDLE_X_PLAN.md`): uses only the perforated cell's own mobility,
+/// matching OPM's `WellInterface::getMobility` and `perforation_control_cells` below (this
+/// function was a second, independent copy of the same pre-fix 3x3-areal-neighborhood logic —
+/// used by the legacy assembler's well source terms via `perforation_component_rates_sc_day`
+/// and by `reporting.rs`'s water-cut reporting — fixed in lockstep to keep the AD/legacy parity
+/// gate meaningful and reported production numbers consistent with the physics).
 pub(crate) fn producer_control_state(
     sim: &ReservoirSimulator,
     state: &FimState,
     perforation: &FimPerforation,
 ) -> ProducerControlState {
-    let i_min = perforation.i.saturating_sub(1);
-    let i_max = (perforation.i + 1).min(sim.nx.saturating_sub(1));
-    let j_min = perforation.j.saturating_sub(1);
-    let j_max = (perforation.j + 1).min(sim.ny.saturating_sub(1));
-    let k = perforation.k;
-
-    let mut lambda_w_sum = 0.0;
-    let mut lambda_o_sum = 0.0;
-    let mut lambda_g_sum = 0.0;
-
-    for j in j_min..=j_max {
-        for i in i_min..=i_max {
-            let id = sim.idx(i, j, k);
-            let cell = state.cell(id);
-            let derived = state.derive_cell(sim, id);
-            let mobilities =
-                sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
-            lambda_w_sum += mobilities.water.max(0.0);
-            lambda_o_sum += mobilities.oil.max(0.0);
-            lambda_g_sum += mobilities.gas.max(0.0);
-        }
-    }
-
-    let lambda_total = (lambda_w_sum + lambda_o_sum + lambda_g_sum).max(f64::EPSILON);
     let id = perforation.cell_index;
+    let cell = state.cell(id);
     let derived = state.derive_cell(sim, id);
+    let mobilities =
+        sim.phase_mobilities_for_state(cell.sw, derived.sg, cell.pressure_bar, derived.rs);
+    let lambda_w = mobilities.water.max(0.0);
+    let lambda_o = mobilities.oil.max(0.0);
+    let lambda_g = mobilities.gas.max(0.0);
+    let lambda_total = (lambda_w + lambda_o + lambda_g).max(f64::EPSILON);
 
     ProducerControlState {
-        water_fraction: (lambda_w_sum / lambda_total).clamp(0.0, 1.0),
-        oil_fraction: (lambda_o_sum / lambda_total).clamp(0.0, 1.0),
-        gas_fraction: (lambda_g_sum / lambda_total).clamp(0.0, 1.0),
+        water_fraction: (lambda_w / lambda_total).clamp(0.0, 1.0),
+        oil_fraction: (lambda_o / lambda_total).clamp(0.0, 1.0),
+        gas_fraction: (lambda_g / lambda_total).clamp(0.0, 1.0),
         oil_fvf: derived.bo.max(1e-9),
         gas_fvf: derived.bg.max(1e-9),
         rs_sm3_sm3: derived.rs.max(0.0),
     }
 }
 
-fn perforation_control_cells(sim: &ReservoirSimulator, perforation: &FimPerforation) -> Vec<usize> {
-    // `FIM-BUNDLE-X` X1 (`docs/FIM_BUNDLE_X_PLAN.md`): dev/diagnostic override, default false =
-    // the original 3x3-neighborhood behavior unchanged. OPM's `WellInterface::getMobility`
-    // (`WellInterface_impl.hpp:2105-2143`, pinned `062cb1998`) uses only the single connected
-    // cell's own mobility for every well type, injector or producer — no neighborhood at all.
-    if perforation.injector || sim.fim_single_cell_producer_fraction {
-        return vec![perforation.cell_index];
-    }
-
-    let i_min = perforation.i.saturating_sub(1);
-    let i_max = (perforation.i + 1).min(sim.nx.saturating_sub(1));
-    let j_min = perforation.j.saturating_sub(1);
-    let j_max = (perforation.j + 1).min(sim.ny.saturating_sub(1));
-    let mut cells = Vec::with_capacity((i_max - i_min + 1) * (j_max - j_min + 1));
-    for j in j_min..=j_max {
-        for i in i_min..=i_max {
-            cells.push(sim.idx(i, j, perforation.k));
-        }
-    }
-    cells
+/// A perforation's phase-fraction mobility window: just the perforated cell itself, matching
+/// OPM's `WellInterface::getMobility` (`WellInterface_impl.hpp:2105-2143`, pinned `062cb1998`),
+/// which uses only the single connected cell's own mobility for every well type — no
+/// neighborhood at all. `FIM-BUNDLE-X` (`docs/FIM_BUNDLE_X_PLAN.md`) found and fixed a
+/// pre-FIM/pre-OPM-alignment design (`git log -S "producer_control_state"` → `d824f4f`) that
+/// blended a producer's fraction across a 3x3 areal neighborhood; that manufactured a spurious
+/// water withdrawal at any producer near — but not yet at — a saturation front, generating an
+/// invariant point that stalled the heavy case at 18,015 substeps under `OpmAligned`. Fix
+/// verified: heavy case `18,015 → 16` substeps, Legacy `52 → 25`, full control-matrix/smoke/BL
+/// gate green (`docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"/"X3").
+fn perforation_control_cells(_sim: &ReservoirSimulator, perforation: &FimPerforation) -> Vec<usize> {
+    vec![perforation.cell_index]
 }
 
 #[cfg(test)]
