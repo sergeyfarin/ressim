@@ -2676,3 +2676,38 @@ time (X1/X3 measured this behind the flag; this checkpoint makes it the recorded
 `producer_control_state` unconditionally match OPM's single-connected-cell mobility formula for
 every well, injector or producer, under every code path (legacy assembler, AD assembler, nested
 well solve, reporting).
+
+## Bundle Y planned: OPM convergence parity (2026-07-12)
+
+Plan doc: `docs/FIM_OPM_PARITY_PLAN.md`. Post-X4 `OpmAligned` baselines re-derived for the plan
+on the clean committed tree at `53cae5c` (wasm rebuilt in the X4 commit), exact commands +
+verbatim key fields:
+
+```
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 12x12x3 --steps 1 --dt 1 --opm-aligned --nested-well-solve --diagnostic summary --no-json
+  substeps=17 | accepts=17+0+0 | retries=2/1/0 | dt=[5.280e-3,2.387e-1] | retry_dom=linear-bad:oil@1099 | oil=2853.81
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 20x20x3 --steps 1 --dt 0.25 --opm-aligned --diagnostic summary --no-json
+  substeps=16 | retries=6/1/0 | retry_dom=linear-bad:oil@2716
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 22x22x1 --steps 1 --dt 0.25 --opm-aligned --diagnostic summary --no-json
+  substeps=24 | retries=8/0/0 | dt=[2.813e-5,5.591e-2] | retry_dom=linear-bad:oil@1450
+node scripts/fim-wasm-diagnostic.mjs --preset water-pressure --grid 23x23x1 --steps 1 --dt 0.25 --opm-aligned --diagnostic summary --no-json
+  substeps=12 | retries=1/0/0 | retry_dom=linear-bad:oil@1585
+node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 20x20x3 --steps 1 --dt 0.25 --opm-aligned --diagnostic summary --no-json
+  substeps=459 | retries=337/0/0 | dt=[7.032e-5,9.539e-4] | retry_dom=linear-bad:oil@1261 | wall 83.9s
+```
+
+Notable observations feeding the plan:
+- Heavy `OpmAligned`+`nested_well_solve` reads `17` on this re-run vs X1's `16` — within this
+  case's known ±1 chaos band, recorded honestly; `16` stays the X1-checkpoint number, `17` is
+  the plan-baseline number at `53cae5c`.
+- **The gas-rate 459 catastrophe is untouched by the X fix** (bit-identical substep count and
+  retry profile before/after) — and its dominant failure class is `linear-bad` (337 of 459
+  substeps end in linear retries, dt pinned at `~1e-4`). Combined with `FIM-LINEAR-005`'s
+  offline finding (current `row0-schur` restriction converges 0/54 heavy systems as full
+  solves; `sum-rows`/`quasi-impes` ~92%), the linear stack is now the leading suspect for both
+  the bounded-case overhead and the remaining transient inefficiency — Y0 measures, Y1
+  promotes the restriction variant per the standing OPEN registry row.
+- Every `OpmAligned` bounded case's `retry_dom` is now `linear-bad` — under Legacy the same
+  cases fail `nonlinear-bad` first. `OpmAligned`'s stricter acceptance has shifted the binding
+  constraint from the nonlinear layer to the linear layer across the whole matrix, which is
+  exactly the regime OPM's `cprw` (quasi-IMPES CPR) is built for.

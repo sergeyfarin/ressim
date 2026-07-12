@@ -20,7 +20,9 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/FIM_BUNDLE_N_DESIGN.md` | Bundle N (OPM nonlinear layer): design, §9 verified OPM formulas, §5.1 failed end-metric evaluation, §10 retrospective/disposition — parked behind the `OpmAligned` flag |
 | `docs/FIM_BUNDLE_P_PLAN.md` | Bundle P (CPR setup reuse): REFUTED at P0 2026-07-10 (no failure-free reuse interval); P0 measurement tooling kept; superseded on the cost axis by `FIM-LINEAR-011` |
 | `docs/FIM_BUNDLE_W_PLAN.md` | Bundle W (nested well solve): EVALUATED 2026-07-11, mechanism validated (standoff fixed), NOT promoted — heavy-case gate failed on a newly-exposed second gap; kept inert behind `nested_well_solve` |
-| `docs/FIM_DIAG_003_PLAN.md` | Active plan: the last frozen criterion (MB plateau at 1.41x over tolerance under `OpmAligned`); checkpoints D0-D5 — binding-cell trace, forced-direct discrimination, MB formula audit, OPM Flow INFOITER differential trajectory, Legacy+W combination |
+| `docs/FIM_DIAG_003_PLAN.md` | FIM-DIAG-003 (MB plateau under `OpmAligned`): CLOSED 2026-07-12, D0-D5 complete — H1 confirmed three ways, H2/H3 refuted; mechanism located, fixed by Bundle X |
+| `docs/FIM_BUNDLE_X_PLAN.md` | Bundle X (producer-fraction fidelity): CLOSED/PROMOTED unconditional 2026-07-12 — 3x3-neighborhood producer fraction replaced by OPM's single-cell formula; heavy case 18,015→16 (`OpmAligned`+nested) / 52→25 (Legacy default) |
+| `docs/FIM_OPM_PARITY_PLAN.md` | Active plan: Bundle Y (OPM convergence parity) — gap decomposition post-Bundle-X (transient Newton robustness, CPR restriction promotion per FIM-LINEAR-005, controller policy, stack promotion), checkpoints Y0-Y4 |
 | `docs/FIM_MIGRATION_PLAN.md` | File-by-file FIM cutover checklist, target solver architecture, and proposed Rust APIs |
 | `docs/FIM_CLEANUP_PLAN.md` | FIM doc/test/diagnostic cleanup sequence and ownership boundaries |
 | `docs/OPM_FLOW_MINIMAL_MAPPING.md` | Minimal OPM Flow to ResSim solver mapping and the concrete CPRW-first implementation plan |
