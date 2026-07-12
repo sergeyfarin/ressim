@@ -195,9 +195,12 @@ regressed (`FIM-NEWTON-007`), root cause is the single-global-scalar damping arc
    `nested_well_solve` on the heavy case looks better on the raw substep ledger but is a genuine
    regression once `real_accepted_substeps` is read correctly) and retracted the stale
    "`22x22x1` regression" claim (does not reproduce at current HEAD). **The pathology is now
-   precisely located but not yet fixed** — designing a scoped H1 fix bundle for the well-cell MB
-   row handling is the next unit of work (own plan document, same checkpoint discipline as
-   Bundles N/P/W). Candidate stack (`OpmAligned`+`nested_well_solve`) baseline: `18,015` substeps
+   precisely located but not yet fixed** — the fix bundle is planned:
+   **`docs/FIM_BUNDLE_X_PLAN.md` (`FIM-BUNDLE-X`, 2026-07-12)**, built on a source-verified
+   structural diff vs OPM (OPM: inner well solve *before* linearization + coupled/back-substituted
+   well update applied after the solve with no re-solve; ResSim+W: coupled update applied then
+   its well component *overridden* post-application — the first-order veto that generates the
+   invariant point). Candidate stack (`OpmAligned`+`nested_well_solve`) baseline: `18,015` substeps
    @ `c916c87`; stack promotion stays open until that fix exists and clears the original Bundle N
    §5 gate. `min_strict_mb_iter` remains explicitly out of scope — H1 is a genuine structural
    fixed point (bit-identical residual across 18 iterations), not slow convergence, so relaxing
