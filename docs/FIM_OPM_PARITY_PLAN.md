@@ -1205,3 +1205,40 @@ The original Y2b wording is therefore superseded by
 `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`: first source-complete the state/update lifecycle,
 then characterize one-sided derivatives and predicted-vs-realized updates, and only then authorize
 a flag-gated behavior probe. G4/G5, controller, AMG, and acceptance changes remain deferred.
+
+### 15.1 Y2b0 result: exact state/update lifecycle (2026-07-13)
+
+**Status: complete, documentation/source audit only; no solver behavior changed.** The audit was
+performed at commit `5c29a9d`. The tracked deck has no saturation-projection or `ds-max` override.
+The installed Flow binary's help reports `--project-saturations` default `false` and `--ds-max`
+default `0.2`; `scripts/opm-ressim-compare.sh --opm-only --no-build-wasm --out-dir
+/tmp/ressim-y2b0-opm-audit` revalidated the oracle: six `TStep=0.25` rows, `NewtIt=7,5,4,3,4,3`,
+and `Conv=1` throughout.
+
+| Boundary | OPM Flow on this deck | ResSim `OpmAligned` | Audit consequence |
+| --- | --- | --- | --- |
+| `Sw = Swc = 0.15` | The normal update scales saturation deltas by `dsMax` but writes raw `Sw`; projection/normalization is conditional and disabled. Raw `Sw` is passed to the fluid state and accumulation. The default three-phase material law clamps endpoint *properties* separately: table `krw` is constant below its first point and oil paths use `max(Swl, Sw)`. | `opm_per_cell_chopped_update` applies the same 0.2 maximum implied saturation increment, then `apply_raw_update` calls `enforce_cell_bounds`, replacing `Sw < Swc` with `Swc` before the next residual/Jacobian assembly. | OPM can retain an endpoint-crossing mass state while endpoint relperms stay flat; ResSim erases both the state movement and its accumulation contribution. Plausible cause, not causal verdict. |
+| `Sg = 0` | Raw `Sg` is updated without normal projection. `adaptPrimaryVariables` is called after every update and can change `Sg` to `Rs` once free gas becomes negative; the gas relperm table uses its endpoint value. | In the saturated regime, `enforce_cell_bounds` clamps the hydrocarbon variable to `[0, 1-Sw-Sorg]`. The regime remains frozen throughout the Newton loop; classification happens only in accepted-state evaluation. | Boundary treatment and phase switching both differ. Y2b1 must characterize this independently from `Swc`; this does not yet authorize G5. |
+| Upper `Sw`/`Sg` / oil complement | With projection off, the normal update does not normalize `Sw+Sg+So`. The deck has no `VAPOIL`, so the oil-disappearance `Rv` route is unavailable; material laws protect properties at endpoints rather than imposing a residual-oil state bound. | `enforce_cell_bounds` caps `Sw` at the configured oil-floor complement and `Sg` at `1-Sw-Sorg`, retaining its imposed residual-oil margin. | A second state-policy divergence. Do not fold it into an `Swc` fix without fixtures that cover it. |
+
+Source chain, in update order:
+
+1. OPM registers and reads `DsMax` and `ProjectSaturations` in
+   `OPM/opm-simulators/opm/models/blackoil/blackoilnewtonmethodparams.hpp:37-42` and
+   `...params.cpp:35-65`; the actual Flow binary confirms those defaults.
+2. `blackoilnewtonmethod.hpp:230-288` computes the implied `Sw`/`So`/`Sg` change and applies
+   `dsMax`; `:452-458` adapts primary variables and only then conditionally calls
+   `chopAndNormalizeSaturations`.
+3. `blackoilintensivequantities.hh:248-290` places raw primary-variable saturations in the fluid
+   state used by the residual. `EclMaterialLawManager.cpp:527-546` selects the Default
+   three-phase law for this deck (no `STONE1`/`STONE2` keyword). `EclDefaultMaterial.hpp:375-424`
+   clamps material-law endpoint use, and `PiecewiseLinearTwoPhaseMaterial.hpp:232-255` returns
+   endpoint table values outside the tabulated range.
+4. ResSim's OPM-style chop is `fim/newton.rs:2234-2298`; it is selected for `OpmAligned` at
+   `:4125-4154`. `fim/state.rs:408-457` applies the raw cell update then always calls
+   `enforce_cell_bounds`; `:250-280` defines the hard `Sw`, `Sg`, and residual-oil bounds.
+   `fim/newton.rs:2746-2783` is the normal accepted-state regime reclassification path.
+
+**Y2b1 authorization:** add test-only fixtures at `Swc-eps`, `Swc`, `Swc+eps`, `Sg=0±eps`, and
+the upper oil-complement boundary. Record raw correction, post-chop candidate, post-bound state,
+predicted residual change, and next residual. Keep Legacy and solver behavior unchanged.

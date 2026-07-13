@@ -42,6 +42,33 @@ work as source audit (Y2b0), test-only boundary characterization (Y2b1), one rev
 (Y2c). G4/G5, heavy-case branching, controller parity, AMG, and acceptance changes are explicitly
 deferred until that evidence selects one branch. No solver behavior or test code changed.
 
+### Bundle Y Y2b0 — bound/update source audit (2026-07-13; complete)
+
+**Commit:** `5c29a9d` (documentation-only predecessor; solver tree clean). **Hypothesis:** the
+exact injector plateau could be caused by a difference between OPM's saturation-state update and
+ResSim's hard `Swc` projection, independently of the Y2a whole-row derivative mismatch.
+
+Confirmed the effective reference options, rather than assuming them from source: the tracked deck
+contains no projection or `ds-max` override; installed `flow --help` reports
+`project-saturations=false`, `ds-max=0.2`; the tracked harness was replayed with
+`scripts/opm-ressim-compare.sh --opm-only --no-build-wasm --out-dir
+/tmp/ressim-y2b0-opm-audit`. It passed fixture verification and `CASE.INFOSTEP` records six
+uncut 0.25-day steps with `NewtIt 7/5/4/3/4/3`, all `Conv=1`. The first sandbox run failed before
+Flow initialization due to MPI socket restrictions; the identical elevated replay passed, so this
+is an environment constraint rather than a solver result.
+
+Source verdict: OPM limits the raw saturation update to `dsMax` and passes raw primary-variable
+saturations into accumulation; its optional normalization is off. Endpoint material-law values are
+clamped separately. ResSim also uses the 0.2 per-cell chop in `OpmAligned`, but immediately
+hard-clamps stored `Sw`, `Sg`, and oil complement before the next assembly. Additionally, OPM
+adapts primary variables after every update, while ResSim freezes the hydrocarbon regime until
+accepted-state evaluation. Full citations and the three-boundary table are in
+`FIM_OPM_PARITY_PLAN.md` §15.1.
+
+**Verdict:** Y2b0 PASS. The state-policy divergence is real and sufficiently specified to justify
+Y2b1, but it does not prove that removing the hard bound fixes the plateau. Next authorized work
+is test-only boundary characterization; no acceptance, clamp, G4/G5, controller, or AMG change.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

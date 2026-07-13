@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **active decision-frontier plan, 2026-07-13**. This document turns the evidence in
+Status: **Y2b0 complete; Y2b1 active (2026-07-13)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -77,8 +77,18 @@ Tasks:
 4. Add source file/line citations to the parity plan. Do not infer OPM behavior from comments in
    ResSim.
 
+**Result (2026-07-13, commit `5c29a9d`, no behavior change): PASS.** The tracked deck has no
+`project-saturations` or `ds-max` override; the actual Flow binary reports defaults
+`project-saturations=false` and `ds-max=0.2`. The tracked harness re-ran Flow successfully:
+six `TStep=0.25` rows, `NewtIt=7,5,4,3,4,3`, and `Conv=1` throughout. OPM keeps raw saturation
+primary variables through the normal update and passes them to accumulation; endpoint material
+laws clamp relperms separately. ResSim applies the same nominal per-cell `ds-max` chop under
+`OpmAligned`, then hard-clamps the stored state before the next assembly. OPM also adapts primary
+variables after every update; ResSim freezes the regime until accepted-state evaluation. Full
+source table: `FIM_OPM_PARITY_PLAN.md` §15.1.
+
 Pass condition: the complete update lifecycle is sourced and the exact deck's effective options
-are known. Stop condition: if OPM does project at `Swc` for this deck, discard the provisional
+are known. **Met.** Stop condition: if OPM does project at `Swc` for this deck, discard the provisional
 “projection divergence” hypothesis and proceed with a coherent active-set derivative audit only.
 
 Checkpoint: docs/registry commit; no solver validation suite is required because behavior is

@@ -59,10 +59,10 @@ below is retained as Bundle N/Y history; it must not override this current seque
 - [x] **Y0-Y2a evidence chain:** exact Flow oracle tracked; false linear-failure acceptance fixed;
   direct/live linear quality refuted as the remaining first-rung cause; injector isolated; the
   `Sw=Swc` derivative/update kink clean-replayed.
-- [ ] **Y2b0 (active): source-complete bound/update audit.** Confirm the exact OPM deck's
-  saturation projection, `ds-max`, normalization, endpoint extension, and switching; map the
-  ResSim raw-update-to-next-assembly path. No behavior change.
-- [ ] **Y2b1:** characterize `Swc`, `Sg=0`, and upper-bound behavior with one-sided AD/legacy/FD
+- [x] **Y2b0: source-complete bound/update audit.** Confirmed Flow projection default off and
+  `ds-max=0.2`, raw-state accumulation/endpoint-property handling, OPM in-loop primary-variable
+  adaptation, and ResSim hard projection/frozen regime. Source table: parity plan §15.1.
+- [ ] **Y2b1 (active):** characterize `Swc`, `Sg=0`, and upper-bound behavior with one-sided AD/legacy/FD
   fixtures and raw-vs-projected update traces.
 - [ ] **Y2b2/Y2c, only if Y2b1 authorizes it:** one Legacy-preserving, `OpmAligned`-only bound
   policy probe, followed by the exact oracle and full promotion matrix.
