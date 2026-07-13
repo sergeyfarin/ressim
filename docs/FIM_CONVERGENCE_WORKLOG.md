@@ -2984,3 +2984,40 @@ working tree (existing decks live on `origin/fim-opm-continuation-plan`, a diffe
 
 Verdict: DIAGNOSTIC. No code changed. Next step: obtain/author an OPM gas-rate reference deck
 and run the differential comparison before touching the `would_widen` `OpmAligned` exclusion.
+
+### Bundle Y checkpoint Y1h: OPM ground truth — the design comment's premise is refuted (2026-07-12)
+
+Full writeup: `docs/FIM_OPM_PARITY_PLAN.md` §11. Closes Y1g's open question per explicit
+instruction to pursue it.
+
+Found `opm/reference-decks/gas-rate-10x10x3/CASE.DATA` already exists on
+`origin/fim-opm-continuation-plan` (`cacdf767`), already validated to run. Extracted it via `git
+show` (no branch checkout, kept this tree clean) and ran real `flow 2026.04` with
+`--output-extra-convergence-info=steps,iterations`. Result: **6 report steps, 6 total substeps,
+zero cuts, Newton iterations `7/5/4/3/4/3`**, `MB_Oil`/`MB_Gas` decaying smoothly and
+monotonically every iteration in `CASE.INFOITER` — no freeze, no plateau, no relaxed-tier
+acceptance anywhere.
+
+Ran ResSim on the identical deck geometry/wells/rates/PVT (`--preset gas-rate --grid 10x10x3
+--dt 0.25 --steps 6 --opm-aligned`): **695 total accepted substeps** for the same 1.5 days — a
+`~116x` gap on the exact same configuration just run through real OPM (closes the grid-size
+caveat from Y1g's 20x20x3-only evidence). `retries=0/5/0` — essentially zero linear-bad,
+reconfirming `FIM-LINEAR-013` closed the linear side; 100% of the remaining gap is nonlinear.
+
+**Verdict: the `newton.rs:3293-3298` design comment is refuted by direct measurement.** OPM's
+real trajectory shows no stagnation of any kind on this case — the claim that `OpmAligned`'s
+missing trend-based bailout faithfully models OPM's own behavior does not hold.
+
+**Important connection surfaced**: the stagnation-bailout machinery under examination
+(`newton.rs:2689-2790`, `would_widen` at `3275`, gated `if !opm_aligned` at `3299`) is the same
+mechanism family as `FIM-NEWTON-004` — REVERTED, "bailout still load-bearing; prior widening
+attempts regressed or no-oped," retry condition "a new root cause explains the residual plateau
+and has a guarded fix." This checkpoint is that new root cause, freshly measured against real
+OPM output — but scope differs from what was tried before (extending an unchanged Legacy
+mechanism to `OpmAligned`, not widening it). Given `FIM-NEWTON-004` and the separately-reverted
+`FIM-NEWTON-005` (a live run that didn't finish in 8+ minutes after letting an under-converged
+state compound forward) both live in exactly this territory, any fix here needs its own careful,
+narrowly-scoped design and the full measurement discipline — not a quick patch. Paused for
+explicit direction rather than proceeding unilaterally.
+
+No code changed. Registry row not yet filed — pending a concrete fix design to measure.

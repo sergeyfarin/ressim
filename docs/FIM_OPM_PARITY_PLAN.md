@@ -941,3 +941,88 @@ well-adjacent stall states, to determine whether this is a genuine ResSim-vs-OPM
 (actionable) or an already-faithful reproduction of OPM's own behavior (in which case gas-rate
 parity has to come from elsewhere — e.g. G3 controller tuning, or accepting `238` as correct
 given the underlying physics/discretization).
+
+## 11. Y1h: OPM ground truth obtained — the design comment's premise is refuted (2026-07-12)
+
+Closes §10.5's open question. `origin/fim-opm-continuation-plan` (commit `cacdf767`) already has
+`opm/reference-decks/gas-rate-10x10x3/CASE.DATA` — RESV-controlled injector (rate `500`,
+`GAS`)/producer (rate `200`, `OIL`), `10x10x3`, `6×0.25`-day steps, `flow 2026.04` validated to
+run. Extracted the deck via `git show` into a scratch dir (did not check out the branch, to
+avoid disturbing this working tree) and ran it directly, without touching the whole
+`opm-ressim-compare.sh` harness (just needed `--output-extra-convergence-info=steps,iterations`
+for `CASE.INFOITER`/`CASE.INFOSTEP`, which the harness doesn't add by default).
+
+**Exact replay**:
+```
+git show origin/fim-opm-continuation-plan@cacdf76701e33bccee6acc127845176be6080858:opm/reference-decks/gas-rate-10x10x3/CASE.DATA > CASE.DATA
+flow CASE.DATA --output-extra-convergence-info=steps,iterations --solver-verbosity=3 --time-step-verbosity=3
+node scripts/fim-wasm-diagnostic.mjs --preset gas-rate --grid 10x10x3 --dt 0.25 --steps 6 --opm-aligned --diagnostic summary --no-json
+```
+(ResSim side run at ResSim's own `HEAD`, `5381a1c`.)
+
+**OPM Flow, verbatim (`CASE.INFOSTEP`)**:
+```
+  Time(day)  TStep(day)  ... WellIt Lins NewtIt LinIt Conv
+          0        0.25  ...      0    8      7     8    1
+       0.25        0.25  ...      0    6      5     5    1
+        0.5        0.25  ...      0    5      4     4    1
+       0.75        0.25  ...      0    4      3     3    1
+          1        0.25  ...      0    5      4     4    1
+       1.25        0.25  ...      0    4      3     3    1
+```
+**6 report steps, 6 total substeps (exactly 1 per report step), `Conv=1` every time — zero
+timestep cuts.** Newton iterations: `7, 5, 4, 3, 4, 3`. `CASE.INFOITER`'s per-iteration `MB_Oil`/
+`MB_Gas` for the first substep decay smoothly and monotonically by roughly an order of magnitude
+every 1-2 iterations (`1.67e-3 → 1.84e-3 → 2.49e-3 → 3.36e-4 → 5.22e-5 → 1.28e-6 → 1.68e-5 →
+6.48e-8`) — no freeze, no plateau, no relaxed-tier acceptance needed anywhere in the run.
+
+**ResSim, verbatim (single cumulative summary line, `--diagnostic summary` over 6 report steps)**:
+```
+step=  6 | time=1.5000d | ... history+=695 | substeps=695 | accepts=695+0+0 | retries=0/5/0 |
+... retry_dom=nonlinear-bad:well@901 ...
+```
+**695 total accepted substeps to cover the identical 1.5 days** (vs OPM's `6`) — a **~116x**
+gap, on the exact same deck geometry, well placement, rates, and PVT that was just run through
+real OPM Flow (not a different-grid approximation — this closes the grid-size caveat from §10's
+20x20x3-only evidence). `retries=0/5/0`: even better than the 20x20x3 case — essentially zero
+linear-bad, confirming again that `FIM-LINEAR-013` closed the linear-stack side of this
+completely; the entire remaining gap is nonlinear.
+
+### 11.1 Verdict: the `newton.rs:3293-3298` design comment's premise is refuted
+
+That comment claims *"Under `OpmAligned`, a stagnating trajectory simply keeps iterating (as
+OPM's does) until the entry check accepts it or the iteration budget is exhausted."* OPM's real
+trajectory on this exact case shows **no stagnation of any kind** — every step converges cleanly
+in single digits of Newton iterations, no relaxed-tier acceptance, no near-tolerance freeze. The
+premise that OpmAligned's lack of a trend-based bailout is *faithfully* modeling OPM is not
+supported by this evidence. This is a genuine ResSim-specific defect, not an OPM-faithful
+reproduction — §10's open question is closed.
+
+### 11.2 Important prior-art connection: this is the exact code area of a previously-reverted lever
+
+The stagnation-bailout machinery this session has been examining (`newton.rs:2689-2790`'s
+`stagnation_acceptance_*` functions, the `would_widen` gate at `newton.rs:3275`, gated `if
+!opm_aligned` at `newton.rs:3299`) is **the same file and mechanism family** as
+`FIM-LINEAR-009`'s neighbor in the registry, `FIM-NEWTON-004`: *"Loosen or remove
+residual-stagnation bailout / above-tolerance stagnation acceptance"* — **REVERTED**, verdict
+recorded as *"Bailout still load-bearing; prior widening attempts regressed or no-oped."* Its
+own registry-recorded retry condition: *"A new root cause explains the residual plateau and has
+a guarded fix."*
+
+This checkpoint (`Y1g`+`Y1h`) is exactly that new root cause, freshly measured against real OPM
+output rather than assumed — but the scope is different from what `FIM-NEWTON-004` tried and
+reverted. That lever widened the Legacy-side bailout itself (already enabled, already tuned);
+what's on the table here is *extending an unchanged, already-existing Legacy mechanism to also
+apply under `OpmAligned`*, where it currently doesn't run at all. Related but not identical —
+still, the prior revert (and `FIM-NEWTON-005`'s separate, also-reverted post-loop
+near-converged-acceptance attempt at this same class of problem, which caused a *live run to not
+finish in 8+ minutes* by letting an under-converged state compound forward into later substeps)
+means this must not be treated as a quick patch. Any fix here needs its own careful,
+narrowly-scoped design and the full measurement discipline this bundle has used throughout
+(offline reasoning first, then the bounded control matrix, heavy case, locked smoke, before
+promotion) — not attempted this checkpoint. Paused here for explicit direction per standing
+practice on this thread (the user was asked; see conversation).
+
+**Verdict**: DIAGNOSTIC. Registry: not yet its own row — will be filed once a concrete fix
+design exists to measure (or as a `REFUTED`/`OPEN` cross-reference row if the `FIM-NEWTON-004`
+connection is judged to make any `would_widen`-style fix out of scope for now). No code changed.
