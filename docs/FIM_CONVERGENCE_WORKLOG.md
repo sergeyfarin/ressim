@@ -3052,3 +3052,23 @@ Next: construct an exact native 10x10x3 direct-vs-iterative, well/control isolat
 identify the first ineffective injector-adjacent Newton update. The outcome determines whether
 to inspect linear/update application or the nonlinear well/assembly formulation; acceptance is
 out of scope.
+### Bundle Y checkpoint Y1j: exact injector-update isolation (2026-07-13, provisional)
+
+Added the ignored native `repro_gas_rate_10x10x3_y1j` driver in `fim/timestep.rs`, matching the
+tracked 10x10x3 Flow mapping for one 0.25-day report step. It supports direct-vs-live-linear,
+well-layout, and rate-vs-pressure isolation without changing the solver. `FIM_MAX_SUBSTEPS=1`
+stops after the first accepted rung.
+
+For both wells/rate/OpmAligned, live FGMRES/CPR and forced exact direct solve both take 5
+nonlinear retries and accept exactly `dt=0.000978384825` after 20 Newton iterations, with
+`res=1.040889e-5`, `mb=9.668795e-10`. Both traces freeze at `res≈1.041e-5` for iterations 13--18
+and have the same `would_widen=false` classification. Thus the plateau is not a live-linear-stack
+or update-application artifact.
+
+No wells and producer-only rate control each accept the full `0.25` day with zero retries;
+injector-only rate needs 6 nonlinear retries and accepts only `0.00032286699225`; both-well
+pressure control is worse (7 nonlinear + 1 linear retry, accepted `0.00003515970997`) and
+exposes a perforation-row hotspot. The injector is necessary and sufficient on this first rung;
+rate control is not the unique cause. Verdict: G4 injector well/Jacobian/primary-variable audit
+next, with no Newton-acceptance change. Replay after committing the newly-added driver before
+promoting this as a clean baseline.

@@ -1076,3 +1076,60 @@ Decision rule: a direct-vs-iterative difference owns a linear/update application
 bit-identical ineffective direct update owns the nonlinear well/assembly formulation. Only that
 second result authorizes a scoped well/Jacobian investigation (G4/G5). Neither result authorizes
 an above-tolerance Newton acceptance change.
+
+## 13. Y1j: injector-update isolation — linear stack ruled out (2026-07-13)
+
+Added the ignored native driver `fim::timestep::phase5_repro::repro_gas_rate_10x10x3_y1j`. It
+mirrors the ResSim side of the tracked `gas-rate-10x10x3` oracle for one 0.25-day report step.
+`FIM_Y1J_WELLS=both|injector|producer|none`, `FIM_Y1J_CONTROL=rate|pressure`, and
+`FIM_FORCE_DIRECT_LINEAR=1` select the matrix. `FIM_MAX_SUBSTEPS=1` deliberately stops after
+the first accepted rung; it is a discriminator, **not** a completed 0.25-day result.
+
+The measurements are provisional until replayed from the committed driver revision: the solver
+implementation was unchanged, but the driver itself was new in the working tree. The terminal's
+Cargo wrapper kept stale invocations waiting on its artifact lock, so commands used the just-built
+native release test binary with the same filter and `--ignored --nocapture` arguments.
+
+### 13.1 Direct versus iterative: same plateau and accepted rung
+
+Both-well/rate/OpmAligned runs, with the live FGMRES/CPR stack and with the forced exact direct
+backend, each take 5 nonlinear retries and accept exactly `dt=0.000978384825` after 20 Newton
+iterations (`res=1.040889e-5`, `mb=9.668795e-10`). Both traces freeze at `res=1.041e-5` over
+iterations 13--18, classify the same repeated state as stagnation, and leave `would_widen=false`.
+The direct trace differs only at round-off level in BHP (`<1e-6 bar`) and retains the same
+perforation rates. An exact linear solve therefore follows the same nonlinear trajectory, retry
+ladder, and stalled accepted state: this is not CPR/FGMRES tolerance, preconditioner, or update
+application behavior.
+
+### 13.2 Bounded well/control matrix
+
+All rows use the live iterative stack and `FIM_MAX_SUBSTEPS=1`.
+
+| wells | control | retries | first accepted dt (day) | result |
+| --- | --- | ---: | ---: | --- |
+| both | rate | 5 nonlinear | `0.000978384825` | 20-iteration stall |
+| injector only | rate | 6 nonlinear | `0.00032286699225` | stall worsens |
+| producer only | rate | 0 | `0.25` | clean full-rung acceptance |
+| none | rate | 0 | `0.25` | clean full-rung acceptance |
+| both | pressure | 7 nonlinear + 1 linear | `0.00003515970997` | worse; accepted state has `perf@0` hotspot |
+
+The injector is necessary and sufficient for this initial-rung pathology: removing it eliminates
+fragmentation, while retaining only it worsens it. Switching both wells from rate to pressure
+control does not remove the pathology, so it is not specifically the rate target/constraint row.
+The pressure row's perforation hotspot is a separate reason not to treat this bounded test as an
+end-to-end pressure-control result.
+
+### 13.3 Verdict and next action
+
+Y1j selects a **G4 injector-well Jacobian/primary-variable audit**, before G5
+three-phase-variable-substitution work. The evidence supports an injector well/reservoir coupling
+defect: it persists under an exact global linear solve, follows the injector rather than the
+producer or no-well state, and survives removal of rate control. It does not yet prove a specific
+derivative is wrong or rule out a gas-variable interaction; those are audit questions, not
+permission to tune acceptance.
+
+Next bounded slice: at the first stalled injector-only and both-well rate iterations, compare AD
+and legacy injector-perforation plus connected-cell Jacobian entries against finite differences
+(`d(res_pf)/dq`, `d(res_pf)/dp`, `d(res_pf)/dsw`, and component-row `d/dq`). Map the matching OPM
+`StandardWell` primary variables before proposing a structural change. Do not reopen
+`would_widen` or the `FIM-NEWTON-004`/`005` acceptance family.

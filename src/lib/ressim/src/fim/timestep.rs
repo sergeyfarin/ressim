@@ -3164,4 +3164,154 @@ mod phase5_repro {
             println!("no FimStepStats recorded");
         }
     }
+
+    /// Exact native mirror of the matching ResSim side of the tracked Flow oracle
+    /// `gas-rate-10x10x3` (`opm/reference-decks/gas-rate-10x10x3/manifest.json`).
+    ///
+    /// `FIM_BUNDLE_Y` Y1j uses this as a *diagnostic matrix*, not a solver-behavior test:
+    /// it isolates whether the first injector-adjacent ineffective Newton update remains when
+    /// the live iterative backend is replaced by the exact direct backend, and when individual
+    /// wells or rate control are removed. The default is the exact wasm diagnostic mapping:
+    /// both wells, rate control, OPM-aligned nonlinear flavor, one 0.25-day report step.
+    ///
+    /// Environment selectors:
+    /// - `FIM_Y1J_WELLS=both|injector|producer|none` (default `both`)
+    /// - `FIM_Y1J_CONTROL=rate|pressure` (default `rate`)
+    /// - `FIM_FORCE_DIRECT_LINEAR=1` selects the direct backend; unset uses the live stack.
+    /// - `FIM_MAX_SUBSTEPS=1` caps after the first accepted rung; use this for the bounded
+    ///   first-rung comparison, not as a completed 0.25-day-step result.
+    /// - `FIM_TRACE_FILE=<path> FIM_TRACE_DT_BELOW=1` records every iteration's `WELLTRACE`
+    ///   and `WELLJAC` lines for this first report step.
+    ///
+    /// Example:
+    /// `FIM_Y1J_WELLS=injector FIM_FORCE_DIRECT_LINEAR=1 FIM_TRACE_FILE=/tmp/y1j.log
+    ///  FIM_TRACE_DT_BELOW=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml
+    ///  --lib repro_gas_rate_10x10x3_y1j -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn repro_gas_rate_10x10x3_y1j() {
+        use crate::pvt::{PvtRow, PvtTable};
+
+        let wells = std::env::var("FIM_Y1J_WELLS").unwrap_or_else(|_| "both".to_string());
+        let control = std::env::var("FIM_Y1J_CONTROL").unwrap_or_else(|_| "rate".to_string());
+        assert!(
+            matches!(wells.as_str(), "both" | "injector" | "producer" | "none"),
+            "FIM_Y1J_WELLS must be both|injector|producer|none, got {wells:?}"
+        );
+        assert!(
+            matches!(control.as_str(), "rate" | "pressure"),
+            "FIM_Y1J_CONTROL must be rate|pressure, got {control:?}"
+        );
+
+        let (nx, ny, nz, dt_days) = (10usize, 10usize, 3usize, 0.25_f64);
+        let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
+
+        // Exact `configureGasBase` mapping from `fim-wasm-diagnostic.mjs`. `capillary=true`
+        // and `gravity=null` resolve to these values for the 10x10x3 gas-rate preset.
+        sim.set_fim_enabled(true);
+        sim.set_cell_dimensions(10.0, 10.0, 5.0).unwrap();
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.15);
+        sim.set_initial_gas_saturation(0.0);
+        sim.set_fluid_properties(0.8, 0.4).unwrap();
+        sim.set_fluid_compressibilities(1e-4, 5e-5).unwrap();
+        sim.set_rock_properties(4e-5, 2500.0, 1.2, 1.0).unwrap();
+        sim.set_fluid_densities(850.0, 1020.0).unwrap();
+        sim.set_gas_fluid_properties(0.02, 1e-4, 0.8).unwrap();
+        sim.set_capillary_params(0.0, 2.0).unwrap();
+        sim.set_gravity_enabled(true);
+        sim.set_permeability_per_layer(vec![500.0; nz], vec![500.0; nz], vec![50.0; nz])
+            .unwrap();
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 50.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.015,
+                },
+                PvtRow {
+                    p_bar: 150.0,
+                    rs_m3m3: 80.0,
+                    bo_m3m3: 1.25,
+                    mu_o_cp: 0.7,
+                    bg_m3m3: 0.008,
+                    mu_g_cp: 0.018,
+                },
+                PvtRow {
+                    p_bar: 250.0,
+                    rs_m3m3: 140.0,
+                    bo_m3m3: 1.4,
+                    mu_o_cp: 0.5,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.022,
+                },
+                PvtRow {
+                    p_bar: 350.0,
+                    rs_m3m3: 200.0,
+                    bo_m3m3: 1.55,
+                    mu_o_cp: 0.4,
+                    bg_m3m3: 0.004,
+                    mu_g_cp: 0.025,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_initial_rs(80.0);
+        sim.set_three_phase_rel_perm_props(
+            0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_gas_redissolution_enabled(false);
+        sim.set_stability_params(0.05, 75.0, 0.75);
+
+        let rate_controlled = control == "rate";
+        let (injector_bhp, producer_bhp) = (350.0, 100.0);
+        sim.set_well_control_modes(control.clone(), control.clone());
+        sim.set_target_well_rates(
+            if rate_controlled { 500.0 } else { 0.0 },
+            if rate_controlled { 200.0 } else { 0.0 },
+        )
+        .unwrap();
+        sim.set_well_bhp_limits(50.0, 400.0).unwrap();
+        sim.set_rate_controlled_wells(rate_controlled);
+        if matches!(wells.as_str(), "both" | "injector") {
+            sim.add_well(0, 0, 0, injector_bhp, 0.1, 0.0, true).unwrap();
+        }
+        if matches!(wells.as_str(), "both" | "producer") {
+            sim.add_well(nx - 1, ny - 1, 0, producer_bhp, 0.1, 0.0, false)
+                .unwrap();
+        }
+        sim.set_fim_opm_aligned_nonlinear(true);
+        sim.set_fim_force_direct_linear(std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some());
+
+        let start = Instant::now();
+        sim.step(dt_days);
+        let elapsed = start.elapsed();
+        let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
+        println!(
+            "Y1J config grid=10x10x3 dt={dt_days} wells={wells} control={control} force_direct_linear={force_direct_linear} elapsed_s={:.3}",
+            elapsed.as_secs_f64()
+        );
+        if let Some(stats) = sim.last_fim_step_stats_ref() {
+            println!(
+                "Y1J result accepted_substeps={} advanced_dt={:.6}/{:.6} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?} last_dt={:?}",
+                stats.accepted_substeps,
+                stats.advanced_dt_days,
+                stats.target_dt_days,
+                stats.linear_bad_retries,
+                stats.nonlinear_bad_retries,
+                stats.mixed_retries,
+                stats.min_accepted_dt_days,
+                stats.max_accepted_dt_days,
+                stats.last_accepted_dt_days,
+            );
+        } else {
+            panic!("Y1J native repro did not record FimStepStats");
+        }
+    }
 }
