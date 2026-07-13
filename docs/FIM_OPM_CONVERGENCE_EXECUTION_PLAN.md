@@ -199,7 +199,7 @@ post-update projection but retained frozen hydrocarbon regimes and flash-side hy
 it did not implement OPM's per-iteration `adaptPrimaryVariables`. It can test the local `Swc`
 accumulation mechanism, but cannot refute the complete OPM raw-state/property/variable lifecycle.
 
-### 5.1 Y2b2a — repair and validate the experimental oracle (next authorized slice)
+### 5.1 Y2b2a — repair and validate the experimental oracle (complete 2026-07-13)
 
 Objective: determine whether the Y2b2 direct/live split is a real correction-quality difference
 or only report/wrapper semantics. Do not reintroduce raw-state behavior, alter G4/G5 structure, or
@@ -241,9 +241,23 @@ publishes norms for the system represented by its report, well Schur overwrites 
 full-system values after recovery, and the forced-direct trace has no finite `reduction=n/a`
 outcome. Commit this oracle change and its docs before restoring any raw-state behavior.
 
+**Result.** `FimLinearSolveReport` now publishes `rhs_norm`, `final_residual_norm`, and a
+backend-neutral `reduction()`. Sparse LU populates the RHS norm even when its optional failure
+diagnostics are absent; well-Schur replaces reduced-system values with residual/RHS norms from the
+recovered original system; and the `OpmAligned` relaxed decision consumes the report reduction.
+Focused Sparse-LU, well-Schur, and acceptance-contract tests passed, as did the AD assembly parity
+bucket (10/10) and the existing well-elimination direct-solve check. A forced-direct baseline with
+the raw-state behavior still absent retained its ordinary first-rung path and emitted no
+`reduction=n/a`. The shared validation script still stops at the already-recorded unrelated
+closed-system public-step assertion (`2` versus `1`); it is not a result of this change.
+
+The original broad FIM script invocation did not reach a result in the tool harness, so it is not
+recorded as passing. Y2b2b must rerun its locked FIM coverage along with its capture/replay gate.
+
 ### 5.2 Y2b2b — restore and replay the same narrow probe
 
-Only enter after a clean Y2b2a commit passes its exit gate.
+Only enter after the Y2b2a commit passes its exit gate. **Y2b2a completed above; Y2b2b is the
+current authorized slice.**
 
 1. Restore the previously deleted native, default-off, `OpmAligned`-only raw-saturation flag
    without adding primary-variable adaptation, G4/G5 changes, acceptance tuning, or controller

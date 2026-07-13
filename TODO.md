@@ -71,10 +71,10 @@ below is retained as Bundle N/Y history; it must not override this current seque
   Sparse LU/well-Schur supplied no failure diagnostics and Newton could not compute relaxed
   reduction (`n/a`); the trace did not measure the direct correction's quality. The probe also
   omitted OPM's in-loop primary-variable adaptation.
-- [ ] **Y2b2a (next): repair the linear oracle.** Add backend-neutral full-system RHS/final norms
-  and reduction for Sparse LU/well-Schur/Newton; add report-contract tests; prove the existing
-  forced-direct first-rung trace has no finite `reduction=n/a`; commit before behavior work.
-- [ ] **Y2b2b (blocked on Y2b2a): replay the same narrow raw-state probe.** Restore only the
+- [x] **Y2b2a: repair the linear oracle (2026-07-13).** Backend-neutral full-system RHS/final
+  norms and reduction now cover Sparse LU/well-Schur/Newton; focused report contracts and AD
+  parity pass; the raw-state-absent direct baseline has no finite `reduction=n/a`.
+- [ ] **Y2b2b (next): replay the same narrow raw-state probe.** Restore only the
   native default-off flag, capture the exact `dt=0.00898425` iteration-1 system, replay CPR/direct,
   and compare `||rhs-Jdx||/||rhs||`, actual corrections, reservoir/well row partitions, and the
   next nonlinear state before classifying Y2b.

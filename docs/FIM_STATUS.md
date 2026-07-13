@@ -30,8 +30,10 @@ measured the resulting first-order break. Y2b2's live raw-state probe improved t
 ~9.2×, but its forced-direct check was invalid: Sparse LU/well-Schur exposed no failure reduction,
 so Newton aborted with `reduction=n/a` without measuring direct correction quality. The probe also
 omitted OPM's per-update primary-variable adaptation. Its behavior implementation was deleted and
-the verdict is **INCONCLUSIVE**, not refuted. The next bounded slice is Y2b2a backend-neutral
-linear-report/oracle repair and exact iteration replay, as specified in
+the verdict is **INCONCLUSIVE**, not refuted. Y2b2a has now repaired the backend-neutral
+linear-report oracle (RHS/final norms and reduction; direct reports no longer rely on optional
+failure metadata). The current bounded slice is Y2b2b: restore the identical native default-off
+probe, capture/replay the exact iteration-1 system, and classify it, as specified in
 `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; G4/G5 restructuring, controller tuning,
 AMG, damping changes, and convergence-acceptance widening remain blocked. Re-derive current
 ResSim baselines on the clean commit before the first behavior probe; do not use the historical

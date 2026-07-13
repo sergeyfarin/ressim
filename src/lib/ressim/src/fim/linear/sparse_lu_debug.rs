@@ -1,8 +1,8 @@
 use std::f64;
 
-use faer::Col;
 use faer::linalg::solvers::Solve;
 use faer::sparse::{SparseRowMat, Triplet};
+use faer::Col;
 use nalgebra::DVector;
 use sprs::CsMat;
 
@@ -48,6 +48,7 @@ pub(super) fn solve(
             solution: DVector::zeros(rhs.len()),
             converged: false,
             iterations: 0,
+            rhs_norm: rhs.norm(),
             final_residual_norm: rhs.norm(),
             failure_diagnostics: None,
             used_fallback,
@@ -63,6 +64,7 @@ pub(super) fn solve(
             solution: DVector::zeros(rhs.len()),
             converged: false,
             iterations: 0,
+            rhs_norm: rhs.norm(),
             final_residual_norm: rhs.norm(),
             failure_diagnostics: None,
             used_fallback,
@@ -114,6 +116,7 @@ pub(super) fn solve(
         solution,
         converged: residual_norm <= tolerance,
         iterations: solves,
+        rhs_norm: rhs.norm(),
         final_residual_norm: residual_norm,
         failure_diagnostics: None,
         used_fallback,
@@ -121,5 +124,36 @@ pub(super) fn solve(
         cpr_diagnostics: None,
         total_time_ms: timer.elapsed_ms(),
         preconditioner_build_time_ms: 0.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sprs::TriMatI;
+
+    use super::*;
+
+    #[test]
+    fn sparse_lu_non_strict_report_has_reduction() {
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        let jacobian = tri.to_csr();
+        let rhs = DVector::from_vec(vec![4.0, 9.0]);
+        let options = FimLinearSolveOptions {
+            // Force a finite direct correction to be classified non-strict without depending on
+            // a platform-specific round-off residual.
+            absolute_tolerance: -1.0,
+            relative_tolerance: 0.0,
+            ..FimLinearSolveOptions::default()
+        };
+
+        let report = solve(&jacobian, &rhs, &options, false);
+
+        assert!(!report.converged);
+        assert!(report.solution.iter().all(|value| value.is_finite()));
+        assert!((report.rhs_norm - rhs.norm()).abs() < 1e-12);
+        assert!(report.reduction().is_finite());
+        assert!(report.failure_diagnostics.is_none());
     }
 }

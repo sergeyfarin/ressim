@@ -155,6 +155,28 @@ that first; Y2b2b then restores the same narrow probe, captures/replays the exac
 system, and compares corrections and row partitions. G4 is not authorized by the current direct
 trace.
 
+### Y2b2a checkpoint (2026-07-13) — backend-neutral direct oracle repaired
+
+Before restoring the behavior probe, the linear report contract was repaired in the path that
+invalidated Y2b2: `FimLinearSolveReport` now reports `rhs_norm`, `final_residual_norm`, and
+`reduction()` independently of `failure_diagnostics`. Sparse LU publishes a RHS norm for its
+finite non-strict result, and well-Schur replaces any reduced-system values with the norms of the
+recovered original system. `OpmAligned` relaxed acceptance now consumes that common reduction.
+
+Focused checks passed: `sparse_lu_non_strict_report_has_reduction`,
+`well_schur_report_uses_full_system_norms`,
+`opm_relaxed_linear_acceptance_is_backend_neutral`, the ten-test `assembly_ad` bucket, and the
+existing direct well-elimination check. The forced-direct, raw-state-absent first-rung baseline
+had no finite `reduction=n/a`; it did not itself exercise a non-strict solve, which is why the
+synthetic contract test is retained. The shared validation script stopped at the previously
+recorded unrelated closed-system public-step assertion (`2` versus `1`). A broad FIM-script run
+did not complete in the execution harness and is not claimed as passing.
+
+**Next.** Restore exactly the deleted native, default-off, `OpmAligned` raw-saturation probe;
+capture the historical `dt=0.00898425`, iteration-1 system; replay CPR and direct production
+dispatch on that one artifact; then classify the result. No G4/G5 or lifecycle behavior is
+authorized by this checkpoint.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

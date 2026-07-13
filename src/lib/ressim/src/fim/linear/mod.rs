@@ -194,6 +194,12 @@ pub(crate) struct FimLinearSolveReport {
     pub(crate) solution: DVector<f64>,
     pub(crate) converged: bool,
     pub(crate) iterations: usize,
+    /// Norm of the RHS for the same system represented by `final_residual_norm`.
+    ///
+    /// Direct and iterative backends must populate this even when they do not have a
+    /// backend-specific failure payload. `well_schur` replaces the reduced-system value with the
+    /// original full-system RHS norm after recovering the eliminated tail.
+    pub(crate) rhs_norm: f64,
     pub(crate) final_residual_norm: f64,
     pub(crate) failure_diagnostics: Option<FimLinearFailureDiagnostics>,
     pub(crate) used_fallback: bool,
@@ -201,6 +207,13 @@ pub(crate) struct FimLinearSolveReport {
     pub(crate) cpr_diagnostics: Option<FimCprDiagnostics>,
     pub(crate) total_time_ms: f64,
     pub(crate) preconditioner_build_time_ms: f64,
+}
+
+impl FimLinearSolveReport {
+    /// Backend-neutral residual reduction for the returned correction.
+    pub(crate) fn reduction(&self) -> f64 {
+        self.final_residual_norm / self.rhs_norm.max(1e-30)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

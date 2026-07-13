@@ -1,11 +1,12 @@
 use nalgebra::DVector;
 
-use crate::ReservoirSimulator;
 use crate::fim::assembly::{
-    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
-    PhaseFluxDiagnostic, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
+    cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
     collect_face_upwind_snapshot, diff_face_upwind_snapshots, equation_offset, unknown_offset,
+    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
+    PhaseFluxDiagnostic,
 };
+use crate::ReservoirSimulator;
 // Phase 5 cutover: production Newton now assembles the coupled residual/
 // Jacobian via automatic differentiation (`assembly_ad`) instead of the
 // legacy hand-derivative/finite-difference hybrid in `assembly`. Aliased to
@@ -14,8 +15,8 @@ use crate::fim::assembly::{
 // directly for its own assertions.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
 use crate::fim::linear::{
-    FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
+    active_direct_solve_row_threshold, solve_linearized_system, FimLinearBlockLayout,
+    FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
@@ -2082,6 +2083,15 @@ const OPM_NEWTON_MIN_ITERATION_INDEX: usize = 2;
 /// r0=rhs, design doc §9.5) is accepted with a warning rather than triggering a fallback.
 const OPM_RELAXED_LINEAR_SOLVER_REDUCTION: f64 = 0.01;
 
+/// OPM's relaxed linear-solver criterion applies to the returned correction's actual residual
+/// reduction, not to a backend-specific failure classification. In particular, direct LU has no
+/// iterative failure payload but can still return a finite, useful non-strict correction.
+fn opm_accepts_relaxed_linear_report(report: &FimLinearSolveReport) -> bool {
+    report.solution.iter().all(|value| value.is_finite())
+        && report.reduction().is_finite()
+        && report.reduction() < OPM_RELAXED_LINEAR_SOLVER_REDUCTION
+}
+
 /// Bundle N checkpoint 1 (read-only): OPM-style CNV/MB convergence measures computed from the
 /// RAW (unscaled) residual, mirroring `BlackoilModel::getReservoirConvergence` /
 /// `getMaxCoeff` / `characteriseCnvPvSplit`. ResSim's residual is already dt-integrated
@@ -3996,20 +4006,15 @@ pub(crate) fn run_fim_timestep(
                 // intermediate diagnostic). Confirmed via the `23x23x1` trace: every observed
                 // failure previously reported `reduction=1.000e0` regardless of how much the
                 // candidate had actually improved.
-                let final_residual_norm = linear_report.final_residual_norm;
-                let reduction = linear_report
-                    .failure_diagnostics
-                    .as_ref()
-                    .map(|failure| final_residual_norm / failure.rhs_norm.max(1e-30));
-                let accept_relaxed = all_finite
-                    && reduction.is_some_and(|r| r < OPM_RELAXED_LINEAR_SOLVER_REDUCTION);
+                let reduction = linear_report.reduction();
+                let accept_relaxed = opm_accepts_relaxed_linear_report(&linear_report);
                 if accept_relaxed {
                     fim_trace!(
                         sim,
                         options.verbose,
                         "    iter {:>2}: LINEAR-ACCEPT relaxed reduction={:.3e} (< {:.0e}){}",
                         iteration,
-                        reduction.unwrap_or(f64::NAN),
+                        reduction,
                         OPM_RELAXED_LINEAR_SOLVER_REDUCTION,
                         linear_report_trace_suffix(&linear_report, requested_linear_kind),
                     );
@@ -4022,9 +4027,7 @@ pub(crate) fn run_fim_timestep(
                         iteration,
                         linear_report.converged,
                         all_finite,
-                        reduction
-                            .map(|r| format!("{:.3e}", r))
-                            .unwrap_or_else(|| "n/a".to_string()),
+                        format!("{reduction:.3e}"),
                         linear_failure_trace_suffix(&linear_report),
                     );
                     // Bundle Y Y1a (`docs/FIM_OPM_PARITY_PLAN.md` §7): the offline solver lab's
@@ -4902,13 +4905,41 @@ pub(crate) fn run_fim_timestep(
 mod tests {
     use nalgebra::DVector;
 
-    use crate::ReservoirSimulator;
-    use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
+    use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
     use crate::fim::scaling::EquationScaling;
     use crate::fim::state::FimState;
     use crate::pvt::{PvtRow, PvtTable};
+    use crate::ReservoirSimulator;
 
     use super::*;
+
+    #[test]
+    fn opm_relaxed_linear_acceptance_is_backend_neutral() {
+        let mut report = FimLinearSolveReport {
+            solution: DVector::from_element(1, 1.0),
+            converged: false,
+            iterations: 1,
+            rhs_norm: 10.0,
+            final_residual_norm: 0.05,
+            // Sparse LU intentionally has no iterative-failure payload. The relaxed decision
+            // must be identical to a CPR report with the same returned correction quality.
+            failure_diagnostics: None,
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::SparseLuDebug,
+            cpr_diagnostics: None,
+            total_time_ms: 0.0,
+            preconditioner_build_time_ms: 0.0,
+        };
+
+        assert!(opm_accepts_relaxed_linear_report(&report));
+
+        report.final_residual_norm = 0.1;
+        assert!(!opm_accepts_relaxed_linear_report(&report));
+
+        report.final_residual_norm = 0.05;
+        report.solution[0] = f64::NAN;
+        assert!(!opm_accepts_relaxed_linear_report(&report));
+    }
 
     fn two_cell_state_for_chop(regimes: [HydrocarbonState; 2]) -> FimState {
         let sim = ReservoirSimulator::new(2, 1, 1, 0.2);
@@ -5765,6 +5796,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: true,
             iterations: 12,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-12,
             failure_diagnostics: None,
             used_fallback: false,
@@ -5823,6 +5855,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: true,
             iterations: 3,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-12,
             failure_diagnostics: None,
             used_fallback: false,
@@ -5872,6 +5905,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: true,
             iterations: 12,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-12,
             failure_diagnostics: None,
             used_fallback: false,
@@ -5930,6 +5964,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: true,
             iterations: 1,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-8,
             failure_diagnostics: None,
             used_fallback: true,
@@ -6052,6 +6087,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: false,
             iterations: 80,
+            rhs_norm: 1.0,
             final_residual_norm: 1.0e-6,
             failure_diagnostics: Some(crate::fim::linear::FimLinearFailureDiagnostics {
                 reason: FimLinearFailureReason::RestartStagnation,
@@ -6089,6 +6125,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: false,
             iterations: 80,
+            rhs_norm: 1.0,
             final_residual_norm: 1.0e-6,
             failure_diagnostics: Some(crate::fim::linear::FimLinearFailureDiagnostics {
                 reason: FimLinearFailureReason::MaxIterations,
@@ -6154,6 +6191,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: false,
             iterations: 1,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-2,
             failure_diagnostics: None,
             used_fallback: true,
@@ -6558,6 +6596,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: true,
             iterations: 6,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-12,
             failure_diagnostics: None,
             used_fallback: false,
@@ -6590,17 +6629,15 @@ mod tests {
         assert!((first.damping_cap - 0.5).abs() < 1e-12);
         assert!((repeated.damping_cap - 0.25).abs() < 1e-12);
 
-        assert!(
-            nonlinear_history_stabilization_decision(
-                &report,
-                &diagnostics,
-                1e-3,
-                &FimNewtonOptions::default(),
-                2,
-                FimHotspotSite::Cell(143),
-            )
-            .is_none()
-        );
+        assert!(nonlinear_history_stabilization_decision(
+            &report,
+            &diagnostics,
+            1e-3,
+            &FimNewtonOptions::default(),
+            2,
+            FimHotspotSite::Cell(143),
+        )
+        .is_none());
     }
 
     #[test]
@@ -6623,6 +6660,7 @@ mod tests {
             solution: DVector::zeros(1),
             converged: true,
             iterations: 1,
+            rhs_norm: 1.0,
             final_residual_norm: 1e-12,
             failure_diagnostics: None,
             used_fallback: true,

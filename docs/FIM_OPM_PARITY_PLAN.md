@@ -1298,16 +1298,21 @@ hydrocarbon clamps, without OPM's per-update `adaptPrimaryVariables`. It is a va
 mechanism probe, not a coherent test of raw state plus endpoint properties plus variable
 adaptation. Its result cannot refute that larger coupled mechanism.
 
-### 15.4 Y2b2a next slice: backend-neutral linear oracle before G4
+### 15.4 Y2b2a complete: backend-neutral linear oracle before G4
 
 The next authorized slice is measurement infrastructure, not well restructuring. Y2b2a makes
 every linear report expose original full-system RHS norm, recovered full-system residual norm,
 and reduction independently of optional backend failure details. It makes the OPM relaxed-linear
 check consume that backend-neutral value, adds focused Sparse LU/well-Schur/acceptance contract
 tests, and proves the existing forced-direct trace has no finite `reduction=n/a` result. Commit
-that oracle change before restoring behavior.
+that oracle change before restoring behavior. This was completed on 2026-07-13: reports carry
+original RHS/final-residual norms and derive reduction from them; Sparse LU no longer needs a
+failure payload to expose a finite reduction; recovered well-Schur reports use original-system
+norms; and relaxed `OpmAligned` acceptance uses this common reduction. The focused contracts,
+AD assembly parity, and direct well-elimination test passed. The raw-state probe remained absent
+for that checkpoint.
 
-Y2b2b may then restore the same narrow native default-off raw-state probe, capture the exact
+Y2b2b is now authorized to restore the same narrow native default-off raw-state probe, capture the exact
 `dt=0.00898425`, iteration-1 system, replay both production paths, and compare
 `||rhs-J dx||/||rhs||`, correction vectors, and reservoir/well row partitions. If
 both backends produce valid corrections and the improvement survives, complete the sourced OPM

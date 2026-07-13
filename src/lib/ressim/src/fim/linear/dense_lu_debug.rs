@@ -45,6 +45,7 @@ pub(super) fn solve(
         solution,
         converged: residual_norm <= tolerance,
         iterations: 1,
+        rhs_norm: rhs.norm(),
         final_residual_norm: residual_norm,
         failure_diagnostics: None,
         used_fallback,

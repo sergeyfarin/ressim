@@ -19,15 +19,15 @@
 use nalgebra::DVector;
 use sprs::CsMat;
 
-use super::capture::{FimCapturedSystem, capture_dir_from_env, load_captures};
+use super::capture::{capture_dir_from_env, load_captures, FimCapturedSystem};
 use super::gmres_block_jacobi::{
-    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
-    solve_with_restriction_kind, solve_with_smoother_and_restriction,
+    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
+    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
 };
 use super::well_schur;
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    solve_linearized_system,
+    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -838,7 +838,8 @@ fn solver_lab_cpr_build_cost_breakdown() {
         fine_smoother_ms.push(timing.fine_smoother_ms);
         block_inverses_ms.push(timing.block_inverses_ms);
         if report.total_time_ms > 0.0 {
-            build_fraction_of_total.push(report.preconditioner_build_time_ms / report.total_time_ms);
+            build_fraction_of_total
+                .push(report.preconditioner_build_time_ms / report.total_time_ms);
         }
     }
 
@@ -964,7 +965,10 @@ fn solver_lab_coarse_factorization_comparison() {
         "lu_factorization_ms   median={:.4}",
         median(&mut lu_factorization_ms)
     );
-    println!("bicgstab_ms           median={:.4}", median(&mut bicgstab_ms));
+    println!(
+        "bicgstab_ms           median={:.4}",
+        median(&mut bicgstab_ms)
+    );
     println!(
         "lu_vs_inverse solution diff norm: max={:.3e} (n={})",
         max_of(&lu_diff_norms),
@@ -1054,8 +1058,7 @@ fn solver_lab_cpr_reuse_inflation_study() {
         .iter()
         .map(|entry| {
             let (jacobian, rhs, layout) = entry.as_ref()?;
-            let report =
-                solve_linearized_system(jacobian, rhs, &options, Some(*layout), None);
+            let report = solve_linearized_system(jacobian, rhs, &options, Some(*layout), None);
             Some((report.iterations, report.converged))
         })
         .collect();
@@ -1095,8 +1098,8 @@ fn solver_lab_cpr_reuse_inflation_study() {
                 continue;
             }
 
-            let (fresh_iterations, fresh_converged) =
-                fresh_reports[i + k].expect("reduced[i + k] is Some, so fresh_reports[i + k] is too");
+            let (fresh_iterations, fresh_converged) = fresh_reports[i + k]
+                .expect("reduced[i + k] is Some, so fresh_reports[i + k] is too");
             let reused = gmres_block_jacobi::solve_with_prebuilt_preconditioner(
                 solve_jacobian,
                 solve_rhs,

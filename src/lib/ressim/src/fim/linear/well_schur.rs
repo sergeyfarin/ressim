@@ -38,7 +38,7 @@ use sprs::{CsMat, TriMatI};
 
 use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, solve_linearized_system,
+    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -293,6 +293,7 @@ pub(super) fn solve_with_well_elimination(
         solution,
         converged: reduced_report.converged && full_residual_norm <= tolerance,
         iterations: reduced_report.iterations,
+        rhs_norm: rhs.norm(),
         final_residual_norm: full_residual_norm,
         failure_diagnostics: reduced_report.failure_diagnostics,
         used_fallback: reduced_report.used_fallback,
@@ -305,7 +306,7 @@ pub(super) fn solve_with_well_elimination(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{FimLinearSolverKind, sparse_lu_debug};
+    use super::super::{sparse_lu_debug, FimLinearSolverKind};
     use super::*;
 
     /// Synthetic 2-cell + 1-well + 2-perforation system mirroring the real row layout: cells
@@ -379,6 +380,14 @@ mod tests {
             eliminated.converged,
             "eliminated solve did not converge: {eliminated:?}"
         );
+        assert!(
+            (eliminated.rhs_norm - rhs.norm()).abs() < 1e-12,
+            "well-Schur report must use the original full-system RHS norm"
+        );
+        assert!(
+            (eliminated.reduction() - eliminated.final_residual_norm / rhs.norm()).abs() < 1e-12,
+            "well-Schur reduction must use the original full system"
+        );
 
         for i in 0..jacobian.rows() {
             assert!(
@@ -414,5 +423,20 @@ mod tests {
         for i in 0..3 {
             assert!((report.solution[i] - 1.0 / (2.0 + i as f64)).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn well_schur_report_uses_full_system_norms() {
+        let (jacobian, rhs, layout) = sample_system();
+        let options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::FgmresCpr,
+            ..FimLinearSolveOptions::default()
+        };
+
+        let report = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+
+        assert!((report.rhs_norm - rhs.norm()).abs() < 1e-12);
+        let residual = rhs - cs_mat_mul_vec(&jacobian, &report.solution);
+        assert!((report.final_residual_norm - residual.norm()).abs() < 1e-12);
     }
 }

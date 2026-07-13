@@ -1528,6 +1528,7 @@ fn solve_with_cpr_fine_smoother(
             solution: DVector::zeros(0),
             converged: true,
             iterations: 0,
+            rhs_norm: rhs.norm(),
             final_residual_norm: 0.0,
             failure_diagnostics: None,
             used_fallback,
@@ -1627,6 +1628,7 @@ fn run_cpr_iterative_solve(
                 solution,
                 converged: true,
                 iterations,
+                rhs_norm,
                 final_residual_norm: residual_norm,
                 failure_diagnostics: None,
                 used_fallback,
@@ -1662,7 +1664,8 @@ fn run_cpr_iterative_solve(
         // Krylov correction built from a preconditioned basis, so trusting `beta` there is the
         // ordinary (unchanged) preconditioned-residual convergence test.
         if iterations > 0 && beta <= tolerance && family_ok(&residual) {
-            if residual_norm > 10.0 * tolerance && std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some()
+            if residual_norm > 10.0 * tolerance
+                && std::env::var_os("FIM_WELL_SCHUR_DEBUG").is_some()
             {
                 let line = format!(
                     "CPR-ACCEPT-DEBUG iterations={} beta={:.6e} residual_norm={:.6e} tolerance={:.6e} rhs_norm={:.6e}",
@@ -1676,6 +1679,7 @@ fn run_cpr_iterative_solve(
                 solution,
                 converged: true,
                 iterations,
+                rhs_norm,
                 final_residual_norm: residual_norm,
                 failure_diagnostics: None,
                 used_fallback,
@@ -1817,6 +1821,7 @@ fn run_cpr_iterative_solve(
                         solution,
                         converged: true,
                         iterations,
+                        rhs_norm,
                         final_residual_norm: residual_norm,
                         failure_diagnostics: None,
                         used_fallback,
@@ -1911,6 +1916,7 @@ fn run_cpr_iterative_solve(
                         solution: candidate,
                         converged,
                         iterations,
+                        rhs_norm,
                         final_residual_norm: candidate_residual,
                         failure_diagnostics: if converged {
                             None
@@ -2009,6 +2015,7 @@ fn run_cpr_iterative_solve(
         solution,
         converged: final_converged,
         iterations,
+        rhs_norm,
         final_residual_norm: final_residual,
         failure_diagnostics: if final_converged {
             None
