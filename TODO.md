@@ -66,8 +66,11 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `Swc`, raw Newton water residual agrees with its linear prediction while ResSim's projection
   restores the pre-step residual; direct/live agree. One-sided AD behavior is expected at the
   discontinuity, not a derivative-averaging target.
-- [ ] **Y2b2 (active):** one Legacy-preserving, default-off `OpmAligned` bound-policy probe,
-  followed by the exact oracle and full promotion matrix (Y2c) only if it improves the plateau.
+- [x] **Y2b2 raw-state probe:** refuted 2026-07-13. It improved the live capped rung ~9.2× but
+  direct exhausted 16 retries at the same policy; implementation deleted. Do not retry raw-state
+  retention without explaining the well-row/direct split.
+- [ ] **G4 (next):** injector well primary-variable/row-structure audit, scoped from the Y2b2
+  direct failure at `well@900`; no policy change or Y2c promotion before that audit.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

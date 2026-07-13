@@ -26,11 +26,10 @@ at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard pr
 
 **Current decision frontier:** source audit shows OPM's normal update uses `ds-max` limiting while
 optional saturation projection defaults off; ResSim enforces `Sw >= Swc` after each update. Y2b1
-now measures the effect: at the exact injector plateau the raw water residual follows the linear
-prediction to `~1e-10`, while hard projection restores a `~1e-3` residual; forced-direct and live
-linear solves agree. OPM keeps raw saturation in the Newton state/accumulation while endpoint
-properties clamp separately and primary variables adapt in-loop; ResSim hard-projects state and
-freezes the regime. Execute the single default-off `OpmAligned` Y2b2 probe, then Y2c
+measured the resulting first-order break, but Y2b2's raw-state policy is now refuted: live improved
+the capped rung ~9.2×, while forced-direct exhausted 16 retries (diverging at the same trial dt).
+The implementation was deleted. The next bounded branch is G4 injector well
+primary-variable/row-structure audit; do not promote a bound policy or start Y2c.
 in `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` before G4/G5 restructuring, controller tuning,
 AMG, damping changes, or convergence-acceptance widening. Re-derive current ResSim baselines on
 the clean commit before the first behavior probe; do not use the historical `459`/`238`/`695`

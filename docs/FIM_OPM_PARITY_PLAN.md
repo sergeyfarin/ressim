@@ -1264,3 +1264,19 @@ forced-direct run produces the same correction, raw water closure, and restored 
 **Decision:** the hard bound is a direct first-order inconsistency in the exact failure path and
 OPM leaves this deck unprojected. Authorize the narrow Y2b2 `OpmAligned`-only/default-off coherent
 bound-policy probe. Do not alter generic derivative rules, acceptance, or G4/G5 structure.
+
+### 15.3 Y2b2 result: raw-state retention is not a viable isolated policy (2026-07-13)
+
+**Status: refuted; implementation removed.** The one authorized probe retained raw saturation
+primary variables after the existing per-cell `ds-max` chop, only under a native,
+`OpmAligned`-only default-off flag; pressure and well bounds remained active. Live first-rung
+result improved from `dt=0.000978384825`, five nonlinear retries, to `0.00898425`, three
+linear-classified retries. That apparent gain fails the required independent check: forced-direct
+accepted no substep and exhausted 16 linear-classified retries. Both backends match through the
+first three cutbacks; at `dt=0.00898425`, live takes a third iteration and accepts while direct
+stops at iteration two with a well-row failure. The flag and all behavior code were deleted.
+
+The projection observation remains valid, but retaining raw saturation alone is insufficient and
+does not provide a coherent OPM trajectory in ResSim. Do not retry it until G4 explains the
+well-row/direct-backend split; this result does not authorize acceptance widening, derivative
+averaging, G5, or Y2c.

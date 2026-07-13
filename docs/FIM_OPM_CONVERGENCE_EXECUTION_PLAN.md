@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0/Y2b1 complete; Y2b2 authorized (2026-07-13)**. This document turns the evidence in
+Status: **Y2b0/Y2b1 complete; Y2b2 raw-state probe refuted; G4 is next (2026-07-13)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -155,6 +155,15 @@ removes the repeated 20-iteration plateau, with residuals decreasing consistentl
 behavior probe if it creates NaN/non-finite states, invalid phase totals, new failures in controls,
 direct/live disagreement, or an unchanged plateau. Preserve tests, traces, and the negative
 registry verdict when useful.
+
+**Result (2026-07-13): REFUTED and removed.** The native-only raw-saturation candidate improved
+the live capped first rung from `dt=0.000978384825` (five nonlinear retries) to `0.00898425`
+(three linear-classified retries), but forced-direct accepted no substep and exhausted all 16
+retries. The two backends agree through the first three cutbacks and diverge at `0.00898425`:
+live performs a third iteration and accepts, while direct fails its well row at iteration two.
+This violates the probe's direct/live agreement gate. The field, setter, state-policy branch, and
+test hook were deleted; only the evidence remains. Do not retry raw-state retention without a
+new explanation for that well-row/direct-solve split. Select G4 next.
 
 ## 6. Y2c — promotion matrix
 

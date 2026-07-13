@@ -107,6 +107,33 @@ expects one FIM substep and sees two (`runtime_api.rs:81`). The new paths are `#
 disabled absent `FIM_Y2B_AUDIT`, so they cannot affect that normal public-step trajectory; an
 isolated rerun fails identically. Recorded as a pre-existing baseline issue, not changed here.
 
+### Bundle Y Y2b2 — raw saturation-state policy probe (2026-07-13; refuted and removed)
+
+**Hypothesis:** retaining OPM-style raw `Sw`/`Sg` after the already-matching `ds-max` chop would
+turn the measured first-order closure into a larger accepted exact first rung, consistently for
+live and forced-direct linear paths. The native-only, default-off probe kept pressure/control
+bounds and applied only when `OpmAligned` was already enabled; Legacy remained projected.
+
+Clean committed baseline (`8865af6`): `FIM_MAX_SUBSTEPS=1 cargo test --release
+--manifest-path src/lib/ressim/Cargo.toml repro_gas_rate_10x10x3_y1j -- --ignored --nocapture`
+accepted `dt=0.000978384825` after five nonlinear retries. Probe live command:
+`FIM_Y2B_RAW_SATURATION=1 FIM_MAX_SUBSTEPS=1 FIM_TRACE_FILE=/tmp/ressim-y2b2-live.log
+FIM_TRACE_DT_BELOW=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml
+repro_gas_rate_10x10x3_y1j -- --ignored --nocapture`; it accepted `dt=0.00898425` after three
+linear-classified retries. Forced-direct with the same flag wrote
+`/tmp/ressim-y2b2-direct.log` and accepted nothing: 16 linear-classified retries.
+
+The traces agree exactly through `dt=0.027225`; at `0.00898425`, live has a third Newton
+iteration and accepts (`res=4.737838e-5`, `mb=5.153094e-10`), while direct stops at iteration two
+with dominant `well@900`, then repeats that failure down to the retry floor. This violates the
+predeclared direct/live gate. The field, setter, update branch, candidate-validity exception, and
+test hook were deleted in the same working slice; no behavior change remains.
+
+**Verdict:** REFUTED. The hard-projection inconsistency is real but a raw-state policy by itself
+does not reproduce a coherent OPM trajectory. The single next branch is G4 injector well
+primary-variable/row-structure audit, focused on the direct/live `well@900` split. Y2c is closed
+until a new, independently evidenced policy exists.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted
