@@ -254,7 +254,7 @@ closed-system public-step assertion (`2` versus `1`); it is not a result of this
 The original broad FIM script invocation did not reach a result in the tool harness, so it is not
 recorded as passing. Y2b2b must rerun its locked FIM coverage along with its capture/replay gate.
 
-### 5.2 Y2b2b — restore and replay the same narrow probe
+### 5.2 Y2b2b — restore and replay the same narrow probe (complete 2026-07-13)
 
 Only enter after the Y2b2a commit passes its exit gate. **Y2b2a completed above; Y2b2b is the
 current authorized slice.**
@@ -285,6 +285,37 @@ behavior bundle must source and cover raw stored state, raw accumulation, endpoi
 properties, and per-iteration primary-variable
 adaptation together. G4 becomes eligible only if that coherent trace still localizes the plateau
 to well equations or well primary variables.
+
+**Result.** The restored probe is native-only, default-off, and `OpmAligned`-only. It retains raw
+`Sw`/hydrocarbon variables while preserving the pressure floor and well/control bounds; it skips
+only the candidate basic-bounds check that would reject that intentional raw state. It does not
+change primary-variable adaptation, controllers, G4/G5 structure, or acceptance thresholds.
+
+The capped live driver accepted `dt=0.00898425` after three linear retries and three Newton
+iterations. Its one claimed decision artifact is `904x904`, `5540` nonzeros, RHS norm
+`2.786530e1`, state/well checksum `5be96f7f56374d91`, and SHA-256
+`c503d9cb1781eab942d7621fb45f0baada3c40db7e32ffc297d17d1d35611561`
+(`/tmp/ressim-y2b2b-live-capture-final/fim_capture_00000.txt`). CPR replay of that exact artifact
+has reduction `4.830552e-3` and a finite correction, including BHP
+`[0.22494971034013922, -0.031642581144180365]` and perforation-rate
+`[-5.37113701915633, 0.0013166107429607712]`. The same production dispatch with Sparse LU returns
+the all-zero correction, reduction `1.0`, and no solved iterations; its maximum correction
+difference from CPR is `5.371137e0`.
+
+The capped forced-direct driver accepts no substeps and records 16 `linear_bad` retries. Its
+separately captured iteration-1 state differs (`5626` nonzeros, checksum `ceb8e32d8ac4285e`,
+SHA-256 `9575387e32442d78aac2fd9d4e3c8e03adaa16e3d6c4c8df0fbe1ba186597f2e`) because the zero
+direct correction never applies live iteration 0. Replaying that direct-path artifact confirms
+the same zero Sparse-LU correction; CPR on it reduces only to `1.902285e-2`, as expected for the
+earlier state. The replay prints full residuals and reservoir/well partitions, not flags alone.
+
+**Classification.** This selects the decision-table second row: a direct linear-path defect is
+localized before any well-Schur recovery (explicit Sparse-LU does not enter the Schur-elimination
+branch). Y2b's raw-state policy remains **inconclusive**: its CPR result is valid positive
+mechanism evidence, but it cannot be promoted while the direct oracle returns zero correction.
+The next authorized slice is narrow direct Sparse-LU build/factorization failure classification on
+this captured `904x904` matrix. G4/G5, acceptance widening, and lifecycle promotion remain
+blocked.
 
 ## 6. Y2c — promotion matrix
 

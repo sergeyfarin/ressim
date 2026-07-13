@@ -1312,10 +1312,12 @@ norms; and relaxed `OpmAligned` acceptance uses this common reduction. The focus
 AD assembly parity, and direct well-elimination test passed. The raw-state probe remained absent
 for that checkpoint.
 
-Y2b2b is now authorized to restore the same narrow native default-off raw-state probe, capture the exact
-`dt=0.00898425`, iteration-1 system, replay both production paths, and compare
-`||rhs-J dx||/||rhs||`, correction vectors, and reservoir/well row partitions. If
-both backends produce valid corrections and the improvement survives, complete the sourced OPM
-state lifecycle before using remaining well-row dominance to authorize G4. If Sparse LU or Schur
-recovery is genuinely worse, fix that linear path first. Full file-level steps, commands, and the
-decision table live in `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` §§5.1-5.2.
+Y2b2b restored that same narrow probe and captured its exact `dt=0.00898425`, iteration-1 system.
+CPR replay yields a finite `4.830552e-3` full-system reduction, while explicit Sparse LU returns
+an all-zero correction and reduction `1.0`. The forced-direct live case consequently takes 16
+linear retries and accepts no substep. This is a direct Sparse-LU path defect, not evidence against
+the raw-state mechanism and not a well-Schur defect (explicit direct bypasses Schur elimination).
+Y2b remains inconclusive; first classify sparse matrix construction versus `sp_lu()` factorization
+failure on the preserved `904x904` artifact, then revisit only the branch justified by that result.
+Full artifacts, checksums, commands, and the decision table live in
+`FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` §§5.1-5.2.

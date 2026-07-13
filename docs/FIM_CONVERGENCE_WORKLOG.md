@@ -177,6 +177,37 @@ capture the historical `dt=0.00898425`, iteration-1 system; replay CPR and direc
 dispatch on that one artifact; then classify the result. No G4/G5 or lifecycle behavior is
 authorized by this checkpoint.
 
+### Y2b2b checkpoint (2026-07-13) — direct Sparse LU returns the zero correction
+
+The exact narrow raw-saturation probe was restored behind native-only, default-off
+`FIM_Y2B_RAW_SATURATION`. It retains raw saturation/hydrocarbon state only; pressure and
+well/control bounds remain active. A one-shot atomic claim prevents retry revisits from mixing
+the replay corpus. The capped live run accepted `dt=0.00898425` after three linear retries and
+three Newton iterations. Its captured decision system is `904x904`, 5540 nnz, RHS norm
+`2.786530e1`, state checksum `5be96f7f56374d91`, SHA-256
+`c503d9cb1781eab942d7621fb45f0baada3c40db7e32ffc297d17d1d35611561`.
+
+Replay through the production selections is decisive: CPR produces reduction `4.830552e-3`,
+full residual `1.346048e-1`, reservoir residual `1.346048e-1`, well residual `2.711113e-17`,
+BHP correction `[0.22494971034013922, -0.031642581144180365]`, and perforation-rate correction
+`[-5.37113701915633, 0.0013166107429607712]`. Explicit Sparse LU produces all zeros, reduction
+`1.0`, full residual `2.786530e1`, reservoir residual `2.780911e1`, and well residual
+`1.768765e0`; the maximum correction difference is `5.371137e0`. The forced-direct live run
+therefore has 16 linear retries and no accepted substep. Its capture differs (5626 nnz) because
+the zero direct iteration never advances the state; it reproduces the same all-zero direct solve.
+
+**Classification:** direct Sparse LU is genuinely worse, selecting Y2b2b's localized
+linear-path-defect branch. Since explicit direct does not use well Schur, this is before Schur
+recovery. The raw-state mechanism is still only a valid CPR-side positive observation; it is not
+an OPM-parity promotion or refutation. Next narrow work is typed Sparse-LU build-versus-
+factorization diagnosis on this exact capture. G4/G5 and all nonlinear policy changes remain
+blocked.
+
+Validation: the raw-saturation state fixture, both release replay artifacts, both capped release
+drivers, and the 10-test `assembly_ad` bucket pass. Wasm rebuilt successfully and all six required
+control diagnostics completed without a runtime warning; the native-only flag remains unreachable
+in those controls.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

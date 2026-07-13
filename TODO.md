@@ -74,10 +74,14 @@ below is retained as Bundle N/Y history; it must not override this current seque
 - [x] **Y2b2a: repair the linear oracle (2026-07-13).** Backend-neutral full-system RHS/final
   norms and reduction now cover Sparse LU/well-Schur/Newton; focused report contracts and AD
   parity pass; the raw-state-absent direct baseline has no finite `reduction=n/a`.
-- [ ] **Y2b2b (next): replay the same narrow raw-state probe.** Restore only the
-  native default-off flag, capture the exact `dt=0.00898425` iteration-1 system, replay CPR/direct,
-  and compare `||rhs-Jdx||/||rhs||`, actual corrections, reservoir/well row partitions, and the
-  next nonlinear state before classifying Y2b.
+- [x] **Y2b2b: corrected raw-state replay (2026-07-13).** One exact live artifact replays CPR at
+  `4.830552e-3`, while explicit Sparse LU returns a zero correction/reduction `1.0`; forced direct
+  has 16 linear retries and no accepted substep. This is a direct linear-path defect, so Y2b
+  remains inconclusive rather than refuted or promoted.
+- [ ] **Next: direct Sparse-LU failure classification.** On the preserved 904-row Y2b2b artifact,
+  distinguish sparse-matrix construction from `sp_lu()` factorization failure; expose a typed
+  report reason and prove whether a well-structured direct alternative solves the identical system.
+  Do not change the raw-state policy, G4/G5, or acceptance while this oracle is incomplete.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

@@ -32,8 +32,12 @@ so Newton aborted with `reduction=n/a` without measuring direct correction quali
 omitted OPM's per-update primary-variable adaptation. Its behavior implementation was deleted and
 the verdict is **INCONCLUSIVE**, not refuted. Y2b2a has now repaired the backend-neutral
 linear-report oracle (RHS/final norms and reduction; direct reports no longer rely on optional
-failure metadata). The current bounded slice is Y2b2b: restore the identical native default-off
-probe, capture/replay the exact iteration-1 system, and classify it, as specified in
+failure metadata). Y2b2b has restored and replayed the identical native default-off probe: CPR
+reduces the live exact matrix to `4.830552e-3`, but explicit Sparse LU returns an all-zero
+correction and `1.0` reduction; the forced-direct run has 16 linear retries and no substep. The
+raw-state mechanism remains **INCONCLUSIVE** while that direct factorization-path defect is
+classified. The next bounded slice is direct Sparse-LU build/factorization diagnosis on the
+preserved 904-row capture, as specified in
 `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; G4/G5 restructuring, controller tuning,
 AMG, damping changes, and convergence-acceptance widening remain blocked. Re-derive current
 ResSim baselines on the clean commit before the first behavior probe; do not use the historical

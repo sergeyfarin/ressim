@@ -32,13 +32,32 @@ pub(crate) const CAPTURE_DIR_ENV: &str = "FIM_CAPTURE_DIR";
 /// captures isolated snapshots (usually one every few dozen substeps), not a sequence.
 pub(crate) const CAPTURE_SEQUENCE_DIR_ENV: &str = "FIM_CAPTURE_SEQUENCE_DIR";
 
+/// Y2b2b uses a dedicated directory for its single prescribed decision-point capture. Keeping
+/// it separate from failure and sequence corpora prevents an accidental mixed replay.
+pub(crate) const Y2B2_CAPTURE_DIR_ENV: &str = "FIM_Y2B2_CAPTURE_DIR";
+
 /// Process-wide monotonically increasing capture sequence. `run_fim_timestep` is called
 /// once per substep/retry rung, so a per-call counter would overwrite earlier files —
 /// this gives every captured system in a run a unique filename.
 static CAPTURE_SEQUENCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static Y2B2_CAPTURE_WRITTEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn next_capture_sequence() -> usize {
     CAPTURE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Atomically claim Y2b2b's one prescribed decision-point artifact. A retry can revisit the
+/// same `dt`/iteration state, but its replay input must remain a single, explicit system.
+pub(crate) fn claim_y2b2_capture() -> bool {
+    Y2B2_CAPTURE_WRITTEN
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+        )
+        .is_ok()
 }
 
 /// Metadata identifying where in the run a captured system came from.
@@ -70,6 +89,11 @@ pub(crate) fn capture_dir_from_env() -> Option<PathBuf> {
 /// Returns the sequential-capture directory if enabled via `FIM_CAPTURE_SEQUENCE_DIR`.
 pub(crate) fn capture_sequence_dir_from_env() -> Option<PathBuf> {
     std::env::var_os(CAPTURE_SEQUENCE_DIR_ENV).map(PathBuf::from)
+}
+
+/// Returns the Y2b2b exact-decision capture directory, if requested on native builds.
+pub(crate) fn y2b2_capture_dir_from_env() -> Option<PathBuf> {
+    std::env::var_os(Y2B2_CAPTURE_DIR_ENV).map(PathBuf::from)
 }
 
 /// Writes one failed system to `<dir>/fim_capture_<seq>.txt`. Errors are reported to

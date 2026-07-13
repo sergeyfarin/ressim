@@ -1,12 +1,11 @@
 use nalgebra::DVector;
 
-use crate::fim::assembly::{
-    cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
-    collect_face_upwind_snapshot, diff_face_upwind_snapshots, equation_offset, unknown_offset,
-    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
-    PhaseFluxDiagnostic,
-};
 use crate::ReservoirSimulator;
+use crate::fim::assembly::{
+    CellFacePhaseDiagnostics, FacePhaseDiagnostics, FaceUpwindSample, FimAssemblyOptions,
+    PhaseFluxDiagnostic, cell_equation_residual_breakdown, cell_face_phase_flux_diagnostics,
+    collect_face_upwind_snapshot, diff_face_upwind_snapshots, equation_offset, unknown_offset,
+};
 // Phase 5 cutover: production Newton now assembles the coupled residual/
 // Jacobian via automatic differentiation (`assembly_ad`) instead of the
 // legacy hand-derivative/finite-difference hybrid in `assembly`. Aliased to
@@ -15,8 +14,8 @@ use crate::ReservoirSimulator;
 // directly for its own assertions.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
 use crate::fim::linear::{
-    active_direct_solve_row_threshold, solve_linearized_system, FimLinearBlockLayout,
-    FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
@@ -70,6 +69,37 @@ const NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR: f64 = 10.0;
 const RESTART_STAGNATION_DIRECT_BYPASS_THRESHOLD: u32 = 2;
 const NEAR_CONVERGED_ITERATIVE_OUTER_FACTOR: f64 = 16.0;
 const NEAR_CONVERGED_ITERATIVE_CANDIDATE_WORSENING_FACTOR: f64 = 8.0;
+/// Historical Y2b2 first-rung retry where raw saturation retention made the live path advance.
+/// The diagnostic capture is intentionally exact and does not generalize behavior.
+#[cfg(not(target_arch = "wasm32"))]
+const Y2B2_CAPTURE_DT_DAYS: f64 = 0.008_984_25;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn y2b2_state_checksum(state: &FimState) -> u64 {
+    // Stable, dependency-free FNV-1a over the stored state and well unknowns. This identifies
+    // the nonlinear decision state in the trace; the artifact itself is checksummed by the run.
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut add = |bits: u64| {
+        hash ^= bits;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    for cell in &state.cells {
+        add(cell.pressure_bar.to_bits());
+        add(cell.sw.to_bits());
+        add(cell.hydrocarbon_var.to_bits());
+        add(match cell.regime {
+            HydrocarbonState::Saturated => 0,
+            HydrocarbonState::Undersaturated => 1,
+        });
+    }
+    for value in &state.well_bhp {
+        add(value.to_bits());
+    }
+    for value in &state.perforation_rates_m3_day {
+        add(value.to_bits());
+    }
+    hash
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
@@ -3084,6 +3114,20 @@ pub(crate) fn run_fim_timestep(
     );
 
     let opm_aligned = options.nonlinear_flavor == FimNonlinearFlavor::OpmAligned;
+    // Y2b2b: restore exactly the old native diagnostic policy, never enable it in wasm or by
+    // default, and do not combine it with any primary-variable or acceptance experiment.
+    #[cfg(not(target_arch = "wasm32"))]
+    let y2b2_raw_saturation = opm_aligned && std::env::var_os("FIM_Y2B_RAW_SATURATION").is_some();
+    #[cfg(target_arch = "wasm32")]
+    let y2b2_raw_saturation = false;
+
+    if y2b2_raw_saturation {
+        fim_trace!(
+            sim,
+            options.verbose,
+            "  Y2B2 raw-saturation diagnostic active (native/default-off; pressure and controls remain bounded)"
+        );
+    }
 
     for iteration in 0..options.max_newton_iterations {
         let assembly = assemble_fim_system(
@@ -3759,6 +3803,42 @@ pub(crate) fn run_fim_timestep(
         prev_residual_norm = current_norm;
 
         let rhs = -&assembly.residual;
+        #[cfg(not(target_arch = "wasm32"))]
+        if y2b2_raw_saturation
+            && iteration == 1
+            && (dt_days - Y2B2_CAPTURE_DT_DAYS).abs() <= 1e-12
+            && let Some(dir) = crate::fim::linear::capture::y2b2_capture_dir_from_env()
+            && crate::fim::linear::capture::claim_y2b2_capture()
+        {
+            let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                newton_iteration: iteration,
+                failure_reason: "y2b2-exact-decision".to_string(),
+                dominant_family: residual_diagnostics.global.family.label().to_string(),
+                dominant_item_index: residual_diagnostics.global.item_index,
+            };
+            let sequence = crate::fim::linear::capture::next_capture_sequence();
+            crate::fim::linear::capture::write_capture(
+                &dir,
+                sequence,
+                &metadata,
+                block_layout,
+                &assembly.jacobian,
+                &rhs,
+                Some(&assembly.equation_scaling),
+            );
+            fim_trace!(
+                sim,
+                options.verbose,
+                "    iter {:>2}: Y2B2-CAPTURE dt={:.8} rows={} nnz={} rhs_norm={:.6e} state_checksum={:016x} sequence={}",
+                iteration,
+                dt_days,
+                assembly.jacobian.rows(),
+                assembly.jacobian.nnz(),
+                rhs.norm(),
+                y2b2_state_checksum(&state),
+                sequence,
+            );
+        }
         let mut linear_options = options.linear;
         // Bundle N checkpoint 5 (N4, `OpmAligned` only): none of these preemptive direct-solve
         // bypasses have an OPM analog (design doc N4 lists "the direct-solve bypass ladder" for
@@ -4399,13 +4479,23 @@ pub(crate) fn run_fim_timestep(
         } else {
             crate::fim::state::WellStateUpdateMode::Relax
         };
-        let candidate = state.apply_newton_update_frozen(
-            sim,
-            update_to_apply,
-            damping,
-            &topology,
-            well_update_mode,
-        );
+        let candidate = if y2b2_raw_saturation {
+            state.apply_newton_update_frozen_raw_saturation(
+                sim,
+                update_to_apply,
+                damping,
+                &topology,
+                well_update_mode,
+            )
+        } else {
+            state.apply_newton_update_frozen(
+                sim,
+                update_to_apply,
+                damping,
+                &topology,
+                well_update_mode,
+            )
+        };
         #[cfg(test)]
         if stagnation_count == 3 {
             trace_y2b_bound_projection_audit(
@@ -4605,7 +4695,7 @@ pub(crate) fn run_fim_timestep(
             && damping > 0.0
             && (opm_aligned || candidate_materially_changed)
             && candidate.is_finite()
-            && candidate.respects_basic_bounds(sim)
+            && (y2b2_raw_saturation || candidate.respects_basic_bounds(sim))
             // OpmAligned: the per-cell chop bounds the update by construction (§9.2 limits,
             // not the Legacy max_pressure/saturation_change options this check enforces).
             && (opm_aligned || candidate_respects_update_bounds(&state, &candidate, options));
@@ -4905,11 +4995,11 @@ pub(crate) fn run_fim_timestep(
 mod tests {
     use nalgebra::DVector;
 
-    use crate::fim::assembly::{assemble_fim_system, FimAssemblyOptions};
+    use crate::ReservoirSimulator;
+    use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
     use crate::fim::scaling::EquationScaling;
     use crate::fim::state::FimState;
     use crate::pvt::{PvtRow, PvtTable};
-    use crate::ReservoirSimulator;
 
     use super::*;
 
@@ -6629,15 +6719,17 @@ mod tests {
         assert!((first.damping_cap - 0.5).abs() < 1e-12);
         assert!((repeated.damping_cap - 0.25).abs() < 1e-12);
 
-        assert!(nonlinear_history_stabilization_decision(
-            &report,
-            &diagnostics,
-            1e-3,
-            &FimNewtonOptions::default(),
-            2,
-            FimHotspotSite::Cell(143),
-        )
-        .is_none());
+        assert!(
+            nonlinear_history_stabilization_decision(
+                &report,
+                &diagnostics,
+                1e-3,
+                &FimNewtonOptions::default(),
+                2,
+                FimHotspotSite::Cell(143),
+            )
+            .is_none()
+        );
     }
 
     #[test]

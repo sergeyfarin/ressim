@@ -19,15 +19,17 @@
 use nalgebra::DVector;
 use sprs::CsMat;
 
-use super::capture::{capture_dir_from_env, load_captures, FimCapturedSystem};
+use super::capture::{
+    FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
+};
 use super::gmres_block_jacobi::{
-    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
-    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
+    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
+    solve_with_restriction_kind, solve_with_smoother_and_restriction,
 };
 use super::well_schur;
 use super::{
-    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -49,6 +51,15 @@ fn residual_vector(
 
 fn residual_norm(jacobian: &CsMat<f64>, solution: &DVector<f64>, rhs: &DVector<f64>) -> f64 {
     residual_vector(jacobian, solution, rhs).norm()
+}
+
+fn y2b2_partition_norms(layout: FimLinearBlockLayout, residual: &DVector<f64>) -> (f64, f64) {
+    let reservoir_rows = layout.cell_unknown_count();
+    let reservoir = residual.rows(0, reservoir_rows).norm();
+    let well = residual
+        .rows(reservoir_rows, residual.len() - reservoir_rows)
+        .norm();
+    (reservoir, well)
 }
 
 /// Largest per-family overshoot beyond that family's own relative-reduction target, i.e. how
@@ -232,6 +243,118 @@ fn solver_lab_compare_backends() {
          fidelity is suspect (plan stop condition 2)",
         cpr_converged,
         systems.len()
+    );
+}
+
+/// Replay the one Y2b2b decision-point artifact through the two production solver selections.
+/// This is deliberately a diagnostic test: it asserts comparable finite reports and prints the
+/// quantities that decide the Y2b classification; it does not manufacture a correction-equality
+/// tolerance before observing the actual artifact.
+#[test]
+#[ignore]
+fn replay_y2b2_exact_capture() {
+    let dir = y2b2_capture_dir_from_env()
+        .expect("set FIM_Y2B2_CAPTURE_DIR to the directory produced by the Y2b2b driver");
+    let systems = load_captures(&dir).expect("load Y2b2 capture");
+    assert_eq!(
+        systems.len(),
+        1,
+        "Y2b2 replay requires exactly one isolated capture in {}",
+        dir.display()
+    );
+    let system = &systems[0];
+    assert_eq!(system.metadata.newton_iteration, 1);
+    assert_eq!(system.metadata.failure_reason, "y2b2-exact-decision");
+    let layout = system
+        .layout
+        .expect("Y2b2 exact system has FIM block layout");
+
+    let cpr_options = FimLinearSolveOptions::default();
+    let direct_options = FimLinearSolveOptions {
+        kind: FimLinearSolverKind::SparseLuDebug,
+        ..FimLinearSolveOptions::default()
+    };
+    let cpr = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &cpr_options,
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+    let direct = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &direct_options,
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+    assert!(cpr.solution.iter().all(|value| value.is_finite()));
+    assert!(direct.solution.iter().all(|value| value.is_finite()));
+    assert!(cpr.reduction().is_finite());
+    assert!(direct.reduction().is_finite());
+
+    let cpr_residual = residual_vector(&system.jacobian, &cpr.solution, &system.rhs);
+    let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+    let (cpr_reservoir, cpr_well) = y2b2_partition_norms(layout, &cpr_residual);
+    let (direct_reservoir, direct_well) = y2b2_partition_norms(layout, &direct_residual);
+    let correction_difference = cpr
+        .solution
+        .iter()
+        .zip(direct.solution.iter())
+        .map(|(left, right)| (left - right).abs())
+        .fold(0.0_f64, f64::max);
+    let bhp_start = layout.well_bhp_start();
+    let bhp_end = layout.well_bhp_end();
+    let rate_start = layout.perforation_tail_start;
+    let cpr_bhp: Vec<f64> = cpr
+        .solution
+        .rows(bhp_start, bhp_end - bhp_start)
+        .iter()
+        .copied()
+        .collect();
+    let cpr_rates: Vec<f64> = cpr
+        .solution
+        .rows(rate_start, cpr.solution.len() - rate_start)
+        .iter()
+        .copied()
+        .collect();
+    let direct_bhp: Vec<f64> = direct
+        .solution
+        .rows(bhp_start, bhp_end - bhp_start)
+        .iter()
+        .copied()
+        .collect();
+    let direct_rates: Vec<f64> = direct
+        .solution
+        .rows(rate_start, direct.solution.len() - rate_start)
+        .iter()
+        .copied()
+        .collect();
+
+    println!(
+        "Y2B2-REPLAY rows={} nnz={} rhs_norm={:.6e} cpr={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}}} direct={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}}} max_dx_delta={:.6e}",
+        system.jacobian.rows(),
+        system.jacobian.nnz(),
+        system.rhs.norm(),
+        cpr.backend_used.label(),
+        cpr.converged,
+        cpr.iterations,
+        cpr.reduction(),
+        cpr_residual.norm(),
+        cpr_reservoir,
+        cpr_well,
+        cpr_bhp,
+        cpr_rates,
+        direct.backend_used.label(),
+        direct.converged,
+        direct.iterations,
+        direct.reduction(),
+        direct_residual.norm(),
+        direct_reservoir,
+        direct_well,
+        direct_bhp,
+        direct_rates,
+        correction_difference,
     );
 }
 

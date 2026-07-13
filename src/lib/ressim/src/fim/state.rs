@@ -383,8 +383,14 @@ impl FimState {
         damping: f64,
     ) -> Self {
         let topology = build_well_topology(sim);
-        let mut next =
-            self.apply_raw_update(sim, update, damping, &topology, WellStateUpdateMode::None);
+        let mut next = self.apply_raw_update(
+            sim,
+            update,
+            damping,
+            &topology,
+            WellStateUpdateMode::None,
+            true,
+        );
         next.classify_regimes(sim);
         for idx in 0..next.cells.len() {
             next.enforce_cell_bounds(sim, idx);
@@ -402,7 +408,24 @@ impl FimState {
         topology: &crate::fim::wells::FimWellTopology,
         well_update_mode: WellStateUpdateMode,
     ) -> Self {
-        self.apply_raw_update(sim, update, damping, topology, well_update_mode)
+        self.apply_raw_update(sim, update, damping, topology, well_update_mode, true)
+    }
+
+    /// Y2b2b's deliberately narrow OPM-parity probe: preserve raw saturation and hydrocarbon
+    /// primary variables after a Newton update while retaining pressure and well-control bounds.
+    ///
+    /// This is not a production update policy. It is called only from the native, default-off,
+    /// `OpmAligned` diagnostic flag in `newton.rs`, so its result can be compared directly with
+    /// the deleted Y2b2 probe before a coherent OPM state lifecycle is considered.
+    pub(crate) fn apply_newton_update_frozen_raw_saturation(
+        &self,
+        sim: &ReservoirSimulator,
+        update: &DVector<f64>,
+        damping: f64,
+        topology: &crate::fim::wells::FimWellTopology,
+        well_update_mode: WellStateUpdateMode,
+    ) -> Self {
+        self.apply_raw_update(sim, update, damping, topology, well_update_mode, false)
     }
 
     /// Test-only view of the Newton candidate before ResSim's state projection.
@@ -446,6 +469,7 @@ impl FimState {
         damping: f64,
         topology: &crate::fim::wells::FimWellTopology,
         well_update_mode: WellStateUpdateMode,
+        enforce_saturation_bounds: bool,
     ) -> Self {
         let mut next = self.clone();
 
@@ -467,7 +491,13 @@ impl FimState {
         }
 
         for idx in 0..next.cells.len() {
-            next.enforce_cell_bounds(sim, idx);
+            if enforce_saturation_bounds {
+                next.enforce_cell_bounds(sim, idx);
+            } else {
+                // Keep the historical Y2b2 pressure floor and all well/control bounds while
+                // deliberately retaining the raw saturation-space Newton proposal.
+                next.cells[idx].pressure_bar = next.cells[idx].pressure_bar.max(1e-6);
+            }
         }
         next.enforce_control_bounds(sim, topology);
         match well_update_mode {
@@ -808,6 +838,13 @@ mod tests {
                 &topology,
                 WellStateUpdateMode::None,
             );
+            let raw_saturation = state.apply_newton_update_frozen_raw_saturation(
+                &sim,
+                &update,
+                1.0,
+                &topology,
+                WellStateUpdateMode::None,
+            );
             assert!(
                 (raw.cells[0].sw - (sw + dsw)).abs() < 1e-15
                     && (raw.cells[0].hydrocarbon_var - (sg + dsg)).abs() < 1e-15,
@@ -817,6 +854,12 @@ mod tests {
                 (bounded.cells[0].sw - bounded_sw).abs() < 1e-15
                     && (bounded.cells[0].hydrocarbon_var - bounded_sg).abs() < 1e-15,
                 "{label}: production state must retain its existing bound policy"
+            );
+            assert!(
+                (raw_saturation.cells[0].sw - (sw + dsw)).abs() < 1e-15
+                    && (raw_saturation.cells[0].hydrocarbon_var - (sg + dsg)).abs() < 1e-15
+                    && raw_saturation.cells[0].pressure_bar >= 1e-6,
+                "{label}: Y2b2b probe retains raw saturation variables but keeps pressure bounded"
             );
         }
     }
