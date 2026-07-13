@@ -51,7 +51,25 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 - [ ] **3D view named bugs** from PLAN.md-era review (FOV degrees conversion, `Array.isArray` on GridState, `k ?? k` well indexing) were never re-verified post-refactor — cheap scoped verification pass (COMPARISON_TOOLBOX_REVIEW gap #7).
 - [ ] **3 pre-existing test failures found 2026-07-07** (not part of the locked smoke gate, unrelated to Bundle N — confirmed by reproducing on commit `41d45f2` before any Bundle N checkpoint-4 edits): `fim::timestep::tests::changing_hotspot_resets_extra_growth_cooldown_budget`, `repeated_same_hotspot_extends_growth_cooldown_budget`, `fim_enabled_step_advances_time_and_records_history_for_closed_system`. Not investigated further (out of scope for the current task); worth a scoped look. **Likely a 4th sibling found 2026-07-12** (`FIM-BUNDLE-X` X1 gate, `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"): `tests::runtime_api::closed_system_public_step_keeps_same_water_inventory_on_both_solvers` — same symptom class (extra `rate_history` entry on the FIM path for a well-less closed system), different test name; confirmed pre-existing via `git stash` on a clean tree, structurally unrelated to Bundle X. Worth investigating all four together — the shared "closed system + FIM + rate_history" pattern suggests one root cause, not four.
 
-## FIM next steps (updated 2026-07-11, see docs/FIM_STATUS.md "Known Open Gaps" + docs/FIM_BUNDLE_N_DESIGN.md §10 retrospective)
+## FIM next steps (updated 2026-07-13)
+
+Current execution authority: `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. The detailed list
+below is retained as Bundle N/Y history; it must not override this current sequence.
+
+- [x] **Y0-Y2a evidence chain:** exact Flow oracle tracked; false linear-failure acceptance fixed;
+  direct/live linear quality refuted as the remaining first-rung cause; injector isolated; the
+  `Sw=Swc` derivative/update kink clean-replayed.
+- [ ] **Y2b0 (active): source-complete bound/update audit.** Confirm the exact OPM deck's
+  saturation projection, `ds-max`, normalization, endpoint extension, and switching; map the
+  ResSim raw-update-to-next-assembly path. No behavior change.
+- [ ] **Y2b1:** characterize `Swc`, `Sg=0`, and upper-bound behavior with one-sided AD/legacy/FD
+  fixtures and raw-vs-projected update traces.
+- [ ] **Y2b2/Y2c, only if Y2b1 authorizes it:** one Legacy-preserving, `OpmAligned`-only bound
+  policy probe, followed by the exact oracle and full promotion matrix.
+- [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
+  Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
+
+### Completed investigation history (reference only)
 
 - [x] **Fine-dt physics reference for `k=1.25`** — done 2026-07-06; user accepted the ~1.5% drift as immaterial (worklog "Task #38 (continued)").
 - [x] **Wall-clock baseline / gap attribution** — done 2026-07-07 (worklog "Task #41"): 738x = 30.5x nonlinear x 24x per-iteration (preconditioner rebuild = 89% of wall-clock).

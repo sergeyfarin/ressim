@@ -1,11 +1,11 @@
 # FIM Bundle Y: OPM Convergence Parity (post-Bundle-X roadmap)
 
-Status: Y0 diagnostics complete (2026-07-12, see §6). **Y1 attempted 2026-07-12, redirected —
-see §7: the literal action ("promote quasi-impes to live") was already done weeks ago and the
-registry row describing it as OPEN was stale.** The real gap Y1 surfaced is that the offline
-solver lab which justified that (and every other live linear-stack default) has never captured
-an `OpmAligned` failure — it structurally cannot, today. Next step is not yet executed; see §7.5
-for the options. Registry: rows to be opened per checkpoint.
+Status: **Y0-Y2a complete through 2026-07-13.** The exact Flow oracle, linear-stack refutation,
+injector isolation, and active-bound Jacobian audit are recorded in §§11-14. The original Y1-Y4
+checkpoint order below is historical where later evidence supersedes it. The current decision
+frontier is Y2b bound/update-policy parity, owned by
+`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; follow that document before starting another
+solver change.
 Prerequisite evidence: `docs/FIM_DIAG_003_PLAN.md` (closed) and `docs/FIM_BUNDLE_X_PLAN.md`
 (closed, PROMOTED unconditional). Baselines below re-derived on the committed tree at
 `53cae5c` (2026-07-12) — the exact runs are in the worklog note accompanying this plan's commit.
@@ -1185,3 +1185,23 @@ or any acceptance change. It must establish a single boundary convention across 
 and well blocks, with one-sided tests at `Swc` (and the analogous gas/upper-saturation clamps),
 then measure the exact deck and control matrix. Do not globally flip generic clamp semantics or
 patch only `d(res_pf)/dSw` from this one trace.
+
+## 15. Strategy reconciliation: state-bound policy precedes derivative selection (2026-07-13)
+
+A follow-up source read found a more fundamental divergence that changes Y2b's order. ResSim's
+`FimState::enforce_cell_bounds` (`src/lib/ressim/src/fim/state.rs:250`, called at `:390`/`:436`)
+clamps water saturation to `Swc` after every frozen Newton update. In OPM's
+`OPM/opm-simulators/opm/models/blackoil/blackoilnewtonmethod.hpp:266-267`, the normal saturation
+update limits the increment with `dsMax`; `chopAndNormalizeSaturations` is guarded by
+`projectSaturations_` at `:456-457`. The default in
+`blackoilnewtonmethodparams.hpp:42` is `ProjectSaturations::value = false`.
+
+This is source-confirmed implementation divergence, not yet proof that projection alone causes
+the live stall: the exact deck's option path, endpoint extension, normalization, and phase/primary
+variable switching must still be traced. It does mean choosing an AD derivative at the `Swc` kink
+before deciding whether `Swc` is even a hard Newton-state bound would be premature.
+
+The original Y2b wording is therefore superseded by
+`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`: first source-complete the state/update lifecycle,
+then characterize one-sided derivatives and predicted-vs-realized updates, and only then authorize
+a flag-gated behavior probe. G4/G5, controller, AMG, and acceptance changes remain deferred.

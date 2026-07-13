@@ -1,7 +1,9 @@
 # FIM Status
 
 This is the consolidated current-state summary for the Rust FIM solver.
-Last full rewrite: 2026-07-05; Bundle N section + gap reprioritization added 2026-07-10; gap #3
+Last full rewrite: 2026-07-05; current decision frontier reconciled 2026-07-13. Older baseline and
+gap sections below remain useful history but are superseded for execution by
+`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. Bundle N section + gap reprioritization added 2026-07-10; gap #3
 updated with the late-window trace diagnostic finding 2026-07-11; gap #3 closed out (Bundle W
 evaluated, not promoted) and new gap #4 (reservoir CNV plateau) added 2026-07-11; gap #4 updated
 2026-07-12 with the `FIM-DIAG-003` D0-D5 diagnostic verdict (H1 confirmed, H2/H3 refuted,
@@ -10,15 +12,25 @@ mechanism located but not yet fixed; `FIM-NEWTON-008` promoted); **gap #4 CLOSED
 `OpmAligned`+`nested_well_solve`, `52 → 25` under default Legacy — made unconditional 2026-07-12,
 no dev flag remains). Post-X, the residual gap to OPM (heavy: `16` substeps vs OPM's `1`;
 bounded `OpmAligned` cases `1.5-4x` costlier than Legacy; gas-rate `OpmAligned` `459` substeps)
-is tracked as its own roadmap, `docs/FIM_OPM_PARITY_PLAN.md` — Y0 diagnostics closed 2026-07-12,
-attributing both the heavy-case transient and the gas-rate catastrophe to the linear stack (G2),
-with an explicit open question (not yet resolved) of whether they share one root cause. Y1a-Y1e
+is tracked in `docs/FIM_OPM_PARITY_PLAN.md`. Later Y1/Y2 evidence refuted the early attribution
+of both failures to the linear stack. Y1a-Y1e
 (2026-07-12) chased the gas-rate half of G2 to ground: `well_schur`-reduced systems were hitting
 a generic CPR/FGMRES accept-check bug (`gmres_block_jacobi.rs:1651` accepting on the
 preconditioned residual alone at `iterations == 0`, before any real correction), fixed and
 promoted as `FIM-LINEAR-013` — gas-rate `OpmAligned` `459 → 238` substeps, `linear_bad` `337 →
 1`. Does not close G2 (gas-rate is still `238` vs Legacy's `2`) and does not touch G1 (heavy-case
-oscillation, still open, tracked as Bundle Y's unstarted `Y1c`).
+oscillation, still open, tracked as Bundle Y's unstarted `Y1c`). Y1h-Y2a then established the
+exact Flow oracle (`6` substeps, Newton `7/5/4/3/4/3`, zero cuts), isolated the first-rung failure
+to the injector, refuted direct-vs-iterative linear quality as primary, and found a Newton update
+at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard projection.
+
+**Current decision frontier:** source audit shows OPM's normal update uses `ds-max` limiting while
+optional saturation projection defaults off; ResSim enforces `Sw >= Swc` after each update. Treat
+this as a demonstrated implementation divergence, not yet a proven sole cause. Execute Y2b0-Y2c
+in `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` before G4/G5 restructuring, controller tuning,
+AMG, damping changes, or convergence-acceptance widening. Re-derive current ResSim baselines on
+the clean commit before the first behavior probe; do not use the historical `459`/`238`/`695`
+counts as promotion baselines.
 
 Use this file for:
 

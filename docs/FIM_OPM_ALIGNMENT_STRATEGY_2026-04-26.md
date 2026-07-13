@@ -5,6 +5,12 @@
 > 2026-07-05: its `FIM-DAMP-002`/`003` context (inflection chop removal already refuted; k-sweep
 > methodology) stopped a repeat experiment and led directly to `FIM-DAMP-004` (`k=1.25`).
 
+> **Current addendum (2026-07-13):** the 95%-track-OPM policy still governs, but the Bundle C/AMG
+> ordering below is superseded for convergence work. Exact-deck direct/live equivalence and the
+> Y2a injector audit point first to state-bound/update semantics at `Swc`. Follow
+> `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; AMG is a deferred scale-up item until linear error is
+> measured as the limiting cause on a relevant case.
+
 ## Bundle status as of 2026-07-05 (added at rescue time)
 
 - **Bundle A** (per-cell damping + well-row scaling): the row-scaling half was tried and REVERTED

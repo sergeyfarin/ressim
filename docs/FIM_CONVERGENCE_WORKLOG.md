@@ -20,6 +20,28 @@ Historical narrative was trimmed out of this file twice:
   - shipped gas shelf: `gas-rate --grid 10x10x3 --steps 6 --dt 0.25`
   - over-threshold CPR probe: `water-pressure --grid 23x23x1 --steps 1 --dt 0.25`
 
+### Strategy reconciliation after Y2a (2026-07-13; documentation only)
+
+Reviewed the status, registry, Bundle Y parity plan, historical OPM strategy/gap documents, TODO,
+and local OPM source before choosing the post-Y2a slice. The current TODO's direction was too
+narrow: it proposed selecting an active-bound derivative convention before establishing whether
+OPM treats `Swc` as a hard Newton-state bound.
+
+Source evidence changes the order. ResSim calls `FimState::enforce_cell_bounds` after Newton
+updates (`fim/state.rs:250,390,436`) and clamps `Sw` to `Swc`. OPM scales saturation increments
+with `dsMax` (`OPM/opm-simulators/opm/models/blackoil/blackoilnewtonmethod.hpp:266-267`), while
+post-update `chopAndNormalizeSaturations` is conditional (`:456-457`) and
+`ProjectSaturations::value` defaults false
+(`blackoilnewtonmethodparams.hpp:42`). This is a demonstrated code-path divergence, not yet a
+causal verdict: exact-deck options, endpoint behavior, normalization, and variable switching still
+need a complete audit.
+
+Created `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` as the active decision-frontier plan. It orders the
+work as source audit (Y2b0), test-only boundary characterization (Y2b1), one reversible
+`OpmAligned` behavior probe only if authorized (Y2b2), and the oracle/control promotion matrix
+(Y2c). G4/G5, heavy-case branching, controller parity, AMG, and acceptance changes are explicitly
+deferred until that evidence selects one branch. No solver behavior or test code changed.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

@@ -5,6 +5,12 @@
 > decomposition against OPM's SPE1 numbers is the clearest strategic map of what separates
 > ResSim FIM from OPM's ~2.5 Newton iterations/step with zero cuts.
 
+> **Current addendum (2026-07-13):** this six-item SPE1 map is historical decomposition, not the
+> active execution order. Bundle Y's exact gas-rate oracle and Y2a audit now put the
+> saturation-bound/update-policy divergence ahead of AMG, G4 restructuring, and variable
+> substitution. See `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. Re-open an older gap only when the
+> post-Y2 trace selects it with the gates defined there.
+
 ## Status triage as of 2026-07-05 (added at rescue time — read this first)
 
 | # | Gap identified below | Status now |
