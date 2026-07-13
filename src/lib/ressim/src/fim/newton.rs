@@ -400,6 +400,159 @@ fn classify_retry_failure_with_site(
     }
 }
 
+/// Y2a's deliberately narrow, test-only derivative audit for the gas injector.
+///
+/// The production assembly is AD-based while the independent hand-derivative
+/// assembly is available only to test builds.  At the first three-count
+/// stagnation point, compare the injector perforation row and its connected
+/// cell component rows across those two paths and central differences of the
+/// legacy residual.  This is trace-only: it neither changes the iterate nor
+/// participates in convergence decisions.
+#[cfg(test)]
+fn trace_y2a_injector_jacobian_audit(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    dt_days: f64,
+    iteration: usize,
+    stagnation_count: u32,
+    ad_assembly: &crate::fim::assembly::FimAssembly,
+) {
+    if std::env::var_os("FIM_Y2A_AUDIT").is_none() {
+        return;
+    }
+    let Some((perf_idx, perforation)) = topology
+        .perforations
+        .iter()
+        .enumerate()
+        .find(|(_, perforation)| perforation.injector)
+    else {
+        return;
+    };
+
+    let options = FimAssemblyOptions {
+        dt_days,
+        include_wells: true,
+        assemble_residual_only: false,
+        topology: Some(topology),
+    };
+    let legacy = crate::fim::assembly::assemble_fim_system(sim, previous_state, state, &options);
+    let cell_idx = perforation.cell_index;
+    let perf_row = state.perforation_equation_offset(perf_idx);
+    let bhp_col = state.well_bhp_unknown_offset(perforation.physical_well_index);
+    let q_col = state.perforation_rate_unknown_offset(perf_idx);
+    let rows = [
+        ("rate_consistency", perf_row),
+        ("water", equation_offset(cell_idx, 0)),
+        ("oil", equation_offset(cell_idx, 1)),
+        ("gas", equation_offset(cell_idx, 2)),
+    ];
+    let columns = [
+        ("p", unknown_offset(cell_idx, 0)),
+        ("sw", unknown_offset(cell_idx, 1)),
+        ("hc", unknown_offset(cell_idx, 2)),
+        ("bhp", bhp_col),
+        ("q", q_col),
+    ];
+
+    crate::fim::trace_sink::write_line(&format!(
+        "Y2A header dt_days={dt_days:.12e} iter={iteration} stagnation_count={stagnation_count} perf={perf_idx} cell={cell_idx} well={} regime={:?}",
+        perforation.physical_well_index, state.cells[cell_idx].regime,
+    ));
+
+    let mut max_ad_legacy_residual_abs = 0.0_f64;
+    let mut max_ad_legacy_jacobian_abs = 0.0_f64;
+    let mut max_legacy_fd_abs = 0.0_f64;
+    let mut max_legacy_fd_rel = 0.0_f64;
+    for (row_label, row) in rows {
+        let ad_residual = ad_assembly.residual[row];
+        let legacy_residual = legacy.residual[row];
+        let residual_abs = (ad_residual - legacy_residual).abs();
+        max_ad_legacy_residual_abs = max_ad_legacy_residual_abs.max(residual_abs);
+        crate::fim::trace_sink::write_line(&format!(
+            "Y2A residual row={row_label} ad={ad_residual:.12e} legacy={legacy_residual:.12e} abs={residual_abs:.3e}"
+        ));
+
+        for (column_label, column) in columns {
+            let h = y2a_finite_difference_step(state, column);
+            let mut plus = state.clone();
+            let mut minus = state.clone();
+            y2a_perturb_unknown(&mut plus, column, h);
+            y2a_perturb_unknown(&mut minus, column, -h);
+            let plus_residual =
+                crate::fim::assembly::assemble_fim_system(sim, previous_state, &plus, &options)
+                    .residual[row];
+            let minus_residual =
+                crate::fim::assembly::assemble_fim_system(sim, previous_state, &minus, &options)
+                    .residual[row];
+            let finite_difference = (plus_residual - minus_residual) / (2.0 * h);
+            let forward_difference = (plus_residual - legacy.residual[row]) / h;
+            let backward_difference = (legacy.residual[row] - minus_residual) / h;
+            let ad = ad_assembly
+                .jacobian
+                .get(row, column)
+                .copied()
+                .unwrap_or(0.0);
+            let legacy_derivative = legacy.jacobian.get(row, column).copied().unwrap_or(0.0);
+            let ad_legacy_abs = (ad - legacy_derivative).abs();
+            let legacy_fd_abs = (legacy_derivative - finite_difference).abs();
+            let legacy_fd_rel = legacy_fd_abs
+                / legacy_derivative
+                    .abs()
+                    .max(finite_difference.abs())
+                    .max(1e-12);
+            max_ad_legacy_jacobian_abs = max_ad_legacy_jacobian_abs.max(ad_legacy_abs);
+            max_legacy_fd_abs = max_legacy_fd_abs.max(legacy_fd_abs);
+            max_legacy_fd_rel = max_legacy_fd_rel.max(legacy_fd_rel);
+            crate::fim::trace_sink::write_line(&format!(
+                "Y2A derivative row={row_label} col={column_label} h={h:.3e} ad={ad:.12e} legacy={legacy_derivative:.12e} fd={finite_difference:.12e} fwd={forward_difference:.12e} back={backward_difference:.12e} ad_legacy_abs={ad_legacy_abs:.3e} legacy_fd_abs={legacy_fd_abs:.3e} legacy_fd_rel={legacy_fd_rel:.3e}"
+            ));
+        }
+    }
+    crate::fim::trace_sink::write_line(&format!(
+        "Y2A summary dt_days={dt_days:.12e} iter={iteration} max_ad_legacy_residual_abs={max_ad_legacy_residual_abs:.3e} max_ad_legacy_jacobian_abs={max_ad_legacy_jacobian_abs:.3e} max_legacy_fd_abs={max_legacy_fd_abs:.3e} max_legacy_fd_rel={max_legacy_fd_rel:.3e}"
+    ));
+}
+
+#[cfg(test)]
+fn y2a_finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
+    if unknown_idx < state.n_cell_unknowns() {
+        let cell = state.cell(unknown_idx / 3);
+        return match unknown_idx % 3 {
+            0 => 1e-5 * cell.pressure_bar.abs().max(1.0),
+            1 => 1e-7,
+            2 => 1e-7 * cell.hydrocarbon_var.abs().max(1.0),
+            _ => unreachable!(),
+        };
+    }
+    if unknown_idx < state.n_cell_unknowns() + state.n_well_unknowns() {
+        let well_idx = unknown_idx - state.n_cell_unknowns();
+        return 1e-4 * state.well_bhp[well_idx].abs().max(1.0);
+    }
+    let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
+    1e-4 * state.perforation_rates_m3_day[perf_idx].abs().max(1.0)
+}
+
+#[cfg(test)]
+fn y2a_perturb_unknown(state: &mut FimState, unknown_idx: usize, delta: f64) {
+    if unknown_idx < state.n_cell_unknowns() {
+        let cell = &mut state.cells[unknown_idx / 3];
+        match unknown_idx % 3 {
+            0 => cell.pressure_bar += delta,
+            1 => cell.sw += delta,
+            2 => cell.hydrocarbon_var += delta,
+            _ => unreachable!(),
+        }
+    } else if unknown_idx < state.n_cell_unknowns() + state.n_well_unknowns() {
+        let well_idx = unknown_idx - state.n_cell_unknowns();
+        state.well_bhp[well_idx] += delta;
+    } else {
+        let perf_idx = unknown_idx - state.n_cell_unknowns() - state.n_well_unknowns();
+        state.perforation_rates_m3_day[perf_idx] += delta;
+    }
+}
+
 fn retry_failure_trace_suffix(diagnostics: &FimRetryFailureDiagnostics) -> String {
     let mut parts = vec![format!(
         " retry=[class={} dom={} row={} item={} site={}",
@@ -3290,6 +3443,19 @@ pub(crate) fn run_fim_timestep(
                 iters_remaining,
                 would_widen,
             );
+            #[cfg(test)]
+            if stagnation_count == 3 {
+                trace_y2a_injector_jacobian_audit(
+                    sim,
+                    previous_state,
+                    &state,
+                    &topology,
+                    dt_days,
+                    iteration,
+                    stagnation_count,
+                    &assembly,
+                );
+            }
             // Bundle N checkpoint 5 (N4, `OpmAligned` only): this residual-trend bailout has
             // no OPM analog — OPM never inspects the residual TREND mid-solve, only its
             // absolute value against CNV/MB at each iteration's entry check. Under

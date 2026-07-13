@@ -3072,3 +3072,22 @@ exposes a perforation-row hotspot. The injector is necessary and sufficient on t
 rate control is not the unique cause. Verdict: G4 injector well/Jacobian/primary-variable audit
 next, with no Newton-acceptance change. Replay after committing the newly-added driver before
 promoting this as a clean baseline.
+
+### Bundle Y checkpoint Y2a: injector Jacobian audit — active-bound AD kink (2026-07-13, provisional)
+
+Added a test-only `FIM_Y2A_AUDIT=1` trace at the first three-count stagnation point. It compares
+the live AD matrix, legacy hand-derivative matrix, and central plus one-sided finite differences
+for the injector perforation and its cell's component rows. The bounded injector-only native
+replay retains Y1j's `6` nonlinear retries and `dt=0.00032286699225`, so the instrumentation did
+not alter solver behavior.
+
+At the last captured stalled rung (`dt=3.2286699225e-4`, iter 5), AD and legacy residuals agree
+to `1.137e-13`, but `Sw=Swc=0.15` exposes a decisive derivative kink in `rate_consistency`:
+`d(res_pf)/dSw`: AD `-1428.5586`, legacy `0`, central FD `-714.2793`, forward FD `-1428.5585`,
+backward FD `0`. The raw Newton `dSw≈-3.13e-5` points below the lower bound and is projected
+back, leaving the active AD slope unable to produce an admissible move. Both-well traces show the
+same signature. Connected oil/gas entries disagree too, so this cannot safely be fixed only in a
+well row. OPM source confirms the different `StandardWell` per-well `WQTotal`/BHP formulation,
+but with one perforation the local unknown count matches ResSim and the observed failure is more
+immediately an AD boundary-convention inconsistency. Next: scope and test one coherent
+active-bound derivative convention before a G4 restructure or acceptance change.

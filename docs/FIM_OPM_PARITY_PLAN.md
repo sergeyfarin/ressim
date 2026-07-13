@@ -1133,3 +1133,55 @@ and legacy injector-perforation plus connected-cell Jacobian entries against fin
 (`d(res_pf)/dq`, `d(res_pf)/dp`, `d(res_pf)/dsw`, and component-row `d/dq`). Map the matching OPM
 `StandardWell` primary variables before proposing a structural change. Do not reopen
 `would_widen` or the `FIM-NEWTON-004`/`005` acceptance family.
+
+## 14. Y2a: injector Jacobian audit finds an active-bound AD kink (2026-07-13, provisional)
+
+Y2a added the test-only, environment-gated `FIM_Y2A_AUDIT=1` trace in `fim/newton.rs`. At the
+first three-count stagnation point it reassembles the same state with the independent legacy
+assembler and central-differences the legacy residual. For the injector perforation row and its
+connected cell's water/oil/gas rows it records residual parity and derivatives against local
+`p`, `Sw`, hydrocarbon variable, BHP, and perforation `q`. It is not compiled into production
+builds and does not modify an iterate, matrix, or convergence decision.
+
+The bounded injector-only replay used:
+
+```text
+FIM_Y1J_WELLS=injector FIM_Y2A_AUDIT=1 \
+FIM_TRACE_FILE=/tmp/y2a-injector-onesided2-20260713.log FIM_TRACE_DT_BELOW=1 \
+FIM_MAX_SUBSTEPS=1 target/release/deps/simulator-ddfbb4e26a955ef9 \
+  repro_gas_rate_10x10x3_y1j --ignored --nocapture
+```
+
+It reproduces Y1j's injector-only result (`6` nonlinear retries; first accepted
+`dt=0.00032286699225`; 20 iterations) and, at the final captured stalled rung
+(`dt=3.2286699225e-4`, iteration 5), residuals agree between AD and legacy to
+`1.137e-13`. The Jacobian does not: the injector cell is exactly at its connate bound
+`Sw=Swc=0.15`, and the rate-consistency row has
+
+| derivative | AD | legacy | central FD | forward FD | backward FD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `d(res_pf)/dSw` | `-1428.5586` | `0` | `-714.2793` | `-1428.5585` | `0` |
+
+This is a real one-sided kink, not finite-difference noise. The AD generic relperm path selects
+the above-connate branch at equality; the legacy derivative intentionally returns zero at the
+clamped boundary. The Newton correction points below `Swc` (`dSw≈-3.13e-5`) and the candidate is
+therefore projected back to the same bound, leaving a large active-branch derivative in the
+linear system but no admissible saturation movement. The same signature appears in the both-well
+case. Several connected oil/gas `p`/`Sw` entries differ as well, so this is broader than a
+perforation-row typo; changing only the well Jacobian would leave the reservoir block
+inconsistent.
+
+The OPM source audit still establishes the structural difference, but it is not the immediate
+Y2a result. `StandardWellPrimaryVariables.hpp` defines per-well `WQTotal` and BHP (with fractions
+for the relevant phase sets); `StandardWellPrimaryVariables.cpp` assigns a gas injector's surface
+gas rate to `WQTotal`; and `StandardWell_impl.hpp` calculates each perforation connection rate
+during assembly before scattering it to the reservoir equations. ResSim instead has BHP plus a
+perforation `q` unknown and a rate-consistency row. For this one-perforation deck both systems
+happen to have two well-side unknowns, so Y2a does **not** justify a G4 primary-variable
+restructure yet.
+
+**Verdict:** a guarded active-bound AD derivative investigation is now prior to G4 restructuring
+or any acceptance change. It must establish a single boundary convention across the AD reservoir
+and well blocks, with one-sided tests at `Swc` (and the analogous gas/upper-saturation clamps),
+then measure the exact deck and control matrix. Do not globally flip generic clamp semantics or
+patch only `d(res_pf)/dSw` from this one trace.

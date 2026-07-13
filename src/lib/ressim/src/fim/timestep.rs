@@ -3182,6 +3182,10 @@ mod phase5_repro {
     ///   first-rung comparison, not as a completed 0.25-day-step result.
     /// - `FIM_TRACE_FILE=<path> FIM_TRACE_DT_BELOW=1` records every iteration's `WELLTRACE`
     ///   and `WELLJAC` lines for this first report step.
+    /// - `FIM_Y2A_AUDIT=1` additionally records the test-only injector `Y2A` audit at each
+    ///   three-count stagnation point: AD and legacy Jacobian entries for the perforation and
+    ///   connected-cell rows, plus central and one-sided differences of the legacy residual.
+    ///   This does not alter a Newton iterate or any convergence decision.
     ///
     /// Example:
     /// `FIM_Y1J_WELLS=injector FIM_FORCE_DIRECT_LINEAR=1 FIM_TRACE_FILE=/tmp/y1j.log
