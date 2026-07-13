@@ -1242,3 +1242,25 @@ Source chain, in update order:
 **Y2b1 authorization:** add test-only fixtures at `Swc-eps`, `Swc`, `Swc+eps`, `Sg=0±eps`, and
 the upper oil-complement boundary. Record raw correction, post-chop candidate, post-bound state,
 predicted residual change, and next residual. Keep Legacy and solver behavior unchanged.
+
+### 15.2 Y2b1 result: projection breaks the exact Newton prediction (2026-07-13)
+
+**Status: complete, diagnostic/test-only; no solver behavior changed.** `FimState` now exposes a
+test-only unbounded update view and the exact first-rung driver emits `Y2B` raw/bounded candidate
+and next-assembly lines under `FIM_Y2B_AUDIT=1`. A controlled one-cell gas-injector fixture covers
+`bound-eps/bound/bound+eps` for `Swc`, `Sg=0`, upper `Sw`, and upper `Sg`, recording every
+injector perforation and connected component row's residual, AD/legacy Jacobian entries, and
+forward/backward/central finite differences.
+
+At `Swc`, the expected discontinuity is explicit: AD selects the active above-bound derivative;
+the forward FD agrees, backward FD is the endpoint branch, and central FD lies between them. This
+does not authorize derivative averaging. The exact 10x10x3 trace instead supplies the causal
+measurement: at `dt=9.78384825e-4`, iteration 5, the chopped correction moves cell 0 from
+`Sw=0.15` to raw `0.1499514237572`; ResSim replaces it with `0.15`. The water residual is
+`4.8591979e-3` before the step, predicted `-8.53e-11`, and raw next `-8.53e-11`, but bounded next
+is `4.8591978e-3`. Oil/gas and rate-consistency rows also receive a large projection effect. A
+forced-direct run produces the same correction, raw water closure, and restored bounded residual.
+
+**Decision:** the hard bound is a direct first-order inconsistency in the exact failure path and
+OPM leaves this deck unprojected. Authorize the narrow Y2b2 `OpmAligned`-only/default-off coherent
+bound-policy probe. Do not alter generic derivative rules, acceptance, or G4/G5 structure.

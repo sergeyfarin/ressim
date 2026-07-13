@@ -62,10 +62,12 @@ below is retained as Bundle N/Y history; it must not override this current seque
 - [x] **Y2b0: source-complete bound/update audit.** Confirmed Flow projection default off and
   `ds-max=0.2`, raw-state accumulation/endpoint-property handling, OPM in-loop primary-variable
   adaptation, and ResSim hard projection/frozen regime. Source table: parity plan §15.1.
-- [ ] **Y2b1 (active):** characterize `Swc`, `Sg=0`, and upper-bound behavior with one-sided AD/legacy/FD
-  fixtures and raw-vs-projected update traces.
-- [ ] **Y2b2/Y2c, only if Y2b1 authorizes it:** one Legacy-preserving, `OpmAligned`-only bound
-  policy probe, followed by the exact oracle and full promotion matrix.
+- [x] **Y2b1:** boundary fixtures and exact raw-vs-projected traces completed 2026-07-13. At
+  `Swc`, raw Newton water residual agrees with its linear prediction while ResSim's projection
+  restores the pre-step residual; direct/live agree. One-sided AD behavior is expected at the
+  discontinuity, not a derivative-averaging target.
+- [ ] **Y2b2 (active):** one Legacy-preserving, default-off `OpmAligned` bound-policy probe,
+  followed by the exact oracle and full promotion matrix (Y2c) only if it improves the plateau.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

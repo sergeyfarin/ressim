@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0 complete; Y2b1 active (2026-07-13)**. This document turns the evidence in
+Status: **Y2b0/Y2b1 complete; Y2b2 authorized (2026-07-13)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -118,6 +118,19 @@ Decision gate:
 
 Validation: the focused tests plus the `assembly_ad` parity surface selected by
 `ressim-validation/SKILL.md`. Commit diagnostic/test infrastructure separately from behavior.
+
+**Result (2026-07-13, diagnostic/test-only): PASS — authorizes Y2b2.** The new fixture sweeps
+`bound-eps`, `bound`, and `bound+eps` for `Swc`, `Sg=0`, `Sw` upper, and `Sg` upper with an
+injector perforation plus its connected water/oil/gas rows. It records AD, legacy, and all three
+finite differences. At a kink, AD agrees with the active one-sided derivative and central FD
+straddles the discontinuity; this is not evidence for derivative averaging. The exact 10x10x3
+live trace shows each observed `Swc` crossing proposes `Sw < 0.15`, then projects it back before
+the next assembly. At `dt=9.78384825e-4`, the water row's raw next residual is
+`-8.53e-11` versus its linear prediction `-8.53e-11`, while the projected state restores
+`4.859e-3`; the same correction and result occur with forced-direct linear solve. OPM does not
+project this deck. The hard projection is therefore a measured first-order consistency break,
+not merely a source divergence. Y2b2 may now test exactly one reversible, default-off,
+`OpmAligned` policy; no acceptance widening or G4/G5 change is authorized.
 
 ## 5. Y2b2 — smallest reversible behavior probe
 

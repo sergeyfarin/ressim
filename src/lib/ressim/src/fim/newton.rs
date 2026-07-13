@@ -515,6 +515,114 @@ fn trace_y2a_injector_jacobian_audit(
     ));
 }
 
+/// Y2b's test-only raw-candidate versus projected-candidate trace.
+///
+/// OPM keeps its raw primary-variable update for the following assembly unless
+/// `--project-saturations` is selected.  ResSim normally hard-bounds that
+/// state before its following assembly.  At the first sustained injector
+/// stagnation point, record both possible residuals against the linear
+/// prediction from the actually assembled AD Jacobian.  This is forensic
+/// instrumentation only: it neither selects nor mutates a candidate.
+#[cfg(test)]
+fn trace_y2b_bound_projection_audit(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    topology: &crate::fim::wells::FimWellTopology,
+    dt_days: f64,
+    iteration: usize,
+    stagnation_count: u32,
+    assembly: &crate::fim::assembly::FimAssembly,
+    update: &DVector<f64>,
+    damping: f64,
+    bounded_candidate: &FimState,
+) {
+    if std::env::var_os("FIM_Y2B_AUDIT").is_none() {
+        return;
+    }
+    let Some((perf_idx, perforation)) = topology
+        .perforations
+        .iter()
+        .enumerate()
+        .find(|(_, perforation)| perforation.injector)
+    else {
+        return;
+    };
+
+    let raw_candidate = state.apply_unbounded_update_for_audit(update, damping);
+    let options = FimAssemblyOptions {
+        dt_days,
+        include_wells: true,
+        assemble_residual_only: true,
+        topology: Some(topology),
+    };
+    let raw_assembly = crate::fim::assembly_ad::assemble_fim_system_ad(
+        sim,
+        previous_state,
+        &raw_candidate,
+        &options,
+    );
+    let bounded_assembly = crate::fim::assembly_ad::assemble_fim_system_ad(
+        sim,
+        previous_state,
+        bounded_candidate,
+        &options,
+    );
+    let cell_idx = perforation.cell_index;
+    let before = &state.cells[cell_idx];
+    let raw = &raw_candidate.cells[cell_idx];
+    let bounded = &bounded_candidate.cells[cell_idx];
+    let rows = [
+        (
+            "rate_consistency",
+            state.perforation_equation_offset(perf_idx),
+        ),
+        ("water", equation_offset(cell_idx, 0)),
+        ("oil", equation_offset(cell_idx, 1)),
+        ("gas", equation_offset(cell_idx, 2)),
+    ];
+
+    crate::fim::trace_sink::write_line(&format!(
+        "Y2B header dt_days={dt_days:.12e} iter={iteration} stagnation_count={stagnation_count} perf={perf_idx} cell={cell_idx} well={} regime={:?} damping={damping:.12e}",
+        perforation.physical_well_index, before.regime,
+    ));
+    crate::fim::trace_sink::write_line(&format!(
+        "Y2B candidate cell={cell_idx} p_before={:.12e} sw_before={:.12e} hc_before={:.12e} p_raw={:.12e} sw_raw={:.12e} hc_raw={:.12e} p_bounded={:.12e} sw_bounded={:.12e} hc_bounded={:.12e} dp_projected={:.12e} dsw_projected={:.12e} dhc_projected={:.12e}",
+        before.pressure_bar,
+        before.sw,
+        before.hydrocarbon_var,
+        raw.pressure_bar,
+        raw.sw,
+        raw.hydrocarbon_var,
+        bounded.pressure_bar,
+        bounded.sw,
+        bounded.hydrocarbon_var,
+        bounded.pressure_bar - raw.pressure_bar,
+        bounded.sw - raw.sw,
+        bounded.hydrocarbon_var - raw.hydrocarbon_var,
+    ));
+
+    for (label, row) in rows {
+        let predicted = assembly.residual[row]
+            + (0..state.n_unknowns())
+                .map(|column| {
+                    assembly.jacobian.get(row, column).copied().unwrap_or(0.0)
+                        * damping
+                        * update[column]
+                })
+                .sum::<f64>();
+        let raw_residual = raw_assembly.residual[row];
+        let bounded_residual = bounded_assembly.residual[row];
+        crate::fim::trace_sink::write_line(&format!(
+            "Y2B residual row={label} current={:.12e} predicted={predicted:.12e} raw_next={raw_residual:.12e} bounded_next={bounded_residual:.12e} raw_prediction_error={:.12e} bounded_prediction_error={:.12e} projection_effect={:.12e}",
+            assembly.residual[row],
+            raw_residual - predicted,
+            bounded_residual - predicted,
+            bounded_residual - raw_residual,
+        ));
+    }
+}
+
 #[cfg(test)]
 fn y2a_finite_difference_step(state: &FimState, unknown_idx: usize) -> f64 {
     if unknown_idx < state.n_cell_unknowns() {
@@ -3927,8 +4035,7 @@ pub(crate) fn run_fim_timestep(
                     // exactly (same metadata shape, same `FIM_CAPTURE_DIR` gate); native-only and
                     // inert unless the env var is set.
                     #[cfg(not(target_arch = "wasm32"))]
-                    if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env()
-                    {
+                    if let Some(capture_dir) = crate::fim::linear::capture::capture_dir_from_env() {
                         let metadata = crate::fim::linear::capture::FimCaptureMetadata {
                             newton_iteration: iteration,
                             failure_reason: linear_report
@@ -3942,11 +4049,7 @@ pub(crate) fn run_fim_timestep(
                                         "non-finite".to_string()
                                     }
                                 }),
-                            dominant_family: residual_diagnostics
-                                .global
-                                .family
-                                .label()
-                                .to_string(),
+                            dominant_family: residual_diagnostics.global.family.label().to_string(),
                             dominant_item_index: residual_diagnostics.global.item_index,
                         };
                         crate::fim::linear::capture::write_capture(
@@ -4300,6 +4403,22 @@ pub(crate) fn run_fim_timestep(
             &topology,
             well_update_mode,
         );
+        #[cfg(test)]
+        if stagnation_count == 3 {
+            trace_y2b_bound_projection_audit(
+                sim,
+                previous_state,
+                &state,
+                &topology,
+                dt_days,
+                iteration,
+                stagnation_count,
+                &assembly,
+                update_to_apply,
+                damping,
+                &candidate,
+            );
+        }
         state_update_ms += state_update_timer.elapsed_ms();
         // Late-window trace diagnostic (`docs/FIM_BUNDLE_N_DESIGN.md` §10): per-iteration
         // well/perforation state, window-gated so this never runs unconditionally (unlike
@@ -4366,9 +4485,21 @@ pub(crate) fn run_fim_timestep(
                 let cell_idx = perforation.cell_index;
                 let p_col = unknown_offset(cell_idx, 0);
                 let sw_col = unknown_offset(cell_idx, 1);
-                let d_pf_dq = assembly.jacobian.get(perf_row, q_col).copied().unwrap_or(0.0);
-                let d_pf_dp = assembly.jacobian.get(perf_row, p_col).copied().unwrap_or(0.0);
-                let d_pf_dsw = assembly.jacobian.get(perf_row, sw_col).copied().unwrap_or(0.0);
+                let d_pf_dq = assembly
+                    .jacobian
+                    .get(perf_row, q_col)
+                    .copied()
+                    .unwrap_or(0.0);
+                let d_pf_dp = assembly
+                    .jacobian
+                    .get(perf_row, p_col)
+                    .copied()
+                    .unwrap_or(0.0);
+                let d_pf_dsw = assembly
+                    .jacobian
+                    .get(perf_row, sw_col)
+                    .copied()
+                    .unwrap_or(0.0);
                 let cell_rows = [
                     ("water", equation_offset(cell_idx, 0)),
                     ("oil", equation_offset(cell_idx, 1)),
@@ -4390,7 +4521,10 @@ pub(crate) fn run_fim_timestep(
                 let raw_dsw_cell = update_to_apply[sw_col];
                 let sw_current = state.cells[cell_idx].sw;
                 let sw_wc = if sim.three_phase_mode {
-                    sim.scal_3p.as_ref().map(|s| s.s_wc).unwrap_or(sim.scal.s_wc)
+                    sim.scal_3p
+                        .as_ref()
+                        .map(|s| s.s_wc)
+                        .unwrap_or(sim.scal.s_wc)
                 } else {
                     sim.scal.s_wc
                 };
@@ -4789,6 +4923,113 @@ mod tests {
             state.cells[idx].regime = *regime;
         }
         state
+    }
+
+    /// Boundary-only derivative evidence for Y2b.  This is deliberately a
+    /// one-cell gas injector so each reported reservoir row is the injector's
+    /// connected cell and the perforation row remains present.  The exact
+    /// 10x10x3 repro supplies the live trajectory; this fixture supplies the
+    /// controlled `bound-eps/bound/bound+eps` probes for every active clamp.
+    #[test]
+    fn y2b_boundary_injector_fixture_reports_ad_legacy_and_one_sided_fd() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(100.0, 0.0).unwrap();
+        sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
+        let topology = build_well_topology(&sim);
+        let perf_idx = 0;
+        let cell_idx = 0;
+        let options = FimAssemblyOptions {
+            dt_days: 0.25,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: Some(&topology),
+        };
+        let eps = 1e-7;
+        let cases = [
+            ("swc", 0.15, 0.10, 1usize),
+            ("sg_zero", 0.30, 0.0, 2usize),
+            ("sw_upper", 0.80, 0.0, 1usize),
+            ("sg_upper", 0.15, 0.65, 2usize),
+        ];
+
+        for (boundary, sw, sg, boundary_column) in cases {
+            for (sample, signed_eps) in [("minus", -eps), ("exact", 0.0), ("plus", eps)] {
+                let mut state = FimState::from_simulator(&sim);
+                state.cells[cell_idx].sw = sw;
+                state.cells[cell_idx].hydrocarbon_var = sg;
+                state.cells[cell_idx].regime = HydrocarbonState::Saturated;
+                if boundary_column == 1 {
+                    state.cells[cell_idx].sw += signed_eps;
+                } else {
+                    state.cells[cell_idx].hydrocarbon_var += signed_eps;
+                }
+                let previous_state = state.clone();
+                let ad = crate::fim::assembly_ad::assemble_fim_system_ad(
+                    &sim,
+                    &previous_state,
+                    &state,
+                    &options,
+                );
+                let legacy = assemble_fim_system(&sim, &previous_state, &state, &options);
+                let rows = [
+                    (
+                        "rate_consistency",
+                        state.perforation_equation_offset(perf_idx),
+                    ),
+                    ("water", equation_offset(cell_idx, 0)),
+                    ("oil", equation_offset(cell_idx, 1)),
+                    ("gas", equation_offset(cell_idx, 2)),
+                ];
+                let columns = [
+                    ("p", unknown_offset(cell_idx, 0)),
+                    ("sw", unknown_offset(cell_idx, 1)),
+                    ("hc", unknown_offset(cell_idx, 2)),
+                    ("bhp", state.well_bhp_unknown_offset(0)),
+                    ("q", state.perforation_rate_unknown_offset(perf_idx)),
+                ];
+                for (row_label, row) in rows {
+                    assert!(ad.residual[row].is_finite() && legacy.residual[row].is_finite());
+                    for (column_label, column) in columns {
+                        let h = y2a_finite_difference_step(&state, column);
+                        let mut plus = state.clone();
+                        let mut minus = state.clone();
+                        y2a_perturb_unknown(&mut plus, column, h);
+                        y2a_perturb_unknown(&mut minus, column, -h);
+                        let plus_residual =
+                            assemble_fim_system(&sim, &previous_state, &plus, &options).residual
+                                [row];
+                        let minus_residual =
+                            assemble_fim_system(&sim, &previous_state, &minus, &options).residual
+                                [row];
+                        let central = (plus_residual - minus_residual) / (2.0 * h);
+                        let forward = (plus_residual - legacy.residual[row]) / h;
+                        let backward = (legacy.residual[row] - minus_residual) / h;
+                        let ad_derivative = ad.jacobian.get(row, column).copied().unwrap_or(0.0);
+                        let legacy_derivative =
+                            legacy.jacobian.get(row, column).copied().unwrap_or(0.0);
+                        assert!(
+                            ad_derivative.is_finite()
+                                && legacy_derivative.is_finite()
+                                && central.is_finite()
+                                && forward.is_finite()
+                                && backward.is_finite(),
+                            "{boundary}/{sample} {row_label}/{column_label} must remain finite"
+                        );
+                        println!(
+                            "Y2B fixture boundary={boundary} sample={sample} row={row_label} col={column_label} residual_ad={:.12e} residual_legacy={:.12e} ad={ad_derivative:.12e} legacy={legacy_derivative:.12e} central={central:.12e} forward={forward:.12e} backward={backward:.12e}",
+                            ad.residual[row], legacy.residual[row],
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

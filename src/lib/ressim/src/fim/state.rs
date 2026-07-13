@@ -405,6 +405,40 @@ impl FimState {
         self.apply_raw_update(sim, update, damping, topology, well_update_mode)
     }
 
+    /// Test-only view of the Newton candidate before ResSim's state projection.
+    ///
+    /// This intentionally applies the same damped unknown vector as
+    /// `apply_raw_update`, but skips cell/control bounds and the optional well
+    /// post-processing.  It exists solely for the Y2b OPM-parity audit, where
+    /// the distinction between the raw primary-variable state and ResSim's
+    /// accepted (bounded) state is the subject under test.  Production Newton
+    /// updates must continue through `apply_newton_update_frozen`.
+    #[cfg(test)]
+    pub(crate) fn apply_unbounded_update_for_audit(
+        &self,
+        update: &DVector<f64>,
+        damping: f64,
+    ) -> Self {
+        let mut next = self.clone();
+
+        for (idx, cell) in next.cells.iter_mut().enumerate() {
+            let offset = idx * 3;
+            cell.pressure_bar += damping * update[offset];
+            cell.sw += damping * update[offset + 1];
+            cell.hydrocarbon_var += damping * update[offset + 2];
+        }
+        for well_idx in 0..self.n_well_unknowns() {
+            let offset = self.well_bhp_unknown_offset(well_idx);
+            next.well_bhp[well_idx] += damping * update[offset];
+        }
+        for perf_idx in 0..self.n_perforation_unknowns() {
+            let offset = self.perforation_rate_unknown_offset(perf_idx);
+            next.perforation_rates_m3_day[perf_idx] += damping * update[offset];
+        }
+
+        next
+    }
+
     fn apply_raw_update(
         &self,
         sim: &ReservoirSimulator,
@@ -737,6 +771,54 @@ mod tests {
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
         assert!(state.cells[0].hydrocarbon_var > 0.0);
+    }
+
+    #[test]
+    fn y2b_audit_view_retains_corrections_discarded_by_cell_bounds() {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_rel_perm_props(
+            0.15, 0.15, 0.05, 0.05, 0.2, 2.0, 2.0, 2.0, 1e-5, 1.0, 0.95,
+        )
+        .unwrap();
+        sim.set_three_phase_mode_enabled(true);
+        let topology = build_well_topology(&sim);
+        let eps = 1e-6;
+
+        let cases = [
+            ("swc", 0.15, 0.10, -eps, 0.0, 0.15, 0.10),
+            ("sg_zero", 0.30, 0.0, 0.0, -eps, 0.30, 0.0),
+            ("sw_upper", 0.80, 0.0, eps, 0.0, 0.80, 0.0),
+            ("sg_upper", 0.15, 0.65, 0.0, eps, 0.15, 0.65),
+        ];
+
+        for (label, sw, sg, dsw, dsg, bounded_sw, bounded_sg) in cases {
+            let mut state = FimState::from_simulator(&sim);
+            state.cells[0].sw = sw;
+            state.cells[0].hydrocarbon_var = sg;
+            state.cells[0].regime = HydrocarbonState::Saturated;
+            let mut update = DVector::zeros(state.n_unknowns());
+            update[1] = dsw;
+            update[2] = dsg;
+
+            let raw = state.apply_unbounded_update_for_audit(&update, 1.0);
+            let bounded = state.apply_newton_update_frozen(
+                &sim,
+                &update,
+                1.0,
+                &topology,
+                WellStateUpdateMode::None,
+            );
+            assert!(
+                (raw.cells[0].sw - (sw + dsw)).abs() < 1e-15
+                    && (raw.cells[0].hydrocarbon_var - (sg + dsg)).abs() < 1e-15,
+                "{label}: audit state must retain the raw correction"
+            );
+            assert!(
+                (bounded.cells[0].sw - bounded_sw).abs() < 1e-15
+                    && (bounded.cells[0].hydrocarbon_var - bounded_sg).abs() < 1e-15,
+                "{label}: production state must retain its existing bound policy"
+            );
+        }
     }
 
     #[test]

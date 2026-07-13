@@ -69,6 +69,44 @@ accepted-state evaluation. Full citations and the three-boundary table are in
 Y2b1, but it does not prove that removing the hard bound fixes the plateau. Next authorized work
 is test-only boundary characterization; no acceptance, clamp, G4/G5, controller, or AMG change.
 
+### Bundle Y Y2b1 — boundary characterization (2026-07-13; complete, test-only)
+
+**Hypothesis:** ResSim's hard post-update projection, rather than the linear backend or a need to
+average a kink derivative, destroys the Newton step in the exact injector failure path.
+
+Added only `#[cfg(test)]` machinery: an unbounded candidate view in `fim/state.rs`, a four-bound
+guard (`Swc`, `Sg=0`, upper `Sw`, upper `Sg`), a one-cell gas-injector AD/legacy/FD fixture, and
+the exact driver's `FIM_Y2B_AUDIT=1` trace. The fixture exercises `bound-eps`, `bound`, and
+`bound+eps`, with injector `rate_consistency` plus connected water/oil/gas rows; it prints
+residuals, AD/legacy entries, and forward/backward/central FD. It passes and makes the kink
+semantics unambiguous: AD equals the active one-sided derivative, while central FD crosses the
+branch. This is evidence against derivative averaging, not against AD.
+
+Exact command (live):
+`FIM_Y2A_AUDIT=1 FIM_Y2B_AUDIT=1 FIM_MAX_SUBSTEPS=1 FIM_TRACE_FILE=/tmp/ressim-y2b-live.log
+FIM_TRACE_DT_BELOW=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml
+repro_gas_rate_10x10x3_y1j -- --ignored --nocapture`. The matching forced-direct command adds
+`FIM_FORCE_DIRECT_LINEAR=1` and writes `/tmp/ressim-y2b-direct.log`; it accepted the same capped
+first rung (`dt=0.000978384825`, five nonlinear retries). At a representative late rung
+(`dt=9.78384825e-4`, iter 5), both backends propose `Sw=0.15→0.1499514237572`. Raw next water
+residual follows the assembled linear prediction (`-8.53e-11` live; direct is within trace roundoff),
+but the normal candidate projects `Sw` back to `0.15` and its next water residual is
+`4.8591978e-3`, essentially the pre-step `4.8591979e-3`. Rate-consistency, oil, and gas rows also
+show a large projection effect; water is the cleanest first-order discriminator.
+
+**Verdict:** Y2b1 PASS; Y2b2 is authorized. This proves that the hard projection breaks the
+Newton prediction on the exact plateau and direct/live equivalence rules out an iterative-linear
+explanation. It does not prove that a raw-state policy alone converges the full case. Next work is
+one default-off, `OpmAligned`-only coherent policy probe; no acceptance widening, generic clamp
+change, derivative averaging, G4/G5 restructuring, or controller work is in scope.
+
+**Validation:** focused Y2b state and injector fixtures pass; `fim::assembly_ad::tests` passes
+4/4; `validate-solver-coverage.sh fim` passes 9/9. Its `shared` follow-on has one repeatable
+unrelated failure: `tests::runtime_api::closed_system_public_step_keeps_same_water_inventory_on_both_solvers`
+expects one FIM substep and sees two (`runtime_api.rs:81`). The new paths are `#[cfg(test)]` and
+disabled absent `FIM_Y2B_AUDIT`, so they cannot affect that normal public-step trajectory; an
+isolated rerun fails identically. Recorded as a pre-existing baseline issue, not changed here.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted
