@@ -12,6 +12,13 @@ ResSim has several validation surfaces with different costs and different owners
 1. **Never use full `cargo test` as a pass/fail gate.** FIM/SPE1 diagnostic tests can hang or dominate runtime (`docs/FIM_DEFERRED_BACKLOG.md`). Use the targeted buckets below.
 2. **Never change benchmark tolerances** (Buckley-Leverett tests, parity gates) without explicit written justification in the same commit.
 3. A change is not "done" until `TODO.md` is updated (project TODO discipline) and the relevant gate below is green.
+4. **Separate code validation from hypothesis validation.** Green unit/parity/control tests prove
+   their stated contracts only. They do not establish OPM parity or validate an experimental
+   verdict unless the measured observable is itself an OPM or backend-neutral oracle.
+5. A cross-backend FIM result is not a valid pass/fail gate until both reports contain comparable
+   initial/RHS norm, final full-system residual norm, reduction, and finite-solution status. If
+   one path reports `n/a`, reduced-system-only data, or a backend-specific failure payload, record
+   the experiment as `INCONCLUSIVE` and repair the measurement contract first.
 
 ## Decision table — what changed → what to run
 
@@ -22,6 +29,7 @@ ResSim has several validation surfaces with different costs and different owners
 | Rust shared code (`relperm.rs`, `pvt.rs`, `mobility.rs`, `capillary.rs`, `well*.rs`, `step.rs`, `reporting.rs`, `frontend.rs`) | `bash scripts/validate-solver-coverage.sh all` + BL benchmarks |
 | IMPES only (`src/lib/ressim/src/impes/`) | `bash scripts/validate-solver-coverage.sh impes` then `shared` |
 | FIM only (`src/lib/ressim/src/fim/`) | FIM locked baseline (below) + `bash scripts/validate-solver-coverage.sh fim` then `shared`; for solver *behavior* changes also run the wasm control matrix (see `fim-solver-debug` skill) |
+| FIM linear-report/oracle code | Focused report-contract tests for every affected backend and well-Schur wrapping + targeted replay of the captured system; then the normal FIM-only gates above |
 | Analytical modules (`src/lib/analytical/`) | `pnpm test` (analytical + contract tests) |
 | Scenario catalog (`src/lib/catalog/`) | `pnpm test` then `pnpm run typecheck` |
 | WASM API surface (`frontend.rs`, `lib.rs`, worker payloads) | `bash scripts/build-wasm.sh` + `pnpm run validate:product` |
@@ -79,6 +87,12 @@ bash scripts/build-wasm.sh
 - **`*_on_both_solvers` test failures** mean IMPES and FIM public behavior diverged. Do not weaken the contract; find which solver changed.
 - **Bit-parity gate failures in `fim/assembly_ad.rs`** mean the AD assembly and the legacy assembly no longer agree. See the `engine-physics-change` skill — physics helpers often have both a legacy and an AD implementation that must be changed together.
 - If a test fails on a clean tree before your change, record that first (it is a pre-existing failure, not yours) and note it in `TODO.md`.
+- AD/legacy/finite-difference agreement means ResSim differentiated its own residual consistently;
+  it does **not** prove that the residual, primary variables, bounds, or well formulation match
+  OPM. Require a sourced OPM semantic or trajectory comparison for an OPM-parity claim.
+- A direct solver is not automatically a truth oracle. Check `||J dx - rhs|| / ||rhs||` on the
+  same full system and compare the returned correction before interpreting different
+  `converged` flags.
 
 ## CI reality check
 

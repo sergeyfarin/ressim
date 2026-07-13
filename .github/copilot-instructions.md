@@ -85,3 +85,18 @@ See `README.md` for full feature list and `docs/` for technical deep-dives.
 - when replacing an older baseline in docs, explicitly say which older baseline was superseded and why
 
 **Promotion discipline**: before promoting a convergence change into docs as the new baseline, rerun the agreed validation shortlist on the final post-revert/post-cleanup tree, not on an intermediate experiment commit. If a replay is too expensive to rerun broadly, mark the baseline as provisional instead of presenting it as settled.
+
+**Experimental-verdict discipline**: a test suite passing proves the implementation satisfies
+those tests; it does not by itself prove or refute a convergence hypothesis. Before using two
+solver paths as independent checks, prove that both expose the same backend-neutral observables
+(initial/RHS norm, final full-system residual norm, reduction, finite correction, and the same
+row partition). A missing diagnostic, backend-specific success flag, or wrapper/reduced-system
+norm mismatch makes the experiment `INCONCLUSIVE`. Never label a physics/update hypothesis
+`REFUTED` because a second backend aborted before its correction quality was measured.
+
+When porting OPM behavior, distinguish a narrow component probe from a coherent OPM lifecycle.
+State storage, property endpoint extension, accumulation, primary-variable adaptation, well
+unknowns, and linear acceptance can interact. A partial probe may establish a local mechanism,
+but it cannot refute the complete mechanism while named coupled semantics are absent. Keep
+commits reversible and causally scoped, but use dependency-aware bundles when the source
+implementation is intrinsically coupled.

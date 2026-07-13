@@ -7,6 +7,57 @@ description: Debug or improve FIM (fully implicit) solver convergence, timestep 
 
 FIM is **dev-only** — public scenario runs use IMPES (`docs/FIM_DEFERRED_BACKLOG.md`). FIM convergence is the hardest, most history-laden area of this project. The graveyard of reverted experiments is large; the process below exists because ad-hoc tuning repeatedly produced false wins.
 
+## Oracle validity comes before a verdict
+
+Every convergence experiment has two independently fallible parts: the solver mechanism under
+test and the measurement/oracle used to judge it. Validate the oracle before interpreting a
+negative result.
+
+For live/direct or backend/backend comparisons, record the same full-system quantities on both
+paths:
+
+- `rhs_norm` (the initial linear residual norm);
+- returned `solution` finite status;
+- `final_residual_norm = ||rhs - J dx||` on the **full** system;
+- `reduction = final_residual_norm / max(rhs_norm, 1e-30)`;
+- reservoir-row and well-row residual partitions after any Schur recovery;
+- correction-vector difference when two backends are claimed to agree or disagree.
+
+Do not derive a universal quantity such as reduction from an optional backend-specific failure
+payload. A wrapper that changes `converged` after checking a recovered full system must also
+publish full-system norms; forwarding a reduced solver's absent diagnostics is not sufficient.
+If any required quantity is absent or incomparable, stop and label the result `INCONCLUSIVE —
+oracle defect`. Repair the report contract or add a diagnostic replay before changing physics,
+Newton policy, wells, or timestep control.
+
+Verdict meanings for convergence work:
+
+- `PROMOTED`: the scoped mechanism passed its declared target, controls, physics, and clean-tree
+  replay gates.
+- `REFUTED`: a valid oracle directly measured the hypothesis as false or irrelevant.
+- `REVERTED`: implementation removed because a valid control/promotion gate regressed; this does
+  not necessarily refute the underlying mechanism.
+- `INCONCLUSIVE`: the probe was incomplete, the oracle/reporting was invalid, or another defect
+  prevented measurement of the stated hypothesis.
+- `DIAGNOSTIC`: read-only or inert instrumentation result.
+
+Never collapse `REVERTED` or `INCONCLUSIVE` into `REFUTED`. In particular, a promising live
+trajectory is not refuted by a direct path that aborts with `reduction=n/a`; first compare the
+actual corrections and full-system residual reductions.
+
+## OPM parity requires a coherent semantic scope
+
+Before implementing an OPM-alignment probe, write a dependency table covering the applicable
+source lifecycle: stored primary state, update/chop, accumulation state, endpoint-clipped
+properties, phase presence and `adaptPrimaryVariables`, well primary variables/equations, and
+linear acceptance. Mark each item `matched`, `intentionally held constant`, or `missing`.
+
+"One mechanism per commit" means one falsifiable causal question, not that an intrinsically
+coupled OPM mechanism must be split into misleading fragments. A narrow probe may prove a local
+effect, but it cannot refute the complete OPM mechanism when required lifecycle pieces are still
+missing. AD/legacy/FD parity proves internal differentiation consistency only; it is not an OPM
+equation or trajectory oracle.
+
 ## Read history BEFORE proposing a fix
 
 Many plausible levers were already tried and **reverted**. Check these, in order, before designing anything:
@@ -91,12 +142,21 @@ From project instructions (`.github/copilot-instructions.md`):
 ## Working method for a convergence slice
 
 1. Reproduce the target shelf/ladder on a clean tree; identify the *real* blocker (`accepts` split + `--diagnostic step` trace), not the bookkeeping.
-2. Form one bounded hypothesis touching one controller mechanism. Prefer narrow guards (failure family + iteration count + regime + dt floor) over global tuning.
-3. Implement with a focused Rust unit test for the new mechanism (see existing `gas_outer_step_trial_cap` tests in `fim/timestep.rs` for the pattern).
-4. Rebuild wasm, rerun target + full control matrix.
-5. Green and improved → promote with recorded numbers. Any control moved → revert and record the negative result.
-6. Add or update the corresponding row in `docs/FIM_EXPERIMENT_REGISTRY.md` before committing, including the verdict and the condition for retrying if it failed.
-7. Run FIM locked baseline + parity gates (`ressim-validation` skill) before committing.
+2. State separately: hypothesis under test, oracle, expected confirming observation, expected
+   refuting observation, and named coupled mechanisms held constant or missing.
+3. Validate the oracle on the exact decision point. For backend comparisons, require the
+   backend-neutral linear quantities above before allowing a physics verdict.
+4. Form one bounded causal slice. Prefer narrow guards (failure family + iteration count + regime
+   + dt floor) over global tuning, but keep source-required coupled semantics together and list
+   why they cannot be evaluated independently.
+5. Implement with a focused Rust unit test for the new mechanism (see existing
+   `gas_outer_step_trial_cap` tests in `fim/timestep.rs` for the pattern).
+6. Rebuild wasm, rerun target + full control matrix.
+7. Classify the outcome using the verdict definitions above. A moved control can require a
+   revert, but call the hypothesis refuted only if the measurement actually isolates it.
+8. Add or update the corresponding row in `docs/FIM_EXPERIMENT_REGISTRY.md` before committing,
+   including the verdict, oracle validity, omitted coupled semantics, and retry condition.
+9. Run FIM locked baseline + parity gates (`ressim-validation` skill) before committing.
 
 ## Reference target
 

@@ -1262,21 +1262,55 @@ is `4.8591978e-3`. Oil/gas and rate-consistency rows also receive a large projec
 forced-direct run produces the same correction, raw water closure, and restored bounded residual.
 
 **Decision:** the hard bound is a direct first-order inconsistency in the exact failure path and
-OPM leaves this deck unprojected. Authorize the narrow Y2b2 `OpmAligned`-only/default-off coherent
+OPM leaves this deck unprojected. Authorize the narrow Y2b2 `OpmAligned`-only/default-off
 bound-policy probe. Do not alter generic derivative rules, acceptance, or G4/G5 structure.
 
-### 15.3 Y2b2 result: raw-state retention is not a viable isolated policy (2026-07-13)
+### 15.3 Y2b2 correction: result is masked by an invalid direct oracle (2026-07-13)
 
-**Status: refuted; implementation removed.** The one authorized probe retained raw saturation
+**Status: INCONCLUSIVE; implementation removed pending oracle repair.** The one authorized probe retained raw saturation
 primary variables after the existing per-cell `ds-max` chop, only under a native,
 `OpmAligned`-only default-off flag; pressure and well bounds remained active. Live first-rung
 result improved from `dt=0.000978384825`, five nonlinear retries, to `0.00898425`, three
-linear-classified retries. That apparent gain fails the required independent check: forced-direct
-accepted no substep and exhausted 16 linear-classified retries. Both backends match through the
-first three cutbacks; at `dt=0.00898425`, live takes a third iteration and accepts while direct
-stops at iteration two with a well-row failure. The flag and all behavior code were deleted.
+linear-classified retries. Forced-direct accepted no substep and exhausted 16 linear-classified
+retries. Both backends match through the first three cutbacks; at `dt=0.00898425`, live takes a
+third iteration and accepts while direct stops at iteration two with a well-row failure. The flag
+and all behavior code were deleted.
 
-The projection observation remains valid, but retaining raw saturation alone is insufficient and
-does not provide a coherent OPM trajectory in ResSim. Do not retry it until G4 explains the
-well-row/direct-backend split; this result does not authorize acceptance widening, derivative
-averaging, G5, or Y2c.
+The original verdict treated that direct/live disagreement as an independent refutation. A
+follow-up audit shows the gate compared report semantics, not measured correction quality. At the
+decision point both paths have reached the same iteration-1 state. Live CPR reports a finite,
+non-strict solve plus `rhs_norm`, allowing Newton to compute reduction `5.299e-3 < 1e-2`, apply
+the relaxed-accepted correction, and reach strict nonlinear convergence on iteration 2. Sparse LU
+also returns a finite solution, but `sparse_lu_debug.rs` always sets `failure_diagnostics=None`.
+`well_schur.rs` forwards that absence; `newton.rs` derives relaxed reduction only through the
+optional failure payload, so direct emits `reduction=n/a` and aborts without measuring or applying
+its correction. This is the same missing-diagnostics failure shape already documented in §8.4.
+At later direct retries, nonlinear convergence is already `would_accept=strict` before the
+mandatory solve, yet the same `reduction=n/a` path forces another retry.
+
+Therefore the current evidence does **not** show that the direct correction is poor, and cannot
+refute the state policy. The 9.2x live improvement remains provisional positive evidence; it is
+not promotable until direct correction quality and full-system residual reduction are measured.
+
+The probe also did not implement the complete OPM lifecycle established in §15.1. It removed the
+post-update saturation projection but retained ResSim's frozen Newton regime and flash-side
+hydrocarbon clamps, without OPM's per-update `adaptPrimaryVariables`. It is a valid narrow `Swc`
+mechanism probe, not a coherent test of raw state plus endpoint properties plus variable
+adaptation. Its result cannot refute that larger coupled mechanism.
+
+### 15.4 Y2b2a next slice: backend-neutral linear oracle before G4
+
+The next authorized slice is measurement infrastructure, not well restructuring. Y2b2a makes
+every linear report expose original full-system RHS norm, recovered full-system residual norm,
+and reduction independently of optional backend failure details. It makes the OPM relaxed-linear
+check consume that backend-neutral value, adds focused Sparse LU/well-Schur/acceptance contract
+tests, and proves the existing forced-direct trace has no finite `reduction=n/a` result. Commit
+that oracle change before restoring behavior.
+
+Y2b2b may then restore the same narrow native default-off raw-state probe, capture the exact
+`dt=0.00898425`, iteration-1 system, replay both production paths, and compare
+`||rhs-J dx||/||rhs||`, correction vectors, and reservoir/well row partitions. If
+both backends produce valid corrections and the improvement survives, complete the sourced OPM
+state lifecycle before using remaining well-row dominance to authorize G4. If Sparse LU or Schur
+recovery is genuinely worse, fix that linear path first. Full file-level steps, commands, and the
+decision table live in `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` §§5.1-5.2.

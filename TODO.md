@@ -66,11 +66,21 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `Swc`, raw Newton water residual agrees with its linear prediction while ResSim's projection
   restores the pre-step residual; direct/live agree. One-sided AD behavior is expected at the
   discontinuity, not a derivative-averaging target.
-- [x] **Y2b2 raw-state probe:** refuted 2026-07-13. It improved the live capped rung ~9.2× but
-  direct exhausted 16 retries at the same policy; implementation deleted. Do not retry raw-state
-  retention without explaining the well-row/direct split.
-- [ ] **G4 (next):** injector well primary-variable/row-structure audit, scoped from the Y2b2
-  direct failure at `well@900`; no policy change or Y2c promotion before that audit.
+- [x] **Y2b2 raw-state probe implementation removed; verdict corrected to INCONCLUSIVE
+  2026-07-13.** It improved the live capped rung ~9.2×. Forced-direct exhausted 16 retries because
+  Sparse LU/well-Schur supplied no failure diagnostics and Newton could not compute relaxed
+  reduction (`n/a`); the trace did not measure the direct correction's quality. The probe also
+  omitted OPM's in-loop primary-variable adaptation.
+- [ ] **Y2b2a (next): repair the linear oracle.** Add backend-neutral full-system RHS/final norms
+  and reduction for Sparse LU/well-Schur/Newton; add report-contract tests; prove the existing
+  forced-direct first-rung trace has no finite `reduction=n/a`; commit before behavior work.
+- [ ] **Y2b2b (blocked on Y2b2a): replay the same narrow raw-state probe.** Restore only the
+  native default-off flag, capture the exact `dt=0.00898425` iteration-1 system, replay CPR/direct,
+  and compare `||rhs-Jdx||/||rhs||`, actual corrections, reservoir/well row partitions, and the
+  next nonlinear state before classifying Y2b.
+- [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
+  Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
+  plateau to well equations. The present `well@900` direct failure is not authorization.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

@@ -6,9 +6,9 @@ Six core skills that encode how this project is debugged, extended, and validate
 
 | Skill | Use when |
 |---|---|
-| `ressim-validation` | Before claiming any change done; choosing which test gate applies. **Read this one first for every task.** |
+| `ressim-validation` | Before claiming any change done; choosing which test gate applies; separating green code gates from a valid experimental oracle. **Read this one first for every task.** |
 | `engine-physics-change` | Any change under `src/lib/ressim/src/` (units, test placement, dual-implementation traps, tolerances) |
-| `fim-solver-debug` | FIM convergence/Newton/timestep work; wasm diagnostic runner; baseline & promotion discipline |
+| `fim-solver-debug` | FIM convergence/Newton/timestep work; backend-neutral oracle checks; dependency-aware OPM probes; verdict, baseline, and promotion discipline |
 | `frontend-architecture` | Any Svelte/TS change; chart stack layer map; which legacy files not to grow |
 | `add-scenario` | Adding cases, sensitivities, analytical overlays to the catalog |
 | `opm-reference-pipeline` | OPM Flow decks/artifacts/ground-truth comparison |
@@ -26,6 +26,8 @@ Effective session pattern for cheaper models:
 1. Start the prompt with the goal AND the constraint: "Follow .claude/skills/ressim-validation/SKILL.md before declaring done."
 2. One skill-sized task per session. Don't mix an engine change and a frontend change.
 3. Ask for the validation command output verbatim at the end — don't accept "tests pass".
+4. For convergence experiments, require the agent to name the oracle and classify missing or
+   incomparable diagnostics as `INCONCLUSIVE`, never `REFUTED`.
 
 ## How to use with Codex / ChatGPT / other agents
 

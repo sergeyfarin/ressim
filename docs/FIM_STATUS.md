@@ -26,14 +26,16 @@ at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard pr
 
 **Current decision frontier:** source audit shows OPM's normal update uses `ds-max` limiting while
 optional saturation projection defaults off; ResSim enforces `Sw >= Swc` after each update. Y2b1
-measured the resulting first-order break, but Y2b2's raw-state policy is now refuted: live improved
-the capped rung ~9.2×, while forced-direct exhausted 16 retries (diverging at the same trial dt).
-The implementation was deleted. The next bounded branch is G4 injector well
-primary-variable/row-structure audit; do not promote a bound policy or start Y2c.
-in `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` before G4/G5 restructuring, controller tuning,
-AMG, damping changes, or convergence-acceptance widening. Re-derive current ResSim baselines on
-the clean commit before the first behavior probe; do not use the historical `459`/`238`/`695`
-counts as promotion baselines.
+measured the resulting first-order break. Y2b2's live raw-state probe improved the capped rung
+~9.2×, but its forced-direct check was invalid: Sparse LU/well-Schur exposed no failure reduction,
+so Newton aborted with `reduction=n/a` without measuring direct correction quality. The probe also
+omitted OPM's per-update primary-variable adaptation. Its behavior implementation was deleted and
+the verdict is **INCONCLUSIVE**, not refuted. The next bounded slice is Y2b2a backend-neutral
+linear-report/oracle repair and exact iteration replay, as specified in
+`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; G4/G5 restructuring, controller tuning,
+AMG, damping changes, and convergence-acceptance widening remain blocked. Re-derive current
+ResSim baselines on the clean commit before the first behavior probe; do not use the historical
+`459`/`238`/`695` counts as promotion baselines.
 
 Use this file for:
 

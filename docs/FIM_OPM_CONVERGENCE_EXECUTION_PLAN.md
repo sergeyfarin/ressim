@@ -1,6 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0/Y2b1 complete; Y2b2 raw-state probe refuted; G4 is next (2026-07-13)**. This document turns the evidence in
+Status: **Y2b0/Y2b1 complete; Y2b2 reclassified INCONCLUSIVE; Y2b2a oracle repair is next
+(2026-07-13)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -32,6 +33,10 @@ The established causal chain is:
    saturation projection is optional and defaults off. ResSim hard-clamps `Sw >= Swc` after every
    update. This is a source-confirmed implementation divergence, but it is not yet proven to be
    the sole cause of the live plateau.
+5. The Y2b2 live raw-state probe materially improved the accepted first rung, but its forced-direct
+   check aborted through a linear-reporting asymmetry: Sparse LU returned no failure diagnostics,
+   so `OpmAligned` could not calculate relaxed reduction. The negative gate did not measure the
+   direct correction's quality. Y2b2 is therefore inconclusive, not refuted.
 
 This evidence supersedes the older claims that the gas failure was primarily CPR quality, that
 OPM itself grinds through the same stagnation, or that AMG is the next convergence lever.
@@ -39,8 +44,14 @@ OPM itself grinds through the same stagnation, or that AMG is the next convergen
 ## 2. Rules that apply to every slice
 
 - Read `FIM_EXPERIMENT_REGISTRY.md` before editing solver behavior.
-- Change one causal mechanism per commit. Do not combine a boundary-policy change with well
-  primary variables, controller settings, tolerances, or damping constants.
+- Change one falsifiable causal question per commit. Do not combine a boundary-policy experiment
+  with unrelated controller, tolerance, or damping tuning. When OPM source requires coupled
+  lifecycle semantics, keep them in a dependency-aware bundle and explicitly list which pieces
+  are matched, held constant, or still missing.
+- Before treating a direct/live comparison as an independent gate, require both paths to report
+  backend-neutral full-system `rhs_norm`, final `||rhs-J dx||`, reduction, finite correction, and
+  reservoir/well row partitions. `reduction=n/a`, reduced-only norms, or backend-specific failure
+  payloads make the result `INCONCLUSIVE`; they do not refute solver physics or state policy.
 - Preserve Legacy behavior unless a later promotion gate explicitly authorizes an unconditional
   change. First behavior probes are `OpmAligned`-only and flag-gated.
 - Do not broaden stagnation or final-state acceptance (`FIM-NEWTON-004`/`005`). A state that OPM
@@ -48,11 +59,14 @@ OPM itself grinds through the same stagnation, or that AMG is the next convergen
 - Do not globally change generic clamp helpers or patch only the injector well row. Reservoir and
   well residuals must use one coherent state/update convention.
 - Do not start AMG, G4 primary-variable restructuring, G5 variable substitution, or controller
-  parity while Y2b is unresolved.
+  parity while Y2b2a's oracle defect is unresolved.
 - Record exact commit, commands, case dimensions, flags, output artifact paths, and before/after
   metrics in the worklog. Update the registry even for a negative result.
 - Use capped first-rung diagnostics before full runs. A full multi-step run is a promotion gate,
   not a discovery tool.
+- A green ResSim test, AD/legacy parity check, or finite-difference match proves its named local
+  contract only. It is not an OPM-parity oracle unless the compared state, residual, variables,
+  and update lifecycle are sourced from OPM.
 
 ## 3. Y2b0 — establish OPM and ResSim bound/update semantics (no behavior change)
 
@@ -153,17 +167,110 @@ residual history, and direct/live correction agreement.
 Pass condition: the exact injector case obtains a materially larger accepted first step and/or
 removes the repeated 20-iteration plateau, with residuals decreasing consistently. Revert the
 behavior probe if it creates NaN/non-finite states, invalid phase totals, new failures in controls,
-direct/live disagreement, or an unchanged plateau. Preserve tests, traces, and the negative
-registry verdict when useful.
+or an unchanged plateau. A direct/live disagreement is a stop condition only after the
+backend-neutral correction and full-system reduction contract has been verified. Preserve tests,
+traces, and an accurately classified registry verdict when useful.
 
-**Result (2026-07-13): REFUTED and removed.** The native-only raw-saturation candidate improved
+**Result (2026-07-13): INCONCLUSIVE; implementation removed.** The native-only raw-saturation candidate improved
 the live capped first rung from `dt=0.000978384825` (five nonlinear retries) to `0.00898425`
 (three linear-classified retries), but forced-direct accepted no substep and exhausted all 16
 retries. The two backends agree through the first three cutbacks and diverge at `0.00898425`:
 live performs a third iteration and accepts, while direct fails its well row at iteration two.
-This violates the probe's direct/live agreement gate. The field, setter, state-policy branch, and
-test hook were deleted; only the evidence remains. Do not retry raw-state retention without a
-new explanation for that well-row/direct-solve split. Select G4 next.
+The original slice treated this as a valid direct/live refutation. The subsequent report-path
+audit shows that conclusion was unsound:
+
+- both paths reach the same iteration-1 state at `dt=0.00898425`;
+- live CPR returns `converged=false` with a measured reduction of `5.299e-3`, which satisfies
+  OPM's relaxed `<1e-2` criterion; the applied correction leads to strict nonlinear convergence
+  on the next iteration;
+- Sparse LU returns a finite solution but always leaves `failure_diagnostics=None`;
+- well Schur forwards those missing diagnostics, and Newton derives reduction only from that
+  optional payload, producing `reduction=n/a` and a hard abort;
+- at later tiny retries, the direct trace reports `would_accept=strict` before another mandatory
+  linear solve, then retries solely because the same report has no usable reduction.
+
+Therefore the direct run did not measure whether its iteration-1 correction was good or bad. The
+9.2x live improvement is provisional positive evidence, not a promotion, while the direct result
+is an oracle defect, not a physics refutation. The behavior code remains deleted until the oracle
+is repaired and the exact probe is replayed.
+
+The probe was also narrower than the phrase "coherent OPM policy" implied. It skipped ResSim's
+post-update projection but retained frozen hydrocarbon regimes and flash-side hydrocarbon clamps;
+it did not implement OPM's per-iteration `adaptPrimaryVariables`. It can test the local `Swc`
+accumulation mechanism, but cannot refute the complete OPM raw-state/property/variable lifecycle.
+
+### 5.1 Y2b2a — repair and validate the experimental oracle (next authorized slice)
+
+Objective: determine whether the Y2b2 direct/live split is a real correction-quality difference
+or only report/wrapper semantics. Do not reintroduce raw-state behavior, alter G4/G5 structure, or
+tune acceptance in this slice.
+
+Implementation sequence:
+
+1. In `fim/linear/mod.rs`, make the linear report expose backend-neutral full-system quantities
+   without consulting `failure_diagnostics`: initial/RHS norm, final residual norm, and reduction.
+   Keep backend-specific failure details optional.
+2. In `fim/linear/sparse_lu_debug.rs`, populate those quantities on matrix-build failure,
+   factorization failure, finite non-strict solutions, and converged solutions.
+3. In `fim/linear/well_schur.rs`, publish the recovered **full-system** residual norm and original
+   full RHS norm. Never forward a reduced solver's norm as though it described the full system.
+4. In `fim/newton.rs`, make OPM relaxed linear acceptance consume the backend-neutral reduction,
+   not `failure_diagnostics`. Do not change the `<1e-2` threshold or any nonlinear acceptance.
+5. Add focused report-contract tests with declared names or equivalent coverage:
+   - `sparse_lu_non_strict_report_has_reduction`;
+   - `well_schur_report_uses_full_system_norms`;
+   - `opm_relaxed_linear_acceptance_is_backend_neutral`.
+6. Run the existing forced-direct first-rung driver with raw-state behavior still absent. Confirm
+   that every finite non-strict report now emits a numeric full-system reduction rather than
+   `n/a`. This is a report-contract check, not a new convergence baseline.
+
+Required validation while implementing:
+
+```text
+cargo test --manifest-path src/lib/ressim/Cargo.toml sparse_lu_non_strict_report_has_reduction -- --nocapture
+cargo test --manifest-path src/lib/ressim/Cargo.toml well_schur_report_uses_full_system_norms -- --nocapture
+cargo test --manifest-path src/lib/ressim/Cargo.toml opm_relaxed_linear_acceptance_is_backend_neutral -- --nocapture
+cargo test --manifest-path src/lib/ressim/Cargo.toml well_schur -- --nocapture
+FIM_FORCE_DIRECT_LINEAR=1 FIM_MAX_SUBSTEPS=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml repro_gas_rate_10x10x3_y1j -- --ignored --nocapture
+bash scripts/validate-solver-coverage.sh fim
+bash scripts/validate-solver-coverage.sh shared
+```
+
+Y2b2a exit gate: focused tests prove failure diagnostics are optional metadata, every wrapper
+publishes norms for the system represented by its report, well Schur overwrites them with original
+full-system values after recovery, and the forced-direct trace has no finite `reduction=n/a`
+outcome. Commit this oracle change and its docs before restoring any raw-state behavior.
+
+### 5.2 Y2b2b — restore and replay the same narrow probe
+
+Only enter after a clean Y2b2a commit passes its exit gate.
+
+1. Restore the previously deleted native, default-off, `OpmAligned`-only raw-saturation flag
+   without adding primary-variable adaptation, G4/G5 changes, acceptance tuning, or controller
+   changes. This is intentionally the same narrow probe so the old result is comparable.
+2. Add capture at the exact `dt=0.00898425`, iteration-1 decision point. Record matrix/RHS
+   dimensions, state/well-vector checksum, and stable captured-artifact checksum.
+3. Replay CPR and Sparse LU through the same production dispatch, including well Schur.
+4. For each backend record `||rhs-J dx||/||rhs||`, finite status, correction norms, maximum
+   componentwise correction difference, and reservoir/well row residual partitions. Compare the
+   actual BHP and perforation-rate corrections, not only `converged` flags.
+5. Rerun capped live and direct first-rung commands with the flag. Record retry classes, accepted
+   `dt`, Newton iterations, CNV/MB/well histories, and the next state after any relaxed solve.
+
+Decision table:
+
+| Observation at the captured iteration | Verdict | Next authorized action |
+| --- | --- | --- |
+| CPR and Sparse LU corrections agree to numerical tolerance and both reduce the full residual below `1e-2` | Oracle defect confirmed | Classify the corrected capped live/direct result; if both accept consistently, proceed to the coherent OPM lifecycle bundle, not G4 |
+| Sparse LU correction is materially worse and its full residual reduction is `>=1e-2` | Linear/Schur defect localized | Diagnose the direct factorization/recovery path; Y2b remains inconclusive |
+| Corrections differ but both reductions are `<1e-2` | Backend trajectory sensitivity, not failure | Apply the same OPM relaxed rule, then compare the next nonlinear state; keep verdict inconclusive until replayed |
+| Report contract cannot produce comparable full-system quantities | Oracle still invalid | Stop; do not issue a Y2b/G4 physics verdict |
+
+Only after Y2b2b may raw-state retention be classified. If it remains beneficial, the next
+behavior bundle must source and cover raw stored state, raw accumulation, endpoint-clipped
+properties, and per-iteration primary-variable
+adaptation together. G4 becomes eligible only if that coherent trace still localizes the plateau
+to well equations or well primary variables.
 
 ## 6. Y2c — promotion matrix
 
@@ -189,8 +296,11 @@ entire OPM stack ready.
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
+- **Y2b2a oracle repair is mandatory first.** No structural branch can be selected from the
+  current forced-direct result because the gate did not measure direct correction quality.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
-  well/perforation rows or the per-perforation `q` formulation.
+  well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
+  replay.
 - **G5 variable substitution:** choose only if failures correlate with phase-presence or
   primary-variable switch events after bound policy is coherent.
 - **Y1c heavy oscillation:** re-run after Y2 because the heavy injector also moves across a
@@ -224,9 +334,10 @@ At the start of every slice:
 1. Run `git status --short` and do not overwrite unrelated changes.
 2. Read this plan, the active registry row, the latest Bundle Y section, and the relevant skill
    files.
-3. State one hypothesis, one observable that would confirm it, and one observable that would
-   refute it.
-4. Run the cheapest capped diagnostic capable of deciding it.
+3. State the hypothesis, oracle, one confirming observation, one refuting observation, and every
+   coupled mechanism held constant or still missing.
+4. Prove that the oracle reports comparable quantities before interpreting the target run.
+5. Run the cheapest capped diagnostic capable of deciding it.
 
 At the end of every slice, report:
 
@@ -237,10 +348,13 @@ Files changed:
 Exact commands:
 Before -> after metrics:
 Controls unchanged/moved:
-Verdict: PROMOTED | REVERTED | REFUTED | DIAGNOSTIC | OPEN
+Oracle validity: VALID | INVALID (reason)
+Coupled semantics omitted/held constant:
+Verdict: PROMOTED | REVERTED | REFUTED | INCONCLUSIVE | DIAGNOSTIC | OPEN
 Registry/worklog/parity/TODO updates:
 Next authorized checkpoint:
 ```
 
 Commit code and its focused tests together. Commit the evidence/docs checkpoint after the result
-is known. Never proceed to the next branch merely because a run improved one headline count.
+is known. Never proceed to the next branch merely because a run improved one headline count, and
+never discard an improvement because a second path emitted incomparable diagnostics.

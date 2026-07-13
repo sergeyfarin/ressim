@@ -12,3 +12,9 @@ Then, before working, read the skill file matching your task from `.claude/skill
 - `opm-reference-pipeline/SKILL.md` — OPM Flow reference data
 
 Index and usage notes: `.claude/skills/README.md`. Doc authority map: `docs/DOCUMENTATION_INDEX.md`.
+
+For FIM convergence work, also read `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` and the active
+row in `docs/FIM_EXPERIMENT_REGISTRY.md` before editing or running a new experiment. Treat
+backend-specific or missing diagnostics as an invalid oracle: such a comparison is
+`INCONCLUSIVE`, not `REFUTED`. Do not let a partial port of an OPM mechanism refute the complete
+OPM lifecycle it omits; list the coupled semantics that remain unimplemented first.

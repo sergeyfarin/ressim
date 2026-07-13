@@ -107,7 +107,7 @@ expects one FIM substep and sees two (`runtime_api.rs:81`). The new paths are `#
 disabled absent `FIM_Y2B_AUDIT`, so they cannot affect that normal public-step trajectory; an
 isolated rerun fails identically. Recorded as a pre-existing baseline issue, not changed here.
 
-### Bundle Y Y2b2 — raw saturation-state policy probe (2026-07-13; refuted and removed)
+### Bundle Y Y2b2 — raw saturation-state policy probe (2026-07-13; inconclusive and removed)
 
 **Hypothesis:** retaining OPM-style raw `Sw`/`Sg` after the already-matching `ds-max` chop would
 turn the measured first-order closure into a larger accepted exact first rung, consistently for
@@ -125,14 +125,35 @@ linear-classified retries. Forced-direct with the same flag wrote
 
 The traces agree exactly through `dt=0.027225`; at `0.00898425`, live has a third Newton
 iteration and accepts (`res=4.737838e-5`, `mb=5.153094e-10`), while direct stops at iteration two
-with dominant `well@900`, then repeats that failure down to the retry floor. This violates the
-predeclared direct/live gate. The field, setter, update branch, candidate-validity exception, and
-test hook were deleted in the same working slice; no behavior change remains.
+with dominant `well@900`, then repeats that failure down to the retry floor. The original slice
+treated this as violating a valid direct/live gate. The field, setter, update branch,
+candidate-validity exception, and test hook were deleted in the same working slice; no behavior
+change remains.
 
-**Verdict:** REFUTED. The hard-projection inconsistency is real but a raw-state policy by itself
-does not reproduce a coherent OPM trajectory. The single next branch is G4 injector well
-primary-variable/row-structure audit, focused on the direct/live `well@900` split. Y2c is closed
-until a new, independently evidenced policy exists.
+**Forensic correction:** the predeclared gate was not valid. At `dt=0.00898425`, both paths reach
+the same iteration-1 state (`bhp=[222.6115941403441,191.75240471787257]`, perforation rates equal
+to roundoff). Live CPR then returns a finite, non-strict solve whose report supports measured
+reduction `5.299e-3`; `OpmAligned` relaxed-accepts it, applies the correction, and iteration 2 is
+`would_accept=strict`. Sparse LU also returns a finite solution, but
+`fim/linear/sparse_lu_debug.rs` supplies `failure_diagnostics=None` on all outcomes. Well Schur
+forwards that absence and `newton.rs` computes relaxed reduction only through the optional
+failure payload, so forced-direct prints `reduction=n/a` and aborts. Later direct cutbacks show
+`would_accept=strict` before another solve and still retry through the same missing-report path.
+The traces never measured the direct iteration-1 correction or its full-system residual
+reduction. This is the missing-diagnostics shape already identified in the earlier Y1b/Y1e
+well-Schur audit, now shown to invalidate the Y2b2 verdict.
+
+The probe also retained ResSim's frozen hydrocarbon regime and flash-side hydrocarbon clamps; it
+did not include OPM's per-update `adaptPrimaryVariables`. It tested a narrow raw-`Sw` mechanism,
+not the complete sourced OPM state/property/primary-variable lifecycle.
+
+**Corrected verdict:** INCONCLUSIVE. The hard-projection inconsistency is real and the live 9.2x
+first-rung improvement is provisional positive evidence. The forced-direct outcome is an oracle
+defect, not a state-policy refutation. Next execute Y2b2a: add backend-neutral full-system linear
+norms/reduction and prove the forced-direct report contract without restoring behavior. Commit
+that first; Y2b2b then restores the same narrow probe, captures/replays the exact iteration-1
+system, and compares corrections and row partitions. G4 is not authorized by the current direct
+trace.
 
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
