@@ -981,10 +981,10 @@ every 1-2 iterations (`1.67e-3 → 1.84e-3 → 2.49e-3 → 3.36e-4 → 5.22e-5 �
 step=  6 | time=1.5000d | ... history+=695 | substeps=695 | accepts=695+0+0 | retries=0/5/0 |
 ... retry_dom=nonlinear-bad:well@901 ...
 ```
-**695 total accepted substeps to cover the identical 1.5 days** (vs OPM's `6`) — a **~116x**
-gap, on the exact same deck geometry, well placement, rates, and PVT that was just run through
-real OPM Flow (not a different-grid approximation — this closes the grid-size caveat from §10's
-20x20x3-only evidence). `retries=0/5/0`: even better than the 20x20x3 case — essentially zero
+**695 total accepted substeps to cover the matching 1.5 days** (vs OPM's `6`) — a **~116x**
+gap, on a matching hand-authored Flow input rather than a different-grid approximation — this
+closes the grid-size caveat from §10's 20x20x3-only evidence. `retries=0/5/0`: even better than
+the 20x20x3 case — essentially zero
 linear-bad, confirming again that `FIM-LINEAR-013` closed the linear-stack side of this
 completely; the entire remaining gap is nonlinear.
 
@@ -1026,3 +1026,53 @@ practice on this thread (the user was asked; see conversation).
 **Verdict**: DIAGNOSTIC. Registry: not yet its own row — will be filed once a concrete fix
 design exists to measure (or as a `REFUTED`/`OPEN` cross-reference row if the `FIM-NEWTON-004`
 connection is judged to make any `would_widen`-style fix out of scope for now). No code changed.
+
+## 12. Y1i: durable gas-rate oracle + acceptance-gate audit (2026-07-13)
+
+This is a **measurement-infrastructure checkpoint, not a solver change**. No file under
+`src/lib/ressim/src/` changed.
+
+### 12.1 The oracle is now a tracked, verified fixture
+
+The `gas-rate-10x10x3` Flow deck is now tracked at
+`opm/reference-decks/gas-rate-10x10x3/CASE.DATA`, with a manifest recording the exact ResSim
+diagnostic invocation, source commit, deck SHA-256, mapped input invariants, and the Flow
+oracle (`6` substeps, Newton `7/5/4/3/4/3`, zero cuts). The manifest checker validates the deck
+byte-for-byte before a run and parses `CASE.INFOSTEP` afterward. The side-by-side harness is
+`scripts/opm-ressim-compare.sh`; it copies Flow input/output below the requested output
+directory so the source tree remains clean.
+
+Fresh Flow replay, using the tracked deck and Flow `2026.04`, reproduces the Y1h oracle exactly:
+six accepted `0.25`-day substeps and `26` total Newton iterations. This preserves Y1h's real
+result: ResSim and OPM have a large convergence divergence on the matching, hand-authored
+reference input. It does **not** establish that their well equations or Newton updates are
+identical; the fixture makes that mapping explicit for the next differential experiment.
+
+### 12.2 Correction: `would_widen` is not the live acceptance guard
+
+The post-Y1h source audit found a material distinction that the Y1g/Y1h writeups had conflated.
+`newton.rs:3275` computes `would_widen` and emits it only in the `STAG-TREND` trace. The actual
+Legacy branch starts at `if !opm_aligned && stagnation_count >= 3` (`newton.rs:3299`), without
+requiring `would_widen`; `stagnation_acceptance_allows` then permits residuals up to
+`NONLINEAR_HISTORY_RESIDUAL_BAND_FACTOR = 10×` the nominal tolerance when its other checks pass.
+
+Consequently, §10.4's statement that `trend_vs_entry=1.0570` makes the legacy escape guard
+inapplicable is false as a description of the executing code. A flip of the `OpmAligned`
+exclusion would not be a narrow extension of a trend-protected mechanism. It would broaden the
+already-reverted above-tolerance acceptance class to every qualifying stagnation event. This
+explains why OPM's better trajectory is evidence of a divergence, but is not the guarded root
+cause required by `FIM-NEWTON-004`/`005` to retry acceptance changes.
+
+### 12.3 Next slice: isolate the first ineffective well-adjacent update
+
+Do not change Newton acceptance. Add a native, exact `10x10x3` reproduction that can run both
+the live iterative backend and the direct backend, then compare the first report step across a
+bounded well/control matrix: no wells, injector only, producer only, both wells; rate and BHP
+controls where meaningful. For each variant, record the first iteration where the injector-cell
+update repeats, its residual/Jacobian family, and whether direct linear solving changes that
+update. Generate matching Flow decks only for variants that isolate a ResSim failure.
+
+Decision rule: a direct-vs-iterative difference owns a linear/update application issue; a
+bit-identical ineffective direct update owns the nonlinear well/assembly formulation. Only that
+second result authorizes a scoped well/Jacobian investigation (G4/G5). Neither result authorizes
+an above-tolerance Newton acceptance change.

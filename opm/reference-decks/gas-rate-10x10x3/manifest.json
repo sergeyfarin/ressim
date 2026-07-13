@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "caseKey": "gas-rate-10x10x3",
+  "source": {
+    "branch": "origin/fim-opm-continuation-plan",
+    "commit": "cacdf76701e33bccee6acc127845176be6080858"
+  },
+  "deck": {
+    "path": "CASE.DATA",
+    "sha256": "9b76cbb1190f368d51ecdbaa94cdb4abd091195cef1cc0fb140f0109f02056aa"
+  },
+  "ressim": {
+    "command": [
+      "node",
+      "scripts/fim-wasm-diagnostic.mjs",
+      "--preset",
+      "gas-rate",
+      "--grid",
+      "10x10x3",
+      "--dt",
+      "0.25",
+      "--steps",
+      "6",
+      "--opm-aligned",
+      "--diagnostic",
+      "summary"
+    ],
+    "mapping": {
+      "cellDimensionsM": [10, 10, 5],
+      "porosity": 0.2,
+      "permeabilityMd": [500, 500, 50],
+      "initial": {
+        "pressureBar": 200,
+        "waterSaturation": 0.15,
+        "gasSaturation": 0,
+        "rsSm3Sm3": 80
+      },
+      "controls": {
+        "injector": "gas RESV 500 m3/day, max BHP 400 bar",
+        "producer": "oil RESV 200 m3/day, min BHP 50 bar"
+      }
+    }
+  },
+  "deckInvariants": [
+    "DIMENS\n   10 10 3 /",
+    "DXV\n   10*10 /",
+    "DYV\n   10*10 /",
+    "DZV\n   3*5 /",
+    "PORO\n   300*0.2 /",
+    "PERMX\n   300*500 /",
+    "PERMY\n   300*500 /",
+    "PERMZ\n   300*50 /",
+    "PRESSURE\n   300*200.0 /",
+    "SWAT\n   300*0.15 /",
+    "SGAS\n   300*0.0 /",
+    "RS\n   300*80.0 /",
+    "'INJ' 'GAS' 'OPEN' 'RESV' 1*  500.0  400.0 /",
+    "'PRO' 'OPEN' 'RESV' 4*  200.0  50.0 /",
+    "TSTEP\n   6*0.25 /"
+  ],
+  "opm": {
+    "command": [
+      "flow",
+      "CASE.DATA",
+      "--output-extra-convergence-info=steps,iterations",
+      "--solver-verbosity=3",
+      "--time-step-verbosity=3"
+    ],
+    "validatedWith": "Flow 2026.04",
+    "expected": {
+      "reportSteps": 6,
+      "substeps": 6,
+      "newtonIterations": [7, 5, 4, 3, 4, 3],
+      "timestepCuts": 0
+    }
+  }
+}

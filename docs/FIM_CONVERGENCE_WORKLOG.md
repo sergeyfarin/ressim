@@ -2998,9 +2998,9 @@ zero cuts, Newton iterations `7/5/4/3/4/3`**, `MB_Oil`/`MB_Gas` decaying smoothl
 monotonically every iteration in `CASE.INFOITER` — no freeze, no plateau, no relaxed-tier
 acceptance anywhere.
 
-Ran ResSim on the identical deck geometry/wells/rates/PVT (`--preset gas-rate --grid 10x10x3
+Ran ResSim on the matching hand-authored geometry/wells/rates/PVT mapping (`--preset gas-rate --grid 10x10x3
 --dt 0.25 --steps 6 --opm-aligned`): **695 total accepted substeps** for the same 1.5 days — a
-`~116x` gap on the exact same configuration just run through real OPM (closes the grid-size
+`~116x` gap on the matching input just run through real OPM (closes the grid-size
 caveat from Y1g's 20x20x3-only evidence). `retries=0/5/0` — essentially zero linear-bad,
 reconfirming `FIM-LINEAR-013` closed the linear side; 100% of the remaining gap is nonlinear.
 
@@ -3021,3 +3021,34 @@ narrowly-scoped design and the full measurement discipline — not a quick patch
 explicit direction rather than proceeding unilaterally.
 
 No code changed. Registry row not yet filed — pending a concrete fix design to measure.
+
+### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
+
+Scope: measurement infrastructure and source audit only; no FIM production behavior changed.
+
+Promoted the external gas-rate reference input into this branch as
+`opm/reference-decks/gas-rate-10x10x3/CASE.DATA`, sourced verbatim from
+`origin/fim-opm-continuation-plan@cacdf76701e33bccee6acc127845176be6080858`. Its checksum is
+`9b76cbb1190f368d51ecdbaa94cdb4abd091195cef1cc0fb140f0109f02056aa`.
+`manifest.json` records the ResSim command, input mapping, and Flow oracle; the new
+`scripts/opm-reference-fixture-check.mjs` checks both deck identity/mapped invariants and the
+post-run `CASE.INFOSTEP` Newton sequence. `scripts/opm-ressim-compare.sh` runs the same baseline
+without creating Flow artifacts in the repository.
+
+Fresh Flow `2026.04` replay of the tracked deck reproduced Y1h exactly: six accepted
+`0.25`-day substeps, Newton `7/5/4/3/4/3`, zero cuts. This makes the OPM result durable and
+replayable, but the fixture is intentionally described as a *matching hand-authored input*, not
+proof of equivalent ResSim/OPM well formulation.
+
+Most importantly, the post-review source audit corrected Y1g/Y1h's mechanism framing:
+`would_widen` at `fim/newton.rs:3275` is logged but not used as the Legacy acceptance predicate.
+The executing Legacy block is `!opm_aligned && stagnation_count >= 3` at line 3299; its residual
+gate allows `10×` the nominal tolerance. Therefore `would_widen=false` on the sampled
+`trend_vs_entry=1.0570` stall does **not** make that escape unavailable to Legacy. Extending the
+block to OpmAligned would broaden an above-tolerance acceptance class already refuted by
+`FIM-NEWTON-004`/`005`, not add a guarded OPM-alignment fix. Do not test that flip.
+
+Next: construct an exact native 10x10x3 direct-vs-iterative, well/control isolation matrix and
+identify the first ineffective injector-adjacent Newton update. The outcome determines whether
+to inspect linear/update application or the nonlinear well/assembly formulation; acceptance is
+out of scope.
