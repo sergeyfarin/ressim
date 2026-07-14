@@ -254,6 +254,32 @@ diagnostic invariant of zero empty cell-primary columns. Transition tests and mi
 derivative/structure tests must pass before regenerating the exact first-rung capture. No solver,
 well, acceptance, timestep, or Legacy behavior changed at this checkpoint.
 
+### Y2b3a checkpoint (2026-07-14) — Gate A transition lifecycle green
+
+Implemented the deck-scoped state machine only behind native `OpmAligned` plus the existing
+default-off `FIM_Y2B_RAW_SATURATION` flag. The fixed third unknown changes tag/value atomically
+after the raw candidate update and before well post-processing. A Newton-local boolean per cell
+tracks whether the preceding accepted candidate switched, selecting OPM's `eps=1e-5` hysteresis.
+No persistent state shape, matrix dimension, Legacy path, wasm path, solver, acceptance, or
+timestep behavior changed.
+
+Focused results:
+
+- `cargo test ... y2b3_opm_lifecycle -- --nocapture`: 5/5 pass;
+- `cargo test ... fim::state::tests -- --nocapture`: 13/13 pass;
+- `cargo test ... assembly_ad -- --nocapture`: 10/10 pass;
+- locked `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas`,
+  `spe1_fim_first_steps_converge_without_stall`, and
+  `spe1_fim_gas_injection_creates_free_gas`: pass; and
+- curated FIM/shared gates pass through their preceding buckets, then stop at the known
+  pre-existing `closed_system_public_step_keeps_same_water_inventory_on_both_solvers`
+  `rate_history` assertion (`left=2`, `right=1`) already recorded in `TODO.md`.
+
+No flagged convergence run was performed. Gate A's hysteresis test shows why: with
+`was_switched=true`, `Sg=-5e-6` correctly remains tagged `Sg`, but `cell_props_generic` currently
+floors it to zero and may erase its Jacobian dependency. Y2b3b must first add the raw
+meaning-aware accumulation dependency and prove one-sided FD plus zero empty columns.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

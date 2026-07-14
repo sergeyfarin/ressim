@@ -3114,18 +3114,21 @@ pub(crate) fn run_fim_timestep(
     );
 
     let opm_aligned = options.nonlinear_flavor == FimNonlinearFlavor::OpmAligned;
-    // Y2b2b: restore exactly the old native diagnostic policy, never enable it in wasm or by
-    // default, and do not combine it with any primary-variable or acceptance experiment.
+    // Y2b3a: the existing native/default-off raw-state flag now selects the coupled,
+    // deck-scoped OPM Sg/Rs primary-variable lifecycle. It remains unavailable in wasm and
+    // does not alter Legacy behavior.
     #[cfg(not(target_arch = "wasm32"))]
-    let y2b2_raw_saturation = opm_aligned && std::env::var_os("FIM_Y2B_RAW_SATURATION").is_some();
+    let y2b3_primary_variable_lifecycle =
+        opm_aligned && std::env::var_os("FIM_Y2B_RAW_SATURATION").is_some();
     #[cfg(target_arch = "wasm32")]
-    let y2b2_raw_saturation = false;
+    let y2b3_primary_variable_lifecycle = false;
+    let mut primary_variables_switched = vec![false; state.cells.len()];
 
-    if y2b2_raw_saturation {
+    if y2b3_primary_variable_lifecycle {
         fim_trace!(
             sim,
             options.verbose,
-            "  Y2B2 raw-saturation diagnostic active (native/default-off; pressure and controls remain bounded)"
+            "  Y2B3 OPM primary-variable lifecycle active (native/default-off; raw saturation plus per-iteration Sg/Rs adaptation)"
         );
     }
 
@@ -3804,7 +3807,7 @@ pub(crate) fn run_fim_timestep(
 
         let rhs = -&assembly.residual;
         #[cfg(not(target_arch = "wasm32"))]
-        if y2b2_raw_saturation
+        if y2b3_primary_variable_lifecycle
             && iteration == 1
             && (dt_days - Y2B2_CAPTURE_DT_DAYS).abs() <= 1e-12
             && let Some(dir) = crate::fim::linear::capture::y2b2_capture_dir_from_env()
@@ -4479,21 +4482,26 @@ pub(crate) fn run_fim_timestep(
         } else {
             crate::fim::state::WellStateUpdateMode::Relax
         };
-        let candidate = if y2b2_raw_saturation {
-            state.apply_newton_update_frozen_raw_saturation(
+        let (candidate, candidate_primary_variables_switched) = if y2b3_primary_variable_lifecycle {
+            let (candidate, switched) = state.apply_newton_update_opm_primary_variables(
                 sim,
                 update_to_apply,
                 damping,
                 &topology,
                 well_update_mode,
-            )
+                &primary_variables_switched,
+            );
+            (candidate, Some(switched))
         } else {
-            state.apply_newton_update_frozen(
-                sim,
-                update_to_apply,
-                damping,
-                &topology,
-                well_update_mode,
+            (
+                state.apply_newton_update_frozen(
+                    sim,
+                    update_to_apply,
+                    damping,
+                    &topology,
+                    well_update_mode,
+                ),
+                None,
             )
         };
         #[cfg(test)]
@@ -4695,7 +4703,7 @@ pub(crate) fn run_fim_timestep(
             && damping > 0.0
             && (opm_aligned || candidate_materially_changed)
             && candidate.is_finite()
-            && (y2b2_raw_saturation || candidate.respects_basic_bounds(sim))
+            && (y2b3_primary_variable_lifecycle || candidate.respects_basic_bounds(sim))
             // OpmAligned: the per-cell chop bounds the update by construction (§9.2 limits,
             // not the Legacy max_pressure/saturation_change options this check enforces).
             && (opm_aligned || candidate_respects_update_bounds(&state, &candidate, options));
@@ -4864,6 +4872,9 @@ pub(crate) fn run_fim_timestep(
             };
         }
 
+        if let Some(switched) = candidate_primary_variables_switched {
+            primary_variables_switched = switched;
+        }
         state = candidate;
     }
 

@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0/Y2b1/Y2b2a/Y2b2b/Y2b2c/Y2b3 design complete; Y2b remains INCONCLUSIVE and Y2c is blocked
+Status: **Y2b0-Y2b2c complete; Y2b3a Gate A green; Y2b remains INCONCLUSIVE and Y2c is blocked
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -358,9 +358,20 @@ columns; the next capture must directly record each cell's switch history to con
 The design keeps the fixed three-variable cell block and changes the tag/value atomically. It
 requires zero empty cell-primary columns before any behavior verdict and forbids diagonal patches,
 well-row-only changes, inventory-flash substitutions for OPM's switch initialization, and solver or
-acceptance tuning. Next executable slice: Y2b3a transition tests plus the default-off,
-deck-scoped per-iteration switch state machine; then derivative/structure Gate B; only then the
-exact-capture Gate C. Y2c remains blocked.
+acceptance tuning. Gate A is now implemented below. The next executable slice is Y2b3b's
+derivative/structure Gate B; only then may the exact-capture Gate C run. Y2c remains blocked.
+
+**Y2b3a result (2026-07-14): Gate A PASS; no convergence run.** The native/default-off raw-state
+path now performs the deck-scoped atomic `Sg <-> Rs` adaptation before well post-processing and
+carries OPM's per-cell previous-switch hysteresis within the Newton solve. Five transition tests
+are green, along with all 13 state tests and 10 AD/legacy assembly parity tests. The locked FIM
+tests pass. The curated `fim`/`shared` run reaches only the known pre-existing closed-system
+`rate_history` assertion (`2` vs `1`) already recorded in `TODO.md`; preceding buckets pass.
+
+Gate A deliberately does not close dependency structure. Its hysteresis test proves OPM may keep
+a small negative `Sg` for one iteration, while ResSim's current AD property clamp can flatten that
+variable. Y2b3b must provide the meaning-aware accumulation/property derivative and zero-empty-
+column tests before the exact case is allowed.
 
 ## 6. Y2c — promotion matrix
 
@@ -386,9 +397,9 @@ entire OPM stack ready.
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2b3 lifecycle design is complete.** Execute its Gate A and Gate B before another behavior
-  run. Gate C must show zero empty cell-primary columns and viable direct/live corrections before
-  Y2b can be promoted, refuted, or used to select a structural branch.
+- **Y2b3a Gate A is complete.** Execute Y2b3b Gate B before another behavior run. Gate C must
+  show zero empty cell-primary columns and viable direct/live corrections before Y2b can be
+  promoted, refuted, or used to select a structural branch.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.

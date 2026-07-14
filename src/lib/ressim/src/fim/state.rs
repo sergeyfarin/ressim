@@ -24,6 +24,7 @@ const WELL_BHP_TRUST_RADIUS_BAR: f64 = 25.0;
 const WELL_RATE_MANIFOLD_BLEND: f64 = 0.75;
 const WELL_RATE_TRUST_RADIUS_FRAC: f64 = 0.1;
 const WELL_RATE_TRUST_RADIUS_MIN_M3_DAY: f64 = 250.0;
+const OPM_PRIMARY_VARIABLE_OSCILLATION_THRESHOLD: f64 = 1e-5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HydrocarbonState {
@@ -411,12 +412,11 @@ impl FimState {
         self.apply_raw_update(sim, update, damping, topology, well_update_mode, true)
     }
 
-    /// Y2b2b's deliberately narrow OPM-parity probe: preserve raw saturation and hydrocarbon
-    /// primary variables after a Newton update while retaining pressure and well-control bounds.
+    /// Historical Y2b2b raw-state view retained for boundary/unit comparisons.
     ///
-    /// This is not a production update policy. It is called only from the native, default-off,
-    /// `OpmAligned` diagnostic flag in `newton.rs`, so its result can be compared directly with
-    /// the deleted Y2b2 probe before a coherent OPM state lifecycle is considered.
+    /// The live native/default-off flag now uses
+    /// `apply_newton_update_opm_primary_variables`; this narrower helper deliberately omits
+    /// primary-variable adaptation and must not be used as a behavior probe.
     pub(crate) fn apply_newton_update_frozen_raw_saturation(
         &self,
         sim: &ReservoirSimulator,
@@ -426,6 +426,36 @@ impl FimState {
         well_update_mode: WellStateUpdateMode,
     ) -> Self {
         self.apply_raw_update(sim, update, damping, topology, well_update_mode, false)
+    }
+
+    /// Y2b3a's deck-scoped OPM primary-variable lifecycle.
+    ///
+    /// The fixed third cell unknown keeps its matrix position but changes meaning atomically
+    /// between free-gas saturation (`Sg`) and dissolved-gas ratio (`Rs`). Raw saturation state
+    /// is retained, matching the existing native/default-off Y2b probe. Adaptation happens
+    /// before well post-processing so reservoir and well consumers observe the same meaning.
+    pub(crate) fn apply_newton_update_opm_primary_variables(
+        &self,
+        sim: &ReservoirSimulator,
+        update: &DVector<f64>,
+        damping: f64,
+        topology: &crate::fim::wells::FimWellTopology,
+        well_update_mode: WellStateUpdateMode,
+        was_switched: &[bool],
+    ) -> (Self, Vec<bool>) {
+        assert_eq!(
+            was_switched.len(),
+            self.cells.len(),
+            "OPM primary-variable switch history must have one entry per cell"
+        );
+
+        let mut next = self.apply_unknown_update(update, damping);
+        for cell in &mut next.cells {
+            cell.pressure_bar = cell.pressure_bar.max(1e-6);
+        }
+        let switched = next.adapt_opm_primary_variables(sim, was_switched);
+        next.finish_well_update(sim, topology, well_update_mode);
+        (next, switched)
     }
 
     /// Test-only view of the Newton candidate before ResSim's state projection.
@@ -471,24 +501,7 @@ impl FimState {
         well_update_mode: WellStateUpdateMode,
         enforce_saturation_bounds: bool,
     ) -> Self {
-        let mut next = self.clone();
-
-        for (idx, cell) in next.cells.iter_mut().enumerate() {
-            let offset = idx * 3;
-            cell.pressure_bar += damping * update[offset];
-            cell.sw += damping * update[offset + 1];
-            cell.hydrocarbon_var += damping * update[offset + 2];
-        }
-
-        for well_idx in 0..self.n_well_unknowns() {
-            let offset = self.well_bhp_unknown_offset(well_idx);
-            next.well_bhp[well_idx] += damping * update[offset];
-        }
-
-        for perf_idx in 0..self.n_perforation_unknowns() {
-            let offset = self.perforation_rate_unknown_offset(perf_idx);
-            next.perforation_rates_m3_day[perf_idx] += damping * update[offset];
-        }
+        let mut next = self.apply_unknown_update(update, damping);
 
         for idx in 0..next.cells.len() {
             if enforce_saturation_bounds {
@@ -499,25 +512,100 @@ impl FimState {
                 next.cells[idx].pressure_bar = next.cells[idx].pressure_bar.max(1e-6);
             }
         }
-        next.enforce_control_bounds(sim, topology);
+        next.finish_well_update(sim, topology, well_update_mode);
+        next
+    }
+
+    fn apply_unknown_update(&self, update: &DVector<f64>, damping: f64) -> Self {
+        let mut next = self.clone();
+
+        for (idx, cell) in next.cells.iter_mut().enumerate() {
+            let offset = idx * 3;
+            cell.pressure_bar += damping * update[offset];
+            cell.sw += damping * update[offset + 1];
+            cell.hydrocarbon_var += damping * update[offset + 2];
+        }
+        for well_idx in 0..self.n_well_unknowns() {
+            let offset = self.well_bhp_unknown_offset(well_idx);
+            next.well_bhp[well_idx] += damping * update[offset];
+        }
+        for perf_idx in 0..self.n_perforation_unknowns() {
+            let offset = self.perforation_rate_unknown_offset(perf_idx);
+            next.perforation_rates_m3_day[perf_idx] += damping * update[offset];
+        }
+
+        next
+    }
+
+    fn finish_well_update(
+        &mut self,
+        sim: &ReservoirSimulator,
+        topology: &crate::fim::wells::FimWellTopology,
+        well_update_mode: WellStateUpdateMode,
+    ) {
+        self.enforce_control_bounds(sim, topology);
         match well_update_mode {
             WellStateUpdateMode::None => {}
             WellStateUpdateMode::Relax => {
-                next.relax_well_state_toward_local_consistency(sim, topology);
-                next.enforce_control_bounds(sim, topology);
+                self.relax_well_state_toward_local_consistency(sim, topology);
+                self.enforce_control_bounds(sim, topology);
             }
             WellStateUpdateMode::NestedSolve => {
                 crate::fim::wells_inner::solve_wells_locally(
                     sim,
-                    &mut next,
+                    self,
                     topology,
                     &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
                 );
-                next.enforce_control_bounds(sim, topology);
+                self.enforce_control_bounds(sim, topology);
+            }
+        }
+    }
+
+    fn adapt_opm_primary_variables(
+        &mut self,
+        sim: &ReservoirSimulator,
+        was_switched: &[bool],
+    ) -> Vec<bool> {
+        let mut switched = vec![false; self.cells.len()];
+        let Some(table) = sim.pvt_table.as_ref().filter(|_| sim.three_phase_mode) else {
+            return switched;
+        };
+
+        for (idx, cell) in self.cells.iter_mut().enumerate() {
+            let eps = if was_switched[idx] {
+                OPM_PRIMARY_VARIABLE_OSCILLATION_THRESHOLD
+            } else {
+                0.0
+            };
+            let rs_sat = table.interpolate(cell.pressure_bar).rs_m3m3.max(0.0);
+            let rs_max = if sim.gas_redissolution_enabled {
+                f64::INFINITY
+            } else {
+                sim.rs[idx].max(0.0)
+            };
+
+            match cell.regime {
+                HydrocarbonState::Saturated => {
+                    let oil_plus_gas_saturation = 1.0 - cell.sw;
+                    if cell.hydrocarbon_var < -eps && oil_plus_gas_saturation > 0.0 {
+                        cell.regime = HydrocarbonState::Undersaturated;
+                        cell.hydrocarbon_var = rs_max.min(rs_sat);
+                        switched[idx] = true;
+                    }
+                }
+                HydrocarbonState::Undersaturated => {
+                    let appearance_limit = rs_max.min(rs_sat * (1.0 + eps));
+                    if cell.hydrocarbon_var > appearance_limit {
+                        cell.regime = HydrocarbonState::Saturated;
+                        cell.hydrocarbon_var = 0.0;
+                        switched[idx] = true;
+                    }
+                }
             }
         }
 
-        next
+        switched
     }
 
     pub(crate) fn derive_cell(&self, sim: &ReservoirSimulator, idx: usize) -> FimCellDerived {
@@ -619,9 +707,187 @@ mod tests {
     use nalgebra::DVector;
 
     use crate::ReservoirSimulator;
+    use crate::fim::properties::cell_accumulation_generic;
     use crate::pvt::{PvtRow, PvtTable};
 
     use super::*;
+
+    fn y2b3_switch_sim() -> ReservoirSimulator {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.1,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.pressure[0] = 150.0;
+        sim
+    }
+
+    fn y2b3_switch_state(
+        sim: &ReservoirSimulator,
+        regime: HydrocarbonState,
+        hydrocarbon_var: f64,
+    ) -> FimState {
+        let mut state = FimState::from_simulator(sim);
+        state.cells[0] = FimCellState {
+            pressure_bar: 150.0,
+            sw: 0.2,
+            hydrocarbon_var,
+            regime,
+        };
+        state
+    }
+
+    fn y2b3_apply(
+        sim: &ReservoirSimulator,
+        state: &FimState,
+        dsw: f64,
+        dhc: f64,
+        was_switched: bool,
+    ) -> (FimState, Vec<bool>) {
+        let topology = build_well_topology(sim);
+        let mut update = DVector::zeros(state.n_unknowns());
+        update[1] = dsw;
+        update[2] = dhc;
+        state.apply_newton_update_opm_primary_variables(
+            sim,
+            &update,
+            1.0,
+            &topology,
+            WellStateUpdateMode::None,
+            &[was_switched],
+        )
+    }
+
+    #[test]
+    fn y2b3_opm_lifecycle_keeps_positive_sg_and_raw_sw_without_mutating_previous_state() {
+        let sim = y2b3_switch_sim();
+        let state = y2b3_switch_state(&sim, HydrocarbonState::Saturated, 0.1);
+        let previous = state.clone();
+
+        let (candidate, switched) = y2b3_apply(&sim, &state, -0.06, 0.0, false);
+
+        assert_eq!(candidate.cells[0].regime, HydrocarbonState::Saturated);
+        assert!((candidate.cells[0].hydrocarbon_var - 0.1).abs() < 1e-15);
+        assert!((candidate.cells[0].sw - 0.14).abs() < 1e-15);
+        assert_eq!(switched, vec![false]);
+        assert_eq!(
+            state, previous,
+            "candidate update must not mutate the prior time level"
+        );
+        let derived = candidate.derive_cell(&sim, 0);
+        assert!(derived.so.is_finite() && derived.sg.is_finite() && derived.rs.is_finite());
+        let accumulation = cell_accumulation_generic::<f64>(
+            &sim,
+            0,
+            candidate.cells[0].pressure_bar,
+            candidate.cells[0].sw,
+            candidate.cells[0].hydrocarbon_var,
+            candidate.cells[0].regime,
+            None,
+            previous.cells[0].pressure_bar,
+            previous.cells[0].sw,
+            previous.cells[0].hydrocarbon_var,
+            previous.cells[0].regime,
+        );
+        assert!(
+            accumulation.iter().any(|value| value.abs() > 0.0),
+            "raw endpoint-crossing Sw must remain visible to component accumulation"
+        );
+    }
+
+    #[test]
+    fn y2b3_opm_lifecycle_switches_negative_sg_to_saturated_rs() {
+        let sim = y2b3_switch_sim();
+        let state = y2b3_switch_state(&sim, HydrocarbonState::Saturated, 0.01);
+
+        let (candidate, switched) = y2b3_apply(&sim, &state, 0.0, -0.02, false);
+
+        assert_eq!(candidate.cells[0].regime, HydrocarbonState::Undersaturated);
+        assert!((candidate.cells[0].hydrocarbon_var - 15.0).abs() < 1e-12);
+        assert_eq!(switched, vec![true]);
+    }
+
+    #[test]
+    fn y2b3_opm_lifecycle_honors_rs_max_when_gas_redissolution_is_disabled() {
+        let mut sim = y2b3_switch_sim();
+        sim.set_gas_redissolution_enabled(false);
+        sim.rs[0] = 12.0;
+        let state = y2b3_switch_state(&sim, HydrocarbonState::Saturated, 0.01);
+
+        let (candidate, switched) = y2b3_apply(&sim, &state, 0.0, -0.02, false);
+
+        assert_eq!(candidate.cells[0].regime, HydrocarbonState::Undersaturated);
+        assert!((candidate.cells[0].hydrocarbon_var - 12.0).abs() < 1e-12);
+        assert_eq!(switched, vec![true]);
+    }
+
+    #[test]
+    fn y2b3_opm_lifecycle_keeps_subsaturated_rs_and_switches_excess_rs_to_zero_sg() {
+        let sim = y2b3_switch_sim();
+        let below = y2b3_switch_state(&sim, HydrocarbonState::Undersaturated, 14.0);
+        let (below_candidate, below_switched) = y2b3_apply(&sim, &below, 0.0, 0.0, false);
+        assert_eq!(
+            below_candidate.cells[0].regime,
+            HydrocarbonState::Undersaturated
+        );
+        assert!((below_candidate.cells[0].hydrocarbon_var - 14.0).abs() < 1e-12);
+        assert_eq!(below_switched, vec![false]);
+
+        let (above_candidate, above_switched) = y2b3_apply(&sim, &below, 0.0, 2.0, false);
+        assert_eq!(above_candidate.cells[0].regime, HydrocarbonState::Saturated);
+        assert_eq!(above_candidate.cells[0].hydrocarbon_var, 0.0);
+        assert_eq!(above_switched, vec![true]);
+    }
+
+    #[test]
+    fn y2b3_opm_lifecycle_applies_previous_switch_hysteresis_in_both_directions() {
+        let sim = y2b3_switch_sim();
+        let sg = y2b3_switch_state(&sim, HydrocarbonState::Saturated, 0.0);
+        let (without_sg_hysteresis, switched) = y2b3_apply(&sim, &sg, 0.0, -5e-6, false);
+        assert_eq!(
+            without_sg_hysteresis.cells[0].regime,
+            HydrocarbonState::Undersaturated
+        );
+        assert_eq!(switched, vec![true]);
+        let (with_sg_hysteresis, switched) = y2b3_apply(&sim, &sg, 0.0, -5e-6, true);
+        assert_eq!(
+            with_sg_hysteresis.cells[0].regime,
+            HydrocarbonState::Saturated
+        );
+        assert_eq!(switched, vec![false]);
+
+        let rs = y2b3_switch_state(&sim, HydrocarbonState::Undersaturated, 15.0);
+        let (without_rs_hysteresis, switched) = y2b3_apply(&sim, &rs, 0.0, 1e-4, false);
+        assert_eq!(
+            without_rs_hysteresis.cells[0].regime,
+            HydrocarbonState::Saturated
+        );
+        assert_eq!(switched, vec![true]);
+        let (with_rs_hysteresis, switched) = y2b3_apply(&sim, &rs, 0.0, 1e-4, true);
+        assert_eq!(
+            with_rs_hysteresis.cells[0].regime,
+            HydrocarbonState::Undersaturated
+        );
+        assert_eq!(switched, vec![false]);
+    }
 
     #[test]
     fn from_simulator_uses_rs_for_undersaturated_cells() {

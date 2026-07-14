@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **DESIGN COMPLETE; behavior not implemented (2026-07-14)**
+Status: **Y2b3a Gate A implemented and green; Gate B next; no convergence run (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -173,6 +173,18 @@ partial port cannot refute the complete lifecycle.
   still changes; and
 - the deck-scoped path rejects unsupported `Rv`/non-deck meanings explicitly.
 
+**Result (2026-07-14): PASS for the representable deck scope.** The native/default-off
+`FIM_Y2B_RAW_SATURATION` path now retains raw saturation and atomically adapts the fixed third
+slot after each candidate update, before well post-processing. Five focused tests cover positive
+`Sg`, raw `Sw`, previous-state immutability, `Sg -> min(RsMax,RsSat)`, sub-saturated `Rs`,
+`Rs -> Sg=0`, and both hysteresis directions. `HydrocarbonState` has only `Saturated` (`Sg`) and
+`Undersaturated` (`Rs`) meanings, so `Rv` is unrepresentable rather than silently approximated.
+
+Gate A also exposes a required Gate B case: after a switch, OPM's `eps=1e-5` hysteresis can retain
+a slightly negative `Sg` for one iteration. ResSim's current differentiable property path applies
+`max_floor(0)` to `Sg`, which can erase that column's derivative. Therefore the state machine is
+not yet a dependency-complete behavior probe and must not be run on the convergence case.
+
 ### Gate B — derivative and structure tests
 
 - compare AD with a one-sided finite difference within each fixed meaning; never central-difference
@@ -209,6 +221,8 @@ six-step promotion matrix yet.
 
 ## 7. Next executable slice
 
-The next code slice is **Y2b3a: implement Gate A plus the per-iteration deck-scoped switch state
-machine**. Do not run a convergence case until Gate A and Gate B establish that the new tag/value
-lifecycle cannot create an empty column. Only then execute Gate C.
+The next code slice is **Y2b3b: Gate B dependency and structure tests**. Start with the
+hysteresis-retained negative-`Sg` case, then the one-cell transitions and mixed-regime injector.
+Make raw accumulation retain the active tagged derivative while leaving endpoint property
+extension safe. Do not run a convergence case until Gate B establishes that the lifecycle cannot
+create an empty column. Only then execute Gate C.

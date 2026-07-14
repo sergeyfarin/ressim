@@ -88,11 +88,14 @@ below is retained as Bundle N/Y history; it must not override this current seque
   hysteresis, raw accumulation, and endpoint-property separation. ResSim keeps the same matrix
   shape but must atomically change the third slot's tag/value before the next assembly. Full
   contract and tests: `docs/FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md`.
-- [ ] **Next: Y2b3a Gate A, then Gate B.** Add transition tests and the native default-off,
-  deck-scoped per-iteration `Sg <-> Rs` switch state machine; then prove AD/one-sided-FD behavior
-  and zero empty primary columns in one-cell and mixed-regime injector fixtures. Do not run the
-  exact convergence case until those structural gates pass. Gate C then regenerates the exact
-  `dt=0.00898425` capture and requires viable direct/live corrections before Y2c.
+- [x] **Y2b3a Gate A (2026-07-14).** Native/default-off raw state now atomically adapts
+  `Sg <-> Rs` before well post-processing, with OPM initialization, Newton-local previous-switch
+  memory, and `1e-5` hysteresis. Five transition tests, 13 state tests, 10 assembly parity tests,
+  and locked FIM tests pass. No flagged convergence run was performed.
+- [ ] **Next: Y2b3b Gate B.** Preserve the active raw accumulation derivative for tagged `Sg`
+  and `Rs`, beginning with hysteresis-retained `Sg=-5e-6`; add within-meaning one-sided FD,
+  one-cell transition occupancy, and mixed-regime injector zero-empty-column/direct-factorization
+  tests. Only then run Gate C's exact `dt=0.00898425` capture. Y2c remains blocked.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

@@ -1351,3 +1351,18 @@ may be empty. An empty column must abort the probe with cell/tag/raw/derived/swi
 it must never be hidden with a diagonal or tolerated because CPR returns a correction. Transition
 and derivative/structure tests precede regeneration of the exact Y2b2 capture. This completes the
 requested design prerequisites only; Y2b remains inconclusive and Y2c remains blocked.
+
+### 15.7 Y2b3a result: primary-variable transition state machine (2026-07-14)
+
+The native/default-off Y2b flag now applies the deck-scoped `Sg <-> Rs` state machine after the
+meaning-aware Newton chop and before ResSim well post-processing. Switch memory is local to the
+Newton solve, matching OPM's ownership: a switch on the preceding candidate supplies `eps=1e-5`,
+otherwise `eps=0`. OPM's initialization values are retained exactly within ResSim's available
+deck semantics: `Sg -> min(RsMax,RsSat)` and `Rs -> Sg=0`. The previous accepted state is not
+retagged or mutated.
+
+Five transition tests pass, but this is not yet a behavior result. The hysteresis test directly
+constructs the important remaining Gate B state: a recently switched cell can keep
+`Sg=-5e-6` as `Sg`. ResSim's current AD property path floors that value at zero and can discard
+the active derivative, unlike OPM's raw accumulation state. Gate B must close that dependency and
+prove zero empty columns before the exact first-rung run. Y2b remains inconclusive.
