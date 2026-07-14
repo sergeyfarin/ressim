@@ -1366,3 +1366,18 @@ constructs the important remaining Gate B state: a recently switched cell can ke
 `Sg=-5e-6` as `Sg`. ResSim's current AD property path floors that value at zero and can discard
 the active derivative, unlike OPM's raw accumulation state. Gate B must close that dependency and
 prove zero empty columns before the exact first-rung run. Y2b remains inconclusive.
+
+### 15.8 Y2b3b result: raw tagged dependency and structural gate (2026-07-14)
+
+The three-phase `Sg`/`Rs` slot now stays raw through phase-state construction and accumulation;
+endpoint extension remains in material-property evaluation. The two-phase and no-PVT paths are
+unchanged. Scalar and AD paths were updated together, and within-meaning one-sided finite
+differences explicitly cover hysteresis-retained negative `Sg`, newly appeared gas, and
+sub-saturated/newly initialized `Rs`.
+
+Both one-cell switch directions retain a live third column after adaptation. A mixed-regime
+three-cell gas-injector fixture, including `Sg=-5e-6`, has finite entries, no empty rows or columns,
+scalar/AD reservoir-plus-well residual parity, and successful independent Sparse-LU
+factorization. This closes the local dependency/structure prerequisite, not the nonlinear
+hypothesis: Y2b remains inconclusive. The next bounded step is Gate C's traced exact first-rung
+capture and backend-neutral correction/reduction comparison; Y2c remains blocked.

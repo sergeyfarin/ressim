@@ -48,7 +48,8 @@ pub(crate) fn resolve_cell_flash(
     regime: HydrocarbonState,
     drsdt0_base_rs: Option<f64>,
 ) -> FimFlashResult {
-    let total_hydrocarbon_saturation = (1.0 - sw).max(0.0);
+    let raw_total_hydrocarbon_saturation = 1.0 - sw;
+    let bounded_total_hydrocarbon_saturation = raw_total_hydrocarbon_saturation.max(0.0);
     let bubble_point_bar = sim
         .pvt_table
         .as_ref()
@@ -63,7 +64,7 @@ pub(crate) fn resolve_cell_flash(
     if !sim.three_phase_mode {
         return FimFlashResult {
             regime,
-            so: total_hydrocarbon_saturation,
+            so: bounded_total_hydrocarbon_saturation,
             sg: 0.0,
             rs: 0.0,
             bubble_point_bar,
@@ -72,7 +73,9 @@ pub(crate) fn resolve_cell_flash(
 
     if sim.pvt_table.is_none() {
         let sg = match regime {
-            HydrocarbonState::Saturated => hydrocarbon_var.clamp(0.0, total_hydrocarbon_saturation),
+            HydrocarbonState::Saturated => {
+                hydrocarbon_var.clamp(0.0, bounded_total_hydrocarbon_saturation)
+            }
             HydrocarbonState::Undersaturated => 0.0,
         };
         return FimFlashResult {
@@ -87,14 +90,17 @@ pub(crate) fn resolve_cell_flash(
     let table = sim.pvt_table.as_ref().expect("checked above");
     match regime {
         HydrocarbonState::Saturated => {
-            let sg = hydrocarbon_var.clamp(0.0, total_hydrocarbon_saturation);
+            // Match OPM's raw primary-state lifecycle. Relperm/capillary evaluation owns
+            // endpoint extension; component accumulation must retain d(storage)/dSg even when
+            // switch hysteresis temporarily keeps a slightly negative Sg.
+            let sg = hydrocarbon_var;
             let mut rs = table.interpolate(pressure_bar).rs_m3m3;
             if let Some(base_rs) = drsdt0_base_rs {
                 rs = rs.min(base_rs);
             }
             FimFlashResult {
                 regime,
-                so: (1.0 - sw - sg).max(0.0),
+                so: raw_total_hydrocarbon_saturation - sg,
                 sg,
                 rs,
                 bubble_point_bar,
@@ -106,11 +112,11 @@ pub(crate) fn resolve_cell_flash(
                 rs_cap = rs_cap.min(base_rs.max(0.0));
             }
 
-            let rs_trial = hydrocarbon_var.max(0.0);
+            let rs_trial = hydrocarbon_var;
             if rs_trial <= rs_cap + 1e-6 {
                 return FimFlashResult {
                     regime,
-                    so: total_hydrocarbon_saturation,
+                    so: raw_total_hydrocarbon_saturation,
                     sg: 0.0,
                     rs: rs_trial,
                     bubble_point_bar,
@@ -118,7 +124,7 @@ pub(crate) fn resolve_cell_flash(
             }
 
             let bo_trial = sim.get_b_o_for_rs(pressure_bar, rs_trial).max(1e-9);
-            let dissolved_gas_sc = total_hydrocarbon_saturation * rs_trial / bo_trial;
+            let dissolved_gas_sc = raw_total_hydrocarbon_saturation * rs_trial / bo_trial;
             let (sg, so, rs) = sim.split_gas_inventory_after_transport(
                 pressure_bar,
                 1.0,

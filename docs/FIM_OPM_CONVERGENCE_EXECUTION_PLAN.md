@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0-Y2b2c complete; Y2b3a Gate A green; Y2b remains INCONCLUSIVE and Y2c is blocked
+Status: **Y2b0-Y2b2c complete; Y2b3b Gate B green; Y2b remains INCONCLUSIVE and Y2c is blocked
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -358,8 +358,8 @@ columns; the next capture must directly record each cell's switch history to con
 The design keeps the fixed three-variable cell block and changes the tag/value atomically. It
 requires zero empty cell-primary columns before any behavior verdict and forbids diagonal patches,
 well-row-only changes, inventory-flash substitutions for OPM's switch initialization, and solver or
-acceptance tuning. Gate A is now implemented below. The next executable slice is Y2b3b's
-derivative/structure Gate B; only then may the exact-capture Gate C run. Y2c remains blocked.
+acceptance tuning. Gates A and B are now implemented below. The next executable slice is Y2b3c's
+exact-capture Gate C. Y2c remains blocked.
 
 **Y2b3a result (2026-07-14): Gate A PASS; no convergence run.** The native/default-off raw-state
 path now performs the deck-scoped atomic `Sg <-> Rs` adaptation before well post-processing and
@@ -372,6 +372,17 @@ Gate A deliberately does not close dependency structure. Its hysteresis test pro
 a small negative `Sg` for one iteration, while ResSim's current AD property clamp can flatten that
 variable. Y2b3b must provide the meaning-aware accumulation/property derivative and zero-empty-
 column tests before the exact case is allowed.
+
+**Y2b3b result (2026-07-14): Gate B PASS; no convergence run.** Tagged three-phase `Sg`/`Rs`
+variables now remain raw through phase construction and component accumulation, while endpoint
+material properties and the two-phase/no-PVT paths retain their previous bounded behavior. The
+scalar and AD implementations changed together. Within-meaning one-sided FD covers the
+hysteresis-retained `Sg=-5e-6` case and both endpoint transition meanings. One-cell transitions
+and a mixed-regime gas-injector assembly have live hydrocarbon columns, finite entries, no empty
+rows or columns, scalar/AD residual parity, and successful diagnostic Sparse-LU factorization.
+The broader assembly, property, state, locked FIM, and curated FIM gates pass; `shared` reaches the
+same pre-existing closed-system `rate_history` mismatch (`2` versus `1`). Gate B is structural and
+does not promote Y2b. Gate C must now regenerate and classify the exact first-rung capture.
 
 ## 6. Y2c — promotion matrix
 
@@ -397,7 +408,7 @@ entire OPM stack ready.
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2b3a Gate A is complete.** Execute Y2b3b Gate B before another behavior run. Gate C must
+- **Y2b3b Gate B is complete.** Execute Y2b3c Gate C as the next bounded behavior diagnostic. It must
   show zero empty cell-primary columns and viable direct/live corrections before Y2b can be
   promoted, refuted, or used to select a structural branch.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to

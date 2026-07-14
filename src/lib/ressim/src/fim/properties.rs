@@ -43,7 +43,7 @@ pub(crate) fn cell_props_generic<S: Scalar>(
     drsdt0_base_rs: Option<f64>,
 ) -> CellProps<S> {
     let one = S::from_f64(1.0);
-    let total_hc = (one - sw).max_floor(0.0);
+    let raw_total_hc = one - sw;
 
     // Two-phase / no PVT table: no gas is present (the flash pins sg = 0 and
     // the state's hydrocarbon_var stays 0), but the third unknown must keep
@@ -56,6 +56,7 @@ pub(crate) fn cell_props_generic<S: Scalar>(
     // trajectory hc = 0, so the residual value is unchanged and Newton yields
     // delta_hc = 0 exactly; only the Jacobian structure differs.
     if !sim.three_phase_mode || sim.pvt_table.is_none() {
+        let total_hc = raw_total_hc.max_floor(0.0);
         let sg = hydrocarbon_var.max_floor(0.0).min_of(total_hc);
         let so = (one - sw - sg).max_floor(0.0);
         let bo = base_oil_fvf_generic(sim, p);
@@ -72,12 +73,16 @@ pub(crate) fn cell_props_generic<S: Scalar>(
 
     match regime {
         HydrocarbonState::Saturated => {
-            let sg = hydrocarbon_var.max_floor(0.0).min_of(total_hc);
+            // OPM keeps the tagged saturation primary raw through accumulation. Endpoint
+            // extension belongs to material properties (relperm/capillary), not to the stored
+            // component inventory. This also preserves d(storage)/dSg while switch hysteresis
+            // deliberately retains a slightly negative Sg for one iteration.
+            let sg = hydrocarbon_var;
             let mut rs = table.interpolate_saturated_generic(p).rs;
             if let Some(base_rs) = drsdt0_base_rs {
                 rs = rs.min_ceil(base_rs);
             }
-            let so = (one - sw - sg).max_floor(0.0);
+            let so = raw_total_hc - sg;
             let (bo, _mu_o) = table.interpolate_oil_generic(p, rs);
             let bg = table.interpolate_saturated_generic(p).bg;
             CellProps { so, sg, rs, bo, bg }
@@ -95,14 +100,16 @@ pub(crate) fn cell_props_generic<S: Scalar>(
                 Some(base_rs) => rs_cap_base.min_of(S::from_f64(base_rs.max(0.0))),
                 None => rs_cap_base,
             };
-            let rs_trial = hydrocarbon_var.max_floor(0.0);
+            // The OPM update already prevents a negative Rs. Keep the primary raw here so the
+            // component-storage dependency is not hidden behind a second state clamp.
+            let rs_trial = hydrocarbon_var;
 
             let (sg, so, rs) = if rs_trial.value() <= rs_cap.value() + 1e-6 {
-                (S::from_f64(0.0), total_hc, rs_trial)
+                (S::from_f64(0.0), raw_total_hc, rs_trial)
             } else {
                 let (bo_trial, _mu_o) = table.interpolate_oil_generic(p, rs_trial);
                 let bo_trial = bo_trial.max_floor(1e-9);
-                let dissolved_gas_sc = total_hc * rs_trial / bo_trial;
+                let dissolved_gas_sc = raw_total_hc * rs_trial / bo_trial;
                 // `split_gas_inventory_after_transport_generic` returns
                 // `(sg, so, rs)`, matching `split_gas_inventory_after_transport`.
                 crate::fim::flash_ad::split_gas_inventory_after_transport_generic(
@@ -364,6 +371,76 @@ mod tests {
     #[test]
     fn ad_accumulation_matches_numerical_undersaturated() {
         accumulation_gate(HydrocarbonState::Undersaturated, 150.0, 0.2, 12.0);
+    }
+
+    fn assert_hydrocarbon_column_matches_one_sided_fd(
+        regime: HydrocarbonState,
+        hc_var: f64,
+        signed_step: f64,
+    ) {
+        let sim = three_phase_sim();
+        let p = 150.0;
+        let sw = 0.2;
+        let prev_p = 145.0;
+        let prev_sw = 0.21;
+        let prev_hc = match regime {
+            HydrocarbonState::Saturated => 0.01,
+            HydrocarbonState::Undersaturated => 12.0,
+        };
+        let analytic = accumulation_jacobian_block(
+            &sim, 0, p, sw, hc_var, regime, None, prev_p, prev_sw, prev_hc, regime,
+        );
+        let base = cell_accumulation_generic::<f64>(
+            &sim, 0, p, sw, hc_var, regime, None, prev_p, prev_sw, prev_hc, regime,
+        );
+        let perturbed = cell_accumulation_generic::<f64>(
+            &sim,
+            0,
+            p,
+            sw,
+            hc_var + signed_step,
+            regime,
+            None,
+            prev_p,
+            prev_sw,
+            prev_hc,
+            regime,
+        );
+
+        let mut live_entries = 0usize;
+        for eq in 0..3 {
+            let numerical = (perturbed[eq] - base[eq]) / signed_step;
+            let tolerance = 1e-6 * analytic[eq][2].abs().max(numerical.abs()).max(1.0);
+            assert!(
+                (analytic[eq][2] - numerical).abs() <= tolerance,
+                "{regime:?} hc={hc_var}: eq={eq} AD={} one-sided-FD={numerical}",
+                analytic[eq][2]
+            );
+            live_entries += usize::from(analytic[eq][2].abs() > 1e-14);
+        }
+        assert!(
+            live_entries > 0,
+            "{regime:?} hc={hc_var}: hydrocarbon accumulation column must be live"
+        );
+    }
+
+    #[test]
+    fn y2b3b_tagged_hydrocarbon_accumulation_matches_within_meaning_one_sided_fd() {
+        // Hysteresis-retained negative Sg: stay negative under the positive perturbation.
+        assert_hydrocarbon_column_matches_one_sided_fd(HydrocarbonState::Saturated, -5e-6, 1e-7);
+        // Newly appeared gas starts at Sg=0; use the physically present Sg side.
+        assert_hydrocarbon_column_matches_one_sided_fd(HydrocarbonState::Saturated, 0.0, 1e-7);
+        assert_hydrocarbon_column_matches_one_sided_fd(
+            HydrocarbonState::Undersaturated,
+            14.0,
+            1e-7,
+        );
+        // Newly disappeared gas starts at saturated Rs=15; perturb into the Rs branch.
+        assert_hydrocarbon_column_matches_one_sided_fd(
+            HydrocarbonState::Undersaturated,
+            15.0,
+            -1e-7,
+        );
     }
 
     /// AD-vs-numerical gate for the undersaturated excess-gas-flash branch

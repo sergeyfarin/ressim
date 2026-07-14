@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Y2b3a Gate A implemented and green; Gate B next; no convergence run (2026-07-14)**
+Status: **Y2b3b Gate B implemented and green; Gate C next; no convergence run (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -195,6 +195,26 @@ not yet a dependency-complete behavior probe and must not be run on the converge
 - confirm reservoir and well terms use the same adapted meaning by checking their AD/legacy
   parity fixtures.
 
+**Result (2026-07-14): PASS.** Three-phase tagged primaries now remain raw through current-state
+phase construction and component accumulation. Endpoint extension remains owned by the existing
+relative-permeability/capillary functions; the two-phase and no-PVT bounded paths are unchanged.
+The scalar reference flash was changed in lockstep with the AD property path.
+
+The new gates establish the following local contracts:
+
+- within each fixed meaning, the active hydrocarbon accumulation column matches a one-sided
+  finite difference for positive, zero, and hysteresis-retained `Sg=-5e-6`, and for sub-saturated
+  and just-disappeared-gas `Rs` states;
+- both one-cell transition directions assemble a live third column after adaptation and factor
+  with the independent diagnostic Sparse LU;
+- a three-cell mixed `Sg`/`Rs` gas-injector fixture has finite entries, zero empty rows, zero empty
+  columns, and a successful direct factorization; and
+- scalar reservoir/well residuals and AD residuals agree on the transition and injector fixtures,
+  while the existing full reservoir/well AD-vs-scalar-FD gates remain green.
+
+These tests prove derivative consistency and structural viability only. They do not establish
+that the lifecycle improves the tracked nonlinear trajectory, so Y2b remains `INCONCLUSIVE`.
+
 ### Gate C — exact first-rung diagnostic
 
 Regenerate the Y2b2 `dt=0.00898425` iteration-1 capture with switch tracing enabled. Require:
@@ -221,8 +241,8 @@ six-step promotion matrix yet.
 
 ## 7. Next executable slice
 
-The next code slice is **Y2b3b: Gate B dependency and structure tests**. Start with the
-hysteresis-retained negative-`Sg` case, then the one-cell transitions and mixed-regime injector.
-Make raw accumulation retain the active tagged derivative while leaving endpoint property
-extension safe. Do not run a convergence case until Gate B establishes that the lifecycle cannot
-create an empty column. Only then execute Gate C.
+The next slice is **Y2b3c: Gate C exact first-rung diagnostic**. Regenerate the exact
+`dt=0.00898425`, iteration-1 capture with switch tracing, enforce zero empty cell-primary columns,
+and compare finite full-system corrections/reductions from ordinary Sparse LU, dense LU, and CPR.
+Run only the capped first rung after the capture oracle is valid; do not run the six-step promotion
+matrix or tune direct solvers, acceptance, wells, or timestep control.

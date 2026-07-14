@@ -625,8 +625,12 @@ pub(crate) fn assemble_fim_system_ad(
 mod tests {
     use super::*;
     use crate::fim::assembly::assemble_fim_system;
+    use crate::fim::linear::{
+        FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolverKind, solve_linearized_system,
+    };
     use crate::fim::numjac::{assert_jacobian_matches, central_difference_jacobian};
-    use crate::fim::state::HydrocarbonState;
+    use crate::fim::state::{HydrocarbonState, WellStateUpdateMode};
+    use crate::fim::wells::build_well_topology;
     use crate::pvt::{PvtRow, PvtTable};
 
     /// 2x2x1 grid (4 cells) so both x- and y-direction faces are exercised,
@@ -832,6 +836,231 @@ mod tests {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+        }
+    }
+
+    fn assert_gate_b_structure_and_factorization(assembly: &FimAssembly, state: &FimState) {
+        assert_eq!(assembly.jacobian.rows(), assembly.jacobian.cols());
+        assert_eq!(assembly.jacobian.rows(), assembly.residual.len());
+
+        let mut row_nnz = vec![0usize; assembly.jacobian.rows()];
+        let mut column_nnz = vec![0usize; assembly.jacobian.cols()];
+        for (value, (row, column)) in &assembly.jacobian {
+            assert!(value.is_finite(), "non-finite J[{row},{column}]={value}");
+            if *value != 0.0 {
+                row_nnz[row] += 1;
+                column_nnz[column] += 1;
+            }
+        }
+        assert!(
+            row_nnz.iter().all(|&count| count > 0),
+            "empty Jacobian rows: {:?}",
+            row_nnz
+                .iter()
+                .enumerate()
+                .filter_map(|(row, &count)| (count == 0).then_some(row))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            column_nnz.iter().all(|&count| count > 0),
+            "empty Jacobian columns: {:?}",
+            column_nnz
+                .iter()
+                .enumerate()
+                .filter_map(|(column, &count)| (count == 0).then_some(column))
+                .collect::<Vec<_>>()
+        );
+
+        let rhs = -&assembly.residual;
+        let options = FimLinearSolveOptions {
+            kind: FimLinearSolverKind::SparseLuDebug,
+            eliminate_wells: false,
+            ..FimLinearSolveOptions::default()
+        };
+        let layout = FimLinearBlockLayout {
+            cell_block_count: state.cells.len(),
+            cell_block_size: 3,
+            well_bhp_count: state.n_well_unknowns(),
+            perforation_tail_start: 3 * state.cells.len() + state.n_well_unknowns(),
+        };
+        let report =
+            solve_linearized_system(&assembly.jacobian, &rhs, &options, Some(layout), None);
+        assert!(
+            report.converged,
+            "Sparse-LU diagnostic failed: rhs_norm={} final_norm={} reduction={}",
+            report.rhs_norm,
+            report.final_residual_norm,
+            report.reduction()
+        );
+        assert!(report.solution.iter().all(|value| value.is_finite()));
+    }
+
+    fn assert_scalar_ad_residual_parity(
+        sim: &ReservoirSimulator,
+        previous_state: &FimState,
+        state: &FimState,
+        options: &FimAssemblyOptions,
+    ) -> FimAssembly {
+        let scalar = assemble_fim_system(sim, previous_state, state, options);
+        let ad = assemble_fim_system_ad(sim, previous_state, state, options);
+        for (row, (scalar_value, ad_value)) in
+            scalar.residual.iter().zip(ad.residual.iter()).enumerate()
+        {
+            let tolerance = 1e-10 * scalar_value.abs().max(ad_value.abs()).max(1.0);
+            assert!(
+                (scalar_value - ad_value).abs() <= tolerance,
+                "residual[{row}]: scalar={scalar_value} AD={ad_value}"
+            );
+        }
+        ad
+    }
+
+    fn y2b3b_transition_fixture() -> (ReservoirSimulator, FimState) {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.4,
+                    bg_m3m3: 0.02,
+                    mu_g_cp: 0.03,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.2,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.025,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
+        let previous_state = FimState::from_simulator(&sim);
+        (sim, previous_state)
+    }
+
+    #[test]
+    fn y2b3b_one_cell_transitions_keep_primary_column_live_and_factorable() {
+        let (sim, previous_state) = y2b3b_transition_fixture();
+        let topology = build_well_topology(&sim);
+        let options = FimAssemblyOptions {
+            dt_days: 0.1,
+            include_wells: false,
+            assemble_residual_only: false,
+            topology: Some(&topology),
+        };
+
+        let cases = [
+            (HydrocarbonState::Saturated, 0.01, -0.02),
+            (HydrocarbonState::Undersaturated, 14.0, 2.0),
+        ];
+        for (initial_regime, initial_hc, hydrocarbon_update) in cases {
+            let mut initial = previous_state.clone();
+            initial.cells[0].pressure_bar = 150.0;
+            initial.cells[0].sw = 0.2;
+            initial.cells[0].regime = initial_regime;
+            initial.cells[0].hydrocarbon_var = initial_hc;
+            let mut update = DVector::zeros(initial.n_unknowns());
+            update[2] = hydrocarbon_update;
+            let (adapted, switched) = initial.apply_newton_update_opm_primary_variables(
+                &sim,
+                &update,
+                1.0,
+                &topology,
+                WellStateUpdateMode::None,
+                &[false],
+            );
+            assert_eq!(switched, vec![true]);
+            assert_ne!(adapted.cells[0].regime, initial_regime);
+
+            let assembly =
+                assert_scalar_ad_residual_parity(&sim, &previous_state, &adapted, &options);
+            assert_gate_b_structure_and_factorization(&assembly, &adapted);
+            assert!(
+                assembly
+                    .jacobian
+                    .iter()
+                    .any(|(value, (_row, column))| column == 2 && value.abs() > 0.0),
+                "adapted hydrocarbon primary column must remain live"
+            );
+        }
+    }
+
+    #[test]
+    fn y2b3b_mixed_regime_gas_injector_system_is_populated_and_factorable() {
+        let mut sim = ReservoirSimulator::new(3, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.set_injected_fluid("gas").unwrap();
+        sim.pvt_table = y2b3b_transition_fixture().0.pvt_table;
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
+        sim.add_well(0, 0, 0, 250.0, 0.1, 0.0, true).unwrap();
+        sim.set_rate_controlled_wells(true);
+        sim.set_target_well_rates(100.0, 0.0).unwrap();
+
+        let topology = build_well_topology(&sim);
+        let previous_state = FimState::from_simulator(&sim);
+        let mut pre_adaptation = previous_state.clone();
+        let cell_values = [
+            (210.0, 0.20, HydrocarbonState::Undersaturated, 14.0),
+            (200.0, 0.25, HydrocarbonState::Undersaturated, 14.0),
+            (190.0, 0.30, HydrocarbonState::Saturated, -5e-6),
+        ];
+        for (cell, (pressure, sw, regime, hydrocarbon_var)) in
+            pre_adaptation.cells.iter_mut().zip(cell_values)
+        {
+            cell.pressure_bar = pressure;
+            cell.sw = sw;
+            cell.regime = regime;
+            cell.hydrocarbon_var = hydrocarbon_var;
+        }
+        pre_adaptation.well_bhp[0] = 230.0;
+        pre_adaptation.perforation_rates_m3_day[0] = -100.0;
+
+        // Adapt the perforated cell from Rs to newly appeared Sg=0. Cell 2 represents the
+        // opposite edge: previous-switch hysteresis retains its slightly negative Sg meaning.
+        let mut update = DVector::zeros(pre_adaptation.n_unknowns());
+        update[2] = 10.0;
+        let (state, switched) = pre_adaptation.apply_newton_update_opm_primary_variables(
+            &sim,
+            &update,
+            1.0,
+            &topology,
+            WellStateUpdateMode::None,
+            &[false, false, true],
+        );
+        assert_eq!(switched, vec![true, false, false]);
+        assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
+        assert_eq!(state.cells[0].hydrocarbon_var, 0.0);
+        assert_eq!(state.cells[2].regime, HydrocarbonState::Saturated);
+        assert_eq!(state.cells[2].hydrocarbon_var, -5e-6);
+
+        let options = FimAssemblyOptions {
+            dt_days: 0.1,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: Some(&topology),
+        };
+        let assembly = assert_scalar_ad_residual_parity(&sim, &previous_state, &state, &options);
+        assert_gate_b_structure_and_factorization(&assembly, &state);
+        for cell_idx in 0..state.cells.len() {
+            let primary_column = 3 * cell_idx + 2;
+            assert!(
+                assembly.jacobian.iter().any(|(value, (_row, column))| {
+                    column == primary_column && value.abs() > 0.0
+                }),
+                "cell {cell_idx} hydrocarbon primary column must remain live"
+            );
         }
     }
 

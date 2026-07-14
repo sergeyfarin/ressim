@@ -280,6 +280,35 @@ No flagged convergence run was performed. Gate A's hysteresis test shows why: wi
 floors it to zero and may erase its Jacobian dependency. Y2b3b must first add the raw
 meaning-aware accumulation dependency and prove one-sided FD plus zero empty columns.
 
+### Y2b3b checkpoint (2026-07-14) — Gate B dependency and structure green
+
+Changed only the tagged three-phase property/accumulation lifecycle: `Sg` and `Rs` remain raw in
+the scalar and AD phase-state construction, while relative permeability/capillary endpoint
+extension remains separate. Two-phase and no-PVT bounded behavior is unchanged. This removes the
+specific derivative flattening exposed by Gate A without adding a diagonal, changing matrix
+shape, or touching wells, linear solvers, Newton acceptance, or timestep control.
+
+Evidence:
+
+- `cargo test ... y2b3b_ -- --nocapture`: 3/3 pass. The accumulation column matches one-sided FD
+  within each meaning, including `Sg=-5e-6`; both one-cell switch directions and the mixed-regime
+  gas injector have live hydrocarbon columns, finite/nonempty matrices, and successful diagnostic
+  Sparse-LU factorization.
+- `cargo test ... fim::assembly_ad::tests:: -- --nocapture`: 6/6 pass, including scalar residual
+  parity and AD-vs-scalar-FD with reservoir and well terms.
+- `cargo test ... fim::properties::tests:: -- --nocapture`: 7/7 pass;
+  `cargo test ... fim::state::tests::y2b3 -- --nocapture`: 5/5 pass.
+- Locked `drsdt0_base_rs_cap_flashes_excess_dissolved_gas_to_free_gas` passes; the two SPE1 locked
+  cases pass in the curated FIM bucket. `bash scripts/validate-solver-coverage.sh fim` passes.
+- `bash scripts/validate-solver-coverage.sh shared` passes its first three contracts and then
+  stops at the known pre-existing closed-system `rate_history` assertion (`left=2`, `right=1`).
+
+Classification remains **Y2b INCONCLUSIVE**. These are local derivative and structural oracles,
+not evidence of improved OPM trajectory parity. No flagged convergence run was performed. The
+next slice is Y2b3c Gate C: regenerate the exact first-rung capture with switch tracing, require
+zero empty cell-primary columns, and compare backend-neutral direct/CPR corrections and full-system
+reductions before running only the capped first rung.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted
