@@ -1429,3 +1429,31 @@ but is not a stack promotion. The next bounded question is the first `22x22x1` c
 `linear-bad` retry, using common full-system norms and an independent direct replay. This directly
 tests the promotion blocker while holding the proven lifecycle fixed; it does not authorize G4,
 acceptance widening, controller tuning, or a Sparse-LU implementation project.
+
+### 15.11 Y2d0 result: bounded promotion blocker is a real CPR quality gap (2026-07-14)
+
+Clean commit `2030996` reproduced the lifecycle candidate's 11 substeps and eight linear retries
+on `22x22x1`. Failure-only capture produced exactly eight artifacts. The first is a 1456-row,
+4764-nonzero iteration-0 `max-iters` system (SHA-256
+`725cbbc2cc06f1d31ef090c7b7f11e6374ce7b70a3feaf06ccc90f18309e786b`) with no empty,
+duplicate, non-finite, all-zero, or zero-pivot-candidate structure; Sparse LU factorizes normally.
+
+The common full-system replay is decisive. At `rhs_norm=2.541597987e3`, production-faithful CPR
+reproduces the live 30-iteration failure with a finite correction and reduction
+`1.441123105e-2`. Sparse LU returns a finite correction in one iteration with reduction
+`5.546336962e-15`. Reported final norms equal independently recomputed `||rhs-Jdx||`; CPR's
+`36.62755584` residual is wholly in reservoir rows, while the direct well-row residual is
+`2.60e-14`. The corrections materially disagree: maximum pressure delta `181.498 bar`, water
+saturation delta `0.351096`, and perforation-rate delta `1550.931 m3/day`. Disabling well Schur
+still fails at 30 iterations, so recovery/wrapper semantics alone do not explain the gap.
+
+Verdict: **Y2d0 CONFIRMED**. This first retry is not a lifecycle refutation, singular matrix,
+factorization failure, missing report metric, or nonlinear acceptance artifact. It is a genuine
+iterative correction-quality failure.
+
+Existing restriction-variant output supplies only a next clue: on all eight frozen failures,
+`row0-schur` and `local-schur-balanced` converge 4/8 while current `quasi-impes` converges 0/8.
+That helper bypasses production well-Schur elimination and captured equation scaling, and the old
+gas corpus previously favored quasi-IMPES 336/337. Therefore no restriction flip is authorized.
+Y2d1 must first make the variant replay production-faithful and require the gas corpus as a
+counter-control.

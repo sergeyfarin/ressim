@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Gates A-C and Y2c complete; mechanism validated, default-off; Y2d0 is next (2026-07-14)**
+Status: **Mechanism validated/default-off; Y2d0 confirms a separate CPR quality gap; Y2d1 is next (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -281,7 +281,13 @@ eight linear retries versus Legacy's four, and heavy water remains seven substep
 one. Adjacent `20x20x3` and `23x23x1` water controls improve, so wholesale reversion would discard
 a demonstrated OPM-alignment gain without explaining the localized blocker.
 
-The next slice is **Y2d0**, execution-plan §7.1: capture and replay the first candidate
-`22x22x1` `linear-bad` system under the backend-neutral full-system norm contract. Hold this
-lifecycle fixed and default-off. Do not open G4, widen acceptance, tune timestep control, change
-wells, or turn Sparse LU into production work while classifying that artifact.
+Y2d0 captured and replayed the first candidate `22x22x1` `linear-bad` system. The matrix is
+structurally clean and directly factorable; CPR reproduces the live failure at reduction
+`1.4411e-2`, while Sparse LU reaches `5.5463e-15` and the returned corrections materially differ.
+This localizes the control regression outside this lifecycle and strengthens—not weakens—the
+decision to preserve it default-off while diagnosing the next layer.
+
+The next slice is **Y2d1**, execution-plan §7.2: production-faithful offline CPR restriction
+discrimination on the eight bounded artifacts plus the established gas counter-corpus. Hold this
+lifecycle fixed. Do not open G4, widen acceptance, tune timestep control, change wells, or promote
+Sparse LU while isolating the iterative component.

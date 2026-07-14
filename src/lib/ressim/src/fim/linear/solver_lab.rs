@@ -20,17 +20,17 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::capture::{
-    FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
+    capture_dir_from_env, load_captures, y2b2_capture_dir_from_env, FimCapturedSystem,
 };
 use super::gmres_block_jacobi::{
-    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
-    solve_with_restriction_kind, solve_with_smoother_and_restriction,
+    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
+    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
 };
 use super::sparse_lu_debug;
 use super::well_schur;
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    solve_linearized_system,
+    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -695,6 +695,109 @@ fn replay_y2b3c_exact_capture() {
         y2b3_max_peak(sparse_dense_delta) < 1e-10,
         "independent direct corrections disagree: {sparse_dense_delta:?}"
     );
+}
+
+/// Y2d0's single-system oracle for the first `22x22x1` lifecycle-candidate linear retry.
+///
+/// This deliberately replays one isolated live-failure artifact rather than treating a corpus
+/// aggregate or a backend-specific `converged` flag as evidence. Both returned corrections are
+/// checked against the same full Jacobian/RHS, split into reservoir and recovered-well rows, and
+/// compared by unknown family. It is diagnostic infrastructure only; it does not change solver
+/// selection or nonlinear acceptance.
+#[test]
+#[ignore]
+fn replay_y2d0_first_bounded_control_failure() {
+    let dir = capture_dir_from_env()
+        .expect("set FIM_CAPTURE_DIR to a directory containing the isolated Y2d0 capture");
+    let systems = load_captures(&dir).expect("load Y2d0 capture");
+    assert_eq!(systems.len(), 1, "Y2d0 requires one isolated capture");
+    let system = &systems[0];
+    assert_eq!(system.metadata.newton_iteration, 0);
+    assert_eq!(system.metadata.failure_reason, "max-iters");
+    let layout = system.layout.expect("Y2d0 capture has block layout");
+    let structure = sparse_lu_debug::diagnose(&system.jacobian);
+
+    let cpr = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &FimLinearSolveOptions::default(),
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+    let direct = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &FimLinearSolveOptions {
+            kind: FimLinearSolverKind::SparseLuDebug,
+            ..FimLinearSolveOptions::default()
+        },
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+
+    let cpr_residual = residual_vector(&system.jacobian, &cpr.solution, &system.rhs);
+    let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+    let cpr_partitions = y2b2_partition_norms(layout, &cpr_residual);
+    let direct_partitions = y2b2_partition_norms(layout, &direct_residual);
+    let cpr_peaks = y2b3_correction_peaks(layout, &cpr.solution);
+    let direct_peaks = y2b3_correction_peaks(layout, &direct.solution);
+    let correction_delta = y2b3_correction_delta_peaks(layout, &cpr.solution, &direct.solution);
+
+    println!(
+        "Y2D0-STRUCTURE rows={} nnz={} empty_rows={} empty_columns={} duplicates={} non_finite={} all_zero_rows={} zero_diagonal_candidates={} sparse_preparation={}",
+        system.jacobian.rows(),
+        system.jacobian.nnz(),
+        structure.structure.empty_rows,
+        structure.structure.empty_columns,
+        structure.structure.duplicate_entries,
+        structure.structure.non_finite_entries,
+        structure.structure.all_zero_rows,
+        structure.structure.potential_zero_pivot_rows,
+        structure.preparation.label(),
+    );
+    println!(
+        "Y2D0-REPLAY rhs_norm={:.9e} cpr={{converged={},finite={},iters={},report_residual={:.9e},true_residual={:.9e},reduction={:.9e},reservoir={:.9e},well={:.9e},dx={:?}}} direct={{converged={},finite={},iters={},report_residual={:.9e},true_residual={:.9e},reduction={:.9e},reservoir={:.9e},well={:.9e},dx={:?}}} correction_delta={:?}",
+        system.rhs.norm(),
+        cpr.converged,
+        cpr.solution.iter().all(|value| value.is_finite()),
+        cpr.iterations,
+        cpr.final_residual_norm,
+        cpr_residual.norm(),
+        cpr.reduction(),
+        cpr_partitions.0,
+        cpr_partitions.1,
+        cpr_peaks,
+        direct.converged,
+        direct.solution.iter().all(|value| value.is_finite()),
+        direct.iterations,
+        direct.final_residual_norm,
+        direct_residual.norm(),
+        direct.reduction(),
+        direct_partitions.0,
+        direct_partitions.1,
+        direct_peaks,
+        correction_delta,
+    );
+
+    assert_eq!(structure.structure.empty_rows, 0);
+    assert_eq!(structure.structure.empty_columns, 0);
+    assert_eq!(structure.structure.duplicate_entries, 0);
+    assert_eq!(structure.structure.non_finite_entries, 0);
+    assert_eq!(structure.structure.all_zero_rows, 0);
+    assert_eq!(structure.structure.potential_zero_pivot_rows, 0);
+    assert_eq!(
+        structure.preparation,
+        sparse_lu_debug::SparseLuPreparation::Factorized
+    );
+    for report in [&cpr, &direct] {
+        assert!(report.solution.iter().all(|value| value.is_finite()));
+        assert!(report.reduction().is_finite());
+        assert!((report.rhs_norm - system.rhs.norm()).abs() < 1e-12);
+    }
+    assert!((cpr.final_residual_norm - cpr_residual.norm()).abs() < 1e-10);
+    assert!((direct.final_residual_norm - direct_residual.norm()).abs() < 1e-10);
+    assert!(direct.converged);
+    assert!(direct.reduction() < 1e-10);
 }
 
 struct VariantOutcome {

@@ -400,6 +400,61 @@ promotion blocker is the candidate's 11 versus Legacy's 4 substeps on `22x22x1`,
 with one independent direct replay under the backend-neutral full-system norm contract. Do not
 change acceptance, timestep policy, wells, or the lifecycle while establishing that oracle.
 
+### Y2d0 checkpoint (2026-07-14) — first bounded retry is a genuine CPR correction failure
+
+Baseline commit: `20309969a4ba58844b00f19b0f7191577f9b3f55`. The exact capture command was:
+
+```text
+FIM_CAPTURE_DIR=/tmp/ressim-y2d0-2030996 FIM_Y2B_RAW_SATURATION=1 \
+FIM_Y2C_WATER_GRID=22x22x1 FIM_Y2C_FLAVOR=opm cargo test --release \
+--manifest-path src/lib/ressim/Cargo.toml --lib repro_water_pressure_y2c_control \
+-- --ignored --nocapture
+```
+
+It reproduced Y2c exactly: 11 accepted substeps, Newton `3,3,3,3,3,3,4,4,4,5,3`, eight
+`linear-bad` retries, and no nonlinear/mixed retries. The failure hook wrote exactly eight
+artifacts. The prescribed first artifact is `/tmp/ressim-y2d0-2030996/fim_capture_00000.txt`,
+SHA-256 `725cbbc2cc06f1d31ef090c7b7f11e6374ce7b70a3feaf06ccc90f18309e786b`.
+
+The new ignored `replay_y2d0_first_bounded_control_failure` test is diagnostic-only and requires
+an isolated one-file `FIM_CAPTURE_DIR`. It computes backend-neutral norms independently from the
+reports, partitions the residual into reservoir and well rows, and compares correction families.
+Results:
+
+- matrix `1456x1456`, 4764 nonzeros; no empty rows/columns, duplicates, non-finite entries,
+  all-zero rows, or zero-diagonal candidates; Sparse LU preparation `factorized`;
+- common RHS norm `2.541597987e3`;
+- CPR: finite, not converged, 30 iterations, report/recomputed residual `3.662755584e1`, reduction
+  `1.441123105e-2`, reservoir residual identical, well residual zero;
+- Sparse LU: finite/converged, one iteration, residual `1.409655886e-11`, reduction
+  `5.546336962e-15`, reservoir `1.409653480e-11`, well `2.604409651e-14`;
+- CPR/direct correction delta peaks: pressure `181.4979654`, Sw `0.3510961842`, hydrocarbon slot
+  `5.58e-14`, well BHP `2.53e-14`, perforation rate `1550.930879`.
+
+The generic backend replay independently reproduces the same CPR failure and direct success;
+GMRES-ILU0 also fails (`7.031e-3` strict relative residual). The existing well-elimination lab
+shows both default CPR with and without well Schur stop at 30 iterations, so Schur recovery is not
+the sole cause.
+
+An existing lab-only restriction sweep was run as a bounded clue, not a behavior verdict. On the
+first artifact, `row0-schur`/`local-schur-balanced` converge at `1.257e-4`, while quasi-IMPES is
+non-converged at `7.598e-3`. Across all eight artifacts, row0/local-Schur converge 4/8 and
+quasi-IMPES 0/8. But this helper bypasses production well-Schur elimination and equation scaling,
+and historical gas evidence favored quasi-IMPES 336/337. It is therefore an invalid basis for a
+live restriction flip.
+
+**Classification: Y2d0 CONFIRMED.** The first promotion-blocking retry is a real iterative
+correction-quality gap, not matrix build/factorization, reporting, lifecycle, or nonlinear
+acceptance. Next execute Y2d1 offline only: route explicit restriction variants through the real
+well-Schur/scaling wrapper and require both the eight bounded artifacts and the established gas
+corpus before choosing or refuting restriction mismatch.
+
+Validation: exact release capture/replay and the generic backend/well-elimination/restriction labs
+pass; capture round trips 3/3, Sparse-LU report reduction and well-Schur full-system norm contracts
+pass; locked DRSDT0 and Buckley-Leverett 3/3 pass; the curated FIM bucket passes. The shared bucket
+again passes its first three contracts and stops at the unchanged pre-existing closed-system
+`rate_history` mismatch (`left=2`, `right=1`).
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

@@ -110,12 +110,19 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `22x22x1` water: candidate 11 substeps/8 linear retries versus Legacy 4; heavy water remains 7
   versus Flow 1. Keep `FIM_Y2B_RAW_SATURATION` native/default-off; do not misclassify this as a
   lifecycle refutation or whole-stack promotion.
-- [ ] **Next: Y2d0 bounded-control linear-oracle gate.** On the unchanged candidate, capture the
-  first `22x22x1` `linear-bad` retry and replay that exact full system through live CPR plus one
-  viable independent direct backend. Require common RHS/final full residual, reduction, finite
-  status, and correction-family deltas. Confirm only if direct is materially better; refute if
-  corrections agree; missing metrics is inconclusive. Do not change acceptance, timestep policy,
-  wells, lifecycle behavior, or production Sparse LU in this slice.
+- [x] **Y2d0 bounded-control linear-oracle gate (2026-07-14): CONFIRMED.** Clean `2030996`
+  reproduced 11 substeps/8 linear retries and captured the first structurally clean 1456-row
+  system. CPR reproduces the live 30-iteration failure at full-system reduction `1.4411e-2`;
+  Sparse LU factorizes and reaches `5.5463e-15`. Both corrections are finite but materially differ
+  (pressure `181.5 bar`, Sw `0.3511`, perf rate `1550.9 m3/day`). Report/recomputed norms and row
+  partitions agree; disabling well Schur still fails. This is a real iterative correction-quality
+  gap, not lifecycle, matrix-build, reporting, or nonlinear acceptance.
+- [ ] **Next: Y2d1 production-faithful CPR component discrimination.** Add test-only variant
+  injection through the real well-Schur reduction, equation scaling, smoother, tolerance, and
+  iteration budget. Replay all restrictions on all eight Y2d0 artifacts and the established gas
+  corpus where quasi-IMPES previously won 336/337. Existing unwrapped output (row0/local-Schur
+  4/8 versus quasi-IMPES 0/8) is only a clue, not authority for a live flip. No production solver
+  or convergence run in this slice.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

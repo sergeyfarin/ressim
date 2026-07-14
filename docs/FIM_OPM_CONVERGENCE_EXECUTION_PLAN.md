@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2c complete: Y2b is validated positive but remains default-off; Y2d0 is next
+Status: **Y2d0 confirms a bounded iterative correction-quality failure; Y2d1 is next
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -455,11 +455,10 @@ stack. Neither result refutes the sourced lifecycle mechanism. They constrain th
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2c is complete and selects Y2d0.** Diagnose the first `22x22x1` candidate linear-bad retry
-  with a comparable full-system oracle. This is the smallest observed failure that directly blocks
-  promotion. Hold lifecycle, acceptance, wells, and timestep policy fixed. First distinguish a
-  real CPR correction-quality failure from wrapper/reporting or nonlinear-trajectory failure; do
-  not tune the linear solver from a backend-specific `converged` flag.
+- **Y2d0 is complete and selects Y2d1.** The first `22x22x1` candidate retry is a structurally
+  clean, factorable system on which production-faithful CPR reproduces the live failure while
+  direct LU solves to machine precision. Use offline component discrimination to localize the CPR
+  defect before any live change. Hold lifecycle, acceptance, wells, and timestep policy fixed.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.
@@ -492,6 +491,38 @@ lifecycle itself.
   the retry as nonlinear/controller trajectory evidence and select one new bounded branch.
 - No acceptance widening, well-equation edits, timestep tuning, G4/G5 work, or production Sparse
   LU project is authorized in Y2d0.
+
+**Y2d0 result (2026-07-14): hypothesis confirmed.** Clean commit `2030996` reproduced 11
+substeps/8 linear retries and captured eight corresponding systems. The first artifact is
+`1456x1456`, 4764 nonzeros, SHA-256
+`725cbbc2cc06f1d31ef090c7b7f11e6374ce7b70a3feaf06ccc90f18309e786b`; it has no empty,
+duplicate, non-finite, all-zero, or zero-diagonal-candidate rows/columns, and Sparse LU factorizes.
+On the identical full system (`rhs_norm=2.541597987e3`), CPR reproduces the 30-iteration failure
+with finite correction and reduction `1.441123105e-2`; Sparse LU is finite and converged with
+reduction `5.546336962e-15`. Reported and independently recomputed residuals match, the CPR
+residual is entirely in reservoir rows, and correction-family deltas are material (pressure
+`181.498`, water saturation `0.351096`, perforation rate `1550.931`). This confirms a real
+iterative correction-quality gap and excludes matrix build/factorization, report semantics,
+well-row recovery, lifecycle, and nonlinear acceptance as explanations for this first retry.
+
+### 7.2 Y2d1 production-faithful CPR component discrimination
+
+The existing lab-only restriction comparison is a clue, not yet an oracle for a live change: on
+the eight frozen failures, `row0-schur`/`local-schur-balanced` solve 4/8 while current
+`quasi-impes` solves 0/8, but that helper bypasses production well-Schur elimination and captured
+equation scaling. The next slice must repair that comparability gap rather than flip restrictions.
+
+- Add a test-only way to replay an explicit restriction through the same well-Schur reduction,
+  equation scaling, smoother, tolerance, and iteration budget as production.
+- Run all existing restriction variants on all eight Y2d0 artifacts and report full-system
+  residual/reduction, finite status, reservoir/well partitions, and direct-correction deltas.
+- Re-run the established gas failure corpus (where quasi-IMPES previously won 336/337) as the
+  mandatory counter-control; no one-case adaptive selector is authorized.
+- **Confirm restriction mismatch** only if one variant materially improves the bounded corpus
+  without losing the gas corpus under the production-faithful wrapper.
+- **Refute restriction mismatch** if no variant improves both; then isolate smoother/Krylov
+  behavior on the same artifacts without a live solver edit.
+- No production behavior or convergence run belongs in Y2d1.
 
 ## 8. Y3 and Y4 end gates
 
