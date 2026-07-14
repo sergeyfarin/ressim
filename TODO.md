@@ -51,7 +51,7 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 - [ ] **3D view named bugs** from PLAN.md-era review (FOV degrees conversion, `Array.isArray` on GridState, `k ?? k` well indexing) were never re-verified post-refactor — cheap scoped verification pass (COMPARISON_TOOLBOX_REVIEW gap #7).
 - [ ] **3 pre-existing test failures found 2026-07-07** (not part of the locked smoke gate, unrelated to Bundle N — confirmed by reproducing on commit `41d45f2` before any Bundle N checkpoint-4 edits): `fim::timestep::tests::changing_hotspot_resets_extra_growth_cooldown_budget`, `repeated_same_hotspot_extends_growth_cooldown_budget`, `fim_enabled_step_advances_time_and_records_history_for_closed_system`. Not investigated further (out of scope for the current task); worth a scoped look. **Likely a 4th sibling found 2026-07-12** (`FIM-BUNDLE-X` X1 gate, `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"): `tests::runtime_api::closed_system_public_step_keeps_same_water_inventory_on_both_solvers` — same symptom class (extra `rate_history` entry on the FIM path for a well-less closed system), different test name; confirmed pre-existing via `git stash` on a clean tree, structurally unrelated to Bundle X. Worth investigating all four together — the shared "closed system + FIM + rate_history" pattern suggests one root cause, not four.
 
-## FIM next steps (updated 2026-07-13)
+## FIM next steps (updated 2026-07-14)
 
 Current execution authority: `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. The detailed list
 below is retained as Bundle N/Y history; it must not override this current sequence.
@@ -83,11 +83,16 @@ below is retained as Bundle N/Y history; it must not override this current seque
   empty; dense LU independently rejects the same rank-784 system. Test-only dense SVD solves the
   compatible full system to `1.10e-12` relative residual and tracks CPR (`max Δx=1.66e-2`). This
   is not a Sparse-LU tuning target or a raw-state refutation.
-- [ ] **Next: scope the coupled OPM lifecycle before another Y2 behavior run.** Source and map
-  phase presence, stored primary variables, update/chop, raw accumulation, endpoint properties,
-  and per-iteration `adaptPrimaryVariables`; explain how every inactive fixed-layout gas unknown
-  is removed or constrained. Keep the current raw-state flag default-off. Do not start G4/G5,
-  Y2c, Sparse-LU tuning, or acceptance changes without that dependency table.
+- [x] **Y2b3 lifecycle/dependency design (2026-07-14).** For the tracked `DISGAS`, no-`VAPOIL`
+  deck, sourced OPM's fixed composition slot, meaning-aware update, `Sg <-> Rs` adaptation,
+  hysteresis, raw accumulation, and endpoint-property separation. ResSim keeps the same matrix
+  shape but must atomically change the third slot's tag/value before the next assembly. Full
+  contract and tests: `docs/FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md`.
+- [ ] **Next: Y2b3a Gate A, then Gate B.** Add transition tests and the native default-off,
+  deck-scoped per-iteration `Sg <-> Rs` switch state machine; then prove AD/one-sided-FD behavior
+  and zero empty primary columns in one-cell and mixed-regime injector fixtures. Do not run the
+  exact convergence case until those structural gates pass. Gate C then regenerates the exact
+  `dt=0.00898425` capture and requires viable direct/live corrections before Y2c.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

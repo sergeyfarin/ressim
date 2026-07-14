@@ -233,6 +233,27 @@ direct LU an invalid Y2b promotion oracle and turns OPM's per-iteration phase-pr
 `adaptPrimaryVariables` lifecycle into a measured prerequisite for the next behavior scope. No
 Sparse-LU work, G4/G5, acceptance widening, or Y2c promotion follows from this result.
 
+### Y2b3 design checkpoint (2026-07-14) — source lifecycle and dependency contract complete
+
+The tracked deck is `OIL/WATER/GAS/DISGAS` without `VAPOIL`, so the bounded OPM lifecycle is the
+fixed composition-switch slot tagged as either `Sg` or `Rs`. OPM applies the meaning-aware Newton
+chop, then calls `adaptPrimaryVariables` after every candidate update: negative `Sg` becomes
+saturated `Rs`, over-saturated `Rs` becomes `Sg=0`, and a per-cell previous-switch flag supplies
+hysteresis. The next residual/Jacobian uses that adapted meaning; raw saturation storage and
+endpoint-safe property evaluation remain separate concerns.
+
+ResSim already has the fixed slot/tag representation, but live Newton freezes the tag. In the
+raw-state probe, the saturated flash path can clamp a crossed `Sg` to zero before residual/property
+evaluation, which is the source mechanism consistent with Y2b2c's empty gas-primary columns. The
+old capture lacks state/tag history, so the next capture must confirm this per cell rather than
+promoting the inference to a measured fact.
+
+The design in `FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md` requires an atomic in-loop tag/value
+switch, OPM switch initial values and hysteresis, unchanged previous-time state, and a hard
+diagnostic invariant of zero empty cell-primary columns. Transition tests and mixed-regime
+derivative/structure tests must pass before regenerating the exact first-rung capture. No solver,
+well, acceptance, timestep, or Legacy behavior changed at this checkpoint.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0/Y2b1/Y2b2a/Y2b2b/Y2b2c complete; Y2b remains INCONCLUSIVE and Y2c is blocked
+Status: **Y2b0/Y2b1/Y2b2a/Y2b2b/Y2b2c/Y2b3 design complete; Y2b remains INCONCLUSIVE and Y2c is blocked
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -344,6 +344,24 @@ partial lifecycle. The missing OPM per-iteration phase-presence/`adaptPrimaryVar
 are now a measured dependency, not a generic future enhancement. Do not tune Sparse LU or
 acceptance. Y2b and Y2c remain blocked pending a sourced, dependency-complete lifecycle scope.
 
+### 5.4 Y2b3 — lifecycle mapping and dependency design (complete 2026-07-14)
+
+The deck-scoped OPM lifecycle and ResSim implementation contract are now source-mapped in
+`FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md`. OPM keeps a fixed composition-switch slot but
+adapts its meaning and value (`Sg -> Rs` or `Rs -> Sg`) after every Newton update, before the next
+residual/Jacobian assembly. It also carries per-cell switch hysteresis. ResSim has the equivalent
+tagged storage representation, but its live Newton path freezes the tag; the raw-state probe can
+then pass a negative `Sg` through a property/flash clamp that removes the slot's residual
+dependency. This is the source-level mechanism consistent with Y2b2c's 120 empty gas-primary
+columns; the next capture must directly record each cell's switch history to confirm it.
+
+The design keeps the fixed three-variable cell block and changes the tag/value atomically. It
+requires zero empty cell-primary columns before any behavior verdict and forbids diagonal patches,
+well-row-only changes, inventory-flash substitutions for OPM's switch initialization, and solver or
+acceptance tuning. Next executable slice: Y2b3a transition tests plus the default-off,
+deck-scoped per-iteration switch state machine; then derivative/structure Gate B; only then the
+exact-capture Gate C. Y2c remains blocked.
+
 ## 6. Y2c — promotion matrix
 
 Before the first behavior run, record a clean-current-commit baseline; do not reuse the historical
@@ -368,9 +386,9 @@ entire OPM stack ready.
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2b2c direct-oracle closeout is complete.** The raw-state capture is rank-deficient in exactly
-  120 gas-primary columns; no G4/G5 or acceptance branch follows from a direct LU refusal. Scope
-  the missing OPM primary-variable lifecycle before selecting any structural branch.
+- **Y2b3 lifecycle design is complete.** Execute its Gate A and Gate B before another behavior
+  run. Gate C must show zero empty cell-primary columns and viable direct/live corrections before
+  Y2b can be promoted, refuted, or used to select a structural branch.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.

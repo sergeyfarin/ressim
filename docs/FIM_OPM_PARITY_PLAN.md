@@ -1335,3 +1335,19 @@ adaptation leaves inactive gas unknowns in ResSim's fixed 3-variable layout. It 
 the complete OPM lifecycle remedy. Y2b remains inconclusive; G4/G5, acceptance changes, and Y2c
 are blocked until that lifecycle is source-scoped as one coupled behavior bundle. Full commands
 and artifacts: `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` §§5.2–5.3.
+
+### 15.6 Y2b3 source/design closeout: switch meaning, not matrix shape (2026-07-14)
+
+The source-complete lifecycle and ResSim dependency contract are recorded in
+`FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md`. For this `DISGAS`, no-`VAPOIL` deck, OPM retains
+one composition-switch slot per cell and changes its meaning after each Newton update: negative
+raw `Sg` switches to saturated `Rs`, and over-saturated `Rs` switches to `Sg=0`. The next assembly
+uses the adapted meaning, with per-cell hysteresis after a switch. ResSim already has the same
+fixed slot plus a `Saturated`/`Undersaturated` tag, so G5-style matrix restructuring is not the
+required first move; the missing behavior is the in-loop atomic tag/value adaptation.
+
+The next implementation is constrained by a structural gate: no fixed-layout cell-primary column
+may be empty. An empty column must abort the probe with cell/tag/raw/derived/switch diagnostics;
+it must never be hidden with a diagonal or tolerated because CPR returns a correction. Transition
+and derivative/structure tests precede regeneration of the exact Y2b2 capture. This completes the
+requested design prerequisites only; Y2b remains inconclusive and Y2c remains blocked.
