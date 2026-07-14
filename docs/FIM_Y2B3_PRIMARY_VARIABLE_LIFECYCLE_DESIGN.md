@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Y2b3b Gate B implemented and green; Gate C next; no convergence run (2026-07-14)**
+Status: **Y2b3c Gate C green; Y2b is a promotion candidate and Y2c is next (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -9,9 +9,9 @@ This document closes the two prerequisites created by Y2b2c:
 2. define how ResSim must preserve a live dependency for every fixed-layout cell unknown before
    another raw-state behavior run.
 
-It is a source/design checkpoint, not evidence that the proposed lifecycle improves convergence.
-Y2b remains `INCONCLUSIVE`, and Y2c remains blocked until the implementation and structural gates
-in §6 pass.
+It began as a source/design checkpoint rather than convergence evidence. Gates A-C in §6 now
+pass, and the first-rung result makes Y2b a promotion candidate; Y2c owns the remaining complete
+target and non-regression decision.
 
 ## 1. Scope and exclusions
 
@@ -230,6 +230,37 @@ If Gate C is structural-green, rerun only the capped first rung and compare acce
 Newton history, CNV/MB/well partitions, and mass balance against the clean baseline. Do not run the
 six-step promotion matrix yet.
 
+**Result (2026-07-14): PASS; promotion candidate, not promoted.** The completed lifecycle no
+longer cuts down to the historical decision rung: on clean committed `1a6460d`, the capped live
+driver accepts the full `0.25` day report step in one substep, 8 reported Newton iterations, and
+zero retries. The trace ends at CNV `[6.695e-12,6.711e-4,2.622e-4]`, MB
+`[4.597e-12,1.648e-8,6.734e-8]`, with accepted scalar MB `1.683337e-8`. OPM's corresponding
+first report step takes 7 Newton iterations with no cut, so this is materially closer but not yet
+the six-step promotion result.
+
+A test-only `FIM_Y1J_DT_DAYS=0.00898425` selector cleanly regenerated the historical iteration-1
+system without forcing the timestep controller to manufacture a retry. Its 904-by-904 matrix has
+6815 nonzeros, zero empty rows/columns, zero non-finite/duplicate/all-zero rows, and zero missing
+or zero diagonal candidates. The companion trace covers all 300 cell primaries: 141 are tagged
+`Sg`, 159 are tagged `Rs`, the same 159 record a preceding switch, every column is live, and the
+minimum local-variable-2 occupancy is 2.
+
+Backend-neutral replay is consistent:
+
+- CPR: reduction `4.911209e-7`, full residual `1.368523e-5`, maximum correction difference from
+  Sparse LU `5.557618e-7` by family;
+- Sparse LU: reduction `2.837291e-16`, full residual `7.906198e-15`;
+- dense LU: reduction `7.935809e-16`, full residual `2.211337e-14`; and
+- Sparse/dense correction-family disagreement is at most `7.285839e-15`.
+
+The exact capture is `/tmp/ressim-y2b3c-exact-b/fim_capture_00000.txt`, SHA-256
+`13f5f6aa14ae218679b866bb236293801ad81f5d75eba1110b3083f90ea1b61a`; its switch trace is
+`/tmp/ressim-y2b3c-exact-b.log`, SHA-256
+`3cc23f85789a3be6be64a21b0eb4475265dadf0b3d5bafc6508c9afc12499224`. The post-instrumentation
+full-rung trace is byte-identical to the clean-commit trace. Gate C therefore selects the
+"structure passes, first rung improves" branch: proceed to Y2c, without opening G4, acceptance,
+or direct-solver tuning.
+
 ### Decision after Gate C
 
 - **Structural gate fails:** implementation defect or incomplete lifecycle; fix it without a
@@ -241,8 +272,8 @@ six-step promotion matrix yet.
 
 ## 7. Next executable slice
 
-The next slice is **Y2b3c: Gate C exact first-rung diagnostic**. Regenerate the exact
-`dt=0.00898425`, iteration-1 capture with switch tracing, enforce zero empty cell-primary columns,
-and compare finite full-system corrections/reductions from ordinary Sparse LU, dense LU, and CPR.
-Run only the capped first rung after the capture oracle is valid; do not run the six-step promotion
-matrix or tune direct solvers, acceptance, wells, or timestep control.
+The next slice is **Y2c: bounded promotion matrix** in execution-plan §6. Start by committing this
+Gate C diagnostic checkpoint, then reproduce the exact six-step ResSim target on that clean
+revision and re-confirm the Flow oracle. Continue through the prescribed heavy/control/physics
+gates only if the six-step target remains materially closer. Do not open G4 or tune acceptance,
+direct solvers, wells, or timestep control in parallel.

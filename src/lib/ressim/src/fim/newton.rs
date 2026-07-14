@@ -101,6 +101,57 @@ fn y2b2_state_checksum(state: &FimState) -> u64 {
     hash
 }
 
+/// Y2b3c's exact-capture companion trace. Each fixed local-variable-2 column is tied to the
+/// meaning/value consumed by this assembly, the immediately preceding switch decision, and its
+/// actual structural occupancy. This is diagnostic-only and emits nothing unless the exact
+/// Y2b capture is requested.
+#[cfg(not(target_arch = "wasm32"))]
+fn trace_y2b3_primary_variable_state(
+    sim: &mut ReservoirSimulator,
+    verbose: bool,
+    state: &FimState,
+    switched_on_previous_update: &[bool],
+    jacobian: &sprs::CsMat<f64>,
+) {
+    let mut column_nnz = vec![0usize; jacobian.cols()];
+    for (value, (_row, column)) in jacobian {
+        if *value != 0.0 {
+            column_nnz[column] += 1;
+        }
+    }
+
+    for (cell_idx, cell) in state.cells.iter().enumerate() {
+        let derived = state.derive_cell(sim, cell_idx);
+        let rs_sat = sim
+            .pvt_table
+            .as_ref()
+            .map(|table| table.interpolate(cell.pressure_bar).rs_m3m3)
+            .unwrap_or(0.0);
+        let previous_switched = switched_on_previous_update[cell_idx];
+        let epsilon = if previous_switched { 1e-5 } else { 0.0 };
+        let primary_column = 3 * cell_idx + 2;
+        fim_trace!(
+            sim,
+            verbose,
+            "Y2B3-PRIMARY cell={} meaning={} raw_z={:.16e} sw={:.16e} derived_sg={:.16e} derived_rs={:.16e} rs_sat={:.16e} previous_update_switched={} switch_epsilon={:.16e} primary_column={} column_nnz={}",
+            cell_idx,
+            match cell.regime {
+                HydrocarbonState::Saturated => "Sg",
+                HydrocarbonState::Undersaturated => "Rs",
+            },
+            cell.hydrocarbon_var,
+            cell.sw,
+            derived.sg,
+            derived.rs,
+            rs_sat,
+            previous_switched,
+            epsilon,
+            primary_column,
+            column_nnz[primary_column],
+        );
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FimRetryFailureClass {
     LinearBad,
@@ -3815,7 +3866,7 @@ pub(crate) fn run_fim_timestep(
         {
             let metadata = crate::fim::linear::capture::FimCaptureMetadata {
                 newton_iteration: iteration,
-                failure_reason: "y2b2-exact-decision".to_string(),
+                failure_reason: "y2b3c-exact-decision".to_string(),
                 dominant_family: residual_diagnostics.global.family.label().to_string(),
                 dominant_item_index: residual_diagnostics.global.item_index,
             };
@@ -3828,6 +3879,13 @@ pub(crate) fn run_fim_timestep(
                 &assembly.jacobian,
                 &rhs,
                 Some(&assembly.equation_scaling),
+            );
+            trace_y2b3_primary_variable_state(
+                sim,
+                options.verbose,
+                &state,
+                &primary_variables_switched,
+                &assembly.jacobian,
             );
             fim_trace!(
                 sim,

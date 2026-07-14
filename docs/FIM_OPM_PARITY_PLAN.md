@@ -1381,3 +1381,21 @@ scalar/AD reservoir-plus-well residual parity, and successful independent Sparse
 factorization. This closes the local dependency/structure prerequisite, not the nonlinear
 hypothesis: Y2b remains inconclusive. The next bounded step is Gate C's traced exact first-rung
 capture and backend-neutral correction/reduction comparison; Y2c remains blocked.
+
+### 15.9 Y2b3c result: exact capture is full-rank; first rung reaches OPM scale (2026-07-14)
+
+The completed lifecycle accepts the full `0.25` day capped first rung on clean commit `1a6460d`
+with zero retries and 8 reported Newton iterations; Flow needs 7. This supersedes the old
+five-retry `0.000978384825` baseline and the incomplete raw probe's three-retry `0.00898425`
+result for this scoped behavior comparison.
+
+Because the historical decision rung is no longer visited, a test-only exact-dt selector
+regenerated its iteration-1 system directly. The trace maps all 300 fixed third columns to their
+adapted meaning (141 `Sg`, 159 `Rs`, with 159 preceding switches); every column is live. The
+904-by-904 matrix has 6815 nonzeros and no empty/zero-pivot candidates. Sparse and dense LU both
+factor and agree to `7.29e-15`; CPR's correction differs by at most `5.56e-7` and all three expose
+comparable full-system norms. The full-rung accepted MB is `1.683337e-8`.
+
+This is the first valid positive Y2 behavior result: Y2b becomes a promotion candidate. It is not
+promoted until Y2c reproduces the complete six-step target, Flow oracle, heavy case, controls, and
+physics gates on the final committed revision.

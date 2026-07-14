@@ -3177,6 +3177,9 @@ mod phase5_repro {
     /// Environment selectors:
     /// - `FIM_Y1J_WELLS=both|injector|producer|none` (default `both`)
     /// - `FIM_Y1J_CONTROL=rate|pressure` (default `rate`)
+    /// - `FIM_Y1J_DT_DAYS=<days>` overrides the default `0.25` report-step target. Y2b3c uses
+    ///   exactly `0.00898425` to regenerate the historical iteration-1 decision system even when
+    ///   the completed lifecycle no longer cuts down to that rung.
     /// - `FIM_FORCE_DIRECT_LINEAR=1` selects the direct backend; unset uses the live stack.
     /// - `FIM_MAX_SUBSTEPS=1` caps after the first accepted rung; use this for the bounded
     ///   first-rung comparison, not as a completed 0.25-day-step result.
@@ -3207,7 +3210,18 @@ mod phase5_repro {
             "FIM_Y1J_CONTROL must be rate|pressure, got {control:?}"
         );
 
-        let (nx, ny, nz, dt_days) = (10usize, 10usize, 3usize, 0.25_f64);
+        let (nx, ny, nz) = (10usize, 10usize, 3usize);
+        let dt_days = std::env::var("FIM_Y1J_DT_DAYS")
+            .map(|value| {
+                value
+                    .parse::<f64>()
+                    .expect("FIM_Y1J_DT_DAYS must be a finite positive number")
+            })
+            .unwrap_or(0.25);
+        assert!(
+            dt_days.is_finite() && dt_days > 0.0,
+            "FIM_Y1J_DT_DAYS must be a finite positive number, got {dt_days}"
+        );
         let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
 
         // Exact `configureGasBase` mapping from `fim-wasm-diagnostic.mjs`. `capillary=true`

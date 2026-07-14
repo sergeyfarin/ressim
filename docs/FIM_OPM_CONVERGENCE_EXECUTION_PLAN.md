@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0-Y2b2c complete; Y2b3b Gate B green; Y2b remains INCONCLUSIVE and Y2c is blocked
+Status: **Y2b3c Gate C green; Y2b is a promotion candidate and Y2c is next
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -358,8 +358,8 @@ columns; the next capture must directly record each cell's switch history to con
 The design keeps the fixed three-variable cell block and changes the tag/value atomically. It
 requires zero empty cell-primary columns before any behavior verdict and forbids diagonal patches,
 well-row-only changes, inventory-flash substitutions for OPM's switch initialization, and solver or
-acceptance tuning. Gates A and B are now implemented below. The next executable slice is Y2b3c's
-exact-capture Gate C. Y2c remains blocked.
+acceptance tuning. Gates A-C are now implemented below. The next executable slice is Y2c's bounded
+promotion matrix.
 
 **Y2b3a result (2026-07-14): Gate A PASS; no convergence run.** The native/default-off raw-state
 path now performs the deck-scoped atomic `Sg <-> Rs` adaptation before well post-processing and
@@ -383,6 +383,22 @@ rows or columns, scalar/AD residual parity, and successful diagnostic Sparse-LU 
 The broader assembly, property, state, locked FIM, and curated FIM gates pass; `shared` reaches the
 same pre-existing closed-system `rate_history` mismatch (`2` versus `1`). Gate B is structural and
 does not promote Y2b. Gate C must now regenerate and classify the exact first-rung capture.
+
+**Y2b3c result (2026-07-14): Gate C PASS; Y2b promotion candidate.** On clean commit `1a6460d`,
+the capped live driver accepts the full `0.25` day target in one substep, 8 reported Newton
+iterations, and zero retries, versus the historical bounded baseline's five cuts to
+`0.000978384825` and the partial raw-state probe's three cuts to `0.00898425`. OPM accepts the
+same first report step in 7 Newton iterations with no cut.
+
+The historical `dt=0.00898425`, iteration-1 system was regenerated through a test-only exact-dt
+selector because the fixed trajectory no longer visits that retry rung. All 300 tagged-primary
+columns are traced and live (141 `Sg`, 159 `Rs`, minimum occupancy 2). The 904-row, 6815-nonzero
+matrix has no structural defects and factorizes in both Sparse LU and dense LU. Their reductions
+are `2.837291e-16` and `7.935809e-16`; CPR reduces by `4.911209e-7`. Direct corrections agree to
+`7.285839e-15`, and CPR differs from direct by at most `5.557618e-7` across correction families.
+The full-step accepted MB is `1.683337e-8`, and the final diagnostic-only trace is byte-identical
+to the clean-commit trace. This closes the oracle and first-rung gate; it does not replace Y2c's
+six-step/control/physics promotion decision.
 
 ## 6. Y2c — promotion matrix
 
@@ -408,9 +424,9 @@ entire OPM stack ready.
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2b3b Gate B is complete.** Execute Y2b3c Gate C as the next bounded behavior diagnostic. It must
-  show zero empty cell-primary columns and viable direct/live corrections before Y2b can be
-  promoted, refuted, or used to select a structural branch.
+- **Y2b3c Gate C is complete and selects Y2c.** Execute the bounded six-step/control/physics
+  promotion matrix on the committed Gate C revision. Do not open another structural branch in
+  parallel.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.

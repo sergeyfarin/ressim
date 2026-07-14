@@ -97,10 +97,15 @@ below is retained as Bundle N/Y history; it must not override this current seque
   one-cell transition occupancy, and mixed-regime injector zero-empty-column/direct-factorization
   tests. All are green, including scalar/AD residual parity and independent Sparse-LU
   factorization. No convergence run was performed.
-- [ ] **Next: Y2b3c Gate C.** Regenerate the exact `dt=0.00898425`, iteration-1 capture with
+- [x] **Y2b3c Gate C (2026-07-14).** Regenerate the exact `dt=0.00898425`, iteration-1 capture with
   switch tracing; require zero empty cell-primary columns and comparable finite Sparse-LU,
   dense-LU, and CPR full-system corrections/reductions before the capped first-rung behavior run.
-  Y2c remains blocked.
+  PASS: all 300 primary columns are live; both direct solvers factor and agree; CPR is within
+  `5.56e-7` by correction family. The clean capped rung accepts full `dt=0.25` in 8 iterations and
+  zero retries versus Flow's 7. Y2b is a promotion candidate, not yet promoted.
+- [ ] **Next: Y2c bounded promotion matrix.** Commit Gate C, then run the exact six-step ResSim
+  target and re-confirm Flow before the heavy/control/physics gates in execution-plan §6. Do not
+  open G4 or another solver/acceptance branch in parallel.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

@@ -309,6 +309,44 @@ next slice is Y2b3c Gate C: regenerate the exact first-rung capture with switch 
 zero empty cell-primary columns, and compare backend-neutral direct/CPR corrections and full-system
 reductions before running only the capped first rung.
 
+### Y2b3c checkpoint (2026-07-14) — exact system full-rank, first rung improves
+
+The first clean-commit behavior run on `1a6460d` made the historical retry point disappear: the
+completed lifecycle accepted the full `dt=0.25` capped rung in one substep, 8 reported Newton
+iterations, and zero retries. Its accepted scalar MB is `1.683337e-8`; final CNV is
+`[6.695e-12,6.711e-4,2.622e-4]` and final per-family MB is
+`[4.597e-12,1.648e-8,6.734e-8]`. The post-diagnostic replay trace is byte-identical to that clean
+trace. This moves ResSim from the historical five-cut `dt=0.000978384825` rung and incomplete
+raw-state three-cut `dt=0.00898425` rung to Flow's no-cut scale (Flow reports 7 iterations).
+
+To preserve the predeclared oracle, the ignored native driver gained a test-only
+`FIM_Y1J_DT_DAYS` override. At exactly `0.00898425`, iteration 1, it writes the same capture format
+plus 300 `Y2B3-PRIMARY` trace lines tying current tag/value, derived `Sg`/`Rs`, previous-switch
+state, epsilon, column index, and nonzero count together. Results:
+
+- 141 cells are `Sg`, 159 are `Rs`, and the same 159 report a preceding switch;
+- all 300 local-variable-2 columns are nonempty (minimum occupancy 2);
+- matrix `904x904`, 6815 nonzeros, no empty/duplicate/non-finite/all-zero rows or columns, no
+  zero-diagonal candidates; Sparse LU preparation is `factorized`;
+- CPR reduction `4.911209e-7`, residual `1.368523e-5`;
+- Sparse LU reduction `2.837291e-16`, residual `7.906198e-15`;
+- dense LU reduction `7.935809e-16`, residual `2.211337e-14`;
+- Sparse/dense maximum correction-family delta `7.285839e-15`; CPR/Sparse maximum delta
+  `5.557618e-7`.
+
+Artifact: `/tmp/ressim-y2b3c-exact-b/fim_capture_00000.txt`, SHA-256
+`13f5f6aa14ae218679b866bb236293801ad81f5d75eba1110b3083f90ea1b61a`; trace SHA-256
+`3cc23f85789a3be6be64a21b0eb4475265dadf0b3d5bafc6508c9afc12499224`.
+
+Validation: Y2b3 focused tests 8/8, AD/scalar assembly tests 6/6, capture round-trip tests 3/3,
+the exact release capture/replay tests, the locked DRSDT0 test, and the curated FIM bucket all
+pass. The shared bucket passes its first three contracts and stops at the unchanged pre-existing
+closed-system `rate_history` mismatch (`left=2`, `right=1`).
+
+**Classification: Y2b PROMOTION CANDIDATE.** Gate C is structural-green and the bounded behavior
+is materially closer to Flow. This is not final promotion: Y2c must now run the six-step target,
+fresh Flow oracle, heavy case, controls, and physics validation on the committed checkpoint.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

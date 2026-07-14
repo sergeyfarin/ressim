@@ -20,17 +20,17 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::capture::{
-    capture_dir_from_env, load_captures, y2b2_capture_dir_from_env, FimCapturedSystem,
+    FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
 };
 use super::gmres_block_jacobi::{
-    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
-    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
+    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
+    solve_with_restriction_kind, solve_with_smoother_and_restriction,
 };
 use super::sparse_lu_debug;
 use super::well_schur;
 use super::{
-    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -508,6 +508,192 @@ fn replay_y2b2_exact_capture() {
         svd.solution.iter().all(|value| value.is_finite())
             && svd_residual.norm() / system.rhs.norm().max(f64::EPSILON) < 1e-10,
         "rank-revealing dense SVD must solve the compatible captured system"
+    );
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Y2b3CorrectionPeaks {
+    pressure: f64,
+    water_saturation: f64,
+    hydrocarbon_primary: f64,
+    well_bhp: f64,
+    perforation_rate: f64,
+}
+
+fn y2b3_correction_peaks(
+    layout: FimLinearBlockLayout,
+    correction: &DVector<f64>,
+) -> Y2b3CorrectionPeaks {
+    let mut peaks = Y2b3CorrectionPeaks {
+        pressure: 0.0,
+        water_saturation: 0.0,
+        hydrocarbon_primary: 0.0,
+        well_bhp: 0.0,
+        perforation_rate: 0.0,
+    };
+    for cell_idx in 0..layout.cell_block_count {
+        peaks.pressure = peaks.pressure.max(correction[3 * cell_idx].abs());
+        peaks.water_saturation = peaks
+            .water_saturation
+            .max(correction[3 * cell_idx + 1].abs());
+        peaks.hydrocarbon_primary = peaks
+            .hydrocarbon_primary
+            .max(correction[3 * cell_idx + 2].abs());
+    }
+    for value in correction.rows(layout.well_bhp_start(), layout.well_bhp_count) {
+        peaks.well_bhp = peaks.well_bhp.max(value.abs());
+    }
+    for value in correction.rows(
+        layout.perforation_tail_start,
+        correction.len() - layout.perforation_tail_start,
+    ) {
+        peaks.perforation_rate = peaks.perforation_rate.max(value.abs());
+    }
+    peaks
+}
+
+fn y2b3_correction_delta_peaks(
+    layout: FimLinearBlockLayout,
+    left: &DVector<f64>,
+    right: &DVector<f64>,
+) -> Y2b3CorrectionPeaks {
+    y2b3_correction_peaks(layout, &(left - right))
+}
+
+fn y2b3_max_peak(peaks: Y2b3CorrectionPeaks) -> f64 {
+    peaks
+        .pressure
+        .max(peaks.water_saturation)
+        .max(peaks.hydrocarbon_primary)
+        .max(peaks.well_bhp)
+        .max(peaks.perforation_rate)
+}
+
+/// Y2b3c's full-rank replacement for the historical singular Y2b2 replay.
+///
+/// The exact same `dt=0.00898425`, iteration-1 decision system must now have a live fixed-layout
+/// primary column for every cell. CPR and two independent ordinary direct solvers are compared
+/// with backend-neutral full-system residuals and correction partitions before any nonlinear
+/// behavior verdict is allowed.
+#[test]
+#[ignore]
+fn replay_y2b3c_exact_capture() {
+    let dir = y2b2_capture_dir_from_env()
+        .expect("set FIM_Y2B2_CAPTURE_DIR to the directory produced by the Y2b3c driver");
+    let systems = load_captures(&dir).expect("load Y2b3c capture");
+    assert_eq!(systems.len(), 1, "Y2b3c requires one isolated capture");
+    let system = &systems[0];
+    assert_eq!(system.metadata.newton_iteration, 1);
+    assert_eq!(system.metadata.failure_reason, "y2b3c-exact-decision");
+    let layout = system.layout.expect("Y2b3c capture has block layout");
+    let structure = sparse_lu_debug::diagnose(&system.jacobian);
+
+    let cpr = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &FimLinearSolveOptions::default(),
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+    let sparse = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &FimLinearSolveOptions {
+            kind: FimLinearSolverKind::SparseLuDebug,
+            ..FimLinearSolveOptions::default()
+        },
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+    let dense = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &FimLinearSolveOptions {
+            kind: FimLinearSolverKind::DenseLuDebug,
+            ..FimLinearSolveOptions::default()
+        },
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
+
+    let cpr_residual = residual_vector(&system.jacobian, &cpr.solution, &system.rhs);
+    let sparse_residual = residual_vector(&system.jacobian, &sparse.solution, &system.rhs);
+    let dense_residual = residual_vector(&system.jacobian, &dense.solution, &system.rhs);
+    let cpr_partitions = y2b2_partition_norms(layout, &cpr_residual);
+    let sparse_partitions = y2b2_partition_norms(layout, &sparse_residual);
+    let dense_partitions = y2b2_partition_norms(layout, &dense_residual);
+    let cpr_peaks = y2b3_correction_peaks(layout, &cpr.solution);
+    let sparse_peaks = y2b3_correction_peaks(layout, &sparse.solution);
+    let dense_peaks = y2b3_correction_peaks(layout, &dense.solution);
+    let cpr_sparse_delta = y2b3_correction_delta_peaks(layout, &cpr.solution, &sparse.solution);
+    let sparse_dense_delta = y2b3_correction_delta_peaks(layout, &sparse.solution, &dense.solution);
+
+    println!(
+        "Y2B3C-STRUCTURE rows={} nnz={} empty_rows={} empty_columns={} duplicates={} non_finite={} all_zero_rows={} zero_diagonal_candidates={} sparse_preparation={}",
+        system.jacobian.rows(),
+        system.jacobian.nnz(),
+        structure.structure.empty_rows,
+        structure.structure.empty_columns,
+        structure.structure.duplicate_entries,
+        structure.structure.non_finite_entries,
+        structure.structure.all_zero_rows,
+        structure.structure.potential_zero_pivot_rows,
+        structure.preparation.label(),
+    );
+    println!(
+        "Y2B3C-REPLAY rhs_norm={:.9e} cpr={{converged={},iters={},reduction={:.9e},residual={:.9e},reservoir={:.9e},well={:.9e},dx={:?}}} sparse={{converged={},iters={},reduction={:.9e},residual={:.9e},reservoir={:.9e},well={:.9e},dx={:?}}} dense={{converged={},iters={},reduction={:.9e},residual={:.9e},reservoir={:.9e},well={:.9e},dx={:?}}} deltas={{cpr_sparse={:?},sparse_dense={:?}}}",
+        system.rhs.norm(),
+        cpr.converged,
+        cpr.iterations,
+        cpr.reduction(),
+        cpr_residual.norm(),
+        cpr_partitions.0,
+        cpr_partitions.1,
+        cpr_peaks,
+        sparse.converged,
+        sparse.iterations,
+        sparse.reduction(),
+        sparse_residual.norm(),
+        sparse_partitions.0,
+        sparse_partitions.1,
+        sparse_peaks,
+        dense.converged,
+        dense.iterations,
+        dense.reduction(),
+        dense_residual.norm(),
+        dense_partitions.0,
+        dense_partitions.1,
+        dense_peaks,
+        cpr_sparse_delta,
+        sparse_dense_delta,
+    );
+
+    assert_eq!(structure.structure.empty_rows, 0);
+    assert_eq!(structure.structure.empty_columns, 0);
+    assert_eq!(structure.structure.duplicate_entries, 0);
+    assert_eq!(structure.structure.non_finite_entries, 0);
+    assert_eq!(structure.structure.all_zero_rows, 0);
+    assert_eq!(structure.structure.potential_zero_pivot_rows, 0);
+    assert_eq!(
+        structure.preparation,
+        sparse_lu_debug::SparseLuPreparation::Factorized
+    );
+    for report in [&cpr, &sparse, &dense] {
+        assert!(report.converged);
+        assert!(report.solution.iter().all(|value| value.is_finite()));
+        assert!(report.reduction().is_finite());
+        assert!((report.rhs_norm - system.rhs.norm()).abs() < 1e-12);
+    }
+    assert!(cpr.reduction() < 5e-3);
+    assert!(sparse.reduction() < 1e-10);
+    assert!(dense.reduction() < 1e-10);
+    assert!(
+        y2b3_max_peak(cpr_sparse_delta) < 1e-5,
+        "CPR/direct corrections disagree by family: {cpr_sparse_delta:?}"
+    );
+    assert!(
+        y2b3_max_peak(sparse_dense_delta) < 1e-10,
+        "independent direct corrections disagree: {sparse_dense_delta:?}"
     );
 }
 
