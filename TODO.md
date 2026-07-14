@@ -117,12 +117,18 @@ below is retained as Bundle N/Y history; it must not override this current seque
   (pressure `181.5 bar`, Sw `0.3511`, perf rate `1550.9 m3/day`). Report/recomputed norms and row
   partitions agree; disabling well Schur still fails. This is a real iterative correction-quality
   gap, not lifecycle, matrix-build, reporting, or nonlinear acceptance.
-- [ ] **Next: Y2d1 production-faithful CPR component discrimination.** Add test-only variant
-  injection through the real well-Schur reduction, equation scaling, smoother, tolerance, and
-  iteration budget. Replay all restrictions on all eight Y2d0 artifacts and the established gas
-  corpus where quasi-IMPES previously won 336/337. Existing unwrapped output (row0/local-Schur
-  4/8 versus quasi-IMPES 0/8) is only a clue, not authority for a live flip. No production solver
-  or convergence run in this slice.
+- [x] **Y2d1 production-faithful CPR restriction discrimination (2026-07-14): TRADEOFF, NO LIVE
+  CHANGE.** Test-only injection exactly matches production quasi-IMPES through well Schur,
+  equation scaling, block-ILU0, tolerance, and budget. Diag-balanced solves bounded 8/8 versus
+  quasi 0/8 and is much closer to direct, but regresses the clean-regenerated current gas corpus
+  to 3/5 usable versus quasi 4/5. Gas-safe sum-rows/dominant-diagonal leave 6/8 or 8/8 bounded
+  failures. The old 337 gas corpus is unavailable/stale; clean `e143c19` reproduces 238 substeps
+  and yields five valid current artifacts. No universal restriction or case selector promoted.
+- [ ] **Next: Y2d2 fixed-quasi smoother/Krylov isolation.** Extend only the test wrapper to vary
+  block-ILU0/full-ILU0/block-Jacobi at fixed 30 iterations on all 8 bounded + 5 current gas
+  artifacts, then vary 30/60/150 iterations for the best no-regression smoother. Require full
+  norms, partitions, finite corrections, and direct deltas. Confirm only on bounded 8/8 with no
+  loss from gas 4/5; do not combine restriction and smoother changes or run live behavior.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Mechanism validated/default-off; Y2d0 confirms a separate CPR quality gap; Y2d1 is next (2026-07-14)**
+Status: **Mechanism validated/default-off; Y2d1 finds a separate restriction tradeoff; Y2d2 is next (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -287,7 +287,12 @@ structurally clean and directly factorable; CPR reproduces the live failure at r
 This localizes the control regression outside this lifecycle and strengthens—not weakens—the
 decision to preserve it default-off while diagnosing the next layer.
 
-The next slice is **Y2d1**, execution-plan §7.2: production-faithful offline CPR restriction
-discrimination on the eight bounded artifacts plus the established gas counter-corpus. Hold this
-lifecycle fixed. Do not open G4, widen acceptance, tune timestep control, change wells, or promote
-Sparse LU while isolating the iterative component.
+Y2d1 makes restriction replay production-faithful. Diagonal-balanced restriction solves all eight
+bounded artifacts but loses two of five current gas artifacts; gas-safe restrictions leave most
+bounded failures unresolved. This is a separate CPR tradeoff, not evidence against the lifecycle,
+and no restriction change was made.
+
+The next slice is **Y2d2**, execution-plan §7.3: hold quasi-IMPES fixed and isolate fine smoother
+then Krylov budget on the same eight bounded and five current gas artifacts. Hold this lifecycle
+fixed. Do not open G4, widen acceptance, tune timestep control, change wells, combine solver
+levers, or promote Sparse LU while isolating the iterative component.

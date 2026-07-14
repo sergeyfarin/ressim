@@ -455,6 +455,68 @@ pass; locked DRSDT0 and Buckley-Leverett 3/3 pass; the curated FIM bucket passes
 again passes its first three contracts and stops at the unchanged pre-existing closed-system
 `rate_history` mismatch (`left=2`, `right=1`).
 
+### Y2d1 checkpoint (2026-07-14) — production-faithful restriction tradeoff, no live change
+
+Baseline commit: `e143c19d17eb416e1c7f6df9fb02de177d064d04`. The eight Y2d0 bounded artifacts
+remain `/tmp/ressim-y2d0-2030996`. The historical 337-system gas corpus was not preserved and was
+created before later zero-iteration/report fixes, so it is not a current reproducible gate. A
+clean-head counter-corpus was regenerated with:
+
+```text
+FIM_CAPTURE_DIR=/tmp/ressim-y2d1-gas-e143c19 FIM_Y1J_GRID=20 \
+FIM_Y1J_FLAVOR=opm FIM_Y1J_STEPS=1 cargo test --release \
+--manifest-path src/lib/ressim/Cargo.toml --lib repro_gas_rate_10x10x3_y1j \
+-- --ignored --nocapture
+```
+
+It reproduces the current baseline: 238 accepted substeps, one linear/four nonlinear retries,
+minimum accepted `dt=0.00018974736`, maximum `0.0029648025`, and 81.306 s elapsed. Current capture
+semantics yield five final-near-miss/failure artifacts, with SHA-256 values:
+
+```text
+d24fcb069f919a6b3240c8eb5a4b0582b10222afa647d805342f17dd8922459f  00000
+8381a5ba45396e23c7c9611ea959aec17ab65ac504836341cff78d1b50f39938  00001
+4764172f68162c448f7f1045cd7a01530a8add0395db96f5a879128259c83ab0  00002
+2d5eece7a7002e38926e34d1416ea4ece615004cd4aa0007092ac3524fea05bc  00003
+a09db1261721c835b5e54607674c4fb3bda76f108d42c396e9d8de8ab11c4fba  00004
+```
+
+Y2d1 refactored well-Schur recovery into a shared private helper and added a test-only explicit
+restriction entry point. A focused synthetic test and per-real-artifact assertions prove injected
+quasi-IMPES is identical to production dispatch. Every row retains production well elimination,
+captured equation scaling, block-ILU0 smoother, `5e-3` strict tolerance, 30-iteration budget, and
+full-system recovery. All 13 Sparse-LU references converge; all iterative report residuals equal
+independently recomputed residuals, with reservoir/well partitions and direct-correction deltas.
+
+Production-faithful aggregate (`strict`; relaxed means finite and full reduction `<1e-2`):
+
+| restriction | bounded strict/relaxed (8) | gas strict/relaxed (5) | bounded median rel | gas median rel | bounded median direct delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| row0-schur | `0/3` | `4/5` | `1.699e-2` | `2.814e-4` | `418.8` |
+| sum-rows | `2/2` | `5/5` | `1.718e-2` | `1.472e-4` | `198.8` |
+| diag-balanced-sum | **`8/8`** | **`3/3`** | `1.340e-3` | `4.867e-3` | **`4.23`** |
+| dominant-diag-row | `0/3` | `5/5` | `1.355e-2` | `1.603e-4` | `604.1` |
+| local-schur-balanced | `0/1` | `4/5` | `1.608e-2` | `2.814e-4` | `609.8` |
+| quasi-impes | `0/0` | `4/4` | `1.455e-2` | **`3.646e-5`** | `508.9` |
+
+Diagonal-balanced decisively repairs bounded (`8/8`) but loses two gas artifacts: relative
+residuals `1.803e1` and `4.704e-1`. Sum-rows/dominant-diagonal preserve all gas artifacts but
+leave six/eight bounded systems or all eight unresolved. Thus the old unwrapped row0 clue was not
+production-faithful, and the corrected result is not authority for a restriction flip.
+
+**Classification: DIAGNOSTIC TRADEOFF; NO UNIVERSAL RESTRICTION.** Restriction mismatch is a real
+part of bounded CPR weakness, but no existing global choice clears both current corpora. No live
+solver or convergence run was changed. Next Y2d2 keeps quasi-IMPES fixed and uses the same wrapper
+to isolate block-ILU0 versus other existing smoothers, then 30/60/150 Krylov budgets without
+combining levers.
+
+Validation: production/injected quasi-IMPES equivalence and all four well-Schur tests pass; the
+exact Y2d0 replay is unchanged; both production-faithful corpus labs, capture round trips 3/3,
+Sparse-LU report reduction, locked DRSDT0, Buckley-Leverett 3/3, and the curated FIM bucket pass.
+The shared bucket again passes its first three contracts and stops at the unchanged pre-existing
+closed-system `rate_history` mismatch (`left=2`, `right=1`). Rustfmt and diff checks pass for all
+changed Rust/docs files.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

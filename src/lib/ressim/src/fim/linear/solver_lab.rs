@@ -908,6 +908,160 @@ fn solver_lab_compare_restriction_variants() {
     }
 }
 
+/// Y2d1 production-faithful restriction discrimination.
+///
+/// Unlike `solver_lab_compare_restriction_variants`, every candidate here passes through the
+/// live well-Schur reduction/recovery, block-ILU0 smoother, captured equation scaling, tolerance,
+/// and iteration budget. Full-system residuals and direct-correction deltas are recomputed from
+/// the original artifact. Run separately on the bounded and gas corpora, identifying the corpus
+/// with `FIM_Y2D1_CORPUS` for an unambiguous evidence record.
+#[test]
+#[ignore]
+fn solver_lab_compare_production_restriction_variants() {
+    let dir = capture_dir_from_env()
+        .expect("set FIM_CAPTURE_DIR to a bounded or gas Y2d1 capture corpus");
+    let corpus = std::env::var("FIM_Y2D1_CORPUS").unwrap_or_else(|_| "unspecified".to_string());
+    let systems = load_captures(&dir).expect("load Y2d1 capture corpus");
+    assert!(!systems.is_empty(), "Y2d1 corpus must not be empty");
+
+    let variants = CprPressureRestrictionKind::ALL;
+    let mut strict_counts = vec![0usize; variants.len()];
+    let mut relaxed_counts = vec![0usize; variants.len()];
+    let mut relative_residuals = vec![Vec::<f64>::new(); variants.len()];
+    let mut correction_deltas = vec![Vec::<f64>::new(); variants.len()];
+    let mut reservoir_residuals = vec![Vec::<f64>::new(); variants.len()];
+    let mut well_residuals = vec![Vec::<f64>::new(); variants.len()];
+    let mut direct_failures = 0usize;
+
+    for (capture_idx, system) in systems.iter().enumerate() {
+        let layout = system.layout.expect("Y2d1 capture requires block layout");
+        let options = FimLinearSolveOptions::default();
+        let production = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &options,
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+        let rhs_norm = system.rhs.norm().max(1e-30);
+        if !direct.converged
+            || !direct.solution.iter().all(|value| value.is_finite())
+            || direct_residual.norm() / rhs_norm >= 1e-10
+        {
+            direct_failures += 1;
+        }
+
+        for (variant_idx, &variant) in variants.iter().enumerate() {
+            let report = well_schur::solve_with_well_elimination_and_restriction(
+                &system.jacobian,
+                &system.rhs,
+                &options,
+                layout,
+                system.equation_scaling.as_ref(),
+                variant,
+            );
+            let residual = residual_vector(&system.jacobian, &report.solution, &system.rhs);
+            let relative_residual = residual.norm() / rhs_norm;
+            let partitions = y2b2_partition_norms(layout, &residual);
+            let correction_delta = y2b3_max_peak(y2b3_correction_delta_peaks(
+                layout,
+                &report.solution,
+                &direct.solution,
+            ));
+            let finite = report.solution.iter().all(|value| value.is_finite());
+
+            assert!((report.rhs_norm - system.rhs.norm()).abs() < 1e-10);
+            assert!(
+                (report.final_residual_norm - residual.norm()).abs()
+                    <= 1e-10 * residual.norm().max(1.0),
+                "capture {capture_idx} variant {} report/full residual mismatch",
+                variant.label()
+            );
+            if variant == CprPressureRestrictionKind::QuasiImpes {
+                assert_eq!(report.converged, production.converged);
+                assert_eq!(report.iterations, production.iterations);
+                assert!(
+                    y2b3_max_peak(y2b3_correction_delta_peaks(
+                        layout,
+                        &report.solution,
+                        &production.solution,
+                    )) < 1e-12,
+                    "capture {capture_idx}: injected quasi-IMPES differs from production"
+                );
+            }
+
+            if report.converged && finite {
+                strict_counts[variant_idx] += 1;
+            }
+            if finite && relative_residual < 1e-2 {
+                relaxed_counts[variant_idx] += 1;
+            }
+            println!(
+                "Y2D1 capture={capture_idx:05} variant={:<20} strict={} relaxed={} finite={} rel={:.9e} reservoir_rel={:.9e} well_rel={:.9e} direct_dx_delta={:.9e}",
+                variant.label(),
+                report.converged && finite,
+                finite && relative_residual < 1e-2,
+                finite,
+                relative_residual,
+                partitions.0 / rhs_norm,
+                partitions.1 / rhs_norm,
+                correction_delta,
+            );
+            relative_residuals[variant_idx].push(relative_residual);
+            correction_deltas[variant_idx].push(correction_delta);
+            reservoir_residuals[variant_idx].push(partitions.0 / rhs_norm);
+            well_residuals[variant_idx].push(partitions.1 / rhs_norm);
+        }
+    }
+
+    println!(
+        "Y2D1 production restriction corpus={corpus} systems={} dir={}",
+        systems.len(),
+        dir.display()
+    );
+    for (variant_idx, &variant) in variants.iter().enumerate() {
+        for values in [
+            &mut relative_residuals[variant_idx],
+            &mut correction_deltas[variant_idx],
+            &mut reservoir_residuals[variant_idx],
+            &mut well_residuals[variant_idx],
+        ] {
+            values.sort_by(|left, right| {
+                left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+        let median = |values: &[f64]| values[values.len() / 2];
+        println!(
+            "Y2D1 variant={:<20} strict={}/{} relaxed={}/{} median_rel={:.9e} median_reservoir_rel={:.9e} median_well_rel={:.9e} median_direct_dx_delta={:.9e}",
+            variant.label(),
+            strict_counts[variant_idx],
+            systems.len(),
+            relaxed_counts[variant_idx],
+            systems.len(),
+            median(&relative_residuals[variant_idx]),
+            median(&reservoir_residuals[variant_idx]),
+            median(&well_residuals[variant_idx]),
+            median(&correction_deltas[variant_idx]),
+        );
+    }
+
+    assert_eq!(
+        direct_failures, 0,
+        "Y2d1 direct oracle failed on {direct_failures} captures"
+    );
+}
+
 #[derive(Clone)]
 struct BundleRow {
     label: String,

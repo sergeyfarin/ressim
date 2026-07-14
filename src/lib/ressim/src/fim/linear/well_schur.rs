@@ -37,6 +37,10 @@ use nalgebra::{DMatrix, DVector};
 use sprs::{CsMat, TriMatI};
 
 use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
+#[cfg(test)]
+use super::gmres_block_jacobi::{
+    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
+};
 use super::{
     solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
 };
@@ -228,6 +232,53 @@ pub(super) fn solve_with_well_elimination(
         elimination.reduced_equation_scaling.as_ref(),
     );
 
+    recover_full_system_report(jacobian, rhs, options, elimination, reduced_report)
+}
+
+/// Lab-only production-faithful restriction injection. The ordinary restriction lab calls the
+/// CPR kernel directly and therefore omits the live well-Schur reduction and captured equation
+/// scaling. Y2d1 needs to vary only the restriction while retaining those coupled semantics.
+#[cfg(test)]
+pub(super) fn solve_with_well_elimination_and_restriction(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: FimLinearBlockLayout,
+    equation_scaling: Option<&EquationScaling>,
+    restriction_kind: CprPressureRestrictionKind,
+) -> FimLinearSolveReport {
+    let Some(elimination) = eliminate_wells(jacobian, rhs, layout, equation_scaling) else {
+        return solve_with_smoother_and_restriction(
+            jacobian,
+            rhs,
+            options,
+            Some(layout),
+            CprFineSmootherKind::BlockIlu0,
+            restriction_kind,
+            equation_scaling,
+        );
+    };
+
+    let reduced_report = solve_with_smoother_and_restriction(
+        &elimination.reduced_jacobian,
+        &elimination.reduced_rhs,
+        options,
+        Some(elimination.reduced_layout),
+        CprFineSmootherKind::BlockIlu0,
+        restriction_kind,
+        elimination.reduced_equation_scaling.as_ref(),
+    );
+
+    recover_full_system_report(jacobian, rhs, options, elimination, reduced_report)
+}
+
+fn recover_full_system_report(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    elimination: WellEliminationResult,
+    reduced_report: FimLinearSolveReport,
+) -> FimLinearSolveReport {
     let well_bhp_start = elimination.well_bhp_start;
     let tail_count = elimination.tail_count;
 
@@ -438,5 +489,28 @@ mod tests {
         assert!((report.rhs_norm - rhs.norm()).abs() < 1e-12);
         let residual = rhs - cs_mat_mul_vec(&jacobian, &report.solution);
         assert!((report.final_residual_norm - residual.norm()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn lab_quasi_impes_restriction_matches_production_well_schur() {
+        let (jacobian, rhs, layout) = sample_system();
+        let options = FimLinearSolveOptions::default();
+        let production = solve_with_well_elimination(&jacobian, &rhs, &options, layout, None);
+        let injected = solve_with_well_elimination_and_restriction(
+            &jacobian,
+            &rhs,
+            &options,
+            layout,
+            None,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+
+        assert_eq!(injected.converged, production.converged);
+        assert_eq!(injected.iterations, production.iterations);
+        assert!((injected.rhs_norm - production.rhs_norm).abs() < 1e-12);
+        assert!((injected.final_residual_norm - production.final_residual_norm).abs() < 1e-12);
+        for row in 0..jacobian.rows() {
+            assert!((injected.solution[row] - production.solution[row]).abs() < 1e-12);
+        }
     }
 }

@@ -1457,3 +1457,29 @@ That helper bypasses production well-Schur elimination and captured equation sca
 gas corpus previously favored quasi-IMPES 336/337. Therefore no restriction flip is authorized.
 Y2d1 must first make the variant replay production-faithful and require the gas corpus as a
 counter-control.
+
+### 15.12 Y2d1 result: pressure restriction is corpus-sensitive, not a global fix (2026-07-14)
+
+Y2d1 added test-only restriction injection through the exact production well-Schur reduction and
+recovery. The injected quasi-IMPES path matches ordinary production dispatch exactly, including
+captured equation scaling, block-ILU0, tolerance, iteration budget, full-system norms, and returned
+correction. Sparse LU solves every artifact, and each iterative report's final norm matches an
+independent `||rhs-Jdx||` calculation.
+
+On the eight bounded failures, production quasi-IMPES solves `0/8` strictly and `0/8` under the
+relaxed `1e-2` gate. Diagonal-balanced summed rows solve `8/8`, improve median reduction from
+`1.455e-2` to `1.340e-3`, and reduce the median maximum correction-family disagreement from
+`508.9` to `4.23`. This proves genuine pressure-restriction sensitivity.
+
+It is not a promotion result. The historical 337-system gas corpus no longer exists and predates
+later capture/report fixes, so clean commit `e143c19` regenerated the current `20x20x3` baseline:
+238 accepted substeps, one linear plus four nonlinear retries, and five captured near-miss/failure
+systems. On this valid current counter-control, quasi-IMPES is usable on `4/5` with median
+reduction `3.646e-5`; diagonal-balanced is usable on only `3/5`, with two severe misses. Summed
+rows and dominant-diagonal are gas `5/5`, but resolve only `2/8` and `0/8` bounded systems.
+
+Verdict: **DIAGNOSTIC TRADEOFF; NO UNIVERSAL RESTRICTION AND NO LIVE CHANGE**. Restriction is a
+real contributor to the bounded failures, but no existing choice clears both corpora. A
+case-adaptive selector would encode the symptom rather than explain it and is not authorized.
+Y2d2 holds quasi-IMPES fixed and isolates fine smoother versus Krylov budget using the same
+production-faithful oracle.

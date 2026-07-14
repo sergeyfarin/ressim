@@ -42,9 +42,9 @@ impl CprFineSmootherKind {
     }
 }
 
-/// Pressure-restriction/prolongation variants for the CPR coarse stage. `Row0Schur` is the
-/// only variant used by the production path (`solve()`, i.e. `FgmresCpr`/`GmresIlu0` as
-/// dispatched from `solve_linearized_system`) — the others exist for the offline solver
+/// Pressure-restriction/prolongation variants for the CPR coarse stage. Production `solve()`
+/// currently selects `QuasiImpes` for `FgmresCpr`/`GmresIlu0` dispatch; the other variants exist
+/// for the offline solver
 /// lab (`fim/linear/solver_lab.rs`) to compare as full solves on captured real systems
 /// before any live-solver change is considered (Phase 9, `FIM-LINEAR-005`/`FIM-LINEAR-007`).
 /// Salvaged from the reverted in-situ probe (commit `db3bdaf`, unreachable from production

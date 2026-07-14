@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d0 confirms a bounded iterative correction-quality failure; Y2d1 is next
+Status: **Y2d1 finds a restriction tradeoff, not a universal fix; Y2d2 is next
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -455,10 +455,10 @@ stack. Neither result refutes the sourced lifecycle mechanism. They constrain th
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2d0 is complete and selects Y2d1.** The first `22x22x1` candidate retry is a structurally
-  clean, factorable system on which production-faithful CPR reproduces the live failure while
-  direct LU solves to machine precision. Use offline component discrimination to localize the CPR
-  defect before any live change. Hold lifecycle, acceptance, wells, and timestep policy fixed.
+- **Y2d1 is complete and selects Y2d2.** Production-faithful restriction replay proves strong
+  corpus-dependent sensitivity but no existing restriction clears bounded and current gas gates
+  together. Keep production quasi-IMPES fixed and isolate fine smoother versus Krylov budget on
+  the same corpora before considering any live change.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.
@@ -523,6 +523,50 @@ equation scaling. The next slice must repair that comparability gap rather than 
 - **Refute restriction mismatch** if no variant improves both; then isolate smoother/Krylov
   behavior on the same artifacts without a live solver edit.
 - No production behavior or convergence run belongs in Y2d1.
+
+**Y2d1 result (2026-07-14): restriction sensitivity confirmed; no universal variant.** Test-only
+restriction injection is byte-for-byte equivalent to production for quasi-IMPES and retains the
+real well-Schur reduction/recovery, equation scaling, block-ILU0 smoother, tolerance, and
+30-iteration budget. All direct references converge and every report matches an independently
+recomputed full-system residual.
+
+| restriction | bounded strict / relaxed (8) | current gas strict / relaxed (5) | bounded median reduction | gas median reduction |
+| --- | ---: | ---: | ---: | ---: |
+| row0-schur | `0 / 3` | `4 / 5` | `1.699e-2` | `2.814e-4` |
+| sum-rows | `2 / 2` | `5 / 5` | `1.718e-2` | `1.472e-4` |
+| diag-balanced-sum | **`8 / 8`** | **`3 / 3`** | `1.340e-3` | `4.867e-3` |
+| dominant-diag-row | `0 / 3` | `5 / 5` | `1.355e-2` | `1.603e-4` |
+| local-schur-balanced | `0 / 1` | `4 / 5` | `1.608e-2` | `2.814e-4` |
+| quasi-impes (production) | `0 / 0` | `4 / 4` | `1.455e-2` | **`3.646e-5`** |
+
+`diag-balanced-sum` resolves every bounded artifact and reduces its median direct-correction delta
+from quasi-IMPES `508.9` to `4.23`, but loses one current gas artifact and catastrophically misses
+two (`1.803e1` and `4.704e-1` relative residual). `sum-rows` preserves/improves gas but resolves
+only 2/8 bounded systems. Therefore restriction choice is one contributor, not a complete global
+remedy; no restriction flip or case-adaptive selector is authorized.
+
+The historical 337-system gas corpus is unavailable and arose before later capture/report fixes.
+Y2d1 cleanly regenerated the current `20x20x3` baseline on commit `e143c19`: 238 accepted
+substeps, one linear and four nonlinear retries, and five captured final-near-miss/failure systems.
+These five current-head artifacts are the valid counter-control; the historical 336/337 result is
+context, not a reproducible gate.
+
+### 7.3 Y2d2 fixed-restriction smoother/Krylov isolation
+
+Hypothesis: with production quasi-IMPES held fixed, the bounded failures are caused by the
+block-ILU0 fine smoother and/or the 30-iteration Krylov budget rather than pressure restriction
+alone.
+
+- Extend only the test-only production-faithful wrapper to select the existing fine smoother.
+- On all eight bounded and five current gas artifacts compare block-ILU0 (production), full ILU0,
+  and block Jacobi at the same tolerance/budget.
+- Then vary only the Krylov budget (`30`, `60`, `150`) for the best no-regression smoother while
+  keeping restart, restriction, scaling, and well Schur fixed.
+- Require the same full-system norms, partitions, finite status, and direct-correction deltas.
+- Confirm a smoother/budget cause only if one row resolves all bounded artifacts without losing
+  any currently usable gas artifact. Otherwise close that component and inspect CPR coarse-stage
+  quality; do not combine restriction and smoother changes to manufacture a win.
+- No production behavior or live convergence run is authorized in Y2d2.
 
 ## 8. Y3 and Y4 end gates
 
