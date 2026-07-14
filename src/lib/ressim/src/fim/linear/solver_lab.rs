@@ -16,20 +16,21 @@
 //! - the current FgmresCpr path must reproduce its live failure on the majority of the
 //!   corpus (else the capture is missing state and comparisons are not trustworthy).
 
-use nalgebra::DVector;
+use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::capture::{
-    FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
+    capture_dir_from_env, load_captures, y2b2_capture_dir_from_env, FimCapturedSystem,
 };
 use super::gmres_block_jacobi::{
-    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
-    solve_with_restriction_kind, solve_with_smoother_and_restriction,
+    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
+    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
 };
+use super::sparse_lu_debug;
 use super::well_schur;
 use super::{
-    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
-    solve_linearized_system,
+    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
+    FimLinearSolverKind,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -60,6 +61,56 @@ fn y2b2_partition_norms(layout: FimLinearBlockLayout, residual: &DVector<f64>) -
         .rows(reservoir_rows, residual.len() - reservoir_rows)
         .norm();
     (reservoir, well)
+}
+
+fn dense_matrix(jacobian: &CsMat<f64>) -> DMatrix<f64> {
+    let mut dense = DMatrix::zeros(jacobian.rows(), jacobian.cols());
+    for (row, vector) in jacobian.outer_iterator().enumerate() {
+        for (&column, &value) in vector.indices().iter().zip(vector.data().iter()) {
+            dense[(row, column)] = value;
+        }
+    }
+    dense
+}
+
+/// A rank-revealing direct replay for a singular captured Newton system. This exists only in the
+/// test-only lab: its Moore-Penrose correction is an oracle for `J dx = rhs`, not a production
+/// FIM solver or an OPM implementation choice.
+struct DenseSvdReplay {
+    solution: DVector<f64>,
+    rank: usize,
+    singular_value_cutoff: f64,
+}
+
+fn dense_svd_replay(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+) -> Result<DenseSvdReplay, &'static str> {
+    let svd = dense_matrix(jacobian).svd(true, true);
+    let max_singular_value = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let singular_value_cutoff = (max_singular_value * 1e-10).max(f64::EPSILON);
+    let rank = svd.rank(singular_value_cutoff);
+    let solution = svd.solve(rhs, singular_value_cutoff)?;
+    Ok(DenseSvdReplay {
+        solution,
+        rank,
+        singular_value_cutoff,
+    })
+}
+
+fn y2b2_empty_column_families(layout: FimLinearBlockLayout, empty_columns: &[usize]) -> [usize; 5] {
+    let mut families = [0usize; 5];
+    for &column in empty_columns {
+        let family = if column < layout.cell_unknown_count() {
+            column % layout.cell_block_size
+        } else if column < layout.well_bhp_end() {
+            3
+        } else {
+            4
+        };
+        families[family] += 1;
+    }
+    families
 }
 
 /// Largest per-family overshoot beyond that family's own relative-reduction target, i.e. how
@@ -246,10 +297,11 @@ fn solver_lab_compare_backends() {
     );
 }
 
-/// Replay the one Y2b2b decision-point artifact through the two production solver selections.
-/// This is deliberately a diagnostic test: it asserts comparable finite reports and prints the
-/// quantities that decide the Y2b classification; it does not manufacture a correction-equality
-/// tolerance before observing the actual artifact.
+/// Replay the one Y2b2b decision-point artifact through CPR and two independent direct paths.
+///
+/// This is deliberately diagnostic-only: it first distinguishes sparse conversion from faer
+/// factorization failure, then checks whether dense LU can solve the same full system. It does
+/// not modify production solver selection or manufacture a convergence-policy verdict.
 #[test]
 #[ignore]
 fn replay_y2b2_exact_capture() {
@@ -274,6 +326,13 @@ fn replay_y2b2_exact_capture() {
         kind: FimLinearSolverKind::SparseLuDebug,
         ..FimLinearSolveOptions::default()
     };
+    let dense_options = FimLinearSolveOptions {
+        kind: FimLinearSolverKind::DenseLuDebug,
+        ..FimLinearSolveOptions::default()
+    };
+    let sparse_lu_diagnostics = sparse_lu_debug::diagnose(&system.jacobian);
+    let svd = dense_svd_replay(&system.jacobian, &system.rhs)
+        .expect("dense SVD vectors are requested for the Y2b2 direct oracle");
     let cpr = solve_linearized_system(
         &system.jacobian,
         &system.rhs,
@@ -288,15 +347,28 @@ fn replay_y2b2_exact_capture() {
         Some(layout),
         system.equation_scaling.as_ref(),
     );
+    let dense = solve_linearized_system(
+        &system.jacobian,
+        &system.rhs,
+        &dense_options,
+        Some(layout),
+        system.equation_scaling.as_ref(),
+    );
     assert!(cpr.solution.iter().all(|value| value.is_finite()));
     assert!(direct.solution.iter().all(|value| value.is_finite()));
+    assert!(dense.solution.iter().all(|value| value.is_finite()));
     assert!(cpr.reduction().is_finite());
     assert!(direct.reduction().is_finite());
+    assert!(dense.reduction().is_finite());
 
     let cpr_residual = residual_vector(&system.jacobian, &cpr.solution, &system.rhs);
     let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+    let dense_residual = residual_vector(&system.jacobian, &dense.solution, &system.rhs);
+    let svd_residual = residual_vector(&system.jacobian, &svd.solution, &system.rhs);
     let (cpr_reservoir, cpr_well) = y2b2_partition_norms(layout, &cpr_residual);
     let (direct_reservoir, direct_well) = y2b2_partition_norms(layout, &direct_residual);
+    let (dense_reservoir, dense_well) = y2b2_partition_norms(layout, &dense_residual);
+    let (svd_reservoir, svd_well) = y2b2_partition_norms(layout, &svd_residual);
     let correction_difference = cpr
         .solution
         .iter()
@@ -330,9 +402,59 @@ fn replay_y2b2_exact_capture() {
         .iter()
         .copied()
         .collect();
+    let dense_bhp: Vec<f64> = dense
+        .solution
+        .rows(bhp_start, bhp_end - bhp_start)
+        .iter()
+        .copied()
+        .collect();
+    let dense_rates: Vec<f64> = dense
+        .solution
+        .rows(rate_start, dense.solution.len() - rate_start)
+        .iter()
+        .copied()
+        .collect();
+    let dense_cpr_difference = cpr
+        .solution
+        .iter()
+        .zip(dense.solution.iter())
+        .map(|(left, right)| (left - right).abs())
+        .fold(0.0_f64, f64::max);
+    let svd_cpr_difference = cpr
+        .solution
+        .iter()
+        .zip(svd.solution.iter())
+        .map(|(left, right)| (left - right).abs())
+        .fold(0.0_f64, f64::max);
+    let empty_families = y2b2_empty_column_families(
+        layout,
+        &sparse_lu_diagnostics.structure.empty_column_indices,
+    );
 
     println!(
-        "Y2B2-REPLAY rows={} nnz={} rhs_norm={:.6e} cpr={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}}} direct={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}}} max_dx_delta={:.6e}",
+        "Y2B2-STRUCTURE rows={} nnz={} empty_rows={} empty_columns={} empty_column_families={{water={}, oil_component={}, gas_component={}, well_bhp={}, perforation_rate={}}} empty_column_sample={:?} duplicate_entries={} non_finite_entries={} all_zero_rows={} potential_zero_pivot_rows={} sparse_lu_preparation={}",
+        system.jacobian.rows(),
+        system.jacobian.nnz(),
+        sparse_lu_diagnostics.structure.empty_rows,
+        sparse_lu_diagnostics.structure.empty_columns,
+        empty_families[0],
+        empty_families[1],
+        empty_families[2],
+        empty_families[3],
+        empty_families[4],
+        &sparse_lu_diagnostics.structure.empty_column_indices[..sparse_lu_diagnostics
+            .structure
+            .empty_column_indices
+            .len()
+            .min(12)],
+        sparse_lu_diagnostics.structure.duplicate_entries,
+        sparse_lu_diagnostics.structure.non_finite_entries,
+        sparse_lu_diagnostics.structure.all_zero_rows,
+        sparse_lu_diagnostics.structure.potential_zero_pivot_rows,
+        sparse_lu_diagnostics.preparation.label(),
+    );
+    println!(
+        "Y2B2-REPLAY rows={} nnz={} rhs_norm={:.6e} cpr={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}}} sparse_direct={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}}} dense_lu={{backend={}, converged={}, iterations={}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, bhp={:?}, rate={:?}, max_dx_delta_from_cpr={:.6e}}} dense_svd={{rank={}, cutoff={:.6e}, reduction={:.6e}, residual={:.6e}, reservoir={:.6e}, well={:.6e}, max_dx_delta_from_cpr={:.6e}}} sparse_max_dx_delta={:.6e}",
         system.jacobian.rows(),
         system.jacobian.nnz(),
         system.rhs.norm(),
@@ -354,7 +476,38 @@ fn replay_y2b2_exact_capture() {
         direct_well,
         direct_bhp,
         direct_rates,
+        dense.backend_used.label(),
+        dense.converged,
+        dense.iterations,
+        dense.reduction(),
+        dense_residual.norm(),
+        dense_reservoir,
+        dense_well,
+        dense_bhp,
+        dense_rates,
+        dense_cpr_difference,
+        svd.rank,
+        svd.singular_value_cutoff,
+        svd_residual.norm() / system.rhs.norm().max(f64::EPSILON),
+        svd_residual.norm(),
+        svd_reservoir,
+        svd_well,
+        svd_cpr_difference,
         correction_difference,
+    );
+
+    assert_eq!(sparse_lu_diagnostics.structure.empty_rows, 0);
+    assert_eq!(sparse_lu_diagnostics.structure.duplicate_entries, 0);
+    assert_eq!(sparse_lu_diagnostics.structure.non_finite_entries, 0);
+    assert_eq!(sparse_lu_diagnostics.structure.all_zero_rows, 0);
+    assert!(
+        !dense.converged,
+        "the structural singularity must reject dense LU"
+    );
+    assert!(
+        svd.solution.iter().all(|value| value.is_finite())
+            && svd_residual.norm() / system.rhs.norm().max(f64::EPSILON) < 1e-10,
+        "rank-revealing dense SVD must solve the compatible captured system"
     );
 }
 

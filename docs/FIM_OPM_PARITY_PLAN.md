@@ -1315,9 +1315,23 @@ for that checkpoint.
 Y2b2b restored that same narrow probe and captured its exact `dt=0.00898425`, iteration-1 system.
 CPR replay yields a finite `4.830552e-3` full-system reduction, while explicit Sparse LU returns
 an all-zero correction and reduction `1.0`. The forced-direct live case consequently takes 16
-linear retries and accepts no substep. This is a direct Sparse-LU path defect, not evidence against
-the raw-state mechanism and not a well-Schur defect (explicit direct bypasses Schur elimination).
-Y2b remains inconclusive; first classify sparse matrix construction versus `sp_lu()` factorization
-failure on the preserved `904x904` artifact, then revisit only the branch justified by that result.
-Full artifacts, checksums, commands, and the decision table live in
-`FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` §§5.1-5.2.
+linear retries and accepts no substep. This is not itself evidence against raw state and not a
+well-Schur result (explicit direct bypasses Schur elimination).
+
+### 15.5 Y2b2c closeout: raw-state capture is rank-deficient (2026-07-14)
+
+The preserved `904x904` live capture was replayed through test-only structural diagnostics.
+Conversion to faer's sparse matrix succeeds, but `sp_lu()` factorization fails. The matrix has no
+empty rows, duplicates, non-finite entries, or all-zero rows; it has 120 empty columns and the
+same 120 missing/zero diagonal candidates. Every one is cell-local primary variable 2 (the gas
+component), not a well or perforation unknown. Ordinary dense LU independently rejects the matrix.
+A rank-revealing dense SVD is the viable independent direct oracle: rank `784`, relative full
+residual `1.101044e-12`, and maximum correction difference from CPR `1.657241e-2`.
+
+Thus CPR's correction is not contradicted by an independent direct replay; the all-zero LU result
+is the expected response to a compatible but rank-deficient raw-state system. This is new direct
+evidence that retaining raw state without OPM's per-iteration phase-presence/primary-variable
+adaptation leaves inactive gas unknowns in ResSim's fixed 3-variable layout. It does not yet prove
+the complete OPM lifecycle remedy. Y2b remains inconclusive; G4/G5, acceptance changes, and Y2c
+are blocked until that lifecycle is source-scoped as one coupled behavior bundle. Full commands
+and artifacts: `FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` §§5.2–5.3.

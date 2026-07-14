@@ -76,12 +76,18 @@ below is retained as Bundle N/Y history; it must not override this current seque
   parity pass; the raw-state-absent direct baseline has no finite `reduction=n/a`.
 - [x] **Y2b2b: corrected raw-state replay (2026-07-13).** One exact live artifact replays CPR at
   `4.830552e-3`, while explicit Sparse LU returns a zero correction/reduction `1.0`; forced direct
-  has 16 linear retries and no accepted substep. This is a direct linear-path defect, so Y2b
-  remains inconclusive rather than refuted or promoted.
-- [ ] **Next: direct Sparse-LU failure classification.** On the preserved 904-row Y2b2b artifact,
-  distinguish sparse-matrix construction from `sp_lu()` factorization failure; expose a typed
-  report reason and prove whether a well-structured direct alternative solves the identical system.
-  Do not change the raw-state policy, G4/G5, or acceptance while this oracle is incomplete.
+  has 16 linear retries and no accepted substep. Y2b2c later classified that as a rank-deficient
+  raw-state matrix, so Y2b remains inconclusive rather than refuted or promoted.
+- [x] **Y2b2c: direct-oracle closeout (2026-07-14).** The preserved 904-row Y2b2b artifact builds
+  in faer but fails `sp_lu()` factorization because 120 gas-component columns are structurally
+  empty; dense LU independently rejects the same rank-784 system. Test-only dense SVD solves the
+  compatible full system to `1.10e-12` relative residual and tracks CPR (`max Δx=1.66e-2`). This
+  is not a Sparse-LU tuning target or a raw-state refutation.
+- [ ] **Next: scope the coupled OPM lifecycle before another Y2 behavior run.** Source and map
+  phase presence, stored primary variables, update/chop, raw accumulation, endpoint properties,
+  and per-iteration `adaptPrimaryVariables`; explain how every inactive fixed-layout gas unknown
+  is removed or constrained. Keep the current raw-state flag default-off. Do not start G4/G5,
+  Y2c, Sparse-LU tuning, or acceptance changes without that dependency table.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

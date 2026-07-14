@@ -196,17 +196,42 @@ BHP correction `[0.22494971034013922, -0.031642581144180365]`, and perforation-r
 therefore has 16 linear retries and no accepted substep. Its capture differs (5626 nnz) because
 the zero direct iteration never advances the state; it reproduces the same all-zero direct solve.
 
-**Classification:** direct Sparse LU is genuinely worse, selecting Y2b2b's localized
-linear-path-defect branch. Since explicit direct does not use well Schur, this is before Schur
-recovery. The raw-state mechanism is still only a valid CPR-side positive observation; it is not
-an OPM-parity promotion or refutation. Next narrow work is typed Sparse-LU build-versus-
-factorization diagnosis on this exact capture. G4/G5 and all nonlinear policy changes remain
+**Checkpoint classification:** the zero direct result was not a state-policy verdict. Since
+explicit direct does not use well Schur, the bounded next slice was sparse-matrix construction
+versus factorization diagnosis on this exact capture. G4/G5 and nonlinear policy changes remained
 blocked.
 
 Validation: the raw-saturation state fixture, both release replay artifacts, both capped release
 drivers, and the 10-test `assembly_ad` bucket pass. Wasm rebuilt successfully and all six required
 control diagnostics completed without a runtime warning; the native-only flag remains unreachable
 in those controls.
+
+### Y2b2c checkpoint (2026-07-14) — exact raw-state matrix is rank-deficient
+
+Scope stayed diagnostic-only. The preserved live artifact
+`/tmp/ressim-y2b2b-live-capture-final/fim_capture_00000.txt` (SHA-256
+`c503d9cb1781eab942d7621fb45f0baada3c40db7e32ffc297d17d1d35611561`) was replayed with a
+test-only structural audit. It cleanly separates sparse conversion from factorization and checks
+empty/duplicate/non-finite/zero structure before any solve.
+
+The `904x904`, 5540-nnz matrix builds in faer; `sp_lu()` then fails. It has no empty rows,
+duplicates, non-finite coefficients, or all-zero rows. It has exactly 120 empty columns and 120
+missing/zero diagonal candidates. Every empty column is local variable 2 of a cell (gas primary),
+with none in water, oil component, BHP, or perforation-rate families. Ordinary dense LU also
+returns no solution, so this is not an implementation-specific sparse factorization failure.
+
+The independent direct oracle is test-only rank-revealing dense SVD, not a production-path change.
+At cutoff `1.138287e-6`, rank is `784/904`; its correction solves the compatible full system to
+relative residual `1.101044e-12` (`||r||=3.068091e-11`, reservoir `3.068078e-11`, well
+`9.032212e-14`). Its maximum component difference from CPR is only `1.657241e-2`, compared with
+`5.371137e0` for Sparse LU's zero vector. CPR is therefore independently corroborated at this
+decision point.
+
+**Classification:** Y2b stays **INCONCLUSIVE**, not refuted or promoted. The partial raw-state
+probe leaves inactive gas unknowns in ResSim's fixed three-variable layout. This makes ordinary
+direct LU an invalid Y2b promotion oracle and turns OPM's per-iteration phase-presence/
+`adaptPrimaryVariables` lifecycle into a measured prerequisite for the next behavior scope. No
+Sparse-LU work, G4/G5, acceptance widening, or Y2c promotion follows from this result.
 
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 

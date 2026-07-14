@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b0/Y2b1 complete; Y2b2 reclassified INCONCLUSIVE; Y2b2a oracle repair is next
-(2026-07-13)**. This document turns the evidence in
+Status: **Y2b0/Y2b1/Y2b2a/Y2b2b/Y2b2c complete; Y2b remains INCONCLUSIVE and Y2c is blocked
+(2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -33,10 +33,12 @@ The established causal chain is:
    saturation projection is optional and defaults off. ResSim hard-clamps `Sw >= Swc` after every
    update. This is a source-confirmed implementation divergence, but it is not yet proven to be
    the sole cause of the live plateau.
-5. The Y2b2 live raw-state probe materially improved the accepted first rung, but its forced-direct
-   check aborted through a linear-reporting asymmetry: Sparse LU returned no failure diagnostics,
-   so `OpmAligned` could not calculate relaxed reduction. The negative gate did not measure the
-   direct correction's quality. Y2b2 is therefore inconclusive, not refuted.
+5. The Y2b2 live raw-state probe materially improved the accepted first rung. Its exact raw-state
+   capture has 120 structurally empty gas-primary columns, so ordinary Sparse and dense LU both
+   correctly reject the singular matrix. A rank-revealing dense SVD solves its compatible system
+   to `1.10e-12` relative residual and tracks CPR closely. The raw-state probe therefore remains
+   inconclusive, not refuted; it also establishes that raw retention without OPM-style variable
+   adaptation cannot supply a valid nonsingular direct-LU oracle.
 
 This evidence supersedes the older claims that the gas failure was primarily CPR quality, that
 OPM itself grinds through the same stagnation, or that AMG is the next convergence lever.
@@ -59,7 +61,8 @@ OPM itself grinds through the same stagnation, or that AMG is the next convergen
 - Do not globally change generic clamp helpers or patch only the injector well row. Reservoir and
   well residuals must use one coherent state/update convention.
 - Do not start AMG, G4 primary-variable restructuring, G5 variable substitution, or controller
-  parity while Y2b2a's oracle defect is unresolved.
+  parity until a dependency table scopes the missing OPM phase-presence/primary-variable lifecycle
+  exposed by Y2b2c.
 - Record exact commit, commands, case dimensions, flags, output artifact paths, and before/after
   metrics in the worklog. Update the registry even for a negative result.
 - Use capped first-rung diagnostics before full runs. A full multi-step run is a promotion gate,
@@ -256,8 +259,7 @@ recorded as passing. Y2b2b must rerun its locked FIM coverage along with its cap
 
 ### 5.2 Y2b2b — restore and replay the same narrow probe (complete 2026-07-13)
 
-Only enter after the Y2b2a commit passes its exit gate. **Y2b2a completed above; Y2b2b is the
-current authorized slice.**
+Only enter after the Y2b2a commit passes its exit gate. **Completed 2026-07-13.**
 
 1. Restore the previously deleted native, default-off, `OpmAligned`-only raw-saturation flag
    without adding primary-variable adaptation, G4/G5 changes, acceptance tuning, or controller
@@ -309,13 +311,38 @@ direct correction never applies live iteration 0. Replaying that direct-path art
 the same zero Sparse-LU correction; CPR on it reduces only to `1.902285e-2`, as expected for the
 earlier state. The replay prints full residuals and reservoir/well partitions, not flags alone.
 
-**Classification.** This selects the decision-table second row: a direct linear-path defect is
-localized before any well-Schur recovery (explicit Sparse-LU does not enter the Schur-elimination
-branch). Y2b's raw-state policy remains **inconclusive**: its CPR result is valid positive
-mechanism evidence, but it cannot be promoted while the direct oracle returns zero correction.
-The next authorized slice is narrow direct Sparse-LU build/factorization failure classification on
-this captured `904x904` matrix. G4/G5, acceptance widening, and lifecycle promotion remain
-blocked.
+**Classification at this checkpoint.** Explicit Sparse LU bypasses well-Schur and returned zero,
+so no conclusion about raw state could be drawn from this replay alone. Y2b remained
+**inconclusive** pending the bounded Y2b2c structural closeout below.
+
+### 5.3 Y2b2c — time-boxed direct-oracle closeout (complete 2026-07-14)
+
+The capture remains the one-shot live artifact above (SHA-256
+`c503d9cb1781eab942d7621fb45f0baada3c40db7e32ffc297d17d1d35611561`). Native test-only
+`SparseLuDiagnostics` records construction separately from factorization and checks empty
+rows/columns, duplicates, non-finite entries, all-zero rows, and missing/exact-zero diagonal
+candidates before handing the matrix to faer. Exact replay command:
+
+```text
+FIM_Y2B2_CAPTURE_DIR=/tmp/ressim-y2b2b-live-capture-final cargo test --release --manifest-path src/lib/ressim/Cargo.toml replay_y2b2_exact_capture -- --ignored --nocapture
+```
+
+Matrix construction succeeds; `sp_lu()` factorization fails. There are no empty rows, duplicate
+entries, non-finite entries, or all-zero rows, but exactly **120 empty columns** and 120
+missing/zero diagonal candidates. All 120 are cell-local variable 2 (the gas-component primary);
+no water, oil-component, BHP, or perforation-rate column is empty. Ordinary dense LU independently
+rejects the same rank-deficient matrix. The test-only rank-revealing dense SVD has rank `784/904`
+at cutoff `1.138287e-6` and solves the compatible full system to relative residual `1.101044e-12`
+(reservoir `3.068078e-11`, wells `9.032212e-14`). Its correction differs from CPR by at most
+`1.657241e-2`, whereas Sparse LU's zero correction differs by `5.371137e0`.
+
+**Classification.** This is not a Sparse-LU implementation/convergence problem and not a
+well-Schur problem: the raw-state capture is structurally rank-deficient because it retains 120
+inactive gas primary variables. CPR's `4.830552e-3` correction is independently corroborated by
+the rank-revealing direct oracle, but ordinary direct LU cannot be the Y2b promotion gate on this
+partial lifecycle. The missing OPM per-iteration phase-presence/`adaptPrimaryVariables` semantics
+are now a measured dependency, not a generic future enhancement. Do not tune Sparse LU or
+acceptance. Y2b and Y2c remain blocked pending a sourced, dependency-complete lifecycle scope.
 
 ## 6. Y2c — promotion matrix
 
@@ -341,8 +368,9 @@ entire OPM stack ready.
 
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2b2a oracle repair is mandatory first.** No structural branch can be selected from the
-  current forced-direct result because the gate did not measure direct correction quality.
+- **Y2b2c direct-oracle closeout is complete.** The raw-state capture is rank-deficient in exactly
+  120 gas-primary columns; no G4/G5 or acceptance branch follows from a direct LU refusal. Scope
+  the missing OPM primary-variable lifecycle before selecting any structural branch.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.
