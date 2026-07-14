@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Y2b3c Gate C green; Y2b is a promotion candidate and Y2c is next (2026-07-14)**
+Status: **Gates A-C and Y2c complete; mechanism validated, default-off; Y2d0 is next (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -9,9 +9,9 @@ This document closes the two prerequisites created by Y2b2c:
 2. define how ResSim must preserve a live dependency for every fixed-layout cell unknown before
    another raw-state behavior run.
 
-It began as a source/design checkpoint rather than convergence evidence. Gates A-C in §6 now
-pass, and the first-rung result makes Y2b a promotion candidate; Y2c owns the remaining complete
-target and non-regression decision.
+It began as a source/design checkpoint rather than convergence evidence. Gates A-C in §6 pass,
+and Y2c validates the mechanism on the complete gas target. It remains default-off because one
+bounded water control regresses against Legacy and the heavy-water Flow gap remains.
 
 ## 1. Scope and exclusions
 
@@ -270,10 +270,18 @@ or direct-solver tuning.
   the new trace to choose exactly one later branch.
 - **Direct/live or diagnostics disagree:** Y2b remains `INCONCLUSIVE`; repair the oracle only.
 
-## 7. Next executable slice
+## 7. Y2c disposition and next executable slice
 
-The next slice is **Y2c: bounded promotion matrix** in execution-plan §6. Start by committing this
-Gate C diagnostic checkpoint, then reproduce the exact six-step ResSim target on that clean
-revision and re-confirm the Flow oracle. Continue through the prescribed heavy/control/physics
-gates only if the six-step target remains materially closer. Do not open G4 or tune acceptance,
-direct solvers, wells, or timestep control in parallel.
+Y2c matches Flow's six accepted substeps on the complete gas target (`8,5,4,4,4,4` Newton versus
+Flow `7,5,4,3,4,3`) and reduces the larger gas first step from baseline `OpmAligned` 238 substeps
+to one. This is sufficient to validate the source-derived lifecycle as a real positive mechanism.
+
+It is not sufficient for default promotion: candidate `22x22x1` water takes 11 substeps with
+eight linear retries versus Legacy's four, and heavy water remains seven substeps versus Flow's
+one. Adjacent `20x20x3` and `23x23x1` water controls improve, so wholesale reversion would discard
+a demonstrated OPM-alignment gain without explaining the localized blocker.
+
+The next slice is **Y2d0**, execution-plan §7.1: capture and replay the first candidate
+`22x22x1` `linear-bad` system under the backend-neutral full-system norm contract. Hold this
+lifecycle fixed and default-off. Do not open G4, widen acceptance, tune timestep control, change
+wells, or turn Sparse LU into production work while classifying that artifact.

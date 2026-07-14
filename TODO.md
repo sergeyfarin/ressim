@@ -103,9 +103,19 @@ below is retained as Bundle N/Y history; it must not override this current seque
   PASS: all 300 primary columns are live; both direct solvers factor and agree; CPR is within
   `5.56e-7` by correction family. The clean capped rung accepts full `dt=0.25` in 8 iterations and
   zero retries versus Flow's 7. Y2b is a promotion candidate, not yet promoted.
-- [ ] **Next: Y2c bounded promotion matrix.** Commit Gate C, then run the exact six-step ResSim
-  target and re-confirm Flow before the heavy/control/physics gates in execution-plan §6. Do not
-  open G4 or another solver/acceptance branch in parallel.
+- [x] **Y2c bounded promotion matrix (2026-07-14): VALIDATED POSITIVE, NOT PROMOTED.** Candidate
+  matches Flow's six accepted gas substeps (`8,5,4,4,4,4` versus `7,5,4,3,4,3`) with zero retries,
+  and the `20x20x3` gas first step improves from baseline `OpmAligned` 238 substeps to one. State,
+  fine-dt, reporting, focused, locked, BL, and curated FIM gates pass. Promotion is blocked by
+  `22x22x1` water: candidate 11 substeps/8 linear retries versus Legacy 4; heavy water remains 7
+  versus Flow 1. Keep `FIM_Y2B_RAW_SATURATION` native/default-off; do not misclassify this as a
+  lifecycle refutation or whole-stack promotion.
+- [ ] **Next: Y2d0 bounded-control linear-oracle gate.** On the unchanged candidate, capture the
+  first `22x22x1` `linear-bad` retry and replay that exact full system through live CPR plus one
+  viable independent direct backend. Require common RHS/final full residual, reduction, finite
+  status, and correction-family deltas. Confirm only if direct is materially better; refute if
+  corrections agree; missing metrics is inconclusive. Do not change acceptance, timestep policy,
+  wells, lifecycle behavior, or production Sparse LU in this slice.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2b3c Gate C green; Y2b is a promotion candidate and Y2c is next
+Status: **Y2c complete: Y2b is validated positive but remains default-off; Y2d0 is next
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -17,7 +17,8 @@ Primary oracle: tracked `gas-rate-10x10x3` deck, six 0.25-day report steps.
 | Solver | Accepted substeps | Newton iterations | Cuts |
 | --- | ---: | --- | ---: |
 | OPM Flow 2026.04 | 6 | `7, 5, 4, 3, 4, 3` | 0 |
-| ResSim `OpmAligned` | hundreds | many at the 20-iteration cap | many/fragmented |
+| ResSim baseline `OpmAligned` | hundreds | many at the 20-iteration cap | many/fragmented |
+| ResSim lifecycle candidate (default-off) | 6 | `8, 5, 4, 4, 4, 4` | 0 |
 
 The established causal chain is:
 
@@ -31,14 +32,17 @@ The established causal chain is:
    that the state update discards.
 4. Local OPM source shows its normal Newton update limits saturation increments by `ds-max`, but
    saturation projection is optional and defaults off. ResSim hard-clamps `Sw >= Swc` after every
-   update. This is a source-confirmed implementation divergence, but it is not yet proven to be
-   the sole cause of the live plateau.
+   update. This is a source-confirmed implementation divergence.
 5. The Y2b2 live raw-state probe materially improved the accepted first rung. Its exact raw-state
    capture has 120 structurally empty gas-primary columns, so ordinary Sparse and dense LU both
    correctly reject the singular matrix. A rank-revealing dense SVD solves its compatible system
    to `1.10e-12` relative residual and tracks CPR closely. The raw-state probe therefore remains
    inconclusive, not refuted; it also establishes that raw retention without OPM-style variable
    adaptation cannot supply a valid nonsingular direct-LU oracle.
+6. The completed tagged lifecycle removes the gas plateau across all six report steps and at
+   `20x20x3`, validating that mechanism. It is not the complete OPM stack: one bounded water
+   control regresses against Legacy and the heavy-water case still takes seven substeps to Flow's
+   one.
 
 This evidence supersedes the older claims that the gas failure was primarily CPR quality, that
 OPM itself grinds through the same stagnation, or that AMG is the next convergence lever.
@@ -422,11 +426,40 @@ gains new cuts/failures, and physics/validation gates pass. If it is beneficial 
 keep it isolated behind the flag and diagnose the next demonstrated mismatch; do not declare the
 entire OPM stack ready.
 
+### 6.1 Y2c result (2026-07-14): beneficial but incomplete; do not promote
+
+The completed lifecycle is a large, reproducible improvement and matches the primary gas oracle's
+substep count, but it fails the predeclared control non-regression gate. Keep
+`FIM_Y2B_RAW_SATURATION=1` native/default-off.
+
+| Case / flavor | Accepted substeps | Newton iterations / retries | Reference |
+| --- | ---: | --- | --- |
+| gas `10x10x3`, six steps, candidate | **6** | `8,5,4,4,4,4`; zero retries | Flow: **6**, `7,5,4,3,4,3`, zero cuts |
+| gas `10x10x3`, six steps, Legacy | 14 | first step 4 substeps; 7 nonlinear retries total | candidate is materially closer |
+| gas `20x20x3`, first step, candidate | **1** | `8`; zero retries | Legacy 2; baseline `OpmAligned` 238 |
+| water `20x20x3`, candidate | 5 | `8,5,5,5,3`; 1 linear + 1 nonlinear retry | Legacy 8; baseline `OpmAligned` 24 |
+| water `22x22x1`, candidate | **11** | mostly 3-5; **8 linear retries** | Legacy **4**; baseline `OpmAligned` 24 |
+| water `23x23x1`, candidate | 3 | `11,5,5`; 1 linear retry | Legacy 4; baseline `OpmAligned` 12 |
+| heavy water `12x12x3`, candidate | 7 | 1 nonlinear retry | Flow: **1**, 11 Newton |
+
+Fresh Flow 2026.04 replay reconfirmed `6` substeps and `7,5,4,3,4,3`. The candidate's six-step
+state is finite, saturation closure is at most `2.22e-16`, and the accepted `0.25`-day result is
+close to a 24-step `0.0625`-day reference (oil/gas rates within `0.036%`, gas inventory within
+`0.228%`, injection within `0.876%`). Focused assembly/state tests, the locked DRSDT0 test,
+Buckley-Leverett benchmarks, and the curated FIM bucket pass. The shared bucket reaches the known
+pre-existing closed-system `rate_history` mismatch (`2` versus `1`).
+
+Classification: **VALIDATED POSITIVE, NOT PROMOTED**. The `22x22x1` regression against Legacy is
+the direct promotion blocker; the heavy-water gap shows that the lifecycle is not the complete OPM
+stack. Neither result refutes the sourced lifecycle mechanism. They constrain the next slice.
+
 ## 7. Choose exactly one next branch from post-Y2 evidence
 
-- **Y2b3c Gate C is complete and selects Y2c.** Execute the bounded six-step/control/physics
-  promotion matrix on the committed Gate C revision. Do not open another structural branch in
-  parallel.
+- **Y2c is complete and selects Y2d0.** Diagnose the first `22x22x1` candidate linear-bad retry
+  with a comparable full-system oracle. This is the smallest observed failure that directly blocks
+  promotion. Hold lifecycle, acceptance, wells, and timestep policy fixed. First distinguish a
+  real CPR correction-quality failure from wrapper/reporting or nonlinear-trajectory failure; do
+  not tune the linear solver from a backend-specific `converged` flag.
 - **G4 well structure:** choose only if the bound-consistent trace still localizes the plateau to
   well/perforation rows or the per-perforation `q` formulation after Y2b2a and the corrected Y2b2
   replay.
@@ -442,6 +475,23 @@ entire OPM stack ready.
 
 Only one branch may be active. Write a new registry row with a falsifiable hypothesis and gate
 before implementation.
+
+### 7.1 Y2d0 bounded-control linear-oracle gate
+
+Hypothesis: the candidate's excess `22x22x1` cuts are caused by a localized full-system linear
+correction-quality failure on the first `linear-bad` retry, rather than by the primary-variable
+lifecycle itself.
+
+- Capture the exact first candidate `linear-bad` system without altering its trajectory.
+- Replay the same artifact through live CPR and one viable independent direct backend.
+- Require comparable initial/RHS norm, final full-system residual norm, reduction, finite status,
+  and correction-family deltas. A missing quantity makes the result `INCONCLUSIVE`.
+- **Confirm** only if the direct correction is finite and materially better on the same full
+  system while CPR fails the common residual contract.
+- **Refute** if CPR and direct agree to the established correction/reduction scale; then classify
+  the retry as nonlinear/controller trajectory evidence and select one new bounded branch.
+- No acceptance widening, well-equation edits, timestep tuning, G4/G5 work, or production Sparse
+  LU project is authorized in Y2d0.
 
 ## 8. Y3 and Y4 end gates
 

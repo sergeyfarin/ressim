@@ -347,6 +347,59 @@ closed-system `rate_history` mismatch (`left=2`, `right=1`).
 is materially closer to Flow. This is not final promotion: Y2c must now run the six-step target,
 fresh Flow oracle, heavy case, controls, and physics validation on the committed checkpoint.
 
+### Y2c checkpoint (2026-07-14) — validated gas improvement, control regression blocks promotion
+
+The ignored native drivers were extended only to make the predeclared matrix reproducible: the gas
+fixture accepts grid/flavor/step/dt selectors and preserves state across report steps; a water
+driver selects the existing `20x20x3`, `22x22x1`, and `23x23x1` fixtures. They print accepted
+substeps, Newton counts, retry classes, state closure, inventory, rates, and cumulative reporting
+balance. Production behavior is unchanged.
+
+Primary target and Flow oracle:
+
+- candidate command: `FIM_Y1J_STEPS=6 FIM_Y2B_RAW_SATURATION=1 cargo test --release
+  --manifest-path src/lib/ressim/Cargo.toml --lib repro_gas_rate_10x10x3_y1j -- --ignored
+  --nocapture`;
+- result: six accepted substeps total, one per `0.25`-day report step, Newton
+  `8,5,4,4,4,4`, zero linear/nonlinear/mixed retries;
+- fresh `scripts/opm-ressim-compare.sh --opm-only` with Flow 2026.04: six substeps,
+  `7,5,4,3,4,3`, zero cuts (INFOSTEP SHA-256
+  `25f1275c29b3bd95972e56ea266826ccbc0c7605d4e9512716654824625ac047`, INFOITER
+  `c196dc25615be0532ed8c27776ec4fecec347c1880dbb09449888934546cda0d`);
+- Legacy six-step control: 14 accepted substeps and 7 nonlinear retries;
+- candidate `20x20x3` gas first step: one substep/8 Newton/zero retries, versus Legacy 2 and
+  baseline `OpmAligned` 238.
+
+Bounded water matrix (accepted substeps; retry counts in parentheses):
+
+| fixture | Legacy | baseline `OpmAligned` | candidate |
+| --- | ---: | ---: | ---: |
+| `20x20x3` | 8 (0L/3N) | 24 (5L/1N) | 5 (1L/1N) |
+| `22x22x1` | **4** (0L/2N) | 24 (8L/0N) | **11** (8L/0N) |
+| `23x23x1` | 4 (0L/2N) | 12 (1L/0N) | 3 (1L/0N) |
+
+The heavy `12x12x3` candidate first step accepts 7 substeps with one nonlinear retry; its Flow
+oracle is one substep/11 Newton. Thus the lifecycle fixes the gas boundary mechanism but does not
+complete the water/controller/linear stack.
+
+Physics/reference checks: the six-step candidate is finite with maximum saturation-closure error
+`2.220e-16`. At 1.5 days its oil/gas rates are `1.623659472e2` / `1.298927578e4`, injection is
+`1.130866968e5`, and water/oil/gas inventories are `4.481397932e3`, `2.017550243e4`, and
+`1.767983459e6`. A 24-step `dt=0.0625` reference differs by about `0.036%` in rates, `0.228%` in
+gas inventory, `0.876%` in injection, and `0.015%` in oil inventory. These are accepted-reference
+checks, not a substitute for Flow trajectory parity.
+
+Validation: fixture checker, `git diff --check`, focused Y2b3 (8/8), AD assembly (6/6), locked
+DRSDT0, Buckley-Leverett (3/3), and curated FIM (all buckets) pass. The shared bucket passes its
+first three contracts and stops at the known pre-existing closed-system `rate_history` assertion
+(`left=2`, `right=1`).
+
+**Classification: VALIDATED POSITIVE, NOT PROMOTED.** The default-off flag is retained. The direct
+promotion blocker is the candidate's 11 versus Legacy's 4 substeps on `22x22x1`, with eight
+`linear-bad` retries. Next execute only Y2d0: capture the first such system and compare live CPR
+with one independent direct replay under the backend-neutral full-system norm contract. Do not
+change acceptance, timestep policy, wells, or the lifecycle while establishing that oracle.
+
 ### Phase 9 (revised 2026-07-04) — component-isolation lab built and validated
 
 User reviewed `CODEX_FIM_DIALOGUE_03.07.2026.md` (an independent parallel investigation) and an uncommitted

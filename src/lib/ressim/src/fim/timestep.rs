@@ -2997,6 +2997,29 @@ mod phase5_repro {
         run_water_pressure_capture_driver_with_flavor(nx, ny, nz, dt_days, false);
     }
 
+    /// Y2c native bounded-control entry point. Unlike the wasm matrix, this can exercise the
+    /// native/default-off primary-variable lifecycle flag on the exact same water fixtures.
+    /// `FIM_Y2C_WATER_GRID` accepts `20x20x3`, `22x22x1`, or `23x23x1`; `FIM_Y2C_FLAVOR`
+    /// accepts `legacy` or `opm`.
+    #[test]
+    #[ignore]
+    fn repro_water_pressure_y2c_control() {
+        let grid = std::env::var("FIM_Y2C_WATER_GRID").unwrap_or_else(|_| "20x20x3".to_string());
+        let (nx, ny, nz) = match grid.as_str() {
+            "20x20x3" => (20, 20, 3),
+            "22x22x1" => (22, 22, 1),
+            "23x23x1" => (23, 23, 1),
+            _ => panic!("FIM_Y2C_WATER_GRID must be 20x20x3|22x22x1|23x23x1"),
+        };
+        let flavor = std::env::var("FIM_Y2C_FLAVOR").unwrap_or_else(|_| "opm".to_string());
+        assert!(
+            matches!(flavor.as_str(), "legacy" | "opm"),
+            "FIM_Y2C_FLAVOR must be legacy|opm"
+        );
+        println!("Y2C water control grid={grid} flavor={flavor}");
+        run_water_pressure_capture_driver_with_flavor(nx, ny, nz, 0.25, flavor == "opm");
+    }
+
     fn run_water_pressure_capture_driver_with_flavor(
         nx: usize,
         ny: usize,
@@ -3042,6 +3065,31 @@ mod phase5_repro {
         println!("trace tail (last 4000 chars):");
         let tail_start = trace.len().saturating_sub(4000);
         println!("{}", &trace[tail_start..]);
+        if let Some(stats) = sim.last_fim_step_stats_ref() {
+            let newton_iterations: Vec<usize> = stats
+                .accepted_rungs
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .map(|rung| rung.newton_iterations)
+                .collect();
+            println!(
+                "Y2C water result grid={}x{}x{} flavor={} accepted_substeps={} advanced_dt={:.6}/{:.6} newton={:?} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?}",
+                nx,
+                ny,
+                nz,
+                if opm_aligned { "opm" } else { "legacy" },
+                stats.accepted_substeps,
+                stats.advanced_dt_days,
+                stats.target_dt_days,
+                newton_iterations,
+                stats.linear_bad_retries,
+                stats.nonlinear_bad_retries,
+                stats.mixed_retries,
+                stats.min_accepted_dt_days,
+                stats.max_accepted_dt_days,
+            );
+        }
     }
 
     /// Native mirror of the wasm diagnostic's `gas-rate --grid 20x20x3 --steps 1 --dt 0.25
@@ -3180,6 +3228,10 @@ mod phase5_repro {
     /// - `FIM_Y1J_DT_DAYS=<days>` overrides the default `0.25` report-step target. Y2b3c uses
     ///   exactly `0.00898425` to regenerate the historical iteration-1 decision system even when
     ///   the completed lifecycle no longer cuts down to that rung.
+    /// - `FIM_Y1J_STEPS=<count>` runs sequential report steps on the same simulator (default 1),
+    ///   preserving cross-step controller state for Y2c's six-step and fine-dt promotion gates.
+    /// - `FIM_Y1J_GRID=10|20` selects the square lateral grid size (default 10).
+    /// - `FIM_Y1J_FLAVOR=legacy|opm` selects the nonlinear flavor (default `opm`).
     /// - `FIM_FORCE_DIRECT_LINEAR=1` selects the direct backend; unset uses the live stack.
     /// - `FIM_MAX_SUBSTEPS=1` caps after the first accepted rung; use this for the bounded
     ///   first-rung comparison, not as a completed 0.25-day-step result.
@@ -3210,7 +3262,17 @@ mod phase5_repro {
             "FIM_Y1J_CONTROL must be rate|pressure, got {control:?}"
         );
 
-        let (nx, ny, nz) = (10usize, 10usize, 3usize);
+        let lateral_grid = std::env::var("FIM_Y1J_GRID")
+            .map(|value| {
+                value
+                    .parse::<usize>()
+                    .expect("FIM_Y1J_GRID must be 10 or 20")
+            })
+            .unwrap_or(10);
+        assert!(matches!(lateral_grid, 10 | 20));
+        let (nx, ny, nz) = (lateral_grid, lateral_grid, 3usize);
+        let flavor = std::env::var("FIM_Y1J_FLAVOR").unwrap_or_else(|_| "opm".to_string());
+        assert!(matches!(flavor.as_str(), "legacy" | "opm"));
         let dt_days = std::env::var("FIM_Y1J_DT_DAYS")
             .map(|value| {
                 value
@@ -3222,6 +3284,14 @@ mod phase5_repro {
             dt_days.is_finite() && dt_days > 0.0,
             "FIM_Y1J_DT_DAYS must be a finite positive number, got {dt_days}"
         );
+        let step_count = std::env::var("FIM_Y1J_STEPS")
+            .map(|value| {
+                value
+                    .parse::<usize>()
+                    .expect("FIM_Y1J_STEPS must be a positive integer")
+            })
+            .unwrap_or(1);
+        assert!(step_count > 0, "FIM_Y1J_STEPS must be positive");
         let mut sim = ReservoirSimulator::new(nx, ny, nz, 0.2);
 
         // Exact `configureGasBase` mapping from `fim-wasm-diagnostic.mjs`. `capillary=true`
@@ -3304,32 +3374,107 @@ mod phase5_repro {
             sim.add_well(nx - 1, ny - 1, 0, producer_bhp, 0.1, 0.0, false)
                 .unwrap();
         }
-        sim.set_fim_opm_aligned_nonlinear(true);
+        sim.set_fim_opm_aligned_nonlinear(flavor == "opm");
         sim.set_fim_force_direct_linear(std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some());
 
         let start = Instant::now();
-        sim.step(dt_days);
-        let elapsed = start.elapsed();
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         println!(
-            "Y1J config grid=10x10x3 dt={dt_days} wells={wells} control={control} force_direct_linear={force_direct_linear} elapsed_s={:.3}",
-            elapsed.as_secs_f64()
+            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} force_direct_linear={force_direct_linear}"
         );
-        if let Some(stats) = sim.last_fim_step_stats_ref() {
+
+        for step_idx in 0..step_count {
+            sim.step(dt_days);
+            let stats = sim
+                .last_fim_step_stats_ref()
+                .expect("Y1J native repro did not record FimStepStats");
+            let newton_iterations: Vec<usize> = stats
+                .accepted_rungs
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .map(|rung| rung.newton_iterations)
+                .collect();
+            let rate = sim
+                .rate_history
+                .last()
+                .expect("accepted FIM report step must record rates");
+            let mut min_sw = f64::INFINITY;
+            let mut max_sw = f64::NEG_INFINITY;
+            let mut min_so = f64::INFINITY;
+            let mut max_so = f64::NEG_INFINITY;
+            let mut min_sg = f64::INFINITY;
+            let mut max_sg = f64::NEG_INFINITY;
+            let mut max_saturation_closure = 0.0_f64;
+            for cell_idx in 0..sim.nx * sim.ny * sim.nz {
+                let sw = sim.sat_water[cell_idx];
+                let so = sim.sat_oil[cell_idx];
+                let sg = sim.sat_gas[cell_idx];
+                assert!(
+                    sim.pressure[cell_idx].is_finite()
+                        && sw.is_finite()
+                        && so.is_finite()
+                        && sg.is_finite()
+                        && sim.rs[cell_idx].is_finite(),
+                    "non-finite accepted state at step {} cell {}",
+                    step_idx + 1,
+                    cell_idx
+                );
+                min_sw = min_sw.min(sw);
+                max_sw = max_sw.max(sw);
+                min_so = min_so.min(so);
+                max_so = max_so.max(so);
+                min_sg = min_sg.min(sg);
+                max_sg = max_sg.max(sg);
+                max_saturation_closure = max_saturation_closure.max((sw + so + sg - 1.0).abs());
+            }
+            assert!(
+                max_saturation_closure < 1e-10,
+                "accepted saturation closure drift at step {}: {}",
+                step_idx + 1,
+                max_saturation_closure
+            );
+            assert!(
+                rate.total_production_oil.is_finite()
+                    && rate.total_production_gas.is_finite()
+                    && rate.total_injection.is_finite()
+                    && rate.material_balance_error_m3.is_finite()
+                    && rate.material_balance_error_oil_m3.is_finite()
+                    && rate.material_balance_error_gas_m3.is_finite(),
+                "non-finite reporting at step {}",
+                step_idx + 1
+            );
             println!(
-                "Y1J result accepted_substeps={} advanced_dt={:.6}/{:.6} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?} last_dt={:?}",
+                "Y1J step={} accepted_substeps={} advanced_dt={:.6}/{:.6} newton={:?} linear_bad={} nonlinear_bad={} mixed={} min_dt={:?} max_dt={:?} last_dt={:?} state={{sw=[{:.9e},{:.9e}],so=[{:.9e},{:.9e}],sg=[{:.9e},{:.9e}],closure={:.3e},water_inv={:.9e},oil_inv={:.9e},gas_inv={:.9e}}} report={{oil_rate={:.9e},gas_rate={:.9e},injection={:.9e},mb_water={:.9e},mb_oil={:.9e},mb_gas={:.9e}}}",
+                step_idx + 1,
                 stats.accepted_substeps,
                 stats.advanced_dt_days,
                 stats.target_dt_days,
+                newton_iterations,
                 stats.linear_bad_retries,
                 stats.nonlinear_bad_retries,
                 stats.mixed_retries,
                 stats.min_accepted_dt_days,
                 stats.max_accepted_dt_days,
                 stats.last_accepted_dt_days,
+                min_sw,
+                max_sw,
+                min_so,
+                max_so,
+                min_sg,
+                max_sg,
+                max_saturation_closure,
+                sim.total_water_inventory_m3(),
+                sim.total_oil_inventory_sc(),
+                sim.total_gas_inventory_sc(),
+                rate.total_production_oil,
+                rate.total_production_gas,
+                rate.total_injection,
+                rate.material_balance_error_m3,
+                rate.material_balance_error_oil_m3,
+                rate.material_balance_error_gas_m3,
             );
-        } else {
-            panic!("Y1J native repro did not record FimStepStats");
         }
+        println!("Y1J elapsed_s={:.3}", start.elapsed().as_secs_f64());
     }
 }

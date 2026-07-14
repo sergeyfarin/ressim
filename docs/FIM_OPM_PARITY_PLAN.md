@@ -1399,3 +1399,33 @@ comparable full-system norms. The full-rung accepted MB is `1.683337e-8`.
 This is the first valid positive Y2 behavior result: Y2b becomes a promotion candidate. It is not
 promoted until Y2c reproduces the complete six-step target, Flow oracle, heavy case, controls, and
 physics gates on the final committed revision.
+
+### 15.10 Y2c result: gas parity reached, control gate blocks promotion (2026-07-14)
+
+On the complete six-step gas target the lifecycle candidate accepts exactly one substep per report
+step with Newton counts `8,5,4,4,4,4` and zero retries. Fresh Flow 2026.04 remains
+`7,5,4,3,4,3`, also with one substep per report step. Legacy requires 14 accepted substeps. On a
+larger `20x20x3` gas first step the candidate needs one substep/8 Newton, versus Legacy's two and
+baseline `OpmAligned`'s 238. This validates the lifecycle as a real OPM-alignment mechanism rather
+than another favorable single-rung artifact.
+
+The bounded controls prevent promotion:
+
+| water control | Legacy | baseline `OpmAligned` | lifecycle candidate |
+| --- | ---: | ---: | ---: |
+| `20x20x3` | 8 | 24 | 5 |
+| `22x22x1` | **4** | 24 | **11** (8 linear retries) |
+| `23x23x1` | 4 | 12 | 3 |
+
+The heavy `12x12x3` first step also remains 7 substeps versus Flow's one. Physics checks do not
+show a compensating invalid state: saturation closure is `<=2.22e-16`, all reported values are
+finite, and coarse accepted production/inventory stays close to a 4x finer timestep reference
+(rates within `0.036%`, gas inventory `0.228%`, injection `0.876%`). The required focused, locked,
+Buckley-Leverett, and curated FIM gates pass; shared stops at the unchanged known closed-system
+history mismatch.
+
+Verdict: **VALIDATED POSITIVE, DEFAULT-OFF**. The result is closer to Flow on the primary target
+but is not a stack promotion. The next bounded question is the first `22x22x1` candidate
+`linear-bad` retry, using common full-system norms and an independent direct replay. This directly
+tests the promotion blocker while holding the proven lifecycle fixed; it does not authorize G4,
+acceptance widening, controller tuning, or a Sparse-LU implementation project.
