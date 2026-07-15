@@ -1037,6 +1037,7 @@ impl ReservoirSimulator {
             newton_options.nonlinear_flavor = crate::fim::newton::FimNonlinearFlavor::OpmAligned;
         }
         newton_options.nested_well_solve = self.fim_nested_well_solve;
+        newton_options.linear.use_true_fgmres = self.fim_true_fgmres;
         // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
         // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
         if self.fim_force_direct_linear {
@@ -2939,6 +2940,7 @@ mod phase5_repro {
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(true);
+        sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
@@ -3053,6 +3055,7 @@ mod phase5_repro {
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(opm_aligned);
+        sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);
@@ -3182,6 +3185,7 @@ mod phase5_repro {
         sim.add_well(nx - 1, ny - 1, 0, 100.0, 0.1, 0.0, false)
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(true);
+        sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
         sim.set_fim_nested_well_solve(nested_well_solve);
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
@@ -3375,6 +3379,7 @@ mod phase5_repro {
                 .unwrap();
         }
         sim.set_fim_opm_aligned_nonlinear(flavor == "opm");
+        sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_force_direct_linear(std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some());
 
         let start = Instant::now();

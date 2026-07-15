@@ -65,7 +65,7 @@ pub(super) struct CprKrylovIterationSnapshot {
 /// recurrence. Unlike `CprKrylovIterationSnapshot`, the Givens estimate and true residual are
 /// both norms in the original (unpreconditioned) equation space.
 #[derive(Clone, Debug)]
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) struct FlexibleGmresIterationSnapshot {
     pub(super) iteration: usize,
     pub(super) restart_index: usize,
@@ -1461,11 +1461,11 @@ fn back_substitute_upper(
     solution
 }
 
-/// Y2d4's test-only mathematical oracle. This is true right-preconditioned flexible GMRES:
+/// Y2d4's mathematical oracle, promoted behind a default-off production option in Y2d5. This is
+/// true right-preconditioned flexible GMRES:
 /// Arnoldi vectors remain in the original residual space, each independently applied
 /// preconditioned direction is stored in `z_basis`, and candidates are formed from `Z y`.
-/// The production solver is intentionally not routed through this function in Y2d4.
-#[cfg(test)]
+/// Production routing remains explicit so the historical recurrence is available for A/B gates.
 fn run_true_flexible_gmres<FMatrix, FPreconditioner>(
     rhs: &DVector<f64>,
     options: &FimLinearSolveOptions,
@@ -1531,7 +1531,10 @@ where
     }
 
     let restart = options.restart.max(2);
-    let max_iterations = options.max_iterations.max(1);
+    // Preserve the historical path's effective budget: it promotes `max_iterations` to at least
+    // one complete restart cycle. The default 20/30 configuration therefore remains 30 applied
+    // corrections; Y2d5 changes only the recurrence.
+    let max_iterations = options.max_iterations.max(restart);
     let mut solution = DVector::zeros(rhs.len());
     let mut iterations = 0usize;
     let mut restart_index = 0usize;
@@ -2342,6 +2345,19 @@ pub(super) fn solve(
         CprFineSmootherKind::BlockJacobi
     };
 
+    if should_use_true_fgmres(options) {
+        return solve_with_true_flexible_smoother_and_restriction(
+            jacobian,
+            rhs,
+            options,
+            layout,
+            cpr_fine_smoother_kind,
+            CprPressureRestrictionKind::QuasiImpes,
+            equation_scaling,
+        )
+        .0;
+    }
+
     // Promoted 2026-07-04 (Phase 9 Step 9.3, FIM-LINEAR-005): the offline solver lab showed
     // `Row0Schur` (the historical restriction) never converges on either of two captured
     // real-failure corpora, while `QuasiImpes` (OPM's own `getQuasiImpesWeights.hpp`
@@ -2357,6 +2373,10 @@ pub(super) fn solve(
         CprPressureRestrictionKind::QuasiImpes,
         equation_scaling,
     )
+}
+
+fn should_use_true_fgmres(options: &FimLinearSolveOptions) -> bool {
+    options.kind == FimLinearSolverKind::FgmresCpr && options.use_true_fgmres
 }
 
 /// Lab-only entry point (Phase 9 offline solver lab): full solve with an explicit CPR
@@ -2441,10 +2461,9 @@ pub(super) fn solve_with_smoother_restriction_and_history(
     (report, history)
 }
 
-/// Y2d4 lab-only true flexible-GMRES oracle using the same CPR construction as production.
-/// Production dispatch remains on `solve_with_cpr_fine_smoother` until a separate promotion
-/// slice is authorized.
-#[cfg(test)]
+/// True flexible-GMRES using the same CPR construction as production. Y2d5 routes production
+/// here only when `use_true_fgmres` is explicitly enabled; the returned history remains useful
+/// to the solver lab and is discarded by live dispatch.
 pub(super) fn solve_with_true_flexible_smoother_and_restriction(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
@@ -2455,18 +2474,33 @@ pub(super) fn solve_with_true_flexible_smoother_and_restriction(
     equation_scaling: Option<&EquationScaling>,
 ) -> (FimLinearSolveReport, Vec<FlexibleGmresIterationSnapshot>) {
     let preconditioner_timer = PerfTimer::start();
-    let (preconditioner, _) =
+    let (preconditioner, build_timing) =
         build_block_jacobi_preconditioner(jacobian, layout, fine_smoother_kind, restriction_kind);
     let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
     let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
+    let mut pressure_correction_stats = PressureCorrectionAccumulator::default();
     let (mut report, history) = run_true_flexible_gmres(
         rhs,
         options,
         equation_scaling,
         |vector| cs_mat_mul_vec(jacobian, vector),
-        |vector| preconditioner.apply(jacobian, vector, use_pressure_correction),
+        |vector| {
+            let result = preconditioner.apply(jacobian, vector, use_pressure_correction);
+            if let Some(reduction_ratio) = result.1 {
+                pressure_correction_stats.record(reduction_ratio);
+            }
+            result
+        },
     );
     report.preconditioner_build_time_ms = preconditioner_build_time_ms;
+    report.cpr_diagnostics = if use_pressure_correction {
+        pressure_correction_stats.build_report(&preconditioner)
+    } else {
+        None
+    };
+    if let Some(diagnostics) = report.cpr_diagnostics.as_mut() {
+        diagnostics.build_timing = Some(build_timing);
+    }
     (report, history)
 }
 
@@ -2609,6 +2643,21 @@ mod tests {
 
     fn dense_apply(matrix: &DMatrix<f64>, vector: &DVector<f64>) -> DVector<f64> {
         matrix * vector
+    }
+
+    #[test]
+    fn true_fgmres_dispatch_is_explicit_and_default_off() {
+        let default_options = FimLinearSolveOptions::default();
+        assert!(!should_use_true_fgmres(&default_options));
+        assert!(should_use_true_fgmres(&FimLinearSolveOptions {
+            use_true_fgmres: true,
+            ..default_options
+        }));
+        assert!(!should_use_true_fgmres(&FimLinearSolveOptions {
+            kind: FimLinearSolverKind::GmresIlu0,
+            use_true_fgmres: true,
+            ..default_options
+        }));
     }
 
     #[test]
@@ -3118,6 +3167,7 @@ mod tests {
             max_iterations: 30,
             relative_tolerance: 1e-10,
             absolute_tolerance: 1e-12,
+            use_true_fgmres: false,
             eliminate_wells: false,
         };
         let layout = Some(FimLinearBlockLayout {
@@ -3350,6 +3400,7 @@ mod tests {
                 max_iterations: 12,
                 relative_tolerance: 1e-8,
                 absolute_tolerance: 1e-10,
+                use_true_fgmres: false,
                 eliminate_wells: false,
             },
             Some(FimLinearBlockLayout {

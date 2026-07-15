@@ -140,12 +140,15 @@ below is retained as Bundle N/Y history; it must not override this current seque
   FGMRES resolves bounded `8/8` in two iterations (production `0/8` at 30) and gas `5/5` in 1-3
   (production `4/5`). Estimate/true residual identity and full/direct oracles pass. Exact Flow
   uses BiCGSTAB + true-IMPES CPRW + AMG, so this is a ResSim correctness result, not full parity.
-- [ ] **Next: Y2d5 default-off true-FGMRES production integration.** Route only the validated
-  recurrence behind an explicit default-off option; retain the old path for A/B. Re-run both
-  corpora, then capped `22x22x1` water/current gas live gates. Only if green, run exact six-step
-  gas plus the full bounded/heavy matrix. Hold restriction, smoother, coarse solve, tolerance,
-  effective budget, well Schur/scaling, Newton acceptance, and timestep control fixed. Literal
-  OPM BiCGSTAB/true-IMPES/AMG remains a separate later bundle.
+- [x] **Y2d5 default-off true-FGMRES production integration (2026-07-15): CONFIRMED, NOT DEFAULT.**
+  Promoted dispatch exactly matches the Y2d4 oracle (`8/8` bounded, `5/5` gas) and defaults to
+  the old path. It removes every Y2 water linear retry: the blocker improves `11/8L -> 3/0L+1N`;
+  other controls preserve substeps. Exact gas stays six/zero but Newton worsens by four total, so
+  retain the validated option default-off and do not claim OPM-stack promotion.
+- [ ] **Next: Y2d6 actual Flow linear-lifecycle design.** Source-pin the selected
+  BiCGSTAB/true-IMPES CPRW/paroverilu0/one-loop-AMG semantics, map matched/missing lifecycle items,
+  and specify a coupled test-only 13-capture oracle before coding. A partial outer swap is
+  INCONCLUSIVE; no live/default/acceptance/controller change in the design slice.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

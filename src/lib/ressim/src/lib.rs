@@ -127,6 +127,10 @@ pub struct ReservoirSimulator {
     /// `fim_opm_aligned_nonlinear` — evaluable under either flavor. Dev/diagnostic flag,
     /// default false = legacy behavior bit-identical.
     pub(crate) fim_nested_well_solve: bool,
+    /// Y2d5: opt into the corrected right-preconditioned flexible-GMRES recurrence while
+    /// retaining the existing CPR and nonlinear configuration. Dev/diagnostic flag; default
+    /// false preserves the historical solver for A/B validation.
+    pub(crate) fim_true_fgmres: bool,
     /// `FIM-DIAG-003` D0/D1 (`docs/FIM_DIAG_003_PLAN.md`): force every Newton iteration's
     /// linear solve through the exact direct backend (`SparseLuDebug`) instead of the default
     /// iterative CPR/GMRES stack, to discriminate H1 (displaced well-cell standoff) from H2

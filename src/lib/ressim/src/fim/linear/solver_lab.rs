@@ -20,17 +20,17 @@ use nalgebra::{DMatrix, DVector};
 use sprs::CsMat;
 
 use super::capture::{
-    capture_dir_from_env, load_captures, y2b2_capture_dir_from_env, FimCapturedSystem,
+    FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
 };
 use super::gmres_block_jacobi::{
-    self, coarse_factorization_lab_compare, solve_with_restriction_kind,
-    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
+    self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
+    solve_with_restriction_kind, solve_with_smoother_and_restriction,
 };
 use super::sparse_lu_debug;
 use super::well_schur;
 use super::{
-    solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
-    FimLinearSolverKind,
+    FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport, FimLinearSolverKind,
+    solve_linearized_system,
 };
 use crate::fim::scaling::EquationScaling;
 
@@ -1497,6 +1497,16 @@ fn solver_lab_compare_true_flexible_gmres() {
             system.equation_scaling.as_ref(),
         );
         production_converged += usize::from(production.converged);
+        let promoted = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                use_true_fgmres: true,
+                ..options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
 
         let direct = solve_linearized_system(
             &system.jacobian,
@@ -1521,6 +1531,11 @@ fn solver_lab_compare_true_flexible_gmres() {
             CprFineSmootherKind::BlockIlu0,
             CprPressureRestrictionKind::QuasiImpes,
         );
+        assert_eq!(promoted.converged, flexible.converged);
+        assert_eq!(promoted.iterations, flexible.iterations);
+        assert_eq!(promoted.rhs_norm, flexible.rhs_norm);
+        assert_eq!(promoted.final_residual_norm, flexible.final_residual_norm);
+        assert_eq!(promoted.solution, flexible.solution);
         if production.converged {
             assert!(
                 flexible.converged,
@@ -1545,9 +1560,11 @@ fn solver_lab_compare_true_flexible_gmres() {
             assert_eq!(snapshot.iteration, history_index + 1);
             assert_eq!(snapshot.restart_index, 1);
             assert_eq!(snapshot.inner_step, history_index + 1);
-            assert!(snapshot
-                .pressure_reduction_ratio
-                .is_none_or(|ratio| ratio.is_finite()));
+            assert!(
+                snapshot
+                    .pressure_reduction_ratio
+                    .is_none_or(|ratio| ratio.is_finite())
+            );
             let independently_recomputed =
                 residual_norm(&system.jacobian, &snapshot.solution, &system.rhs);
             assert!(

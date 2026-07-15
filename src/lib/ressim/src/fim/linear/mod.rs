@@ -123,6 +123,10 @@ pub(crate) struct FimLinearSolveOptions {
     pub(crate) max_iterations: usize,
     pub(crate) relative_tolerance: f64,
     pub(crate) absolute_tolerance: f64,
+    /// Y2d5: use the mathematically valid right-preconditioned flexible-GMRES recurrence for
+    /// `FgmresCpr`. Default false retains the historical fixed-left recurrence for controlled
+    /// A/B validation; this option does not alter any CPR component or nonlinear policy.
+    pub(crate) use_true_fgmres: bool,
     /// Phase 11 (`FIM-LINEAR-010`): Schur-eliminate well-BHP and perforation-rate unknowns from
     /// the linear system before the iterative CPR/GMRES solve, matching OPM's `StandardWell`
     /// architecture (well block eliminated every Newton iteration, recovered after the reservoir
@@ -181,6 +185,7 @@ impl Default for FimLinearSolveOptions {
             max_iterations: 20,
             relative_tolerance: 5e-3,
             absolute_tolerance: 1e-12,
+            use_true_fgmres: false,
             // Phase 11 (`FIM-LINEAR-010`): offline lab on 35 real captured heavy-case systems
             // showed a decisive win (34/35 -> 35/35 converged, mean linear iterations 3.9 -> 1.1)
             // — promoted to default pending the live control-matrix gate.
@@ -292,10 +297,9 @@ mod tests {
 
     #[test]
     fn default_fim_linear_solver_targets_fgmres_cpr() {
-        assert_eq!(
-            FimLinearSolveOptions::default().kind,
-            FimLinearSolverKind::FgmresCpr
-        );
+        let options = FimLinearSolveOptions::default();
+        assert_eq!(options.kind, FimLinearSolverKind::FgmresCpr);
+        assert!(!options.use_true_fgmres);
     }
 
     #[test]

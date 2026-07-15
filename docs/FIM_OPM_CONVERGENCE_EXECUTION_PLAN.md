@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d4 confirms true flexible GMRES offline; Y2d5 default-off integration is next
-(2026-07-15)**. This document turns the evidence in
+Status: **Y2d5 confirms the default-off true-FGMRES path and removes the masked Y2 water linear
+failures; Y2d6 OPM linear-lifecycle design is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -704,6 +704,47 @@ regressing the other controls.
 - Keep the OPM distinction explicit. A passing Y2d5 is a ResSim algorithm-correctness promotion.
   Literal OPM linear parity (BiCGSTAB + true-IMPES CPRW + AMG coarse application) remains a later
   coupled design and must not be inferred from a flexible-GMRES win.
+
+**Y2d5 result (2026-07-15): CONFIRMED DEFAULT-OFF; masked positive recovered, not default
+promotion.** The exact Y2d4 recurrence is now production-capable behind `use_true_fgmres=false`
+and the separate `setFimTrueFgmres`/`--true-fgmres` diagnostic switch. Default routing remains the
+historical solver. Dispatch/default tests pass, and production dispatch is bit-exact with the
+Y2d4 oracle on both corpora: bounded `8/8` in two iterations and gas `5/5` in one to three.
+
+The first Legacy live gates remain stable: `22x22x1` stays at four substeps/two nonlinear retries
+while accepted-rung linear iterations change `3,4,3,4 -> 2,3,3,3`; `20x20x3` gas stays at two
+substeps/one nonlinear retry with `3,3 -> 2,2`. Under the complete Y2 primary-variable lifecycle,
+the previously blocking `22x22x1` result improves decisively from 11 substeps/eight linear retries
+to three substeps/zero linear plus one nonlinear retry. The other Y2 water controls preserve
+substeps while converting their lone linear retry to nonlinear (`20x20x3`: five substeps,
+`1L+1N -> 0L+2N`; `23x23x1`: three, `1L -> 0L+1N`). Heavy remains seven/one nonlinear.
+
+This proves the invalid Krylov recurrence was masking a real Y2 lifecycle benefit. It does not
+justify a default switch: the exact six-step gas target keeps six substeps/zero retries but Newton
+counts move `8,5,4,4,4,4 -> 9,6,5,5,4,4`, farther from Flow's `7,5,4,3,4,3`; two water controls
+also gain one or two accepted Newton iterations. The option is retained as a validated
+algorithm-correctness path, default-off. No CPR or nonlinear component changed.
+
+### 7.7 Y2d6 source-complete OPM linear-lifecycle design
+
+Do not tune the true-FGMRES path next. The exact Flow oracle does not use it. Before implementing
+another solver experiment, write a dependency-complete design for the actual selected Flow stack:
+
+- source-pin outer BiCGSTAB stopping/budget semantics (`20`, `0.005`) and its residual norm;
+- source-pin true-IMPES CPRW weights including well contributions and update frequency;
+- source-pin `paroverilu0` block/sweep/relaxation semantics;
+- source-pin the one-loop AMG coarse application and show why it is a fixed linear application
+  suitable for BiCGSTAB, unlike ResSim's tolerance-terminated inner BiCGSTAB;
+- map each item to ResSim as matched, intentionally fixed, or missing, including well Schur,
+  scaling, block layout, fallback, and the current effective `20 -> 30` budget promotion;
+- define one test-only coupled oracle on the existing 13 captures. A partial outer-method swap
+  must be `INCONCLUSIVE`, not a refutation, while its required fixed preconditioner lifecycle is
+  absent.
+
+Only after that design may Y2d6 implement the smallest coherent captured-system path. It must
+preserve full-system norms, partitions, direct deltas, bounded `8/8`, gas `5/5`, and compare
+iteration counts against Flow's actual 20-iteration contract. No live run, default change,
+acceptance/controller edit, or standalone AMG project is authorized in the design slice.
 
 ## 8. Y3 and Y4 end gates
 

@@ -1570,3 +1570,35 @@ Y2d5 integrates only the validated recurrence behind a default-off production op
 captured plus live gates while every CPR and nonlinear component remains fixed. Literal OPM
 BiCGSTAB/true-IMPES/AMG parity stays separate so a successful FGMRES correction cannot mask those
 remaining differences.
+
+### 15.16 Y2d5 result: corrected recurrence unmasks the Y2 lifecycle win (2026-07-15)
+
+The Y2d4 core is production-capable behind an explicit default-off `use_true_fgmres` option and
+separate native/WASM diagnostic setter. Default dispatch remains the historical recurrence.
+Synthetic dispatch/default controls pass, and promoted dispatch is solution/report-exact with the
+Y2d4 oracle on all captures: bounded `8/8` in two iterations and gas `5/5` in one to three.
+
+The live result establishes the masking interaction suspected at Y2c. Holding the complete Y2
+primary-variable lifecycle and every CPR/nonlinear component fixed gives:
+
+| Case | Y2 lifecycle before | Y2 + true FGMRES | Flow / control |
+| --- | --- | --- | --- |
+| water `22x22x1` | 11 substeps, `8L/0N` | **3**, `0L/1N`, Newton `11,5,6` | Legacy 4 |
+| water `20x20x3` | 5, `1L/1N` | 5, `0L/2N`, Newton `9,5,5,5,4` | Legacy 8 |
+| water `23x23x1` | 3, `1L/0N` | 3, `0L/1N`, Newton `11,5,6` | Legacy 4 |
+| heavy water `12x12x3` | 7, `0L/1N` | 7, `0L/1N` | Flow 1/11 Newton |
+| gas `10x10x3`, six steps | 6, zero, `8,5,4,4,4,4` | 6, zero, `9,6,5,5,4,4` | Flow 6, `7,5,4,3,4,3` |
+
+Thus the old recurrence really did hide a positive lifecycle result: every Y2 water linear retry
+disappears, and the promotion-blocking control becomes better than Legacy in substeps. The stricter
+mathematically valid corrections then expose nonlinear work rather than eliminating it. Exact gas
+and two water controls require modestly more accepted Newton iterations, so the combined result is
+not uniformly closer to Flow and does not authorize a default switch.
+
+Legacy-flavor candidate controls preserve substeps/retries (`20x20x3` water 8/3N,
+`22x22x1` 4/2N, `23x23x1` 4/2N, gas `20x20x3` 2/1N, gas `10x10x3` 14 total); heavy improves from
+the documented Legacy 25 to 21 substeps. The option is retained as a validated default-off ResSim
+correctness path. Y2d6 must now design the actual Flow-selected outer BiCGSTAB, true-IMPES CPRW
+weights, paroverilu0, and one-loop AMG application as one source-complete lifecycle. Swapping only
+the outer solver while retaining ResSim's input-dependent inner solve would be an invalid oracle,
+not a refutation.

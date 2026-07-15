@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Mechanism validated/default-off; Y2d4 confirms separate true-FGMRES correction; Y2d5 is next (2026-07-15)**
+Status: **Mechanism validated/default-off; Y2d5 removes its masked water regression; Y2d6 actual-Flow linear design is next (2026-07-15)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -304,8 +304,14 @@ and gas `5/5` in one to three with the lifecycle and every CPR component fixed. 
 separate linear-algorithm correction; it does not refute or promote the primary-variable
 lifecycle. The exact Flow reference instead uses BiCGSTAB/true-IMPES CPRW/AMG.
 
-The next slice is **Y2d5**, execution-plan §7.6: integrate only the validated recurrence behind a
-default-off production option, re-prove the captured corpora, then run capped live gates before
-the full matrix. Hold this lifecycle fixed. Do not open G4, widen acceptance, tune timestep
-control, change wells, combine solver levers, raise the production budget, promote dense pressure
-solving, or claim literal OPM linear parity from the flexible-GMRES result.
+Y2d5 then proves the earlier control regression was masked by the separate Krylov defect. With
+the lifecycle held fixed, true FGMRES changes `22x22x1` from 11 substeps/eight linear retries to
+three substeps/zero linear plus one nonlinear retry. Other water controls lose their linear
+retries without more substeps, and heavy remains seven. The exact gas target remains six/zero but
+uses four more Newton iterations, so neither mechanism is default-promoted as a whole stack.
+
+The next slice is **Y2d6**, execution-plan §7.7: design the actual Flow-selected
+BiCGSTAB/true-IMPES CPRW/paroverilu0/one-loop-AMG lifecycle as a coupled source-complete oracle.
+Hold this lifecycle fixed. Do not open G4, widen acceptance, tune timestep control, change wells,
+partially swap only the outer method, raise the production budget, promote dense pressure solving,
+or infer literal OPM linear parity from the flexible-GMRES result.

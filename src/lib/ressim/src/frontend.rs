@@ -89,6 +89,7 @@ impl ReservoirSimulator {
             fim_trace_window_active: false,
             fim_opm_aligned_nonlinear: false,
             fim_nested_well_solve: false,
+            fim_true_fgmres: false,
             fim_force_direct_linear: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
@@ -308,6 +309,13 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setFimNestedWellSolve)]
     pub fn set_fim_nested_well_solve(&mut self, enabled: bool) {
         self.fim_nested_well_solve = enabled;
+    }
+
+    /// Y2d5 dev flag: use the corrected right-preconditioned flexible-GMRES recurrence without
+    /// changing the CPR or nonlinear configuration. Default false preserves historical routing.
+    #[wasm_bindgen(js_name = setFimTrueFgmres)]
+    pub fn set_fim_true_fgmres(&mut self, enabled: bool) {
+        self.fim_true_fgmres = enabled;
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]

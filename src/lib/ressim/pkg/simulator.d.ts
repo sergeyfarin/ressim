@@ -43,6 +43,11 @@ export class ReservoirSimulator {
      * OPM-aligned nonlinear layer (per-cell update chopping). Default false = legacy.
      */
     setFimOpmAlignedNonlinear(enabled: boolean): void;
+    /**
+     * Y2d5 dev flag: use the corrected right-preconditioned flexible-GMRES recurrence without
+     * changing the CPR or nonlinear configuration. Default false preserves historical routing.
+     */
+    setFimTrueFgmres(enabled: boolean): void;
     setFluidCompressibilities(c_o: number, c_w: number): void;
     setFluidDensities(rho_o: number, rho_w: number): void;
     setFluidProperties(mu_o: number, mu_w: number): void;
@@ -124,6 +129,7 @@ export interface InitOutput {
     readonly reservoirsimulator_setFimEnabled: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimNestedWellSolve: (a: number, b: number) => void;
     readonly reservoirsimulator_setFimOpmAlignedNonlinear: (a: number, b: number) => void;
+    readonly reservoirsimulator_setFimTrueFgmres: (a: number, b: number) => void;
     readonly reservoirsimulator_setFluidCompressibilities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidDensities: (a: number, b: number, c: number) => [number, number];
     readonly reservoirsimulator_setFluidProperties: (a: number, b: number, c: number) => [number, number];

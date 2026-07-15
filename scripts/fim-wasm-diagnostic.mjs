@@ -107,6 +107,7 @@ Options:
   --no-json                 Suppress final JSON summary
   --opm-aligned             Bundle N dev flag: OPM-aligned nonlinear layer (per-cell chopping)
   --nested-well-solve       Bundle W dev flag: converged per-well inner Newton solve
+  --true-fgmres             Y2d5 dev flag: corrected right-preconditioned flexible GMRES
   --list                    List presets
   --help                    Show this help
 
@@ -239,6 +240,9 @@ function parseArgs(argv) {
         break;
       case '--nested-well-solve':
         options.nestedWellSolve = true;
+        break;
+      case '--true-fgmres':
+        options.trueFgmres = true;
         break;
       case '--list':
         options.list = true;
@@ -659,6 +663,9 @@ async function main() {
   }
   if (options.nestedWellSolve) {
     sim.setFimNestedWellSolve(true);
+  }
+  if (options.trueFgmres) {
+    sim.setFimTrueFgmres(true);
   }
 
   if (options.checkpointIn) {

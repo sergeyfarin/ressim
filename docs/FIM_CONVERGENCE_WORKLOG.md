@@ -3711,6 +3711,75 @@ The shared bucket passes its first three contracts and stops at the unchanged pr
 closed-system `rate_history` mismatch (`left=2`, `right=1`). No wasm matrix was run because all
 Y2d4 solver and wrapper entry points are `#[cfg(test)]` and production behavior is unchanged.
 
+### Bundle Y checkpoint Y2d5: default-off production true-FGMRES (2026-07-15)
+
+Scope held fixed: quasi-IMPES, block-ILU0, tolerance-terminated pressure BiCGSTAB (`50`, `1e-6`),
+well Schur, scaling, `restart=30`, effective budget 30, Newton acceptance, timestep control, and
+the Y2 lifecycle. Only the outer recurrence routing changed. `FimLinearSolveOptions` gains
+`use_true_fgmres=false`; `setFimTrueFgmres` and `--true-fgmres` provide independent live A/B.
+
+Oracle and dispatch gates:
+
+```text
+FIM_CAPTURE_DIR=/tmp/ressim-y2d0-2030996 FIM_Y2D1_CORPUS=bounded cargo test --release \
+  --manifest-path src/lib/ressim/Cargo.toml solver_lab_compare_true_flexible_gmres \
+  -- --ignored --nocapture
+FIM_CAPTURE_DIR=/tmp/ressim-y2d1-gas-e143c19 FIM_Y2D1_CORPUS=gas cargo test --release \
+  --manifest-path src/lib/ressim/Cargo.toml solver_lab_compare_true_flexible_gmres \
+  -- --ignored --nocapture
+```
+
+Promoted dispatch exactly equals the Y2d4 oracle for solution, convergence, iteration count, RHS,
+and final residual. Bounded remains `8/8` in two iterations; gas remains `5/5` in one to three.
+Default-off and FGMRES-only dispatch tests pass.
+
+First Legacy live gates are stable and cheaper in outer linear iterations. `22x22x1` remains four
+substeps/two nonlinear retries, with accepted linear iterations `3,4,3,4 -> 2,3,3,3` and measured
+linear time `963 -> 372 ms`. Gas `20x20x3` remains two/one nonlinear, `3,3 -> 2,2`, linear time
+`1059 -> 658 ms`. Timings are single-run diagnostic observations, not committed performance
+baselines.
+
+The complete Y2 matrix is decisive:
+
+```text
+FIM_Y2B_RAW_SATURATION=1 FIM_TRUE_FGMRES=1 FIM_Y2C_WATER_GRID=<grid> \
+FIM_Y2C_FLAVOR=opm cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  repro_water_pressure_y2c_control -- --ignored --nocapture
+FIM_Y1J_STEPS=6 FIM_Y2B_RAW_SATURATION=1 FIM_TRUE_FGMRES=1 cargo test --release \
+  --manifest-path src/lib/ressim/Cargo.toml --lib repro_gas_rate_10x10x3_y1j \
+  -- --ignored --nocapture
+FIM_Y2B_RAW_SATURATION=1 FIM_TRUE_FGMRES=1 cargo test --release \
+  --manifest-path src/lib/ressim/Cargo.toml --lib \
+  repro_water_pressure_12x12x3_opm_aligned_no_trace -- --ignored --nocapture
+```
+
+- `22x22x1`: `11 substeps/8L -> 3/0L+1N`, Newton `11,5,6`;
+- `20x20x3`: five stays five, `1L+1N -> 0L+2N`, Newton `9,5,5,5,4`;
+- `23x23x1`: three stays three, `1L -> 0L+1N`, Newton `11,5,6`;
+- heavy: seven/one nonlinear unchanged;
+- exact gas: six/zero unchanged, Newton `8,5,4,4,4,4 -> 9,6,5,5,4,4` versus Flow
+  `7,5,4,3,4,3`.
+
+Legacy option-on controls preserve substeps/retries: water `20x20x3=8/3N`, `22x22x1=4/2N`,
+`23x23x1=4/2N`; gas `20x20x3=2/1N`; six-step gas totals 14 substeps/seven nonlinear; heavy is
+21/three nonlinear versus the documented 25-substep Legacy baseline.
+
+Verdict: **CONFIRMED — VALIDATED DEFAULT-OFF CORRECTNESS PATH, NOT DEFAULT OR FULL OPM
+PROMOTION.** The invalid recurrence masked the positive Y2 lifecycle on the blocking water case.
+True FGMRES removes the linear retry class but modestly increases accepted Newton work on several
+otherwise-stable cases. The next slice is Y2d6's source-complete design for Flow's actually
+selected BiCGSTAB/true-IMPES CPRW/paroverilu0/one-loop-AMG lifecycle, not more FGMRES tuning.
+
+Final-tree validation: dispatch/default and synthetic true-FGMRES tests; both final capture
+corpora; well-Schur `4/4`; capture round-trip `2/2`; Sparse-LU backend-neutral report contract;
+`cargo check` with only the four pre-existing native warnings; successful WASM rebuild; diagnostic
+CLI syntax; typecheck; lint; Vitest `648/648`; DRSDT0; Buckley-Leverett `3/3`; and curated FIM
+`11/11` all pass. The FIM bucket's three SPE1 tests took `838.52s` in debug but completed. The
+shared bucket again passes its first three contracts and stops at the unchanged pre-existing
+closed-system `rate_history` assertion (`left=2`, `right=1`). The package manager's background
+version check reports restricted-network `ERR_PNPM_META_FETCH_FAIL`, but typecheck/lint/Vitest
+commands themselves exit successfully.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

@@ -275,6 +275,14 @@ export class ReservoirSimulator {
         wasm.reservoirsimulator_setFimOpmAlignedNonlinear(this.__wbg_ptr, enabled);
     }
     /**
+     * Y2d5 dev flag: use the corrected right-preconditioned flexible-GMRES recurrence without
+     * changing the CPR or nonlinear configuration. Default false preserves historical routing.
+     * @param {boolean} enabled
+     */
+    setFimTrueFgmres(enabled) {
+        wasm.reservoirsimulator_setFimTrueFgmres(this.__wbg_ptr, enabled);
+    }
+    /**
      * @param {number} c_o
      * @param {number} c_w
      */
