@@ -183,7 +183,7 @@ the implementation `BLOCKED`, not partially complete.
 
 ## 4. Coupled 13-capture oracle contract
 
-Implementation status (2026-07-15): Gates D6a and D6b are complete. Capture v3 and its dedicated native
+Implementation status (2026-07-15): Gates D6a through D6d are complete. Capture v3 and its dedicated native
 first-system trigger preserve the raw local storage blocks and all four reservoir/well matrix
 partitions. Parser validation recomputes the pinned weights and reconstructs full `J` bit-for-bit.
 Proof artifacts pass for bounded `22x22x1` (`1456` rows, 484 cells, four well rows) and exact gas
@@ -266,7 +266,20 @@ shared observation is diagnostic: fallback iteration counts must mean completed 
 focused nonsymmetric-system regression now proves one completed correction is reported as one and
 independently verifies the returned raw residual.
 
-## 6. Prescriptive handoff
+## 6. D6d live result and prescriptive handoff
+
+The atomic stack is now wired behind native-only `FIM_FLOW_LIFECYCLE=1`, default false. The live
+path keeps the reservoir Schur action matrix-free, builds the pressure coarse matrix directly,
+and is regression-compared with the explicit-Schur test oracle. Exact gas stays at six uncut
+substeps but regresses from 29 to 32 Newton iterations (Flow 26); heavy stays seven substeps
+(Flow one). Bounded Y2 and Legacy substep guards do not regress. Therefore D6d is complete but not
+promotable, and this bounded dense-coarse implementation remains diagnostic infrastructure.
+
+The next slice must not tune this linear path. Capture comparable nonlinear trajectories from
+Flow and ResSim and locate the first divergence in CNV/MB, update maxima, primary-variable state,
+or well residuals. Use that evidence to select a sourced G4/G5 nonlinear semantic.
+
+### Historical D6d handoff contract
 
 Gates D6a-D6c were completed on 2026-07-15. The next implementing agent must do only Gate D6d:
 

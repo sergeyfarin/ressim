@@ -3168,6 +3168,7 @@ mod tests {
             relative_tolerance: 1e-10,
             absolute_tolerance: 1e-12,
             use_true_fgmres: false,
+            use_flow_lifecycle: false,
             eliminate_wells: false,
         };
         let layout = Some(FimLinearBlockLayout {
@@ -3401,6 +3402,7 @@ mod tests {
                 relative_tolerance: 1e-8,
                 absolute_tolerance: 1e-10,
                 use_true_fgmres: false,
+                use_flow_lifecycle: false,
                 eliminate_wells: false,
             },
             Some(FimLinearBlockLayout {

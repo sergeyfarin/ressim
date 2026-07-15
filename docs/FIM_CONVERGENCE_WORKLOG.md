@@ -3912,6 +3912,32 @@ Buckley-Leverett `3/3` pass. `cargo check` passes with the four pre-existing nat
 shared bucket passes its first three contracts and stops at the unchanged closed-system
 `rate_history` assertion (`left=2`, `right=1`).
 
+### Bundle Y checkpoint Y2d6d: default-off live Flow lifecycle (2026-07-15)
+
+Implemented the complete D6c stack behind native-only `FIM_FLOW_LIFECYCLE=1`, default false:
+storage-derived true-IMPES, matrix-free StandardWell outer action, separate `J_rr` block ILU0,
+exactly-once CPRW well coarse contribution, one-level direct pressure solve, and the pinned DUNE
+BiCGSTAB recurrence. Only the pressure coarse matrix is dense. A focused coupled-system test
+proves the live construction matches the independent explicit-Schur oracle.
+
+Committed-tree baseline before the change: exact gas six/zero with Newton `8,5,4,4,4,4`; heavy
+with the complete Y2 lifecycle seven substeps and `0L/1N`. Live Flow lifecycle: exact gas remains
+six/zero but Newton becomes `10,5,5,4,4,4`; heavy remains seven with one mixed retry. Y2 bounded
+controls remain three substeps (`22x22x1` `11,4,6`; `23x23x1` `10,5,5`), Legacy `22x22x1`
+remains four and Legacy exact gas remains fourteen total. Heavy runtime rises roughly
+`0.54s -> 3.47s` because this bounded oracle refactors a dense coarse matrix every iteration.
+
+Verdict: **COMPLETE, DEFAULT-OFF, NOT PROMOTED.** The coherent linear mechanism is validated but
+does not close the nonlinear trajectory gap. No IMPES port applies: IMPES has no coupled
+well-tail/CPRW system. Next compare Flow and ResSim nonlinear iteration observables and locate the
+first divergence before choosing G4/G5; no further linear tuning is authorized by this result.
+
+Final gates: lifecycle/default dispatch tests, DRSDT0, locked SPE1 `3/3`, curated FIM wells `5/5`
+and depletion `3/3`, Buckley-Leverett `3/3`, rebuilt-wasm Legacy control matrix, and full
+`validate:product` (typecheck, lint, frontend `648/648`, IMPES bucket, wasm and Vite build) pass.
+The shared bucket again passes its first three contracts and stops at the unchanged closed-system
+`rate_history` assertion (`left=2`, `right=1`).
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

@@ -1038,6 +1038,7 @@ impl ReservoirSimulator {
         }
         newton_options.nested_well_solve = self.fim_nested_well_solve;
         newton_options.linear.use_true_fgmres = self.fim_true_fgmres;
+        newton_options.linear.use_flow_lifecycle = self.fim_flow_lifecycle;
         // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
         // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
         if self.fim_force_direct_linear {
@@ -2941,6 +2942,7 @@ mod phase5_repro {
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(true);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
+        sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
@@ -3056,6 +3058,7 @@ mod phase5_repro {
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(opm_aligned);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
+        sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);
@@ -3380,6 +3383,7 @@ mod phase5_repro {
         }
         sim.set_fim_opm_aligned_nonlinear(flavor == "opm");
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
+        sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
         sim.set_fim_force_direct_linear(std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some());
 
         let start = Instant::now();

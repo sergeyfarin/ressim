@@ -131,6 +131,8 @@ pub struct ReservoirSimulator {
     /// retaining the existing CPR and nonlinear configuration. Dev/diagnostic flag; default
     /// false preserves the historical solver for A/B validation.
     pub(crate) fim_true_fgmres: bool,
+    /// Y2d6d native-only diagnostic routing for the complete Flow linear lifecycle.
+    pub(crate) fim_flow_lifecycle: bool,
     /// `FIM-DIAG-003` D0/D1 (`docs/FIM_DIAG_003_PLAN.md`): force every Newton iteration's
     /// linear solve through the exact direct backend (`SparseLuDebug`) instead of the default
     /// iterative CPR/GMRES stack, to discriminate H1 (displaced well-cell standoff) from H2

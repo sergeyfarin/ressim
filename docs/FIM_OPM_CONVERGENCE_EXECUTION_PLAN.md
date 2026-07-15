@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d6c coherent Flow-lifecycle corpus comparison is confirmed offline; Y2d6d default-off
-live integration is next (2026-07-15)**. This document turns the evidence in
+Status: **Y2d6d coherent Flow-lifecycle live integration is complete and remains default-off;
+the next slice is a source-comparable nonlinear-trajectory divergence audit (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -794,6 +794,26 @@ before solving. Bounded improves production `0/8` to Flow-stack `8/8`; gas impro
 `5/5`. True FGMRES remains `8/8` and `5/5`. No solve needs more than one completed pair, no pass
 is lost, and full/recovered-well residuals are independently recomputed. D6d default-off live
 integration is authorized; promotion is not.
+
+**Y2d6d result (2026-07-15): COMPLETE, NOT PROMOTED.** The complete lifecycle is available behind
+native-only `FIM_FLOW_LIFECYCLE=1`; default routing is unchanged. The live implementation retains
+matrix-free StandardWell elimination and assembles only `RSP` densely. A focused coupled-system
+test proves this efficient live construction reproduces the independent explicit-Schur oracle.
+
+Exact gas remains six substeps/no cuts but moves `8,5,4,4,4,4 -> 10,5,5,4,4,4` (Flow
+`7,5,4,3,4,3`), so it is farther from Flow by total Newton count. Heavy water remains seven
+substeps versus Flow's one; its retry classification changes `0L/1N -> 0L/0N/1 mixed`, not its
+fragmentation. Y2 bounded controls remain three substeps (`22x22x1`: `11,4,6`; `23x23x1`:
+`10,5,5`), and Legacy guards retain four water substeps and fourteen total gas substeps. Runtime
+is materially worse because the bounded reference path refactors a dense coarse matrix every
+Newton iteration; it is diagnostic infrastructure, not production AMG.
+
+Verdict: the offline correction-quality gain is real, but the complete Flow linear lifecycle is
+not the missing live nonlinear convergence factor. Do not tune BiCGSTAB/CPR or promote this path.
+Next capture comparable Flow/ResSim per-Newton CNV, MB, update maxima, primary-variable switches,
+and well residuals on exact gas, and identify the first iteration where the trajectories diverge.
+That audit must select G4, G5, or another sourced nonlinear semantic; Y3 cannot improve an exact
+gas case that already takes one uncut trial per report step.
 
 ## 8. Y3 and Y4 end gates
 

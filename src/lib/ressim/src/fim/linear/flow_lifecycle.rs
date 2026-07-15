@@ -1,18 +1,18 @@
 //! Native-only source-pinned helpers for the Y2d6 Flow 2026.04 linear-lifecycle oracle.
 //!
-//! This module does not participate in production dispatch. Y2d6a uses it only when the
-//! dedicated capture environment variable is set; later Y2d6 gates reuse the same formulas in
-//! test-only component identities.
+//! Y2d6a-c use this module for capture and offline component identities. Y2d6d additionally
+//! exposes the same complete lifecycle to native production code behind an explicit, default-off
+//! diagnostic flag. The live path keeps the well Schur action matrix-free; only the one-level
+//! pressure coarse operator is assembled densely.
 
-#[cfg(test)]
 use nalgebra::{DMatrix, DVector};
 use nalgebra::{Matrix3, Vector3};
 use sprs::{CsMat, TriMatI};
+use std::time::Instant;
 
-use super::FimLinearBlockLayout;
 use super::capture::FimFlowLifecycleCapture;
-#[cfg(test)]
 use super::gmres_block_jacobi::{FimBlockIlu0Factors, factorize_block_ilu0};
+use super::{FimLinearBlockLayout, FimLinearSolveReport, FimLinearSolverKind};
 use crate::ReservoirSimulator;
 use crate::fim::assembly_ad::accumulation_jacobian_blocks_for_state;
 use crate::fim::state::FimState;
@@ -24,13 +24,9 @@ pub(crate) const DUNE_ISTL_VERSION: &str = "2.11.0";
 /// OPM multiplies derivatives with respect to pressure in pascals by `50e5`. ResSim's pressure
 /// primary is bar, so the equivalent nondimensionalizing scale is 50 bar.
 pub(crate) const TRUE_IMPES_PRESSURE_SCALE_BAR: f64 = 50.0;
-#[cfg(test)]
 pub(crate) const FLOW_AMG_COARSEN_TARGET: usize = 1200;
-#[cfg(test)]
 pub(crate) const FLOW_BICGSTAB_REDUCTION: f64 = 0.005;
-#[cfg(test)]
 pub(crate) const FLOW_BICGSTAB_MAX_PAIRS: usize = 20;
-#[cfg(test)]
 const FLOW_BICGSTAB_BREAKDOWN_EPSILON: f64 = 1e-80;
 
 pub(crate) fn true_impes_weight(storage_block: &[[f64; 3]; 3]) -> Result<[f64; 3], String> {
@@ -227,7 +223,6 @@ pub(crate) fn validate_capture_data(
     Ok(())
 }
 
-#[cfg(test)]
 fn matrix_vector(matrix: &CsMat<f64>, vector: &DVector<f64>) -> DVector<f64> {
     let mut result = DVector::zeros(matrix.rows());
     for (row, entries) in matrix.outer_iterator().enumerate() {
@@ -238,7 +233,364 @@ fn matrix_vector(matrix: &CsMat<f64>, vector: &DVector<f64>) -> DVector<f64> {
     result
 }
 
-#[cfg(test)]
+trait FlowBicgstabOperator {
+    fn reduced_rhs(&self, full_rhs: &DVector<f64>) -> DVector<f64>;
+    fn outer_apply(&self, vector: &DVector<f64>) -> DVector<f64>;
+    fn cpr_apply(&self, rhs: &DVector<f64>) -> DVector<f64>;
+}
+
+fn solve_flow_bicgstab(
+    operator: &impl FlowBicgstabOperator,
+    full_rhs: &DVector<f64>,
+) -> FlowBicgstabReport {
+    let rhs = operator.reduced_rhs(full_rhs);
+    let initial_norm = rhs.norm();
+    let target = initial_norm * FLOW_BICGSTAB_REDUCTION;
+    let mut solution = DVector::zeros(rhs.len());
+    let mut residual = rhs.clone();
+    let shadow = residual.clone();
+    let mut p = DVector::zeros(rhs.len());
+    let mut v = DVector::zeros(rhs.len());
+    let mut rho: f64 = 1.0;
+    let mut alpha: f64 = 1.0;
+    let mut omega: f64 = 1.0;
+    let mut alpha_steps = 0usize;
+    let mut omega_steps = 0usize;
+    let mut preconditioner_applications = 0usize;
+    let converged = |norm: f64| norm < target || norm < 1e-30;
+
+    if converged(initial_norm) {
+        return FlowBicgstabReport::completed(solution, initial_norm, initial_norm, 0, 0, 0, true);
+    }
+    for pair in 0..FLOW_BICGSTAB_MAX_PAIRS {
+        let norm = residual.norm();
+        let rho_new = shadow.dot(&residual);
+        if rho.abs() <= FLOW_BICGSTAB_BREAKDOWN_EPSILON {
+            return FlowBicgstabReport::breakdown(
+                solution,
+                initial_norm,
+                norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+                "rho",
+            );
+        }
+        if omega.abs() <= FLOW_BICGSTAB_BREAKDOWN_EPSILON {
+            return FlowBicgstabReport::breakdown(
+                solution,
+                initial_norm,
+                norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+                "omega",
+            );
+        }
+        if pair == 0 {
+            p.copy_from(&residual);
+        } else {
+            let beta = if norm == 0.0 {
+                0.0
+            } else {
+                (rho_new / rho) * (alpha / omega)
+            };
+            p -= omega * &v;
+            p *= beta;
+            p += &residual;
+        }
+
+        let y = operator.cpr_apply(&p);
+        preconditioner_applications += 1;
+        v = operator.outer_apply(&y);
+        let h = shadow.dot(&v);
+        if h.abs() < FLOW_BICGSTAB_BREAKDOWN_EPSILON {
+            return FlowBicgstabReport::breakdown(
+                solution,
+                initial_norm,
+                norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+                "h-alpha",
+            );
+        }
+        alpha = if norm == 0.0 { 0.0 } else { rho_new / h };
+        solution += alpha * &y;
+        residual -= alpha * &v;
+        alpha_steps += 1;
+        let alpha_norm = residual.norm();
+        if !alpha_norm.is_finite() {
+            return FlowBicgstabReport::non_finite(
+                solution,
+                initial_norm,
+                alpha_norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+            );
+        }
+        if converged(alpha_norm) {
+            return FlowBicgstabReport::completed(
+                solution,
+                initial_norm,
+                alpha_norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+                true,
+            );
+        }
+
+        let y = operator.cpr_apply(&residual);
+        preconditioner_applications += 1;
+        let t = operator.outer_apply(&y);
+        let h = t.dot(&t);
+        omega = if alpha_norm == 0.0 {
+            0.0
+        } else {
+            t.dot(&residual) / h
+        };
+        solution += omega * &y;
+        residual -= omega * &t;
+        rho = rho_new;
+        omega_steps += 1;
+        let omega_norm = residual.norm();
+        if !omega_norm.is_finite() {
+            return FlowBicgstabReport::non_finite(
+                solution,
+                initial_norm,
+                omega_norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+            );
+        }
+        if converged(omega_norm) {
+            return FlowBicgstabReport::completed(
+                solution,
+                initial_norm,
+                omega_norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+                true,
+            );
+        }
+    }
+    FlowBicgstabReport::completed(
+        solution,
+        initial_norm,
+        residual.norm(),
+        alpha_steps,
+        omega_steps,
+        preconditioner_applications,
+        false,
+    )
+}
+
+/// Native live form of the exact D6c lifecycle. Unlike `FlowComponentOracle`, this never builds
+/// the dense reservoir Schur complement: `outer_apply` performs the StandardWell elimination on
+/// demand and the coarse matrix is assembled directly as `R J_rr P - R J_rw J_ww^-1 J_wr P`.
+struct FlowLiveLinearSolver<'a> {
+    data: &'a FimFlowLifecycleCapture,
+    layout: FimLinearBlockLayout,
+    j_ww_inverse: DMatrix<f64>,
+    coarse_inverse: DMatrix<f64>,
+    fine_factors: FimBlockIlu0Factors,
+}
+
+impl<'a> FlowLiveLinearSolver<'a> {
+    fn new(
+        data: &'a FimFlowLifecycleCapture,
+        layout: FimLinearBlockLayout,
+    ) -> Result<Self, String> {
+        let reservoir = data.reservoir_unknown_count;
+        let cells = layout.cell_block_count;
+        let wells = data.j_ww.rows();
+        if layout.cell_block_size != 3 || reservoir != layout.cell_unknown_count() {
+            return Err("Y2d6d requires the captured three-primary reservoir layout".to_string());
+        }
+        if cells > FLOW_AMG_COARSEN_TARGET {
+            return Err(format!(
+                "Y2d6d one-level live path is valid only at or below Flow coarsenTarget={FLOW_AMG_COARSEN_TARGET}, got {cells}"
+            ));
+        }
+
+        let j_ww_inverse = if wells == 0 {
+            DMatrix::zeros(0, 0)
+        } else {
+            dense_matrix(&data.j_ww)
+                .try_inverse()
+                .ok_or_else(|| "Y2d6d well block is singular".to_string())?
+        };
+
+        let mut coarse_reservoir = DMatrix::zeros(cells, cells);
+        for (row, entries) in data.j_rr.outer_iterator().enumerate() {
+            let row_cell = row / 3;
+            let weight = data.true_impes_weights[row_cell][row % 3];
+            for (&col, &value) in entries.indices().iter().zip(entries.data().iter()) {
+                if col % 3 == 0 {
+                    coarse_reservoir[(row_cell, col / 3)] += weight * value;
+                }
+            }
+        }
+
+        let mut restricted_j_rw = DMatrix::zeros(cells, wells);
+        for (row, entries) in data.j_rw.outer_iterator().enumerate() {
+            let row_cell = row / 3;
+            let weight = data.true_impes_weights[row_cell][row % 3];
+            for (&col, &value) in entries.indices().iter().zip(entries.data().iter()) {
+                restricted_j_rw[(row_cell, col)] += weight * value;
+            }
+        }
+        let mut j_wr_prolonged = DMatrix::zeros(wells, cells);
+        for (row, entries) in data.j_wr.outer_iterator().enumerate() {
+            for (&col, &value) in entries.indices().iter().zip(entries.data().iter()) {
+                if col % 3 == 0 {
+                    j_wr_prolonged[(row, col / 3)] += value;
+                }
+            }
+        }
+        let coarse = coarse_reservoir - restricted_j_rw * &j_ww_inverse * j_wr_prolonged;
+        let coarse_inverse = coarse
+            .try_inverse()
+            .ok_or_else(|| "Y2d6d one-level Flow coarse matrix is singular".to_string())?;
+        let reservoir_layout = FimLinearBlockLayout {
+            cell_block_count: cells,
+            cell_block_size: 3,
+            well_bhp_count: 0,
+            perforation_tail_start: reservoir,
+        };
+        let fine_factors = factorize_block_ilu0(&data.j_rr, reservoir_layout)
+            .ok_or_else(|| "Y2d6d paroverilu0 factorization failed".to_string())?;
+        Ok(Self {
+            data,
+            layout,
+            j_ww_inverse,
+            coarse_inverse,
+            fine_factors,
+        })
+    }
+
+    fn reduced_rhs(&self, full_rhs: &DVector<f64>) -> DVector<f64> {
+        let reservoir = self.data.reservoir_unknown_count;
+        let reservoir_rhs = full_rhs.rows(0, reservoir).into_owned();
+        let well_rhs = full_rhs
+            .rows(reservoir, full_rhs.len() - reservoir)
+            .into_owned();
+        reservoir_rhs - matrix_vector(&self.data.j_rw, &(&self.j_ww_inverse * well_rhs))
+    }
+
+    fn outer_apply(&self, vector: &DVector<f64>) -> DVector<f64> {
+        matrix_vector(&self.data.j_rr, vector)
+            - matrix_vector(
+                &self.data.j_rw,
+                &(&self.j_ww_inverse * matrix_vector(&self.data.j_wr, vector)),
+            )
+    }
+
+    fn restrict(&self, vector: &DVector<f64>) -> DVector<f64> {
+        DVector::from_iterator(
+            self.layout.cell_block_count,
+            (0..self.layout.cell_block_count).map(|cell| {
+                (0..3)
+                    .map(|equation| {
+                        self.data.true_impes_weights[cell][equation] * vector[3 * cell + equation]
+                    })
+                    .sum()
+            }),
+        )
+    }
+
+    fn prolong(&self, pressure: &DVector<f64>) -> DVector<f64> {
+        let mut result = DVector::zeros(self.data.reservoir_unknown_count);
+        for cell in 0..self.layout.cell_block_count {
+            result[3 * cell] = pressure[cell];
+        }
+        result
+    }
+
+    fn cpr_apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+        let mut update = self.prolong(&(&self.coarse_inverse * self.restrict(rhs)));
+        let post_rhs = rhs - self.outer_apply(&update);
+        update += self.fine_factors.apply(&post_rhs);
+        update
+    }
+
+    fn recover_full_solution(
+        &self,
+        full_rhs: &DVector<f64>,
+        reservoir_solution: &DVector<f64>,
+    ) -> DVector<f64> {
+        let reservoir = self.data.reservoir_unknown_count;
+        let well_rhs = full_rhs
+            .rows(reservoir, full_rhs.len() - reservoir)
+            .into_owned();
+        let well_solution =
+            &self.j_ww_inverse * (well_rhs - matrix_vector(&self.data.j_wr, reservoir_solution));
+        DVector::from_iterator(
+            full_rhs.len(),
+            reservoir_solution
+                .iter()
+                .copied()
+                .chain(well_solution.iter().copied()),
+        )
+    }
+
+    fn solve_flow_bicgstab(&self, full_rhs: &DVector<f64>) -> FlowBicgstabReport {
+        solve_flow_bicgstab(self, full_rhs)
+    }
+}
+
+impl FlowBicgstabOperator for FlowLiveLinearSolver<'_> {
+    fn reduced_rhs(&self, full_rhs: &DVector<f64>) -> DVector<f64> {
+        FlowLiveLinearSolver::reduced_rhs(self, full_rhs)
+    }
+
+    fn outer_apply(&self, vector: &DVector<f64>) -> DVector<f64> {
+        FlowLiveLinearSolver::outer_apply(self, vector)
+    }
+
+    fn cpr_apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+        FlowLiveLinearSolver::cpr_apply(self, rhs)
+    }
+}
+
+/// Build and apply the complete source-pinned Flow lifecycle to one live Newton system.
+pub(crate) fn solve_live_flow_lifecycle(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+    layout: FimLinearBlockLayout,
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+) -> Result<FimLinearSolveReport, String> {
+    let total_start = Instant::now();
+    let capture = build_capture_data(sim, previous_state, state, layout, jacobian)?;
+    let build_start = Instant::now();
+    let solver = FlowLiveLinearSolver::new(&capture, layout)?;
+    let build_ms = build_start.elapsed().as_secs_f64() * 1000.0;
+    let flow_report = solver.solve_flow_bicgstab(rhs);
+    let solution = solver.recover_full_solution(rhs, &flow_report.reservoir_solution);
+    let full_residual = rhs - matrix_vector(jacobian, &solution);
+    Ok(FimLinearSolveReport {
+        solution,
+        converged: flow_report.converged && flow_report.finite,
+        // DUNE reports one iteration per outer alpha/omega pair (including alpha half-step
+        // convergence), not one per preconditioner application.
+        iterations: flow_report.alpha_steps,
+        rhs_norm: rhs.norm(),
+        final_residual_norm: full_residual.norm(),
+        failure_diagnostics: None,
+        used_fallback: false,
+        backend_used: FimLinearSolverKind::FgmresCpr,
+        cpr_diagnostics: None,
+        total_time_ms: total_start.elapsed().as_secs_f64() * 1000.0,
+        preconditioner_build_time_ms: build_ms,
+    })
+}
+
 fn dense_matrix(matrix: &CsMat<f64>) -> DMatrix<f64> {
     let mut dense = DMatrix::zeros(matrix.rows(), matrix.cols());
     for (row, entries) in matrix.outer_iterator().enumerate() {
@@ -747,7 +1099,6 @@ pub(crate) struct FlowComponentIdentityMetrics {
     pub(crate) correction_max_abs: f64,
 }
 
-#[cfg(test)]
 #[derive(Clone, Debug)]
 pub(crate) struct FlowBicgstabReport {
     pub(crate) reservoir_solution: DVector<f64>,
@@ -761,7 +1112,6 @@ pub(crate) struct FlowBicgstabReport {
     pub(crate) preconditioner_applications: usize,
 }
 
-#[cfg(test)]
 impl FlowBicgstabReport {
     fn completed(
         reservoir_solution: DVector<f64>,
@@ -912,5 +1262,17 @@ mod tests {
         );
         assert!((independent_residual.norm() - report.final_norm).abs() < 1e-12);
         assert!(report.reduction() < FLOW_BICGSTAB_REDUCTION);
+
+        // The live implementation assembles its coarse matrix without materializing the dense
+        // reservoir Schur complement. It must nevertheless reproduce the independent oracle.
+        let live = FlowLiveLinearSolver::new(&data, layout).unwrap();
+        let live_report = live.solve_flow_bicgstab(&rhs);
+        assert_eq!(live_report.alpha_steps, report.alpha_steps);
+        assert_eq!(live_report.omega_steps, report.omega_steps);
+        assert!(
+            relative_disagreement(&live_report.reservoir_solution, &report.reservoir_solution)
+                < 5e-12
+        );
+        assert!((live_report.final_norm - report.final_norm).abs() < 5e-12);
     }
 }

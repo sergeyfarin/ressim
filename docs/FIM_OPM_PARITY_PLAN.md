@@ -1692,3 +1692,25 @@ bounded systems stop validly at Flow's loose criterion with full reductions `1.3
 `2.25e-4`; their larger direct deltas remain explicit rather than being called direct-equivalent.
 This authorizes only D6d's default-off live experiment. It does not yet establish fewer Newton
 iterations.
+
+### 15.22 Y2d6d result: offline linear success does not close the live nonlinear gap (2026-07-15)
+
+The complete source-pinned lifecycle is integrated atomically behind native-only
+`FIM_FLOW_LIFECYCLE=1`, default false. The live coarse matrix is assembled directly as
+`R J_rr P - R J_rw J_ww^-1 J_wr P`; the dense reservoir Schur matrix remains test-only. A coupled
+regression proves the live construction and independent explicit-Schur oracle return the same
+BiCGSTAB correction and residual.
+
+| Case | Previous Y2 path | Flow lifecycle live | Flow / Legacy control |
+| --- | --- | --- | --- |
+| exact gas, six steps | 6, `8,5,4,4,4,4` | 6, `10,5,5,4,4,4` | Flow 6, `7,5,4,3,4,3` |
+| heavy water | 7, `0L/1N` | 7, `0L/0N/1 mixed` | Flow 1/11 Newton |
+| Y2 water `22x22x1` | 3 | 3, `11,4,6`, one mixed retry | Legacy 4 |
+| Y2 water `23x23x1` | 3 | 3, `10,5,5`, one mixed retry | Legacy 4 |
+| Legacy exact gas | 14 total | 14 total | guard unchanged |
+
+The result is neither an invalid-oracle refutation nor a promotion: D6a-c proved the linear
+mechanism, while D6d proves that mechanism is not the missing live convergence factor. Exact gas
+moves farther from Flow by total Newton count and heavy fragmentation is unchanged. Keep the
+bounded native path only as diagnostic infrastructure. Next identify the first source-comparable
+nonlinear trajectory divergence; do not tune BiCGSTAB/CPR or start Y3 on a gas case with no cuts.

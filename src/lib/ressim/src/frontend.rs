@@ -90,6 +90,7 @@ impl ReservoirSimulator {
             fim_opm_aligned_nonlinear: false,
             fim_nested_well_solve: false,
             fim_true_fgmres: false,
+            fim_flow_lifecycle: false,
             fim_force_direct_linear: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
@@ -316,6 +317,13 @@ impl ReservoirSimulator {
     #[wasm_bindgen(js_name = setFimTrueFgmres)]
     pub fn set_fim_true_fgmres(&mut self, enabled: bool) {
         self.fim_true_fgmres = enabled;
+    }
+
+    /// Y2d6d native diagnostic flag. The implementation is intentionally not exposed to wasm:
+    /// its one-level dense coarse solve is bounded reference infrastructure, not production AMG.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fim_flow_lifecycle(&mut self, enabled: bool) {
+        self.fim_flow_lifecycle = enabled;
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]

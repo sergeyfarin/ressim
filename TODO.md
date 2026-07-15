@@ -167,9 +167,13 @@ below is retained as Bundle N/Y history; it must not override this current seque
   BiCGSTAB plus fixed D6b components passes bounded `8/8` and gas `5/5`, versus production `0/8`
   and `4/5`; all finish within one completed pair with finite independent full residuals and no
   lost pass. This is offline evidence, not default promotion.
-- [ ] **Next: Y2d6d default-off live integration.** Keep the complete lifecycle atomic and run
-  exact gas/heavy first, then Y2 water and Legacy controls. Do not change default routing,
-  acceptance, controller, primary lifecycle, or fallback policy in the same slice.
+- [x] **Y2d6d default-off live integration (2026-07-15): COMPLETE, NOT PROMOTED.** Native-only
+  `FIM_FLOW_LIFECYCLE=1` wires the atomic stack and defaults off. Exact gas remains six/zero but
+  worsens `29 -> 32` total Newton iterations (Flow 26); heavy remains seven substeps (Flow one).
+  Y2 bounded and Legacy substep guards hold. Keep as diagnostic infrastructure only.
+- [ ] **Next: first nonlinear-trajectory divergence audit.** On exact gas, compare Flow and
+  ResSim per-Newton CNV/MB, update maxima, primary-variable switches, and well residuals. Locate
+  the first divergence before selecting G4/G5; do not tune the now-closed linear lifecycle.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

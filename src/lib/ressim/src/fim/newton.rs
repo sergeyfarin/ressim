@@ -4003,6 +4003,27 @@ pub(crate) fn run_fim_timestep(
         // the primary fix (only 1/35 heavy-corpus systems showed a real per-family overshoot;
         // see `docs/FIM_CONVERGENCE_WORKLOG.md` "Step 10.1 follow-up"). Kept opt-in (`None`
         // here) rather than wired live, pending stronger evidence or a different application.
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut linear_report = if linear_options.use_flow_lifecycle {
+            crate::fim::linear::flow_lifecycle::solve_live_flow_lifecycle(
+                sim,
+                previous_state,
+                &state,
+                block_layout.expect("FIM always defines a linear block layout"),
+                &assembly.jacobian,
+                &rhs,
+            )
+            .unwrap_or_else(|error| panic!("Y2d6d Flow lifecycle setup failed: {error}"))
+        } else {
+            solve_linearized_system(
+                &assembly.jacobian,
+                &rhs,
+                &linear_options,
+                block_layout,
+                None,
+            )
+        };
+        #[cfg(target_arch = "wasm32")]
         let mut linear_report = solve_linearized_system(
             &assembly.jacobian,
             &rhs,
