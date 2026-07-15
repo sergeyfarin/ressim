@@ -1060,6 +1060,16 @@ impl ReservoirSimulator {
         } else {
             None
         };
+        // A valid context is evidence that the narrow input was understood, not permission to
+        // execute it through the historical BHP/q path. `physical_well_control` deliberately
+        // has no RESV branch yet; continuing would silently reinterpret RESV as BHP control and
+        // manufacture an invalid live oracle. G4b2's atomic route must land first.
+        if flow_resv_context.is_some() {
+            self.last_solver_warning =
+                "FIM Flow RESV injector captured but not executable until G4b2 atomic routing"
+                    .to_string();
+            return;
+        }
         // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
         // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
         if self.fim_force_direct_linear {
@@ -1841,10 +1851,12 @@ mod tests {
         replayable_unchanged_cooldown_accepts, replayable_unchanged_hotspot_plateau_accepts,
         seed_gas_outer_step_trial_carryover,
     };
-    use crate::ReservoirSimulator;
     use crate::fim::newton::FimStepReport;
     use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
     use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
+    use crate::pvt::{PvtRow, PvtTable};
+    use crate::well::WellSchedule;
+    use crate::{InjectedFluid, ReservoirSimulator};
 
     fn failure_diagnostics(
         class: FimRetryFailureClass,
@@ -1869,6 +1881,71 @@ mod tests {
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
         sim.add_well(19, 19, 0, 100.0, 0.1, 0.0, false).unwrap();
         sim
+    }
+
+    fn scoped_resv_sim() -> ReservoirSimulator {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.0065,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 300.0,
+                    rs_m3m3: 30.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.15);
+        sim.injected_fluid = InjectedFluid::Gas;
+        sim.add_well_with_id(0, 0, 0, 250.0, 0.1, 0.0, true, "inj".to_string())
+            .unwrap();
+        sim.wells[0].schedule = WellSchedule {
+            control_mode: Some("resv".to_string()),
+            target_rate_m3_day: Some(500.0),
+            target_surface_rate_m3_day: None,
+            bhp_limit: None,
+            enabled: true,
+        };
+        sim.set_fim_flow_resv_injector(true);
+        sim
+    }
+
+    #[test]
+    fn valid_resv_context_is_blocked_before_historical_bhp_q_execution() {
+        let mut sim = scoped_resv_sim();
+        let initial_time_days = sim.time_days;
+
+        sim.step_internal_fim(0.25);
+
+        assert_eq!(sim.time_days, initial_time_days);
+        assert!(sim
+            .last_solver_warning
+            .contains("captured but not executable until G4b2"));
     }
 
     fn cell(

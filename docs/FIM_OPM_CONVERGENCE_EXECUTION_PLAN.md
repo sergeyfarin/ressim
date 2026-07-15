@@ -921,6 +921,20 @@ not a production residual or Flow trajectory result. Next is G4b2 readiness audi
 every AD/legacy/source/control/update/scaling/diagnostic/reporting coupling before authorizing
 one atomic route.
 
+### G4b2 result (2026-07-15): unsafe RESV fall-through blocked; atomic route inventory complete
+
+The readiness audit found that an explicit `RESV` schedule currently reaches
+`physical_well_control`, which recognizes only `rate` and would silently select the BHP/q
+lifecycle. The native flag now validates/captures the narrow context and then returns before
+Newton with a clear warning; a valid gas/PVT/one-perf RESV test proves no simulation time can
+advance. This supersedes the earlier implication that the inert context could safely accompany a
+live Newton attempt: it cannot until every coupled row is routed.
+
+`docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` lists state primary, control, both assemblers,
+source/Jacobian, q relax/nested solve, scaling, Schur, diagnostics, reporting, retry, and IMPES
+status. G4b2a is a design-only translation of that inventory into one atomic implementation and
+its gates. No live RESV run is authorized.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

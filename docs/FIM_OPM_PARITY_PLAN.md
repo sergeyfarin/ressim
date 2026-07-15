@@ -1802,3 +1802,17 @@ well lifecycle.
 
 G4b2 is a readiness audit, not permission to alter one assembler: list and gate every coupled
 primary/source/control/connection/update/scaling/diagnostic/reporting route first.
+
+### 15.28 G4b2 result: prevent BHP/q fall-through before atomic routing (2026-07-15)
+
+The readiness audit found a concrete incomplete-lifecycle hazard: recognized `RESV` is not a
+`rate` mode in current `physical_well_control`, so it would select the old BHP/q formulation if
+allowed into Newton. The native flag is now deliberately non-executable after successful context
+capture; a valid fixture proves it returns before time advancement. This is a safety correction,
+not a convergence result.
+
+The required complete route is recorded in
+`docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md`: explicit u primary/control metadata, shared
+AD+legacy residual/Jacobian/source route, q-relax exclusion, scaling/Schur compatibility, and
+source-complete diagnostics/reporting. G4b2a must design those interfaces and gates before the
+block can be removed.

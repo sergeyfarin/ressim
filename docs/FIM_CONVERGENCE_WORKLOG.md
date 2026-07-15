@@ -4130,6 +4130,31 @@ this helper is uncalled by production code, that is **INCONCLUSIVE regression co
 solver/convergence observation; the completed focused and assembly gates are the only claimed
 validation for G4b1.
 
+### G4b2: RESV execution safety block and atomic-route readiness audit (2026-07-15)
+
+The audit found that G4b0's valid RESV context did not itself select a RESV well formulation.
+`physical_well_control` accepts only the literal `rate` as rate-controlled, so a live invocation
+would otherwise continue through the historical BHP/q control, source, and update path while the
+new context/helper was inert. That is a more dangerous outcome than an explicit unsupported
+error: it could produce a plausible trajectory that never evaluated the intended Flow rows.
+
+Added a pre-Newton block after successful scoped-context capture. The valid 1x1x1 gas/PVT/RESV
+fixture confirms `time_days` is unchanged and the warning says atomic routing is not ready. This
+replaces the prior operational assumption that the context could safely travel through a live
+Newton attempt; context lifetime is still unit-tested, but live execution is now intentionally
+unavailable until the whole lifecycle is routed.
+
+`docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` inventories the missing package: explicit u
+state/control, both assembly/Jacobian paths, current-FVF source helper, q-relax exclusion,
+scaling, Schur, diagnostics/reporting, and retry semantics. **Next authorized step: G4b2a atomic
+route design only.** No individual assembler/source/update edit and no live convergence run is
+valid before that design provides one coupled implementation/gate list.
+
+Validation: the new execution-block test passes, the focused `flow_resv` suite remains 6/6,
+`assembly_ad` remains 12/12, and `well_controls` remains 9/9. No long-running FIM bucket is
+credited in this checkpoint; the safety guard and pure audit do not constitute a convergence
+measurement.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

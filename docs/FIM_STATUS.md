@@ -54,6 +54,12 @@ current `B_g` determines the connection/source derivative while only frozen `B_g
 the control-u derivative. It is still uncalled by production assembly. Next is an atomic-route
 readiness audit, not a partial assembly change or a live comparison.
 
+**G4b2 update (2026-07-15):** audit found that RESV would otherwise execute as the old BHP/q
+control. The default-off native flag now stops after valid context capture, before Newton; its
+fixture proves no time advance. The complete route inventory is
+`docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md`. Next is its atomic-route design, with no live
+comparison authorized.
+
 Use this file for:
 
 - current implementation state

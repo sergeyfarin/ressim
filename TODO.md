@@ -199,10 +199,14 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `f64` and local AD. Two non-reference-pressure fixtures prove current-FVF/source derivatives,
   frozen-control derivative, and central-FD agreement. It is not routed to either assembler or
   any FIM/IMPES behavior path.
-- [ ] **Next: G4b2 atomic FIM route design/readiness audit.** Before production wiring, enumerate
-  and test every coupled AD/legacy/source/control/update/scaling/diagnostic/reporting path and
-  prove existing q-coordinate machinery cannot be selected for the scoped u-rate injector. No
-  partial assembler or live convergence change yet.
+- [x] **G4b2 atomic-route readiness audit — DONE 2026-07-15.** The audit found that a valid RESV
+  schedule would otherwise fall through to historical BHP/q control, so execution is now blocked
+  pre-Newton and regression-tested. `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` inventories
+  every state/control/AD/legacy/source/update/scaling/linear/diagnostic coupling required for an
+  atomic route; no partial assembly or live result is allowed.
+- [ ] **Next: G4b2a atomic-route implementation design.** Turn the audited inventory into exact
+  state/control/assembler/Jacobian/update/scaling/trace interfaces and gates for one commit.
+  Keep the pre-Newton block until that complete design is approved; do not run live convergence.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

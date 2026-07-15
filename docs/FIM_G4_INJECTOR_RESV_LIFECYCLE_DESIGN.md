@@ -1,6 +1,6 @@
 # G4a — Flow Injector-RESV Lifecycle Design
 
-Status: **G4B1 COMPLETE; G4B2 READINESS AUDIT NEXT (2026-07-15)**
+Status: **G4B2 READINESS AUDIT COMPLETE; G4B2A ATOMIC-ROUTE DESIGN NEXT (2026-07-15)**
 
 This is the only authorized design after Y2d8. It defines a narrow, default-off,
 source-comparable probe for the exact `gas-rate-10x10x3` Flow case. It is not permission to
@@ -119,11 +119,14 @@ an explicit mode tag are both wrong.
    for `f64` and local AD. Two pressures with `B_g != B_g,ref` prove that `dS/dp` and
    `dR_perf/dp` retain the current connection/FVF derivative, `dS/du=0`, and
    `dR_ctrl/du=B_g,ref`; central FD agrees away from a clamp. No production assembly changed.
-3. **G4b2: atomic FIM route readiness audit — NEXT.** Inventory and test the same mode in AD and
-   legacy assembly, source helper,
-   scaling, diagnostics, reporting, and state update. Initialize/update positive u and do not call
-   q-coordinate Relax/NestedSolve for that injector. The FB rate branch may remain only after an
-   equality test proves it supplies exact `R_ctrl`; otherwise use an explicit rate-only test row.
+3. **G4b2: atomic FIM route readiness audit — COMPLETE 2026-07-15.** The audit is
+   `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md`. It found an unsafe fall-through: current
+   `physical_well_control` maps RESV to historical BHP/q control. Valid RESV execution is now
+   stopped before Newton, and the test proves time cannot advance. G4b2a must design the same
+   mode in AD and legacy assembly, source helper, scaling, diagnostics, reporting, and state
+   update. It must initialize/update positive u and never call q-coordinate Relax/NestedSolve.
+   The FB rate branch may remain only after an equality test proves it supplies exact `R_ctrl`;
+   otherwise use an explicit rate-only test row.
 4. **G4b3: local/global coupling.** Re-derive a u-coordinate local solve before supporting nested
    mode. Prove its rows/columns equal global assembly (Bundle W invariant). Capture evaluation 0/1
    source/control/connection partitions before a six-step run.
@@ -180,8 +183,8 @@ same commit; do not infer an IMPES convergence benefit.
 
 ## 8. Closeout
 
-Commits tested: `be6326c` (Y2d8 source audit), G4b0 context implementation, and the G4b1
-contract checkpoint. Oracle validity: **VALID** for local residual values/derivatives and for
-one-perf evaluation-1 source comparison, **not yet a live behavior oracle**. Retry,
+Commits tested: `be6326c` (Y2d8 source audit), G4b0 context implementation, G4b1 contract, and
+the G4b2 readiness checkpoint. Oracle validity: **VALID** for local residual values/derivatives
+and for one-perf evaluation-1 source comparison, **not yet a live behavior oracle**. Retry,
 aggregation, active control switching, and u-coordinate nested solve remain unimplemented.
-Verdict: **G4B1 COMPLETE; G4b2 readiness audit authorized.**
+Verdict: **G4B2 READINESS COMPLETE; G4b2a atomic-route design authorized.**
