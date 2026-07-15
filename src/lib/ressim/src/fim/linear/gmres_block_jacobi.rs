@@ -175,7 +175,7 @@ impl FimIlu0Factors {
 /// compromise). No cross-block fill between the cell region and the tail; the CPR pressure-
 /// correction stage already carries that coupling via `tail_inverse`/`pressure_tail_coupling`.
 #[derive(Clone, Debug, PartialEq)]
-struct FimBlockIlu0Factors {
+pub(super) struct FimBlockIlu0Factors {
     block_size: usize,
     block_count: usize,
     l_block_rows: Vec<Vec<(usize, DMatrix<f64>)>>,
@@ -186,7 +186,7 @@ struct FimBlockIlu0Factors {
 }
 
 impl FimBlockIlu0Factors {
-    fn apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+    pub(super) fn apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
         let n = rhs.len();
         let mut result = DVector::zeros(n);
 
@@ -235,7 +235,7 @@ impl FimBlockIlu0Factors {
     }
 }
 
-fn factorize_block_ilu0(
+pub(super) fn factorize_block_ilu0(
     matrix: &CsMat<f64>,
     layout: FimLinearBlockLayout,
 ) -> Option<FimBlockIlu0Factors> {

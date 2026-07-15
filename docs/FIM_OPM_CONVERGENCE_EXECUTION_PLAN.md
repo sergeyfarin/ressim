@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d6a capture-payload sufficiency is complete; Y2d6b component identities are next
-(2026-07-15)**. This document turns the evidence in
+Status: **Y2d6a payload and Y2d6b component identities are complete; Y2d6c captured-corpus
+comparison is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -766,9 +766,19 @@ has `904` rows, `300` cells, four well rows, and `[5360,3,2,7]`. Both pass the d
 oracle with the pinned Flow commit, DUNE version, and 50-bar pressure scale. No solver dispatch or
 nonlinear behavior changed.
 
-Next is Y2d6b only: prove the seven component identities in the design against these v3 artifacts.
-Do not print a 13-capture performance verdict, add live routing, or treat Sparse LU/AMG as a new
-general convergence project in that slice.
+**Y2d6b result (2026-07-15): COMPLETE.** A test-only oracle proves all seven identities on the
+bounded and gas v3 artifacts. Matrix-free well elimination matches an independently formed Schur
+matrix; the coarse operator equals reservoir plus exactly one well contribution; block ILU is
+factored only on `J_rr`; and the fine, coarse, and complete zero-pre/coarse/one-post CPR maps are
+repeatable and linear. Both pressure systems (`484` and `300` rows) are below Flow's
+`coarsenTarget=1200`; DUNE therefore creates no aggregation level and its sequential direct
+coarse solver is the complete one-level AMG application for this bounded oracle. Independent
+outer residual norms agree at machine precision. No outer Krylov solve or production path was
+added.
+
+Next is Y2d6c only: regenerate/extend the v3 bounded-eight plus gas-five corpus and compare the
+coherent fixed stack with Flow's exact 20-pair BiCGSTAB contract. Preserve per-capture identity
+gating; an identity failure is `INCONCLUSIVE`, never a convergence refutation.
 
 ## 8. Y3 and Y4 end gates
 

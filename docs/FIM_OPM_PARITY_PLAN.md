@@ -1645,3 +1645,22 @@ partition nnz `[4752,2,4,6]`. The exact gas `10x10x3` proof has `904` rows, 300 
 rows, full nnz `5372`, and `[5360,3,2,7]`. Both recompute a normalized maximum absolute weight of
 one using the pinned 50-bar pressure scale. This closes the previously identified invalid-oracle
 gap; it says nothing yet about convergence. Next is only Y2d6b's seven component identities.
+
+### 15.19 Y2d6b result: separated Flow components satisfy all algebraic gates (2026-07-15)
+
+The test-only lifecycle oracle now applies standard-well elimination matrix-free while retaining
+`J_rr` as the fine-smoother matrix. On both v3 artifacts it proves: captured true-IMPES
+recomputation; matrix-free/explicit-Schur equality; reservoir plus exactly one well coarse term;
+fixed block-ILU0 on `J_rr`; fixed one-application coarse solve; fixed zero-pre/coarse/one-post CPR
+order; and an independent raw outer residual norm.
+
+The bounded identity metrics are outer/coarse disagreements `0/0`, well coarse norm
+`1.268891369e1`, fine/coarse/CPR linearity `2.10e-16/9.66e-15/1.97e-15`, and residual-norm
+disagreement `1.89e-16`. Gas gives `8.16e-19/5.87e-18`, nonzero well norm `1.355152165e-12`,
+linearity `1.30e-16/2.03e-15/4.42e-16`, and zero residual-norm disagreement.
+
+This also narrows the AMG scope using DUNE 2.11 source: 484 and 300 pressure rows are below
+`coarsenTarget=1200`, so neither proof artifact aggregates. The sequential direct coarse solver is
+the entire one-level AMG application and is a fixed map; no general AMG project is justified.
+Y2d6b remains algebraic infrastructure, not evidence of fewer Newton iterations. Next is Y2d6c's
+identity-gated 8+5 captured comparison under the exact 20-pair BiCGSTAB contract.

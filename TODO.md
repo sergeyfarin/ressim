@@ -156,10 +156,13 @@ below is retained as Bundle N/Y history; it must not override this current seque
   accumulation blocks, pinned true-IMPES weights, and `J_rr/J_rw/J_wr/J_ww`; parsing recomputes
   weights and reconstructs full `J` bit-for-bit. Bounded `22x22x1` and exact gas `10x10x3`
   first-system artifacts both pass the isolated payload oracle. No solver behavior changed.
-- [ ] **Next: Y2d6b component identities only.** Prove all seven design identities on one bounded
-  and one gas v3 artifact, including separated well effects, fixed `J_rr` paroverilu0, fixed
-  one-application coarse solve, complete CPR order, and independent outer residual. Do not run
-  the 13-capture verdict or add live routing until every identity passes.
+- [x] **Y2d6b component identities (2026-07-15): COMPLETE.** All seven pass on bounded and gas v3
+  artifacts: outer/Schur, exactly-once coarse well term, `J_rr` block ILU fixedness, one-level
+  direct coarse fixedness, full CPR order/linearity, and independent raw residual. Both pressure
+  systems are below Flow's `coarsenTarget=1200`, so no general AMG implementation is warranted.
+- [ ] **Next: Y2d6c identity-gated 8+5 corpus comparison.** Add exact 20-pair DUNE BiCGSTAB only
+  around the now-fixed component stack; regenerate/extend eight bounded plus five gas v3 captures
+  and report all prescribed counters/norms/current controls. No live routing or default change.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

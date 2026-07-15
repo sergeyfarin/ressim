@@ -23,6 +23,7 @@ use super::capture::{
     FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
     y2d6_capture_dir_from_env,
 };
+use super::flow_lifecycle::FlowComponentOracle;
 use super::gmres_block_jacobi::{
     self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
     solve_with_restriction_kind, solve_with_smoother_and_restriction,
@@ -101,6 +102,42 @@ fn solver_lab_validate_y2d6a_capture_payload() {
         flow.dune_istl_version,
         flow.pressure_scale_bar,
         max_weight,
+    );
+}
+
+/// Y2d6b's fail-closed component gate. This intentionally does not run outer BiCGSTAB or print a
+/// corpus verdict; it proves that the captured Flow-style operator and preconditioner pieces have
+/// the required algebraic identities before D6c is allowed to measure convergence.
+#[test]
+#[ignore]
+fn solver_lab_validate_y2d6b_component_identities() {
+    let dir = y2d6_capture_dir_from_env()
+        .expect("set FIM_Y2D6_CAPTURE_DIR to one isolated Y2d6 capture directory");
+    let systems = load_captures(&dir).expect("load and validate Y2d6 capture");
+    assert_eq!(systems.len(), 1, "Y2d6b requires one isolated capture");
+    let system = &systems[0];
+    let flow = system
+        .flow_lifecycle
+        .as_ref()
+        .expect("Y2d6b requires the v3 Flow lifecycle companion");
+    let layout = system.layout.expect("Y2d6b requires block layout");
+    let oracle = FlowComponentOracle::new(flow, layout).expect("build Y2d6b component oracle");
+    let metrics = oracle
+        .validate_identities(&system.rhs)
+        .expect("all seven Y2d6b component identities");
+    println!(
+        "Y2D6B-IDENTITIES reservoir_rows={} pressure_rows={} outer_delta={:.9e} coarse_delta={:.9e} well_coarse_norm={:.9e} fine_linearity={:.9e} coarse_linearity={:.9e} cpr_linearity={:.9e} outer_residual={:.9e} residual_norm_delta={:.9e} correction_max={:.9e}",
+        metrics.reservoir_rows,
+        metrics.pressure_rows,
+        metrics.outer_disagreement,
+        metrics.coarse_disagreement,
+        metrics.coarse_well_norm,
+        metrics.fine_linearity,
+        metrics.coarse_linearity,
+        metrics.cpr_linearity,
+        metrics.residual_norm,
+        metrics.residual_norm_disagreement,
+        metrics.correction_max_abs,
     );
 }
 

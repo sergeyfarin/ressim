@@ -183,11 +183,14 @@ the implementation `BLOCKED`, not partially complete.
 
 ## 4. Coupled 13-capture oracle contract
 
-Implementation status (2026-07-15): Gate D6a is complete. Capture v3 and its dedicated native
+Implementation status (2026-07-15): Gates D6a and D6b are complete. Capture v3 and its dedicated native
 first-system trigger preserve the raw local storage blocks and all four reservoir/well matrix
 partitions. Parser validation recomputes the pinned weights and reconstructs full `J` bit-for-bit.
 Proof artifacts pass for bounded `22x22x1` (`1456` rows, 484 cells, four well rows) and exact gas
-`10x10x3` (`904` rows, 300 cells, four well rows). Gate D6b is now the only authorized slice.
+`10x10x3` (`904` rows, 300 cells, four well rows). All seven component identities also pass on
+both. Their pressure systems are below `coarsenTarget=1200`, so the source-complete bounded AMG
+surface is one direct coarse level, not a new aggregation implementation. Gate D6c is now the only
+authorized slice.
 
 ### Gate D6a — payload sufficiency
 
@@ -255,17 +258,16 @@ independently verifies the returned raw residual.
 
 ## 6. Prescriptive handoff
 
-Gate D6a was completed on 2026-07-15. The next implementing agent must do only Gate D6b:
+Gates D6a and D6b were completed on 2026-07-15. The next implementing agent must do only Gate D6c:
 
-1. load only capture-v3 artifacts and fail closed on a missing/mismatched companion;
-2. prove the seven identities in Gate D6b individually, with named assertions and independent
-   residual calculations;
-3. use `J_rr` for the fine block factorization and apply the well effect separately in outer and
-   coarse paths; never factor the explicit Schur matrix as a substitute;
-4. keep every preconditioner component fixed within the test solve and prove repeatability plus
-   linearity before using BiCGSTAB;
-5. run the identities on one bounded and one gas artifact, update all evidence documents, and
-   commit before starting D6c.
+1. regenerate or extend exactly eight bounded and five gas artifacts in capture v3 format;
+2. run all seven D6b identities before each solve and stop that artifact as `INCONCLUSIVE` if any
+   identity fails;
+3. add the exact DUNE 2.11 BiCGSTAB recurrence with raw sequential two-norm, zero initial update,
+   strict `0.005` reduction, and at most twenty complete alpha/omega pairs;
+4. report half-step/full-pair/preconditioner counts, full/reservoir/recovered-well residuals,
+   finite status, direct delta, and current-production/true-FGMRES/Flow-stack results side by side;
+5. require bounded `8/8`, gas `5/5`, and no loss of an existing pass before considering D6d.
 
-Do not print corpus convergence counts, add a live option, or change production dispatch during
-D6b. A failed or missing identity is `INCONCLUSIVE`, not a refutation of Flow's complete lifecycle.
+Do not add a live option or change production dispatch during D6c. Do not extend the one-level
+coarse oracle into a general AMG project; these captures are below Flow's coarsening threshold.

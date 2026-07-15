@@ -3830,6 +3830,41 @@ This proves capture sufficiency only; it is not a convergence result. No solver 
 preconditioner, nonlinear acceptance, timestep control, or IMPES equation was changed. Next is
 Y2d6b: prove the seven component identities on both artifacts before any 13-capture verdict.
 
+### Bundle Y checkpoint Y2d6b: component identities (2026-07-15)
+
+Added a test-only component oracle around the v3 payload, without an outer Krylov solver or live
+dispatch. It forms the standard-well effect both matrix-free and as an independent explicit Schur
+matrix, builds the CPR restriction/prolongation from captured true-IMPES weights, factors the
+existing block ILU only on raw `J_rr`, and applies zero pre-sweeps, one coarse correction, then one
+post correction against the matrix-free outer residual.
+
+DUNE 2.11's hierarchy builder stops immediately when unknowns are at or below
+`coarsenTarget=1200`; its sequential coarse path then selects the direct solver. The captured
+pressure systems have only 484 and 300 rows. Therefore D6b stores one direct coarse factor map and
+tests its repeatability/linearity. This is the complete source-bounded AMG surface for these
+artifacts, not a partial aggregation port and not authorization for a general AMG project.
+
+All seven identities pass on both release artifacts:
+
+- bounded: outer/coarse disagreement `0/0`, coarse well norm `1.268891369e1`, fine/coarse/CPR
+  linearity `2.0997e-16/9.6570e-15/1.9729e-15`, independent residual-norm disagreement
+  `1.8882e-16`;
+- gas: outer/coarse disagreement `8.1572e-19/5.8715e-18`, nonzero coarse well norm
+  `1.355152165e-12`, linearity `1.3004e-16/2.0332e-15/4.4227e-16`, and zero independent
+  residual-norm disagreement.
+
+A self-contained coupled two-cell/two-well-unknown regression proves the same identity gate
+without external artifacts. These are algebraic correctness results only. Next is Y2d6c: build
+the exact raw-norm/twenty-pair DUNE BiCGSTAB recurrence around this fixed map, regenerate/extend
+the v3 corpus to bounded eight plus gas five, and compare without live routing.
+
+Validation on the final D6b tree: lifecycle unit/oracle `3/3`, AD/legacy structural parity
+`12/12`, DRSDT0, both locked SPE1 tests, curated FIM bucket (SPE1 `3/3`, wells `5/5`, depletion
+`3/3`), and Buckley-Leverett `3/3` pass. The shared bucket passes its first three public contracts
+and stops at the unchanged pre-existing closed-system `rate_history` assertion (`left=2`,
+`right=1`). `cargo check` passes; after gating parser-only helpers to tests it retains only the
+four pre-existing native dead-code warnings.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.
