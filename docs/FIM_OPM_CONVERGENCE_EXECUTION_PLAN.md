@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d6d coherent Flow-lifecycle live integration is complete and remains default-off;
-the next slice is a source-comparable nonlinear-trajectory divergence audit (2026-07-15)**. This document turns the evidence in
+Status: **Y2d8 confirms a coupled Flow/ResSim injector-RESV source lifecycle mismatch; G4a
+coherent lifecycle design is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -14,11 +14,16 @@ comparable Newton trajectory, without weakening convergence acceptance.
 
 Primary oracle: tracked `gas-rate-10x10x3` deck, six 0.25-day report steps.
 
-| Solver | Accepted substeps | Newton iterations | Cuts |
-| --- | ---: | --- | ---: |
-| OPM Flow 2026.04 | 6 | `7, 5, 4, 3, 4, 3` | 0 |
-| ResSim baseline `OpmAligned` | hundreds | many at the 20-iteration cap | many/fragmented |
-| ResSim lifecycle candidate (default-off) | 6 | `8, 5, 4, 4, 4, 4` | 0 |
+| Solver | Accepted substeps | Applied Newton updates | Residual evaluations | Cuts |
+| --- | ---: | --- | --- | ---: |
+| OPM Flow 2026.04 | 6 | `7,5,4,3,4,3` | `8,6,5,4,5,4` | 0 |
+| ResSim lifecycle candidate (default-off) | 6 | `7,4,3,3,3,3` | `8,5,4,4,4,4` | 0 |
+| ResSim + D6d Flow linear lifecycle | 6 | `9,4,4,3,3,3` | `10,5,5,4,4,4` | 0 |
+
+Flow `INFOSTEP.NewtIt` counts applied updates; `INFOITER` includes the initial evaluation and
+therefore has `NewtIt+1` rows. ResSim's `FimNewtonReport::newton_iterations=iteration+1` counts
+residual evaluations on these entry-converged steps. Older tables comparing those columns
+directly are superseded by Y2d7.
 
 The established causal chain is:
 
@@ -432,9 +437,9 @@ The completed lifecycle is a large, reproducible improvement and matches the pri
 substep count, but it fails the predeclared control non-regression gate. Keep
 `FIM_Y2B_RAW_SATURATION=1` native/default-off.
 
-| Case / flavor | Accepted substeps | Newton iterations / retries | Reference |
+| Case / flavor | Accepted substeps | Reported evaluations / retries | Reference |
 | --- | ---: | --- | --- |
-| gas `10x10x3`, six steps, candidate | **6** | `8,5,4,4,4,4`; zero retries | Flow: **6**, `7,5,4,3,4,3`, zero cuts |
+| gas `10x10x3`, six steps, candidate | **6** | evals `8,5,4,4,4,4`; updates `7,4,3,3,3,3`; zero retries | Flow: **6**, updates `7,5,4,3,4,3`, zero cuts |
 | gas `10x10x3`, six steps, Legacy | 14 | first step 4 substeps; 7 nonlinear retries total | candidate is materially closer |
 | gas `20x20x3`, first step, candidate | **1** | `8`; zero retries | Legacy 2; baseline `OpmAligned` 238 |
 | water `20x20x3`, candidate | 5 | `8,5,5,5,3`; 1 linear + 1 nonlinear retry | Legacy 8; baseline `OpmAligned` 24 |
@@ -795,13 +800,15 @@ before solving. Bounded improves production `0/8` to Flow-stack `8/8`; gas impro
 is lost, and full/recovered-well residuals are independently recomputed. D6d default-off live
 integration is authorized; promotion is not.
 
-**Y2d6d result (2026-07-15): COMPLETE, NOT PROMOTED.** The complete lifecycle is available behind
+**Y2d6d result (2026-07-15, accounting corrected by Y2d7): COMPLETE, NOT PROMOTED.** The complete lifecycle is available behind
 native-only `FIM_FLOW_LIFECYCLE=1`; default routing is unchanged. The live implementation retains
 matrix-free StandardWell elimination and assembles only `RSP` densely. A focused coupled-system
 test proves this efficient live construction reproduces the independent explicit-Schur oracle.
 
-Exact gas remains six substeps/no cuts but moves `8,5,4,4,4,4 -> 10,5,5,4,4,4` (Flow
-`7,5,4,3,4,3`), so it is farther from Flow by total Newton count. Heavy water remains seven
+Exact gas remains six substeps/no cuts. Its reported evaluation counts move
+`8,5,4,4,4,4 -> 10,5,5,4,4,4`; comparable applied updates move
+`7,4,3,3,3,3 -> 9,4,4,3,3,3` versus Flow `7,5,4,3,4,3`. D6d matches Flow's total 26 updates
+but has a slightly larger per-step L1 mismatch (`4` versus the prior path's `3`). Heavy water remains seven
 substeps versus Flow's one; its retry classification changes `0L/1N -> 0L/0N/1 mixed`, not its
 fragmentation. Y2 bounded controls remain three substeps (`22x22x1`: `11,4,6`; `23x23x1`:
 `10,5,5`), and Legacy guards retain four water substeps and fourteen total gas substeps. Runtime
@@ -810,10 +817,58 @@ Newton iteration; it is diagnostic infrastructure, not production AMG.
 
 Verdict: the offline correction-quality gain is real, but the complete Flow linear lifecycle is
 not the missing live nonlinear convergence factor. Do not tune BiCGSTAB/CPR or promote this path.
-Next capture comparable Flow/ResSim per-Newton CNV, MB, update maxima, primary-variable switches,
-and well residuals on exact gas, and identify the first iteration where the trajectories diverge.
-That audit must select G4, G5, or another sourced nonlinear semantic; Y3 cannot improve an exact
-gas case that already takes one uncut trial per report step.
+### Y2d7 result (2026-07-15): first divergence is injector-cell reservoir/well coupling
+
+Fresh Flow artifacts are preserved at `/tmp/ressim-y2d6e-40f366d/opm`; native ResSim traces are
+alongside them. At evaluation 0 the comparable convergence metrics match closely: oil CNV/MB are
+identical at `0.5109/1.667e-3`; gas CNV is `1.2457` versus `1.245`, and gas MB is `3.5069e-3`
+versus `3.470e-3`. The mapped initial residual is therefore a valid trajectory anchor.
+
+The first update is the first divergence. Flow evaluation 1 remains `WellStatus=CONV` with oil
+MB `1.8375e-3`. Default ResSim post-processes the already rate-satisfying injector from
+`q=-500` to `-526.85`, producing well/perforation residuals `5.75e-2/1.70e-2` and oil MB
+`4.311e-3`, binding at injector cell 0. Enabling the already-implemented nested well solve keeps
+`q=-500` and removes the well-row residual, but oil MB remains `4.311e-3`. Thus the relaxation
+heuristic explains the well-row distress but not the reservoir divergence.
+
+Verdict: **DIAGNOSTIC; G4 AUTHORIZED.** Audit the injector's reservoir component source
+contribution and Flow `StandardWell` rate/component conversion after the first `ds-max` update,
+with the nested well solve and Y2 primary lifecycle held fixed. G5 is not first: the binding
+divergence is at saturated injector cell 0, whose active primary remains `Sg`. Do not change
+acceptance, controller, linear lifecycle, or generic primary switching in that slice.
+
+### Y2d8 / G4 result (2026-07-15): RESV conversion is a coupled lifecycle mismatch
+
+`WELLSOURCE` is an observation-only native trace emitted beside the existing `WELLTRACE` and
+`WELLJAC` records. It calls the production source helper, records the three component rates,
+their dt-weighted residual contributions, and the assembled rate column; it does not alter an
+iterate or decision. Commands and traces are recorded in the worklog.
+
+The Flow source audit is decisive. `WellAssemble::assembleControlEqInj` uses
+`RateConverter::calcInjCoeff`, whose region-average pressure/temperature state is created at
+`beginReportStep` and refreshed only after an accepted timestep. For this deck's initial
+`p=200 bar`, PVDG gives `B_g=0.0065`, so the Flow RESV constraint maps a converged surface gas
+rate to `-500/0.0065 = -76,923.077 Sm3/d`. The conversion coefficient remains fixed throughout
+report step 1, and `StandardWell` inserts its surface component rate directly into the reservoir
+equations. Flow reports `WellStatus=CONV` at evaluation 1, making that controlled source the
+source-comparable state there.
+
+ResSim matches the controlled conversion at evaluation 0. After its first `ds-max` update, cell 0 has `p=242.679 bar` and
+local `B_g=0.005219627`; nested well solve correctly retains reservoir `q=-500`, but the current
+source helper reevaluates `q/B_g=-95,792.278 Sm3/d`. This is `18,869.202 Sm3/d` (24.5%) more gas
+than Flow's fixed RESV conversion, or `-4,717.300` extra in the dt-weighted gas row. Default
+relaxation additionally moves `q=-526.853` and reaches `-100,936.942 Sm3/d`; that secondary
+drift remains separately diagnosed. The source mismatch survives nested solve and therefore
+explains why eliminating the well-row residual did not remove the reservoir trajectory split.
+
+Verdict: **CONFIRMED G4 MECHANISM; NO PARTIAL FIX.** ResSim's rate unknown is a local reservoir
+connection rate, while Flow solves a surface component-rate unknown, constrains it with a
+report-step-frozen regional RESV coefficient, and forms connection/source rates in that same
+well-equation lifecycle. Freezing only ResSim's source coefficient would make its source disagree
+with its connection and control rows and is not a valid OPM port. G4a must first design a coherent
+default-off injector-RESV lifecycle and a source/rate/control oracle. G5, acceptance, controller,
+and linear routing remain out of scope. IMPES has no FIM well unknown tail; inspect it only if the
+chosen correction moves a shared source-conversion helper.
 
 ## 8. Y3 and Y4 end gates
 

@@ -168,15 +168,26 @@ below is retained as Bundle N/Y history; it must not override this current seque
   and `4/5`; all finish within one completed pair with finite independent full residuals and no
   lost pass. This is offline evidence, not default promotion.
 - [x] **Y2d6d default-off live integration (2026-07-15): COMPLETE, NOT PROMOTED.** Native-only
-  `FIM_FLOW_LIFECYCLE=1` wires the atomic stack and defaults off. Exact gas remains six/zero but
-  worsens `29 -> 32` total Newton iterations (Flow 26); heavy remains seven substeps (Flow one).
+  `FIM_FLOW_LIFECYCLE=1` wires the atomic stack and defaults off. Exact gas remains six/zero;
+  corrected applied-update counts are `23 -> 26` total (Flow 26), but per-step L1 mismatch moves
+  `3 -> 4`. Heavy remains seven substeps (Flow one).
   Y2 bounded and Legacy substep guards hold. Keep as diagnostic infrastructure only.
-- [ ] **Next: first nonlinear-trajectory divergence audit.** On exact gas, compare Flow and
-  ResSim per-Newton CNV/MB, update maxima, primary-variable switches, and well residuals. Locate
-  the first divergence before selecting G4/G5; do not tune the now-closed linear lifecycle.
-- [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
-  Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
-  plateau to well equations. The present `well@900` direct failure is not authorization.
+- [x] **Y2d7 first nonlinear-trajectory divergence audit (2026-07-15): DIAGNOSTIC.** Flow and
+  ResSim evaluation 0 CNV/MB nearly match. After one update, default ResSim moves the satisfied
+  injector rate `-500 -> -526.85` and creates well residuals; nested well solve removes that row
+  distress, but the `2.35x`-hot oil MB remains at saturated injector cell 0. Also corrected the
+  old evaluation-vs-update Newton-count comparison.
+- [x] **Y2d8 / G4 source-formulation audit (2026-07-15): CONFIRMED, DESIGN REQUIRED.** Flow
+  holds the RESV gas surface-to-reservoir coefficient fixed from the report-step region-average
+  state; ResSim reevaluates `q/bg(cell,current Newton state)`. After update 1, nested ResSim
+  injects `95,792` Sm3/d where Flow's fixed initial conversion is `76,923` Sm3/d (`+24.5%`),
+  independently of the already-separated default well relaxation drift. This is a coupled well
+  unknown/control/connection/source lifecycle, not authorization to freeze only a source term.
+- [ ] **Next: G4a coherent injector-RESV lifecycle design.** Source the exact Flow unknown,
+  control, connection, and report-step coefficient semantics; define a default-off test-only
+  coherent port and its oracle before changing production behavior. Hold Y2 primary lifecycle,
+  acceptance, controller, and linear routing fixed. Audit IMPES only if a shared source helper
+  is selected.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

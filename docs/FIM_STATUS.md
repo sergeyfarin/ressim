@@ -24,7 +24,7 @@ exact Flow oracle (`6` substeps, Newton `7/5/4/3/4/3`, zero cuts), isolated the 
 to the injector, refuted direct-vs-iterative linear quality as primary, and found a Newton update
 at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard projection.
 
-**Current decision frontier (2026-07-15):** the complete Y2 tagged primary-variable lifecycle is
+**Current decision frontier (2026-07-15, superseded detail in the execution plan):** the complete Y2 tagged primary-variable lifecycle is
 validated default-off and reaches the exact Flow gas substep count. Y2d5 proved that ResSim's
 historical fixed-left GMRES recurrence had masked that positive result: default-off true FGMRES
 removes every Y2 water linear retry, but exact-gas Newton counts remain above Flow and the heavy
@@ -33,7 +33,11 @@ lifecycle. The next bounded slice is Y2d6a capture payload sufficiency, because 
 lack storage derivatives for true-IMPES and conflate a material operator split: Flow factors fine
 ILU on reservoir `J_rr`, applies eliminated well effects in the outer operator, and adds well
 pressure contributions separately to CPRW; ResSim factors the explicit Schur matrix. See
-`docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`. No outer-only BiCGSTAB swap, partial AMG port,
+`docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`. Y2d7/Y2d8 then located a separate, sourced
+nonlinear mismatch: Flow holds the gas-RESV surface-to-reservoir conversion at its report-step
+regional state, while ResSim recomputes `q/Bg` from the current injector cell each Newton
+evaluation. The next bounded work is G4a's coherent surface-rate/control/connection/source
+lifecycle design, not a source-only freeze. No outer-only BiCGSTAB swap, partial AMG port,
 controller tuning, damping change, or acceptance widening is authorized.
 
 Use this file for:

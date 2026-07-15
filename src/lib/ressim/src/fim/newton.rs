@@ -18,7 +18,10 @@ use crate::fim::linear::{
     FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
-use crate::fim::wells::{build_well_topology, perforation_local_block, physical_well_control};
+use crate::fim::wells::{
+    build_well_topology, perforation_component_rates_sc_day, perforation_local_block,
+    physical_well_control,
+};
 use crate::timing::PerfTimer;
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -4848,6 +4851,52 @@ pub(crate) fn run_fim_timestep(
                     raw_dsw_cell,
                     sw_current + raw_dsw_cell,
                     cell_terms.join(" "),
+                ));
+                // Y2d8/G4 source-formulation audit: emit the exact component source passed to
+                // the connected reservoir cell, its dt-weighted residual contribution, and the
+                // assembled q-column. This is observation-only and deliberately shares the
+                // production `perforation_component_rates_sc_day` helper, so the trace cannot
+                // drift into a re-derived source formula. For the tracked RESV gas injector,
+                // the expected sole nonzero component is q/bg and its residual source is
+                // q*dt/bg, the same surface-component conversion used by Flow StandardWell.
+                let component_rates =
+                    perforation_component_rates_sc_day(sim, &state, &topology, perf_idx);
+                let derived = state.derive_cell(sim, cell_idx);
+                let q = state.perforation_rates_m3_day[perf_idx];
+                let source_residual: [f64; 3] = component_rates.map(|rate| rate * dt_days);
+                let source_dq: [f64; 3] = [
+                    assembly
+                        .jacobian
+                        .get(equation_offset(cell_idx, 0), q_col)
+                        .copied()
+                        .unwrap_or(0.0),
+                    assembly
+                        .jacobian
+                        .get(equation_offset(cell_idx, 1), q_col)
+                        .copied()
+                        .unwrap_or(0.0),
+                    assembly
+                        .jacobian
+                        .get(equation_offset(cell_idx, 2), q_col)
+                        .copied()
+                        .unwrap_or(0.0),
+                ];
+                crate::fim::trace_sink::write_line(&format!(
+                    "WELLSOURCE iter={:>2} perf={} cell={} inj={} q={:.9e} p={:.9e} sw={:.9e} sg={:.9e} rs={:.9e} bo={:.9e} bg={:.9e} comp_rate_sc_day={:?} source_residual={:?} dres_dq={:?}",
+                    iteration,
+                    perf_idx,
+                    cell_idx,
+                    perforation.injector,
+                    q,
+                    state.cells[cell_idx].pressure_bar,
+                    state.cells[cell_idx].sw,
+                    derived.sg,
+                    derived.rs,
+                    derived.bo,
+                    derived.bg,
+                    component_rates,
+                    source_residual,
+                    source_dq,
                 ));
                 if let Some(water_breakdown) = cell_equation_residual_breakdown(
                     sim,

@@ -3920,9 +3920,11 @@ exactly-once CPRW well coarse contribution, one-level direct pressure solve, and
 BiCGSTAB recurrence. Only the pressure coarse matrix is dense. A focused coupled-system test
 proves the live construction matches the independent explicit-Schur oracle.
 
-Committed-tree baseline before the change: exact gas six/zero with Newton `8,5,4,4,4,4`; heavy
-with the complete Y2 lifecycle seven substeps and `0L/1N`. Live Flow lifecycle: exact gas remains
-six/zero but Newton becomes `10,5,5,4,4,4`; heavy remains seven with one mixed retry. Y2 bounded
+Committed-tree baseline before the change: exact gas six/zero with reported residual evaluations
+`8,5,4,4,4,4`; heavy with the complete Y2 lifecycle seven substeps and `0L/1N`. Live Flow
+lifecycle: exact gas remains six/zero but evaluations become `10,5,5,4,4,4`; heavy remains seven
+with one mixed retry. Y2d7 later established the comparable applied-update sequences as
+`7,4,3,3,3,3 -> 9,4,4,3,3,3`, versus Flow `7,5,4,3,4,3`. Y2 bounded
 controls remain three substeps (`22x22x1` `11,4,6`; `23x23x1` `10,5,5`), Legacy `22x22x1`
 remains four and Legacy exact gas remains fourteen total. Heavy runtime rises roughly
 `0.54s -> 3.47s` because this bounded oracle refactors a dense coarse matrix every iteration.
@@ -3937,6 +3939,99 @@ and depletion `3/3`, Buckley-Leverett `3/3`, rebuilt-wasm Legacy control matrix,
 `validate:product` (typecheck, lint, frontend `648/648`, IMPES bucket, wasm and Vite build) pass.
 The shared bucket again passes its first three contracts and stops at the unchanged closed-system
 `rate_history` assertion (`left=2`, `right=1`).
+
+### Bundle Y checkpoint Y2d7: nonlinear trajectory and count-accounting audit (2026-07-15)
+
+Scope: diagnostics plus test-driver access to the existing nested-well option; no production
+default or solver behavior changed. Commit under test before the driver plumbing was `40f366d`.
+Fresh Flow was generated with:
+
+```text
+bash scripts/opm-ressim-compare.sh --opm-only --out-dir /tmp/ressim-y2d6e-40f366d
+```
+
+The fixture check passes. `CASE.INFOSTEP` reports applied updates `7,5,4,3,4,3`, while each
+report step has one additional `CASE.INFOITER` residual row. ResSim reports `iteration+1` when
+entry convergence is observed, so its historical `8,5,4,4,4,4` sequence is residual evaluations,
+not comparable applied updates. Trace entry indices give Y2 updates `7,4,3,3,3,3` and D6d
+updates `9,4,4,3,3,3`. Flow and D6d both total 26; per-step L1 mismatch is 3 for Y2 and 4 for
+D6d. This supersedes the earlier `29 -> 32 versus 26` comparison.
+
+The trajectory anchor is strong. At evaluation 0, Flow/ResSim oil CNV/MB are
+`0.5109/1.667e-3`; gas CNV is `1.2457/1.245`, and gas MB is
+`3.5069e-3/3.470e-3`. After update 1, Flow remains `WellStatus=CONV` with oil MB
+`1.8375e-3`. Default ResSim moves injection `-500 -> -526.8532`, produces
+well/perforation residuals about `5.747e-2/1.699e-2`, and oil MB rises to `4.311e-3`, binding at
+saturated injector cell 0.
+
+The native repro driver now accepts `FIM_NESTED_WELL_SOLVE=1` and prints the selected state. On
+the same first report step, nested solve keeps injection at `-499.999999999`, reduces the well
+residual to roundoff and the perforation residual to `1.88e-6`, but leaves oil MB exactly
+`4.311e-3`. It accepts after 6 applied updates versus Flow's 7. Across six reports its applied
+updates are `6,5,3,3,3,3`; this redistribution is diagnostic, not a promotion claim.
+
+Verdict: **DIAGNOSTIC; G4 injector reservoir/well source formulation is next.** Hold nested solve,
+Y2 state lifecycle, linear routing, acceptance, and controller fixed. Compare component source
+and rate/unit conversion at injector cell 0 after the first `ds-max` update against Flow
+`StandardWell`. G5 is not first because that binding cell remains saturated with active `Sg`.
+IMPES has no equivalent nested Newton well solve; audit it only if G4 locates a defect in shared
+well/component source physics.
+
+Final focused gates on the edited tree: the exact one-step repro passes with
+`nested_well_solve=false`, one accepted substep, 8 residual evaluations and zero retries; the same
+repro with `FIM_NESTED_WELL_SOLVE=1` passes with one accepted substep, 7 residual evaluations and
+zero retries. All `fim::wells_inner::tests` pass (`12/12`). `cargo fmt` was run; unrelated
+format-only changes in already-existing Rust files were excluded from this slice.
+
+### Bundle Y checkpoint Y2d8/G4: report-step-frozen RESV injection conversion (2026-07-15)
+
+Scope: source audit and native trace instrumentation only; no production source, rate, control,
+or acceptance behavior changed. The `WELLSOURCE` line uses the live
+`perforation_component_rates_sc_day` helper and records component rate, dt-weighted source, and
+assembled `d(residual)/dq`; therefore it is an assembler-consistent observation rather than a
+second formula.
+
+The exact repro commands were:
+
+```text
+FIM_TRACE_FILE=/tmp/ressim-y2d8-default.trace FIM_TRACE_DT_BELOW=1 \
+FIM_Y1J_GRID=10 FIM_Y1J_FLAVOR=opm FIM_Y1J_STEPS=1 FIM_Y2B_RAW_SATURATION=1 \
+cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+fim::timestep::phase5_repro::repro_gas_rate_10x10x3_y1j -- --ignored --nocapture --exact
+
+FIM_TRACE_FILE=/tmp/ressim-y2d8-nested.trace FIM_TRACE_DT_BELOW=1 \
+FIM_Y1J_GRID=10 FIM_Y1J_FLAVOR=opm FIM_Y1J_STEPS=1 FIM_Y2B_RAW_SATURATION=1 \
+FIM_NESTED_WELL_SOLVE=1 cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+fim::timestep::phase5_repro::repro_gas_rate_10x10x3_y1j -- --ignored --nocapture --exact
+```
+
+Both pass. At evaluation 0, `q=-500`, `B_g=0.0065`, and source is
+`-76,923.076923 Sm3/d` (`-19,230.769231` in the 0.25-day gas row). After the first update,
+the nested trace holds q at `-500` but has cell-0 `p=242.6790872`, `B_g=0.005219627384`, and
+source `-95,792.278488 Sm3/d` (`-23,948.069622` in the row). Default also changes q to
+`-526.8532245`, giving `-100,936.941616 Sm3/d`. The assembled gas `dres/dq` changes from
+`38.46153846` to `47.89613924`, exactly `dt/B_g`.
+
+Flow source inspection pins the contrasting semantics: `RateConverter::defineState` creates the
+regional average at `BlackoilWellModel::beginReportStep`; `WellAssemble::assembleControlEqInj`
+uses the resulting `calcInjCoeff` for RESV control; `StandardWell` supplies its surface component
+rate to `BlackoilWellModel::addReservoirSourceTerms`. The regional coefficient is refreshed after
+an accepted step, not per Newton evaluation. With the deck's uniform initial 200-bar state,
+Flow therefore retains the `B_g=0.0065` conversion during report step 1; its evaluation-1
+`WellStatus=CONV` maps the 500 m3/d target to `-76,923.076923 Sm3/d`. The
+`18,869.201565 Sm3/d` nested discrepancy is a valid source-comparable oracle and remains after
+the separate well-row relaxation is removed.
+
+Verdict: **CONFIRMED G4 LIFECYCLE MISMATCH; DESIGN REQUIRED.** Do not apply a source-only frozen
+`B_g` patch. Flow's surface component unknown, frozen regional RESV coefficient, connection
+equation, and source term are coupled. Next write G4a's matched/held/missing dependency table and
+a default-off coherent probe/oracle. No IMPES change is implied yet.
+
+Focused validation: both exact native replays pass (default: 8 residual evaluations; nested: 7),
+`fim::wells_ad::tests::parity_injector_rate_controlled_reservoir_target` passes, the gas-injector
+source-pressure finite-difference test passes, and `fim::wells_inner::tests` passes `12/12`.
+The locked FIM baseline passes `3/3` (DRSDT0 plus both SPE1 smokes), and `assembly_ad` parity
+passes `12/12`.
 
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 

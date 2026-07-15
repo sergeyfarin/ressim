@@ -270,14 +270,16 @@ independently verifies the returned raw residual.
 
 The atomic stack is now wired behind native-only `FIM_FLOW_LIFECYCLE=1`, default false. The live
 path keeps the reservoir Schur action matrix-free, builds the pressure coarse matrix directly,
-and is regression-compared with the explicit-Schur test oracle. Exact gas stays at six uncut
-substeps but regresses from 29 to 32 Newton iterations (Flow 26); heavy stays seven substeps
-(Flow one). Bounded Y2 and Legacy substep guards do not regress. Therefore D6d is complete but not
+and is regression-compared with the explicit-Schur test oracle. Y2d7 corrected the accounting:
+exact gas stays at six uncut substeps and moves from `7,4,3,3,3,3` to `9,4,4,3,3,3` applied
+updates. Both D6d and Flow total 26, although D6d's per-step L1 mismatch is 4 versus 3 for the
+previous path. Heavy stays seven substeps (Flow one). Bounded Y2 and Legacy substep guards do not regress. Therefore D6d is complete but not
 promotable, and this bounded dense-coarse implementation remains diagnostic infrastructure.
 
-The next slice must not tune this linear path. Capture comparable nonlinear trajectories from
-Flow and ResSim and locate the first divergence in CNV/MB, update maxima, primary-variable state,
-or well residuals. Use that evidence to select a sourced G4/G5 nonlinear semantic.
+Y2d7 located the first divergence after update 1 at the injector-cell component source: nested
+well solve removes the well-row distress but not the `2.35x` oil MB gap. The next slice must not
+tune this linear path; it must execute the bounded G4 injector reservoir/well source audit while
+holding nested well solve and Y2 primary lifecycle fixed.
 
 ### Historical D6d handoff contract
 

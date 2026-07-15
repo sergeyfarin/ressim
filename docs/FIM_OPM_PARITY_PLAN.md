@@ -1385,7 +1385,8 @@ capture and backend-neutral correction/reduction comparison; Y2c remains blocked
 ### 15.9 Y2b3c result: exact capture is full-rank; first rung reaches OPM scale (2026-07-14)
 
 The completed lifecycle accepts the full `0.25` day capped first rung on clean commit `1a6460d`
-with zero retries and 8 reported Newton iterations; Flow needs 7. This supersedes the old
+with zero retries and 8 reported residual evaluations (7 applied updates); Flow applies 7
+updates and records 8 `INFOITER` evaluations. This supersedes the old
 five-retry `0.000978384825` baseline and the incomplete raw probe's three-retry `0.00898425`
 result for this scoped behavior comparison.
 
@@ -1403,8 +1404,9 @@ physics gates on the final committed revision.
 ### 15.10 Y2c result: gas parity reached, control gate blocks promotion (2026-07-14)
 
 On the complete six-step gas target the lifecycle candidate accepts exactly one substep per report
-step with Newton counts `8,5,4,4,4,4` and zero retries. Fresh Flow 2026.04 remains
-`7,5,4,3,4,3`, also with one substep per report step. Legacy requires 14 accepted substeps. On a
+step with residual-evaluation counts `8,5,4,4,4,4` (applied updates `7,4,3,3,3,3`) and zero
+retries. Fresh Flow 2026.04 applies `7,5,4,3,4,3` updates and records one extra `INFOITER`
+evaluation per step, also with one substep per report step. Legacy requires 14 accepted substeps. On a
 larger `20x20x3` gas first step the candidate needs one substep/8 Newton, versus Legacy's two and
 baseline `OpmAligned`'s 238. This validates the lifecycle as a real OPM-alignment mechanism rather
 than another favorable single-rung artifact.
@@ -1703,14 +1705,61 @@ BiCGSTAB correction and residual.
 
 | Case | Previous Y2 path | Flow lifecycle live | Flow / Legacy control |
 | --- | --- | --- | --- |
-| exact gas, six steps | 6, `8,5,4,4,4,4` | 6, `10,5,5,4,4,4` | Flow 6, `7,5,4,3,4,3` |
+| exact gas, six steps | 6, evals `8,5,4,4,4,4`; updates `7,4,3,3,3,3` | 6, evals `10,5,5,4,4,4`; updates `9,4,4,3,3,3` | Flow 6, updates `7,5,4,3,4,3` |
 | heavy water | 7, `0L/1N` | 7, `0L/0N/1 mixed` | Flow 1/11 Newton |
 | Y2 water `22x22x1` | 3 | 3, `11,4,6`, one mixed retry | Legacy 4 |
 | Y2 water `23x23x1` | 3 | 3, `10,5,5`, one mixed retry | Legacy 4 |
 | Legacy exact gas | 14 total | 14 total | guard unchanged |
 
 The result is neither an invalid-oracle refutation nor a promotion: D6a-c proved the linear
-mechanism, while D6d proves that mechanism is not the missing live convergence factor. Exact gas
-moves farther from Flow by total Newton count and heavy fragmentation is unchanged. Keep the
-bounded native path only as diagnostic infrastructure. Next identify the first source-comparable
-nonlinear trajectory divergence; do not tune BiCGSTAB/CPR or start Y3 on a gas case with no cuts.
+mechanism, while D6d proves that mechanism is not the missing live convergence factor. Y2d7
+corrected the accounting: D6d matches Flow's total 26 applied updates, but its per-step L1 distance
+from Flow is 4 versus 3 for the previous path. Heavy fragmentation is unchanged. Keep the bounded
+native path only as diagnostic infrastructure; do not tune BiCGSTAB/CPR or start Y3 on a gas case
+with no cuts.
+
+### 15.23 Y2d7 result: first divergence selects injector source formulation (2026-07-15)
+
+Fresh Flow output at `/tmp/ressim-y2d6e-40f366d/opm` and native traces beside it establish a
+source-comparable initial anchor. Flow/ResSim evaluation-0 oil CNV/MB are both
+`0.5109/1.667e-3`; gas CNV is `1.2457/1.245`, and gas MB is
+`3.5069e-3/3.470e-3`. Flow `INFOSTEP.NewtIt` counts applied updates while ResSim's report counts
+the entry residual evaluation that observes convergence. Therefore the comparable update
+sequences are Flow `7,5,4,3,4,3`, Y2 `7,4,3,3,3,3`, and D6d `9,4,4,3,3,3`.
+
+The first update is the first material divergence. Flow evaluation 1 keeps the well converged and
+has oil MB `1.8375e-3`. Default ResSim changes the satisfied injector rate from `-500` to
+`-526.85`, creates well/perforation residuals `5.75e-2/1.70e-2`, and reaches oil MB
+`4.311e-3`, binding at injector cell 0. The existing nested-well path holds `q=-500` and removes
+the well-row residual, yet oil MB remains `4.311e-3`. Thus the post-update well relaxation is a
+real secondary defect, but it does not explain the reservoir component imbalance.
+
+Verdict: **DIAGNOSTIC; G4 AUTHORIZED.** Compare the injector-cell component source and rate/unit
+conversion after the first `ds-max` update with Flow `StandardWell`, holding nested well solve and
+the Y2 primary lifecycle fixed. Do not alter G5 switching, convergence acceptance, timestep
+control, or the closed linear lifecycle. The binding cell is saturated and retains `Sg`, so G5 is
+not the first evidenced branch. IMPES has no nonlinear well-tail solve, but any shared component
+source/rate conversion defect found in G4 must be audited in its shared well physics.
+
+### 15.24 Y2d8/G4 result: Flow freezes RESV conversion within the report step (2026-07-15)
+
+The traced deck is a gas `RESV` injector at `500 m3/d`, not a surface-rate case. Flow's
+`WellAssemble::assembleControlEqInj` calls `RateConverter::calcInjCoeff`; `RateConverter` builds
+the hydrocarbon-pore-volume-weighted regional state at `beginReportStep` and refreshes it after
+an accepted timestep. Thus report-step-1 `B_g=0.0065` gives the fixed RESV conversion: a
+converged `500 m3/d` control maps to `-500/B_g=-76,923.077 Sm3/d`. `StandardWell`'s
+perforation assembly then supplies its surface component rate to the reservoir source equations;
+Flow's evaluation-1 `WellStatus=CONV` makes this a comparable controlled state.
+
+The new observation-only `WELLSOURCE` trace takes its values from ResSim's live production source
+helper. At evaluation 0 it agrees exactly: `q=-500`, `B_g=0.0065`, source `-76,923.077` Sm3/d.
+At evaluation 1, cell 0 is `p=242.679`, `B_g=0.005219627`. Nested solve still holds `q=-500`,
+but ResSim recomputes source as `q/B_g=-95,792.278` Sm3/d, `24.5%` above Flow (`-4,717.300` in
+the 0.25-day residual row). The default relaxation adds its independent q drift and produces
+`-100,936.942` Sm3/d.
+
+This **CONFIRMS** the source-formulation mechanism, but is not a license to freeze a single term:
+Flow's surface component-rate primary, report-step coefficient, RESV control, connection law,
+and reservoir source form one lifecycle. ResSim's q is currently a local reservoir connection
+rate. A source-only freeze would deliberately make its three rows inconsistent. Next is G4a's
+coherent default-off design/oracle; G5 and solver-policy levers remain held fixed.

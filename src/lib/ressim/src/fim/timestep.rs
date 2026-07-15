@@ -3384,12 +3384,14 @@ mod phase5_repro {
         sim.set_fim_opm_aligned_nonlinear(flavor == "opm");
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
+        let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
+        sim.set_fim_nested_well_solve(nested_well_solve);
         sim.set_fim_force_direct_linear(std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some());
 
         let start = Instant::now();
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         println!(
-            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} force_direct_linear={force_direct_linear}"
+            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear}"
         );
 
         for step_idx in 0..step_count {
