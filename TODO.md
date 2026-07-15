@@ -183,11 +183,17 @@ below is retained as Bundle N/Y history; it must not override this current seque
   injects `95,792` Sm3/d where Flow's fixed initial conversion is `76,923` Sm3/d (`+24.5%`),
   independently of the already-separated default well relaxation drift. This is a coupled well
   unknown/control/connection/source lifecycle, not authorization to freeze only a source term.
-- [ ] **Next: G4a coherent injector-RESV lifecycle design.** Source the exact Flow unknown,
-  control, connection, and report-step coefficient semantics; define a default-off test-only
-  coherent port and its oracle before changing production behavior. Hold Y2 primary lifecycle,
-  acceptance, controller, and linear routing fixed. Audit IMPES only if a shared source helper
-  is selected.
+- [x] **G4a coherent injector-RESV lifecycle design — DONE 2026-07-15.**
+  `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` pins the one-perf gas-RESV Flow lifecycle:
+  surface primary `u`, report-step regional `B_g,ref` control, current-state connection/source
+  rate, and their converged equality to source `-u`. It rejects a source-only freeze and holds
+  retry lifetime, aggregation, active BHP switching, and q-coordinate nested solve out of the
+  first probe. No behavior changed.
+- [ ] **Next: G4b0 RESV context/control representation only.** Add an explicit RESV control kind
+  and immutable default-off report-step conversion context, plus unsupported-case guards and unit
+  tests. Do not route assembly/source/update, enable nested solve, change IMPES, or run a
+  convergence comparison. Hold Y2 primary lifecycle, acceptance, controller, and linear routing
+  fixed.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

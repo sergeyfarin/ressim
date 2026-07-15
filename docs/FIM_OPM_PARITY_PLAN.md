@@ -1763,3 +1763,17 @@ Flow's surface component-rate primary, report-step coefficient, RESV control, co
 and reservoir source form one lifecycle. ResSim's q is currently a local reservoir connection
 rate. A source-only freeze would deliberately make its three rows inconsistent. Next is G4a's
 coherent default-off design/oracle; G5 and solver-policy levers remain held fixed.
+
+### 15.25 G4a result: required single-perf surface-rate lifecycle (2026-07-15)
+
+The prescriptive design is `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md`. For the one-perf gas
+RESV injector, the Flow-compatible primary is positive surface rate `u`, with
+`R_perf=-q_res/B_g(cell)-u`, `R_ctrl=B_g,ref*u-Q_resv`, and source `q_res/B_g(cell)`.
+`B_g,ref` is report-step regional; current `B_g(cell)` remains in connection and source
+derivatives. At evaluation 1 the converged perforation makes source `-u=-76,923.076923 Sm3/day`
+even while local `B_g=0.005219627384`.
+
+The source, control, connection, primary update, diagnostics, AD/legacy parity, and local-solve
+coordinates are coupled. q-coordinate nested solve, multi-perf allocation, BHP active switching,
+retry lifetime, and IMPES are explicitly outside G4b0. The next commit is context/control
+representation plus unit gates only; an assembly or convergence run before those gates is invalid.

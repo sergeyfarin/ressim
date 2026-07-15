@@ -870,6 +870,29 @@ default-off injector-RESV lifecycle and a source/rate/control oracle. G5, accept
 and linear routing remain out of scope. IMPES has no FIM well unknown tail; inspect it only if the
 chosen correction moves a shared source-conversion helper.
 
+### G4a result (2026-07-15): coherent single-perf injector-RESV design complete
+
+`docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` records the source pin, dependency table, exact
+single-perf equations, implementation staging, and decision oracle. Current ResSim q is a
+negative local reservoir connection rate while Flow `WQTotal` is a positive well surface rate;
+the default-off probe therefore needs all three rows together:
+
+```text
+R_perf = -q_res(p,bhp)/B_g(cell) - u
+R_ctrl = B_g,ref * u - Q_resv
+S_gas  = q_res(p,bhp)/B_g(cell)
+```
+
+`B_g,ref` is report-step regional; current `B_g(cell)` remains in the connection **and source**.
+At a converged perforation `-q_res/B_g=u`, so the source is `-u`; it is not assumed equal during
+an arbitrary Newton evaluation. The probe is one-perf gas injection with no active BHP constraint
+or retry. Existing q-coordinate nested solve is deliberately incompatible until re-derived in u
+coordinates.
+
+**Next authorized slice: G4b0 only.** Add the explicit RESV control kind and immutable,
+default-off report-step reference context with unsupported-case rejection and unit tests. Do not
+route assembly, freeze a source, change IMPES, or run a convergence comparison in that slice.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

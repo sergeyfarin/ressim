@@ -4033,6 +4033,39 @@ source-pressure finite-difference test passes, and `fim::wells_inner::tests` pas
 The locked FIM baseline passes `3/3` (DRSDT0 plus both SPE1 smokes), and `assembly_ad` parity
 passes `12/12`.
 
+### Bundle Y checkpoint G4a: coherent Flow gas-RESV injector design (2026-07-15)
+
+Scope: source/design closeout only. No Rust solver path, parsed deck behaviour, IMPES path,
+controller, acceptance rule, or convergence measurement changed.
+
+The prescriptive design is `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md`. It resolves a
+representation issue that could otherwise create a misleading partial patch. ResSim q is a
+negative local reservoir connection rate, constrained by `q-q_connection_res(p,bhp)=0`, with
+source `q/B_g(cell)`. Flow's injector `WQTotal` is positive surface gas rate, RESV control is
+`B_g,ref*WQTotal-Q_resv=0`, and the reservoir source is the same standard-condition rate with
+reservoir sign. The current-state connection calculation still depends on local properties.
+
+For the exact pure-gas one-perf case the coherent probe is:
+
+```text
+R_perf = -q_res(p,bhp)/B_g(cell) - u
+R_ctrl = B_g,ref*u - Q_resv
+S_gas  = q_res(p,bhp)/B_g(cell)
+```
+
+At observed evaluation 1, `B_g,ref=0.0065` and `u=76,923.076923 Sm3/day`, so source must remain
+`-76,923.076923 Sm3/day` because the perforation row is converged (`-q_res/B_g=u`). Local
+`B_g(cell)=0.005219627384` belongs in both current connection/source derivatives, not a frozen
+source coefficient. The design holds Flow retry lifetime, multi-perf allocation, active BHP
+switching, and the existing q-coordinate nested local solve outside the probe. Calling that
+nested solve after changing only global rows would recreate the independently-derived-row defect
+Bundle W was built to avoid. IMPES stays out of scope because this is a FIM-tail representation
+change.
+
+**Next authorized checkpoint: G4b0 only.** Add explicit RESV control representation and immutable,
+default-off report-step reference context with strict unsupported-case guards and unit tests. Do
+not route assembly, freeze a source, or run a live convergence comparison in that commit.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.
