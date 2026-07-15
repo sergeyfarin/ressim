@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Mechanism validated/default-off; Y2d3 localizes a separate Krylov/preconditioner contract; Y2d4 is next (2026-07-15)**
+Status: **Mechanism validated/default-off; Y2d4 confirms separate true-FGMRES correction; Y2d5 is next (2026-07-15)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -299,8 +299,13 @@ input-dependent iterative CPR map. Exact dense pressure inversion clears bounded
 iteration, while a `1e-10` iterative coarse tolerance leaves the restart behavior unchanged.
 This is a separate linear-algorithm contract and does not refute or promote the lifecycle.
 
-The next slice is **Y2d4**, execution-plan §7.5: implement only a test-only true
-right-preconditioned flexible-GMRES oracle with stored preconditioned directions and replay both
-corpora at budget 30. Hold this lifecycle fixed. Do not open G4, widen acceptance, tune timestep
+Y2d4's true right-preconditioned flexible-GMRES oracle resolves bounded `8/8` in two iterations
+and gas `5/5` in one to three with the lifecycle and every CPR component fixed. This confirms a
+separate linear-algorithm correction; it does not refute or promote the primary-variable
+lifecycle. The exact Flow reference instead uses BiCGSTAB/true-IMPES CPRW/AMG.
+
+The next slice is **Y2d5**, execution-plan §7.6: integrate only the validated recurrence behind a
+default-off production option, re-prove the captured corpora, then run capped live gates before
+the full matrix. Hold this lifecycle fixed. Do not open G4, widen acceptance, tune timestep
 control, change wells, combine solver levers, raise the production budget, promote dense pressure
-solving, or promote Sparse LU while isolating the mechanism.
+solving, or claim literal OPM linear parity from the flexible-GMRES result.

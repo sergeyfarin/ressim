@@ -40,7 +40,8 @@ use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value}
 #[cfg(test)]
 use super::gmres_block_jacobi::{
     solve_with_smoother_and_restriction, solve_with_smoother_restriction_and_history,
-    CprFineSmootherKind, CprKrylovIterationSnapshot, CprPressureRestrictionKind,
+    solve_with_true_flexible_smoother_and_restriction, CprFineSmootherKind,
+    CprKrylovIterationSnapshot, CprPressureRestrictionKind, FlexibleGmresIterationSnapshot,
 };
 use super::{
     solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
@@ -322,6 +323,46 @@ pub(super) fn solve_with_well_elimination_configuration_and_history(
     };
 
     let (reduced_report, mut history) = solve_with_smoother_restriction_and_history(
+        &elimination.reduced_jacobian,
+        &elimination.reduced_rhs,
+        options,
+        Some(elimination.reduced_layout),
+        smoother_kind,
+        restriction_kind,
+        elimination.reduced_equation_scaling.as_ref(),
+    );
+    for snapshot in &mut history {
+        snapshot.solution = recover_full_solution(rhs, &elimination, &snapshot.solution);
+        snapshot.true_residual_norm = (rhs - &cs_mat_mul_vec(jacobian, &snapshot.solution)).norm();
+    }
+    let report = recover_full_system_report(jacobian, rhs, options, elimination, reduced_report);
+    (report, history)
+}
+
+/// Y2d4 production-faithful wrapper for the test-only true flexible-GMRES oracle.
+#[cfg(test)]
+pub(super) fn solve_with_well_elimination_true_flexible(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: FimLinearBlockLayout,
+    equation_scaling: Option<&EquationScaling>,
+    smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+) -> (FimLinearSolveReport, Vec<FlexibleGmresIterationSnapshot>) {
+    let Some(elimination) = eliminate_wells(jacobian, rhs, layout, equation_scaling) else {
+        return solve_with_true_flexible_smoother_and_restriction(
+            jacobian,
+            rhs,
+            options,
+            Some(layout),
+            smoother_kind,
+            restriction_kind,
+            equation_scaling,
+        );
+    };
+
+    let (reduced_report, mut history) = solve_with_true_flexible_smoother_and_restriction(
         &elimination.reduced_jacobian,
         &elimination.reduced_rhs,
         options,

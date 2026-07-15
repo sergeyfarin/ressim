@@ -1459,6 +1459,161 @@ fn solver_lab_audit_restart_boundary_history() {
     );
 }
 
+/// Y2d4 offline oracle: compare the production fixed-left recurrence with a mathematically true
+/// right-preconditioned flexible-GMRES recurrence while holding every CPR component and the
+/// effective 30-iteration budget fixed.
+#[test]
+#[ignore]
+fn solver_lab_compare_true_flexible_gmres() {
+    let dir = capture_dir_from_env().expect("set FIM_CAPTURE_DIR to a Y2d4 capture corpus");
+    let corpus = std::env::var("FIM_Y2D1_CORPUS").unwrap_or_else(|_| "unspecified".to_string());
+    let systems = load_captures(&dir).expect("load Y2d4 capture corpus");
+    assert!(!systems.is_empty(), "Y2d4 corpus must not be empty");
+
+    // Production's current loop promotes `max_iterations=20` to the restart length (`30`). Keep
+    // that effective budget explicit in the independent oracle rather than inheriting the old
+    // loop's accidental `max(max_iterations, restart)` behavior.
+    let options = FimLinearSolveOptions {
+        max_iterations: 30,
+        ..FimLinearSolveOptions::default()
+    };
+    assert_eq!(options.restart, 30);
+    assert_eq!(options.max_iterations, 30);
+    let mut production_converged = 0usize;
+    let mut flexible_converged = 0usize;
+    let mut flexible_iterations = Vec::new();
+    let mut flexible_reductions = Vec::new();
+    let mut flexible_direct_deltas = Vec::new();
+    let mut maximum_estimate_disagreement = 0.0_f64;
+
+    for (capture_idx, system) in systems.iter().enumerate() {
+        let layout = system.layout.expect("Y2d4 capture requires block layout");
+        let rhs_norm = system.rhs.norm().max(1e-30);
+        let production = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &options,
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        production_converged += usize::from(production.converged);
+
+        let direct = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+        assert!(direct.converged && direct.solution.iter().all(|value| value.is_finite()));
+        assert!(direct_residual.norm() / rhs_norm < 1e-10);
+
+        let (flexible, history) = well_schur::solve_with_well_elimination_true_flexible(
+            &system.jacobian,
+            &system.rhs,
+            &options,
+            layout,
+            system.equation_scaling.as_ref(),
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+        if production.converged {
+            assert!(
+                flexible.converged,
+                "capture {capture_idx}: flexible oracle lost a production pass"
+            );
+        }
+        let flexible_residual = residual_vector(&system.jacobian, &flexible.solution, &system.rhs);
+        let partitions = y2b2_partition_norms(layout, &flexible_residual);
+        let flexible_reduction = flexible_residual.norm() / rhs_norm;
+        let direct_delta = y2b3_max_peak(y2b3_correction_delta_peaks(
+            layout,
+            &flexible.solution,
+            &direct.solution,
+        ));
+        assert!(flexible.solution.iter().all(|value| value.is_finite()));
+        assert!(
+            (flexible.final_residual_norm - flexible_residual.norm()).abs()
+                <= 1e-10 * flexible_residual.norm().max(1.0)
+        );
+        assert_eq!(history.len(), flexible.iterations);
+        for (history_index, snapshot) in history.iter().enumerate() {
+            assert_eq!(snapshot.iteration, history_index + 1);
+            assert_eq!(snapshot.restart_index, 1);
+            assert_eq!(snapshot.inner_step, history_index + 1);
+            assert!(snapshot
+                .pressure_reduction_ratio
+                .is_none_or(|ratio| ratio.is_finite()));
+            let independently_recomputed =
+                residual_norm(&system.jacobian, &snapshot.solution, &system.rhs);
+            assert!(
+                (snapshot.true_residual_norm - independently_recomputed).abs()
+                    <= 1e-10 * independently_recomputed.max(1.0)
+            );
+            let disagreement = (snapshot.estimated_residual_norm - snapshot.true_residual_norm)
+                .abs()
+                / snapshot.true_residual_norm.max(1e-30);
+            maximum_estimate_disagreement = maximum_estimate_disagreement.max(disagreement);
+        }
+
+        flexible_converged += usize::from(flexible.converged);
+        flexible_iterations.push(flexible.iterations as f64);
+        flexible_reductions.push(flexible_reduction);
+        flexible_direct_deltas.push(direct_delta);
+        println!(
+            "Y2D4 capture={capture_idx:05} production={{converged={},iters={},rel={:.9e}}} flexible={{converged={},iters={},rel={flexible_reduction:.9e},reservoir_rel={:.9e},well_rel={:.9e},direct_dx_delta={direct_delta:.9e}}} history={} estimate_disagreement_max={:.9e}",
+            production.converged,
+            production.iterations,
+            production.final_residual_norm / rhs_norm,
+            flexible.converged,
+            flexible.iterations,
+            partitions.0 / rhs_norm,
+            partitions.1 / rhs_norm,
+            history.len(),
+            history
+                .iter()
+                .map(|snapshot| {
+                    (snapshot.estimated_residual_norm - snapshot.true_residual_norm).abs()
+                        / snapshot.true_residual_norm.max(1e-30)
+                })
+                .fold(0.0_f64, f64::max),
+        );
+    }
+
+    for values in [
+        &mut flexible_iterations,
+        &mut flexible_reductions,
+        &mut flexible_direct_deltas,
+    ] {
+        values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    }
+    let median = |values: &[f64]| values[values.len() / 2];
+    println!(
+        "Y2D4 corpus={corpus} production={production_converged}/{} flexible={flexible_converged}/{} median_iters={:.0} max_iters={:.0} median_rel={:.9e} median_direct_dx_delta={:.9e} estimate_disagreement_max={maximum_estimate_disagreement:.9e} dir={}",
+        systems.len(),
+        systems.len(),
+        median(&flexible_iterations),
+        flexible_iterations.last().copied().unwrap_or(0.0),
+        median(&flexible_reductions),
+        median(&flexible_direct_deltas),
+        dir.display(),
+    );
+    assert_eq!(
+        flexible_converged,
+        systems.len(),
+        "Y2d4 confirmation requires every captured system to converge"
+    );
+    assert!(flexible_iterations.last().copied().unwrap_or(0.0) <= 30.0);
+    assert!(
+        maximum_estimate_disagreement < 1e-6,
+        "true FGMRES estimate must track independently recomputed residual"
+    );
+}
+
 #[derive(Clone)]
 struct BundleRow {
     label: String,

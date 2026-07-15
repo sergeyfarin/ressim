@@ -1537,3 +1537,36 @@ diagnosis with a specific algorithm contract. Y2d4 is a test-only true right-pre
 FGMRES oracle: Arnoldi on `v_j`, store `z_j=M_j^-1v_j`, form `A z_j`, and update with `Zy`, while
 holding every CPR component and the 30-iteration budget fixed. It must clear bounded `8/8` and gas
 `5/5` within 30 and preserve the direct comparisons before any OPM source audit or live candidate.
+
+### 15.15 Y2d4 result: true FGMRES closes both replay corpora (2026-07-15)
+
+The Y2d4 oracle implements the actual flexible right-preconditioned recurrence: the Arnoldi basis
+stays in raw residual space, every `z_j=M_j^-1v_j` is stored, the operator acts as `A z_j`, and
+candidates use `Zy`. A two-dimensional nonlinear-preconditioner control first demonstrates that
+the old fixed-left Givens estimate disagrees with an independently reapplied preconditioned
+residual, while the flexible estimate agrees with its true raw residual and reaches the direct
+solution. A separate fixed-linear-preconditioner control also matches direct.
+
+All production CPR components remained fixed. Results:
+
+| Corpus | Production | True FGMRES | Flexible iterations | Median true reduction | Median direct delta |
+| --- | ---: | ---: | --- | ---: | ---: |
+| bounded `22x22x1` artifacts | `0/8` | `8/8` | all `2` | `1.204527535e-8` | `1.641232493e-4` |
+| current gas artifacts | `4/5` | `5/5` | `1-3` | `6.986957784e-5` | `1.871345444e-6` |
+
+The hard gas artifact changes from production failure at 30/reduction `4.896722176e-2` to a
+one-iteration pass at `3.813067988e-3`, direct delta `5.728602178e-6`. No existing production pass
+is lost. Maximum relative disagreement between the flexible Givens estimate and independently
+recomputed full residual is `1.031351975e-8` bounded and `8.472080369e-11` gas.
+
+The actual Flow 2026.04 reference configuration is importantly different. Its preserved
+`CASE.DBG` selects `bicgstab`, `maxiter=20`, `tol=0.005`, and `cprw` with true-IMPES weights,
+`paroverilu0`, and a single AMG-backed coarse loop. OPM's generic `FlexibleSolver_impl.hpp`
+supports `flexgmres` via Dune's `RestartedFlexibleGMResSolver`, but the exact reference run does
+not select it. The result is therefore **a confirmed ResSim algorithm-contract fix, not literal
+OPM linear-stack parity**.
+
+Y2d5 integrates only the validated recurrence behind a default-off production option and runs
+captured plus live gates while every CPR and nonlinear component remains fixed. Literal OPM
+BiCGSTAB/true-IMPES/AMG parity stays separate so a successful FGMRES correction cannot mask those
+remaining differences.

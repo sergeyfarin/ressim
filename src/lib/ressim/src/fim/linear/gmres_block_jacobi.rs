@@ -61,6 +61,21 @@ pub(super) struct CprKrylovIterationSnapshot {
     pub(super) solution: DVector<f64>,
 }
 
+/// Y2d4 lab-only snapshot from a mathematically flexible, right-preconditioned GMRES
+/// recurrence. Unlike `CprKrylovIterationSnapshot`, the Givens estimate and true residual are
+/// both norms in the original (unpreconditioned) equation space.
+#[derive(Clone, Debug)]
+#[cfg(test)]
+pub(super) struct FlexibleGmresIterationSnapshot {
+    pub(super) iteration: usize,
+    pub(super) restart_index: usize,
+    pub(super) inner_step: usize,
+    pub(super) estimated_residual_norm: f64,
+    pub(super) true_residual_norm: f64,
+    pub(super) pressure_reduction_ratio: Option<f64>,
+    pub(super) solution: DVector<f64>,
+}
+
 /// Pressure-restriction/prolongation variants for the CPR coarse stage. Production `solve()`
 /// currently selects `QuasiImpes` for `FgmresCpr`/`GmresIlu0` dispatch; the other variants exist
 /// for the offline solver
@@ -1446,6 +1461,203 @@ fn back_substitute_upper(
     solution
 }
 
+/// Y2d4's test-only mathematical oracle. This is true right-preconditioned flexible GMRES:
+/// Arnoldi vectors remain in the original residual space, each independently applied
+/// preconditioned direction is stored in `z_basis`, and candidates are formed from `Z y`.
+/// The production solver is intentionally not routed through this function in Y2d4.
+#[cfg(test)]
+fn run_true_flexible_gmres<FMatrix, FPreconditioner>(
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    equation_scaling: Option<&EquationScaling>,
+    mut matrix_apply: FMatrix,
+    mut preconditioner_apply: FPreconditioner,
+) -> (FimLinearSolveReport, Vec<FlexibleGmresIterationSnapshot>)
+where
+    FMatrix: FnMut(&DVector<f64>) -> DVector<f64>,
+    FPreconditioner: FnMut(&DVector<f64>) -> (DVector<f64>, Option<f64>),
+{
+    let timer = PerfTimer::start();
+    let rhs_norm = rhs.norm();
+    let tolerance =
+        options.absolute_tolerance + options.relative_tolerance * rhs_norm.max(f64::EPSILON);
+    let initial_family_peaks = equation_scaling.map(|scaling| scaling.family_peaks(rhs));
+    let family_ok = |residual: &DVector<f64>| match (equation_scaling, &initial_family_peaks) {
+        (Some(scaling), Some(initial)) => scaling.family_peaks(residual).within_relative_reduction(
+            initial,
+            options.absolute_tolerance,
+            options.relative_tolerance,
+        ),
+        _ => true,
+    };
+    let build_report = |solution: DVector<f64>,
+                        converged: bool,
+                        iterations: usize,
+                        residual_norm: f64,
+                        estimated_residual_norm: Option<f64>| {
+        FimLinearSolveReport {
+            solution,
+            converged,
+            iterations,
+            rhs_norm,
+            final_residual_norm: residual_norm,
+            failure_diagnostics: if converged {
+                None
+            } else {
+                Some(build_iterative_failure_diagnostics(
+                    FimLinearFailureReason::MaxIterations,
+                    tolerance,
+                    rhs_norm,
+                    residual_norm,
+                    None,
+                    estimated_residual_norm,
+                    Some(residual_norm),
+                    Vec::new(),
+                ))
+            },
+            used_fallback: false,
+            backend_used: FimLinearSolverKind::FgmresCpr,
+            cpr_diagnostics: None,
+            total_time_ms: timer.elapsed_ms(),
+            preconditioner_build_time_ms: 0.0,
+        }
+    };
+
+    if rhs.is_empty() {
+        return (
+            build_report(DVector::zeros(0), true, 0, 0.0, None),
+            Vec::new(),
+        );
+    }
+
+    let restart = options.restart.max(2);
+    let max_iterations = options.max_iterations.max(1);
+    let mut solution = DVector::zeros(rhs.len());
+    let mut iterations = 0usize;
+    let mut restart_index = 0usize;
+    let mut history = Vec::new();
+    let mut last_estimate = None;
+
+    while iterations < max_iterations {
+        let residual = rhs - matrix_apply(&solution);
+        let residual_norm = residual.norm();
+        if residual_norm <= tolerance && family_ok(&residual) {
+            return (
+                build_report(solution, true, iterations, residual_norm, last_estimate),
+                history,
+            );
+        }
+
+        restart_index += 1;
+        let beta = residual_norm;
+        let cycle_limit = restart.min(max_iterations - iterations);
+        let mut residual_basis = Vec::with_capacity(cycle_limit + 1);
+        let mut z_basis = Vec::with_capacity(cycle_limit);
+        residual_basis.push(residual / beta);
+        let mut hessenberg = DMatrix::<f64>::zeros(cycle_limit + 1, cycle_limit);
+        let mut givens_cosines = vec![0.0; cycle_limit];
+        let mut givens_sines = vec![0.0; cycle_limit];
+        let mut rotated_rhs = DVector::<f64>::zeros(cycle_limit + 1);
+        rotated_rhs[0] = beta;
+        let cycle_origin = solution.clone();
+        let mut cycle_candidate = cycle_origin.clone();
+
+        for inner in 0..cycle_limit {
+            let (z, pressure_reduction_ratio) = preconditioner_apply(&residual_basis[inner]);
+            let mut orthogonal = matrix_apply(&z);
+            z_basis.push(z);
+            for prev in 0..=inner {
+                let coefficient = residual_basis[prev].dot(&orthogonal);
+                hessenberg[(prev, inner)] = coefficient;
+                orthogonal -= &residual_basis[prev] * coefficient;
+            }
+
+            let next_norm = orthogonal.norm();
+            hessenberg[(inner + 1, inner)] = next_norm;
+            if next_norm > f64::EPSILON {
+                residual_basis.push(orthogonal / next_norm);
+            }
+
+            for prev in 0..inner {
+                let (upper, lower) = apply_givens_rotation(
+                    hessenberg[(prev, inner)],
+                    hessenberg[(prev + 1, inner)],
+                    givens_cosines[prev],
+                    givens_sines[prev],
+                );
+                hessenberg[(prev, inner)] = upper;
+                hessenberg[(prev + 1, inner)] = lower;
+            }
+            let (cosine, sine) =
+                compute_givens_rotation(hessenberg[(inner, inner)], hessenberg[(inner + 1, inner)]);
+            givens_cosines[inner] = cosine;
+            givens_sines[inner] = sine;
+            let (diagonal, subdiagonal) = apply_givens_rotation(
+                hessenberg[(inner, inner)],
+                hessenberg[(inner + 1, inner)],
+                cosine,
+                sine,
+            );
+            hessenberg[(inner, inner)] = diagonal;
+            hessenberg[(inner + 1, inner)] = subdiagonal;
+            let (upper, lower) =
+                apply_givens_rotation(rotated_rhs[inner], rotated_rhs[inner + 1], cosine, sine);
+            rotated_rhs[inner] = upper;
+            rotated_rhs[inner + 1] = lower;
+
+            iterations += 1;
+            let columns = inner + 1;
+            let coefficients = back_substitute_upper(&hessenberg, &rotated_rhs, columns);
+            cycle_candidate = &cycle_origin + combine_basis(&z_basis[..columns], &coefficients);
+            let candidate_residual = rhs - matrix_apply(&cycle_candidate);
+            let true_residual_norm = candidate_residual.norm();
+            let estimated_residual_norm = rotated_rhs[inner + 1].abs();
+            last_estimate = Some(estimated_residual_norm);
+            history.push(FlexibleGmresIterationSnapshot {
+                iteration: iterations,
+                restart_index,
+                inner_step: columns,
+                estimated_residual_norm,
+                true_residual_norm,
+                pressure_reduction_ratio,
+                solution: cycle_candidate.clone(),
+            });
+
+            if true_residual_norm <= tolerance && family_ok(&candidate_residual) {
+                return (
+                    build_report(
+                        cycle_candidate,
+                        true,
+                        iterations,
+                        true_residual_norm,
+                        last_estimate,
+                    ),
+                    history,
+                );
+            }
+            if next_norm <= f64::EPSILON || iterations >= max_iterations {
+                return (
+                    build_report(
+                        cycle_candidate,
+                        false,
+                        iterations,
+                        true_residual_norm,
+                        last_estimate,
+                    ),
+                    history,
+                );
+            }
+        }
+        solution = cycle_candidate;
+    }
+
+    let residual_norm = (rhs - matrix_apply(&solution)).norm();
+    (
+        build_report(solution, false, iterations, residual_norm, last_estimate),
+        history,
+    )
+}
+
 const TINY_RESIDUAL_TAIL_MIN_RESTART_INDEX: usize = 3;
 const TINY_RESIDUAL_TAIL_ESTIMATE_FACTOR: f64 = 0.1;
 const TINY_RESIDUAL_TAIL_WORSENING_FACTOR: f64 = 2.0;
@@ -2229,6 +2441,35 @@ pub(super) fn solve_with_smoother_restriction_and_history(
     (report, history)
 }
 
+/// Y2d4 lab-only true flexible-GMRES oracle using the same CPR construction as production.
+/// Production dispatch remains on `solve_with_cpr_fine_smoother` until a separate promotion
+/// slice is authorized.
+#[cfg(test)]
+pub(super) fn solve_with_true_flexible_smoother_and_restriction(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    equation_scaling: Option<&EquationScaling>,
+) -> (FimLinearSolveReport, Vec<FlexibleGmresIterationSnapshot>) {
+    let preconditioner_timer = PerfTimer::start();
+    let (preconditioner, _) =
+        build_block_jacobi_preconditioner(jacobian, layout, fine_smoother_kind, restriction_kind);
+    let preconditioner_build_time_ms = preconditioner_timer.elapsed_ms();
+    let use_pressure_correction = options.kind == FimLinearSolverKind::FgmresCpr;
+    let (mut report, history) = run_true_flexible_gmres(
+        rhs,
+        options,
+        equation_scaling,
+        |vector| cs_mat_mul_vec(jacobian, vector),
+        |vector| preconditioner.apply(jacobian, vector, use_pressure_correction),
+    );
+    report.preconditioner_build_time_ms = preconditioner_build_time_ms;
+    (report, history)
+}
+
 /// Lab-only opaque handle (Bundle P `FIM-BUNDLE-P`, P0.2 staleness study): a CPR preconditioner
 /// built once from one captured system, reused to solve many *different* systems without
 /// rebuilding — the offline stand-in for what `cpr_reuse_interval` will do live. Kept opaque
@@ -2365,6 +2606,103 @@ mod tests {
     use nalgebra::DVector;
 
     use super::*;
+
+    fn dense_apply(matrix: &DMatrix<f64>, vector: &DVector<f64>) -> DVector<f64> {
+        matrix * vector
+    }
+
+    #[test]
+    fn true_flexible_gmres_preserves_residual_identity_for_nonlinear_preconditioner() {
+        let matrix = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+        let rhs = DVector::from_vec(vec![1.0, 2.0]);
+        let nonlinear_precondition = |vector: &DVector<f64>| vector / (1.0 + vector.norm());
+
+        // Reproduce one step of the old fixed-left recurrence and prove that its Givens estimate
+        // is not the independently reapplied preconditioned residual for this nonlinear map.
+        let preconditioned_rhs = nonlinear_precondition(&rhs);
+        let beta = preconditioned_rhs.norm();
+        let basis = preconditioned_rhs / beta;
+        let preconditioned_action = nonlinear_precondition(&dense_apply(&matrix, &basis));
+        let h00 = basis.dot(&preconditioned_action);
+        let orthogonal = preconditioned_action - &basis * h00;
+        let h10 = orthogonal.norm();
+        let (cosine, sine) = compute_givens_rotation(h00, h10);
+        let (rotated_upper, estimated_preconditioned_residual) =
+            apply_givens_rotation(beta, 0.0, cosine, sine);
+        let old_candidate = &basis * (rotated_upper / h00.hypot(h10));
+        let actual_preconditioned_residual =
+            nonlinear_precondition(&(&rhs - dense_apply(&matrix, &old_candidate))).norm();
+        let estimate_disagreement = actual_preconditioned_residual
+            / estimated_preconditioned_residual
+                .abs()
+                .max(f64::MIN_POSITIVE);
+        assert!(estimate_disagreement > 1.1);
+
+        let options = FimLinearSolveOptions {
+            absolute_tolerance: 1e-12,
+            relative_tolerance: 1e-10,
+            restart: 2,
+            max_iterations: 2,
+            ..FimLinearSolveOptions::default()
+        };
+        let (report, history) = run_true_flexible_gmres(
+            &rhs,
+            &options,
+            None,
+            |vector| dense_apply(&matrix, vector),
+            |vector| (nonlinear_precondition(vector), None),
+        );
+        let direct = matrix
+            .clone()
+            .lu()
+            .solve(&rhs)
+            .expect("synthetic matrix must be nonsingular");
+
+        assert!(report.converged);
+        assert_eq!(report.iterations, 2);
+        assert!((&report.solution - direct).norm() < 1e-10);
+        for snapshot in history {
+            assert!(
+                (snapshot.estimated_residual_norm - snapshot.true_residual_norm).abs()
+                    <= 1e-10 * snapshot.true_residual_norm.max(1.0)
+            );
+        }
+    }
+
+    #[test]
+    fn true_flexible_gmres_matches_direct_with_fixed_linear_preconditioner() {
+        let matrix =
+            DMatrix::from_row_slice(3, 3, &[6.0, -1.0, 0.5, -1.0, 5.0, -0.25, 0.5, -0.25, 4.0]);
+        let rhs = DVector::from_vec(vec![2.0, -1.0, 3.0]);
+        let inverse_diagonal = DVector::from_vec(vec![1.0 / 6.0, 1.0 / 5.0, 1.0 / 4.0]);
+        let options = FimLinearSolveOptions {
+            absolute_tolerance: 1e-12,
+            relative_tolerance: 1e-10,
+            restart: 3,
+            max_iterations: 3,
+            ..FimLinearSolveOptions::default()
+        };
+        let (report, history) = run_true_flexible_gmres(
+            &rhs,
+            &options,
+            None,
+            |vector| dense_apply(&matrix, vector),
+            |vector| (inverse_diagonal.component_mul(vector), None),
+        );
+        let direct = matrix
+            .clone()
+            .lu()
+            .solve(&rhs)
+            .expect("synthetic matrix must be nonsingular");
+
+        assert!(report.converged);
+        assert_eq!(report.iterations, 3);
+        assert!((&report.solution - direct).norm() < 1e-10);
+        assert!(history.iter().all(|snapshot| {
+            (snapshot.estimated_residual_norm - snapshot.true_residual_norm).abs()
+                <= 1e-10 * snapshot.true_residual_norm.max(1.0)
+        }));
+    }
 
     #[test]
     fn pressure_projection_updates_entire_local_block() {

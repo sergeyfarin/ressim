@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d3 identifies an invalid flexible-preconditioner/Krylov contract; Y2d4 is next
+Status: **Y2d4 confirms true flexible GMRES offline; Y2d5 default-off integration is next
 (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -659,6 +659,51 @@ inside the existing 30-iteration budget without changing CPR components.
   control before changing another component. If it passes, source-check OPM's production
   flexible-solver/preconditioner lifecycle and design a separately gated production candidate;
   do not run a live Newton comparison in this slice.
+
+**Y2d4 result (2026-07-15): CONFIRMED OFFLINE; production unchanged.** The test-only solver uses
+the required right-preconditioned recurrence (`v_j`, stored `z_j=M_j^-1v_j`, `A z_j`, `Zy`). A
+synthetic nonlinear-preconditioner control demonstrates the old fixed-left estimate defect while
+the flexible estimate matches the true residual; a fixed-linear control matches the direct
+solution.
+
+With production quasi-IMPES, block-ILU0, iterative pressure solve, well Schur, scaling, tolerance,
+and effective budget 30 fixed, flexible GMRES resolves bounded `8/8` in exactly two iterations
+versus production `0/8` at 30. Median bounded true reduction is `1.205e-8` and median maximum
+family correction delta from Sparse LU is `1.641e-4`. Gas improves from `4/5` to `5/5` in one to
+three iterations; the former hard gas system passes in one iteration at reduction `3.813e-3` and
+direct delta `5.729e-6`. No production pass is lost. Estimate/independent-true disagreement stays
+below `1.04e-8` bounded and `8.48e-11` gas.
+
+The exact tracked Flow 2026.04 `CASE.DBG` prevents overclaiming OPM parity: that run selects outer
+`bicgstab`, `maxiter=20`, `tol=0.005`, with `cprw`, true-IMPES weights, `paroverilu0`, and one
+AMG-backed coarse loop. OPM's generic `FlexibleSolver` separately supports genuine `flexgmres`,
+but it is optional rather than the reference configuration. Y2d4 therefore repairs the
+mathematical contract of ResSim's chosen outer method; it does not reproduce OPM's full linear
+stack.
+
+### 7.6 Y2d5 default-off true-FGMRES production-path candidate
+
+Hypothesis: routing ResSim's existing `FgmresCpr` configuration through the validated true
+flexible recurrence removes the bounded and gas linear retries in live Newton solves without
+regressing the other controls.
+
+- Move the validated recurrence into production-capable code behind one explicit default-off
+  solver option. Preserve the old path for A/B comparison. Do not change CPR restriction,
+  smoother, coarse solver, tolerance, effective budget, well Schur, scaling, Newton acceptance,
+  or timestep control.
+- Unit-test dispatch/default-off behavior and exact equivalence between the promoted core and the
+  Y2d4 oracle. Re-run both captured corpora before any live test.
+- Run the capped candidate first on `22x22x1` water and current `20x20x3` gas. If both improve or
+  remain stable, run the exact six-step `10x10x3` gas target and the full bounded/heavy control
+  matrix. Record nonlinear iterations, linear retries/iterations, accepted substeps, cuts, and
+  runtime—not only final convergence.
+- Confirm only if the candidate preserves bounded `8/8` and gas `5/5` offline, removes the
+  identified live linear retry class, does not worsen any control, and keeps physics gates green.
+  Otherwise revert the production routing but retain the Y2d4 oracle and classify the first
+  moved system.
+- Keep the OPM distinction explicit. A passing Y2d5 is a ResSim algorithm-correctness promotion.
+  Literal OPM linear parity (BiCGSTAB + true-IMPES CPRW + AMG coarse application) remains a later
+  coupled design and must not be inferred from a flexible-GMRES win.
 
 ## 8. Y3 and Y4 end gates
 

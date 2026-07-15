@@ -135,12 +135,17 @@ below is retained as Bundle N/Y history; it must not override this current seque
   reapplied preconditioned residual by median `1.169e19`; restart two gives the useful direction.
   Exact dense pressure solving clears bounded `8/8` in one iteration, while tightening the
   iterative coarse tolerance to `1e-10` changes no classifications. Production constants restored.
-- [ ] **Next: Y2d4 true flexible-GMRES offline oracle.** Implement test-only right-preconditioned
-  FGMRES using `v_j`, stored `z_j=M_j^-1v_j`, `w=A z_j`, and `x=x0+Zy`. Add synthetic variable-
-  preconditioner and fixed-linear controls, then replay bounded 8 and gas 5 at the existing
-  restart/max 30. Require bounded `8/8`, gas `5/5`, finite full residuals/partitions, and stable
-  direct deltas. Hold every CPR/nonlinear component fixed; no live run, dense shortcut, tolerance
-  or budget promotion, combined lever, or AMG.
+- [x] **Y2d4 true flexible-GMRES offline oracle (2026-07-15): CONFIRMED, NO PRODUCTION CHANGE.**
+  Synthetic nonlinear/fixed-preconditioner controls pass. With all CPR components fixed, true
+  FGMRES resolves bounded `8/8` in two iterations (production `0/8` at 30) and gas `5/5` in 1-3
+  (production `4/5`). Estimate/true residual identity and full/direct oracles pass. Exact Flow
+  uses BiCGSTAB + true-IMPES CPRW + AMG, so this is a ResSim correctness result, not full parity.
+- [ ] **Next: Y2d5 default-off true-FGMRES production integration.** Route only the validated
+  recurrence behind an explicit default-off option; retain the old path for A/B. Re-run both
+  corpora, then capped `22x22x1` water/current gas live gates. Only if green, run exact six-step
+  gas plus the full bounded/heavy matrix. Hold restriction, smoother, coarse solve, tolerance,
+  effective budget, well Schur/scaling, Newton acceptance, and timestep control fixed. Literal
+  OPM BiCGSTAB/true-IMPES/AMG remains a separate later bundle.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

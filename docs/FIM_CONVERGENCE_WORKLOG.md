@@ -3655,6 +3655,62 @@ three contracts and stops at the unchanged pre-existing closed-system `rate_hist
 (`left=2`, `right=1`). No wasm control matrix was run because Y2d3 adds only `#[cfg(test)]`
 recording and makes no solver-behavior change.
 
+### Bundle Y checkpoint Y2d4: true flexible-GMRES offline oracle (2026-07-15)
+
+Implemented a test-only right-preconditioned flexible-GMRES oracle with raw Arnoldi basis `v_j`,
+stored independently preconditioned directions `z_j`, operator products `A z_j`, and `Zy`
+candidates. Production dispatch and behavior remain unchanged. Synthetic controls prove both
+sides of the algorithm contract: an input-dependent nonlinear preconditioner breaks the old
+fixed-left residual estimate, while the flexible estimate tracks the true residual and matches
+direct; a fixed-linear preconditioner also matches direct.
+
+Production-faithful captured replay kept quasi-IMPES restriction, block-ILU0, iterative pressure
+solve (`50`, `1e-6`), well Schur, equation scaling, relative tolerance `0.005`, and effective
+budget/restart 30 fixed:
+
+| Corpus | Production converged | Flexible converged | Iterations | Median reduction | Median direct delta | Max estimate/true disagreement |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| bounded 8 | `0/8` | `8/8` | all `2` | `1.204527535e-8` | `1.641232493e-4` | `1.031351975e-8` |
+| gas 5 | `4/5` | `5/5` | `1-3` | `6.986957784e-5` | `1.871345444e-6` | `8.472080369e-11` |
+
+The former hard gas artifact passes in one iteration at reduction `3.813067988e-3` and direct
+delta `5.728602178e-6`, versus production failure at iteration 30/reduction
+`4.896722176e-2`. Every pre-existing gas pass remains a flexible pass. Full report norms,
+independent residuals, reservoir/well partitions, finite corrections, and direct references are
+valid on all 13 systems.
+
+Exact commands:
+
+```text
+cargo test --manifest-path src/lib/ressim/Cargo.toml true_flexible_gmres -- --nocapture
+FIM_CAPTURE_DIR=/tmp/ressim-y2d0-2030996 FIM_Y2D1_CORPUS=bounded-y2d4 \
+  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  solver_lab_compare_true_flexible_gmres -- --ignored --nocapture
+FIM_CAPTURE_DIR=/tmp/ressim-y2d1-gas-e143c19 FIM_Y2D1_CORPUS=gas-y2d4 \
+  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  solver_lab_compare_true_flexible_gmres -- --ignored --nocapture
+```
+
+Source/configuration closeout used both the upstream OPM implementation and the preserved exact
+Flow 2026.04 output. `FlexibleSolver_impl.hpp` defaults to `bicgstab`, while separately supporting
+`gmres` and genuine `flexgmres`. The exact reference `CASE.DBG` resolves ambiguity: outer
+`bicgstab`, `maxiter=20`, `tol=0.005`; `cprw` with true-IMPES weights, well contributions,
+`paroverilu0`, and a one-iteration AMG coarse loop. Thus Y2d4 confirms a mathematical defect in
+ResSim's named FGMRES implementation and a decisive correction with its present nonlinear CPR;
+it does not claim to reproduce Flow's outer or coarse algorithm.
+
+Verdict: **CONFIRMED OFFLINE — NO PRODUCTION CHANGE**. Y2d5 is a separately gated default-off
+production integration of only the recurrence. It must preserve both replay corpora before live
+`22x22x1` water/current gas gates, then exact gas and the full control matrix. Literal OPM
+BiCGSTAB/true-IMPES/AMG work remains separate.
+
+Final-tree validation: synthetic Y2d4 controls `2/2`, final bounded and gas Y2d4 replays, exact
+Y2d0 production replay, well-Schur `4/4`, capture round-trip `2/2`, Sparse-LU report contract,
+`cargo check` (no new warnings), DRSDT0, Buckley-Leverett `3/3`, and curated FIM `11/11` pass.
+The shared bucket passes its first three contracts and stops at the unchanged pre-existing
+closed-system `rate_history` mismatch (`left=2`, `right=1`). No wasm matrix was run because all
+Y2d4 solver and wrapper entry points are `#[cfg(test)]` and production behavior is unchanged.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.
