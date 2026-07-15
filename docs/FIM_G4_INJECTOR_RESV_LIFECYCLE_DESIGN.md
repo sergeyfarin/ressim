@@ -1,6 +1,6 @@
 # G4a — Flow Injector-RESV Lifecycle Design
 
-Status: **G4B2 READINESS AUDIT COMPLETE; G4B2A ATOMIC-ROUTE DESIGN NEXT (2026-07-15)**
+Status: **G4B2A ATOMIC-ROUTE DESIGN COMPLETE; ATOMIC CODE ROUTE NEXT (2026-07-15)**
 
 This is the only authorized design after Y2d8. It defines a narrow, default-off,
 source-comparable probe for the exact `gas-rate-10x10x3` Flow case. It is not permission to
@@ -122,10 +122,12 @@ an explicit mode tag are both wrong.
 3. **G4b2: atomic FIM route readiness audit — COMPLETE 2026-07-15.** The audit is
    `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md`. It found an unsafe fall-through: current
    `physical_well_control` maps RESV to historical BHP/q control. Valid RESV execution is now
-   stopped before Newton, and the test proves time cannot advance. G4b2a must design the same
-   mode in AD and legacy assembly, source helper, scaling, diagnostics, reporting, and state
-   update. It must initialize/update positive u and never call q-coordinate Relax/NestedSolve.
-   The FB rate branch may remain only after an equality test proves it supplies exact `R_ctrl`;
+   stopped before Newton, and the test proves time cannot advance. G4b2a's completed atomic-route
+   specification is `docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md`: typed u state,
+   route resolver, AD+legacy scatter, q-relax exclusion, scaling, Schur, and trace gates all land
+   together. It must initialize/update positive u and never call q-coordinate Relax/NestedSolve.
+   The historical FB rate branch is not reused for RESV; the RESV control row is explicitly
+   `B_g,ref*u-Q_resv` with its own equality/FD gate.
    otherwise use an explicit rate-only test row.
 4. **G4b3: local/global coupling.** Re-derive a u-coordinate local solve before supporting nested
    mode. Prove its rows/columns equal global assembly (Bundle W invariant). Capture evaluation 0/1

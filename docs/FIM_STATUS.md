@@ -60,6 +60,13 @@ fixture proves no time advance. The complete route inventory is
 `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md`. Next is its atomic-route design, with no live
 comparison authorized.
 
+**G4b2a update (2026-07-15):** the atomic route is now specified in
+`docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md`; no solver behaviour changed. The design
+requires a typed selected surface-u primary, explicit construction BHP inversion, one context
+resolver, simultaneous AD/legacy source/perforation/control rows, q-relax/nested exclusion,
+route-aware scaling/trace, and exact Schur/FD/parity gates. The pre-Newton block remains until
+that entire route lands; the next slice is non-live implementation, not a Flow comparison.
+
 Use this file for:
 
 - current implementation state

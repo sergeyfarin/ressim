@@ -4150,6 +4150,28 @@ scaling, Schur, diagnostics/reporting, and retry semantics. **Next authorized st
 route design only.** No individual assembler/source/update edit and no live convergence run is
 valid before that design provides one coupled implementation/gate list.
 
+### G4b2a: atomic typed-u implementation design (2026-07-15)
+
+No Rust behaviour changed. The completed handoff is
+`docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md`. The critical implementation decision is
+to mechanically replace the ambiguous `perforation_rates_m3_day: Vec<f64>` representation with a
+typed primary (`ReservoirConnectionQ` or `FlowResvGasSurfaceU`) before routing a RESV run. A
+metadata-only exception would leave too many q-based source, reporting, scaling, relaxation, and
+test call sites able to silently misread u.
+
+The selected route retains the existing BHP/perforation tail dimensions but initializes
+`u=Q_resv/B_g,ref` and solves its initial BHP against `q_res=-Q_resv`. It scatters the shared
+G4b1 value contract into gas source, perforation, and control rows together. In particular the
+source keeps current-FVF cell/BHP derivatives and has no u column; the control is a plain
+`B_g,ref*u-Q_resv` row with no BHP/cell column. AD and legacy must be changed together, but
+legacy retains an independent analytic derivative for `-q_res/B_g(current)`.
+
+The execution block remains until full default-off parity, five-variable FD, typed update/floor,
+scaling, exact Schur, and evaluation-0/1 trace gates pass. Retry lifetime, BHP switching,
+multi-perf allocation, nested u solve, IMPES, acceptance, and linear/controller policy remain
+unimplemented or held fixed. **Next authorized slice: one atomic code route plus non-live gates;
+no convergence replay yet.**
+
 Validation: the new execution-block test passes, the focused `flow_resv` suite remains 6/6,
 `assembly_ad` remains 12/12, and `well_controls` remains 9/9. No long-running FIM bucket is
 credited in this checkpoint; the safety guard and pure audit do not constitute a convergence

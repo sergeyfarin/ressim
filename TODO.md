@@ -204,9 +204,13 @@ below is retained as Bundle N/Y history; it must not override this current seque
   pre-Newton and regression-tested. `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` inventories
   every state/control/AD/legacy/source/update/scaling/linear/diagnostic coupling required for an
   atomic route; no partial assembly or live result is allowed.
-- [ ] **Next: G4b2a atomic-route implementation design.** Turn the audited inventory into exact
-  state/control/assembler/Jacobian/update/scaling/trace interfaces and gates for one commit.
-  Keep the pre-Newton block until that complete design is approved; do not run live convergence.
+- [x] **G4b2a atomic-route implementation design — DONE 2026-07-15.**
+  `docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` prescribes typed u state,
+  construction, AD+legacy row/column scatter, q-relax/nested exclusions, scaling, Schur, trace,
+  and a non-live gate sequence. The G4b2 pre-Newton block remains; this is no convergence result.
+- [ ] **Next: G4b2b atomic RESV route and non-live gates.** Implement the whole typed-u route in
+  one commit, including both assemblers/Jacobians, update/scaling/Schur/trace and all contract
+  tests. Remove the pre-Newton block only in that complete commit. Do not run live convergence.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

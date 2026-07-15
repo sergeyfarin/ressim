@@ -932,8 +932,20 @@ live Newton attempt: it cannot until every coupled row is routed.
 
 `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` lists state primary, control, both assemblers,
 source/Jacobian, q relax/nested solve, scaling, Schur, diagnostics, reporting, retry, and IMPES
-status. G4b2a is a design-only translation of that inventory into one atomic implementation and
-its gates. No live RESV run is authorized.
+status. No live RESV run is authorized.
+
+### G4b2a result (2026-07-15): one atomic typed-u route specified; no execution changed
+
+`docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` makes the next implementation
+non-ambiguous: replace the q-named selected primary with a typed positive surface `u`, construct
+it from `Q_resv/B_g,ref` and an explicit connection-rate BHP inversion, route immutable context
+through both assemblers, and scatter the three G4b1 rows together. The control row has only the
+u column; the source retains current-FVF cell/BHP columns and zero u column. The design requires
+an independent legacy manual linearization, full AD/legacy/FD parity, u-coordinate update/floor,
+route-aware scaling, exact Schur recovery, and evaluation-0/1 trace fields before the pre-Newton
+block can be removed. It explicitly holds retry lifetime, BHP switching, multi-perf allocation,
+nested u solve, IMPES, and all solver policy fixed. Next is the atomic code route and non-live
+gates, not a convergence diagnostic.
 
 ## 8. Y3 and Y4 end gates
 

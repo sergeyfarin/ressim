@@ -1816,3 +1816,17 @@ The required complete route is recorded in
 AD+legacy residual/Jacobian/source route, q-relax exclusion, scaling/Schur compatibility, and
 source-complete diagnostics/reporting. G4b2a must design those interfaces and gates before the
 block can be removed.
+
+### 15.29 G4b2a result: exact typed-primary atomic route and gates (2026-07-15)
+
+`docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` now specifies the complete one-perf
+implementation. The selected tail value becomes `FimPerforationPrimary::FlowResvGasSurfaceU`,
+not a q-named `f64` carrying a different unit. The selected BHP/u tail remains the same size and
+offsets, but initialization solves `q_res=-Q_resv` and sets `u=Q_resv/B_g,ref`. Both assemblers
+must call G4b1's shared residual-value helper and scatter the same gas source, perforation, and
+control rows; legacy retains independent analytic derivatives for `-q_res/B_g(current)`.
+
+The source has no u column before the perforation equation converges, while the control has no
+BHP/cell column. q relaxation, q reporting, FB control, and nested q solve are forbidden for the
+selected route. Full AD/legacy/FD, scaling, Schur, and evaluation-0/1 trace gates precede any
+live test. This is a design result, not Flow trajectory evidence; the execution block remains.
