@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d6 Flow 2026.04 linear-lifecycle design is complete; Y2d6a capture-payload sufficiency
-is next (2026-07-15)**. This document turns the evidence in
+Status: **Y2d6a capture-payload sufficiency is complete; Y2d6b component identities are next
+(2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -757,9 +757,18 @@ currently Schur-eliminates first and factors the already-reduced matrix. The com
 matched/missing table, coupled oracle, and IMPES applicability audit are in
 `FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`.
 
-Next is Y2d6a only: version the capture payload with raw storage/true-IMPES inputs and the separate
-reservoir/well blocks, round-trip it, and regenerate one bounded plus one gas proof artifact. Do
-not implement BiCGSTAB, AMG, or live routing in that slice.
+**Y2d6a result (2026-07-15): COMPLETE.** Capture v3 retains the full unscaled system plus exact
+local accumulation-derivative blocks, source-pinned normalized true-IMPES weights, and explicit
+`J_rr/J_rw/J_wr/J_ww` partitions before well elimination. Parsing recomputes every weight and
+reconstructs the full Jacobian bit-for-bit. The isolated `22x22x1` bounded artifact has
+`1456` rows, `484` cells, four well rows, and partition nnz `[4752,2,4,6]`; the exact gas artifact
+has `904` rows, `300` cells, four well rows, and `[5360,3,2,7]`. Both pass the dedicated payload
+oracle with the pinned Flow commit, DUNE version, and 50-bar pressure scale. No solver dispatch or
+nonlinear behavior changed.
+
+Next is Y2d6b only: prove the seven component identities in the design against these v3 artifacts.
+Do not print a 13-capture performance verdict, add live routing, or treat Sparse LU/AMG as a new
+general convergence project in that slice.
 
 ## 8. Y3 and Y4 end gates
 

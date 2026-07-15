@@ -1631,3 +1631,17 @@ Jacobi only in its BiCGSTAB fallback. One genuine reporting defect was found and
 recognized at a loop boundary previously counted the not-yet-executed next iteration. A focused
 nonsymmetric regression now reports completed corrections and independently checks the raw
 residual; the pressure solution is unchanged.
+
+### 15.18 Y2d6a result: capture payload is sufficient on bounded and gas systems (2026-07-15)
+
+Capture format v3 now records the exact unscaled full Jacobian/RHS/layout/scaling together with
+the unscaled per-cell accumulation derivative blocks, normalized Flow true-IMPES weights, and
+`J_rr/J_rw/J_wr/J_ww` before well elimination. The native trigger claims only the first system and
+does not alter production routing. Its parser fails closed on source/config or weight mismatch and
+requires the partitions to reconstruct the full Jacobian bit-for-bit.
+
+The bounded `22x22x1` proof has `1456` rows, 484 cells, four well rows, full nnz `4764`, and
+partition nnz `[4752,2,4,6]`. The exact gas `10x10x3` proof has `904` rows, 300 cells, four well
+rows, full nnz `5372`, and `[5360,3,2,7]`. Both recompute a normalized maximum absolute weight of
+one using the pinned 50-bar pressure scale. This closes the previously identified invalid-oracle
+gap; it says nothing yet about convergence. Next is only Y2d6b's seven component identities.

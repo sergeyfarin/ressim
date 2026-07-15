@@ -21,6 +21,7 @@ use sprs::CsMat;
 
 use super::capture::{
     FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
+    y2d6_capture_dir_from_env,
 };
 use super::gmres_block_jacobi::{
     self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
@@ -52,6 +53,55 @@ fn residual_vector(
 
 fn residual_norm(jacobian: &CsMat<f64>, solution: &DVector<f64>, rhs: &DVector<f64>) -> f64 {
     residual_vector(jacobian, solution, rhs).norm()
+}
+
+/// Y2d6a payload-sufficiency gate. Parsing performs the source-fingerprint, true-IMPES
+/// recomputation, partition-dimension, and bit-exact full-J reconstruction checks.
+#[test]
+#[ignore]
+fn solver_lab_validate_y2d6a_capture_payload() {
+    let dir = y2d6_capture_dir_from_env()
+        .expect("set FIM_Y2D6_CAPTURE_DIR to one isolated Y2d6 capture directory");
+    let systems = load_captures(&dir).expect("load and validate Y2d6 capture");
+    assert_eq!(systems.len(), 1, "Y2d6a requires one isolated capture");
+    let system = &systems[0];
+    let flow = system
+        .flow_lifecycle
+        .as_ref()
+        .expect("Y2d6a requires the v3 Flow lifecycle companion");
+    let layout = system.layout.expect("Y2d6a requires block layout");
+    assert_eq!(flow.storage_blocks.len(), layout.cell_block_count);
+    assert_eq!(flow.true_impes_weights.len(), layout.cell_block_count);
+    assert_eq!(flow.reservoir_unknown_count, layout.cell_unknown_count());
+    assert!(
+        flow.true_impes_weights
+            .iter()
+            .flatten()
+            .all(|value| value.is_finite())
+    );
+    let max_weight = flow
+        .true_impes_weights
+        .iter()
+        .flatten()
+        .map(|value| value.abs())
+        .fold(0.0_f64, f64::max);
+    assert!((max_weight - 1.0).abs() <= 1e-12);
+    println!(
+        "Y2D6A-PAYLOAD rows={} cells={} well_rows={} full_nnz={} partitions=[{},{},{},{}] source={}@{} dune={} pressure_scale_bar={:.1} max_abs_weight={:.9e}",
+        system.jacobian.rows(),
+        layout.cell_block_count,
+        system.jacobian.rows() - flow.reservoir_unknown_count,
+        system.jacobian.nnz(),
+        flow.j_rr.nnz(),
+        flow.j_rw.nnz(),
+        flow.j_wr.nnz(),
+        flow.j_ww.nnz(),
+        flow.source_tag,
+        flow.source_commit,
+        flow.dune_istl_version,
+        flow.pressure_scale_bar,
+        max_weight,
+    );
 }
 
 fn y2b2_partition_norms(layout: FimLinearBlockLayout, residual: &DVector<f64>) -> (f64, f64) {

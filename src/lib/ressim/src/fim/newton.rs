@@ -3857,6 +3857,53 @@ pub(crate) fn run_fim_timestep(
         prev_residual_norm = current_norm;
 
         let rhs = -&assembly.residual;
+        // Y2d6a: capture the first exact, uneliminated FIM linear system together with the
+        // source-pinned Flow storage blocks, true-IMPES weights, and reservoir/well partition.
+        // This is a native/default-off diagnostic oracle; production dispatch is unchanged.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(dir) = crate::fim::linear::capture::y2d6_capture_dir_from_env()
+            && crate::fim::linear::capture::claim_y2d6_capture()
+        {
+            let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                newton_iteration: iteration,
+                failure_reason: "y2d6a-first-linear-system".to_string(),
+                dominant_family: residual_diagnostics.global.family.label().to_string(),
+                dominant_item_index: residual_diagnostics.global.item_index,
+            };
+            match crate::fim::linear::flow_lifecycle::build_capture_data(
+                sim,
+                previous_state,
+                &state,
+                block_layout.expect("FIM always defines a linear block layout"),
+                &assembly.jacobian,
+            ) {
+                Ok(flow_lifecycle) => {
+                    let sequence = crate::fim::linear::capture::next_capture_sequence();
+                    crate::fim::linear::capture::write_flow_lifecycle_capture(
+                        &dir,
+                        sequence,
+                        &metadata,
+                        block_layout.expect("FIM always defines a linear block layout"),
+                        &assembly.jacobian,
+                        &rhs,
+                        Some(&assembly.equation_scaling),
+                        &flow_lifecycle,
+                    );
+                    fim_trace!(
+                        sim,
+                        options.verbose,
+                        "    iter {:>2}: Y2D6-CAPTURE rows={} nnz={} cells={} reservoir_rows={} sequence={}",
+                        iteration,
+                        assembly.jacobian.rows(),
+                        assembly.jacobian.nnz(),
+                        state.cells.len(),
+                        flow_lifecycle.reservoir_unknown_count,
+                        sequence,
+                    );
+                }
+                Err(error) => eprintln!("Y2d6 capture rejected: {error}"),
+            }
+        }
         #[cfg(not(target_arch = "wasm32"))]
         if y2b3_primary_variable_lifecycle
             && iteration == 1

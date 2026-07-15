@@ -3808,6 +3808,28 @@ did expose one IMPES fallback diagnostic bug: loop-boundary BiCGSTAB convergence
 not-executed iteration. A focused regression failed `2 != 1`, the counter placement was corrected,
 and the complete solver test bucket passes `6/6`; the numerical pressure correction is unchanged.
 
+### Bundle Y checkpoint Y2d6a: source-complete capture payload (2026-07-15)
+
+Implemented a native/default-off `FIM_Y2D6_CAPTURE_DIR` first-system capture using format v3. The
+full unscaled Jacobian, RHS, block layout, and equation scaling remain intact; the companion adds
+the exact per-cell accumulation derivative blocks used by assembly, Flow's normalized true-IMPES
+weights using the equivalent 50-bar pressure scale, and the four pre-elimination partitions
+`J_rr/J_rw/J_wr/J_ww`. The source fingerprint is fixed to Flow
+`release/2026.04/final@b82f21d...` and DUNE-ISTL 2.11.0.
+
+The payload oracle does more than parse: it recomputes every weight, checks cardinalities and
+partition dimensions, and reconstructs every full-J entry bit-for-bit. Focused round-trip and
+mismatched-weight rejection tests pass. Two isolated release artifacts then passed:
+
+- bounded `22x22x1`: rows `1456`, cells `484`, well rows `4`, full nnz `4764`, partition nnz
+  `[4752,2,4,6]`;
+- exact gas `10x10x3`: rows `904`, cells `300`, well rows `4`, full nnz `5372`, partition nnz
+  `[5360,3,2,7]`.
+
+This proves capture sufficiency only; it is not a convergence result. No solver dispatch,
+preconditioner, nonlinear acceptance, timestep control, or IMPES equation was changed. Next is
+Y2d6b: prove the seven component identities on both artifacts before any 13-capture verdict.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

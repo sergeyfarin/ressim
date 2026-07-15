@@ -152,10 +152,14 @@ below is retained as Bundle N/Y history; it must not override this current seque
   `J_rr` while applying eliminated well effects in the outer operator and adding them separately
   to the coarse pressure operator; ResSim factors the already Schur-reduced matrix. See
   `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`.
-- [ ] **Next: Y2d6a capture-payload sufficiency only.** Version the capture format with raw
-  storage/true-IMPES inputs and separate reservoir/well blocks, add strict round-trip/rejection
-  tests, and regenerate one bounded plus one gas proof artifact. Do not add outer BiCGSTAB, AMG,
-  live routing, or nonlinear/controller changes in this slice.
+- [x] **Y2d6a capture-payload sufficiency (2026-07-15): COMPLETE.** Capture v3 stores exact local
+  accumulation blocks, pinned true-IMPES weights, and `J_rr/J_rw/J_wr/J_ww`; parsing recomputes
+  weights and reconstructs full `J` bit-for-bit. Bounded `22x22x1` and exact gas `10x10x3`
+  first-system artifacts both pass the isolated payload oracle. No solver behavior changed.
+- [ ] **Next: Y2d6b component identities only.** Prove all seven design identities on one bounded
+  and one gas v3 artifact, including separated well effects, fixed `J_rr` paroverilu0, fixed
+  one-application coarse solve, complete CPR order, and independent outer residual. Do not run
+  the 13-capture verdict or add live routing until every identity passes.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

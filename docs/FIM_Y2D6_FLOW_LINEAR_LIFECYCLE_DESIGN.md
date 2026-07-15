@@ -183,6 +183,12 @@ the implementation `BLOCKED`, not partially complete.
 
 ## 4. Coupled 13-capture oracle contract
 
+Implementation status (2026-07-15): Gate D6a is complete. Capture v3 and its dedicated native
+first-system trigger preserve the raw local storage blocks and all four reservoir/well matrix
+partitions. Parser validation recomputes the pinned weights and reconstructs full `J` bit-for-bit.
+Proof artifacts pass for bounded `22x22x1` (`1456` rows, 484 cells, four well rows) and exact gas
+`10x10x3` (`904` rows, 300 cells, four well rows). Gate D6b is now the only authorized slice.
+
 ### Gate D6a — payload sufficiency
 
 Extend or cleanly regenerate the existing eight bounded and five gas artifacts. Each item must
@@ -249,15 +255,17 @@ independently verifies the returned raw residual.
 
 ## 6. Prescriptive handoff
 
-The next implementing agent must do only Gate D6a first:
+Gate D6a was completed on 2026-07-15. The next implementing agent must do only Gate D6b:
 
-1. add a versioned optional true-IMPES/storage-and-well companion section to the capture format;
-2. instrument the native FIM assembly before scaling and before well elimination to populate it;
-3. add round-trip and required-field rejection tests;
-4. regenerate one bounded and one gas capture and verify the weights by the pinned formula;
-5. update this document, the execution plan, registry, parity plan, worklog, and TODO;
-6. commit before starting D6b.
+1. load only capture-v3 artifacts and fail closed on a missing/mismatched companion;
+2. prove the seven identities in Gate D6b individually, with named assertions and independent
+   residual calculations;
+3. use `J_rr` for the fine block factorization and apply the well effect separately in outer and
+   coarse paths; never factor the explicit Schur matrix as a substitute;
+4. keep every preconditioner component fixed within the test solve and prove repeatability plus
+   linearity before using BiCGSTAB;
+5. run the identities on one bounded and one gas artifact, update all evidence documents, and
+   commit before starting D6c.
 
-Do not implement outer BiCGSTAB, AMG, or a live option during D6a. If raw storage blocks cannot be
-captured without changing assembly semantics, stop and document that blocker instead of deriving
-weights from the diagonal Jacobian.
+Do not print corpus convergence counts, add a live option, or change production dispatch during
+D6b. A failed or missing identity is `INCONCLUSIVE`, not a refutation of Flow's complete lifecycle.

@@ -46,6 +46,39 @@ fn cell_drsdt0_base_rs(sim: &ReservoirSimulator, cell_idx: usize) -> Option<f64>
     }
 }
 
+/// Y2d6a diagnostic input: return the exact unscaled local accumulation blocks used by the
+/// live AD assembler. Flow's true-IMPES weights are derived from storage derivatives, not from
+/// the assembled diagonal block (which also contains flux and well terms). This helper is called
+/// only when the native Y2d6 capture environment variable is enabled.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn accumulation_jacobian_blocks_for_state(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+) -> Vec<[[f64; 3]; 3]> {
+    state
+        .cells
+        .iter()
+        .enumerate()
+        .map(|(cell_idx, cell)| {
+            let prev_cell = previous_state.cell(cell_idx);
+            accumulation_jacobian_block(
+                sim,
+                cell_idx,
+                cell.pressure_bar,
+                cell.sw,
+                cell.hydrocarbon_var,
+                cell.regime,
+                cell_drsdt0_base_rs(sim, cell_idx),
+                prev_cell.pressure_bar,
+                prev_cell.sw,
+                prev_cell.hydrocarbon_var,
+                prev_cell.regime,
+            )
+        })
+        .collect()
+}
+
 fn face_cell_input(
     sim: &ReservoirSimulator,
     state: &FimState,

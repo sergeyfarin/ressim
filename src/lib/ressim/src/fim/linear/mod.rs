@@ -4,6 +4,8 @@ use sprs::CsMat;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod capture;
 mod dense_lu_debug;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod flow_lifecycle;
 mod gmres_block_jacobi;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod solver_lab;
