@@ -220,6 +220,13 @@ below is retained as Bundle N/Y history; it must not override this current seque
   still physically stored in the q-named tail vector. Do not remove the pre-Newton block or call
   this a complete route until the typed-state migration, independent legacy derivative, full-row
   FD/Schur, and trace gates land. Do not run live convergence.
+- [x] **Newton production-seam extraction (2026-07-15): behavior-preserving.** Moved production
+  helpers from `fim/newton.rs` into `newton/damping.rs` (Appleyard/chop/history stabilization),
+  `newton/convergence.rs` (residual families, CNV/MB, acceptance and stagnation gates), and
+  `newton/diagnostics.rs` (small-dt residual-neighborhood reporting). The parent now retains
+  orchestration and shared result types (3,110 lines; the individual timestep loop is still above
+  the 1,500-line aspiration and needs a separate ownership-preserving extraction). `cargo check
+  --tests` passes; no solver semantics or convergence result changed.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 
