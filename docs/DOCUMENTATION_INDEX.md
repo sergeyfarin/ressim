@@ -19,6 +19,7 @@ Use this file to decide which documents are authoritative, which are active work
 | `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` | Six-item FIM-vs-OPM Newton-efficiency gap decomposition, with 2026-07-05 triage (4 of 6 closed) |
 | `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md` | Active decision-frontier plan: Y2b2a backend-neutral oracle repair, corrected raw-state replay, dependency-aware OPM lifecycle gates, promotion matrix, and prescriptive simple-model handoff |
 | `docs/FIM_Y2B3_PRIMARY_VARIABLE_LIFECYCLE_DESIGN.md` | Deck-scoped OPM `Sg`/`Rs` lifecycle map, ResSim fixed-layout dependency contract, empty-column invariant, and prescriptive Y2b3a-c implementation gates |
+| `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md` | Source-pinned Flow 2026.04 BiCGSTAB/true-IMPES/CPRW/paroverilu0/one-loop-AMG lifecycle, well-operator split, coupled capture gates, and IMPES applicability audit |
 | `docs/FIM_BUNDLE_N_DESIGN.md` | Bundle N (OPM nonlinear layer): design, §9 verified OPM formulas, §5.1 failed end-metric evaluation, §10 retrospective/disposition — parked behind the `OpmAligned` flag |
 | `docs/FIM_BUNDLE_P_PLAN.md` | Bundle P (CPR setup reuse): REFUTED at P0 2026-07-10 (no failure-free reuse interval); P0 measurement tooling kept; superseded on the cost axis by `FIM-LINEAR-011` |
 | `docs/FIM_BUNDLE_W_PLAN.md` | Bundle W (nested well solve): EVALUATED 2026-07-11, mechanism validated (standoff fixed), NOT promoted — heavy-case gate failed on a newly-exposed second gap; kept inert behind `nested_well_solve` |

@@ -3780,6 +3780,34 @@ closed-system `rate_history` assertion (`left=2`, `right=1`). The package manage
 version check reports restricted-network `ERR_PNPM_META_FETCH_FAIL`, but typecheck/lint/Vitest
 commands themselves exit successfully.
 
+### Bundle Y checkpoint Y2d6: exact Flow linear-lifecycle design (2026-07-15)
+
+Pinned the design to installed `libopm-simulators-bin 2026.04-1~noble`, the exact OPM source tag
+`release/2026.04/final` (`b82f21d...`), and DUNE-ISTL 2.11.0. The source confirms raw two-norm
+BiCGSTAB stopping at `0.005`, twenty full alpha/omega pairs, storage-derived true-IMPES weights,
+zero CPR pre-sweeps, one coarse pressure correction, and one post `paroverilu0` sweep. The coarse
+`loopsolver(maxiter=1)` clears its correction and applies AMG once, so it is a fixed application
+inside one outer solve rather than ResSim's RHS-dependent tolerance-terminated pressure
+BiCGSTAB.
+
+The audit found a new coupled mismatch that must be held atomic. Flow's outer operator includes
+eliminated well effects, but its fine ILU factors the reservoir matrix without them and CPRW adds
+well pressure contributions explicitly to the coarse matrix. ResSim currently Schur-eliminates
+wells before CPR and factors that modified matrix. The present 13 captures also lack the raw
+storage blocks required for true-IMPES. Therefore an outer-only BiCGSTAB run, an AMG-only run, or
+a “true-IMPES” weight derived from the diagonal Jacobian would all be `INCONCLUSIVE`.
+
+Design and prescriptive gates: `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`. Next is Y2d6a
+capture payload only: raw storage/weight proof plus separate reservoir/well blocks, strict
+round-trip validation, then one bounded and one gas artifact. No FIM solver behavior changed.
+
+IMPES applicability was audited separately. Bundle X's connected-cell producer fractions already
+benefit the shared product path. Y2 primary switching, variable CPR, well-Schur, and CPRW do not
+map to IMPES's explicit transport and pressure-only direct system. The iteration-contract review
+did expose one IMPES fallback diagnostic bug: loop-boundary BiCGSTAB convergence over-counted one
+not-executed iteration. A focused regression failed `2 != 1`, the counter placement was corrected,
+and the complete solver test bucket passes `6/6`; the numerical pressure correction is unchanged.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

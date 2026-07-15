@@ -1602,3 +1602,32 @@ correctness path. Y2d6 must now design the actual Flow-selected outer BiCGSTAB, 
 weights, paroverilu0, and one-loop AMG application as one source-complete lifecycle. Swapping only
 the outer solver while retaining ResSim's input-dependent inner solve would be an invalid oracle,
 not a refutation.
+
+### 15.17 Y2d6 result: source-complete Flow lifecycle exposes a well-operator split (2026-07-15)
+
+The design is pinned to the exact `release/2026.04/final` OPM commit
+`b82f21dba405286c4c4446614dd3bf9cdebf7a2c` and DUNE-ISTL 2.11.0, matching the installed
+Flow 2026.04 package rather than the newer local `master`. Outer BiCGSTAB uses the raw sequential
+two-norm, strict `0.005` reduction, twenty complete alpha/omega pairs, and a cleared output before
+each right-preconditioner application. The CPR coarse loop applies AMG exactly once; its `0.1`
+tolerance does not turn it into a variable tolerance-terminated inner solve.
+
+Two dependencies invalidate a simple outer-method replacement. True-IMPES weights come from
+local storage derivatives, which the existing 13 matrix/RHS captures do not retain. More
+importantly, Flow's outer operator applies eliminated standard-well effects while its fine
+`paroverilu0` factors the reservoir `J_rr` matrix without those effects; CPRW adds well pressure
+contributions separately to its coarse matrix. ResSim currently forms the explicit Schur matrix
+first and uses it for both fine and coarse CPR construction. That difference can mask either a
+positive or negative result even with the same outer recurrence.
+
+The complete component identities, matched/missing map, capture contract, and four-stage gates are
+in `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`. The next slice is only Y2d6a: capture raw
+storage/true-IMPES inputs and separate reservoir/well blocks, then prove one bounded and one gas
+artifact. No outer solver or AMG implementation is yet authorized.
+
+The parallel IMPES audit found no CPR/Newton mechanism to port. IMPES has no coupled Newton
+primary-variable or well-tail system, defaults to direct pressure LU, and uses fixed diagonal
+Jacobi only in its BiCGSTAB fallback. One genuine reporting defect was found and fixed: convergence
+recognized at a loop boundary previously counted the not-yet-executed next iteration. A focused
+nonsymmetric regression now reports completed corrections and independently checks the raw
+residual; the pressure solution is unchanged.

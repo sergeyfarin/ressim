@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d5 confirms the default-off true-FGMRES path and removes the masked Y2 water linear
-failures; Y2d6 OPM linear-lifecycle design is next (2026-07-15)**. This document turns the evidence in
+Status: **Y2d6 Flow 2026.04 linear-lifecycle design is complete; Y2d6a capture-payload sufficiency
+is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -745,6 +745,21 @@ Only after that design may Y2d6 implement the smallest coherent captured-system 
 preserve full-system norms, partitions, direct deltas, bounded `8/8`, gas `5/5`, and compare
 iteration counts against Flow's actual 20-iteration contract. No live run, default change,
 acceptance/controller edit, or standalone AMG project is authorized in the design slice.
+
+**Y2d6 design result (2026-07-15): COMPLETE; implementation not started.** The exact source pin is
+`OPM/opm-simulators@release/2026.04/final` commit
+`b82f21dba405286c4c4446614dd3bf9cdebf7a2c`, with DUNE-ISTL 2.11.0. The source audit adds two
+requirements that make a partial outer swap invalid. First, true-IMPES comes from local storage
+derivatives, which the current 13 captures do not contain. Second, Flow applies eliminated well
+effects in the outer operator but factors `paroverilu0` on the reservoir matrix without those
+effects, then adds well pressure contributions explicitly to the CPRW coarse matrix. ResSim
+currently Schur-eliminates first and factors the already-reduced matrix. The complete design,
+matched/missing table, coupled oracle, and IMPES applicability audit are in
+`FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`.
+
+Next is Y2d6a only: version the capture payload with raw storage/true-IMPES inputs and the separate
+reservoir/well blocks, round-trip it, and regenerate one bounded plus one gas proof artifact. Do
+not implement BiCGSTAB, AMG, or live routing in that slice.
 
 ## 8. Y3 and Y4 end gates
 

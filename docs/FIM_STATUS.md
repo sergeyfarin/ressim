@@ -24,24 +24,17 @@ exact Flow oracle (`6` substeps, Newton `7/5/4/3/4/3`, zero cuts), isolated the 
 to the injector, refuted direct-vs-iterative linear quality as primary, and found a Newton update
 at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard projection.
 
-**Current decision frontier:** source audit shows OPM's normal update uses `ds-max` limiting while
-optional saturation projection defaults off; ResSim enforces `Sw >= Swc` after each update. Y2b1
-measured the resulting first-order break. Y2b2's live raw-state probe improved the capped rung
-~9.2×, but its forced-direct check was invalid: Sparse LU/well-Schur exposed no failure reduction,
-so Newton aborted with `reduction=n/a` without measuring direct correction quality. The probe also
-omitted OPM's per-update primary-variable adaptation. Its behavior implementation was deleted and
-the verdict is **INCONCLUSIVE**, not refuted. Y2b2a has now repaired the backend-neutral
-linear-report oracle (RHS/final norms and reduction; direct reports no longer rely on optional
-failure metadata). Y2b2b has restored and replayed the identical native default-off probe: CPR
-reduces the live exact matrix to `4.830552e-3`, but explicit Sparse LU returns an all-zero
-correction and `1.0` reduction; the forced-direct run has 16 linear retries and no substep. The
-raw-state mechanism remains **INCONCLUSIVE** while that direct factorization-path defect is
-classified. The next bounded slice is direct Sparse-LU build/factorization diagnosis on the
-preserved 904-row capture, as specified in
-`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; G4/G5 restructuring, controller tuning,
-AMG, damping changes, and convergence-acceptance widening remain blocked. Re-derive current
-ResSim baselines on the clean commit before the first behavior probe; do not use the historical
-`459`/`238`/`695` counts as promotion baselines.
+**Current decision frontier (2026-07-15):** the complete Y2 tagged primary-variable lifecycle is
+validated default-off and reaches the exact Flow gas substep count. Y2d5 proved that ResSim's
+historical fixed-left GMRES recurrence had masked that positive result: default-off true FGMRES
+removes every Y2 water linear retry, but exact-gas Newton counts remain above Flow and the heavy
+case remains seven substeps versus one. Y2d6 has now source-pinned the actual Flow 2026.04 linear
+lifecycle. The next bounded slice is Y2d6a capture payload sufficiency, because current artifacts
+lack storage derivatives for true-IMPES and conflate a material operator split: Flow factors fine
+ILU on reservoir `J_rr`, applies eliminated well effects in the outer operator, and adds well
+pressure contributions separately to CPRW; ResSim factors the explicit Schur matrix. See
+`docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`. No outer-only BiCGSTAB swap, partial AMG port,
+controller tuning, damping change, or acceptance widening is authorized.
 
 Use this file for:
 
@@ -64,7 +57,7 @@ now substantially OPM-aligned, assembled over Phases 0-11:
 - **Assembly**: exact AD Jacobian (`fim/assembly_ad.rs`) is the live path; the legacy
   hand-derivative assembler is kept `#[cfg(test)]` as the bit-parity oracle. Parity gates:
   `cargo test --manifest-path src/lib/ressim/Cargo.toml assembly_ad`.
-- **Linear stack** (all matching OPM's shipped `cprw` recipe, each gated before promotion):
+- **Linear stack** (OPM-shaped but not yet the complete shipped `cprw` lifecycle):
   loose relative tolerance `5e-3` with iteration budget `20` (`FIM-LINEAR-008`), block-ILU0 fine
   smoother on natural 3x3 cell blocks (Step 10.2), quasi-IMPES CPR pressure restriction
   (`FIM-LINEAR-005`), well-BHP/perforation-rate Schur elimination each Newton iteration

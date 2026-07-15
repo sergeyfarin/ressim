@@ -51,7 +51,7 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 - [ ] **3D view named bugs** from PLAN.md-era review (FOV degrees conversion, `Array.isArray` on GridState, `k ?? k` well indexing) were never re-verified post-refactor — cheap scoped verification pass (COMPARISON_TOOLBOX_REVIEW gap #7).
 - [ ] **3 pre-existing test failures found 2026-07-07** (not part of the locked smoke gate, unrelated to Bundle N — confirmed by reproducing on commit `41d45f2` before any Bundle N checkpoint-4 edits): `fim::timestep::tests::changing_hotspot_resets_extra_growth_cooldown_budget`, `repeated_same_hotspot_extends_growth_cooldown_budget`, `fim_enabled_step_advances_time_and_records_history_for_closed_system`. Not investigated further (out of scope for the current task); worth a scoped look. **Likely a 4th sibling found 2026-07-12** (`FIM-BUNDLE-X` X1 gate, `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"): `tests::runtime_api::closed_system_public_step_keeps_same_water_inventory_on_both_solvers` — same symptom class (extra `rate_history` entry on the FIM path for a well-less closed system), different test name; confirmed pre-existing via `git stash` on a clean tree, structurally unrelated to Bundle X. Worth investigating all four together — the shared "closed system + FIM + rate_history" pattern suggests one root cause, not four.
 
-## FIM next steps (updated 2026-07-14)
+## FIM next steps (updated 2026-07-15)
 
 Current execution authority: `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. The detailed list
 below is retained as Bundle N/Y history; it must not override this current sequence.
@@ -145,10 +145,17 @@ below is retained as Bundle N/Y history; it must not override this current seque
   the old path. It removes every Y2 water linear retry: the blocker improves `11/8L -> 3/0L+1N`;
   other controls preserve substeps. Exact gas stays six/zero but Newton worsens by four total, so
   retain the validated option default-off and do not claim OPM-stack promotion.
-- [ ] **Next: Y2d6 actual Flow linear-lifecycle design.** Source-pin the selected
-  BiCGSTAB/true-IMPES CPRW/paroverilu0/one-loop-AMG semantics, map matched/missing lifecycle items,
-  and specify a coupled test-only 13-capture oracle before coding. A partial outer swap is
-  INCONCLUSIVE; no live/default/acceptance/controller change in the design slice.
+- [x] **Y2d6 actual Flow linear-lifecycle design (2026-07-15): COMPLETE.** Exact source pin is
+  Flow/OPM `release/2026.04/final` + DUNE-ISTL 2.11. The design pins the raw two-norm and 20
+  BiCGSTAB-pair budget, storage-derived true-IMPES, CPRW well contributions, block paroverilu0,
+  and one-loop AMG. It also finds a material hidden mismatch: Flow factors fine ILU on reservoir
+  `J_rr` while applying eliminated well effects in the outer operator and adding them separately
+  to the coarse pressure operator; ResSim factors the already Schur-reduced matrix. See
+  `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`.
+- [ ] **Next: Y2d6a capture-payload sufficiency only.** Version the capture format with raw
+  storage/true-IMPES inputs and separate reservoir/well blocks, add strict round-trip/rejection
+  tests, and regenerate one bounded plus one gas proof artifact. Do not add outer BiCGSTAB, AMG,
+  live routing, or nonlinear/controller changes in this slice.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.
