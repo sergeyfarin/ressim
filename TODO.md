@@ -160,9 +160,12 @@ below is retained as Bundle N/Y history; it must not override this current seque
   artifacts: outer/Schur, exactly-once coarse well term, `J_rr` block ILU fixedness, one-level
   direct coarse fixedness, full CPR order/linearity, and independent raw residual. Both pressure
   systems are below Flow's `coarsenTarget=1200`, so no general AMG implementation is warranted.
-- [ ] **Next: Y2d6c identity-gated 8+5 corpus comparison.** Add exact 20-pair DUNE BiCGSTAB only
-  around the now-fixed component stack; regenerate/extend eight bounded plus five gas v3 captures
-  and report all prescribed counters/norms/current controls. No live routing or default change.
+- [x] **Y2d6c step 1 — capture-v3 corpus regeneration (2026-07-15): COMPLETE.** The established
+  selectors reproduce bounded eight `max-iters` plus gas four final-near-miss/one `max-iters`
+  artifacts. All 13 pass source, weight, companion, count, and full-J reconstruction gates.
+- [ ] **Next: Y2d6c step 2 — exact test-only DUNE BiCGSTAB and corpus report.** Wrap the fixed
+  D6b component map with raw-norm, zero-initial, strict `0.005`, twenty-pair semantics; gate every
+  solve on identities and report prescribed controls. No live routing or default change.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

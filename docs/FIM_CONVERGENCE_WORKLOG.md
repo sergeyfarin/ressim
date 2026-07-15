@@ -3865,6 +3865,24 @@ and stops at the unchanged pre-existing closed-system `rate_history` assertion (
 `right=1`). `cargo check` passes; after gating parser-only helpers to tests it retains only the
 four pre-existing native dead-code warnings.
 
+### Bundle Y checkpoint Y2d6c.1: capture-v3 corpus regeneration (2026-07-15)
+
+Added `FIM_Y2D6_CORPUS_DIR` at exactly the two selectors that produced the preserved Y2d4 corpus:
+final Newton-iteration near miss and OPM-aligned linear abort. The v3 companion is assembled from
+the same state/Jacobian before solver dispatch; older v2 capture paths and D6a's atomic first-system
+trigger are unchanged.
+
+Release regeneration reproduces the historical controls and cardinalities:
+
+- bounded `22x22x1`: 11 substeps, eight linear retries, exactly eight v3 `max-iters` artifacts;
+- gas `20x20x3`: 238 substeps, one linear/four nonlinear retries, exactly four v3
+  `final-iteration-near-miss` plus one `max-iters` artifact.
+
+The corpus payload lab passes `8/8` and `5/5`; loading each file recomputes true-IMPES and
+reconstructs full J bit-for-bit. Artifact directories are
+`/tmp/ressim-y2d6c-bounded-1b3de31` and `/tmp/ressim-y2d6c-gas-1b3de31`. This is selection and
+payload evidence only. Next is the exact test-only DUNE BiCGSTAB recurrence.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

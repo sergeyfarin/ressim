@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d6a payload and Y2d6b component identities are complete; Y2d6c captured-corpus
-comparison is next (2026-07-15)**. This document turns the evidence in
+Status: **Y2d6c capture-v3 corpus regeneration is complete; the exact test-only DUNE BiCGSTAB
+recurrence is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -779,6 +779,13 @@ added.
 Next is Y2d6c only: regenerate/extend the v3 bounded-eight plus gas-five corpus and compare the
 coherent fixed stack with Flow's exact 20-pair BiCGSTAB contract. Preserve per-capture identity
 gating; an identity failure is `INCONCLUSIVE`, never a convergence refutation.
+
+**Y2d6c step 1 result (2026-07-15): COMPLETE.** A distinct `FIM_Y2D6_CORPUS_DIR` mirrors only the
+two established selection hooks while preserving all older capture behavior: OPM-aligned linear
+abort and final-iteration near miss. The current branch exactly regenerates bounded `8/8`
+`max-iters` artifacts and gas `4` final-near-miss plus `1` `max-iters` artifact. All thirteen are
+capture v3 and pass count, companion, source, weight, and bit-exact full-J reconstruction gates.
+Next implement the test-only recurrence; do not route it live.
 
 ## 8. Y3 and Y4 end gates
 

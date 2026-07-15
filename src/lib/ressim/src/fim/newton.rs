@@ -3857,6 +3857,19 @@ pub(crate) fn run_fim_timestep(
         prev_residual_norm = current_norm;
 
         let rhs = -&assembly.residual;
+        // Y2d6c: materialize the source-complete companion only when its dedicated corpus
+        // trigger is enabled. The selected failure/near-miss hooks below write it alongside the
+        // same exact full system used by the established bounded-eight/gas-five corpora.
+        #[cfg(not(target_arch = "wasm32"))]
+        let y2d6_corpus_flow = crate::fim::linear::capture::y2d6_corpus_dir_from_env().map(|_| {
+            crate::fim::linear::flow_lifecycle::build_capture_data(
+                sim,
+                previous_state,
+                &state,
+                block_layout.expect("FIM always defines a linear block layout"),
+                &assembly.jacobian,
+            )
+        });
         // Y2d6a: capture the first exact, uneliminated FIM linear system together with the
         // source-pinned Flow storage blocks, true-IMPES weights, and reservoir/well partition.
         // This is a native/default-off diagnostic oracle; production dispatch is unchanged.
@@ -4053,6 +4066,32 @@ pub(crate) fn run_fim_timestep(
                     &rhs,
                     Some(&assembly.equation_scaling),
                 );
+            }
+            if let Some(corpus_dir) = crate::fim::linear::capture::y2d6_corpus_dir_from_env() {
+                let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                    newton_iteration: iteration,
+                    failure_reason: "final-iteration-near-miss".to_string(),
+                    dominant_family: residual_diagnostics.global.family.label().to_string(),
+                    dominant_item_index: residual_diagnostics.global.item_index,
+                };
+                match y2d6_corpus_flow
+                    .as_ref()
+                    .expect("Y2d6 corpus payload was requested")
+                {
+                    Ok(flow_lifecycle) => {
+                        crate::fim::linear::capture::write_flow_lifecycle_capture(
+                            &corpus_dir,
+                            crate::fim::linear::capture::next_capture_sequence(),
+                            &metadata,
+                            block_layout.expect("FIM always defines a linear block layout"),
+                            &assembly.jacobian,
+                            &rhs,
+                            Some(&assembly.equation_scaling),
+                            flow_lifecycle,
+                        );
+                    }
+                    Err(error) => eprintln!("Y2d6 corpus capture rejected: {error}"),
+                }
             }
         }
 
@@ -4252,6 +4291,45 @@ pub(crate) fn run_fim_timestep(
                             &rhs,
                             Some(&assembly.equation_scaling),
                         );
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(corpus_dir) =
+                        crate::fim::linear::capture::y2d6_corpus_dir_from_env()
+                    {
+                        let metadata = crate::fim::linear::capture::FimCaptureMetadata {
+                            newton_iteration: iteration,
+                            failure_reason: linear_report
+                                .failure_diagnostics
+                                .as_ref()
+                                .map(|diagnostics| diagnostics.reason.label().to_string())
+                                .unwrap_or_else(|| {
+                                    if all_finite {
+                                        "opm-aligned-no-diagnostics".to_string()
+                                    } else {
+                                        "non-finite".to_string()
+                                    }
+                                }),
+                            dominant_family: residual_diagnostics.global.family.label().to_string(),
+                            dominant_item_index: residual_diagnostics.global.item_index,
+                        };
+                        match y2d6_corpus_flow
+                            .as_ref()
+                            .expect("Y2d6 corpus payload was requested")
+                        {
+                            Ok(flow_lifecycle) => {
+                                crate::fim::linear::capture::write_flow_lifecycle_capture(
+                                    &corpus_dir,
+                                    crate::fim::linear::capture::next_capture_sequence(),
+                                    &metadata,
+                                    block_layout.expect("FIM always defines a linear block layout"),
+                                    &assembly.jacobian,
+                                    &rhs,
+                                    Some(&assembly.equation_scaling),
+                                    flow_lifecycle,
+                                );
+                            }
+                            Err(error) => eprintln!("Y2d6 corpus capture rejected: {error}"),
+                        }
                     }
                     let failure_diagnostics = classify_retry_failure_with_site(
                         Some(&linear_report),

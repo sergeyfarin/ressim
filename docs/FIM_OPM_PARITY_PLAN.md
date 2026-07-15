@@ -1664,3 +1664,12 @@ This also narrows the AMG scope using DUNE 2.11 source: 484 and 300 pressure row
 the entire one-level AMG application and is a fixed map; no general AMG project is justified.
 Y2d6b remains algebraic infrastructure, not evidence of fewer Newton iterations. Next is Y2d6c's
 identity-gated 8+5 captured comparison under the exact 20-pair BiCGSTAB contract.
+
+### 15.20 Y2d6c step 1: source-complete 8+5 corpus regenerated (2026-07-15)
+
+The failure/near-miss selectors now have a separate capture-v3 output, leaving v2 diagnostics and
+the D6a one-shot trigger unchanged. The current bounded run reproduces 11 accepted substeps and
+eight linear retries, writing exactly eight `max-iters` systems. The current 20x20x3 gas control
+reproduces 238 substeps, one linear and four nonlinear retries, writing exactly four final near
+misses and one `max-iters` system. All thirteen parse with the required lifecycle companion,
+recomputed weights, and bit-exact full-J partitions. No recurrence result exists yet.

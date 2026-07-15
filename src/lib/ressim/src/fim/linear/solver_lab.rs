@@ -21,7 +21,7 @@ use sprs::CsMat;
 
 use super::capture::{
     FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
-    y2d6_capture_dir_from_env,
+    y2d6_capture_dir_from_env, y2d6_corpus_dir_from_env,
 };
 use super::flow_lifecycle::FlowComponentOracle;
 use super::gmres_block_jacobi::{
@@ -138,6 +138,38 @@ fn solver_lab_validate_y2d6b_component_identities() {
         metrics.residual_norm,
         metrics.residual_norm_disagreement,
         metrics.correction_max_abs,
+    );
+}
+
+/// Y2d6c corpus-selection/payload gate. Parsing already recomputes true-IMPES weights and
+/// reconstructs full J bit-for-bit; this additionally fails closed on count and missing v3 data.
+#[test]
+#[ignore]
+fn solver_lab_validate_y2d6c_corpus_payloads() {
+    let dir = y2d6_corpus_dir_from_env()
+        .expect("set FIM_Y2D6_CORPUS_DIR to one bounded or gas v3 corpus");
+    let expected = std::env::var("FIM_Y2D6_EXPECTED_COUNT")
+        .expect("set FIM_Y2D6_EXPECTED_COUNT to 8 or 5")
+        .parse::<usize>()
+        .expect("FIM_Y2D6_EXPECTED_COUNT must be an integer");
+    let systems = load_captures(&dir).expect("load and validate Y2d6c corpus");
+    assert_eq!(systems.len(), expected, "Y2d6c corpus cardinality");
+    let mut reasons = std::collections::BTreeMap::<String, usize>::new();
+    for system in &systems {
+        let flow = system
+            .flow_lifecycle
+            .as_ref()
+            .expect("Y2d6c rejects a capture without the v3 lifecycle companion");
+        let layout = system.layout.expect("Y2d6c requires block layout");
+        assert_eq!(flow.reservoir_unknown_count, layout.cell_unknown_count());
+        *reasons
+            .entry(system.metadata.failure_reason.clone())
+            .or_default() += 1;
+    }
+    println!(
+        "Y2D6C-CORPUS dir={} systems={} reasons={reasons:?}",
+        dir.display(),
+        systems.len()
     );
 }
 

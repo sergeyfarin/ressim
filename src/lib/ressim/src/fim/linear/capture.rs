@@ -39,6 +39,9 @@ pub(crate) const Y2B2_CAPTURE_DIR_ENV: &str = "FIM_Y2B2_CAPTURE_DIR";
 /// Y2d6a's dedicated source-complete capture. This is intentionally separate from the older
 /// matrix/RHS corpora because a v2 artifact cannot serve as a true-IMPES oracle.
 pub(crate) const Y2D6_CAPTURE_DIR_ENV: &str = "FIM_Y2D6_CAPTURE_DIR";
+/// Y2d6c's failure/near-miss corpus. Unlike the one-shot D6a proof trigger, this mirrors the
+/// established bounded-eight/gas-five selection hooks and writes every selected system as v3.
+pub(crate) const Y2D6_CORPUS_DIR_ENV: &str = "FIM_Y2D6_CORPUS_DIR";
 
 /// Process-wide monotonically increasing capture sequence. `run_fim_timestep` is called
 /// once per substep/retry rung, so a per-call counter would overwrite earlier files —
@@ -135,6 +138,10 @@ pub(crate) fn y2b2_capture_dir_from_env() -> Option<PathBuf> {
 
 pub(crate) fn y2d6_capture_dir_from_env() -> Option<PathBuf> {
     std::env::var_os(Y2D6_CAPTURE_DIR_ENV).map(PathBuf::from)
+}
+
+pub(crate) fn y2d6_corpus_dir_from_env() -> Option<PathBuf> {
+    std::env::var_os(Y2D6_CORPUS_DIR_ENV).map(PathBuf::from)
 }
 
 /// Writes one failed system to `<dir>/fim_capture_<seq>.txt`. Errors are reported to

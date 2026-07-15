@@ -192,6 +192,11 @@ both. Their pressure systems are below `coarsenTarget=1200`, so the source-compl
 surface is one direct coarse level, not a new aggregation implementation. Gate D6c is now the only
 authorized slice.
 
+D6c corpus checkpoint: the established selectors now emit v3 without changing their selection
+semantics. Bounded regenerates eight `max-iters` artifacts; gas regenerates four
+`final-iteration-near-miss` plus one `max-iters` artifact. Payload validation passes all thirteen.
+The next substep is only the exact test-only DUNE BiCGSTAB recurrence and corpus report.
+
 ### Gate D6a — payload sufficiency
 
 Extend or cleanly regenerate the existing eight bounded and five gas artifacts. Each item must
