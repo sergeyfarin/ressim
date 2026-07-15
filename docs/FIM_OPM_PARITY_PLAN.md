@@ -1777,3 +1777,15 @@ The source, control, connection, primary update, diagnostics, AD/legacy parity, 
 coordinates are coupled. q-coordinate nested solve, multi-perf allocation, BHP active switching,
 retry lifetime, and IMPES are explicitly outside G4b0. The next commit is context/control
 representation plus unit gates only; an assembly or convergence run before those gates is invalid.
+
+### 15.26 G4b0 result: report-step context exists but is intentionally inert (2026-07-15)
+
+G4b0 adds `WellScheduleControl::Resv`, the native-only `FIM_FLOW_RESV_INJECTOR` flag, and
+`FlowResvReportStepContext`. It captures Flow-style hydrocarbon-PV-weighted pressure and derives
+the one-region `B_g,ref` before a report step; retries retain that immutable value and acceptance
+refreshes it. Strict guards reject a q-coordinate nested solve and explicit BHP limit, as well as
+unsupported gas/control/topology forms. Neither FIM assembler consumes the context yet, so this
+does not alter a primary, source, connection, control row, or IMPES.
+
+The next valid claim is only G4b1's AD/f64 local residual contract. A live result or source trace
+under this flag would still be an incomplete lifecycle and is not a parity oracle.

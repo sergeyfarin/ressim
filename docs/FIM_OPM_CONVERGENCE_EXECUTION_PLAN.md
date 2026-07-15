@@ -893,6 +893,20 @@ coordinates.
 default-off report-step reference context with unsupported-case rejection and unit tests. Do not
 route assembly, freeze a source, change IMPES, or run a convergence comparison in that slice.
 
+### G4b0 result (2026-07-15): RESV context captured; no equation changed
+
+Native-only `FIM_FLOW_RESV_INJECTOR` now recognizes explicit schedule `RESV`, validates one
+enabled gas injector/one perforation/no surface target/no explicit BHP limit/no nested solve, and
+captures immutable hydrocarbon-PV-weighted pressure plus `B_g,ref` before the report step. The
+context is copied into every Newton attempt, survives retry unchanged, and refreshes only after an
+accepted FIM substep. It is intentionally not read by either assembler, source helper, well
+update, or IMPES.
+
+Focused context tests, well-control tests, AD/legacy assembly parity, locked FIM smoke, curated
+FIM coverage, and Buckley-Leverett benchmarks pass. The shared bucket reproduces its documented
+pre-existing closed-system `rate_history` mismatch after three passing checks; it is not
+attributed to G4b0. Next is G4b1's pure AD/f64 residual contract. No live RESV run is authorized.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

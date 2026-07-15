@@ -4,6 +4,15 @@ fn default_well_schedule_enabled() -> bool {
     true
 }
 
+/// Recognized schedule control kinds. The serialized schedule keeps its historical string field
+/// so existing scenario payloads remain compatible.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WellScheduleControl {
+    Pressure,
+    Rate,
+    Resv,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct WellSchedule {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -31,6 +40,21 @@ impl Default for WellSchedule {
 }
 
 impl WellSchedule {
+    pub fn control_kind(&self) -> Option<WellScheduleControl> {
+        match self
+            .control_mode
+            .as_deref()?
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "pressure" => Some(WellScheduleControl::Pressure),
+            "rate" => Some(WellScheduleControl::Rate),
+            "resv" => Some(WellScheduleControl::Resv),
+            _ => None,
+        }
+    }
+
     pub fn has_explicit_control(&self) -> bool {
         self.control_mode.is_some()
             || self.target_rate_m3_day.is_some()
@@ -131,10 +155,9 @@ impl Well {
         }
 
         if let Some(control_mode) = &self.schedule.control_mode {
-            let normalized = control_mode.trim().to_ascii_lowercase();
-            if normalized != "pressure" && normalized != "rate" {
+            if self.schedule.control_kind().is_none() {
                 return Err(format!(
-                    "Well control mode must be 'pressure' or 'rate', got: {}",
+                    "Well control mode must be 'pressure', 'rate', or 'resv', got: {}",
                     control_mode
                 ));
             }

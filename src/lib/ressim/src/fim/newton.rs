@@ -13,6 +13,7 @@ use crate::fim::assembly::{
 // `#[cfg(test)]` module still imports the legacy `assemble_fim_system`
 // directly for its own assertions.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
+use crate::fim::flow_resv::FlowResvReportStepContext;
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
@@ -801,6 +802,9 @@ pub(crate) struct FimNewtonOptions {
     /// `nonlinear_flavor` — evaluable under either flavor. Default `false` = bit-identical to
     /// before this flag existed.
     pub(crate) nested_well_solve: bool,
+    /// G4b0 carries an immutable report-step conversion context through a Newton attempt. It is
+    /// intentionally not consumed by assembly until G4b1/G4b2 implements all coupled rows.
+    pub(crate) flow_resv_context: Option<FlowResvReportStepContext>,
 }
 
 impl Default for FimNewtonOptions {
@@ -818,6 +822,7 @@ impl Default for FimNewtonOptions {
             verbose: false,
             nonlinear_flavor: FimNonlinearFlavor::Legacy,
             nested_well_solve: false,
+            flow_resv_context: None,
         }
     }
 }

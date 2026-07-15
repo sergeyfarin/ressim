@@ -1,6 +1,6 @@
 # G4a — Flow Injector-RESV Lifecycle Design
 
-Status: **DESIGN COMPLETE; NO BEHAVIOUR CHANGE (2026-07-15)**
+Status: **G4B0 COMPLETE; G4B1 NEXT (2026-07-15)**
 
 This is the only authorized design after Y2d8. It defines a narrow, default-off,
 source-comparable probe for the exact `gas-rate-10x10x3` Flow case. It is not permission to
@@ -106,13 +106,16 @@ an explicit mode tag are both wrong.
 
 ## 5. Prescriptive G4b sequence
 
-1. **G4b0: representation only.** Add explicit parsed `RESV` control kind and native-only,
-   default-false `FIM_FLOW_RESV_INJECTOR=1`. Add immutable `FlowResvReference` to FIM
-   report-step/attempt context, not a cell or mutable global. Calculate scoped regional
-   hydrocarbon-PV-weighted reference. Unit-test constructor, accepted refresh, and retry rollback.
-   Reject rather than approximate multi-perf, non-gas, surface-rate, BHP-active, multi-region,
-   or `FIM_NESTED_WELL_SOLVE` requests. Do not route assembly.
-2. **G4b1: shared residual contract.** Build one AD + f64 pure function for §4. Test it at two
+1. **G4b0: representation only — COMPLETE 2026-07-15.** Added explicit parsed `RESV` control
+   kind and native-only,
+   default-false `FIM_FLOW_RESV_INJECTOR=1`, and immutable `FlowResvReference` to FIM
+   report-step/attempt context, not a cell or mutable global. It captures a scoped regional
+   hydrocarbon-PV-weighted reference, with unit tests for construction, accepted refresh, and
+   retry rollback. It rejects rather than approximates multi-perf, non-gas, surface-rate,
+   BHP-active, multi-region, or `FIM_NESTED_WELL_SOLVE` requests. No assembler, source,
+   rate-unknown, or live convergence
+   path changed. The one-region restriction is explicit because current ResSim has no region map.
+2. **G4b1: shared residual contract — NEXT.** Build one AD + f64 pure function for §4. Test it at two
    pressures where `B_g != B_g,ref`: `dS/dp` and `dR_perf/dp` retain the current
    connection/FVF derivative, `dS/du=0`, and `dR_ctrl/du=B_g,ref`. Do not route production
    assembly yet.
@@ -176,7 +179,7 @@ same commit; do not infer an IMPES convergence benefit.
 
 ## 8. Closeout
 
-Commit tested: `be6326c` (Y2d8 source audit). Oracle validity: **VALID** for one-perf evaluation-1
-source comparison, **not yet a live behavior oracle**. Retry, aggregation, active control
-switching, and u-coordinate nested solve remain unimplemented. Verdict: **DESIGN COMPLETE;
-G4b0 authorized.**
+Commits tested: `be6326c` (Y2d8 source audit) and the G4b0 implementation checkpoint. Oracle
+validity: **VALID** for one-perf evaluation-1 source comparison, **not yet a
+live behavior oracle**. Retry, aggregation, active control switching, and u-coordinate nested
+solve remain unimplemented. Verdict: **G4B0 COMPLETE; G4b1 authorized.**

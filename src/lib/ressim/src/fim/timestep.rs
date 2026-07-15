@@ -2,6 +2,7 @@ use crate::ReservoirSimulator;
 use crate::fim::assembly::{FimAssemblyOptions, equation_offset};
 // See newton.rs: production assembly now goes through the AD assembler.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
+use crate::fim::flow_resv::begin_flow_resv_report_step_context;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{
@@ -1039,6 +1040,26 @@ impl ReservoirSimulator {
         newton_options.nested_well_solve = self.fim_nested_well_solve;
         newton_options.linear.use_true_fgmres = self.fim_true_fgmres;
         newton_options.linear.use_flow_lifecycle = self.fim_flow_lifecycle;
+        // G4b0 captures only the immutable report-step conversion reference. No source,
+        // connection, control, or update path consumes it yet; unsupported opt-in requests stop
+        // before a partial lifecycle could be run.
+        let mut flow_resv_context = if self.fim_flow_resv_injector {
+            let report_start_state = FimState::from_simulator(self);
+            match begin_flow_resv_report_step_context(
+                self,
+                &report_start_state,
+                self.fim_nested_well_solve,
+            ) {
+                Ok(context) => context,
+                Err(reason) => {
+                    self.last_solver_warning =
+                        format!("FIM Flow RESV injector unsupported: {reason}");
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
         // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
         if self.fim_force_direct_linear {
@@ -1108,6 +1129,7 @@ impl ReservoirSimulator {
             let previous_state = FimState::from_simulator(self);
 
             loop {
+                newton_options.flow_resv_context = flow_resv_context;
                 // Late-window trace diagnostic: sticky activation, checked every pass
                 // (initial trial + every retry) since `trial_dt` shrinks across retries.
                 // `should_activate_window` short-circuits on `sink_enabled()` first, so this
@@ -1267,6 +1289,17 @@ impl ReservoirSimulator {
                     let oil_before = self.total_oil_inventory_sc();
                     let gas_before = self.total_gas_inventory_sc();
                     report.accepted_state.write_back_to_simulator(self);
+                    if let Some(context) = flow_resv_context {
+                        match context.refreshed_after_accepted_step(self, &report.accepted_state) {
+                            Ok(refreshed) => flow_resv_context = Some(refreshed),
+                            Err(reason) => {
+                                self.last_solver_warning = format!(
+                                    "FIM Flow RESV injector reference refresh failed: {reason}"
+                                );
+                                return;
+                            }
+                        }
+                    }
                     self.update_dynamic_well_productivity_indices();
                     let water_after = self.total_water_inventory_m3();
                     let oil_after = self.total_oil_inventory_sc();

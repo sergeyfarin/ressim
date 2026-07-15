@@ -40,6 +40,14 @@ evaluation. The next bounded work is G4a's coherent surface-rate/control/connect
 lifecycle design, not a source-only freeze. No outer-only BiCGSTAB swap, partial AMG port,
 controller tuning, damping change, or acceptance widening is authorized.
 
+**G4b0 update (2026-07-15):** the first implementation slice is complete and intentionally
+inert: parsed `RESV` representation plus a native-only, report-step-frozen
+hydrocarbon-PV-weighted `B_g,ref` context. It persists across retries, refreshes only after an
+accepted substep, and rejects unsupported topology/control/nested-solve requests before Newton
+assembly. No residual, source, primary, control row, assembler, or IMPES behavior changed. The
+only authorized next change is G4b1's shared AD/f64 local residual contract; it is not yet a live
+convergence or parity result.
+
 Use this file for:
 
 - current implementation state

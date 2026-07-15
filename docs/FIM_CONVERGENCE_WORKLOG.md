@@ -4066,6 +4066,42 @@ change.
 default-off report-step reference context with strict unsupported-case guards and unit tests. Do
 not route assembly, freeze a source, or run a live convergence comparison in that commit.
 
+### G4b0: inert RESV representation and report-step reference context (2026-07-15)
+
+Implemented the deliberately non-behavioral first slice. `WellScheduleControl::Resv` parses the
+existing serialized control string, while native-only `FIM_FLOW_RESV_INJECTOR` enables capture of
+one `FlowResvReportStepContext`. Its `FlowResvReference` is the gas/hydrocarbon-PV-weighted
+pressure and PVT-derived `B_g,ref` at report-step entry. The context is copied unchanged on every
+Newton retry and rebuilt only after accepted-state write-back. It is carried through
+`FimNewtonOptions`, but no assembly code reads it.
+
+The guard is intentionally narrower than the production frontend: it rejects no/excess RESV
+wells, non-gas or disabled wells, multi-perforation topology, surface-rate target, explicit BHP
+limit, missing/nonpositive reservoir target, unsupported PVT, and q-coordinate nested well solve.
+Current ResSim has no FIP/PVT region mapping, so the probe explicitly permits one implicit region
+only. It does not expose RESV through the public schedule setter, route it into `well_control`, or
+alter IMPES. This prevents a representation-only commit from silently creating a partial runtime
+path.
+
+Focused `flow_resv` tests initially exposed a test-fixture error rather than an implementation
+error: all fixture PVT rows had the same `Rs`, so the project's PVT grouping selected an
+unexpected branch. Giving the three rows distinct `Rs` values restored the intended gas-table
+interpolation. The final focused suite passes four tests: capture, disabled default, retry versus
+accepted-step refresh, and nested/BHP rejection.
+
+Validation: focused `flow_resv` (4), `well_controls` (9), and `assembly_ad` (12) tests passed;
+the three locked FIM smokes passed; `validate-solver-coverage.sh fim` and all three
+`benchmark_buckley` checks passed. `validate-solver-coverage.sh shared` passed its first three
+public well-control checks, then reproduced the separately documented closed-system
+`rate_history` assertion at `runtime_api.rs:81` (`2` versus `1`). It is pre-existing and outside
+this inert path, so it is recorded as **INCONCLUSIVE for shared bucket completion**, not evidence
+for or against G4b0.
+
+Verdict: **G4b0 complete; no convergence claim.** Next authorized step is G4b1 only: build the
+shared AD/f64 residual contract for `c_s=-q_res/B_g`, `R_perf=c_s-u`,
+`R_ctrl=B_g,ref*u-Q_resv`, and `S=-c_s`, with value, derivative, and finite-difference gates.
+Neither assembler, state update, nested solve, IMPES, nor live convergence is in scope.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

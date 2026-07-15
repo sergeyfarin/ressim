@@ -189,11 +189,15 @@ below is retained as Bundle N/Y history; it must not override this current seque
   rate, and their converged equality to source `-u`. It rejects a source-only freeze and holds
   retry lifetime, aggregation, active BHP switching, and q-coordinate nested solve out of the
   first probe. No behavior changed.
-- [ ] **Next: G4b0 RESV context/control representation only.** Add an explicit RESV control kind
-  and immutable default-off report-step conversion context, plus unsupported-case guards and unit
-  tests. Do not route assembly/source/update, enable nested solve, change IMPES, or run a
-  convergence comparison. Hold Y2 primary lifecycle, acceptance, controller, and linear routing
-  fixed.
+- [x] **G4b0 RESV context/control representation — DONE 2026-07-15.** Explicit `RESV` schedule
+  kind plus native-only immutable report-step `B_g,ref` context are in place. It holds across
+  retries, refreshes after acceptance, rejects unsupported scope, and remains intentionally inert:
+  no assembly/source/update/IMPES behavior changed. Context/AD-parity/locked-FIM/FIM-bucket/BL
+  gates pass; shared bucket reproduces the known unrelated closed-system assertion.
+- [ ] **Next: G4b1 shared pure residual contract.** Implement only the scoped AD + f64 pure-gas
+  helper for `c_s=-q_res/B_g`, `R_perf=c_s-u`, `R_ctrl=B_g,ref*u-Q_resv`, and `S=-c_s`; add
+  value/AD/FD tests. Do not route either assembler, update FIM state, enable nested solve, alter
+  IMPES, or run a live convergence comparison.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

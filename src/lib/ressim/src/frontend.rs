@@ -91,6 +91,7 @@ impl ReservoirSimulator {
             fim_nested_well_solve: false,
             fim_true_fgmres: false,
             fim_flow_lifecycle: false,
+            fim_flow_resv_injector: false,
             fim_force_direct_linear: false,
             gas_outer_step_trial_carryover: None,
             last_fim_step_stats: None,
@@ -324,6 +325,13 @@ impl ReservoirSimulator {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_fim_flow_lifecycle(&mut self, enabled: bool) {
         self.fim_flow_lifecycle = enabled;
+    }
+
+    /// G4b0 native-only diagnostic flag. It captures and validates the Flow RESV report-step
+    /// reference context only; it does not change FIM assembly or well updates.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_fim_flow_resv_injector(&mut self, enabled: bool) {
+        self.fim_flow_resv_injector = enabled;
     }
 
     #[wasm_bindgen(js_name = setGravityEnabled)]
