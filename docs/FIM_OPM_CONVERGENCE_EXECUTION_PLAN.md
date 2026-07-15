@@ -1,6 +1,6 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d1 finds a restriction tradeoff, not a universal fix; Y2d2 is next
+Status: **Y2d2 isolates a 30-iteration restart-boundary truncation; Y2d3 is next
 (2026-07-14)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
@@ -567,6 +567,50 @@ alone.
   any currently usable gas artifact. Otherwise close that component and inspect CPR coarse-stage
   quality; do not combine restriction and smoother changes to manufacture a win.
 - No production behavior or live convergence run is authorized in Y2d2.
+
+**Y2d2 result (2026-07-14): smoother refuted; 30-iteration truncation confirmed.** The
+test-only production-faithful wrapper held quasi-IMPES, well Schur elimination/recovery,
+equation scaling, tolerance, and production restart fixed. At effective budget 30, production
+block-ILU0 is already the best existing smoother: bounded block-ILU0/full-ILU0/block-Jacobi are
+`0/8`, `0/8`, and `0/8`, with median full reductions `1.455e-2`, `1.578e-2`, and `1.578e-2`;
+current gas is `4/5` for all three, with block-ILU0 retaining the best median reduction
+(`3.646e-5` versus `4.513e-4`). Full-ILU0 and block Jacobi are bit-identical on these corpora.
+
+Keeping block-ILU0 fixed and raising only the effective budget gives a discrete boundary result:
+all eight bounded systems stop unconverged at iteration 30, then converge at iteration 31 or 32.
+The current gas miss likewise converges at iteration 31, improving gas `4/5 -> 5/5`; the other
+four gas systems remain bit-identical. Budgets 60 and 150 return bit-identical corrections and
+reports on every artifact. All systems are finite, all bounded residual is reservoir-only, and
+the full report norms match independent residual recomputation.
+
+Verdict: **CONFIRMED OFFLINE COMPONENT CAUSE; NO PRODUCTION CHANGE.** The existing smoother is
+not the defect. The effective 30-iteration cap truncates nine hard systems one or two iterations
+before their first post-restart convergence. A higher cap is a diagnostic workaround, not yet an
+OPM-alignment mechanism: Flow's production path converges the reference Newton systems within
+its 20-iteration limit. Do not promote `60`, run live convergence, combine restrictions, or open
+AMG from this result alone.
+
+### 7.4 Y2d3 restart-boundary convergence-history audit
+
+Hypothesis: the sharp `30 -> 31/32` transition is caused by useful progress across the first
+FGMRES restart boundary, and its trajectory will distinguish a budget bookkeeping mismatch from
+weak first-cycle CPR quality.
+
+- Add test-only per-iteration true full residual and preconditioned residual history to the same
+  production-faithful replay; production dispatch remains unchanged.
+- Replay the eight bounded artifacts and the one hard gas artifact at effective budgets 30 and
+  60 with block-ILU0/quasi-IMPES fixed. Record the iteration-29 through convergence window and
+  restart-cycle boundaries.
+- First prove whether iteration 30 represents 30 completed corrections or a boundary check before
+  the next correction. If it is bookkeeping, correct and unit-test that contract before any live
+  run. If iteration 31/32 supplies genuinely new Krylov directions, quantify first-cycle versus
+  post-restart true-residual reduction and inspect the fixed CPR coarse-stage solve next.
+- Preserve full-system norms, reservoir/well partitions, direct deltas, and the five-system gas
+  counter-control. Do not alter tolerance, smoother, restriction, scaling, well Schur, nonlinear
+  acceptance, or timestep control.
+- No production budget increase or live convergence run is authorized in Y2d3. AMG is authorized
+  only as a later isolated diagnostic if the recorded history localizes the loss to coarse-stage
+  quality rather than iteration accounting.
 
 ## 8. Y3 and Y4 end gates
 

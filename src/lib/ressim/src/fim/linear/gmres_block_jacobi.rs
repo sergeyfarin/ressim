@@ -33,7 +33,10 @@ pub(super) enum CprFineSmootherKind {
 }
 
 impl CprFineSmootherKind {
-    fn label(self) -> &'static str {
+    #[cfg(test)]
+    pub(super) const ALL: [Self; 3] = [Self::BlockIlu0, Self::FullIlu0, Self::BlockJacobi];
+
+    pub(super) fn label(self) -> &'static str {
         match self {
             Self::BlockJacobi => "block-jacobi",
             Self::FullIlu0 => "ilu0",

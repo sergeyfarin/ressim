@@ -124,11 +124,16 @@ below is retained as Bundle N/Y history; it must not override this current seque
   to 3/5 usable versus quasi 4/5. Gas-safe sum-rows/dominant-diagonal leave 6/8 or 8/8 bounded
   failures. The old 337 gas corpus is unavailable/stale; clean `e143c19` reproduces 238 substeps
   and yields five valid current artifacts. No universal restriction or case selector promoted.
-- [ ] **Next: Y2d2 fixed-quasi smoother/Krylov isolation.** Extend only the test wrapper to vary
-  block-ILU0/full-ILU0/block-Jacobi at fixed 30 iterations on all 8 bounded + 5 current gas
-  artifacts, then vary 30/60/150 iterations for the best no-regression smoother. Require full
-  norms, partitions, finite corrections, and direct deltas. Confirm only on bounded 8/8 with no
-  loss from gas 4/5; do not combine restriction and smoother changes or run live behavior.
+- [x] **Y2d2 fixed-quasi smoother/Krylov isolation (2026-07-14): CONFIRMED OFFLINE, NO LIVE
+  CHANGE.** Production block-ILU0 is the best existing smoother; full-ILU0/block Jacobi do not
+  improve counts. All 8 bounded misses converge at iteration 31-32 instead of failing at the
+  effective cap of 30, and the hard gas miss converges at 31 (`4/5 -> 5/5`). Budgets 60/150 are
+  bit-identical. This isolates sharp post-restart truncation, not a reason to promote a larger cap.
+- [ ] **Next: Y2d3 restart-boundary convergence-history audit.** Add test-only true/preconditioned
+  residual histories to the same replay and inspect iterations 29-32 for all 8 bounded plus the
+  hard gas artifact. Decide whether iteration 30 is an accounting/check boundary or whether the
+  next cycle adds genuinely useful directions. Hold smoother/restriction/well Schur/scaling/
+  tolerance fixed; no live run, production budget increase, combined lever, or AMG implementation.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

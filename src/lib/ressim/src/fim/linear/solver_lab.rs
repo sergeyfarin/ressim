@@ -1062,6 +1062,214 @@ fn solver_lab_compare_production_restriction_variants() {
     );
 }
 
+#[derive(Clone, Copy)]
+struct Y2d2Row {
+    smoother: CprFineSmootherKind,
+    max_iterations: usize,
+    effective_budget: usize,
+}
+
+/// Y2d2 production-faithful smoother and Krylov-budget isolation with quasi-IMPES fixed.
+///
+/// `FIM_Y2D2_MODE=smoother` compares every existing fine smoother at production's effective
+/// 30-iteration budget. `FIM_Y2D2_MODE=budget` requires `FIM_Y2D2_SMOOTHER` and compares effective
+/// budgets 30/60/150 for that one selected smoother. Run both modes separately on the bounded and
+/// gas corpora; no configuration is wired into production by this test.
+#[test]
+#[ignore]
+fn solver_lab_compare_production_smoother_and_budget() {
+    let dir = capture_dir_from_env().expect("set FIM_CAPTURE_DIR to a Y2d2 capture corpus");
+    let corpus = std::env::var("FIM_Y2D1_CORPUS").unwrap_or_else(|_| "unspecified".to_string());
+    let mode = std::env::var("FIM_Y2D2_MODE").unwrap_or_else(|_| "smoother".to_string());
+    let systems = load_captures(&dir).expect("load Y2d2 capture corpus");
+    assert!(!systems.is_empty(), "Y2d2 corpus must not be empty");
+
+    let rows: Vec<Y2d2Row> = match mode.as_str() {
+        "smoother" => CprFineSmootherKind::ALL
+            .iter()
+            .map(|&smoother| Y2d2Row {
+                smoother,
+                // Production config is maxiter=20 with restart=30; the kernel deliberately uses
+                // max(maxiter, restart), so the effective baseline budget is exactly 30.
+                max_iterations: 20,
+                effective_budget: 30,
+            })
+            .collect(),
+        "budget" => {
+            let smoother = match std::env::var("FIM_Y2D2_SMOOTHER")
+                .expect("budget mode requires FIM_Y2D2_SMOOTHER")
+                .as_str()
+            {
+                "block-ilu0" => CprFineSmootherKind::BlockIlu0,
+                "ilu0" => CprFineSmootherKind::FullIlu0,
+                "block-jacobi" => CprFineSmootherKind::BlockJacobi,
+                value => panic!("unsupported FIM_Y2D2_SMOOTHER={value}"),
+            };
+            [(20, 30), (60, 60), (150, 150)]
+                .iter()
+                .map(|&(max_iterations, effective_budget)| Y2d2Row {
+                    smoother,
+                    max_iterations,
+                    effective_budget,
+                })
+                .collect()
+        }
+        value => panic!("FIM_Y2D2_MODE must be smoother|budget, got {value}"),
+    };
+
+    let mut strict_counts = vec![0usize; rows.len()];
+    let mut relaxed_counts = vec![0usize; rows.len()];
+    let mut relative_residuals = vec![Vec::<f64>::new(); rows.len()];
+    let mut correction_deltas = vec![Vec::<f64>::new(); rows.len()];
+    let mut reservoir_residuals = vec![Vec::<f64>::new(); rows.len()];
+    let mut well_residuals = vec![Vec::<f64>::new(); rows.len()];
+    let mut iteration_counts = vec![Vec::<usize>::new(); rows.len()];
+    let mut direct_failures = 0usize;
+
+    for (capture_idx, system) in systems.iter().enumerate() {
+        let layout = system.layout.expect("Y2d2 capture requires block layout");
+        let production_options = FimLinearSolveOptions::default();
+        let production = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &production_options,
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..production_options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+        let rhs_norm = system.rhs.norm().max(1e-30);
+        if !direct.converged
+            || !direct.solution.iter().all(|value| value.is_finite())
+            || direct_residual.norm() / rhs_norm >= 1e-10
+        {
+            direct_failures += 1;
+        }
+
+        for (row_idx, row) in rows.iter().enumerate() {
+            let options = FimLinearSolveOptions {
+                max_iterations: row.max_iterations,
+                ..production_options
+            };
+            let report = well_schur::solve_with_well_elimination_and_configuration(
+                &system.jacobian,
+                &system.rhs,
+                &options,
+                layout,
+                system.equation_scaling.as_ref(),
+                row.smoother,
+                CprPressureRestrictionKind::QuasiImpes,
+            );
+            let residual = residual_vector(&system.jacobian, &report.solution, &system.rhs);
+            let relative_residual = residual.norm() / rhs_norm;
+            let partitions = y2b2_partition_norms(layout, &residual);
+            let correction_delta = y2b3_max_peak(y2b3_correction_delta_peaks(
+                layout,
+                &report.solution,
+                &direct.solution,
+            ));
+            let finite = report.solution.iter().all(|value| value.is_finite());
+
+            assert!((report.rhs_norm - system.rhs.norm()).abs() < 1e-10);
+            assert!(
+                (report.final_residual_norm - residual.norm()).abs()
+                    <= 1e-10 * residual.norm().max(1.0),
+                "capture {capture_idx} smoother={} budget={} report/full residual mismatch",
+                row.smoother.label(),
+                row.effective_budget,
+            );
+            if row.smoother == CprFineSmootherKind::BlockIlu0
+                && row.max_iterations == production_options.max_iterations
+            {
+                assert_eq!(report.converged, production.converged);
+                assert_eq!(report.iterations, production.iterations);
+                assert!(
+                    y2b3_max_peak(y2b3_correction_delta_peaks(
+                        layout,
+                        &report.solution,
+                        &production.solution,
+                    )) < 1e-12,
+                    "capture {capture_idx}: injected production smoother differs from production"
+                );
+            }
+
+            if report.converged && finite {
+                strict_counts[row_idx] += 1;
+            }
+            if finite && relative_residual < 1e-2 {
+                relaxed_counts[row_idx] += 1;
+            }
+            println!(
+                "Y2D2 capture={capture_idx:05} smoother={:<12} budget={} iters={} strict={} relaxed={} finite={} rel={:.9e} reservoir_rel={:.9e} well_rel={:.9e} direct_dx_delta={:.9e}",
+                row.smoother.label(),
+                row.effective_budget,
+                report.iterations,
+                report.converged && finite,
+                finite && relative_residual < 1e-2,
+                finite,
+                relative_residual,
+                partitions.0 / rhs_norm,
+                partitions.1 / rhs_norm,
+                correction_delta,
+            );
+            relative_residuals[row_idx].push(relative_residual);
+            correction_deltas[row_idx].push(correction_delta);
+            reservoir_residuals[row_idx].push(partitions.0 / rhs_norm);
+            well_residuals[row_idx].push(partitions.1 / rhs_norm);
+            iteration_counts[row_idx].push(report.iterations);
+        }
+    }
+
+    println!(
+        "Y2D2 production component corpus={corpus} mode={mode} systems={} dir={}",
+        systems.len(),
+        dir.display()
+    );
+    for (row_idx, row) in rows.iter().enumerate() {
+        for values in [
+            &mut relative_residuals[row_idx],
+            &mut correction_deltas[row_idx],
+            &mut reservoir_residuals[row_idx],
+            &mut well_residuals[row_idx],
+        ] {
+            values.sort_by(|left, right| {
+                left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+        iteration_counts[row_idx].sort_unstable();
+        let median = |values: &[f64]| values[values.len() / 2];
+        println!(
+            "Y2D2 smoother={:<12} budget={} strict={}/{} relaxed={}/{} median_iters={} max_iters={} median_rel={:.9e} median_reservoir_rel={:.9e} median_well_rel={:.9e} median_direct_dx_delta={:.9e}",
+            row.smoother.label(),
+            row.effective_budget,
+            strict_counts[row_idx],
+            systems.len(),
+            relaxed_counts[row_idx],
+            systems.len(),
+            iteration_counts[row_idx][iteration_counts[row_idx].len() / 2],
+            iteration_counts[row_idx].iter().copied().max().unwrap_or(0),
+            median(&relative_residuals[row_idx]),
+            median(&reservoir_residuals[row_idx]),
+            median(&well_residuals[row_idx]),
+            median(&correction_deltas[row_idx]),
+        );
+    }
+
+    assert_eq!(
+        direct_failures, 0,
+        "Y2d2 direct oracle failed on {direct_failures} captures"
+    );
+}
+
 #[derive(Clone)]
 struct BundleRow {
     label: String,

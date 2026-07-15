@@ -1483,3 +1483,23 @@ real contributor to the bounded failures, but no existing choice clears both cor
 case-adaptive selector would encode the symptom rather than explain it and is not authorized.
 Y2d2 holds quasi-IMPES fixed and isolates fine smoother versus Krylov budget using the same
 production-faithful oracle.
+
+### 15.13 Y2d2 result: one post-restart correction closes every hard replay (2026-07-14)
+
+Y2d2 held quasi-IMPES restriction, production well Schur elimination/recovery, equation scaling,
+tolerance, and restart fixed. At effective budget 30, block-ILU0 remains the best available fine
+smoother: it resolves bounded `0/8` and gas `4/5`; full-ILU0 and block Jacobi also resolve `0/8`
+and `4/5` but worsen median reductions on both corpora. The latter two are bit-identical here.
+
+With production block-ILU0 fixed, every bounded system stops at iteration 30 with median full
+reduction `1.455e-2`, then passes at iteration 31 or 32 with median `2.201e-6`. The sole hard gas
+system similarly moves from reduction `4.897e-2` at iteration 30 to `3.440e-5` at iteration 31,
+raising gas coverage from `4/5` to `5/5`. Effective budgets 60 and 150 are bit-identical for all
+13 systems, proving that the extra budget is not hiding slow unbounded convergence. Residuals and
+corrections remain finite; full norms, partitions, and independent residual calculations agree.
+
+Verdict: **OFFLINE KRYLOV TRUNCATION CONFIRMED; NO LIVE OR PRODUCTION CHANGE**. This is closer to
+the bounded direct oracle in result, but raising ResSim's cap would move its approach farther from
+Flow, whose reference solve stays within 20 iterations. Y2d3 therefore records the exact
+iteration-29-to-32 convergence history and audits restart/budget accounting before choosing
+between a bookkeeping correction and CPR coarse-stage quality work.

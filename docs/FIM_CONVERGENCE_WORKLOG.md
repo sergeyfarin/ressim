@@ -3519,6 +3519,78 @@ explicit direction rather than proceeding unilaterally.
 
 No code changed. Registry row not yet filed — pending a concrete fix design to measure.
 
+### Bundle Y checkpoint Y2d2: fixed-quasi smoother/Krylov isolation (2026-07-14)
+
+Scope was offline diagnostic infrastructure only. Production dispatch and behavior remain
+unchanged. The test-only well-Schur helper now accepts an existing fine-smoother choice while
+retaining production well elimination/recovery and equation scaling. The ignored solver-lab test
+replays the same production tolerance/restart/restriction contract and reports full-system norms,
+reservoir/well partitions, finite status, direct-correction deltas, and actual iterations.
+
+Corpora:
+
+- bounded: eight preserved `22x22x1` candidate failure artifacts from clean commit `2030996`,
+  `/tmp/ressim-y2d0-2030996`;
+- gas counter-control: five clean-regenerated current `20x20x3` baseline artifacts from commit
+  `e143c19`, `/tmp/ressim-y2d1-gas-e143c19` (238 accepted substeps, one linear and four nonlinear
+  retries). The older 337-artifact corpus remains unavailable/stale.
+
+At effective budget 30 with quasi-IMPES fixed:
+
+| Fine smoother | Bounded strict/relaxed | Gas strict/relaxed | Bounded median reduction | Gas median reduction |
+| --- | ---: | ---: | ---: | ---: |
+| block-ILU0 (production) | `0/8`, `0/8` | `4/5`, `4/5` | `1.455237405e-2` | `3.645953044e-5` |
+| full ILU0 | `0/8`, `0/8` | `4/5`, `4/5` | `1.578222455e-2` | `4.512725001e-4` |
+| block Jacobi | `0/8`, `0/8` | `4/5`, `4/5` | `1.578222455e-2` | `4.512725001e-4` |
+
+Production block-ILU0 is the best no-regression choice. Full ILU0 and block Jacobi are
+bit-identical on these artifacts and do not explain the gap.
+
+Holding block-ILU0 fixed:
+
+| Corpus / effective budget | Strict/relaxed | Iterations | Median full reduction | Median direct-correction delta |
+| --- | ---: | --- | ---: | ---: |
+| bounded / 30 | `0/8`, `0/8` | all `30` | `1.455237405e-2` | `5.089236461e2` |
+| bounded / 60 | `8/8`, `8/8` | `31,31,31,31,32,32,32,32` | `2.200737272e-6` | `9.575253468e-2` |
+| bounded / 150 | `8/8`, `8/8` | identical to 60 | `2.200737272e-6` | `9.575253468e-2` |
+| gas / 30 | `4/5`, `4/5` | hard artifact `30` | `3.645953044e-5` | `8.433077588e-7` |
+| gas / 60 | `5/5`, `5/5` | hard artifact `31` | `3.439884116e-5` | `7.340688465e-7` |
+| gas / 150 | `5/5`, `5/5` | identical to 60 | `3.439884116e-5` | `7.340688465e-7` |
+
+The bounded failures are reservoir-only. All residuals/corrections are finite, production-path
+equivalence for the block-ILU0 wrapper passes, and report norms match independent full residual
+recomputation. The sharp transition is therefore real: the effective cap of 30 stops nine hard
+systems one or two iterations before first convergence, while 150 adds nothing beyond 60.
+
+Exact diagnostic commands:
+
+```text
+FIM_CAPTURE_DIR=/tmp/ressim-y2d0-2030996 FIM_Y2D1_CORPUS=bounded-22x22x1 \
+  FIM_Y2D2_MODE=smoother cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  --lib solver_lab_compare_production_smoother_and_budget -- --ignored --nocapture
+FIM_CAPTURE_DIR=/tmp/ressim-y2d1-gas-e143c19 FIM_Y2D1_CORPUS=gas-20x20x3-current \
+  FIM_Y2D2_MODE=smoother cargo test --release --manifest-path src/lib/ressim/Cargo.toml \
+  --lib solver_lab_compare_production_smoother_and_budget -- --ignored --nocapture
+FIM_CAPTURE_DIR=<each directory above> FIM_Y2D1_CORPUS=<matching label> \
+  FIM_Y2D2_MODE=budget FIM_Y2D2_SMOOTHER=block-ilu0 \
+  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  solver_lab_compare_production_smoother_and_budget -- --ignored --nocapture
+```
+
+Verdict: **CONFIRMED OFFLINE COMPONENT CAUSE; NO PRODUCTION CHANGE**. Raising the budget would
+improve these replay results but would not align the approach with OPM Flow, whose reference
+Newton solves stay inside 20 iterations. The next authorized slice is Y2d3: record comparable
+true/preconditioned residual histories across iterations 29-32 and determine whether the boundary
+is iteration accounting or genuinely useful post-restart progress. No live run, budget promotion,
+combined restriction/smoother experiment, nonlinear change, or AMG implementation is authorized.
+
+Validation on the final Y2d2 tree: rustfmt/diff checks; all four well-Schur tests; production
+block-ILU0 wrapper equivalence on every replay; exact Y2d0 replay unchanged; capture round trips
+2/2; Sparse-LU report reduction; DRSDT0; both locked SPE1 tests; Buckley-Leverett 3/3; curated FIM
+bucket 11/11. The shared bucket passes its first three contracts and stops at the same documented,
+pre-existing closed-system `rate_history` mismatch (`left=2`, `right=1`). No wasm control matrix
+was run because Y2d2 adds only `#[cfg(test)]` plumbing and makes no solver-behavior change.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Mechanism validated/default-off; Y2d1 finds a separate restriction tradeoff; Y2d2 is next (2026-07-14)**
+Status: **Mechanism validated/default-off; Y2d2 isolates separate Krylov truncation; Y2d3 is next (2026-07-14)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -292,7 +292,12 @@ bounded artifacts but loses two of five current gas artifacts; gas-safe restrict
 bounded failures unresolved. This is a separate CPR tradeoff, not evidence against the lifecycle,
 and no restriction change was made.
 
-The next slice is **Y2d2**, execution-plan §7.3: hold quasi-IMPES fixed and isolate fine smoother
-then Krylov budget on the same eight bounded and five current gas artifacts. Hold this lifecycle
-fixed. Do not open G4, widen acceptance, tune timestep control, change wells, combine solver
-levers, or promote Sparse LU while isolating the iterative component.
+Y2d2 held quasi-IMPES fixed and showed that production block-ILU0 is already the best existing
+smoother. Every bounded failure converges exactly at iteration 31-32 rather than stopping at the
+effective cap of 30; the hard gas artifact converges at 31. Budgets 60 and 150 are bit-identical.
+This is a separate iterative-solver truncation and does not refute or promote the lifecycle.
+
+The next slice is **Y2d3**, execution-plan §7.4: record the exact restart-boundary residual
+history and distinguish iteration accounting from weak first-cycle CPR quality. Hold this
+lifecycle fixed. Do not open G4, widen acceptance, tune timestep control, change wells, combine
+solver levers, raise the production budget, or promote Sparse LU while isolating the mechanism.

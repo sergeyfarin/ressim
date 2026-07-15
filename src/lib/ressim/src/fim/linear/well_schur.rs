@@ -247,13 +247,36 @@ pub(super) fn solve_with_well_elimination_and_restriction(
     equation_scaling: Option<&EquationScaling>,
     restriction_kind: CprPressureRestrictionKind,
 ) -> FimLinearSolveReport {
+    solve_with_well_elimination_and_configuration(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        equation_scaling,
+        CprFineSmootherKind::BlockIlu0,
+        restriction_kind,
+    )
+}
+
+/// Y2d2's lab-only extension of the Y2d1 oracle: vary the existing fine smoother while keeping
+/// the production well-Schur reduction/recovery and every other captured solve input fixed.
+#[cfg(test)]
+pub(super) fn solve_with_well_elimination_and_configuration(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: FimLinearBlockLayout,
+    equation_scaling: Option<&EquationScaling>,
+    smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+) -> FimLinearSolveReport {
     let Some(elimination) = eliminate_wells(jacobian, rhs, layout, equation_scaling) else {
         return solve_with_smoother_and_restriction(
             jacobian,
             rhs,
             options,
             Some(layout),
-            CprFineSmootherKind::BlockIlu0,
+            smoother_kind,
             restriction_kind,
             equation_scaling,
         );
@@ -264,7 +287,7 @@ pub(super) fn solve_with_well_elimination_and_restriction(
         &elimination.reduced_rhs,
         options,
         Some(elimination.reduced_layout),
-        CprFineSmootherKind::BlockIlu0,
+        smoother_kind,
         restriction_kind,
         elimination.reduced_equation_scaling.as_ref(),
     );
