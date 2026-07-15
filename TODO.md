@@ -221,6 +221,11 @@ below is retained as Bundle N/Y history; it must not override this current seque
   still physically stored in the q-named tail vector. Do not remove the pre-Newton block or call
   this a complete route until the typed-state migration, independent legacy derivative, full-row
   FD/Schur, and trace gates land. Do not run live convergence.
+  **Primary-kind checkpoint 2026-07-15:** the selected slot now carries an explicit
+  `FlowResvGasSurfaceU` kind and RESV assembly, scaling, and trace paths require `u`, while the
+  historical well view requires `ReservoirConnectionQ`. The numerical tail storage/layout remains
+  unchanged for Schur compatibility, so the broader typed-vector migration and remaining full-row
+  FD/Schur gates are still required; this is not a live or convergence result.
 - [x] **Newton production-seam extraction (2026-07-15): behavior-preserving.** Moved production
   helpers from `fim/newton.rs` into `newton/damping.rs` (Appleyard/chop/history stabilization),
   `newton/convergence.rs` (residual families, CNV/MB, acceptance and stagnation gates), and

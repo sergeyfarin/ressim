@@ -60,11 +60,27 @@ pub(crate) struct FimCellDerived {
     pub(crate) rho_w: f64,
 }
 
+/// Physical meaning of an unchanged-layout perforation-tail slot.  The numerical vector remains
+/// contiguous for the linear block layout, but consumers must resolve its meaning through
+/// `FimState` rather than assuming every tail value is a reservoir connection rate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FimPerforationPrimaryKind {
+    ReservoirConnectionQ,
+    FlowResvGasSurfaceU,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FimPerforationPrimary {
+    pub(crate) kind: FimPerforationPrimaryKind,
+    pub(crate) value: f64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FimState {
     pub(crate) cells: Vec<FimCellState>,
     pub(crate) well_bhp: Vec<f64>,
     pub(crate) perforation_rates_m3_day: Vec<f64>,
+    pub(crate) perforation_primary_kinds: Vec<FimPerforationPrimaryKind>,
 }
 
 impl FimState {
@@ -110,6 +126,10 @@ impl FimState {
                 .map(|(well_idx, _)| physical_well_control(sim, &topology, well_idx).bhp_target)
                 .collect(),
             perforation_rates_m3_day: vec![0.0; topology.perforations.len()],
+            perforation_primary_kinds: vec![
+                FimPerforationPrimaryKind::ReservoirConnectionQ;
+                topology.perforations.len()
+            ],
         };
 
         for well_idx in 0..topology.wells.len() {
@@ -193,7 +213,29 @@ impl FimState {
         }
         self.well_bhp[well_idx] = 0.5 * (low + high);
         self.perforation_rates_m3_day[perf_idx] = target / bg_ref;
+        self.perforation_primary_kinds[perf_idx] = FimPerforationPrimaryKind::FlowResvGasSurfaceU;
         Ok(())
+    }
+
+    pub(crate) fn perforation_primary(&self, perf_idx: usize) -> FimPerforationPrimary {
+        FimPerforationPrimary {
+            kind: self.perforation_primary_kinds[perf_idx],
+            value: self.perforation_rates_m3_day[perf_idx],
+        }
+    }
+
+    pub(crate) fn perforation_primary_value(&self, perf_idx: usize) -> f64 {
+        self.perforation_primary(perf_idx).value
+    }
+
+    pub(crate) fn reservoir_connection_q(&self, perf_idx: usize) -> Option<f64> {
+        (self.perforation_primary(perf_idx).kind == FimPerforationPrimaryKind::ReservoirConnectionQ)
+            .then(|| self.perforation_primary_value(perf_idx))
+    }
+
+    pub(crate) fn flow_resv_surface_u(&self, perf_idx: usize) -> Option<f64> {
+        (self.perforation_primary(perf_idx).kind == FimPerforationPrimaryKind::FlowResvGasSurfaceU)
+            .then(|| self.perforation_primary_value(perf_idx))
     }
 
     pub(crate) fn n_cell_unknowns(&self) -> usize {
@@ -1031,6 +1073,7 @@ mod tests {
             }],
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         };
 
         let derived = state.derive_cell(&sim, 0);
@@ -1074,6 +1117,7 @@ mod tests {
             }],
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         };
 
         let pore_volume_m3 = sim.pore_volume_m3(0);
@@ -1129,6 +1173,7 @@ mod tests {
             }],
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         };
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Saturated);
@@ -1273,6 +1318,7 @@ mod tests {
             }],
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         };
         state.classify_regimes(&sim);
         assert_eq!(state.cells[0].regime, HydrocarbonState::Undersaturated);

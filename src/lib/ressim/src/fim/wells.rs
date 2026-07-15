@@ -155,7 +155,9 @@ impl<'a> FimPerforationLocalBlock<'a> {
     }
 
     pub(crate) fn current_rate_unknown_m3_day(self) -> f64 {
-        self.state.perforation_rates_m3_day[self.perf_idx]
+        self.state
+            .reservoir_connection_q(self.perf_idx)
+            .expect("historical well path requires a reservoir-q primary")
     }
 
     #[cfg(test)]
@@ -818,7 +820,10 @@ pub(crate) fn producer_control_state(
 /// invariant point that stalled the heavy case at 18,015 substeps under `OpmAligned`. Fix
 /// verified: heavy case `18,015 → 16` substeps, Legacy `52 → 25`, full control-matrix/smoke/BL
 /// gate green (`docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"/"X3").
-fn perforation_control_cells(_sim: &ReservoirSimulator, perforation: &FimPerforation) -> Vec<usize> {
+fn perforation_control_cells(
+    _sim: &ReservoirSimulator,
+    perforation: &FimPerforation,
+) -> Vec<usize> {
     vec![perforation.cell_index]
 }
 

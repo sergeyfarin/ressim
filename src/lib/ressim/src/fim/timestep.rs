@@ -849,6 +849,7 @@ fn globally_extrapolated_state(prev: &FimState, curr: &FimState, dt_ratio: f64) 
         cells,
         well_bhp,
         perforation_rates_m3_day,
+        perforation_primary_kinds: prev.perforation_primary_kinds.clone(),
     }
 }
 
@@ -1988,6 +1989,7 @@ mod tests {
             cells: vec![cell(200.0, 0.3, 0.1, HydrocarbonState::Saturated)],
             well_bhp: vec![],
             perforation_rates_m3_day: vec![],
+            perforation_primary_kinds: vec![],
         };
         let mut current = previous.clone();
         current.cells[0].pressure_bar = 220.0; // dp = 20
@@ -2848,6 +2850,8 @@ mod tests {
             ],
             well_bhp: vec![200.0],
             perforation_rates_m3_day: vec![10.0, -5.0],
+            perforation_primary_kinds:
+                vec![crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ; 2],
         };
         let curr = FimState {
             cells: vec![
@@ -2866,6 +2870,8 @@ mod tests {
             ],
             well_bhp: vec![198.0],
             perforation_rates_m3_day: vec![12.0, -6.0],
+            perforation_primary_kinds:
+                vec![crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ; 2],
         };
         let dt_ratio = 0.5;
         let extrapolated = globally_extrapolated_state(&prev, &curr, dt_ratio);
@@ -2901,6 +2907,7 @@ mod tests {
             }],
             well_bhp: vec![],
             perforation_rates_m3_day: vec![],
+            perforation_primary_kinds: vec![],
         };
         let curr = FimState {
             cells: vec![FimCellState {
@@ -2911,6 +2918,7 @@ mod tests {
             }],
             well_bhp: vec![],
             perforation_rates_m3_day: vec![],
+            perforation_primary_kinds: vec![],
         };
         // dt_ratio=2 would extrapolate sw to 0.98 + (0.98-0.90)*2 = 1.14,
         // which must clamp to 1.0.

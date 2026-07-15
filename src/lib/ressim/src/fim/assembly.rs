@@ -149,7 +149,12 @@ fn legacy_flow_resv_terms_ad(
     Some(flow_resv_injector_residual(
         q,
         props.bg,
-        Ad::variable(state.perforation_rates_m3_day[perf_idx], 4),
+        Ad::variable(
+            state
+                .flow_resv_surface_u(perf_idx)
+                .expect("RESV route requires a typed surface-u primary"),
+            4,
+        ),
         context.reference.bg_rm3_per_sm3,
         context.reservoir_target_rm3_day,
     ))

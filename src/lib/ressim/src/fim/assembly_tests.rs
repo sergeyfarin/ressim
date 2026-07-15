@@ -373,6 +373,7 @@ fn assembly_scaffold_matches_state_size() {
         ],
         well_bhp: Vec::new(),
         perforation_rates_m3_day: Vec::new(),
+        perforation_primary_kinds: Vec::new(),
     };
 
     let assembly = assemble_fim_system(

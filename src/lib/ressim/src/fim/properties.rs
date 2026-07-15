@@ -306,6 +306,7 @@ mod tests {
                 }],
                 well_bhp: Vec::new(),
                 perforation_rates_m3_day: Vec::new(),
+                perforation_primary_kinds: Vec::new(),
             };
             let derived = state.derive_cell(&sim, 0);
             let drsdt0 = if !sim.gas_redissolution_enabled {
@@ -496,6 +497,7 @@ mod tests {
             }],
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         };
         let state = FimState {
             cells: vec![FimCellState {
@@ -506,6 +508,7 @@ mod tests {
             }],
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         };
         let topology = build_well_topology(&sim);
         let dt_days = 0.5;

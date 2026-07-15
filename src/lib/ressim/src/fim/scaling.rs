@@ -127,7 +127,9 @@ pub(crate) fn apply_flow_resv_scaling(
     state: &FimState,
     context: FlowResvReportStepContext,
 ) {
-    let u = state.perforation_rates_m3_day[context.perforation_idx];
+    let u = state
+        .flow_resv_surface_u(context.perforation_idx)
+        .expect("RESV scaling requires a typed surface-u primary");
     equation.well_constraint[context.physical_well_idx] =
         context.reservoir_target_rm3_day.abs().max(1.0);
     equation.perforation_flow[context.perforation_idx] = u.abs().max(1.0);
@@ -299,6 +301,9 @@ mod tests {
             ],
             well_bhp: vec![350.0],
             perforation_rates_m3_day: vec![-25.0],
+            perforation_primary_kinds: vec![
+                crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+            ],
         };
 
         let scaling = build_variable_scaling(&sim, &state);

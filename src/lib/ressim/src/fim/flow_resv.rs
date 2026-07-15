@@ -369,7 +369,20 @@ mod tests {
             .initialize_flow_resv_gas_primary(&sim, &topology, context)
             .unwrap();
 
-        let u = state.perforation_rates_m3_day[context.perforation_idx];
+        let primary = state.perforation_primary(context.perforation_idx);
+        assert_eq!(
+            primary.kind,
+            crate::fim::state::FimPerforationPrimaryKind::FlowResvGasSurfaceU
+        );
+        assert!(
+            state
+                .reservoir_connection_q(context.perforation_idx)
+                .is_none()
+        );
+        let u = state
+            .flow_resv_surface_u(context.perforation_idx)
+            .expect("initialized RESV slot is typed u");
+        assert_eq!(primary.value, u);
         assert!(u > 0.0);
         assert!(
             (u - context.reservoir_target_rm3_day / context.reference.bg_rm3_per_sm3).abs() < 1e-8

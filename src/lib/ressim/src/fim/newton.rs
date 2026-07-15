@@ -2650,7 +2650,9 @@ pub(crate) fn run_fim_timestep(
                         state.well_bhp[context.physical_well_idx],
                     )
                     .expect("validated RESV trace connection");
-                    let u = state.perforation_rates_m3_day[perf_idx];
+                    let u = state
+                        .flow_resv_surface_u(perf_idx)
+                        .expect("RESV trace requires a typed surface-u primary");
                     let terms = flow_resv_injector_residual(
                         q_connection,
                         derived.bg,

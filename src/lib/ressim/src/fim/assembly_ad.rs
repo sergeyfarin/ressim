@@ -146,7 +146,12 @@ fn flow_resv_terms_ad(
         drsdt0_base_rs: cell.drsdt0_base_rs,
     };
     let bhp = Ad::variable(state.well_bhp[perforation.physical_well_index], 3);
-    let u = Ad::variable(state.perforation_rates_m3_day[perf_idx], 4);
+    let u = Ad::variable(
+        state
+            .flow_resv_surface_u(perf_idx)
+            .expect("RESV route requires a typed surface-u primary"),
+        4,
+    );
     let wi = geometric_well_index(sim, perforation)?;
     let q = connection_rate_generic(sim, wi, true, &seeded, bhp);
     let props = cell_props_generic(
@@ -194,7 +199,9 @@ fn flow_resv_terms_f64(
     Some(flow_resv_injector_residual(
         q,
         bg,
-        state.perforation_rates_m3_day[perf_idx],
+        state
+            .flow_resv_surface_u(perf_idx)
+            .expect("RESV route requires a typed surface-u primary"),
         context.reference.bg_rm3_per_sm3,
         context.reservoir_target_rm3_day,
     ))

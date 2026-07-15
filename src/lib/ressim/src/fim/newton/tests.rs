@@ -519,6 +519,9 @@ fn iterate_has_material_change_detects_well_and_perforation_updates() {
         }],
         well_bhp: vec![300.0],
         perforation_rates_m3_day: vec![-150.0],
+        perforation_primary_kinds: vec![
+            crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+        ],
     };
 
     let mut bhp_changed = previous_state.clone();
@@ -668,6 +671,7 @@ fn accepted_state_convergence_rejects_guard_band_material_balance_violation() {
             cells: Vec::new(),
             well_bhp: Vec::new(),
             perforation_rates_m3_day: Vec::new(),
+            perforation_primary_kinds: Vec::new(),
         },
         residual_inf_norm: 1.5e-5,
         residual_diagnostics: ResidualFamilyDiagnostics {
@@ -750,6 +754,9 @@ fn scaled_applied_update_peak_reports_effective_family() {
         }],
         well_bhp: vec![150.0],
         perforation_rates_m3_day: vec![10.0],
+        perforation_primary_kinds: vec![
+            crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+        ],
     };
 
     let candidate = FimState {
@@ -761,6 +768,9 @@ fn scaled_applied_update_peak_reports_effective_family() {
         }],
         well_bhp: vec![150.0],
         perforation_rates_m3_day: vec![10.2],
+        perforation_primary_kinds: vec![
+            crate::fim::state::FimPerforationPrimaryKind::ReservoirConnectionQ,
+        ],
     };
 
     let scaling = crate::fim::scaling::VariableScaling {
@@ -1775,6 +1785,7 @@ fn appleyard_damping_limits_combined_oil_saturation_change() {
         }],
         well_bhp: Vec::new(),
         perforation_rates_m3_day: Vec::new(),
+        perforation_primary_kinds: Vec::new(),
     };
     let mut update = DVector::zeros(state.n_unknowns());
     update[1] = 0.15;
@@ -1811,6 +1822,7 @@ fn local_cell_move_deltas_tracks_pressure_and_phase_changes() {
         }],
         well_bhp: Vec::new(),
         perforation_rates_m3_day: Vec::new(),
+        perforation_primary_kinds: Vec::new(),
     };
     let candidate_state = FimState {
         cells: vec![crate::fim::state::FimCellState {
@@ -1821,6 +1833,7 @@ fn local_cell_move_deltas_tracks_pressure_and_phase_changes() {
         }],
         well_bhp: Vec::new(),
         perforation_rates_m3_day: Vec::new(),
+        perforation_primary_kinds: Vec::new(),
     };
 
     let (pressure_delta_bar, water_delta, oil_delta, gas_delta) =
@@ -1843,6 +1856,7 @@ fn candidate_update_bounds_include_oil_saturation_change() {
         }],
         well_bhp: Vec::new(),
         perforation_rates_m3_day: Vec::new(),
+        perforation_primary_kinds: Vec::new(),
     };
     let candidate_state = FimState {
         cells: vec![crate::fim::state::FimCellState {
@@ -1853,6 +1867,7 @@ fn candidate_update_bounds_include_oil_saturation_change() {
         }],
         well_bhp: Vec::new(),
         perforation_rates_m3_day: Vec::new(),
+        perforation_primary_kinds: Vec::new(),
     };
 
     let (max_pressure_change, max_saturation_change) =
