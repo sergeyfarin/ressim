@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d5 confirms the default-off true-FGMRES path and removes the masked Y2 water linear
-failures; Y2d6 OPM linear-lifecycle design is next (2026-07-15)**. This document turns the evidence in
+Status: **Y2d8 confirms a coupled Flow/ResSim injector-RESV source lifecycle mismatch; G4a
+coherent lifecycle design is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -14,11 +14,16 @@ comparable Newton trajectory, without weakening convergence acceptance.
 
 Primary oracle: tracked `gas-rate-10x10x3` deck, six 0.25-day report steps.
 
-| Solver | Accepted substeps | Newton iterations | Cuts |
-| --- | ---: | --- | ---: |
-| OPM Flow 2026.04 | 6 | `7, 5, 4, 3, 4, 3` | 0 |
-| ResSim baseline `OpmAligned` | hundreds | many at the 20-iteration cap | many/fragmented |
-| ResSim lifecycle candidate (default-off) | 6 | `8, 5, 4, 4, 4, 4` | 0 |
+| Solver | Accepted substeps | Applied Newton updates | Residual evaluations | Cuts |
+| --- | ---: | --- | --- | ---: |
+| OPM Flow 2026.04 | 6 | `7,5,4,3,4,3` | `8,6,5,4,5,4` | 0 |
+| ResSim lifecycle candidate (default-off) | 6 | `7,4,3,3,3,3` | `8,5,4,4,4,4` | 0 |
+| ResSim + D6d Flow linear lifecycle | 6 | `9,4,4,3,3,3` | `10,5,5,4,4,4` | 0 |
+
+Flow `INFOSTEP.NewtIt` counts applied updates; `INFOITER` includes the initial evaluation and
+therefore has `NewtIt+1` rows. ResSim's `FimNewtonReport::newton_iterations=iteration+1` counts
+residual evaluations on these entry-converged steps. Older tables comparing those columns
+directly are superseded by Y2d7.
 
 The established causal chain is:
 
@@ -432,9 +437,9 @@ The completed lifecycle is a large, reproducible improvement and matches the pri
 substep count, but it fails the predeclared control non-regression gate. Keep
 `FIM_Y2B_RAW_SATURATION=1` native/default-off.
 
-| Case / flavor | Accepted substeps | Newton iterations / retries | Reference |
+| Case / flavor | Accepted substeps | Reported evaluations / retries | Reference |
 | --- | ---: | --- | --- |
-| gas `10x10x3`, six steps, candidate | **6** | `8,5,4,4,4,4`; zero retries | Flow: **6**, `7,5,4,3,4,3`, zero cuts |
+| gas `10x10x3`, six steps, candidate | **6** | evals `8,5,4,4,4,4`; updates `7,4,3,3,3,3`; zero retries | Flow: **6**, updates `7,5,4,3,4,3`, zero cuts |
 | gas `10x10x3`, six steps, Legacy | 14 | first step 4 substeps; 7 nonlinear retries total | candidate is materially closer |
 | gas `20x20x3`, first step, candidate | **1** | `8`; zero retries | Legacy 2; baseline `OpmAligned` 238 |
 | water `20x20x3`, candidate | 5 | `8,5,5,5,3`; 1 linear + 1 nonlinear retry | Legacy 8; baseline `OpmAligned` 24 |
@@ -745,6 +750,212 @@ Only after that design may Y2d6 implement the smallest coherent captured-system 
 preserve full-system norms, partitions, direct deltas, bounded `8/8`, gas `5/5`, and compare
 iteration counts against Flow's actual 20-iteration contract. No live run, default change,
 acceptance/controller edit, or standalone AMG project is authorized in the design slice.
+
+**Y2d6 design result (2026-07-15): COMPLETE; implementation not started.** The exact source pin is
+`OPM/opm-simulators@release/2026.04/final` commit
+`b82f21dba405286c4c4446614dd3bf9cdebf7a2c`, with DUNE-ISTL 2.11.0. The source audit adds two
+requirements that make a partial outer swap invalid. First, true-IMPES comes from local storage
+derivatives, which the current 13 captures do not contain. Second, Flow applies eliminated well
+effects in the outer operator but factors `paroverilu0` on the reservoir matrix without those
+effects, then adds well pressure contributions explicitly to the CPRW coarse matrix. ResSim
+currently Schur-eliminates first and factors the already-reduced matrix. The complete design,
+matched/missing table, coupled oracle, and IMPES applicability audit are in
+`FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`.
+
+**Y2d6a result (2026-07-15): COMPLETE.** Capture v3 retains the full unscaled system plus exact
+local accumulation-derivative blocks, source-pinned normalized true-IMPES weights, and explicit
+`J_rr/J_rw/J_wr/J_ww` partitions before well elimination. Parsing recomputes every weight and
+reconstructs the full Jacobian bit-for-bit. The isolated `22x22x1` bounded artifact has
+`1456` rows, `484` cells, four well rows, and partition nnz `[4752,2,4,6]`; the exact gas artifact
+has `904` rows, `300` cells, four well rows, and `[5360,3,2,7]`. Both pass the dedicated payload
+oracle with the pinned Flow commit, DUNE version, and 50-bar pressure scale. No solver dispatch or
+nonlinear behavior changed.
+
+**Y2d6b result (2026-07-15): COMPLETE.** A test-only oracle proves all seven identities on the
+bounded and gas v3 artifacts. Matrix-free well elimination matches an independently formed Schur
+matrix; the coarse operator equals reservoir plus exactly one well contribution; block ILU is
+factored only on `J_rr`; and the fine, coarse, and complete zero-pre/coarse/one-post CPR maps are
+repeatable and linear. Both pressure systems (`484` and `300` rows) are below Flow's
+`coarsenTarget=1200`; DUNE therefore creates no aggregation level and its sequential direct
+coarse solver is the complete one-level AMG application for this bounded oracle. Independent
+outer residual norms agree at machine precision. No outer Krylov solve or production path was
+added.
+
+Next is Y2d6c only: regenerate/extend the v3 bounded-eight plus gas-five corpus and compare the
+coherent fixed stack with Flow's exact 20-pair BiCGSTAB contract. Preserve per-capture identity
+gating; an identity failure is `INCONCLUSIVE`, never a convergence refutation.
+
+**Y2d6c step 1 result (2026-07-15): COMPLETE.** A distinct `FIM_Y2D6_CORPUS_DIR` mirrors only the
+two established selection hooks while preserving all older capture behavior: OPM-aligned linear
+abort and final-iteration near miss. The current branch exactly regenerates bounded `8/8`
+`max-iters` artifacts and gas `4` final-near-miss plus `1` `max-iters` artifact. All thirteen are
+capture v3 and pass count, companion, source, weight, and bit-exact full-J reconstruction gates.
+Next implement the test-only recurrence; do not route it live.
+
+**Y2d6c step 2 result (2026-07-15): CONFIRMED OFFLINE.** The recurrence directly transcribes
+DUNE-ISTL 2.11 BiCGSTAB: raw norm, zero initial correction, strict `<0.005`, matching `1e-80`
+breakdown guards, half-step convergence checks, and a twenty-pair cap. Every artifact passes D6b
+before solving. Bounded improves production `0/8` to Flow-stack `8/8`; gas improves `4/5` to
+`5/5`. True FGMRES remains `8/8` and `5/5`. No solve needs more than one completed pair, no pass
+is lost, and full/recovered-well residuals are independently recomputed. D6d default-off live
+integration is authorized; promotion is not.
+
+**Y2d6d result (2026-07-15, accounting corrected by Y2d7): COMPLETE, NOT PROMOTED.** The complete lifecycle is available behind
+native-only `FIM_FLOW_LIFECYCLE=1`; default routing is unchanged. The live implementation retains
+matrix-free StandardWell elimination and assembles only `RSP` densely. A focused coupled-system
+test proves this efficient live construction reproduces the independent explicit-Schur oracle.
+
+Exact gas remains six substeps/no cuts. Its reported evaluation counts move
+`8,5,4,4,4,4 -> 10,5,5,4,4,4`; comparable applied updates move
+`7,4,3,3,3,3 -> 9,4,4,3,3,3` versus Flow `7,5,4,3,4,3`. D6d matches Flow's total 26 updates
+but has a slightly larger per-step L1 mismatch (`4` versus the prior path's `3`). Heavy water remains seven
+substeps versus Flow's one; its retry classification changes `0L/1N -> 0L/0N/1 mixed`, not its
+fragmentation. Y2 bounded controls remain three substeps (`22x22x1`: `11,4,6`; `23x23x1`:
+`10,5,5`), and Legacy guards retain four water substeps and fourteen total gas substeps. Runtime
+is materially worse because the bounded reference path refactors a dense coarse matrix every
+Newton iteration; it is diagnostic infrastructure, not production AMG.
+
+Verdict: the offline correction-quality gain is real, but the complete Flow linear lifecycle is
+not the missing live nonlinear convergence factor. Do not tune BiCGSTAB/CPR or promote this path.
+### Y2d7 result (2026-07-15): first divergence is injector-cell reservoir/well coupling
+
+Fresh Flow artifacts are preserved at `/tmp/ressim-y2d6e-40f366d/opm`; native ResSim traces are
+alongside them. At evaluation 0 the comparable convergence metrics match closely: oil CNV/MB are
+identical at `0.5109/1.667e-3`; gas CNV is `1.2457` versus `1.245`, and gas MB is `3.5069e-3`
+versus `3.470e-3`. The mapped initial residual is therefore a valid trajectory anchor.
+
+The first update is the first divergence. Flow evaluation 1 remains `WellStatus=CONV` with oil
+MB `1.8375e-3`. Default ResSim post-processes the already rate-satisfying injector from
+`q=-500` to `-526.85`, producing well/perforation residuals `5.75e-2/1.70e-2` and oil MB
+`4.311e-3`, binding at injector cell 0. Enabling the already-implemented nested well solve keeps
+`q=-500` and removes the well-row residual, but oil MB remains `4.311e-3`. Thus the relaxation
+heuristic explains the well-row distress but not the reservoir divergence.
+
+Verdict: **DIAGNOSTIC; G4 AUTHORIZED.** Audit the injector's reservoir component source
+contribution and Flow `StandardWell` rate/component conversion after the first `ds-max` update,
+with the nested well solve and Y2 primary lifecycle held fixed. G5 is not first: the binding
+divergence is at saturated injector cell 0, whose active primary remains `Sg`. Do not change
+acceptance, controller, linear lifecycle, or generic primary switching in that slice.
+
+### Y2d8 / G4 result (2026-07-15): RESV conversion is a coupled lifecycle mismatch
+
+`WELLSOURCE` is an observation-only native trace emitted beside the existing `WELLTRACE` and
+`WELLJAC` records. It calls the production source helper, records the three component rates,
+their dt-weighted residual contributions, and the assembled rate column; it does not alter an
+iterate or decision. Commands and traces are recorded in the worklog.
+
+The Flow source audit is decisive. `WellAssemble::assembleControlEqInj` uses
+`RateConverter::calcInjCoeff`, whose region-average pressure/temperature state is created at
+`beginReportStep` and refreshed only after an accepted timestep. For this deck's initial
+`p=200 bar`, PVDG gives `B_g=0.0065`, so the Flow RESV constraint maps a converged surface gas
+rate to `-500/0.0065 = -76,923.077 Sm3/d`. The conversion coefficient remains fixed throughout
+report step 1, and `StandardWell` inserts its surface component rate directly into the reservoir
+equations. Flow reports `WellStatus=CONV` at evaluation 1, making that controlled source the
+source-comparable state there.
+
+ResSim matches the controlled conversion at evaluation 0. After its first `ds-max` update, cell 0 has `p=242.679 bar` and
+local `B_g=0.005219627`; nested well solve correctly retains reservoir `q=-500`, but the current
+source helper reevaluates `q/B_g=-95,792.278 Sm3/d`. This is `18,869.202 Sm3/d` (24.5%) more gas
+than Flow's fixed RESV conversion, or `-4,717.300` extra in the dt-weighted gas row. Default
+relaxation additionally moves `q=-526.853` and reaches `-100,936.942 Sm3/d`; that secondary
+drift remains separately diagnosed. The source mismatch survives nested solve and therefore
+explains why eliminating the well-row residual did not remove the reservoir trajectory split.
+
+Verdict: **CONFIRMED G4 MECHANISM; NO PARTIAL FIX.** ResSim's rate unknown is a local reservoir
+connection rate, while Flow solves a surface component-rate unknown, constrains it with a
+report-step-frozen regional RESV coefficient, and forms connection/source rates in that same
+well-equation lifecycle. Freezing only ResSim's source coefficient would make its source disagree
+with its connection and control rows and is not a valid OPM port. G4a must first design a coherent
+default-off injector-RESV lifecycle and a source/rate/control oracle. G5, acceptance, controller,
+and linear routing remain out of scope. IMPES has no FIM well unknown tail; inspect it only if the
+chosen correction moves a shared source-conversion helper.
+
+### G4a result (2026-07-15): coherent single-perf injector-RESV design complete
+
+`docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` records the source pin, dependency table, exact
+single-perf equations, implementation staging, and decision oracle. Current ResSim q is a
+negative local reservoir connection rate while Flow `WQTotal` is a positive well surface rate;
+the default-off probe therefore needs all three rows together:
+
+```text
+R_perf = -q_res(p,bhp)/B_g(cell) - u
+R_ctrl = B_g,ref * u - Q_resv
+S_gas  = q_res(p,bhp)/B_g(cell)
+```
+
+`B_g,ref` is report-step regional; current `B_g(cell)` remains in the connection **and source**.
+At a converged perforation `-q_res/B_g=u`, so the source is `-u`; it is not assumed equal during
+an arbitrary Newton evaluation. The probe is one-perf gas injection with no active BHP constraint
+or retry. Existing q-coordinate nested solve is deliberately incompatible until re-derived in u
+coordinates.
+
+**Next authorized slice: G4b0 only.** Add the explicit RESV control kind and immutable,
+default-off report-step reference context with unsupported-case rejection and unit tests. Do not
+route assembly, freeze a source, change IMPES, or run a convergence comparison in that slice.
+
+### G4b0 result (2026-07-15): RESV context captured; no equation changed
+
+Native-only `FIM_FLOW_RESV_INJECTOR` now recognizes explicit schedule `RESV`, validates one
+enabled gas injector/one perforation/no surface target/no explicit BHP limit/no nested solve, and
+captures immutable hydrocarbon-PV-weighted pressure plus `B_g,ref` before the report step. The
+context is copied into every Newton attempt, survives retry unchanged, and refreshes only after an
+accepted FIM substep. It is intentionally not read by either assembler, source helper, well
+update, or IMPES.
+
+Focused context tests, well-control tests, AD/legacy assembly parity, locked FIM smoke, curated
+FIM coverage, and Buckley-Leverett benchmarks pass. The shared bucket reproduces its documented
+pre-existing closed-system `rate_history` mismatch after three passing checks; it is not
+attributed to G4b0. No live RESV run is authorized.
+
+### G4b1 result (2026-07-15): pure local residual contract is derivative-gated
+
+`flow_resv_injector_residual<S: Scalar>` now evaluates the complete scoped local contract once:
+`c_s=-q_res/B_g(current)`, `R_perf=c_s-u`, `R_ctrl=B_g,ref*u-Q_resv`, and `S_gas=-c_s`.
+`B_g,ref` and `Q_resv` enter as frozen `f64` constants, while `q_res`, current `B_g`, and `u`
+remain generic inputs. Two non-reference pressure fixtures verify f64 values, AD pressure and
+u-column derivatives, and central-FD pressure derivatives. In particular, source remains
+independent of u before the perforation row converges; the frozen reference has no source term.
+
+The helper is not called by either assembler. This establishes a local mathematical contract,
+not a production residual or Flow trajectory result. Next is G4b2 readiness audit: enumerate
+every AD/legacy/source/control/update/scaling/diagnostic/reporting coupling before authorizing
+one atomic route.
+
+### G4b2 result (2026-07-15): unsafe RESV fall-through blocked; atomic route inventory complete
+
+The readiness audit found that an explicit `RESV` schedule currently reaches
+`physical_well_control`, which recognizes only `rate` and would silently select the BHP/q
+lifecycle. The native flag now validates/captures the narrow context and then returns before
+Newton with a clear warning; a valid gas/PVT/one-perf RESV test proves no simulation time can
+advance. This supersedes the earlier implication that the inert context could safely accompany a
+live Newton attempt: it cannot until every coupled row is routed.
+
+`docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` lists state primary, control, both assemblers,
+source/Jacobian, q relax/nested solve, scaling, Schur, diagnostics, reporting, retry, and IMPES
+status. No live RESV run is authorized.
+
+### G4b2a result (2026-07-15): one atomic typed-u route specified; no execution changed
+
+`docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` makes the next implementation
+non-ambiguous: replace the q-named selected primary with a typed positive surface `u`, construct
+it from `Q_resv/B_g,ref` and an explicit connection-rate BHP inversion, route immutable context
+through both assemblers, and scatter the three G4b1 rows together. The control row has only the
+u column; the source retains current-FVF cell/BHP columns and zero u column. The design requires
+an independent legacy manual linearization, full AD/legacy/FD parity, u-coordinate update/floor,
+route-aware scaling, exact Schur recovery, and evaluation-0/1 trace fields before the pre-Newton
+block can be removed. It explicitly holds retry lifetime, BHP switching, multi-perf allocation,
+nested u solve, IMPES, and all solver policy fixed. Next is the atomic code route and non-live
+gates, not a convergence diagnostic.
+
+### G4b2b0 result (2026-07-15): selected assembler scaffold is not an executable lifecycle
+
+The default-off context now reaches both assemblers in focused tests and routes the G4b1 gas
+source/perforation/control rows together. Initialization, AD/legacy matrix parity, u-column FD,
+route scales, and historical AD parity pass. This is deliberately still blocked before Newton:
+the selected surface value is stored in the historical q-named tail slot, the legacy derivative
+is not independently analytic, and a full source-row FD must first isolate accumulation. Treat
+this as non-live infrastructure, not a partial Flow port. The next work is typed-state migration
+plus independent legacy/source-FD and Schur/trace gates; no live diagnostic is authorized.
 
 ## 8. Y3 and Y4 end gates
 

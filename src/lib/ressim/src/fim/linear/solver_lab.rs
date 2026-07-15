@@ -21,7 +21,9 @@ use sprs::CsMat;
 
 use super::capture::{
     FimCapturedSystem, capture_dir_from_env, load_captures, y2b2_capture_dir_from_env,
+    y2d6_capture_dir_from_env, y2d6_corpus_dir_from_env,
 };
+use super::flow_lifecycle::FlowComponentOracle;
 use super::gmres_block_jacobi::{
     self, CprFineSmootherKind, CprPressureRestrictionKind, coarse_factorization_lab_compare,
     solve_with_restriction_kind, solve_with_smoother_and_restriction,
@@ -52,6 +54,278 @@ fn residual_vector(
 
 fn residual_norm(jacobian: &CsMat<f64>, solution: &DVector<f64>, rhs: &DVector<f64>) -> f64 {
     residual_vector(jacobian, solution, rhs).norm()
+}
+
+/// Y2d6a payload-sufficiency gate. Parsing performs the source-fingerprint, true-IMPES
+/// recomputation, partition-dimension, and bit-exact full-J reconstruction checks.
+#[test]
+#[ignore]
+fn solver_lab_validate_y2d6a_capture_payload() {
+    let dir = y2d6_capture_dir_from_env()
+        .expect("set FIM_Y2D6_CAPTURE_DIR to one isolated Y2d6 capture directory");
+    let systems = load_captures(&dir).expect("load and validate Y2d6 capture");
+    assert_eq!(systems.len(), 1, "Y2d6a requires one isolated capture");
+    let system = &systems[0];
+    let flow = system
+        .flow_lifecycle
+        .as_ref()
+        .expect("Y2d6a requires the v3 Flow lifecycle companion");
+    let layout = system.layout.expect("Y2d6a requires block layout");
+    assert_eq!(flow.storage_blocks.len(), layout.cell_block_count);
+    assert_eq!(flow.true_impes_weights.len(), layout.cell_block_count);
+    assert_eq!(flow.reservoir_unknown_count, layout.cell_unknown_count());
+    assert!(
+        flow.true_impes_weights
+            .iter()
+            .flatten()
+            .all(|value| value.is_finite())
+    );
+    let max_weight = flow
+        .true_impes_weights
+        .iter()
+        .flatten()
+        .map(|value| value.abs())
+        .fold(0.0_f64, f64::max);
+    assert!((max_weight - 1.0).abs() <= 1e-12);
+    println!(
+        "Y2D6A-PAYLOAD rows={} cells={} well_rows={} full_nnz={} partitions=[{},{},{},{}] source={}@{} dune={} pressure_scale_bar={:.1} max_abs_weight={:.9e}",
+        system.jacobian.rows(),
+        layout.cell_block_count,
+        system.jacobian.rows() - flow.reservoir_unknown_count,
+        system.jacobian.nnz(),
+        flow.j_rr.nnz(),
+        flow.j_rw.nnz(),
+        flow.j_wr.nnz(),
+        flow.j_ww.nnz(),
+        flow.source_tag,
+        flow.source_commit,
+        flow.dune_istl_version,
+        flow.pressure_scale_bar,
+        max_weight,
+    );
+}
+
+/// Y2d6b's fail-closed component gate. This intentionally does not run outer BiCGSTAB or print a
+/// corpus verdict; it proves that the captured Flow-style operator and preconditioner pieces have
+/// the required algebraic identities before D6c is allowed to measure convergence.
+#[test]
+#[ignore]
+fn solver_lab_validate_y2d6b_component_identities() {
+    let dir = y2d6_capture_dir_from_env()
+        .expect("set FIM_Y2D6_CAPTURE_DIR to one isolated Y2d6 capture directory");
+    let systems = load_captures(&dir).expect("load and validate Y2d6 capture");
+    assert_eq!(systems.len(), 1, "Y2d6b requires one isolated capture");
+    let system = &systems[0];
+    let flow = system
+        .flow_lifecycle
+        .as_ref()
+        .expect("Y2d6b requires the v3 Flow lifecycle companion");
+    let layout = system.layout.expect("Y2d6b requires block layout");
+    let oracle = FlowComponentOracle::new(flow, layout).expect("build Y2d6b component oracle");
+    let metrics = oracle
+        .validate_identities(&system.rhs)
+        .expect("all seven Y2d6b component identities");
+    println!(
+        "Y2D6B-IDENTITIES reservoir_rows={} pressure_rows={} outer_delta={:.9e} coarse_delta={:.9e} well_coarse_norm={:.9e} fine_linearity={:.9e} coarse_linearity={:.9e} cpr_linearity={:.9e} outer_residual={:.9e} residual_norm_delta={:.9e} correction_max={:.9e}",
+        metrics.reservoir_rows,
+        metrics.pressure_rows,
+        metrics.outer_disagreement,
+        metrics.coarse_disagreement,
+        metrics.coarse_well_norm,
+        metrics.fine_linearity,
+        metrics.coarse_linearity,
+        metrics.cpr_linearity,
+        metrics.residual_norm,
+        metrics.residual_norm_disagreement,
+        metrics.correction_max_abs,
+    );
+}
+
+/// Y2d6c corpus-selection/payload gate. Parsing already recomputes true-IMPES weights and
+/// reconstructs full J bit-for-bit; this additionally fails closed on count and missing v3 data.
+#[test]
+#[ignore]
+fn solver_lab_validate_y2d6c_corpus_payloads() {
+    let dir = y2d6_corpus_dir_from_env()
+        .expect("set FIM_Y2D6_CORPUS_DIR to one bounded or gas v3 corpus");
+    let expected = std::env::var("FIM_Y2D6_EXPECTED_COUNT")
+        .expect("set FIM_Y2D6_EXPECTED_COUNT to 8 or 5")
+        .parse::<usize>()
+        .expect("FIM_Y2D6_EXPECTED_COUNT must be an integer");
+    let systems = load_captures(&dir).expect("load and validate Y2d6c corpus");
+    assert_eq!(systems.len(), expected, "Y2d6c corpus cardinality");
+    let mut reasons = std::collections::BTreeMap::<String, usize>::new();
+    for system in &systems {
+        let flow = system
+            .flow_lifecycle
+            .as_ref()
+            .expect("Y2d6c rejects a capture without the v3 lifecycle companion");
+        let layout = system.layout.expect("Y2d6c requires block layout");
+        assert_eq!(flow.reservoir_unknown_count, layout.cell_unknown_count());
+        *reasons
+            .entry(system.metadata.failure_reason.clone())
+            .or_default() += 1;
+    }
+    println!(
+        "Y2D6C-CORPUS dir={} systems={} reasons={reasons:?}",
+        dir.display(),
+        systems.len()
+    );
+}
+
+/// Y2d6c coherent offline comparison. Every artifact is payload-validated by parsing and then
+/// passes all seven D6b identities before the exact DUNE recurrence is allowed to run. A missed
+/// convergence target is printed as evidence, not confused with an oracle/test failure.
+#[test]
+#[ignore]
+fn solver_lab_compare_y2d6c_flow_bicgstab() {
+    let dir = y2d6_corpus_dir_from_env()
+        .expect("set FIM_Y2D6_CORPUS_DIR to one bounded or gas v3 corpus");
+    let label =
+        std::env::var("FIM_Y2D6_CORPUS_LABEL").unwrap_or_else(|_| "unspecified".to_string());
+    let expected = std::env::var("FIM_Y2D6_EXPECTED_COUNT")
+        .expect("set FIM_Y2D6_EXPECTED_COUNT to 8 or 5")
+        .parse::<usize>()
+        .expect("FIM_Y2D6_EXPECTED_COUNT must be an integer");
+    let systems = load_captures(&dir).expect("load and validate Y2d6c corpus");
+    assert_eq!(systems.len(), expected, "Y2d6c corpus cardinality");
+
+    let options = FimLinearSolveOptions {
+        max_iterations: 30,
+        ..FimLinearSolveOptions::default()
+    };
+    let mut production_strict = 0usize;
+    let mut flexible_strict = 0usize;
+    let mut flow_strict = 0usize;
+    let mut flow_relaxed = 0usize;
+    let mut flow_pairs = Vec::new();
+    let mut flow_full_reductions = Vec::new();
+    let mut flow_direct_deltas = Vec::new();
+
+    for (capture_idx, system) in systems.iter().enumerate() {
+        let layout = system.layout.expect("Y2d6c requires block layout");
+        let flow_data = system
+            .flow_lifecycle
+            .as_ref()
+            .expect("Y2d6c requires capture v3");
+        let oracle = FlowComponentOracle::new(flow_data, layout)
+            .unwrap_or_else(|error| panic!("capture {capture_idx}: build Flow oracle: {error}"));
+        oracle
+            .validate_identities(&system.rhs)
+            .unwrap_or_else(|error| panic!("capture {capture_idx}: D6b identity: {error}"));
+
+        let production = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &options,
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let flexible = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                use_true_fgmres: true,
+                ..options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let rhs_norm = system.rhs.norm().max(1e-30);
+        let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+        assert!(direct.converged && direct.solution.iter().all(|value| value.is_finite()));
+        assert!(direct_residual.norm() / rhs_norm < 1e-10);
+
+        let flow = oracle.solve_flow_bicgstab(&system.rhs);
+        let independent_outer_residual =
+            oracle.reduced_rhs(&system.rhs) - oracle.outer_apply(&flow.reservoir_solution);
+        assert_eq!(
+            flow.preconditioner_applications,
+            flow.alpha_steps + flow.omega_steps
+        );
+        assert!(flow.alpha_steps <= super::flow_lifecycle::FLOW_BICGSTAB_MAX_PAIRS);
+        assert!(flow.omega_steps <= flow.alpha_steps);
+        assert!(
+            (independent_outer_residual.norm() - flow.final_norm).abs()
+                <= 1e-10 * flow.final_norm.max(1.0)
+        );
+        let flow_full_solution =
+            oracle.recover_full_solution(&system.rhs, &flow.reservoir_solution);
+        let flow_full_residual =
+            residual_vector(&system.jacobian, &flow_full_solution, &system.rhs);
+        let flow_partitions = y2b2_partition_norms(layout, &flow_full_residual);
+        let flow_full_reduction = flow_full_residual.norm() / rhs_norm;
+        let flow_direct_delta = y2b3_max_peak(y2b3_correction_delta_peaks(
+            layout,
+            &flow_full_solution,
+            &direct.solution,
+        ));
+        let production_residual =
+            residual_vector(&system.jacobian, &production.solution, &system.rhs);
+        let flexible_residual = residual_vector(&system.jacobian, &flexible.solution, &system.rhs);
+
+        production_strict += usize::from(production.converged);
+        flexible_strict += usize::from(flexible.converged);
+        flow_strict += usize::from(flow.converged);
+        flow_relaxed += usize::from(flow.finite && flow.reduction() < 1e-2);
+        flow_pairs.push(flow.omega_steps);
+        flow_full_reductions.push(flow_full_reduction);
+        flow_direct_deltas.push(flow_direct_delta);
+
+        println!(
+            "Y2D6C capture={capture_idx:05} reason={} flow={{strict={},relaxed={},finite={},breakdown={:?},alpha={},omega={},prec={},outer_rhs={:.9e},outer_final={:.9e},outer_reduction={:.9e},full_reduction={:.9e},reservoir={:.9e},well={:.9e},direct_delta={:.9e}}} production={{strict={},iters={},full_reduction={:.9e}}} true_fgmres={{strict={},iters={},full_reduction={:.9e}}}",
+            system.metadata.failure_reason,
+            flow.converged,
+            flow.finite && flow.reduction() < 1e-2,
+            flow.finite,
+            flow.breakdown,
+            flow.alpha_steps,
+            flow.omega_steps,
+            flow.preconditioner_applications,
+            flow.initial_norm,
+            flow.final_norm,
+            flow.reduction(),
+            flow_full_reduction,
+            flow_partitions.0,
+            flow_partitions.1,
+            flow_direct_delta,
+            production.converged,
+            production.iterations,
+            production_residual.norm() / rhs_norm,
+            flexible.converged,
+            flexible.iterations,
+            flexible_residual.norm() / rhs_norm,
+        );
+    }
+
+    flow_pairs.sort_unstable();
+    flow_full_reductions
+        .sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    flow_direct_deltas
+        .sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    println!(
+        "Y2D6C-SUMMARY corpus={label} systems={} production={production_strict}/{} true_fgmres={flexible_strict}/{} flow_strict={flow_strict}/{} flow_relaxed={flow_relaxed}/{} median_pairs={} max_pairs={} median_full_reduction={:.9e} median_direct_delta={:.9e} dir={}",
+        systems.len(),
+        systems.len(),
+        systems.len(),
+        systems.len(),
+        systems.len(),
+        flow_pairs[flow_pairs.len() / 2],
+        flow_pairs.iter().copied().max().unwrap_or(0),
+        flow_full_reductions[flow_full_reductions.len() / 2],
+        flow_direct_deltas[flow_direct_deltas.len() / 2],
+        dir.display(),
+    );
 }
 
 fn y2b2_partition_norms(layout: FimLinearBlockLayout, residual: &DVector<f64>) -> (f64, f64) {

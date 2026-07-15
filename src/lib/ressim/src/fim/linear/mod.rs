@@ -4,6 +4,8 @@ use sprs::CsMat;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod capture;
 mod dense_lu_debug;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod flow_lifecycle;
 mod gmres_block_jacobi;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod solver_lab;
@@ -127,6 +129,10 @@ pub(crate) struct FimLinearSolveOptions {
     /// `FgmresCpr`. Default false retains the historical fixed-left recurrence for controlled
     /// A/B validation; this option does not alter any CPR component or nonlinear policy.
     pub(crate) use_true_fgmres: bool,
+    /// Y2d6d: use the complete source-pinned Flow lifecycle (true-IMPES weights, StandardWell
+    /// matrix-free Schur action, one-level CPRW, block ILU0 post-smoother, BiCGSTAB). Native-only
+    /// diagnostic option; false preserves production dispatch exactly.
+    pub(crate) use_flow_lifecycle: bool,
     /// Phase 11 (`FIM-LINEAR-010`): Schur-eliminate well-BHP and perforation-rate unknowns from
     /// the linear system before the iterative CPR/GMRES solve, matching OPM's `StandardWell`
     /// architecture (well block eliminated every Newton iteration, recovered after the reservoir
@@ -186,6 +192,7 @@ impl Default for FimLinearSolveOptions {
             relative_tolerance: 5e-3,
             absolute_tolerance: 1e-12,
             use_true_fgmres: false,
+            use_flow_lifecycle: false,
             // Phase 11 (`FIM-LINEAR-010`): offline lab on 35 real captured heavy-case systems
             // showed a decisive win (34/35 -> 35/35 converged, mean linear iterations 3.9 -> 1.1)
             // — promoted to default pending the live control-matrix gate.
@@ -300,6 +307,7 @@ mod tests {
         let options = FimLinearSolveOptions::default();
         assert_eq!(options.kind, FimLinearSolverKind::FgmresCpr);
         assert!(!options.use_true_fgmres);
+        assert!(!options.use_flow_lifecycle);
     }
 
     #[test]

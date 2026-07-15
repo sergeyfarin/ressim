@@ -36,6 +36,7 @@ User decision: cases may ship fully precomputed (OPM Flow offline or published d
 Found while building the `.claude/skills/` library. Small stale-doc/path items were fixed in the same pass (README pnpm quick start, `test-wasm.sh` hardcoded `/home/reken` path, Three.js version claims in copilot-instructions/ARCHITECTURE_NOTES, scenario count 9→10).
 
 - [ ] **CI runs no Rust tests.** `.github/workflows/pr-tests.yml` runs vitest + typecheck only; an engine regression cannot be caught by CI. Minimal fix: add `bash scripts/validate-solver-coverage.sh impes` (or `all`) as a CI step — the buckets are curated to be hang-free.
+- [x] **CI Vitest invocation repaired — 2026-07-15.** `pnpm run test --if-present` and the coverage equivalent forwarded `--if-present` to Vitest 4, which rejects it as an unknown CLI option before executing tests. The workflow now invokes the declared scripts directly; PR #6 rerun is the remaining CI confirmation.
 - [ ] **OPM summary parser still unimplemented** (`tools/opm_flow/opm_flow_tool/artifacts.py::build_artifact()` writes stub `series: []`). Highest-leverage validation task; full plan in `docs/COMPARISON_TOOLBOX_REVIEW_2026-07-01.md` §5 Phase A and `.claude/skills/opm-reference-pipeline/`.
 - [ ] **`.claude/settings.json` allowlist is stale**: dozens of `/home/reken/...` absolute-path entries and one-off experiment commands from old sessions. Needs a manual prune to project-relative rules (agent-initiated permission edits are blocked by policy — user action).
 - [x] **FIM AD-migration/phase status now documented** — `docs/FIM_STATUS.md` fully rewritten 2026-07-05 (current state through Phase 11 + `FIM-DAMP-004`, baselines with replay commands, open gaps, canonical source map).
@@ -47,11 +48,16 @@ Found while building the `.claude/skills/` library. Small stale-doc/path items w
 - [ ] **TODO.md itself violates its stated policy** (short and action-oriented; currently ~670 lines of dated FIM micro-experiment narrative that `FIM_STATUS.md` says belongs in `docs/FIM_CONVERGENCE_WORKLOG.md`). Prune per COMPARISON_TOOLBOX_REVIEW Phase D.
 - [ ] **Root/doc hygiene**: `SPE1CASE1.DBG` (+`:Zone.Identifier`), `image.png`, `ccopy.sh` are stray untracked-purpose files at repo root; `PLAN.md`/`docs/REFACTOR_PLAN.md` marked historical but still at top level. (`docs/2.md`/`docs/20260426.md` rescued 2026-07-05 into `docs/FIM_OPM_GAP_ANALYSIS_SPE1.md` / `docs/FIM_OPM_ALIGNMENT_STRATEGY_2026-04-26.md` and indexed.)
 - [ ] **`c_o = 1e-5 /bar` duplication** between `src/lib/physics/pvt.ts` and `src/lib/analytical/materialBalance.ts` still has no regression guard (ROADMAP 1.3).
-- [ ] **`fim/newton.rs` at ~5.2k lines** is the largest maintenance hotspot in the engine; consider a controller/state-machine extraction once AD migration completes (candidate for the `.github/agents/refactor-planner` agent).
+- [x] **`fim/newton.rs` test-module extraction — DONE 2026-07-15.** Moved 1,888 lines of
+  white-box tests to `fim/newton/tests.rs` without changing production behavior; targeted Newton
+  suite remains green. Production `newton.rs` is now 5,345 lines.
+- [ ] **Next bounded FIM refactor:** extract stable Newton production seams—first damping/chop
+  and convergence/acceptance diagnostics—while keeping `run_fim_timestep()` as orchestration.
+  Do not combine this with G4b2b physics work or alter solver behavior.
 - [ ] **3D view named bugs** from PLAN.md-era review (FOV degrees conversion, `Array.isArray` on GridState, `k ?? k` well indexing) were never re-verified post-refactor — cheap scoped verification pass (COMPARISON_TOOLBOX_REVIEW gap #7).
 - [ ] **3 pre-existing test failures found 2026-07-07** (not part of the locked smoke gate, unrelated to Bundle N — confirmed by reproducing on commit `41d45f2` before any Bundle N checkpoint-4 edits): `fim::timestep::tests::changing_hotspot_resets_extra_growth_cooldown_budget`, `repeated_same_hotspot_extends_growth_cooldown_budget`, `fim_enabled_step_advances_time_and_records_history_for_closed_system`. Not investigated further (out of scope for the current task); worth a scoped look. **Likely a 4th sibling found 2026-07-12** (`FIM-BUNDLE-X` X1 gate, `docs/FIM_CONVERGENCE_WORKLOG.md` "Bundle X checkpoint X1"): `tests::runtime_api::closed_system_public_step_keeps_same_water_inventory_on_both_solvers` — same symptom class (extra `rate_history` entry on the FIM path for a well-less closed system), different test name; confirmed pre-existing via `git stash` on a clean tree, structurally unrelated to Bundle X. Worth investigating all four together — the shared "closed system + FIM + rate_history" pattern suggests one root cause, not four.
 
-## FIM next steps (updated 2026-07-14)
+## FIM next steps (updated 2026-07-15)
 
 Current execution authority: `docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`. The detailed list
 below is retained as Bundle N/Y history; it must not override this current sequence.
@@ -145,13 +151,83 @@ below is retained as Bundle N/Y history; it must not override this current seque
   the old path. It removes every Y2 water linear retry: the blocker improves `11/8L -> 3/0L+1N`;
   other controls preserve substeps. Exact gas stays six/zero but Newton worsens by four total, so
   retain the validated option default-off and do not claim OPM-stack promotion.
-- [ ] **Next: Y2d6 actual Flow linear-lifecycle design.** Source-pin the selected
-  BiCGSTAB/true-IMPES CPRW/paroverilu0/one-loop-AMG semantics, map matched/missing lifecycle items,
-  and specify a coupled test-only 13-capture oracle before coding. A partial outer swap is
-  INCONCLUSIVE; no live/default/acceptance/controller change in the design slice.
-- [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
-  Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
-  plateau to well equations. The present `well@900` direct failure is not authorization.
+- [x] **Y2d6 actual Flow linear-lifecycle design (2026-07-15): COMPLETE.** Exact source pin is
+  Flow/OPM `release/2026.04/final` + DUNE-ISTL 2.11. The design pins the raw two-norm and 20
+  BiCGSTAB-pair budget, storage-derived true-IMPES, CPRW well contributions, block paroverilu0,
+  and one-loop AMG. It also finds a material hidden mismatch: Flow factors fine ILU on reservoir
+  `J_rr` while applying eliminated well effects in the outer operator and adding them separately
+  to the coarse pressure operator; ResSim factors the already Schur-reduced matrix. See
+  `docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`.
+- [x] **Y2d6a capture-payload sufficiency (2026-07-15): COMPLETE.** Capture v3 stores exact local
+  accumulation blocks, pinned true-IMPES weights, and `J_rr/J_rw/J_wr/J_ww`; parsing recomputes
+  weights and reconstructs full `J` bit-for-bit. Bounded `22x22x1` and exact gas `10x10x3`
+  first-system artifacts both pass the isolated payload oracle. No solver behavior changed.
+- [x] **Y2d6b component identities (2026-07-15): COMPLETE.** All seven pass on bounded and gas v3
+  artifacts: outer/Schur, exactly-once coarse well term, `J_rr` block ILU fixedness, one-level
+  direct coarse fixedness, full CPR order/linearity, and independent raw residual. Both pressure
+  systems are below Flow's `coarsenTarget=1200`, so no general AMG implementation is warranted.
+- [x] **Y2d6c step 1 — capture-v3 corpus regeneration (2026-07-15): COMPLETE.** The established
+  selectors reproduce bounded eight `max-iters` plus gas four final-near-miss/one `max-iters`
+  artifacts. All 13 pass source, weight, companion, count, and full-J reconstruction gates.
+- [x] **Y2d6c step 2 — coherent Flow lifecycle offline (2026-07-15): CONFIRMED.** Exact DUNE
+  BiCGSTAB plus fixed D6b components passes bounded `8/8` and gas `5/5`, versus production `0/8`
+  and `4/5`; all finish within one completed pair with finite independent full residuals and no
+  lost pass. This is offline evidence, not default promotion.
+- [x] **Y2d6d default-off live integration (2026-07-15): COMPLETE, NOT PROMOTED.** Native-only
+  `FIM_FLOW_LIFECYCLE=1` wires the atomic stack and defaults off. Exact gas remains six/zero;
+  corrected applied-update counts are `23 -> 26` total (Flow 26), but per-step L1 mismatch moves
+  `3 -> 4`. Heavy remains seven substeps (Flow one).
+  Y2 bounded and Legacy substep guards hold. Keep as diagnostic infrastructure only.
+- [x] **Y2d7 first nonlinear-trajectory divergence audit (2026-07-15): DIAGNOSTIC.** Flow and
+  ResSim evaluation 0 CNV/MB nearly match. After one update, default ResSim moves the satisfied
+  injector rate `-500 -> -526.85` and creates well residuals; nested well solve removes that row
+  distress, but the `2.35x`-hot oil MB remains at saturated injector cell 0. Also corrected the
+  old evaluation-vs-update Newton-count comparison.
+- [x] **Y2d8 / G4 source-formulation audit (2026-07-15): CONFIRMED, DESIGN REQUIRED.** Flow
+  holds the RESV gas surface-to-reservoir coefficient fixed from the report-step region-average
+  state; ResSim reevaluates `q/bg(cell,current Newton state)`. After update 1, nested ResSim
+  injects `95,792` Sm3/d where Flow's fixed initial conversion is `76,923` Sm3/d (`+24.5%`),
+  independently of the already-separated default well relaxation drift. This is a coupled well
+  unknown/control/connection/source lifecycle, not authorization to freeze only a source term.
+- [x] **G4a coherent injector-RESV lifecycle design — DONE 2026-07-15.**
+  `docs/FIM_G4_INJECTOR_RESV_LIFECYCLE_DESIGN.md` pins the one-perf gas-RESV Flow lifecycle:
+  surface primary `u`, report-step regional `B_g,ref` control, current-state connection/source
+  rate, and their converged equality to source `-u`. It rejects a source-only freeze and holds
+  retry lifetime, aggregation, active BHP switching, and q-coordinate nested solve out of the
+  first probe. No behavior changed.
+- [x] **G4b0 RESV context/control representation — DONE 2026-07-15.** Explicit `RESV` schedule
+  kind plus native-only immutable report-step `B_g,ref` context are in place. It holds across
+  retries, refreshes after acceptance, rejects unsupported scope, and remains intentionally inert:
+  no assembly/source/update/IMPES behavior changed. Context/AD-parity/locked-FIM/FIM-bucket/BL
+  gates pass; shared bucket reproduces the known unrelated closed-system assertion.
+- [x] **G4b1 shared pure residual contract — DONE 2026-07-15.** One generic `Scalar` helper now
+  evaluates `c_s=-q_res/B_g`, `R_perf=c_s-u`, `R_ctrl=B_g,ref*u-Q_resv`, and `S=-c_s` for both
+  `f64` and local AD. Two non-reference-pressure fixtures prove current-FVF/source derivatives,
+  frozen-control derivative, and central-FD agreement. It is not routed to either assembler or
+  any FIM/IMPES behavior path.
+- [x] **G4b2 atomic-route readiness audit — DONE 2026-07-15.** The audit found that a valid RESV
+  schedule would otherwise fall through to historical BHP/q control, so execution is now blocked
+  pre-Newton and regression-tested. `docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md` inventories
+  every state/control/AD/legacy/source/update/scaling/linear/diagnostic coupling required for an
+  atomic route; no partial assembly or live result is allowed.
+- [x] **G4b2a atomic-route implementation design — DONE 2026-07-15.**
+  `docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md` prescribes typed u state,
+  construction, AD+legacy row/column scatter, q-relax/nested exclusions, scaling, Schur, trace,
+  and a non-live gate sequence. The G4b2 pre-Newton block remains; this is no convergence result.
+- [ ] **Next: G4b2b atomic RESV route and non-live gates.** Implement the whole typed-u route in
+  one commit, including both assemblers/Jacobians, update/scaling/Schur/trace and all contract
+  tests. **Scaffold checkpoint 2026-07-15:** context now reaches both assemblers in focused
+  tests, and initialization/AD-legacy/u-column/scaling gates pass, but the selected value is
+  still physically stored in the q-named tail vector. Do not remove the pre-Newton block or call
+  this a complete route until the typed-state migration, independent legacy derivative, full-row
+  FD/Schur, and trace gates land. Do not run live convergence.
+- [x] **Newton production-seam extraction (2026-07-15): behavior-preserving.** Moved production
+  helpers from `fim/newton.rs` into `newton/damping.rs` (Appleyard/chop/history stabilization),
+  `newton/convergence.rs` (residual families, CNV/MB, acceptance and stagnation gates), and
+  `newton/diagnostics.rs` (small-dt residual-neighborhood reporting). The parent now retains
+  orchestration and shared result types (3,110 lines; the individual timestep loop is still above
+  the 1,500-line aspiration and needs a separate ownership-preserving extraction). `cargo check
+  --tests` passes; no solver semantics or convergence result changed.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

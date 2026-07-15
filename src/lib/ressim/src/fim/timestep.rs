@@ -2,6 +2,7 @@ use crate::ReservoirSimulator;
 use crate::fim::assembly::{FimAssemblyOptions, equation_offset};
 // See newton.rs: production assembly now goes through the AD assembler.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
+use crate::fim::flow_resv::begin_flow_resv_report_step_context;
 use crate::fim::linear::{FimLinearSolveReport, active_direct_solve_row_threshold};
 use crate::fim::newton::FimRetryFailureClass;
 use crate::fim::newton::{
@@ -9,6 +10,7 @@ use crate::fim::newton::{
     run_fim_timestep,
 };
 use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
+use crate::fim::wells::build_well_topology;
 use crate::reporting::{FimAcceptedRungStats, FimRetryRungStats, FimStepStats};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -903,6 +905,7 @@ pub(crate) fn evaluate_basin_escape_residual(
             include_wells: true,
             assemble_residual_only: true,
             topology: None,
+            flow_resv_context: None,
         },
     );
     let n_cells = state.cells.len();
@@ -1038,6 +1041,36 @@ impl ReservoirSimulator {
         }
         newton_options.nested_well_solve = self.fim_nested_well_solve;
         newton_options.linear.use_true_fgmres = self.fim_true_fgmres;
+        newton_options.linear.use_flow_lifecycle = self.fim_flow_lifecycle;
+        // G4b2b routes this context atomically through state construction, both assemblers and
+        // the Newton update. Unsupported requests still stop before Newton.
+        let mut flow_resv_context = if self.fim_flow_resv_injector {
+            let report_start_state = FimState::from_simulator(self);
+            match begin_flow_resv_report_step_context(
+                self,
+                &report_start_state,
+                self.fim_nested_well_solve,
+            ) {
+                Ok(context) => context,
+                Err(reason) => {
+                    self.last_solver_warning =
+                        format!("FIM Flow RESV injector unsupported: {reason}");
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        // The implementation is assembled and parity-gated below, but the first live rung has
+        // its own trace/no-retry oracle. Keep the structural block until that non-live route is
+        // promoted to an executable G4b2 closeout; this prevents a test-incomplete lifecycle
+        // from being mistaken for a Flow result.
+        if flow_resv_context.is_some() {
+            self.last_solver_warning =
+                "FIM Flow RESV injector assembled but not executable until G4b2 non-live gates close"
+                    .to_string();
+            return;
+        }
         // FIM-DIAG-003 D0/D1: forced-direct-linear switch. Off unless the native repro driver
         // set it from FIM_FORCE_DIRECT_LINEAR; no-op elsewhere including all wasm paths.
         if self.fim_force_direct_linear {
@@ -1104,9 +1137,20 @@ impl ReservoirSimulator {
             let mut retry_count = 0;
             let mut previous_retry_hotspot: Option<FimRetryHotspot> = None;
             let mut repeated_same_hotspot_failures = 0_u32;
-            let previous_state = FimState::from_simulator(self);
+            let mut previous_state = FimState::from_simulator(self);
+            if let Some(context) = flow_resv_context {
+                let topology = build_well_topology(self);
+                if let Err(reason) =
+                    previous_state.initialize_flow_resv_gas_primary(self, &topology, context)
+                {
+                    self.last_solver_warning =
+                        format!("FIM Flow RESV injector initialization failed: {reason}");
+                    return;
+                }
+            }
 
             loop {
+                newton_options.flow_resv_context = flow_resv_context;
                 // Late-window trace diagnostic: sticky activation, checked every pass
                 // (initial trial + every retry) since `trial_dt` shrinks across retries.
                 // `should_activate_window` short-circuits on `sink_enabled()` first, so this
@@ -1266,6 +1310,17 @@ impl ReservoirSimulator {
                     let oil_before = self.total_oil_inventory_sc();
                     let gas_before = self.total_gas_inventory_sc();
                     report.accepted_state.write_back_to_simulator(self);
+                    if let Some(context) = flow_resv_context {
+                        match context.refreshed_after_accepted_step(self, &report.accepted_state) {
+                            Ok(refreshed) => flow_resv_context = Some(refreshed),
+                            Err(reason) => {
+                                self.last_solver_warning = format!(
+                                    "FIM Flow RESV injector reference refresh failed: {reason}"
+                                );
+                                return;
+                            }
+                        }
+                    }
                     self.update_dynamic_well_productivity_indices();
                     let water_after = self.total_water_inventory_m3();
                     let oil_after = self.total_oil_inventory_sc();
@@ -1807,10 +1862,12 @@ mod tests {
         replayable_unchanged_cooldown_accepts, replayable_unchanged_hotspot_plateau_accepts,
         seed_gas_outer_step_trial_carryover,
     };
-    use crate::ReservoirSimulator;
     use crate::fim::newton::FimStepReport;
     use crate::fim::newton::{FimHotspotSite, FimRetryFailureClass, FimRetryFailureDiagnostics};
     use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
+    use crate::pvt::{PvtRow, PvtTable};
+    use crate::well::WellSchedule;
+    use crate::{InjectedFluid, ReservoirSimulator};
 
     fn failure_diagnostics(
         class: FimRetryFailureClass,
@@ -1835,6 +1892,72 @@ mod tests {
         sim.add_well(0, 0, 0, 500.0, 0.1, 0.0, true).unwrap();
         sim.add_well(19, 19, 0, 100.0, 0.1, 0.0, false).unwrap();
         sim
+    }
+
+    fn scoped_resv_sim() -> ReservoirSimulator {
+        let mut sim = ReservoirSimulator::new(1, 1, 1, 0.2);
+        sim.set_three_phase_mode_enabled(true);
+        sim.pvt_table = Some(PvtTable::new(
+            vec![
+                PvtRow {
+                    p_bar: 100.0,
+                    rs_m3m3: 10.0,
+                    bo_m3m3: 1.2,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.01,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 200.0,
+                    rs_m3m3: 20.0,
+                    bo_m3m3: 1.1,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.0065,
+                    mu_g_cp: 0.02,
+                },
+                PvtRow {
+                    p_bar: 300.0,
+                    rs_m3m3: 30.0,
+                    bo_m3m3: 1.0,
+                    mu_o_cp: 1.0,
+                    bg_m3m3: 0.005,
+                    mu_g_cp: 0.02,
+                },
+            ],
+            sim.pvt.c_o,
+        ));
+        sim.set_three_phase_rel_perm_props(
+            0.1, 0.1, 0.05, 0.05, 0.15, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
+        sim.set_initial_pressure(200.0);
+        sim.set_initial_saturation(0.15);
+        sim.injected_fluid = InjectedFluid::Gas;
+        sim.add_well_with_id(0, 0, 0, 250.0, 0.1, 0.0, true, "inj".to_string())
+            .unwrap();
+        sim.wells[0].schedule = WellSchedule {
+            control_mode: Some("resv".to_string()),
+            target_rate_m3_day: Some(500.0),
+            target_surface_rate_m3_day: None,
+            bhp_limit: None,
+            enabled: true,
+        };
+        sim.set_fim_flow_resv_injector(true);
+        sim
+    }
+
+    #[test]
+    fn valid_resv_context_is_blocked_before_historical_bhp_q_execution() {
+        let mut sim = scoped_resv_sim();
+        let initial_time_days = sim.time_days;
+
+        sim.step_internal_fim(0.25);
+
+        assert_eq!(sim.time_days, initial_time_days);
+        assert!(
+            sim.last_solver_warning
+                .contains("assembled but not executable until G4b2 non-live gates close")
+        );
     }
 
     fn cell(
@@ -2941,6 +3064,7 @@ mod phase5_repro {
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(true);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
+        sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` W4): env-gated so this same driver, already the
         // FIM-DIAG-002 re-baseline vehicle, is also the §5 re-run vehicle — no code path change.
         let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
@@ -3056,6 +3180,7 @@ mod phase5_repro {
             .unwrap();
         sim.set_fim_opm_aligned_nonlinear(opm_aligned);
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
+        sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
 
         let start = Instant::now();
         let trace = sim.step_with_diagnostics(dt_days);
@@ -3380,12 +3505,15 @@ mod phase5_repro {
         }
         sim.set_fim_opm_aligned_nonlinear(flavor == "opm");
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
+        sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
+        let nested_well_solve = std::env::var_os("FIM_NESTED_WELL_SOLVE").is_some();
+        sim.set_fim_nested_well_solve(nested_well_solve);
         sim.set_fim_force_direct_linear(std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some());
 
         let start = Instant::now();
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         println!(
-            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} force_direct_linear={force_direct_linear}"
+            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear}"
         );
 
         for step_idx in 0..step_count {

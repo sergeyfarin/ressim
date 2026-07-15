@@ -18,13 +18,22 @@ use nalgebra::DVector;
 use sprs::TriMatI;
 
 use crate::ReservoirSimulator;
+use crate::fim::ad::Ad;
 use crate::fim::assembly::{
     DARCY_METRIC_FACTOR, FimAssembly, FimAssemblyOptions, FimAssemblyTiming, equation_offset,
     unknown_offset,
 };
+use crate::fim::flow_resv::{
+    FimWellRoute, FlowResvInjectorResidual, FlowResvReportStepContext, fim_well_route,
+    flow_resv_context_for_perforation, flow_resv_injector_residual,
+};
 use crate::fim::flux::{FaceCellInput, face_flux_jacobian_blocks, face_flux_residual_f64};
-use crate::fim::properties::{accumulation_jacobian_block, cell_accumulation_generic};
-use crate::fim::scaling::{build_equation_scaling, build_variable_scaling};
+use crate::fim::properties::{
+    accumulation_jacobian_block, cell_accumulation_generic, cell_props_generic,
+};
+use crate::fim::scaling::{
+    apply_flow_resv_scaling, build_equation_scaling, build_variable_scaling,
+};
 use crate::fim::state::FimState;
 use crate::fim::wells::{
     FimWellTopology, build_well_topology, effective_injected_fluid, geometric_well_index,
@@ -44,6 +53,39 @@ fn cell_drsdt0_base_rs(sim: &ReservoirSimulator, cell_idx: usize) -> Option<f64>
     } else {
         Some(sim.rs[cell_idx])
     }
+}
+
+/// Y2d6a diagnostic input: return the exact unscaled local accumulation blocks used by the
+/// live AD assembler. Flow's true-IMPES weights are derived from storage derivatives, not from
+/// the assembled diagonal block (which also contains flux and well terms). This helper is called
+/// only when the native Y2d6 capture environment variable is enabled.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn accumulation_jacobian_blocks_for_state(
+    sim: &ReservoirSimulator,
+    previous_state: &FimState,
+    state: &FimState,
+) -> Vec<[[f64; 3]; 3]> {
+    state
+        .cells
+        .iter()
+        .enumerate()
+        .map(|(cell_idx, cell)| {
+            let prev_cell = previous_state.cell(cell_idx);
+            accumulation_jacobian_block(
+                sim,
+                cell_idx,
+                cell.pressure_bar,
+                cell.sw,
+                cell.hydrocarbon_var,
+                cell.regime,
+                cell_drsdt0_base_rs(sim, cell_idx),
+                prev_cell.pressure_bar,
+                prev_cell.sw,
+                prev_cell.hydrocarbon_var,
+                prev_cell.regime,
+            )
+        })
+        .collect()
 }
 
 fn face_cell_input(
@@ -87,6 +129,77 @@ fn add_if_nonzero(tri: &mut TriMatI<f64, usize>, row: usize, col: usize, value: 
     }
 }
 
+fn flow_resv_terms_ad(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+    context: FlowResvReportStepContext,
+) -> Option<FlowResvInjectorResidual<Ad<5>>> {
+    let perforation = &topology.perforations[perf_idx];
+    let cell = well_cell_input(sim, state, perforation.cell_index);
+    let seeded = WellCellInput {
+        p: Ad::variable(cell.p, 0),
+        sw: Ad::variable(cell.sw, 1),
+        hydrocarbon_var: Ad::variable(cell.hydrocarbon_var, 2),
+        regime: cell.regime,
+        drsdt0_base_rs: cell.drsdt0_base_rs,
+    };
+    let bhp = Ad::variable(state.well_bhp[perforation.physical_well_index], 3);
+    let u = Ad::variable(state.perforation_rates_m3_day[perf_idx], 4);
+    let wi = geometric_well_index(sim, perforation)?;
+    let q = connection_rate_generic(sim, wi, true, &seeded, bhp);
+    let props = cell_props_generic(
+        sim,
+        seeded.regime,
+        seeded.p,
+        seeded.sw,
+        seeded.hydrocarbon_var,
+        seeded.drsdt0_base_rs,
+    );
+    Some(flow_resv_injector_residual(
+        q,
+        props.bg,
+        u,
+        context.reference.bg_rm3_per_sm3,
+        context.reservoir_target_rm3_day,
+    ))
+}
+
+fn flow_resv_terms_f64(
+    sim: &ReservoirSimulator,
+    state: &FimState,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+    context: FlowResvReportStepContext,
+) -> Option<FlowResvInjectorResidual<f64>> {
+    let perforation = &topology.perforations[perf_idx];
+    let cell = well_cell_input(sim, state, perforation.cell_index);
+    let q = connection_rate_generic(
+        sim,
+        geometric_well_index(sim, perforation)?,
+        true,
+        &cell,
+        state.well_bhp[perforation.physical_well_index],
+    );
+    let bg = cell_props_generic(
+        sim,
+        cell.regime,
+        cell.p,
+        cell.sw,
+        cell.hydrocarbon_var,
+        cell.drsdt0_base_rs,
+    )
+    .bg;
+    Some(flow_resv_injector_residual(
+        q,
+        bg,
+        state.perforation_rates_m3_day[perf_idx],
+        context.reference.bg_rm3_per_sm3,
+        context.reservoir_target_rm3_day,
+    ))
+}
+
 /// `pub(crate)`: reused by `fim/wells_inner.rs` (Bundle W), same reason as `well_cell_input`.
 pub(crate) fn well_control_generic(
     control: &crate::fim::wells::PhysicalWellControl,
@@ -109,6 +222,7 @@ fn add_well_residual_terms(
     state: &FimState,
     topology: &FimWellTopology,
     dt_days: f64,
+    flow_resv_context: Option<FlowResvReportStepContext>,
     residual: &mut DVector<f64>,
 ) {
     let injected_fluid = effective_injected_fluid(sim);
@@ -116,6 +230,16 @@ fn add_well_residual_terms(
         (0..topology.wells.len()).map(|_| Vec::new()).collect();
 
     for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
+        if let Some(context) =
+            flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
+        {
+            let terms = flow_resv_terms_f64(sim, state, topology, perf_idx, context)
+                .expect("validated RESV perforation has a finite connection");
+            residual[equation_offset(perforation.cell_index, 2)] +=
+                terms.gas_source_sc_day * dt_days;
+            residual[state.perforation_equation_offset(perf_idx)] += terms.perforation;
+            continue;
+        }
         let well_idx = perforation.physical_well_index;
         let injector = topology.wells[well_idx].injector;
         let cell = well_cell_input(sim, state, perforation.cell_index);
@@ -151,6 +275,14 @@ fn add_well_residual_terms(
     }
 
     for well_idx in 0..topology.wells.len() {
+        if let FimWellRoute::FlowResvGasInjector(context) =
+            fim_well_route(flow_resv_context, topology, well_idx)
+        {
+            let terms = flow_resv_terms_f64(sim, state, topology, context.perforation_idx, context)
+                .expect("validated RESV perforation has a finite connection");
+            residual[state.well_equation_offset(well_idx)] += terms.control;
+            continue;
+        }
         let injector = topology.wells[well_idx].injector;
         let control = well_control_generic(&physical_well_control(sim, topology, well_idx));
         let bhp = state.well_bhp[well_idx];
@@ -175,6 +307,7 @@ fn add_well_jacobian_terms(
     state: &FimState,
     topology: &FimWellTopology,
     dt_days: f64,
+    flow_resv_context: Option<FlowResvReportStepContext>,
     tri: &mut TriMatI<f64, usize>,
 ) {
     let injected_fluid = effective_injected_fluid(sim);
@@ -182,6 +315,39 @@ fn add_well_jacobian_terms(
         (0..topology.wells.len()).map(|_| Vec::new()).collect();
 
     for (perf_idx, perforation) in topology.perforations.iter().enumerate() {
+        if let Some(context) =
+            flow_resv_context_for_perforation(flow_resv_context, topology, perf_idx)
+        {
+            let terms = flow_resv_terms_ad(sim, state, topology, perf_idx, context)
+                .expect("validated RESV perforation has a finite connection");
+            let gas_row = equation_offset(perforation.cell_index, 2);
+            let perf_row = state.perforation_equation_offset(perf_idx);
+            let bhp_col = state.well_bhp_unknown_offset(perforation.physical_well_index);
+            let primary_col = state.perforation_rate_unknown_offset(perf_idx);
+            for local_var in 0..3 {
+                add_if_nonzero(
+                    tri,
+                    gas_row,
+                    unknown_offset(perforation.cell_index, local_var),
+                    terms.gas_source_sc_day.deriv()[local_var] * dt_days,
+                );
+                add_if_nonzero(
+                    tri,
+                    perf_row,
+                    unknown_offset(perforation.cell_index, local_var),
+                    terms.perforation.deriv()[local_var],
+                );
+            }
+            add_if_nonzero(
+                tri,
+                gas_row,
+                bhp_col,
+                terms.gas_source_sc_day.deriv()[3] * dt_days,
+            );
+            add_if_nonzero(tri, perf_row, bhp_col, terms.perforation.deriv()[3]);
+            add_if_nonzero(tri, perf_row, primary_col, terms.perforation.deriv()[4]);
+            continue;
+        }
         let well_idx = perforation.physical_well_index;
         let injector = topology.wells[well_idx].injector;
         let cell = well_cell_input(sim, state, perforation.cell_index);
@@ -270,6 +436,14 @@ fn add_well_jacobian_terms(
     }
 
     for well_idx in 0..topology.wells.len() {
+        if let FimWellRoute::FlowResvGasInjector(context) =
+            fim_well_route(flow_resv_context, topology, well_idx)
+        {
+            let row = state.well_equation_offset(well_idx);
+            let primary_col = state.perforation_rate_unknown_offset(context.perforation_idx);
+            add_if_nonzero(tri, row, primary_col, context.reference.bg_rm3_per_sm3);
+            continue;
+        }
         let injector = topology.wells[well_idx].injector;
         let control_real = physical_well_control(sim, topology, well_idx);
         let control = well_control_generic(&control_real);
@@ -451,8 +625,11 @@ pub(crate) fn assemble_fim_system_ad(
 
     let n_cells = state.cells.len();
     let n_unknowns = state.n_unknowns();
-    let equation_scaling = build_equation_scaling(sim, state, topology, options.dt_days);
-    let variable_scaling = build_variable_scaling(sim, state);
+    let mut equation_scaling = build_equation_scaling(sim, state, topology, options.dt_days);
+    let mut variable_scaling = build_variable_scaling(sim, state);
+    if let Some(context) = options.flow_resv_context {
+        apply_flow_resv_scaling(&mut equation_scaling, &mut variable_scaling, state, context);
+    }
 
     let mut residual = DVector::zeros(n_unknowns);
 
@@ -526,7 +703,14 @@ pub(crate) fn assemble_fim_system_ad(
     }
 
     if options.include_wells {
-        add_well_residual_terms(sim, state, topology, options.dt_days, &mut residual);
+        add_well_residual_terms(
+            sim,
+            state,
+            topology,
+            options.dt_days,
+            options.flow_resv_context,
+            &mut residual,
+        );
     }
 
     if options.assemble_residual_only {
@@ -609,7 +793,14 @@ pub(crate) fn assemble_fim_system_ad(
     }
 
     if options.include_wells {
-        add_well_jacobian_terms(sim, state, topology, options.dt_days, &mut tri);
+        add_well_jacobian_terms(
+            sim,
+            state,
+            topology,
+            options.dt_days,
+            options.flow_resv_context,
+            &mut tri,
+        );
     }
 
     FimAssembly {
@@ -697,6 +888,7 @@ mod tests {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         }
     }
 
@@ -836,6 +1028,7 @@ mod tests {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         }
     }
 
@@ -956,6 +1149,7 @@ mod tests {
             include_wells: false,
             assemble_residual_only: false,
             topology: Some(&topology),
+            flow_resv_context: None,
         };
 
         let cases = [
@@ -1050,6 +1244,7 @@ mod tests {
             include_wells: true,
             assemble_residual_only: false,
             topology: Some(&topology),
+            flow_resv_context: None,
         };
         let assembly = assert_scalar_ad_residual_parity(&sim, &previous_state, &state, &options);
         assert_gate_b_structure_and_factorization(&assembly, &state);
@@ -1190,6 +1385,7 @@ mod two_phase_singularity_check {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
@@ -1316,6 +1512,7 @@ mod structural_parity_sweep {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         };
         let old = assemble_fim_system(sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(sim, &previous_state, &state, &options);
@@ -1371,6 +1568,7 @@ mod structural_parity_sweep {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
@@ -1434,6 +1632,7 @@ mod structural_parity_sweep {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);
@@ -1481,6 +1680,7 @@ mod structural_parity_sweep {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         };
         let old = assemble_fim_system(&sim, &previous_state, &state, &options);
         let new = assemble_fim_system_ad(&sim, &previous_state, &state, &options);

@@ -24,24 +24,54 @@ exact Flow oracle (`6` substeps, Newton `7/5/4/3/4/3`, zero cuts), isolated the 
 to the injector, refuted direct-vs-iterative linear quality as primary, and found a Newton update
 at `Sw=Swc` whose predicted saturation movement is discarded by ResSim's hard projection.
 
-**Current decision frontier:** source audit shows OPM's normal update uses `ds-max` limiting while
-optional saturation projection defaults off; ResSim enforces `Sw >= Swc` after each update. Y2b1
-measured the resulting first-order break. Y2b2's live raw-state probe improved the capped rung
-~9.2×, but its forced-direct check was invalid: Sparse LU/well-Schur exposed no failure reduction,
-so Newton aborted with `reduction=n/a` without measuring direct correction quality. The probe also
-omitted OPM's per-update primary-variable adaptation. Its behavior implementation was deleted and
-the verdict is **INCONCLUSIVE**, not refuted. Y2b2a has now repaired the backend-neutral
-linear-report oracle (RHS/final norms and reduction; direct reports no longer rely on optional
-failure metadata). Y2b2b has restored and replayed the identical native default-off probe: CPR
-reduces the live exact matrix to `4.830552e-3`, but explicit Sparse LU returns an all-zero
-correction and `1.0` reduction; the forced-direct run has 16 linear retries and no substep. The
-raw-state mechanism remains **INCONCLUSIVE** while that direct factorization-path defect is
-classified. The next bounded slice is direct Sparse-LU build/factorization diagnosis on the
-preserved 904-row capture, as specified in
-`docs/FIM_OPM_CONVERGENCE_EXECUTION_PLAN.md`; G4/G5 restructuring, controller tuning,
-AMG, damping changes, and convergence-acceptance widening remain blocked. Re-derive current
-ResSim baselines on the clean commit before the first behavior probe; do not use the historical
-`459`/`238`/`695` counts as promotion baselines.
+**Current decision frontier (2026-07-15, superseded detail in the execution plan):** the complete Y2 tagged primary-variable lifecycle is
+validated default-off and reaches the exact Flow gas substep count. Y2d5 proved that ResSim's
+historical fixed-left GMRES recurrence had masked that positive result: default-off true FGMRES
+removes every Y2 water linear retry, but exact-gas Newton counts remain above Flow and the heavy
+case remains seven substeps versus one. Y2d6 has now source-pinned the actual Flow 2026.04 linear
+lifecycle. The next bounded slice is Y2d6a capture payload sufficiency, because current artifacts
+lack storage derivatives for true-IMPES and conflate a material operator split: Flow factors fine
+ILU on reservoir `J_rr`, applies eliminated well effects in the outer operator, and adds well
+pressure contributions separately to CPRW; ResSim factors the explicit Schur matrix. See
+`docs/FIM_Y2D6_FLOW_LINEAR_LIFECYCLE_DESIGN.md`. Y2d7/Y2d8 then located a separate, sourced
+nonlinear mismatch: Flow holds the gas-RESV surface-to-reservoir conversion at its report-step
+regional state, while ResSim recomputes `q/Bg` from the current injector cell each Newton
+evaluation. The next bounded work is G4a's coherent surface-rate/control/connection/source
+lifecycle design, not a source-only freeze. No outer-only BiCGSTAB swap, partial AMG port,
+controller tuning, damping change, or acceptance widening is authorized.
+
+**G4b0 update (2026-07-15):** the first implementation slice is complete and intentionally
+inert: parsed `RESV` representation plus a native-only, report-step-frozen
+hydrocarbon-PV-weighted `B_g,ref` context. It persists across retries, refreshes only after an
+accepted substep, and rejects unsupported topology/control/nested-solve requests before Newton
+assembly. No residual, source, primary, control row, assembler, or IMPES behavior changed. The
+only authorized next change is G4b1's shared AD/f64 local residual contract; it is not yet a live
+convergence or parity result.
+
+**G4b1 update (2026-07-15):** the scoped residual contract is now a single generic f64/AD helper
+and has two-pressure value, derivative, and central-FD gates. It preserves the decisive split:
+current `B_g` determines the connection/source derivative while only frozen `B_g,ref` determines
+the control-u derivative. It is still uncalled by production assembly. Next is an atomic-route
+readiness audit, not a partial assembly change or a live comparison.
+
+**G4b2 update (2026-07-15):** audit found that RESV would otherwise execute as the old BHP/q
+control. The default-off native flag now stops after valid context capture, before Newton; its
+fixture proves no time advance. The complete route inventory is
+`docs/FIM_G4B2_ATOMIC_ROUTE_READINESS_AUDIT.md`. Next is its atomic-route design, with no live
+comparison authorized.
+
+**G4b2a update (2026-07-15):** the atomic route is now specified in
+`docs/FIM_G4B2A_ATOMIC_ROUTE_IMPLEMENTATION_DESIGN.md`; no solver behaviour changed. The design
+requires a typed selected surface-u primary, explicit construction BHP inversion, one context
+resolver, simultaneous AD/legacy source/perforation/control rows, q-relax/nested exclusion,
+route-aware scaling/trace, and exact Schur/FD/parity gates. The pre-Newton block remains until
+that entire route lands; the next slice is non-live implementation, not a Flow comparison.
+
+**G4b2b0 scaffold (2026-07-15):** context-to-assembler plumbing, selected rows, route-aware
+scaling, and focused AD/legacy/u-column tests now exist behind the retained safety block. It is
+not a completed atomic route: the surface primary still occupies a q-named state slot and the
+legacy derivative is not yet independently analytic. The full source-row FD oracle also needs
+isolation from accumulation. No live RESV run is authorized.
 
 Use this file for:
 
@@ -64,7 +94,7 @@ now substantially OPM-aligned, assembled over Phases 0-11:
 - **Assembly**: exact AD Jacobian (`fim/assembly_ad.rs`) is the live path; the legacy
   hand-derivative assembler is kept `#[cfg(test)]` as the bit-parity oracle. Parity gates:
   `cargo test --manifest-path src/lib/ressim/Cargo.toml assembly_ad`.
-- **Linear stack** (all matching OPM's shipped `cprw` recipe, each gated before promotion):
+- **Linear stack** (OPM-shaped but not yet the complete shipped `cprw` lifecycle):
   loose relative tolerance `5e-3` with iteration budget `20` (`FIM-LINEAR-008`), block-ILU0 fine
   smoother on natural 3x3 cell blocks (Step 10.2), quasi-IMPES CPR pressure restriction
   (`FIM-LINEAR-005`), well-BHP/perforation-rate Schur elimination each Newton iteration

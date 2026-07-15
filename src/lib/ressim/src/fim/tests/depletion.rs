@@ -256,6 +256,7 @@ fn run_single_cell_local_newton(dt_days: f64, options: FimNewtonOptions) -> Loca
             include_wells: true,
             assemble_residual_only: false,
             topology: Some(&topology),
+            flow_resv_context: None,
         },
     );
     let perf_idx = topology.wells[0].perforation_indices[0];

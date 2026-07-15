@@ -2,7 +2,7 @@ use std::f64;
 
 use nalgebra::DVector;
 
-use super::{LinearSolveParams, LinearSolveResult, apply_jacobi_preconditioner, cs_mat_mul_vec};
+use super::{apply_jacobi_preconditioner, cs_mat_mul_vec, LinearSolveParams, LinearSolveResult};
 
 // BiCGSTAB with Jacobi preconditioning. Unlike PCG, this remains valid for the
 // mildly non-symmetric pressure matrices produced by upwinded multiphase flow.
@@ -27,11 +27,11 @@ pub(super) fn solve(params: &LinearSolveParams<'_>) -> LinearSolveResult {
     let mut converged = false;
     let mut iter_count = 0;
     for it in 0..params.max_iterations {
-        iter_count = it + 1;
         if r.norm() / r0_norm < params.tolerance {
             converged = true;
             break;
         }
+        iter_count = it + 1;
 
         let rho = r_hat.dot(&r);
         if !rho.is_finite() || rho.abs() < f64::EPSILON {
@@ -120,5 +120,38 @@ mod tests {
         );
         assert!((result.solution[0] - 0.2).abs() < 1e-8);
         assert!((result.solution[1] - 0.2).abs() < 1e-8);
+    }
+
+    #[test]
+    fn bicgstab_reports_completed_iterations_at_loop_boundary_convergence() {
+        let mut tri = TriMatI::<f64, usize>::new((2, 2));
+        tri.add_triplet(0, 0, 4.0);
+        tri.add_triplet(0, 1, 1.0);
+        tri.add_triplet(1, 0, 2.0);
+        tri.add_triplet(1, 1, 3.0);
+        let matrix = tri.to_csr();
+
+        let rhs = DVector::from_vec(vec![1.0, 1.0]);
+        let initial_guess = DVector::from_vec(vec![0.0, 0.0]);
+        let preconditioner_inv_diag = DVector::from_vec(vec![0.25, 1.0 / 3.0]);
+
+        // The first full BiCGSTAB correction reduces the residual below 1e-2,
+        // but the intermediate s residual remains above it. Convergence is
+        // therefore recognized at the next loop boundary, after one completed
+        // iteration rather than two.
+        let result = solve(&LinearSolveParams {
+            matrix: &matrix,
+            rhs: &rhs,
+            preconditioner_inv_diag: &preconditioner_inv_diag,
+            initial_guess: &initial_guess,
+            tolerance: 1e-2,
+            max_iterations: 100,
+        });
+
+        assert!(result.converged);
+        assert_eq!(result.iterations, 1);
+        let relative_residual =
+            (&rhs - cs_mat_mul_vec(&matrix, &result.solution)).norm() / rhs.norm();
+        assert!(relative_residual < 1e-2);
     }
 }

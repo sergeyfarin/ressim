@@ -450,6 +450,7 @@ mod tests {
             include_wells: true,
             assemble_residual_only: false,
             topology: Some(topology),
+            flow_resv_context: None,
         };
         let global = assemble_fim_system_ad(sim, &previous_state, state, &options);
 
