@@ -10,6 +10,7 @@ use crate::fim::newton::{
     run_fim_timestep,
 };
 use crate::fim::state::{FimCellState, FimState, HydrocarbonState};
+use crate::fim::wells::build_well_topology;
 use crate::reporting::{FimAcceptedRungStats, FimRetryRungStats, FimStepStats};
 
 /// Diagnostic trace macro — persists lines for wasm diagnostics and optionally prints on native.
@@ -904,6 +905,7 @@ pub(crate) fn evaluate_basin_escape_residual(
             include_wells: true,
             assemble_residual_only: true,
             topology: None,
+            flow_resv_context: None,
         },
     );
     let n_cells = state.cells.len();
@@ -1040,9 +1042,8 @@ impl ReservoirSimulator {
         newton_options.nested_well_solve = self.fim_nested_well_solve;
         newton_options.linear.use_true_fgmres = self.fim_true_fgmres;
         newton_options.linear.use_flow_lifecycle = self.fim_flow_lifecycle;
-        // G4b0 captures only the immutable report-step conversion reference. No source,
-        // connection, control, or update path consumes it yet; unsupported opt-in requests stop
-        // before a partial lifecycle could be run.
+        // G4b2b routes this context atomically through state construction, both assemblers and
+        // the Newton update. Unsupported requests still stop before Newton.
         let mut flow_resv_context = if self.fim_flow_resv_injector {
             let report_start_state = FimState::from_simulator(self);
             match begin_flow_resv_report_step_context(
@@ -1060,13 +1061,13 @@ impl ReservoirSimulator {
         } else {
             None
         };
-        // A valid context is evidence that the narrow input was understood, not permission to
-        // execute it through the historical BHP/q path. `physical_well_control` deliberately
-        // has no RESV branch yet; continuing would silently reinterpret RESV as BHP control and
-        // manufacture an invalid live oracle. G4b2's atomic route must land first.
+        // The implementation is assembled and parity-gated below, but the first live rung has
+        // its own trace/no-retry oracle. Keep the structural block until that non-live route is
+        // promoted to an executable G4b2 closeout; this prevents a test-incomplete lifecycle
+        // from being mistaken for a Flow result.
         if flow_resv_context.is_some() {
             self.last_solver_warning =
-                "FIM Flow RESV injector captured but not executable until G4b2 atomic routing"
+                "FIM Flow RESV injector assembled but not executable until G4b2 non-live gates close"
                     .to_string();
             return;
         }
@@ -1136,7 +1137,17 @@ impl ReservoirSimulator {
             let mut retry_count = 0;
             let mut previous_retry_hotspot: Option<FimRetryHotspot> = None;
             let mut repeated_same_hotspot_failures = 0_u32;
-            let previous_state = FimState::from_simulator(self);
+            let mut previous_state = FimState::from_simulator(self);
+            if let Some(context) = flow_resv_context {
+                let topology = build_well_topology(self);
+                if let Err(reason) =
+                    previous_state.initialize_flow_resv_gas_primary(self, &topology, context)
+                {
+                    self.last_solver_warning =
+                        format!("FIM Flow RESV injector initialization failed: {reason}");
+                    return;
+                }
+            }
 
             loop {
                 newton_options.flow_resv_context = flow_resv_context;
@@ -1943,9 +1954,10 @@ mod tests {
         sim.step_internal_fim(0.25);
 
         assert_eq!(sim.time_days, initial_time_days);
-        assert!(sim
-            .last_solver_warning
-            .contains("captured but not executable until G4b2"));
+        assert!(
+            sim.last_solver_warning
+                .contains("assembled but not executable until G4b2 non-live gates close")
+        );
     }
 
     fn cell(

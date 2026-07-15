@@ -4172,6 +4172,25 @@ multi-perf allocation, nested u solve, IMPES, acceptance, and linear/controller 
 unimplemented or held fixed. **Next authorized slice: one atomic code route plus non-live gates;
 no convergence replay yet.**
 
+### G4b2b0: assembler-context scaffold, deliberately still blocked (2026-07-15)
+
+The first implementation pass threads `FlowResvReportStepContext` through `FimAssemblyOptions`
+and both assemblers. The selected residuals now use the G4b1 helper: gas source/current-FVF
+connection/perforation/control rows are scattered together; the u source column is absent, the
+control u column is `B_g,ref`, and route-aware scales are present. A valid one-cell fixture
+initializes `u=Q_resv/B_g,ref`, solves BHP against `q_res=-Q_resv`, verifies full AD/legacy
+residual and matrix agreement, checks the u-column central difference, and preserves historical
+assembly parity (12/12). The FIM timestep still returns before Newton for the native option.
+
+This is **not G4b2b completion**. The stored selected value is still the historical
+`perforation_rates_m3_day` slot interpreted by the route as u, so it has not met G4b2a's typed
+state requirement. The legacy route currently uses a separate scatter but shares generic AD
+property differentiation, not the required independent analytic `-q/B_g` linearization. A
+first attempt to compare the complete gas reservoir row against a pressure FD was also an invalid
+oracle because the row includes accumulation; G4b1's local current-FVF FD remains valid, while
+the full-route source FD needs a well-source-isolated residual difference. Keep the safety block,
+do not use a live metric, and make those three gaps the next code/design work.
+
 Validation: the new execution-block test passes, the focused `flow_resv` suite remains 6/6,
 `assembly_ad` remains 12/12, and `well_controls` remains 9/9. No long-running FIM bucket is
 credited in this checkpoint; the safety guard and pure audit do not constitute a convergence

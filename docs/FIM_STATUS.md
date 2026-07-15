@@ -67,6 +67,12 @@ resolver, simultaneous AD/legacy source/perforation/control rows, q-relax/nested
 route-aware scaling/trace, and exact Schur/FD/parity gates. The pre-Newton block remains until
 that entire route lands; the next slice is non-live implementation, not a Flow comparison.
 
+**G4b2b0 scaffold (2026-07-15):** context-to-assembler plumbing, selected rows, route-aware
+scaling, and focused AD/legacy/u-column tests now exist behind the retained safety block. It is
+not a completed atomic route: the surface primary still occupies a q-named state slot and the
+legacy derivative is not yet independently analytic. The full source-row FD oracle also needs
+isolation from accumulation. No live RESV run is authorized.
+
 Use this file for:
 
 - current implementation state

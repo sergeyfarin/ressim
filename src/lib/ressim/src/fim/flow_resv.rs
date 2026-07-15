@@ -6,7 +6,7 @@
 
 use crate::fim::ad::Scalar;
 use crate::fim::state::FimState;
-use crate::fim::wells::build_well_topology;
+use crate::fim::wells::{FimWellTopology, build_well_topology};
 use crate::well::WellScheduleControl;
 use crate::{InjectedFluid, ReservoirSimulator};
 
@@ -26,6 +26,55 @@ pub(crate) struct FlowResvReportStepContext {
     pub(crate) physical_well_idx: usize,
     pub(crate) perforation_idx: usize,
     pub(crate) reservoir_target_rm3_day: f64,
+}
+
+/// The one place that selects the default-off RESV well formulation.  Keeping this separate
+/// from `physical_well_control()` prevents a recognized RESV schedule from silently using the
+/// historical BHP/q branch.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum FimWellRoute {
+    Historical,
+    FlowResvGasInjector(FlowResvReportStepContext),
+}
+
+pub(crate) fn fim_well_route(
+    context: Option<FlowResvReportStepContext>,
+    topology: &FimWellTopology,
+    well_idx: usize,
+) -> FimWellRoute {
+    let Some(context) = context else {
+        return FimWellRoute::Historical;
+    };
+    if well_idx != context.physical_well_idx {
+        return FimWellRoute::Historical;
+    }
+    let well = &topology.wells[well_idx];
+    assert_eq!(
+        well.perforation_indices.len(),
+        1,
+        "validated RESV route has one perforation"
+    );
+    assert_eq!(well.perforation_indices[0], context.perforation_idx);
+    assert_eq!(
+        topology.perforations[context.perforation_idx].physical_well_index,
+        well_idx
+    );
+    FimWellRoute::FlowResvGasInjector(context)
+}
+
+pub(crate) fn flow_resv_context_for_perforation(
+    context: Option<FlowResvReportStepContext>,
+    topology: &FimWellTopology,
+    perf_idx: usize,
+) -> Option<FlowResvReportStepContext> {
+    let context = context?;
+    if perf_idx != context.perforation_idx {
+        return None;
+    }
+    match fim_well_route(context.into(), topology, context.physical_well_idx) {
+        FimWellRoute::FlowResvGasInjector(route) => Some(route),
+        FimWellRoute::Historical => unreachable!("selected RESV perforation lost its route"),
+    }
 }
 
 /// The scoped one-perforation Flow gas-RESV residual bundle. `q_reservoir` is the current
@@ -188,6 +237,9 @@ fn capture_reference(
 mod tests {
     use super::*;
     use crate::fim::ad::Ad;
+    use crate::fim::assembly::{FimAssemblyOptions, assemble_fim_system};
+    use crate::fim::assembly_ad::assemble_fim_system_ad;
+    use crate::fim::wells::build_well_topology;
     use crate::pvt::{PvtRow, PvtTable};
     use crate::well::WellSchedule;
 
@@ -303,6 +355,92 @@ mod tests {
         sim.wells[0].schedule.bhp_limit = Some(350.0);
         let bhp_limited = begin_flow_resv_report_step_context(&sim, &state, false).unwrap_err();
         assert!(bhp_limited.contains("BHP-limited"));
+    }
+
+    #[test]
+    fn initializes_surface_primary_and_matches_ad_legacy_selected_route() {
+        let sim = gas_resv_sim();
+        let mut state = FimState::from_simulator(&sim);
+        let context = begin_flow_resv_report_step_context(&sim, &state, false)
+            .unwrap()
+            .unwrap();
+        let topology = build_well_topology(&sim);
+        state
+            .initialize_flow_resv_gas_primary(&sim, &topology, context)
+            .unwrap();
+
+        let u = state.perforation_rates_m3_day[context.perforation_idx];
+        assert!(u > 0.0);
+        assert!(
+            (u - context.reservoir_target_rm3_day / context.reference.bg_rm3_per_sm3).abs() < 1e-8
+        );
+        let q = crate::fim::wells::connection_rate_for_bhp(
+            &sim,
+            &state,
+            &topology,
+            context.perforation_idx,
+            state.well_bhp[context.physical_well_idx],
+        )
+        .unwrap();
+        assert!((-q / context.reference.bg_rm3_per_sm3 - u).abs() < 1e-6);
+
+        let options = FimAssemblyOptions {
+            dt_days: 0.25,
+            include_wells: true,
+            assemble_residual_only: false,
+            topology: Some(&topology),
+            flow_resv_context: Some(context),
+        };
+        let ad = assemble_fim_system_ad(&sim, &state, &state, &options);
+        let legacy = assemble_fim_system(&sim, &state, &state, &options);
+        assert_eq!(ad.residual.len(), legacy.residual.len());
+        for (actual, expected) in ad.residual.iter().zip(legacy.residual.iter()) {
+            assert!((actual - expected).abs() < 1e-10);
+        }
+        for row in 0..ad.residual.len() {
+            for col in 0..ad.residual.len() {
+                let lhs = ad.jacobian.get(row, col).copied().unwrap_or(0.0);
+                let rhs = legacy.jacobian.get(row, col).copied().unwrap_or(0.0);
+                assert!(
+                    (lhs - rhs).abs() < 1e-10,
+                    "AD/legacy mismatch at ({row},{col}): {lhs} vs {rhs}"
+                );
+            }
+        }
+        let gas_row = crate::fim::assembly::equation_offset(0, 2);
+        let perf_row = state.perforation_equation_offset(context.perforation_idx);
+        let u_col = state.perforation_rate_unknown_offset(context.perforation_idx);
+        let control_row = state.well_equation_offset(context.physical_well_idx);
+        assert!(ad.jacobian.get(gas_row, u_col).is_none());
+        assert!(
+            (ad.jacobian.get(control_row, u_col).copied().unwrap_or(0.0)
+                - context.reference.bg_rm3_per_sm3)
+                .abs()
+                < 1e-12
+        );
+        assert!((ad.equation_scaling.well_constraint[0] - 500.0).abs() < 1e-12);
+        assert!((ad.equation_scaling.perforation_flow[0] - u).abs() < 1e-8);
+        assert!((ad.variable_scaling.perforation_rate[0] - u).abs() < 1e-8);
+
+        // The p/source central-FD contract is already owned by G4b1's two-current-Bg fixtures.
+        // Here exercise the newly routed primary column: it must affect only the perforation and
+        // RESV control rows, never the gas source.
+        for (column, step) in [(u_col, 1e-2)] {
+            let mut lower = state.clone();
+            let mut upper = state.clone();
+            lower.perforation_rates_m3_day[0] -= step;
+            upper.perforation_rates_m3_day[0] += step;
+            let lower_residual = assemble_fim_system_ad(&sim, &state, &lower, &options).residual;
+            let upper_residual = assemble_fim_system_ad(&sim, &state, &upper, &options).residual;
+            for row in [gas_row, perf_row, control_row] {
+                let fd = (upper_residual[row] - lower_residual[row]) / (2.0 * step);
+                let analytic = ad.jacobian.get(row, column).copied().unwrap_or(0.0);
+                assert!(
+                    (analytic - fd).abs() < 1e-5,
+                    "FD mismatch row={row} col={column}: {analytic} vs {fd}"
+                );
+            }
+        }
     }
 
     #[derive(Clone, Copy)]

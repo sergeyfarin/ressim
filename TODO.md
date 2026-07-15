@@ -210,7 +210,11 @@ below is retained as Bundle N/Y history; it must not override this current seque
   and a non-live gate sequence. The G4b2 pre-Newton block remains; this is no convergence result.
 - [ ] **Next: G4b2b atomic RESV route and non-live gates.** Implement the whole typed-u route in
   one commit, including both assemblers/Jacobians, update/scaling/Schur/trace and all contract
-  tests. Remove the pre-Newton block only in that complete commit. Do not run live convergence.
+  tests. **Scaffold checkpoint 2026-07-15:** context now reaches both assemblers in focused
+  tests, and initialization/AD-legacy/u-column/scaling gates pass, but the selected value is
+  still physically stored in the q-named tail vector. Do not remove the pre-Newton block or call
+  this a complete route until the typed-state migration, independent legacy derivative, full-row
+  FD/Schur, and trace gates land. Do not run live convergence.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

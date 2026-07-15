@@ -947,6 +947,16 @@ block can be removed. It explicitly holds retry lifetime, BHP switching, multi-p
 nested u solve, IMPES, and all solver policy fixed. Next is the atomic code route and non-live
 gates, not a convergence diagnostic.
 
+### G4b2b0 result (2026-07-15): selected assembler scaffold is not an executable lifecycle
+
+The default-off context now reaches both assemblers in focused tests and routes the G4b1 gas
+source/perforation/control rows together. Initialization, AD/legacy matrix parity, u-column FD,
+route scales, and historical AD parity pass. This is deliberately still blocked before Newton:
+the selected surface value is stored in the historical q-named tail slot, the legacy derivative
+is not independently analytic, and a full source-row FD must first isolate accumulation. Treat
+this as non-live infrastructure, not a partial Flow port. The next work is typed-state migration
+plus independent legacy/source-FD and Schur/trace gates; no live diagnostic is authorized.
+
 ## 8. Y3 and Y4 end gates
 
 Y3 controller parity starts only after full-target Newton convergence is plausible. Its target is

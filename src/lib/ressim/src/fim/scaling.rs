@@ -1,6 +1,7 @@
 use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
+use crate::fim::flow_resv::FlowResvReportStepContext;
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::FimWellTopology;
 use crate::fim::wells::{physical_well_control, well_local_block};
@@ -115,6 +116,22 @@ pub(crate) fn well_constraint_scale(bhp_bar: f64, control_slacks: Option<(f64, f
 /// as `well_constraint_scale`.
 pub(crate) fn perforation_flow_scale(rate_m3_day: f64) -> f64 {
     rate_m3_day.abs().max(1.0)
+}
+
+/// Apply the scoped Flow RESV units after the historical scale vectors have been built. The
+/// selected tail slot is surface u, the control row is reservoir volume, and the perforation row
+/// is surface volume; the gas component row keeps its existing current-Bg scale.
+pub(crate) fn apply_flow_resv_scaling(
+    equation: &mut EquationScaling,
+    variable: &mut VariableScaling,
+    state: &FimState,
+    context: FlowResvReportStepContext,
+) {
+    let u = state.perforation_rates_m3_day[context.perforation_idx];
+    equation.well_constraint[context.physical_well_idx] =
+        context.reservoir_target_rm3_day.abs().max(1.0);
+    equation.perforation_flow[context.perforation_idx] = u.abs().max(1.0);
+    variable.perforation_rate[context.perforation_idx] = u.abs().max(1.0);
 }
 
 pub(crate) fn build_equation_scaling(

@@ -13,15 +13,15 @@ use crate::fim::assembly::{
 // `#[cfg(test)]` module still imports the legacy `assemble_fim_system`
 // directly for its own assertions.
 use crate::fim::assembly_ad::assemble_fim_system_ad as assemble_fim_system;
-use crate::fim::flow_resv::FlowResvReportStepContext;
+use crate::fim::flow_resv::{FlowResvReportStepContext, flow_resv_injector_residual};
 use crate::fim::linear::{
     FimLinearBlockLayout, FimLinearFailureReason, FimLinearSolveOptions, FimLinearSolveReport,
     FimLinearSolverKind, active_direct_solve_row_threshold, solve_linearized_system,
 };
 use crate::fim::state::{FimState, HydrocarbonState};
 use crate::fim::wells::{
-    build_well_topology, perforation_component_rates_sc_day, perforation_local_block,
-    physical_well_control,
+    build_well_topology, connection_rate_for_bhp, perforation_component_rates_sc_day,
+    perforation_local_block, physical_well_control,
 };
 use crate::timing::PerfTimer;
 
@@ -522,6 +522,7 @@ fn trace_y2a_injector_jacobian_audit(
         include_wells: true,
         assemble_residual_only: false,
         topology: Some(topology),
+        flow_resv_context: None,
     };
     let legacy = crate::fim::assembly::assemble_fim_system(sim, previous_state, state, &options);
     let cell_idx = perforation.cell_index;
@@ -641,6 +642,7 @@ fn trace_y2b_bound_projection_audit(
         include_wells: true,
         assemble_residual_only: true,
         topology: Some(topology),
+        flow_resv_context: None,
     };
     let raw_assembly = crate::fim::assembly_ad::assemble_fim_system_ad(
         sim,
@@ -2966,6 +2968,7 @@ fn evaluate_accepted_state_convergence(
             include_wells: true,
             assemble_residual_only: true,
             topology: Some(topology),
+            flow_resv_context: None,
         },
     );
     let residual_inf_norm =
@@ -3201,6 +3204,7 @@ pub(crate) fn run_fim_timestep(
                 include_wells: true,
                 assemble_residual_only: false,
                 topology: Some(&topology),
+                flow_resv_context: options.flow_resv_context,
             },
         );
         assembly_ms += assembly.timing.residual_ms
@@ -4689,7 +4693,9 @@ pub(crate) fn run_fim_timestep(
             .unwrap_or(&linear_report.solution);
         // Bundle W (`docs/FIM_BUNDLE_W_PLAN.md` §5 item 1): independent flag, evaluable under
         // either `nonlinear_flavor` — default false selects `Relax`, bit-identical to before.
-        let well_update_mode = if options.nested_well_solve {
+        let well_update_mode = if let Some(context) = options.flow_resv_context {
+            crate::fim::state::WellStateUpdateMode::FlowResv(context)
+        } else if options.nested_well_solve {
             crate::fim::state::WellStateUpdateMode::NestedSolve
         } else {
             crate::fim::state::WellStateUpdateMode::Relax
@@ -4864,45 +4870,117 @@ pub(crate) fn run_fim_timestep(
                 // drift into a re-derived source formula. For the tracked RESV gas injector,
                 // the expected sole nonzero component is q/bg and its residual source is
                 // q*dt/bg, the same surface-component conversion used by Flow StandardWell.
-                let component_rates =
-                    perforation_component_rates_sc_day(sim, &state, &topology, perf_idx);
                 let derived = state.derive_cell(sim, cell_idx);
-                let q = state.perforation_rates_m3_day[perf_idx];
-                let source_residual: [f64; 3] = component_rates.map(|rate| rate * dt_days);
-                let source_dq: [f64; 3] = [
-                    assembly
-                        .jacobian
-                        .get(equation_offset(cell_idx, 0), q_col)
-                        .copied()
-                        .unwrap_or(0.0),
-                    assembly
-                        .jacobian
-                        .get(equation_offset(cell_idx, 1), q_col)
-                        .copied()
-                        .unwrap_or(0.0),
-                    assembly
-                        .jacobian
-                        .get(equation_offset(cell_idx, 2), q_col)
-                        .copied()
-                        .unwrap_or(0.0),
-                ];
-                crate::fim::trace_sink::write_line(&format!(
-                    "WELLSOURCE iter={:>2} perf={} cell={} inj={} q={:.9e} p={:.9e} sw={:.9e} sg={:.9e} rs={:.9e} bo={:.9e} bg={:.9e} comp_rate_sc_day={:?} source_residual={:?} dres_dq={:?}",
-                    iteration,
-                    perf_idx,
-                    cell_idx,
-                    perforation.injector,
-                    q,
-                    state.cells[cell_idx].pressure_bar,
-                    state.cells[cell_idx].sw,
-                    derived.sg,
-                    derived.rs,
-                    derived.bo,
-                    derived.bg,
-                    component_rates,
-                    source_residual,
-                    source_dq,
-                ));
+                if options
+                    .flow_resv_context
+                    .map(|context| context.perforation_idx)
+                    == Some(perf_idx)
+                {
+                    let context = options.flow_resv_context.expect("selected above");
+                    let q_connection = connection_rate_for_bhp(
+                        sim,
+                        &state,
+                        &topology,
+                        perf_idx,
+                        state.well_bhp[context.physical_well_idx],
+                    )
+                    .expect("validated RESV trace connection");
+                    let u = state.perforation_rates_m3_day[perf_idx];
+                    let terms = flow_resv_injector_residual(
+                        q_connection,
+                        derived.bg,
+                        u,
+                        context.reference.bg_rm3_per_sm3,
+                        context.reservoir_target_rm3_day,
+                    );
+                    crate::fim::trace_sink::write_line(&format!(
+                        "WELLSOURCE iter={:>2} perf={} cell={} primary_kind=flow_resv_gas_u u_sm3_day={:.9e} q_connection_rm3_day={:.9e} c_s_sm3_day={:.9e} bg_current={:.9e} bg_reference={:.9e} q_resv_target={:.9e} r_perf={:.9e} r_ctrl={:.9e} gas_source_sm3_day={:.9e} dgas_dp={:.9e} dgas_dsw={:.9e} dgas_dhc={:.9e} dgas_dbhp={:.9e} dgas_du={:.9e}",
+                        iteration,
+                        perf_idx,
+                        cell_idx,
+                        u,
+                        q_connection,
+                        terms.connection_rate_sc_day,
+                        derived.bg,
+                        context.reference.bg_rm3_per_sm3,
+                        context.reservoir_target_rm3_day,
+                        terms.perforation,
+                        terms.control,
+                        terms.gas_source_sc_day,
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 2), p_col)
+                            .copied()
+                            .unwrap_or(0.0)
+                            / dt_days,
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 2), sw_col)
+                            .copied()
+                            .unwrap_or(0.0)
+                            / dt_days,
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 2), unknown_offset(cell_idx, 2))
+                            .copied()
+                            .unwrap_or(0.0)
+                            / dt_days,
+                        assembly
+                            .jacobian
+                            .get(
+                                equation_offset(cell_idx, 2),
+                                state.well_bhp_unknown_offset(context.physical_well_idx)
+                            )
+                            .copied()
+                            .unwrap_or(0.0)
+                            / dt_days,
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 2), q_col)
+                            .copied()
+                            .unwrap_or(0.0)
+                            / dt_days,
+                    ));
+                } else {
+                    let component_rates =
+                        perforation_component_rates_sc_day(sim, &state, &topology, perf_idx);
+                    let q = state.perforation_rates_m3_day[perf_idx];
+                    let source_residual: [f64; 3] = component_rates.map(|rate| rate * dt_days);
+                    let source_dq: [f64; 3] = [
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 0), q_col)
+                            .copied()
+                            .unwrap_or(0.0),
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 1), q_col)
+                            .copied()
+                            .unwrap_or(0.0),
+                        assembly
+                            .jacobian
+                            .get(equation_offset(cell_idx, 2), q_col)
+                            .copied()
+                            .unwrap_or(0.0),
+                    ];
+                    crate::fim::trace_sink::write_line(&format!(
+                        "WELLSOURCE iter={:>2} perf={} cell={} inj={} q={:.9e} p={:.9e} sw={:.9e} sg={:.9e} rs={:.9e} bo={:.9e} bg={:.9e} comp_rate_sc_day={:?} source_residual={:?} dres_dq={:?}",
+                        iteration,
+                        perf_idx,
+                        cell_idx,
+                        perforation.injector,
+                        q,
+                        state.cells[cell_idx].pressure_bar,
+                        state.cells[cell_idx].sw,
+                        derived.sg,
+                        derived.rs,
+                        derived.bo,
+                        derived.bg,
+                        component_rates,
+                        source_residual,
+                        source_dq,
+                    ));
+                }
                 if let Some(water_breakdown) = cell_equation_residual_breakdown(
                     sim,
                     previous_state,
@@ -5145,6 +5223,7 @@ pub(crate) fn run_fim_timestep(
             include_wells: true,
             assemble_residual_only: true,
             topology: Some(&topology),
+            flow_resv_context: options.flow_resv_context,
         },
     );
     assembly_ms += final_assembly.timing.residual_ms
@@ -5340,6 +5419,7 @@ mod tests {
             include_wells: true,
             assemble_residual_only: false,
             topology: Some(&topology),
+            flow_resv_context: None,
         };
         let eps = 1e-7;
         let cases = [
@@ -5751,6 +5831,7 @@ mod tests {
                 include_wells: true,
                 assemble_residual_only: false,
                 topology: None,
+                flow_resv_context: None,
             },
         );
         let residual_norm =

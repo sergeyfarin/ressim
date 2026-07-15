@@ -201,6 +201,7 @@ fn assert_full_system_fd_matches_for_fixture(
         include_wells: true,
         assemble_residual_only: false,
         topology: None,
+        flow_resv_context: None,
     };
     let assembly = assemble_fim_system(&sim, &previous_state, &state, &options);
     let n = assembly.residual.len();
@@ -312,6 +313,7 @@ fn residual_only_assembly_matches_full_residual_for_rate_controlled_waterflood()
         include_wells: true,
         assemble_residual_only: false,
         topology: None,
+        flow_resv_context: None,
     };
     let residual_only_options = FimAssemblyOptions {
         assemble_residual_only: true,
@@ -382,6 +384,7 @@ fn assembly_scaffold_matches_state_size() {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -412,6 +415,7 @@ fn accumulation_residual_is_nonzero_for_perturbed_cell_state() {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -432,6 +436,7 @@ fn uniform_state_has_zero_flux_residual() {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -460,6 +465,7 @@ fn residual_only_two_cell_flux_is_component_conservative_for_oil_water() {
             include_wells: false,
             assemble_residual_only: true,
             topology: Some(&topology),
+            flow_resv_context: None,
         },
     );
 
@@ -557,6 +563,7 @@ fn residual_only_two_cell_flux_is_component_conservative_for_three_phase_gas() {
             include_wells: false,
             assemble_residual_only: true,
             topology: Some(&topology),
+            flow_resv_context: None,
         },
     );
 
@@ -649,6 +656,7 @@ fn gas_component_flux_includes_dissolved_gas_term_with_upwind_rs_sign() {
             include_wells: false,
             assemble_residual_only: true,
             topology: Some(&topology),
+            flow_resv_context: None,
         },
     );
     let cell0_gas = cell_equation_residual_breakdown(&sim, &state, &state, &topology, 1.0, 0, 2)
@@ -859,6 +867,7 @@ fn water_injector_adds_negative_water_source_term() {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
     let assembly = assemble_fim_system(
@@ -870,6 +879,7 @@ fn water_injector_adds_negative_water_source_term() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -902,6 +912,7 @@ fn producer_source_uses_iterate_state_phase_split() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
     let high_sw_assembly = assemble_fim_system(
@@ -913,6 +924,7 @@ fn producer_source_uses_iterate_state_phase_split() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -944,6 +956,7 @@ fn rate_control_adds_extra_unknowns_and_equations() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -971,6 +984,7 @@ fn well_source_and_perforation_rows_have_exact_q_coupling_entries() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1012,6 +1026,7 @@ fn water_injector_perforation_row_has_exact_pressure_derivative() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1054,6 +1069,7 @@ fn producer_perforation_row_has_exact_local_connection_derivatives() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1098,6 +1114,7 @@ fn producer_source_row_matches_exact_neighborhood_derivative() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
     let baseline = assemble_fim_system(
@@ -1109,6 +1126,7 @@ fn producer_source_row_matches_exact_neighborhood_derivative() {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1172,6 +1190,7 @@ fn producer_control_row_matches_exact_surface_rate_derivative() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1208,6 +1227,7 @@ fn gas_injector_source_row_has_exact_pressure_conversion_derivative() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1231,6 +1251,7 @@ fn bhp_controlled_well_constraint_row_has_unit_bhp_derivative() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1256,6 +1277,7 @@ fn flux_jacobian_couples_only_face_local_cells() {
             include_wells: false,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1288,6 +1310,7 @@ fn producer_well_source_jacobian_stays_within_completion_neighborhood() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 
@@ -1318,6 +1341,7 @@ fn perforation_equation_jacobian_only_couples_to_completion_cell() {
             include_wells: true,
             assemble_residual_only: false,
             topology: None,
+            flow_resv_context: None,
         },
     );
 

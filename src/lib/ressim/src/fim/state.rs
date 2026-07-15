@@ -2,14 +2,16 @@ use nalgebra::DVector;
 
 use crate::ReservoirSimulator;
 use crate::fim::flash::{classify_cell_regime, resolve_cell_flash};
+use crate::fim::flow_resv::FlowResvReportStepContext;
 use crate::fim::wells::{
-    build_well_topology, perforation_local_block, physical_well_control, well_local_block,
+    build_well_topology, connection_rate_for_bhp, perforation_local_block, physical_well_control,
+    well_local_block,
 };
 
 /// Which well-state post-processing `apply_raw_update` applies after the raw Newton update.
 /// `docs/FIM_BUNDLE_W_PLAN.md` §5 item 1: Bundle W's `NestedSolve` replaces `Relax` as a
 /// drop-in at the single call site (`apply_newton_update_frozen`), flag-gated.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum WellStateUpdateMode {
     /// No well-state post-processing (test-only path, `apply_newton_update`).
     None,
@@ -17,6 +19,9 @@ pub(crate) enum WellStateUpdateMode {
     Relax,
     /// Bundle W: converged per-well inner Newton solve (`fim/wells_inner.rs`).
     NestedSolve,
+    /// G4b2's one-perf Flow RESV route: update the selected surface-rate primary directly and
+    /// never feed it to the historical q-coordinate relaxer/inner solve.
+    FlowResv(FlowResvReportStepContext),
 }
 
 const WELL_BHP_MANIFOLD_BLEND: f64 = 0.9;
@@ -128,6 +133,67 @@ impl FimState {
         }
 
         state
+    }
+
+    /// Convert the already-created historical tail into G4's scoped positive surface-rate
+    /// primary before the first Newton assembly. The stored tail slot keeps its existing matrix
+    /// position; every RESV route consumer is selected by the immutable context and must treat
+    /// this value as `u`, never as q.
+    pub(crate) fn initialize_flow_resv_gas_primary(
+        &mut self,
+        sim: &ReservoirSimulator,
+        topology: &crate::fim::wells::FimWellTopology,
+        context: FlowResvReportStepContext,
+    ) -> Result<(), String> {
+        let bg_ref = context.reference.bg_rm3_per_sm3;
+        let target = context.reservoir_target_rm3_day;
+        if !(bg_ref.is_finite() && bg_ref > 0.0 && target.is_finite() && target > 0.0) {
+            return Err("requires finite positive RESV target and reference B_g".to_string());
+        }
+        let perf_idx = context.perforation_idx;
+        let well_idx = context.physical_well_idx;
+        if topology
+            .wells
+            .get(well_idx)
+            .map(|well| well.perforation_indices.as_slice())
+            != Some(&[perf_idx])
+        {
+            return Err("RESV context/topology identity changed before Newton".to_string());
+        }
+
+        // The local connection law is monotone for the validated active injector. Solve the
+        // report-start reservoir rate directly instead of reusing the historical RESV->BHP
+        // fall-through target.
+        let cell_pressure = self.cells[topology.perforations[perf_idx].cell_index].pressure_bar;
+        let desired_q = -target;
+        let mut low = cell_pressure;
+        let mut high = cell_pressure + 100.0;
+        for _ in 0..32 {
+            let q = connection_rate_for_bhp(sim, self, topology, perf_idx, high)
+                .ok_or_else(|| "RESV initial connection is not finite".to_string())?;
+            if q <= desired_q {
+                break;
+            }
+            high = cell_pressure + 2.0 * (high - cell_pressure);
+        }
+        let q_high = connection_rate_for_bhp(sim, self, topology, perf_idx, high)
+            .ok_or_else(|| "RESV initial connection is not finite".to_string())?;
+        if q_high > desired_q {
+            return Err("could not bracket RESV initial BHP".to_string());
+        }
+        for _ in 0..80 {
+            let mid = 0.5 * (low + high);
+            let q = connection_rate_for_bhp(sim, self, topology, perf_idx, mid)
+                .ok_or_else(|| "RESV initial connection is not finite".to_string())?;
+            if q > desired_q {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        self.well_bhp[well_idx] = 0.5 * (low + high);
+        self.perforation_rates_m3_day[perf_idx] = target / bg_ref;
+        Ok(())
     }
 
     pub(crate) fn n_cell_unknowns(&self) -> usize {
@@ -558,6 +624,13 @@ impl FimState {
                     &crate::fim::wells_inner::FimWellInnerSolveOptions::default(),
                 );
                 self.enforce_control_bounds(sim, topology);
+            }
+            WellStateUpdateMode::FlowResv(context) => {
+                // The selected slot is surface u, not the historical signed connection q.
+                // Preserve normal BHP finite bounds but do not apply q relaxation or FB/BHP
+                // control handling to this route.
+                self.perforation_rates_m3_day[context.perforation_idx] =
+                    self.perforation_rates_m3_day[context.perforation_idx].max(0.0);
             }
         }
     }

@@ -1830,3 +1830,12 @@ The source has no u column before the perforation equation converges, while the 
 BHP/cell column. q relaxation, q reporting, FB control, and nested q solve are forbidden for the
 selected route. Full AD/legacy/FD, scaling, Schur, and evaluation-0/1 trace gates precede any
 live test. This is a design result, not Flow trajectory evidence; the execution block remains.
+
+### 15.30 G4b2b0 result: assembler plumbing confirms scope but not lifecycle completion
+
+The selected route is now available to both FIM assemblers in a focused test fixture, with the
+G4b1 residual bundle, u-column FD, and matrix parity. It remains structurally blocked in the
+timestep. The temporary state representation still stores u in the historical q-named slot, and
+the legacy Jacobian has not yet gained its independent analytic source linearization; therefore
+this does not satisfy §15.29 and cannot be used for a Flow comparison. Next is the typed-state
+and oracle closeout, not a live run.
