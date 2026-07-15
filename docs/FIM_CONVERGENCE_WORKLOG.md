@@ -4102,6 +4102,34 @@ shared AD/f64 residual contract for `c_s=-q_res/B_g`, `R_perf=c_s-u`,
 `R_ctrl=B_g,ref*u-Q_resv`, and `S=-c_s`, with value, derivative, and finite-difference gates.
 Neither assembler, state update, nested solve, IMPES, nor live convergence is in scope.
 
+### G4b1: shared current-FVF residual/source contract (2026-07-15)
+
+Added `flow_resv_injector_residual<S: Scalar>` in `fim/flow_resv.rs`. It is a pure local bundle:
+the current reservoir connection `q_res` and current `B_g` produce
+`c_s=-q_res/B_g`, then `R_perf=c_s-u` and `S_gas=-c_s`; only the control term receives the frozen
+report-step constants, `R_ctrl=B_g,ref*u-Q_resv`. The helper returns `c_s` separately so any
+future trace can prove the perforation equality before it compares source to `-u`.
+
+Two fixtures intentionally use current `B_g` different from `B_g,ref=0.0065`. Their f64 values
+give `c_s=u=76,923.076923` and source `-76,923.076923`; local AD verifies that the connection and
+perforation pressure derivatives match, source has their negative, source has no u derivative,
+and control's u derivative is exactly `0.0065`. A central finite difference independently
+matches the AD pressure derivatives away from a clamp. This proves the intended local math, not
+an OPM trajectory or production route.
+
+The helper has no callers outside its tests. No legacy/AD assembler, source helper, rate
+unknown/update, local solve, scaling, diagnostics, reporting, IMPES, or live convergence path
+changed. **Next authorized slice: G4b2 readiness audit only.** It must enumerate and gate those
+coupled routes before an atomic implementation; a partial assembler connection remains invalid.
+
+Validation on this checkpoint: the focused `flow_resv` suite passes all six context/contract
+tests, including the two new value/AD/FD tests; `assembly_ad` passes all 12 parity/numerical
+tests. A locked FIM smoke and the curated FIM bucket were started but produced no completion
+result in this terminal after several minutes and were interrupted rather than credited. Because
+this helper is uncalled by production code, that is **INCONCLUSIVE regression coverage**, not a
+solver/convergence observation; the completed focused and assembly gates are the only claimed
+validation for G4b1.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

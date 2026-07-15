@@ -1,6 +1,6 @@
 # G4a — Flow Injector-RESV Lifecycle Design
 
-Status: **G4B0 COMPLETE; G4B1 NEXT (2026-07-15)**
+Status: **G4B1 COMPLETE; G4B2 READINESS AUDIT NEXT (2026-07-15)**
 
 This is the only authorized design after Y2d8. It defines a narrow, default-off,
 source-comparable probe for the exact `gas-rate-10x10x3` Flow case. It is not permission to
@@ -115,11 +115,12 @@ an explicit mode tag are both wrong.
    BHP-active, multi-region, or `FIM_NESTED_WELL_SOLVE` requests. No assembler, source,
    rate-unknown, or live convergence
    path changed. The one-region restriction is explicit because current ResSim has no region map.
-2. **G4b1: shared residual contract — NEXT.** Build one AD + f64 pure function for §4. Test it at two
-   pressures where `B_g != B_g,ref`: `dS/dp` and `dR_perf/dp` retain the current
-   connection/FVF derivative, `dS/du=0`, and `dR_ctrl/du=B_g,ref`. Do not route production
-   assembly yet.
-3. **G4b2: atomic FIM route.** Select the same mode in AD and legacy assembly, source helper,
+2. **G4b1: shared residual contract — COMPLETE 2026-07-15.** One `Scalar` helper evaluates §4
+   for `f64` and local AD. Two pressures with `B_g != B_g,ref` prove that `dS/dp` and
+   `dR_perf/dp` retain the current connection/FVF derivative, `dS/du=0`, and
+   `dR_ctrl/du=B_g,ref`; central FD agrees away from a clamp. No production assembly changed.
+3. **G4b2: atomic FIM route readiness audit — NEXT.** Inventory and test the same mode in AD and
+   legacy assembly, source helper,
    scaling, diagnostics, reporting, and state update. Initialize/update positive u and do not call
    q-coordinate Relax/NestedSolve for that injector. The FB rate branch may remain only after an
    equality test proves it supplies exact `R_ctrl`; otherwise use an explicit rate-only test row.
@@ -179,7 +180,8 @@ same commit; do not infer an IMPES convergence benefit.
 
 ## 8. Closeout
 
-Commits tested: `be6326c` (Y2d8 source audit) and the G4b0 implementation checkpoint. Oracle
-validity: **VALID** for one-perf evaluation-1 source comparison, **not yet a
-live behavior oracle**. Retry, aggregation, active control switching, and u-coordinate nested
-solve remain unimplemented. Verdict: **G4B0 COMPLETE; G4b1 authorized.**
+Commits tested: `be6326c` (Y2d8 source audit), G4b0 context implementation, and the G4b1
+contract checkpoint. Oracle validity: **VALID** for local residual values/derivatives and for
+one-perf evaluation-1 source comparison, **not yet a live behavior oracle**. Retry,
+aggregation, active control switching, and u-coordinate nested solve remain unimplemented.
+Verdict: **G4B1 COMPLETE; G4b2 readiness audit authorized.**

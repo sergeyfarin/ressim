@@ -194,10 +194,15 @@ below is retained as Bundle N/Y history; it must not override this current seque
   retries, refreshes after acceptance, rejects unsupported scope, and remains intentionally inert:
   no assembly/source/update/IMPES behavior changed. Context/AD-parity/locked-FIM/FIM-bucket/BL
   gates pass; shared bucket reproduces the known unrelated closed-system assertion.
-- [ ] **Next: G4b1 shared pure residual contract.** Implement only the scoped AD + f64 pure-gas
-  helper for `c_s=-q_res/B_g`, `R_perf=c_s-u`, `R_ctrl=B_g,ref*u-Q_resv`, and `S=-c_s`; add
-  value/AD/FD tests. Do not route either assembler, update FIM state, enable nested solve, alter
-  IMPES, or run a live convergence comparison.
+- [x] **G4b1 shared pure residual contract — DONE 2026-07-15.** One generic `Scalar` helper now
+  evaluates `c_s=-q_res/B_g`, `R_perf=c_s-u`, `R_ctrl=B_g,ref*u-Q_resv`, and `S=-c_s` for both
+  `f64` and local AD. Two non-reference-pressure fixtures prove current-FVF/source derivatives,
+  frozen-control derivative, and central-FD agreement. It is not routed to either assembler or
+  any FIM/IMPES behavior path.
+- [ ] **Next: G4b2 atomic FIM route design/readiness audit.** Before production wiring, enumerate
+  and test every coupled AD/legacy/source/control/update/scaling/diagnostic/reporting path and
+  prove existing q-coordinate machinery cannot be selected for the scoped u-rate injector. No
+  partial assembler or live convergence change yet.
 - [ ] **Select exactly one later branch from evidence:** G4 well variables, G5 substitution,
   Y1c heavy oscillation, or Y3 controller parity. AMG remains deferred. Never widen acceptance.
 

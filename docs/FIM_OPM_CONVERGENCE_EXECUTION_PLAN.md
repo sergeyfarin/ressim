@@ -905,7 +905,21 @@ update, or IMPES.
 Focused context tests, well-control tests, AD/legacy assembly parity, locked FIM smoke, curated
 FIM coverage, and Buckley-Leverett benchmarks pass. The shared bucket reproduces its documented
 pre-existing closed-system `rate_history` mismatch after three passing checks; it is not
-attributed to G4b0. Next is G4b1's pure AD/f64 residual contract. No live RESV run is authorized.
+attributed to G4b0. No live RESV run is authorized.
+
+### G4b1 result (2026-07-15): pure local residual contract is derivative-gated
+
+`flow_resv_injector_residual<S: Scalar>` now evaluates the complete scoped local contract once:
+`c_s=-q_res/B_g(current)`, `R_perf=c_s-u`, `R_ctrl=B_g,ref*u-Q_resv`, and `S_gas=-c_s`.
+`B_g,ref` and `Q_resv` enter as frozen `f64` constants, while `q_res`, current `B_g`, and `u`
+remain generic inputs. Two non-reference pressure fixtures verify f64 values, AD pressure and
+u-column derivatives, and central-FD pressure derivatives. In particular, source remains
+independent of u before the perforation row converges; the frozen reference has no source term.
+
+The helper is not called by either assembler. This establishes a local mathematical contract,
+not a production residual or Flow trajectory result. Next is G4b2 readiness audit: enumerate
+every AD/legacy/source/control/update/scaling/diagnostic/reporting coupling before authorizing
+one atomic route.
 
 ## 8. Y3 and Y4 end gates
 

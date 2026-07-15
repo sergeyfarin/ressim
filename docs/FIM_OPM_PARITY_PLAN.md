@@ -1789,3 +1789,16 @@ does not alter a primary, source, connection, control row, or IMPES.
 
 The next valid claim is only G4b1's AD/f64 local residual contract. A live result or source trace
 under this flag would still be an incomplete lifecycle and is not a parity oracle.
+
+### 15.27 G4b1 result: local current-FVF residual/source contract (2026-07-15)
+
+The generic `flow_resv_injector_residual<S: Scalar>` is evaluated with both plain `f64` and
+`Ad<N>` inputs. Its tests at two pressures use distinct current `B_g` values from the frozen
+`B_g,ref`, establish the source and perforation pressure derivatives from the same current
+connection/FVF expression, prove source's u column is zero, and prove the control u column is
+exactly `B_g,ref`; a central finite difference agrees away from any clamp. This helper is inert:
+neither legacy nor AD assembly routes through it, and it does not yet represent the complete Flow
+well lifecycle.
+
+G4b2 is a readiness audit, not permission to alter one assembler: list and gate every coupled
+primary/source/control/connection/update/scaling/diagnostic/reporting route first.

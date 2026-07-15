@@ -48,6 +48,12 @@ assembly. No residual, source, primary, control row, assembler, or IMPES behavio
 only authorized next change is G4b1's shared AD/f64 local residual contract; it is not yet a live
 convergence or parity result.
 
+**G4b1 update (2026-07-15):** the scoped residual contract is now a single generic f64/AD helper
+and has two-pressure value, derivative, and central-FD gates. It preserves the decisive split:
+current `B_g` determines the connection/source derivative while only frozen `B_g,ref` determines
+the control-u derivative. It is still uncalled by production assembly. Next is an atomic-route
+readiness audit, not a partial assembly change or a live comparison.
+
 Use this file for:
 
 - current implementation state

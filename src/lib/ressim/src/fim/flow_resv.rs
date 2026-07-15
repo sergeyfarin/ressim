@@ -4,6 +4,7 @@
 //! scope. It does not route an assembler or reinterpret a FIM rate unknown; those coupled changes
 //! belong to G4b1/G4b2.
 
+use crate::fim::ad::Scalar;
 use crate::fim::state::FimState;
 use crate::fim::wells::build_well_topology;
 use crate::well::WellScheduleControl;
@@ -25,6 +26,41 @@ pub(crate) struct FlowResvReportStepContext {
     pub(crate) physical_well_idx: usize,
     pub(crate) perforation_idx: usize,
     pub(crate) reservoir_target_rm3_day: f64,
+}
+
+/// The scoped one-perforation Flow gas-RESV residual bundle. `q_reservoir` is the current
+/// reservoir-condition connection rate (negative for injection), while `surface_rate` is the
+/// new positive Flow-style well unknown. `bg_reference` and `reservoir_target` are report-step
+/// constants, deliberately not AD variables.
+///
+/// This is G4b1's contract only. Production assembly remains on the existing q-coordinate well
+/// path until G4b2 can route every coupled row together.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FlowResvInjectorResidual<S> {
+    pub(crate) connection_rate_sc_day: S,
+    pub(crate) perforation: S,
+    pub(crate) control: S,
+    pub(crate) gas_source_sc_day: S,
+}
+
+/// Evaluate the exact local rows from the G4 design, once for both `f64` values and local AD
+/// derivatives. The current `bg` intentionally appears in the connection and source terms; the
+/// frozen report-step `bg_reference` intentionally appears only in the control row.
+pub(crate) fn flow_resv_injector_residual<S: Scalar>(
+    q_reservoir_m3_day: S,
+    bg_current_rm3_per_sm3: S,
+    surface_rate_sm3_day: S,
+    bg_reference_rm3_per_sm3: f64,
+    reservoir_target_rm3_day: f64,
+) -> FlowResvInjectorResidual<S> {
+    let connection_rate_sc_day = -q_reservoir_m3_day / bg_current_rm3_per_sm3;
+    FlowResvInjectorResidual {
+        perforation: connection_rate_sc_day - surface_rate_sm3_day,
+        control: surface_rate_sm3_day * S::from_f64(bg_reference_rm3_per_sm3)
+            - S::from_f64(reservoir_target_rm3_day),
+        gas_source_sc_day: -connection_rate_sc_day,
+        connection_rate_sc_day,
+    }
 }
 
 /// Build the context if its native option is enabled. ResSim currently has one implicit PVT/FIP
@@ -151,6 +187,7 @@ fn capture_reference(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fim::ad::Ad;
     use crate::pvt::{PvtRow, PvtTable};
     use crate::well::WellSchedule;
 
@@ -266,5 +303,105 @@ mod tests {
         sim.wells[0].schedule.bhp_limit = Some(350.0);
         let bhp_limited = begin_flow_resv_report_step_context(&sim, &state, false).unwrap_err();
         assert!(bhp_limited.contains("BHP-limited"));
+    }
+
+    #[derive(Clone, Copy)]
+    struct LocalConnectionCase {
+        pressure_bar: f64,
+        q_reservoir_m3_day: f64,
+        dq_dp_m3_day_bar: f64,
+        bg_rm3_per_sm3: f64,
+        dbg_dp_rm3_per_sm3_bar: f64,
+    }
+
+    fn current_connection(case: LocalConnectionCase, pressure_bar: f64) -> (f64, f64) {
+        let delta_p = pressure_bar - case.pressure_bar;
+        (
+            case.q_reservoir_m3_day + case.dq_dp_m3_day_bar * delta_p,
+            case.bg_rm3_per_sm3 + case.dbg_dp_rm3_per_sm3_bar * delta_p,
+        )
+    }
+
+    fn residual_at_pressure(
+        case: LocalConnectionCase,
+        pressure_bar: f64,
+        surface_rate_sm3_day: f64,
+    ) -> FlowResvInjectorResidual<f64> {
+        let (q_reservoir, bg_current) = current_connection(case, pressure_bar);
+        flow_resv_injector_residual(q_reservoir, bg_current, surface_rate_sm3_day, 0.0065, 500.0)
+    }
+
+    #[test]
+    fn residual_contract_keeps_current_fvf_in_connection_and_source_at_two_pressures() {
+        let surface_rate = 500.0 / 0.0065;
+        let cases = [
+            LocalConnectionCase {
+                pressure_bar: 242.679,
+                q_reservoir_m3_day: -surface_rate * 0.005_219_627_384,
+                dq_dp_m3_day_bar: -2.75,
+                bg_rm3_per_sm3: 0.005_219_627_384,
+                dbg_dp_rm3_per_sm3_bar: -8.0e-6,
+            },
+            LocalConnectionCase {
+                pressure_bar: 275.0,
+                q_reservoir_m3_day: -surface_rate * 0.004_85,
+                dq_dp_m3_day_bar: -1.5,
+                bg_rm3_per_sm3: 0.004_85,
+                dbg_dp_rm3_per_sm3_bar: -5.0e-6,
+            },
+        ];
+
+        for case in cases {
+            let value = residual_at_pressure(case, case.pressure_bar, surface_rate);
+            assert!((value.connection_rate_sc_day - surface_rate).abs() < 1e-8);
+            assert!(value.perforation.abs() < 1e-8);
+            assert!(value.control.abs() < 1e-12);
+            assert!((value.gas_source_sc_day + surface_rate).abs() < 1e-8);
+
+            let q_ad = Ad::<2>::seeded(case.q_reservoir_m3_day, [case.dq_dp_m3_day_bar, 0.0]);
+            let bg_ad = Ad::<2>::seeded(case.bg_rm3_per_sm3, [case.dbg_dp_rm3_per_sm3_bar, 0.0]);
+            let u_ad = Ad::<2>::variable(surface_rate, 1);
+            let ad = flow_resv_injector_residual(q_ad, bg_ad, u_ad, 0.0065, 500.0);
+
+            let expected_connection_dp = -(case.dq_dp_m3_day_bar * case.bg_rm3_per_sm3
+                - case.q_reservoir_m3_day * case.dbg_dp_rm3_per_sm3_bar)
+                / case.bg_rm3_per_sm3.powi(2);
+            assert!((ad.connection_rate_sc_day.d(0) - expected_connection_dp).abs() < 1e-8);
+            assert!((ad.perforation.d(0) - expected_connection_dp).abs() < 1e-8);
+            assert!((ad.gas_source_sc_day.d(0) + expected_connection_dp).abs() < 1e-8);
+            assert_eq!(ad.gas_source_sc_day.d(1), 0.0);
+            assert_eq!(ad.perforation.d(1), -1.0);
+            assert!((ad.control.d(1) - 0.0065).abs() < 1e-15);
+            assert_eq!(ad.control.d(0), 0.0);
+        }
+    }
+
+    #[test]
+    fn residual_contract_ad_pressure_derivatives_match_central_finite_difference() {
+        let surface_rate = 500.0 / 0.0065;
+        let case = LocalConnectionCase {
+            pressure_bar: 242.679,
+            q_reservoir_m3_day: -surface_rate * 0.005_219_627_384,
+            dq_dp_m3_day_bar: -2.75,
+            bg_rm3_per_sm3: 0.005_219_627_384,
+            dbg_dp_rm3_per_sm3_bar: -8.0e-6,
+        };
+        let h = 1.0e-4;
+        let lower = residual_at_pressure(case, case.pressure_bar - h, surface_rate);
+        let upper = residual_at_pressure(case, case.pressure_bar + h, surface_rate);
+        let q_ad = Ad::<1>::seeded(case.q_reservoir_m3_day, [case.dq_dp_m3_day_bar]);
+        let bg_ad = Ad::<1>::seeded(case.bg_rm3_per_sm3, [case.dbg_dp_rm3_per_sm3_bar]);
+        let ad = flow_resv_injector_residual(
+            q_ad,
+            bg_ad,
+            Ad::<1>::constant(surface_rate),
+            0.0065,
+            500.0,
+        );
+
+        let fd_perforation = (upper.perforation - lower.perforation) / (2.0 * h);
+        let fd_source = (upper.gas_source_sc_day - lower.gas_source_sc_day) / (2.0 * h);
+        assert!((ad.perforation.d(0) - fd_perforation).abs() < 1e-5);
+        assert!((ad.gas_source_sc_day.d(0) - fd_source).abs() < 1e-5);
     }
 }
