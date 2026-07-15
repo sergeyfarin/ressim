@@ -1270,6 +1270,195 @@ fn solver_lab_compare_production_smoother_and_budget() {
     );
 }
 
+/// Y2d3 production-faithful restart-boundary history. Replays only systems that fail the
+/// effective production budget of 30, then records every correction through first convergence
+/// with budget 60. The iteration-30 candidate must reproduce production exactly.
+#[test]
+#[ignore]
+fn solver_lab_audit_restart_boundary_history() {
+    let dir = capture_dir_from_env().expect("set FIM_CAPTURE_DIR to a Y2d3 capture corpus");
+    let corpus = std::env::var("FIM_Y2D1_CORPUS").unwrap_or_else(|_| "unspecified".to_string());
+    let systems = load_captures(&dir).expect("load Y2d3 capture corpus");
+    assert!(!systems.is_empty(), "Y2d3 corpus must not be empty");
+
+    let production_options = FimLinearSolveOptions::default();
+    let extended_options = FimLinearSolveOptions {
+        max_iterations: 60,
+        ..production_options
+    };
+    let mut hard_systems = 0usize;
+    let mut first_cycle_reductions = Vec::new();
+    let mut second_cycle_factors = Vec::new();
+    let mut final_direct_deltas = Vec::new();
+    let mut estimate_disagreement_factors = Vec::new();
+    let mut pressure_reduction_ratios_at_30 = Vec::new();
+
+    for (capture_idx, system) in systems.iter().enumerate() {
+        let layout = system.layout.expect("Y2d3 capture requires block layout");
+        let production = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &production_options,
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        if production.converged {
+            continue;
+        }
+        hard_systems += 1;
+
+        let direct = solve_linearized_system(
+            &system.jacobian,
+            &system.rhs,
+            &FimLinearSolveOptions {
+                kind: FimLinearSolverKind::SparseLuDebug,
+                ..production_options
+            },
+            Some(layout),
+            system.equation_scaling.as_ref(),
+        );
+        let direct_residual = residual_vector(&system.jacobian, &direct.solution, &system.rhs);
+        let rhs_norm = system.rhs.norm().max(1e-30);
+        assert!(direct.converged && direct.solution.iter().all(|value| value.is_finite()));
+        assert!(direct_residual.norm() / rhs_norm < 1e-10);
+
+        let (extended, history) = well_schur::solve_with_well_elimination_configuration_and_history(
+            &system.jacobian,
+            &system.rhs,
+            &extended_options,
+            layout,
+            system.equation_scaling.as_ref(),
+            CprFineSmootherKind::BlockIlu0,
+            CprPressureRestrictionKind::QuasiImpes,
+        );
+        assert!(
+            extended.converged,
+            "capture {capture_idx}: budget 60 must converge"
+        );
+        assert!(matches!(extended.iterations, 31 | 32));
+        assert_eq!(history.len(), extended.iterations);
+
+        let at_30 = history
+            .iter()
+            .find(|snapshot| snapshot.iteration == 30)
+            .expect("Y2d3 history must contain iteration 30");
+        assert_eq!(at_30.restart_index, 1);
+        assert_eq!(at_30.inner_step, 30);
+        assert!(
+            (at_30.true_residual_norm - production.final_residual_norm).abs()
+                <= 1e-10 * production.final_residual_norm.max(1.0)
+        );
+        assert!(
+            y2b3_max_peak(y2b3_correction_delta_peaks(
+                layout,
+                &at_30.solution,
+                &production.solution,
+            )) < 1e-12,
+            "capture {capture_idx}: iteration-30 candidate differs from production"
+        );
+
+        let final_snapshot = history.last().expect("Y2d3 history must not be empty");
+        assert_eq!(final_snapshot.iteration, extended.iterations);
+        assert_eq!(final_snapshot.restart_index, 2);
+        assert!(matches!(final_snapshot.inner_step, 1 | 2));
+        assert!(
+            (final_snapshot.true_residual_norm - extended.final_residual_norm).abs()
+                <= 1e-10 * extended.final_residual_norm.max(1.0)
+        );
+        assert!(
+            y2b3_max_peak(y2b3_correction_delta_peaks(
+                layout,
+                &final_snapshot.solution,
+                &extended.solution,
+            )) < 1e-12
+        );
+
+        let first_cycle_reduction = at_30.true_residual_norm / rhs_norm;
+        let second_cycle_factor =
+            final_snapshot.true_residual_norm / at_30.true_residual_norm.max(1e-30);
+        let final_direct_delta = y2b3_max_peak(y2b3_correction_delta_peaks(
+            layout,
+            &extended.solution,
+            &direct.solution,
+        ));
+        first_cycle_reductions.push(first_cycle_reduction);
+        second_cycle_factors.push(second_cycle_factor);
+        final_direct_deltas.push(final_direct_delta);
+        estimate_disagreement_factors.push(
+            at_30.actual_preconditioned_residual_norm
+                / at_30
+                    .estimated_preconditioned_residual_norm
+                    .max(f64::MIN_POSITIVE),
+        );
+        if let Some(pressure_reduction_ratio) = at_30.pressure_reduction_ratio {
+            pressure_reduction_ratios_at_30.push(pressure_reduction_ratio);
+        }
+
+        for snapshot in history.iter().filter(|snapshot| {
+            matches!(snapshot.iteration, 1 | 5 | 10 | 15 | 20 | 25) || snapshot.iteration >= 27
+        }) {
+            let residual = residual_vector(&system.jacobian, &snapshot.solution, &system.rhs);
+            let partitions = y2b2_partition_norms(layout, &residual);
+            let direct_delta = y2b3_max_peak(y2b3_correction_delta_peaks(
+                layout,
+                &snapshot.solution,
+                &direct.solution,
+            ));
+            assert!(
+                (snapshot.true_residual_norm - residual.norm()).abs()
+                    <= 1e-10 * residual.norm().max(1.0)
+            );
+            println!(
+                "Y2D3 capture={capture_idx:05} iter={} restart={} inner={} true_rel={:.9e} reservoir_rel={:.9e} well_rel={:.9e} estimated_prec={:.9e} actual_prec={:.9e} pressure_rr={} direct_dx_delta={:.9e}",
+                snapshot.iteration,
+                snapshot.restart_index,
+                snapshot.inner_step,
+                snapshot.true_residual_norm / rhs_norm,
+                partitions.0 / rhs_norm,
+                partitions.1 / rhs_norm,
+                snapshot.estimated_preconditioned_residual_norm,
+                snapshot.actual_preconditioned_residual_norm,
+                snapshot
+                    .pressure_reduction_ratio
+                    .map(|value| format!("{value:.9e}"))
+                    .unwrap_or_else(|| "n/a".to_string()),
+                direct_delta,
+            );
+        }
+        println!(
+            "Y2D3-SUMMARY capture={capture_idx:05} production_iters={} extended_iters={} first_cycle_rel={first_cycle_reduction:.9e} second_cycle_factor={second_cycle_factor:.9e} final_rel={:.9e} final_direct_dx_delta={final_direct_delta:.9e}",
+            production.iterations,
+            extended.iterations,
+            extended.final_residual_norm / rhs_norm,
+        );
+    }
+
+    assert!(
+        hard_systems > 0,
+        "Y2d3 corpus contains no production-budget failures"
+    );
+    for values in [
+        &mut first_cycle_reductions,
+        &mut second_cycle_factors,
+        &mut final_direct_deltas,
+        &mut estimate_disagreement_factors,
+        &mut pressure_reduction_ratios_at_30,
+    ] {
+        values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    }
+    let median = |values: &[f64]| values[values.len() / 2];
+    println!(
+        "Y2D3 corpus={corpus} hard={hard_systems}/{} median_first_cycle_rel={:.9e} median_second_cycle_factor={:.9e} median_estimate_disagreement={:.9e} median_pressure_rr_at_30={:.9e} median_final_direct_dx_delta={:.9e} dir={}",
+        systems.len(),
+        median(&first_cycle_reductions),
+        median(&second_cycle_factors),
+        median(&estimate_disagreement_factors),
+        median(&pressure_reduction_ratios_at_30),
+        median(&final_direct_deltas),
+        dir.display(),
+    );
+}
+
 #[derive(Clone)]
 struct BundleRow {
     label: String,

@@ -129,11 +129,18 @@ below is retained as Bundle N/Y history; it must not override this current seque
   improve counts. All 8 bounded misses converge at iteration 31-32 instead of failing at the
   effective cap of 30, and the hard gas miss converges at 31 (`4/5 -> 5/5`). Budgets 60/150 are
   bit-identical. This isolates sharp post-restart truncation, not a reason to promote a larger cap.
-- [ ] **Next: Y2d3 restart-boundary convergence-history audit.** Add test-only true/preconditioned
-  residual histories to the same replay and inspect iterations 29-32 for all 8 bounded plus the
-  hard gas artifact. Decide whether iteration 30 is an accounting/check boundary or whether the
-  next cycle adds genuinely useful directions. Hold smoother/restriction/well Schur/scaling/
-  tolerance fixed; no live run, production budget increase, combined lever, or AMG implementation.
+- [x] **Y2d3 restart-boundary convergence-history audit (2026-07-15): ALGORITHM CONTRACT
+  CONFIRMED, NO LIVE CHANGE.** Iteration 30 is a completed production-identical correction, not
+  bookkeeping. True residuals plateau while the Givens estimate disagrees with independently
+  reapplied preconditioned residual by median `1.169e19`; restart two gives the useful direction.
+  Exact dense pressure solving clears bounded `8/8` in one iteration, while tightening the
+  iterative coarse tolerance to `1e-10` changes no classifications. Production constants restored.
+- [ ] **Next: Y2d4 true flexible-GMRES offline oracle.** Implement test-only right-preconditioned
+  FGMRES using `v_j`, stored `z_j=M_j^-1v_j`, `w=A z_j`, and `x=x0+Zy`. Add synthetic variable-
+  preconditioner and fixed-linear controls, then replay bounded 8 and gas 5 at the existing
+  restart/max 30. Require bounded `8/8`, gas `5/5`, finite full residuals/partitions, and stable
+  direct deltas. Hold every CPR/nonlinear component fixed; no live run, dense shortcut, tolerance
+  or budget promotion, combined lever, or AMG.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

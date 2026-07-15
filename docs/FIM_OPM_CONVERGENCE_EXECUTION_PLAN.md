@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d2 isolates a 30-iteration restart-boundary truncation; Y2d3 is next
-(2026-07-14)**. This document turns the evidence in
+Status: **Y2d3 identifies an invalid flexible-preconditioner/Krylov contract; Y2d4 is next
+(2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -611,6 +611,54 @@ weak first-cycle CPR quality.
 - No production budget increase or live convergence run is authorized in Y2d3. AMG is authorized
   only as a later isolated diagnostic if the recorded history localizes the loss to coarse-stage
   quality rather than iteration accounting.
+
+**Y2d3 result (2026-07-15): accounting and coarse tolerance refuted; Krylov contract
+localized.** Test-only history proves that iteration 30 is a completed correction identical to
+the production result. The bounded systems retain median true reduction `1.455e-2` through that
+cycle, while the independently reapplied preconditioned residual is a median `1.169e19` times
+larger than the internal Givens estimate. A fresh restart direction then reduces the
+true residual by a median factor `1.294e-4` and converges at iteration 31 or 32. The hard gas
+artifact behaves the same way: `4.897e-2` at iteration 30 to `3.440e-5` at iteration 31.
+
+Two bounded controls separate coarse quality from the outer recurrence. Temporarily using the
+existing exact dense pressure inverse for all 484 pressure rows makes every bounded system
+converge in one outer iteration (median true reduction `3.225e-14`). Tightening the production
+iterative pressure solve from relative tolerance `1e-6` to `1e-10` does not change the plateau:
+bounded remains `0/8` at 30 and the gas corpus `4/5`; the misses still pass only after restart.
+Both temporary constants were restored.
+
+The implementation applies the preconditioner to the initial residual and to `A v`, then combines
+the preconditioned Arnoldi basis directly into the solution. That is a fixed, left-preconditioned
+GMRES recurrence, despite the FGMRES name. Above 300 pressure rows its CPR application contains a
+stopping-tolerance-driven BiCGSTAB solve, so the map depends on its input and is not a fixed linear
+operator. The Givens residual identity is therefore not valid; the iteration-one estimate/actual
+split and restart reset are expected consequences. Verdict: **CONFIRMED ALGORITHM-CONTRACT GAP;
+NO PRODUCTION CHANGE.**
+
+### 7.5 Y2d4 true flexible-GMRES offline oracle
+
+Hypothesis: a mathematically valid right-preconditioned flexible GMRES recurrence, storing each
+applied search direction, removes the false residual collapse and reaches the direct solution
+inside the existing 30-iteration budget without changing CPR components.
+
+- Implement a test-only solver-lab path first. Use unpreconditioned Arnoldi residual basis
+  `v_j`, compute and store `z_j = M_j^{-1} v_j`, form `w = A z_j`, and construct candidates as
+  `x_0 + Z_j y`. Recompute the true residual for acceptance; do not reuse the current left-GMRES
+  Givens estimate as a production convergence oracle.
+- Hold quasi-IMPES restriction, block-ILU0, iterative pressure solver (`50`, `1e-6`), well Schur,
+  scaling, restart `30`, maximum `30`, and nonlinear behavior fixed. No dense-pressure shortcut,
+  tolerance sweep, budget increase, or AMG.
+- Replay all eight bounded artifacts and all five current gas artifacts. Record iterations, true
+  and estimated residual histories, full reservoir/well partitions, finite status, and direct
+  correction deltas. Confirm only if bounded is `8/8`, gas is `5/5`, every hard system is within
+  30 iterations, and no previously passing correction materially regresses.
+- Include a small synthetic variable-preconditioner test that fails the old residual-estimate
+  assumption but passes the flexible recurrence, plus a fixed-linear-preconditioner equivalence
+  control. This prevents another corpus-only implementation error.
+- If the offline oracle fails, classify the first divergence against the exact-dense bounded
+  control before changing another component. If it passes, source-check OPM's production
+  flexible-solver/preconditioner lifecycle and design a separately gated production candidate;
+  do not run a live Newton comparison in this slice.
 
 ## 8. Y3 and Y4 end gates
 

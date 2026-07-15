@@ -45,6 +45,22 @@ impl CprFineSmootherKind {
     }
 }
 
+/// Y2d3 lab-only snapshot of one completed FGMRES correction. `solution` and
+/// `true_residual_norm` refer to the system passed to the recording entry point; the
+/// well-Schur lab wrapper promotes both back to the original full system before returning.
+#[derive(Clone, Debug)]
+#[cfg(test)]
+pub(super) struct CprKrylovIterationSnapshot {
+    pub(super) iteration: usize,
+    pub(super) restart_index: usize,
+    pub(super) inner_step: usize,
+    pub(super) estimated_preconditioned_residual_norm: f64,
+    pub(super) actual_preconditioned_residual_norm: f64,
+    pub(super) pressure_reduction_ratio: Option<f64>,
+    pub(super) true_residual_norm: f64,
+    pub(super) solution: DVector<f64>,
+}
+
 /// Pressure-restriction/prolongation variants for the CPR coarse stage. Production `solve()`
 /// currently selects `QuasiImpes` for `FgmresCpr`/`GmresIlu0` dispatch; the other variants exist
 /// for the offline solver
@@ -1519,6 +1535,31 @@ fn solve_with_cpr_fine_smoother(
     restriction_kind: CprPressureRestrictionKind,
     equation_scaling: Option<&EquationScaling>,
 ) -> FimLinearSolveReport {
+    solve_with_cpr_fine_smoother_recording(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        used_fallback,
+        cpr_fine_smoother_kind,
+        restriction_kind,
+        equation_scaling,
+        #[cfg(test)]
+        None,
+    )
+}
+
+fn solve_with_cpr_fine_smoother_recording(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    used_fallback: bool,
+    cpr_fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    equation_scaling: Option<&EquationScaling>,
+    #[cfg(test)] history: Option<&mut Vec<CprKrylovIterationSnapshot>>,
+) -> FimLinearSolveReport {
     let total_timer = PerfTimer::start();
     let backend_used = if options.kind == FimLinearSolverKind::FgmresCpr {
         FimLinearSolverKind::FgmresCpr
@@ -1560,6 +1601,8 @@ fn solve_with_cpr_fine_smoother(
         &preconditioner,
         equation_scaling,
         &total_timer,
+        #[cfg(test)]
+        history,
     );
     report.preconditioner_build_time_ms = preconditioner_build_time_ms;
     if let Some(diagnostics) = report.cpr_diagnostics.as_mut() {
@@ -1582,6 +1625,7 @@ fn run_cpr_iterative_solve(
     preconditioner: &BlockJacobiPreconditioner,
     equation_scaling: Option<&EquationScaling>,
     total_timer: &PerfTimer,
+    #[cfg(test)] mut history: Option<&mut Vec<CprKrylovIterationSnapshot>>,
 ) -> FimLinearSolveReport {
     let preconditioner_build_time_ms = 0.0;
     let restart = options.restart.max(2);
@@ -1779,6 +1823,27 @@ fn run_cpr_iterative_solve(
                 restart_best_estimated_residual_norm
                     .map_or(estimated_residual, |best: f64| best.min(estimated_residual)),
             );
+
+            #[cfg(test)]
+            if let Some(history) = history.as_deref_mut() {
+                let cols = inner + 1;
+                let y = back_substitute_upper(&hessenberg, &rotated_rhs, cols);
+                let candidate = &solution + combine_basis(&basis[..cols], &y);
+                let candidate_residual_vec = rhs - &cs_mat_mul_vec(jacobian, &candidate);
+                let candidate_residual = candidate_residual_vec.norm();
+                let (candidate_preconditioned_residual, pressure_reduction_ratio) = preconditioner
+                    .apply(jacobian, &candidate_residual_vec, use_pressure_correction);
+                history.push(CprKrylovIterationSnapshot {
+                    iteration: iterations,
+                    restart_index,
+                    inner_step: inner_steps,
+                    estimated_preconditioned_residual_norm: estimated_residual,
+                    actual_preconditioned_residual_norm: candidate_preconditioned_residual.norm(),
+                    pressure_reduction_ratio,
+                    true_residual_norm: candidate_residual,
+                    solution: candidate,
+                });
+            }
 
             let estimated_trigger = estimated_residual <= tolerance;
             if estimated_trigger || iterations >= max_iterations || next_norm <= f64::EPSILON {
@@ -2136,6 +2201,34 @@ pub(super) fn solve_with_smoother_and_restriction(
     )
 }
 
+/// Y2d3 lab-only variant of `solve_with_smoother_and_restriction` that records every completed
+/// FGMRES correction. Recording constructs true-residual candidates on every inner iteration;
+/// the ordinary production and lab entry points pass `None` and retain their existing work.
+#[cfg(test)]
+pub(super) fn solve_with_smoother_restriction_and_history(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: Option<FimLinearBlockLayout>,
+    fine_smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+    equation_scaling: Option<&EquationScaling>,
+) -> (FimLinearSolveReport, Vec<CprKrylovIterationSnapshot>) {
+    let mut history = Vec::new();
+    let report = solve_with_cpr_fine_smoother_recording(
+        jacobian,
+        rhs,
+        options,
+        layout,
+        false,
+        fine_smoother_kind,
+        restriction_kind,
+        equation_scaling,
+        Some(&mut history),
+    );
+    (report, history)
+}
+
 /// Lab-only opaque handle (Bundle P `FIM-BUNDLE-P`, P0.2 staleness study): a CPR preconditioner
 /// built once from one captured system, reused to solve many *different* systems without
 /// rebuilding — the offline stand-in for what `cpr_reuse_interval` will do live. Kept opaque
@@ -2262,6 +2355,8 @@ pub(super) fn solve_with_prebuilt_preconditioner(
         &handle.0,
         equation_scaling,
         &total_timer,
+        #[cfg(test)]
+        None,
     )
 }
 

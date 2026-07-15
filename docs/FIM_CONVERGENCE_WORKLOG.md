@@ -3591,6 +3591,70 @@ bucket 11/11. The shared bucket passes its first three contracts and stops at th
 pre-existing closed-system `rate_history` mismatch (`left=2`, `right=1`). No wasm control matrix
 was run because Y2d2 adds only `#[cfg(test)]` plumbing and makes no solver-behavior change.
 
+### Bundle Y checkpoint Y2d3: restart history and Krylov-contract localization (2026-07-15)
+
+Scope remained diagnostic. Added test-only per-iteration snapshots of the Givens residual
+estimate, independently reapplied preconditioned residual, CPR pressure reduction, true full
+residual, restart/inner indices, and candidate correction. The well-Schur lab wrapper recovers
+every reduced candidate and recomputes its original-system residual. Production dispatch,
+acceptance, budget, CPR configuration, and nonlinear behavior are unchanged.
+
+The production-budget candidate at iteration 30 exactly matches the existing report on all eight
+bounded failures and the hard gas failure. Thus the boundary is not iteration accounting. For the
+bounded corpus, the median first-cycle true reduction is `1.455237405e-2`; the true residual is
+already nearly flat after the first correction while the internal Givens estimate continues to
+collapse. At iteration 30 the median ratio between actual and estimated preconditioned residual
+is `1.169223907e19`. Restart two then cuts the true residual by median factor
+`1.293965443e-4` and converges in one or two corrections, with median final direct delta
+`9.575253468e-2`. The hard gas capture shows the same discontinuity: true reduction
+`4.896722176e-2` at iteration 30 and `3.439884116e-5` at iteration 31, final direct delta
+`6.8472e-8`. Residual partitions, independent full residuals, and direct references remain valid.
+
+Two temporary coarse-stage controls were run and reverted:
+
+| Control | Bounded at 30 | Gas at 30 | Classification |
+| --- | ---: | ---: | --- |
+| production iterative pressure solve (`50`, `1e-6`) | `0/8` | `4/5` | first-cycle false residual collapse |
+| exact dense pressure inverse for 484 rows | `8/8`, all iteration 1 | not applicable | median true reduction `3.224743915e-14`; matrix and CPR composition can reach direct answer |
+| iterative pressure tolerance `1e-10` | `0/8` | `4/5` | same 31/32 and 31 post-restart passes; coarse tolerance alone refuted |
+
+The exact-dense control's median direct-correction delta is `2.601154847e-10`. The tighter
+iterative bounded run still has median iteration-30 reduction `1.455230947e-2` and passes at
+31/32; the hard gas run remains `4.896820185e-2` at 30 and passes at 31. The pressure threshold
+is restored to `300` and the iterative relative tolerance to `1e-6`.
+
+Code inspection closes the mechanism classification. The routine named FGMRES builds an Arnoldi
+basis from `M^-1 r`, applies `M^-1 A` to each basis vector, and combines that same basis into the
+solution. This is fixed left-preconditioned GMRES. For pressure systems above 300 rows, `M^-1`
+contains a tolerance-terminated BiCGSTAB solve and is input-dependent. The fixed-operator
+Hessenberg/Givens residual identity therefore does not apply. This accounts for the estimate/
+actual split from the first iteration and the fresh progress only after restart.
+
+Diagnostic commands:
+
+```text
+FIM_CAPTURE_DIR=/tmp/ressim-y2d0-2030996 FIM_Y2D1_CORPUS=bounded-22x22x1 \
+  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  solver_lab_audit_restart_boundary_history -- --ignored --nocapture
+FIM_CAPTURE_DIR=/tmp/ressim-y2d1-gas-e143c19 FIM_Y2D1_CORPUS=gas-20x20x3-current \
+  cargo test --release --manifest-path src/lib/ressim/Cargo.toml --lib \
+  solver_lab_audit_restart_boundary_history -- --ignored --nocapture
+```
+
+Verdict: **ALGORITHM-CONTRACT GAP CONFIRMED; NO PRODUCTION CHANGE**. Y2d4 must implement a
+test-only true right-preconditioned flexible recurrence (`v_j`, stored `z_j=M_j^-1v_j`,
+`w=A z_j`, candidate `x_0+Zy`) with all CPR components and the 30-iteration cap fixed. It requires
+synthetic variable/fixed-preconditioner controls and bounded `8/8`, gas `5/5` before any live
+candidate. Do not promote dense pressure solving, a tighter coarse tolerance, budget 60, or AMG.
+
+Final-tree validation: targeted well-Schur `4/4`, capture round-trip `2/2`, Sparse-LU report
+contract, exact Y2d0 direct/CPR replay, final production-budget replays on bounded and gas, and
+final Y2d3 history replays pass. `cargo check` has no new warnings. DRSDT0, both locked SPE1
+tests, Buckley-Leverett `3/3`, and curated FIM `11/11` pass. The shared bucket passes its first
+three contracts and stops at the unchanged pre-existing closed-system `rate_history` mismatch
+(`left=2`, `right=1`). No wasm control matrix was run because Y2d3 adds only `#[cfg(test)]`
+recording and makes no solver-behavior change.
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

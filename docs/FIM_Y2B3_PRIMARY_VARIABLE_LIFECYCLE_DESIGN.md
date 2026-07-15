@@ -1,6 +1,6 @@
 # Y2b3 — OPM Primary-Variable Lifecycle and ResSim Dependency Design
 
-Status: **Mechanism validated/default-off; Y2d2 isolates separate Krylov truncation; Y2d3 is next (2026-07-14)**
+Status: **Mechanism validated/default-off; Y2d3 localizes a separate Krylov/preconditioner contract; Y2d4 is next (2026-07-15)**
 
 This document closes the two prerequisites created by Y2b2c:
 
@@ -293,11 +293,14 @@ bounded failures unresolved. This is a separate CPR tradeoff, not evidence again
 and no restriction change was made.
 
 Y2d2 held quasi-IMPES fixed and showed that production block-ILU0 is already the best existing
-smoother. Every bounded failure converges exactly at iteration 31-32 rather than stopping at the
-effective cap of 30; the hard gas artifact converges at 31. Budgets 60 and 150 are bit-identical.
-This is a separate iterative-solver truncation and does not refute or promote the lifecycle.
+smoother. Y2d3 then proved iteration 30 is a completed correction and localized the false
+first-cycle residual collapse to applying a fixed left-preconditioned GMRES recurrence to an
+input-dependent iterative CPR map. Exact dense pressure inversion clears bounded `8/8` in one
+iteration, while a `1e-10` iterative coarse tolerance leaves the restart behavior unchanged.
+This is a separate linear-algorithm contract and does not refute or promote the lifecycle.
 
-The next slice is **Y2d3**, execution-plan §7.4: record the exact restart-boundary residual
-history and distinguish iteration accounting from weak first-cycle CPR quality. Hold this
-lifecycle fixed. Do not open G4, widen acceptance, tune timestep control, change wells, combine
-solver levers, raise the production budget, or promote Sparse LU while isolating the mechanism.
+The next slice is **Y2d4**, execution-plan §7.5: implement only a test-only true
+right-preconditioned flexible-GMRES oracle with stored preconditioned directions and replay both
+corpora at budget 30. Hold this lifecycle fixed. Do not open G4, widen acceptance, tune timestep
+control, change wells, combine solver levers, raise the production budget, promote dense pressure
+solving, or promote Sparse LU while isolating the mechanism.

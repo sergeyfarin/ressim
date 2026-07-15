@@ -1503,3 +1503,37 @@ the bounded direct oracle in result, but raising ResSim's cap would move its app
 Flow, whose reference solve stays within 20 iterations. Y2d3 therefore records the exact
 iteration-29-to-32 convergence history and audits restart/budget accounting before choosing
 between a bookkeeping correction and CPR coarse-stage quality work.
+
+### 15.14 Y2d3 result: the FGMRES label hides a fixed-left recurrence (2026-07-15)
+
+Test-only recording captured every completed Krylov candidate through the production well-Schur
+and scaling wrapper. Iteration 30 exactly reproduces the production correction, so the budget is
+not off by one. Across all eight bounded failures the true residual remains near its
+iteration-one `1e-2` level through the first cycle even as the Givens estimate collapses toward
+machine precision; the median estimated-versus-actual preconditioned residual disagreement at
+iteration 30 is `1.169223907e19`. Restart two supplies a genuinely new direction and reduces the
+bounded true residual by median factor `1.293965443e-4`, converging at iteration 31 or 32. The hard
+gas artifact moves from true reduction `4.896722176e-2` at 30 to `3.439884116e-5` at 31.
+
+The coarse-stage controls identify why. Raising the diagnostic dense-pressure threshold from 300
+to 512 gives the 484-row bounded systems an exact pressure inverse; all eight then converge in
+one iteration, with median true reduction `3.224743915e-14` and median direct-correction delta
+`2.601154847e-10`. This proves the captured matrices, restriction, well recovery, scaling, and
+block-ILU0 composition can produce the direct answer. Conversely, keeping the iterative path but
+tightening its relative stopping tolerance from `1e-6` to `1e-10` leaves every classification
+unchanged: bounded is still `0/8` at 30 and the gas corpus `4/5`, with convergence only after the
+same restart. Both temporary changes were restored.
+
+The outer method constructs its basis from `M^-1 r`, applies `M^-1 A` to each basis vector, and
+combines that basis into the solution. This is standard fixed left-preconditioned GMRES, not a
+flexible recurrence. The >300-row CPR pressure application calls a tolerance-terminated iterative
+BiCGSTAB solve, so repeated applications are input-dependent rather than one fixed linear map.
+The Hessenberg/Givens estimate is therefore not the residual of the recomputed candidate. This
+explains the immediate estimate/actual split, false first-cycle collapse, and restart reset
+without blaming Newton acceptance or raising the iteration cap.
+
+Verdict: **CLOSER IN APPROACH, PRODUCTION UNCHANGED**. Y2d3 replaces the generic “CPR quality”
+diagnosis with a specific algorithm contract. Y2d4 is a test-only true right-preconditioned
+FGMRES oracle: Arnoldi on `v_j`, store `z_j=M_j^-1v_j`, form `A z_j`, and update with `Zy`, while
+holding every CPR component and the 30-iteration budget fixed. It must clear bounded `8/8` and gas
+`5/5` within 30 and preserve the direct comparisons before any OPM source audit or live candidate.

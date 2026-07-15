@@ -39,7 +39,8 @@ use sprs::{CsMat, TriMatI};
 use super::gmres_block_jacobi::{cs_mat_mul_vec, invert_tail_block, matrix_value};
 #[cfg(test)]
 use super::gmres_block_jacobi::{
-    solve_with_smoother_and_restriction, CprFineSmootherKind, CprPressureRestrictionKind,
+    solve_with_smoother_and_restriction, solve_with_smoother_restriction_and_history,
+    CprFineSmootherKind, CprKrylovIterationSnapshot, CprPressureRestrictionKind,
 };
 use super::{
     solve_linearized_system, FimLinearBlockLayout, FimLinearSolveOptions, FimLinearSolveReport,
@@ -295,6 +296,76 @@ pub(super) fn solve_with_well_elimination_and_configuration(
     recover_full_system_report(jacobian, rhs, options, elimination, reduced_report)
 }
 
+/// Y2d3's production-faithful history replay. The Krylov kernel works on the well-Schur-reduced
+/// system, so every recorded candidate is recovered through the same tail solve and its true
+/// residual is recomputed on the original full system before this function returns.
+#[cfg(test)]
+pub(super) fn solve_with_well_elimination_configuration_and_history(
+    jacobian: &CsMat<f64>,
+    rhs: &DVector<f64>,
+    options: &FimLinearSolveOptions,
+    layout: FimLinearBlockLayout,
+    equation_scaling: Option<&EquationScaling>,
+    smoother_kind: CprFineSmootherKind,
+    restriction_kind: CprPressureRestrictionKind,
+) -> (FimLinearSolveReport, Vec<CprKrylovIterationSnapshot>) {
+    let Some(elimination) = eliminate_wells(jacobian, rhs, layout, equation_scaling) else {
+        return solve_with_smoother_restriction_and_history(
+            jacobian,
+            rhs,
+            options,
+            Some(layout),
+            smoother_kind,
+            restriction_kind,
+            equation_scaling,
+        );
+    };
+
+    let (reduced_report, mut history) = solve_with_smoother_restriction_and_history(
+        &elimination.reduced_jacobian,
+        &elimination.reduced_rhs,
+        options,
+        Some(elimination.reduced_layout),
+        smoother_kind,
+        restriction_kind,
+        elimination.reduced_equation_scaling.as_ref(),
+    );
+    for snapshot in &mut history {
+        snapshot.solution = recover_full_solution(rhs, &elimination, &snapshot.solution);
+        snapshot.true_residual_norm = (rhs - &cs_mat_mul_vec(jacobian, &snapshot.solution)).norm();
+    }
+    let report = recover_full_system_report(jacobian, rhs, options, elimination, reduced_report);
+    (report, history)
+}
+
+fn recover_full_solution(
+    rhs: &DVector<f64>,
+    elimination: &WellEliminationResult,
+    reduced_solution: &DVector<f64>,
+) -> DVector<f64> {
+    let well_bhp_start = elimination.well_bhp_start;
+    let tail_count = elimination.tail_count;
+    let mut residual_tail =
+        DVector::from_iterator(tail_count, (0..tail_count).map(|i| rhs[well_bhp_start + i]));
+    for (tail_idx, row) in residual_tail.iter_mut().enumerate() {
+        let mut sum = 0.0;
+        for &(col, value) in &elimination.j_wr[tail_idx] {
+            sum += value * reduced_solution[col];
+        }
+        *row -= sum;
+    }
+    let dx_tail = &elimination.tail_inverse * &residual_tail;
+
+    let mut solution = DVector::zeros(rhs.len());
+    solution
+        .rows_mut(0, well_bhp_start)
+        .copy_from(reduced_solution);
+    solution
+        .rows_mut(well_bhp_start, tail_count)
+        .copy_from(&dx_tail);
+    solution
+}
+
 fn recover_full_system_report(
     jacobian: &CsMat<f64>,
     rhs: &DVector<f64>,
@@ -302,28 +373,7 @@ fn recover_full_system_report(
     elimination: WellEliminationResult,
     reduced_report: FimLinearSolveReport,
 ) -> FimLinearSolveReport {
-    let well_bhp_start = elimination.well_bhp_start;
-    let tail_count = elimination.tail_count;
-
-    // Recover the tail: dx_W = J_WW^-1 * (r_W - J_WR * dx_R).
-    let mut residual_tail =
-        DVector::from_iterator(tail_count, (0..tail_count).map(|i| rhs[well_bhp_start + i]));
-    for (tail_idx, row) in residual_tail.iter_mut().enumerate() {
-        let mut sum = 0.0;
-        for &(col, value) in &elimination.j_wr[tail_idx] {
-            sum += value * reduced_report.solution[col];
-        }
-        *row -= sum;
-    }
-    let dx_tail = &elimination.tail_inverse * &residual_tail;
-
-    let mut solution = DVector::zeros(jacobian.rows());
-    solution
-        .rows_mut(0, well_bhp_start)
-        .copy_from(&reduced_report.solution);
-    solution
-        .rows_mut(well_bhp_start, tail_count)
-        .copy_from(&dx_tail);
+    let solution = recover_full_solution(rhs, &elimination, &reduced_report.solution);
 
     // End-to-end safety net: recompute the residual against the *original, full* system. Any
     // arithmetic bug in the elimination/recovery math surfaces here as a residual mismatch
