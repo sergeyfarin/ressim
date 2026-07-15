@@ -26,6 +26,12 @@ pub(crate) const DUNE_ISTL_VERSION: &str = "2.11.0";
 pub(crate) const TRUE_IMPES_PRESSURE_SCALE_BAR: f64 = 50.0;
 #[cfg(test)]
 pub(crate) const FLOW_AMG_COARSEN_TARGET: usize = 1200;
+#[cfg(test)]
+pub(crate) const FLOW_BICGSTAB_REDUCTION: f64 = 0.005;
+#[cfg(test)]
+pub(crate) const FLOW_BICGSTAB_MAX_PAIRS: usize = 20;
+#[cfg(test)]
+const FLOW_BICGSTAB_BREAKDOWN_EPSILON: f64 = 1e-80;
 
 pub(crate) fn true_impes_weight(storage_block: &[[f64; 3]; 3]) -> Result<[f64; 3], String> {
     let mut transposed = Matrix3::zeros();
@@ -377,7 +383,7 @@ impl<'a> FlowComponentOracle<'a> {
         &self.coarse_inverse * rhs
     }
 
-    fn cpr_apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
+    pub(crate) fn cpr_apply(&self, rhs: &DVector<f64>) -> DVector<f64> {
         // Flow CPRW configuration: zero pre-sweeps, one coarse correction, one post
         // paroverilu0 correction evaluated against the outer (well-eliminated) residual.
         let pressure = self.coarse_apply(&self.restrict(rhs));
@@ -385,6 +391,190 @@ impl<'a> FlowComponentOracle<'a> {
         let post_rhs = rhs - self.outer_apply(&update);
         update += self.fine_factors.apply(&post_rhs);
         update
+    }
+
+    pub(crate) fn recover_full_solution(
+        &self,
+        full_rhs: &DVector<f64>,
+        reservoir_solution: &DVector<f64>,
+    ) -> DVector<f64> {
+        let reservoir = self.data.reservoir_unknown_count;
+        let well_rhs = full_rhs
+            .rows(reservoir, full_rhs.len() - reservoir)
+            .into_owned();
+        let well_solution =
+            &self.j_ww_inverse * (well_rhs - matrix_vector(&self.data.j_wr, reservoir_solution));
+        DVector::from_iterator(
+            full_rhs.len(),
+            reservoir_solution
+                .iter()
+                .copied()
+                .chain(well_solution.iter().copied()),
+        )
+    }
+
+    /// Exact scalar transcription of DUNE-ISTL 2.11 `BiCGSTABSolver::apply` for the selected
+    /// Flow configuration. It uses the raw sequential two-norm, zero initial correction, strict
+    /// `0.005` reduction, and at most twenty complete alpha/omega pairs. The fixed D6b CPR map is
+    /// right-applied exactly as DUNE's `y = W^-1 p/r` steps prescribe.
+    pub(crate) fn solve_flow_bicgstab(&self, full_rhs: &DVector<f64>) -> FlowBicgstabReport {
+        let rhs = self.reduced_rhs(full_rhs);
+        let initial_norm = rhs.norm();
+        let target = initial_norm * FLOW_BICGSTAB_REDUCTION;
+        let mut solution = DVector::zeros(rhs.len());
+        let mut residual = rhs.clone();
+        let shadow = residual.clone();
+        let mut p = DVector::zeros(rhs.len());
+        let mut v = DVector::zeros(rhs.len());
+        let mut rho: f64 = 1.0;
+        let mut alpha: f64 = 1.0;
+        let mut omega: f64 = 1.0;
+        let mut alpha_steps = 0usize;
+        let mut omega_steps = 0usize;
+        let mut preconditioner_applications = 0usize;
+
+        let converged = |norm: f64| norm < target || norm < 1e-30;
+        if converged(initial_norm) {
+            return FlowBicgstabReport {
+                reservoir_solution: solution,
+                converged: true,
+                finite: true,
+                breakdown: None,
+                initial_norm,
+                final_norm: initial_norm,
+                alpha_steps,
+                omega_steps,
+                preconditioner_applications,
+            };
+        }
+
+        for pair in 0..FLOW_BICGSTAB_MAX_PAIRS {
+            let norm = residual.norm();
+            let rho_new = shadow.dot(&residual);
+            if rho.abs() <= FLOW_BICGSTAB_BREAKDOWN_EPSILON {
+                return FlowBicgstabReport::breakdown(
+                    solution,
+                    initial_norm,
+                    norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                    "rho",
+                );
+            }
+            if omega.abs() <= FLOW_BICGSTAB_BREAKDOWN_EPSILON {
+                return FlowBicgstabReport::breakdown(
+                    solution,
+                    initial_norm,
+                    norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                    "omega",
+                );
+            }
+
+            if pair == 0 {
+                p.copy_from(&residual);
+            } else {
+                let beta = if norm == 0.0 {
+                    0.0
+                } else {
+                    (rho_new / rho) * (alpha / omega)
+                };
+                p -= omega * &v;
+                p *= beta;
+                p += &residual;
+            }
+
+            let y = self.cpr_apply(&p);
+            preconditioner_applications += 1;
+            v = self.outer_apply(&y);
+            let h = shadow.dot(&v);
+            if h.abs() < FLOW_BICGSTAB_BREAKDOWN_EPSILON {
+                return FlowBicgstabReport::breakdown(
+                    solution,
+                    initial_norm,
+                    norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                    "h-alpha",
+                );
+            }
+            alpha = if norm == 0.0 { 0.0 } else { rho_new / h };
+            solution += alpha * &y;
+            residual -= alpha * &v;
+            alpha_steps += 1;
+            let alpha_norm = residual.norm();
+            if !alpha_norm.is_finite() {
+                return FlowBicgstabReport::non_finite(
+                    solution,
+                    initial_norm,
+                    alpha_norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                );
+            }
+            if converged(alpha_norm) {
+                return FlowBicgstabReport::completed(
+                    solution,
+                    initial_norm,
+                    alpha_norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                    true,
+                );
+            }
+
+            let y = self.cpr_apply(&residual);
+            preconditioner_applications += 1;
+            let t = self.outer_apply(&y);
+            let h = t.dot(&t);
+            omega = if alpha_norm == 0.0 {
+                0.0
+            } else {
+                t.dot(&residual) / h
+            };
+            solution += omega * &y;
+            residual -= omega * &t;
+            rho = rho_new;
+            omega_steps += 1;
+            let omega_norm = residual.norm();
+            if !omega_norm.is_finite() {
+                return FlowBicgstabReport::non_finite(
+                    solution,
+                    initial_norm,
+                    omega_norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                );
+            }
+            if converged(omega_norm) {
+                return FlowBicgstabReport::completed(
+                    solution,
+                    initial_norm,
+                    omega_norm,
+                    alpha_steps,
+                    omega_steps,
+                    preconditioner_applications,
+                    true,
+                );
+            }
+        }
+
+        FlowBicgstabReport::completed(
+            solution,
+            initial_norm,
+            residual.norm(),
+            alpha_steps,
+            omega_steps,
+            preconditioner_applications,
+            false,
+        )
     }
 
     pub(crate) fn validate_identities(
@@ -558,6 +748,94 @@ pub(crate) struct FlowComponentIdentityMetrics {
 }
 
 #[cfg(test)]
+#[derive(Clone, Debug)]
+pub(crate) struct FlowBicgstabReport {
+    pub(crate) reservoir_solution: DVector<f64>,
+    pub(crate) converged: bool,
+    pub(crate) finite: bool,
+    pub(crate) breakdown: Option<&'static str>,
+    pub(crate) initial_norm: f64,
+    pub(crate) final_norm: f64,
+    pub(crate) alpha_steps: usize,
+    pub(crate) omega_steps: usize,
+    pub(crate) preconditioner_applications: usize,
+}
+
+#[cfg(test)]
+impl FlowBicgstabReport {
+    fn completed(
+        reservoir_solution: DVector<f64>,
+        initial_norm: f64,
+        final_norm: f64,
+        alpha_steps: usize,
+        omega_steps: usize,
+        preconditioner_applications: usize,
+        converged: bool,
+    ) -> Self {
+        Self {
+            finite: reservoir_solution.iter().all(|value| value.is_finite())
+                && final_norm.is_finite(),
+            reservoir_solution,
+            converged,
+            breakdown: None,
+            initial_norm,
+            final_norm,
+            alpha_steps,
+            omega_steps,
+            preconditioner_applications,
+        }
+    }
+
+    fn breakdown(
+        reservoir_solution: DVector<f64>,
+        initial_norm: f64,
+        final_norm: f64,
+        alpha_steps: usize,
+        omega_steps: usize,
+        preconditioner_applications: usize,
+        reason: &'static str,
+    ) -> Self {
+        let mut report = Self::completed(
+            reservoir_solution,
+            initial_norm,
+            final_norm,
+            alpha_steps,
+            omega_steps,
+            preconditioner_applications,
+            false,
+        );
+        report.breakdown = Some(reason);
+        report
+    }
+
+    fn non_finite(
+        reservoir_solution: DVector<f64>,
+        initial_norm: f64,
+        final_norm: f64,
+        alpha_steps: usize,
+        omega_steps: usize,
+        preconditioner_applications: usize,
+    ) -> Self {
+        let mut report = Self::completed(
+            reservoir_solution,
+            initial_norm,
+            final_norm,
+            alpha_steps,
+            omega_steps,
+            preconditioner_applications,
+            false,
+        );
+        report.finite = false;
+        report.breakdown = Some("non-finite-defect");
+        report
+    }
+
+    pub(crate) fn reduction(&self) -> f64 {
+        self.final_norm / self.initial_norm.max(1e-30)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -613,13 +891,26 @@ mod tests {
         };
         let rhs = DVector::from_vec(vec![1.0, -2.0, 0.5, 3.0, -1.0, 0.25, 2.0, -0.5]);
 
-        let metrics = FlowComponentOracle::new(&data, layout)
-            .unwrap()
-            .validate_identities(&rhs)
-            .unwrap();
+        let oracle = FlowComponentOracle::new(&data, layout).unwrap();
+        let metrics = oracle.validate_identities(&rhs).unwrap();
 
         assert!(metrics.coarse_well_norm > 0.0);
         assert!(metrics.outer_disagreement < 5e-12);
         assert!(metrics.residual_norm_disagreement < 5e-12);
+
+        let report = oracle.solve_flow_bicgstab(&rhs);
+        let independent_residual =
+            oracle.reduced_rhs(&rhs) - oracle.outer_apply(&report.reservoir_solution);
+        assert!(report.converged);
+        assert!(report.finite);
+        assert_eq!(report.breakdown, None);
+        assert!(report.alpha_steps <= FLOW_BICGSTAB_MAX_PAIRS);
+        assert!(report.omega_steps <= report.alpha_steps);
+        assert_eq!(
+            report.preconditioner_applications,
+            report.alpha_steps + report.omega_steps
+        );
+        assert!((independent_residual.norm() - report.final_norm).abs() < 1e-12);
+        assert!(report.reduction() < FLOW_BICGSTAB_REDUCTION);
     }
 }

@@ -163,9 +163,13 @@ below is retained as Bundle N/Y history; it must not override this current seque
 - [x] **Y2d6c step 1 — capture-v3 corpus regeneration (2026-07-15): COMPLETE.** The established
   selectors reproduce bounded eight `max-iters` plus gas four final-near-miss/one `max-iters`
   artifacts. All 13 pass source, weight, companion, count, and full-J reconstruction gates.
-- [ ] **Next: Y2d6c step 2 — exact test-only DUNE BiCGSTAB and corpus report.** Wrap the fixed
-  D6b component map with raw-norm, zero-initial, strict `0.005`, twenty-pair semantics; gate every
-  solve on identities and report prescribed controls. No live routing or default change.
+- [x] **Y2d6c step 2 — coherent Flow lifecycle offline (2026-07-15): CONFIRMED.** Exact DUNE
+  BiCGSTAB plus fixed D6b components passes bounded `8/8` and gas `5/5`, versus production `0/8`
+  and `4/5`; all finish within one completed pair with finite independent full residuals and no
+  lost pass. This is offline evidence, not default promotion.
+- [ ] **Next: Y2d6d default-off live integration.** Keep the complete lifecycle atomic and run
+  exact gas/heavy first, then Y2 water and Legacy controls. Do not change default routing,
+  acceptance, controller, primary lifecycle, or fallback policy in the same slice.
 - [ ] **G4 (blocked):** injector well primary-variable/row-structure audit only if the corrected
   Y2b2 replay or a coherent OPM state/property/primary-variable lifecycle still localizes the
   plateau to well equations. The present `well@900` direct failure is not authorization.

@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d6c capture-v3 corpus regeneration is complete; the exact test-only DUNE BiCGSTAB
-recurrence is next (2026-07-15)**. This document turns the evidence in
+Status: **Y2d6c coherent Flow-lifecycle corpus comparison is confirmed offline; Y2d6d default-off
+live integration is next (2026-07-15)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -786,6 +786,14 @@ abort and final-iteration near miss. The current branch exactly regenerates boun
 `max-iters` artifacts and gas `4` final-near-miss plus `1` `max-iters` artifact. All thirteen are
 capture v3 and pass count, companion, source, weight, and bit-exact full-J reconstruction gates.
 Next implement the test-only recurrence; do not route it live.
+
+**Y2d6c step 2 result (2026-07-15): CONFIRMED OFFLINE.** The recurrence directly transcribes
+DUNE-ISTL 2.11 BiCGSTAB: raw norm, zero initial correction, strict `<0.005`, matching `1e-80`
+breakdown guards, half-step convergence checks, and a twenty-pair cap. Every artifact passes D6b
+before solving. Bounded improves production `0/8` to Flow-stack `8/8`; gas improves `4/5` to
+`5/5`. True FGMRES remains `8/8` and `5/5`. No solve needs more than one completed pair, no pass
+is lost, and full/recovered-well residuals are independently recomputed. D6d default-off live
+integration is authorized; promotion is not.
 
 ## 8. Y3 and Y4 end gates
 

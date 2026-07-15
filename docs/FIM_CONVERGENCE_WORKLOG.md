@@ -3883,6 +3883,35 @@ reconstructs full J bit-for-bit. Artifact directories are
 `/tmp/ressim-y2d6c-bounded-1b3de31` and `/tmp/ressim-y2d6c-gas-1b3de31`. This is selection and
 payload evidence only. Next is the exact test-only DUNE BiCGSTAB recurrence.
 
+### Bundle Y checkpoint Y2d6c.2: exact DUNE BiCGSTAB corpus result (2026-07-15)
+
+Implemented the outer solve only in the test oracle, directly following DUNE-ISTL 2.11
+`BiCGSTABSolver::apply`: zero correction, raw norm, strict `<0.005`, matching rho/omega/h
+breakdown guards, alpha/omega half-step checks, and at most twenty complete pairs. The fixed D6b
+CPR is right-applied to `p` and the intermediate residual; every capture reruns all seven
+identities before entering the recurrence.
+
+| Corpus | Production | true FGMRES | Flow lifecycle | Max complete pairs | Median full reduction | Median direct delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| bounded 8 | `0/8` | `8/8` | **`8/8`** | `1` | `1.977026308e-13` | `1.417902240e-9` |
+| gas 5 | `4/5` | `5/5` | **`5/5`** | `1` | `3.813935911e-4` | `2.617263521e-6` |
+
+No solve breaks down or loses an existing pass. Alpha/omega/preconditioner counts are consistent,
+outer norms match independent recomputation, and recovered well residuals are zero or roundoff.
+Bounded captures `00006`/`00007` stop legitimately at `1.3168e-3`/`2.2524e-4` and retain direct deltas
+`7.2245`/`1.1150`; the other six are near direct. This is expected solution-quality latitude
+under Flow's loose linear criterion and is not claimed as direct equivalence.
+
+Verdict: **CONFIRMED OFFLINE — D6D DEFAULT-OFF LIVE AUTHORIZED.** This is the first complete
+Flow-selected linear lifecycle result on these blockers; it is not yet evidence about Newton
+iterations or live OPM parity. IMPES remains unchanged because it has no coupled CPR system.
+
+Final validation: lifecycle unit/oracle `3/3`; both identity-gated release corpora; DRSDT0; both
+locked SPE1 tests; curated FIM bucket (SPE1 `3/3`, wells `5/5`, depletion `3/3`); and
+Buckley-Leverett `3/3` pass. `cargo check` passes with the four pre-existing native warnings. The
+shared bucket passes its first three contracts and stops at the unchanged closed-system
+`rate_history` assertion (`left=2`, `right=1`).
+
 ### Bundle Y checkpoint Y1i: durable OPM oracle and acceptance-gate audit (2026-07-13)
 
 Scope: measurement infrastructure and source audit only; no FIM production behavior changed.

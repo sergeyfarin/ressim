@@ -1,6 +1,6 @@
 # Y2d6 — Flow 2026.04 Linear-Lifecycle Design
 
-Status: **DESIGN COMPLETE; IMPLEMENTATION NOT STARTED (2026-07-15)**
+Status: **GATES D6A-D6C COMPLETE; D6D DEFAULT-OFF LIVE INTEGRATION NEXT (2026-07-15)**
 
 This document defines the smallest valid next experiment after Y2d5. It is deliberately more
 restrictive than “try BiCGSTAB”: the exact Flow reference uses one coupled operator/preconditioner
@@ -197,6 +197,11 @@ semantics. Bounded regenerates eight `max-iters` artifacts; gas regenerates four
 `final-iteration-near-miss` plus one `max-iters` artifact. Payload validation passes all thirteen.
 The next substep is only the exact test-only DUNE BiCGSTAB recurrence and corpus report.
 
+D6c result: the exact recurrence passes bounded `8/8` and gas `5/5`, versus current production
+`0/8` and `4/5`; true FGMRES remains `8/8` and `5/5`. All solves are finite, have no breakdown,
+and stop with at most one completed pair. Full-system residuals, well partitions, and direct
+correction deltas are independently reported. Gate D6d is now authorized.
+
 ### Gate D6a — payload sufficiency
 
 Extend or cleanly regenerate the existing eight bounded and five gas artifacts. Each item must
@@ -263,16 +268,15 @@ independently verifies the returned raw residual.
 
 ## 6. Prescriptive handoff
 
-Gates D6a and D6b were completed on 2026-07-15. The next implementing agent must do only Gate D6c:
+Gates D6a-D6c were completed on 2026-07-15. The next implementing agent must do only Gate D6d:
 
-1. regenerate or extend exactly eight bounded and five gas artifacts in capture v3 format;
-2. run all seven D6b identities before each solve and stop that artifact as `INCONCLUSIVE` if any
-   identity fails;
-3. add the exact DUNE 2.11 BiCGSTAB recurrence with raw sequential two-norm, zero initial update,
-   strict `0.005` reduction, and at most twenty complete alpha/omega pairs;
-4. report half-step/full-pair/preconditioner counts, full/reservoir/recovered-well residuals,
-   finite status, direct delta, and current-production/true-FGMRES/Flow-stack results side by side;
-5. require bounded `8/8`, gas `5/5`, and no loss of an existing pass before considering D6d.
+1. integrate the proven stack behind one explicit default-off native option;
+2. keep the lifecycle atomic: outer BiCGSTAB, true-IMPES, separated well paths, `J_rr` block ILU,
+   and the bounded one-level direct coarse application;
+3. run exact gas and heavy-water targets first, then Y2 water controls and Legacy guards;
+4. report Newton/substep/retry trajectories and full linear norms without changing acceptance,
+   controller, primary lifecycle, or fallback semantics in the same commit;
+5. promote nothing unless exact gas moves toward `7,5,4,3,4,3` without a control regression.
 
-Do not add a live option or change production dispatch during D6c. Do not extend the one-level
-coarse oracle into a general AMG project; these captures are below Flow's coarsening threshold.
+Do not change the default during D6d. Do not extend the one-level coarse oracle into a general AMG
+project; the validated target surfaces are at or below Flow's coarsening threshold.

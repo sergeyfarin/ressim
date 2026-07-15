@@ -1673,3 +1673,22 @@ eight linear retries, writing exactly eight `max-iters` systems. The current 20x
 reproduces 238 substeps, one linear and four nonlinear retries, writing exactly four final near
 misses and one `max-iters` system. All thirteen parse with the required lifecycle companion,
 recomputed weights, and bit-exact full-J partitions. No recurrence result exists yet.
+
+### 15.21 Y2d6c result: coherent Flow lifecycle clears the 8+5 offline gate (2026-07-15)
+
+The test-only outer solve directly transcribes DUNE 2.11 BiCGSTAB: zero initial update, raw
+sequential norm, strict `<0.005`, matching breakdown guards, half-step checks, and twenty complete
+pairs maximum. Each artifact first passes all seven D6b identities. Recovered full residuals and
+reservoir/well partitions are independent; Sparse LU supplies correction deltas but is not trusted
+by backend status alone.
+
+| Corpus | Production | true FGMRES | Flow lifecycle | Max complete pairs | Median full reduction | Median direct delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| bounded 8 | `0/8` | `8/8` | **`8/8`** | `1` | `1.977026308e-13` | `1.417902240e-9` |
+| gas 5 | `4/5` | `5/5` | **`5/5`** | `1` | `3.813935911e-4` | `2.617263521e-6` |
+
+All solutions are finite, no recurrence breaks down, and no production pass is lost. Two late
+bounded systems stop validly at Flow's loose criterion with full reductions `1.32e-3` and
+`2.25e-4`; their larger direct deltas remain explicit rather than being called direct-equivalent.
+This authorizes only D6d's default-off live experiment. It does not yet establish fewer Newton
+iterations.
