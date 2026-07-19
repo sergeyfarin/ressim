@@ -3413,6 +3413,9 @@ mod phase5_repro {
     /// - `FIM_Y1J_GRID=10|20` selects the square lateral grid size (default 10).
     /// - `FIM_Y1J_FLAVOR=legacy|opm` selects the nonlinear flavor (default `opm`).
     /// - `FIM_FORCE_DIRECT_LINEAR=1` selects the direct backend; unset uses the live stack.
+    /// - `FIM_FLOW_RESV_INJECTOR=1` selects G4b2b's typed surface-u route for the injector.
+    ///   The producer remains on the held historical rate route; the selected injector receives
+    ///   an explicit RESV 500 schedule without BHP switching, matching G4b2b's narrow scope.
     /// - `FIM_MAX_SUBSTEPS=1` caps after the first accepted rung; use this for the bounded
     ///   first-rung comparison, not as a completed 0.25-day-step result.
     /// - `FIM_TRACE_FILE=<path> FIM_TRACE_DT_BELOW=1` records every iteration's `WELLTRACE`
@@ -3554,6 +3557,22 @@ mod phase5_repro {
             sim.add_well(nx - 1, ny - 1, 0, producer_bhp, 0.1, 0.0, false)
                 .unwrap();
         }
+        let flow_resv_injector = std::env::var_os("FIM_FLOW_RESV_INJECTOR").is_some();
+        if flow_resv_injector {
+            let injector = sim
+                .wells
+                .iter_mut()
+                .find(|well| well.injector)
+                .expect("FIM_FLOW_RESV_INJECTOR requires the injector in FIM_Y1J_WELLS");
+            injector.schedule = crate::well::WellSchedule {
+                control_mode: Some("resv".to_string()),
+                target_rate_m3_day: Some(500.0),
+                target_surface_rate_m3_day: None,
+                bhp_limit: None,
+                enabled: true,
+            };
+            sim.set_fim_flow_resv_injector(true);
+        }
         sim.set_fim_opm_aligned_nonlinear(flavor == "opm");
         sim.set_fim_true_fgmres(std::env::var_os("FIM_TRUE_FGMRES").is_some());
         sim.set_fim_flow_lifecycle(std::env::var_os("FIM_FLOW_LIFECYCLE").is_some());
@@ -3564,7 +3583,7 @@ mod phase5_repro {
         let start = Instant::now();
         let force_direct_linear = std::env::var_os("FIM_FORCE_DIRECT_LINEAR").is_some();
         println!(
-            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear}"
+            "Y1J config grid={nx}x{ny}x{nz} dt={dt_days} steps={step_count} flavor={flavor} wells={wells} control={control} flow_resv_injector={flow_resv_injector} nested_well_solve={nested_well_solve} force_direct_linear={force_direct_linear}"
         );
 
         for step_idx in 0..step_count {
