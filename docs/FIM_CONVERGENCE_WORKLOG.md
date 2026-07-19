@@ -4297,3 +4297,40 @@ only `dB_g/dp`, which is consumed by FIM Jacobian construction; IMPES has no typ
 primary or analogous derivative route, so no IMPES implementation change is warranted. No
 exact-deck performance metric is claimed here. Next is the capped committed-tree first
 report-step trace, held to the no-retry/comparable-field oracle in the G4b2a design.
+
+### G4b2b committed-tree live comparison (2026-07-19)
+
+Added the missing native-driver wiring in `9cdff9b` so `FIM_FLOW_RESV_INJECTOR=1` actually assigns
+the injector an explicit RESV 500 schedule and selects the atomic route; producer behavior stays
+on the held historical rate path. Default-off remains the historical q route. This was necessary
+because the documented environment command previously would have silently measured the old
+path.
+
+Fresh exact commands used the ignored release driver with `FIM_Y2B_RAW_SATURATION=1`, six steps,
+and with/without `FIM_FLOW_RESV_INJECTOR=1`; the first-step typed run also used
+`FIM_MAX_SUBSTEPS=1` and `FIM_TRACE_FILE`. Fresh Flow 2026.04 was regenerated through
+`scripts/opm-ressim-compare.sh --opm-only`. Results:
+
+| Case/route | Accepted / retries | Applied Newton updates | Linear iterations | Time |
+| --- | --- | ---: | ---: | ---: |
+| gas 10x10x3, Flow | `6 / 0` | `26` (`7,5,4,3,4,3`) | `27` | `0.08 s` simulation |
+| gas 10x10x3, historical q + Y2 | `6 / 0` | `23` (`7,4,3,3,3,3`) | `61` | `0.576 s` elapsed |
+| gas 10x10x3, G4b2b typed u + Y2 | `6 / 0` | `23` (`7,4,3,3,3,3`) | `64` | `0.545 s` elapsed |
+| water-heavy 12x12x3, Flow | `1 / 0` | `11` | `14` | `0.04 s` simulation |
+| water-heavy 12x12x3, current Y2 | `7 / 1` | `70` (`50` accepted + `20` discarded) | `185` | `0.510 s` elapsed |
+
+The gas rows share the tracked grid/fluid/rate/report mapping, but G4b2b covers only the injector
+without BHP switching and leaves the producer historical; they are not yet a full two-well
+well-formulation equivalence claim.
+
+Do not interpret the gas count as a G4 improvement: a preliminary default-off run omitted the Y2
+raw-primary flag and collapsed to `0.000978 d`; that comparison was rejected and rerun correctly.
+With held settings equal, G4b2b changes formulation/trajectory but not nonlinear counts.
+
+Evaluation 1 classifies the result. Flow oil/gas MB are `1.8375e-3/2.8814e-3`; historical q is
+`4.311e-3/2.482e-3`; typed u is `3.493e-3/4.526e-3`. More importantly, typed u has
+`u=76,923.077`, `c_s=133,639.380`, `R_perf=56,716.303`, whereas Flow reports the well converged.
+The source is therefore not yet comparable. **Verdict: G4b2b route COMPLETE; live OPM parity
+INCONCLUSIVE due to the deliberately missing u-coordinate inner well solve.** Next is G4b3 with
+`c_s≈u` after update 1 as the primary gate. No IMPES port applies; the typed tail/inner well
+system is FIM-only, and the IMPES 5/5 gate already passes.

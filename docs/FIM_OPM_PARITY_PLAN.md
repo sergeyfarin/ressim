@@ -1855,3 +1855,24 @@ the exact `gas-rate-10x10x3` first report step must now be replayed from the com
 evaluation-0/1 fields and no retry. A retry, missing trace field, or route fall-through is
 `INCONCLUSIVE`, not a refutation of the coherent Flow lifecycle and not authorization to tune
 Newton acceptance or timestep control.
+
+### 15.32 G4b2b live oracle: headline parity unchanged; missing u inner solve is exposed
+
+From committed `9cdff9b`, fresh Flow 2026.04 remains six uncut report steps with applied Newton
+updates `7,5,4,3,4,3` and 27 total linear iterations. Holding the Y2 raw Sg/Rs lifecycle fixed,
+the historical q and typed-u ResSim routes both remain six/zero with applied updates
+`7,4,3,3,3,3`; typed u moves total Krylov iterations `61 -> 64`. There is no convergence-count
+promotion to claim.
+
+The evaluation-1 differential is more decisive than the headline. Flow reports `WellStatus=CONV`.
+Typed ResSim has `u=76,923.077 Sm3/day` but current connection surface rate
+`c_s=133,639.380`, leaving `R_perf=56,716.303`; its oil MB improves from historical
+`4.311e-3` to `3.493e-3` against Flow `1.8375e-3`, while gas MB worsens from `2.482e-3` to
+`4.526e-3` against Flow `2.8814e-3`. Because the connection row is not satisfied, the source
+comparison is not a valid complete-lifecycle oracle. Verdict: **INCONCLUSIVE, not refuted**.
+G4b3's u-coordinate inner well solve is the next dependency; acceptance, G5, controller, and
+linear changes remain unauthorized.
+
+Comparison scope remains narrower than the Flow deck's complete well lifecycle: G4b2b selects
+only the injector, has no BHP switching, and leaves ResSim's producer historical. Grid, fluids,
+targets, and report timing are mapped; full two-well formulation parity is still open.

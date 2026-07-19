@@ -1,7 +1,7 @@
 # FIM–OPM Convergence Execution Plan
 
-Status: **Y2d8 confirms a coupled Flow/ResSim injector-RESV source lifecycle mismatch; G4a
-coherent lifecycle design is next (2026-07-15)**. This document turns the evidence in
+Status: **G4b2b atomic typed RESV route complete; first live oracle is INCONCLUSIVE because the
+u-coordinate inner well solve is still absent (2026-07-19)**. This document turns the evidence in
 `FIM_OPM_PARITY_PLAN.md` into a bounded sequence that can be executed without choosing a new
 solver lever by intuition. The parity plan remains the Bundle Y evidence record; this file owns
 the current order of work, gates, and handoff instructions.
@@ -18,6 +18,7 @@ Primary oracle: tracked `gas-rate-10x10x3` deck, six 0.25-day report steps.
 | --- | ---: | --- | --- | ---: |
 | OPM Flow 2026.04 | 6 | `7,5,4,3,4,3` | `8,6,5,4,5,4` | 0 |
 | ResSim lifecycle candidate (default-off) | 6 | `7,4,3,3,3,3` | `8,5,4,4,4,4` | 0 |
+| ResSim + G4b2b typed RESV injector | 6 | `7,4,3,3,3,3` | `8,5,4,4,4,4` | 0 |
 | ResSim + D6d Flow linear lifecycle | 6 | `9,4,4,3,3,3` | `10,5,5,4,4,4` | 0 |
 
 Flow `INFOSTEP.NewtIt` counts applied updates; `INFOITER` includes the initial evaluation and
@@ -976,6 +977,46 @@ corrections. These are route/oracle correctness
 repairs, not evidence of fewer exact-deck Newton iterations. The next authorized action is only
 the committed-tree, capped first report-step trace in G4b2a §8; no acceptance, damping,
 controller, or linear-policy change may be combined with it.
+
+### G4b2b live result (2026-07-19): route executes, complete lifecycle oracle is inconclusive
+
+Committed revisions: atomic route `e679fd8`; exact native-driver wiring `9cdff9b`. Fresh Flow
+2026.04 and ResSim release runs used the tracked 10x10x3 mapping. With the same Y2 raw Sg/Rs
+lifecycle held on, both the historical q route and G4b2b typed u route take six full 0.25-day
+steps with zero retries and the same applied-update sequence `7,4,3,3,3,3`. Flow takes
+`7,5,4,3,4,3`. Thus the typed route changes neither the six-step count nor the total nonlinear
+work (`23` versus Flow's `26`); it slightly increases Krylov iterations `61 -> 64`, versus
+Flow's `27`. Single release observations are ResSim `0.576 s -> 0.545 s` and Flow simulation
+time `0.08 s`; treat the small ResSim difference as noise, while the remaining ~6.8x cost gap is
+material.
+
+Scope caveat: grid, fluids, rates, and report intervals follow the tracked mapping, but G4b2b
+selects only the injector and deliberately omits BHP switching; the ResSim producer remains on
+the historical rate formulation. The table is a valid injector-lifecycle/convergence diagnostic,
+not yet full two-well formulation parity.
+
+The trajectory oracle prevents a false promotion. Evaluation 0 remains matched. At evaluation 1:
+
+| Quantity | Flow | historical q | G4b2b typed u |
+| --- | ---: | ---: | ---: |
+| oil MB | `1.8375e-3` | `4.311e-3` | `3.493e-3` |
+| gas MB | `2.8814e-3` | `2.482e-3` | `4.526e-3` |
+| well status / selected connection | `CONV` | q drifted to `-526.853` | `u=76,923.077`, but `c_s=133,639.380` |
+| selected connection residual | converged | historical equation | `56,716.303 Sm3/day` |
+
+G4b2b improves the oil-MB distance to Flow but worsens gas MB, and its selected connection is
+not comparable: `c_s/u=1.737`. This is exactly a missing coupled semantic named in the design,
+not a refutation of the complete Flow well lifecycle. **Verdict: INCONCLUSIVE for parity; G4b2b
+implementation complete.** Next is G4b3: design and implement a u-coordinate inner well solve
+that restores the selected connection/control equations after each reservoir update, with an
+evaluation-1 `c_s≈u`/Flow-well-status gate. Keep G5, acceptance, damping, controller, linear
+lifecycle, multi-perf allocation, and BHP switching held.
+
+The current non-gas blocker remains material and is unaffected by G4b2b: fresh water-heavy
+12x12x3 uses seven accepted substeps plus one rejected trial, 70 total applied updates and 185
+linear iterations in `0.510 s`; fresh Flow takes one step, zero cuts, 11 Newton and 14 linear
+iterations in `0.04 s`. Preserve it as the cross-physics promotion gate, not as evidence against
+the gas-only G4 mechanism.
 
 ## 8. Y3 and Y4 end gates
 

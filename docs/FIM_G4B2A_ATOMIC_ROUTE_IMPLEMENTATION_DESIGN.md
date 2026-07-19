@@ -398,6 +398,16 @@ Missing fields, a route fall-through, active BHP behaviour, a clamped FD point, 
 **INCONCLUSIVE** and return work to the relevant gate rather than authorizing G5 or acceptance
 tuning.
 
+Result (committed tree `9cdff9b`, 2026-07-19): the first report step accepts the full `0.25 d`
+with zero retry and records all typed fields, but the stronger connection oracle fails:
+evaluation 1 has `u=76,923.077`, `c_s=133,639.380`, and
+`R_perf=56,716.303 Sm3/day`, while Flow's well status is converged. The six-step headline count
+and applied-update sequence are unchanged from the held Y2 historical route. This is
+**INCONCLUSIVE** for the complete Flow lifecycle because G4b2a explicitly omitted the
+u-coordinate inner well solve; it does not refute the coherent lifecycle. G4b3 must restore the
+selected connection/control equations after the reservoir update before any G5 or solver-policy
+work.
+
 ## 9. Handoff checklist
 
 Before editing, the implementing agent must state:
